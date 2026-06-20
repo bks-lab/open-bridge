@@ -1,6 +1,8 @@
 # open-bridge
 
-open-bridge is a plain git repo of markdown and YAML your AI coding agent reads at the start of every session — so it already knows your repos, your clients, and how you work, independent of which model or frontend you run. No database, no SaaS, no second app to maintain.
+Your AI coding agent starts every session knowing your repos, your clients, and how you work — because open-bridge is a plain git repo of markdown and YAML it reads at the start of every session, independent of which model or frontend you run. No database, no SaaS, no second app to maintain.
+
+> **The fix isn't a smarter prompt. It's giving the agent a place to remember.**
 
 > **Status:** Public, MIT (with a separate trademark policy). Built at BKS-Lab and used to run it — one self-hosted instance, no external users yet. This README documents the method and substrate, not adoption.
 
