@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions, ideas & show-and-tell
+    url: https://github.com/bks-lab/open-bridge/discussions
+    about: Ask how-to questions, propose ideas, or share what you built — in GitHub Discussions.
+  - name: Security vulnerability (private)
+    url: https://github.com/bks-lab/open-bridge/security/policy
+    about: Please report security issues privately via the security policy — not a public issue.
+  - name: Docs & project overview
+    url: https://bks-lab.github.io/open-bridge/
+    about: Read the overview page and docs/ before opening an issue.
