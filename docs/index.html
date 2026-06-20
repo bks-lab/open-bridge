@@ -215,14 +215,15 @@ section{padding-block:var(--section-y)}
 
 /* ---- Hero (split) ---- */
 .hero{position:relative;overflow:hidden;padding-block:clamp(56px,9vh,104px)}
-/* Headline + CTAs on top, the knowledge-constellation visual full-width below.
-   The constellation is detailed (18 nodes, authored 760-wide); a half-column
-   crushes its labels, so it gets the full hero width here. */
+/* Copy on the left, a small instantly-readable "your world, connected" net on
+   the right. The detailed 18-node constellation moved down to #substrate, where
+   it has the full width its labels need. */
 .hero-grid{
   max-width:var(--hero-w);margin:0 auto;
-  display:flex;flex-direction:column;gap:44px;
+  display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+  align-items:center;gap:clamp(36px,5vw,64px);
 }
-.hero-copy{min-width:0;max-width:62rem}
+.hero-copy{min-width:0}
 .hero .display{margin-top:10px}
 .hero-sub{margin:24px 0 0;max-width:48rem;font-size:19px;font-weight:300;line-height:1.6;color:var(--on-surface)}
 .honesty-strip{
@@ -236,7 +237,7 @@ section{padding-block:var(--section-y)}
 .cta-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:30px}
 .beta-line{margin-top:18px;font-size:14px;color:var(--secondary);max-width:38rem}
 
-/* hero visual — full-width constellation below the copy */
+/* hero visual — compact "your world, connected" net in the right column */
 .hero-visual{min-width:0;width:100%}
 .seam-cap{
   margin-top:14px;font-size:13.5px;color:var(--secondary);line-height:1.5;text-align:center;
@@ -248,9 +249,97 @@ section{padding-block:var(--section-y)}
   border:1px solid var(--border);border-radius:var(--r-full);padding:1px 8px;margin-right:8px;
 }
 
-@media (max-width:900px){
-  .hero-grid{gap:32px}
+@media (max-width:920px){
+  /* stack the net below the copy on tablet/mobile */
+  .hero-grid{grid-template-columns:1fr;gap:36px}
   .hero-sub,.beta-line{max-width:none}
+  .hero-visual{max-width:520px;margin-inline:auto}
+}
+
+/* ---- #hero-net (simple "your world, connected" net) — scoped ----
+   Same visual grammar as #structure-viz (circular glyph+label nodes, edges
+   under nodes), but MINIMAL: one centre node + 5 plain-language spokes. Static
+   SVG (no per-frame JS), so it's reduced-motion-clean by construction. Uses
+   page DESIGN.md tokens only; the centre ring uses the claude-orange accent. */
+#hero-net{
+  margin:0;font-family:var(--font-sans);
+  /* one scoped accent: the focal "your agent" ring. Indigo accent reads as the
+     brand orange-family focal on both themes; aliased here like #structure-viz. */
+  --hn-focus: var(--accent-text);
+  --hn-spoke: var(--accent-secondary);
+}
+#hero-net .hn-frame{
+  position:relative;width:100%;
+  border:1px solid var(--line);border-radius:14px;
+  background:radial-gradient(120% 120% at 50% 0%, var(--surface) 60%, var(--surface-subtle) 100%);
+  box-shadow:var(--shadow-soft);
+  padding:14px 14px 10px;
+}
+html.dark #hero-net .hn-frame{box-shadow:0 6px 18px -8px rgba(0,0,0,.5)}
+#hero-net .hn-stage{position:relative;width:100%}
+#hero-net svg.hn-svg{display:block;width:100%;height:auto;overflow:visible}
+
+/* edges drawn before nodes (markup order) so nodes sit on top */
+#hero-net .hn-edge{
+  fill:none;stroke:var(--line);stroke-width:1.6;opacity:.9;
+  transition:opacity .18s ease,stroke .18s ease,stroke-width .18s ease;
+}
+html.dark #hero-net .hn-edge{stroke:#3a4660}
+/* radial edges from the centre read as the accent backbone */
+#hero-net .hn-edge.hn-edge-spoke{stroke:var(--accent);stroke-width:2;opacity:.85}
+/* light cross-links between spokes — dashed + quiet */
+#hero-net .hn-edge.hn-edge-cross{stroke:var(--line);stroke-width:1.4;opacity:.7;stroke-dasharray:3 4}
+html.dark #hero-net .hn-edge.hn-edge-cross{stroke:#3a4660}
+
+/* hover highlight (optional, reduced-motion-safe): dim the rest */
+#hero-net .hn-stage.hn-focus .hn-edge{opacity:.16}
+#hero-net .hn-stage.hn-focus .hn-node{opacity:.34}
+#hero-net .hn-stage.hn-focus .hn-edge.hn-on{opacity:1;stroke-width:2.6}
+#hero-net .hn-stage.hn-focus .hn-node.hn-on{opacity:1}
+
+#hero-net .hn-node{transition:opacity .18s ease;outline:none}
+#hero-net .hn-node .hn-dot{fill:var(--accent);stroke:var(--surface);stroke-width:2.4}
+#hero-net .hn-node.hn-spoke .hn-dot{fill:var(--hn-spoke)}
+#hero-net .hn-node.hn-center .hn-dot{fill:var(--surface);stroke:var(--hn-focus);stroke-width:3.2}
+html.dark #hero-net .hn-node.hn-center .hn-dot{fill:var(--surface)}
+#hero-net .hn-node .hn-glyph{
+  font-family:var(--font-mono);font-weight:700;font-size:13px;fill:#fff;
+  text-anchor:middle;dominant-baseline:central;pointer-events:none;
+  paint-order:stroke;stroke:rgba(0,0,0,.18);stroke-width:.5;
+}
+#hero-net .hn-node.hn-center .hn-glyph{fill:var(--hn-focus);stroke:none}
+#hero-net .hn-node .hn-label{
+  font-size:13px;font-weight:600;fill:var(--ink);text-anchor:middle;
+  dominant-baseline:hanging;pointer-events:none;
+}
+#hero-net .hn-node.hn-center .hn-label{font-size:14px}
+#hero-net .hn-node .hn-label-bg{fill:var(--surface);opacity:.78;rx:3}
+html.dark #hero-net .hn-node .hn-label-bg{opacity:.55}
+
+#hero-net .hn-cap{
+  display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;justify-content:space-between;
+  margin:12px 4px 2px;font-size:12.5px;line-height:1.5;color:var(--muted);
+}
+#hero-net .hn-cap b{color:var(--ink);font-weight:600}
+#hero-net .hn-cap a{color:var(--accent-text);text-decoration:none;font-weight:500;white-space:nowrap}
+#hero-net .hn-cap a:hover{text-decoration:underline}
+
+/* language toggle mirrors page (all hero-net translatable bits are spans/tspans) */
+#hero-net span[data-lang],#hero-net tspan[data-lang]{display:none}
+html[data-active-lang="en"] #hero-net span[data-lang="en"]{display:inline}
+html[data-active-lang="de"] #hero-net span[data-lang="de"]{display:inline}
+html[data-active-lang="en"] #hero-net tspan[data-lang="en"]{display:inline}
+html[data-active-lang="de"] #hero-net tspan[data-lang="de"]{display:inline}
+
+#hero-net .hn-sr{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0;
+}
+@media (prefers-reduced-motion:reduce){
+  #hero-net .hn-node,#hero-net .hn-edge{transition:none!important}
+}
+@media print{
+  #hero-net .hn-frame{break-inside:avoid;box-shadow:none}
 }
 
 /* ---- Generic cards ---- */
@@ -549,59 +638,94 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     </div>
 
     <div class="hero-visual">
-      <!-- ===== KNOWLEDGE CONSTELLATION (structure-viz.html, embedded) =====
-           The hero's main visual: the connected-graph view of the knowledge
-           base. Authored wide (760×470 viewBox) — given the full hero width
-           below the copy so the 18 nodes stay legible. Its scoped style block
-           and data-sv script live with the other embedded blocks below. -->
-      <!-- ============================== EMBED START (structure) ============================== -->
-      <figure id="structure-viz" aria-labelledby="sv-cap-text">
-        <div class="sv-frame">
-          <div class="sv-head">
-            <h4 class="sv-title">
-              <span data-lang="en">The knowledge base you build</span>
-              <span data-lang="de">Die Wissensbasis, die du aufbaust</span>
-            </h4>
-            <span class="sv-sub">
-              <span data-lang="en">— a connected graph, not a folder of files</span>
-              <span data-lang="de">— ein verbundener Graph, kein Ordner voller Dateien</span>
-            </span>
-          </div>
+      <!-- ===== HERO NET — simple "your world, connected" =====
+           A small, instantly-readable node-link graph in the same visual
+           grammar as the full #structure-viz constellation (which now lives
+           down in #substrate). One centre node (your agent, claude-orange
+           ring) + 5 plain-language spokes + two light cross-links. Static
+           inline SVG — no per-frame JS, so it's reduced-motion-clean by
+           construction. A tiny scoped <script> adds optional hover highlight. -->
+      <figure id="hero-net" aria-labelledby="hn-cap-text">
+        <div class="hn-frame">
+          <div class="hn-stage" id="hn-stage">
+            <svg class="hn-svg" viewBox="0 0 400 320" role="img" aria-labelledby="hn-svg-title hn-svg-desc">
+              <title id="hn-svg-title">
+                <tspan data-lang="en">Your agent, connected to your projects, clients, conventions, work log and skills</tspan>
+                <tspan data-lang="de">Dein Agent, verbunden mit Projekten, Kunden, Konventionen, Arbeitslog und Skills</tspan>
+              </title>
+              <desc id="hn-svg-desc">
+                <tspan data-lang="en">A central "your agent" node with five spokes — projects, clients, conventions, work log, skills — that also link to each other.</tspan>
+                <tspan data-lang="de">Ein zentraler „dein Agent"-Knoten mit fünf Speichen — Projekte, Kunden, Konventionen, Arbeitslog, Skills — die auch untereinander verbunden sind.</tspan>
+              </desc>
 
-          <div class="sv-stage" id="sv-stage">
-            <svg class="sv-svg" id="sv-svg" viewBox="0 0 760 470" role="img"
-              aria-labelledby="sv-svg-title sv-svg-desc">
-              <title id="sv-svg-title">open-bridge knowledge constellation</title>
-              <desc id="sv-svg-desc"></desc>
-              <!-- guide orbits + node groups injected by script -->
+              <!-- edges first (drawn under the nodes) -->
+              <!-- radial spokes: centre (200,160) → each spoke -->
+              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="projects" x1="200" y1="160" x2="200" y2="52"/>
+              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="clients"  x1="200" y1="160" x2="332" y2="116"/>
+              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="conventions" x1="200" y1="160" x2="300" y2="258"/>
+              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="worklog"  x1="200" y1="160" x2="100" y2="258"/>
+              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="skills"   x1="200" y1="160" x2="68"  y2="116"/>
+              <!-- light cross-links: Work log ↔ Projects, Clients ↔ Conventions -->
+              <path class="hn-edge hn-edge-cross" data-from="worklog" data-to="projects" d="M100 258 Q120 130 200 52"/>
+              <path class="hn-edge hn-edge-cross" data-from="clients" data-to="conventions" d="M332 116 Q348 190 300 258"/>
+
+              <!-- nodes -->
+              <g class="hn-node hn-spoke" data-id="projects" tabindex="0" role="img">
+                <circle class="hn-dot" cx="200" cy="52" r="20"/>
+                <text class="hn-glyph" x="200" y="52">P</text>
+                <rect class="hn-label-bg" x="160" y="14" width="80" height="18"/>
+                <text class="hn-label" x="200" y="16"><tspan data-lang="en">Projects</tspan><tspan data-lang="de">Projekte</tspan></text>
+              </g>
+              <g class="hn-node hn-spoke" data-id="clients" tabindex="0" role="img">
+                <circle class="hn-dot" cx="332" cy="116" r="20"/>
+                <text class="hn-glyph" x="332" y="116">C</text>
+                <rect class="hn-label-bg" x="296" y="140" width="72" height="18"/>
+                <text class="hn-label" x="332" y="142"><tspan data-lang="en">Clients</tspan><tspan data-lang="de">Kunden</tspan></text>
+              </g>
+              <g class="hn-node hn-spoke" data-id="conventions" tabindex="0" role="img">
+                <circle class="hn-dot" cx="300" cy="258" r="20"/>
+                <text class="hn-glyph" x="300" y="258">K</text>
+                <rect class="hn-label-bg" x="246" y="282" width="108" height="18"/>
+                <text class="hn-label" x="300" y="284"><tspan data-lang="en">Conventions</tspan><tspan data-lang="de">Konventionen</tspan></text>
+              </g>
+              <g class="hn-node hn-spoke" data-id="worklog" tabindex="0" role="img">
+                <circle class="hn-dot" cx="100" cy="258" r="20"/>
+                <text class="hn-glyph" x="100" y="258">L</text>
+                <rect class="hn-label-bg" x="56" y="282" width="88" height="18"/>
+                <text class="hn-label" x="100" y="284"><tspan data-lang="en">Work log</tspan><tspan data-lang="de">Arbeitslog</tspan></text>
+              </g>
+              <g class="hn-node hn-spoke" data-id="skills" tabindex="0" role="img">
+                <circle class="hn-dot" cx="68" cy="116" r="20"/>
+                <text class="hn-glyph" x="68" y="116">S</text>
+                <rect class="hn-label-bg" x="40" y="140" width="56" height="18"/>
+                <text class="hn-label" x="68" y="142">Skills</text>
+              </g>
+              <!-- centre: your agent (focal claude-orange ring) -->
+              <g class="hn-node hn-center" data-id="agent" tabindex="0" role="img">
+                <circle class="hn-dot" cx="200" cy="160" r="30"/>
+                <text class="hn-glyph" x="200" y="160">◎</text>
+                <rect class="hn-label-bg" x="146" y="196" width="108" height="20"/>
+                <text class="hn-label" x="200" y="199"><tspan data-lang="en">your agent</tspan><tspan data-lang="de">dein Agent</tspan></text>
+              </g>
             </svg>
-            <!-- screen-reader narrative mirror, also feeds aria-describedby -->
-            <p class="sv-sr" id="sv-sr"></p>
+            <p class="hn-sr">
+              <span data-lang="en">Your agent sits at the centre, connected to Projects, Clients, Conventions, Work log and Skills — which also link to one another. The full detailed view is below.</span>
+              <span data-lang="de">Dein Agent sitzt in der Mitte, verbunden mit Projekten, Kunden, Konventionen, Arbeitslog und Skills — die auch untereinander verbunden sind. Die ausführliche Ansicht steht weiter unten.</span>
+            </p>
           </div>
 
-          <!-- stacked, grouped fallback under ~520px (built by script) -->
-          <div class="sv-stacked" id="sv-stacked" aria-hidden="true"></div>
-
-          <div class="sv-detail" id="sv-detail" aria-live="polite">
-            <span data-lang="en"><span class="sv-detail-hint">Hover or tap a node to see what it is and what it references. The <b>indigo spine</b> is the three-axis backbone (project ↔ context ↔ mandant ↔ calendar); the <b>green dashed</b> edge is a CORE template seeding a USER instance.</span></span>
-            <span data-lang="de"><span class="sv-detail-hint">Knoten überfahren oder antippen, um zu sehen, was er ist und worauf er verweist. Das <b>indigofarbene Rückgrat</b> ist die Drei-Achsen-Achse (Projekt ↔ Kontext ↔ Mandant ↔ Kalender); die <b>grün-gestrichelte</b> Kante ist eine CORE-Vorlage, die eine USER-Instanz aussät.</span></span>
-          </div>
-
-          <div class="sv-legend" id="sv-legend" role="group" aria-label="Group and edge legend"></div>
-
-          <figcaption class="sv-cap" id="sv-cap-text">
-            <span data-lang="en"><b>Generic example pieces</b> — this is the knowledge base you build over time; your real config fills it in. A fresh clone is nearly empty, then it thickens as you add pieces.</span>
-            <span data-lang="de"><b>Generische Beispiel-Bausteine</b> — das ist die Wissensbasis, die du mit der Zeit aufbaust; deine echte Config füllt sie. Ein frischer Klon ist fast leer und verdichtet sich, sobald du Bausteine ergänzt.</span>
+          <figcaption class="hn-cap" id="hn-cap-text">
+            <span>
+              <span data-lang="en"><b>All connected</b> — the knowledge base you build.</span>
+              <span data-lang="de"><b>Alles verbunden</b> — die Wissensbasis, die du aufbaust.</span>
+            </span>
+            <a href="#substrate">
+              <span data-lang="en">See the full picture →</span>
+              <span data-lang="de">Ganzes Bild →</span>
+            </a>
           </figcaption>
         </div>
       </figure>
-      <!-- ============================== EMBED END (structure) ============================== -->
-
-      <p class="seam-cap">
-        <span class="tag" data-lang="en">illustrative</span><span class="tag" data-lang="de">illustrativ</span>
-        <span data-lang="en">It's all plain files in git — <a href="#substrate">see for yourself →</a></span>
-        <span data-lang="de">Alles nur einfache Dateien in Git — <a href="#substrate">überzeug dich selbst →</a></span>
-      </p>
     </div>
   </div>
 </section>
@@ -722,6 +846,58 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         <p class="cap muted" style="margin-top:24px;font-size:13px" data-lang="en">A fresh clone starts mostly empty. <code>examples/agency/</code> ships a complete configuration to read; the <code>STATUS</code> and log above show the shape your <code>work/</code> takes as you fill it.</p>
         <p class="cap muted" style="margin-top:24px;font-size:13px" data-lang="de">Ein frischer Clone startet weitgehend leer. <code>examples/agency/</code> liefert eine vollständige Konfiguration zum Lesen; der <code>STATUS</code> und das Log oben zeigen die Form, die dein <code>work/</code> annimmt, während du es füllst.</p>
       </div>
+    </div>
+
+    <!-- ===== KNOWLEDGE CONSTELLATION (structure-viz.html, embedded) =====
+         The full, detailed connected-graph view of the knowledge base. Moved
+         here from the hero (which now carries the simple #hero-net teaser):
+         here it gets the full section width its 18 labelled nodes need. Its
+         scoped style block + data-sv script live with the embedded blocks
+         below; relocating only the markup leaves them untouched (both bind by
+         #structure-viz / data-sv, not DOM position). -->
+    <div class="reveal" style="margin-top:80px">
+      <!-- ============================== EMBED START (structure) ============================== -->
+      <figure id="structure-viz" aria-labelledby="sv-cap-text">
+        <div class="sv-frame">
+          <div class="sv-head">
+            <h4 class="sv-title">
+              <span data-lang="en">The knowledge base you build</span>
+              <span data-lang="de">Die Wissensbasis, die du aufbaust</span>
+            </h4>
+            <span class="sv-sub">
+              <span data-lang="en">— a connected graph, not a folder of files</span>
+              <span data-lang="de">— ein verbundener Graph, kein Ordner voller Dateien</span>
+            </span>
+          </div>
+
+          <div class="sv-stage" id="sv-stage">
+            <svg class="sv-svg" id="sv-svg" viewBox="0 0 760 470" role="img"
+              aria-labelledby="sv-svg-title sv-svg-desc">
+              <title id="sv-svg-title">open-bridge knowledge constellation</title>
+              <desc id="sv-svg-desc"></desc>
+              <!-- guide orbits + node groups injected by script -->
+            </svg>
+            <!-- screen-reader narrative mirror, also feeds aria-describedby -->
+            <p class="sv-sr" id="sv-sr"></p>
+          </div>
+
+          <!-- stacked, grouped fallback under ~520px (built by script) -->
+          <div class="sv-stacked" id="sv-stacked" aria-hidden="true"></div>
+
+          <div class="sv-detail" id="sv-detail" aria-live="polite">
+            <span data-lang="en"><span class="sv-detail-hint">Hover or tap a node to see what it is and what it references. The <b>indigo spine</b> is the three-axis backbone (project ↔ context ↔ mandant ↔ calendar); the <b>green dashed</b> edge is a CORE template seeding a USER instance.</span></span>
+            <span data-lang="de"><span class="sv-detail-hint">Knoten überfahren oder antippen, um zu sehen, was er ist und worauf er verweist. Das <b>indigofarbene Rückgrat</b> ist die Drei-Achsen-Achse (Projekt ↔ Kontext ↔ Mandant ↔ Kalender); die <b>grün-gestrichelte</b> Kante ist eine CORE-Vorlage, die eine USER-Instanz aussät.</span></span>
+          </div>
+
+          <div class="sv-legend" id="sv-legend" role="group" aria-label="Group and edge legend"></div>
+
+          <figcaption class="sv-cap" id="sv-cap-text">
+            <span data-lang="en"><b>Generic example pieces</b> — this is the knowledge base you build over time; your real config fills it in. A fresh clone is nearly empty, then it thickens as you add pieces.</span>
+            <span data-lang="de"><b>Generische Beispiel-Bausteine</b> — das ist die Wissensbasis, die du mit der Zeit aufbaust; deine echte Config füllt sie. Ein frischer Klon ist fast leer und verdichtet sich, sobald du Bausteine ergänzt.</span>
+          </figcaption>
+        </div>
+      </figure>
+      <!-- ============================== EMBED END (structure) ============================== -->
     </div>
 
     <!-- ===== COMPOUNDING MICRO-DIAGRAM (mechanic.html, embedded) ===== -->
@@ -1768,6 +1944,43 @@ cd open-bridge
   if(reduce.addEventListener){
     reduce.addEventListener("change", function(){ if(reduce.matches){ stop(); staticFinal(); } });
   }
+})();
+</script>
+
+<!-- #hero-net (simple "your world, connected") — optional hover highlight.
+     The graph is fully drawn in static SVG; this only adds dim-the-rest focus
+     on hover/focus. Reduced-motion is handled in CSS (transitions disabled);
+     the highlight stays since it's an instantaneous state, not motion. -->
+<script>
+(function(){
+  "use strict";
+  var root = document.getElementById('hero-net');
+  if(!root) return;
+  var stage = root.querySelector('.hn-stage');
+  var edges = Array.prototype.slice.call(root.querySelectorAll('.hn-edge'));
+  var nodes = Array.prototype.slice.call(root.querySelectorAll('.hn-node'));
+  function clear(){
+    stage.classList.remove('hn-focus');
+    edges.forEach(function(e){ e.classList.remove('hn-on'); });
+    nodes.forEach(function(n){ n.classList.remove('hn-on'); });
+  }
+  function focus(id){
+    stage.classList.add('hn-focus');
+    var lit = {}; lit[id] = true;
+    edges.forEach(function(e){
+      var f = e.getAttribute('data-from'), t = e.getAttribute('data-to');
+      if(f === id || t === id){ e.classList.add('hn-on'); lit[f] = true; lit[t] = true; }
+    });
+    nodes.forEach(function(n){ if(lit[n.getAttribute('data-id')]) n.classList.add('hn-on'); });
+  }
+  nodes.forEach(function(n){
+    var id = n.getAttribute('data-id');
+    n.addEventListener('mouseenter', function(){ focus(id); });
+    n.addEventListener('focus', function(){ focus(id); });
+    n.addEventListener('mouseleave', clear);
+    n.addEventListener('blur', clear);
+  });
+  stage.addEventListener('mouseleave', clear);
 })();
 </script>
 
