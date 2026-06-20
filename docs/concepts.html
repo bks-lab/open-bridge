@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<!-- ============================================================================
+     open-bridge — concepts.html  (deep-dive reference)
+     Built from the shared shell /tmp/ob-shell.html (NAV_ACTIVE = concepts).
+     Self-contained single file, GitHub-Pages-ready, fully offline, native UTF-8.
+     ============================================================================ -->
+<html lang="en" data-active-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>open-bridge — Concepts in depth</title>
+<meta name="description" content="Every open-bridge concept explained in depth — a plain-language reference. What a bridge is, the substrate, the Context Booster, the work-system, scope &amp; promote, skills, identity, infrastructure and scale.">
+<!-- Social / Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="open-bridge — Concepts in depth">
+<meta property="og:description" content="Every open-bridge concept explained in depth — a plain-language reference.">
+<meta property="og:url" content="https://bks-lab.github.io/open-bridge/concepts.html">
+<meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="open-bridge — Concepts in depth">
+<meta name="twitter:description" content="Every open-bridge concept explained in depth — a plain-language reference.">
+
+<!-- Anti-FOUC pre-paint: theme + language set BEFORE the stylesheet paints. -->
+<script>
+(function(){
+  var r = document.documentElement;
+  try{
+    var t = localStorage.getItem("ob-theme");
+    if(t === "dark" || (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)){
+      r.classList.add("dark");
+    }
+  }catch(e){}
+  try{
+    var l = localStorage.getItem("ob-lang");
+    var lang = (l === "de") ? "de" : (r.getAttribute("lang") || "en");
+    r.setAttribute("data-active-lang", lang); r.setAttribute("lang", lang);
+  }catch(e){ r.setAttribute("data-active-lang","en"); }
+})();
+</script>
+
+<style>
+/* ============================================================
+   open-bridge shared shell — single file, fully offline.
+   Colour / type / space tokens lifted from DESIGN.md (Editorial
+   Minimalism) via landing/tokens.css. AA-correct text tokens
+   (--accent-text, --code-bg, --ok-text …) layered on top — these
+   are NOT in tokens.css and must be preserved.
+   No external fonts, no CDN, no network calls.
+   ============================================================ */
+
+:root{
+  /* ---- tokens.css (generated from DESIGN.md) ---- */
+  --ink:#111827; --muted:#6B7280;
+  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
+  --on-primary:#FFFFFF; --on-surface:#374151;
+  --line:#E5E7EB; --line-subtle:#F3F4F6;
+  --accent-from:#667EEA; --accent-to:#764BA2;
+  --accent:#6366F1; --accent-secondary:#8B5CF6;
+  --ok:#10B981; --info:#3B82F6;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+
+  /* ---- AA-correct text tokens (added on top of tokens.css) ---- */
+  --accent-text:#4F46E5;        /* links + the one accent word, AA on white */
+  --accent-soft:#EEF2FF;
+  --ok-text:#047857;            /* status text, AA */
+  --info-text:#1D4ED8;
+  --attention-text:#7C3AED;
+  --code-bg:#F9FAFB;
+
+  /* legacy aliases the markup uses */
+  --primary:var(--ink); --secondary:var(--muted);
+  --border:var(--line); --border-subtle:var(--line-subtle);
+  --on-surface-muted:var(--muted);
+  --success:var(--ok); --attention:var(--accent-secondary);
+  --feature-indigo-from:#4F46E5; --feature-indigo-to:#9333EA;
+  --mono:var(--font-mono);
+
+  /* shadows — whisper quiet */
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+
+  --section-y:96px;
+  --container:80rem; --hero-w:72rem; --prose-w:48rem;
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
+}
+
+html.dark{
+  --ink:#F9FAFB; --muted:#9CA3AF;
+  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
+  --on-surface:#D1D5DB;
+  --line:#374151; --line-subtle:#1F2937;
+  --accent-from:#A78BFA; --accent-to:#818CF8;
+  --accent:#818CF8;
+  --accent-text:#A78BFA;        /* AA on dark surfaces */
+  --accent-soft:#312E81;
+  --ok-text:#34D399;
+  --info-text:#93C5FD;
+  --attention-text:#C4B5FD;
+  --code-bg:#0B1220;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-sans);
+  background:var(--surface); color:var(--on-surface);
+  font-size:16px; line-height:1.6; font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:3px}
+
+/* ---- Language visibility (EN default) ---- */
+[data-lang]{display:none}
+html[data-active-lang="en"] [data-lang="en"]{display:revert}
+html[data-active-lang="de"] [data-lang="de"]{display:revert}
+/* inline variants keep inline display */
+:is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang]{display:none}
+html[data-active-lang="en"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="en"],
+html[data-active-lang="de"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="de"]{display:inline}
+
+.container{max-width:var(--container);margin:0 auto;padding-inline:24px}
+.prose{max-width:var(--prose-w);margin-inline:auto}
+
+/* ---- Typography ---- */
+h1,h2,h3,h4{color:var(--primary);letter-spacing:-0.02em}
+.display{font-size:clamp(38px,5.4vw,64px);font-weight:300;line-height:1.06;letter-spacing:-0.02em}
+.h1{font-size:clamp(30px,4.4vw,46px);font-weight:300;line-height:1.12}
+.h2{font-size:clamp(26px,3.6vw,34px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
+.h3{font-size:24px;font-weight:500;line-height:1.3;letter-spacing:-0.01em}
+.h4{font-size:20px;font-weight:500;line-height:1.4}
+.body-xl{font-size:20px;font-weight:300;line-height:1.6}
+.eyebrow{font-size:13px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
+.muted{color:var(--on-surface-muted)}
+a{color:var(--accent-text)}
+
+.text-gradient{
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+  font-weight:400;
+}
+
+/* ---- Toggles & header ---- */
+header.nav{
+  position:sticky;top:0;z-index:50;height:auto;min-height:64px;
+  display:flex;align-items:center;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap;text-decoration:none}
+.wordmark .text-gradient{font-weight:400}
+.nav-spacer{flex:1}
+.nav-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---- Site nav (Home / Explore / Concepts) — shell addition ---- */
+.site-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.site-nav a{
+  font-size:14px;font-weight:500;line-height:1.2;text-decoration:none;
+  color:var(--secondary);padding:6px 12px;border-radius:var(--r-full);
+  transition:color .18s ease,background .18s ease;white-space:nowrap;
+}
+.site-nav a:hover{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active,
+.site-nav a[aria-current="page"]{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active{position:relative}
+.site-nav a.active::after{
+  content:"";position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+}
+@media (max-width:560px){
+  .site-nav a{padding:6px 9px;font-size:13px}
+}
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:400;line-height:1.2;
+  padding:5px 11px;border-radius:var(--r-full);
+  background:var(--surface-muted);color:var(--on-surface);
+  border:1px solid var(--border);white-space:nowrap;text-decoration:none;
+}
+a.chip{color:var(--on-surface)}
+a.chip:hover{color:var(--primary)}
+
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-full);overflow:hidden;background:var(--surface)}
+.seg button{
+  font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;
+  padding:5px 12px;border:none;background:transparent;color:var(--secondary);
+  transition:color .2s ease;
+}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--surface)}
+
+.icon-btn{
+  width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-full);background:var(--surface);
+  cursor:pointer;color:var(--secondary);padding:0;
+}
+.icon-btn:hover{color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.sun{display:none}
+html.dark .sun{display:block}
+html.dark .moon{display:none}
+
+/* ---- Buttons ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:16px;font-weight:500;line-height:1.25;
+  padding:14px 28px;border-radius:var(--r-md);border:1px solid transparent;
+  transition:transform .2s ease,background .2s ease,border-color .2s ease;
+}
+.btn svg{width:18px;height:18px}
+.btn-primary{background:var(--primary);color:var(--surface)}
+html.dark .btn-primary{background:var(--accent);color:#0B1220}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-secondary{background:var(--surface);color:var(--on-surface);border-color:var(--border)}
+.btn-secondary:hover{background:var(--surface-subtle)}
+.btn .arrow{transition:transform .2s ease}
+.btn:hover .arrow{transform:translateX(3px)}
+
+/* ---- Sections ---- */
+section{padding-block:var(--section-y)}
+.alt{background:var(--surface-subtle)}
+.sec-head{max-width:var(--prose-w);margin:0 auto 56px;text-align:center}
+.sec-head .h1{margin-top:14px}
+.sec-head p{margin-top:18px;font-size:18px;font-weight:300}
+
+/* ---- Generic cards ---- */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:32px;box-shadow:var(--shadow-soft);
+}
+
+/* ---- Footer ---- */
+footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;max-width:var(--container);margin:0 auto;padding-inline:24px}
+.foot-grid h4{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:var(--secondary);font-weight:600;margin-bottom:16px}
+.foot-grid a{color:var(--on-surface);text-decoration:none;font-size:14.5px;display:block;margin-bottom:9px}
+.foot-grid a:hover{color:var(--primary)}
+.foot-blurb{font-size:14px;color:var(--on-surface-muted);line-height:1.65}
+.foot-blurb .wordmark{font-size:20px;display:block;margin-bottom:14px}
+.license-table{margin-top:18px;font-size:13px;border-collapse:collapse;width:100%}
+.license-table td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);color:var(--on-surface);vertical-align:top}
+.license-table td a{display:inline}
+.foot-bottom{max-width:var(--container);margin:40px auto 0;padding:28px 24px 0;border-top:1px solid var(--border);
+  display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;font-size:13px;color:var(--secondary)}
+.roadmap{list-style:none;display:flex;flex-direction:column;gap:9px}
+.roadmap li{font-size:14px;color:var(--on-surface);display:flex;gap:9px}
+.roadmap li .ph{font-family:var(--mono);font-size:12px;color:var(--accent-text);flex:none}
+
+/* ---- Reveal on scroll ---- */
+.reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (max-width:860px){
+  .foot-grid{grid-template-columns:1fr}
+  .foot-grid>*{min-width:0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .reveal{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+}
+@media print{
+  html.dark{
+    --ink:#111827;--muted:#6B7280;--surface:#FFFFFF;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;
+    --on-surface:#374151;--line:#E5E7EB;--accent-from:#667EEA;--accent-to:#764BA2;--accent:#6366F1;
+    --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
+  }
+  *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  header.nav,.icon-btn,.seg,.copy-btn{display:none!important}
+  .reveal{opacity:1!important;transform:none!important}
+  section{padding-block:32px}
+}
+</style>
+
+<!-- ============ page-specific styles (concepts.html) ============ -->
+<style>
+/* offset anchored sections so the sticky header never hides the heading */
+:target{scroll-margin-top:84px}
+[id]{scroll-margin-top:84px}
+
+/* ---- intro / hero of the page ---- */
+.page-hero{padding-block:64px 40px}
+.page-hero .eyebrow{margin-bottom:14px}
+.page-hero p.lede{margin-top:18px;font-size:18px;font-weight:300;color:var(--on-surface)}
+
+/* ---- "What is a bridge?" lead card ---- */
+.lead-def{
+  margin-top:40px;max-width:var(--prose-w);margin-inline:auto;
+  border:1px solid var(--border);border-left:3px solid var(--accent-text);
+  border-radius:var(--r-lg);background:var(--surface-subtle);
+  padding:30px 34px;box-shadow:var(--shadow-soft);
+}
+.lead-def .k{font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--accent-text)}
+.lead-def .def{margin-top:12px;font-size:22px;font-weight:300;line-height:1.45;color:var(--primary)}
+.lead-def .more{margin-top:16px;font-size:15px}
+.lead-def .more a{font-weight:500;text-decoration:none}
+.lead-def .more a:hover{text-decoration:underline}
+
+/* ---- table of contents ---- */
+.toc{
+  max-width:var(--container);margin:0 auto;
+  border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);box-shadow:var(--shadow-soft);
+  padding:28px 30px;
+}
+.toc h2{font-size:16px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--secondary);margin-bottom:20px}
+.toc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+.toc-group h3{font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--accent-text);margin-bottom:12px}
+.toc-group ul{list-style:none;display:flex;flex-direction:column;gap:7px}
+.toc-group li a{
+  font-size:14.5px;line-height:1.4;text-decoration:none;color:var(--on-surface);
+  display:inline-flex;align-items:baseline;gap:8px;
+}
+.toc-group li a:hover{color:var(--primary)}
+.toc-group li a:hover .lbl{text-decoration:underline}
+@media (max-width:860px){ .toc-grid{grid-template-columns:1fr 1fr} }
+@media (max-width:560px){ .toc-grid{grid-template-columns:1fr} }
+
+/* ---- status chips (proven / bet / open) ---- */
+.st{
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:12px;font-weight:600;line-height:1;letter-spacing:0.03em;text-transform:uppercase;
+  padding:6px 11px;border-radius:var(--r-full);border:1px solid var(--border);
+  background:var(--surface);white-space:nowrap;
+}
+.st .dot{width:8px;height:8px;border-radius:var(--r-full);flex:none}
+.st.proven{color:var(--ok-text);border-color:color-mix(in srgb,var(--ok) 45%,var(--border))}
+.st.proven .dot{background:var(--ok)}
+.st.bet{color:var(--info-text);border-color:color-mix(in srgb,var(--info) 45%,var(--border))}
+.st.bet .dot{background:var(--info)}
+.st.open{color:var(--attention-text);border-color:color-mix(in srgb,var(--accent-secondary) 45%,var(--border))}
+.st.open .dot{background:var(--accent-secondary)}
+
+/* ---- group divider heading ---- */
+.grp{max-width:var(--prose-w);margin:0 auto 8px;padding-top:8px}
+.grp .eyebrow{color:var(--accent-text)}
+.grp .h2{margin-top:8px}
+.grp + .concept{margin-top:36px}
+
+/* ---- concept cards ---- */
+.concept{
+  max-width:var(--prose-w);margin:0 auto 28px;
+  border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);box-shadow:var(--shadow-soft);
+  padding:32px 36px;
+}
+.concept .c-top{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.concept .c-title{flex:1;min-width:0}
+.concept h3.h3{font-size:24px;font-weight:600;line-height:1.25;color:var(--primary)}
+.concept .c-sub{margin-top:4px;font-size:14px;color:var(--secondary);font-style:italic}
+.concept .c-deep{margin-top:18px;font-size:16px;line-height:1.7;color:var(--on-surface)}
+.concept .c-deep code{
+  font-family:var(--mono);font-size:0.86em;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:1px 6px;color:var(--on-surface);
+}
+.concept .related{
+  margin-top:22px;padding-top:18px;border-top:1px solid var(--border-subtle);
+  font-size:14px;line-height:1.9;color:var(--secondary);
+}
+.concept .related .lab{font-weight:600;color:var(--primary);margin-right:6px}
+.concept .related a{
+  text-decoration:none;color:var(--accent-text);
+  padding:2px 9px;border-radius:var(--r-full);
+  border:1px solid var(--border);background:var(--surface-subtle);
+  white-space:nowrap;font-size:13.5px;font-weight:500;
+  display:inline-block;margin:2px 4px 2px 0;
+}
+.concept .related a:hover{background:var(--accent-soft);color:var(--accent-text)}
+.concept .backtop{margin-top:18px;font-size:13px}
+.concept .backtop a{color:var(--secondary);text-decoration:none}
+.concept .backtop a:hover{color:var(--primary);text-decoration:underline}
+
+@media (max-width:560px){
+  .concept{padding:24px 22px}
+  .lead-def{padding:24px 22px}
+  .toc{padding:22px 20px}
+}
+</style>
+</head>
+<body>
+
+<!-- ======================= STICKY HEADER (shared) ======================= -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
+      <a class="active" aria-current="page" href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="nav-chips">
+      <a class="chip" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="chip" href="index.html#license" aria-label="MIT license">MIT</a>
+      <div class="seg" role="group" aria-label="Language / Sprache">
+        <button id="lang-en" type="button" aria-pressed="true" title="Toggle language — press L">EN</button>
+        <button id="lang-de" type="button" aria-pressed="false" title="Sprache umschalten — Taste L">DE</button>
+      </div>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================ PAGE CONTENT ============================ -->
+<main id="top">
+
+  <!-- ---- intro + lead "What is a bridge?" definition ---- -->
+  <section class="page-hero">
+    <div class="container">
+      <div class="prose">
+        <p class="eyebrow" data-lang="en">Concepts in depth</p>
+        <p class="eyebrow" data-lang="de">Konzepte im Detail</p>
+        <h1 class="h1">
+          <span data-lang="en">Every concept, explained.</span>
+          <span data-lang="de">Jedes Konzept, erklärt.</span>
+        </h1>
+        <p class="lede" data-lang="en">A plain-language reference for the ideas behind open-bridge — read top to bottom, or jump to one concept. Each section is honestly marked: <strong>proven</strong> (built and self-used), a <strong>bet</strong> (a wager we'd defend), or <strong>open</strong> (roadmap, not yet built). Built and self-used at BKS-Lab on one instance — no external users yet.</p>
+        <p class="lede" data-lang="de">Eine Klartext-Referenz für die Ideen hinter open-bridge — von oben nach unten lesen oder zu einem Konzept springen. Jeder Abschnitt ist ehrlich markiert: <strong>proven</strong> (gebaut und selbst genutzt), eine <strong>Wette</strong> (die wir verteidigen würden) oder <strong>offen</strong> (Roadmap, noch nicht gebaut). Bei BKS-Lab auf einer Instanz gebaut und selbst genutzt — bislang keine externen Nutzer.</p>
+      </div>
+
+      <!-- the clearest possible plain-words "What is a bridge?" -->
+      <div class="lead-def">
+        <div class="k" data-lang="en">What is a bridge?</div>
+        <div class="k" data-lang="de">Was ist eine Bridge?</div>
+        <p class="def" data-lang="en">A bridge is your agent's memory of your world — a plain folder of markdown and YAML in git that an AI coding agent reads at the start of every session, so it always knows who you are, your repos and clients, your rules, and what you worked on yesterday. The folder itself runs nothing — no database, no daemon, no hosted service. There is nothing to host and no second app to maintain. Everything else here lives inside a bridge.</p>
+        <p class="def" data-lang="de">Eine Bridge ist das Gedächtnis deines Agenten für deine Welt — ein schlichter Ordner aus Markdown und YAML in Git, den ein KI-Coding-Agent zu Beginn jeder Session liest, sodass er stets weiß, wer du bist, welche Repos und Kunden du hast, welche Regeln gelten und woran du gestern gearbeitet hast. Der Ordner selbst betreibt nichts — keine Datenbank, kein Daemon, kein gehosteter Dienst. Es gibt nichts zu hosten und keine zweite App zu pflegen. Alles Weitere hier lebt innerhalb einer Bridge.</p>
+        <p class="more">
+          <a href="#bridge"><span data-lang="en">Read the Bridge concept in full →</span><span data-lang="de">Das Bridge-Konzept im Detail →</span></a>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- table of contents ---- -->
+  <section style="padding-block:24px 48px">
+    <div class="container">
+      <nav class="toc" aria-label="Concepts index">
+        <h2 data-lang="en">On this page</h2>
+        <h2 data-lang="de">Auf dieser Seite</h2>
+        <div class="toc-grid" id="toc-grid">
+          <!-- populated from data -->
+        </div>
+      </nav>
+    </div>
+  </section>
+
+  <!-- ---- the deep-dive sections (built from data) ---- -->
+  <section class="alt" style="padding-block:56px 96px">
+    <div class="container" id="concepts-root">
+      <!-- populated from data -->
+    </div>
+  </section>
+
+</main>
+<!-- ========================== END PAGE CONTENT ============================== -->
+
+<!-- ======================= FOOTER (shared) ======================= -->
+<footer id="license">
+  <div class="foot-grid">
+    <div class="foot-blurb">
+      <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — ein kleines Team — und genutzt, um es zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
+      <table class="license-table">
+        <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
+        <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
+      </table>
+      <p class="cap muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. <span data-lang="en">Licenses cover copyright, not brands.</span><span data-lang="de">Lizenzen decken Copyright ab, nicht Marken.</span> <span data-lang="en">Contributions require a DCO sign-off (</span><span data-lang="de">Beiträge erfordern einen DCO-Sign-off (</span><code>git commit -s</code>).</p>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Explore</h4>
+      <h4 data-lang="de">Erkunden</h4>
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="explore.html"><span data-lang="en">Explore the concepts</span><span data-lang="de">Konzepte erkunden</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts in depth</span><span data-lang="de">Konzepte im Detail</span></a>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Links</h4>
+      <h4 data-lang="de">Links</h4>
+      <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/README.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/examples/agency" target="_blank" rel="noopener"><span data-lang="en">Example workspace</span><span data-lang="de">Beispiel-Workspace</span></a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+    </div>
+  </div>
+
+  <div class="foot-bottom">
+    <span data-lang="en">Public · MIT · no waitlist · newly released</span>
+    <span data-lang="de">Public · MIT · keine Warteliste · frisch veröffentlicht</span>
+    <a class="btn btn-secondary" style="padding:10px 20px;font-size:14px" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+      <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
+      <span class="arrow">→</span>
+    </a>
+  </div>
+</footer>
+
+<!-- ======================= Shared page controller ======================= -->
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+
+  function applyTheme(mode){
+    if(mode === "dark"){ root.classList.add("dark"); }
+    else { root.classList.remove("dark"); }
+  }
+  function toggleTheme(){
+    var next = root.classList.contains("dark") ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("ob-theme", next); } catch(e){}
+  }
+  var themeBtn = document.getElementById("theme-toggle");
+  if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
+
+  function applyLang(lang){
+    root.setAttribute("data-active-lang", lang);
+    root.setAttribute("lang", lang);
+    var en = document.getElementById("lang-en");
+    var de = document.getElementById("lang-de");
+    if(en){ en.setAttribute("aria-pressed", lang === "en" ? "true" : "false"); }
+    if(de){ de.setAttribute("aria-pressed", lang === "de" ? "true" : "false"); }
+  }
+  applyLang(root.getAttribute("data-active-lang") === "de" ? "de" : "en");
+  function setLang(lang){
+    applyLang(lang);
+    try { localStorage.setItem("ob-lang", lang); } catch(e){}
+  }
+  var enBtn = document.getElementById("lang-en");
+  var deBtn = document.getElementById("lang-de");
+  if(enBtn){ enBtn.addEventListener("click", function(){ setLang("en"); }); }
+  if(deBtn){ deBtn.addEventListener("click", function(){ setLang("de"); }); }
+
+  document.addEventListener("keydown", function(ev){
+    if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
+    if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
+    var k = ev.key.toLowerCase();
+    if(k === "t"){ toggleTheme(); }
+    if(k === "l"){ setLang(root.getAttribute("data-active-lang") === "en" ? "de" : "en"); }
+  });
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); });
+  }
+})();
+</script>
+
+<!-- ======================= page-specific: render concepts ======================= -->
+<script>
+(function(){
+  "use strict";
+
+  // ---- concept inventory (PII-free; generic labels only) ----
+  var DATA = {"groups":[{"id":"foundation","label_en":"Foundation","label_de":"Fundament"},{"id":"method","label_en":"Method & Promises","label_de":"Methode & Versprechen"},{"id":"behaviour","label_en":"Behaviour Layer","label_de":"Verhaltensschicht"},{"id":"identity","label_en":"Identity & Recipients","label_de":"Identität & Empfänger"},{"id":"infra","label_en":"Infrastructure","label_de":"Infrastruktur"},{"id":"scale","label_en":"Scale & Sharing","label_de":"Skalierung & Teilen"}],"concepts":[{"id":"bridge","label_en":"Bridge","label_de":"Bridge","group":"foundation","short_en":"A bridge is your agent's memory of your world — a plain folder of markdown and YAML in git that the agent reads at the start of every session.","short_de":"Eine Bridge ist das Gedächtnis deines Agenten für deine Welt — ein schlichter Ordner aus Markdown und YAML in Git, den der Agent zu Beginn jeder Session liest.","deep_en":"A bridge is the central concept: a plain git repository of text files that an AI coding agent reads at session start, so it always knows who you are, your repos and clients, your rules, and what you worked on yesterday. The substrate itself runs nothing — no database, no daemon, no hosted service. It is just files your agent reads, which means there is nothing to host and no second app to maintain. Everything else in open-bridge — the work-system, identity files, standing orders, skills — lives inside a bridge. Built and self-used at BKS-Lab on one self-hosted instance (N=1, no external users yet).","deep_de":"Eine Bridge ist das zentrale Konzept: ein schlichtes Git-Repository aus Textdateien, das ein KI-Coding-Agent beim Session-Start liest — so weiß er stets, wer du bist, welche Repos und Kunden du hast, welche Regeln gelten und woran du gestern gearbeitet hast. Das Substrat selbst betreibt nichts — keine Datenbank, kein Daemon, kein gehosteter Dienst. Es sind nur Dateien, die dein Agent liest: nichts zu hosten, keine zweite App zu pflegen. Alles Weitere in open-bridge — das Work-System, Identitätsdateien, Standing Orders, Skills — lebt innerhalb einer Bridge. Bei BKS-Lab gebaut und selbst genutzt auf einer selbst gehosteten Instanz (N=1, bislang keine externen Nutzer).","status":"proven","connects":["substrate","context-booster","chaos-tamer","core-user-split","multi-bridge","skills","standing-orders","ecosystem-registry"]},{"id":"substrate","label_en":"Substrate (plain files in git)","label_de":"Substrat (schlichte Dateien in Git)","group":"foundation","short_en":"Everything is plain text — markdown and YAML in a git repo. No database, no SaaS. Agents can read a file but can't hold an API key.","short_de":"Alles ist Klartext — Markdown und YAML in einem Git-Repo. Keine Datenbank, kein SaaS. Agenten können eine Datei lesen, aber keinen API-Key halten.","deep_en":"The substrate choice is the whole point. Because everything is inspectable text, you don't have to trust a black box: clone the repo and cat any file your agent reads, diff it, version it. The agent's memory is just files you own — a diffable git history, no telemetry, nothing phoning home. The deeper bet: agents can read a file but can't hold an API key, so what you write today your agent still reads in six months — no migration, no vendor lock-in. Whether successive agent runtimes keep reading markdown+YAML+git natively (rather than a vendor schema) is the project's central, falsifiable wager.","deep_de":"Die Wahl des Substrats ist der eigentliche Kern. Weil alles inspizierbarer Text ist, musst du keiner Blackbox vertrauen: Repo klonen und jede Datei, die dein Agent liest, per cat ansehen, diffen, versionieren. Das Gedächtnis des Agenten sind nur Dateien, die dir gehören — eine diffbare Git-Historie, keine Telemetrie, nichts ruft nach Hause. Die tiefere Wette: Agenten können eine Datei lesen, aber keinen API-Key halten — was du heute schreibst, liest dein Agent in sechs Monaten noch, ohne Migration, ohne Vendor-Lock-in. Ob künftige Agenten-Runtimes Markdown+YAML+Git weiterhin nativ lesen (statt ein Vendor-Schema zu erzwingen), ist die zentrale, falsifizierbare Wette des Projekts.","status":"proven","connects":["bridge","core-user-split","memory","scope-promote"]},{"id":"context-booster","label_en":"Context Booster","label_de":"Context Booster","group":"method","short_en":"An independent layer of context the agent always reads — a third side beside your model and your tool — so it stops asking who you are and which client you're on.","short_de":"Eine unabhängige Kontextschicht, die der Agent stets liest — eine dritte Seite neben deinem Modell und deinem Tool — damit er nicht mehr fragt, wer du bist und welcher Kunde gerade dran ist.","deep_en":"The Context Booster is the most important purpose of open-bridge (a term coined at BKS-Lab). Whatever model and frontend you use, the bridge adds a persistent, structured layer the agent always reads: who you are, your repos and clients, what you worked on yesterday. The ecosystem registry plus always-on standing orders mean the agent stops asking 'GitHub or Jira?', stops loading the wrong client, and you can just say 'good morning, briefing' and get what matters today. It works across Claude Code, Codex, and Copilot CLI through one shared skills tree — because plain text is something every agent runtime can read.","deep_de":"Der Context Booster ist der wichtigste Zweck von open-bridge (ein bei BKS-Lab geprägter Begriff). Egal welches Modell und Frontend du nutzt — die Bridge fügt eine persistente, strukturierte Schicht hinzu, die der Agent stets liest: wer du bist, deine Repos und Kunden, woran du gestern gearbeitet hast. Die Ecosystem-Registry plus die stets aktiven Standing Orders sorgen dafür, dass der Agent nicht mehr 'GitHub oder Jira?' fragt, nicht mehr den falschen Kunden lädt — du sagst einfach 'guten Morgen, Briefing' und bekommst, was heute zählt. Es funktioniert über Claude Code, Codex und Copilot CLI hinweg durch einen gemeinsamen Skills-Baum — denn Klartext kann jede Agenten-Runtime lesen.","status":"proven","connects":["bridge","standing-orders","ecosystem-registry","chaos-tamer","skills"]},{"id":"chaos-tamer","label_en":"Chaos Tamer (work-system)","label_de":"Chaos-Bändiger (Work-System)","group":"method","short_en":"Tames the My-Documents chaos of AI work: it holds a structure (board, daily log, per-task status), files knowledge as you go, and keeps the work from drifting.","short_de":"Bändigt das My-Documents-Chaos der KI-Arbeit: hält eine Struktur (Board, Tageslog, Status pro Task), legt Wissen laufend ab und verhindert, dass die Arbeit verfranst.","deep_en":"Most AI work looks like a bare My-Documents folder — everyone piles up their own chaos and every conversation starts over. The Chaos Tamer (coined at BKS-Lab as 'structuring unstructured AI dialogues') does three things: it holds a structure (a board, a daily log, and per-task status moving backlog → doing → review → done), it files knowledge as you go so decisions and findings land in plain text the agent reads back later, and it keeps the work from drifting into an unsorted pile. The concrete instance is the Task-Management system: finite tasks in work/tasks/, long-running streams in work/streams/, closed work in work/done/. Unstructured sessions become a filed, persistent, compounding record.","deep_de":"Die meiste KI-Arbeit sieht aus wie ein nackter My-Documents-Ordner — jeder häuft sein eigenes Chaos an und jede Konversation fängt von vorn an. Der Chaos-Bändiger (bei BKS-Lab als 'Strukturieren unstrukturierter KI-Dialoge' geprägt) tut dreierlei: Er hält eine Struktur (ein Board, ein Tageslog und Status pro Task von backlog → doing → review → done), er legt Wissen laufend ab, sodass Entscheidungen und Befunde in Klartext landen, den der Agent später wieder liest, und er verhindert, dass die Arbeit in einen unsortierten Haufen verfranst. Die konkrete Ausprägung ist das Task-Management-System: endliche Tasks in work/tasks/, Dauerläufer in work/streams/, Abgeschlossenes in work/done/. Aus unstrukturierten Sessions wird eine abgelegte, persistente, sich aufsummierende Aufzeichnung.","status":"proven","connects":["bridge","work-system","memory","context-booster","workspace-separation"]},{"id":"work-system","label_en":"Work-System (board, log, tasks)","label_de":"Work-System (Board, Log, Tasks)","group":"method","short_en":"A generated board, a daily log, and per-task STATUS files. Status is a closed enum (backlog → doing → review → done); the folder encodes finite vs long-running.","short_de":"Ein generiertes Board, ein Tageslog und STATUS-Dateien pro Task. Der Status ist ein geschlossenes Enum (backlog → doing → review → done); der Ordner kodiert endlich vs. Dauerläufer.","deep_en":"The work-system is the concrete machinery behind the Chaos Tamer. Two orthogonal axes: KIND is the folder a task lives in (work/tasks/ = finite, reaches done; work/streams/ = long-runner, never done, excluded from the WIP cap), and status: is a frontmatter field with a closed enum — exactly {backlog, doing, review, done}, CI-validated, no synonyms. The board.md is generated from the task directories (counts come from ls, so they cannot drift) — you edit STATUS.md, never the board. The daily log uses one frozen row format (time, type, context, what). Blocked is a flag (blocked_by), not a status; declined is an outcome (done + outcome: declined). Built and self-used.","deep_de":"Das Work-System ist die konkrete Maschinerie hinter dem Chaos-Bändiger. Zwei orthogonale Achsen: KIND ist der Ordner, in dem ein Task lebt (work/tasks/ = endlich, erreicht done; work/streams/ = Dauerläufer, nie done, vom WIP-Limit ausgenommen), und status: ist ein Frontmatter-Feld mit geschlossenem Enum — genau {backlog, doing, review, done}, CI-validiert, keine Synonyme. Das board.md wird aus den Task-Verzeichnissen generiert (Zählungen kommen aus ls, können also nicht driften) — du editierst STATUS.md, nie das Board. Das Tageslog nutzt ein eingefrorenes Zeilenformat (Zeit, Typ, Kontext, Was). Blocked ist ein Flag (blocked_by), kein Status; declined ist ein Outcome (done + outcome: declined). Gebaut und selbst genutzt.","status":"proven","connects":["chaos-tamer","bridge","standing-orders","ecosystem-registry"]},{"id":"core-user-split","label_en":"CORE/USER split","label_de":"CORE/USER-Trennung","group":"foundation","short_en":"Two branches split shipped templates from your private data. They touch different paths, so merges never conflict and your credentials never land on the shared branch.","short_de":"Zwei Branches trennen ausgelieferte Templates von deinen privaten Daten. Sie berühren verschiedene Pfade — Merges kollidieren nie, deine Credentials landen nie im geteilten Branch.","deep_en":"open-bridge uses two branches that split your data from shared templates. Your accumulated context — tasks, config, agent definitions, credentials — lives on user/{name}. Shipped templates, skills, and docs live on CORE (main). The two touch different paths by design, so three things hold: merges never conflict (pull upstream template updates anytime with git merge main); your data stays private (credentials and client data never land on main); improvements flow back via /promote, which reads each file's scope and routes scope: core changes upstream as PRs. This is what lets the context compound safely. The mechanism is shipped, documented, and self-used.","deep_de":"open-bridge nutzt zwei Branches, die deine Daten von geteilten Templates trennen. Dein angesammelter Kontext — Tasks, Config, Agenten-Definitionen, Credentials — lebt auf user/{name}. Ausgelieferte Templates, Skills und Docs liegen auf CORE (main). Beide berühren per Design verschiedene Pfade, daher gilt dreierlei: Merges kollidieren nie (Upstream-Template-Updates jederzeit per git merge main holen); deine Daten bleiben privat (Credentials und Kundendaten landen nie auf main); Verbesserungen fließen via /promote zurück, das den scope jeder Datei liest und scope: core-Änderungen als PRs upstream routet. Das ermöglicht, dass sich Kontext sicher aufsummiert. Der Mechanismus ist ausgeliefert, dokumentiert und selbst genutzt.","status":"proven","connects":["bridge","substrate","scope-promote","multi-bridge","skills"]},{"id":"scope-promote","label_en":"Scope & promote","label_de":"Scope & Promote","group":"foundation","short_en":"Every file's tier (core / org / user) is decided by where it lives, not a tag you can forget. /promote reads the scope and routes changes to the right upstream.","short_de":"Die Stufe jeder Datei (core / org / user) ergibt sich daraus, wo sie liegt — nicht aus einem Tag, das man vergessen kann. /promote liest den Scope und routet Änderungen zum richtigen Upstream.","deep_en":"Scope is structural, not declarative: a file's tier is decided by where it lives, through three mechanisms — whole folders (work/ = user, docs/ = core), the _-prefix in cluster-wrappers (_template/_schema = core, every instance = user), and frontmatter for skills only (metadata.scope, hard-gated by a validator). Promote routes mechanically on these inputs; the content leak-check is a backstop, not the primary guard — structure is what keeps PII out of the public upstream. /promote reads each file's scope and routes scope: core upstream to open-bridge, scope: org to your optional org overlay, scope: user stays local. Scope-routing is demonstrated in practice, not theoretical.","deep_de":"Scope ist strukturell, nicht deklarativ: Die Stufe einer Datei ergibt sich daraus, wo sie liegt, über drei Mechanismen — ganze Ordner (work/ = user, docs/ = core), das _-Präfix in den Cluster-Wrappern (_template/_schema = core, jede Instanz = user) und Frontmatter nur für Skills (metadata.scope, hart per Validator abgesichert). Promote routet mechanisch über diese Eingaben; der Content-Leak-Check ist ein Backstop, nicht der Hauptschutz — die Struktur hält PII aus dem öffentlichen Upstream fern. /promote liest den scope jeder Datei und routet scope: core upstream nach open-bridge, scope: org in dein optionales Org-Overlay, scope: user bleibt lokal. Scope-Routing ist in der Praxis demonstriert, nicht theoretisch.","status":"proven","connects":["core-user-split","substrate","skills","multi-bridge","ecosystem-registry"]},{"id":"skills","label_en":"Skills","label_de":"Skills","group":"behaviour","short_en":"The model-agnostic verbs over the substrate. One skills tree, symlinked into the paths Claude Code, Codex, Copilot CLI, and Cursor each scan — so the same skill loads in any tool.","short_de":"Die modell-agnostischen Verben über dem Substrat. Ein Skills-Baum, per Symlink in die Pfade gelegt, die Claude Code, Codex, Copilot CLI und Cursor scannen — derselbe Skill lädt in jedem Tool.","deep_en":"Skills are the verbs over the substrate. They live in one skills/ tree following the open SKILL.md standard, symlinked into the discovery paths Claude Code, Codex, Copilot CLI, and Cursor each scan, so the same skill loads no matter which tool you run. Describe what you need in plain language ('draft the daily briefing', 'process this transcript') and the matching skill loads itself. The point is the cross-tool agnosticism, not a number. A CORE skill earns its tier by staying generic inside: it reads config and never embeds instance logic, hardcoded queries, or org IDs — if it needs an instance knob, that knob is added to config and the skill reads it.","deep_de":"Skills sind die Verben über dem Substrat. Sie leben in einem skills/-Baum nach dem offenen SKILL.md-Standard, per Symlink in die Discovery-Pfade gelegt, die Claude Code, Codex, Copilot CLI und Cursor jeweils scannen — derselbe Skill lädt, egal welches Tool du nutzt. Beschreibe in natürlicher Sprache, was du brauchst ('entwirf das Tages-Briefing', 'verarbeite dieses Transkript'), und der passende Skill lädt sich selbst. Der Punkt ist die tool-übergreifende Agnostik, keine Zahl. Ein CORE-Skill verdient seine Stufe, indem er innen generisch bleibt: Er liest Config und bettet nie Instanzlogik, fest verdrahtete Queries oder Org-IDs ein — braucht er einen Instanz-Knopf, kommt der in die Config und der Skill liest ihn.","status":"proven","connects":["bridge","sub-agents","standing-orders","scope-promote","context-booster"]},{"id":"sub-agents","label_en":"Sub-agents","label_de":"Sub-Agenten","group":"behaviour","short_en":"Ephemeral helpers that offload heavy or parallel work into an isolated context and return a structured summary, so raw output never fills the main session.","short_de":"Ephemere Helfer, die schwere oder parallele Arbeit in einen isolierten Kontext auslagern und eine strukturierte Zusammenfassung zurückgeben — Roh-Output füllt nie die Hauptsession.","deep_en":"Sub-agents are native Claude Code sub-agents — markdown files with YAML frontmatter, auto-discovered at session start, spawned via the Task tool. Their purpose is to offload heavy, parallel, or isolated work so raw output (log dumps, file trees, API results) never fills the main context — they return structured summaries. open-bridge ships the pattern plus one reference sub-agent (archivist, for document intake); you add the rest by dropping another .claude/agents/{name}.md next to it. This is Claude Code-specific: under Copilot CLI, Codex, Gemini, or Cursor the same logic runs inline in the main session instead of an isolated sub-process — the capability is preserved, only the isolation differs.","deep_de":"Sub-Agenten sind native Claude-Code-Sub-Agenten — Markdown-Dateien mit YAML-Frontmatter, beim Session-Start automatisch entdeckt, über das Task-Tool gestartet. Ihr Zweck ist es, schwere, parallele oder isolierte Arbeit auszulagern, damit Roh-Output (Log-Dumps, Dateibäume, API-Ergebnisse) nie den Hauptkontext füllt — sie geben strukturierte Zusammenfassungen zurück. open-bridge liefert das Muster plus einen Referenz-Sub-Agenten (archivist, für Dokumenten-Intake); den Rest fügst du hinzu, indem du eine weitere .claude/agents/{name}.md danebenlegst. Das ist Claude-Code-spezifisch: unter Copilot CLI, Codex, Gemini oder Cursor läuft dieselbe Logik inline in der Hauptsession statt in einem isolierten Subprozess — die Fähigkeit bleibt erhalten, nur die Isolation entfällt.","status":"proven","connects":["skills","bridge","personas","standing-orders"]},{"id":"standing-orders","label_en":"Standing orders","label_de":"Standing Orders","group":"behaviour","short_en":"Always-on rules that ride into every prompt — code-style rules, security baselines, logging habits — which a static CLAUDE.md can't do per context.","short_de":"Stets aktive Regeln, die in jeden Prompt einfließen — Code-Stil, Security-Baselines, Logging-Gewohnheiten — was eine statische CLAUDE.md kontextabhängig nicht leisten kann.","deep_en":"Standing orders are always-on rules in protocols/standing-orders/ that get injected into every agent dispatch's system prompt: code-style rules, security baselines, logging habits, task-sync rules. Each carries name, scope, enforcement, and applies_to frontmatter; orders with scope: always are injected into every sub-agent dispatch too. They are the supporting mechanism behind the Context Booster — third-side rules that ride into every prompt. Crucially, standing orders are not routing: they have no route: field and govern how the agent behaves, not where things go. If you want to send input to a destination, that belongs in a routing context, not a standing order. CORE ships defaults; user-authored orders live in standing-orders/user/.","deep_de":"Standing Orders sind stets aktive Regeln in protocols/standing-orders/, die in den System-Prompt jedes Agenten-Dispatchs injiziert werden: Code-Stil-Regeln, Security-Baselines, Logging-Gewohnheiten, Task-Sync-Regeln. Jede trägt name-, scope-, enforcement- und applies_to-Frontmatter; Orders mit scope: always werden auch in jeden Sub-Agenten-Dispatch injiziert. Sie sind der tragende Mechanismus hinter dem Context Booster — Drittseiten-Regeln, die in jeden Prompt einfließen. Entscheidend: Standing Orders sind kein Routing — sie haben kein route:-Feld und regeln, wie der Agent sich verhält, nicht wohin Dinge gehen. Willst du Input an ein Ziel schicken, gehört das in einen Routing-Kontext, nicht in eine Standing Order. CORE liefert Defaults; nutzer-erstellte Orders leben in standing-orders/user/.","status":"proven","connects":["context-booster","skills","sub-agents","work-system","bridge"]},{"id":"personas","label_en":"Personas","label_de":"Personas","group":"identity","short_en":"Self-identities you hold — freelancer, company director, private citizen. Each carries tax data, signatures, and document-filing destinations. Personas are who I AM.","short_de":"Selbst-Identitäten, die du innehast — Freelancer, Geschäftsführer, Privatperson. Jede trägt Steuerdaten, Signaturen und Ablageziele für Dokumente. Personas sind, wer ich BIN.","deep_en":"A persona represents an identity the user holds — it answers 'which hat am I wearing right now?' (freelancer, company director, private citizen, a client's project owner). Each persona carries tax data, legal-entity information, document-filing destination paths, and a signature block for outgoing correspondence, and is read by skills and sub-agents to route work to the correct legal context. The key distinction: personas are who I AM, mandants are who I SEND TO. A persona's role: is always self. Most users need between one and four. Personas are USER-layer files that contain personal data and never land on the shared CORE branch.","deep_de":"Eine Persona repräsentiert eine Identität, die der Nutzer innehat — sie beantwortet 'welchen Hut trage ich gerade?' (Freelancer, Geschäftsführer, Privatperson, Projektverantwortlicher eines Kunden). Jede Persona trägt Steuerdaten, Angaben zur juristischen Einheit, Ablage-Zielpfade für Dokumente und einen Signaturblock für ausgehende Korrespondenz; sie wird von Skills und Sub-Agenten gelesen, um Arbeit in den richtigen rechtlichen Kontext zu routen. Die zentrale Abgrenzung: Personas sind, wer ich BIN, Mandanten, an wen ich SENDE. Das role:-Feld einer Persona ist stets self. Die meisten Nutzer brauchen ein bis vier. Personas sind USER-Layer-Dateien mit persönlichen Daten, die nie im geteilten CORE-Branch landen.","status":"proven","connects":["mandants","sub-agents","bridge","scope-promote"]},{"id":"mandants","label_en":"Mandants (recipient groups)","label_de":"Mandanten (Empfängergruppen)","group":"identity","short_en":"Named groups of people who receive scheduled messages — your team, family, friends, clients. An addressbook organised by relationship type. Mandants are who I SEND TO.","short_de":"Benannte Personengruppen, die geplante Nachrichten erhalten — Team, Familie, Freunde, Kunden. Ein Adressbuch nach Beziehungstyp. Mandanten sind, an wen ich SENDE.","deep_en":"A mandant is a named group of people who receive scheduled messages — an addressbook organised by relationship type (company, household, family, friends, colleagues, individual). Each mandant holds persons with channel preferences (email, Signal, iMessage) and per-person defaults (language, quiet hours, preferred time) that hint the intent-parser when scheduling outbound. Mandants are the recipient half of the identity pair: personas are who I AM, mandants are who I SEND TO. A single person can appear in several mandants. They are complementary to contexts — a customer can be a context (repos + infra) without being a mandant, if they don't actually receive scheduled output. USER-layer, PII by construction, never shared cross-user.","deep_de":"Ein Mandant ist eine benannte Personengruppe, die geplante Nachrichten erhält — ein Adressbuch nach Beziehungstyp (company, household, family, friends, colleagues, individual). Jeder Mandant enthält Personen mit Kanal-Präferenzen (E-Mail, Signal, iMessage) und Personen-Defaults (Sprache, Ruhezeiten, bevorzugte Zeit), die den Intent-Parser beim Planen ausgehender Nachrichten leiten. Mandanten sind die Empfänger-Hälfte des Identitäts-Paares: Personas sind, wer ich BIN, Mandanten, an wen ich SENDE. Eine Person kann in mehreren Mandanten erscheinen. Sie ergänzen Kontexte — ein Kunde kann ein Kontext (Repos + Infra) sein, ohne Mandant zu sein, wenn er keinen geplanten Output erhält. USER-Layer, PII per Konstruktion, nie nutzerübergreifend geteilt.","status":"proven","connects":["personas","channels","bridge"]},{"id":"channels","label_en":"Channels","label_de":"Channels (Kanäle)","group":"infra","short_en":"Outbound messaging transports — email, Telegram, Signal, iMessage. A USER-scope capability you turn on when you want it; each channel's runtime usually sits on a remote.","short_de":"Ausgehende Nachrichten-Transporte — E-Mail, Telegram, Signal, iMessage. Eine USER-Capability, die du bei Bedarf aktivierst; die Laufzeit jedes Channels liegt meist auf einem Remote.","deep_en":"Channels connect the bridge to messaging platforms to send notifications and automate outbound communication. Each channel is one file under infra/channels/, with a type (plugin via tmux keepalive, collector via cron, bot via keepalive daemon, api on-demand, or bridge as a background process) and a runtime that usually sits on a remote machine as a launchd/systemd unit. An important guardrail: the declared status: is never trusted — the remote's service manager is the source of truth. Channels are an optional USER-scope capability that stays out of the core hero; the code ships and you enable it when you want it. The agent never sends for you — outbound stays gated.","deep_de":"Channels verbinden die Bridge mit Messaging-Plattformen, um Benachrichtigungen zu senden und ausgehende Kommunikation zu automatisieren. Jeder Channel ist eine Datei unter infra/channels/, mit einem Typ (plugin via tmux-Keepalive, collector via Cron, bot via Keepalive-Daemon, api on-demand oder bridge als Hintergrundprozess) und einer Laufzeit, die meist auf einer Remote-Maschine als launchd/systemd-Unit liegt. Ein wichtiges Leitplanken-Prinzip: dem deklarierten status: wird nie vertraut — der Service-Manager des Remotes ist die Wahrheit. Channels sind eine optionale USER-Capability, die aus dem Kern-Pitch herausgehalten wird; der Code ist da, du aktivierst ihn bei Bedarf. Der Agent sendet nie für dich — Ausgehendes bleibt gegated.","status":"proven","connects":["remotes","mandants","bridge"]},{"id":"remotes","label_en":"Remotes","label_de":"Remotes (Maschinen)","group":"infra","short_en":"Your machine inventory — physical or virtual boxes reachable over SSH that run services for your bridge. In Bridge terms, a remote is a machine, not a git remote.","short_de":"Dein Maschinen-Inventar — physische oder virtuelle Rechner über SSH erreichbar, die Dienste für deine Bridge betreiben. In Bridge-Sprache ist ein Remote eine Maschine, kein Git-Remote.","deep_en":"A remote is a physical or virtual machine reachable over SSH that runs services for your bridge — message bots, scheduled tasks, health monitors, data collectors (desktops, routers, and USB toolkits qualify too). Each machine is one file under infra/remotes/ holding SSH config, Tailscale + LAN topology, Wake-on-LAN, capabilities, and services, with an optional setup companion for hardware quirks. Hard rules: Tailscale-IP first with LAN as fallback, no destructive operation (shutdown, reboot, format) without a per-action confirmation, never store credentials in the YAML (KeyVault / 1Password URIs only), and honor an opt-out from wake-on-LAN. Vocabulary trap: a remote is a machine, not a git remote. Optional USER-scope capability.","deep_de":"Ein Remote ist eine physische oder virtuelle Maschine, über SSH erreichbar, die Dienste für deine Bridge betreibt — Message-Bots, geplante Tasks, Health-Monitore, Daten-Collector (auch Desktops, Router und USB-Toolkits zählen). Jede Maschine ist eine Datei unter infra/remotes/ mit SSH-Config, Tailscale- und LAN-Topologie, Wake-on-LAN, Capabilities und Diensten, plus optionalem Setup-Begleiter für Hardware-Eigenheiten. Harte Regeln: Tailscale-IP zuerst, LAN als Fallback; keine destruktive Operation (Shutdown, Reboot, Format) ohne Bestätigung pro Aktion; nie Credentials in der YAML (nur KeyVault- / 1Password-URIs); ein Wake-on-LAN-Opt-out respektieren. Vokabel-Falle: ein Remote ist eine Maschine, kein Git-Remote. Optionale USER-Capability.","status":"proven","connects":["channels","bridge"]},{"id":"ecosystem-registry","label_en":"Ecosystem registry","label_de":"Ecosystem-Registry","group":"method","short_en":"The single source of truth for your repos, infrastructure, and workspaces — one lean YAML the agent reads every session so it knows your world without being told.","short_de":"Die einzige Wahrheitsquelle für deine Repos, Infrastruktur und Workspaces — eine schlanke YAML, die der Agent jede Session liest, um deine Welt ohne Ansage zu kennen.","deep_en":"The ecosystem registry (ecosystem.yaml, copied from ecosystem.example.yaml at onboarding) is the single source of truth for your repos, infrastructure, and workspaces. It is imported into context every session, so it must stay lean — one-line descriptions, no PII, no secrets; long narrative goes into docs/. It registers base repos, per-customer blocks (repos, dependencies, project board numbers), a central board overview, and workspaces that group repos for multi-repo work. Together with standing orders it is the backbone of the Context Booster: the agent knows which repos and which client you're on without re-explaining. Personal entries that carry PII live in a separate ecosystem.local.yaml that is never promoted.","deep_de":"Die Ecosystem-Registry (ecosystem.yaml, beim Onboarding aus ecosystem.example.yaml kopiert) ist die einzige Wahrheitsquelle für deine Repos, Infrastruktur und Workspaces. Sie wird jede Session in den Kontext importiert, muss also schlank bleiben — Ein-Zeilen-Beschreibungen, keine PII, keine Secrets; lange Erzählung gehört in docs/. Sie registriert Basis-Repos, Blöcke pro Kunde (Repos, Abhängigkeiten, Project-Board-Nummern), eine zentrale Board-Übersicht und Workspaces, die Repos für Multi-Repo-Arbeit gruppieren. Zusammen mit Standing Orders ist sie das Rückgrat des Context Boosters: Der Agent weiß ohne erneute Erklärung, an welchen Repos und welchem Kunden du arbeitest. Persönliche Einträge mit PII leben in einer separaten ecosystem.local.yaml, die nie promotet wird.","status":"proven","connects":["context-booster","bridge","scope-promote","work-system"]},{"id":"multi-bridge","label_en":"Multi-bridge / instances","label_de":"Multi-Bridge / Instanzen","group":"scale","short_en":"Run several bridges side by side — one per client, team, or context. All share one CORE foundation that updates once for everyone; each keeps its private data separate.","short_de":"Mehrere Bridges nebeneinander betreiben — eine pro Kunde, Team oder Kontext. Alle teilen ein CORE-Fundament, das einmal für alle aktualisiert; jede hält ihre privaten Daten getrennt.","deep_en":"You can run many bridges. An organisation might run one for bigcorp, one for startupxyz, and one for its own internal ops — each with its own rules, processes, and workflows, each keeping that context's data to itself: one shared foundation, separate private rooms. Each instance is a separate clone with its own user/ branch tracking the same CORE upstream, so CORE updates flow into all instances identically while USER data stays fully independent per instance. This is the answer for cross-organisation isolation, where client contracts or compliance rules prohibit project metadata sharing a git history — some instances are pushed to a remote, others kept local-only. (If you only need per-domain separation within one org, one bridge with multiple contexts is enough.) The mechanism ships and is documented; today it runs on one self-hosted bridge.","deep_de":"Du kannst viele Bridges betreiben. Eine Organisation könnte eine für bigcorp, eine für startupxyz und eine für die eigenen internen Ops fahren — jede mit eigenen Regeln, Prozessen und Workflows, jede hält die Daten ihres Kontexts bei sich: ein gemeinsames Fundament, getrennte private Räume. Jede Instanz ist ein eigener Clone mit eigenem user/-Branch, der denselben CORE-Upstream verfolgt — CORE-Updates fließen identisch in alle Instanzen, während USER-Daten pro Instanz völlig unabhängig bleiben. Das ist die Antwort auf organisationsübergreifende Isolation, wenn Kundenverträge oder Compliance-Regeln verbieten, dass Projekt-Metadaten eine Git-Historie teilen — manche Instanzen werden zu einem Remote gepusht, andere bleiben rein lokal. (Brauchst du nur Domänen-Trennung innerhalb einer Org, genügt eine Bridge mit mehreren Kontexten.) Der Mechanismus ist ausgeliefert und dokumentiert; heute läuft er auf einer selbst gehosteten Bridge.","status":"proven","connects":["bridge","core-user-split","scope-promote","workspace-separation"]},{"id":"workspace-separation","label_en":"Workspace separation (default)","label_de":"Workspace-Trennung (Default)","group":"scale","short_en":"The intended default: tasks kept separate per context, no information bleeding between engagements — with the rule \"if you can't place it into your known world-models, ask.\"","short_de":"Der angestrebte Default: Tasks pro Kontext getrennt, kein Durchsickern von Information zwischen Mandaten — mit der Regel \"wenn du es keinem bekannten Weltmodell zuordnen kannst, frag.\"","deep_en":"Workspace separation is the design stance for where open-bridge is headed: tasks kept separate per context so no information bleeds between engagements, paired with a general rule — if you can't place an item into your known world-models, ask. This is honestly marked as a bet and an open question, not a shipped feature. It is agreed in principle but not yet built into open-bridge, and the hard-silo-versus-soft-folder default is unresolved. The wager is that, once built, separation as a hard default is the right call for most users rather than an opt-in switch. Related off-topic stripping of unrelated tangents is hand-tested as a separate bridge skill but is likewise not built into open-bridge yet. Read this as roadmap, not capability.","deep_de":"Workspace-Trennung ist die Design-Haltung, wohin open-bridge sich entwickelt: Tasks pro Kontext getrennt, sodass keine Information zwischen Mandaten durchsickert, gepaart mit einer allgemeinen Regel — wenn du ein Element keinem bekannten Weltmodell zuordnen kannst, frag. Das ist ehrlich als Wette und offene Frage markiert, kein ausgeliefertes Feature. Es ist im Prinzip vereinbart, aber noch nicht in open-bridge gebaut, und der Default harte-Silos-versus-weiche-Ordner ist ungelöst. Die Wette: Einmal gebaut, ist Trennung als harter Default für die meisten Nutzer die richtige Wahl statt eines Opt-in-Schalters. Das verwandte Wegstreichen unrelatierter Themen-Abschweifungen ist als separater Bridge-Skill handgetestet, aber ebenfalls noch nicht in open-bridge gebaut. Lies das als Roadmap, nicht als Fähigkeit.","status":"bet","connects":["chaos-tamer","multi-bridge","work-system"]},{"id":"memory","label_en":"Memory","label_de":"Memory (Gedächtnis)","group":"method","short_en":"A persistent, file-based experience store — one durable fact per file, with a lean MEMORY.md index loaded every session. Durable facts the agent recalls later, not a session log.","short_de":"Ein persistenter, datei-basierter Erfahrungsspeicher — ein dauerhafter Fakt pro Datei, mit einem schlanken MEMORY.md-Index, der jede Session geladen wird. Dauerfakten, kein Session-Log.","deep_en":"Memory is the persistent experience store that survives across sessions — not a session log, but durable facts the agent should recall later. The model is one fact per file (<type>_<slug>.md with frontmatter), with MEMORY.md as a lean index loaded at session start: one line per memory, never the fact content itself, because an oversized index overflows its context budget and silently drops its tail. Memory types are user (who you are), feedback (how the agent should work), project (ongoing work and constraints), and reference (pointers to external resources). The discipline is prune, don't accumulate — delete wrong or obsolete facts rather than letting them pile up. The base typically lives outside the repo in a tool-specific path, so a fresh clone has no memory base yet; it grows as you work.","deep_de":"Memory ist der persistente Erfahrungsspeicher, der Sessions überdauert — kein Session-Log, sondern dauerhafte Fakten, die der Agent später abrufen soll. Das Modell ist ein Fakt pro Datei (<type>_<slug>.md mit Frontmatter), mit MEMORY.md als schlankem Index, der beim Session-Start geladen wird: eine Zeile pro Memory, nie der Fakt-Inhalt selbst, denn ein überfüllter Index sprengt sein Kontext-Budget und droppt still seinen Schwanz. Memory-Typen sind user (wer du bist), feedback (wie der Agent arbeiten soll), project (laufende Arbeit und Constraints) und reference (Verweise auf externe Ressourcen). Die Disziplin lautet ausmisten, nicht ansammeln — Falsches oder Veraltetes löschen statt anhäufen. Der Speicher liegt meist außerhalb des Repos in einem tool-spezifischen Pfad, daher hat ein frischer Clone noch keinen Memory-Speicher; er wächst mit der Arbeit.","status":"proven","connects":["substrate","chaos-tamer","work-system","bridge"]}]};
+
+  // ---- helpers ----
+  function esc(s){
+    return String(s)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+  // turn `code` spans into <code>…</code>, then escape the rest.
+  // (deep_* strings carry inline `backtick code` and {placeholder} tokens.)
+  function richText(s){
+    var parts = String(s).split(/(`[^`]+`)/);
+    var out = "";
+    for(var i=0;i<parts.length;i++){
+      var p = parts[i];
+      if(p.length>1 && p.charAt(0)==="`" && p.charAt(p.length-1)==="`"){
+        out += "<code>"+esc(p.slice(1,-1))+"</code>";
+      } else {
+        out += esc(p);
+      }
+    }
+    return out;
+  }
+
+  var byId = {};
+  DATA.concepts.forEach(function(c){ byId[c.id] = c; });
+
+  var STATUS_LABEL = {
+    proven: { en:"Proven", de:"Bewiesen" },
+    bet:    { en:"A bet",  de:"Wette" },
+    open:   { en:"Open",   de:"Offen" }
+  };
+
+  // order concepts grouped by group, preserving group order then data order
+  var groupOrder = DATA.groups.map(function(g){ return g.id; });
+
+  // ---- build TOC ----
+  var tocGrid = document.getElementById("toc-grid");
+  var tocHtml = "";
+  DATA.groups.forEach(function(g){
+    var members = DATA.concepts.filter(function(c){ return c.group === g.id; });
+    if(!members.length) return;
+    tocHtml += '<div class="toc-group">';
+    tocHtml += '<h3><span data-lang="en">'+esc(g.label_en)+'</span><span data-lang="de">'+esc(g.label_de)+'</span></h3>';
+    tocHtml += '<ul>';
+    members.forEach(function(c){
+      tocHtml += '<li><a href="#'+esc(c.id)+'">'
+        + '<span class="lbl"><span data-lang="en">'+esc(c.label_en)+'</span><span data-lang="de">'+esc(c.label_de)+'</span></span>'
+        + '</a></li>';
+    });
+    tocHtml += '</ul></div>';
+  });
+  tocGrid.innerHTML = tocHtml;
+
+  // ---- build concept sections ----
+  var root = document.getElementById("concepts-root");
+  var html = "";
+  DATA.groups.forEach(function(g){
+    var members = DATA.concepts.filter(function(c){ return c.group === g.id; });
+    if(!members.length) return;
+
+    // group divider
+    html += '<div class="grp reveal">'
+      + '<p class="eyebrow"><span data-lang="en">'+esc(g.label_en)+'</span><span data-lang="de">'+esc(g.label_de)+'</span></p>'
+      + '</div>';
+
+    members.forEach(function(c){
+      var stl = STATUS_LABEL[c.status] || STATUS_LABEL.proven;
+      html += '<article class="concept reveal" id="'+esc(c.id)+'">';
+      // top: title + status chip
+      html += '<div class="c-top">';
+      html += '<div class="c-title">';
+      html += '<h3 class="h3"><span data-lang="en">'+esc(c.label_en)+'</span><span data-lang="de">'+esc(c.label_de)+'</span></h3>';
+      html += '<p class="c-sub"><span data-lang="en">'+esc(c.short_en)+'</span><span data-lang="de">'+esc(c.short_de)+'</span></p>';
+      html += '</div>';
+      html += '<span class="st '+esc(c.status)+'" title="'+esc(stl.en)+'"><span class="dot" aria-hidden="true"></span>'
+        + '<span data-lang="en">'+esc(stl.en)+'</span><span data-lang="de">'+esc(stl.de)+'</span></span>';
+      html += '</div>';
+      // deep explanation
+      html += '<div class="c-deep"><span data-lang="en">'+richText(c.deep_en)+'</span><span data-lang="de">'+richText(c.deep_de)+'</span></div>';
+      // related
+      if(c.connects && c.connects.length){
+        html += '<div class="related"><span class="lab"><span data-lang="en">Related:</span><span data-lang="de">Verwandt:</span></span> ';
+        c.connects.forEach(function(rid){
+          var rc = byId[rid];
+          if(!rc) return;
+          html += '<a href="#'+esc(rid)+'"><span data-lang="en">'+esc(rc.label_en)+'</span><span data-lang="de">'+esc(rc.label_de)+'</span></a>';
+        });
+        html += '</div>';
+      }
+      // back to top
+      html += '<div class="backtop"><a href="#top"><span data-lang="en">↑ Back to index</span><span data-lang="de">↑ Zurück zum Index</span></a></div>';
+      html += '</article>';
+    });
+  });
+  root.innerHTML = html;
+
+  // ---- re-run reveal observer over freshly injected nodes ----
+  // rootMargin pulls the trigger line above the fold so a tall card reveals as
+  // soon as its top edge approaches the viewport; a safety timer guarantees
+  // everything ends up visible even if the observer never fires (no-scroll
+  // renders, headless capture, scrapers).
+  var revealEls = Array.prototype.slice.call(root.querySelectorAll(".reveal"));
+  function showAll(){ revealEls.forEach(function(el){ el.classList.add("in"); }); }
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0, rootMargin: "0px 0px -8% 0px" });
+    revealEls.forEach(function(el){ io.observe(el); });
+    // safety net: if a node is still hidden after 1.6s of no scrolling, show it.
+    setTimeout(showAll, 1600);
+  } else {
+    showAll();
+  }
+
+  // ---- if loaded with a deep-link hash (explore.html#<id>), scroll to it ----
+  if(location.hash){
+    var t = document.getElementById(location.hash.slice(1));
+    if(t){ requestAnimationFrame(function(){ t.scrollIntoView(); }); }
+  }
+})();
+</script>
+
+</body>
+</html>

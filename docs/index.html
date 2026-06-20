@@ -156,10 +156,32 @@ header.nav{
 }
 .nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
   display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap}
+.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap;text-decoration:none}
 .wordmark .text-gradient{font-weight:400}
 .nav-spacer{flex:1}
 .nav-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---- Site nav (Home / Explore / Concepts) — shared shell addition ----
+   Sits between the wordmark and the chips, in the same header grammar.
+   The .active link (active=Home here + aria-current="page") reads as the
+   brand accent; the others are quiet until hover. */
+.site-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.site-nav a{
+  font-size:14px;font-weight:500;line-height:1.2;text-decoration:none;
+  color:var(--secondary);padding:6px 12px;border-radius:var(--r-full);
+  transition:color .18s ease,background .18s ease;white-space:nowrap;
+}
+.site-nav a:hover{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active,
+.site-nav a[aria-current="page"]{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active{position:relative}
+.site-nav a.active::after{
+  content:"";position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+}
+@media (max-width:560px){
+  .site-nav a{padding:6px 9px;font-size:13px}
+}
 
 .chip{
   display:inline-flex;align-items:center;gap:6px;
@@ -585,7 +607,12 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <!-- ======================= STICKY HEADER ======================= -->
 <header class="nav">
   <div class="nav-inner">
-    <span class="wordmark">open<span class="text-gradient">-bridge</span></span>
+    <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="index.html" class="active" aria-current="page"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+    </nav>
     <div class="nav-spacer"></div>
     <div class="nav-chips">
       <a class="chip" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener" aria-label="GitHub repository">
@@ -898,6 +925,15 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         </div>
       </figure>
       <!-- ============================== EMBED END (structure) ============================== -->
+    </div>
+
+    <!-- ===== POINTER to the mini-site (explore + concepts) ===== -->
+    <div class="reveal sub-cta" style="margin-top:36px;text-align:center">
+      <p style="font-size:16px;line-height:1.7;margin-bottom:18px"><span data-lang="en">Want to walk this map yourself? See every piece as an interactive constellation, or read the plain-language guide.</span><span data-lang="de">Willst du diese Karte selbst durchgehen? Sieh jeden Baustein als interaktive Konstellation, oder lies den Leitfaden in einfacher Sprache.</span></p>
+      <div class="cta-row" style="justify-content:center">
+        <a class="btn btn-primary" href="explore.html"><span data-lang="en">Explore the concepts</span><span data-lang="de">Konzepte erkunden</span><span class="arrow">→</span></a>
+        <a class="btn btn-secondary" href="concepts.html"><span data-lang="en">Read the concept guide</span><span data-lang="de">Konzept-Leitfaden lesen</span><span class="arrow">→</span></a>
+      </div>
     </div>
 
     <!-- ===== COMPOUNDING MICRO-DIAGRAM (mechanic.html, embedded) ===== -->

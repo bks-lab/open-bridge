@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<!-- ============================================================================
+     open-bridge — EXPLORE  (interactive concept constellation)
+     Built from /tmp/ob-shell.html. Head / nav (active=Explore) / footer / the
+     theme(T)+lang(L) toggles + anti-FOUC pre-paint are byte-faithful to the
+     shell so this page matches index.html exactly. Page-specific style + script
+     are appended after the shared ones, as the shell prescribes.
+
+     Page content = a simplified, PII-free radial node-link constellation in the
+     spirit of the owner's private #network view: a central "Bridge" hub, ~14
+     concept nodes grouped + colored by cluster, edges = the concepts' 'connects'
+     relations. Hover highlights a node + its links; click (or Enter on a focused
+     node) opens a side panel with the concept's plain-language summary + a
+     "Learn more →" link to concepts.html#<id>. Mobile falls back to a grouped,
+     tappable list that links to the same anchors. prefers-reduced-motion safe,
+     light/dark, offline, EN/DE parity, ZERO PII.
+     ============================================================================ -->
+<html lang="en" data-active-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explore the concepts — open-bridge</title>
+<meta name="description" content="An interactive constellation of open-bridge's core concepts. Click any node to learn what it does — plain language, then a deep dive.">
+<!-- Social / Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Explore the concepts — open-bridge">
+<meta property="og:description" content="An interactive constellation of open-bridge's core concepts. Click any node to learn what it does — plain language, then a deep dive.">
+<meta property="og:url" content="https://bks-lab.github.io/open-bridge/explore.html">
+<meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Explore the concepts — open-bridge">
+<meta name="twitter:description" content="An interactive constellation of open-bridge's core concepts. Click any node to learn what it does — plain language, then a deep dive.">
+
+<!-- Anti-FOUC pre-paint: theme + language set BEFORE the stylesheet paints. -->
+<script>
+(function(){
+  var r = document.documentElement;
+  try{
+    var t = localStorage.getItem("ob-theme");
+    if(t === "dark" || (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)){
+      r.classList.add("dark");
+    }
+  }catch(e){}
+  try{
+    var l = localStorage.getItem("ob-lang");
+    var lang = (l === "de") ? "de" : (r.getAttribute("lang") || "en");
+    r.setAttribute("data-active-lang", lang); r.setAttribute("lang", lang);
+  }catch(e){ r.setAttribute("data-active-lang","en"); }
+})();
+</script>
+
+<style>
+/* ============================================================
+   open-bridge shared shell — single file, fully offline.
+   Colour / type / space tokens lifted from DESIGN.md (Editorial
+   Minimalism) via landing/tokens.css. AA-correct text tokens
+   (--accent-text, --code-bg, --ok-text …) layered on top — these
+   are NOT in tokens.css and must be preserved.
+   No external fonts, no CDN, no network calls.
+   ============================================================ */
+
+:root{
+  /* ---- tokens.css (generated from DESIGN.md) ---- */
+  --ink:#111827; --muted:#6B7280;
+  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
+  --on-primary:#FFFFFF; --on-surface:#374151;
+  --line:#E5E7EB; --line-subtle:#F3F4F6;
+  --accent-from:#667EEA; --accent-to:#764BA2;
+  --accent:#6366F1; --accent-secondary:#8B5CF6;
+  --ok:#10B981; --info:#3B82F6;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+
+  /* ---- AA-correct text tokens (added on top of tokens.css) ---- */
+  --accent-text:#4F46E5;        /* links + the one accent word, AA on white */
+  --accent-soft:#EEF2FF;
+  --ok-text:#047857;            /* status text, AA */
+  --info-text:#1D4ED8;
+  --attention-text:#7C3AED;
+  --code-bg:#F9FAFB;
+
+  /* legacy aliases the markup uses */
+  --primary:var(--ink); --secondary:var(--muted);
+  --border:var(--line); --border-subtle:var(--line-subtle);
+  --on-surface-muted:var(--muted);
+  --success:var(--ok); --attention:var(--accent-secondary);
+  --feature-indigo-from:#4F46E5; --feature-indigo-to:#9333EA;
+  --mono:var(--font-mono);
+
+  /* shadows — whisper quiet */
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+
+  --section-y:96px;
+  --container:80rem; --hero-w:72rem; --prose-w:48rem;
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
+}
+
+html.dark{
+  --ink:#F9FAFB; --muted:#9CA3AF;
+  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
+  --on-surface:#D1D5DB;
+  --line:#374151; --line-subtle:#1F2937;
+  --accent-from:#A78BFA; --accent-to:#818CF8;
+  --accent:#818CF8;
+  --accent-text:#A78BFA;        /* AA on dark surfaces */
+  --accent-soft:#312E81;
+  --ok-text:#34D399;
+  --info-text:#93C5FD;
+  --attention-text:#C4B5FD;
+  --code-bg:#0B1220;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-sans);
+  background:var(--surface); color:var(--on-surface);
+  font-size:16px; line-height:1.6; font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:3px}
+
+/* ---- Language visibility (EN default) ---- */
+[data-lang]{display:none}
+html[data-active-lang="en"] [data-lang="en"]{display:revert}
+html[data-active-lang="de"] [data-lang="de"]{display:revert}
+/* inline variants keep inline display */
+:is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang]{display:none}
+html[data-active-lang="en"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="en"],
+html[data-active-lang="de"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="de"]{display:inline}
+
+.container{max-width:var(--container);margin:0 auto;padding-inline:24px}
+.prose{max-width:var(--prose-w);margin-inline:auto}
+
+/* ---- Typography ---- */
+h1,h2,h3,h4{color:var(--primary);letter-spacing:-0.02em}
+.display{font-size:clamp(38px,5.4vw,64px);font-weight:300;line-height:1.06;letter-spacing:-0.02em}
+.h1{font-size:clamp(30px,4.4vw,46px);font-weight:300;line-height:1.12}
+.h2{font-size:clamp(26px,3.6vw,34px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
+.h3{font-size:24px;font-weight:500;line-height:1.3;letter-spacing:-0.01em}
+.h4{font-size:20px;font-weight:500;line-height:1.4}
+.body-xl{font-size:20px;font-weight:300;line-height:1.6}
+.eyebrow{font-size:13px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
+.muted{color:var(--on-surface-muted)}
+a{color:var(--accent-text)}
+
+.text-gradient{
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+  font-weight:400;
+}
+
+/* ---- Toggles & header ---- */
+header.nav{
+  position:sticky;top:0;z-index:50;height:auto;min-height:64px;
+  display:flex;align-items:center;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap;text-decoration:none}
+.wordmark .text-gradient{font-weight:400}
+.nav-spacer{flex:1}
+.nav-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---- Site nav (Home / Explore / Concepts) — shell addition ----
+   Sits between the wordmark and the chips, in the same header grammar.
+   The .active link (driven by {{NAV_ACTIVE}} + aria-current="page") reads
+   as the brand accent; the others are quiet until hover. */
+.site-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.site-nav a{
+  font-size:14px;font-weight:500;line-height:1.2;text-decoration:none;
+  color:var(--secondary);padding:6px 12px;border-radius:var(--r-full);
+  transition:color .18s ease,background .18s ease;white-space:nowrap;
+}
+.site-nav a:hover{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active,
+.site-nav a[aria-current="page"]{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active{position:relative}
+.site-nav a.active::after{
+  content:"";position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+}
+@media (max-width:560px){
+  .site-nav a{padding:6px 9px;font-size:13px}
+}
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:400;line-height:1.2;
+  padding:5px 11px;border-radius:var(--r-full);
+  background:var(--surface-muted);color:var(--on-surface);
+  border:1px solid var(--border);white-space:nowrap;text-decoration:none;
+}
+a.chip{color:var(--on-surface)}
+a.chip:hover{color:var(--primary)}
+
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-full);overflow:hidden;background:var(--surface)}
+.seg button{
+  font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;
+  padding:5px 12px;border:none;background:transparent;color:var(--secondary);
+  transition:color .2s ease;
+}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--surface)}
+
+.icon-btn{
+  width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-full);background:var(--surface);
+  cursor:pointer;color:var(--secondary);padding:0;
+}
+.icon-btn:hover{color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.sun{display:none}
+html.dark .sun{display:block}
+html.dark .moon{display:none}
+
+/* ---- Buttons ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:16px;font-weight:500;line-height:1.25;
+  padding:14px 28px;border-radius:var(--r-md);border:1px solid transparent;
+  transition:transform .2s ease,background .2s ease,border-color .2s ease;
+}
+.btn svg{width:18px;height:18px}
+.btn-primary{background:var(--primary);color:var(--surface)}
+html.dark .btn-primary{background:var(--accent);color:#0B1220}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-secondary{background:var(--surface);color:var(--on-surface);border-color:var(--border)}
+.btn-secondary:hover{background:var(--surface-subtle)}
+.btn .arrow{transition:transform .2s ease}
+.btn:hover .arrow{transform:translateX(3px)}
+
+/* ---- Sections ---- */
+section{padding-block:var(--section-y)}
+.alt{background:var(--surface-subtle)}
+.sec-head{max-width:var(--prose-w);margin:0 auto 56px;text-align:center}
+.sec-head .h1{margin-top:14px}
+.sec-head p{margin-top:18px;font-size:18px;font-weight:300}
+
+/* ---- Generic cards ---- */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:32px;box-shadow:var(--shadow-soft);
+}
+
+/* ---- Footer ---- */
+footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;max-width:var(--container);margin:0 auto;padding-inline:24px}
+.foot-grid h4{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:var(--secondary);font-weight:600;margin-bottom:16px}
+.foot-grid a{color:var(--on-surface);text-decoration:none;font-size:14.5px;display:block;margin-bottom:9px}
+.foot-grid a:hover{color:var(--primary)}
+.foot-blurb{font-size:14px;color:var(--on-surface-muted);line-height:1.65}
+.foot-blurb .wordmark{font-size:20px;display:block;margin-bottom:14px}
+.license-table{margin-top:18px;font-size:13px;border-collapse:collapse;width:100%}
+.license-table td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);color:var(--on-surface);vertical-align:top}
+.license-table td a{display:inline}
+.foot-bottom{max-width:var(--container);margin:40px auto 0;padding:28px 24px 0;border-top:1px solid var(--border);
+  display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;font-size:13px;color:var(--secondary)}
+.roadmap{list-style:none;display:flex;flex-direction:column;gap:9px}
+.roadmap li{font-size:14px;color:var(--on-surface);display:flex;gap:9px}
+.roadmap li .ph{font-family:var(--mono);font-size:12px;color:var(--accent-text);flex:none}
+
+/* ---- Reveal on scroll ---- */
+.reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (max-width:860px){
+  .foot-grid{grid-template-columns:1fr}
+  .foot-grid>*{min-width:0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .reveal{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+}
+@media print{
+  html.dark{
+    --ink:#111827;--muted:#6B7280;--surface:#FFFFFF;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;
+    --on-surface:#374151;--line:#E5E7EB;--accent-from:#667EEA;--accent-to:#764BA2;--accent:#6366F1;
+    --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
+  }
+  *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  header.nav,.icon-btn,.seg,.copy-btn{display:none!important}
+  .reveal{opacity:1!important;transform:none!important}
+  section{padding-block:32px}
+}
+</style>
+
+<!-- ===================== EXPLORE — page-specific styles ===================== -->
+<style>
+/* ---- Group palette (the constellation's 6 clusters) — fixed, readable on the
+   near-black viz; legend swatches reuse them. These are visualization colors,
+   not brand tokens. ---- */
+:root{
+  --g-foundation:#818cf8; /* indigo  */
+  --g-method:#22d3ee;     /* cyan    */
+  --g-behaviour:#fbbf24;  /* amber   */
+  --g-identity:#f472b6;   /* pink    */
+  --g-infra:#4ade80;      /* green   */
+  --g-scale:#fb923c;      /* orange  */
+  --g-hub:#a78bfa;        /* violet — the central Bridge hub */
+}
+
+/* Intro */
+.explore-intro{padding-block:48px 8px}
+.explore-intro .eyebrow{margin-bottom:10px}
+.explore-intro .lead{font-size:18px;font-weight:300;max-width:46rem;margin-top:14px}
+.explore-intro .lead b{font-weight:500;color:var(--primary)}
+
+/* ---- The constellation stage: an immersive near-black viz panel that reads as
+   intentional in BOTH themes. Light mode: a deep slate that frames the graph;
+   dark mode: leans into the page's own near-black surface. Scoped so it never
+   bleeds into the rest of the page. ---- */
+.stage-wrap{padding-block:8px 64px}
+.stage{
+  position:relative;
+  --viz-bg-1:#0a0e1a; --viz-bg-2:#05070d;
+  --viz-line:rgba(148,163,184,.16);
+  --viz-line-dim:rgba(148,163,184,.05);
+  --viz-fg:#e5e7eb; --viz-fg-dim:#94a3b8; --viz-fg-muted:#64748b;
+  --viz-panel:rgba(15,20,33,.92); --viz-panel-border:rgba(148,163,184,.18);
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 42%, rgba(129,140,248,.12) 0%, rgba(5,7,13,0) 62%),
+    linear-gradient(180deg,var(--viz-bg-1),var(--viz-bg-2));
+  border:1px solid rgba(148,163,184,.16);
+  border-radius:var(--r-xl);
+  overflow:hidden;
+  box-shadow:var(--shadow-soft);
+}
+html.dark .stage{
+  --viz-bg-1:#0c1322; --viz-bg-2:#070b14;
+  border-color:var(--border);
+}
+
+/* layout: graph + side panel side by side on wide, stacked on narrow */
+.stage-grid{display:grid;grid-template-columns:1fr 320px;min-height:560px}
+@media (max-width:880px){
+  .stage-grid{grid-template-columns:1fr}
+}
+
+.graph-col{position:relative;min-width:0}
+.graph-svg{display:block;width:100%;height:100%;min-height:520px;touch-action:manipulation}
+
+/* SVG node-link styling */
+.edge{stroke:var(--viz-line);stroke-width:1;fill:none;transition:stroke .18s ease,stroke-width .18s ease,opacity .18s ease}
+.edge.dim{stroke:var(--viz-line-dim)}
+.edge.lit{stroke-width:1.8}
+.spoke{stroke:var(--viz-line);stroke-width:1;stroke-dasharray:2 4;fill:none;opacity:.6}
+.spoke.dim{opacity:.12}
+.spoke.lit{opacity:.9;stroke-dasharray:none;stroke-width:1.4}
+
+.node{cursor:pointer;outline:none}
+.node .halo{fill:none;opacity:0;transition:opacity .18s ease}
+.node .dot{transition:r .18s ease, fill-opacity .18s ease, stroke-width .18s ease}
+.node .lbl{
+  fill:var(--viz-fg);font-family:var(--font-sans);font-size:12px;font-weight:500;
+  paint-order:stroke;stroke:rgba(5,7,13,.85);stroke-width:3px;stroke-linejoin:round;
+  transition:fill .18s ease,opacity .18s ease;
+}
+.node.dim .dot{fill-opacity:.28}
+.node.dim .lbl{opacity:.3}
+.node.lit .lbl{fill:#fff}
+.node.lit .halo{opacity:.9}
+.node.sel .halo{opacity:1}
+.node:focus-visible .ring{opacity:1}
+.node .ring{fill:none;stroke:#fff;stroke-width:2;opacity:0;stroke-dasharray:3 3}
+
+/* hub */
+.hub-dot{transition:r .2s ease}
+.hub-pulse{fill:none;stroke:var(--g-hub);stroke-width:1.2;opacity:.5}
+@media (prefers-reduced-motion:no-preference){
+  .hub-pulse{animation:hubpulse 3.4s ease-out infinite}
+}
+@keyframes hubpulse{
+  0%{r:34px;opacity:.5} 70%{opacity:0} 100%{r:64px;opacity:0}
+}
+.hub-lbl{fill:#fff;font-family:var(--font-sans);font-weight:600;font-size:14px;text-anchor:middle}
+.hub-sub{fill:var(--viz-fg-dim);font-family:var(--font-mono);font-size:9.5px;text-anchor:middle;letter-spacing:.06em}
+
+/* in-svg group legend (wide screens) */
+.viz-legend{
+  position:absolute;left:14px;bottom:14px;z-index:3;
+  background:var(--viz-panel);border:1px solid var(--viz-panel-border);
+  border-radius:10px;padding:9px 12px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  max-width:220px;
+}
+.viz-legend h3{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--viz-fg-muted);margin:0 0 6px;font-weight:600}
+.viz-legend .lrow{display:flex;align-items:center;gap:8px;padding:2.5px 0;font-size:12px;color:var(--viz-fg-dim);cursor:pointer;border-radius:5px}
+.viz-legend .lrow:hover{color:var(--viz-fg)}
+.viz-legend .lrow.muted{opacity:.4}
+.viz-legend .sw{width:10px;height:10px;border-radius:3px;flex:none}
+.viz-hint{position:absolute;right:14px;top:14px;z-index:3;font-size:11px;color:var(--viz-fg-muted);
+  background:var(--viz-panel);border:1px solid var(--viz-panel-border);border-radius:var(--r-full);padding:5px 11px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.viz-hint kbd{font-family:var(--font-mono);font-size:10px;background:rgba(148,163,184,.18);border-radius:3px;padding:1px 5px;color:var(--viz-fg-dim)}
+@media (max-width:560px){.viz-legend,.viz-hint{display:none}}
+
+/* ---- Detail side panel (the payoff: click → learn) ---- */
+.detail{
+  border-left:1px solid var(--viz-panel-border);
+  background:linear-gradient(180deg,rgba(15,20,33,.55),rgba(7,11,20,.75));
+  padding:24px 22px;display:flex;flex-direction:column;gap:14px;color:var(--viz-fg);
+  min-width:0;
+}
+@media (max-width:880px){
+  .detail{border-left:none;border-top:1px solid var(--viz-panel-border)}
+}
+.detail .empty{color:var(--viz-fg-muted);font-size:14px;line-height:1.6}
+.detail .empty .big{display:block;font-size:15px;color:var(--viz-fg-dim);font-weight:500;margin-bottom:6px}
+.detail .d-group{display:inline-flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--viz-fg-dim);font-weight:600}
+.detail .d-group .sw{width:9px;height:9px;border-radius:3px;flex:none}
+.detail h2{font-size:22px;font-weight:400;letter-spacing:-0.01em;color:#fff;margin:0;line-height:1.2}
+.detail .d-short{font-size:14.5px;line-height:1.62;color:var(--viz-fg)}
+.detail .d-status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.04em;
+  padding:3px 9px;border-radius:var(--r-full);width:max-content}
+.detail .d-status.proven{color:#86efac;background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.3)}
+.detail .d-status.bet{color:#fcd34d;background:rgba(251,191,36,.14);border:1px solid rgba(251,191,36,.3)}
+.detail .d-learn{
+  margin-top:auto;display:inline-flex;align-items:center;gap:8px;align-self:flex-start;
+  text-decoration:none;font-size:14px;font-weight:500;color:#c7d2fe;
+  padding:10px 16px;border-radius:var(--r-md);border:1px solid rgba(148,163,184,.28);
+  background:rgba(129,140,248,.12);transition:background .18s ease,border-color .18s ease,transform .18s ease;
+}
+.detail .d-learn:hover{background:rgba(129,140,248,.22);border-color:rgba(129,140,248,.5);transform:translateY(-1px)}
+.detail .d-learn .arrow{transition:transform .18s ease}
+.detail .d-learn:hover .arrow{transform:translateX(3px)}
+.detail .d-rel{font-size:12px;color:var(--viz-fg-muted)}
+.detail .d-rel b{color:var(--viz-fg-dim);font-weight:600;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em;font-size:10px}
+.detail .d-rel .rchip{display:inline-block;font-size:11.5px;color:var(--viz-fg-dim);background:rgba(148,163,184,.12);
+  border:1px solid rgba(148,163,184,.18);border-radius:var(--r-full);padding:3px 9px;margin:0 5px 5px 0;cursor:pointer;transition:color .15s ease,background .15s ease}
+.detail .d-rel .rchip:hover{color:#fff;background:rgba(129,140,248,.22)}
+
+/* ---- Mobile fallback: a grouped, tappable list of concepts that still links to
+   concepts.html#<id>. Shown only on narrow viewports where the SVG is too dense
+   to tap reliably. The SVG stays for wider phones/tablets. ---- */
+.concept-list{display:none}
+@media (max-width:560px){
+  .stage-wrap .stage{display:none}
+  .concept-list{display:block;margin-top:8px}
+}
+.cl-group{margin-bottom:26px}
+.cl-group h3{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--secondary);margin-bottom:12px}
+.cl-group h3 .sw{width:11px;height:11px;border-radius:3px;flex:none}
+.cl-card{
+  display:block;text-decoration:none;color:inherit;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:16px 18px;margin-bottom:10px;box-shadow:var(--shadow-soft);
+  border-left:3px solid var(--cl-accent,var(--accent));
+}
+.cl-card:active{background:var(--surface-subtle)}
+.cl-card .cl-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cl-card h4{font-size:16px;font-weight:600;color:var(--primary);margin:0}
+.cl-card .cl-st{font-size:10px;font-weight:600;letter-spacing:.04em;padding:2px 8px;border-radius:var(--r-full);flex:none}
+.cl-card .cl-st.proven{color:var(--ok-text);background:rgba(16,185,129,.12)}
+.cl-card .cl-st.bet{color:var(--attention-text);background:rgba(139,92,246,.12)}
+.cl-card p{font-size:13.5px;line-height:1.55;color:var(--on-surface);margin:8px 0 0}
+.cl-card .cl-go{font-size:12.5px;font-weight:500;color:var(--accent-text);margin-top:10px;display:inline-block}
+
+/* skip the dense intro padding on tiny screens */
+@media (max-width:560px){.explore-intro{padding-block:32px 0}.stage-wrap{padding-block:0 40px}}
+</style>
+</head>
+<body>
+
+<!-- ======================= STICKY HEADER (shared) ======================= -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="explore.html" class="active" aria-current="page"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="nav-chips">
+      <a class="chip" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="chip" href="index.html#license" aria-label="MIT license">MIT</a>
+      <div class="seg" role="group" aria-label="Language / Sprache">
+        <button id="lang-en" type="button" aria-pressed="true" title="Toggle language — press L">EN</button>
+        <button id="lang-de" type="button" aria-pressed="false" title="Sprache umschalten — Taste L">DE</button>
+      </div>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================ PAGE CONTENT ============================ -->
+<main>
+
+  <!-- Intro -->
+  <div class="container explore-intro">
+    <div class="eyebrow"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></div>
+    <h1 class="h1"><span data-lang="en">The pieces, on one map</span><span data-lang="de">Die Bausteine, auf einer Karte</span></h1>
+    <p class="lead">
+      <span data-lang="en">Every concept in open-bridge orbits one idea: a <b>bridge</b> — plain files your agent reads. Click any node to learn what it does, then follow <b>Learn more</b> into the deep dive.</span>
+      <span data-lang="de">Jedes Konzept in open-bridge kreist um eine Idee: eine <b>Bridge</b> — schlichte Dateien, die dein Agent liest. Klick auf einen Knoten, um zu erfahren, was er tut, und folge <b>Mehr erfahren</b> in den Detailteil.</span>
+    </p>
+  </div>
+
+  <!-- Constellation stage -->
+  <div class="container stage-wrap">
+    <div class="stage" id="stage">
+      <div class="stage-grid">
+        <div class="graph-col">
+          <svg class="graph-svg" id="graph" viewBox="-70 0 900 620" preserveAspectRatio="xMidYMid meet"
+               role="application"
+               aria-label="Interactive concept constellation. Use Tab to move between concepts, Enter to open a concept's summary.">
+            <!-- edges, spokes, hub, nodes injected by script -->
+          </svg>
+
+          <div class="viz-legend" id="legend" aria-hidden="true">
+            <h3><span data-lang="en">Groups</span><span data-lang="de">Gruppen</span></h3>
+            <!-- legend rows injected -->
+          </div>
+          <div class="viz-hint" aria-hidden="true">
+            <span data-lang="en">Click a node · <kbd>Tab</kbd>+<kbd>↵</kbd></span>
+            <span data-lang="de">Knoten klicken · <kbd>Tab</kbd>+<kbd>↵</kbd></span>
+          </div>
+        </div>
+
+        <!-- Detail panel -->
+        <aside class="detail" id="detail" aria-live="polite">
+          <div class="empty" id="detail-empty">
+            <span class="big" data-lang="en">Pick a concept</span>
+            <span class="big" data-lang="de">Wähle ein Konzept</span>
+            <span data-lang="en">Click any node in the map — or focus one with the keyboard and press Enter — to read a plain-language summary here, with a link into the full write-up.</span>
+            <span data-lang="de">Klick auf einen Knoten in der Karte — oder fokussiere einen per Tastatur und drück Enter — um hier eine verständliche Zusammenfassung zu lesen, mit Link zum vollständigen Text.</span>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- Mobile fallback: grouped tappable list (injected). -->
+    <div class="concept-list" id="concept-list" aria-label="Concepts list"></div>
+  </div>
+
+</main>
+<!-- ========================== END PAGE CONTENT ============================== -->
+
+<!-- ======================= FOOTER (shared) ======================= -->
+<footer id="license">
+  <div class="foot-grid">
+    <div class="foot-blurb">
+      <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — ein kleines Team — und genutzt, um es zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
+      <table class="license-table">
+        <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
+        <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
+      </table>
+      <p class="cap muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. <span data-lang="en">Licenses cover copyright, not brands.</span><span data-lang="de">Lizenzen decken Copyright ab, nicht Marken.</span> <span data-lang="en">Contributions require a DCO sign-off (</span><span data-lang="de">Beiträge erfordern einen DCO-Sign-off (</span><code>git commit -s</code>).</p>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Explore</h4>
+      <h4 data-lang="de">Erkunden</h4>
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="explore.html"><span data-lang="en">Explore the concepts</span><span data-lang="de">Konzepte erkunden</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts in depth</span><span data-lang="de">Konzepte im Detail</span></a>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Links</h4>
+      <h4 data-lang="de">Links</h4>
+      <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/README.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/examples/agency" target="_blank" rel="noopener"><span data-lang="en">Example workspace</span><span data-lang="de">Beispiel-Workspace</span></a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+    </div>
+  </div>
+
+  <div class="foot-bottom">
+    <span data-lang="en">Public · MIT · no waitlist · newly released</span>
+    <span data-lang="de">Public · MIT · keine Warteliste · frisch veröffentlicht</span>
+    <a class="btn btn-secondary" style="padding:10px 20px;font-size:14px" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+      <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
+      <span class="arrow">→</span>
+    </a>
+  </div>
+</footer>
+
+<!-- ===================== Shared page controller (T / L / reveal) ===================== -->
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+
+  function applyTheme(mode){
+    if(mode === "dark"){ root.classList.add("dark"); }
+    else { root.classList.remove("dark"); }
+  }
+  function toggleTheme(){
+    var next = root.classList.contains("dark") ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("ob-theme", next); } catch(e){}
+  }
+  var themeBtn = document.getElementById("theme-toggle");
+  if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
+
+  function applyLang(lang){
+    root.setAttribute("data-active-lang", lang);
+    root.setAttribute("lang", lang);
+    var en = document.getElementById("lang-en");
+    var de = document.getElementById("lang-de");
+    if(en){ en.setAttribute("aria-pressed", lang === "en" ? "true" : "false"); }
+    if(de){ de.setAttribute("aria-pressed", lang === "de" ? "true" : "false"); }
+  }
+  applyLang(root.getAttribute("data-active-lang") === "de" ? "de" : "en");
+  function setLang(lang){
+    applyLang(lang);
+    try { localStorage.setItem("ob-lang", lang); } catch(e){}
+    document.dispatchEvent(new CustomEvent("ob-lang-change", {detail:{lang:lang}}));
+  }
+  var enBtn = document.getElementById("lang-en");
+  var deBtn = document.getElementById("lang-de");
+  if(enBtn){ enBtn.addEventListener("click", function(){ setLang("en"); }); }
+  if(deBtn){ deBtn.addEventListener("click", function(){ setLang("de"); }); }
+
+  document.addEventListener("keydown", function(ev){
+    if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
+    if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
+    var k = ev.key.toLowerCase();
+    if(k === "t"){ toggleTheme(); }
+    if(k === "l"){ setLang(root.getAttribute("data-active-lang") === "en" ? "de" : "en"); }
+  });
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); });
+  }
+})();
+</script>
+
+<!-- ===================== EXPLORE — page-specific script ===================== -->
+<script>
+(function(){
+  "use strict";
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var root = document.documentElement;
+  function L(){ return root.getAttribute("data-active-lang") === "de" ? "de" : "en"; }
+
+  /* ---- Concept inventory (PII-free; verbatim from the project brief) ---- */
+  var GROUPS = [
+    {id:"foundation", label_en:"Foundation",            label_de:"Fundament",               color:"var(--g-foundation)"},
+    {id:"method",     label_en:"Method & Promises",     label_de:"Methode & Versprechen",   color:"var(--g-method)"},
+    {id:"behaviour",  label_en:"Behaviour Layer",       label_de:"Verhaltensschicht",       color:"var(--g-behaviour)"},
+    {id:"identity",   label_en:"Identity & Recipients", label_de:"Identität & Empfänger",   color:"var(--g-identity)"},
+    {id:"infra",      label_en:"Infrastructure",        label_de:"Infrastruktur",           color:"var(--g-infra)"},
+    {id:"scale",      label_en:"Scale & Sharing",       label_de:"Skalierung & Teilen",     color:"var(--g-scale)"}
+  ];
+  var CONCEPTS = [
+    {id:"bridge",label_en:"Bridge",label_de:"Bridge",group:"foundation",status:"proven",short_en:"A bridge is your agent's memory of your world — a plain folder of markdown and YAML in git that the agent reads at the start of every session.",short_de:"Eine Bridge ist das Gedächtnis deines Agenten für deine Welt — ein schlichter Ordner aus Markdown und YAML in Git, den der Agent zu Beginn jeder Session liest.",connects:["substrate","context-booster","chaos-tamer","core-user-split","multi-bridge","skills","standing-orders","ecosystem-registry"]},
+    {id:"substrate",label_en:"Substrate (plain files in git)",label_de:"Substrat (schlichte Dateien in Git)",group:"foundation",status:"proven",short_en:"Everything is plain text — markdown and YAML in a git repo. No database, no SaaS. Agents can read a file but can't hold an API key.",short_de:"Alles ist Klartext — Markdown und YAML in einem Git-Repo. Keine Datenbank, kein SaaS. Agenten können eine Datei lesen, aber keinen API-Key halten.",connects:["bridge","core-user-split","memory","scope-promote"]},
+    {id:"context-booster",label_en:"Context Booster",label_de:"Context Booster",group:"method",status:"proven",short_en:"An independent layer of context the agent always reads — a third side beside your model and your tool — so it stops asking who you are and which client you're on.",short_de:"Eine unabhängige Kontextschicht, die der Agent stets liest — eine dritte Seite neben deinem Modell und deinem Tool — damit er nicht mehr fragt, wer du bist und welcher Kunde gerade dran ist.",connects:["bridge","standing-orders","ecosystem-registry","chaos-tamer","skills"]},
+    {id:"chaos-tamer",label_en:"Chaos Tamer (work-system)",label_de:"Chaos-Bändiger (Work-System)",group:"method",status:"proven",short_en:"Tames the My-Documents chaos of AI work: it holds a structure (board, daily log, per-task status), files knowledge as you go, and keeps the work from drifting.",short_de:"Bändigt das My-Documents-Chaos der KI-Arbeit: hält eine Struktur (Board, Tageslog, Status pro Task), legt Wissen laufend ab und verhindert, dass die Arbeit verfranst.",connects:["bridge","work-system","memory","context-booster","workspace-separation"]},
+    {id:"work-system",label_en:"Work-System (board, log, tasks)",label_de:"Work-System (Board, Log, Tasks)",group:"method",status:"proven",short_en:"A generated board, a daily log, and per-task STATUS files. Status is a closed enum (backlog → doing → review → done); the folder encodes finite vs long-running.",short_de:"Ein generiertes Board, ein Tageslog und STATUS-Dateien pro Task. Der Status ist ein geschlossenes Enum (backlog → doing → review → done); der Ordner kodiert endlich vs. Dauerläufer.",connects:["chaos-tamer","bridge","standing-orders","ecosystem-registry"]},
+    {id:"core-user-split",label_en:"CORE/USER split",label_de:"CORE/USER-Trennung",group:"foundation",status:"proven",short_en:"Two branches split shipped templates from your private data. They touch different paths, so merges never conflict and your credentials never land on the shared branch.",short_de:"Zwei Branches trennen ausgelieferte Templates von deinen privaten Daten. Sie berühren verschiedene Pfade — Merges kollidieren nie, deine Credentials landen nie im geteilten Branch.",connects:["bridge","substrate","scope-promote","multi-bridge","skills"]},
+    {id:"scope-promote",label_en:"Scope & promote",label_de:"Scope & Promote",group:"foundation",status:"proven",short_en:"Every file's tier (core / org / user) is decided by where it lives, not a tag you can forget. /promote reads the scope and routes changes to the right upstream.",short_de:"Die Stufe jeder Datei (core / org / user) ergibt sich daraus, wo sie liegt — nicht aus einem Tag, das man vergessen kann. /promote liest den Scope und routet Änderungen zum richtigen Upstream.",connects:["core-user-split","substrate","skills","multi-bridge","ecosystem-registry"]},
+    {id:"skills",label_en:"Skills",label_de:"Skills",group:"behaviour",status:"proven",short_en:"The model-agnostic verbs over the substrate. One skills tree, symlinked into the paths Claude Code, Codex, Copilot CLI, and Cursor each scan — so the same skill loads in any tool.",short_de:"Die modell-agnostischen Verben über dem Substrat. Ein Skills-Baum, per Symlink in die Pfade gelegt, die Claude Code, Codex, Copilot CLI und Cursor scannen — derselbe Skill lädt in jedem Tool.",connects:["bridge","sub-agents","standing-orders","scope-promote","context-booster"]},
+    {id:"sub-agents",label_en:"Sub-agents",label_de:"Sub-Agenten",group:"behaviour",status:"proven",short_en:"Ephemeral helpers that offload heavy or parallel work into an isolated context and return a structured summary, so raw output never fills the main session.",short_de:"Ephemere Helfer, die schwere oder parallele Arbeit in einen isolierten Kontext auslagern und eine strukturierte Zusammenfassung zurückgeben — Roh-Output füllt nie die Hauptsession.",connects:["skills","bridge","personas","standing-orders"]},
+    {id:"standing-orders",label_en:"Standing orders",label_de:"Standing Orders",group:"behaviour",status:"proven",short_en:"Always-on rules that ride into every prompt — code-style rules, security baselines, logging habits — which a static CLAUDE.md can't do per context.",short_de:"Stets aktive Regeln, die in jeden Prompt einfließen — Code-Stil, Security-Baselines, Logging-Gewohnheiten — was eine statische CLAUDE.md kontextabhängig nicht leisten kann.",connects:["context-booster","skills","sub-agents","work-system","bridge"]},
+    {id:"personas",label_en:"Personas",label_de:"Personas",group:"identity",status:"proven",short_en:"Self-identities you hold — freelancer, company director, private citizen. Each carries tax data, signatures, and document-filing destinations. Personas are who I AM.",short_de:"Selbst-Identitäten, die du innehast — Freelancer, Geschäftsführer, Privatperson. Jede trägt Steuerdaten, Signaturen und Ablageziele für Dokumente. Personas sind, wer ich BIN.",connects:["mandants","sub-agents","bridge","scope-promote"]},
+    {id:"mandants",label_en:"Mandants (recipient groups)",label_de:"Mandanten (Empfängergruppen)",group:"identity",status:"proven",short_en:"Named groups of people who receive scheduled messages — your team, family, friends, clients. An addressbook organised by relationship type. Mandants are who I SEND TO.",short_de:"Benannte Personengruppen, die geplante Nachrichten erhalten — Team, Familie, Freunde, Kunden. Ein Adressbuch nach Beziehungstyp. Mandanten sind, an wen ich SENDE.",connects:["personas","channels","bridge"]},
+    {id:"channels",label_en:"Channels",label_de:"Channels (Kanäle)",group:"infra",status:"proven",short_en:"Outbound messaging transports — email, Telegram, Signal, iMessage. A USER-scope capability you turn on when you want it; each channel's runtime usually sits on a remote.",short_de:"Ausgehende Nachrichten-Transporte — E-Mail, Telegram, Signal, iMessage. Eine USER-Capability, die du bei Bedarf aktivierst; die Laufzeit jedes Channels liegt meist auf einem Remote.",connects:["remotes","mandants","bridge"]},
+    {id:"remotes",label_en:"Remotes",label_de:"Remotes (Maschinen)",group:"infra",status:"proven",short_en:"Your machine inventory — physical or virtual boxes reachable over SSH that run services for your bridge. In Bridge terms, a remote is a machine, not a git remote.",short_de:"Dein Maschinen-Inventar — physische oder virtuelle Rechner über SSH erreichbar, die Dienste für deine Bridge betreiben. In Bridge-Sprache ist ein Remote eine Maschine, kein Git-Remote.",connects:["channels","bridge"]},
+    {id:"ecosystem-registry",label_en:"Ecosystem registry",label_de:"Ecosystem-Registry",group:"method",status:"proven",short_en:"The single source of truth for your repos, infrastructure, and workspaces — one lean YAML the agent reads every session so it knows your world without being told.",short_de:"Die einzige Wahrheitsquelle für deine Repos, Infrastruktur und Workspaces — eine schlanke YAML, die der Agent jede Session liest, um deine Welt ohne Ansage zu kennen.",connects:["context-booster","bridge","scope-promote","work-system"]},
+    {id:"multi-bridge",label_en:"Multi-bridge / instances",label_de:"Multi-Bridge / Instanzen",group:"scale",status:"proven",short_en:"Run several bridges side by side — one per client, team, or context. All share one CORE foundation that updates once for everyone; each keeps its private data separate.",short_de:"Mehrere Bridges nebeneinander betreiben — eine pro Kunde, Team oder Kontext. Alle teilen ein CORE-Fundament, das einmal für alle aktualisiert; jede hält ihre privaten Daten getrennt.",connects:["bridge","core-user-split","scope-promote","workspace-separation"]},
+    {id:"workspace-separation",label_en:"Workspace separation (default)",label_de:"Workspace-Trennung (Default)",group:"scale",status:"bet",short_en:"The intended default: tasks kept separate per context, no information bleeding between engagements — with the rule “if you can't place it into your known world-models, ask.”",short_de:"Der angestrebte Default: Tasks pro Kontext getrennt, kein Durchsickern von Information zwischen Mandaten — mit der Regel “wenn du es keinem bekannten Weltmodell zuordnen kannst, frag.”",connects:["chaos-tamer","multi-bridge","work-system"]},
+    {id:"memory",label_en:"Memory",label_de:"Memory (Gedächtnis)",group:"method",status:"proven",short_en:"A persistent, file-based experience store — one durable fact per file, with a lean MEMORY.md index loaded every session. Durable facts the agent recalls later, not a session log.",short_de:"Ein persistenter, datei-basierter Erfahrungsspeicher — ein dauerhafter Fakt pro Datei, mit einem schlanken MEMORY.md-Index, der jede Session geladen wird. Dauerfakten, kein Session-Log.",connects:["substrate","chaos-tamer","work-system","bridge"]}
+  ];
+
+  var byId = {};
+  CONCEPTS.forEach(function(c){ byId[c.id] = c; });
+  var groupById = {};
+  GROUPS.forEach(function(g){ groupById[g.id] = g; });
+
+  var STATUS_T = {
+    proven:{en:"Shipped & self-used", de:"Ausgeliefert & selbst genutzt"},
+    bet:{en:"Bet · open question",    de:"Wette · offene Frage"}
+  };
+
+  /* ===================== Layout: central hub + radial groups ===================== */
+  var VB = {w:760, h:620};
+  var CX = VB.w/2, CY = VB.h/2 - 6;
+  var svg = document.getElementById("graph");
+
+  // Order concepts by group, group concepts contiguous so clusters arc together.
+  // "bridge" is the hub — it is rendered at center, NOT as an orbit node.
+  var orbit = CONCEPTS.filter(function(c){ return c.id !== "bridge"; });
+
+  // group ordering for a pleasant arc (clusters around the ring)
+  var groupOrder = ["foundation","method","behaviour","identity","infra","scale"];
+  orbit.sort(function(a,b){
+    var ga = groupOrder.indexOf(a.group), gb = groupOrder.indexOf(b.group);
+    if(ga !== gb) return ga - gb;
+    return 0;
+  });
+
+  // Two-ring distribution to keep 17 nodes legible.
+  // Place each node at an angle spread evenly; alternate radius slightly per index
+  // within crowded arcs is overkill — use a single ring with radius adapted to count,
+  // but push a few to an inner ring to avoid label collisions.
+  var N = orbit.length;
+  var Rout = 232, Rin = 150;
+  // assign positions
+  var pos = {}; // id -> {x,y,angle,r}
+  // give the hub
+  pos["bridge"] = {x:CX, y:CY, angle:0, r:0, hub:true};
+
+  // angle per node, starting at top (-90deg) going clockwise
+  orbit.forEach(function(c, i){
+    var angle = -90 + (360 / N) * i;
+    // alternate inner/outer ring so no two adjacent nodes share a ring —
+    // keeps neighbouring labels from colliding (their dots sit at different radii)
+    var r = (i % 2 === 1) ? Rin : Rout;
+    var rad = (angle) * Math.PI / 180;
+    pos[c.id] = {
+      x: CX + r * Math.cos(rad),
+      y: CY + r * Math.sin(rad),
+      angle: angle, r: r
+    };
+  });
+
+  function groupColor(gid){ return groupById[gid] ? groupById[gid].color : "var(--g-method)"; }
+
+  /* ---- Build edges (unique pairs from connects), but draw hub spokes separately ---- */
+  var edgeSet = {};
+  var edges = [];
+  CONCEPTS.forEach(function(c){
+    (c.connects||[]).forEach(function(t){
+      if(c.id === "bridge" || t === "bridge") return; // hub handled by spokes
+      if(!byId[t]) return;
+      var key = [c.id,t].sort().join("|");
+      if(edgeSet[key]) return;
+      edgeSet[key] = true;
+      edges.push({a:c.id, b:t});
+    });
+  });
+  // adjacency for highlight
+  var adj = {};
+  CONCEPTS.forEach(function(c){ adj[c.id] = {}; });
+  edges.forEach(function(e){ adj[e.a][e.b]=true; adj[e.b][e.a]=true; });
+  // hub adjacency: bridge connects to everything in its connects list
+  var hubConnects = (byId["bridge"].connects||[]);
+  hubConnects.forEach(function(t){ if(adj[t]){ adj[t]["bridge"]=true; } });
+  adj["bridge"] = {};
+  hubConnects.forEach(function(t){ adj["bridge"][t]=true; });
+
+  function mk(tag, attrs){
+    var el = document.createElementNS(SVGNS, tag);
+    if(attrs){ for(var k in attrs){ el.setAttribute(k, attrs[k]); } }
+    return el;
+  }
+
+  // groups for z-order
+  var gEdges = mk("g",{class:"edges"});
+  var gSpokes = mk("g",{class:"spokes"});
+  var gNodes = mk("g",{class:"nodes"});
+  svg.appendChild(gSpokes);
+  svg.appendChild(gEdges);
+  svg.appendChild(gNodes);
+
+  // hub spokes (bridge -> each connected orbit node)
+  var spokeEl = {}; // id -> line
+  hubConnects.forEach(function(t){
+    if(!pos[t]) return;
+    var ln = mk("line",{class:"spoke", x1:CX, y1:CY, x2:pos[t].x.toFixed(1), y2:pos[t].y.toFixed(1)});
+    ln.dataset.a = "bridge"; ln.dataset.b = t;
+    gSpokes.appendChild(ln);
+    spokeEl[t] = ln;
+  });
+
+  // concept-concept edges
+  var edgeEls = [];
+  edges.forEach(function(e){
+    var pa = pos[e.a], pb = pos[e.b];
+    if(!pa || !pb) return;
+    var ln = mk("line",{class:"edge", x1:pa.x.toFixed(1), y1:pa.y.toFixed(1), x2:pb.x.toFixed(1), y2:pb.y.toFixed(1)});
+    ln.dataset.a = e.a; ln.dataset.b = e.b;
+    gEdges.appendChild(ln);
+    edgeEls.push(ln);
+  });
+
+  /* ---- Hub node (Bridge) ---- */
+  var hubG = mk("g",{class:"node hub", "data-id":"bridge", tabindex:"0", role:"button"});
+  hubG.setAttribute("aria-label", "Bridge — the central concept");
+  var hubPulse = mk("circle",{class:"hub-pulse", cx:CX, cy:CY, r:34});
+  var hubDot = mk("circle",{class:"hub-dot", cx:CX, cy:CY, r:30, fill:"var(--g-hub)", "fill-opacity":"0.16", stroke:"var(--g-hub)", "stroke-width":"2"});
+  var hubRing = mk("circle",{class:"ring", cx:CX, cy:CY, r:38});
+  var hubLbl = mk("text",{class:"hub-lbl", x:CX, y:CY-1}); hubLbl.textContent = "Bridge";
+  var hubSub = mk("text",{class:"hub-sub", x:CX, y:CY+13}); hubSub.textContent = "core idea";
+  hubG.appendChild(hubPulse); hubG.appendChild(hubDot); hubG.appendChild(hubRing);
+  hubG.appendChild(hubLbl); hubG.appendChild(hubSub);
+  gNodes.appendChild(hubG);
+
+  /* ---- Orbit nodes ---- */
+  var nodeEls = {}; // id -> g
+  orbit.forEach(function(c){
+    var p = pos[c.id];
+    var col = groupColor(c.group);
+    var g = mk("g",{class:"node", "data-id":c.id, "data-group":c.group, tabindex:"0", role:"button"});
+    g.setAttribute("aria-label", (c["label_"+L()]||c.label_en));
+
+    var halo = mk("circle",{class:"halo", cx:p.x.toFixed(1), cy:p.y.toFixed(1), r:"16", fill:col, "fill-opacity":"0.18", stroke:col, "stroke-width":"1.5"});
+    var dot = mk("circle",{class:"dot", cx:p.x.toFixed(1), cy:p.y.toFixed(1), r: c.status==="bet" ? "7" : "8", fill:col, "fill-opacity":"0.92", stroke: c.status==="bet" ? col : "rgba(255,255,255,.35)", "stroke-width": c.status==="bet" ? "1.5" : "1", "stroke-dasharray": c.status==="bet" ? "2 2" : "0"});
+    var ring = mk("circle",{class:"ring", cx:p.x.toFixed(1), cy:p.y.toFixed(1), r:"14"});
+
+    // label placement — outside the dot, anchored by side of the graph.
+    // On the crowded top/bottom arcs, inner-ring nodes flip their label to the
+    // opposite side of their dot so neighbouring labels never stack on each other.
+    var anchor = "middle", dx = 0, dy = -14;
+    var an = ((p.angle % 360)+360)%360;
+    var inner = (p.r === Rin);
+    if(an > 25 && an < 155){ anchor = "middle"; dy = inner ? -14 : 22; }      // bottom arc
+    else if(an >= 155 && an <= 205){ anchor = "end"; dx = -13; dy = 4; }      // left
+    else if(an > 205 && an < 335){ anchor = "middle"; dy = inner ? 22 : -14; }// top arc
+    else { anchor = "start"; dx = 13; dy = 4; }                               // right
+    if(an > 340 || an < 20){ anchor = "start"; dx = 13; dy = 4; }             // near pure right
+
+    var lbl = mk("text",{class:"lbl", x:(p.x+dx).toFixed(1), y:(p.y+dy).toFixed(1), "text-anchor":anchor});
+    lbl.textContent = (c["label_"+L()]||c.label_en);
+    lbl.dataset.id = c.id;
+
+    g.appendChild(halo); g.appendChild(ring); g.appendChild(dot); g.appendChild(lbl);
+    gNodes.appendChild(g);
+    nodeEls[c.id] = g;
+  });
+
+  /* ===================== Highlight + select ===================== */
+  var selected = null;
+
+  function relatedSet(id){
+    var s = {}; s[id]=true;
+    for(var k in adj[id]){ s[k]=true; }
+    return s;
+  }
+
+  function applyHover(id){
+    if(selected) return; // selection takes precedence; hover only when nothing selected
+    if(!id){ clearHi(); return; }
+    var rel = relatedSet(id);
+    setHi(id, rel);
+  }
+  function setHi(focusId, rel){
+    // nodes
+    Object.keys(nodeEls).forEach(function(nid){
+      var el = nodeEls[nid];
+      el.classList.toggle("lit", rel[nid]);
+      el.classList.toggle("dim", !rel[nid]);
+      el.classList.toggle("sel", nid === focusId && !!selected);
+    });
+    hubG.classList.toggle("lit", rel["bridge"]);
+    hubG.classList.toggle("dim", !rel["bridge"]);
+    hubG.classList.toggle("sel", focusId === "bridge" && !!selected);
+    // edges
+    edgeEls.forEach(function(ln){
+      var on = (ln.dataset.a===focusId || ln.dataset.b===focusId);
+      ln.classList.toggle("lit", on);
+      ln.classList.toggle("dim", !on);
+    });
+    Object.keys(spokeEl).forEach(function(t){
+      var ln = spokeEl[t];
+      var on = (focusId==="bridge") || (t===focusId);
+      ln.classList.toggle("lit", on);
+      ln.classList.toggle("dim", !on);
+    });
+  }
+  function clearHi(){
+    Object.keys(nodeEls).forEach(function(nid){
+      nodeEls[nid].classList.remove("lit","dim","sel");
+    });
+    hubG.classList.remove("lit","dim","sel");
+    edgeEls.forEach(function(ln){ ln.classList.remove("lit","dim"); });
+    Object.keys(spokeEl).forEach(function(t){ spokeEl[t].classList.remove("lit","dim"); });
+  }
+
+  /* ---- Detail panel ---- */
+  var detail = document.getElementById("detail");
+  var detailEmpty = document.getElementById("detail-empty");
+
+  function renderDetail(id){
+    var c = (id==="bridge") ? byId["bridge"] : byId[id];
+    if(!c){ return; }
+    var lang = L();
+    var g = groupById[c.group];
+    var statusCls = c.status === "bet" ? "bet" : "proven";
+    var statusTxt = STATUS_T[c.status] ? STATUS_T[c.status][lang] : "";
+    var learnEn = "Learn more", learnDe = "Mehr erfahren";
+
+    // related chips (limit for tidiness)
+    var rel = (c.connects||[]).filter(function(t){ return byId[t]; });
+    var relHtml = rel.map(function(t){
+      var rc = byId[t];
+      return '<span class="rchip" data-jump="'+t+'">'+esc(rc["label_"+lang]||rc.label_en)+'</span>';
+    }).join("");
+
+    detail.innerHTML =
+      '<span class="d-group"><span class="sw" style="background:'+g.color+'"></span>'+esc(g["label_"+lang]||g.label_en)+'</span>'+
+      '<h2>'+esc(c["label_"+lang]||c.label_en)+'</h2>'+
+      '<span class="d-status '+statusCls+'">'+esc(statusTxt)+'</span>'+
+      '<p class="d-short">'+esc(c["short_"+lang]||c.short_en)+'</p>'+
+      '<div class="d-rel"><b>'+(lang==="de"?"Verbindet mit":"Connects to")+'</b>'+relHtml+'</div>'+
+      '<a class="d-learn" href="concepts.html#'+c.id+'">'+
+        '<span>'+(lang==="de"?learnDe:learnEn)+'</span><span class="arrow">→</span>'+
+      '</a>';
+
+    // wire related chips to jump-select
+    detail.querySelectorAll(".rchip").forEach(function(ch){
+      ch.addEventListener("click", function(){ selectNode(ch.getAttribute("data-jump"), true); });
+    });
+  }
+
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function selectNode(id, focusEl){
+    selected = id;
+    var rel = relatedSet(id);
+    setHi(id, rel);
+    renderDetail(id);
+    if(focusEl){
+      var el = (id==="bridge") ? hubG : nodeEls[id];
+      if(el && el.focus){ try{ el.focus(); }catch(e){} }
+    }
+  }
+  function deselect(){
+    selected = null;
+    clearHi();
+    // restore empty state
+    detail.innerHTML = "";
+    detail.appendChild(detailEmpty);
+  }
+
+  /* ---- Wire node events ---- */
+  function wireNode(el, id){
+    el.addEventListener("mouseenter", function(){ applyHover(id); });
+    el.addEventListener("mouseleave", function(){ if(!selected) clearHi(); });
+    el.addEventListener("click", function(){ selectNode(id, false); });
+    el.addEventListener("keydown", function(ev){
+      if(ev.key === "Enter" || ev.key === " "){
+        ev.preventDefault(); selectNode(id, false);
+      } else if(ev.key === "Escape"){
+        deselect();
+      }
+    });
+    el.addEventListener("focus", function(){ applyHover(id); });
+    el.addEventListener("blur", function(){ if(!selected) clearHi(); });
+  }
+  Object.keys(nodeEls).forEach(function(id){ wireNode(nodeEls[id], id); });
+  wireNode(hubG, "bridge");
+
+  // click empty stage background to deselect
+  svg.addEventListener("click", function(ev){
+    if(ev.target === svg){ deselect(); }
+  });
+
+  /* ===================== Legend ===================== */
+  var legend = document.getElementById("legend");
+  var hiddenGroups = {};
+  function buildLegend(){
+    var lang = L();
+    // keep the heading row
+    var head = legend.querySelector("h3");
+    legend.innerHTML = "";
+    legend.appendChild(head);
+    GROUPS.forEach(function(g){
+      var row = document.createElement("div");
+      row.className = "lrow" + (hiddenGroups[g.id] ? " muted" : "");
+      row.setAttribute("data-group", g.id);
+      row.innerHTML = '<span class="sw" style="background:'+g.color+'"></span>'+esc(g["label_"+lang]||g.label_en);
+      row.addEventListener("click", function(){ toggleGroup(g.id); });
+      // hover the legend row to highlight that group's nodes
+      row.addEventListener("mouseenter", function(){ hoverGroup(g.id); });
+      row.addEventListener("mouseleave", function(){ if(!selected) clearHi(); });
+      legend.appendChild(row);
+    });
+  }
+  function hoverGroup(gid){
+    if(selected) return;
+    var rel = {};
+    orbit.forEach(function(c){ if(c.group===gid){ rel[c.id]=true; } });
+    // light only that group's nodes (no edges)
+    Object.keys(nodeEls).forEach(function(nid){
+      nodeEls[nid].classList.toggle("lit", !!rel[nid]);
+      nodeEls[nid].classList.toggle("dim", !rel[nid]);
+    });
+    hubG.classList.add("dim");
+    edgeEls.forEach(function(ln){ ln.classList.add("dim"); ln.classList.remove("lit"); });
+    Object.keys(spokeEl).forEach(function(t){ spokeEl[t].classList.add("dim"); });
+  }
+  function toggleGroup(gid){
+    hiddenGroups[gid] = !hiddenGroups[gid];
+    orbit.forEach(function(c){
+      if(c.group===gid){
+        var el = nodeEls[c.id];
+        el.style.display = hiddenGroups[gid] ? "none" : "";
+      }
+    });
+    // hide edges touching hidden nodes
+    edgeEls.forEach(function(ln){
+      var ca = byId[ln.dataset.a], cb = byId[ln.dataset.b];
+      var hide = (ca && hiddenGroups[ca.group]) || (cb && hiddenGroups[cb.group]);
+      ln.style.display = hide ? "none" : "";
+    });
+    Object.keys(spokeEl).forEach(function(t){
+      var ct = byId[t];
+      spokeEl[t].style.display = (ct && hiddenGroups[ct.group]) ? "none" : "";
+    });
+    buildLegend();
+  }
+
+  /* ===================== Mobile fallback list ===================== */
+  var listWrap = document.getElementById("concept-list");
+  function buildList(){
+    var lang = L();
+    listWrap.innerHTML = "";
+    GROUPS.forEach(function(g){
+      var members = CONCEPTS.filter(function(c){ return c.group===g.id; });
+      if(!members.length) return;
+      var sec = document.createElement("div");
+      sec.className = "cl-group";
+      var h = document.createElement("h3");
+      h.innerHTML = '<span class="sw" style="background:'+g.color+'"></span>'+esc(g["label_"+lang]||g.label_en);
+      sec.appendChild(h);
+      members.forEach(function(c){
+        var a = document.createElement("a");
+        a.className = "cl-card";
+        a.href = "concepts.html#"+c.id;
+        a.style.setProperty("--cl-accent", g.color);
+        var stCls = c.status==="bet" ? "bet" : "proven";
+        var stTxt = c.status==="bet" ? (lang==="de"?"Wette":"Bet") : (lang==="de"?"Live":"Shipped");
+        a.innerHTML =
+          '<div class="cl-top"><h4>'+esc(c["label_"+lang]||c.label_en)+'</h4>'+
+          '<span class="cl-st '+stCls+'">'+stTxt+'</span></div>'+
+          '<p>'+esc(c["short_"+lang]||c.short_en)+'</p>'+
+          '<span class="cl-go">'+(lang==="de"?"Mehr erfahren →":"Learn more →")+'</span>';
+        sec.appendChild(a);
+      });
+      listWrap.appendChild(sec);
+    });
+  }
+
+  /* ---- Re-render language-dependent text on lang toggle ---- */
+  function relabel(){
+    var lang = L();
+    // node labels + aria
+    orbit.forEach(function(c){
+      var el = nodeEls[c.id];
+      if(!el) return;
+      var lbl = el.querySelector(".lbl");
+      if(lbl) lbl.textContent = (c["label_"+lang]||c.label_en);
+      el.setAttribute("aria-label", (c["label_"+lang]||c.label_en));
+    });
+    buildLegend();
+    buildList();
+    if(selected) renderDetail(selected);
+  }
+  document.addEventListener("ob-lang-change", relabel);
+
+  /* ---- init ---- */
+  buildLegend();
+  buildList();
+  detail.innerHTML = ""; detail.appendChild(detailEmpty);
+
+  // support deep-linking via hash (e.g. explore.html#skills opens that node)
+  function fromHash(){
+    var h = (location.hash||"").replace("#","");
+    if(h && (byId[h] || h==="bridge")){ selectNode(h, true); }
+  }
+  fromHash();
+  window.addEventListener("hashchange", fromHash);
+})();
+</script>
+
+</body>
+</html>
