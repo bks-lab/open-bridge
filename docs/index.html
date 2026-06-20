@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>open-bridge — plain markdown in git your AI agent reads at session start</title>
+<title>open-bridge — context that compounds across AI sessions</title>
 <meta name="description" content="open-bridge is a plain git repo of markdown and YAML your AI coding agent reads at the start of every session. No database, no SaaS, nothing to host. Public, MIT, built at BKS-Lab.">
 <!-- Social / Open Graph -->
 <meta property="og:type" content="website">
@@ -44,10 +44,10 @@
    are NOT in tokens.css and must be preserved.
    No external fonts, no CDN, no network calls.
 
-   The ONLY hex outside the two scoped visual blocks
-   (#deck-viz canvas + #mechanic-viz) traces to a token. The
-   bridge-deck palette inside #deck-viz is a documented, scoped
-   exception — exactly like macOS terminal traffic-light dots.
+   The ONLY hex outside the scoped visual blocks (#structure-viz +
+   #mechanic-viz) traces to a token. The #structure-viz group accents
+   are a documented, scoped palette confined to that figure — exactly
+   like macOS terminal traffic-light dots.
    ============================================================ */
 
 :root{
@@ -215,14 +215,16 @@ section{padding-block:var(--section-y)}
 
 /* ---- Hero (split) ---- */
 .hero{position:relative;overflow:hidden;padding-block:clamp(56px,9vh,104px)}
+/* Headline + CTAs on top, the knowledge-constellation visual full-width below.
+   The constellation is detailed (18 nodes, authored 760-wide); a half-column
+   crushes its labels, so it gets the full hero width here. */
 .hero-grid{
   max-width:var(--hero-w);margin:0 auto;
-  display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);
-  gap:48px;align-items:center;
+  display:flex;flex-direction:column;gap:44px;
 }
-.hero-copy{min-width:0}
+.hero-copy{min-width:0;max-width:62rem}
 .hero .display{margin-top:10px}
-.hero-sub{margin:24px 0 0;max-width:38rem;font-size:19px;font-weight:300;line-height:1.6;color:var(--on-surface)}
+.hero-sub{margin:24px 0 0;max-width:48rem;font-size:19px;font-weight:300;line-height:1.6;color:var(--on-surface)}
 .honesty-strip{
   margin-top:26px;display:inline-flex;align-items:center;gap:0;flex-wrap:wrap;
   font-size:13.5px;color:var(--on-surface);
@@ -234,10 +236,10 @@ section{padding-block:var(--section-y)}
 .cta-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:30px}
 .beta-line{margin-top:18px;font-size:14px;color:var(--secondary);max-width:38rem}
 
-/* hero visual column */
-.hero-visual{min-width:0}
+/* hero visual — full-width constellation below the copy */
+.hero-visual{min-width:0;width:100%}
 .seam-cap{
-  margin-top:12px;font-size:13.5px;color:var(--secondary);line-height:1.5;
+  margin-top:14px;font-size:13.5px;color:var(--secondary);line-height:1.5;text-align:center;
 }
 .seam-cap a{color:var(--accent-text);text-decoration:none;font-weight:500;white-space:nowrap}
 .seam-cap a:hover{text-decoration:underline}
@@ -247,8 +249,7 @@ section{padding-block:var(--section-y)}
 }
 
 @media (max-width:900px){
-  .hero-grid{grid-template-columns:1fr;gap:32px}
-  .hero-visual{order:2}
+  .hero-grid{gap:32px}
   .hero-sub,.beta-line{max-width:none}
 }
 
@@ -353,6 +354,24 @@ html.dark .tile .demo{background:var(--code-bg)}
 .compare .after .mk{color:var(--ok-text)}
 .punch{margin-top:36px;text-align:center;font-size:18px;font-weight:300;color:var(--primary);max-width:46rem;margin-inline:auto}
 
+/* ---- Capabilities (what else it can do) ---- */
+.cap-intro{max-width:46rem;margin:0 auto 40px;text-align:center;font-size:16px;color:var(--secondary)}
+.cap-grouphead{font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--secondary);margin:0 0 20px}
+.cap-group + .cap-group{margin-top:48px}
+.cap-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.cap-item{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:24px 26px;box-shadow:var(--shadow-soft);
+}
+.cap-item .cap-label{font-size:17px;font-weight:500;color:var(--primary);letter-spacing:-0.01em;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.cap-item .cap-benefit{margin-top:10px;font-size:14.5px;line-height:1.6;color:var(--on-surface)}
+.cap-item .cap-docs{font-size:12px;font-weight:500;color:var(--accent-text);text-decoration:none;white-space:nowrap}
+.cap-item .cap-docs:hover{text-decoration:underline}
+.cap-more{margin-top:40px;text-align:center;font-size:15px}
+.cap-more a{color:var(--accent-text);font-weight:500;text-decoration:none}
+.cap-more a:hover{text-decoration:underline}
+.cap-honesty{margin:28px auto 0;max-width:46rem;text-align:center;font-size:13px;color:var(--secondary)}
+
 /* ---- PROVEN / BET / OPEN ---- */
 .board3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
 .bcol{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow-soft);overflow:hidden}
@@ -446,10 +465,10 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 .reveal.in{opacity:1;transform:none}
 
 @media (max-width:860px){
-  .split,.tiles,.compare,.board3{grid-template-columns:1fr}
+  .split,.tiles,.compare,.board3,.cap-grid{grid-template-columns:1fr}
   .foot-grid{grid-template-columns:1fr}
   /* contain pre/code so it scrolls inside its block instead of widening the page (mobile h-scroll fix) */
-  .split>*,.tiles>*,.compare>*,.board3>*,.foot-grid>*{min-width:0}
+  .split>*,.tiles>*,.compare>*,.board3>*,.foot-grid>*,.cap-grid>*{min-width:0}
   .code,.artifact{font-size:12.5px;min-width:0;overflow-x:auto}
   .artifact .row{min-width:max-content}
   #start-code{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -466,7 +485,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
   }
   *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
-  header.nav,.icon-btn,.seg,.copy-btn,#deck-viz .deck-frame{display:none!important}
+  header.nav,.icon-btn,.seg,.copy-btn{display:none!important}
   .reveal,.reset-line{opacity:1!important;transform:none!important}
   section{padding-block:32px}
 }
@@ -497,18 +516,18 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   </div>
 </header>
 
-<!-- ======================= HERO (split: copy left · deck-viz right) ======================= -->
+<!-- ======================= HERO (copy on top · constellation full-width below) ======================= -->
 <section class="hero">
   <div class="hero-grid container">
     <div class="hero-copy">
-      <p class="eyebrow" data-lang="en">Plain markdown in git · read at session start</p>
-      <p class="eyebrow" data-lang="de">Plain Markdown in Git · gelesen bei Session-Start</p>
+      <p class="eyebrow" data-lang="en">Persistent context for your AI coding agent</p>
+      <p class="eyebrow" data-lang="de">Bleibender Kontext für deinen KI-Coding-Agenten</p>
 
-      <h1 class="display" data-lang="en">Plain markdown in git your AI agent reads at session start — so context <span class="text-gradient">compounds</span> instead of restarting.</h1>
-      <h1 class="display" data-lang="de">Plain Markdown in Git, das dein KI-Agent bei Session-Start liest — damit Kontext <span class="text-gradient">wächst</span>, statt jedes Mal neu zu starten.</h1>
+      <h1 class="display" data-lang="en">Stop re-explaining your project to your AI agent. It <span class="text-gradient">already knows</span> your repos.</h1>
+      <h1 class="display" data-lang="de">Erklär deinem KI-Agenten nicht jedes Mal alles neu. Er <span class="text-gradient">kennt</span> deine Repos <span class="text-gradient">schon</span>.</h1>
 
-      <p class="hero-sub" data-lang="en">Stop re-explaining your repos, your clients, and your conventions every session. open-bridge is plain markdown and YAML in git that your coding agent reads at the start of every session — so it already knows your world, independent of which model or frontend you run. No database, no SaaS, nothing to host.</p>
-      <p class="hero-sub" data-lang="de">Hör auf, deinem Agenten in jeder Session deine Repos, Kunden und Konventionen neu zu erklären. open-bridge ist Plain-Markdown und YAML in Git, das dein Coding-Agent zu Beginn jeder Session liest — damit er deine Welt schon kennt, unabhängig davon, welches Modell oder Frontend du nutzt. Keine Datenbank, kein SaaS, nichts zu hosten.</p>
+      <p class="hero-sub" data-lang="en">Your repos, clients, conventions, last week's decisions — your coding agent reads them back at the start of every session, so context compounds instead of resetting. It's just plain markdown and YAML in git you own and can read yourself — any model or frontend, no database, no SaaS.</p>
+      <p class="hero-sub" data-lang="de">Deine Repos, Kunden, Konventionen, die Entscheidungen von letzter Woche — dein Coding-Agent liest sie zu Beginn jeder Session wieder ein, damit Kontext wächst, statt sich zurückzusetzen. Es ist nur Plain-Markdown und YAML in Git, das dir gehört und das du selbst lesen kannst — egal welches Modell oder Frontend, keine Datenbank, kein SaaS.</p>
 
       <p class="honesty-strip">
         <span data-lang="en">Public<span class="sep">·</span>MIT<span class="sep">·</span>clone &amp; read it yourself<span class="sep">·</span><b>self-used (N=1)</b></span>
@@ -517,7 +536,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 
       <div class="cta-row">
         <a class="btn btn-primary" href="#start">
-          <span data-lang="en">Quick start</span><span data-lang="de">Schnellstart</span>
+          <span data-lang="en">Clone it — no signup</span><span data-lang="de">Klonen — ohne Anmeldung</span>
           <span class="arrow">→</span>
         </a>
         <a class="btn btn-secondary" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
@@ -530,37 +549,58 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     </div>
 
     <div class="hero-visual">
-      <!-- ============================================================
-           BRIDGE-DECK CANVAS (embedded from components/bridge-deck-viz.html)
-           Self-contained Canvas 2D. Deck palette is a SCOPED EXCEPTION,
-           confined to this <figure> (like terminal traffic-light dots).
-           ============================================================ -->
-      <figure id="deck-viz" aria-labelledby="deck-cap-text" style="margin:0;padding:0;--deck-bg:#0a0e14;--deck-edge:#1c2433">
-        <div class="deck-frame">
-          <canvas id="deck-canvas" role="img"
-            aria-label="A stylised pixel-art agent office: a coordinator at the helm on the captain's bridge, three crew members (code-analyst, deploy-engineer, ops-officer) working in department rooms, and two client desks (bigcorp, startupxyz).">
-          </canvas>
-          <p class="deck-sr">
-            <span data-lang="en">Generic example crew on a pixel-art bridge deck: a coordinator at the helm, a code-analyst, a deploy-engineer and an ops-officer at their stations, plus client desks for bigcorp and startupxyz. Animation is decorative.</span>
-            <span data-lang="de">Generische Beispiel-Crew auf einem Pixel-Art-Bridge-Deck: ein Koordinator am Steuerstand, ein Code-Analyst, ein Deploy-Engineer und ein Ops-Officer an ihren Stationen, dazu Kunden-Tische für bigcorp und startupxyz. Die Animation ist dekorativ.</span>
-          </p>
-        </div>
-        <figcaption class="deck-cap" id="deck-cap-text">
-          <span data-lang="en"><b>Illustrative</b> — generic example crew (code-analyst, deploy-engineer, ops-officer, coordinator) over example clients (bigcorp, startupxyz). The agent reads the bridge, writes one log row, and re-reads it next session.</span>
-          <span data-lang="de"><b>Illustrativ</b> — generische Beispiel-Crew (code-analyst, deploy-engineer, ops-officer, coordinator) über Beispiel-Kunden (bigcorp, startupxyz). Der Agent liest die Bridge, schreibt eine Log-Zeile und liest sie in der nächsten Session wieder.</span>
-        </figcaption>
-        <div class="deck-legend" aria-hidden="true">
-          <span><i style="background:#10f5b3"></i><span data-lang="en">working</span><span data-lang="de">arbeitet</span></span>
-          <span><i style="background:#67e8f9"></i><span data-lang="en">idle</span><span data-lang="de">bereit</span></span>
-          <span><i style="background:#a78bfa"></i><span data-lang="en">break</span><span data-lang="de">Pause</span></span>
-          <span><i style="background:#ef4444"></i><span data-lang="en">offline</span><span data-lang="de">offline</span></span>
+      <!-- ===== KNOWLEDGE CONSTELLATION (structure-viz.html, embedded) =====
+           The hero's main visual: the connected-graph view of the knowledge
+           base. Authored wide (760×470 viewBox) — given the full hero width
+           below the copy so the 18 nodes stay legible. Its scoped style block
+           and data-sv script live with the other embedded blocks below. -->
+      <!-- ============================== EMBED START (structure) ============================== -->
+      <figure id="structure-viz" aria-labelledby="sv-cap-text">
+        <div class="sv-frame">
+          <div class="sv-head">
+            <h4 class="sv-title">
+              <span data-lang="en">The knowledge base you build</span>
+              <span data-lang="de">Die Wissensbasis, die du aufbaust</span>
+            </h4>
+            <span class="sv-sub">
+              <span data-lang="en">— a connected graph, not a folder of files</span>
+              <span data-lang="de">— ein verbundener Graph, kein Ordner voller Dateien</span>
+            </span>
+          </div>
+
+          <div class="sv-stage" id="sv-stage">
+            <svg class="sv-svg" id="sv-svg" viewBox="0 0 760 470" role="img"
+              aria-labelledby="sv-svg-title sv-svg-desc">
+              <title id="sv-svg-title">open-bridge knowledge constellation</title>
+              <desc id="sv-svg-desc"></desc>
+              <!-- guide orbits + node groups injected by script -->
+            </svg>
+            <!-- screen-reader narrative mirror, also feeds aria-describedby -->
+            <p class="sv-sr" id="sv-sr"></p>
+          </div>
+
+          <!-- stacked, grouped fallback under ~520px (built by script) -->
+          <div class="sv-stacked" id="sv-stacked" aria-hidden="true"></div>
+
+          <div class="sv-detail" id="sv-detail" aria-live="polite">
+            <span data-lang="en"><span class="sv-detail-hint">Hover or tap a node to see what it is and what it references. The <b>indigo spine</b> is the three-axis backbone (project ↔ context ↔ mandant ↔ calendar); the <b>green dashed</b> edge is a CORE template seeding a USER instance.</span></span>
+            <span data-lang="de"><span class="sv-detail-hint">Knoten überfahren oder antippen, um zu sehen, was er ist und worauf er verweist. Das <b>indigofarbene Rückgrat</b> ist die Drei-Achsen-Achse (Projekt ↔ Kontext ↔ Mandant ↔ Kalender); die <b>grün-gestrichelte</b> Kante ist eine CORE-Vorlage, die eine USER-Instanz aussät.</span></span>
+          </div>
+
+          <div class="sv-legend" id="sv-legend" role="group" aria-label="Group and edge legend"></div>
+
+          <figcaption class="sv-cap" id="sv-cap-text">
+            <span data-lang="en"><b>Generic example pieces</b> — this is the knowledge base you build over time; your real config fills it in. A fresh clone is nearly empty, then it thickens as you add pieces.</span>
+            <span data-lang="de"><b>Generische Beispiel-Bausteine</b> — das ist die Wissensbasis, die du mit der Zeit aufbaust; deine echte Config füllt sie. Ein frischer Klon ist fast leer und verdichtet sich, sobald du Bausteine ergänzt.</span>
+          </figcaption>
         </div>
       </figure>
+      <!-- ============================== EMBED END (structure) ============================== -->
 
       <p class="seam-cap">
         <span class="tag" data-lang="en">illustrative</span><span class="tag" data-lang="de">illustrativ</span>
-        <span data-lang="en">Pretty — but it is just files in git. <a href="#substrate">Look →</a></span>
-        <span data-lang="de">Schön — aber es sind nur Dateien in Git. <a href="#substrate">Schau →</a></span>
+        <span data-lang="en">It's all plain files in git — <a href="#substrate">see for yourself →</a></span>
+        <span data-lang="de">Alles nur einfache Dateien in Git — <a href="#substrate">überzeug dich selbst →</a></span>
       </p>
     </div>
   </div>
@@ -672,8 +712,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         <h3 class="h3" data-lang="de">Was du heute schreibst, liest es in sechs Monaten.</h3>
         <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65" data-lang="en">Agents can <code>cat</code> a file, but they can't hold an API key. Because the whole thing is plain text in git, there is no migration, no second app, no proprietary store to outlive. It is inspectable, diff-able, and yours.</p>
         <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65" data-lang="de">Agenten können eine Datei <code>cat</code>ten, aber keinen API-Key halten. Weil das Ganze Plain Text in Git ist, gibt es keine Migration, keine zweite App, keinen proprietären Speicher, der überleben müsste. Es ist einsehbar, diff-bar und deins.</p>
-        <p style="margin-top:18px;font-size:15px;line-height:1.6" data-lang="en">You watched that row get written on the bridge deck above. Here it is for real — and below, day two reads it back.</p>
-        <p style="margin-top:18px;font-size:15px;line-height:1.6" data-lang="de">Du hast gesehen, wie diese Zeile oben auf dem Bridge-Deck geschrieben wurde. Hier ist sie echt — und unten liest Tag zwei sie wieder.</p>
+        <p style="margin-top:18px;font-size:15px;line-height:1.6" data-lang="en">The constellation at the top is this same knowledge base as a graph. Here is one row of it for real — and below, day two reads it back.</p>
+        <p style="margin-top:18px;font-size:15px;line-height:1.6" data-lang="de">Die Konstellation ganz oben ist genau diese Wissensbasis als Graph. Hier ist eine Zeile davon echt — und unten liest Tag zwei sie wieder.</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:24px">
           <span class="chip" data-lang="en">no database</span><span class="chip" data-lang="de">keine Datenbank</span>
           <span class="chip" data-lang="en">no SaaS</span><span class="chip" data-lang="de">kein SaaS</span>
@@ -821,12 +861,12 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <section class="alt" id="properties">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">What the substrate enables</p>
-      <p class="eyebrow" data-lang="de">Was das Substrat ermöglicht</p>
-      <h2 class="h1" data-lang="en">Two properties, named at BKS-Lab.</h2>
-      <h2 class="h1" data-lang="de">Zwei Eigenschaften, bei BKS-Lab benannt.</h2>
-      <p data-lang="en">Both terms were coined by the team at BKS-Lab. The English view translates them plainly; the German view carries them verbatim.</p>
-      <p data-lang="de">Beide Begriffe wurden im Team bei BKS-Lab geprägt. Die englische Ansicht übersetzt sie schlicht; die deutsche trägt sie wortgetreu.</p>
+      <p class="eyebrow" data-lang="en">What your agent gains</p>
+      <p class="eyebrow" data-lang="de">Was dein Agent gewinnt</p>
+      <h2 class="h1" data-lang="en">Two things this gives your agent: more context, less chaos.</h2>
+      <h2 class="h1" data-lang="de">Zwei Dinge, die das deinem Agenten gibt: mehr Kontext, weniger Chaos.</h2>
+      <p data-lang="en">Both were coined by the team at BKS-Lab — the plain meaning leads, the name follows.</p>
+      <p data-lang="de">Beide wurden im Team bei BKS-Lab geprägt — die schlichte Bedeutung führt, der Name folgt.</p>
     </div>
 
     <div class="tiles">
@@ -872,6 +912,76 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       <span data-lang="en"><strong>Workspace separation as the default</strong> — keep each engagement's facts apart, and "if you can't place it into your known world-models, ask" instead of guessing. This is the intended design stance, agreed in principle, but not yet built into open-bridge. We label it honestly below.</span>
       <span data-lang="de"><strong>Workspace-Trennung als Default</strong> — die Fakten jeder Beauftragung getrennt halten, und „wenn du es nicht in deine bekannten Weltmodelle einordnen kannst, dann frage" statt zu raten. Das ist die beabsichtigte Design-Haltung, im Prinzip vereinbart, aber noch nicht in open-bridge eingebaut. Wir kennzeichnen das unten ehrlich.</span>
     </p>
+  </div>
+</section>
+
+<!-- ======================= CAPABILITIES: WHAT ELSE IT CAN DO ======================= -->
+<section class="alt" id="capabilities">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">What else it can do</p>
+      <p class="eyebrow" data-lang="de">Was es noch kann</p>
+      <h2 class="h1" data-lang="en">More than memory — a whole working surface.</h2>
+      <h2 class="h1" data-lang="de">Mehr als ein Gedächtnis — eine ganze Arbeitsfläche.</h2>
+    </div>
+
+    <p class="cap-intro reveal"><span data-lang="en">You get value from the four core pieces alone. Everything below is optional, USER-scope, and off until you turn it on — the code ships, you opt in.</span><span data-lang="de">Schon die vier Kernteile bringen Wert. Alles darunter ist optional, USER-scope und aus, bis du es einschaltest — der Code ist dabei, du aktivierst ihn.</span></p>
+
+    <div class="cap-group reveal">
+      <p class="cap-grouphead"><span data-lang="en">Core — works from a fresh clone</span><span data-lang="de">Kern — läuft aus einem frischen Clone</span></p>
+      <div class="cap-grid">
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Context registry</span><span data-lang="de">Kontext-Registry</span></div>
+          <p class="cap-benefit"><span data-lang="en">Your repos, packages, clients in one file — the agent loads the right world, stops asking "GitHub or Jira?".</span><span data-lang="de">Deine Repos, Packages, Kunden in einer Datei — der Agent lädt die richtige Welt und fragt nicht „GitHub oder Jira?".</span></p>
+        </div>
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Task management</span><span data-lang="de">Task-Management</span></div>
+          <p class="cap-benefit"><span data-lang="en">A board, a daily log, per-task status — AI sessions become a filed record you can search.</span><span data-lang="de">Ein Board, ein Tageslog, Per-Task-Status — KI-Sessions werden zum durchsuchbaren, abgelegten Protokoll.</span></p>
+        </div>
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Skills &amp; commands</span><span data-lang="de">Skills &amp; Befehle</span></div>
+          <p class="cap-benefit"><span data-lang="en">Describe what you need in plain words; ready-made commands like <code>/briefing</code> and <code>/debrief</code> just load.</span><span data-lang="de">Sag in einfachen Worten, was du brauchst; fertige Befehle wie <code>/briefing</code> und <code>/debrief</code> laden einfach.</span></p>
+        </div>
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Standing orders</span><span data-lang="de">Standing Orders</span></div>
+          <p class="cap-benefit"><span data-lang="en">Always-on rules (code style, security, logging) ride into every agent prompt — enforced everywhere.</span><span data-lang="de">Immer-aktive Regeln (Code-Stil, Security, Logging) reiten in jeden Agenten-Prompt — überall durchgesetzt.</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cap-group reveal">
+      <p class="cap-grouphead"><span data-lang="en">Optional — turn on when you want it</span><span data-lang="de">Optional — einschalten, wenn du es brauchst</span></p>
+      <div class="cap-grid">
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Channels</span><span data-lang="de">Channels</span><a class="cap-docs" href="https://github.com/bks-lab/open-bridge/blob/main/docs/channels.md" target="_blank" rel="noopener">docs →</a></div>
+          <p class="cap-benefit"><span data-lang="en">Declare email, Telegram, Signal or iMessage once; the agent drafts, you send.</span><span data-lang="de">E-Mail, Telegram, Signal oder iMessage einmal deklarieren; der Agent entwirft, du sendest.</span></p>
+        </div>
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Remotes</span><span data-lang="de">Remotes</span><a class="cap-docs" href="https://github.com/bks-lab/open-bridge/blob/main/docs/remotes.md" target="_blank" rel="noopener">docs →</a></div>
+          <p class="cap-benefit"><span data-lang="en">One source of truth for your machines — wake, ssh, check, deploy, Tailscale-first.</span><span data-lang="de">Eine Wahrheitsquelle für deine Maschinen — wecken, ssh, prüfen, deployen, Tailscale zuerst.</span></p>
+        </div>
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Document filing</span><span data-lang="de">Dokumente ablegen</span><a class="cap-docs" href="https://github.com/bks-lab/open-bridge/blob/main/docs/doc-system.md" target="_blank" rel="noopener">docs →</a></div>
+          <p class="cap-benefit"><span data-lang="en">Point it at an inbox; it names, files and logs each doc — never deletes.</span><span data-lang="de">Zeig auf einen Posteingang; es benennt, legt ab und protokolliert jedes Dokument — löscht nie.</span></p>
+        </div>
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Personas</span><span data-lang="de">Personas</span><a class="cap-docs" href="https://github.com/bks-lab/open-bridge/blob/main/docs/personas.md" target="_blank" rel="noopener">docs →</a></div>
+          <p class="cap-benefit"><span data-lang="en">The identities you hold — signatures, tax data, filing paths — so things land in the right place.</span><span data-lang="de">Die Identitäten, die du hast — Signaturen, Steuerdaten, Ablagepfade — damit alles am richtigen Ort landet.</span></p>
+        </div>
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Sub-agents</span><span data-lang="de">Sub-Agenten</span><a class="cap-docs" href="https://github.com/bks-lab/open-bridge/blob/main/README.md#sub-agents" target="_blank" rel="noopener">docs →</a></div>
+          <p class="cap-benefit"><span data-lang="en">Offload heavy or parallel work; it returns a clean summary. Claude Code; runs inline elsewhere.</span><span data-lang="de">Schwere oder parallele Arbeit auslagern; es liefert eine saubere Zusammenfassung. Claude Code; läuft anderswo inline.</span></p>
+        </div>
+        <div class="cap-item">
+          <div class="cap-label"><span data-lang="en">Tracker sync</span><span data-lang="de">Tracker-Sync</span><a class="cap-docs" href="https://github.com/bks-lab/open-bridge/blob/main/trackers/README.md" target="_blank" rel="noopener">docs →</a></div>
+          <p class="cap-benefit"><span data-lang="en">Read work items from GitHub Projects; the agent keeps your board and tasks aligned — gated, never auto.</span><span data-lang="de">Work-Items aus GitHub Projects lesen; der Agent hält Board und Tasks im Einklang — gegated, nie automatisch.</span></p>
+        </div>
+      </div>
+    </div>
+
+    <p class="cap-more reveal"><a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener"><span data-lang="en">And the full layout — every path, the CORE/USER split, the rest — is in the docs →</span><span data-lang="de">Und das ganze Layout — jeder Pfad, der CORE/USER-Split, der Rest — steht in den Docs →</span></a></p>
+
+    <p class="cap-honesty reveal"><span data-lang="en">Everything here ships and runs today. Roadmap items — workspace separation as the default, and more — live in the honesty board above, labeled as bets, not features.</span><span data-lang="de">Alles hier ist dabei und läuft heute. Roadmap-Punkte — Workspace-Trennung als Default und mehr — stehen im Honesty-Board oben, als Wetten gekennzeichnet, nicht als Features.</span></p>
   </div>
 </section>
 
@@ -963,10 +1073,10 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     <div class="sec-head reveal">
       <p class="eyebrow" data-lang="en">How it compounds safely</p>
       <p class="eyebrow" data-lang="de">Wie es sicher wächst</p>
-      <h2 class="h1" data-lang="en">CORE/USER split.</h2>
-      <h2 class="h1" data-lang="de">CORE/USER-Split.</h2>
-      <p data-lang="en">Your accumulated context never collides with shipped templates — so updates merge without conflict and your data stays private.</p>
-      <p data-lang="de">Dein angesammelter Kontext kollidiert nie mit mitgelieferten Templates — Updates mergen konfliktfrei, und deine Daten bleiben privat.</p>
+      <h2 class="h1" data-lang="en">Pull template updates without ever touching your data.</h2>
+      <h2 class="h1" data-lang="de">Hol dir Template-Updates, ohne je deine Daten anzufassen.</h2>
+      <p data-lang="en">Your accumulated context lives on one branch, shipped templates on another — they touch different paths, so updates merge without conflict and your data stays private. (The CORE/USER split.)</p>
+      <p data-lang="de">Dein angesammelter Kontext liegt auf einem Branch, mitgelieferte Templates auf einem anderen — sie berühren verschiedene Pfade, deshalb mergen Updates konfliktfrei und deine Daten bleiben privat. (Der CORE/USER-Split.)</p>
     </div>
 
     <!-- Disjoint-tracks → conflict-free merge (page-chrome tokens, animated dashoffset) -->
@@ -1024,10 +1134,10 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     <div class="sec-head reveal">
       <p class="eyebrow" data-lang="en">Works across runtimes</p>
       <p class="eyebrow" data-lang="de">Funktioniert über Runtimes hinweg</p>
-      <h2 class="h1" data-lang="en">One <code>skills/</code> tree, symlinked.</h2>
-      <h2 class="h1" data-lang="de">Ein <code>skills/</code>-Baum, symverlinkt.</h2>
-      <p data-lang="en">Skills are the verbs over the substrate — model-agnostic by design. Honestly labeled: tested where we run it, untested elsewhere.</p>
-      <p data-lang="de">Skills sind die Verben über dem Substrat — modell-unabhängig per Design. Ehrlich gekennzeichnet: getestet, wo wir es betreiben, anderswo ungetestet.</p>
+      <h2 class="h1" data-lang="en">One skill works no matter which AI tool you run.</h2>
+      <h2 class="h1" data-lang="de">Eine Skill funktioniert, egal welches KI-Tool du nutzt.</h2>
+      <p data-lang="en">Skills are the verbs over the substrate — model-agnostic by design, from one <code>skills/</code> tree symlinked into each tool. Honestly labeled: tested where we run it, untested elsewhere.</p>
+      <p data-lang="de">Skills sind die Verben über dem Substrat — modell-unabhängig per Design, aus einem <code>skills/</code>-Baum, in jedes Tool symverlinkt. Ehrlich gekennzeichnet: getestet, wo wir es betreiben, anderswo ungetestet.</p>
     </div>
 
     <!-- One skills/ tree → three symlinks → runtimes (page-chrome tokens, animated edges) -->
@@ -1096,7 +1206,7 @@ cd open-bridge
 ./bin/setup        <span class="cmt"># macOS / Linux / WSL — Windows: ./bin/setup.ps1</span>
 <span class="cmt"># then start the guided onboarding in Claude Code:</span>
 /bridge-onboard</div>
-      <p class="run-note"><span data-lang="en"><code>./bin/setup</code> wires the cross-tool symlinks; then run <code>/bridge-onboard</code> — the guided onboarding walks ecosystem detection, work-system config, and your own <code>user/{name}</code> branch. You get a running, empty workspace in minutes; the value compounds as you log real work. Windows symlink notes and cross-tool setup detail live in the docs.</span><span data-lang="de"><code>./bin/setup</code> legt die Cross-Tool-Symlinks an; danach <code>/bridge-onboard</code> ausführen — das geführte Onboarding führt durch Ecosystem-Erkennung, Work-System-Konfiguration und deinen eigenen <code>user/{name}</code>-Branch. In Minuten hast du einen laufenden, leeren Workspace; der Wert wächst, während du echte Arbeit protokollierst. Windows-Symlink-Hinweise und Cross-Tool-Setup stehen in den Docs.</span></p>
+      <p class="run-note"><span data-lang="en"><code>./bin/setup</code> wires the cross-tool symlinks; then <code>/bridge-onboard</code> walks ecosystem detection, work-system config, and your own <code>user/{name}</code> branch. You get a running, empty workspace in minutes — then the value compounds as you log real work (a fresh clone starts mostly empty; that's the honest trade). Windows symlink notes and cross-tool setup detail live in the docs.</span><span data-lang="de"><code>./bin/setup</code> legt die Cross-Tool-Symlinks an; danach führt <code>/bridge-onboard</code> durch Ecosystem-Erkennung, Work-System-Konfiguration und deinen eigenen <code>user/{name}</code>-Branch. In Minuten hast du einen laufenden, leeren Workspace — dann wächst der Wert, während du echte Arbeit protokollierst (ein frischer Clone startet weitgehend leer; das ist der ehrliche Tausch). Windows-Symlink-Hinweise und Cross-Tool-Setup stehen in den Docs.</span></p>
       <p class="tertiary-cta"><span data-lang="en">Found a rough edge? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Open an issue</a> — the most useful thing you can do right now.</span><span data-lang="de">Eine raue Kante gefunden? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Öffne ein Issue</a> — das Nützlichste, was du gerade tun kannst.</span></p>
     </div>
   </div>
@@ -1107,8 +1217,8 @@ cd open-bridge
   <div class="foot-grid">
     <div class="foot-blurb">
       <span class="wordmark">open<span class="text-gradient">-bridge</span></span>
-      <span data-lang="en">Built at BKS-Lab — a small team — and used to run it. Present tense, no hero arc: this is method and substrate, self-used at N=1, with no external users yet.</span>
-      <span data-lang="de">Gebaut bei BKS-Lab — ein kleines Team — und genutzt, um es zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat, selbst genutzt bei N=1, noch ohne externe Nutzer.</span>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — ein kleines Team — und genutzt, um es zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
       <table class="license-table">
         <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
         <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
@@ -1148,38 +1258,9 @@ cd open-bridge
 </footer>
 
 <!-- ============================================================
-     Scoped CSS for the two embedded components (deck + mechanic).
+     Scoped CSS for the embedded components (mechanic + structure).
      ============================================================ -->
 <style>
-/* ---- #deck-viz (bridge-deck canvas) — scoped ---- */
-#deck-viz .deck-frame{
-  position:relative; width:100%; border-radius:14px; overflow:hidden;
-  background:var(--deck-bg);
-  border:1px solid var(--line);
-  box-shadow:var(--shadow-soft);
-}
-html.dark #deck-viz .deck-frame{ border-color:#374151; }
-#deck-viz canvas{ display:block; width:100%; height:auto; }
-#deck-viz .deck-cap{
-  display:flex; gap:8px; align-items:baseline; flex-wrap:wrap;
-  margin-top:12px; font-size:13px; line-height:1.5; color:var(--muted);
-}
-#deck-viz .deck-cap b{ color:var(--ink); font-weight:600; }
-#deck-viz .deck-legend{
-  display:flex; gap:14px; flex-wrap:wrap; margin-top:10px;
-  font-size:12px; color:var(--muted);
-}
-#deck-viz .deck-legend > span{ display:inline-flex; align-items:center; gap:6px; }
-#deck-viz .deck-legend i{ width:9px; height:9px; border-radius:50%; display:inline-block; }
-/* inner per-language labels toggle (override the .deck-legend>span layout rule) */
-#deck-viz .deck-legend span[data-lang]{ display:none; }
-html[data-active-lang="en"] #deck-viz .deck-legend span[data-lang="en"],
-html[data-active-lang="de"] #deck-viz .deck-legend span[data-lang="de"]{ display:inline; }
-#deck-viz .deck-sr{
-  position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
-  clip:rect(0 0 0 0); white-space:nowrap; border:0;
-}
-
 /* ---- #mechanic-viz (compounding micro-diagram) — scoped ---- */
 #mechanic-viz{
   --mv-day:0;
@@ -1337,6 +1418,191 @@ html[data-active-lang="de"] #deck-viz .deck-legend span[data-lang="de"]{ display
   #mechanic-viz .mv-replay,#mechanic-viz .mv-bridge .flow,#mechanic-viz .mv-bridge .pip{ animation:none!important }
   #mechanic-viz .mv-panel,#mechanic-viz .mv-day-chip{ break-inside:avoid }
 }
+
+/* ---- #structure-viz (knowledge constellation) — scoped ----
+   Self-contained + scoped to #structure-viz. Uses page tokens
+   (--accent, --line, --surface, --muted, --ink, --ok …) so it tracks
+   the page's own light/dark; no dark "deck" panel — a relational map
+   reads best on the page's own surfaces. */
+  #structure-viz{
+    margin:0; padding:0;
+    font-family:var(--font-sans);
+    /* alias: this component authors --radius-full; the page ships --r-full */
+    --radius-full: var(--r-full);
+    /* group accents — derived to read in BOTH themes (legend mirrors these) */
+    --g-foundation: var(--accent);
+    --g-identity:   #8B5CF6;   /* violet  */
+    --g-infra:      #0EA5E9;   /* sky     */
+    --g-workflow:   #F59E0B;   /* amber   */
+    --g-work:       #10B981;   /* emerald */
+    --g-protocols:  #EC4899;   /* pink    */
+    --g-behaviour:  #14B8A6;   /* teal    */
+    --g-core_user:  #6B7280;   /* slate   */
+  }
+  #structure-viz .sv-frame{
+    position:relative; width:100%;
+    border:1px solid var(--line); border-radius:14px;
+    background:
+      radial-gradient(120% 120% at 50% 0%, var(--surface) 60%, var(--surface-subtle) 100%);
+    box-shadow:0 4px 6px -1px rgba(0,0,0,.05), 0 2px 4px -1px rgba(0,0,0,.03);
+    padding:18px 18px 14px;
+  }
+  html.dark #structure-viz .sv-frame{ box-shadow:0 6px 18px -8px rgba(0,0,0,.5); }
+
+  #structure-viz .sv-head{
+    display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin:0 2px 8px;
+  }
+  #structure-viz .sv-title{
+    font-weight:500; font-size:15px; letter-spacing:.01em; color:var(--ink); margin:0;
+  }
+  #structure-viz .sv-sub{ font-size:12.5px; color:var(--muted); }
+
+  /* The graph stage. SVG scales to width; height tracks via viewBox. */
+  #structure-viz .sv-stage{ position:relative; width:100%; }
+  #structure-viz svg.sv-svg{ display:block; width:100%; height:auto; overflow:visible; }
+
+  /* ---- edges (drawn before nodes so nodes sit on top) ---- */
+  #structure-viz .sv-edge{
+    fill:none; stroke:var(--line); stroke-width:1.4;
+    opacity:.85; transition:opacity .18s ease, stroke .18s ease, stroke-width .18s ease;
+  }
+  html.dark #structure-viz .sv-edge{ stroke:#3a4660; }
+  /* spine edges (the project↔context↔mandant↔calendar three-axis backbone) */
+  #structure-viz .sv-edge.sv-edge-spine{ stroke:var(--accent); stroke-width:2.1; opacity:.9; }
+  /* seed edge (core_template → user_config) reads as a growth arrow */
+  #structure-viz .sv-edge.sv-edge-seed{
+    stroke:var(--ok); stroke-width:2; opacity:.9; stroke-dasharray:5 4;
+  }
+  /* always-on edges (standing-orders touch the whole graph) */
+  #structure-viz .sv-edge.sv-edge-always{ stroke:#EC4899; stroke-width:1.5; opacity:.7; stroke-dasharray:2 4; }
+
+  /* gentle "connections light up" shimmer on the spine — opt-in, reduced-motion-safe */
+  #structure-viz.sv-animate .sv-edge.sv-edge-spine{
+    stroke-dasharray:7 9; animation:sv-flow 2.6s linear infinite;
+  }
+  #structure-viz.sv-animate .sv-edge.sv-edge-seed{ animation:sv-flow 3.4s linear infinite; }
+  @keyframes sv-flow{ to{ stroke-dashoffset:-32; } }
+
+  /* hover/focus highlight: dim everything, then re-light incident edges + node */
+  #structure-viz .sv-stage.sv-focus .sv-edge{ opacity:.12; }
+  #structure-viz .sv-stage.sv-focus .sv-node{ opacity:.32; }
+  #structure-viz .sv-stage.sv-focus .sv-edge.sv-on{ opacity:1; stroke-width:2.6; }
+  #structure-viz .sv-stage.sv-focus .sv-node.sv-on{ opacity:1; }
+
+  /* ---- nodes ---- */
+  #structure-viz .sv-node{ cursor:pointer; transition:opacity .18s ease; outline:none; }
+  #structure-viz .sv-node .sv-dot{
+    stroke:var(--surface); stroke-width:2;
+    transition:transform .18s ease;
+  }
+  html.dark #structure-viz .sv-node .sv-dot{ stroke:var(--surface); }
+  #structure-viz .sv-node.sv-on .sv-dot,
+  #structure-viz .sv-node:focus-visible .sv-dot{ stroke:var(--ink); stroke-width:2.4; }
+  /* a thin ring marks USER-tier (grown) nodes vs CORE-seed nodes (solid) */
+  #structure-viz .sv-node .sv-ring{ fill:none; stroke-width:1.4; opacity:.55; }
+
+  #structure-viz .sv-node .sv-glyph{
+    font-family:var(--font-mono); font-weight:700; font-size:11px;
+    fill:#fff; text-anchor:middle; dominant-baseline:central; pointer-events:none;
+    paint-order:stroke; stroke:rgba(0,0,0,.18); stroke-width:.4;
+  }
+  #structure-viz .sv-node .sv-label{
+    font-size:10.5px; font-weight:600; fill:var(--ink); text-anchor:middle;
+    dominant-baseline:hanging; pointer-events:none;
+  }
+  #structure-viz .sv-node .sv-label-bg{
+    fill:var(--surface); opacity:.72; rx:3;
+  }
+  html.dark #structure-viz .sv-node .sv-label-bg{ fill:var(--surface); opacity:.55; }
+
+  /* CORE / USER ring guides (faint orbits) */
+  #structure-viz .sv-guide{ fill:none; stroke:var(--line); stroke-dasharray:3 5; opacity:.5; }
+  #structure-viz .sv-guide-label{
+    font-family:var(--font-mono); font-size:9px; letter-spacing:.12em;
+    fill:var(--muted); text-anchor:middle; text-transform:uppercase;
+  }
+
+  /* ---- detail readout (updates on hover/tap) ---- */
+  #structure-viz .sv-detail{
+    min-height:46px; margin:8px 2px 0; padding:10px 12px;
+    border:1px solid var(--line); border-radius:10px; background:var(--surface-subtle);
+    font-size:13px; line-height:1.5; color:var(--on-surface);
+    transition:border-color .18s ease;
+  }
+  #structure-viz .sv-detail .sv-detail-name{ font-weight:600; color:var(--ink); }
+  #structure-viz .sv-detail .sv-detail-chip{
+    display:inline-block; font:600 10px/1 var(--font-mono); letter-spacing:.04em;
+    padding:3px 7px; border-radius:var(--radius-full); margin-left:8px; vertical-align:1px;
+    color:#fff;
+  }
+  #structure-viz .sv-detail .sv-detail-tier{
+    display:inline-block; font:600 10px/1 var(--font-mono); letter-spacing:.06em;
+    padding:3px 7px; border-radius:var(--radius-full); margin-left:6px; vertical-align:1px;
+    border:1px solid var(--line); color:var(--muted);
+  }
+  #structure-viz .sv-detail .sv-detail-hint{ color:var(--muted); }
+
+  /* ---- legend ---- */
+  #structure-viz .sv-legend{
+    display:flex; flex-wrap:wrap; gap:8px 14px; margin:12px 2px 2px; font-size:11.5px; color:var(--muted);
+  }
+  #structure-viz .sv-legend .sv-leg-group{
+    display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+    border:1px solid transparent; border-radius:var(--radius-full); padding:2px 8px 2px 4px;
+  }
+  #structure-viz .sv-legend .sv-leg-group:hover,
+  #structure-viz .sv-legend .sv-leg-group:focus-visible{ border-color:var(--line); outline:none; }
+  #structure-viz .sv-legend .sv-leg-group.sv-leg-on{ border-color:var(--line); background:var(--surface-subtle); }
+  #structure-viz .sv-legend i{ width:11px; height:11px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+  #structure-viz .sv-legend .sv-leg-sep{ flex-basis:100%; height:0; margin:0; }
+  /* edge-type legend uses dashes/lines, not dots */
+  #structure-viz .sv-legend .sv-leg-edge{ display:inline-flex; align-items:center; gap:6px; }
+  #structure-viz .sv-legend .sv-leg-edge em{ font-style:normal; }
+  #structure-viz .sv-legend .sv-leg-edge svg{ display:block; }
+
+  #structure-viz .sv-cap{
+    display:flex; gap:8px; align-items:baseline; flex-wrap:wrap;
+    margin:14px 2px 0; font-size:12.5px; line-height:1.5; color:var(--muted);
+  }
+  #structure-viz .sv-cap b{ color:var(--ink); font-weight:500; }
+
+  /* language toggle (mirrors page html[data-active-lang]); all translatable
+     nodes are <span>, so inline display is safe. */
+  #structure-viz span[data-lang]{ display:none; }
+  html[data-active-lang="en"] #structure-viz span[data-lang="en"]{ display:inline; }
+  html[data-active-lang="de"] #structure-viz span[data-lang="de"]{ display:inline; }
+
+  /* screen-reader mirror of the graph for assistive tech + PDF */
+  #structure-viz .sv-sr{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+    clip:rect(0 0 0 0); white-space:nowrap; border:0;
+  }
+
+  /* ---- responsive: stacked grouped layout under ~520px ----
+     We swap the SVG for a CSS-grid of group cards. JS sets the mode class. */
+  #structure-viz .sv-stacked{ display:none; }
+  #structure-viz.sv-mobile .sv-stage{ display:none; }
+  #structure-viz.sv-mobile .sv-stacked{ display:block; }
+  #structure-viz .sv-stack-group{
+    border:1px solid var(--line); border-radius:10px; margin:0 0 10px; padding:10px 12px;
+    background:var(--surface-subtle);
+  }
+  #structure-viz .sv-stack-group h5{
+    margin:0 0 8px; font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    display:flex; align-items:center; gap:7px; color:var(--ink); font-weight:600;
+  }
+  #structure-viz .sv-stack-group h5 i{ width:10px; height:10px; border-radius:50%; display:inline-block; }
+  #structure-viz .sv-stack-node{
+    display:flex; align-items:flex-start; gap:9px; padding:6px 0; border-top:1px solid var(--line-subtle);
+  }
+  #structure-viz .sv-stack-node:first-of-type{ border-top:0; }
+  #structure-viz .sv-stack-glyph{
+    flex:0 0 auto; width:22px; height:22px; border-radius:50%; color:#fff;
+    font:700 10px/22px var(--font-mono); text-align:center;
+  }
+  #structure-viz .sv-stack-body{ font-size:12.5px; line-height:1.45; }
+  #structure-viz .sv-stack-body .n{ font-weight:600; color:var(--ink); }
+  #structure-viz .sv-stack-body .d{ color:var(--muted); }
 </style>
 
 <!-- ============================================================
@@ -1441,288 +1707,6 @@ html[data-active-lang="de"] #deck-viz .deck-legend span[data-lang="de"]{ display
 </script>
 
 <!-- ============================================================
-     EMBED SCRIPT — #deck-viz (bridge-deck canvas). Self-contained.
-     ============================================================ -->
-<script data-deck>
-(function(){
-  "use strict";
-  var root = document.getElementById('deck-viz');
-  if(!root) return;
-  var canvas = root.querySelector('#deck-canvas');
-  var ctx = canvas.getContext('2d', { alpha:false });
-
-  // ---- Palette (bridge-deck dark deck; SCOPED EXCEPTION, confined here) ----
-  var C = {
-    bg:'#0a0e14', hull:'#0d1320', hullLine:'#1c2433', panel:'#121a2b', panelLine:'#243049',
-    indigo:'#6366f1', violet:'#8b5cf6', violetLt:'#a78bfa', cyan:'#22d3ee', cyanDk:'#0ea5e9',
-    green:'#10b981', greenLt:'#10f5b3', amber:'#f59e0b', red:'#ef4444',
-    claude:'#D97757', visor:'#67e8f9', grid:'#16324a', txt:'#9fb3c8', txtDim:'#5b6b82', sign:'#cdd9e8',
-    idle:'#67e8f9', breakC:'#a78bfa'
-  };
-
-  var BASE_W = 720, BASE_H = 320;
-  var dpr = 1, cssW = BASE_W, cssH = BASE_H, scale = 1;
-
-  var staticCanvas = document.createElement('canvas');
-  var sctx = staticCanvas.getContext('2d', { alpha:false });
-
-  var reduceMotion = false;
-  try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
-
-  var roomY = 196, roomH = 96;
-  var rooms = [
-    { x:24,  w:212, name:'code-analyst',   tone:C.cyan,   status:'working' },
-    { x:254, w:212, name:'deploy-engineer',tone:C.indigo, status:'working' },
-    { x:484, w:212, name:'ops-officer',    tone:C.green,  status:'idle' }
-  ];
-  var helm = { cx:BASE_W/2, cy:74 };
-  var clients = [ { x:150, label:'bigcorp' }, { x:540, label:'startupxyz' } ];
-
-  function statusColor(s){
-    if(s==='working') return C.greenLt;
-    if(s==='idle')    return C.idle;
-    if(s==='break')   return C.breakC;
-    return C.red;
-  }
-  var crew = [
-    { role:'coordinator', home:{x:helm.cx, y:helm.cy+34}, torso:C.violet, collar:C.claude,
-      x:helm.cx, y:helm.cy+34, status:'working', state:'desk', t:0, phase:Math.random()*6.28 },
-    { role:'code-analyst',   home:{x:rooms[0].x+rooms[0].w/2, y:roomY+54}, torso:C.cyan,
-      x:0,y:0, status:'working', state:'desk', t:0, phase:Math.random()*6.28 },
-    { role:'deploy-engineer',home:{x:rooms[1].x+rooms[1].w/2, y:roomY+54}, torso:C.indigo,
-      x:0,y:0, status:'working', state:'desk', t:0, phase:Math.random()*6.28 },
-    { role:'ops-officer',    home:{x:rooms[2].x+rooms[2].w/2, y:roomY+54}, torso:C.green,
-      x:0,y:0, status:'idle', state:'desk', t:0, phase:Math.random()*6.28 }
-  ];
-  crew.forEach(function(c){ if(c.role!=='coordinator'){ c.x=c.home.x; c.y=c.home.y; } });
-
-  function px(x){ return Math.round(x); }
-  function drawRoundRect(c, x,y,w,h,r){
-    c.beginPath();
-    c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
-    c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
-  }
-
-  function drawStatic(){
-    var c = sctx;
-    c.setTransform(dpr,0,0,dpr,0,0);
-    c.imageSmoothingEnabled = false;
-    c.clearRect(0,0,cssW,cssH);
-    c.save();
-    c.scale(scale, scale);
-
-    c.fillStyle = C.bg; c.fillRect(0,0,BASE_W,BASE_H);
-    c.fillStyle = 'rgba(103,232,249,0.06)';
-    for(var i=0;i<46;i++){
-      var sx=(i*97+13)%BASE_W, sy=(i*53+7)%BASE_H;
-      c.fillRect(sx, sy, 1, 1);
-    }
-    c.fillStyle = C.hull; c.fillRect(0,0,BASE_W,148);
-    c.strokeStyle = C.hullLine; c.lineWidth=1;
-    c.beginPath(); c.moveTo(0,148.5); c.lineTo(BASE_W,148.5); c.stroke();
-    c.fillStyle = C.txtDim; c.font = '600 9px monospace'; c.textBaseline='alphabetic';
-    c.fillText('CAPTAIN · BRIDGE', 14, 20);
-
-    var tt = { x:60, y:40, w:120, h:64 };
-    c.fillStyle = C.panel; drawRoundRect(c, tt.x,tt.y,tt.w,tt.h,6); c.fill();
-    c.strokeStyle = C.panelLine; c.lineWidth=1; c.stroke();
-    c.save();
-    drawRoundRect(c, tt.x,tt.y,tt.w,tt.h,6); c.clip();
-    c.strokeStyle = C.grid; c.lineWidth=1;
-    for(var gx=tt.x+10; gx<tt.x+tt.w; gx+=14){ c.beginPath(); c.moveTo(gx,tt.y); c.lineTo(gx,tt.y+tt.h); c.stroke(); }
-    for(var gy=tt.y+10; gy<tt.y+tt.h; gy+=14){ c.beginPath(); c.moveTo(tt.x,gy); c.lineTo(tt.x+tt.w,gy); c.stroke(); }
-    c.fillStyle = C.cyan; c.fillRect(tt.x+38,tt.y+26,3,3); c.fillRect(tt.x+74,tt.y+44,3,3);
-    c.fillStyle = C.amber; c.fillRect(tt.x+92,tt.y+18,3,3);
-    c.restore();
-
-    var hw=150, hh=34, hx=helm.cx-hw/2, hy=helm.cy+18;
-    c.fillStyle = C.panel; drawRoundRect(c, hx,hy,hw,hh,8); c.fill();
-    c.strokeStyle = C.panelLine; c.stroke();
-    c.fillStyle = C.indigo;  c.globalAlpha=0.85; c.fillRect(hx+16, hy+9, 28, 16); c.globalAlpha=1;
-    c.fillStyle = C.violet;  c.globalAlpha=0.85; c.fillRect(hx+52, hy+9, 28, 16); c.globalAlpha=1;
-    c.fillStyle = C.cyan;    c.globalAlpha=0.85; c.fillRect(hx+88, hy+9, 28, 16); c.globalAlpha=1;
-    c.fillStyle = C.amber;   c.fillRect(hx+122, hy+12, 10, 10);
-    c.fillStyle = C.txtDim; c.font='600 8px monospace';
-    c.fillText('HELM', helm.cx-12, hy-4);
-
-    var corrY=148, corrH=48;
-    c.fillStyle = C.bg; c.fillRect(0,corrY,BASE_W,corrH);
-    c.setLineDash([8,7]); c.strokeStyle = 'rgba(99,102,241,0.35)'; c.lineWidth=2;
-    c.beginPath(); c.moveTo(20, corrY+corrH/2); c.lineTo(BASE_W-20, corrY+corrH/2); c.stroke();
-    c.setLineDash([]);
-
-    clients.forEach(function(cl){
-      var dx=cl.x, dy=corrY+10, dw=64, dh=12;
-      c.fillStyle = C.panel; drawRoundRect(c, dx,dy,dw,dh,3); c.fill();
-      c.strokeStyle = C.panelLine; c.stroke();
-      c.fillStyle = C.cyanDk; c.fillRect(dx+5, dy+3, 6, 6);
-      c.fillStyle = C.cyan;   c.font='500 9px monospace';
-      c.fillText(cl.label, dx+16, dy+9.5);
-    });
-    c.fillStyle = C.txtDim; c.font='600 8px monospace';
-    c.fillText('SUBSTRATE · CLIENTS', 14, corrY+corrH-6);
-
-    rooms.forEach(function(r){
-      c.fillStyle = C.hull; drawRoundRect(c, r.x, roomY, r.w, roomH, 8); c.fill();
-      c.strokeStyle = C.hullLine; c.lineWidth=1; c.stroke();
-      c.fillStyle = r.tone; c.globalAlpha=0.10;
-      c.fillRect(r.x+8, roomY+roomH-14, r.w-16, 6); c.globalAlpha=1;
-      var sw = Math.min(r.w-24, r.name.length*6.2+22), sx=r.x+12, sy=roomY+10;
-      c.fillStyle = C.panel; drawRoundRect(c, sx, sy, sw, 16, 8); c.fill();
-      c.strokeStyle = r.tone; c.globalAlpha=0.55; c.stroke(); c.globalAlpha=1;
-      c.fillStyle = r.tone; c.fillRect(sx+6, sy+6, 4, 4);
-      c.fillStyle = C.sign; c.font='500 9px monospace';
-      c.fillText(r.name, sx+16, sy+11.5);
-      var px0 = r.x+r.w-44, py0 = roomY+12;
-      for(var s=0;s<3;s++){
-        c.fillStyle = (r.status==='working') ? (s<3?C.green:C.panelLine)
-                    : (r.status==='idle') ? (s<2?C.cyan:C.panelLine)
-                    : C.panelLine;
-        c.fillRect(px0 + s*11, py0, 8, 5);
-      }
-      c.fillStyle = C.panelLine; c.fillRect(r.x+r.w-6, roomY+roomH-34, 6, 22);
-      c.fillStyle = r.tone; c.globalAlpha=0.5; c.fillRect(r.x+r.w-5, roomY+roomH-24, 4, 2); c.globalAlpha=1;
-      var dcx=r.x+r.w/2-26, dcy=roomY+roomH-26;
-      c.fillStyle = C.panel; drawRoundRect(c, dcx, dcy, 52, 12, 3); c.fill();
-      c.strokeStyle = C.panelLine; c.stroke();
-      c.fillStyle = r.tone; c.globalAlpha=0.8; c.fillRect(dcx+6, dcy+3, 12, 6); c.globalAlpha=1;
-      c.fillStyle = C.amber; c.fillRect(dcx+38, dcy+4, 4, 4);
-    });
-    c.restore();
-  }
-
-  function drawCrew(c, cr){
-    var x=px(cr.x), y=px(cr.y);
-    var bob = (cr.state==='desk' && !reduceMotion) ? Math.round(Math.sin(cr.phase)*1) : 0;
-    y += bob;
-    c.fillStyle = statusColor(cr.status);
-    c.globalAlpha = 0.20;
-    c.beginPath(); c.ellipse(x, y+13, 11, 4, 0, 0, 6.283); c.fill();
-    c.globalAlpha = 1;
-    c.fillStyle = statusColor(cr.status);
-    c.beginPath(); c.ellipse(x, y+13, 7, 2.5, 0, 0, 6.283); c.fill();
-    c.globalAlpha = 0.45;
-    c.beginPath(); c.ellipse(x, y+13, 11, 4, 0, 0, 6.283);
-    c.strokeStyle = statusColor(cr.status); c.lineWidth=1; c.stroke();
-    c.globalAlpha = 1;
-    c.fillStyle = '#0b111c';
-    c.fillRect(x-4, y+6, 3, 7);
-    c.fillRect(x+1, y+6, 3, 7);
-    c.fillStyle = cr.torso;
-    c.fillRect(x-5, y-3, 10, 10);
-    if(cr.collar){ c.fillStyle = cr.collar; c.fillRect(x-5, y-3, 10, 2); }
-    c.fillStyle = cr.torso;
-    c.globalAlpha=0.85; c.fillRect(x-7, y-1, 2, 6); c.fillRect(x+5, y-1, 2, 6); c.globalAlpha=1;
-    c.fillStyle = '#d7e2f0';
-    c.fillRect(x-4, y-12, 8, 8);
-    c.fillStyle = C.visor;
-    c.fillRect(x-3, y-9, 6, 2);
-    if(cr.status==='working' && !reduceMotion && Math.sin(cr.phase*2)>0.6){
-      c.fillStyle = statusColor(cr.status);
-      c.fillRect(x-1, y-17, 2, 2);
-    }
-  }
-
-  function updateCrew(cr, dt){
-    cr.phase += dt*0.0026;
-    cr.t -= dt;
-    if(cr.role==='coordinator'){ return; }
-    if(cr.state==='desk'){
-      if(cr.t<=0 && movingCount() < 2 && Math.random()<0.012){
-        var marchToCorridor = Math.random()<0.25;
-        cr.tgt = marchToCorridor
-          ? { x: cr.home.x + (Math.random()*120-60), y: 172 }
-          : { x: cr.home.x + (Math.random()*70-35), y: cr.home.y + (Math.random()*16-8) };
-        cr.state='move'; cr.status = marchToCorridor ? 'break' : cr.status;
-        cr.t = 1200 + Math.random()*1600;
-      } else if(cr.t<=0){
-        cr.t = 600 + Math.random()*1400;
-      }
-    } else if(cr.state==='move'){
-      var dx=cr.tgt.x-cr.x, dy=cr.tgt.y-cr.y, d=Math.hypot(dx,dy);
-      var sp = dt*0.018;
-      if(d < sp || cr.t<=0){
-        var hx=cr.home.x-cr.x, hy=cr.home.y-cr.y, hd=Math.hypot(hx,hy);
-        if(hd<2){ cr.x=cr.home.x; cr.y=cr.home.y; cr.state='desk'; cr.status='working'; cr.t=2000+Math.random()*3000; }
-        else { cr.tgt={x:cr.home.x,y:cr.home.y}; cr.x+=hx/hd*sp; cr.y+=hy/hd*sp; }
-      } else {
-        cr.x += dx/d*sp; cr.y += dy/d*sp;
-      }
-    }
-  }
-  function movingCount(){ var n=0; crew.forEach(function(c){ if(c.state==='move') n++; }); return n; }
-
-  function drawFrame(){
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(staticCanvas, 0, 0, staticCanvas.width, staticCanvas.height, 0, 0, cssW, cssH);
-    ctx.save();
-    ctx.scale(scale, scale);
-    ctx.imageSmoothingEnabled = false;
-    drawCrew(ctx, crew[0]);
-    for(var i=1;i<crew.length;i++) drawCrew(ctx, crew[i]);
-    ctx.restore();
-  }
-
-  function resize(){
-    var w = root.querySelector('.deck-frame').clientWidth || BASE_W;
-    if(w < 1) w = BASE_W;
-    cssW = w;
-    cssH = Math.round(w * (BASE_H/BASE_W));
-    scale = cssW / BASE_W;
-    dpr = Math.max(1, Math.min(window.devicePixelRatio||1, 2));
-    canvas.width = Math.round(cssW*dpr);
-    canvas.height = Math.round(cssH*dpr);
-    canvas.style.height = cssH + 'px';
-    staticCanvas.width = Math.round(cssW*dpr);
-    staticCanvas.height = Math.round(cssH*dpr);
-    drawStatic();
-    drawFrame();
-  }
-
-  var running=false, visible=false, raf=null, last=0;
-  var FRAME_MS = 1000/24;
-  function loop(ts){
-    if(!running){ return; }
-    raf = requestAnimationFrame(loop);
-    var dt = ts-last;
-    if(dt < FRAME_MS) return;
-    last = ts;
-    crew.forEach(function(c){ updateCrew(c, Math.min(dt, 80)); });
-    drawFrame();
-  }
-  function start(){
-    if(running || reduceMotion) return;
-    running=true; last=performance.now(); raf=requestAnimationFrame(loop);
-  }
-  function stop(){ running=false; if(raf) cancelAnimationFrame(raf); raf=null; }
-
-  document.addEventListener('visibilitychange', function(){
-    if(document.hidden) stop();
-    else if(visible) start();
-  });
-
-  if('IntersectionObserver' in window){
-    var io = new IntersectionObserver(function(entries){
-      entries.forEach(function(e){
-        visible = e.isIntersecting;
-        if(visible && !document.hidden) start(); else stop();
-      });
-    }, { threshold:0.05 });
-    io.observe(root);
-  } else {
-    visible=true; start();
-  }
-
-  var rT=null;
-  window.addEventListener('resize', function(){ clearTimeout(rT); rT=setTimeout(resize, 120); });
-
-  resize();
-  if(reduceMotion){ drawFrame(); }
-})();
-</script>
-
-<!-- ============================================================
      EMBED SCRIPT — #mechanic-viz behaviour. Self-contained.
      ============================================================ -->
 <script data-mechanic>
@@ -1784,6 +1768,465 @@ html[data-active-lang="de"] #deck-viz .deck-legend span[data-lang="de"]{ display
   if(reduce.addEventListener){
     reduce.addEventListener("change", function(){ if(reduce.matches){ stop(); staticFinal(); } });
   }
+})();
+</script>
+
+<!-- #structure-viz (knowledge constellation) controller -->
+<script data-sv>
+(function(){
+  "use strict";
+  var root = document.getElementById('structure-viz');
+  if(!root) return;
+
+  var W = 760, H = 470, CX = 380, CY = 232;
+
+  // ---- groups (8 semantic clusters; colour var name matches #structure-viz vars) ----
+  var GROUPS = [
+    { id:'foundation', en:'Foundation',                     de:'Fundament' },
+    { id:'identity',   en:'Identity — who am I, to whom',    de:'Identität — wer bin ich, an wen' },
+    { id:'infra',      en:'Infra — where runs what',         de:'Infra — wo läuft was' },
+    { id:'workflow',   en:'Workflow — what happens when',    de:'Workflow — was passiert wann' },
+    { id:'work',       en:'Work — tasks & streams',          de:'Arbeit — Tasks & Streams' },
+    { id:'protocols',  en:'Protocols — always-on rules',     de:'Protokolle — Daueranweisungen' },
+    { id:'behaviour',  en:'Behaviour — skills & agents',     de:'Verhalten — Skills & Agenten' },
+    { id:'core_user',  en:'CORE / USER',                     de:'CORE / USER' }
+  ];
+  var GVAR = {
+    foundation:'--g-foundation', identity:'--g-identity', infra:'--g-infra',
+    workflow:'--g-workflow', work:'--g-work', protocols:'--g-protocols',
+    behaviour:'--g-behaviour', core_user:'--g-core_user'
+  };
+  function gcol(g){ return getComputedStyle(root).getPropertyValue(GVAR[g]).trim() || '#888'; }
+
+  // ---- nodes (18 substrate types). tier: 'core' (seed) | 'user' (grown).
+  //   glyph = 2–3 char mono badge (reads by shape+label, not colour alone).
+  //   x,y are baked layout coords in the 760×470 viewBox (clustered, CORE inner). ----
+  var NODES = [
+    { id:'core_template', g:'core_user', tier:'core', glyph:'tpl', x:300, y:232,
+      en:'CORE template', de:'CORE-Vorlage',
+      den:'Generic seeds (_template.yaml / _schema.yaml, docs) shipped on the core branch — what every instance is built from.',
+      dde:'Generische Saaten (_template.yaml / _schema.yaml, Docs) auf dem Core-Branch — woraus jede Instanz gebaut wird.' },
+    { id:'user_config', g:'core_user', tier:'user', glyph:'cfg', x:460, y:232,
+      en:'USER config', de:'USER-Konfiguration',
+      den:'Your live instance on the user branch (bridge-config.yaml + every filled-in file) — the personalized substrate.',
+      dde:'Deine lebende Instanz auf dem User-Branch (bridge-config.yaml + jede ausgefüllte Datei) — das personalisierte Substrat.' },
+    { id:'ecosystem', g:'foundation', tier:'user', glyph:'eco', x:380, y:96,
+      en:'Ecosystem registry', de:'Ökosystem-Registry',
+      den:'The repo/org registry (ecosystem.yaml) — index of every repo, package, workspace and project; the root the graph hangs off.',
+      dde:'Die Repo-/Org-Registry (ecosystem.yaml) — Index aller Repos, Pakete, Workspaces und Projekte; die Wurzel des Graphen.' },
+
+    // workflow cluster (top-right)
+    { id:'project', g:'workflow', tier:'user', glyph:'prj', x:560, y:128,
+      en:'Project config', de:'Projekt-Konfiguration',
+      den:'A tracker project (workflow/projects/<slug>.yaml) — the contract for GitHub/ADO board fields and state mappings.',
+      dde:'Ein Tracker-Projekt (workflow/projects/<slug>.yaml) — der Vertrag für Board-Felder und Status-Mappings.' },
+    { id:'context', g:'workflow', tier:'user', glyph:'ctx', x:610, y:232,
+      en:'Context', de:'Kontext',
+      den:'A context bundle (workflow/contexts/<id>.yaml) — which repos, agents and infra belong together, plus routing and persona.',
+      dde:'Ein Kontext-Bündel (workflow/contexts/<id>.yaml) — welche Repos/Agenten/Infra zusammengehören, plus Routing und Persona.' },
+    { id:'calendar', g:'workflow', tier:'user', glyph:'cal', x:560, y:336,
+      en:'Calendar entries', de:'Kalender-Einträge',
+      den:'The master calendar (workflow/calendars/entries.yaml) — scheduled outbound, each entry targeting mandant/person pairs.',
+      dde:'Der Master-Kalender (workflow/calendars/entries.yaml) — geplanter Versand, je Eintrag Mandant/Person-Paare.' },
+
+    // identity cluster (bottom)
+    { id:'persona', g:'identity', tier:'user', glyph:'per', x:454, y:380,
+      en:'Persona', de:'Persona',
+      den:'An identity the user holds (identity/personas/<id>.yaml) — tax data, signature, filing destinations; the hat "who I AM".',
+      dde:'Eine Identität, die der Nutzer trägt (identity/personas/<id>.yaml) — Steuerdaten, Signatur, Ablagepfade; "wer ich BIN".' },
+    { id:'mandant', g:'identity', tier:'user', glyph:'man', x:380, y:404,
+      en:'Mandant', de:'Mandant',
+      den:'A recipient group (identity/mandants/<id>.yaml) — the people the user sends to; the addressbook "who I SEND TO".',
+      dde:'Eine Empfängergruppe (identity/mandants/<id>.yaml) — an wen der Nutzer sendet; "an WEN ich sende".' },
+    { id:'account', g:'identity', tier:'user', glyph:'acc', x:300, y:380,
+      en:'Cloud account', de:'Cloud-Konto',
+      den:'A provider/secret-store inventory file (identity/accounts/<id>.yaml) — tenant IDs, vault names; secrets by reference, never raw.',
+      dde:'Provider-/Secret-Store-Inventar (identity/accounts/<id>.yaml) — Tenant-IDs, Vault-Namen; Secrets nur als Verweis, nie roh.' },
+
+    // infra cluster (bottom-left)
+    { id:'remote', g:'infra', tier:'user', glyph:'rmt', x:150, y:336,
+      en:'Remote machine', de:'Remote-Maschine',
+      den:'A physical/virtual box (infra/remotes/<name>.yaml) — SSH, network, Wake-on-LAN and the services that run on it.',
+      dde:'Eine physische/virtuelle Maschine (infra/remotes/<name>.yaml) — SSH, Netzwerk, Wake-on-LAN und die laufenden Dienste.' },
+    { id:'channel', g:'infra', tier:'user', glyph:'chn', x:200, y:232,
+      en:'Channel', de:'Kanal',
+      den:'An outbound transport (infra/channels/<name>.yaml) — iMessage, email, Telegram, bots; usually a service hosted on a remote.',
+      dde:'Ein Versand-Transport (infra/channels/<name>.yaml) — iMessage, E-Mail, Telegram, Bots; meist ein Dienst auf einer Remote.' },
+    { id:'backups', g:'infra', tier:'user', glyph:'bak', x:120, y:160,
+      en:'Backup topology', de:'Backup-Topologie',
+      den:'Sources × targets × pipelines (infra/backups/topology.yaml) — the single source of truth for what gets backed up where.',
+      dde:'Quellen × Ziele × Pipelines (infra/backups/topology.yaml) — die einzige Wahrheit, was wohin gesichert wird.' },
+
+    // work cluster (top-left)
+    { id:'task', g:'work', tier:'user', glyph:'tsk', x:260, y:128,
+      en:'Work / Task', de:'Arbeit / Task',
+      den:'A finite task (work/tasks/<slug>/) with a STATUS.md — the unit of work in flight that reaches done.',
+      dde:'Ein endlicher Task (work/tasks/<slug>/) mit STATUS.md — die laufende Arbeitseinheit, die "done" erreicht.' },
+    { id:'stream', g:'work', tier:'user', glyph:'str', x:170, y:88,
+      en:'Work / Stream', de:'Arbeit / Stream',
+      den:'A long-runner (work/streams/<slug>/) — a never-finishing line of work (e.g. an application pipeline), excluded from the WIP cap.',
+      dde:'Ein Dauerläufer (work/streams/<slug>/) — ein nie endender Arbeitsstrang, vom WIP-Limit ausgenommen.' },
+    { id:'board', g:'work', tier:'user', glyph:'brd', x:120, y:232,
+      en:'Generated board', de:'Generiertes Board',
+      den:'work/board.md — generated from the task dirs, never hand-edited; its sections map 1:1 to the status enum.',
+      dde:'work/board.md — aus den Task-Ordnern generiert, nie von Hand bearbeitet; Abschnitte spiegeln das Status-Enum.' },
+
+    // protocols (lower-centre, pulses across all)
+    { id:'standing_orders', g:'protocols', tier:'core', glyph:'std', x:380, y:308,
+      en:'Standing orders', de:'Daueranweisungen',
+      den:'Always-on rules (protocols/standing-orders/*.md) — loaded every session, governing behaviour across the whole graph.',
+      dde:'Immer aktive Regeln (protocols/standing-orders/*.md) — jede Session geladen, steuern das Verhalten über den ganzen Graphen.' },
+
+    // behaviour (right side)
+    { id:'skill', g:'behaviour', tier:'core', glyph:'skl', x:640, y:308,
+      en:'Skill', de:'Skill',
+      den:'A capability (skills/<name>/) — generic mechanism that reads config and acts; never embeds instance data.',
+      dde:'Eine Fähigkeit (skills/<name>/) — generischer Mechanismus, der Config liest und handelt; nie Instanz-Daten.' },
+    { id:'subagent', g:'behaviour', tier:'core', glyph:'sub', x:548, y:404,
+      en:'Sub-agent', de:'Sub-Agent',
+      den:'An ephemeral worker (.claude/agents/<name>.md) — dispatched per context for isolated/parallel tasks, returns a summary.',
+      dde:'Ein flüchtiger Worker (.claude/agents/<name>.md) — pro Kontext für isolierte/parallele Tasks dispatcht, liefert Summary.' }
+  ];
+  var NODE_BY = {}; NODES.forEach(function(n){ NODE_BY[n.id]=n; });
+
+  // ---- edges (22 typed references). kind: spine | seed | always | ref ----
+  var EDGES = [
+    { f:'ecosystem',       t:'project',         kind:'ref',    en:'registers',         de:'registriert' },
+    { f:'project',         t:'context',         kind:'spine',  en:'scoped by',         de:'eingegrenzt durch' },
+    { f:'context',         t:'ecosystem',       kind:'ref',    en:'binds repos',       de:'bindet Repos' },
+    { f:'context',         t:'persona',         kind:'ref',    en:'persona_ref',       de:'persona_ref' },
+    { f:'context',         t:'task',            kind:'ref',    en:'documents',         de:'dokumentiert' },
+    { f:'context',         t:'subagent',        kind:'ref',    en:'dispatches',        de:'dispatcht' },
+    { f:'context',         t:'project',         kind:'spine',  en:'github_project',    de:'github_project' },
+    { f:'mandant',         t:'context',         kind:'spine',  en:'context_ref',       de:'context_ref' },
+    { f:'persona',         t:'mandant',         kind:'ref',    en:'same person, different role', de:'gleiche Person, andere Rolle' },
+    { f:'calendar',        t:'mandant',         kind:'spine',  en:'recipients',        de:'Empfänger' },
+    { f:'mandant',         t:'channel',         kind:'ref',    en:'delivered via',     de:'zugestellt über' },
+    { f:'persona',         t:'task',            kind:'ref',    en:'files under (destinations)', de:'legt ab unter (Ziele)' },
+    { f:'task',            t:'mandant',         kind:'spine',  en:'notifies (3-axis)', de:'benachrichtigt (3-Achsen)' },
+    { f:'task',            t:'project',         kind:'spine',  en:'syncs to (3-axis)', de:'synct zu (3-Achsen)' },
+    { f:'task',            t:'board',           kind:'ref',    en:'generates',         de:'generiert' },
+    { f:'stream',          t:'board',           kind:'ref',    en:'listed in',         de:'gelistet in' },
+    { f:'channel',         t:'remote',          kind:'ref',    en:'runs on',           de:'läuft auf' },
+    { f:'backups',         t:'remote',          kind:'ref',    en:'sources from',      de:'sichert von' },
+    { f:'skill',           t:'user_config',     kind:'ref',    en:'reads',             de:'liest' },
+    { f:'skill',           t:'channel',         kind:'ref',    en:'operates',          de:'betreibt' },
+    { f:'account',         t:'remote',          kind:'ref',    en:'provisions',        de:'provisioniert' },
+    { f:'standing_orders', t:'task',            kind:'always', en:'governs (always-on)', de:'steuert (immer aktiv)' },
+    { f:'standing_orders', t:'subagent',        kind:'always', en:'injected into',     de:'injiziert in' },
+    { f:'core_template',   t:'user_config',     kind:'seed',   en:'seeds (merge)',     de:'sät (Merge)' },
+    { f:'user_config',     t:'ecosystem',       kind:'ref',    en:'configures',        de:'konfiguriert' }
+  ];
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function el(name, attrs){
+    var e = document.createElementNS(SVGNS, name);
+    if(attrs) for(var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  function lang(){ return document.documentElement.getAttribute('data-active-lang')==='de' ? 'de' : 'en'; }
+
+  var svg = root.querySelector('#sv-svg');
+  var stage = root.querySelector('#sv-stage');
+  var detail = root.querySelector('#sv-detail');
+  var srNode = root.querySelector('#sv-sr');
+  var svgDesc = root.querySelector('#sv-svg-desc');
+
+  // ---------- build SVG (guides → edges → nodes) ----------
+  var edgeEls = [];   // {edge, line, fromId, toId}
+  var nodeEls = [];   // {node, g}
+  var defaultDetailHTML = detail.innerHTML;
+
+  function build(){
+    while(svg.children.length > 3) svg.removeChild(svg.lastChild); // keep title/desc placeholders
+    edgeEls.length = 0; nodeEls.length = 0;
+
+    // faint CORE / USER orbit guides (decorative, communicate "grown from seed")
+    svg.appendChild(el('circle', { class:'sv-guide', cx:CX, cy:CY, r:64 }));
+    svg.appendChild(el('circle', { class:'sv-guide', cx:CX, cy:CY, r:186 }));
+
+    // edges
+    EDGES.forEach(function(e){
+      var a = NODE_BY[e.f], b = NODE_BY[e.t];
+      if(!a || !b) return;
+      var cls = 'sv-edge';
+      if(e.kind==='spine') cls += ' sv-edge-spine';
+      else if(e.kind==='seed') cls += ' sv-edge-seed';
+      else if(e.kind==='always') cls += ' sv-edge-always';
+      var ln = el('line', { class:cls, x1:a.x, y1:a.y, x2:b.x, y2:b.y });
+      svg.appendChild(ln);
+      edgeEls.push({ edge:e, line:ln, fromId:e.f, toId:e.t });
+    });
+
+    // nodes
+    NODES.forEach(function(n){
+      var col = gcol(n.g);
+      var g = el('g', {
+        class:'sv-node sv-node-'+n.id,
+        transform:'translate('+n.x+','+n.y+')',
+        tabindex:'0', role:'button',
+        'aria-label': (n[lang()] || n.en)
+      });
+      // outer ring for USER-tier (grown) nodes
+      if(n.tier==='user'){
+        g.appendChild(el('circle', { class:'sv-ring', r:18, stroke:col }));
+      }
+      var dot = el('circle', { class:'sv-dot', r:13, fill:col });
+      g.appendChild(dot);
+      var glyph = el('text', { class:'sv-glyph' });
+      glyph.textContent = n.glyph.trim();
+      g.appendChild(glyph);
+      // label with a soft bg plate for legibility over edges
+      var lbl = (n[lang()] || n.en);
+      var bg = el('rect', { class:'sv-label-bg' });
+      var tx = el('text', { class:'sv-label', y:20 });
+      tx.textContent = lbl;
+      g.appendChild(bg); g.appendChild(tx);
+      svg.appendChild(g);
+      nodeEls.push({ node:n, g:g, label:tx, bg:bg });
+
+      // events
+      var enter = function(){ focusNode(n.id); };
+      var leave = function(){ clearFocus(); };
+      g.addEventListener('mouseenter', enter);
+      g.addEventListener('mouseleave', leave);
+      g.addEventListener('focus', enter);
+      g.addEventListener('blur', leave);
+      g.addEventListener('click', function(ev){ ev.stopPropagation(); toggleNode(n.id); });
+    });
+
+    // size label bg plates after layout (need bbox)
+    requestAnimationFrame(sizeLabelPlates);
+    relabel();
+    writeSrNarrative();
+  }
+
+  function sizeLabelPlates(){
+    nodeEls.forEach(function(ne){
+      try{
+        var b = ne.label.getBBox();
+        ne.bg.setAttribute('x', b.x - 3);
+        ne.bg.setAttribute('y', b.y - 1);
+        ne.bg.setAttribute('width', b.width + 6);
+        ne.bg.setAttribute('height', b.height + 2);
+      }catch(e){}
+    });
+  }
+
+  // ---------- focus / detail ----------
+  var pinned = null;
+  function incident(id){
+    var on = {}; on[id]=true;
+    edgeEls.forEach(function(ee){
+      if(ee.fromId===id || ee.toId===id){
+        ee.line.classList.add('sv-on');
+        on[ee.fromId]=true; on[ee.toId]=true;
+      } else ee.line.classList.remove('sv-on');
+    });
+    nodeEls.forEach(function(ne){
+      if(on[ne.node.id]) ne.g.classList.add('sv-on');
+      else ne.g.classList.remove('sv-on');
+    });
+  }
+  function focusNode(id){
+    stage.classList.add('sv-focus');
+    incident(id);
+    showDetail(id);
+  }
+  function clearFocus(){
+    if(pinned){ focusNode(pinned); return; }
+    stage.classList.remove('sv-focus');
+    edgeEls.forEach(function(ee){ ee.line.classList.remove('sv-on'); });
+    nodeEls.forEach(function(ne){ ne.g.classList.remove('sv-on'); });
+    detail.innerHTML = defaultDetailHTML;
+  }
+  function toggleNode(id){
+    if(pinned===id){ pinned=null; clearFocus(); }
+    else { pinned=id; focusNode(id); }
+  }
+  function showDetail(id){
+    var n = NODE_BY[id]; if(!n) return;
+    var L = lang();
+    var col = gcol(n.g);
+    var grp = GROUPS.filter(function(x){return x.id===n.g;})[0] || {en:n.g,de:n.g};
+    var rels = EDGES.filter(function(e){return e.f===id;})
+      .map(function(e){ return (e[L]||e.en)+' → '+( (NODE_BY[e.t]||{})[L] || (NODE_BY[e.t]||{}).en || e.t ); });
+    var inrels = EDGES.filter(function(e){return e.t===id;})
+      .map(function(e){ return ( (NODE_BY[e.f]||{})[L] || (NODE_BY[e.f]||{}).en || e.f )+' '+(e[L]||e.en); });
+    var tier = n.tier==='core'
+      ? (L==='de'?'CORE-Saat':'CORE seed')
+      : (L==='de'?'USER-Instanz':'USER instance');
+    var refsLine = '';
+    if(rels.length) refsLine += '<div style="margin-top:6px">'+(L==='de'?'Verweist auf: ':'References: ')+rels.join(' · ')+'</div>';
+    if(inrels.length) refsLine += '<div style="margin-top:3px;color:var(--muted)">'+(L==='de'?'Referenziert von: ':'Referenced by: ')+inrels.join(' · ')+'</div>';
+    detail.innerHTML =
+      '<span class="sv-detail-name">'+(n[L]||n.en)+'</span>'+
+      '<span class="sv-detail-chip" style="background:'+col+'">'+(grp[L]||grp.en).split(' — ')[0]+'</span>'+
+      '<span class="sv-detail-tier">'+tier+'</span>'+
+      '<div style="margin-top:6px">'+(n['d'+L]||n.den)+'</div>'+
+      refsLine;
+  }
+
+  // tap empty space → unpin
+  stage.addEventListener('click', function(){ if(pinned){ pinned=null; clearFocus(); } });
+
+  // ---------- legend (groups + edge types) ----------
+  function buildLegend(){
+    var leg = root.querySelector('#sv-legend');
+    leg.innerHTML = '';
+    var L = lang();
+    GROUPS.forEach(function(grp){
+      var b = document.createElement('span');
+      b.className = 'sv-leg-group';
+      b.setAttribute('tabindex','0');
+      b.setAttribute('role','button');
+      var short = (grp[L]||grp.en).split(' — ')[0];
+      b.innerHTML = '<i style="background:'+gcol(grp.id)+'"></i>'+short;
+      var hl = function(){ highlightGroup(grp.id, true); b.classList.add('sv-leg-on'); };
+      var un = function(){ highlightGroup(grp.id, false); b.classList.remove('sv-leg-on'); };
+      b.addEventListener('mouseenter', hl);
+      b.addEventListener('mouseleave', un);
+      b.addEventListener('focus', hl);
+      b.addEventListener('blur', un);
+      leg.appendChild(b);
+    });
+    var sep = document.createElement('span'); sep.className='sv-leg-sep'; leg.appendChild(sep);
+    // edge-type legend (shape, not colour alone)
+    var edgeLeg = [
+      { sw:'<line x1="2" y1="7" x2="26" y2="7" stroke="var(--accent)" stroke-width="2.1"/>',
+        en:'three-axis spine', de:'Drei-Achsen-Rückgrat' },
+      { sw:'<line x1="2" y1="7" x2="26" y2="7" stroke="var(--ok)" stroke-width="2" stroke-dasharray="5 4"/>',
+        en:'CORE seeds USER', de:'CORE sät USER' },
+      { sw:'<line x1="2" y1="7" x2="26" y2="7" stroke="#EC4899" stroke-width="1.5" stroke-dasharray="2 4"/>',
+        en:'always-on rule', de:'Daueranweisung' },
+      { sw:'<line x1="2" y1="7" x2="26" y2="7" stroke="var(--line)" stroke-width="1.4"/>',
+        en:'reference', de:'Verweis' }
+    ];
+    edgeLeg.forEach(function(e){
+      var s = document.createElement('span');
+      s.className = 'sv-leg-edge';
+      s.innerHTML = '<svg width="28" height="14" aria-hidden="true">'+e.sw+'</svg><em>'+(e[L]||e.en)+'</em>';
+      leg.appendChild(s);
+    });
+    // a tiny note about the USER ring
+    var ring = document.createElement('span');
+    ring.className = 'sv-leg-edge';
+    ring.innerHTML = '<svg width="20" height="14" aria-hidden="true"><circle cx="10" cy="7" r="6" fill="none" stroke="var(--muted)" stroke-width="1.3" opacity="0.6"/><circle cx="10" cy="7" r="3.2" fill="var(--muted)"/></svg><em>'+(L==='de'?'Ring = USER-Instanz':'ring = USER instance')+'</em>';
+    leg.appendChild(ring);
+  }
+  function highlightGroup(gid, on){
+    if(pinned) return;
+    if(on){
+      stage.classList.add('sv-focus');
+      var ids = {};
+      NODES.forEach(function(n){ if(n.g===gid) ids[n.id]=true; });
+      nodeEls.forEach(function(ne){ ne.g.classList.toggle('sv-on', !!ids[ne.node.id]); });
+      edgeEls.forEach(function(ee){
+        ee.line.classList.toggle('sv-on', !!ids[ee.fromId] || !!ids[ee.toId]);
+      });
+    } else { clearFocus(); }
+  }
+
+  // ---------- relabel on language change ----------
+  function relabel(){
+    var L = lang();
+    nodeEls.forEach(function(ne){
+      ne.label.textContent = ne.node[L] || ne.node.en;
+      ne.g.setAttribute('aria-label', ne.node[L] || ne.node.en);
+    });
+    requestAnimationFrame(sizeLabelPlates);
+    buildLegend();
+    buildStacked();
+    writeSrNarrative();
+    if(pinned) showDetail(pinned);
+    else detail.innerHTML = defaultDetailHTML;
+  }
+
+  function writeSrNarrative(){
+    var L = lang();
+    var byGroup = {};
+    NODES.forEach(function(n){ (byGroup[n.g]=byGroup[n.g]||[]).push(n[L]||n.en); });
+    var parts = GROUPS.map(function(grp){
+      var ns = byGroup[grp.id]||[];
+      return (grp[L]||grp.en).split(' — ')[0]+': '+ns.join(', ');
+    });
+    var intro = (L==='de')
+      ? 'Wissens-Konstellation von open-bridge: '+NODES.length+' Substrat-Typen in 8 Clustern, verbunden durch '+EDGES.length+' typisierte Verweise. Gruppen — '
+      : 'open-bridge knowledge constellation: '+NODES.length+' substrate types across 8 clusters, connected by '+EDGES.length+' typed references. Groups — ';
+    var spine = (L==='de')
+      ? ' Das Rückgrat verbindet Projekt, Kontext, Mandant und Kalender; eine CORE-Vorlage sät die USER-Konfiguration.'
+      : ' The spine connects project, context, mandant and calendar; a CORE template seeds the USER config.';
+    var txt = intro + parts.join('. ') + '.' + spine;
+    srNode.textContent = txt;
+    if(svgDesc) svgDesc.textContent = txt;
+  }
+
+  // ---------- stacked / mobile fallback ----------
+  function buildStacked(){
+    var box = root.querySelector('#sv-stacked');
+    box.innerHTML = '';
+    var L = lang();
+    GROUPS.forEach(function(grp){
+      var ns = NODES.filter(function(n){return n.g===grp.id;});
+      if(!ns.length) return;
+      var card = document.createElement('div'); card.className='sv-stack-group';
+      var h = document.createElement('h5');
+      h.innerHTML = '<i style="background:'+gcol(grp.id)+'"></i>'+(grp[L]||grp.en).split(' — ')[0];
+      card.appendChild(h);
+      ns.forEach(function(n){
+        var row = document.createElement('div'); row.className='sv-stack-node';
+        var g = document.createElement('span'); g.className='sv-stack-glyph';
+        g.style.background = gcol(n.g); g.textContent = n.glyph.trim();
+        var bd = document.createElement('div'); bd.className='sv-stack-body';
+        bd.innerHTML = '<span class="n">'+(n[L]||n.en)+'</span> <span class="d">— '+(n['d'+L]||n.den)+'</span>';
+        row.appendChild(g); row.appendChild(bd); card.appendChild(row);
+      });
+      box.appendChild(card);
+    });
+  }
+
+  // ---------- responsive mode switch ----------
+  function applyMode(){
+    var w = root.querySelector('.sv-frame').clientWidth || W;
+    root.classList.toggle('sv-mobile', w < 520);
+  }
+
+  // ---------- motion gating ----------
+  var reduceMotion = false;
+  try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
+  function applyMotion(){
+    // animate only when on-screen, tab visible, not reduced-motion
+    var go = !reduceMotion && visible && !document.hidden;
+    root.classList.toggle('sv-animate', go);
+  }
+  var visible = true;
+  if('IntersectionObserver' in window){
+    visible = false;
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){ visible = e.isIntersecting; applyMotion(); });
+    }, { threshold:0.05 });
+    io.observe(root);
+  }
+  document.addEventListener('visibilitychange', applyMotion);
+
+  // react to language changes driven by the page (attribute on <html>)
+  var mo = new MutationObserver(function(muts){
+    muts.forEach(function(m){ if(m.attributeName==='data-active-lang') relabel(); });
+  });
+  mo.observe(document.documentElement, { attributes:true });
+
+  // resize (mode + label plates)
+  var rT=null;
+  window.addEventListener('resize', function(){
+    clearTimeout(rT); rT=setTimeout(function(){ applyMode(); requestAnimationFrame(sizeLabelPlates); }, 120);
+  });
+
+  // ---------- init ----------
+  build();
+  buildLegend();
+  buildStacked();
+  applyMode();
+  applyMotion();
 })();
 </script>
 
