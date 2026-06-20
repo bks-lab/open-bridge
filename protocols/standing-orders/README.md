@@ -45,6 +45,11 @@ Copy `_template.md`, fill in frontmatter and rules. Place in this directory.
 
 | Order | Enforcement | Purpose |
 |-------|-------------|---------|
-| document-work | blocking | Log all significant actions to work/log.md |
+| board-task-criteria | advisory | When a log entry should escalate to a Board task (A/B/C class model) |
 | code-standards | advisory | Code quality guidelines |
+| document-work | blocking | Log all significant actions to work/log.md |
+| drift-advisory | advisory | Surface drift between declared state and live reality |
+| feature-discovery | advisory | Proactively suggest relevant Bridge features |
 | security-baseline | advisory | Security practices |
+| task-sync | blocking | Route task changes across project/context/mandant; enforce dual-doku |
+| work-board-reconciliation | advisory | Keep task folders and STATUS.md / board coherent |

@@ -1,7 +1,7 @@
 ---
 summary: "Example agency setup — cluster-wrapper layout (identity/, infra/, workflow/) plus .claude/agents/ and standing orders"
 type: readme
-last_updated: 2026-06-11
+last_updated: 2026-06-20
 related:
   - ecosystem.yaml
   - bridge-config.yaml
@@ -58,3 +58,4 @@ examples/agency/
 - [channels/email.yaml](infra/channels/email.yaml) — Email channel
 - [channels/slack-bot.yaml](infra/channels/slack-bot.yaml) — Slack integration
 - [channels/_scheduled.yaml](infra/channels/_scheduled.yaml) — Scheduled messages
+- [channels/scheduled/weekend-check/context.md](infra/channels/scheduled/weekend-check/context.md) — Example scheduled job: weekend deploy health check
