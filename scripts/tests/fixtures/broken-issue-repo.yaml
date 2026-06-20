@@ -1,0 +1,12 @@
+org: example
+
+customers:
+  acme:
+    display_name: "Acme"
+    issue_repo: "example/acme/extra-segment"
+
+github_projects:
+  - number: 1
+    name: "Example"
+    org: example
+    issue_repo: "bare-name-no-slash"

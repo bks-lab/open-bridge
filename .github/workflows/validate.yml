@@ -1,0 +1,260 @@
+name: Validate YAML and Frontmatter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Reusable: release.yml calls this suite on tag pushes so a release
+  # runs the exact same checks as a PR — no duplicated steps.
+  workflow_call:
+  # Manual re-run on any ref (e.g. before cutting a tag).
+  workflow_dispatch:
+
+jobs:
+  yaml-lint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Run yamllint
+        run: yamllint -c .yamllint.yml .
+
+  ecosystem-validation:
+    name: Ecosystem Cross-Refs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check ecosystem.yaml exists
+        id: check
+        run: |
+          if [ -f ecosystem.yaml ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ecosystem.yaml not found — skipping ecosystem-validation (expected for open-bridge / OSS repos)"
+          fi
+
+      - name: Install PyYAML
+        if: steps.check.outputs.exists == 'true'
+        run: pip install pyyaml
+
+      - name: Validate ecosystem.yaml cross-refs
+        if: steps.check.outputs.exists == 'true'
+        run: python3 scripts/validate-ecosystem.py
+
+      - name: Run validator fixture tests
+        if: steps.check.outputs.exists == 'true' && hashFiles('scripts/tests/test-validate-ecosystem.sh') != ''
+        run: bash scripts/tests/test-validate-ecosystem.sh
+
+  schema-validation:
+    name: Bridge Config Schemas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema
+
+      - name: Validate all schema-bearing surfaces
+        run: python3 scripts/validate-bridge.py
+
+  content-leak:
+    name: Content Leak Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Full-repo scan (no file args = CI mode). Catches scrub-leak
+      # pipe-list scopes plus PII content classes (personal names,
+      # /Users/ paths, @bks-lab.com addresses, customer names) with
+      # per-class allowlists for governance files — see the script header.
+      - name: Scan for content leaks
+        run: python3 scripts/no-scrub-leak.py
+
+  skill-scope:
+    name: Skill Scope + AGENTS.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate skill scope + AGENTS.md SKILL-SCOPE block
+        run: python3 scripts/validate-skill-scope.py
+
+  frontmatter-check:
+    name: Frontmatter Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate agent frontmatter
+        run: |
+          errors=0
+          # Skip:
+          #   - _templates/ (templates have placeholder frontmatter)
+          #   - README.md (documentation markers, not agent definitions)
+          #   - _*.md (underscore-prefixed files like _instance.md are
+          #     meta-templates describing schemas, not agent files)
+          for file in $(find .claude/agents -name '*.md' \
+            -not -path '*/agents/_templates/*' \
+            -not -name 'README.md' \
+            -not -name '_*.md'); do
+            # Extract frontmatter (between first --- and second ---)
+            frontmatter=$(awk '/^---$/{n++; next} n==1{print} n==2{exit}' "$file")
+
+            if [ -z "$frontmatter" ]; then
+              echo "ERROR: $file — missing frontmatter block"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            for field in name description; do
+              if ! echo "$frontmatter" | grep -q "^${field}:"; then
+                echo "ERROR: $file — missing required field: $field"
+                errors=$((errors + 1))
+              fi
+            done
+          done
+
+          if [ "$errors" -gt 0 ]; then
+            echo ""
+            echo "Found $errors frontmatter error(s) in agent files."
+            exit 1
+          fi
+          echo "All agent files have valid frontmatter."
+
+      - name: Block personas with PII on the core branch
+        run: |
+          # Personas carry tax_id, vat_id, iban, address — USER-layer only.
+          # The only persona files allowed on the core branch are the template
+          # and the locale-neutral examples/.
+          errors=0
+          if [ -d identity/personas ]; then
+            for file in $(find identity/personas -name '*.yaml' \
+              -not -name '_template.yaml' \
+              -not -name '_schema.yaml' \
+              -not -path '*/personas/examples/*'); do
+              echo "ERROR: $file — persona files with real data must not land on the core branch"
+              echo "       (commit them on your user/{name} branch instead)"
+              errors=$((errors + 1))
+            done
+          fi
+
+          if [ "$errors" -gt 0 ]; then
+            echo ""
+            echo "Found $errors persona file(s) that must not be on the core branch."
+            echo "See rules/operations.md for the USER-layer path rules."
+            exit 1
+          fi
+          echo "No USER-layer persona files leaked to the core branch."
+
+      - name: Block active agent instances on the core branch
+        run: |
+          # .claude/agents/active/<instance-id>/ holds stateful, learned,
+          # per-user instance files (role.md, process.md, knowledge.md,
+          # log.md). They are USER-layer only — tied to a specific
+          # persona, context, and learned knowledge. Only the README.md
+          # marker is CORE.
+          errors=0
+          if [ -d .claude/agents/active ]; then
+            for file in $(find .claude/agents/active -type f \
+              -not -name 'README.md'); do
+              echo "ERROR: $file — active instance files are USER-layer only"
+              echo "       (commit them on your user/{name} branch instead)"
+              errors=$((errors + 1))
+            done
+          fi
+
+          if [ "$errors" -gt 0 ]; then
+            echo ""
+            echo "Found $errors active-instance file(s) that must not be on the core branch."
+            echo "See rules/operations.md — agents/* path rules exclude _templates and presets only."
+            exit 1
+          fi
+          echo "No USER-layer active instance files leaked to the core branch."
+
+      - name: Validate standing-order frontmatter
+        run: |
+          errors=0
+          for file in $(find protocols/standing-orders -maxdepth 1 -name '*.md' \
+            -not -name 'README.md'); do
+
+            frontmatter=$(awk '/^---$/{n++; next} n==1{print} n==2{exit}' "$file")
+
+            if [ -z "$frontmatter" ]; then
+              echo "ERROR: $file — missing frontmatter block"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            for field in name scope enforcement applies_to; do
+              if ! echo "$frontmatter" | grep -q "^${field}:"; then
+                echo "ERROR: $file — missing required field: $field"
+                errors=$((errors + 1))
+              fi
+            done
+          done
+
+          if [ "$errors" -gt 0 ]; then
+            echo ""
+            echo "Found $errors frontmatter error(s) in standing-order files."
+            exit 1
+          fi
+          echo "All standing-order files have valid frontmatter."
+
+      - name: Validate theme files
+        run: |
+          errors=0
+          for file in $(find themes -name '*.yaml' \
+            -not -name '_schema.yaml' \
+            -not -name '_template.yaml'); do
+
+            for field in schema_version; do
+              if ! grep -q "^${field}:" "$file"; then
+                echo "ERROR: $file — missing required field: $field"
+                errors=$((errors + 1))
+              fi
+            done
+
+            for field in name display_name; do
+              if ! grep -q "^  ${field}:" "$file"; then
+                echo "ERROR: $file — missing meta.$field"
+                errors=$((errors + 1))
+              fi
+            done
+          done
+
+          if [ "$errors" -gt 0 ]; then
+            echo ""
+            echo "Found $errors error(s) in theme files."
+            exit 1
+          fi
+          echo "All theme files have valid structure."
+
+  leak-roster-guard:
+    name: Leak Roster Guard
+    runs-on: ubuntu-latest
+    # An org keeps its private leak roster (customer / third-party person
+    # names) untracked / gitignored; the scanner loads it at runtime. It may
+    # live in a private working repo, but must never be committed to a
+    # published repo. Runs only when the repo is public — a no-op while private.
+    if: ${{ !github.event.repository.private }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Block a tracked leak roster
+        run: |
+          if git ls-files --error-unmatch scripts/leak-patterns-internal.txt > /dev/null 2>&1; then
+            echo "ERROR: scripts/leak-patterns-internal.txt is tracked in a PUBLIC repository."
+            echo "The org-private leak roster must never be committed to a published repo."
+            exit 1
+          fi
+          echo "No private leak roster tracked — public repo is clean."

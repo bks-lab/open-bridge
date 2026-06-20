@@ -1,0 +1,93 @@
+# Pre-commit hooks for The Bridge.
+#
+# Setup:
+#   pipx install pre-commit check-jsonschema
+#   pre-commit install
+#
+# Manual run:
+#   pre-commit run --all-files
+#
+# Skip:
+#   git commit --no-verify   (use sparingly — hook failures usually point at real issues)
+
+repos:
+  # Bridge schema validation — runs scripts/validate-bridge.py (which wraps
+  # check-jsonschema). Triggers when ANY of the schema-bearing surfaces is
+  # touched: personas, themes, channels, remotes, mandants, calendar entries,
+  # contexts, projects.
+  - repo: local
+    hooks:
+      - id: validate-bridge-schemas
+        name: Validate Bridge config schemas
+        entry: python3 scripts/validate-bridge.py
+        language: system
+        pass_filenames: false
+        files: |
+          (?x)^(
+            identity/personas/.*\.yaml |
+            identity/mandants/.*\.yaml |
+            themes/.*\.yaml |
+            infra/channels/.*\.yaml |
+            infra/remotes/.*\.yaml |
+            workflow/calendars/.*\.yaml |
+            workflow/contexts/.*\.yaml |
+            workflow/projects/.*\.yaml |
+            rules/.*\.md |
+            scripts/validate-bridge\.py
+          )$
+
+  # Ecosystem cross-ref validation (separate from schema check —
+  # catches dangling repo refs in workspaces / depends_on / wiki_ref).
+  - repo: local
+    hooks:
+      - id: validate-ecosystem
+        name: Validate ecosystem.yaml cross-refs
+        entry: python3 scripts/validate-ecosystem.py
+        language: system
+        pass_filenames: false
+        files: ^ecosystem\.yaml$
+
+  # Scrub-leak guard — catches pipe-list scope literals (e.g. `user`) that a misconfigured
+  # scrub regex can produce when its replacement value is a list rather than a single token.
+  # Such bugs typically mangle `scope: core`, `user/* branch` and similar
+  # docs in many places at once. The pattern
+  # `scope:\s*[a-z]+\|[a-z\|]+` flags any pipe-list scope value — which is
+  # always wrong: scope is a single literal (core, user, org, private).
+  - repo: local
+    hooks:
+      - id: no-scrub-leak
+        name: Reject pipe-list scope literals (sync-pattern scrub-leak guard)
+        entry: python3 scripts/no-scrub-leak.py
+        language: system
+        files: |
+          (?x)^(
+            .*\.md |
+            .*\.yaml |
+            .*\.yml
+          )$
+
+  # Skill-scope guard — every skills/*/SKILL.md must declare a valid
+  # metadata.scope (core|org|user), and the auto-generated SKILL-SCOPE
+  # table in AGENTS.md must match. Skills are flat (open standard), so scope
+  # lives in frontmatter — this hook makes it load-bearing, not drift-prone.
+  - repo: local
+    hooks:
+      - id: validate-skill-scope
+        name: Validate skill scope + AGENTS.md SKILL-SCOPE block
+        entry: python3 scripts/validate-skill-scope.py
+        language: system
+        pass_filenames: false
+        files: |
+          (?x)^(
+            skills/.*/SKILL\.md |
+            scripts/validate-skill-scope\.py |
+            AGENTS\.md
+          )$
+
+  # YAML lint — catches indentation, trailing whitespace, syntax issues
+  # before they hit the schema validator.
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c, .yamllint.yml]

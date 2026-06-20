@@ -1,0 +1,39 @@
+# themes/_template.yaml
+# Template for creating custom themes.
+# Copy this file to themes/{your-theme}.yaml and fill in your values.
+#
+# Only override what you need — missing keys fall back to the parent
+# theme (via `extends`) or to the schema defaults in _schema.yaml.
+#
+# Example use cases:
+#   - Company-specific vocabulary ("Engagement" instead of "Task")
+#   - Locale translation (extends professional, overrides with your language)
+#   - Industry jargon (SRE: "P1 Incident", "Runbook", "Node")
+#   - Fun themes (pirates, medieval, space western, ...)
+
+# yaml-language-server: $schema=./_schema.yaml
+schema_version: 1
+
+meta:
+  name: my-theme              # filename without .yaml
+  display_name: "My Theme"
+  description: "One-line description"
+  locale: en                  # BCP 47: en, de, fr, es, ja, ...
+  author: ""
+  version: "1.0.0"
+  extends: professional       # inherit from: professional | professional-de | null
+
+# Override only the vocabulary you want to change.
+# Everything else inherits from the parent theme.
+vocabulary:
+  # user: "Partner"
+  # agents: "Team"
+  # task: "Engagement"
+  # incident: "Escalation"
+  # daily_check: "Standup"
+  # remote: "Node"
+  # dispatch: "Staff"
+
+# phrases:
+#   session_greeting: "Good morning. Portfolio status:"
+#   dispatch_confirm: "{agent} staffed on {task}."

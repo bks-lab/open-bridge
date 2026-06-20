@@ -1,0 +1,22 @@
+schema_version: 1
+scope: org                  # customer/project context -> org tier
+identity:
+  name: bigcorp
+  display_name: "BigCorp E-Commerce"
+  customer: bigcorp
+
+repos:
+  - name: api
+    path: "${projects_root}/bigcorp-api"
+    github: acme-dev/bigcorp-api
+  - name: frontend
+    path: "${projects_root}/bigcorp-frontend"
+    github: acme-dev/bigcorp-frontend
+
+# Sub-agents typically dispatched in this context (.claude/agents/<name>.md)
+agents: [code-analyst, deploy-engineer]
+
+infra:
+  github_project:
+    org: acme-dev
+    number: 1

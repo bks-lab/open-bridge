@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=./_schema.yaml
+# Remote Machine Definition
+# Remote machine configuration.
+# Copy to remotes/{hostname}.yaml and customize.
+# Optional setup notes: remotes/{hostname}-setup.md
+
+name: my-server
+scope: user              # REQUIRED — a remote is local hardware/network inventory;
+                         # always user/private, never promoted upstream.
+type: linux              # macos | linux | windows
+os: "Ubuntu 24.04"
+
+ssh:
+  user: deploy
+  host: my-server.example.com
+  port: 22
+
+network:
+  tailscale_ip: ""       # 100.x.y.z (VPN — works from anywhere)
+  hostname: my-server    # mDNS / Tailscale hostname
+  lan_ip: ""             # 192.168.x.x (fallback, same network only)
+
+# What can the bridge do on this machine?
+capabilities:
+  - ssh                  # Required — no SSH, no remote access
+  # - rdp               # Windows Remote Desktop
+  # - services          # Manage services (launchd/systemd/Windows Services)
+  # - docker            # Start/stop containers
+  # - git               # Clone/pull repos
+  # - claude            # Run Claude Code sessions
+  # - gpu               # GPU compute available
+  # - boot              # Bootable media (USB toolkits)
+  # - forensics         # Forensic analysis tools
+  # - pentesting        # Penetration testing tools
+
+# Services (only if 'services' in capabilities)
+# `check:` is the truth probe — /remote health runs it over SSH.
+# See rules/deploy-reconciliation.md for the deploy cycle. Never flip a
+# service `status:` to `active` until its `check:` passes on the remote.
+services: []
+  # - slug: my-service
+  #   label: com.example.my-service   # launchd/systemd unit name
+  #   type: scheduled                 # keepalive | scheduled | oneshot
+  #   schedule: "*/5 * * * *"         # cron syntax (for scheduled type)
+  #   check: "systemctl --user is-active my-service"   # launchd: "launchctl list | grep <label>"
+  #   log: "/var/log/my-service.log"
+  #   artifact_probe:                 # optional — for output-producing pipelines
+  #     path: "~/output/**/*.ext"
+  #     within_minutes: 60
+  #     expected_after: "trigger description"
+
+status: pending          # online | offline | pending

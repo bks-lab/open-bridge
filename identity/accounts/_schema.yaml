@@ -1,0 +1,83 @@
+# Account Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates `identity/accounts/<slug>.yaml` files. An account describes
+# WHERE mail/calendar/cloud data lives and HOW Claude reaches it — never
+# the credentials themselves (only access method + KeyVault/1Password URIs).
+# Files are heterogeneous: some are mail/calendar accounts, others are
+# cloud-provider inventory (Azure/Cloudflare/M365/registrars). The schema
+# is therefore intentionally permissive (additionalProperties: true); the
+# one thing it strictly enforces across ALL accounts is `scope`.
+#
+# Validation:
+#   check-jsonschema --schemafile identity/accounts/_schema.yaml \
+#                    identity/accounts/<slug>.yaml
+#
+# IDE support: add this hint to the top of an instance file:
+#   # yaml-language-server: $schema=./_schema.yaml
+#
+# Companion: _template.yaml (mail/calendar example to copy).
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/account.yaml"
+title: Account
+description: |
+  A cloud/mail/calendar account inventory entry — access method, owner,
+  and Promote-routing scope. Credentials live in KeyVault/Keychain/
+  1Password, referenced here only by URI.
+
+type: object
+required: [id, scope, display_name, owner]
+additionalProperties: true   # v1 permissive — provider blocks vary widely
+
+properties:
+
+  id:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Stable account slug (filename = identity/accounts/<id>.yaml)"
+
+  scope:
+    enum: [core, org, user, private]
+    description: |
+      Promote-routing scope — REQUIRED so an account never silently
+      defaults into the wrong tier. /promote + /bridge-sync route on this:
+        core            → bks-lab/open-bridge (OSS, public)
+        org             → your org overlay (optional; team/customer)
+        user | private  → stays local in the seed, never promoted
+      Organization tenants, customer access, and registrars for org/founder
+      domains → `org`. Personal mailboxes, private cloud,
+      freelancer and reserved accounts → `user`. Accounts carry
+      secrets-URIs + PII, so an account is NEVER `core`.
+
+  display_name:
+    type: string
+    minLength: 1
+    description: "Human-readable account name shown in inventory/UI"
+
+  owner:
+    type: string
+    description: "Persona id (e.g. <persona>-company) or the seed user's handle for self"
+
+  status:
+    type: string
+    description: "Lifecycle status — active | paused | disabled | legacy | reserved"
+
+  notes:
+    type: string
+    description: "Free-form provenance / decisions"
+
+  # Optional capability blocks — present only on accounts that have them.
+  # Kept permissive (additionalProperties: true) because provider shapes
+  # differ (mail/calendar vs Azure tenant vs DNS registrar vs Twilio).
+  mail:
+    type: object
+    additionalProperties: true
+  calendar:
+    type: object
+    additionalProperties: true
+
+# Notes (advisory):
+# - Never store raw secrets — only azure-keyvault:// / keychain:// /
+#   1password:// URIs (see CLAUDE.md § Cloud Accounts & Secrets).
+# - Complex accounts get a companion `<id>.README.md` (decision matrix,
+#   rotation howto, bootstrap recipes).

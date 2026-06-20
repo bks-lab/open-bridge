@@ -1,0 +1,148 @@
+# yaml-language-server: $schema=./_schema.yaml
+# Persona Template — CORE (default/core branch)
+#
+# A persona represents an IDENTITY THE USER HOLDS. Unlike mandants
+# (which are recipient groups for outgoing messages — see mandants/),
+# a persona is "which hat am I wearing right now" — freelancer,
+# company director, private person, client-PO, etc.
+#
+# A persona carries:
+#   - Legal/tax data (tax ID, tax office, VAT ID)
+#   - Signature text for outgoing correspondence
+#   - Destination paths for document filing
+#   - Vehicle classification for expense filing
+#   - Link back to mandants if the persona also appears as a recipient
+#
+# Copy this template as `personas/<id>.yaml` on your user/* branch
+# and fill in real data. The file is USER layer — it contains personal
+# data and must not be on the default/core branch.
+#
+# Enforcement:
+#   - `.gitignore` excludes `personas/*.yaml` (this template and
+#     `personas/examples/*` are the only exceptions)
+#   - `.github/workflows/validate.yml` fails the build on the default/core
+#     branch if any non-template persona file is present
+#   - `rules/operations.md` lists `personas/*.yaml` in the blocklist
+#
+# === Referencing a persona ===
+#
+# Contexts (contexts/<name>/context.yaml):
+#   persona_ref: <persona-id>
+#
+# Standing orders (protocols/standing-orders/<name>.md frontmatter):
+#   persona_ref: <persona-id>
+#   scope: per-context
+#
+# Protocols read persona_ref from the active context at runtime and
+# use it to resolve destination paths + routing rules.
+#
+# === Schema ===
+#
+# type: individual | company
+#   individual  👤  A natural person identity (freelancer, private citizen)
+#   company     🏢  A legal entity the user represents (company director, officer)
+#
+# role: self (required)
+#   Marks this file as a persona (self-identity) and not a mandant
+#   (recipient group). The role field is what distinguishes personas
+#   from mandants at schema level — bridge-deck collectors ignore
+#   files with role: self when building addressbook views.
+#
+# See docs/personas.md for the full explanation and docs/mandants.md
+# for how personas relate to mandants.
+
+schema_version: 1
+id: example-persona                        # unique slug, matches filename without .yaml
+type: individual                           # individual | company
+role: self                                 # always "self" for personas
+scope: user                                # REQUIRED — a persona is an identity you hold;
+                                           # always user/private, never promoted upstream.
+display_name: "Example Persona"
+
+# Optional — if this persona also appears as a recipient in a mandant
+# (e.g. you as CEO appear in the team addressbook), link back here:
+# mandant_refs:
+#   - example-team
+
+# Primary person(s) the persona represents. For type:individual this
+# is typically one entry. For type:company it can be multiple (managing
+# director + authorised signatory + etc.), but usually still one.
+persons:
+  - id: primary
+    display_name: "Alex Example"
+    channels:
+      email: "alex@example.com"
+      phone: "+49..."
+    # Postal address — used in outgoing correspondence + invoice headers
+    address:
+      street: "Example Street 1"
+      zip: "12345"
+      city: "Example City"
+      country: "Example Country"
+
+# ---------------------------------------------------------------------
+# Tax data — consumed by document-intake + invoice-generation workflows
+# Field names are locale-neutral. Map to your jurisdiction:
+#   tax_id     = tax number (DE), SSN (US), NINO (UK), NIF (FR/ES), ...
+#   tax_office = Finanzamt (DE), IRS district (US), HMRC office (UK), ...
+#   vat_id     = VAT-ID (DE), EIN (US), VAT reg no (UK), ...
+# ---------------------------------------------------------------------
+tax:
+  tax_id: "XX/XXX/XXXXX"                   # Format depends on jurisdiction
+  tax_office: "Example City"
+  vat_id: "DE123456789"                    # Optional — only if VAT-liable
+  tax_advisor:                             # Optional block
+    name: "Example Tax Advisors"
+    location: "Example City"
+    contact: "mailto:advisor@example.com"
+    billing_agent: "Optional third-party billing agent"
+  vehicle:                                 # Optional — for vehicle-expense classification
+    plate: "EX-000"
+    classification: "business"             # private | business
+
+# ---------------------------------------------------------------------
+# Destination paths — where documents filed under this persona land.
+# Variables ${onedrive_root} + ${projects_root} + ${home} resolve from
+# bridge-config.yaml identity.* block.
+#
+# These keys are referenced by name from routing rules in
+# workflow/contexts/<id>.yaml (e.g. workflow/contexts/doc-system.yaml):
+#   route: { persona: freelancer, target: freelancer_open }
+# Customize keys and paths freely — the doc-intake protocol passes
+# them through without interpretation.
+# ---------------------------------------------------------------------
+destinations:
+  open: "${onedrive_root}/path/to/open"
+  submitted: "${onedrive_root}/path/to/submitted"
+  # Add as many keys as your routing rules need:
+  # freelancer_open: "${onedrive_root}/..."
+  # private_open: "${onedrive_root}/..."
+  # company_invoices: "${onedrive_root}/..."
+
+# ---------------------------------------------------------------------
+# Signature used for outgoing correspondence.
+# Referenced by invoice-generation + email-composer skills.
+# ---------------------------------------------------------------------
+signature: |
+  Alex Example
+  Freelance Consultant
+  alex@example.com
+  +49 ...
+
+# ---------------------------------------------------------------------
+# Free-text notes. Useful for documenting legal context, who this
+# persona represents in which situations, or edge cases the routing
+# rules cannot capture.
+# ---------------------------------------------------------------------
+notes: |
+  Example persona. Replace with real data on your user/* branch.
+
+  When to create separate personas:
+    - You file taxes as multiple legal entities (freelancer + company)
+    - You need distinct signatures or email footers per hat
+    - Documents must route to different folder hierarchies
+    - You want destination paths tracked independently
+
+  When ONE persona is enough:
+    - Sole proprietor with one tax context
+    - Personal-use-only (no legal entity separation)

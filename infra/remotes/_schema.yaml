@@ -1,0 +1,338 @@
+# Remote Machine Schema — JSON Schema Draft 2020-12 in YAML
+#
+# A remote is a physical or virtual machine the bridge can reach via SSH
+# (and optionally RDP, mDNS, Tailscale). Each file is the single source
+# of truth for one machine: hardware inventory, network topology,
+# wake-on-LAN settings, capabilities, and services running on the box.
+#
+# Validation:
+#   check-jsonschema --schemafile infra/remotes/_schema.yaml \
+#                    infra/remotes/*.yaml
+#
+# IDE support: add this hint to a remote file:
+#   # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/remote.yaml"
+title: Remote
+description: |
+  Single physical/virtual machine — hardware, network, services, status.
+
+type: object
+required: [name, scope, type, status]   # ssh NOT required — saas/router/toolkit don't have it
+additionalProperties: true       # v1 permissive — devices are heterogeneous
+
+properties:
+
+  name:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Hostname / file slug (lowercase-kebab-case)"
+
+  scope:
+    enum: [core, org, user, private]
+    description: |
+      Promote-routing scope — REQUIRED as a promote tripwire. A remote
+      is personal hardware/network inventory and stays local: always
+      `user` (or `private`), NEVER promoted to open-bridge or your org overlay.
+      Mandatory so a remote can never silently default into a CORE/org
+      tier if the path-based guard is ever bypassed.
+
+  type:
+    type: string
+    description: |
+      Device profile. Common values:
+        macos, linux, windows         — general-purpose computers
+        embedded                       — IoT / single-board
+        network-device, router         — switches, APs, FritzBox-style
+        saas                           — managed cloud service (no SSH)
+        usb-toolkit                    — portable hardware (Flipper Zero, Yubikey-cli, etc.)
+      Free-form to allow new device profiles without schema change.
+
+  os:
+    type: string
+    description: "OS / firmware version (e.g. 'macOS 26.4 (Tahoe)', 'FRITZ!OS 7.59')"
+
+  model:
+    type: string
+    description: "Hardware/product model (e.g. 'FRITZ!Box 7590', 'Mac mini M4')"
+
+  hardware:
+    type: object
+    description: "Hardware inventory (CPU, RAM, GPU). Free-form."
+    additionalProperties: true
+
+  # --- ssh ---
+  # Optional — SaaS / routers / USB-toolkits typically don't expose SSH.
+  # If null / absent, look at access.* (web UI) or endpoints.* (API).
+  ssh:
+    type: [object, "null"]
+    additionalProperties: true
+    properties:
+      user: {type: string}
+      host: {type: string, description: "Hostname for SSH (Tailscale-MDNS or LAN)"}
+      port: {type: integer, minimum: 1, maximum: 65535, default: 22}
+      identity_file: {type: string, description: "Path to private key (optional)"}
+      host_keys:
+        oneOf:
+          - {type: array, items: {type: string}}
+          - {type: object, additionalProperties: {type: string}}
+        description: |
+          Pinned SSH host keys. Either an array of authorized_keys-style lines
+          or an object {key_type: base64} (e.g. {ed25519: 'AAAAC3...'}).
+
+  # --- access ---
+  # Alternative to SSH — web UI / control plane access.
+  access:
+    type: object
+    additionalProperties: true
+    description: "Non-SSH control surface (web UI, API, console)"
+
+  # --- endpoints ---
+  # SaaS / API endpoints (e.g. Elasticsearch cluster URL).
+  endpoints:
+    type: object
+    additionalProperties: true
+
+  # --- auth ---
+  # Authentication metadata (key references — never raw secrets).
+  auth:
+    type: object
+    additionalProperties: true
+    description: "Auth references — KeyVault URIs, 1Password refs only. NEVER raw secrets."
+
+  # --- usb / bluetooth (embedded / toolkits) ---
+  usb:
+    type: object
+    additionalProperties: true
+  bluetooth:
+    type: object
+    additionalProperties: true
+
+  # --- network ---
+  network:
+    type: [object, "null"]
+    additionalProperties: true
+    description: |
+      Network coordinates. Tailscale FIRST, LAN as fallback.
+      LAN fails on VPN or foreign networks.
+    properties:
+      tailscale_ip:       {type: string, pattern: "^(100\\.[0-9]+\\.[0-9]+\\.[0-9]+)?$", description: "100.x.y.z (VPN — works from anywhere)"}
+      tailscale_hostname: {type: string, description: "Tailscale magic-DNS hostname"}
+      hostname:           {type: string, description: "mDNS / local hostname"}
+      lan_ip:             {type: string, description: "192.168.x.x or 10.x.y.z (same-subnet only)"}
+      mac_address:        {type: string, pattern: "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$", description: "For wake-on-LAN"}
+      mac:                {type: string, description: "Alias for mac_address (some files use shorter key)"}
+      gateway:            {type: string, description: "Default gateway IP"}
+      subnet:             {type: string, description: "Subnet CIDR (192.168.178.0/24)"}
+      wlan_ssid:          {type: string, description: "WLAN SSID (for routers / APs)"}
+      bands:
+        type: array
+        items: {type: string}
+        description: "WiFi bands offered (2.4GHz, 5GHz, 6GHz)"
+
+  # --- wake_on_lan ---
+  wake_on_lan:
+    type: object
+    additionalProperties: true
+    description: "Wake-on-LAN configuration. Honor enabled=false."
+    properties:
+      enabled:           {type: boolean, default: false}
+      mac:               {type: string, pattern: "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"}
+      relay_via:         {type: string, description: "Hostname of LAN-relay if no direct LAN access"}
+      method:            {type: string, description: "wakeonlan | python-magic-packet | <other>"}
+      boot_seconds:      {type: integer, minimum: 0, description: "Approximate boot time"}
+      command:           {type: string, description: "Primary shell command for WoL"}
+      fallback_command:  {type: string, description: "Secondary WoL method if primary fails"}
+      notes:             {type: string}
+
+  # --- storage ---
+  storage:
+    type: object
+    additionalProperties: true
+    description: "Internal + external disks. Backup-relevant."
+    properties:
+      internal:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+          properties:
+            device:     {type: string}
+            capacity:   {type: string, description: "e.g. '1 TB'"}
+            mount:      {type: string}
+            role:       {type: string, description: "system | backup | media | swap | other"}
+            filesystem: {type: string}
+      external:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+          properties:
+            device:      {type: string}
+            capacity:    {type: string}
+            filesystem:  {type: string}
+            device_node: {type: string, description: "/dev/diskNsM"}
+            mount:       {type: string}
+            smb_shares:
+              type: array
+              items: {type: string}
+            role:        {type: string}
+            layout_ref:  {type: string, description: "Path to backups/volumes/<name>.md"}
+            notes:       {type: string}
+
+  # --- capabilities ---
+  # Free-form list — the bridge / skills check capability names to decide
+  # whether to dispatch work here. Common:
+  #   ssh, rdp, services, docker, git, claude, gpu, boot, forensics,
+  #   pentesting, imessage-send-text, imessage-send-attachment, voice-clone
+  capabilities:
+    type: array
+    items: {type: string}
+    description: "Capabilities this machine offers. Free-form list."
+
+  # --- services ---
+  # Services running on this machine — keepalive units, scheduled jobs,
+  # one-shots. The truth probe is `check:` (or derived from launchd label).
+  # See rules/deploy-reconciliation.md.
+  services:
+    type: array
+    items:
+      type: object
+      required: [slug]
+      additionalProperties: true
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z][a-z0-9-]*$"
+          description: "Service identifier (kebab-case)"
+        label:
+          type: [string, "null"]
+          description: |
+            launchd label / systemd unit / Windows service name.
+            null when manually managed (tmux/nohup) without a unit file.
+        type:
+          enum:
+            - keepalive          # long-running, restart on exit
+            - scheduled          # cron / launchd StartInterval / WatchPaths
+            - oneshot            # run-once
+            - manual-tmux        # human starts via tmux session
+            - manual-nohup       # human starts via nohup
+            - manual-app         # human starts a GUI app (e.g. a desktop tool)
+            - tailscale-managed  # supervised by tailscaled (e.g. tailscale funnel/serve)
+            - launchd            # macOS launchd unit, gui domain (label set; lifecycle in the plist)
+            - launchd-system     # macOS launchd unit, system domain (/Library/LaunchDaemons, root)
+            - systemd            # Linux systemd unit
+            - scheduled-task     # Windows Task Scheduler entry
+          description: |
+            How this service is supervised. The lifecycle-style values
+            (keepalive / scheduled / oneshot / manual-*) describe behaviour;
+            the manager-style values (launchd / systemd / scheduled-task)
+            name the supervising init system when that is the salient fact
+            and the unit `label` + `check` probe carry the detail.
+        schedule:
+          type: string
+          description: "cron syntax for scheduled type, or free-form description"
+        schedule_sat:
+          type: string
+          description: "Saturday-specific schedule override"
+        check:
+          type: string
+          description: "Truth-probe shell command. Empty = derive from label+type."
+        log:
+          type: string
+          description: "Log path (absolute or relative to ~)"
+        artifact_probe:
+          type: object
+          additionalProperties: true
+          description: "Output-probe for pipelines (path, within_minutes, expected_after)"
+          properties:
+            path:           {type: string}
+            within_minutes: {type: integer, minimum: 1}
+            expected_after: {type: string}
+        note:
+          type: string
+          description: "Free-form context — provenance, quirks, manual-restart steps"
+
+  # --- status ---
+  status:
+    enum: [online, offline, pending, active, decommissioned, unknown]
+    description: |
+      Reachability/operational status. `online`/`offline` for SSH-able boxes,
+      `active`/`pending` for SaaS or always-on devices, `unknown` for intermittent.
+
+  # --- domain-specific extensions (kept open) ---
+  # Real-world files use either array or object shape for many of these
+  # blocks (e.g. namespaces as named-dict OR as list). v1 accepts both.
+
+  # SaaS-style fields (e.g. elastic.yaml):
+  provider:
+    oneOf:
+      - {type: string, description: "Vendor name string"}
+      - {type: object, additionalProperties: true, description: "Vendor block (name, region, jurisdiction, ...)"}
+  namespaces:
+    oneOf:
+      - {type: object, additionalProperties: true}
+      - {type: array,  items: {type: object, additionalProperties: true}}
+    description: "Logical namespaces / spaces / index-prefixes within a SaaS instance"
+  rules:
+    type: array
+    items: {type: [string, object]}
+    description: "Operational rules. Either free-form strings or structured objects."
+  consumers:
+    oneOf:
+      - {type: array,  items: {type: [string, object]}}
+      - {type: object, additionalProperties: true}
+    description: "Apps/services that depend on this SaaS instance"
+  backup:
+    type: object
+    additionalProperties: true
+    description: "Backup config for SaaS data"
+
+  # Router-specific (e.g. {your-router}.yaml):
+  known_devices:
+    oneOf:
+      - {type: array,  items: {type: object, additionalProperties: true}}
+      - {type: object, additionalProperties: true}
+    description: "Devices visible in the router's DHCP/ARP table (named-dict or list)"
+  commands:
+    type: object
+    additionalProperties: true
+    description: "Common router CLI / TR-064 commands"
+
+  # USB-toolkit-specific (e.g. lab-device.yaml):
+  firmware:
+    oneOf:
+      - {type: string, description: "Firmware version string"}
+      - {type: object, additionalProperties: true, description: "Firmware block (branch, version, commit, build_date, ...)"}
+  host:
+    oneOf:
+      - {type: string, description: "Single host machine slug"}
+      - {type: object, additionalProperties: true, description: "Multi-host config (default, current, ...)"}
+  expansion_boards:
+    oneOf:
+      - {type: array,  items: {type: object, additionalProperties: true}}
+      - {type: object, additionalProperties: true}
+    description: "Add-on hardware boards (named-dict or list)"
+  tools:
+    oneOf:
+      - {type: array,  items: {type: [string, object]}}
+      - {type: object, additionalProperties: true}
+    description: "On-device tools / scripts / firmware-backups / wordlists"
+  notes:
+    type: string
+    description: "Free-form notes — quirks, manual steps, history"
+  quirks:
+    type: array
+    items: {type: string}
+    description: "Known quirks / workarounds"
+
+# Notes (advisory — not enforced):
+# - Tailscale FIRST. LAN second. Skills should try tailscale_hostname/IP
+#   before lan_ip, because LAN fails on VPN or foreign networks.
+# - NEVER store credentials in this file. KeyVault / 1Password URIs only.
+# - When wake_on_lan.enabled=false, the machine has explicitly opted out
+#   of remote wake. Honor that — never force-wake.
+# - services[].label=null + type=manual-* means the unit is not under a
+#   service manager. The truth probe must be set explicitly (e.g.
+#   "tmux has-session -t imessage").

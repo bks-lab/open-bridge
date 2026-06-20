@@ -1,0 +1,106 @@
+# Example: Operational project (Type A)
+# Use for: management, planning, coordination, non-code work
+# Key difference: has Assignment + Dependency fields for task delegation
+
+schema_version: 1
+scope: org          # REQUIRED — org/team example
+
+project:
+  name: "Operations Board"
+  number: 7
+  org: my-org
+  tracker: github
+  issue_repo: my-org/wiki
+  type: operational
+
+fields:
+  status:
+    values:
+      - "New"
+      - "Backlog"
+      - "Ready for Dev"
+      - "In Progress"
+      - "In Review"
+      - "Done"
+      - "Declined"
+    default: "New"
+    done_states: ["Done"]
+    review_states: ["In Review"]
+
+  priority:
+    values:
+      - "Critical"
+      - "High"
+      - "Medium"
+      - "Low"
+      - "Backlog"
+    default: "Medium"
+
+  type:
+    values:
+      - "Feature"
+      - "Bug"
+      - "Documentation"
+      - "Research"
+      - "Maintenance"
+      - "Coordination"
+      - "Organization"
+      - "Infrastructure"
+
+  # Type A specific: task delegation
+  assignment:
+    values:
+      - "Pending"
+      - "Accepted"
+      - "Declined"
+      - "Reassign"
+    default: "Pending"
+
+  dependency:
+    values:
+      - "No Blocker"
+      - "Waiting for Input"
+      - "Blocked by"
+      - "Handoff"
+    default: "No Blocker"
+
+labels:
+  - name: tech
+    color: "1D76DB"
+    description: "Technical task"
+  - name: business
+    color: "D93F0B"
+    description: "Business / domain"
+  - name: waiting
+    color: "FBCA04"
+    description: "Waiting on external party"
+  - name: docs
+    color: "5319E7"
+    description: "Documentation"
+
+governance:
+  level: strict
+  max_active_per_person: 5
+  stale_days: 14
+  rules:
+    done_requires_review: true
+    review_needs_comment: true
+    done_only_by_user: true
+    never_delete: true
+    all_fields_required: true
+    assignee_on_in_progress: true
+    comment_on_status_change: true
+
+  # Type A assignment rules
+  assignment_rules:
+    pending_on_assign: true
+    max_pending_days: 7
+
+state_map:
+  "New": new
+  "Backlog": new
+  "Ready for Dev": ready
+  "In Progress": in_progress
+  "In Review": review
+  "Done": done
+  "Declined": removed

@@ -1,0 +1,187 @@
+# Mandant Schema — JSON Schema Draft 2020-12 in YAML
+#
+# A mandant is a group of related people who receive scheduled messages
+# (team, household, family, friends, colleagues, or a single individual).
+# The bridge-deck daemon reads every `identity/mandants/<id>.yaml` file
+# (ignoring files prefixed with `_`) via collector-mandants and surfaces
+# them on the Mandants + Calendar tabs.
+#
+# Same person CAN appear in multiple mandants with different roles
+# (e.g. "Sam" in both "team" as developer and "family" as sibling).
+# Calendar entries reference a specific (mandant, person) pair.
+#
+# Validation:
+#   check-jsonschema --schemafile identity/mandants/_schema.yaml \
+#                    identity/mandants/*.yaml
+#
+# IDE support: add this hint to a mandant file:
+#   # yaml-language-server: $schema=./_schema.yaml
+#
+# Schema contract: bridge-deck `packages/shared/src/mandant.ts`
+# Full docs: docs/mandants.md
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/mandant.yaml"
+title: Mandant
+description: |
+  Recipient group for scheduled outbound messages. Persons within a
+  mandant carry channels (email/signal/imessage/...) and per-person
+  defaults (language, timezone, quiet hours, detail level).
+
+type: object
+required: [schema_version, scope, id, type, display_name, persons]
+additionalProperties: true   # v1 permissive
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  scope:
+    enum: [core, org, user, private]
+    description: |
+      Promote-routing scope — REQUIRED so a mandant never silently
+      defaults into the wrong tier (incident: scope-less org mandants were
+      skipped by /promote and never reached the internal tier).
+      /promote + /bridge-sync route on this:
+        core            → bks-lab/open-bridge (OSS, public)
+        org             → your org overlay (optional; customer/PII OK)
+        user | private  → stays local in the seed, never promoted
+      Mandants carry external PII, so a mandant is NEVER `core`/`org`.
+
+  id:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Mandant slug (filename = identity/mandants/<id>.yaml)"
+
+  type:
+    enum: [company, household, family, friends, colleagues, customer, community, service, authority, individual]
+    description: |
+      UI icon mapping (synced with bridge-deck packages/shared/src/mandant.ts):
+        company    🏢   Business entity (your org, client companies)
+        household  👨‍👩‍👧   People living in one place
+        family     👪   Extended family
+        friends    🤝   Personal friends
+        colleagues 💼   External work contacts
+        customer   🏭   Customer organization
+        community  📢   Community / interest group
+        service    🛠   Service provider (lawyer, accountant, ...)
+        authority  🏛   Government / regulatory authority
+        individual 👤   Single contact not in any group
+
+  display_name:
+    type: string
+    minLength: 1
+    description: "Human-readable name shown in UI (Mandants tab)"
+
+  default_channel:
+    type: string
+    description: |
+      Channel name (email, signal, imessage, telegram, …) used as default
+      when calendar entries don't specify a channel.
+
+  context_ref:
+    type: string
+    description: "Optional link to a context bundle in workflow/contexts/<id>.yaml"
+
+  notes:
+    type: string
+    description: "Free-form notes — provenance, decisions, intra-team conventions"
+
+  # Optional structured fields (used by customer-style mandants — e.g. a contracting client)
+  address:
+    type: object
+    additionalProperties: true
+    properties:
+      street:  {type: string}
+      zip:     {type: string}
+      city:    {type: string}
+      country: {type: string}
+
+  phone:
+    type: string
+    description: "Mandant-level phone (e.g. customer hotline)"
+
+  tags:
+    type: array
+    items: {type: string}
+    description: "Free-form tags for filtering/grouping"
+
+  systems:
+    type: array
+    items: {type: object, additionalProperties: true}
+    description: "Customer-systems inventory (name, purpose, version, …)"
+
+  contracts:
+    type: array
+    items: {type: object, additionalProperties: true}
+    description: "Contract records (id, type, date, parties, …)"
+
+  incidents:
+    type: array
+    items: {type: object, additionalProperties: true}
+    description: "Incident log (id, title, opened, status, report, …)"
+
+  persons:
+    type: array
+    description: "People in this mandant. May be empty for placeholder mandants."
+    items:
+      type: object
+      required: [id, display_name]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z][a-z0-9_-]*$"
+          description: "Person id within the mandant (kebab-case or snake_case)"
+        display_name:
+          type: string
+          minLength: 1
+        role:
+          type: string
+          description: "Free-form role label (Lead, Developer, Brother, ...)"
+        channels:
+          type: object
+          additionalProperties: {type: string}
+          description: |
+            Channel handles. Keys are channel names from infra/channels/
+            (or built-ins like email/phone). Values are concrete addresses.
+          properties:
+            email:    {type: string, format: email}
+            email_alt: {type: string, format: email}
+            phone:    {type: string}
+            signal:   {type: string, description: "Phone number for Signal"}
+            imessage: {type: string, description: "iMessage handle (email or phone)"}
+            telegram: {type: string, description: "Telegram username or chat-id"}
+            whatsapp: {type: string}
+        defaults:
+          type: object
+          additionalProperties: true
+          description: |
+            Per-person delivery preferences. Hint for the intent-parser
+            when creating new calendar entries — the fire-loop itself
+            does NOT read mandant defaults.
+          properties:
+            language:
+              type: string
+              pattern: "^[a-z]{2}(-[A-Z]{2})?$"
+              description: "BCP 47 locale (de, en, fr-CA, ...)"
+            timezone:
+              type: string
+              description: "IANA timezone (Europe/Berlin, America/Los_Angeles, ...)"
+            detail_level:
+              enum: [minimal, summary, full]
+            preferred_time_of_day:
+              enum: [morning, midday, evening, night]
+            quiet_hours:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: {type: integer, minimum: 0, maximum: 23}
+              description: "[start_hour, end_hour] in 24h format — no messages in this window"
+
+# Notes (advisory):
+# - Mandant files are typically gitignored on user/{name} branches (PII).
+# - The `_template.yaml` lives in CORE; real mandants are USER.
+# - persons[].id should be stable — calendar entries reference it.

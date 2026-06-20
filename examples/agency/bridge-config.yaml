@@ -1,0 +1,55 @@
+# Example: bridge-config.yaml for the Acme-Dev agency
+# Condensed to the blocks this example actually uses — the full annotated
+# reference with every block and default lives in the repo root:
+# ../../bridge-config.yaml.template
+
+# ─── Identity ─────────────────────────────────────────────────────────
+identity:
+  name: "acme"               # used for the user/acme branch name
+  org: "acme-dev"            # GitHub organization
+  projects_root: ~/Developer
+  home: ~
+
+user_profile: work
+
+# ─── Theme + Language ─────────────────────────────────────────────────
+theme: professional
+language:
+  conversation: en
+  artifacts: en
+
+# ─── Task Management ──────────────────────────────────────────────────
+work:
+  enabled: true
+  logging_level: hybrid
+  max_active: 5            # WIP WARN threshold (doing+review in work/tasks/); warn-only, never blocks. Streams excluded.
+  max_daily_goals: 3
+
+# ─── Integrations ─────────────────────────────────────────────────────
+integrations:
+  github:
+    enabled: true
+    projects: ecosystem      # read boards from ecosystem.yaml.github_projects
+    assignee_me: "alice-chen"
+
+# ─── Channels / Calendar / Mandants ───────────────────────────────────
+# Backed by the instance files in this example:
+#   infra/channels/email.yaml + slack-bot.yaml + _scheduled.yaml
+#   workflow/calendars/entries.yaml
+#   identity/mandants/team.yaml
+channels:
+  enabled: true
+calendar:
+  enabled: true
+mandants:
+  enabled: true
+
+# ─── Upstreams (multi-upstream) ───────────────────────────────────────────
+upstreams:
+  - name: open-bridge
+    repo: bks-lab/open-bridge     # shared OSS upstream — same for all users
+    branch: main
+    role: oss-core
+    contribute: true
+    pull_interval_days: 7
+    primary: true

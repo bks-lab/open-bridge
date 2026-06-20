@@ -1,0 +1,46 @@
+name: DCO
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  dco-check:
+    name: Verify Developer Certificate of Origin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Signed-off-by trailers
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          echo "Checking commits in range ${BASE_SHA}..${HEAD_SHA}"
+
+          MISSING=()
+          while IFS= read -r commit; do
+            [ -z "$commit" ] && continue
+            if ! git log -1 --format=%B "$commit" | grep -qE "^Signed-off-by: .+ <.+@.+>"; then
+              MISSING+=("$commit")
+            fi
+          done < <(git log --format=%H "${BASE_SHA}..${HEAD_SHA}")
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo ""
+            echo "::error::The following commits are missing a 'Signed-off-by:' trailer:"
+            for c in "${MISSING[@]}"; do
+              SUBJECT=$(git log -1 --format=%s "$c")
+              echo "::error::  $c  $SUBJECT"
+            done
+            echo ""
+            echo "Fix this by amending each commit with: git commit --amend --signoff"
+            echo "Or by rebasing the whole PR: git rebase --signoff ${BASE_SHA}"
+            echo ""
+            echo "See CONTRIBUTING.md → Developer Certificate of Origin for details."
+            exit 1
+          fi
+
+          echo "All commits are properly signed off."

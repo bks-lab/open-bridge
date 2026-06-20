@@ -1,0 +1,62 @@
+# Example: Minimal/custom project (Type C)
+# Use for: small projects, workshops, experiments
+# Key difference: fewer fields, simpler governance, no emojis needed
+
+schema_version: 1
+scope: user         # REQUIRED — personal example → stays local
+
+project:
+  name: "Workshop Backlog"
+  number: 3
+  org: my-org
+  tracker: github
+  issue_repo: my-org/workshop
+  type: custom
+
+fields:
+  status:
+    values:
+      - "Backlog"
+      - "Ready"
+      - "In Progress"
+      - "In Review"
+      - "Done"
+    default: "Backlog"
+    done_states: ["Done"]
+    review_states: ["In Review"]
+
+  priority:
+    values:
+      - "P0"
+      - "P1"
+      - "P2"
+    default: "P1"
+
+  size:
+    values:
+      - "XS"
+      - "S"
+      - "M"
+      - "L"
+      - "XL"
+    default: "M"
+
+governance:
+  level: relaxed
+  max_active_per_person: 0      # unlimited
+  stale_days: 30
+  rules:
+    done_requires_review: true
+    review_needs_comment: false  # lighter process
+    done_only_by_user: true
+    never_delete: true
+    all_fields_required: false   # minimal fields OK
+    assignee_on_in_progress: false
+    comment_on_status_change: false
+
+state_map:
+  "Backlog": new
+  "Ready": ready
+  "In Progress": in_progress
+  "In Review": review
+  "Done": done

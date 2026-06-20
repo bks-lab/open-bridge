@@ -1,0 +1,200 @@
+# Contract Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Defines the structure for contracts/<id>.yaml — recurring obligations
+# the user holds (utilities, telco, insurance, SaaS subscriptions,
+# tax-advisor retainers, ...).
+#
+# A "contract" here is anything with:
+#   - A counterparty (provider) the user pays
+#   - A term (continuous or fixed end date)
+#   - A notice / cancellation rhythm
+#   - Optional cost allocation across personas (private vs business)
+#
+# Companion: _template.yaml (working example for humans to copy).
+#
+# Validation:
+#   check-jsonschema --schemafile identity/contracts/_schema.yaml \
+#                    identity/contracts/*.yaml
+#
+# IDE support: add this hint to the top of an instance file:
+#   # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/contract.yaml"
+title: Contract
+description: |
+  Recurring financial obligation. Carries provider, term, pricing,
+  and (optionally) cost allocation across personas — e.g. one electricity
+  contract split between private and freelance because the EV is
+  charged on the same meter.
+
+type: object
+required: [schema_version, id, provider, product, status]
+additionalProperties: true   # v1 permissive — tighten after first cleanup sweep
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+    description: "Schema version, currently 1"
+
+  id:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Unique contract slug, lowercase-kebab-case (e.g. 'acme-energy-electricity')"
+
+  provider:
+    type: string
+    description: "Counterparty name (e.g. 'acme-energy', 'acme-telco')"
+
+  provider_legal_name:
+    type: string
+    description: "Full legal name if different from short provider slug"
+
+  product:
+    type: string
+    description: "Free-form product class (electricity, gas, internet, mobile, broadcast-fee, insurance, saas, retainer, ...)"
+
+  tariff:
+    type: string
+    description: "Tariff/plan name as known to the provider (e.g. 'Green Energy Plus', 'Home XL')"
+
+  status:
+    enum: [active, paused, cancelled, expired]
+    description: "Lifecycle status"
+
+  contract_start:
+    type: string
+    format: date
+    description: "Date the contract took effect (YYYY-MM-DD)"
+
+  min_term_end:
+    type: string
+    format: date
+    description: "End of minimum term (YYYY-MM-DD). After this date renewal cycles begin."
+
+  notice_period_days:
+    type: integer
+    description: "Notice period in days"
+
+  notice_period_text:
+    type: string
+    description: "Human-readable cancellation rule (e.g. '1 month before end of term', 'any time, effective end of month')"
+
+  next_action_deadline:
+    type: string
+    format: date
+    description: |
+      Last calendar day on which an action (cancel, renegotiate, switch)
+      must be taken to avoid auto-renewal. Computed: min_term_end - notice_period.
+      Surfaced by /briefing and /calendar as a reminder source.
+
+  auto_renewal:
+    type: object
+    additionalProperties: true
+    properties:
+      enabled:           {type: boolean}
+      renewal_term_text: {type: string, description: "e.g. '12 months at a time'"}
+
+  # Provider-side identifiers (PII — handled by leak-check before any OSS promote)
+  customer_no:
+    type: string
+    description: "Customer number assigned by provider"
+  contract_no:
+    type: string
+    description: "Contract number if separate from customer number"
+  meter_no:
+    type: string
+    description: "Meter / line / asset identifier (e.g. meter number, line ID)"
+
+  delivery_address_ref:
+    type: string
+    description: |
+      Reference to a persona address used as service-delivery location.
+      Format: 'identity/personas/<id>.yaml#<anchor>' or free-text path.
+
+  pricing:
+    type: object
+    description: "Tariff pricing. Gross = incl. VAT; net = excl. VAT (relevant for VAT-liable personas)."
+    additionalProperties: true
+    properties:
+      currency:
+        type: string
+        default: EUR
+      base_per_year:
+        type: object
+        description: "Annual base price (standing charge)"
+        additionalProperties: true
+        properties:
+          gross: {type: number}
+          net:   {type: number}
+      energy_ct_per_kwh:
+        type: object
+        description: "Energy rate in cents per kWh — for utility contracts"
+        additionalProperties: true
+        properties:
+          ht: {type: object, properties: {gross: {type: number}, net: {type: number}}}
+          nt: {type: object, properties: {gross: {type: number}, net: {type: number}}}
+      monthly_fee:
+        type: object
+        properties:
+          gross: {type: number}
+          net:   {type: number}
+      options:
+        type: array
+        items:
+          oneOf:
+            - {type: string}
+            - {type: object, additionalProperties: true}
+        description: "Booked options (green-energy premium, hardware rental, service packages, ...)"
+
+  payment:
+    type: object
+    additionalProperties: true
+    properties:
+      method:        {type: string, enum: [sepa-direct-debit, bank-transfer, credit-card, paypal]}
+      iban_used:     {type: string, description: "IBAN charged — may differ from persona default"}
+      billing_cycle: {type: string, description: "monthly, quarterly, yearly"}
+
+  cost_allocation:
+    type: array
+    description: |
+      How costs split across personas. Used by accounting/tax workflows
+      to compute deductible share. Shares should sum to ~1.0; rounding
+      errors tolerated.
+    items:
+      type: object
+      required: [persona, share_default]
+      additionalProperties: true
+      properties:
+        persona:
+          type: string
+          description: "Persona id (matches identity/personas/<id>.yaml)"
+        share_default:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: "Default share 0.0..1.0 (e.g. 0.85 = 85%)"
+        basis:
+          type: string
+          description: "Reasoning for the chosen share — provides audit trail"
+        notes:
+          type: string
+
+  sources:
+    type: array
+    description: "Source documents: invoice PDFs, contract PDFs, online-portal snapshots"
+    items:
+      type: object
+      additionalProperties: true
+      required: [path]
+      properties:
+        path:        {type: string, description: "File path or URL"}
+        kind:        {type: string, description: "e.g. 'invoice', 'price-letter', 'portal-snapshot', 'contract'"}
+        date:        {type: string, format: date}
+        description: {type: string}
+
+  notes:
+    type: string
+    description: "Free-form notes — history, decisions, comparison results, anomalies"

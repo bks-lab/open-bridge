@@ -1,0 +1,194 @@
+# Project Registry Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates `workflow/projects/<slug>.yaml` files. Each file describes
+# ONE external project board (GitHub Projects V2, Azure DevOps Boards,
+# Linear, Jira, …). The skills project-advisor and github-projects-manager
+# read these files as their source of truth for field values, governance
+# rules, and state mappings.
+#
+# Validation:
+#   check-jsonschema --schemafile workflow/projects/_schema.yaml \
+#                    workflow/projects/<slug>.yaml
+#
+# IDE support: add this line at the top of every <slug>.yaml:
+#   # yaml-language-server: $schema=./_schema.yaml
+#
+# Full docs: workflow/projects/README.md
+# Related: trackers/README.md (normalized item schema), trackers/<tracker>.md
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/project.yaml"
+title: Project
+description: |
+  Per-board configuration consumed by project-advisor (governance) and
+  github-projects-manager (execution). One file per external board.
+
+type: object
+required: [schema_version, scope, identity, project, fields]
+additionalProperties: true        # v1 permissive — allow forward-compatible fields
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  scope:
+    enum: [core, org, user, private]
+    description: |
+      Promote-routing scope — REQUIRED so a project registry never
+      silently defaults into the wrong tier. /promote + /bridge-sync
+      route on this:
+        core            → bks-lab/open-bridge (OSS, public)
+        org             → your org overlay (optional)
+        user | private  → stays local in the seed, never promoted
+      A board for org/customer work is `org`.
+
+  identity:
+    type: object
+    required: [slug, display_name]
+    additionalProperties: true
+    properties:
+      slug:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Stable identifier — must match filename without .yaml"
+      display_name:
+        type: string
+        minLength: 1
+      description:
+        type: string
+
+  project:
+    type: object
+    required: [tracker]
+    additionalProperties: true
+    properties:
+      tracker:
+        enum: [github, ado, linear, jira, gitlab]
+        description: "Which trackers/*.md playbook handles this board"
+      org:
+        type: string
+        description: "GitHub org / ADO organization / Linear team key"
+      number:
+        type: integer
+        description: "GitHub Project V2 number (github only)"
+      issue_repo:
+        type: string
+        pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        description: "Where issues are created — `org/repo` (github only)"
+      url:
+        type: string
+        format: uri
+
+  # Optional cross-references — used by Phase 3 task-sync standing-order
+  context_ref:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Slug → workflow/contexts/<slug>.yaml for doc-routing defaults"
+
+  mandant_ref:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Slug → identity/mandants/<slug>.yaml for recipient defaults"
+
+  fields:
+    type: object
+    minProperties: 1
+    description: "Every custom field on the board, keyed by display name"
+    additionalProperties:
+      $ref: "#/$defs/Field"
+
+  state_map:
+    type: object
+    description: "raw_state (key) → normalized state (value, see trackers/README.md)"
+    additionalProperties:
+      enum: [new, ready, in_progress, review, done, blocked, removed]
+
+  governance:
+    type: object
+    additionalProperties: true
+    properties:
+      level:
+        enum: [strict, standard, relaxed]
+        default: standard
+      rules:
+        type: array
+        items: {type: string}
+        description: "Named rules — see skills/project-advisor/references/governance.md"
+      review_states:
+        type: array
+        items: {type: string}
+      done_states:
+        type: array
+        items: {type: string}
+      review_comment_template:
+        type: string
+
+  conventions:
+    type: object
+    additionalProperties: true
+    properties:
+      field_language:
+        enum: [en, de, mixed]
+        default: mixed
+      english_only_fields:
+        type: boolean
+        default: false
+      readonly_fields:
+        type: array
+        items: {type: string}
+
+  sync_policy:
+    type: object
+    additionalProperties: false
+    description: |
+      Optional — consumed by skills/tracker-sync + scripts/tracker-sync.py.
+      Absent ⇒ remote-authoritative defaults (authority: remote, auto_pull: true).
+      Never enables auto-push: every board write stays gated. This block only
+      flips which side a `*_ahead` row defaults its proposal toward, and whether
+      /briefing may refresh this board's snapshot automatically.
+    properties:
+      authority:
+        enum: [remote, local]
+        default: remote
+        description: |
+          Which side wins on Status. `remote` (default) = the GitHub board is
+          the system of record (the team works there). `local` is rare — a board
+          only you touch — and still never auto-pushes.
+      auto_pull:
+        type: boolean
+        default: true
+        description: "May /briefing Stream B refresh this board's snapshot automatically."
+      push_requires_confirm:
+        type: boolean
+        default: true
+        description: "Always true in practice — every board write is gated. Explicit for clarity."
+
+$defs:
+
+  Field:
+    type: object
+    required: [type]
+    additionalProperties: true
+    properties:
+      type:
+        enum: [single-select, text, number, date, iteration]
+      values:
+        type: array
+        items: {type: string}
+        description: "Closed list for single-select fields"
+      default:
+        description: "Default value used on issue creation (type-dependent)"
+      readonly:
+        type: boolean
+        default: false
+        description: "If true, github-projects-manager must NEVER write this field"
+      description:
+        type: string
+
+# Notes (advisory):
+# - slug stability: never rename a slug in place — `git mv` to a new file.
+# - One file per board. A multi-org setup gets multiple files, not nested.
+# - Field names use the exact display string from the board (case-sensitive).
+# - state_map values come from trackers/README.md (normalized item schema).

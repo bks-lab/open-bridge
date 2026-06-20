@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=./_schema.yaml
+# Bridge Instance Definition
+# Register ANOTHER Bridge this hub should be aware of.
+# Copy to instances/{slug}.yaml and customize.
+#
+# AWARENESS + NAVIGATION ONLY — registering an instance does NOT authorise
+# reaching into it. From this session: read/check it read-only; NEVER
+# modify / push / pull / cross-log it. Operate it in its OWN session.
+
+name: my-other-bridge
+scope: user                  # REQUIRED — a real instance names a repo/customer → always user/private, never promoted
+purpose: "<one line — what this Bridge is for>"
+
+relationship: sibling        # self | sibling | upstream | downstream
+
+location:
+  path: ~/work/<org>/<repo>
+  working_branch: user/<name>
+  repo: ""                   # <org>/<repo> if it has a remote
+  # host: my-server          # infra/remotes/ slug if it runs on another machine
+
+data_policy: local-only      # local-only | private-tracked | public
+push_policy: never           # never | user-branch | upstream
+feature_flow: inbound        # none | inbound | outbound | bidirectional
+
+# Where it pulls CORE from (if any). Routing SoT stays in bridge-config.upstreams.
+# upstream: { repo: bks-lab/open-bridge, branch: main, status: ok }
+# promote_config_ref: "bridge-config.yaml.upstreams[open-bridge]"   # for relationship=upstream
+
+surface:
+  skills: []                 # instance-specific skills (read-only awareness)
+  contexts: []
+  notes: ""
+
+access:
+  mode: operate-own-session  # read-only-from-here | operate-own-session
+  how: "cd <path> && claude"
+
+status: active               # active | dormant | archived | unknown
+notes: ""

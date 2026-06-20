@@ -1,0 +1,40 @@
+# Example: Slack Bot for Acme-Dev agency
+# Bot type — responds to messages in #dev-team channel
+
+schema_version: 1
+scope: user              # local transport config -> user tier
+name: slack-bot
+display_name: "Slack Bot"
+type: bot
+
+implementation:
+  skill: null
+  plugin: null
+
+runtime:
+  remote: prod-server
+  service: slack-bot
+  mode: tmux
+  session: slack-bot
+
+access:
+  policy: allowlist
+  self: []
+  contacts: []
+  groups:
+    - name: "#dev-team"
+      id: "C01ABC123"
+    - name: "#alerts"
+      id: "C01DEF456"
+
+checkin:
+  enabled: true
+  stream: "C"
+  priority: 10
+
+behavior:
+  auto_response: true
+  signature: false
+  business_hours_only: false
+
+status: active

@@ -1,0 +1,324 @@
+# Channel Schema — JSON Schema Draft 2020-12 in YAML
+#
+# A channel is a messaging integration or outbound transport (iMessage,
+# email, Telegram, news-digest, WhatsApp bots, HTTP-static publishers, ...).
+# Each channel's runtime usually sits on a remote as a launchd/systemd
+# unit, tmux keepalive, on-demand script, or pipeline.
+#
+# Real-world channel files are highly heterogeneous — some are bot-style
+# allowlist-driven (imessage), some are pipelines (news-digest), some are
+# pure HTTP publishers (repo-layout). The schema is intentionally permissive
+# (additionalProperties: true) so each channel can carry domain-specific
+# extension blocks.
+#
+# Validation:
+#   check-jsonschema --schemafile infra/channels/_schema.yaml \
+#                    infra/channels/{imessage,news-digest,email}.yaml
+#
+# IDE support: add this hint to a channel file:
+#   # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/channel.yaml"
+title: Channel
+description: |
+  Messaging or outbound-transport integration. Heterogeneous: bots,
+  pipelines, HTTP publishers all share this surface.
+
+type: object
+required: [schema_version, scope, name, display_name, type, status]
+additionalProperties: true   # v1 permissive — channels are highly diverse
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  scope:
+    enum: [core, org, user, private]
+    description: |
+      Promote-routing scope — REQUIRED as a promote tripwire. A channel
+      is personal transport config (handles, hosts, tokens-by-ref) and
+      stays local: always `user` (or `private`), NEVER promoted to
+      open-bridge or your org overlay. Mandatory so a channel can never silently
+      default into a CORE/org tier if the path-based guard is bypassed.
+
+  name:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Channel identifier (filename without .yaml)"
+
+  display_name:
+    type: string
+    description: "Human-readable channel name"
+
+  description:
+    type: string
+    description: "What this channel does (1-3 sentences)"
+
+  type:
+    type: string
+    description: |
+      Channel category. Common values: bot, plugin, collector, api,
+      bridge, channel-plugin, outbound-automation, http-static.
+      Free-form — new types appear as new channels are added.
+
+  status:
+    enum: [pending, experimental, active, paused, disabled, deployed-pending-bootstrap, legacy]
+    description: |
+      Reality status — see rules/deploy-reconciliation.md.
+      Flip to `active` only after the verify probe passes on the remote.
+
+      `experimental` = running but in-development / not load-bearing yet;
+      precedes `active`. Distinct from `pending` (not yet deployed).
+
+      `legacy` = deprecated but still operational as fallback / for backward
+      compatibility, slated for `disabled` once the replacement is fully
+      verified. Distinct from `paused` (intentional stop) and `active`
+      (current path).
+
+  created:
+    type: string
+    format: date
+
+  source_task:
+    type: string
+    description: "Path to the work-task that created this channel (provenance)"
+
+  # --- implementation ---
+  # Tells the system WHICH Claude/external code runs this channel.
+  implementation:
+    type: object
+    additionalProperties: true
+    properties:
+      skill:   {type: [string, "null"], description: "Claude skill name (e.g. 'imessage')"}
+      plugin:  {type: [string, "null"], description: "Claude Code plugin (e.g. 'imessage@claude-plugins-official')"}
+      mcp:     {type: [string, "null"], description: "MCP server name"}
+
+  # --- runtime ---
+  # WHERE the channel lives + HOW it stays alive.
+  runtime:
+    type: object
+    additionalProperties: true
+    description: |
+      Highly variable across channel types. Common fields below; pipelines
+      add watch_paths/lock_file, HTTP-static channels add port/serve_dir.
+    properties:
+      remote:        {type: string, description: "Hostname from infra/remotes/ or 'local'"}
+      mode:
+        type: string
+        description: "tmux | launchd | systemd | on-demand | <other>"
+      service:       {type: string, description: "Service slug (matches infra/remotes/{host}.yaml)"}
+      session:       {type: string, description: "tmux session name (mode=tmux)"}
+      start_command: {type: string, description: "Command for on-demand mode"}
+      plist:         {type: string, description: "launchd plist path (mode=launchd)"}
+      port:          {type: integer, minimum: 1, maximum: 65535}
+      host:          {type: string}
+      service_label: {type: string, description: "launchd label (e.g. com.example.*)"}
+      serve_dir:     {type: string, description: "HTTP-static serve directory"}
+      source_dir:    {type: string, description: "Source dir to sync from"}
+      sync_command:  {type: string}
+      working_dir:   {type: string}
+      logs_dir:      {type: string}
+      launchd_stdout: {type: string, description: "launchd stdout log path"}
+      launchd_stderr: {type: string, description: "launchd stderr log path"}
+      lock_file:     {type: string, description: "Single-instance lock-file path"}
+      root:          {type: string, description: "Project root directory (pipeline channels)"}
+      watch_paths:
+        type: array
+        items: {type: string}
+        description: "Filesystem paths watched by launchd WatchPaths or fswatch"
+      throttle_interval_sec: {type: integer, minimum: 0}
+
+  # --- access ---
+  # Who is allowed to interact with this channel.
+  access:
+    type: object
+    additionalProperties: true
+    properties:
+      policy:
+        enum: [allowlist, pairing, disabled, public, tailscale-only]
+        description: |
+          Access policy. `tailscale-only` = reachable only over the
+          tailnet (no public ingress), the network is the gate.
+      self:
+        oneOf:
+          - {type: string}
+          - {type: array, items: {type: string}}
+        description: "User's own handles (email, phone, username)"
+      contacts:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+          required: [name, handle]
+          properties:
+            name:    {type: string}
+            handle:  {type: string}
+            chat_id: {type: string}
+      groups:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+          properties:
+            name: {type: string}
+            id:   {type: string}
+
+  # --- checkin ---
+  # If the channel routes incoming messages into bridge briefings.
+  checkin:
+    type: object
+    additionalProperties: false
+    properties:
+      enabled:  {type: boolean}
+      stream:   {type: [string, "null"]}
+      priority: {type: integer, minimum: 0, maximum: 100}
+
+  # --- behavior ---
+  behavior:
+    type: object
+    additionalProperties: true
+    properties:
+      auto_response:       {type: boolean}
+      signature:           {type: boolean}
+      business_hours_only: {type: boolean}
+
+  # --- verify (truth probe) ---
+  # See rules/deploy-reconciliation.md. /channel health runs this over SSH.
+  verify:
+    type: object
+    additionalProperties: true
+    properties:
+      service_check:
+        type: string
+        description: |
+          Presence check. Empty = derive from runtime.mode + runtime.service:
+            launchd → "launchctl list | grep {label}"
+            systemd → "systemctl --user is-active {label}"
+            tmux    → "tmux has-session -t {session} 2>/dev/null"
+      artifact_probe:
+        type: object
+        additionalProperties: true
+        description: "For output-producing channels — is fresh output appearing?"
+        properties:
+          path:           {type: string}
+          within_minutes: {type: integer, minimum: 1}
+          expected_after: {type: string}
+
+  # --- relationships ---
+  used_by:
+    type: array
+    items: {type: string}
+    description: "Other channels/jobs that route through this one"
+
+  used_channels:
+    type: array
+    items: {type: string}
+    description: "Channels this one delegates outbound delivery to"
+
+  # --- domain-specific extension blocks ---
+  # These are kept structurally permissive (additionalProperties: true)
+  # because each channel archetype shapes them differently. The properties
+  # listed below are NAMED so IDEs offer autocomplete + hover-doc, but
+  # their inner shape is open until ≥3 channels use the same form.
+
+  # Bot-archetype: AppleScript / API delivery patterns (e.g. imessage)
+  delivery:
+    type: object
+    additionalProperties: true
+    description: |
+      Outbound-delivery patterns for bot-style channels. Common subblocks:
+      text_only (syntax + notes), attachment (syntax + constraints +
+      working_example), group_send (status + note).
+    properties:
+      text_only:    {type: object, additionalProperties: true}
+      attachment:   {type: object, additionalProperties: true}
+      group_send:   {type: object, additionalProperties: true}
+
+  # Pipeline-archetype: trigger → steps (e.g. news-digest)
+  pipeline:
+    type: object
+    additionalProperties: true
+    description: |
+      Pipeline definition for outbound-automation channels.
+      trigger + ordered steps; each step has name + script + detail.
+    properties:
+      trigger: {type: string}
+      steps:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+          properties:
+            name:    {type: string}
+            script:  {type: string}
+            detail:  {type: string}
+            channel: {type: string}
+            handle:  {type: string}
+            pattern: {type: string}
+
+  source:
+    type: object
+    additionalProperties: true
+    description: "Source-of-truth for pipeline input (repo, local path, content_dirs)"
+
+  processor:
+    type: object
+    additionalProperties: true
+    description: "ML model / processor config (e.g. voice-clone model + venv + device)"
+
+  output:
+    type: object
+    additionalProperties: true
+    description: "Output config (audio_format, commit_location, frontmatter_fields, …)"
+
+  transparency:
+    type: object
+    additionalProperties: true
+    description: "EU-KI-VO / disclosure / watermark config for AI-generated content"
+
+  resilience:
+    type: object
+    additionalProperties: true
+    description: |
+      Crash-recovery / resume / single-instance-lock config.
+      Common: resume_after_crash, resume_mechanism, single_instance,
+      expected_runtime.
+
+  # HTTP-static-archetype (e.g. repo-layout)
+  urls:
+    type: object
+    additionalProperties: {type: string}
+    description: "Friendly URL map (label → http://… URL)"
+
+  launchd:
+    type: object
+    additionalProperties: true
+    description: "launchd unit details when channel ships its own plist"
+    properties:
+      plist_path:  {type: string}
+      label:       {type: string}
+      command:
+        type: array
+        items: {type: string}
+      working_dir: {type: string}
+      log:         {type: string}
+      err:         {type: string}
+
+  live_state:
+    type: object
+    additionalProperties: true
+    description: "Live-state pusher for HTTP-static dashboards (interval, endpoint, scripts)"
+
+  # When a domain block stabilizes (≥3 channels use the same shape),
+  # tighten its inner properties (additionalProperties: false).
+
+# Notes (advisory hints — not enforced):
+# - `status: deployed-pending-bootstrap` is a transitional state;
+#   should not be the resting state.
+# - When mode=launchd, runtime.plist + runtime.service_label SHOULD be set.
+# - When mode=tmux, runtime.session SHOULD be set.
+# - Pipelines (news-digest) typically have lock_file + resume_mechanism
+#   for crash-resilience.

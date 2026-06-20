@@ -1,0 +1,47 @@
+# Example: Backup topology for the Acme-Dev agency
+# Minimal sources × targets × pipelines setup — one source, one target,
+# one nightly pipeline. Full field reference: infra/backups/_template.yaml,
+# validation + sensitivity rules: infra/backups/README.md.
+
+schema_version: 1
+
+# Global defaults for all pipelines
+defaults:
+  log_dir: /tmp/bridge-backup-logs
+  notify_on_failure: true
+
+# What gets backed up
+sources:
+  documents:
+    description: "Working documents and project notes"
+    path: "~/Documents"
+    kind: directory
+    sensitivity: clear              # clear | encrypted-at-rest | encrypted-required
+    size_hint: "~5GB"
+    excludes:
+      - ".DS_Store"
+
+# Where it goes
+targets:
+  backup-drive:
+    description: "External USB drive on the workstation"
+    type: external-drive            # external-drive | nas | cloud | time-machine
+    mount: /Volumes/AcmeBackup
+    capabilities: [rclone-sync]
+    enabled: true
+
+# How connected (source × target × tool)
+pipelines:
+  - id: documents-nightly
+    source: documents
+    target: backup-drive
+    tool: rclone-sync               # rclone-sync | rclone-copy | restic-backup | time-machine
+    mode: scheduled                 # continuous | scheduled | on-demand
+    schedule: "0 23 * * *"          # nightly at 23:00
+    enabled: true
+    options:
+      transfers: 4
+
+# Last-run state lives in a sidecar file written by the backup skill,
+# so topology.yaml stays pure config in git:
+state_file: infra/backups/_state.yaml

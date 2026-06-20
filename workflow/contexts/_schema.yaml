@@ -1,0 +1,232 @@
+# Context Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates `workflow/contexts/<slug>.yaml` files. A context is a
+# domain-bundle: customer/project/area with its own routing defaults,
+# repos, recipients, and (optionally) document-intake rules.
+#
+# The schema is intentionally permissive at the top level because
+# context files vary widely — a document-intake context may carry many
+# routing-rules and areas, while a customer context typically has
+# dual-doku + sync.defaults. Common scaffolding (schema_version, id,
+# description, sync.defaults) is validated; everything else is
+# `additionalProperties: true`.
+#
+# Validation:
+#   check-jsonschema --schemafile workflow/contexts/_schema.yaml \
+#                    workflow/contexts/<slug>.yaml
+#
+# IDE hint:
+#   # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/context.yaml"
+title: Context
+description: |
+  A domain-bundle describing one workspace, customer, or area —
+  including repos, sync defaults, dual-doku rules, and optional
+  document-intake configuration.
+
+type: object
+required: [schema_version, scope]
+additionalProperties: true
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  scope:
+    enum: [core, org, user, private]
+    description: |
+      Promote-routing scope — REQUIRED so a context never silently
+      defaults into the wrong tier. /promote + /bridge-sync route on this:
+        core            → bks-lab/open-bridge (OSS, public)
+        org             → your org overlay (optional)
+        user | private  → stays local in the seed, never promoted
+      A customer/project context is `org`; a context carrying
+      personal routing/PII is `user`.
+
+  # Two id styles exist in the wild:
+  # - flat: `id: <slug>` (used by customer-style contexts)
+  # - nested: `identity.name: my-project` (used by _template.yaml)
+  id:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+
+  identity:
+    type: object
+    additionalProperties: true
+    properties:
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+      display_name:
+        type: string
+      customer:
+        type: string
+
+  description:
+    type: string
+
+  # ---- Sync defaults — consumed by the task-sync standing-order -------
+
+  sync:
+    type: object
+    additionalProperties: true
+    properties:
+      defaults:
+        $ref: "#/$defs/SyncDefaults"
+      dual_doku:
+        $ref: "#/$defs/DualDoku"
+      event_type_map:
+        $ref: "#/$defs/EventTypeMap"
+
+  # ---- Repo / Mandant cross-references --------------------------------
+
+  repos:
+    type: array
+    items:
+      type: object
+      additionalProperties: true
+      required: [name]
+      properties:
+        name:   {type: string}
+        path:   {type: string}
+        github: {type: string, pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"}
+
+  default_mandant:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Slug → identity/mandants/<slug>.yaml — recipient defaults for tasks in this context"
+
+  persona_ref:
+    type: string
+    description: "Slug → identity/personas/<slug>.yaml"
+
+  # ---- Integrations — per-capability sub-blocks ------------------------
+  # Each integration is OPTIONAL. A skill that owns an integration scans
+  # workflow/contexts/*.yaml, filters on the presence of ITS sub-block,
+  # and operates on the matches. This is the "provides:" capability
+  # pattern: contexts declare what they offer, skills discover themselves.
+  # No context needs to know which skills consume it.
+
+  integrations:
+    type: object
+    additionalProperties: true
+    description: |
+      Per-capability sub-blocks. Each well-known key (transcription,
+      doc-system, …) declares that this context participates in that
+      capability and carries the settings the owning skill needs.
+    properties:
+      transcription:
+        $ref: "#/$defs/IntegrationTranscription"
+
+$defs:
+
+  SyncDefaults:
+    type: object
+    additionalProperties: false
+    description: "Defaults applied to STATUS.md sync block when STATUS doesn't override."
+    properties:
+      github:
+        type: object
+        additionalProperties: false
+        properties:
+          repo:
+            type: string
+            pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+          project:
+            type: object
+            properties:
+              org:    {type: string}
+              number: {type: integer}
+              ref:
+                type: string
+                description: "Alternative: 'workflow/projects/<slug>.yaml' path"
+      wiki:
+        type: object
+        additionalProperties: false
+        properties:
+          root:        {type: string}
+          moc_update:  {type: string}
+      ado:
+        type: object
+        additionalProperties: false
+        properties:
+          organization: {type: string}
+          project:      {type: string}
+
+  DualDoku:
+    type: object
+    additionalProperties: false
+    description: |
+      Required when every customer touchpoint must appear in BOTH a
+      GitHub issue AND a wiki entry. The task-sync standing-order
+      enforces a self-check list before marking a task as done.
+    properties:
+      required:
+        type: boolean
+        default: false
+      post_actions:
+        type: array
+        description: "Named hooks run after both targets are written"
+        items:
+          type: object
+          additionalProperties: true
+
+  IntegrationTranscription:
+    type: object
+    additionalProperties: false
+    description: |
+      Meeting-transcription pipeline settings for this context. Owned by
+      the `meeting-transcription` skill (skills/meeting-transcription/).
+      When present, this context is treated as a transcription context;
+      the skill's deploy step extracts these fields into a flat runtime
+      yaml on the worker host (~/transcribe-pipeline/contexts/).
+    required: [language, library, output]
+    properties:
+      language:
+        enum: [de, en, auto]
+        description: "Whisper language hint (auto = detect per recording)"
+      library:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Voice-library subfolder name → speaker-library/<library>/*.npy"
+      output:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Output subfolder on the worker → ~/Transcripts/<output>/"
+      notify:
+        type: boolean
+        default: true
+        description: "Send iMessage on completion"
+      tracks_default:
+        enum: [dual, single]
+        default: dual
+        description: |
+          Default input layout when a bundle's manifest.yaml doesn't
+          specify. `dual` = real Audio-Hijack 2-track (Mic-L, Teams-R).
+          `single` = stereo mix / mono download (downmix to one diarized
+          track, skip mic path). The /debrief handoff (debrief_sync.sh
+          push) always writes tracks: single per bundle regardless.
+
+  EventTypeMap:
+    type: object
+    description: |
+      Per-event-type routing within a dual-doku context. Keys match
+      STATUS.md `type:` (incident, customer-comm, decision, ...); values
+      describe wiki subpath + label.
+    additionalProperties:
+      type: object
+      additionalProperties: true
+      properties:
+        wiki_subpath: {type: ["string", "null"]}
+        moc_index:    {type: ["string", "null"], description: "null = no MOC required for this event type"}
+        label:        {type: ["string", "null"], description: "null = no GitHub issue required (e.g. weekly reports go elsewhere)"}
+
+# Notes:
+# - Permissive top-level by design — document-intake contexts use fields
+#   like `areas`, `personas`, `sources`, `rules` that don't belong here.
+# - The strict parts are SyncDefaults / DualDoku — that's what the
+#   task-sync standing-order reads programmatically.

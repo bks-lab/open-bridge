@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<!--
+  html-canvas SHELL — copy this file, then drop section blocks (references/sections.md)
+  into <main>. It already ships the three first-class controls every Bridge HTML
+  deliverable gets: LIGHT/DARK (button + key T), DE/EN (button + key L), and PRINT.
+  Single-file, offline, zero external dependencies, native UTF-8.
+
+  Tokens come from DESIGN.md — regenerate the brand layer with:
+    python3 skills/html-canvas/scripts/design-to-css.py --out /tmp/tokens.css
+  and paste it over the ":root from DESIGN.md" block below. NEVER hand-pick colors.
+  Optional animation layer: paste assets/animations.css after the base styles and
+  gate every motion behind prefers-reduced-motion (already done in that file).
+-->
+<!-- Set lang to the deliverable's DEFAULT language (de|en). The default here is
+     lang="en"; for a German-default deliverable change it to lang="de" AND flip the
+     language-swap CSS defaults below — the pre-paint, the lang controller, and the
+     "|| 'en'" last-resort fallback all follow this attribute. -->
+<html lang="en" class="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+
+<!-- PRE-PAINT (before the stylesheet) — no flash of wrong theme/language.
+     Theme uses the .dark class on <html> (DESIGN.md convention, matches design-to-css.py).
+     Default is light; honor a saved choice, else the OS preference. -->
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('html-canvas-theme');
+    if (t === 'dark' || (t == null && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+    var l = localStorage.getItem('html-canvas-lang');
+    document.documentElement.setAttribute('data-lang',
+      (l === 'de' || l === 'en') ? l : (document.documentElement.getAttribute('lang') || 'en'));
+    document.documentElement.setAttribute('lang', document.documentElement.getAttribute('data-lang'));
+  } catch (e) { document.documentElement.setAttribute('data-lang', 'en'); }
+})();
+</script>
+
+<style>
+/* ─── Brand tokens — generated from DESIGN.md (design-to-css.py). Do not hand-edit. ─── */
+:root{
+  --ink:#111827; --muted:#6B7280;
+  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
+  --on-primary:#FFFFFF; --on-surface:#374151;
+  --line:#E5E7EB; --line-subtle:#F3F4F6;
+  --accent-from:#667EEA; --accent-to:#764BA2; --accent:#6366F1; --accent-secondary:#8B5CF6;
+  --ok:#10B981; --info:#3B82F6;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+  --space-xs:4px; --space-sm:8px; --space-md:16px; --space-lg:24px; --space-xl:32px; --space-2xl:48px; --space-3xl:64px;
+  --radius-sm:4px; --radius-md:8px; --radius-lg:12px; --radius-xl:16px; --radius-full:9999px;
+}
+html.dark{
+  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
+  --on-surface:#D1D5DB; --line:#374151;
+  --accent-from:#A78BFA; --accent-to:#818CF8;
+}
+
+/* ─── Skill additions (derived from DESIGN.md for AA text contrast + dark text ramp). ───
+   These complete what DESIGN.md's frontmatter doesn't yet carry. If you formalize them,
+   add dark-primary/dark-secondary + the *-text variants to DESIGN.md and regenerate. */
+:root{
+  --accent-text:#4F46E5;            /* accent words/links on white — AA */
+  --accent-soft:rgba(99,102,241,.08);
+  --ok-text:#047857; --warn:#B45309; --danger:#B91C1C; /* status text — AA on white */
+  --code-bg:#F3F4F6;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+}
+html.dark{
+  --ink:#F3F4F6; --muted:#9CA3AF;          /* dark headline + caption ramp */
+  --accent-text:#A78BFA; --accent-soft:rgba(167,139,250,.14);
+  --ok-text:#34D399; --warn:#FBBF24; --danger:#F87171;
+  --code-bg:#0A0C12;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.4),0 10px 10px -5px rgba(0,0,0,.2);
+}
+
+/* ─── OPTIONAL: semantic lens / actor triads — the one sanctioned "colour = meaning"
+   exception. Uncomment when a diagram needs it, and ALWAYS ship a legend (sections.md).
+:root{
+  --core-bg:#F3F4F6;--core-line:#D1D5DB;--core-ink:#374151;
+  --doc-bg:#ECFEFF;--doc-line:#0891B2;--doc-ink:#0E5E6E;
+  --sch-bg:#FEF3C7;--sch-line:#D97706;--sch-ink:#92560A;
+  --human-bg:#F3F4F6;--human-line:#9CA3AF;--human-ink:#374151;
+  --ai-bg:#EEF0FE;--ai-line:#6366F1;--ai-ink:#3730A3;
+  --tech-bg:#EFF4F9;--tech-line:#4A6FA5;--tech-ink:#2E4A73;
+}
+html.dark{
+  --core-bg:#273141;--core-line:#4B5563;--core-ink:#D1D5DB;
+  --doc-bg:#0C3540;--doc-line:#22B8CF;--doc-ink:#8BE7F2;
+  --sch-bg:#3D2E10;--sch-line:#F59E0B;--sch-ink:#FCD78A;
+  --human-bg:#273141;--human-line:#6B7280;--human-ink:#D1D5DB;
+  --ai-bg:#272A4A;--ai-line:#818CF8;--ai-ink:#C7CEFF;
+  --tech-bg:#1E2B3C;--tech-line:#6E91C0;--tech-ink:#A6C4E8;
+}
+*/
+
+/* ─── Reset + base ─── */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{
+  margin:0; font-family:var(--font-sans); font-size:16px; line-height:1.6;
+  color:var(--on-surface); background:var(--surface);
+  -webkit-font-smoothing:antialiased;
+  /* soft cross-fade on theme swap — scoped to colour only (never `all`) */
+  transition:background-color .4s cubic-bezier(.16,1,.3,1),color .4s cubic-bezier(.16,1,.3,1);
+}
+.wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+.wrap.narrow{max-width:760px}
+
+/* "large = light" — DESIGN.md's signature: headings ≥24px ride weight 300. */
+h1,h2,.display{font-weight:300;letter-spacing:-.02em;line-height:1.12;color:var(--ink)}
+h3,h4{font-weight:500;color:var(--ink)}
+h1{font-size:clamp(34px,5vw,48px)}
+h2{font-size:clamp(26px,4vw,36px)}
+h3{font-size:22px} h4{font-size:18px}
+p{max-width:70ch}
+a{color:var(--accent-text);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd{font-family:var(--font-mono);font-size:.92em}
+code{background:var(--surface-muted);padding:1px 6px;border-radius:var(--radius-sm)}
+kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:var(--radius-sm);padding:1px 6px;background:var(--surface)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ─── DE/EN swap — pure CSS, no JS touches text nodes ─── */
+/* Block-level pairs swap as blocks; inline elements (span/tspan + bare a/b/em/strong/code…)
+   stay inline. The :root[data-lang="de"] rules are specificity (0,3,0); the inline overrides
+   use :is()+attr to reach (0,3,1) so they win — without this, DE inline spans inside a heading
+   or paragraph would each stack on their own line (it renders fine in EN, so it hides easily).
+   English is the default (matches lang="en" above); flip both if you default to German. */
+[data-de]{display:none}
+[data-en]{display:block}
+:is(span,tspan,a,b,em,strong,code,kbd,i,small,mark)[data-en]{display:inline}
+:root[data-lang="de"] [data-en]{display:none}
+:root[data-lang="de"] [data-de]{display:block}
+:root[data-lang="de"] :is(span,tspan,a,b,em,strong,code,kbd,i,small,mark)[data-de]{display:inline}
+
+/* ─── Topbar (theme · lang · print) ─── */
+.topbar{max-width:1100px;margin:18px auto 0;padding:0 24px;display:flex;justify-content:flex-end;gap:8px}
+.topbar button{
+  font-family:var(--font-sans);font-size:12.5px;color:var(--ink);
+  border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-md);
+  padding:6px 11px;cursor:pointer;
+}
+.topbar button:hover{background:var(--surface-subtle)}
+
+/* ─── Footer ─── */
+footer.canvas-foot{max-width:1100px;margin:48px auto 32px;padding:16px 24px 0;border-top:1px solid var(--line-subtle);font-size:12px;color:var(--muted)}
+footer.canvas-foot code{background:none;padding:0}
+
+/* ─── Print ─── */
+@media print{
+  html.dark{ /* a dark page must print clean on white — reset the FULL token set, not just surfaces */
+    --surface:#fff;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;--ink:#111827;
+    --on-surface:#374151;--muted:#6B7280;--line:#E5E7EB;--line-subtle:#F3F4F6;
+    --code-bg:#F3F4F6;--accent-text:#4F46E5;--accent-soft:rgba(99,102,241,.08);
+    --ok-text:#047857;--warn:#B45309;--danger:#B91C1C;--shadow-soft:none;--shadow-hover:none;
+  }
+  html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .topbar,nav{display:none !important}
+  .reveal{opacity:1 !important;transform:none !important}
+}
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+  <button id="langToggle" title="DE/EN (L)">DE</button>
+  <button id="printBtn" title="Print as PDF" onclick="window.print()">&#10515; PDF</button>
+  <button id="themeToggle" title="Light/Dark (T)">&#9680; Dark</button>
+</div>
+
+<main class="wrap">
+  <!-- ▼ Drop section blocks from references/sections.md here.
+       Every translatable run ships as two siblings:
+         <h1><span data-de>Titel</span><span data-en>Title</span></h1>
+         <p data-de>Deutscher Absatz …</p><p data-en>English paragraph …</p>  -->
+  <h1><span data-de>{{TITLE_DE}}</span><span data-en>{{TITLE_EN}}</span></h1>
+</main>
+
+<footer class="canvas-foot">
+  <span data-de>Generiert {{DATE}} · Quelle: <code>{{SOURCE_PATH}}</code> · </span>
+  <span data-en>Generated {{DATE}} · Source: <code>{{SOURCE_PATH}}</code> · </span>
+  <kbd>T</kbd> Theme · <kbd>L</kbd> <span data-de>Sprache</span><span data-en>Language</span> ·
+  <span data-de>Single-File, offline, keine externen Dependencies</span><span data-en>single-file, offline, no external dependencies</span>
+</footer>
+
+<!-- ─── Controllers — theme (.dark class) + lang (data-lang). Structural twins. ─── -->
+<script>
+(function(){
+  var root=document.documentElement, KEY='html-canvas-theme', btn=document.getElementById('themeToggle');
+  function dark(){return root.classList.contains('dark');}
+  function render(){ if(btn){btn.innerHTML=dark()?'&#9728; Light':'&#9680; Dark';
+    btn.setAttribute('aria-label',dark()?'Switch to light theme':'Switch to dark theme');} }
+  function apply(d){ root.classList.toggle('dark',d); try{localStorage.setItem(KEY,d?'dark':'light');}catch(e){} render(); }
+  render();
+  if(btn) btn.addEventListener('click',function(){apply(!dark());});
+  document.addEventListener('keydown',function(e){
+    if(e.metaKey||e.ctrlKey||e.altKey) return;
+    if(e.key!=='t'&&e.key!=='T') return;
+    var t=e.target||{}; if(t.isContentEditable||/^(input|textarea|select)$/i.test(t.tagName||'')) return;
+    apply(!dark());
+  });
+  try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){
+    try{ if(localStorage.getItem(KEY)) return; }catch(_){} apply(e.matches); }); }catch(e){}
+  window.addEventListener('storage',function(e){ if(e.key===KEY){ root.classList.toggle('dark',e.newValue==='dark'); render(); } });
+})();
+(function(){
+  var root=document.documentElement, KEY='html-canvas-lang', btn=document.getElementById('langToggle');
+  function cur(){return root.getAttribute('data-lang')==='de'?'de':'en';}
+  function render(){ if(btn){btn.textContent=cur()==='en'?'DE':'EN';
+    btn.setAttribute('aria-label',cur()==='en'?'Zu Deutsch wechseln':'Switch to English');} }
+  function apply(l){ root.setAttribute('data-lang',l); root.setAttribute('lang',l); try{localStorage.setItem(KEY,l);}catch(e){} render(); }
+  render();
+  if(btn) btn.addEventListener('click',function(){apply(cur()==='en'?'de':'en');});
+  document.addEventListener('keydown',function(e){
+    if(e.metaKey||e.ctrlKey||e.altKey) return;
+    if(e.key!=='l'&&e.key!=='L') return;
+    var t=e.target||{}; if(t.isContentEditable||/^(input|textarea|select)$/i.test(t.tagName||'')) return;
+    apply(cur()==='en'?'de':'en');
+  });
+  window.addEventListener('storage',function(e){ if(e.key===KEY&&(e.newValue==='de'||e.newValue==='en')){ root.setAttribute('data-lang',e.newValue); root.setAttribute('lang',e.newValue); render(); } });
+})();
+</script>
+</body>
+</html>

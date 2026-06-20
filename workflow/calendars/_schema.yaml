@@ -1,0 +1,197 @@
+# Calendar Entries Schema — JSON Schema Draft 2020-12 in YAML
+#
+# The calendar system tracks all scheduled outbound actions with their
+# recipients, timing, and origin. The bridge-deck daemon reads
+# `workflow/calendars/entries.yaml` via collector-calendar and visualises
+# entries on Timeline, Calendar, and Mandants tabs.
+#
+# Each entry fires ONCE at `delivery_at` minus `duration_estimate_min`
+# minutes. The fire-loop (`bridge-deck/scripts/calendar-fire-loop.py`) is an optional
+# Bridge-Deck component (not yet public — coming soon), not shipped here;
+# without it, entries are data-only — skills read them, nothing fires
+# automatically.
+#
+# Validation:
+#   check-jsonschema --schemafile workflow/calendars/_schema.yaml \
+#                    workflow/calendars/entries.yaml
+#
+# IDE support: add this hint to the calendar file:
+#   # yaml-language-server: $schema=./_schema.yaml
+#
+# Schema contract: bridge-deck `packages/shared/src/calendar.ts`
+# Full docs: docs/calendar.md
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/calendar.yaml"
+title: CalendarEntries
+description: |
+  Top-level container for calendar entries — every scheduled outbound
+  action with recipients, timing, repeat-spec, origin, and status.
+
+type: object
+required: [schema_version, entries]
+additionalProperties: false
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  entries:
+    type: array
+    items: {$ref: "#/$defs/CalendarEntry"}
+
+$defs:
+
+  CalendarEntry:
+    type: object
+    required: [id, title, owner, recipients, action, delivery_at, status]
+    additionalProperties: true   # v1 permissive
+    properties:
+
+      id:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Unique entry slug. Used in scheduled job IDs (`scheduled:calendar:${id}:slot-${N}`)"
+
+      title:
+        type: string
+        minLength: 1
+        description: "Human-readable title for Timeline/Calendar UI"
+
+      owner:
+        type: string
+        description: "User who owns this entry (free-form — typically snake_case username)"
+
+      delivery_kind:
+        enum: [unconditional, conditional]
+        default: unconditional
+        description: |
+          unconditional: always fires at delivery_at
+          conditional:   wrapper runs but only delivers on change-detection
+
+      recipients:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          required: [mandant, person, channel, address]
+          additionalProperties: true
+          properties:
+            mandant:
+              type: string
+              description: "Mandant slug (matches identity/mandants/<id>.yaml)"
+            person:
+              type: string
+              description: "Person id within the mandant"
+            channel:
+              type: string
+              description: "Channel name (matches infra/channels/<name>.yaml or built-in)"
+            address:
+              type: string
+              minLength: 1
+              description: "Concrete delivery address (email, phone, handle, chat-id)"
+
+      action:
+        type: object
+        required: [type]
+        additionalProperties: true
+        properties:
+          type:
+            enum: [wrapper, skill, claude-prompt, http]
+            description: |
+              wrapper:        shell script
+              skill:          Claude skill invocation
+              claude-prompt:  Claude generates content from a prompt
+              http:           HTTP webhook
+            # Synced with bridge-deck packages/shared/src/calendar.ts
+          script:
+            type: string
+            description: "Path to shell script (type=wrapper). May use ~ expansion."
+          command:
+            type: string
+            description: "Prompt text or command (type=claude-prompt)"
+          timeout_sec:
+            type: integer
+            minimum: 1
+            description: "Hard timeout for the action"
+
+      delivery_at:
+        type: string
+        format: date-time
+        description: "ISO 8601 timestamp of next fire. Updated by the fire-loop after firing."
+
+      duration_estimate_min:
+        type: integer
+        minimum: 0
+        description: "Expected runtime — used to compute effective_at = delivery_at − duration"
+
+      repeat:
+        type: object
+        description: "Optional — omit for single-shot entries"
+        additionalProperties: true
+        properties:
+          spec:
+            type: string
+            description: "Human-readable schedule (e.g. 'daily 08:00', 'Mo-Fr 12:30')"
+          rrule:
+            type: string
+            description: "iCal RRULE (RFC 5545) — authoritative for fire-loop"
+
+      origin:
+        type: object
+        description: "Provenance — where this entry came from"
+        additionalProperties: true
+        properties:
+          source:
+            enum: [manual, email, chat]
+            description: "Channel through which this entry was created"
+            # Synced with bridge-deck packages/shared/src/calendar.ts
+          snippet:
+            type: string
+            description: "Short note about the origin / human description"
+          parsed_at:
+            type: string
+            format: date-time
+            description: "When the entry was created/parsed"
+          parser_model:
+            type: string
+            description: "AI model that parsed user intent (e.g. claude-haiku-4-5)"
+          confidence:
+            type: number
+            minimum: 0.0
+            maximum: 1.0
+            description: "Parser confidence (0.0–1.0)"
+
+      status:
+        enum: [draft, queued, fired, failed, cancelled, done]
+        description: |
+          draft     — awaiting confirmation (fire-loop ignores)
+          queued    — scheduled, will fire at delivery_at
+          fired     — completed at least once (re-armed for next slot if repeat)
+          failed    — last fire returned non-zero exit
+          cancelled — disabled, kept for history
+          done      — terminal completion (single-shot entry, will not fire again)
+        # Synced with bridge-deck packages/shared/src/calendar.ts
+
+      # Computed/runtime fields (written by fire-loop, optional in source files)
+      effective_at:    {type: string, format: date-time, description: "delivery_at − duration_estimate_min (computed)"}
+      next_occurrence: {type: string, format: date-time, description: "Next fire after the current one (computed from rrule)"}
+      last_fired_at:   {type: string, format: date-time, description: "Last successful fire timestamp"}
+      fire_history:
+        type: array
+        description: "Append-only fire log (timestamp, exit_code, summary)"
+        items:
+          type: object
+          additionalProperties: true
+
+      created_at: {type: string, format: date-time}
+      updated_at: {type: string, format: date-time}
+
+# Notes (advisory):
+# - id is STABLE — never embed timestamps in id. Use slot-counters.
+# - effective_at = delivery_at − duration_estimate_min. The fire-loop
+#   may start the action up to duration_estimate_min before delivery_at.
+# - Multi-mandant: same person may exist in multiple mandants with
+#   different roles (recipients[*].mandant + person form the lookup key).

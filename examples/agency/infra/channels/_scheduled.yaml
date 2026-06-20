@@ -1,0 +1,49 @@
+# Scheduled Messages for Acme-Dev agency
+# Deployed as platform-native jobs on prod-server
+# Deploy with: /schedule deploy
+
+schedules:
+  - name: "Weekly Client Digest"
+    channel: email
+    recipient:
+      name: "BigCorp PM"
+      address: "pm@bigcorp.com"
+    cron: "0 9 * * 1"                # Monday at 09:00
+    prompt: |
+      Summarize last week's progress on the BigCorp project.
+      Include: completed tasks, open blockers, next week's plan.
+      Keep it under 10 sentences, professional tone.
+    model: haiku
+    signature: true
+    enabled: true
+
+  - name: "Daily Standup Reminder"
+    channel: slack-bot
+    recipient:
+      name: "#dev-team"
+      address: "C01ABC123"
+    cron: "30 8 * * 1-5"             # Mon-Fri at 08:30
+    prompt: |
+      Post a brief standup reminder. Ask the team what they're
+      working on today and if they have any blockers.
+      Keep it casual and under 3 sentences.
+    model: haiku
+    signature: false
+    enabled: true
+
+  - name: "Weekend Deploy Check"
+    channel: email
+    recipient:
+      name: "Alice (self)"
+      address: "alice@acme-dev.com"
+    cron:
+      - "0 10 * * 6"                 # Saturday at 10:00
+      - "0 10 * * 0"                 # Sunday at 10:00
+    prompt: |
+      Check if any deployments happened since Friday 18:00.
+      Report: service health, error rates, any anomalies.
+      Only report if something needs attention — otherwise say "All clear."
+    context: scheduled/weekend-check/context.md
+    model: sonnet
+    signature: false
+    enabled: true

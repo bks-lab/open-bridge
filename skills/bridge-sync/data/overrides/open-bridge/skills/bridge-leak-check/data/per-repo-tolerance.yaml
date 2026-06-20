@@ -1,0 +1,144 @@
+# Per-Repo Tolerance Model — Bridge Leak Check (OSS baseline)
+#
+# DESTINATION OVERRIDE: bridge-sync writes this verbatim to open-bridge, so the
+# private seed's real blocklist (which the seed's own scanner NEEDS) never
+# ships. This is the GENERIC baseline — placeholder strings only.
+#
+# The real per-org blocklist lives in `bridge-config.yaml.promote.content_blocklist`
+# (USER-scoped, never shipped). Replace the placeholders below with your org's
+# real names locally, or drive the scan from your config. The MODEL (categories,
+# per-repo tolerance) is generic; only the example `strings:` are placeholders.
+#
+# Auto-discovery: bridge-leak-check reads .git/config remote.origin.url and
+# matches against `repos[].match`. First match wins. Falls back to "unknown"
+# (= strictest = treat as OSS).
+
+repos:
+
+  - name: seed
+    match: ["your-fork/the-bridge", "the-bridge"]
+    role: saat-private
+    description: |
+      Personal seed repo. Tracks personas, mandants, work logs INTENTIONALLY —
+      git serves as offsite backup. Not promoted to upstream directly; CORE
+      bits cherry-picked via /promote, org/personal stays.
+    tolerates:
+      - personal-pii        # your name, machine names, /Users/<you> are EXPECTED
+      - org-customer-names  # your customer codenames are EXPECTED
+      - org-branding        # your org name is EXPECTED
+      - internal-vocabulary # scope: org, internal vocabulary are EXPECTED
+    blocks: []
+    notes: |
+      Running bridge-leak-check on this repo SHOULD return zero findings —
+      everything is by-design.
+
+  - name: org-overlay
+    match: ["<your-org>/<your-bridge>"]   # ← replace with your overlay repo slug
+    role: org-internal
+    description: |
+      Org-internal overlay on top of open-bridge. Adds proprietary skills,
+      shared org contexts, and org branding. NOT public. Pulls from open-bridge.
+    tolerates:
+      - org-customer-names  # customer codenames are OK (org-internal)
+      - org-branding        # org branding is OK
+      - internal-vocabulary # scope: org vocabulary is OK
+    blocks:
+      - personal-pii        # personal names/hostnames stay in the seed
+    notes: |
+      Findings should ONLY be personal-pii. Org-content is by-design here.
+
+  - name: open-bridge
+    match: ["bks-lab/open-bridge"]
+    role: oss-public
+    description: |
+      Public OSS variant. MIT licensed. Contains only generic platform code
+      and templates. Forkable by any organization.
+    tolerates:
+      - oss-self-reference  # mentions of THIS repo are OK
+      - oss-sister-repo     # sister-OSS cross-links are OK
+      - schema-id-urls      # canonical schema $id URLs are OK
+    blocks:
+      - personal-pii        # names, machine names — leak
+      - org-customer-names  # customer codenames — leak
+      - org-branding        # org branding (except copyright/$id) — leak
+      - internal-vocabulary # scope: org, hardcoded overlay repo names — leak
+
+  - name: unknown
+    match: []   # fallback when origin doesn't match any of the above
+    role: unknown
+    description: |
+      Unrecognized repo. Default to STRICTEST tolerance (open-bridge model).
+    tolerates:
+      - oss-self-reference
+      - schema-id-urls
+    blocks:
+      - personal-pii
+      - org-customer-names
+      - org-branding
+      - internal-vocabulary
+
+# Universal pattern definitions — what each `tolerates`/`blocks` category means.
+# These are PLACEHOLDER strings. Put your org's real names in
+# bridge-config.yaml.promote.content_blocklist (USER-scoped), or replace below.
+
+categories:
+
+  personal-pii:
+    description: "Seed-user identifiers — names, hostnames, absolute paths"
+    strings:
+      - alice                 # ← your username / handle
+      - your-username
+    patterns:
+      # Real personal user paths. Generic placeholder "user" is whitelisted.
+      - { regex: "/Users/[a-z]+/", except: ["/Users/user/", "/Users/<your-username>/"] }
+      # Person-prefixed org addresses are PII; generic functional addresses
+      # (ai@, info@, noreply@, hello@, contact@, support@, oncall@) are branding.
+      - { regex: "[a-z][a-z0-9._-]*@bks-lab\\.com", except: ["ai@bks-lab.com", "info@bks-lab.com", "noreply@bks-lab.com", "hello@bks-lab.com", "contact@bks-lab.com", "support@bks-lab.com", "oncall@bks-lab.com"] }
+      # add your VPN / tailscale IP prefix here, e.g. "100\\.64\\.[0-9]+\\.[0-9]+"
+
+  org-customer-names:
+    description: "Your customer codenames + adjacent project slugs"
+    strings:
+      - customer-x            # ← replace with your real customer codenames
+      - customer-y
+
+  org-branding:
+    description: "Your org name in user-facing content (legitimate as $id-URL or copyright only)"
+    strings:
+      - Your-Org
+      - bks-lab
+    legitimate_contexts:
+      - "$id: "                      # YAML schema ids
+      - "Copyright"
+      - "github.com/bks-lab"        # repo slugs in cross-links
+      - "bks-lab.github.io"         # schema host
+
+  internal-vocabulary:
+    description: "Internal three-tier vocabulary that should be placeholder in OSS"
+    strings:
+      - "scope: org"
+      - "org-internal"
+      - "org-bridge"                 # legacy fixed overlay slug — yours is <your-org>/<your-bridge>
+    legitimate_contexts:
+      - "rules/operations.md"        # documents both org and generic conventions
+      - "rules/promote-safety.md"    # references scope values as literal examples
+
+  oss-self-reference:
+    description: "Mention of THIS repo by name — legitimate self-reference"
+    strings_per_repo:
+      open-bridge:
+        - "bks-lab/open-bridge"
+      org-overlay:
+        - "<your-org>/<your-bridge>"   # ← replace with your overlay repo slug
+      seed:
+        - "your-fork/the-bridge"
+
+  oss-sister-repo:
+    description: "Cross-link to a related OSS repo in the same family"
+    strings:
+      - "bks-lab/bridge-deck"
+
+  schema-id-urls:
+    description: "JSON Schema $id URLs pointing at canonical schema location"
+    patterns:
+      - "\\$id:\\s*\"https://[^\"]*github\\.io/[^\"]+\""

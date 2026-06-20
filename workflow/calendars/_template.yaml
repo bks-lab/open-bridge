@@ -1,0 +1,101 @@
+# Calendar Entry Template — CORE (default/core branch)
+#
+# The calendar system tracks all scheduled outbound actions with their
+# recipients, timing, and origin. The bridge-deck daemon reads these
+# entries via `collector-calendar` and visualises them on the Timeline,
+# Calendar, and Mandants tabs.
+#
+# Copy this template as `workflow/calendars/entries.yaml` on your
+# user/* branch and populate it with your real scheduled jobs. Each
+# entry fires ONCE at `delivery_at` minus `duration_estimate_min`
+# minutes. The fire-loop (`bridge-deck/scripts/calendar-fire-loop.py`) is an optional
+# Bridge-Deck component (not yet public — coming soon), not shipped here;
+# without it, entries are data-only — skills read them, nothing fires
+# automatically.
+#
+# Schema contract: bridge-deck `packages/shared/src/calendar.ts`
+# Full docs: docs/calendar.md
+
+# yaml-language-server: $schema=./_schema.yaml
+schema_version: 1
+
+entries:
+  # ── Example 1: single-recipient, repeating ──────────────────────────
+  - id: example-daily-greeting
+    title: "Daily Greeting"
+    owner: your_username
+    recipients:
+      - mandant: team
+        person: colleague
+        channel: email
+        address: "colleague@example.com"
+    action:
+      type: wrapper
+      script: "~/scripts/send-greeting.sh"
+      timeout_sec: 60
+    delivery_at: "2026-04-10T08:00:00+02:00"
+    duration_estimate_min: 2
+    repeat:
+      spec: "daily 08:00"
+      rrule: "FREQ=DAILY;INTERVAL=1;BYHOUR=8;BYMINUTE=0"
+    origin:
+      source: manual
+      snippet: "Standard daily greeting"
+      parsed_at: "2026-04-09T14:00:00+02:00"
+    status: queued
+    created_at: "2026-04-09T14:00:00+02:00"
+    updated_at: "2026-04-09T14:00:00+02:00"
+
+  # ── Example 2: multi-recipient, single-shot ─────────────────────────
+  - id: example-weekly-report
+    title: "Weekly Team Report"
+    owner: your_username
+    recipients:
+      - mandant: team
+        person: lead
+        channel: email
+        address: "lead@example.com"
+      - mandant: team
+        person: manager
+        channel: email
+        address: "manager@example.com"
+    action:
+      type: wrapper
+      script: "~/scripts/weekly-report.sh"
+      timeout_sec: 600
+    delivery_at: "2026-04-14T09:00:00+02:00"
+    duration_estimate_min: 15
+    origin:
+      source: manual
+      snippet: "Weekly report to lead + manager"
+      parsed_at: "2026-04-09T14:00:00+02:00"
+    status: queued
+    created_at: "2026-04-09T14:00:00+02:00"
+    updated_at: "2026-04-09T14:00:00+02:00"
+
+  # ── Example 3: draft from intent-parser, awaiting confirmation ──────
+  - id: example-draft-digest
+    title: "Daily Digest (pending)"
+    owner: your_username
+    recipients:
+      - mandant: team
+        person: colleague
+        channel: telegram
+        address: "@colleague_handle"
+    action:
+      type: claude-prompt
+      command: "Generate a short daily digest in German"
+    delivery_at: "2026-04-11T09:00:00+02:00"
+    duration_estimate_min: 3
+    repeat:
+      spec: "daily 09:00"
+      rrule: "FREQ=DAILY;INTERVAL=1;BYHOUR=9;BYMINUTE=0"
+    origin:
+      source: email
+      snippet: "schick mir jeden tag um 9 einen digest"
+      parsed_at: "2026-04-09T15:00:00+02:00"
+      parser_model: claude-haiku-4-5
+      confidence: 0.89
+    status: draft          # fire-loop ignores drafts — confirm via reply
+    created_at: "2026-04-09T15:00:00+02:00"
+    updated_at: "2026-04-09T15:00:00+02:00"

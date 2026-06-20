@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge Ecosystem Explorer</title>
+<!--
+  Bridge Ecosystem Explorer Template
+  ================================
+  This template is populated dynamically by the /explorer command.
+  Claude reads ecosystem.yaml and injects the data into ECOSYSTEM_DATA.
+
+  New dashboards following this pattern:
+  1. HTML-Template in docs/templates/{name}.html
+  2. Skill in skills/{name}/SKILL.md (description carries the /{name} trigger)
+  3. Skill liest Datenquelle → generiert populated HTML → oeffnet in cmux
+-->
+<style>
+  /* System monospace stack — no external font loads (offline + GDPR-safe) */
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a25;
+    --border: #2a2a3a;
+    --accent: #6366f1;
+    --accent2: #818cf8;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --cyan: #06b6d4;
+    --pink: #ec4899;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --glow: rgba(99, 102, 241, 0.15);
+  }
+
+  body {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  .bg-grid {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: gridMove 20s linear infinite;
+    z-index: 0;
+  }
+  @keyframes gridMove {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(40px, 40px); }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 100vh;
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    background: linear-gradient(135deg, var(--accent2), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 1px;
+  }
+  .header .meta {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .clock {
+    font-size: 13px;
+    color: var(--text2);
+    font-variant-numeric: tabular-nums;
+  }
+  .pulse {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    margin-right: 8px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+  }
+
+  .main {
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px var(--glow);
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text2);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .left, .right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+  }
+
+  /* Repo list */
+  .repo-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+  }
+  .repo-item:hover { background: var(--surface2); }
+  .repo-item.active { background: rgba(99,102,241,0.15); border-left: 2px solid var(--accent); }
+  .repo-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .repo-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .repo-lang {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text2);
+  }
+
+  .center {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .stat { text-align: center; padding: 12px 8px; }
+  .stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent2), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .stat-label {
+    font-size: 10px;
+    color: var(--text2);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .network-card { flex: 1; position: relative; overflow: hidden; }
+  #networkCanvas { width: 100%; height: 100%; display: block; }
+
+  /* Skills */
+  .skill-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .skill-chip {
+    font-size: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--surface2);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .skill-chip:hover {
+    border-color: var(--accent);
+    background: rgba(99,102,241,0.1);
+    transform: translateY(-1px);
+  }
+
+  /* Activity */
+  .activity-item {
+    display: flex;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    animation: fadeIn 0.5s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .activity-time { color: var(--text2); white-space: nowrap; flex-shrink: 0; }
+  .activity-msg { color: var(--text); line-height: 1.4; }
+  .tag {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .tag-commit { background: rgba(34,197,94,0.15); color: var(--green); }
+  .tag-deploy { background: rgba(6,182,212,0.15); color: var(--cyan); }
+  .tag-issue { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .tag-skill { background: rgba(236,72,153,0.15); color: var(--pink); }
+
+  /* Infra */
+  .infra-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 11px;
+  }
+  .infra-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .infra-name { flex: 1; }
+  .infra-status { font-size: 10px; }
+
+  /* Workspace chips */
+  .workspace-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ws-chip {
+    font-size: 10px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .ws-chip:hover, .ws-chip.active {
+    border-color: var(--accent);
+    background: rgba(99,102,241,0.15);
+    color: var(--accent2);
+  }
+
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    font-size: 10px;
+    color: var(--text2);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<div class="container">
+  <div class="header">
+    <h1><span class="pulse"></span>BRIDGE ECOSYSTEM EXPLORER</h1>
+    <div class="meta">
+      <div class="workspace-bar" id="workspaceBar"></div>
+      <div class="clock" id="clock"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="left">
+      <div class="card">
+        <div class="card-title">&#9881; Repositories</div>
+        <div id="repoList"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">&#9889; Skills</div>
+        <div class="skill-grid" id="skillGrid"></div>
+      </div>
+    </div>
+
+    <div class="center">
+      <div class="stats-row">
+        <div class="card stat"><div class="stat-value" id="statRepos">0</div><div class="stat-label">Repos</div></div>
+        <div class="card stat"><div class="stat-value" id="statSkills">0</div><div class="stat-label">Skills</div></div>
+        <div class="card stat"><div class="stat-value" id="statCustomers">0</div><div class="stat-label">Customers</div></div>
+        <div class="card stat"><div class="stat-value" id="statFunctions">0</div><div class="stat-label">Azure Fns</div></div>
+      </div>
+      <div class="card network-card">
+        <div class="card-title">&#9670; Dependency Graph</div>
+        <canvas id="networkCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="card" style="flex:1;">
+        <div class="card-title">&#9656; Recent Activity</div>
+        <div id="activityFeed"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">&#9635; Infra Status</div>
+        <div id="infraStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Bridge Ecosystem Explorer &middot; Branch: <strong style="color:var(--accent2)" id="branchName">-</strong></span>
+    <span>Powered by <strong style="color:var(--cyan)">cmux</strong> + Claude</span>
+  </div>
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  ECOSYSTEM_DATA — Injected by /explorer command                 ║
+// ║                                                                 ║
+// ║  Claude reads ecosystem.yaml and populates this object.         ║
+// ║  Structure:                                                     ║
+// ║    repos: [{ name, type, lang, color, group, deps[] }]          ║
+// ║    workspaces: [{ name, repos_count }]                          ║
+// ║    skills: [string]                                             ║
+// ║    infra: [{ name, status, color }]                             ║
+// ║    activity: [{ time, msg, tag, delay }]                        ║
+// ║    stats: { repos, skills, customers, functions }               ║
+// ║    branch: string                                               ║
+// ║                                                                 ║
+// ║  Group colors (suggested):                                      ║
+// ║    base: #6366f1..#c4b5fd  customer-a: #22c55e..#86efac         ║
+// ║    packages: #06b6d4..#a5f3fc  partner: #ec4899..#f9a8d4        ║
+// ║    internal: #f472b6..#fb7185                                   ║
+// ║                                                                 ║
+// ║  Tag types for activity: commit, deploy, issue, skill           ║
+// ╚══════════════════════════════════════════════════════════════════╝
+const ECOSYSTEM_DATA = {
+  repos: [
+    // PLACEHOLDER — /explorer command replaces this entire object
+    { name: 'example-repo', type: 'tool', lang: null, color: '#6366f1', group: 'base' },
+  ],
+  workspaces: [],
+  skills: [],
+  infra: [],
+  activity: [],
+  stats: { repos: 0, skills: 0, customers: 0, functions: 0 },
+  branch: 'unknown'
+};
+
+// ── Rendering Engine (do not modify for data changes) ─────────────
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Branch
+document.getElementById('branchName').textContent = ECOSYSTEM_DATA.branch;
+
+// Stats (animated count-up)
+function animateValue(el, target) {
+  let current = 0;
+  const step = Math.max(1, Math.floor(target / 30));
+  const interval = setInterval(() => {
+    current += step;
+    if (current >= target) { current = target; clearInterval(interval); }
+    el.textContent = current;
+  }, 40);
+}
+const s = ECOSYSTEM_DATA.stats;
+setTimeout(() => animateValue(document.getElementById('statRepos'), s.repos), 200);
+setTimeout(() => animateValue(document.getElementById('statSkills'), s.skills), 400);
+setTimeout(() => animateValue(document.getElementById('statCustomers'), s.customers), 600);
+setTimeout(() => animateValue(document.getElementById('statFunctions'), s.functions), 800);
+
+// Repos
+const repoList = document.getElementById('repoList');
+ECOSYSTEM_DATA.repos.forEach((r, i) => {
+  const div = document.createElement('div');
+  div.className = 'repo-item' + (i === 0 ? ' active' : '');
+  div.innerHTML = `
+    <div class="repo-dot" style="background:${r.color}"></div>
+    <span class="repo-name">${r.name}</span>
+    ${r.lang ? `<span class="repo-lang">${r.lang}</span>` : ''}
+  `;
+  div.onclick = () => {
+    document.querySelectorAll('.repo-item').forEach(x => x.classList.remove('active'));
+    div.classList.add('active');
+    highlightNode(i);
+  };
+  repoList.appendChild(div);
+});
+
+// Skills
+const skillGrid = document.getElementById('skillGrid');
+ECOSYSTEM_DATA.skills.forEach(s => {
+  const chip = document.createElement('div');
+  chip.className = 'skill-chip';
+  chip.textContent = s;
+  skillGrid.appendChild(chip);
+});
+
+// Workspaces
+const wsBar = document.getElementById('workspaceBar');
+ECOSYSTEM_DATA.workspaces.forEach((ws, i) => {
+  const chip = document.createElement('div');
+  chip.className = 'ws-chip' + (i === 0 ? ' active' : '');
+  chip.textContent = ws.name;
+  chip.onclick = () => {
+    document.querySelectorAll('.ws-chip').forEach(x => x.classList.remove('active'));
+    chip.classList.add('active');
+  };
+  wsBar.appendChild(chip);
+});
+
+// Activity feed (staggered)
+const feed = document.getElementById('activityFeed');
+ECOSYSTEM_DATA.activity.forEach((a, i) => {
+  setTimeout(() => {
+    const div = document.createElement('div');
+    div.className = 'activity-item';
+    const tagClass = a.tag ? `tag-${a.tag}` : '';
+    const tagHtml = a.tag ? `<span class="tag ${tagClass}">${a.tag}</span> ` : '';
+    div.innerHTML = `<span class="activity-time">${a.time}</span><span class="activity-msg">${tagHtml}${a.msg}</span>`;
+    feed.appendChild(div);
+  }, (a.delay || i * 600));
+});
+
+// Infra
+const infraEl = document.getElementById('infraStatus');
+ECOSYSTEM_DATA.infra.forEach(item => {
+  const div = document.createElement('div');
+  div.className = 'infra-item';
+  div.innerHTML = `
+    <div class="infra-dot" style="background:${item.color}"></div>
+    <span class="infra-name">${item.name}</span>
+    <span class="infra-status" style="color:${item.color}">${item.status}</span>
+  `;
+  infraEl.appendChild(div);
+});
+
+// ── Network Canvas ────────────────────────────────────────────────
+const canvas = document.getElementById('networkCanvas');
+const ctx = canvas.getContext('2d');
+let W, H, nodes = [], edges = [], highlightIdx = -1, mouse = { x: -999, y: -999 };
+
+function resize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  W = canvas.width = rect.width;
+  H = canvas.height = rect.height - 30;
+  initNodes();
+}
+
+function initNodes() {
+  nodes = [];
+  const cx = W / 2, cy = H / 2;
+  const groups = {};
+  let gi = 0;
+  ECOSYSTEM_DATA.repos.forEach(r => { if (!(r.group in groups)) groups[r.group] = gi++; });
+
+  const groupCount = Object.keys(groups).length;
+  ECOSYSTEM_DATA.repos.forEach((r, i) => {
+    const g = groups[r.group];
+    const groupItems = ECOSYSTEM_DATA.repos.filter(x => x.group === r.group);
+    const idx = groupItems.indexOf(r);
+    const baseAngle = (g / groupCount) * Math.PI * 2 - Math.PI / 2;
+    const spread = 0.4;
+    const angle = baseAngle + (idx - groupItems.length / 2) * spread;
+    const radius = 80 + groupCount * 20 + (idx % 2) * 30;
+
+    nodes.push({
+      x: cx + Math.cos(angle) * radius + (Math.random() - 0.5) * 20,
+      y: cy + Math.sin(angle) * radius + (Math.random() - 0.5) * 20,
+      r: r.type === 'fn' || r.type === 'function-app' ? 10 : r.type === 'pkg' || r.type === 'package' ? 7 : 9,
+      color: r.color,
+      name: r.name,
+      group: r.group,
+    });
+  });
+
+  edges = [];
+  ECOSYSTEM_DATA.repos.forEach((r, i) => {
+    if (r.deps) {
+      r.deps.forEach(dep => {
+        const j = ECOSYSTEM_DATA.repos.findIndex(x => x.name === dep);
+        if (j >= 0) edges.push([i, j]);
+      });
+    }
+  });
+}
+
+resize();
+window.addEventListener('resize', resize);
+
+function highlightNode(idx) {
+  highlightIdx = idx;
+  setTimeout(() => highlightIdx = -1, 3000);
+}
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - rect.left;
+  mouse.y = e.clientY - rect.top;
+});
+
+let time = 0;
+function draw() {
+  time += 0.01;
+  ctx.clearRect(0, 0, W, H);
+
+  nodes.forEach((n, i) => {
+    n.x += Math.sin(time + i * 0.7) * 0.15;
+    n.y += Math.cos(time + i * 0.5) * 0.1;
+  });
+
+  edges.forEach(([a, b]) => {
+    const na = nodes[a], nb = nodes[b];
+    if (!na || !nb) return;
+    const isHl = highlightIdx === a || highlightIdx === b;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = isHl ? 'rgba(99,102,241,0.6)' : 'rgba(99,102,241,0.12)';
+    ctx.lineWidth = isHl ? 2 : 1;
+    ctx.stroke();
+
+    if (isHl || Math.random() < 0.002) {
+      const t = (time * 0.5 + a * 0.1) % 1;
+      const px = na.x + (nb.x - na.x) * t;
+      const py = na.y + (nb.y - na.y) * t;
+      ctx.beginPath();
+      ctx.arc(px, py, 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(99,102,241,0.8)';
+      ctx.fill();
+    }
+  });
+
+  nodes.forEach((n, i) => {
+    const dx = mouse.x - n.x, dy = mouse.y - n.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const hover = dist < n.r + 5;
+    const hl = i === highlightIdx;
+    const r = hl ? n.r * 1.8 : hover ? n.r * 1.3 : n.r;
+
+    if (hl || hover) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r + 8, 0, Math.PI * 2);
+      const grad = ctx.createRadialGradient(n.x, n.y, r, n.x, n.y, r + 8);
+      grad.addColorStop(0, n.color + '40');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = n.color;
+    ctx.fill();
+
+    if (hover || hl) {
+      ctx.font = '500 11px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.textAlign = 'center';
+      ctx.fillText(n.name, n.x, n.y - r - 8);
+    }
+  });
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>

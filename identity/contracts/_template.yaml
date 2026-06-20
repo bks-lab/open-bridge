@@ -1,0 +1,136 @@
+# yaml-language-server: $schema=./_schema.yaml
+# Contract Template — CORE
+#
+# A contract represents a RECURRING FINANCIAL OBLIGATION the user holds —
+# utilities (electricity, gas, water), telco (mobile, internet), insurance,
+# SaaS subscriptions, tax-advisor retainers, etc.
+#
+# Why contracts live here (identity/contracts/, not infra/ or workflow/):
+#   - "Who am I" includes "what am I committed to pay" — same identity-cluster
+#     semantic as personas (self), accounts (cloud identities), mandants (recipients).
+#   - Contracts often cross personas (one electricity contract used by both
+#     private and freelance because the EV is charged at home) — they need a
+#     single source of truth that personas can REFERENCE, not duplicate.
+#
+# Copy this template as `contracts/<provider>-<product>.yaml` on your user/*
+# branch (e.g. `acme-energy-electricity.yaml`, `acme-telco-landline.yaml`,
+# `acme-insurance-liability.yaml`). Filename = simple slug WITHOUT type-prefix.
+#
+# === Companion docs ===
+#
+# `<id>.README.md` next to the YAML for:
+#   - Tariff comparison decisions ("why we stayed", "why we switched")
+#   - Cost-allocation justification (especially when share% drifts over time)
+#   - Links to PDFs in your document archive / cloud storage
+#   - History of price-letters and rate changes
+#
+# === Cross-references ===
+#
+# Calendar reminder for `next_action_deadline` should live as a separate entry
+# in `workflow/calendars/entries.yaml` (one-shot, no repeat). The /briefing
+# skill surfaces upcoming deadlines from this folder.
+#
+# === Schema reference ===
+#
+# Required: schema_version, id, provider, product, status
+# See _schema.yaml for the full property list.
+
+schema_version: 1
+id: example-provider-product                 # filename slug, lowercase-kebab-case
+
+provider: example-provider                   # short slug (acme-energy, acme-telco, ...)
+provider_legal_name: "Example Provider Inc." # full legal name if different
+product: example-product                     # electricity | gas | internet | mobile | broadcast-fee | insurance | saas | retainer
+tariff: "Example Tariff Name"                # provider-side plan name
+
+status: active                               # active | paused | cancelled | expired
+
+# ----------------------------------------------------------------------------
+# Term and cancellation — most important for proactive reminders
+# ----------------------------------------------------------------------------
+contract_start: 2020-01-01
+min_term_end: 2026-12-31
+notice_period_days: 30
+notice_period_text: "1 month before end of term"
+next_action_deadline: 2026-11-30             # computed: min_term_end - notice_period
+
+auto_renewal:
+  enabled: true
+  renewal_term_text: "12 months at a time"
+
+# ----------------------------------------------------------------------------
+# Provider-side identifiers (PII — leak-check filters before any OSS promote)
+# ----------------------------------------------------------------------------
+customer_no: "XXXXXXXXXX"
+contract_no: "XXXXXXXXXX"                    # only if separate from customer_no
+meter_no:    "XXXXXXXX"                      # for utilities — meter number / line identifier
+
+delivery_address_ref: "identity/personas/example-persona.yaml#address"
+
+# ----------------------------------------------------------------------------
+# Pricing — gross (incl. VAT) and net (excl. VAT). Net relevant for
+# VAT-liable personas to compute deductible input tax.
+# ----------------------------------------------------------------------------
+pricing:
+  currency: EUR
+  base_per_year:
+    gross: 0.00
+    net:   0.00
+  # For utilities — kWh-based pricing:
+  energy_ct_per_kwh:
+    ht: { gross: 0.00, net: 0.00 }           # peak / day rate
+    nt: { gross: 0.00, net: 0.00 }           # off-peak / night rate; same as HT if no off-peak
+  # For flat monthly contracts (telco, SaaS):
+  # monthly_fee:
+  #   gross: 0.00
+  #   net:   0.00
+  options:
+    - example-option-name                    # free-form strings or {name, cost, ...} objects
+
+# ----------------------------------------------------------------------------
+# Payment
+# ----------------------------------------------------------------------------
+payment:
+  method: sepa-direct-debit                  # sepa-direct-debit | bank-transfer | credit-card | paypal
+  iban_used: "DE.. .... .... .... .... .."
+  billing_cycle: yearly                      # monthly | quarterly | yearly
+
+# ----------------------------------------------------------------------------
+# Cost allocation across personas
+#
+# When the same contract serves multiple personas (private + business), this
+# block records the default split. Shares should sum to ~1.0. Document the
+# basis — tax audits and persona refactors both rely on this audit trail.
+# ----------------------------------------------------------------------------
+cost_allocation:
+  - persona: example-private-persona
+    share_default: 1.00
+    basis: "Pure private use; no business share"
+  # Multi-persona example:
+  # - persona: example-business-persona
+  #   share_default: 0.30
+  #   basis: "Estimated business share — 30% of usage attributed to client work"
+  #   notes:  "Refine after first full-year measurement"
+
+# ----------------------------------------------------------------------------
+# Source documents (PDF invoices, price-letters, portal snapshots)
+# ----------------------------------------------------------------------------
+sources:
+  - path: "${onedrive_root}/path/to/contract.pdf"
+    kind: contract
+    date: 2020-01-01
+    description: "Original contract"
+  - path: "${onedrive_root}/path/to/price-letter-2025.pdf"
+    kind: price-letter
+    date: 2025-01-01
+    description: "Annual price adjustment notice"
+
+# ----------------------------------------------------------------------------
+# Free-form notes — comparison decisions, anomalies, history
+# ----------------------------------------------------------------------------
+notes: |
+  Example contract. Document here:
+    - Why we chose this provider/tariff
+    - What we compared against
+    - Known peculiarities (auto-renewal traps, hidden fees, expired discounts)
+    - History of rate changes

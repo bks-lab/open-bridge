@@ -1,0 +1,102 @@
+# Bridge Backup Topology Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates infra/backups/topology.yaml — the single declaration of what gets
+# backed up (sources), where it goes (targets), and how the two connect
+# (pipelines). Unlike the other cluster wrappers, backups is NOT a glob of
+# <id>.yaml instances: there is ONE topology.yaml plus a sidecar _state.yaml
+# (written by the skill). The global skill ~/.claude/skills/backup/ reads
+# topology.yaml and executes; _state.yaml records what last ran when.
+#
+# Validation:
+#   check-jsonschema --schemafile infra/backups/_schema.yaml \
+#                    infra/backups/topology.yaml
+#
+# IDE support: add to topology.yaml:  # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/backup-topology.yaml"
+title: Bridge Backup Topology
+description: |
+  Backup topology — sources × targets × pipelines. Pure config in git;
+  runtime state lives in the _state.yaml sidecar, never here.
+
+type: object
+required: [schema_version, sources, targets, pipelines]
+additionalProperties: true        # v1 permissive
+
+properties:
+
+  schema_version:
+    type: integer
+    description: "Schema version of this topology file (current: 1)."
+
+  defaults:
+    type: object
+    additionalProperties: true
+    description: "Global defaults applied to all pipelines unless overridden."
+    properties:
+      log_dir:           {type: string, description: "Where pipeline run logs are written."}
+      notify_on_failure: {type: boolean, description: "Surface a failed pipeline in /briefing + notifications."}
+
+  sources:
+    type: object
+    additionalProperties:           # map of source-slug -> definition
+      type: object
+      additionalProperties: true
+      required: [path, kind]
+      properties:
+        description: {type: string}
+        path:        {type: string, description: "Path to back up. Supports ${home}/${onedrive_root}/${projects_root} interpolation."}
+        kind:        {enum: [directory, file, cloud-remote]}
+        sensitivity: {enum: [clear, encrypted-required], description: "encrypted-required forces a restic/encrypted pipeline."}
+        size_hint:   {type: string, description: "Purely informational (e.g. '~10GB')."}
+        excludes:    {type: array, items: {type: string}, description: "rclone/restic --exclude patterns."}
+        notes:       {type: string}
+
+  targets:
+    type: object
+    additionalProperties:           # map of target-slug -> definition
+      type: object
+      additionalProperties: true
+      required: [type, capabilities]
+      properties:
+        description:   {type: string}
+        type:          {enum: [external-drive, nas, cloud, time-machine]}
+        mount:         {type: string, description: "Mount path for local volumes (e.g. /Volumes/Example)."}
+        remote_ref:    {type: string, description: "For NAS: references infra/remotes/<name>.yaml."}
+        rclone_remote: {type: string, description: "For cloud: an rclone listremotes name."}
+        capabilities:  {type: array, items: {enum: [rclone-sync, rclone-copy, restic-repo, time-machine]}}
+        enabled:       {type: boolean}
+        notes:         {type: string}
+
+  pipelines:
+    type: array
+    description: "Each pipeline binds one source to one target via one tool."
+    items:
+      type: object
+      additionalProperties: true
+      required: [id, source, target, tool]
+      properties:
+        id:       {type: string, description: "Stable pipeline slug."}
+        source:   {type: string, description: "A key from sources:."}
+        target:   {type: string, description: "A key from targets:."}
+        tool:     {enum: [rclone-sync, rclone-copy, restic-backup, time-machine]}
+        mode:     {enum: [continuous, scheduled, on-demand]}
+        schedule: {type: string, description: "cron expression (only with mode: scheduled)."}
+        enabled:  {type: boolean, description: "Toggle — newly created pipelines start off."}
+        options:  {type: object, additionalProperties: true, description: "Tool-specific options (e.g. transfers, multi_thread_streams)."}
+        tag:      {type: string, description: "For restic-backup: snapshot tag."}
+        retention:
+          type: object
+          additionalProperties: true
+          description: "For restic-backup: keep_last / keep_weekly / keep_monthly."
+
+  state_file:
+    type: string
+    description: "Relative path to the state sidecar (default: backups/_state.yaml). The skill writes it; topology.yaml stays clean config."
+
+# Notes (advisory):
+# - topology.yaml is the source of truth — NEVER hardcode backup paths in a skill.
+# - _state.yaml is written ONLY by the backup skill; do not hand-edit run state here.
+# - time-machine pipelines are documented Soll only — macOS runs them passively.
+# - NEVER store credentials here — reference KeyVault/Keychain URIs from the target.

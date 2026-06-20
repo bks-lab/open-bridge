@@ -1,0 +1,11 @@
+org: example
+
+base:
+  wiki:
+    github: example/wiki
+    type: docs
+
+workspaces:
+  broken:
+    description: "References a repo that does not exist"
+    repos: [wiki, nonexistent-repo]

@@ -1,0 +1,9 @@
+{
+  "tracker": "github",
+  "project": { "slug": "demo2", "org": "other-org", "number": 9, "name": "Other Board" },
+  "pulled_at": "2026-06-04T20:00:00Z",
+  "item_count": 1,
+  "items": [
+    { "id": "#10", "number": 10, "title": "Other repo ten (collision)", "raw_state": "Done", "state": "done", "type": "task", "assignee": "demo-user", "assigned_to_me": true, "url": "https://github.com/other-org/other/issues/10", "changed_at": "2026-06-02T00:00:00Z", "labels": [], "repo": "other-org/other" }
+  ]
+}

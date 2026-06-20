@@ -1,0 +1,24 @@
+# Authors
+
+This file lists significant contributors to the project. It is not exhaustive
+— see `git log --format='%aN <%aE>' | sort -u` for the full contributor list.
+
+The presence of a name here indicates copyright attribution for a substantial
+contribution (a new skill, protocol, theme preset, or architectural module
+larger than ~100 lines). Smaller fixes and improvements are equally welcome
+and recorded in the git history.
+
+## Project lead
+
+- Michael Boiman <mboiman@bks-lab.com> — original author, architect, maintainer
+
+## Contributors
+
+(Add yourself here in the format `- Your Name <your@email> — what you built`
+when you contribute a significant module. PRs welcome.)
+
+---
+
+Copyright (c) 2026 BKS-Lab (Boiman Kupermann Solutions GmbH) and Contributors
+Licensed under MIT (see LICENSE) — code and content alike.
+Trademarks governed by TRADEMARK.md.

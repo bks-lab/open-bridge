@@ -1,0 +1,62 @@
+# Channel Definition
+# Copy to channels/{name}.yaml and customize.
+
+# yaml-language-server: $schema=./_schema.yaml
+schema_version: 1
+scope: user              # REQUIRED — a channel is local transport config;
+                         # always user/private, never promoted upstream.
+name: my-channel
+display_name: "My Channel"
+type: bot              # plugin | collector | bot | api | bridge
+
+implementation:
+  # skill: skill-name           # Claude skill for this channel
+  # plugin: plugin@publisher    # Claude Code plugin
+  # mcp: mcp-server-name        # MCP server
+
+runtime:
+  remote: local              # hostname from remotes/ or "local"
+  mode: on-demand            # tmux | launchd | on-demand
+  # service: service-slug    # from remotes/{host}.yaml
+  # session: session-name    # for tmux mode
+  # start_command: ""        # for on-demand mode
+
+access:
+  policy: disabled           # allowlist | pairing | disabled
+  # self: "your@address.com"
+  # contacts:
+  #   - name: "Contact Name"
+  #     handle: "email@example.com"
+  # groups:
+  #   - name: "Group Name"
+  #     id: "group-id"
+
+checkin:
+  enabled: false
+  # stream: D
+  # priority: 20
+
+behavior:
+  auto_response: false
+  signature: true
+  business_hours_only: false
+
+# Truth probe — `/channel health` runs this over SSH to verify reality.
+# See rules/deploy-reconciliation.md.
+verify:
+  # Presence check. Leave empty to derive from runtime.mode + runtime.service:
+  #   launchd → "launchctl list | grep {label}"
+  #   systemd → "systemctl --user is-active {label}"
+  #   tmux    → "tmux has-session -t {session} 2>/dev/null"
+  # Set explicitly only for non-standard checks.
+  service_check: ""
+
+  # Optional — for output-producing pipelines. Omit for receive-only channels.
+  # artifact_probe:
+  #   path: "~/relative/output/**/*.ext"
+  #   within_minutes: 60
+  #   expected_after: "human-readable trigger description"
+
+status: pending              # pending | active | paused | disabled — see rules/deploy-reconciliation.md
+# Flip to `active` only after verify passes on the remote. Never use
+# half-way markers like `deployed-pending-bootstrap` as resting state.

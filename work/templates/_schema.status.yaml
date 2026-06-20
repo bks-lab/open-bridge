@@ -1,0 +1,287 @@
+# STATUS.md Frontmatter Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates the YAML frontmatter block at the top of every
+# `work/tasks/<slug>/STATUS.md`, `work/streams/<slug>/STATUS.md`, and
+# `work/done/YYYY-MM/<slug>/STATUS.md`.
+#
+# The frontmatter is delimited by `---` lines. The schema only validates
+# the YAML between them; the markdown body below is free-form.
+#
+# Validation pattern:
+#   python3 scripts/extract-frontmatter.py work/tasks/<slug>/STATUS.md \
+#     | check-jsonschema --schemafile work/templates/_schema.status.yaml -
+#
+# IDE support: add this line at the very top of STATUS.md (before the
+# leading `---`):
+#   # yaml-language-server: $schema=../../templates/_schema.status.yaml
+#
+# Related:
+#   - work/templates/STATUS.md  (the template / golden example)
+#   - CLAUDE.md § Task Sync Routing
+#   - workflow/projects/_schema.yaml  (project-board configs)
+#   - protocols/standing-orders/task-sync.md  (Phase 3 — consumes this)
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/status.yaml"
+title: TaskStatus
+description: |
+  Frontmatter of work/tasks/<slug>/STATUS.md — the single record of
+  one task's identity, state, and external bindings.
+
+type: object
+required: [slug, type, status, created, last_updated, sync]
+additionalProperties: true        # v1 permissive — domain-specific fields allowed
+
+properties:
+
+  slug:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Stable identifier — MUST match the parent folder name"
+
+  type:
+    enum:
+      - refactor
+      - incident
+      - customer-comm
+      - research
+      - bug
+      - feature
+      - admin
+      - talk
+      - ops
+      - infra
+      - meeting
+    description: "Task category. Loose mapping to bridge-config.yaml work.activity_types."
+
+  status:
+    enum: [backlog, doing, review, done]
+    description: |
+      Workflow state — closed enum {backlog, doing, review, done}.
+      MUST match the board.md section the task lives in
+      (see protocols/standing-orders/work-board-reconciliation.md);
+      board.md is generated from the task dirs, so this field is the SoT.
+      'done' implies the folder has been moved to work/done/YYYY-MM/<slug>/.
+      'review' is required: a task passes through 'review' before 'done'
+      (no-direct-Done rule), and the GitHub Projects state_map relies on it.
+      'waiting'/'active'/'building'/'in_review'/'cancelled' are NOT valid:
+        - blocked → keep status doing/review + set blocked_by (a FLAG, not a state)
+        - declined → status: done + outcome: declined
+
+  blocked_by:
+    type: string
+    description: |
+      Free-text reason the task is blocked. Presence = blocked; status stays
+      doing/review. Blocked is a FLAG, not a status.
+
+  outcome:
+    enum: [declined]
+    description: |
+      Set only with status: done. 'declined' = task closed without completion.
+      Absent = normal completion.
+
+  horizon:
+    enum: [finite, stream]
+    description: |
+      Optional redundant hint to the folder KIND (work/tasks=finite,
+      work/streams=stream). The folder is authoritative; this is for tooling
+      that reads only the file. Never required — KIND = folder.
+
+  priority:
+    enum: [P0, P1, P2, P3]
+    default: P2
+
+  created:
+    type: string
+    format: date
+
+  last_updated:
+    type: string
+    format: date
+
+  closed:
+    type: string
+    format: date
+    description: "Set when status=done; matches the move date to work/done/"
+
+  headline:
+    type: string
+    maxLength: 100
+    description: |
+      One-line summary for board.md rendering (≤100 chars).
+      Body of STATUS.md stays free-form; this is the scannable surface.
+      Optional — when absent, board generator falls back to state_detail
+      (truncated) or task title.
+
+  # ---- Three-axis routing ----------------------------------------------
+
+  context:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: |
+      Slug → workflow/contexts/<slug>.yaml (doc-routing defaults).
+      Strict slug (Tier-1 cleanup 2026-05-11). Sub-contexts modelled inside
+      the context file (areas/tags), not via Slash-notation in the slug.
+
+  # ---- Postmortem (set at task close, all optional) --------------------
+  # Written by skills/task-close-postmortem/ during Phase 3b of task-sync.md.
+  # All fields are optional — User can skip every question.
+
+  time_invested:
+    type: string
+    pattern: "^(P\\d+[DH]|PT\\d+H(\\d+M)?|~?\\d+(\\.\\d+)?h|\\u2014|unknown)$"
+    description: |
+      Loose duration: ISO-8601 (P3D, PT4H), "~12h", "—", or "unknown".
+
+  estimate_vs_actual:
+    enum: [ok, "1.5x", "2x", "3x", ">3x", "re-scoped", "—"]
+    description: |
+      Accuracy of original time estimate. "ok" = within 20%. "re-scoped" =
+      scope changed mid-task so the original number doesn't apply.
+
+  lessons:
+    type: array
+    items: {type: string}
+    description: |
+      Free-form bullets: what was learned during this task. Machine-aggregated
+      at /bridge-learn time. Empty/absent = no lessons captured (legitimate).
+
+  bridge_gaps:
+    type: array
+    description: |
+      Structured list of things missing or broken in the-bridge itself that
+      this task surfaced. Each entry references ONE target (skill OR
+      standing_order OR rule OR doc) plus a 1-line rationale.
+    items:
+      type: object
+      additionalProperties: false
+      properties:
+        skill:          {type: string, description: "Name of missing/insufficient skill"}
+        standing_order: {type: string, description: "Name of missing/insufficient standing-order"}
+        rule:           {type: string, description: "Name of missing/insufficient rule (rules/*.md)"}
+        doc:            {type: string, description: "Name of missing/insufficient doc (docs/*.md)"}
+        protocol:       {type: string, description: "Name of missing/insufficient protocol"}
+        memory:         {type: string, description: "Suggested memory entry name (kebab-case)"}
+        why:            {type: string, description: "1-line rationale"}
+      oneOf:
+        - required: [skill, why]
+        - required: [standing_order, why]
+        - required: [rule, why]
+        - required: [doc, why]
+        - required: [protocol, why]
+        - required: [memory, why]
+
+  mandant:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Slug → identity/mandants/<slug>.yaml (recipient defaults). Strict — these files exist."
+
+  sync:
+    $ref: "#/$defs/SyncBlock"
+
+  # ---- Free-form references --------------------------------------------
+
+  related:
+    type: array
+    items: {type: string}
+    description: "Free-form paths / links — for humans, not machines"
+
+$defs:
+
+  SyncBlock:
+    type: object
+    additionalProperties: false
+    required: [bridge_only]
+    properties:
+
+      bridge_only:
+        type: boolean
+        description: |
+          true  → task stays local; no external system gets touched.
+                  github/wiki/ado blocks MUST be empty or absent.
+          false → at least one of github/wiki/ado MUST have content.
+
+      github:
+        type: object
+        additionalProperties: false
+        properties:
+          repo:
+            type: string
+            pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+            description: "org/repo where issues are created"
+          issues:
+            type: array
+            items: {type: integer, minimum: 1}
+            description: "Tracking issue numbers — multiple allowed"
+          project:
+            type: object
+            additionalProperties: false
+            properties:
+              org:    {type: string}
+              number: {type: integer, minimum: 1}
+            required: [org, number]
+          pull_requests:
+            type: array
+            items: {type: integer, minimum: 1}
+            description: "Optional — PRs that close this task"
+
+      wiki:
+        type: object
+        additionalProperties: false
+        properties:
+          path:
+            type: string
+            description: "Wiki path (typically wiki/customers/<x>/projects/<slug>/)"
+          moc_update:
+            type: string
+            description: "MOC index file that needs to mention this task"
+
+      ado:
+        type: object
+        additionalProperties: false
+        properties:
+          organization: {type: string}
+          project:      {type: ["string", "null"]}
+          work_items:
+            type: array
+            items: {type: integer, minimum: 1}
+
+      evidence_paths:
+        type: array
+        items: {type: string}
+        description: |
+          Optional list of repo paths the task touches. Used by the
+          task-sync standing-order Phase 5 (evidence-check) to detect
+          STATUS-Drift: `git log --since=last_updated -- <evidence_paths>`
+          surfaces commits that may have closed the task without STATUS.md
+          being updated. Example for a generic account-setup task:
+            evidence_paths:
+              - identity/accounts/cloudflare-<your-org>.yaml
+              - identity/accounts/m365-<your-org>.yaml
+          Without this field, the standing-order falls back to a
+          slug-token heuristic against `git log --name-only`.
+
+      calendar_keywords:
+        type: array
+        items: {type: string}
+        description: |
+          Optional list of search tokens for the briefing's
+          calendar-cross-reference (Stream C step 1a). When STATUS.md
+          lists a past-due required date, the briefing queries the local
+          calendar (icalBuddy) using these tokens before flagging the
+          date as "missed". Without this field, slug + headline words
+          are used as the fallback. Example for a customer kickoff task:
+            calendar_keywords: ["customer-name", "kickoff", "acronym"]
+
+    # Cross-field rule: if bridge_only=false then at least one of
+    # github/wiki/ado must have content. JSON-Schema can express this
+    # with `oneOf`/`anyOf` but the readable form lives in the
+    # task-sync standing-order (Phase 3); v1 leaves it advisory.
+
+# Notes (advisory):
+# - additionalProperties:true at top-level allows domain-specific extensions
+#   (escalation_level, branch_strategy, variant, …) without schema churn.
+# - SyncBlock is strict (additionalProperties:false) — that's the part
+#   skills will read programmatically, so it must be predictable.
+# - Once Phase 3 standing-order ships, it's the gatekeeper for the
+#   bridge_only=false ↔ at-least-one-target rule.

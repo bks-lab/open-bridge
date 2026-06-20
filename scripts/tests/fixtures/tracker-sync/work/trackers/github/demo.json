@@ -1,0 +1,15 @@
+{
+  "tracker": "github",
+  "project": { "slug": "demo", "org": "demo-org", "number": 7, "name": "Demo Board" },
+  "pulled_at": "2026-06-04T20:00:00Z",
+  "item_count": 5,
+  "items": [
+    { "id": "#10", "number": 10, "title": "Insync task", "raw_state": "In Progress", "state": "in_progress", "type": "task", "assignee": "demo-user", "assigned_to_me": true, "url": "https://github.com/demo-org/demo/issues/10", "changed_at": "2026-06-01T00:00:00Z", "labels": [], "repo": "demo-org/demo" },
+    { "id": "#11", "number": 11, "title": "Remote ahead task", "raw_state": "Done", "state": "done", "type": "task", "assignee": "demo-user", "assigned_to_me": true, "url": "https://github.com/demo-org/demo/issues/11", "changed_at": "2026-06-02T00:00:00Z", "labels": [], "repo": "demo-org/demo" },
+    { "id": "#12", "number": 12, "title": "Local ahead task", "raw_state": "In Progress", "state": "in_progress", "type": "task", "assignee": "demo-user", "assigned_to_me": true, "url": "https://github.com/demo-org/demo/issues/12", "changed_at": "2026-06-01T00:00:00Z", "labels": [], "repo": "demo-org/demo" },
+    { "id": "#13", "number": 13, "title": "Mismatch task", "raw_state": "In Progress", "state": "in_progress", "type": "task", "assignee": "demo-user", "assigned_to_me": true, "url": "https://github.com/demo-org/demo/issues/13", "changed_at": "2026-06-01T00:00:00Z", "labels": [], "repo": "demo-org/demo" },
+    { "id": "#14", "number": 14, "title": "Orphan remote task", "raw_state": "In Progress", "state": "in_progress", "type": "task", "assignee": "demo-user", "assigned_to_me": true, "url": "https://github.com/demo-org/demo/issues/14", "changed_at": "2026-06-03T00:00:00Z", "labels": [], "repo": "demo-org/demo" },
+    { "id": "#15", "number": 15, "title": "Closed issue, board card still New", "raw_state": "In Progress", "state": "in_progress", "type": "task", "assignee": "demo-user", "assigned_to_me": true, "closed": true, "issue_state": "closed", "url": "https://github.com/demo-org/demo/issues/15", "changed_at": "2026-06-03T00:00:00Z", "labels": [], "repo": "demo-org/demo" },
+    { "id": "#16", "number": 16, "title": "Closed issue linked to a still-doing task", "raw_state": "In Progress", "state": "in_progress", "type": "task", "assignee": "demo-user", "assigned_to_me": true, "closed": true, "issue_state": "closed", "url": "https://github.com/demo-org/demo/issues/16", "changed_at": "2026-06-03T00:00:00Z", "labels": [], "repo": "demo-org/demo" }
+  ]
+}

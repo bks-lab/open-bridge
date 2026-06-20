@@ -1,0 +1,681 @@
+schema_version: 2
+description: "Curated region descriptions for repo-layout brain visualizations. C-prime layout (cluster-wrappers + default-to-folder rule)."
+last_updated: 2026-05-02
+notes:
+  - "Schema v2 (C-prime): cluster-wrappers identity/, infra/, workflow/ + default-to-folder rule."
+  - "Primary view: docs/repo-layout/c-prime.html (editorial cluster/top-level map). Brain-metaphor variants v1-v4 show the same C-prime data and carry a banner at the top pointing to c-prime.html as the primary view."
+  - "owner: core (CORE templates/schemas, shared) | user (instance data, gitignored when PII)"
+regions:
+
+  # =========================================================================
+  # CORE — shared across all Bridge instances, lives on development/main
+  # =========================================================================
+
+  - id: ecosystem_yaml_core
+    path: "ecosystem.yaml"
+    owner: user
+    display_name: "Ecosystem Registry"
+    oneliner: "Single source of truth for all repos, workspaces, and skills"
+    what: |
+      Central YAML describing the entire ecosystem: every repo
+      (own, customer, partner, reference) with GitHub slug, local path,
+      language, and dependencies. Alongside workspaces, GitHub Projects numbers,
+      Azure infrastructure per customer, and the skill catalogs.
+      Loaded automatically into CLAUDE.md via `@ecosystem.yaml`.
+      Created at onboarding from the discovery scan; user-specific and
+      gitignored — not shipped on a fresh clone.
+    examples:
+      - "base.open-bridge — hub repo itself"
+      - "customers.<name>.repos — code repos per customer"
+      - "workspaces.<name> — bundled repo view"
+    related:
+      - "CLAUDE.md"
+      - "workflow/projects/*.yaml"
+    put_here: "New repo, new workspace, new customer with code repos."
+
+  - id: claude_md_core
+    path: "CLAUDE.md"
+    owner: core
+    display_name: "Operating Manual"
+    oneliner: "The operating manual Claude reads at every session"
+    what: |
+      The master instruction for every Bridge session. Defines session-start
+      phases, CORE/USER branch model, theme resolution, cluster-wrappers +
+      default-to-folder rule, agent/persona/mandant concepts, work system,
+      trackers, applications, calendar, variable interpolation, and the open-bridge
+      roadmap. Accompanied by README.md (narrative view for humans).
+    examples:
+      - "Session start flow mermaid + Phase-0 detection"
+      - "Layout — cluster-wrappers & default-to-folder rule"
+      - "Open-bridge roadmap"
+    related:
+      - "rules/session-start.md"
+      - "docs/structure.md"
+      - "docs/repo-layout/c-prime.html"
+    put_here: "New system-wide rule, new concept, new standard section."
+
+  - id: docs_core
+    path: "docs/"
+    owner: core
+    display_name: "Documentation"
+    oneliner: "Human-readable explanations, onboarding, concepts"
+    what: |
+      Markdown documentation for humans — onboarding wizard,
+      multi-instance guide, persona explanations, calendar/mandant
+      schemas, repo-layout visualizations. Plus `docs/examples/` for
+      anonymized example configs (personas, projects).
+    examples:
+      - "docs/feature-tour.md (per-cluster-wrapper guides)"
+      - "docs/structure.md (this file's source)"
+      - "docs/repo-layout/c-prime.html (visualization)"
+      - "docs/extension-model.md"
+    related:
+      - "CLAUDE.md"
+      - "rules/"
+    put_here: "New conceptual doc, new guide, new visualization variant."
+
+  - id: rules_core
+    path: "rules/"
+    owner: core
+    display_name: "Operating Rules"
+    oneliner: "Always-on rules loaded into every session"
+    what: |
+      Markdown rules that Claude loads at session start: session-start.md
+      (Phase 0 detection), operations.md (Phase 1, commit hygiene), theme.md
+      (vocabulary resolution), promote-safety.md (content scan before cherry-pick),
+      deploy-reconciliation.md (don't trust status, ask the service manager),
+      skill-routing.md, moc-navigation.md, contribute-advisor.md.
+    examples:
+      - "rules/session-start.md — branch + config detection"
+      - "rules/operations.md — allowed/blocked paths"
+      - "rules/deploy-reconciliation.md"
+    related:
+      - "CLAUDE.md"
+      - "protocols/"
+    put_here: "New always-on rule that ALL Bridge instances need."
+
+  - id: themes_core
+    path: "themes/"
+    owner: core
+    display_name: "Vocabulary Themes"
+    oneliner: "User-facing wording — same system, different vibe"
+    what: |
+      YAML themes with vocabulary mapping. `professional` (default, en),
+      `professional-de` (de). Themes control ONLY wording — never tools,
+      delegation, logic. Schema in `_schema.yaml`.
+    examples:
+      - "professional.yaml — neutral business"
+      - "professional-de.yaml — German translation"
+    related:
+      - "rules/theme.md"
+      - "bridge-config.yaml.theme"
+    put_here: "New theme — your own vocabulary for a different tone."
+
+  - id: trackers_core
+    path: "trackers/"
+    owner: core
+    display_name: "Tracker Provider Playbooks"
+    oneliner: "Pluggable provider definitions for issue / work-item trackers"
+    what: |
+      Markdown playbooks that explain to Claude how to operate a specific
+      tracker (CLI calls, output parsing, schema mapping).
+      Today: `github.md` (gh CLI), `ado.md` (az CLI). Contract: `README.md`.
+      New tracker = new `<name>.md` file. No code needs to change anywhere else.
+    examples:
+      - "github.md (working)"
+      - "ado.md (reference)"
+    related:
+      - "skills/briefing/"
+      - "bridge-config.yaml.integrations"
+    put_here: "New external tracker (e.g. Linear, Jira, Asana)."
+
+  - id: skills_core
+    path: "skills/"
+    owner: core
+    display_name: "Skills"
+    oneliner: "~25 Bridge skills with SKILL.md + references/"
+    what: |
+      Per skill, a folder with `SKILL.md` (definition + trigger), optionally
+      `references/` (workflow details), optionally `scripts/` (helpers).
+      Skills can have `scope: org` or `scope: private` — they then stay
+      on the USER branch, not in the CORE promote.
+    examples:
+      - "skills/calendar/ → /calendar"
+      - "skills/remote/ → /remote (fleet-ops)"
+      - "skills/customer-a-coordinator/ (scope: org)"
+    related:
+      - ".claude/agents/"
+      - "skills/"
+    put_here: "New skill with its own slash command or trigger."
+
+  - id: claude_agents_core
+    path: ".claude/agents/"
+    owner: core
+    display_name: "Sub-Agents"
+    oneliner: "Native Claude Code sub-agents for isolated tasks"
+    what: |
+      Markdown sub-agents with YAML frontmatter (name, description, tools, model,
+      optional scope). Claude Code auto-discovers them. Spawn via Task tool with
+      `subagent_type: <name>`. Purpose: offload heavy/parallel/isolated tasks
+      so raw output does not fill the main context.
+    examples:
+      - "archivist.md — document intake (CORE)"
+      - "customer-a-*.md (scope: org) — engagement sub-agents"
+    related:
+      - "protocols/standing-orders/"
+    put_here: "New focused worker for a recurring sub-task pattern."
+
+  - id: examples_core
+    path: "examples/"
+    owner: core
+    display_name: "External Config Templates"
+    oneliner: "Templates for configs outside the Bridge"
+    what: |
+      Top-level CORE folder with templates for configs consumed externally
+      to the Bridge. Today: `bridge-deck.config.yaml.template`,
+      `agency/` (demo repo layout for a hypothetical agency setup).
+    examples:
+      - "examples/bridge-deck.config.yaml.template"
+      - "examples/agency/README.md"
+    related:
+      - "bridge-deck.config.yaml"
+    put_here: "Template for an external config or a demo setup."
+
+  - id: docs_examples_personas_core
+    path: "docs/examples/personas/"
+    owner: core
+    display_name: "Persona Examples"
+    oneliner: "Anonymized example personas (CORE docs, no PII)"
+    what: |
+      Example YAMLs showing how personas are structured: freelancer and
+      company. No real tax data or addresses. Referenced during onboarding.
+    examples:
+      - "docs/examples/personas/freelancer-example.yaml"
+      - "docs/examples/personas/company-example.yaml"
+    related:
+      - "identity/personas/_template.yaml"
+      - "docs/personas.md"
+    put_here: "New anonymized persona type as an onboarding example."
+
+  - id: docs_examples_projects_core
+    path: "docs/examples/projects/"
+    owner: core
+    display_name: "Project Examples"
+    oneliner: "Example project configs for github-projects-manager"
+    what: |
+      Example YAMLs for project configs (operational, technical, minimal, ADO).
+      Used as a template for `workflow/projects/<slug>.yaml` once the
+      default-to-folder rule triggers a promote to folder.
+    examples:
+      - "operational.yaml"
+      - "technical.yaml"
+      - "minimal.yaml"
+      - "ado-project.yaml"
+    related:
+      - "skills/github-projects-manager/"
+      - "skills/project-advisor/"
+    put_here: "New project type as an onboarding example."
+
+  - id: identity_personas_template_core
+    path: "identity/personas/_template.yaml"
+    owner: core
+    display_name: "Persona Template"
+    oneliner: "Boilerplate for a new persona"
+    what: |
+      YAML template copied when a new persona is created.
+      Contains the schema stub (id, type, role, display_name, tax, destinations,
+      signature). Formally defined by `_schema.yaml`.
+    examples: []
+    related:
+      - "identity/personas/_schema.yaml"
+      - "identity/personas/<id>.yaml"
+      - "docs/examples/personas/"
+    put_here: "Schema extension — when personas gain new required fields."
+
+  - id: identity_personas_schema_core
+    path: "identity/personas/_schema.yaml"
+    owner: core
+    display_name: "Persona Schema"
+    oneliner: "Formal schema definition for personas (default-to-folder anchor)"
+    what: |
+      Validation hints for persona files. Documents required fields,
+      field types, patterns. Acts as the schema anchor for the
+      default-to-folder rule — its existence alone qualifies
+      `identity/personas/` as a folder even with fewer than 5 instances.
+    examples: []
+    related:
+      - "identity/personas/_template.yaml"
+      - "CLAUDE.md (default-to-folder rule)"
+    put_here: "Schema changes — new required fields, new validation hints."
+
+  - id: identity_accounts_template_core
+    path: "identity/accounts/_template.yaml"
+    owner: core
+    display_name: "Account Template"
+    oneliner: "Boilerplate for a new mail/calendar account"
+    what: |
+      YAML template for account files. Contains display_name, email, type
+      (gmail | icloud | outlook | imap | …), service-specific options.
+    examples: []
+    related:
+      - "identity/accounts/<id>.yaml"
+    put_here: "Schema extension — when accounts need new fields."
+
+  - id: identity_template_mandant_core
+    path: "identity/mandants/_template.yaml"
+    owner: core
+    display_name: "Mandant Template (flat)"
+    oneliner: "Template for the flat type — at the wrapper level"
+    what: |
+      Mandant is today a flat type (`identity/mandants/<id>.yaml`),
+      because the default-to-folder rule meets no folder condition. The template
+      therefore lives at the wrapper level with `<type>` in the filename.
+      Promote to folder would relocate it to `identity/mandants/_template.yaml`.
+    examples: []
+    related:
+      - "identity/mandants/<id>.yaml"
+      - "CLAUDE.md (default-to-folder rule + promote)"
+    put_here: "Mandant schema extension."
+
+  - id: identity_contracts_template_core
+    path: "identity/contracts/_template.yaml"
+    owner: core
+    display_name: "Contract Template"
+    oneliner: "Template for a recurring financial obligation"
+    what: |
+      Contract registry template: provider, product, persona refs with
+      cost-allocation shares, billing cycle, cancellation terms,
+      next_action_deadline. Instances (`<id>.yaml`) live on the user branch;
+      optional companion `<id>.README.md` carries tariff decisions.
+    examples: []
+    related:
+      - "identity/contracts/<id>.yaml"
+      - "workflow/calendars/entries.yaml (deadline reminders)"
+    put_here: "Schema extension — new contract fields."
+
+  - id: infra_remotes_template_core
+    path: "infra/remotes/_template.yaml"
+    owner: core
+    display_name: "Remote Template"
+    oneliner: "Template for a new machine"
+    what: |
+      Schema template with all fields: name, type (windows/macos/linux/router/
+      usb-toolkit), os, hardware, ssh, network (Tailscale + LAN), wake_on_lan,
+      capabilities, services. Paired companion: `<name>-setup.md`.
+    examples: []
+    related:
+      - "infra/remotes/<name>.yaml"
+      - "skills/remote/"
+    put_here: "Schema change in the remote format."
+
+  - id: infra_channels_template_core
+    path: "infra/channels/_template.yaml"
+    owner: core
+    display_name: "Channel Template"
+    oneliner: "Template for a new messaging transport"
+    what: |
+      Channel schema: type (imessage/email/telegram/signal/whatsapp/teams),
+      runtime (host, service, command), credentials reference, status,
+      health check.
+    examples: []
+    related:
+      - "infra/channels/<name>.yaml"
+      - "skills/channel/"
+    put_here: "Schema extension — new transport type."
+
+  - id: infra_instances_template_core
+    path: "infra/instances/_template.yaml"
+    owner: core
+    display_name: "Instance Template"
+    oneliner: "Template for registering another Bridge instance"
+    what: |
+      Multi-instance registry template: name, purpose, relationship
+      (self/sibling/upstream/downstream), location (path, branch, repo),
+      data/push policy, feature flow. Awareness + navigation only — never
+      authorises cross-instance writes. Instances (`<slug>.yaml`) are USER.
+    examples: []
+    related:
+      - "infra/instances/<slug>.yaml"
+      - "docs/multi-instance.md"
+    put_here: "Schema extension — new instance fields or policies."
+
+  - id: infra_backups_template_core
+    path: "infra/backups/_template.yaml"
+    owner: core
+    display_name: "Backup Template"
+    oneliner: "Template for backup topology (sources/targets/pipelines)"
+    what: |
+      Boilerplate for `topology.yaml`. Source schema, target capabilities,
+      pipeline tools (rclone-sync/-copy, restic, time-machine, rsync-via-ssh),
+      sensitivity levels (clear, encrypted-at-rest, encrypted-required).
+    examples: []
+    related:
+      - "infra/backups/topology.yaml"
+      - "infra/backups/_state.yaml"
+    put_here: "Schema extension in the backup format."
+
+  - id: workflow_template_calendar_core
+    path: "workflow/calendars/_template.yaml"
+    owner: core
+    display_name: "Calendar Template"
+    oneliner: "Template for calendar entries (flat type)"
+    what: |
+      Schema for `calendar.entries.yaml`. Entry format: id, title, owner,
+      recipients[], action, delivery_at, duration_estimate_min, repeat,
+      origin, status.
+    examples: []
+    related:
+      - "workflow/calendars/entries.yaml"
+      - "skills/calendar/"
+    put_here: "Schema extension — new entry fields."
+
+  - id: workflow_template_context_core
+    path: "workflow/contexts/_template.yaml"
+    owner: core
+    display_name: "Context Template"
+    oneliner: "Template for context bundles (flat type)"
+    what: |
+      Boilerplate for `contexts/<id>.yaml` files. Schema for routing rules,
+      persona refs, scan paths. Used today by the `doc-system` context.
+    examples: []
+    related:
+      - "workflow/contexts/<id>.yaml"
+      - "skills/doc-system/"
+    put_here: "Schema extension in the context format."
+
+  # =========================================================================
+  # USER — instance-specific data, lives on user/<name>
+  # =========================================================================
+
+  - id: bridge_config_yaml_user
+    path: "bridge-config.yaml"
+    owner: user
+    display_name: "Main Config"
+    oneliner: "USER configuration: identity, theme, integrations, work system"
+    what: |
+      Central USER config. Required fields: identity (name, org, projects_root,
+      home, onedrive_root), theme, language. Optional: work, channels, mandants,
+      calendar, applications, integrations (github/ado), promote.content_blocklist,
+      upstream.check_interval_days.
+    examples: []
+    related:
+      - "themes/"
+      - "ecosystem.yaml"
+    put_here: "Personal config change — theme, identity, toggles."
+
+  - id: bridge_deck_config_user
+    path: "bridge-deck.config.yaml"
+    owner: user
+    display_name: "Bridge-Deck Daemon Config"
+    oneliner: "Collector paths for the pixel dashboard instance"
+    what: |
+      Config for the optional bridge-deck daemon (not yet public —
+      coming soon; runs via launchd on a remote machine, e.g.
+      homeserver:8791). Defines collectors for channels, calendar,
+      mandants, agents, plus theme overrides.
+      C-prime paths: `infra/channels`, `workflow/calendars/entries.yaml`,
+      `identity/mandants/*.yaml` (glob).
+    examples: []
+    related:
+      - "infra/channels/"
+      - "workflow/calendars/entries.yaml"
+      - "identity/mandants/*.yaml"
+    put_here: "New collector, theme override, schedule config."
+
+  - id: identity_personas_user
+    path: "identity/personas/<id>.yaml"
+    owner: user
+    display_name: "Personas (Self-Identities)"
+    oneliner: "WHO am I — tax data, signatures, destination paths"
+    what: |
+      Self-identities the user holds (private individual, freelancer,
+      managing director of a GmbH, etc.). Contain tax IDs, VAT IDs,
+      tax advisor refs, vehicle classification, signature blocks, and
+      destination paths for document filing. **Gitignored** except for template
+      and schema.
+    examples:
+      - "user-personal.yaml"
+      - "user-freelancer.yaml"
+      - "user-org.yaml (GmbH)"
+      - "user-assets.yaml (UG)"
+    related:
+      - "identity/personas/_template.yaml"
+      - "identity/personas/_schema.yaml"
+      - "skills/doc-system/"
+    put_here: "New identity — new role, new company, new client status."
+
+  - id: identity_accounts_user
+    path: "identity/accounts/<id>.yaml"
+    owner: user
+    display_name: "Mail/Calendar Accounts"
+    oneliner: "Concrete accounts (gmail, icloud, outlook, imap, …)"
+    what: |
+      One YAML per mail/calendar account. Mail/calendar skills and the
+      doc-system intake read the account configs. Contain email address,
+      service type, auth method, display name.
+    examples:
+      - "user-gmail.yaml"
+      - "user-company.yaml"
+      - "customer-a-primary.yaml"
+    related:
+      - "identity/accounts/_template.yaml"
+      - "skills/doc-system/"
+    put_here: "New mail account or calendar connection."
+
+  - id: identity_mandant_user
+    path: "identity/mandants/<id>.yaml"
+    owner: user
+    display_name: "Mandants (Recipients)"
+    oneliner: "TO WHOM I send — recipient groups (flat)"
+    what: |
+      Recipient groups: persons with their preferred channels. Types:
+      company, household, family, friends, colleagues, individual.
+      Today **flat** — `identity/mandants/<id>.yaml`. Promote to folder
+      `identity/mandants/` as soon as ≥5 instances or a schema anchor emerges.
+      **Gitignored** because of contact PII; template is tracked.
+    examples:
+      - "mandants/<personal>.yaml"
+    related:
+      - "identity/mandants/_template.yaml"
+      - "skills/mandants/"
+      - "skills/calendar/"
+    put_here: "New recipient group — e.g. new customer, family, team."
+
+  - id: infra_remotes_user
+    path: "infra/remotes/<name>.yaml"
+    owner: user
+    display_name: "Remote Machines"
+    oneliner: "Machine inventory with companion `-setup.md`"
+    what: |
+      One yaml per physical/virtual machine + paired `<name>-setup.md`
+      with setup notes. Plus optional `<name>/` subfolder for machine-
+      specific configs (launchd plists, scripts, etc.). Fields: SSH,
+      network (Tailscale+LAN), Wake-on-LAN, capabilities, services.
+      **Tailscale first**, LAN as fallback.
+    examples:
+      - "homeserver.yaml + setup.md + homeserver/"
+      - "workstation.yaml"
+      - "router.yaml"
+      - "lab-device.yaml"
+    related:
+      - "skills/remote/"
+      - "infra/remotes/_template.yaml"
+    put_here: "New machine — server, workstation, router, USB toolkit."
+
+  - id: infra_channels_user
+    path: "infra/channels/<name>.yaml"
+    owner: user
+    display_name: "Messaging Transports"
+    oneliner: "Outbound channels (iMessage, email, Telegram, …)"
+    what: |
+      One yaml per messaging channel. Runtime usually sits on a remote
+      as a launchd/systemd unit. Plus `bots/` subfolder for bot instances
+      (planned). Bridge-deck `collector-channels` reads the directory.
+    examples:
+      - "imessage.yaml"
+      - "news-digest.yaml"
+      - "slack-bot.yaml"
+    related:
+      - "skills/channel/"
+      - "skills/schedule/"
+      - "infra/remotes/"
+    put_here: "New transport or bot channel."
+
+  - id: infra_backups_user
+    path: "infra/backups/topology.yaml"
+    owner: user
+    display_name: "Backup Topology"
+    oneliner: "Sources × targets × pipelines"
+    what: |
+      Data model for backups: what gets backed up where, with which tool
+      (rclone-sync/-copy, restic, time-machine, rsync-via-ssh), at which
+      frequency (daily, manual, scheduled). State (last_run, restic snapshot IDs)
+      lives in `_state.yaml`. Volume inventory in `volumes/`.
+    examples:
+      - "PARA → OneDrive (rclone-sync)"
+      - "Developer → Backup4T (rsync-via-ssh)"
+    related:
+      - "infra/backups/_state.yaml"
+      - "infra/backups/_template.yaml"
+    put_here: "New backup pipeline, new source, new target."
+
+  - id: workflow_calendar_user
+    path: "workflow/calendars/entries.yaml"
+    owner: user
+    display_name: "Master Calendar"
+    oneliner: "All scheduled outbound actions (single-file type)"
+    what: |
+      Master list of all scheduled outbound actions: emails, iMessages,
+      voice messages, reports, digests. Per entry: recipients[], delivery_at,
+      duration_estimate_min, action (script | template | inline), repeat (rrule),
+      origin (manual | email | chat), status.
+      Single-file type — flat, no promote needed.
+    examples: []
+    related:
+      - "workflow/calendars/_template.yaml"
+      - "skills/calendar/"
+      - "identity/mandants/<id>.yaml"
+    put_here: "New scheduled outbound action — appends an entry to the entries[] list."
+
+  - id: workflow_context_user
+    path: "workflow/contexts/<id>.yaml"
+    owner: user
+    display_name: "Context Bundles"
+    oneliner: "Routing rules + persona refs (flat, gitignored)"
+    what: |
+      One YAML per context domain with routing rules, persona refs, scan paths,
+      anti-patterns. Used today by `doc-system` for document filing.
+      **Gitignored** because routing rules contain persona refs and specific paths.
+    examples:
+      - "context.doc-system.yaml"
+    related:
+      - "workflow/contexts/_template.yaml"
+      - "skills/doc-system/"
+      - "identity/personas/"
+    put_here: "New context — different routing domain (e.g. invoices, contracts)."
+
+  - id: workflow_project_user
+    path: "workflow/projects/<slug>.yaml"
+    owner: user
+    display_name: "Project Configs"
+    oneliner: "GitHub project configs (flat, promote-on-demand)"
+    what: |
+      Project registry for `github-projects-manager`. One YAML per project
+      with field values, governance rules, state mappings, severity levels.
+      Today no instances — the first instance triggers a later promote discussion.
+      Templates are created once the first instance exists.
+    examples:
+      - "(none yet — promote-on-demand)"
+    related:
+      - "skills/github-projects-manager/"
+      - "skills/project-advisor/"
+      - "docs/examples/projects/"
+    put_here: "New project config at the first concrete GitHub/ADO project."
+
+  - id: protocols_user
+    path: "protocols/"
+    owner: user
+    display_name: "Standing Orders"
+    oneliner: "Always-on rules"
+    what: |
+      `standing-orders/` always-on rules (e.g. task-sync,
+      work-board-reconciliation). Shipped orders are CORE; user-authored
+      orders under `standing-orders/user/` stay on the user branch.
+    examples:
+      - "protocols/standing-orders/code-standards.md"
+      - "protocols/standing-orders/task-sync.md"
+    related:
+      - "skills/briefing/"
+    put_here: "New always-on rule."
+
+  - id: work_user
+    path: "work/"
+    owner: user
+    display_name: "Task Management"
+    oneliner: "Tasks + logs + briefings (working memory)"
+    what: |
+      Structured task tracking: `log.md` (chronological), `board.md`
+      (generated kanban), `tasks/<slug>/STATUS.md` (finite tasks), `streams/`
+      (long-runners), `done/YYYY-MM/`, `archive/` (weekly), `imports/`
+      (transcripts), `templates/`.
+    examples:
+      - "work/log.md"
+      - "work/tasks/folder-reorg-tier3/"
+      - "work/done/2026-04/"
+    related:
+      - "skills/briefing/"
+      - "skills/archive/"
+      - "skills/debrief/"
+    put_here: "New task, new log entry."
+
+  # =========================================================================
+  # Cluster-Wrappers (synthetic regions for visualization grouping)
+  # =========================================================================
+
+  - id: cluster_identity
+    path: "identity/"
+    owner: user
+    display_name: "Cluster — Identity"
+    oneliner: "Who am I · To whom do I send"
+    what: |
+      Cluster-wrapper for identity-related configs: personas (self),
+      accounts (mail/calendar), mandants (recipients).
+    examples:
+      - "personas/ (folder)"
+      - "accounts/ (folder)"
+      - "mandants/<id>.yaml (flat)"
+    related:
+      - "CLAUDE.md (layout — cluster-wrappers)"
+    put_here: "New identity type (would land flat or as a folder per the default-to-folder rule)."
+
+  - id: cluster_infra
+    path: "infra/"
+    owner: user
+    display_name: "Cluster — Infra"
+    oneliner: "Where things run · How to reach them"
+    what: |
+      Cluster-wrapper for infrastructure: remotes (machines), channels
+      (transports), backups (pipelines).
+    examples:
+      - "remotes/ (folder, tests 1+2+3)"
+      - "channels/ (folder, test 2)"
+      - "backups/ (folder, tests 1+2)"
+    related:
+      - "CLAUDE.md (layout — cluster-wrappers)"
+    put_here: "New infra type (e.g. monitors, secrets vaults)."
+
+  - id: cluster_workflow
+    path: "workflow/"
+    owner: user
+    display_name: "Cluster — Workflow"
+    oneliner: "What happens when"
+    what: |
+      Cluster-wrapper for workflow data: calendar (scheduled outbound),
+      contexts (routing), projects (github tracking). Today all flat.
+    examples:
+      - "calendar.entries.yaml (flat)"
+      - "contexts/<id>.yaml (flat)"
+      - "projects/<slug>.yaml (flat)"
+    related:
+      - "CLAUDE.md (layout — cluster-wrappers)"
+    put_here: "New workflow type (would start flat, promote if applicable)."

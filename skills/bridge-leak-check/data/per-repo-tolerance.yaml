@@ -1,0 +1,165 @@
+# Per-Repo Tolerance Model — Bridge Leak Check
+#
+# Each repo in the Three-Tier-Architecture has a different tolerance for what
+# counts as a leak. This file makes the model EXPLICIT so the skill doesn't
+# just "auto-detect by origin" silently — it documents WHY each tolerance is
+# what it is, and what categories ALWAYS apply.
+#
+# Auto-discovery: bridge-leak-check reads .git/config remote.origin.url and
+# matches against `repos[].match`. First match wins. Falls back to "unknown"
+# (= strictest = treat as OSS).
+
+repos:
+
+  - name: the-bridge
+    match: ["<your-username>/the-bridge", "the-bridge"]
+    role: saat-private
+    description: |
+      Personal saat-repo. Tracks personas, mandants, work logs
+      INTENTIONALLY — git serves as offsite backup. Not promoted to upstream
+      directly; CORE bits cherry-picked via /promote, <your-org>/personal stays.
+    tolerates:
+      - personal-pii        # <your-username>, machine names, /Users/<your-username> are EXPECTED
+      - customer-names  # <customer-1>, <customer-domain>, <customer-2>-* are EXPECTED
+      - org-branding    # <your-org> branding is EXPECTED
+      - internal-vocabulary # scope: org, internal etc. are EXPECTED
+    blocks: []
+    notes: |
+      Running bridge-leak-check on this repo SHOULD return zero findings —
+      everything is by-design. If you see findings, the categorizer is
+      mis-classifying or the tolerance model is wrong.
+
+  - name: org-overlay
+    match: ["<your-org>/<your-bridge>"]   # ← replace with your overlay repo slug
+    role: org-internal
+    description: |
+      internal overlay on top of open-bridge. Adds proprietary skills
+      (<customer-1>-coordinator, doc-system, bridge-deck), shared <your-org> contexts,
+      and <your-org> branding. NOT public. Pulls from open-bridge weekly.
+    tolerates:
+      - customer-names  # <customer-1>, customer codenames are OK (internal)
+      - org-branding    # <your-org> branding is OK
+      - internal-vocabulary # scope: org vocabulary is OK
+    blocks:
+      - personal-pii        # <your-username>, personal hostnames stay in saat
+    notes: |
+      Findings should ONLY be personal-pii. <your-org>-content is by-design here.
+
+  - name: open-bridge
+    match: ["bks-lab/open-bridge"]
+    role: oss-public
+    description: |
+      Public OSS variant. MIT licensed. Contains only generic platform code
+      and templates. Forkable by any organization.
+    tolerates:
+      - oss-self-reference  # bks-lab/open-bridge mentions of THIS repo are OK
+      - oss-sister-repo     # {org}/bridge-deck cross-link is OK (sister OSS)
+      - schema-id-urls      # bks-lab.github.io/open-bridge/schemas/* are canonical
+    blocks:
+      - personal-pii        # <your-username>, machine names — leak
+      - customer-names  # <customer-1>, <customer-domain>, customer codenames — leak
+      - org-branding    # <your-org> branding (except in copyright/$id) — leak
+      - internal-vocabulary # scope: org, hardcoded overlay repo names — leak
+
+  - name: unknown
+    match: []   # fallback when origin doesn't match any of the above
+    role: unknown
+    description: |
+      Unrecognized repo. Default to STRICTEST tolerance (open-bridge model).
+    tolerates:
+      - oss-self-reference
+      - schema-id-urls
+    blocks:
+      - personal-pii
+      - customer-names
+      - org-branding
+      - internal-vocabulary
+
+# Universal pattern definitions — what each `tolerates`/`blocks` category means.
+# Keep these in sync with bridge-config.yaml.promote.content_blocklist (which is
+# USER-scoped) — this YAML is the OSS-shippable baseline that DOES NOT depend
+# on a local config file.
+
+categories:
+
+  personal-pii:
+    description: "Seed-user identifiers — names, hostnames, absolute paths"
+    strings:
+      # Customize this list with your usernames, customer slugs, and
+      # personal hostnames. Examples below are placeholders.
+      - <your-username>
+      - <your-customer-slug>
+      - <your-homeserver>
+    patterns:
+      # Real personal user paths. Generic placeholder "user" is whitelisted
+      # so /Users/user/Developer/... in OSS-shipped scripts doesn't false-fire.
+      - { regex: "/Users/[a-z]+/", except: ["/Users/user/", "/Users/<your-username>/"] }
+      # Person-prefixed @<your-org>.com addresses are PII; generic functional
+      # addresses (ai@, info@, noreply@, hello@, contact@, support@, oncall@)
+      # are org-branding (legitimate in your org overlay, blocked in open-bridge —
+      # but covered by the org-branding category, not here).
+      - { regex: "[a-z][a-z0-9._-]*@<your-org>\\.com", except: ["ai@<your-org>.com", "info@<your-org>.com", "noreply@<your-org>.com", "hello@<your-org>.com", "contact@<your-org>.com", "support@<your-org>.com", "oncall@<your-org>.com"] }
+      - "100\\.118\\.[0-9]+\\.[0-9]+"   # tailscale prefix
+
+  customer-names:
+    description: "<your-org> customer codenames + adjacent project slugs"
+    strings:
+      - <customer-1>
+      - <customer-1-tenant>
+      - <customer-2>
+      - <customer-3>
+      - <customer-4>
+      - <partner-product>
+      - <partner-org>
+      - <customer-domain>
+      - <customer-domain>-abgleich
+      - <integration-provider>
+      - <internal-package-a>
+      - <internal-package-b>
+      - <customer-5>
+      - <customer-tenant>
+      - kv-customer-1
+      - fn-customer-1
+      - rg-customer-1
+
+  org-branding:
+    description: "<your-org> as company name in user-facing content (legitimate as $id-URL or copyright only)"
+    strings:
+      - <your-org>
+      - bks-lab
+    legitimate_contexts:
+      - "$id: " # YAML schema ids
+      - "Copyright"
+      - "github.com/bks-lab"        # repo slugs in cross-links
+      - "bks-lab.github.io"          # schema host
+
+  internal-vocabulary:
+    description: "Internal three-tier vocabulary that should be placeholder in OSS"
+    strings:
+      - "scope: org"
+      - "internal"
+      - "<your-org> employees"
+      - "org-bridge"               # legacy fixed overlay slug — should be <your-org>/<your-bridge>
+    legitimate_contexts:
+      - "rules/operations.md"      # documents both org-specific and generic conventions
+      - "rules/promote-safety.md"  # references scope: org as literal example
+
+  oss-self-reference:
+    description: "Mention of THIS repo by name — legitimate self-reference"
+    strings_per_repo:
+      open-bridge:
+        - "bks-lab/open-bridge"
+      org-overlay:
+        - "<your-org>/<your-bridge>"   # ← replace with your overlay repo slug
+      the-bridge:
+        - "<your-username>/the-bridge"
+
+  oss-sister-repo:
+    description: "Cross-link to a related OSS repo in the same family"
+    strings:
+      - "{org}/bridge-deck"
+
+  schema-id-urls:
+    description: "JSON Schema $id URLs pointing at canonical schema location"
+    patterns:
+      - "\\$id:\\s*\"https://[^\"]*github\\.io/[^\"]+\""

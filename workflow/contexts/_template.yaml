@@ -1,0 +1,162 @@
+# yaml-language-server: $schema=./_schema.yaml
+#
+# Context Definition — describes ONE domain bundle (customer, project, area).
+# Copy to workflow/contexts/<name>.yaml on your user/* branch.
+# Variables like ${projects_root} + ${onedrive_root} resolve from
+# bridge-config.yaml identity.* block.
+#
+# Two id-styles are valid:
+#   id: my-context                     ← simple flat id (recommended)
+#   identity: { name: my-context, … }  ← legacy/extended (still supported)
+#
+# Validation:
+#   check-jsonschema --schemafile workflow/contexts/_schema.yaml \
+#                    workflow/contexts/<name>.yaml
+
+schema_version: 1
+scope: user                 # REQUIRED — customer/project context = org;
+                            # personal-routing context = user. core → open-bridge,
+                            # org → your org overlay, user/private → local.
+id: my-context
+description: "One-line purpose of this context"
+
+# Or the extended form (mutually exclusive with the flat `id:` above):
+# identity:
+#   name: my-context
+#   display_name: "My Context"
+#   customer: client-name      # optional
+
+# ---------------------------------------------------------------------
+# Repos in this workspace (optional — a "workspace without code" like
+# a personal document management context can leave this empty).
+# ---------------------------------------------------------------------
+repos:
+  - name: api
+    path: "${projects_root}/my-api"
+    github: my-org/my-api
+  # - name: frontend
+  #   path: "${projects_root}/my-frontend"
+  #   github: my-org/my-frontend
+
+# ---------------------------------------------------------------------
+# Sync defaults — consumed by protocols/standing-orders/task-sync.md
+# (Phase 3). Tasks with `context: <this-slug>` in STATUS.md inherit
+# these defaults unless their own `sync:` block overrides them.
+# ---------------------------------------------------------------------
+# sync:
+#   defaults:
+#     github:
+#       repo: my-org/my-repo
+#       project:
+#         ref: workflow/projects/my-project.yaml
+#     wiki:
+#       root: wiki/customers/my-customer/
+#       moc_update: wiki/customers/my-customer/_MOC.md
+#   # When every customer touchpoint must appear in BOTH a GitHub issue
+#   # AND a wiki entry, set dual_doku.required and the self-check kicks in:
+#   dual_doku:
+#     required: false
+#     # post_actions:
+#     #   - type: submodule_bump
+#     #     parent_repo: my-org/wiki
+#     #     submodule_path: wiki/customers/my-customer
+#   # Optional per-event-type routing — STATUS.md `type:` selects subpath:
+#   # event_type_map:
+#   #   incident:      { wiki_subpath: incidents/, label: incident }
+#   #   customer-comm: { wiki_subpath: incidents/, label: business }
+
+# ---------------------------------------------------------------------
+# Default mandant — recipient group for outbound messages in this context.
+# Resolves through identity/mandants/<slug>.yaml.
+# ---------------------------------------------------------------------
+# default_mandant: my-team
+
+# ---------------------------------------------------------------------
+# Optional: link to a persona (self-identity). When set, protocols
+# like document-intake resolve tax data + destination paths from the
+# referenced persona. See docs/personas.md.
+# ---------------------------------------------------------------------
+# persona_ref: example-freelancer
+
+# ---------------------------------------------------------------------
+# Optional: sub-agents typically dispatched in this context
+# (names of .claude/agents/<name>.md files)
+# ---------------------------------------------------------------------
+# agents: [archivist]
+
+# ---------------------------------------------------------------------
+# Optional: infrastructure references
+# ---------------------------------------------------------------------
+# infra:
+#   github_project:
+#     org: my-org
+#     number: 1
+#   onedrive_root: "~/Library/CloudStorage/OneDrive-Example"
+
+# ---------------------------------------------------------------------
+# Document-Intake configuration (optional).
+# Required only if this context runs the document-intake protocol.
+# Full documentation: docs/document-intake.md
+# ---------------------------------------------------------------------
+#
+# intake_sources:
+#   # Filesystem sources — scanned recursively for new files
+#   filesystem:
+#     - { label: Scans,     path: "${onedrive_root}/Scans" }
+#     - { label: Downloads, path: "${home}/Downloads", pattern: "*.pdf" }
+#     - { label: Import,    path: "${onedrive_root}/Import" }
+#     - { label: Desktop,   path: "${home}/Desktop", pattern: "*.pdf" }
+#   # Mail sources — flagged messages with PDF attachments or HTML bodies
+#   mail:
+#     - label: "Primary Gmail (Apple Mail)"
+#       account: "you@example.com"
+#       skill: mail-attachment-processor
+#       filter: flagged
+#     - label: "Work Outlook"
+#       account: "you@company.com"
+#       skill: outlook-attachment-processor
+#       filter: flagged
+#
+# destinations:
+#   # Inherits from persona_ref when persona is set. Override here to
+#   # extend or redefine destination keys for this context.
+#   # Keys are referenced by name from this context's own routing
+#   # rules (rules: [{ when: ..., route: { target: <key> } }]).
+#   freelancer_offen: "${onedrive_root}/path/to/freelancer/_offen"
+#   # versicherung_offen: "${onedrive_root}/path/to/insurance"
+#
+# audit:
+#   # Where to append the audit trail of processed documents.
+#   log_file: "${onedrive_root}/VERARBEITUNGSLOG.md"
+#   # Fallback when the primary log is unavailable (e.g. OneDrive
+#   # dehydration, offline). Side-file to merge later.
+#   fallback_file: "${projects_root}/<your-bridge>/work/logs/doc-intake-pending.md"
+#   # Strategy when primary is unavailable: side-file | fail | skip
+#   dehydration_strategy: side-file
+#
+# # Which skills to auto-load when this context is active.
+# # Note: domain-specific procedures (like document intake) live in
+# # the sub-agent that owns them (e.g. .claude/agents/archivist.md),
+# # not as separate skills. Only list cross-cutting Bridge skills here.
+# skills: [bridge-core]
+
+# ---------------------------------------------------------------------
+# Integrations — per-capability sub-blocks (optional).
+#
+# Each well-known key declares that this context participates in a
+# capability. The owning skill scans workflow/contexts/*.yaml and
+# filters on the presence of ITS block — no consumer registration
+# needed (see rules/discovery.md "provides:" pattern).
+# ---------------------------------------------------------------------
+#
+# integrations:
+#   # meeting-transcription — owned by skills/meeting-transcription/.
+#   # The skill's deploy step extracts these fields into a flat runtime
+#   # yaml on the worker. Library + output use this context's slug by
+#   # convention unless you override.
+#   transcription:
+#     language: de           # de | en | auto
+#     library: my-context    # → speaker-library/<library>/*.npy
+#     output:  my-context    # → ~/Transcripts/<output>/
+#     notify:  true
+#     # tracks_default: dual   # dual (Audio-Hijack 2-track) | single (mix/mono)

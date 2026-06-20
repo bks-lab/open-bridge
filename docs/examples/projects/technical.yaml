@@ -1,0 +1,142 @@
+# Example: Technical project (Type B)
+# Use for: software development, bugs, features, CI/CD
+# Key difference: has Stage + Size fields for dev workflow tracking
+
+schema_version: 1
+scope: org          # REQUIRED — org/team example
+
+project:
+  name: "Backend Development"
+  number: 42
+  org: my-org
+  tracker: github
+  issue_repo: my-org/backend-issues
+  type: technical
+
+fields:
+  status:
+    values:
+      - "New"
+      - "Backlog"
+      - "Ready for Dev"
+      - "In Progress"
+      - "In Review"
+      - "Done"
+      - "Declined"
+    default: "New"
+    done_states: ["Done"]
+    review_states: ["In Review"]
+
+  priority:
+    values:
+      - "Very High"
+      - "High"
+      - "Medium"
+      - "Low"
+    default: "Medium"
+
+  type:
+    values:
+      - "Feature"
+      - "Bug"
+      - "Documentation"
+      - "Research"
+      - "Maintenance"
+      - "Infrastructure"
+      - "Testing"
+
+  # Type B specific: dev workflow
+  stage:
+    values:
+      - "Planning"
+      - "Development"
+      - "Testing"
+      - "Review"
+      - "Deployment"
+      - "Live"
+      - "Archived"
+
+  size:
+    values:
+      - "XS (1-2h)"
+      - "S (2-4h)"
+      - "M (4-8h)"
+      - "L (8-16h)"
+      - "XL (16+h)"
+    default: "M (4-8h)"
+
+  application:
+    values:
+      - "Backend"
+      - "Frontend"
+      - "API"
+      - "CI/CD"
+      - "Infrastructure"
+      - "Documentation"
+
+  blocked:
+    values:
+      - "No"
+      - "Yes"
+      - "Waiting"
+    default: "No"
+    reason_field: "Blocked Reason"
+
+labels:
+  - name: bug
+    color: "d73a4a"
+    description: "Something isn't working"
+  - name: feature
+    color: "a2eeef"
+    description: "New feature or request"
+  - name: tech
+    color: "1D76DB"
+    description: "Technical improvement"
+  - name: testing
+    color: "0E8A16"
+    description: "Testing / QA"
+  - name: docs
+    color: "5319E7"
+    description: "Documentation"
+  - name: waiting
+    color: "FBCA04"
+    description: "Waiting on external"
+
+governance:
+  level: strict
+  max_active_per_person: 5
+  stale_days: 14
+  rules:
+    done_requires_review: true
+    review_needs_comment: true
+    done_only_by_user: true
+    never_delete: true
+    all_fields_required: true
+    assignee_on_in_progress: true
+    comment_on_status_change: false
+
+state_map:
+  "New": new
+  "Backlog": new
+  "Ready for Dev": ready
+  "In Progress": in_progress
+  "In Review": review
+  "Done": done
+  "Declined": removed
+
+type_map:
+  bug: bug
+  feature: feature
+  tech: task
+  testing: task
+  docs: task
+
+review_comment_template: |
+  ## Review
+
+  **Status**: Ready for review
+  **Reason**: {reason}
+  **Evidence**: {evidence}
+  **Next steps**: {next_steps}
+
+  *Set to review on {date}*

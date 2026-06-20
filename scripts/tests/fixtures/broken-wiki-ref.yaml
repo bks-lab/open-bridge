@@ -1,0 +1,12 @@
+org: example
+
+base:
+  wiki:
+    github: example/wiki
+    areas:
+      acme: "wiki/acme/"
+
+customers:
+  acme:
+    display_name: "Acme"
+    wiki_ref: wiki.areas.nonexistent

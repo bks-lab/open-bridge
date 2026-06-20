@@ -1,0 +1,35 @@
+# Example: Email channel for Acme-Dev agency
+# API type — sends/reads email via SMTP or Graph API
+
+schema_version: 1
+scope: user              # local transport config -> user tier
+name: email
+display_name: "Email (SMTP)"
+type: api
+
+implementation:
+  skill: null              # org-overlay skill (scope: org) — open-bridge core ships no mail-send skill; provide your own (e.g. email-manager)
+
+runtime:
+  remote: prod-server
+  service: email-watcher
+  mode: on-demand
+
+access:
+  policy: allowlist
+  self: ["team@acme-dev.com"]
+  contacts:
+    - name: "BigCorp PM"
+      handle: "pm@bigcorp.com"
+    - name: "StartupXYZ Founder"
+      handle: "alex@startupxyz.io"
+
+checkin:
+  enabled: false
+
+behavior:
+  auto_response: false
+  signature: true
+  business_hours_only: true
+
+status: active

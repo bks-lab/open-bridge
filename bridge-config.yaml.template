@@ -1,0 +1,259 @@
+# The Bridge — Configuration
+# REFERENCE ONLY — do NOT hand-copy this file before running /bridge-onboard.
+# Onboarding generates your real bridge-config.yaml during Phase A, with the
+# identity block already populated. This template just shows the full block
+# layout so you can see every option in one place. After onboarding, edit the
+# generated config to toggle the `enabled:` flags as you fill the matching folders.
+# The generated config stays on your user/* branch — never on the CORE branch (`main`).
+
+# ─── Identity ─────────────────────────────────────────────────────────
+identity:
+  name: "your-name"          # used for user/ branch name
+  org: ""                    # GitHub organization — leave empty if you don't use GitHub
+  projects_root: ~/Developer # where your repos live (also `local_root` in ecosystem.yaml)
+  home: ~                    # home directory (auto-detected)
+  # Custom variables referenced as ${variable} in contexts/standing-orders:
+  # docs_root: ~/Documents
+  # onedrive_root: ~/OneDrive
+
+# ─── User Profile (sort-order hint, set by Phase B of /bridge-onboard) ────
+# Re-orders feature suggestions in Phase C and feature-discovery. Does not
+# gate any feature. Values: work | private | both | (unset = both).
+user_profile: both
+
+# ─── Discovery (Phase B scan boundary) ────────────────────────────────
+# What system data /bridge-onboard scanned with permission. Persisted so
+# /bridge-onboard --rescan honours the same boundary without re-asking.
+# Edit to revoke; use /bridge-onboard --reset for a clean re-prompt.
+discovery:
+  permissions: []            # subset of: git_config, developer_dir, os_and_apps,
+                             #   homebrew_packages, tailscale_devices,
+                             #   documents_structure, mail_accounts,
+                             #   moneymoney_accounts, calendar_list, ssh_known_hosts
+  last_scan: null            # ISO-8601 timestamp of last scan
+
+# ─── Theme ────────────────────────────────────────────────────────────
+# Themes are YAML files in themes/. Built-in:
+#   professional      — Lead, Specialists, Tasks, Incident Response (default, en)
+#   professional-de   — Leitung, Spezialisten, Aufgaben, Stoerfall (de)
+# Custom: copy themes/_template.yaml to themes/{name}.yaml, set extends.
+# Themes only change vocabulary — never tools, delegation, or goals.
+theme: professional
+
+# ─── Language ─────────────────────────────────────────────────────────
+language:
+  conversation: en           # en | de | es | fr | ...
+  artifacts: en              # en | de | ...
+
+# ─── Work System ──────────────────────────────────────────────────────
+# Daily log, task board, weekly archives. Central to The Bridge — the
+# log.md is Claude's working memory between sessions, board.md is your
+# active task surface. Strongly recommended to enable.
+work:
+  enabled: true
+  logging_level: hybrid      # hybrid (auto-log on triggers + 30 min reminders)
+                             # auto    (log on configured triggers only)
+                             # manual  (only when you ask)
+  max_active: 5              # max concurrent active tasks (0 = unlimited)
+  max_daily_goals: 3
+  import_rules: false        # enable work/import-rules.yaml
+  imports_dir: imports       # where /debrief picks up transcripts
+  activity_types:
+    - { symbol: "💻", name: "Development" }
+    - { symbol: "🔬", name: "Analysis" }
+    - { symbol: "📋", name: "Planning" }
+    - { symbol: "📝", name: "Documentation" }
+    - { symbol: "🔧", name: "DevOps" }
+    - { symbol: "📅", name: "Meeting" }
+    - { symbol: "📧", name: "Communication" }
+    - { symbol: "🧪", name: "Testing" }
+    - { symbol: "📁", name: "Documents" }
+    - { symbol: "🐛", name: "Bug / Incident" }
+
+# ─── Orchestrator ─────────────────────────────────────────────────────
+orchestrator:
+  enabled: true
+  backend: auto              # auto | cmux | agent-tool
+  auto_watch: true           # auto-watch sub-agents after spawn
+  polling_interval: 60       # seconds between status checks
+  escalation_levels: 4       # 1-4 (patience → inquiry → diagnosis → user)
+
+# ─── Integrations ─────────────────────────────────────────────────────
+# Issue trackers + inbound context-source providers. Capability-decoupled:
+# providers declare what they provide; consuming skills discover by capability.
+integrations:
+  github:
+    enabled: false           # set true if you use GitHub — provides issues, projects, PRs
+    projects: ecosystem      # `ecosystem` = read from ecosystem.yaml.github_projects
+                             # or hard-coded: [{ org: your-org, number: 1 }]
+    assignee_me: ""          # your GitHub login (used for "assigned to me" filters)
+  ado:
+    enabled: false           # flip to true for Azure Boards
+
+  # Inbound context sources — opt-in, swap per instance.
+  # Capability vocab: chat | calls | calendar | mail
+  context_sources:
+    teams:
+      enabled: false
+      skill: teams-reader
+      provides: [chat, calls]
+    outlook:
+      enabled: false
+      skill: email-manager
+      provides: [calendar, mail]
+
+# ─── Channels ─────────────────────────────────────────────────────────
+# Outbound transports (iMessage, email, Telegram, voice). See infra/channels/.
+# Activate via:  /bridge-onboard --add channels
+channels:
+  enabled: false             # flip to true when infra/channels/*.yaml files exist
+
+# ─── Upstreams (multi-upstream) ───────────────────────────────────
+# /promote and /contribute route per `scope:` frontmatter to the matching
+# upstream. The shared OSS upstream below is the default contribution
+# target for every open-bridge clone: `scope: core` improvements flow
+# there as fork-based PRs (you never need push access — see
+# skills/bridge-promote/references/contribute.md § Fork flow).
+# Pattern: [{name, repo, branch, role, contribute, pull_interval_days, primary}]
+upstreams:
+  - name: open-bridge
+    repo: bks-lab/open-bridge     # shared OSS upstream — same for all users
+    branch: main
+    role: oss-core
+    contribute: true              # offer /contribute PRs to this repo
+    pull_interval_days: 7
+    primary: true
+# Optional: your org overlay (scope: org content routes here, never to
+# the OSS upstream). Uncomment and adapt once your org has one:
+#  - name: my-org-bridge
+#    repo: my-org/my-org-bridge
+#    branch: development
+#    role: org-overlay
+#    contribute: true
+#    pull_interval_days: 7
+
+# ─── Promote Safety ───────────────────────────────────────────────────
+# Content scanned before cherry-pick onto CORE branches.
+# Three layers:
+#   1) content_blocklist — hard-block (personal-PII, customer names, secrets)
+#   2) scrub_rules       — auto-rewrite during sync (username/org/hostname placeholders)
+#   3) fallback_blocklist — applies when no upstream-specific list matches
+# See rules/promote-safety.md for the full rule + decision matrix.
+promote:
+  content_blocklist:
+    # Per-upstream lists go here, keyed by upstream name from upstreams[].
+    # Example: open-bridge: { strings: [], patterns: [] }
+
+  scrub_rules:
+    # Per-destination auto-rewrites. Applied DURING /bridge-sync after
+    # cherry-pick, BEFORE the safety scan. Each entry is a perl regex
+    # substitution. Use word boundaries (\b) to avoid over-matching.
+    #
+    # Example for someone whose GitHub handle is "alice" and org is "acme":
+    #   open-bridge:
+    #     - { pattern: '\balice\b',                replacement: '<your-username>' }
+    #     - { pattern: '\balice/the-bridge\b',     replacement: '<your-username>/the-bridge' }
+    #     - { pattern: '\bacme\b',                 replacement: '<your-org>' }
+    #     - { pattern: '\balice\.github\.io\b',    replacement: '<your-username>.github.io' }
+    #   acme-bridge:   # your org overlay — freely named, optional
+    #     - { pattern: '\balice\b',                replacement: '<your-username>' }
+    #     - { pattern: '\balice/the-bridge\b',     replacement: '<your-username>/the-bridge' }
+    #
+    # Leave empty to disable auto-scrub — blocklist hits will then be
+    # hard-blocks (commit must be adapted via /contribute --adapt before sync).
+
+  fallback_blocklist:
+    # Used when no upstream-specific list matches. Catches accidental leaks
+    # in any direction. Add your org/customer/personal identifiers.
+    strings: []
+    patterns: []
+
+# ─── Remotes ──────────────────────────────────────────────────────────
+# Physical/virtual machines you administer. See infra/remotes/.
+# Activate via:  /bridge-onboard --add remotes
+remotes:
+  enabled: false             # flip to true when infra/remotes/*.yaml files exist
+
+# ─── Calendar + Mandants ──────────────────────────────────────────────
+# Scheduled outbound + recipient groups. See workflow/calendars/ + identity/mandants/.
+# Activate via:  /bridge-onboard --add calendar  (typically pairs with mandants)
+calendar:
+  enabled: false
+mandants:
+  enabled: false
+
+# ─── Document Sensor ──────────────────────────────────────────────────
+# Inbox scanning + PARA-style document routing. See workflow/contexts/doc-system.yaml.
+# Activate via:  /bridge-onboard --add doc-system
+doc_sensor:
+  enabled: false
+  # When enabled, set these to your actual document tree:
+  # onedrive_root: "~/Documents"
+  # context: "workflow/contexts/doc-system.yaml"
+  # scan_paths: []
+  # queue_paths: []
+
+# ─── Learning Loop ────────────────────────────────────────────────────
+# Postmortem-capture + proposal-generation. See work/_learning/README.md.
+learning:
+  enabled: true
+  postmortem:
+    enabled: true
+    skip_phrases: ["skip", "weiter", "—", "nein", "no", "next", "."]
+    cutdown_after_skips: 3
+  proposals:
+    auto_surface_threshold: 5
+    auto_surface_in_briefing: friday
+  telemetry:
+    enabled: false           # opt-in PostToolUse hook
+  curator:
+    enabled: true
+    schedule: weekly
+    auto_surface_in_briefing: sunday
+    passes:
+      library: true
+      queue: true
+      user_patterns: true
+    min_events_for_user_patterns: 5
+    user_patterns_privacy: strict   # strict | relaxed
+
+# ─── Feature Discovery (proactive suggestions) ────────────────────────
+# Standing-order that surfaces ONE feature suggestion per briefing window
+# based on activity heuristics. Only fires when work.enabled: true.
+# Honors work/onboarding-state.yaml — never re-surfaces accepted or silenced.
+# See: protocols/standing-orders/feature-discovery.md
+feature_discovery:
+  enabled: true
+  surface_day: wednesday     # weekday name | daily | never
+  max_per_briefing: 1
+  defer_days: 30             # how long to wait after [l] Later
+  silence_after_declines: 3  # mark silenced after N declines
+  heuristics:
+    # Disable individual heuristics by name if too noisy:
+    # H2_mandant: false
+    # H8_personas: false
+
+# ─── Agents ───────────────────────────────────────────────────────────
+# Sub-agents are NOT configured here. They live as markdown definitions
+# in .claude/agents/*.md (frontmatter: name, description, tools, model)
+# and are auto-discovered by Claude Code at session start — drop a file
+# in, no registration. open-bridge ships one (`archivist`); add your own
+# next to it. Protocols reference them by name via their `agents:`
+# frontmatter; unknown names fall back to the built-in general-purpose
+# agent. Model + spawning policy below applies to all of them.
+
+# ─── Model Policy ─────────────────────────────────────────────────────
+# Defaults used when an agent spawns sub-agents.
+# See docs/agent-spawning.md for resolution precedence.
+models:
+  routine: haiku             # pattern matching, file moves, routine classification
+  analysis: sonnet           # code review, mail parsing, document classification
+  reasoning: opus            # unknown patterns, edge cases, deep analysis
+  fallback: parent           # used when backend cannot override model
+
+# ─── Sub-agent Spawning Policy ────────────────────────────────────────
+spawn:
+  enabled: true              # master switch for spawn proposals
+  cost_ceiling_usd: 5.00     # proposals above this need explicit confirmation
+  max_depth: 1               # sub-agents cannot spawn their own sub-agents
+  default_max_parallel: 5    # hard cap when a pattern does not set its own

@@ -1,0 +1,68 @@
+# Mandant Template — CORE (default/core branch)
+#
+# A mandant is a group of related people who receive scheduled messages.
+# Copy this template as `mandants/<id>.yaml` on your user/* branch and
+# fill in real contacts. The bridge-deck daemon reads every
+# `mandants/*.yaml` file (ignoring files prefixed with `_`) via
+# `collector-mandants` and surfaces them on the Mandants + Calendar tabs.
+#
+# Schema contract: bridge-deck `packages/shared/src/mandant.ts`
+# Full docs: docs/mandants.md
+#
+# Supported types and their UI icons:
+#   company    🏢   Business entity (your org, client companies)
+#   household  👨‍👩‍👧   People living in one place
+#   family     👪   Extended family (partner, siblings, parents)
+#   friends    🤝   Personal friends
+#   colleagues 💼   External work contacts
+#   individual 👤   Single contact not in any group
+#
+# The same person CAN appear in multiple mandants — this is normal
+# and expected. Example: "Sam" is both in "team" (developer, email)
+# and in "family" (brother, iMessage). Calendar entries reference a
+# specific mandant/person pair.
+
+# yaml-language-server: $schema=./_schema.yaml
+schema_version: 1
+scope: user                 # REQUIRED — Promote-routing for THIS mandant:
+                            #   core -> public OSS upstream; org -> org-internal upstream
+                            #   user/private → stays local. Personal mandant = user,
+                            #   customer/team mandant = bks. Mandants carry PII → never core.
+id: example-team
+type: company
+display_name: "My Team"
+
+# Optional: link to a Bridge context bundle (contexts/<name>/).
+# context_ref: my-project
+
+default_channel: email
+
+persons:
+  - id: lead
+    display_name: "Team Lead"
+    role: "Lead"
+    channels:
+      email: "lead@example.com"
+    defaults:
+      language: en
+      timezone: Europe/Berlin
+      detail_level: summary         # minimal | summary | full
+      preferred_time_of_day: morning # morning | midday | evening | night
+      quiet_hours: [22, 7]          # no messages between 22:00 and 07:00
+
+  - id: developer
+    display_name: "Developer"
+    role: "Developer"
+    channels:
+      email: "dev@example.com"
+      signal: "+49..."
+    defaults:
+      language: en
+      timezone: Europe/Berlin
+      detail_level: full
+
+notes: |
+  Example mandant. Replace with your actual team, family, or contacts.
+  The `defaults:` block is a hint for the intent-parser (Haiku) when
+  creating new calendar entries — the fire-loop itself only reads
+  `calendar/entries.yaml`, not mandant defaults.

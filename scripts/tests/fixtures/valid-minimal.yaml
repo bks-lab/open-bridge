@@ -1,0 +1,28 @@
+org: example
+
+base:
+  wiki:
+    github: example/wiki
+    type: docs
+    areas:
+      acme: "wiki/customers/acme/"
+
+customers:
+  acme:
+    display_name: "Acme Corp"
+    issue_repo: example/acme-wiki
+    repos:
+      acme-app:
+        github: example/acme-app
+        type: function-app
+        depends_on: [logger]
+    packages:
+      logger:
+        github: example/logger
+        type: package
+    wiki_ref: wiki.areas.acme
+
+workspaces:
+  acme-ops:
+    description: "Acme operations"
+    repos: [acme-app, logger, wiki]

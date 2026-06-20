@@ -1,0 +1,41 @@
+# Typo patterns — Bridge Audit Check #8
+#
+# Patterns we've seen drift in twice or more. Each hit is P3.
+#
+# Design note (2026-05-09): the original "no-space-before-conjunction" regex
+# was too broad — matched English words like "outbound", "around", "denselben"
+# as false positives. Replaced with a known-typo allowlist + safer patterns.
+
+patterns:
+
+  # Specific known typos that have actually shown up in this corpus.
+  # Add a row whenever a real typo is fixed twice (same pattern, two files).
+  - id: known-typo-gepushtdurch
+    regex: "gepushtdurch"
+    suggest: "Likely 'gepusht durch' — missing space."
+  - id: known-typo-machtdurch
+    regex: "\\bmachtdurch\\b"
+    suggest: "Likely 'macht durch' — missing space."
+  - id: known-typo-istdurch
+    regex: "\\bistdurch\\b"
+    suggest: "Likely 'ist durch' — missing space."
+
+  # Duplicated word ("the the", "und und"). Common cut-paste accident.
+  - id: duplicated-word
+    regex: "\\b([a-zA-Z]{2,})\\s+\\1\\b"
+    suggest: "Duplicated word."
+    exceptions:
+      - "had had"     # legitimate English past-perfect
+      - "that that"   # legitimate ("knows that that fact ...")
+      - "is is"       # rare but possible
+
+  # Back-to-back parens without separator (often cut-paste accident).
+  - id: back-to-back-parens
+    regex: "\\)\\s*\\("
+    suggest: "Back-to-back parens — check if a separator (comma, dash) was dropped."
+
+  # Hash-fence count drift in markdown headings (#### Built-in vs ### Built-in).
+  # Catches sed-delimiter accidents like the one we hit this session.
+  - id: heading-with-extra-hash
+    regex: "^#{5,7}\\s+[A-Z]"
+    suggest: "Heading depth >=5 — verify intentional (often sed/perl delimiter accident)."

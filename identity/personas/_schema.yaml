@@ -1,0 +1,236 @@
+# Persona Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Defines the structure for personas/<id>.yaml — identities the user holds.
+# Companion: _template.yaml (a working example for humans to copy).
+#
+# Validation:
+#   check-jsonschema --schemafile identity/personas/_schema.yaml \
+#                    identity/personas/*.yaml
+#
+# IDE support: add this hint to the top of an instance file:
+#   # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/persona.yaml"
+title: Persona
+description: |
+  Identity that the user holds (vs. mandant = recipient group).
+  Each persona carries tax data, signature blocks, destination paths
+  for document filing, and entity classification.
+
+type: object
+required: [schema_version, scope, id, type, role, display_name]
+additionalProperties: true   # v1 permissive — tighten after cleanup sweep
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+    description: "Schema version, currently 1"
+
+  scope:
+    enum: [core, org, user, private]
+    description: |
+      Promote-routing scope — REQUIRED. A persona is an identity the
+      USER holds (tax data, signatures, PII), so it is always `user`
+      (or `private`) and is NEVER promoted to open-bridge or your org overlay.
+      The field is mandatory as an explicit tripwire: if a persona ever
+      gets tagged `core`/`org`, schema validation + /promote must reject it.
+
+  id:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Unique persona slug, lowercase-kebab-case"
+
+  type:
+    enum: [individual, company]
+    description: "Legal entity classification"
+
+  role:
+    enum: [self]
+    description: "Always 'self' — personas represent identities the USER holds"
+
+  display_name:
+    type: string
+    minLength: 1
+    description: "Human-readable name for use in signatures and reports"
+
+  aliases:
+    type: array
+    items: {type: string}
+    description: "Alternate names (e.g. marketing name, abbreviation)"
+
+  status:
+    type: string
+    description: "Lifecycle status (e.g. 'active', 'dissolved'). Free-form."
+
+  dissolved_at:
+    type: string
+    format: date
+    description: "Date of dissolution (YYYY-MM-DD), if persona is wound down"
+
+  notes:
+    type: string
+    description: "Free-form notes about this persona — provenance, decisions, history"
+
+  persons:
+    type: array
+    description: "For type=company: associated natural persons (managing directors etc.) or for type=individual: contact channels for the person itself"
+    items:
+      type: object
+      required: [id, display_name]
+      additionalProperties: true
+      properties:
+        id: {type: string, pattern: "^[a-z][a-z0-9-]*$"}
+        display_name: {type: string}
+        role: {type: string}
+        notes: {type: string}
+        birth_date: {type: string, format: date, description: "YYYY-MM-DD"}
+        address:
+          type: object
+          additionalProperties: true
+          properties:
+            street:  {type: string}
+            zip:     {type: string}
+            city:    {type: string}
+            country: {type: string}
+        channels:
+          type: object
+          additionalProperties: true
+          description: |
+            Contact channels for this person. Keys vary per persona:
+            email, phone, email_alt are common; iban/bic/bank may be
+            present where the person owns the account directly (e.g.
+            freelancer/private personas without a separate company entity).
+          properties:
+            email:     {type: string, format: email}
+            email_alt: {type: string, format: email}
+            phone:     {type: string}
+            iban:      {type: string, description: "IBAN — may contain spaces; normalize before pattern checks"}
+            bic:       {type: string}
+            bank:      {type: string}
+
+  company:
+    type: object
+    description: "For type=company: legal entity details from commercial register / annual report"
+    additionalProperties: true   # v1 permissive — many partnership-/chamber-specific fields exist
+    properties:
+      legal_form:        {type: string}
+      seat:              {type: string}
+      business_address:  {type: string}
+      share_capital_eur: {type: number}
+      business_purpose:  {type: string}
+      fiscal_year:       {type: string}
+      einkunftsart:      {type: string, description: "Income classification (partnership etc.)"}
+      beteiligungsschluessel:
+        type: object
+        additionalProperties: {type: [number, string]}
+        description: |
+          Partnership stake distribution. Values are typically fractions
+          ('2652/10000') or decimals (0.5). Strings allowed for fractional
+          notation that exceeds float precision.
+      register:
+        type: object
+        additionalProperties: true
+        properties:
+          court:                   {type: string}
+          type:                    {type: string}
+          number:                  {type: string}
+          articles_of_association: {type: string, description: "Date of articles (YYYY-MM-DD) or path to PDF"}
+          registered_at:           {type: string, format: date, description: "Date entered into register"}
+          auszug_doc:              {type: string, description: "Path to commercial-register extract PDF"}
+      notary:
+        type: object
+        description: "Notary record (deed number, articles, capital increase, etc.)"
+        additionalProperties: true
+        properties:
+          name:        {type: string}
+          firm:        {type: string}
+          address:     {type: string}
+          deed_number: {type: string, description: "Deed number (Urkundenrolle)"}
+          date:        {type: string, format: date}
+      ihk:
+        type: object
+        description: "Chamber of Commerce (IHK) membership"
+        additionalProperties: true
+      transparenzregister:
+        type: object
+        description: "Transparency register filing (UBO disclosure)"
+        additionalProperties: true
+      shareholders:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+          properties:
+            name:          {type: string}
+            shares_eur:    {type: number}
+            share_percent: {type: number}
+            persona_ref:   {type: string, description: "Cross-ref to another persona id"}
+      bank:
+        type: object
+        additionalProperties: true
+        properties:
+          name:              {type: string}
+          iban:              {type: string, description: "IBAN — may contain spaces; normalize before strict pattern check"}
+          bic:               {type: string, description: "BIC/SWIFT — typically 8 or 11 chars"}
+          type:              {type: string, description: "Account type (business account, savings, ...)"}
+          opened_at:         {type: string, format: date}
+          fee_eur_monthly:   {type: number}
+
+  tax:
+    type: object
+    description: "Tax-relevant data — tax number, VAT-ID, advisor"
+    additionalProperties: true
+    properties:
+      applies_to:
+        type: array
+        items: {type: string}
+        description: |
+          Which tax types apply to this persona. Free-form labels —
+          common values: income_tax, vat, trade_tax,
+          corporate_tax, capital_gains_tax.
+      tax_id:           {type: string, description: "Tax-ID / tax number"}
+      tax_no_13stellig: {type: string, description: "13-digit federal tax number"}
+      wirtschafts_id:   {type: string, description: "Economic-Identification Number (W-IdNr.)"}
+      fiscal_status:    {type: string, description: "Tax status (e.g. 'small-business §19 UStG')"}
+      tax_office:       {type: string, description: "Tax office name"}
+      vat_id:
+        type: string
+        description: "VAT-ID (e.g. DE12345678 — may contain spaces; normalize before strict pattern check)"
+      finanzkasse_iban: {type: string, description: "Tax authority IBAN for tax payments"}
+      finanzkasse_bic:  {type: string, description: "Tax authority BIC"}
+      tax_advisor:
+        type: object
+        description: "Tax advisor contact + client number"
+        additionalProperties: true
+        properties:
+          name:           {type: string}
+          mandantsnummer: {type: string}
+          email:          {type: string, format: email}
+          phone:          {type: string}
+      vehicle:
+        type: object
+        description: "Vehicle classification (if relevant for tax)"
+        additionalProperties: true
+
+  destinations:
+    type: object
+    description: |
+      Path destinations for document filing. Values may use ${variable}
+      interpolation (e.g. ${onedrive_root}, ${home}).
+    additionalProperties:
+      type: string
+
+  signature:
+    type: string
+    description: "Multi-line signature block for emails / documents (text only, no images)"
+
+# JSON Schema does not natively express conditional rules, but these are
+# advisory hints for reviewers and future allOf/if-then rules:
+#
+# - If type=company, id should match the legal-name slug.
+# - If type=company AND revenue > VAT threshold, tax.vat_id is required.
+# - destinations.* should reference paths under ${onedrive_root} or ${home}.
+# - signature should NOT embed real signature images — text only.

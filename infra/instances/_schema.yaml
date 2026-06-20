@@ -1,0 +1,140 @@
+# Bridge Instance Schema — JSON Schema Draft 2020-12 in YAML
+#
+# An "instance" is ANOTHER Bridge this hub is aware of — a sibling working
+# instance you operate (separate clone + its own user/* branch), or an
+# upstream/downstream in the promote chain. This registry is the navigable
+# map of "where every Bridge is and what it's for".
+#
+# IT IS AWARENESS + NAVIGATION ONLY. Knowing an instance exists is NOT a
+# licence to reach into it. The instance-isolation hard rule still governs
+# (CLAUDE.md § Multiple Instances): from THIS session you may read/check an
+# instance read-only, but NEVER modify / push / pull / cross-log it — operate
+# an instance by opening its OWN session at its path.
+#
+# Validation:
+#   check-jsonschema --schemafile infra/instances/_schema.yaml \
+#                    infra/instances/*.yaml
+#
+# IDE support: add to an instance file:  # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/instance.yaml"
+title: Bridge Instance
+description: |
+  One sibling/upstream/downstream Bridge instance — where it lives, what it is
+  for, its data/push policy, and how (read-only) to reach it.
+
+type: object
+required: [name, scope, relationship, purpose]
+additionalProperties: true        # v1 permissive
+
+properties:
+
+  name:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: "Instance slug / file name (lowercase-kebab-case)"
+
+  scope:
+    enum: [core, org, user, private]
+    description: |
+      Promote-routing scope — REQUIRED as a promote tripwire. A concrete
+      instance entry names a real repo/customer and is local-only: always
+      `user` (or `private`), NEVER promoted. Only `_template.yaml` / `_schema.yaml`
+      are core. Mandatory so an entry can never silently default into a CORE tier.
+
+  purpose:
+    type: string
+    description: "What this Bridge is for, in one line (e.g. 'Acme Corp client engagement')."
+
+  relationship:
+    enum: [self, sibling, upstream, downstream]
+    description: |
+      How this instance relates to THIS hub:
+        self        — this very instance (optional, for completeness)
+        sibling     — a separate working instance you operate (own user/* branch)
+        upstream    — a promote target / source you pull CORE from
+        downstream  — an instance that receives features from here
+      Upstreams' authoritative promote config lives in bridge-config.yaml.upstreams;
+      use `promote_config_ref` to point at it instead of duplicating routing here.
+
+  location:
+    type: object
+    additionalProperties: true
+    description: "Where the clone lives + which branch it works on."
+    properties:
+      path:           {type: string, description: "Local clone path (e.g. ~/work/acme/acme-bridge)"}
+      working_branch: {type: string, description: "The branch this instance operates on (e.g. user/alice-acme)"}
+      repo:           {type: string, description: "GitHub <org>/<repo> if it has a remote"}
+      host:           {type: string, description: "Remote slug from infra/remotes/ if it runs on another machine"}
+
+  data_policy:
+    enum: [local-only, private-tracked, public]
+    description: |
+      local-only      — never pushed; data stays on disk (customer/PII confidentiality)
+      private-tracked — pushed to a PRIVATE remote as offsite backup
+      public          — public repo (OSS)
+
+  push_policy:
+    enum: [never, user-branch, upstream]
+    description: "never = local-only · user-branch = push own user/* only · upstream = promote target"
+
+  feature_flow:
+    enum: [none, inbound, outbound, bidirectional]
+    description: |
+      Direction CORE features move relative to this hub:
+        inbound       — it receives features (we port/pull INTO it)
+        outbound      — features flow from it to us
+        bidirectional — both
+        none          — isolated
+
+  upstream:
+    type: object
+    additionalProperties: true
+    description: "Where this instance pulls CORE from (if any). Routing SoT stays in bridge-config.upstreams."
+    properties:
+      repo:   {type: string}
+      branch: {type: string}
+      status: {type: string, description: "ok | broken | pending — operational note, not authoritative"}
+
+  promote_config_ref:
+    type: string
+    description: "For relationship=upstream: pointer to the authoritative entry in bridge-config.yaml.upstreams[] (avoid duplicating routing/scrub here)."
+
+  surface:
+    type: object
+    additionalProperties: true
+    description: "What is distinctive about this instance — for read-only awareness ('does it have X?')."
+    properties:
+      skills:   {type: array, items: {type: string}, description: "Instance-specific skills it carries"}
+      contexts: {type: array, items: {type: string}, description: "Instance-specific workflow/contexts"}
+      notes:    {type: string}
+
+  access:
+    type: object
+    additionalProperties: true
+    description: "How to reach it — and the hard read-only boundary."
+    properties:
+      mode:
+        enum: [read-only-from-here, operate-own-session]
+        description: |
+          read-only-from-here — you may inspect it read-only; NEVER mutate from this session
+          operate-own-session — to do work, open a session at location.path (its own branch)
+      how:    {type: string, description: "Concrete how-to (e.g. 'cd ~/work/acme/acme-bridge && claude')"}
+
+  status:
+    enum: [active, dormant, archived, unknown]
+    description: "Operational state of this instance."
+
+  notes:
+    type: string
+    description: "Free-form — quirks, history, caveats."
+
+# Notes (advisory):
+# - AWARENESS ≠ ACCESS. This registry indexes instances; it never authorises
+#   reaching into one. See CLAUDE.md § Multiple Instances + rules/multi-instance-isolation.md.
+# - Upstreams (open-bridge / your org overlay) are promote targets — their
+#   authoritative config is bridge-config.yaml.upstreams. Register them here only
+#   as a location map with promote_config_ref pointing back; do NOT duplicate
+#   branch/scrub/contribute here.
+# - NEVER store credentials here.

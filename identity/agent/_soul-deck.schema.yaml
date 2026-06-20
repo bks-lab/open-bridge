@@ -1,0 +1,68 @@
+# Soul-Deck Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates `_soul-deck.yaml`, the curated library of universal voice/posture
+# principle cards the onboarding wizard (Phase D4) offers a new user.
+#
+# Validation:
+#   check-jsonschema --schemafile identity/agent/_soul-deck.schema.yaml \
+#     identity/agent/_soul-deck.yaml
+#
+# Scope: CORE. English only (open-bridge).
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/soul-deck.yaml"
+title: SoulDeck
+description: |
+  A pickable library of generic SOUL principles. Each card renders into one
+  or two lines under a section heading in identity/agent/SOUL.md.
+
+type: object
+required: [schema_version, type, sections, cards]
+additionalProperties: false
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  type:
+    const: soul-deck
+
+  sections:
+    type: array
+    minItems: 1
+    items: {type: string}
+    description: "Heading slugs, in render order (e.g. verify, posture, execution, audience, output)."
+
+  defaults_by_worktype:
+    type: object
+    description: |
+      Maps a Phase-D3 work-type key (dev | devops | consulting | mixed) to
+      the list of card ids the wizard pre-checks. Purely a starting
+      selection — the user toggles freely from there.
+    additionalProperties:
+      type: array
+      items: {type: string}
+
+  cards:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required: [id, section, line, does]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          description: "Stable slug, referenced from defaults_by_worktype."
+        section:
+          type: string
+          description: "Must be one of the declared `sections`."
+        line:
+          type: string
+          description: "The imperative principle line(s) rendered into SOUL.md. Keep to 1-2 lines."
+        does:
+          type: string
+          description: "One sentence: what this principle does FOR the user. Shown in the picker, not written into SOUL.md."

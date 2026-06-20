@@ -1,0 +1,70 @@
+# Example: Acme-Dev core team mandant
+# All team members who work on client projects (BigCorp, StartupXYZ).
+# Referenced by calendar entries for standup reminders, digests, retros.
+
+schema_version: 1
+scope: org                  # shared team mandant -> org tier
+id: acme-team
+type: company
+display_name: "Acme Dev Team"
+
+context_ref: bigcorp
+
+default_channel: email
+
+persons:
+  - id: alice_chen
+    display_name: "Alice Chen"
+    role: "Project Lead"
+    channels:
+      email: "alice@acme-dev.com"
+    defaults:
+      language: en
+      timezone: Europe/Berlin
+      detail_level: summary
+      preferred_time_of_day: morning
+      quiet_hours: [22, 7]
+
+  - id: bob_martinez
+    display_name: "Bob Martinez"
+    role: "Backend Developer"
+    channels:
+      email: "bob@acme-dev.com"
+      slack: "@bob.martinez"
+    defaults:
+      language: en
+      timezone: Europe/Berlin
+      detail_level: full
+      preferred_time_of_day: morning
+      quiet_hours: [23, 8]
+
+  - id: carol_nguyen
+    display_name: "Carol Nguyen"
+    role: "Frontend Developer"
+    channels:
+      email: "carol@acme-dev.com"
+      slack: "@carol.nguyen"
+    defaults:
+      language: en
+      timezone: Europe/Berlin
+      detail_level: summary
+      preferred_time_of_day: morning
+      quiet_hours: [22, 7]
+
+  - id: dave_schmidt
+    display_name: "Dave Schmidt"
+    role: "Designer"
+    channels:
+      email: "dave@acme-dev.com"
+    defaults:
+      language: en
+      timezone: Europe/Berlin
+      detail_level: minimal
+      preferred_time_of_day: midday
+      quiet_hours: [21, 9]
+
+notes: |
+  Example team mandant for the Acme-Dev agency. Four people covering
+  the typical roles in a small product team. Alice leads the BigCorp
+  project; Bob and Carol handle backend and frontend; Dave does UX/UI.
+  Calendar entries reference these persons by mandant + person ID pair.

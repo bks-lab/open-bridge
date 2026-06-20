@@ -1,0 +1,196 @@
+# Theme Schema — JSON Schema Draft 2020-12 in YAML
+#
+# A theme controls vocabulary (user-facing terms), alert labels, and
+# recurring phrases. It NEVER controls tools, delegation rules,
+# protocol logic, or goals — and it does not define agents.
+#
+# Themes can extend other themes via `meta.extends`. Missing keys
+# fall back to the parent, then to the defaults below in this schema.
+#
+# Language/locale support: use `meta.locale` to mark a theme as
+# locale-specific. Combine with `extends` to inherit from a base theme
+# and only override vocabulary (e.g. professional-de extends
+# professional with German terms).
+#
+# Validation:
+#   check-jsonschema --schemafile themes/_schema.yaml themes/*.yaml
+#
+# IDE support: add this hint to a theme file:
+#   # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/theme.yaml"
+title: Theme
+description: |
+  Theme definition for The Bridge. Controls vocabulary, alert labels,
+  and recurring phrases. Never controls behavior.
+
+type: object
+required: [schema_version, meta]
+additionalProperties: true   # v1 permissive — tighten after cleanup sweep
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+    description: "Schema version, currently 1"
+
+  # --- meta ---
+  meta:
+    type: object
+    required: [name, display_name, description]
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Theme identifier (filename without .yaml)"
+      display_name:
+        type: string
+        minLength: 1
+        description: "Human-readable theme name"
+      description:
+        type: string
+        minLength: 1
+        description: "One-line description"
+      locale:
+        type: string
+        pattern: "^[a-z]{2}(-[A-Z]{2})?$"
+        default: "en"
+        description: "BCP 47 locale tag (en, de, fr, es, ...)"
+      author:
+        type: string
+        default: ""
+        description: "Who created this theme"
+      version:
+        type: string
+        pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        default: "1.0.0"
+        description: "Semantic version"
+      extends:
+        type: [string, "null"]
+        default: null
+        description: "Parent theme to inherit from (null = standalone)"
+
+  # --- vocabulary ---
+  # Key-value pairs: internal concept name -> displayed term.
+  # Claude reads the active theme and uses these terms in all output,
+  # logs, board entries, and prompts.
+  #
+  # All vocabulary keys are OPTIONAL — themes inherit missing keys from
+  # `meta.extends` parent or from the defaults below.
+  vocabulary:
+    type: object
+    additionalProperties: {type: string}
+    properties:
+
+      # Persons
+      user:            {type: string, default: "Lead",       description: "How to address the user"}
+      assistant:       {type: string, default: "Assistant",  description: "How Claude refers to itself"}
+      assistant_name:
+        type: string
+        default: "Orchestrator"
+        description: "Proper name of the AI persona running The Bridge — used in self-introductions ('Hi, I'm {name}'). Distinct from the product name 'The Bridge'. The shipped default is the neutral role name 'Orchestrator'; users pick or grow their own name during onboarding (written to the active theme's vocabulary.assistant_name)."
+      agents:          {type: string, default: "Specialists", description: "Collective term for AI specialists"}
+      agent_singular:  {type: string, default: "Specialist",  description: "Single AI specialist"}
+
+      # Work terms
+      work_log:        {type: string, default: "Work Log"}
+      task:            {type: string, default: "Task"}
+      tasks:           {type: string, default: "Tasks"}
+      task_board:      {type: string, default: "Task Board"}
+      active_tasks:    {type: string, default: "Active Tasks"}
+      queued_tasks:    {type: string, default: "Queued Tasks"}
+      completed_tasks: {type: string, default: "Completed Tasks"}
+
+      # Situations
+      incident:        {type: string, default: "Incident Response"}
+      warning:         {type: string, default: "Warning"}
+      cross_repo:      {type: string, default: "Cross-Repo Task"}
+      daily_check:     {type: string, default: "Daily Briefing"}
+      week_archive:    {type: string, default: "Week Archive"}
+      analysis:        {type: string, default: "Deep Dive"}
+      onboarding:      {type: string, default: "Setup"}
+
+      # Infrastructure
+      repos:           {type: string, default: "Projects"}
+      remote:          {type: string, default: "Remote"}
+      remotes:         {type: string, default: "Remotes"}
+      channel:         {type: string, default: "Channel"}
+      channels:        {type: string, default: "Channels"}
+      schedule:        {type: string, default: "Scheduled Task"}
+      protocol:        {type: string, default: "Protocol"}
+      protocols:       {type: string, default: "Protocols"}
+
+      # Orchestration
+      dispatch:        {type: string, default: "Dispatch", description: "Sending an agent to work"}
+      spawn:           {type: string, default: "Start",    description: "Creating a new agent workspace"}
+      park:            {type: string, default: "Pause",    description: "Pausing an agent"}
+      resume:          {type: string, default: "Resume",   description: "Resuming a paused agent"}
+
+  # --- phrases ---
+  # Recurring formulations in Claude output.
+  # Template variables: {agent}, {task}, {summary}, {reason}
+  phrases:
+    type: object
+    additionalProperties: {type: string}
+    properties:
+      session_greeting:
+        type: string
+        default: "Good morning. Here's your briefing."
+        description: "How Claude greets at session start"
+      dispatch_confirm:
+        type: string
+        default: "{agent} dispatched to {task}."
+        description: "Confirmation when agent is dispatched (vars: {agent}, {task})"
+      completion_report:
+        type: string
+        default: "{agent} completed: {summary}"
+        description: "When an agent finishes (vars: {agent}, {summary})"
+      escalation_notice:
+        type: string
+        default: "{agent} needs attention — {reason}"
+        description: "When escalating to user (vars: {agent}, {reason})"
+      log_prefix:
+        type: string
+        default: ""
+        description: "Prefix for work log entries"
+      status_header:
+        type: string
+        default: "Status Dashboard"
+        description: "Header for status dashboard"
+
+  # --- branding (terminal logo + palette; feeds the greeting and the UIs) ---
+  branding:
+    type: object
+    additionalProperties: true
+    description: >-
+      Per-instance visual identity for the bridge-greeting MOTD and, via
+      DESIGN.md, the web UIs. Optional — instances without it fall back to the
+      engine default. Logo art lives under skills/bridge-greeting/assets/logos/.
+    properties:
+      label:
+        type: string
+        description: "Short display label for this instance in the greeting header (e.g. 'ACME')"
+      logo_ascii:
+        type: string
+        description: "Repo-relative path to an ANSI-Shadow logo file with $1/$2 placeholders"
+      logo_color_1:
+        type: string
+        description: "Primary logo colour as an SGR fragment, e.g. '38;2;102;126;234'"
+      logo_color_2:
+        type: string
+        description: "Secondary logo colour as an SGR fragment"
+      calendar_tags:
+        type: string
+        description: "Space-separated calendar tags shown for this instance ('' = all)"
+
+# Notes (advisory hints — not enforced by tooling):
+# - Themes that inherit via meta.extends should override only the keys
+#   they want to change. Missing keys fall back to the parent.
+# - Themes map user-facing LABELS only (assistant name, alert levels,
+#   log prefix, phrases). They never define agents — sub-agents are
+#   .claude/agents/*.md files and keep their own names everywhere.
+# - phrases.* values may use template variables {agent}, {task},
+#   {summary}, {reason}. Missing variables in a phrase are tolerated.

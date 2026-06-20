@@ -1,0 +1,105 @@
+# Renames Registry — Bridge Audit Check #4
+#
+# When a name is changed (file, skill, command, concept), record both the
+# old and new form here. `bridge-audit` greps tracked content for `old` and
+# flags hits not listed under `exceptions`.
+#
+# Adding a new rename is a 30-second op. Forgetting to add it means the
+# audit can't catch future drift. Always add when you rename.
+#
+# Schema:
+#   renames:
+#     - id:         human-readable identifier (kebab-case)
+#       old:        the legacy string (whole-word match)
+#       new:        the canonical replacement
+#       reason:     one-line why (helps when the rename is ambiguous)
+#       since:      YYYY-MM-DD when the rename happened
+#       exceptions: list of file paths where the old name MUST stay
+#                   (alias triggers, history files, release notes)
+
+renames:
+
+  - id: moc-to-wiki-navigation
+    old: "moc-navigation.md"
+    new: "wiki-navigation.md"
+    reason: "Renamed when MOC pattern was scoped to wiki/** only — applies nowhere else."
+    since: 2026-04
+    exceptions: []
+
+  - id: cockpit-office-to-bridge-deck
+    old: "cockpit-office"
+    new: "bridge-deck"
+    reason: "Pixel-art renderer renamed 2026-04-18 from cockpit-office to bridge-deck."
+    since: 2026-04-18
+    exceptions:
+      - "docs/bridge-deck.md"             # rename history is part of the doc
+      - "infra/remotes/"                  # setup notes / yaml comments may reference the rename
+      - "skills/bridge-audit/"            # this rules file is the registry — self-ref
+
+  - id: server-command-to-remote
+    old: "/server"
+    new: "/remote"
+    reason: "Slash command renamed when the underlying skill became infra/remotes/-aware (vocabulary disambiguation: 'server' was ambiguous with 'git remote')."
+    since: 2026-04
+    exceptions: []
+
+  - id: process-meeting-absorbed
+    old: "process-meeting"
+    new: "debrief"
+    reason: "/process-meeting absorbed into /debrief --all and --date flags."
+    since: 2026-05-01
+    exceptions:
+      - "skills/debrief/SKILL.md"       # alias trigger preserved for backwards-compat
+
+  - id: bks-cockpit-to-the-bridge
+    old: "bks-cockpit"
+    new: "the-bridge"
+    reason: "Migration from internal bks-cockpit name to public the-bridge name (2026-04-11)."
+    since: 2026-04-11
+    exceptions:
+      - "docs/templates/"               # html templates that pre-date the rename
+
+  - id: dead-skill-cockpit-office-skill
+    old: "skills/cockpit-office/"
+    new: ""
+    reason: "Skill folder removed — the Bridge-Deck companion lives in its own repo (not yet public)."
+    since: 2026-04-18
+    exceptions: []
+
+  - id: dead-skill-bks-context
+    old: "bks-context/"
+    new: ""
+    reason: "Skill removed — context tagging absorbed into <customer-1>-coordinator + workflow/contexts."
+    since: 2026-04
+    exceptions: []
+
+  - id: dead-skill-bridge-bks-export
+    old: "bridge-bks-export/"
+    new: ""
+    reason: "Skill removed — replaced by /bridge-sync end-of-sprint workflow."
+    since: 2026-05-03
+    exceptions: []
+
+# Vocabulary renames (open-bridge OSS-strict; only enforced with --strict-oss flag)
+# These describe org-internal vocabulary that should NOT appear in OSS-shipped
+# skills. bridge-leak-check reads them too.
+
+vocabulary_renames:
+
+  - id: org-shortname-scope-to-org
+    old: "scope: acme"
+    new: "scope: org"
+    reason: "OSS-shipped content must use the generic `scope: org`, never an org shortname (placeholder example: acme)."
+    since: 2026-05-09
+    applies_to: oss-only
+    exceptions: []
+
+  - id: org-bridge-overlay-placeholder
+    old: "org-bridge"
+    new: "<your-org>/<your-bridge>"
+    reason: "OSS skills should not hardcode a fixed overlay repo name — the org overlay is user-named."
+    since: 2026-05-09
+    applies_to: oss-only
+    exceptions:
+      - "skills/bridge-leak-check/"      # documents the pattern as a leak example
+      - "skills/bridge-audit/data/renames.yaml"  # this registry — self-ref

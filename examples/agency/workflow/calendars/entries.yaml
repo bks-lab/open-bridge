@@ -1,0 +1,107 @@
+# Example: Acme-Dev agency scheduled calendar entries
+# Three recurring entries covering typical agency rhythms:
+# weekly client digest, daily standup reminder, monthly retrospective.
+#
+# The bridge-deck daemon reads this file via collector-calendar
+# and displays entries on the Timeline, Calendar, and Mandants tabs.
+# The fire-loop executes entries when delivery_at minus
+# duration_estimate_min has passed.
+
+schema_version: 1
+
+entries:
+  # ── Weekly Client Digest ────────────────────────────────────────────
+  # Monday morning summary of BigCorp project progress, sent to Alice.
+  - id: bigcorp-weekly-client-digest
+    title: "BigCorp Weekly Client Digest"
+    owner: alice_chen
+    recipients:
+      - mandant: acme-team
+        person: alice_chen
+        channel: email
+        address: "alice@acme-dev.com"
+    action:
+      type: wrapper
+      script: "~/scripts/bigcorp-weekly-digest.sh"
+      timeout_sec: 300
+    delivery_at: "2026-04-13T09:00:00+02:00"
+    duration_estimate_min: 10
+    repeat:
+      spec: "Mo 09:00"
+      rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0"
+    origin:
+      source: manual
+      snippet: "Weekly BigCorp progress digest for project lead"
+      parsed_at: "2026-04-10T12:00:00+02:00"
+    status: queued
+    created_at: "2026-04-10T12:00:00+02:00"
+    updated_at: "2026-04-10T12:00:00+02:00"
+
+  # ── Daily Standup Reminder ──────────────────────────────────────────
+  # Weekday reminder to all team members 15 minutes before standup.
+  - id: acme-daily-standup-reminder
+    title: "Daily Standup Reminder"
+    owner: alice_chen
+    recipients:
+      - mandant: acme-team
+        person: alice_chen
+        channel: email
+        address: "alice@acme-dev.com"
+      - mandant: acme-team
+        person: bob_martinez
+        channel: email
+        address: "bob@acme-dev.com"
+      - mandant: acme-team
+        person: carol_nguyen
+        channel: email
+        address: "carol@acme-dev.com"
+      - mandant: acme-team
+        person: dave_schmidt
+        channel: email
+        address: "dave@acme-dev.com"
+    action:
+      type: claude-prompt
+      command: "Post a brief standup reminder. Ask the team what they are working on today and if they have any blockers. Keep it casual, under 3 sentences."
+    delivery_at: "2026-04-11T08:45:00+02:00"
+    duration_estimate_min: 2
+    repeat:
+      spec: "Mo-Fr 08:45"
+      rrule: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8;BYMINUTE=45"
+    origin:
+      source: manual
+      snippet: "Daily standup reminder to whole team at 08:45"
+      parsed_at: "2026-04-10T12:00:00+02:00"
+    status: queued
+    created_at: "2026-04-10T12:00:00+02:00"
+    updated_at: "2026-04-10T12:00:00+02:00"
+
+  # ── Monthly Retrospective ──────────────────────────────────────────
+  # Last Friday of each month, retro prep sent to Alice and Bob.
+  - id: acme-monthly-retrospective
+    title: "Monthly Retrospective Prep"
+    owner: alice_chen
+    recipients:
+      - mandant: acme-team
+        person: alice_chen
+        channel: email
+        address: "alice@acme-dev.com"
+      - mandant: acme-team
+        person: bob_martinez
+        channel: email
+        address: "bob@acme-dev.com"
+    action:
+      type: wrapper
+      script: "~/scripts/monthly-retro-prep.sh"
+      timeout_sec: 600
+    delivery_at: "2026-04-24T16:00:00+02:00"
+    duration_estimate_min: 15
+    repeat:
+      spec: "last Fr of month 16:00"
+      rrule: "FREQ=MONTHLY;BYDAY=-1FR;BYHOUR=16;BYMINUTE=0"
+    origin:
+      source: manual
+      snippet: "Monthly retro prep for Alice and Bob on last Friday"
+      parsed_at: "2026-04-10T12:00:00+02:00"
+    status: queued
+    created_at: "2026-04-10T12:00:00+02:00"
+    updated_at: "2026-04-10T12:00:00+02:00"

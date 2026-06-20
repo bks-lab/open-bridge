@@ -1,0 +1,68 @@
+# Account Definition
+# Copy to accounts/{slug}.yaml. One file per account (mail, calendar, or
+# combined). Contexts reference accounts by id via `accounts: [id, ...]`.
+#
+# Accounts describe WHERE mail/calendar data lives and HOW Claude reaches it.
+# Credentials never live here — only access method + KeyVault/1Password URIs.
+
+scope: user                        # REQUIRED — core→open-bridge · org→your org overlay · user/private→local.
+                                   # Org tenant / customer access = org; personal account = user.
+id: my-account                     # stable slug, used as reference from contexts
+display_name: "My Account"
+owner: my-handle                   # persona id (e.g. <persona>-company) or your handle for self
+status: active                     # active | paused | disabled
+
+# ---------------------------------------------------------------------------
+# Mail configuration (optional — omit block if this is calendar-only)
+# ---------------------------------------------------------------------------
+mail:
+  address: "user@example.com"
+  provider: microsoft365           # microsoft365 | google | icloud | imap | exchange
+  access:
+    # How Claude reads/writes this mailbox. Pick ONE primary method.
+    primary: graph-api             # graph-api | imap | applescript | skill
+    # skill: email-manager         # when primary=skill
+    # imap:
+    #   host: imap.example.com
+    #   port: 993
+    #   user: "user@example.com"
+    #   credential_ref: "keeper://..."
+  flags:
+    attachment_processing: true    # flagged-mail intake workflow
+    send: true                     # outbound allowed
+
+# ---------------------------------------------------------------------------
+# Calendar configuration (optional — omit block if mail-only)
+# ---------------------------------------------------------------------------
+calendar:
+  provider: microsoft365           # microsoft365 | google | icloud | caldav
+  access:
+    primary: graph-api             # graph-api | icalbuddy | caldav | mcp
+    # icalbuddy_name: "Work"       # calendar name as seen by icalBuddy
+    # caldav:
+    #   url: https://...
+    #   credential_ref: "keeper://..."
+  flags:
+    read: true
+    write: false                   # Claude may create/move events
+
+# ---------------------------------------------------------------------------
+# Code host configuration (optional — GitHub, GitLab, Azure DevOps)
+# ---------------------------------------------------------------------------
+# code_host:
+#   provider: github               # github | gitlab | ado | bitbucket
+#   user: my-handle
+#   access:
+#     primary: cli                 # cli | api | ssh
+#     cli: gh                      # command name
+#   orgs:
+#     - my-org
+#     - my-other-org
+#   ssh_key_ref: "~/.ssh/id_ed25519"
+#   token_ref: "keeper://..."      # NEVER inline the token
+
+# ---------------------------------------------------------------------------
+# Cross-references (optional)
+# ---------------------------------------------------------------------------
+# persona_ref: my-persona          # which persona owns this account
+# contexts: [my-context, customer-a]  # which contexts use this account

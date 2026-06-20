@@ -1,0 +1,68 @@
+# themes/professional.yaml
+# Default theme: neutral, corporate-friendly vocabulary.
+# CORE file — lives on the default/core branch.
+
+schema_version: 1
+
+meta:
+  name: professional
+  display_name: "Professional"
+  description: "Neutral, business-friendly vocabulary for teams and clients"
+  locale: en
+  author: "open-bridge by BKS-Lab"
+  version: "1.0.0"
+  extends: null
+
+# Branding — generic default (the OPEN BRIDGE wordmark). Per-instance overrides
+# live in each instance's own theme branding: block or the machine-local
+# override. Consumed by skills/bridge-greeting. See that skill's SKILL.md.
+branding:
+  logo_ascii: skills/bridge-greeting/assets/logos/bridge.txt
+  logo_color_1: "38;2;129;140;248"
+  logo_color_2: "38;2;118;75;162"
+  calendar_tags: ""
+
+vocabulary:
+  user: "Lead"
+  assistant: "Assistant"
+  assistant_name: "Orchestrator"
+  agents: "Specialists"
+  agent_singular: "Specialist"
+
+  work_log: "Work Log"
+  task: "Task"
+  tasks: "Tasks"
+  task_board: "Task Board"
+  active_tasks: "Active Tasks"
+  queued_tasks: "Queued Tasks"
+  completed_tasks: "Completed Tasks"
+
+  incident: "Incident Response"
+  warning: "Warning"
+  cross_repo: "Cross-Repo Task"
+  daily_check: "Daily Briefing"
+  week_archive: "Week Archive"
+  analysis: "Deep Dive"
+  onboarding: "Setup"
+
+  repos: "Projects"
+  remote: "Remote"
+  remotes: "Remotes"
+  channel: "Channel"
+  channels: "Channels"
+  schedule: "Scheduled Task"
+  protocol: "Protocol"
+  protocols: "Protocols"
+
+  dispatch: "Dispatch"
+  spawn: "Start"
+  park: "Pause"
+  resume: "Resume"
+
+phrases:
+  session_greeting: "Good morning. Here's your briefing."
+  dispatch_confirm: "{agent} dispatched to {task}."
+  completion_report: "{agent} completed: {summary}"
+  escalation_notice: "{agent} needs attention — {reason}"
+  log_prefix: ""
+  status_header: "Status Dashboard"

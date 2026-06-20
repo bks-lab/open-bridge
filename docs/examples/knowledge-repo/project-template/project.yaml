@@ -1,0 +1,67 @@
+# Project metadata for a knowledge-repo project folder.
+# Drop into: <knowledge-repo>/<area>/<slug>/projects/<project>/project.yaml
+#
+# Required by the Knowledge Repo Pattern. Consumed by readers (humans,
+# AI assistants) to triage the project without reading every file inside.
+
+schema_version: 1
+scope: org          # REQUIRED — org/team example
+
+# ---------------------------------------------------------------------
+# Identity
+# ---------------------------------------------------------------------
+slug: my-project                  # kebab-case, matches folder name
+display_name: "My Project"
+summary: "One-line description — max 100 chars, the AI triage hook"
+
+# ---------------------------------------------------------------------
+# Status — one of: planned | active | paused | completed | archived
+# ---------------------------------------------------------------------
+status: active
+phase: "phase-1-discovery"        # free-form; matches your milestones
+
+# ---------------------------------------------------------------------
+# Timeline
+# ---------------------------------------------------------------------
+started: 2026-01-01
+target_completion: 2026-06-30     # optional
+last_updated: 2026-05-13
+
+# ---------------------------------------------------------------------
+# Ownership
+# ---------------------------------------------------------------------
+owner: "Your Name"
+stakeholders:
+  - name: "Stakeholder One"
+    role: "decision maker"
+  - name: "Stakeholder Two"
+    role: "subject matter expert"
+
+# ---------------------------------------------------------------------
+# Cross-references
+# ---------------------------------------------------------------------
+# Pointers to related artefacts — keep relative paths and external URLs
+# clearly distinguished.
+github_issues_repo: "my-org/my-issues-repo"     # optional
+github_project_number: 42                        # optional
+related_projects:
+  - "../sister-project/"                         # relative within knowledge-repo
+external_links:
+  - label: "Customer SharePoint folder"
+    url: "https://example.sharepoint.com/sites/..."
+
+# ---------------------------------------------------------------------
+# Tags — flat list, for search + filtering
+# ---------------------------------------------------------------------
+tags: [example, template, replace-me]
+
+# ---------------------------------------------------------------------
+# Optional: structured deliverables tracking
+# ---------------------------------------------------------------------
+# deliverables:
+#   - name: "Architecture decision record"
+#     status: done
+#     path: "documentation/architecture/adr-001.md"
+#   - name: "MVP demo"
+#     status: in-progress
+#     due: 2026-06-15

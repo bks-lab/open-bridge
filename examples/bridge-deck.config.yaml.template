@@ -1,0 +1,106 @@
+# bridge-deck — Bridge visualization config
+#
+# Drop a copy of this file at:
+#   {bridge-deck repo}/packages/daemon/bridge-deck.config.yaml
+# or point the daemon at it explicitly via:
+#   BRIDGE_DECK_CONFIG=./bridge-deck.config.yaml node dist/index.js
+#
+# The daemon reads this file at startup and, when the `collectors:` section
+# is present, instantiates those collectors declaratively. This file tells
+# bridge-deck to:
+#   1. Read sub-agent definitions from your Bridge's .claude/agents/ directory
+#   2. Use the default professional vocabulary
+#   3. Render with a Bridge-themed title and vocabulary
+#
+# See docs/bridge-deck.md in this Bridge repo for the full integration
+# guide.
+#
+# Paths below use <your-bridge> as a placeholder for your own Bridge clone.
+# Replace it with your real path, e.g. ~/Developer/<your-bridge> or an
+# absolute path you set.
+
+# ── Theme ────────────────────────────────────────────────────────────────
+# The Bridge's theme system (themes/*.yaml) controls Claude's vocabulary.
+# bridge-deck has its own vocabulary block below for the UI rendering.
+#
+# To keep them in sync, match these values to your Bridge theme:
+#   professional    → Specialist, Task, Department
+#   professional-de → Spezialist, Aufgabe, Abteilung
+#   custom          → see your themes/{name}.yaml vocabulary section
+#
+# A future version will auto-read bridge-config.yaml to sync vocabulary.
+#
+# Every field is optional and layered over defaults. Host your own
+# sprite pack by dropping PNGs under bridge-deck/packages/ui/public/
+# sprites/{n}-{D|L|R}-{frame}.png and pointing sprite_base_url at its path.
+theme:
+  title: "The Bridge"
+  subtitle: "Control Center"
+
+  # Reference to The Bridge's theme file (informational — bridge-deck
+  # does not read this directly yet, but it documents which theme the
+  # vocabulary below corresponds to)
+  bridge_theme: professional    # matches bridge-config.yaml → theme
+
+  # Vocabulary — mirrors bridge-config.yaml's theme setting. Copy the
+  # values here to keep wording consistent between The Bridge and the
+  # bridge-deck UI. A future version will auto-read bridge-config.yaml.
+  vocabulary:
+    crew_member: "Specialist"      # "Specialist" | "Crew Member"
+    mission: "Task"                # "Task" | "Mission"
+    department: "Department"
+    job: "Task"
+
+  # Brand colors (hex with leading #). Used for ambient tints around the
+  # ops area and status rings.
+  colors:
+    primary: "#0ea5e9"             # Brand teal
+    secondary: "#fbbf24"           # Alert amber
+
+  # URL prefix for sprite assets. Leave as "/sprites" to use the
+  # bridge-deck default pack; point at a custom path if you ship
+  # your own art under packages/ui/public/sprites/.
+  sprite_base_url: "/sprites"
+
+# ── Collectors ───────────────────────────────────────────────────────────
+# One daemon, many collectors. Each entry lists an npm package name, the
+# daemon imports it dynamically and calls its factory with the merged
+# CollectorDeps + options. Missing packages are logged as warnings — the
+# daemon keeps running with the rest.
+collectors:
+  - package: "@bridge-deck/collector-crew"
+    options:
+      # Path to sub-agent definitions (.claude/agents/{name}.md).
+      agentsPath: "<your-bridge>/.claude/agents"
+
+      # Optional: place sub-agents in specific departments of the pixel
+      # office (keys are sub-agent names from .claude/agents/; unmapped
+      # agents land in the default department).
+      # agentToDepartment:
+      #   archivist: "records"
+
+      # Optional: override the emoji per sub-agent.
+      # agentToEmoji:
+      #   archivist: "🗄️"
+
+  # ── Optional: also render the Bridge's channels as scheduled jobs ────
+  # Uncomment when you've populated infra/channels/{name}.yaml in the Bridge.
+  # - package: "@bridge-deck/collector-channels"
+  #   options:
+  #     channelsPath: "<your-bridge>/infra/channels"
+
+  # ── Calendar + Mandants ───────────────────────────────────────────
+  # Uncomment when you've created workflow/calendars/entries.yaml and
+  # identity/mandants/*.yaml. These collectors add three new UI features:
+  # Timeline recipient chips, the Mandants tab (recipient groups with
+  # person-level detail), and the Calendar tab (7-day forecast grid).
+  #
+  # See docs/calendar.md and docs/mandants.md for the YAML schemas.
+
+  # - package: "@bridge-deck/collector-calendar"
+  #   options:
+  #     calendarPath: "<your-bridge>/workflow/calendars/entries.yaml"
+
+  # - package: "@bridge-deck/collector-mandants"
+  #   options:
+  #     mandantsPath: "<your-bridge>/identity/mandants"

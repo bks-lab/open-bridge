@@ -1,0 +1,65 @@
+---
+# Backup topology — template
+#
+# Three concepts:
+#   sources    — what gets backed up (paths, sensitivity, size hint)
+#   targets    — where (external drive / NAS / cloud) with capabilities
+#   pipelines  — how connected (source × target × tool × schedule)
+#
+# The global skill ~/.claude/skills/backup/ reads this file and executes.
+# Maintained by hand. Not written automatically by the Bridge.
+#
+# Variable interpolation (from bridge-config.yaml.identity):
+#   ${home}, ${onedrive_root}, ${projects_root}, ...
+---
+schema_version: 1
+
+# Global defaults for all pipelines
+defaults:
+  log_dir: /tmp/bridge-backup-logs
+  notify_on_failure: true
+
+# What gets backed up
+sources:
+  example-source:
+    description: "Plain-text description"
+    path: "${home}/Some/Path"
+    kind: directory                 # directory | file | cloud-remote
+    sensitivity: clear              # clear | encrypted-required
+    size_hint: "~10GB"              # purely informational
+    excludes: []                    # rclone --exclude / restic --exclude patterns
+    notes: |
+      Optional context for why / since when.
+
+# Where it goes
+targets:
+  example-target:
+    description: "Plain-text description"
+    type: external-drive            # external-drive | nas | cloud | time-machine
+    mount: /Volumes/Example         # for local volumes
+    # remote_ref: ds                # for NAS, references remotes/<name>.yaml
+    # rclone_remote: onedrive       # for cloud, references rclone listremotes
+    capabilities: [rclone-sync]     # rclone-sync | rclone-copy | restic-repo | time-machine
+    enabled: true
+    notes: |
+      Context.
+
+# How connected (source × target × tool)
+pipelines:
+  - id: example-pipeline
+    source: example-source
+    target: example-target
+    tool: rclone-sync               # rclone-sync | rclone-copy | restic-backup | time-machine
+    mode: scheduled                 # continuous | scheduled | on-demand
+    schedule: "0 23 * * *"          # cron expression (only with mode: scheduled)
+    enabled: false                  # toggle — newly created pipelines start off
+    options:
+      multi_thread_streams: 8
+      transfers: 4
+    # For restic-backup additionally:
+    # tag: example
+    # retention: { keep_last: 5, keep_weekly: 4, keep_monthly: 6 }
+
+# State (what last ran when) lives in a sidecar file,
+# so that topology.yaml stays clean as pure config in git:
+state_file: backups/_state.yaml

@@ -1,0 +1,39 @@
+# Example: Production server for Acme-Dev agency
+# Linux CI/CD server running Slack bot + email watcher
+
+name: prod-server
+scope: user              # local hardware/network inventory -> user tier
+type: linux
+os: "Ubuntu 24.04"
+
+ssh:
+  user: deploy
+  host: prod.acme-dev.com
+  port: 22
+
+network:
+  tailscale_ip: 100.64.1.10
+  hostname: prod-server
+  # lan_ip: 192.168.1.50    # only if on same network
+
+capabilities:
+  - ssh
+  - docker
+  - git
+  - services
+
+services:
+  - slug: slack-bot
+    label: acme-slack-bot.service
+    type: keepalive
+    check: "systemctl --user is-active acme-slack-bot"
+    log: "/home/deploy/logs/slack-bot.log"
+
+  - slug: email-watcher
+    label: acme-email-watcher.timer
+    type: scheduled
+    schedule: "*/10 * * * *"
+    check: "systemctl --user is-active acme-email-watcher.timer"
+    log: "/home/deploy/logs/email-watcher.log"
+
+status: online

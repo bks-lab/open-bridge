@@ -1,0 +1,15 @@
+org: example
+
+base:
+  active-tool:
+    github: example/active
+    type: tool
+  old-tool:
+    github: example/old
+    type: tool
+    status: archived
+
+workspaces:
+  ops:
+    description: "Mixes active and archived"
+    repos: [active-tool, old-tool]

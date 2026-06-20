@@ -1,0 +1,74 @@
+# Agent-Identity Frontmatter Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates the YAML frontmatter of `SOUL.md` and `IDENTITY.md` (and their
+# `_template.*` companions). Both files are markdown with a YAML
+# frontmatter block; this schema covers the frontmatter, not the body.
+#
+# Validation:
+#   yq '.' --front-matter=extract identity/agent/SOUL.md \
+#     | check-jsonschema --schemafile identity/agent/_schema.yaml -
+#
+# IDE support: add this hint to a frontmatter file:
+#   # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/agent-identity.yaml"
+title: AgentIdentityFrontmatter
+description: |
+  Frontmatter shape for identity/agent/SOUL.md and IDENTITY.md.
+  Both files are markdown bodies governed by their own conventions
+  (see README.md); this schema validates only the YAML frontmatter.
+
+type: object
+required: [schema_version, type, scope, last_updated]
+additionalProperties: true   # v1 permissive
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+    description: "Schema version, currently 1"
+
+  type:
+    enum: [soul, identity]
+    description: |
+      `soul`     — voice / posture / defaults (cross-cutting principles)
+      `identity` — name / role / backstory (one-line self-introduction)
+
+  scope:
+    enum: [core, user]
+    description: |
+      `core` — shipped default (lives on the CORE branch, every Bridge clone has it)
+      `user` — instance override (lives on `user/*` branch)
+
+  last_updated:
+    type: string
+    format: date
+    description: "YYYY-MM-DD of last meaningful edit"
+
+  size_cap_lines:
+    type: integer
+    minimum: 10
+    maximum: 200
+    description: |
+      Informational soft cap. For SOUL.md the canonical cap is 80 lines /
+      4 KB (lines primary; byte figure sized for UTF-8 German content);
+      bridge-audit enforces. IDENTITY.md typically omits this.
+
+  references:
+    type: array
+    items: {type: string}
+    description: |
+      Optional cross-refs to memory files, rules, skills, or other
+      identity sources. Pure documentation — not loaded automatically.
+
+# Advisory hints (not enforced):
+# - SOUL.md body should be organised as principle-headed sections
+#   (Character, Verify, Posture, Execution, Audience, Output, or custom).
+#   Character renders first (the why-layer) and must stay non-redundant
+#   with the rule sections. Avoid one-line rule dumps.
+# - IDENTITY.md body should reference themes/<active>.yaml `assistant_name`
+#   rather than duplicating the name — themes are the vocab SoT.
+# - When supersedes_memory: list specific feedback_*.md filenames so
+#   bridge-curator can verify the consolidation was complete.

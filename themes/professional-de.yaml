@@ -1,0 +1,63 @@
+# themes/professional-de.yaml
+# German locale: professional vocabulary in German.
+# CORE file — lives on the default/core branch.
+#
+# Extends professional.yaml — only overrides vocabulary with
+# German translations. Alerts and phrases inherit from
+# professional unless overridden here.
+
+schema_version: 1
+
+meta:
+  name: professional-de
+  display_name: "Professionell (Deutsch)"
+  description: "Neutrale, geschaeftsfaehige Begriffe auf Deutsch"
+  locale: de
+  author: "open-bridge by BKS-Lab"
+  version: "1.0.0"
+  extends: professional
+
+vocabulary:
+  user: "Leitung"
+  assistant: "Assistent"
+  assistant_name: "Orchestrator"
+  agents: "Spezialisten"
+  agent_singular: "Spezialist"
+
+  work_log: "Arbeitsprotokoll"
+  task: "Aufgabe"
+  tasks: "Aufgaben"
+  task_board: "Aufgaben-Board"
+  active_tasks: "Aktive Aufgaben"
+  queued_tasks: "Warteschlange"
+  completed_tasks: "Abgeschlossene Aufgaben"
+
+  incident: "Stoerfall"
+  warning: "Warnung"
+  cross_repo: "Repo-uebergreifend"
+  daily_check: "Tagesbriefing"
+  week_archive: "Wochenarchiv"
+  analysis: "Tiefenanalyse"
+  onboarding: "Einrichtung"
+
+  repos: "Projekte"
+  remote: "Remote"
+  remotes: "Remotes"
+  channel: "Kanal"
+  channels: "Kanaele"
+  schedule: "Geplante Aufgabe"
+  protocol: "Protokoll"
+  protocols: "Protokolle"
+
+  dispatch: "Beauftragen"
+  spawn: "Starten"
+  park: "Pausieren"
+  resume: "Fortsetzen"
+
+phrases:
+  session_greeting: "Guten Morgen. Hier ist das Briefing."
+  dispatch_confirm: "{agent} wurde auf {task} angesetzt."
+  completion_report: "{agent} abgeschlossen: {summary}"
+  escalation_notice: "{agent} benoetigt Aufmerksamkeit — {reason}"
+  log_prefix: ""
+  status_header: "Status-Dashboard"

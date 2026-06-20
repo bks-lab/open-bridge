@@ -1,0 +1,22 @@
+schema_version: 1
+scope: user
+identity:
+  slug: demo
+  display_name: "Demo Board"
+project:
+  tracker: github
+  org: demo-org
+  number: 7
+  issue_repo: demo-org/demo
+fields:
+  Status:
+    type: single-select
+    values: [Backlog, Ready, "In Progress", "In Review", Done, Declined]
+    default: Backlog
+state_map:
+  Backlog: new
+  Ready: ready
+  "In Progress": in_progress
+  "In Review": review
+  Done: done
+  Declined: removed

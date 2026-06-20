@@ -1,0 +1,85 @@
+# Example persona — legal entity (company representative)
+#
+# This is an EXAMPLE file bundled with The Bridge CORE to show how
+# a "user as company representative" persona looks. Typical use case:
+# you are the director of a legal entity (Ltd., LLC, Inc., GmbH, UG,
+# SA, SRL, ...) and need to file documents under that legal entity
+# separately from your private or freelance identity.
+#
+# To create your own: copy to identity/personas/<your-id>.yaml on user/* branch.
+
+schema_version: 1
+scope: user         # REQUIRED — personal example → stays local
+id: example-company
+type: company
+role: self
+display_name: "Example Holdings Ltd."
+
+# A company has one or more representatives (CEO, Managing Director,
+# Prokurist, etc.). For single-director companies this is one entry.
+persons:
+  - id: director
+    display_name: "Alex Example (Managing Director)"
+    role: "Managing Director"
+    channels:
+      email: "director@example-holdings.test"
+      phone: "+00 000 00000000"
+
+# Legal entity details — use terms from your own jurisdiction.
+# Examples: UG/GmbH (DE), Limited/Ltd (UK), Inc./LLC (US),
+# SA/SARL (FR), SRL (IT), AB (SE), ...
+entity:
+  legal_name: "Example Holdings Ltd."
+  form: "Limited Liability Company"
+  registration_id: "REG123456"
+  register_authority: "Example Commercial Registry"
+  founded: "2023-01-15"
+  address:
+    street: "42 Example Street"
+    zip: "00000"
+    city: "Example City"
+    country: "Example Country"
+
+tax:
+  tax_id: "XX/XXX/XXXXX"
+  tax_office: "Example City District 3"
+  vat_id: "EX123456789"
+  tax_advisor:
+    name: "Example & Partners Tax Advisors"
+    location: "Example Capital"
+    billing_agent: "Example Billing Agent Ltd."
+
+# Destination paths — companies typically file everything under one
+# "invoices" folder (both incoming and outgoing), plus contract
+# archive and corporate paperwork. Use whatever directory structure
+# suits your filing system.
+destinations:
+  invoices: "${onedrive_root}/ExampleHoldings/Invoices"
+  contracts: "${onedrive_root}/ExampleHoldings/Contracts"
+  registry: "${onedrive_root}/ExampleHoldings/Registry"
+  annual_reports: "${onedrive_root}/ExampleHoldings/AnnualReports"
+
+signature: |
+  Alex Example
+  Managing Director — Example Holdings Ltd.
+  42 Example Street, 00000 Example City
+
+  director@example-holdings.test  |  +00 000 00000000
+  REG123456  |  VAT ID EX123456789
+
+notes: |
+  Example company persona. Use this pattern when:
+    - You are the legal representative of a company entity
+    - Documents must be filed separately from your private identity
+    - The entity has its own tax ID, VAT ID, and registration number
+    - You need a distinct signature block for company correspondence
+
+  Typical routing rules associated with this persona:
+    - Tax advisor invoices (annual filings, bookkeeping)
+    - Notary fees (founding, amendments to articles)
+    - Registry fees (commercial register updates)
+    - Chamber of commerce annual dues
+    - Supplier invoices routed via the company's email address
+
+  Separation matters at filing time because tax advisors typically
+  treat the founder and the legal entity as separate clients.

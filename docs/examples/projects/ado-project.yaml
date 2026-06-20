@@ -1,0 +1,86 @@
+# Example: Azure DevOps project
+# Use for: organizations that use Azure Boards instead of GitHub Projects
+# Key difference: tracker is ado, uses WIQL queries, different auth
+
+schema_version: 1
+scope: org          # REQUIRED — org/team example
+
+project:
+  name: "Customer Portal"
+  org: my-ado-org
+  tracker: ado
+  type: technical
+
+  # ADO-specific fields
+  ado_project: "CustomerPortal"
+  ado_area_path: "CustomerPortal\\Backend"
+  ado_auth: az-cli                # az-cli | pat
+
+fields:
+  status:
+    values:
+      - "New"
+      - "Active"
+      - "In Progress"
+      - "Ready for Testing"
+      - "In Testing"
+      - "Done"
+      - "Closed"
+      - "Removed"
+    default: "New"
+    done_states: ["Done", "Closed"]
+    review_states: ["Ready for Testing", "In Testing"]
+
+  priority:
+    values:
+      - "1 - Critical"
+      - "2 - High"
+      - "3 - Medium"
+      - "4 - Low"
+    default: "3 - Medium"
+
+  type:
+    values:
+      - "Bug"
+      - "User Story"
+      - "Task"
+      - "Feature"
+      - "Epic"
+
+  # ADO uses iterations instead of size
+  # iteration:
+  #   current: "Sprint 42"
+
+governance:
+  level: standard
+  max_active_per_person: 5
+  stale_days: 14
+  rules:
+    done_requires_review: true
+    review_needs_comment: true
+    done_only_by_user: true
+    never_delete: false           # ADO supports Removed state natively
+    all_fields_required: true
+    assignee_on_in_progress: true
+    comment_on_status_change: true
+
+state_map:
+  "New": new
+  "Active": ready
+  "In Progress": in_progress
+  "Ready for Testing": review
+  "In Testing": review
+  "Done": done
+  "Closed": done
+  "Removed": removed
+
+type_map:
+  Bug: bug
+  "User Story": story
+  Task: task
+  Feature: feature
+  Epic: epic
+
+category_rules:
+  done: ["Done", "Closed"]
+  qa: ["Ready for Testing", "In Testing"]

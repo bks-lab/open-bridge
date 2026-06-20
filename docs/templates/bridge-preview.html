@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Bridge</title>
+<style>
+  :root {
+    --accent: #6366f1;
+    --accent-secondary: #8b5cf6;
+    --bg: #0a0a0f;
+    --card-bg: #12121a;
+    --text: #e0e0e8;
+    --text-dim: #6b7094;
+    --border: rgba(99, 102, 241, 0.15);
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* --- Header --- */
+  .header {
+    text-align: center;
+    padding: 4rem 2rem 3rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 300px;
+    background: radial-gradient(ellipse, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .header-eyebrow {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+  }
+  .header h1 {
+    font-size: 2.5rem;
+    font-weight: 300;
+    letter-spacing: 0.02em;
+  }
+  .header h1 strong {
+    font-weight: 600;
+    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header-meta {
+    margin-top: 1rem;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+  .header-meta span + span::before {
+    content: '\00b7';
+    margin: 0 0.75rem;
+  }
+
+  /* --- Layout --- */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem 4rem;
+  }
+  .section {
+    margin-bottom: 3rem;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-header h2 {
+    font-size: 1rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+  .section-icon {
+    font-size: 1.1rem;
+  }
+  .section-count {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    background: rgba(99, 102, 241, 0.1);
+    padding: 0.15rem 0.6rem;
+    border-radius: 10px;
+  }
+
+  /* --- Ecosystem Grid --- */
+  .eco-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .eco-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    transition: border-color 0.2s;
+  }
+  .eco-card:hover {
+    border-color: rgba(99, 102, 241, 0.35);
+  }
+  .eco-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+  .eco-card-name {
+    font-weight: 500;
+    font-size: 0.95rem;
+  }
+  .eco-card-name a {
+    color: var(--text);
+    text-decoration: none;
+  }
+  .eco-card-name a:hover {
+    color: var(--accent);
+  }
+  .eco-card-desc {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    margin-bottom: 0.75rem;
+    line-height: 1.4;
+  }
+  .eco-card-badges {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  /* --- Badges --- */
+  .badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .badge-type {
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--accent);
+  }
+  .badge-lang {
+    background: rgba(139, 92, 246, 0.12);
+    color: var(--accent-secondary);
+  }
+
+  /* --- Crew Grid --- */
+  .crew-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+  .crew-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    transition: border-color 0.2s;
+  }
+  .crew-card:hover {
+    border-color: rgba(99, 102, 241, 0.35);
+  }
+  .crew-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 8px;
+  }
+  .crew-info {
+    min-width: 0;
+  }
+  .crew-name {
+    font-weight: 500;
+    font-size: 0.95rem;
+    margin-bottom: 0.15rem;
+  }
+  .crew-role {
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.35rem;
+  }
+  .crew-spec {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  /* --- Standing Orders List --- */
+  .order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .order-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .order-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--green);
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.3);
+  }
+  .order-name {
+    font-weight: 500;
+    font-size: 0.9rem;
+    flex: 1;
+  }
+  .order-scope {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+
+  /* --- Config Summary --- */
+  .config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+  .config-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+  }
+  .config-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 0.35rem;
+  }
+  .config-value {
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+  .config-value.enabled { color: var(--green); }
+  .config-value.disabled { color: var(--text-dim); }
+
+  /* --- Features (Activated / Suggested for Later) --- */
+  .features-section h2 {
+    font-size: 1rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .features-section h2:not(:first-of-type) {
+    margin-top: 2.5rem;
+  }
+  .features-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .feature-row {
+    display: grid;
+    grid-template-columns: 24px 200px 1fr auto;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .feature-row.activated .feature-icon { color: var(--green); }
+  .feature-row.deferred .feature-icon { color: var(--yellow); }
+  .feature-row.available .feature-icon::before { content: '\25CB'; color: var(--text-dim); }
+  .feature-name { font-weight: 600; }
+  .feature-meta { color: var(--text-dim); font-size: 0.875rem; }
+  .feature-action code {
+    background: var(--card-bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+  }
+  .feature-group h4 {
+    margin: 16px 0 8px;
+    color: var(--text-dim);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .feature-empty {
+    padding: 24px;
+    background: var(--card-bg);
+    border-radius: 8px;
+    color: var(--text-dim);
+    text-align: center;
+  }
+  .trust-closer {
+    margin-top: 24px;
+    padding: 16px;
+    background: rgba(99, 102, 241, 0.08);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  .discovery-summary {
+    padding: 12px 16px;
+    background: var(--card-bg);
+    border-radius: 4px;
+    font-size: 0.875rem;
+    color: var(--text-dim);
+    margin-bottom: 24px;
+  }
+
+  /* --- Footer --- */
+  .footer {
+    text-align: center;
+    padding: 2rem 0;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 1rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-eyebrow">This is your Bridge</div>
+  <h1>Welcome, <strong>{{USER_NAME}}</strong></h1>
+  <div class="header-meta">
+    <span>{{ORG}}</span>
+    <span>{{THEME_NAME}} theme</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Ecosystem -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">&#x1F4E6;</span>
+      <h2>Ecosystem</h2>
+    </div>
+    <div class="eco-grid">
+      {{ECOSYSTEM_CARDS}}
+    </div>
+  </div>
+
+  <!-- Agents -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">&#x1F465;</span>
+      <h2>Agents</h2>
+    </div>
+    <div class="crew-grid">
+      {{CREW_CARDS}}
+    </div>
+  </div>
+
+  <!-- Standing Orders -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">&#x1F4CC;</span>
+      <h2>Standing Orders</h2>
+    </div>
+    <div class="order-list">
+      {{STANDING_ORDER_LIST}}
+    </div>
+  </div>
+
+  <!-- Features (Activated / Suggested for Later) -->
+  <section class="section features-section">
+    <h2>Activated Features</h2>
+    {{DISCOVERY_SUMMARY}}
+    <div class="features-list">{{ACTIVATED_FEATURES}}</div>
+
+    <h2>Suggested for Later</h2>
+    <div class="features-list">{{SUGGESTED_LATER}}</div>
+  </section>
+
+  <!-- Config Summary -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">&#x2699;</span>
+      <h2>Configuration</h2>
+    </div>
+    <div class="config-grid">
+      {{CONFIG_SUMMARY}}
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Generated by The Bridge onboarding &mdash; {{DATE}}
+</div>
+
+</body>
+</html>

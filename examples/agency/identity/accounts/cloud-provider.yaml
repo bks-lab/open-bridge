@@ -1,0 +1,43 @@
+# Example: Cloud-provider account inventory for the Acme-Dev agency
+# Fictional tenant — shows the inventory pattern from
+# identity/accounts/_template.yaml: WHERE the account lives, HOW it is
+# reached, and WHO owns it. Credentials are never inlined — only
+# keychain:// / 1password:// / vault URIs.
+
+scope: org                         # org-owned + org-billed account → org tier
+                                   # (accounts carry secret URIs, never core)
+id: cloud-provider
+display_name: "ExampleCloud (Acme tenant)"
+owner: acme-ops                    # persona id or your handle for self
+status: active
+
+# ---------------------------------------------------------------------------
+# Provider inventory (shape varies per provider — schema is permissive here)
+# ---------------------------------------------------------------------------
+cloud:
+  provider: examplecloud           # fictional IaaS provider
+  tenant_id: "00000000-0000-0000-0000-000000000000"
+  console_url: "https://console.examplecloud.test/acme"
+  regions: [eu-central]
+  projects:
+    - id: acme-prod
+      description: "Production workloads (webapp engagement)"
+    - id: acme-staging
+      description: "Staging + CI runners"
+
+# How Claude reaches the account — CLI first, token from the secret store.
+access:
+  primary: cli                     # cli | api
+  cli: examplecloud                # command name
+  token_ref: "keychain://acme/examplecloud-api-token"   # NEVER inline the token
+
+# Ready-to-copy session bootstrap (no secrets — resolves the token at runtime)
+bootstrap: |
+  export EXAMPLECLOUD_TOKEN="$(security find-generic-password -s examplecloud-api-token -w)"
+  examplecloud auth login --tenant 00000000-0000-0000-0000-000000000000
+
+notes: |
+  Example cloud-provider inventory entry. One file per account under
+  identity/accounts/ — tenant IDs, project map, and the bootstrap snippet
+  live here; the secrets themselves live in the keychain/vault referenced
+  by URI. Complex accounts get a companion <id>.README.md.

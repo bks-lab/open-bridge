@@ -1,0 +1,23 @@
+---
+extends: default
+
+rules:
+  line-length: disable
+  truthy: disable
+  indentation:
+    spaces: 2
+    indent-sequences: whatever
+  braces:
+    max-spaces-inside: -1
+  colons:
+    max-spaces-after: -1   # allow alignment-style ": " padding in schemas
+  commas:
+    max-spaces-after: -1   # allow alignment-style ", " padding in schemas
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  document-start: disable
+
+ignore:
+  - work/
+  - .claude/

@@ -1,0 +1,281 @@
+# yaml-language-server: $schema=./_schema.yaml
+#
+# Doc-System Context — TEMPLATE
+#
+# Routing source-of-truth for the `doc-system` skill (skills/doc-system/).
+# Single source of truth for:
+#   - Areas (folder layout)
+#   - Naming pattern for filed documents
+#   - Tag schema (e.g. macOS Spotlight tags)
+#   - Routing rules (content → destination)
+#   - Anti-patterns / edge cases
+#
+# How to use this template
+# ------------------------
+# 1. Copy to `workflow/contexts/doc-system.yaml` on your `user/<name>` branch.
+# 2. Enable in `bridge-config.yaml`:
+#      doc_sensor:
+#        enabled: true
+#        onedrive_root: ~/Documents/PARA      # historical key name —
+#                                              # any local folder works
+#        scan_paths:    [0_Import, 2_AREAS/Import]
+#        queue_paths:   [2_AREAS/Steuer/_Outbox, ...]
+# 3. Replace the example routing rules + areas with your own.
+# 4. Create one or more personas under `identity/personas/<id>.yaml`
+#    if you want persona-aware routing (e.g. business-vs-private filing).
+# 5. Run `/doc-status` to confirm the skill sees the right paths.
+#
+# Folder-system choice
+# --------------------
+# This template ships defaults for the **PARA** method (Tiago Forte) —
+# `1_PROJECTS`, `2_AREAS`, `3_RESOURCES`, `4_ARCHIVE` — because it's the
+# most common starting point for personal+work mixed setups. Alternatives:
+#
+#   • Johnny Decimal  — `10-19_<area>/11_<sub>/` numeric encoding
+#   • GTD-flavored    — `@action`, `@waiting`, `@reference`
+#   • Custom flat     — whatever you already use
+#
+# The skill is agnostic — it reads paths from `areas[*].path` here.
+# Pick what fits your brain; rename the folders below to match.
+#
+# Personas
+# --------
+# A persona is "which hat I'm wearing" — freelancer, business owner,
+# private person, employee, etc. Each persona file declares its own
+# tax data + filing destinations. Routing rules use the persona alias
+# to target a destination:
+#
+#   target: { persona: freelancer, dest: outbox }
+#                       └────┬───┘        └─┬─┘
+#                            │              └── destination key inside
+#                            │                  identity/personas/<id>.yaml
+#                            └── alias declared in `personas:` map below
+#
+# If you don't need persona-aware filing, leave `personas: {}` and use
+# `target: { area: <area-id>, subpath: "..." }` everywhere.
+
+schema_version: 1
+description: "Document routing (PARA defaults — adapt to your layout)"
+
+# Resolves from bridge-config.yaml.identity.${onedrive_root}
+# (historical key name — actual path is any local documents folder)
+root: "${onedrive_root}"
+audit_log: "work/doc-system/log.md"
+
+# ---------------------------------------------------------------------------
+# Personas — symbolic alias → persona-file-id mapping.
+# Leave empty if you don't use personas. Otherwise each entry maps to
+# identity/personas/<id>.yaml.
+# ---------------------------------------------------------------------------
+personas: {}
+# Example:
+#   personas:
+#     freelancer: my-freelancer       # → identity/personas/my-freelancer.yaml
+#     private:    my-private
+#     business:   my-llc
+
+# ---------------------------------------------------------------------------
+# Intake sources — where new documents arrive
+# ---------------------------------------------------------------------------
+sources:
+  - { id: import_root,  label: "Inbox",        path: "0_Import" }
+  - { id: import_areas, label: "Areas-Inbox",  path: "2_AREAS/Import" }
+  - { id: import_audio, label: "Audio-Inbox",  path: "2_AREAS/Import_Audio", kind: recordings }
+
+# ---------------------------------------------------------------------------
+# Areas — PARA defaults. Each area can declare `subfolders` and optionally
+# bind to a persona. Detail-routing within an area can live in an _INFO.md
+# inside the area folder (human-maintenance doc).
+# ---------------------------------------------------------------------------
+areas:
+
+  projects:
+    path: "1_PROJECTS"
+    info: "_INFO.md"
+    notes: |
+      Active, time-bound efforts with a clear outcome. Move to 4_ARCHIVE
+      when done.
+
+  areas:
+    path: "2_AREAS"
+    info: "_INFO.md"
+    notes: |
+      Ongoing responsibilities with no end date (health, finances,
+      household, etc.). This is where most recurring document filing
+      lands.
+    # Example sub-areas — replace with your actual life-domains.
+    subfolders:
+      - { id: tax,            path: "Tax" }
+      - { id: family,         path: "Family" }
+      - { id: health,         path: "Health" }
+      - { id: home,           path: "Home" }
+      - { id: bank,           path: "Bank" }
+      - { id: insurance,      path: "Insurance" }
+
+  resources:
+    path: "3_RESOURCES"
+    info: "_INFO.md"
+    notes: "Reference material, branding assets, knowledge you reuse."
+
+  archive:
+    path: "4_ARCHIVE"
+    info: "_INFO.md"
+    notes: "Inactive. Read-only by convention."
+
+# ---------------------------------------------------------------------------
+# Naming schema
+# ---------------------------------------------------------------------------
+naming:
+  pattern: "{YYYY-MM-DD}_{Area}_{Context}_{Type}_{Description}.{ext}"
+  date_source: document_content    # NOT the scan date
+  separator: "_"
+  description_separator: "-"        # inside {Description}
+  no_umlauts: false                 # set true if your accountant gets
+                                    # picky about non-ASCII filenames
+  no_spaces: true
+  examples:
+    - "2026-01-31_Home_<Provider>_<Type>_<Month>.pdf"
+    - "2026-02-03_<Business>_<Vendor>_Invoice_<Number>.pdf"
+    - "2026-01-15_Family_<Person>_Invoice_<Practice>.pdf"
+  # Persona prefixes get prepended when a rule files into a persona's
+  # outbox — keeps bundle printouts sorted by persona.
+  prefixes: {}
+  # Example:
+  #   prefixes:
+  #     freelancer: "Freelancer_"
+  #     private:    "Private_"
+  #     business:   "Business_"
+
+# ---------------------------------------------------------------------------
+# Tags (e.g. macOS Spotlight via `tag` CLI)
+# ---------------------------------------------------------------------------
+tags:
+  schema:
+    Person:
+      type: enum
+      values: []        # e.g. [Self, Spouse, Child1, Child2]
+    Year:
+      type: integer
+      format: "YYYY"
+    Cat:
+      type: enum
+      values:           # mirror your area IDs
+        - Tax
+        - Family
+        - Health
+        - Home
+        - Bank
+        - Insurance
+  command: |
+    tag --set "Person:{name},Year:{year},Cat:{area}" "{file}"
+
+# ---------------------------------------------------------------------------
+# Routing rules — priorized, first match wins.
+#
+# Match fields:
+#   content_any:    Strings, one must appear in document content
+#   keyword_any:    Exact keywords (e.g. account numbers, plate, ID)
+#   vendor_any:     Sender / supplier names
+#   not_keyword:    Negation — skip rule if keyword present
+#   persona_hint:   Document hints which persona it belongs to
+#
+# Target fields:
+#   persona + dest: Resolves via personas[<alias>] → file → destinations[<dest>]
+#   area + subpath: areas[<area>].path + subpath
+#
+# Optional:
+#   prefix:  prepends naming.prefixes[<key>] to filename
+#   note:    rationale / anti-pattern explanation
+# ---------------------------------------------------------------------------
+routing:
+
+  # ===== Anti-patterns first (so they win over generic rules) =====
+
+  - id: insurance-before-tax
+    match:
+      content_any: ["Arztrechnung", "medical bill", "Klinik", "clinic"]
+      not_keyword: "<entertainment-expense-marker>"
+    target: { area: areas, subpath: "Health" }
+    note: |
+      Medical bills go to insurance first, only then (if denied) to tax
+      filing. Don't route directly to a tax outbox.
+
+  # ===== Generic example rules — replace with your own =====
+
+  - id: utility-bill
+    match:
+      content_any: [Heizkostenabrechnung, "utility bill", Nebenkostenabrechnung]
+    target: { area: areas, subpath: "Home" }
+
+  - id: bank-statement
+    match:
+      content_any: [Kontoauszug, "account statement"]
+    target: { area: areas, subpath: "Bank" }
+
+  - id: charity-receipt
+    match:
+      content_any: [Spendenbescheinigung, "donation receipt", "Zuwendungsbestaetigung"]
+    target: { area: areas, subpath: "Tax" }
+    # If using personas:
+    #   target: { persona: private, dest: outbox }
+    #   prefix: private
+
+  # Add your own rules below. Order matters — first match wins.
+
+# ---------------------------------------------------------------------------
+# Special handling
+# ---------------------------------------------------------------------------
+special:
+  # Treat folders as a single unit (rename + move whole)
+  folder_routing: true
+
+  # HTMLs: read content + categorize, don't trash
+  html_handling: analyze_and_route
+
+  # Recording pairs: .mp4 + same-name .txt → /debrief
+  recording_pairs:
+    - extensions: [mp4, m4a, wav, webm]
+      transcript_extension: txt
+      target_skill: debrief
+
+  # Screenshots → into a default folder, or by topic
+  screenshots:
+    default_target: "1_PROJECTS/Screenshots"
+    by_topic: {}
+    # Example:
+    #   by_topic:
+    #     work:        "1_PROJECTS/Screenshots/Work"
+    #     ai_demos:    "1_PROJECTS/Screenshots/AI-Demos"
+
+  # Brand assets / logos
+  branding_assets:
+    target: "3_RESOURCES/Branding"
+
+# ---------------------------------------------------------------------------
+# Anti-patterns (declarative — the skill emits a warning when matched)
+# ---------------------------------------------------------------------------
+anti_patterns:
+  - rule: "Don't conflate insurance outbox with tax outbox — different workflows"
+    note: |
+      An 'open' folder under an insurance area means 'pending insurance
+      reimbursement', not 'pending tax filing'. Keep them separate.
+
+  - rule: "Don't route 'info-from-accountant' documents into the accountant outbox"
+    note: |
+      Reports you receive FROM your accountant for your records are not
+      the same as documents you owe TO the accountant. Use a separate
+      'info' destination on the persona.
+
+# ---------------------------------------------------------------------------
+# Skill processing order (informational — the skill follows this)
+# ---------------------------------------------------------------------------
+processing_order:
+  - 1_load_context:    "Load this file"
+  - 2_load_personas:   "Load every file referenced in personas:"
+  - 3_scan_sources:    "Scan sources[*].path"
+  - 4_categorize:      "Per file: category from extension (see skill references/inbox.md)"
+  - 5_match_routing:   "Walk routing[*] in order, first match wins"
+  - 6_apply_anti_patterns: "If an anti-pattern matched, show warning"
+  - 7_preview_table:   "Show preview table, user confirms"
+  - 8_execute:         "mv + tag --set"
+  - 9_audit:           "Append to audit_log (work/doc-system/log.md)"

@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>open-bridge — plain markdown in git your AI agent reads at session start</title>
+<meta name="description" content="open-bridge is a plain git repo of markdown and YAML your AI coding agent reads at the start of every session. No database, no SaaS, nothing to host. Public, MIT, built at BKS-Lab.">
+<style>
+/* ============================================================
+   open-bridge marketing landing — single file, fully offline.
+   Tokens lifted verbatim from DESIGN.md (Editorial Minimalism).
+   No external fonts, no CDN, no network calls.
+   ============================================================ */
+
+:root{
+  /* Neutrals */
+  --primary:#111827; --secondary:#6B7280;
+  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
+  --on-primary:#FFFFFF; --on-surface:#374151; --on-surface-muted:#6B7280;
+  --border:#E5E7EB; --border-subtle:#F3F4F6;
+  /* Accent gradient anchors */
+  --accent-from:#667EEA; --accent-to:#764BA2;
+  --accent:#6366F1; --accent-secondary:#8B5CF6;
+  /* Feature gradients */
+  --feature-indigo-from:#4F46E5; --feature-indigo-to:#9333EA;
+  --feature-purple-from:#9333EA; --feature-purple-to:#4F46E5;
+  /* Semantic (PROVEN/BET/OPEN — no red alarm) */
+  --success:#10B981; --info:#3B82F6; --attention:#8B5CF6;
+  /* Shadows — whisper quiet */
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+  /* Spacing rhythm */
+  --section-y:96px;
+  --container:80rem; --hero-w:64rem; --prose-w:48rem;
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
+  --mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,monospace;
+}
+
+html.dark{
+  --primary:#F9FAFB;
+  --secondary:#9CA3AF;
+  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
+  --on-surface:#D1D5DB; --on-surface-muted:#9CA3AF;
+  --border:#374151; --border-subtle:#1F2937;
+  --accent-from:#A78BFA; --accent-to:#818CF8;
+  --accent:#818CF8;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+  background:var(--surface); color:var(--on-surface);
+  font-size:16px; line-height:1.6; font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+
+/* ---- Language visibility (EN default) ---- */
+[data-lang]{display:none}
+html[data-active-lang="en"] [data-lang="en"]{display:revert}
+html[data-active-lang="de"] [data-lang="de"]{display:revert}
+/* inline variants keep inline display */
+span[data-lang],code[data-lang],strong[data-lang],em[data-lang]{display:none}
+html[data-active-lang="en"] span[data-lang="en"],
+html[data-active-lang="en"] code[data-lang="en"],
+html[data-active-lang="en"] strong[data-lang="en"],
+html[data-active-lang="en"] em[data-lang="en"]{display:inline}
+html[data-active-lang="de"] span[data-lang="de"],
+html[data-active-lang="de"] code[data-lang="de"],
+html[data-active-lang="de"] strong[data-lang="de"],
+html[data-active-lang="de"] em[data-lang="de"]{display:inline}
+
+.container{max-width:var(--container);margin:0 auto;padding-inline:24px}
+.prose{max-width:var(--prose-w);margin-inline:auto}
+
+/* ---- Typography ---- */
+h1,h2,h3,h4{color:var(--primary);letter-spacing:-0.02em}
+.display{font-size:clamp(40px,7vw,72px);font-weight:300;line-height:1.05;letter-spacing:-0.02em}
+.h1{font-size:clamp(32px,5vw,48px);font-weight:300;line-height:1.1}
+.h2{font-size:clamp(28px,4vw,36px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
+.h3{font-size:24px;font-weight:500;line-height:1.3;letter-spacing:-0.01em}
+.h4{font-size:20px;font-weight:500;line-height:1.4}
+.body-xl{font-size:20px;font-weight:300;line-height:1.6}
+.eyebrow{font-size:14px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
+.muted{color:var(--on-surface-muted)}
+
+.text-gradient{
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+  font-weight:400;
+}
+
+/* ---- Toggles & header ---- */
+header.nav{
+  position:sticky;top:0;z-index:50;height:auto;min-height:64px;
+  display:flex;align-items:center;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap}
+.wordmark .text-gradient{font-weight:400}
+.nav-spacer{flex:1}
+.nav-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:400;line-height:1.2;
+  padding:5px 11px;border-radius:var(--r-full);
+  background:var(--surface-muted);color:var(--on-surface);
+  border:1px solid var(--border);white-space:nowrap;
+}
+.chip.status{background:transparent}
+.chip-dot{width:7px;height:7px;border-radius:var(--r-full);background:var(--attention);flex:none}
+
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-full);overflow:hidden;background:var(--surface)}
+.seg button{
+  font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;
+  padding:5px 12px;border:none;background:transparent;color:var(--secondary);
+  transition:color .2s ease;
+}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
+
+.icon-btn{
+  width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-full);background:var(--surface);
+  cursor:pointer;color:var(--secondary);padding:0;
+}
+.icon-btn:hover{color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.sun{display:none}
+html.dark .sun{display:block}
+html.dark .moon{display:none}
+
+/* ---- Buttons ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:16px;font-weight:500;line-height:1.25;
+  padding:14px 28px;border-radius:var(--r-md);border:1px solid transparent;
+  transition:transform .2s ease,background .2s ease,border-color .2s ease;
+}
+.btn svg{width:18px;height:18px}
+.btn-primary{background:var(--primary);color:var(--on-primary)}
+html.dark .btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-secondary{background:var(--surface);color:var(--on-surface);border-color:var(--border)}
+.btn-secondary:hover{background:var(--surface-subtle)}
+.btn .arrow{transition:transform .2s ease}
+.btn:hover .arrow{transform:translateX(3px)}
+
+/* ---- Sections ---- */
+section{padding-block:var(--section-y)}
+.alt{background:var(--surface-subtle)}
+.sec-head{max-width:var(--prose-w);margin:0 auto 56px;text-align:center}
+.sec-head .h1{margin-top:14px}
+.sec-head p{margin-top:18px;font-size:18px;font-weight:300}
+
+/* ---- Hero ---- */
+.hero{
+  position:relative;overflow:hidden;
+  padding-block:clamp(72px,12vh,128px);text-align:center;
+}
+.hero-pattern{
+  position:absolute;inset:0;pointer-events:none;opacity:.025;
+  background-image:radial-gradient(var(--primary) 1px,transparent 1px);
+  background-size:22px 22px;
+}
+.hero-inner{position:relative;max-width:var(--hero-w);margin:0 auto}
+.hero .display{margin-top:8px}
+.hero-sub{margin:28px auto 0;max-width:42rem;font-size:20px;font-weight:300;line-height:1.6;color:var(--on-surface)}
+.status-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:30px}
+.status-pill{
+  display:inline-flex;align-items:center;gap:7px;font-size:13px;
+  padding:5px 13px;border-radius:var(--r-full);
+  background:var(--surface-muted);border:1px solid var(--border);color:var(--on-surface);
+}
+.cta-row{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:36px}
+.beta-line{margin-top:22px;font-size:14px;color:var(--secondary)}
+.mono-chip{
+  display:inline-flex;align-items:center;gap:10px;margin-top:40px;
+  font-family:var(--mono);font-size:14px;
+  background:var(--surface-muted);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:10px 16px;color:var(--on-surface);
+}
+.mono-chip .prompt{color:var(--accent);user-select:none}
+
+/* ---- Generic cards ---- */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:32px;box-shadow:var(--shadow-soft);
+}
+
+/* ---- Code / file-tree blocks ---- */
+.code{
+  font-family:var(--mono);font-size:13px;line-height:1.7;
+  background:var(--surface-subtle);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:20px 22px;overflow-x:auto;color:var(--on-surface);
+  white-space:pre;
+}
+html.dark .code{background:#0b1220}
+.code .dir{color:var(--accent-secondary);font-weight:500}
+.code .cmt{color:var(--secondary)}
+.code .k{color:var(--info)}
+.code .ok{color:var(--success)}
+.code-label{
+  display:flex;align-items:center;justify-content:space-between;
+  font-family:var(--mono);font-size:12px;color:var(--secondary);
+  padding:0 4px 8px;
+}
+
+/* ---- Split visual (My Documents) ---- */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:stretch}
+.reset-lines{display:flex;flex-direction:column;gap:12px;max-width:46rem;margin:0 auto 48px}
+.reset-line{
+  display:flex;align-items:center;gap:12px;font-size:16px;color:var(--on-surface);
+  opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .5s ease;
+}
+.reset-line.in{opacity:1;transform:none}
+.reset-line .x{color:var(--attention);font-family:var(--mono);flex:none;font-weight:600}
+.doc-card h4{margin-bottom:14px}
+.doc-card .cap{margin-top:14px;font-size:13px;color:var(--secondary)}
+.flat-dump{font-family:var(--mono);font-size:13px;line-height:1.9;color:var(--secondary)}
+.flat-dump .f{display:block;opacity:.7}
+
+/* ---- Tiles (Context Booster / Chaos-Bändiger) ---- */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:32px}
+.tile{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:36px;box-shadow:var(--shadow-soft);
+  position:relative;overflow:hidden;display:flex;flex-direction:column;
+}
+.tile-icon{width:48px;height:48px;margin-bottom:22px}
+.tile h3{font-size:26px;font-weight:300;letter-spacing:-0.01em}
+.tile .coined{font-weight:400}
+.attrib{font-size:13px;color:var(--secondary);margin-top:6px}
+.tile p{margin-top:16px;font-size:16px}
+.tile .demo{
+  margin-top:auto;font-family:var(--mono);font-size:12.5px;line-height:1.7;
+  background:var(--surface-subtle);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:14px 16px;color:var(--on-surface);margin-top:24px;white-space:pre-wrap;
+}
+html.dark .tile .demo{background:#0b1220}
+.stance-note{
+  margin-top:48px;max-width:46rem;margin-inline:auto;text-align:center;
+  font-size:14px;color:var(--secondary);
+}
+.tag-bet{
+  display:inline-block;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;
+  color:var(--attention);border:1px solid var(--attention);border-radius:var(--r-full);
+  padding:2px 9px;margin-right:8px;
+}
+
+/* ---- Objection compare ---- */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.compare .col{padding:28px;border-radius:var(--r-lg);border:1px solid var(--border)}
+.compare .col.before{background:var(--surface)}
+.compare .col.after{background:var(--surface-subtle)}
+.compare h4{margin-bottom:16px}
+.compare ul{list-style:none;display:flex;flex-direction:column;gap:12px}
+.compare li{display:flex;gap:10px;font-size:15px}
+.compare li .mk{font-family:var(--mono);flex:none}
+.compare .before .mk{color:var(--secondary)}
+.compare .after .mk{color:var(--success)}
+.punch{margin-top:36px;text-align:center;font-size:18px;font-weight:300;color:var(--primary);max-width:46rem;margin-inline:auto}
+
+/* ---- PROVEN / BET / OPEN ---- */
+.board3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.bcol{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow-soft);overflow:hidden}
+.bcol .head{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.bcol .head .dot{width:10px;height:10px;border-radius:var(--r-full);flex:none}
+.bcol.proven .dot{background:var(--success)}
+.bcol.bet .dot{background:var(--info)}
+.bcol.open .dot{background:var(--attention)}
+.bcol .head .t{font-size:15px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--primary)}
+.bcol .head .s{font-size:12px;color:var(--secondary);margin-left:auto}
+.bcol ul{list-style:none;padding:22px 24px;display:flex;flex-direction:column;gap:16px}
+.bcol li{font-size:14.5px;line-height:1.55;color:var(--on-surface);padding-left:18px;position:relative}
+.bcol li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:var(--r-full)}
+.bcol.proven li::before{background:var(--success)}
+.bcol.bet li::before{background:var(--info)}
+.bcol.open li::before{background:var(--attention)}
+.bcol li b{color:var(--primary);font-weight:600}
+
+/* ---- CORE/USER diagram ---- */
+.cu{display:grid;grid-template-columns:1fr auto 1fr;gap:20px;align-items:center;max-width:60rem;margin:0 auto}
+.cu-node{border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;background:var(--surface);box-shadow:var(--shadow-soft)}
+.cu-node .lbl{font-family:var(--mono);font-size:12px;color:var(--secondary);text-transform:uppercase;letter-spacing:0.06em}
+.cu-node h4{margin:8px 0 12px}
+.cu-node ul{list-style:none;font-size:13.5px;color:var(--on-surface);display:flex;flex-direction:column;gap:6px}
+.cu-node ul li::before{content:"– ";color:var(--secondary)}
+.cu-merge{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--secondary);font-size:13px;text-align:center}
+.cu-merge .arr{font-size:26px;color:var(--accent)}
+.cu-foot{margin-top:32px;text-align:center;font-size:15px;color:var(--on-surface);max-width:48rem;margin-inline:auto}
+
+/* ---- Runtime strip ---- */
+.runtimes{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:54rem;margin:0 auto}
+.rt{
+  display:inline-flex;align-items:center;gap:9px;font-size:14px;
+  padding:9px 16px;border:1px solid var(--border);border-radius:var(--r-full);
+  background:var(--surface);color:var(--on-surface);
+}
+.rt .st{font-size:12px;color:var(--secondary)}
+.rt .tested{color:var(--success);font-weight:500}
+.rt .untested{color:var(--secondary)}
+.rt-foot{margin-top:30px;text-align:center;font-size:15px;color:var(--on-surface)}
+
+/* ---- Get started ---- */
+.steps .code{max-width:42rem;margin:0 auto;position:relative}
+.copy-btn{
+  position:absolute;top:10px;right:10px;font-family:inherit;font-size:12px;font-weight:500;
+  cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:4px 10px;color:var(--secondary);
+}
+.copy-btn:hover{color:var(--primary)}
+.run-note{margin-top:24px;text-align:center;font-size:15px;color:var(--on-surface-muted)}
+
+/* ---- Footer ---- */
+footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;max-width:var(--container);margin:0 auto;padding-inline:24px}
+.foot-grid h4{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:var(--secondary);font-weight:600;margin-bottom:16px}
+.foot-grid a{color:var(--on-surface);text-decoration:none;font-size:14.5px;display:block;margin-bottom:9px}
+.foot-grid a:hover{color:var(--primary)}
+.foot-blurb{font-size:14px;color:var(--on-surface-muted);line-height:1.65}
+.foot-blurb .wordmark{font-size:20px;display:block;margin-bottom:14px}
+.license-table{margin-top:18px;font-size:13px;border-collapse:collapse;width:100%}
+.license-table td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);color:var(--on-surface);vertical-align:top}
+.license-table td a{display:inline}
+.foot-bottom{max-width:var(--container);margin:40px auto 0;padding:28px 24px 0;border-top:1px solid var(--border);
+  display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;font-size:13px;color:var(--secondary)}
+.roadmap{list-style:none;display:flex;flex-direction:column;gap:9px}
+.roadmap li{font-size:14px;color:var(--on-surface);display:flex;gap:9px}
+.roadmap li .ph{font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+
+/* ---- Reveal on scroll ---- */
+.reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (max-width:860px){
+  .split,.tiles,.compare,.board3{grid-template-columns:1fr}
+  .cu{grid-template-columns:1fr}
+  .cu-merge .arr{transform:rotate(90deg)}
+  .foot-grid{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .reveal,.reset-line{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ======================= STICKY HEADER ======================= -->
+<header class="nav">
+  <div class="nav-inner">
+    <span class="wordmark">open<span class="text-gradient">-bridge</span></span>
+    <div class="nav-spacer"></div>
+    <div class="nav-chips">
+      <a class="chip" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="chip" href="#license" aria-label="MIT license">MIT</a>
+      <span class="chip status"><span class="chip-dot"></span><span data-lang="en">No external users yet</span><span data-lang="de">Noch keine externen Nutzer</span></span>
+      <div class="seg" role="group" aria-label="Language">
+        <button id="lang-en" aria-pressed="true">EN</button>
+        <button id="lang-de" aria-pressed="false">DE</button>
+      </div>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ======================= HERO ======================= -->
+<section class="hero">
+  <div class="hero-pattern"></div>
+  <div class="hero-inner container">
+    <p class="eyebrow" data-lang="en">Plain markdown in git · read at session start</p>
+    <p class="eyebrow" data-lang="de">Plain Markdown in Git · gelesen bei Session-Start</p>
+
+    <h1 class="display" data-lang="en">Plain markdown in git your AI agent reads at session start — so context <span class="text-gradient">compounds</span> instead of restarting.</h1>
+    <h1 class="display" data-lang="de">Plain Markdown in Git, das dein KI-Agent bei Session-Start liest — damit Kontext <span class="text-gradient">wächst</span>, statt jedes Mal neu zu starten.</h1>
+
+    <p class="hero-sub" data-lang="en">open-bridge is a git repo of markdown and YAML — no database, no SaaS, nothing to host. Your coding agent reads it at the start of every session, so it already knows your repos, your clients, and how you work — independent of which model or frontend you run.</p>
+    <p class="hero-sub" data-lang="de">open-bridge ist ein Git-Repo aus Markdown und YAML — keine Datenbank, kein SaaS, nichts zu hosten. Dein Coding-Agent liest es zu Beginn jeder Session und kennt damit deine Repos, deine Kunden und deine Arbeitsweise — unabhängig davon, welches Modell oder Frontend du nutzt.</p>
+
+    <div class="status-row">
+      <span class="status-pill"><span data-lang="en">Built at BKS-Lab · self-used (N=1)</span><span data-lang="de">Gebaut bei BKS-Lab · selbst genutzt (N=1)</span></span>
+      <span class="status-pill">MIT</span>
+      <span class="status-pill"><span data-lang="en">No external users yet</span><span data-lang="de">Noch keine externen Nutzer</span></span>
+      <span class="status-pill"><span data-lang="en">Public — no waitlist</span><span data-lang="de">Public — keine Warteliste</span></span>
+    </div>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
+      </a>
+      <a class="btn btn-secondary" href="#substrate">
+        <span data-lang="en">See it in plain text</span><span data-lang="de">Sieh es als Plain Text</span>
+        <span class="arrow">→</span>
+      </a>
+    </div>
+
+    <p class="beta-line"><span data-lang="en">Public and MIT — clone it, read it, run it. No waitlist, nothing to sign up for. Newly released, so expect rough edges and tell us where they are.</span><span data-lang="de">Public und MIT — klone es, lies es, nutze es. Keine Warteliste, nichts anzumelden. Frisch veröffentlicht — erwarte raue Kanten und sag uns, wo sie sind.</span></p>
+
+    <div class="mono-chip" aria-hidden="true"><span class="prompt">$</span> cat work/log.md</div>
+  </div>
+</section>
+
+<!-- ======================= THE COLD-START PROBLEM ======================= -->
+<section class="alt" id="problem">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">The cold-start problem</p>
+      <p class="eyebrow" data-lang="de">Das Kaltstart-Problem</p>
+      <h2 class="h1" data-lang="en">Every session starts from scratch.</h2>
+      <h2 class="h1" data-lang="de">Jede Session beginnt bei null.</h2>
+    </div>
+
+    <div class="reset-lines">
+      <div class="reset-line"><span class="x">✕</span><span data-lang="en">Re-explain your conventions to the agent, again.</span><span data-lang="de">Dem Agenten deine Konventionen wieder neu erklären.</span></div>
+      <div class="reset-line"><span class="x">✕</span><span data-lang="en">Load the wrong client's context and only notice halfway.</span><span data-lang="de">Den falschen Kunden-Kontext laden und es erst auf halbem Weg merken.</span></div>
+      <div class="reset-line"><span class="x">✕</span><span data-lang="en">No record of what you decided last week.</span><span data-lang="de">Kein Protokoll dessen, was du letzte Woche entschieden hast.</span></div>
+    </div>
+
+    <div class="split reveal">
+      <div class="doc-card card">
+        <h4 class="h4" data-lang="en">Most AI work today</h4>
+        <h4 class="h4" data-lang="de">KI-Arbeit heute</h4>
+        <div class="flat-dump" aria-hidden="true">
+<span class="f">📄 chat-export-final.txt</span>
+<span class="f">📄 notes (3).md</span>
+<span class="f">📄 prompt that worked.txt</span>
+<span class="f">📄 todo-maybe.md</span>
+<span class="f">📄 client stuff.docx</span>
+<span class="f">📄 chat-export-final-v2.txt</span>
+<span class="f">📄 untitled.md</span>
+        </div>
+        <p class="cap" data-lang="en">A bare "My Documents" folder — everyone piling up their own chaos, every conversation rebuilding context and structure from scratch.</p>
+        <p class="cap" data-lang="de">Ein nackter „Eigene Dateien"-Ordner — jeder häuft sein eigenes Chaos an, jede Unterhaltung baut Kontext und Struktur von Grund auf neu.</p>
+      </div>
+      <div class="doc-card card">
+        <h4 class="h4" data-lang="en">With open-bridge</h4>
+        <h4 class="h4" data-lang="de">Mit open-bridge</h4>
+        <div class="code" aria-hidden="true"><span class="dir">identity/</span>          who you are, who you send to
+<span class="dir">workflow/</span>          per-context worlds
+<span class="dir">work/</span>
+  <span class="dir">tasks/</span>           finite tasks in flight
+  <span class="dir">streams/</span>         long-running streams
+  <span class="dir">done/</span>            closed, archived
+  board.md           live task board
+  log.md             the persistent record</div>
+        <p class="cap" data-lang="en">A clear, separated layout the agent files into — shipped as example structures, not invented per user.</p>
+        <p class="cap" data-lang="de">Ein klares, getrenntes Layout, in das der Agent ablegt — als Beispielstrukturen mitgeliefert, nicht von jedem Nutzer neu erfunden.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= THE SUBSTRATE, SHOWN ======================= -->
+<section id="substrate">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">The substrate, shown</p>
+      <p class="eyebrow" data-lang="de">Das Substrat, gezeigt</p>
+      <h2 class="h1" data-lang="en">Plain text in git — clone it and look.</h2>
+      <h2 class="h1" data-lang="de">Plain Text in Git — klone es und schau rein.</h2>
+      <p data-lang="en">No adjectives. <code>examples/agency/</code> is a real, complete configuration you can clone today — and the task <code>STATUS</code> and work-log below are the shape your own <code>work/</code> takes once you start logging.</p>
+      <p data-lang="de">Keine Adjektive. <code>examples/agency/</code> ist eine echte, vollständige Konfiguration, die du heute klonen kannst — und der Task-<code>STATUS</code> und das Worklog unten sind die Form, die dein eigenes <code>work/</code> annimmt, sobald du loslegst.</p>
+    </div>
+
+    <div class="split reveal">
+      <div>
+        <div class="code-label"><span>examples/agency/</span><span data-lang="en">2 separated clients</span><span data-lang="de">2 getrennte Kunden</span></div>
+        <div class="code"><span class="dir">examples/agency/</span>
+├── ecosystem.yaml            <span class="cmt"># repo + client registry</span>
+├── bridge-config.yaml
+├── <span class="dir">identity/</span>
+│   ├── <span class="dir">accounts/</span>             <span class="cmt"># cloud/mail inventory</span>
+│   └── <span class="dir">mandants/</span>             <span class="cmt"># recipient groups</span>
+├── <span class="dir">workflow/</span>
+│   ├── <span class="dir">calendars/</span>
+│   └── <span class="dir">contexts/</span>webapp/      <span class="cmt"># per-engagement world</span>
+├── <span class="dir">infra/</span>
+│   ├── <span class="dir">channels/</span>  <span class="dir">remotes/</span>  <span class="dir">backups/</span>
+└── <span class="dir">.claude/agents/</span>          <span class="cmt"># ops-officer, code-analyst …</span></div>
+
+        <div style="height:24px"></div>
+        <div class="code-label"><span>work/tasks/bigcorp-checkout/STATUS.md</span><span data-lang="en">illustrative shape</span><span data-lang="de">illustrative Form</span></div>
+        <div class="code"><span class="k">slug:</span> bigcorp-checkout
+<span class="k">type:</span> bug
+<span class="k">status:</span> doing
+<span class="k">priority:</span> P1
+<span class="k">created:</span> 2026-06-18
+<span class="k">last_updated:</span> 2026-06-20
+<span class="k">sync:</span>
+  <span class="k">github:</span> { project: bigcorp, status: "In Progress" }</div>
+
+        <div style="height:24px"></div>
+        <div class="code-label"><span>work/log.md</span><span>$ cat work/log.md</span></div>
+        <div class="code"><span class="cmt">## Fri 20.06</span>
+| <span class="k">14:02</span> | bug   | bigcorp | Checkout 500 traced to stale VAT cache; patched + logged |
+| <span class="k">15:18</span> | comm  | startupxyz | Drafted handover note — sender = you, not auto-sent |</div>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;justify-content:center">
+        <h3 class="h3" data-lang="en">What you write today, it reads in six months.</h3>
+        <h3 class="h3" data-lang="de">Was du heute schreibst, liest es in sechs Monaten.</h3>
+        <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65" data-lang="en">Agents can <code>cat</code> a file, but they can't hold an API key. Because the whole thing is plain text in git, there is no migration, no second app, no proprietary store to outlive. It is inspectable, diff-able, and yours.</p>
+        <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65" data-lang="de">Agenten können eine Datei <code>cat</code>ten, aber keinen API-Key halten. Weil das Ganze Plain Text in Git ist, gibt es keine Migration, keine zweite App, keinen proprietären Speicher, der überleben müsste. Es ist einsehbar, diff-bar und deins.</p>
+        <div class="status-row" style="justify-content:flex-start;margin-top:26px">
+          <span class="status-pill" data-lang="en">no database</span><span class="status-pill" data-lang="de">keine Datenbank</span>
+          <span class="status-pill" data-lang="en">no SaaS</span><span class="status-pill" data-lang="de">kein SaaS</span>
+          <span class="status-pill" data-lang="en">no daemon</span><span class="status-pill" data-lang="de">kein Daemon</span>
+        </div>
+        <p class="cap muted" style="margin-top:24px;font-size:13px" data-lang="en">A fresh clone starts mostly empty. <code>examples/agency/</code> ships a complete configuration to read; the <code>STATUS</code> and log above show the shape your <code>work/</code> takes as you fill it.</p>
+        <p class="cap muted" style="margin-top:24px;font-size:13px" data-lang="de">Ein frischer Clone startet weitgehend leer. <code>examples/agency/</code> liefert eine vollständige Konfiguration zum Lesen; der <code>STATUS</code> und das Log oben zeigen die Form, die dein <code>work/</code> annimmt, während du es füllst.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= TWO PROPERTIES (TILES) ======================= -->
+<section class="alt" id="properties">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">What the substrate enables</p>
+      <p class="eyebrow" data-lang="de">Was das Substrat ermöglicht</p>
+      <h2 class="h1" data-lang="en">Two properties, named at BKS-Lab.</h2>
+      <h2 class="h1" data-lang="de">Zwei Eigenschaften, bei BKS-Lab benannt.</h2>
+      <p data-lang="en">Both terms were coined by the team at BKS-Lab. The English view translates them plainly; the German view carries them verbatim.</p>
+      <p data-lang="de">Beide Begriffe wurden im Team bei BKS-Lab geprägt — hier in Originalform.</p>
+    </div>
+
+    <div class="tiles">
+      <!-- Tile 1 -->
+      <div class="tile reveal">
+        <svg class="tile-icon" viewBox="0 0 100 100" aria-hidden="true">
+          <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#9333EA"/></linearGradient></defs>
+          <circle cx="50" cy="50" r="42" fill="none" stroke="url(#g1)" stroke-width="7"/>
+          <circle cx="50" cy="50" r="9" fill="url(#g1)"/>
+        </svg>
+        <h3><span data-lang="en">Context Booster</span><span class="coined" data-lang="de">Context Booster</span></h3>
+        <p class="attrib" data-lang="en">An independent context layer beside your model and your tool — coined "Context Booster" at BKS-Lab.</p>
+        <p class="attrib" data-lang="de">Eine modell- und frontend-unabhängige „dritte Seite" — geprägt bei BKS-Lab.</p>
+        <p data-lang="en">You work with whatever model and whatever frontend you like. open-bridge layers in persistent context about your world — your repos and clients, your machines, what you worked on yesterday — so the agent stops asking "GitHub or Jira?" and stops loading the wrong client. The boost comes from a third side that doesn't care what you run, because the substrate is plain text every runtime can read.</p>
+        <p data-lang="de">Du arbeitest mit dem Modell und dem Frontend, das du willst. open-bridge legt persistenten Kontext über deine Welt darüber — deine Repos und Kunden, deine Maschinen, woran du gestern gearbeitet hast — damit der Agent aufhört zu fragen „GitHub oder Jira?" und aufhört, den falschen Kunden zu laden. „Ein System, das mir von dritter Seite, unabhängig davon was ich gerade mache, einen Kontext gibt, der in jedem Fall hilfreich ist."</p>
+        <div class="demo" aria-hidden="true">$ good morning, briefing
+→ board · today's git activity · what's stale
+→ already knows: which repos, which client, last week</div>
+      </div>
+
+      <!-- Tile 2 -->
+      <div class="tile reveal">
+        <svg class="tile-icon" viewBox="0 0 100 100" aria-hidden="true">
+          <defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9333EA"/><stop offset="1" stop-color="#4F46E5"/></linearGradient></defs>
+          <rect x="14" y="14" width="34" height="34" rx="5" fill="url(#g2)"/>
+          <rect x="52" y="14" width="34" height="34" rx="5" fill="none" stroke="url(#g2)" stroke-width="6"/>
+          <rect x="14" y="52" width="34" height="34" rx="5" fill="none" stroke="url(#g2)" stroke-width="6"/>
+          <rect x="52" y="52" width="34" height="34" rx="5" fill="url(#g2)"/>
+        </svg>
+        <h3><span data-lang="en">KI-Chaos-Bändiger <span style="font-size:0.62em;font-weight:400;color:var(--secondary)">(AI-chaos tamer)</span></span><span class="coined" data-lang="de">KI-Chaos-Bändiger</span></h3>
+        <p class="attrib" data-lang="en">Structuring unstructured AI dialogues — coined at BKS-Lab.</p>
+        <p class="attrib" data-lang="de">„Strukturierung von unstrukturierten KI-Dialogen" — geprägt bei BKS-Lab.</p>
+        <p data-lang="en">open-bridge ships ready-made example structures, so you don't invent your own filing chaos. The Task-Management system — a board, a log, and per-task status (<code>backlog → doing → review → done</code>) over <code>tasks/</code> and <code>streams/</code> — is the concrete instance: unstructured agent sessions become a persistent, filed, compounding record.</p>
+        <p data-lang="de">open-bridge liefert fertige Beispielstrukturen mit, damit du nicht dein eigenes Ablage-Chaos erfindest. Das Task-Management — ein Board, ein Log und Per-Task-Status (<code>backlog → doing → review → done</code>) über <code>tasks/</code> und <code>streams/</code> — ist die konkrete Ausprägung: aus unstrukturierten Agenten-Sessions wird ein persistentes, abgelegtes, wachsendes Protokoll.</p>
+        <div class="demo" aria-hidden="true">work/board.md
+  Doing (2) · bigcorp-checkout · startupxyz-handover
+  Streams (1) · infra-hardening
+  Done this month (7)</div>
+      </div>
+    </div>
+
+    <p class="stance-note reveal">
+      <span class="tag-bet">Bet / Roadmap</span>
+      <span data-lang="en"><strong>Workspace separation as the default</strong> — keep each engagement's facts apart, and "if you can't place it into your known world-models, ask" instead of guessing. This is the intended design stance, agreed in principle, but not yet built into open-bridge. We label it honestly below.</span>
+      <span data-lang="de"><strong>Workspace-Trennung als Default</strong> — die Fakten jeder Beauftragung getrennt halten, und „wenn du es nicht in deine bekannten Weltmodelle einordnen kannst, dann frage" statt zu raten. Das ist die beabsichtigte Design-Haltung, im Prinzip vereinbart, aber noch nicht in open-bridge eingebaut. Wir kennzeichnen das unten ehrlich.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ======================= OBJECTION: WHY NOT A CLAUDE.md ======================= -->
+<section id="objection">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">The honest objection</p>
+      <p class="eyebrow" data-lang="de">Der ehrliche Einwand</p>
+      <h2 class="h1" data-lang="en">Why not just a CLAUDE.md and a folder of my own?</h2>
+      <h2 class="h1" data-lang="de">Warum nicht einfach eine CLAUDE.md und ein eigener Ordner?</h2>
+    </div>
+
+    <div class="compare reveal">
+      <div class="col before">
+        <h4 class="h4" data-lang="en">A dotfile of instructions</h4>
+        <h4 class="h4" data-lang="de">Ein Dotfile mit Anweisungen</h4>
+        <ul>
+          <li><span class="mk">—</span><span data-lang="en">One flat instruction sheet, re-read each session.</span><span data-lang="de">Ein flaches Anweisungsblatt, jede Session neu gelesen.</span></li>
+          <li><span class="mk">—</span><span data-lang="en">No persistent record of what happened last week.</span><span data-lang="de">Kein persistentes Protokoll dessen, was letzte Woche passierte.</span></li>
+          <li><span class="mk">—</span><span data-lang="en">One context bleeds into another; you separate it by hand.</span><span data-lang="de">Ein Kontext blutet in den nächsten; du trennst von Hand.</span></li>
+          <li><span class="mk">—</span><span data-lang="en">You invent the structure yourself, from a blank folder.</span><span data-lang="de">Du erfindest die Struktur selbst, aus einem leeren Ordner.</span></li>
+        </ul>
+      </div>
+      <div class="col after">
+        <h4 class="h4" data-lang="en">A structured workspace</h4>
+        <h4 class="h4" data-lang="de">Ein strukturierter Workspace</h4>
+        <ul>
+          <li><span class="mk">+</span><span data-lang="en">Separate per-context worlds — identity, workflow, work.</span><span data-lang="de">Getrennte Kontext-Welten — identity, workflow, work.</span></li>
+          <li><span class="mk">+</span><span data-lang="en">A work log + task board that survive across sessions.</span><span data-lang="de">Ein Worklog + Task-Board, die über Sessions hinweg bestehen.</span></li>
+          <li><span class="mk">+</span><span data-lang="en">Shipped example structures — relief, not a blank page.</span><span data-lang="de">Mitgelieferte Beispielstrukturen — Entlastung, kein leeres Blatt.</span></li>
+          <li><span class="mk">+</span><span data-lang="en">CORE/USER split updates shared templates without ever clobbering your private data.</span><span data-lang="de">Der CORE/USER-Split aktualisiert geteilte Templates, ohne je deine privaten Daten zu überschreiben.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="punch reveal"><span data-lang="en">The structure is shipped, not invented — the same relief as moving from a bare "My Documents" dump to a place where everything has a home.</span><span data-lang="de">Die Struktur wird mitgeliefert, nicht erfunden — dieselbe Entlastung wie der Wechsel von einem nackten „Eigene Dateien"-Haufen zu einem Ort, an dem alles seinen Platz hat.</span></p>
+    <p class="punch muted reveal" style="font-size:14px;margin-top:18px"><span data-lang="en"><strong>Not for</strong> a single-repo project or ad-hoc one-off scripting — the coordination layer is overhead you won't use.</span><span data-lang="de"><strong>Nicht für</strong> ein Single-Repo-Projekt oder Ad-hoc-Einmal-Scripting — die Koordinationsschicht ist Overhead, den du nicht brauchst.</span></p>
+  </div>
+</section>
+
+<!-- ======================= PROVEN / BET / OPEN ======================= -->
+<section class="alt" id="honesty">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">The evidence boundary</p>
+      <p class="eyebrow" data-lang="de">Die Beweis-Grenze</p>
+      <h2 class="h1" data-lang="en">What's proven, what's a bet, what's open.</h2>
+      <h2 class="h1" data-lang="de">Was bewiesen ist, was eine Wette ist, was offen ist.</h2>
+      <p data-lang="en">Built and used at BKS-Lab to run BKS-Lab — one team, on one self-hosted instance (N=1). Zero external users today — newly public, not yet adopted. This documents method and substrate, not a user base.</p>
+      <p data-lang="de">Gebaut und bei BKS-Lab genutzt, um BKS-Lab zu betreiben — ein Team, auf einer selbst gehosteten Instanz (N=1). Heute null externe Nutzer — frisch public, noch nicht verbreitet. Das dokumentiert Methode und Substrat, keine Nutzerbasis.</p>
+    </div>
+
+    <div class="board3 reveal">
+      <div class="bcol proven">
+        <div class="head"><span class="dot"></span><span class="t">Proven</span><span class="s" data-lang="en">built · self-used N=1</span><span class="s" data-lang="de">gebaut · selbst genutzt N=1</span></div>
+        <ul>
+          <li><span data-lang="en">The three-cluster layout (<b>identity / infra / workflow</b>), the Task-Management system (board, log, per-task STATUS), the CORE/USER branch split, personas, standing orders, and the skills layer all run from a fresh clone today.</span><span data-lang="de">Das Drei-Cluster-Layout (<b>identity / infra / workflow</b>), das Task-Management (Board, Log, Per-Task-STATUS), der CORE/USER-Branch-Split, Personas, Standing Orders und die Skills-Schicht laufen heute aus einem frischen Clone.</span></li>
+          <li><span data-lang="en"><b>Scope-routing works in practice</b>: each file carries a scope (core / org / user); <code>/promote</code> routes per scope — demonstrated, not theoretical.</span><span data-lang="de"><b>Scope-Routing funktioniert in der Praxis</b>: jede Datei trägt einen Scope (core / org / user); <code>/promote</code> routet pro Scope — demonstriert, nicht theoretisch.</span></li>
+          <li><span data-lang="en"><b>GitHub task sync works</b> for our own use — the agent already knows whether a task also exists in GitHub and syncs it. Jira is untested.</span><span data-lang="de"><b>GitHub-Task-Sync funktioniert</b> für unseren Eigengebrauch — der Agent weiß bereits, ob ein Task auch in GitHub existiert, und syncht ihn. Jira ist ungetestet.</span></li>
+        </ul>
+      </div>
+
+      <div class="bcol bet">
+        <div class="head"><span class="dot"></span><span class="t">Bet</span><span class="s" data-lang="en">falsifiable wagers</span><span class="s" data-lang="de">falsifizierbare Wetten</span></div>
+        <ul>
+          <li><span data-lang="en"><b>Markdown + YAML + git</b> is the substrate successive agent-runtime generations keep reading natively, because models read text, not a vendor API. <em>Falsified if</em> the dominant stack forces a schema-vendor (Notion-MCP / Linear-MCP) as the standard.</span><span data-lang="de"><b>Markdown + YAML + Git</b> ist das Substrat, das aufeinanderfolgende Agenten-Runtime-Generationen nativ weiterlesen, weil Modelle Text lesen, keine Vendor-API. <em>Falsifiziert, wenn</em> der dominante Stack einen Schema-Vendor (Notion-MCP / Linear-MCP) als Standard erzwingt.</span></li>
+          <li><span data-lang="en">A <b>lean, opinionated, MIT-OSS method</b> beats a vendor workflow-builder for users who want to switch models freely. <em>Falsified if</em> Cursor/Anthropic ship a first-class markdown-in-git mode.</span><span data-lang="de">Eine <b>schlanke, meinungsstarke MIT-OSS-Methode</b> schlägt einen Vendor-Workflow-Builder für Nutzer, die Modelle frei wechseln wollen. <em>Falsifiziert, wenn</em> Cursor/Anthropic einen erstklassigen Markdown-in-Git-Modus liefern.</span></li>
+          <li><span data-lang="en"><b>Workspace separation as a hard default</b> — once built — is the right call for most users, not an opt-in switch (the default itself is still on the roadmap; see Open).</span><span data-lang="de"><b>Workspace-Trennung als harter Default</b> — sobald gebaut — ist für die meisten Nutzer die richtige Wahl, kein Opt-in-Schalter (der Default selbst steht noch auf der Roadmap; siehe Open).</span></li>
+        </ul>
+      </div>
+
+      <div class="bcol open">
+        <div class="head"><span class="dot"></span><span class="t">Open</span><span class="s" data-lang="en">unsolved</span><span class="s" data-lang="de">ungelöst</span></div>
+        <ul>
+          <li><span data-lang="en"><b>Zero external users today</b> — newly public, not yet adopted. Until real users arrive, every statement about a target audience is a hypothesis, not a market test.</span><span data-lang="de"><b>Heute null externe Nutzer</b> — frisch public, noch nicht verbreitet. Bis echte Nutzer kommen, ist jede Aussage über eine Zielgruppe eine Hypothese, kein Markttest.</span></li>
+          <li><span data-lang="en"><b>Workspace-separation-as-default and the "ask if unplaceable" rule are not yet built</b> into open-bridge; the hard-silo vs soft-folder default is unresolved.</span><span data-lang="de"><b>Workspace-Trennung-als-Default und die „frage, wenn unzuordenbar"-Regel sind noch nicht</b> in open-bridge eingebaut; harter Silo vs. weicher Ordner ist ungeklärt.</span></li>
+          <li><span data-lang="en"><b>First-session value is thin</b>: a fresh clone gives little reward until <code>work/log.md</code> is filled.</span><span data-lang="de"><b>Der Erst-Session-Wert ist dünn</b>: ein frischer Clone gibt wenig zurück, bis <code>work/log.md</code> gefüllt ist.</span></li>
+          <li><span data-lang="en"><b>Terminology cleanup is pending</b> (work-task → Task-Management; the <code>work/</code> folder made unambiguous).</span><span data-lang="de"><b>Begriffs-Bereinigung steht aus</b> (work-task → Task-Management; der <code>work/</code>-Ordner eindeutig gemacht).</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= CORE/USER COMPOUNDING ======================= -->
+<section id="coreuser">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">How it compounds safely</p>
+      <p class="eyebrow" data-lang="de">Wie es sicher wächst</p>
+      <h2 class="h1" data-lang="en">CORE/USER split.</h2>
+      <h2 class="h1" data-lang="de">CORE/USER-Split.</h2>
+      <p data-lang="en">Your accumulated context never collides with shipped templates — so updates merge without conflict and your data stays private.</p>
+      <p data-lang="de">Dein angesammelter Kontext kollidiert nie mit mitgelieferten Templates — Updates mergen konfliktfrei, und deine Daten bleiben privat.</p>
+    </div>
+
+    <div class="cu reveal">
+      <div class="cu-node">
+        <span class="lbl">user/&lt;you&gt;</span>
+        <h4 class="h4" data-lang="en">Your context (USER)</h4>
+        <h4 class="h4" data-lang="de">Dein Kontext (USER)</h4>
+        <ul>
+          <li>bridge-config.yaml · ecosystem.yaml</li>
+          <li data-lang="en">work/ · personas · accounts</li>
+          <li data-lang="de">work/ · Personas · Accounts</li>
+          <li data-lang="en">private, never on the shared branch</li>
+          <li data-lang="de">privat, nie auf dem geteilten Branch</li>
+        </ul>
+      </div>
+      <div class="cu-merge">
+        <span class="arr">⤞</span>
+        <span data-lang="en">conflict-free<br>merge</span>
+        <span data-lang="de">konfliktfreier<br>Merge</span>
+        <span class="arr">⤝</span>
+      </div>
+      <div class="cu-node">
+        <span class="lbl">main (CORE)</span>
+        <h4 class="h4" data-lang="en">Shipped templates (CORE)</h4>
+        <h4 class="h4" data-lang="de">Mitgelieferte Templates (CORE)</h4>
+        <ul>
+          <li data-lang="en">skills, docs, schemas</li>
+          <li data-lang="de">Skills, Docs, Schemas</li>
+          <li data-lang="en">standing orders, examples</li>
+          <li data-lang="de">Standing Orders, Examples</li>
+          <li data-lang="en">pull updates anytime</li>
+          <li data-lang="de">jederzeit Updates ziehen</li>
+        </ul>
+      </div>
+    </div>
+    <p class="cu-foot"><span data-lang="en">CORE and USER touch different paths, so merges never conflict. Contribute improvements upstream with <code>/promote</code> — promote-routing depth lives in the docs.</span><span data-lang="de">CORE und USER berühren verschiedene Pfade, deshalb kollidieren Merges nie. Verbesserungen mit <code>/promote</code> nach upstream beitragen — die Promote-Routing-Tiefe steht in den Docs.</span></p>
+  </div>
+</section>
+
+<!-- ======================= RUNTIME AGNOSTIC STRIP ======================= -->
+<section class="alt" id="runtimes">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">Works across runtimes</p>
+      <p class="eyebrow" data-lang="de">Funktioniert über Runtimes hinweg</p>
+      <h2 class="h1" data-lang="en">One <code>skills/</code> tree, symlinked.</h2>
+      <h2 class="h1" data-lang="de">Ein <code>skills/</code>-Baum, symverlinkt.</h2>
+      <p data-lang="en">Skills are the verbs over the substrate — model-agnostic by design. Honestly labeled: tested where we run it, untested elsewhere.</p>
+      <p data-lang="de">Skills sind die Verben über dem Substrat — modell-unabhängig per Design. Ehrlich gekennzeichnet: getestet, wo wir es betreiben, anderswo ungetestet.</p>
+    </div>
+
+    <div class="runtimes reveal">
+      <span class="rt">Claude Code <span class="st tested" data-lang="en">tested</span><span class="st tested" data-lang="de">getestet</span></span>
+      <span class="rt">Codex <span class="st" data-lang="en">via AGENTS.md + skills symlink</span><span class="st" data-lang="de">via AGENTS.md + Skills-Symlink</span></span>
+      <span class="rt">Copilot CLI <span class="st" data-lang="en">via AGENTS.md + skills symlink</span><span class="st" data-lang="de">via AGENTS.md + Skills-Symlink</span></span>
+      <span class="rt">Gemini <span class="st untested" data-lang="en">untested</span><span class="st untested" data-lang="de">ungetestet</span></span>
+      <span class="rt">Cursor <span class="st untested" data-lang="en">untested</span><span class="st untested" data-lang="de">ungetestet</span></span>
+      <span class="rt">Windsurf <span class="st untested" data-lang="en">untested</span><span class="st untested" data-lang="de">ungetestet</span></span>
+    </div>
+    <p class="rt-foot muted"><span data-lang="en">No logos as proof, no skill-count as a selling point — the agnosticism is the claim.</span><span data-lang="de">Keine Logos als Beweis, keine Skill-Anzahl als Verkaufsargument — die Unabhängigkeit ist die Aussage.</span></p>
+  </div>
+</section>
+
+<!-- ======================= GET STARTED ======================= -->
+<section id="start" class="steps">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">Get started</p>
+      <p class="eyebrow" data-lang="de">Loslegen</p>
+      <h2 class="h1" data-lang="en">Three commands.</h2>
+      <h2 class="h1" data-lang="de">Drei Befehle.</h2>
+    </div>
+
+    <div class="reveal">
+      <div class="code" id="start-code"><button class="copy-btn" id="copy-start" type="button">copy</button>git clone https://github.com/bks-lab/open-bridge.git
+cd open-bridge
+./bin/setup        <span class="cmt"># macOS / Linux / WSL</span>
+<span class="cmt"># then, in Claude Code:</span>
+/bridge-onboard</div>
+      <p class="run-note"><span data-lang="en">Scaffolds a running, empty workspace in minutes — value compounds as you log work. Windows symlink notes and the cross-tool setup detail live in the docs, not on this page.</span><span data-lang="de">Stellt in Minuten einen laufenden, leeren Workspace bereit — der Wert wächst, während du Arbeit protokollierst. Windows-Symlink-Hinweise und das Cross-Tool-Setup stehen in den Docs, nicht auf dieser Seite.</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= FOOTER ======================= -->
+<footer id="license">
+  <div class="foot-grid">
+    <div class="foot-blurb">
+      <span class="wordmark">open<span class="text-gradient">-bridge</span></span>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used to run it. Present tense, no hero arc: this is method and substrate, self-used at N=1, with no external users yet.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — ein kleines Team — und genutzt, um es zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat, selbst genutzt bei N=1, noch ohne externe Nutzer.</span>
+      <table class="license-table">
+        <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
+        <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
+      </table>
+      <p class="cap muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. <span data-lang="en">Licenses cover copyright, not brands.</span><span data-lang="de">Lizenzen decken Copyright ab, nicht Marken.</span> <span data-lang="en">Contributions require a DCO sign-off (</span><span data-lang="de">Beiträge erfordern einen DCO-Sign-off (</span><code>git commit -s</code>).</p>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Roadmap</h4>
+      <h4 data-lang="de">Roadmap</h4>
+      <ul class="roadmap">
+        <li><span class="ph">now</span><span data-lang="en">Substrate + Task-Management, self-used (N=1)</span><span data-lang="de">Substrat + Task-Management, selbst genutzt (N=1)</span></li>
+        <li><span class="ph">next</span><span data-lang="en">Workspace-separation default + "ask if unplaceable"</span><span data-lang="de">Workspace-Trennung-Default + „frage, wenn unzuordenbar"</span></li>
+        <li><span class="ph">next</span><span data-lang="en">Terminology cleanup (work-task → Task-Management)</span><span data-lang="de">Begriffs-Bereinigung (work-task → Task-Management)</span></li>
+        <li><span class="ph">later</span><span data-lang="en">First external users — none yet</span><span data-lang="de">Erste externe Nutzer — noch keine</span></li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Links</h4>
+      <h4 data-lang="de">Links</h4>
+      <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/README.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/examples/agency" target="_blank" rel="noopener"><span data-lang="en">Example workspace</span><span data-lang="de">Beispiel-Workspace</span></a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+    </div>
+  </div>
+
+  <div class="foot-bottom">
+    <span data-lang="en">Public · MIT · no waitlist · newly released</span>
+    <span data-lang="de">Public · MIT · keine Warteliste · frisch veröffentlicht</span>
+    <a class="btn btn-secondary" style="padding:10px 20px;font-size:14px" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+      <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
+      <span class="arrow">→</span>
+    </a>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+
+  // ---- Theme (light/dark) — .dark on <html>, persisted, T-key ----
+  function applyTheme(mode){
+    if(mode === "dark"){ root.classList.add("dark"); }
+    else { root.classList.remove("dark"); }
+  }
+  var storedTheme = null;
+  try { storedTheme = localStorage.getItem("ob-theme"); } catch(e){}
+  if(storedTheme){
+    applyTheme(storedTheme);
+  } else if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches){
+    applyTheme("dark");
+  }
+  function toggleTheme(){
+    var next = root.classList.contains("dark") ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("ob-theme", next); } catch(e){}
+  }
+  var themeBtn = document.getElementById("theme-toggle");
+  if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
+  document.addEventListener("keydown", function(ev){
+    if(ev.key === "t" || ev.key === "T"){
+      var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
+      if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
+      if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      toggleTheme();
+    }
+  });
+
+  // ---- Language (EN/DE) — data-active-lang on <html>, persisted ----
+  function applyLang(lang){
+    root.setAttribute("data-active-lang", lang);
+    root.setAttribute("lang", lang);
+    var en = document.getElementById("lang-en");
+    var de = document.getElementById("lang-de");
+    if(en){ en.setAttribute("aria-pressed", lang === "en" ? "true" : "false"); }
+    if(de){ de.setAttribute("aria-pressed", lang === "de" ? "true" : "false"); }
+  }
+  var storedLang = null;
+  try { storedLang = localStorage.getItem("ob-lang"); } catch(e){}
+  applyLang(storedLang === "de" ? "de" : "en");
+  function setLang(lang){
+    applyLang(lang);
+    try { localStorage.setItem("ob-lang", lang); } catch(e){}
+  }
+  var enBtn = document.getElementById("lang-en");
+  var deBtn = document.getElementById("lang-de");
+  if(enBtn){ enBtn.addEventListener("click", function(){ setLang("en"); }); }
+  if(deBtn){ deBtn.addEventListener("click", function(){ setLang("de"); }); }
+
+  // ---- Copy button ----
+  var copyBtn = document.getElementById("copy-start");
+  if(copyBtn){
+    copyBtn.addEventListener("click", function(){
+      var block = document.getElementById("start-code");
+      var text = "git clone https://github.com/bks-lab/open-bridge.git\ncd open-bridge\n./bin/setup\n/bridge-onboard";
+      var done = function(){
+        var prev = copyBtn.textContent;
+        copyBtn.textContent = "copied";
+        setTimeout(function(){ copyBtn.textContent = prev; }, 1400);
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done, function(){});
+      } else {
+        try {
+          var ta = document.createElement("textarea");
+          ta.value = text; document.body.appendChild(ta); ta.select();
+          document.execCommand("copy"); document.body.removeChild(ta); done();
+        } catch(e){}
+      }
+    });
+  }
+
+  // ---- Reveal on scroll ----
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach(function(el){ io.observe(el); });
+
+    // staggered reset lines
+    var lineObs = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){
+          var lines = document.querySelectorAll(".reset-line");
+          lines.forEach(function(l, i){ setTimeout(function(){ l.classList.add("in"); }, i * 220); });
+          lineObs.disconnect();
+        }
+      });
+    }, { threshold: 0.4 });
+    var firstLine = document.querySelector(".reset-line");
+    if(firstLine){ lineObs.observe(firstLine); }
+  } else {
+    document.querySelectorAll(".reveal,.reset-line").forEach(function(el){ el.classList.add("in"); });
+  }
+})();
+</script>
+</body>
+</html>

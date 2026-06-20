@@ -1,0 +1,80 @@
+# Example persona — freelance consultant
+#
+# This is an EXAMPLE file bundled with The Bridge CORE to show how
+# a complete freelancer persona looks. It is fictional data and
+# lives under docs/examples/personas/ to signal "reference, not for use".
+#
+# To create your own persona: copy this file to
+#   identity/personas/<your-id>.yaml on your user/* branch
+# and replace the data.
+
+schema_version: 1
+scope: user         # REQUIRED — personal example → stays local
+id: example-freelancer
+type: individual
+role: self
+display_name: "Alex Example (Freelance Consultant)"
+
+persons:
+  - id: primary
+    display_name: "Alex Example"
+    channels:
+      email: "alex@example.com"
+      phone: "+00 000 00000000"
+    address:
+      street: "42 Example Street"
+      zip: "00000"
+      city: "Example City"
+      country: "Example Country"
+
+tax:
+  tax_id: "XX/XXX/XXXXX"
+  tax_office: "Example City District 1"
+  vat_id: "EX987654321"
+  tax_advisor:
+    name: "Example & Partners Tax Advisors"
+    location: "Example Capital"
+    contact: "mailto:info@example-advisors.test"
+    billing_agent: "Example Billing Agent Ltd."
+  vehicle:
+    plate: "EX-4242"
+    classification: "business"
+
+# Destination paths follow a "pending → submitted" pattern: receipts
+# wait in pending/ until submitted to the tax advisor, then move to
+# submitted/. Use whatever directory structure suits your filing
+# system — these keys are referenced by name from routing rules, the
+# paths themselves are arbitrary.
+destinations:
+  # Primary: receipts the tax advisor has not yet processed
+  freelancer_pending: "${onedrive_root}/Tax/Freelancer/pending"
+  # After submission: archived by the tax advisor
+  freelancer_submitted: "${onedrive_root}/Tax/Freelancer/submitted"
+  # Info-only documents from the tax advisor (not to resubmit)
+  tax_advisor_info: "${onedrive_root}/Tax/Freelancer/advisor-correspondence"
+  # Insurance claims awaiting submission to the health insurer
+  insurance_claims: "${onedrive_root}/Insurance/pending-submission"
+
+signature: |
+  Alex Example
+  Freelance Consultant
+  42 Example Street, 00000 Example City
+
+  alex@example.com  |  +00 000 00000000
+  Tax ID XX/XXX/XXXXX  |  VAT ID EX987654321
+
+notes: |
+  Example freelancer persona. This is the most common case:
+  a natural person operating as a sole proprietor who files taxes
+  as an individual, not a company.
+
+  Typical routing rules associated with this persona:
+    - Recurring SaaS subscriptions
+    - Phone / internet provider bills
+    - Business meals (entertainment expenses)
+    - Office equipment (hardware purchases)
+    - Coworking space rent
+    - Business vehicle expenses
+
+  See protocols/standing-orders/_template.md for how to write
+  routing rules referencing this persona.

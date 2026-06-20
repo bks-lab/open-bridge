@@ -1,0 +1,157 @@
+# yaml-language-server: $schema=./_schema.yaml
+#
+# Project Registry entry — describes ONE external project board.
+#
+# Consumed by:
+#   - skills/project-advisor/  (governance, board-health checks)
+#   - skills/github-projects-manager/  (gh CLI + GraphQL execution)
+#   - skills/briefing/  (Stream B reads project state via trackers/<tracker>.md)
+#   - protocols/standing-orders/task-sync.md  (per-task sync resolver, Phase 3)
+#
+# Validation:
+#   check-jsonschema --schemafile workflow/projects/_schema.yaml \
+#                    workflow/projects/<slug>.yaml
+#
+# CORE/USER routing:
+#   - _template.yaml + _schema.yaml + README.md → CORE
+#   - <slug>.yaml                                → USER (or org-shared)
+#
+# Copy this file to workflow/projects/<slug>.yaml on your user/* branch
+# and fill in the values. Slug should match the file name without .yaml.
+
+schema_version: 1
+scope: user                 # REQUIRED — org/customer board = org; personal board = user.
+                            # core → open-bridge, org → your org overlay, user/private → local.
+
+# ---------------------------------------------------------------------------
+# Identity — who and what
+# ---------------------------------------------------------------------------
+identity:
+  slug: my-project                 # must match the filename without .yaml
+  display_name: "My Project"
+  description: "One-line purpose of the board"
+
+# ---------------------------------------------------------------------------
+# Tracker target — where the board actually lives
+# ---------------------------------------------------------------------------
+project:
+  tracker: github                  # github | ado | linear | jira (one per file)
+  org: my-org
+  number: 1                        # GitHub Project V2 number
+  issue_repo: my-org/my-repo       # where issues are created (may differ from project org)
+  url: "https://github.com/orgs/my-org/projects/1"
+
+# ---------------------------------------------------------------------------
+# Cross-references — link to context (doc routing) and mandant (recipients)
+# Both optional; the standing-order task-sync uses them as defaults when
+# a STATUS.md has `context: <slug>` or `mandant: <slug>` set.
+# ---------------------------------------------------------------------------
+# context_ref: my-context          # → workflow/contexts/my-context.yaml
+# mandant_ref: my-mandant          # → identity/mandants/my-mandant.yaml
+
+# ---------------------------------------------------------------------------
+# Fields — every custom field on the project board
+#
+# `values` is the closed list of allowed entries for single-select fields.
+# `default` is what github-projects-manager sets on issue creation.
+# `type` is one of: single-select | text | number | date | iteration.
+# `readonly: true` means the field exists but skills MUST NOT write to it
+# (typically auto-computed fields, or fields owned by another team).
+# ---------------------------------------------------------------------------
+fields:
+
+  Status:
+    type: single-select
+    values: [Backlog, "Ready for Dev", "In Progress", "In Review", Done, Declined]
+    default: Backlog
+
+  Priority:
+    type: single-select
+    values: [P0, P1, P2, P3]
+    default: P2
+
+  # Add domain-specific fields below — e.g.:
+  # Billing_Scope:
+  #   type: single-select
+  #   values: ["In Contract", "Extra Work", "Goodwill"]
+  #   default: "In Contract"
+
+# ---------------------------------------------------------------------------
+# State mapping — how raw board states map to the normalized states
+# defined in trackers/README.md. `/briefing` Stream B uses this for
+# unified rendering across multiple tracker providers.
+# ---------------------------------------------------------------------------
+state_map:
+  Backlog:        new
+  "Ready for Dev": ready
+  "In Progress":  in_progress
+  "In Review":    review
+  Done:           done
+  Declined:       removed
+
+# ---------------------------------------------------------------------------
+# Status mapping — Task-Management internal status → tracker Status (WRITE dir).
+#
+# Internal STATUS.md status (closed enum: backlog | doing | review | done) maps
+# to the tracker's native Status option. The resolver
+# (protocols/standing-orders/task-sync.md) reads this on a status-change push;
+# on pull the synced `status` is remote-authoritative. 'declined' is not a
+# status — it is `status: done` + `outcome: declined`.
+#
+# Blocked is a FLAG, not a status: a blocked task keeps its Status (doing or
+# review) and the board's separate Blocked field is set instead. Streams
+# (work/streams/, KIND=long-runner) are not a status either — if surfaced on a
+# board at all they carry the `stream` label, never a synthetic Status.
+#
+# Direction split: `status_mapping` is WRITE (Bridge → tracker); `state_map`
+# above is READ (tracker → normalized, for /briefing rendering).
+#
+# Use this board's EXACT Status option strings (mirror fields.Status.values).
+# The defaults below match the generic Status set above; an emoji-prefixed
+# board would write e.g. doing: "🏗 In progress".
+# ---------------------------------------------------------------------------
+status_mapping:
+  backlog: Backlog          # or "New" — whichever the board's intake column is
+  doing:   "In Progress"
+  review:  "In Review"
+  done:    Done
+  declined: Declined        # internal: status=done + outcome=declined
+  blocked: { status_unchanged: true, set_flag: Blocked }   # blocked_by → keep Status, set Blocked field
+  # stream:  { label: stream }   # work/streams/ KIND → optional board label, no Status change
+
+  # Forward-looking Jira contract (no Jira board wired yet; fixed so the schema
+  # does not churn later). For tracker: jira, map the same internal enum to the
+  # Jira status category, and blocked → same status + Flagged:
+  # jira:
+  #   backlog: "To Do"
+  #   doing:   "In Progress"
+  #   review:  "In Review"
+  #   done:    Done
+  #   declined: "Won't Do"     # or Cancelled
+  #   blocked: { status_unchanged: true, set_flag: Flagged }
+
+# ---------------------------------------------------------------------------
+# Governance — rules that project-advisor enforces
+# ---------------------------------------------------------------------------
+governance:
+  level: standard                  # strict | standard | relaxed
+
+  # Categorical rules — see skills/project-advisor/references/governance.md
+  rules:
+    - done_requires_review         # must pass through review_states before done_states
+    - assignee_on_in_progress      # K — must have assignee when In Progress
+
+  review_states: ["In Review"]
+  done_states:   [Done, Declined]
+
+  # Optional comment template inserted on every status transition (jinja2-ish)
+  # review_comment_template: |
+  #   Status changed to {{new_state}} on {{date}}.
+
+# ---------------------------------------------------------------------------
+# Conventions — free-form notes that skills should respect
+# ---------------------------------------------------------------------------
+conventions:
+  field_language: en               # en | de | mixed — controls field-name casing
+  english_only_fields: false       # if true, never write the German variants
+  # readonly_fields: [Estimate, Iteration]

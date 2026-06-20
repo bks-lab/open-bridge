@@ -1,0 +1,23 @@
+# Code owners for open-bridge.
+#
+# GitHub auto-requests a review from the listed owner(s) on any pull request
+# that touches a matching path. Combined with branch protection on `main`
+# (required pull-request review), this means nothing merges without a
+# maintainer's approval — the floor for the manual-then-AI-assisted merge
+# process described in the project's contribution workflow.
+#
+# Until a maintainer team exists, the project lead owns everything. To move to
+# team-based ownership later, replace @mboiman with a team handle such as
+# @bks-lab/maintainers — CODEOWNERS lines accept teams and users alike.
+
+# Default owner for the whole repository.
+*                       @mboiman
+
+# Extra-sensitive areas. Redundant while a single owner holds `*`, kept
+# explicit so they survive a future team split (legal/CI/leak-gate must always
+# stay lead-reviewed).
+/LICENSE                @mboiman
+/TRADEMARK.md           @mboiman
+/AUTHORS                @mboiman
+/.github/               @mboiman
+/scripts/               @mboiman

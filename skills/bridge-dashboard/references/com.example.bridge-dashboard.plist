@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Install on your host:
+       cp this → ~/Library/LaunchAgents/com.example.bridge-dashboard.plist
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.bridge-dashboard.plist
+     Dashboard then available at http://homeserver:8790/
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.bridge-dashboard</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/python3</string>
+    <string>${projects_root}/<your-bridge>/scripts/bridge-dashboard.py</string>
+    <string>--serve</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${projects_root}/<your-bridge></string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>${HOME}/Library/Logs/bridge-dashboard.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>${HOME}/Library/Logs/bridge-dashboard.err.log</string>
+</dict>
+</plist>

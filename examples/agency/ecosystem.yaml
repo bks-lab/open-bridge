@@ -1,0 +1,62 @@
+# Example: Small agency — 2 clients, internal tools
+org: acme-dev
+local_root: ~/Developer/acme
+
+work_system:
+  enabled: true
+  path: work/
+
+projects:
+  bigcorp:
+    display_name: "BigCorp E-Commerce"
+    type: customer
+    issue_repo: acme-dev/bigcorp-issues
+    repos:
+      bigcorp-api:
+        github: acme-dev/bigcorp-api
+        description: "Django REST API"
+        type: function-app
+        language: python
+        depends_on: [acme-utils]
+      bigcorp-frontend:
+        github: acme-dev/bigcorp-frontend
+        description: "Next.js storefront"
+        type: web
+        language: typescript
+    infra:
+      github_project: { org: acme-dev, number: 1 }
+
+  startupxyz:
+    display_name: "StartupXYZ MVP"
+    type: customer
+    repos:
+      startupxyz-app:
+        github: acme-dev/startupxyz-app
+        description: "Remix full-stack SaaS"
+        type: web
+        language: typescript
+    infra:
+      github_project: { org: acme-dev, number: 2 }
+
+  internal:
+    display_name: "Internal Tools"
+    repos:
+      acme-utils:
+        github: acme-dev/acme-utils
+        description: "Shared Python utilities"
+        type: package
+        language: python
+      acme-infra:
+        github: acme-dev/acme-infra
+        description: "Terraform infrastructure"
+        type: infra
+        language: hcl
+
+github_projects:
+  - { number: 1, name: "BigCorp", org: acme-dev, issue_repo: acme-dev/bigcorp-issues }
+  - { number: 2, name: "StartupXYZ", org: acme-dev, issue_repo: acme-dev/startupxyz-app }
+
+workspaces:
+  bigcorp-stack:
+    description: "BigCorp full stack"
+    repos: [bigcorp-api, bigcorp-frontend, acme-utils]

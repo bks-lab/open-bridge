@@ -1,0 +1,79 @@
+# Context-sync stub for a knowledge-repo-paired domain.
+# Copy the relevant block into workflow/contexts/<slug>.yaml.
+#
+# Rename `wiki` to whatever you call your knowledge repo (it's just a key);
+# the task-sync resolver doesn't care what it's named, only that the
+# `root:` path exists and `dual_doku.required` is set.
+#
+# Full context schema: workflow/contexts/_schema.yaml
+# Pattern overview:    docs/knowledge-repo-pattern.md
+
+# ---------------------------------------------------------------------
+# Minimal — single knowledge-repo target, no GitHub, no dual-doku
+# ---------------------------------------------------------------------
+sync:
+  defaults:
+    wiki:
+      root: knowledge-repo/<area>/<slug>/
+      moc_update: knowledge-repo/<area>/<slug>/_MOC.md
+
+# ---------------------------------------------------------------------
+# Dual-documentation — every customer touchpoint must appear in BOTH
+# a GitHub issue AND a knowledge-repo markdown file. Self-check runs
+# at task close (see protocols/standing-orders/task-sync.md).
+# ---------------------------------------------------------------------
+# sync:
+#   defaults:
+#     github:
+#       repo: my-org/my-issues-repo
+#       project:
+#         ref: workflow/projects/my-project.yaml
+#     wiki:
+#       root: knowledge-repo/customers/my-customer/
+#       moc_update: knowledge-repo/customers/my-customer/_MOC.md
+#   dual_doku:
+#     required: true
+#     # Only set post_actions if your knowledge repo mounts other repos
+#     # as Git submodules (rare). Most setups omit this.
+#     post_actions: []
+
+# ---------------------------------------------------------------------
+# Per-event-type routing — picks the knowledge-repo subpath and the
+# GitHub label based on STATUS.md `type:`. Add only the types you
+# actually use; unknown types fall back to the defaults above.
+# ---------------------------------------------------------------------
+#   event_type_map:
+#     incident:
+#       wiki_subpath: incidents/
+#       moc_index:    incidents/index.md
+#       label:        incident
+#       description:  "Pipeline/data fault — analysis + recovery"
+#
+#     customer-comm:
+#       wiki_subpath: communications/
+#       moc_index:    communications/index.md
+#       label:        business
+#       description:  "Customer clarification or escalation"
+#
+#     research:
+#       wiki_subpath: decisions/
+#       moc_index:    null
+#       label:        research
+#       description:  "Strategic decision (architecture, vendor choice)"
+#
+#     feature:
+#       wiki_subpath: projects/{{slug}}/
+#       moc_index:    _MOC.md
+#       label:        feature
+#       description:  "Project work — update existing index.md / _MOC.md"
+
+# ---------------------------------------------------------------------
+# Self-check — task-sync runs this before marking a task done.
+# Adjust the items to match your dual-doku contract.
+# ---------------------------------------------------------------------
+# self_check:
+#   - "GitHub Issue created (or updated) with all required project fields"
+#   - "Knowledge-repo markdown file written (or updated) with last_updated"
+#   - "Relevant _MOC.md or index.md updated"
+#   - "Work-log entry in work/log.md"
+#   - "Board entry in work/board.md updated (add / move / remove)"

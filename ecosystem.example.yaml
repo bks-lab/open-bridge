@@ -1,0 +1,77 @@
+# ecosystem.example.yaml — copy to ecosystem.yaml and adapt at onboarding.
+#
+# The repo registry: the single source of truth for repos, infrastructure, and
+# workspaces. It is @-imported by CLAUDE.md, so it is loaded every session —
+# keep entries LEAN. One-line descriptions; push long narrative into docs/ and
+# point to it. No PII, no secrets.
+#
+# Tier: this file is registry/org content. Personal entries that carry PII
+# (private clients, personal repos) belong in a separate ecosystem.local.yaml
+# (user scope, never promoted), loaded alongside via @ecosystem.local.yaml.
+
+org: your-org
+local_root: ~/Developer/your-org          # local clones live under <local_root>/<repo>
+
+# Work-system tracking. When enabled, CLAUDE.md session-start + logging rules apply.
+work_system:
+  enabled: true
+  path: work/
+  files:
+    current: work/log.md
+    board: work/board.md
+
+# ---------------------------------------------------------------------------
+# base — repos every team member needs
+# ---------------------------------------------------------------------------
+base:
+  my-bridge:
+    github: your-org/my-bridge
+    description: "AI agent orchestration hub."   # ONE line; detail -> docs/
+    type: tool
+
+  wiki:
+    github: your-org/wiki
+    description: "Documentation, protocols, customer records."
+    type: docs
+
+# ---------------------------------------------------------------------------
+# customers — one block per customer; keep only routing-relevant fields resident
+# ---------------------------------------------------------------------------
+customers:
+  example-customer:
+    display_name: "Example Customer"
+    issue_repo: your-org/example-wiki
+    repos:
+      example-service:
+        github: your-org/example-service
+        description: "What it does, in one line."
+        type: function-app          # function-app | package | web | tool | docs | infra
+        language: python
+        depends_on: [some-package]   # other repo slugs this one builds on
+    infra:
+      github_project:
+        org: your-org
+        number: 1                    # GitHub Project V2 board number
+    # Live operational fields that skills PARSE stay resident (index names, URLs,
+    # function names). Dated commentary / "why" / history -> the wiki or a doc.
+
+# ---------------------------------------------------------------------------
+# github_projects — central board overview (number -> name -> issue repo)
+# ---------------------------------------------------------------------------
+github_projects:
+  - number: 1
+    name: "Example"
+    org: your-org
+    issue_repo: your-org/example-wiki
+
+# ---------------------------------------------------------------------------
+# workspaces — which repos belong together (for multi-repo work)
+# ---------------------------------------------------------------------------
+workspaces:
+  example-ops:
+    description: "Example customer operations (services + packages)."
+    repos: [example-service, some-package]
+
+# Tip: a runtime: { host, port, service, dashboard_url } block on a tool entry
+# lets fleet/deploy skills resolve where a service runs. bridge_refs: { context,
+# mandant, project } cross-link an entry to its workflow/identity files.

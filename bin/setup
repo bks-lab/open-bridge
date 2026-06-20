@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Bridge — post-clone setup
+#
+# Ensures every supported AI agent can auto-discover the repo's skills by
+# exposing the canonical top-level `skills/` folder at three discovery paths:
+#   .claude/skills   (Claude Code)
+#   .agents/skills   (Codex / Gemini CLI / Copilot CLI / Cursor)
+#   .github/skills   (GitHub Copilot)
+# All three ship as committed symlinks to `../skills`; this script repairs any
+# that a checkout materialized as a plain file (e.g. native Windows git).
+#
+# macOS / Linux / WSL: works out of the box.
+# Native Windows: see `bin/setup.ps1` instead (handles symlink quirks).
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+link_skills() {
+    local target="$1"            # e.g. .claude/skills
+    local parent="${target%/*}"  # e.g. .claude
+    local source="../skills"
+
+    if [ -L "$target" ] && [ -d "$target" ]; then
+        echo "OK  $target is a working symlink"
+        return 0
+    fi
+    if [ -d "$target" ] && [ ! -L "$target" ]; then
+        echo "ERR $target exists as a real directory — manual review needed"
+        echo "    (expected: symlink to $source)"
+        return 1
+    fi
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        echo "INFO Removing broken $target (likely Windows-git symlink-as-textfile)"
+        rm -f "$target"
+    fi
+    mkdir -p "$parent"
+    ln -s "$source" "$target"
+    echo "OK  Created $target -> $source"
+}
+
+rc=0
+for t in .claude/skills .agents/skills .github/skills; do
+    link_skills "$t" || rc=1
+done
+
+if [ -d ".claude/skills/bridge-onboard" ]; then
+    echo "OK  Skill discovery verified (.claude/skills/bridge-onboard/ resolves)"
+else
+    echo "WARN Symlinks created but skills not visible — check that skills/ exists at repo root"
+    rc=1
+fi
+
+exit "$rc"

@@ -1,0 +1,12 @@
+org: example
+
+customers:
+  acme:
+    display_name: "Acme"
+    repos:
+      app:
+        github: example/app
+        depends_on: [logger, missing-package]
+    packages:
+      logger:
+        github: example/logger
