@@ -98,6 +98,19 @@ That row is in the repo six months from now, in a diff, readable by any agent.
 
 ---
 
+## A day with it
+
+You say it plainly; you get the work, already in context:
+
+- **"good morning, briefing"** → today's board, the day's git activity, and what's gone stale — it already knows which repos and which client you're on.
+- **"where was I on the bigcorp migration?"** → the task's exact state read back ("last: migrated the pipeline, one test still red. next: fix it, then open the PR") so you resume mid-thought.
+- **"switch to startupxyz"** → that client's repos, conventions, and open tasks loaded from its own workspace — the agent works from startupxyz's facts, not bigcorp's.
+- **"why did we pin the schema to v2?"** → the answer pulled from a dated log row you wrote months ago, still in the repo as plain text.
+- **"draft a status mail to the bigcorp lead"** → a ready message in your voice and signature, facts pulled from the task — you read it and send; the agent never sends for you.
+- **`/archive`** → the week's log rolled into a dated summary and a fresh log started — a paper trail that compounds week over week.
+
+---
+
 ## Why not just a CLAUDE.md / my own folder?
 
 A `CLAUDE.md` is one flat instruction sheet. open-bridge is a persistent, structured workspace that does three things a dotfile can't:
@@ -139,6 +152,12 @@ open-bridge is built and used at BKS-Lab to run BKS-Lab — a small team at BKS-
 ---
 
 ## How it works
+
+### What is a bridge — and one or many
+
+A *bridge* is your agent's memory of your world: a plain folder of text files (markdown + YAML in git) it reads at the start of every session. No database, no app to run — who you are, your repos and clients, your rules, and what you worked on yesterday, all in files you own.
+
+And you can run many. An organisation can run several bridges — one per client, team, or context. A consultancy might run one for bigcorp, one for startupxyz, and one for its own internal ops — each with its own rules, processes, and workflows, each keeping that context's data to itself. All of them stand on one shared foundation: a common CORE of skills, templates, and docs that updates once for everyone, while each bridge keeps its own private data separate — one shared foundation, separate private rooms. The mechanism (the CORE/USER split below, plus per-instance isolation) ships and is documented; today it runs on one self-hosted bridge.
 
 ### CORE/USER split — why the context compounds safely
 

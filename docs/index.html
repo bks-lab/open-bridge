@@ -1056,11 +1056,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         <h3><span data-lang="en">Context Booster</span><span class="coined" data-lang="de">Context Booster</span></h3>
         <p class="attrib" data-lang="en">An independent context layer beside your model and your tool — coined "Context Booster" at BKS-Lab.</p>
         <p class="attrib" data-lang="de">Eine modell- und frontend-unabhängige „dritte Seite" — als „Context Booster" geprägt bei BKS-Lab.</p>
-        <p data-lang="en">You work with whatever model and whatever frontend you like. open-bridge layers in persistent context about your world — your repos and clients, your machines, what you worked on yesterday — so the agent stops asking "GitHub or Jira?" and stops loading the wrong client. The boost comes from a third side that doesn't care what you run, because the substrate is plain text every runtime can read.</p>
-        <p data-lang="de">Du arbeitest mit dem Modell und dem Frontend, das du willst. open-bridge legt persistenten Kontext über deine Welt darüber — deine Repos und Kunden, deine Maschinen, woran du gestern gearbeitet hast — damit der Agent aufhört zu fragen „GitHub oder Jira?" und aufhört, den falschen Kunden zu laden. Der Boost kommt von einer dritten Seite, der egal ist, was du nutzt — weil das Substrat Plain Text ist, den jede Runtime lesen kann.</p>
-        <div class="demo" aria-hidden="true">$ good morning, briefing
-→ board · today's git activity · what's stale
-→ already knows: which repos, which client, last week</div>
+        <p data-lang="en">You work with whatever model and whatever frontend you like. open-bridge layers in persistent context about your world — your repos and clients, your machines, what you worked on yesterday — so the agent stops loading the wrong client. The boost comes from a third side that doesn't care what you run, because the substrate is plain text every runtime can read.</p>
+        <p data-lang="de">Du arbeitest mit dem Modell und dem Frontend, das du willst. open-bridge legt persistenten Kontext über deine Welt darüber — deine Repos und Kunden, deine Maschinen, woran du gestern gearbeitet hast — damit der Agent aufhört, den falschen Kunden zu laden. Der Boost kommt von einer dritten Seite, der egal ist, was du nutzt — weil das Substrat Plain Text ist, den jede Runtime lesen kann.</p>
       </div>
 
       <!-- Tile 2 — four-room / filing grid motif -->
@@ -1088,6 +1085,45 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       <span data-lang="en"><strong>Workspace separation as the default</strong> — keep each engagement's facts apart, and "if you can't place it into your known world-models, ask" instead of guessing. This is the intended design stance, agreed in principle, but not yet built into open-bridge. We label it honestly below.</span>
       <span data-lang="de"><strong>Workspace-Trennung als Default</strong> — die Fakten jeder Beauftragung getrennt halten, und „wenn du es nicht in deine bekannten Weltmodelle einordnen kannst, dann frage" statt zu raten. Das ist die beabsichtigte Design-Haltung, im Prinzip vereinbart, aber noch nicht in open-bridge eingebaut. Wir kennzeichnen das unten ehrlich.</span>
     </p>
+  </div>
+</section>
+
+<!-- ======================= USE-CASES: A DAY WITH IT ======================= -->
+<section id="usecases">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">A day with it</p>
+      <p class="eyebrow" data-lang="de">Ein Tag damit</p>
+      <h2 class="h1" data-lang="en">Say it plainly — get the work, already in context.</h2>
+      <h2 class="h1" data-lang="de">Sag es schlicht — bekomm die Arbeit, schon im Kontext.</h2>
+    </div>
+
+    <div class="cap-grid reveal">
+      <div class="cap-item">
+        <div class="cap-label"><code data-lang="en">good morning, briefing</code><code data-lang="de">guten Morgen, Briefing</code></div>
+        <p class="cap-benefit"><span data-lang="en">Get today's board, the day's git activity and what's gone stale — and it already knows which repos and which client you're on.</span><span data-lang="de">Bekomm das heutige Board, die Git-Aktivität des Tages und was liegen geblieben ist — und es weiß schon, welche Repos und welcher Kunde dran sind.</span></p>
+      </div>
+      <div class="cap-item">
+        <div class="cap-label"><code data-lang="en">where was I on the bigcorp migration?</code><code data-lang="de">wo war ich bei der bigcorp-Migration?</code></div>
+        <p class="cap-benefit"><span data-lang="en">Get the task's exact state read back — „last: migrated the invoice pipeline, one test still red. next: fix the failing case, then open the PR" — so you resume mid-thought.</span><span data-lang="de">Bekomm den genauen Stand der Aufgabe zurückgelesen — „zuletzt: Invoice-Pipeline migriert, ein Test noch rot. als Nächstes: den fehlschlagenden Fall fixen, dann den PR öffnen" — und steigst mitten im Gedanken wieder ein.</span></p>
+      </div>
+      <div class="cap-item">
+        <div class="cap-label"><code data-lang="en">switch to startupxyz</code><code data-lang="de">wechsle zu startupxyz</code></div>
+        <p class="cap-benefit"><span data-lang="en">Get that client's repos, conventions and open tasks loaded from its own workspace — so the agent works from startupxyz's facts, not bigcorp's.</span><span data-lang="de">Bekomm die Repos, Konventionen und offenen Aufgaben dieses Kunden aus seinem eigenen Workspace geladen — der Agent arbeitet mit den Fakten von startupxyz, nicht denen von bigcorp.</span></p>
+      </div>
+      <div class="cap-item">
+        <div class="cap-label"><code data-lang="en">why did we pin the schema to v2?</code><code data-lang="de">warum haben wir das Schema auf v2 gepinnt?</code></div>
+        <p class="cap-benefit"><span data-lang="en">Get the answer pulled from a dated log row you wrote back then — „v3 breaks the old exports" — still in the repo, in plain text, months on.</span><span data-lang="de">Bekomm die Antwort aus einer datierten Log-Zeile, die du damals geschrieben hast — „v3 zerbricht die alten Exporte" — Monate später noch im Repo, als Plain Text.</span></p>
+      </div>
+      <div class="cap-item">
+        <div class="cap-label"><code data-lang="en">draft a status mail to the bigcorp lead</code><code data-lang="de">entwirf eine Status-Mail an den bigcorp-Lead</code></div>
+        <p class="cap-benefit"><span data-lang="en">Get a ready message in your voice and signature, with the facts pulled from the task — you read it and send; the agent never sends for you.</span><span data-lang="de">Bekomm eine fertige Nachricht in deiner Stimme und Signatur, die Fakten aus der Aufgabe gezogen — du liest sie und sendest; der Agent sendet nie für dich.</span></p>
+      </div>
+      <div class="cap-item">
+        <div class="cap-label"><code data-lang="en">/archive</code><code data-lang="de">/archive</code></div>
+        <p class="cap-benefit"><span data-lang="en">Get the week's log rolled into a dated summary and a fresh log started — a paper trail that compounds week over week instead of evaporating.</span><span data-lang="de">Bekomm das Wochen-Log zu einer datierten Zusammenfassung gerollt und ein frisches Log gestartet — eine Spur, die Woche für Woche wächst, statt zu verdampfen.</span></p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1239,6 +1275,28 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <li><span data-lang="en"><b>Terminology cleanup is pending</b> (work-task → Task-Management; the <code>work/</code> folder made unambiguous).</span><span data-lang="de"><b>Begriffs-Bereinigung steht aus</b> (work-task → Task-Management; der <code>work/</code>-Ordner eindeutig gemacht).</span></li>
         </ul>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= WHAT IS A BRIDGE (+ one or many) ======================= -->
+<section id="bridge-concept">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow" data-lang="en">What is a bridge</p>
+      <p class="eyebrow" data-lang="de">Was ist eine Bridge</p>
+      <h2 class="h1" data-lang="en">And you can run many.</h2>
+      <h2 class="h1" data-lang="de">Und du kannst viele betreiben.</h2>
+    </div>
+
+    <div class="diagram-frame reveal" style="max-width:48rem;padding:28px 30px">
+      <p style="font-size:16px;line-height:1.7;color:var(--on-surface);margin:0" data-lang="en">A bridge is your agent's memory of your world — a plain folder of text files (markdown + YAML in git) it reads at the start of every session. No database, no app to run: who you are, your repos and clients, your rules, and what you worked on yesterday — all in files you own.</p>
+      <p style="font-size:16px;line-height:1.7;color:var(--on-surface);margin:0" data-lang="de">Eine Bridge ist das Gedächtnis deines Agenten für deine Welt — ein einfacher Ordner aus Textdateien (Markdown + YAML in Git), den er zu Beginn jeder Session liest. Keine Datenbank, keine App: wer du bist, deine Repos und Kunden, deine Regeln und woran du gestern gearbeitet hast — alles in Dateien, die dir gehören.</p>
+
+      <p style="font-size:16px;line-height:1.7;color:var(--on-surface);margin:20px 0 0" data-lang="en">And you can run many. An organisation can run several bridges — one per client, team or context. A consultancy might run one for bigcorp, one for startupxyz, and one for its own internal ops — each with its own rules, processes and workflows, each keeping that context's data to itself. All of them stand on one shared foundation: a common CORE of skills, templates and docs that updates once for everyone, while each bridge keeps its own private data separate — one shared foundation, separate private rooms. The mechanism ships and is documented; today it runs on one self-hosted bridge.</p>
+      <p style="font-size:16px;line-height:1.7;color:var(--on-surface);margin:20px 0 0" data-lang="de">Und du kannst viele betreiben. Eine Organisation kann mehrere Bridges betreiben — eine pro Kunde, Team oder Kontext. Eine Beratung könnte eine für bigcorp betreiben, eine für startupxyz und eine für die eigene interne Ops — jede mit eigenen Regeln, Prozessen und Workflows, jede hält die Daten ihres Kontexts für sich. Alle stehen auf einem gemeinsamen Fundament: ein gemeinsamer CORE aus Skills, Templates und Docs, der sich einmal für alle aktualisiert, während jede Bridge ihre eigenen privaten Daten getrennt hält — ein gemeinsames Fundament, getrennte private Räume. Der Mechanismus ist da und dokumentiert; heute läuft er auf einer einzigen selbst-gehosteten Bridge.</p>
+
+      <p style="margin:22px 0 0;font-size:15px"><a href="#coreuser" style="color:var(--accent-text);font-weight:500;text-decoration:none"><span data-lang="en">How that update stays safe →</span><span data-lang="de">Wie dieses Update sicher bleibt →</span></a></p>
     </div>
   </div>
 </section>
