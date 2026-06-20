@@ -49,11 +49,11 @@ It works across Claude Code, Codex, and Copilot CLI through a single `skills/` t
 
 > *Coined at BKS-Lab as the "Context Booster" — the most important purpose of open-bridge.*
 
-### KI-Chaos-Bändiger (AI-chaos tamer)
+### Chaos Tamer
 
-Most people's AI work looks like that bare My-Documents folder — everyone piles up their own chaos, and every new conversation starts over. open-bridge tames that by shipping **example structures**, so you don't have to invent your own filing system. The concrete instance is the **Task-Management system** — a board, a daily log, and per-task status (`backlog` → `doing` → `review` → `done`): finite tasks live in `work/tasks/`, long-running streams in `work/streams/`, closed work in `work/done/`. Unstructured sessions become a filed, persistent, compounding record.
+Most people's AI work looks like that bare My-Documents folder — everyone piles up their own chaos, and every new conversation starts over. open-bridge tames that by shipping example structures you don't have to invent, then helping you keep them. It does three things: it **holds a structure** (a board, a daily log, and per-task status — `backlog` → `doing` → `review` → `done`); it **files away knowledge as you go**, so decisions, findings, and status land in plain text the agent reads back later; and it **keeps the work from drifting** back into an unsorted pile. The concrete instance is the **Task-Management system**: finite tasks in `work/tasks/`, long-running streams in `work/streams/`, closed work in `work/done/`. Unstructured sessions become a filed, persistent, compounding record.
 
-> *Coined at BKS-Lab: "structuring unstructured AI dialogues."*
+> *Coined at BKS-Lab: "structuring unstructured AI dialogues" — originally "KI-Chaos-Bändiger".*
 
 > **Design stance — roadmap (BET/OPEN).** The intended default is *workspace separation*: tasks kept separate per context, no information bleeding between engagements, with a general rule — *"if you can't place it into your known world-models, ask."* This is agreed in principle but **not yet built into open-bridge**, and the hard-silo-vs-soft-folder default is unresolved. See [What's proven, what's a bet, what's open](#whats-proven-whats-a-bet-whats-open). Do not read it as a shipped feature.
 
