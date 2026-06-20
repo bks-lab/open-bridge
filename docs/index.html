@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-active-lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,46 +16,90 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="open-bridge — context that compounds across AI sessions">
 <meta name="twitter:description" content="Plain markdown + YAML in git your AI coding agent reads at session start. No database, no SaaS. MIT.">
-<meta name="twitter:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
+
+<!-- Anti-FOUC pre-paint: theme + language set BEFORE the stylesheet paints. -->
+<script>
+(function(){
+  var r = document.documentElement;
+  try{
+    var t = localStorage.getItem("ob-theme");
+    if(t === "dark" || (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)){
+      r.classList.add("dark");
+    }
+  }catch(e){}
+  try{
+    var l = localStorage.getItem("ob-lang");
+    var lang = (l === "de") ? "de" : (r.getAttribute("lang") || "en");
+    r.setAttribute("data-active-lang", lang); r.setAttribute("lang", lang);
+  }catch(e){ r.setAttribute("data-active-lang","en"); }
+})();
+</script>
+
 <style>
 /* ============================================================
    open-bridge marketing landing — single file, fully offline.
-   Tokens lifted verbatim from DESIGN.md (Editorial Minimalism).
+   Colour / type / space tokens lifted from DESIGN.md (Editorial
+   Minimalism) via landing/tokens.css. AA-correct text tokens
+   (--accent-text, --code-bg, --ok-text …) layered on top — these
+   are NOT in tokens.css and must be preserved.
    No external fonts, no CDN, no network calls.
+
+   The ONLY hex outside the two scoped visual blocks
+   (#deck-viz canvas + #mechanic-viz) traces to a token. The
+   bridge-deck palette inside #deck-viz is a documented, scoped
+   exception — exactly like macOS terminal traffic-light dots.
    ============================================================ */
 
 :root{
-  /* Neutrals */
-  --primary:#111827; --secondary:#6B7280;
+  /* ---- tokens.css (generated from DESIGN.md) ---- */
+  --ink:#111827; --muted:#6B7280;
   --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
-  --on-primary:#FFFFFF; --on-surface:#374151; --on-surface-muted:#6B7280;
-  --border:#E5E7EB; --border-subtle:#F3F4F6;
-  /* Accent gradient anchors */
+  --on-primary:#FFFFFF; --on-surface:#374151;
+  --line:#E5E7EB; --line-subtle:#F3F4F6;
   --accent-from:#667EEA; --accent-to:#764BA2;
   --accent:#6366F1; --accent-secondary:#8B5CF6;
-  /* Feature gradients */
+  --ok:#10B981; --info:#3B82F6;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+
+  /* ---- AA-correct text tokens (added on top of tokens.css) ---- */
+  --accent-text:#4F46E5;        /* links + the one accent word, AA on white */
+  --accent-soft:#EEF2FF;
+  --ok-text:#047857;            /* status text, AA */
+  --info-text:#1D4ED8;
+  --attention-text:#7C3AED;
+  --code-bg:#F9FAFB;
+
+  /* legacy aliases the markup uses */
+  --primary:var(--ink); --secondary:var(--muted);
+  --border:var(--line); --border-subtle:var(--line-subtle);
+  --on-surface-muted:var(--muted);
+  --success:var(--ok); --attention:var(--accent-secondary);
   --feature-indigo-from:#4F46E5; --feature-indigo-to:#9333EA;
-  --feature-purple-from:#9333EA; --feature-purple-to:#4F46E5;
-  /* Semantic (PROVEN/BET/OPEN — no red alarm) */
-  --success:#10B981; --info:#3B82F6; --attention:#8B5CF6;
-  /* Shadows — whisper quiet */
+  --mono:var(--font-mono);
+
+  /* shadows — whisper quiet */
   --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
   --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
-  /* Spacing rhythm */
+
   --section-y:96px;
-  --container:80rem; --hero-w:64rem; --prose-w:48rem;
+  --container:80rem; --hero-w:72rem; --prose-w:48rem;
   --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
-  --mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,monospace;
 }
 
 html.dark{
-  --primary:#F9FAFB;
-  --secondary:#9CA3AF;
+  --ink:#F9FAFB; --muted:#9CA3AF;
   --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
-  --on-surface:#D1D5DB; --on-surface-muted:#9CA3AF;
-  --border:#374151; --border-subtle:#1F2937;
+  --on-surface:#D1D5DB;
+  --line:#374151; --line-subtle:#1F2937;
   --accent-from:#A78BFA; --accent-to:#818CF8;
   --accent:#818CF8;
+  --accent-text:#A78BFA;        /* AA on dark surfaces */
+  --accent-soft:#312E81;
+  --ok-text:#34D399;
+  --info-text:#93C5FD;
+  --attention-text:#C4B5FD;
+  --code-bg:#0B1220;
   --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
   --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
 }
@@ -63,41 +107,37 @@ html.dark{
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{
-  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+  font-family:var(--font-sans);
   background:var(--surface); color:var(--on-surface);
   font-size:16px; line-height:1.6; font-weight:400;
   -webkit-font-smoothing:antialiased;
   transition:background .25s ease, color .25s ease;
 }
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:3px}
 
 /* ---- Language visibility (EN default) ---- */
 [data-lang]{display:none}
 html[data-active-lang="en"] [data-lang="en"]{display:revert}
 html[data-active-lang="de"] [data-lang="de"]{display:revert}
 /* inline variants keep inline display */
-span[data-lang],code[data-lang],strong[data-lang],em[data-lang]{display:none}
-html[data-active-lang="en"] span[data-lang="en"],
-html[data-active-lang="en"] code[data-lang="en"],
-html[data-active-lang="en"] strong[data-lang="en"],
-html[data-active-lang="en"] em[data-lang="en"]{display:inline}
-html[data-active-lang="de"] span[data-lang="de"],
-html[data-active-lang="de"] code[data-lang="de"],
-html[data-active-lang="de"] strong[data-lang="de"],
-html[data-active-lang="de"] em[data-lang="de"]{display:inline}
+:is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang]{display:none}
+html[data-active-lang="en"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="en"],
+html[data-active-lang="de"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="de"]{display:inline}
 
 .container{max-width:var(--container);margin:0 auto;padding-inline:24px}
 .prose{max-width:var(--prose-w);margin-inline:auto}
 
 /* ---- Typography ---- */
 h1,h2,h3,h4{color:var(--primary);letter-spacing:-0.02em}
-.display{font-size:clamp(40px,7vw,72px);font-weight:300;line-height:1.05;letter-spacing:-0.02em}
-.h1{font-size:clamp(32px,5vw,48px);font-weight:300;line-height:1.1}
-.h2{font-size:clamp(28px,4vw,36px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
+.display{font-size:clamp(38px,5.4vw,64px);font-weight:300;line-height:1.06;letter-spacing:-0.02em}
+.h1{font-size:clamp(30px,4.4vw,46px);font-weight:300;line-height:1.12}
+.h2{font-size:clamp(26px,3.6vw,34px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
 .h3{font-size:24px;font-weight:500;line-height:1.3;letter-spacing:-0.01em}
 .h4{font-size:20px;font-weight:500;line-height:1.4}
 .body-xl{font-size:20px;font-weight:300;line-height:1.6}
-.eyebrow{font-size:14px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
+.eyebrow{font-size:13px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
 .muted{color:var(--on-surface-muted)}
+a{color:var(--accent-text)}
 
 .text-gradient{
   background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
@@ -115,7 +155,7 @@ header.nav{
   border-bottom:1px solid var(--border);
 }
 .nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
-  display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap}
 .wordmark .text-gradient{font-weight:400}
 .nav-spacer{flex:1}
@@ -126,10 +166,10 @@ header.nav{
   font-size:13px;font-weight:400;line-height:1.2;
   padding:5px 11px;border-radius:var(--r-full);
   background:var(--surface-muted);color:var(--on-surface);
-  border:1px solid var(--border);white-space:nowrap;
+  border:1px solid var(--border);white-space:nowrap;text-decoration:none;
 }
-.chip.status{background:transparent}
-.chip-dot{width:7px;height:7px;border-radius:var(--r-full);background:var(--attention);flex:none}
+a.chip{color:var(--on-surface)}
+a.chip:hover{color:var(--primary)}
 
 .seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-full);overflow:hidden;background:var(--surface)}
 .seg button{
@@ -137,7 +177,7 @@ header.nav{
   padding:5px 12px;border:none;background:transparent;color:var(--secondary);
   transition:color .2s ease;
 }
-.seg button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--surface)}
 
 .icon-btn{
   width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
@@ -158,8 +198,8 @@ html.dark .moon{display:none}
   transition:transform .2s ease,background .2s ease,border-color .2s ease;
 }
 .btn svg{width:18px;height:18px}
-.btn-primary{background:var(--primary);color:var(--on-primary)}
-html.dark .btn-primary{background:var(--accent);color:#fff}
+.btn-primary{background:var(--primary);color:var(--surface)}
+html.dark .btn-primary{background:var(--accent);color:#0B1220}
 .btn-primary:hover{transform:translateY(-1px)}
 .btn-secondary{background:var(--surface);color:var(--on-surface);border-color:var(--border)}
 .btn-secondary:hover{background:var(--surface-subtle)}
@@ -173,34 +213,44 @@ section{padding-block:var(--section-y)}
 .sec-head .h1{margin-top:14px}
 .sec-head p{margin-top:18px;font-size:18px;font-weight:300}
 
-/* ---- Hero ---- */
-.hero{
-  position:relative;overflow:hidden;
-  padding-block:clamp(72px,12vh,128px);text-align:center;
+/* ---- Hero (split) ---- */
+.hero{position:relative;overflow:hidden;padding-block:clamp(56px,9vh,104px)}
+.hero-grid{
+  max-width:var(--hero-w);margin:0 auto;
+  display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);
+  gap:48px;align-items:center;
 }
-.hero-pattern{
-  position:absolute;inset:0;pointer-events:none;opacity:.025;
-  background-image:radial-gradient(var(--primary) 1px,transparent 1px);
-  background-size:22px 22px;
+.hero-copy{min-width:0}
+.hero .display{margin-top:10px}
+.hero-sub{margin:24px 0 0;max-width:38rem;font-size:19px;font-weight:300;line-height:1.6;color:var(--on-surface)}
+.honesty-strip{
+  margin-top:26px;display:inline-flex;align-items:center;gap:0;flex-wrap:wrap;
+  font-size:13.5px;color:var(--on-surface);
+  border:1px solid var(--border);border-radius:var(--r-full);
+  background:var(--surface-muted);padding:7px 16px;line-height:1.4;
 }
-.hero-inner{position:relative;max-width:var(--hero-w);margin:0 auto}
-.hero .display{margin-top:8px}
-.hero-sub{margin:28px auto 0;max-width:42rem;font-size:20px;font-weight:300;line-height:1.6;color:var(--on-surface)}
-.status-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:30px}
-.status-pill{
-  display:inline-flex;align-items:center;gap:7px;font-size:13px;
-  padding:5px 13px;border-radius:var(--r-full);
-  background:var(--surface-muted);border:1px solid var(--border);color:var(--on-surface);
+.honesty-strip .sep{color:var(--secondary);margin:0 9px}
+.honesty-strip b{color:var(--primary);font-weight:600}
+.cta-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:30px}
+.beta-line{margin-top:18px;font-size:14px;color:var(--secondary);max-width:38rem}
+
+/* hero visual column */
+.hero-visual{min-width:0}
+.seam-cap{
+  margin-top:12px;font-size:13.5px;color:var(--secondary);line-height:1.5;
 }
-.cta-row{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:36px}
-.beta-line{margin-top:22px;font-size:14px;color:var(--secondary)}
-.mono-chip{
-  display:inline-flex;align-items:center;gap:10px;margin-top:40px;
-  font-family:var(--mono);font-size:14px;
-  background:var(--surface-muted);border:1px solid var(--border);
-  border-radius:var(--r-md);padding:10px 16px;color:var(--on-surface);
+.seam-cap a{color:var(--accent-text);text-decoration:none;font-weight:500;white-space:nowrap}
+.seam-cap a:hover{text-decoration:underline}
+.seam-cap .tag{
+  font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--secondary);
+  border:1px solid var(--border);border-radius:var(--r-full);padding:1px 8px;margin-right:8px;
 }
-.mono-chip .prompt{color:var(--accent);user-select:none}
+
+@media (max-width:900px){
+  .hero-grid{grid-template-columns:1fr;gap:32px}
+  .hero-visual{order:2}
+  .hero-sub,.beta-line{max-width:none}
+}
 
 /* ---- Generic cards ---- */
 .card{
@@ -210,21 +260,43 @@ section{padding-block:var(--section-y)}
 
 /* ---- Code / file-tree blocks ---- */
 .code{
-  font-family:var(--mono);font-size:13px;line-height:1.7;
+  font-family:var(--mono);font-size:14px;line-height:1.7;
   background:var(--surface-subtle);border:1px solid var(--border);
   border-radius:var(--r-lg);padding:20px 22px;overflow-x:auto;color:var(--on-surface);
   white-space:pre;
 }
-html.dark .code{background:#0b1220}
+html.dark .code{background:var(--code-bg)}
 .code .dir{color:var(--accent-secondary);font-weight:500}
 .code .cmt{color:var(--secondary)}
-.code .k{color:var(--info)}
-.code .ok{color:var(--success)}
+.code .k{color:var(--info-text)}
+.code .ok{color:var(--ok-text)}
 .code-label{
-  display:flex;align-items:center;justify-content:space-between;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-family:var(--mono);font-size:12px;color:var(--secondary);
   padding:0 4px 8px;
 }
+
+/* README verbatim artifact block + diff gutter */
+.artifact{
+  font-family:var(--mono);font-size:14px;line-height:1.75;
+  background:var(--surface-subtle);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:0;overflow:hidden;color:var(--on-surface);
+}
+html.dark .artifact{background:var(--code-bg)}
+.artifact .row{display:flex;white-space:pre;align-items:flex-start}
+.artifact .gut{
+  flex:0 0 26px;text-align:center;color:var(--secondary);
+  user-select:none;padding:2px 0;
+}
+.artifact .ln{padding:2px 14px 2px 4px;flex:1;min-width:0}
+.artifact .row.add{background:color-mix(in srgb,var(--ok) 10%, transparent)}
+.artifact .row.add .gut{color:var(--ok-text);font-weight:600}
+.artifact .row.hl{background:color-mix(in srgb,var(--accent) 9%, transparent)}
+.artifact .k{color:var(--info-text)}
+.artifact .who{color:var(--accent-secondary)}
+.artifact .tm{color:var(--accent-text);font-weight:500}
+.artifact .cmt{color:var(--secondary)}
+.verbatim-note{margin-top:10px;font-size:12.5px;color:var(--secondary);padding-left:2px}
 
 /* ---- Split visual (My Documents) ---- */
 .split{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:stretch}
@@ -234,21 +306,21 @@ html.dark .code{background:#0b1220}
   opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .5s ease;
 }
 .reset-line.in{opacity:1;transform:none}
-.reset-line .x{color:var(--attention);font-family:var(--mono);flex:none;font-weight:600}
+.reset-line .x{color:var(--attention-text);font-family:var(--mono);flex:none;font-weight:600}
 .doc-card h4{margin-bottom:14px}
 .doc-card .cap{margin-top:14px;font-size:13px;color:var(--secondary)}
 .flat-dump{font-family:var(--mono);font-size:13px;line-height:1.9;color:var(--secondary)}
 .flat-dump .f{display:block;opacity:.7}
 
-/* ---- Tiles (Context Booster / Chaos-Bändiger) ---- */
+/* ---- Tiles (Context Booster / Chaos Tamer) ---- */
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:32px}
 .tile{
   background:var(--surface);border:1px solid var(--border);
   border-radius:var(--r-lg);padding:36px;box-shadow:var(--shadow-soft);
   position:relative;overflow:hidden;display:flex;flex-direction:column;
 }
-.tile-icon{width:48px;height:48px;margin-bottom:22px}
-.tile h3{font-size:26px;font-weight:300;letter-spacing:-0.01em}
+.tile-icon{width:46px;height:46px;margin-bottom:22px;color:var(--accent-text)}
+.tile h3{font-size:26px;font-weight:300;letter-spacing:-0.01em;color:var(--primary)}
 .tile .coined{font-weight:400}
 .attrib{font-size:13px;color:var(--secondary);margin-top:6px}
 .tile p{margin-top:16px;font-size:16px}
@@ -257,14 +329,14 @@ html.dark .code{background:#0b1220}
   background:var(--surface-subtle);border:1px solid var(--border);
   border-radius:var(--r-md);padding:14px 16px;color:var(--on-surface);margin-top:24px;white-space:pre-wrap;
 }
-html.dark .tile .demo{background:#0b1220}
+html.dark .tile .demo{background:var(--code-bg)}
 .stance-note{
   margin-top:48px;max-width:46rem;margin-inline:auto;text-align:center;
   font-size:14px;color:var(--secondary);
 }
 .tag-bet{
   display:inline-block;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;
-  color:var(--attention);border:1px solid var(--attention);border-radius:var(--r-full);
+  color:var(--attention-text);border:1px solid var(--attention-text);border-radius:var(--r-full);
   padding:2px 9px;margin-right:8px;
 }
 
@@ -278,7 +350,7 @@ html.dark .tile .demo{background:#0b1220}
 .compare li{display:flex;gap:10px;font-size:15px}
 .compare li .mk{font-family:var(--mono);flex:none}
 .compare .before .mk{color:var(--secondary)}
-.compare .after .mk{color:var(--success)}
+.compare .after .mk{color:var(--ok-text)}
 .punch{margin-top:36px;text-align:center;font-size:18px;font-weight:300;color:var(--primary);max-width:46rem;margin-inline:auto}
 
 /* ---- PROVEN / BET / OPEN ---- */
@@ -286,41 +358,58 @@ html.dark .tile .demo{background:#0b1220}
 .bcol{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow-soft);overflow:hidden}
 .bcol .head{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
 .bcol .head .dot{width:10px;height:10px;border-radius:var(--r-full);flex:none}
-.bcol.proven .dot{background:var(--success)}
+.bcol.proven .dot{background:var(--ok)}
 .bcol.bet .dot{background:var(--info)}
-.bcol.open .dot{background:var(--attention)}
+.bcol.open .dot{background:var(--accent-secondary)}
 .bcol .head .t{font-size:15px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--primary)}
 .bcol .head .s{font-size:12px;color:var(--secondary);margin-left:auto}
 .bcol ul{list-style:none;padding:22px 24px;display:flex;flex-direction:column;gap:16px}
 .bcol li{font-size:14.5px;line-height:1.55;color:var(--on-surface);padding-left:18px;position:relative}
 .bcol li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:var(--r-full)}
-.bcol.proven li::before{background:var(--success)}
+.bcol.proven li::before{background:var(--ok)}
 .bcol.bet li::before{background:var(--info)}
-.bcol.open li::before{background:var(--attention)}
+.bcol.open li::before{background:var(--accent-secondary)}
 .bcol li b{color:var(--primary);font-weight:600}
 
-/* ---- CORE/USER diagram ---- */
-.cu{display:grid;grid-template-columns:1fr auto 1fr;gap:20px;align-items:center;max-width:60rem;margin:0 auto}
-.cu-node{border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;background:var(--surface);box-shadow:var(--shadow-soft)}
-.cu-node .lbl{font-family:var(--mono);font-size:12px;color:var(--secondary);text-transform:uppercase;letter-spacing:0.06em}
-.cu-node h4{margin:8px 0 12px}
-.cu-node ul{list-style:none;font-size:13.5px;color:var(--on-surface);display:flex;flex-direction:column;gap:6px}
-.cu-node ul li::before{content:"– ";color:var(--secondary)}
-.cu-merge{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--secondary);font-size:13px;text-align:center}
-.cu-merge .arr{font-size:26px;color:var(--accent)}
+/* ---- CORE/USER diagram (animated SVG) ---- */
 .cu-foot{margin-top:32px;text-align:center;font-size:15px;color:var(--on-surface);max-width:48rem;margin-inline:auto}
-
-/* ---- Runtime strip ---- */
-.runtimes{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:54rem;margin:0 auto}
-.rt{
-  display:inline-flex;align-items:center;gap:9px;font-size:14px;
-  padding:9px 16px;border:1px solid var(--border);border-radius:var(--r-full);
-  background:var(--surface);color:var(--on-surface);
+.diagram-frame{
+  max-width:60rem;margin:0 auto;border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);box-shadow:var(--shadow-soft);padding:18px;overflow:hidden;
 }
-.rt .st{font-size:12px;color:var(--secondary)}
-.rt .tested{color:var(--success);font-weight:500}
-.rt .untested{color:var(--secondary)}
+.diagram-frame svg{display:block;width:100%;height:auto}
+.dg-track{stroke:var(--line);stroke-width:1.4;fill:none}
+.dg-flow{stroke-width:2;fill:none;stroke-linecap:round;stroke-dasharray:6 8}
+.dg-flow.user{stroke:var(--accent)}
+.dg-flow.core{stroke:var(--accent-secondary)}
+.dg-flow.promote{stroke:url(#dgGrad)}
+.dg-box{fill:var(--surface-subtle);stroke:var(--line);stroke-width:1}
+.dg-merge{fill:var(--surface);stroke:var(--accent-text);stroke-width:1.4}
+.dg-lbl{fill:var(--on-surface);font:500 13px var(--font-sans)}
+.dg-sub{fill:var(--muted);font:400 11px var(--font-mono)}
+.dg-cap{fill:var(--muted);font:400 11px var(--font-sans)}
+.dg-mono{font:400 11px var(--font-mono)}
+@media (prefers-reduced-motion:no-preference){
+  .diagram-frame.in .dg-flow{animation:dg-flow-anim 1.4s linear infinite}
+}
+@keyframes dg-flow-anim{to{stroke-dashoffset:-28}}
+
+/* ---- Runtime fan-out (animated SVG) ---- */
 .rt-foot{margin-top:30px;text-align:center;font-size:15px;color:var(--on-surface)}
+.rt-pill{fill:var(--surface-subtle);stroke:var(--line);stroke-width:1}
+.rt-name{fill:var(--on-surface);font:500 13px var(--font-sans)}
+.rt-state{font:400 11px var(--font-mono)}
+.rt-state.tested{fill:var(--ok-text);font-weight:600}
+.rt-state.untested{fill:var(--muted)}
+.rt-state.via{fill:var(--muted)}
+.rt-edge{stroke:var(--accent);stroke-width:1.6;fill:none;stroke-dasharray:5 7}
+.rt-hub{fill:var(--accent-soft);stroke:var(--accent-text);stroke-width:1.4}
+.rt-hublbl{fill:var(--accent-text);font:600 13px var(--font-mono)}
+.rt-symlbl{fill:var(--muted);font:400 10.5px var(--font-mono)}
+.rt-edgelbl{paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+@media (prefers-reduced-motion:no-preference){
+  .diagram-frame.in .rt-edge{animation:dg-flow-anim 1.4s linear infinite}
+}
 
 /* ---- Get started ---- */
 .steps .code{max-width:42rem;margin:0 auto;position:relative}
@@ -331,6 +420,9 @@ html.dark .tile .demo{background:#0b1220}
 }
 .copy-btn:hover{color:var(--primary)}
 .run-note{margin-top:24px;text-align:center;font-size:15px;color:var(--on-surface-muted)}
+.tertiary-cta{margin-top:22px;text-align:center;font-size:14.5px;color:var(--on-surface)}
+.tertiary-cta a{color:var(--accent-text);text-decoration:none;font-weight:500}
+.tertiary-cta a:hover{text-decoration:underline}
 
 /* ---- Footer ---- */
 footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
@@ -347,7 +439,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;font-size:13px;color:var(--secondary)}
 .roadmap{list-style:none;display:flex;flex-direction:column;gap:9px}
 .roadmap li{font-size:14px;color:var(--on-surface);display:flex;gap:9px}
-.roadmap li .ph{font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+.roadmap li .ph{font-family:var(--mono);font-size:12px;color:var(--accent-text);flex:none}
 
 /* ---- Reveal on scroll ---- */
 .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
@@ -355,13 +447,28 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 
 @media (max-width:860px){
   .split,.tiles,.compare,.board3{grid-template-columns:1fr}
-  .cu{grid-template-columns:1fr}
-  .cu-merge .arr{transform:rotate(90deg)}
   .foot-grid{grid-template-columns:1fr}
+  /* contain pre/code so it scrolls inside its block instead of widening the page (mobile h-scroll fix) */
+  .split>*,.tiles>*,.compare>*,.board3>*,.foot-grid>*{min-width:0}
+  .code,.artifact{font-size:12.5px;min-width:0;overflow-x:auto}
+  .artifact .row{min-width:max-content}
+  #start-code{white-space:pre-wrap;overflow-wrap:anywhere}
 }
 @media (prefers-reduced-motion:reduce){
   *{transition:none!important}
   .reveal,.reset-line{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+}
+@media print{
+  html.dark{
+    --ink:#111827;--muted:#6B7280;--surface:#FFFFFF;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;
+    --on-surface:#374151;--line:#E5E7EB;--accent-from:#667EEA;--accent-to:#764BA2;--accent:#6366F1;
+    --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
+  }
+  *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  header.nav,.icon-btn,.seg,.copy-btn,#deck-viz .deck-frame{display:none!important}
+  .reveal,.reset-line{opacity:1!important;transform:none!important}
+  section{padding-block:32px}
 }
 </style>
 </head>
@@ -378,10 +485,9 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         GitHub
       </a>
       <a class="chip" href="#license" aria-label="MIT license">MIT</a>
-      <span class="chip status"><span class="chip-dot"></span><span data-lang="en">No external users yet</span><span data-lang="de">Noch keine externen Nutzer</span></span>
-      <div class="seg" role="group" aria-label="Language">
-        <button id="lang-en" aria-pressed="true">EN</button>
-        <button id="lang-de" aria-pressed="false">DE</button>
+      <div class="seg" role="group" aria-label="Language / Sprache">
+        <button id="lang-en" type="button" aria-pressed="true" title="Toggle language — press L">EN</button>
+        <button id="lang-de" type="button" aria-pressed="false" title="Sprache umschalten — Taste L">DE</button>
       </div>
       <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
         <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
@@ -391,40 +497,72 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   </div>
 </header>
 
-<!-- ======================= HERO ======================= -->
+<!-- ======================= HERO (split: copy left · deck-viz right) ======================= -->
 <section class="hero">
-  <div class="hero-pattern"></div>
-  <div class="hero-inner container">
-    <p class="eyebrow" data-lang="en">Plain markdown in git · read at session start</p>
-    <p class="eyebrow" data-lang="de">Plain Markdown in Git · gelesen bei Session-Start</p>
+  <div class="hero-grid container">
+    <div class="hero-copy">
+      <p class="eyebrow" data-lang="en">Plain markdown in git · read at session start</p>
+      <p class="eyebrow" data-lang="de">Plain Markdown in Git · gelesen bei Session-Start</p>
 
-    <h1 class="display" data-lang="en">Plain markdown in git your AI agent reads at session start — so context <span class="text-gradient">compounds</span> instead of restarting.</h1>
-    <h1 class="display" data-lang="de">Plain Markdown in Git, das dein KI-Agent bei Session-Start liest — damit Kontext <span class="text-gradient">wächst</span>, statt jedes Mal neu zu starten.</h1>
+      <h1 class="display" data-lang="en">Plain markdown in git your AI agent reads at session start — so context <span class="text-gradient">compounds</span> instead of restarting.</h1>
+      <h1 class="display" data-lang="de">Plain Markdown in Git, das dein KI-Agent bei Session-Start liest — damit Kontext <span class="text-gradient">wächst</span>, statt jedes Mal neu zu starten.</h1>
 
-    <p class="hero-sub" data-lang="en">open-bridge is a git repo of markdown and YAML — no database, no SaaS, nothing to host. Your coding agent reads it at the start of every session, so it already knows your repos, your clients, and how you work — independent of which model or frontend you run.</p>
-    <p class="hero-sub" data-lang="de">open-bridge ist ein Git-Repo aus Markdown und YAML — keine Datenbank, kein SaaS, nichts zu hosten. Dein Coding-Agent liest es zu Beginn jeder Session und kennt damit deine Repos, deine Kunden und deine Arbeitsweise — unabhängig davon, welches Modell oder Frontend du nutzt.</p>
+      <p class="hero-sub" data-lang="en">Stop re-explaining your repos, your clients, and your conventions every session. open-bridge is plain markdown and YAML in git that your coding agent reads at the start of every session — so it already knows your world, independent of which model or frontend you run. No database, no SaaS, nothing to host.</p>
+      <p class="hero-sub" data-lang="de">Hör auf, deinem Agenten in jeder Session deine Repos, Kunden und Konventionen neu zu erklären. open-bridge ist Plain-Markdown und YAML in Git, das dein Coding-Agent zu Beginn jeder Session liest — damit er deine Welt schon kennt, unabhängig davon, welches Modell oder Frontend du nutzt. Keine Datenbank, kein SaaS, nichts zu hosten.</p>
 
-    <div class="status-row">
-      <span class="status-pill"><span data-lang="en">Built at BKS-Lab · self-used (N=1)</span><span data-lang="de">Gebaut bei BKS-Lab · selbst genutzt (N=1)</span></span>
-      <span class="status-pill">MIT</span>
-      <span class="status-pill"><span data-lang="en">No external users yet</span><span data-lang="de">Noch keine externen Nutzer</span></span>
-      <span class="status-pill"><span data-lang="en">Public — no waitlist</span><span data-lang="de">Public — keine Warteliste</span></span>
+      <p class="honesty-strip">
+        <span data-lang="en">Public<span class="sep">·</span>MIT<span class="sep">·</span>clone &amp; read it yourself<span class="sep">·</span><b>self-used (N=1)</b></span>
+        <span data-lang="de">Public<span class="sep">·</span>MIT<span class="sep">·</span>selbst klonen &amp; lesen<span class="sep">·</span><b>selbst genutzt (N=1)</b></span>
+      </p>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#start">
+          <span data-lang="en">Quick start</span><span data-lang="de">Schnellstart</span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-secondary" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
+        </a>
+      </div>
+
+      <p class="beta-line"><span data-lang="en">Public and MIT — clone it, read it, run it. No waitlist, nothing to sign up for. Newly released, so expect rough edges and tell us where they are.</span><span data-lang="de">Public und MIT — klone es, lies es, nutze es. Keine Warteliste, nichts anzumelden. Frisch veröffentlicht — erwarte raue Kanten und sag uns, wo sie sind.</span></p>
     </div>
 
-    <div class="cta-row">
-      <a class="btn btn-primary" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
-        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
-      </a>
-      <a class="btn btn-secondary" href="#substrate">
-        <span data-lang="en">See it in plain text</span><span data-lang="de">Sieh es als Plain Text</span>
-        <span class="arrow">→</span>
-      </a>
+    <div class="hero-visual">
+      <!-- ============================================================
+           BRIDGE-DECK CANVAS (embedded from components/bridge-deck-viz.html)
+           Self-contained Canvas 2D. Deck palette is a SCOPED EXCEPTION,
+           confined to this <figure> (like terminal traffic-light dots).
+           ============================================================ -->
+      <figure id="deck-viz" aria-labelledby="deck-cap-text" style="margin:0;padding:0;--deck-bg:#0a0e14;--deck-edge:#1c2433">
+        <div class="deck-frame">
+          <canvas id="deck-canvas" role="img"
+            aria-label="A stylised pixel-art agent office: a coordinator at the helm on the captain's bridge, three crew members (code-analyst, deploy-engineer, ops-officer) working in department rooms, and two client desks (bigcorp, startupxyz).">
+          </canvas>
+          <p class="deck-sr">
+            <span data-lang="en">Generic example crew on a pixel-art bridge deck: a coordinator at the helm, a code-analyst, a deploy-engineer and an ops-officer at their stations, plus client desks for bigcorp and startupxyz. Animation is decorative.</span>
+            <span data-lang="de">Generische Beispiel-Crew auf einem Pixel-Art-Bridge-Deck: ein Koordinator am Steuerstand, ein Code-Analyst, ein Deploy-Engineer und ein Ops-Officer an ihren Stationen, dazu Kunden-Tische für bigcorp und startupxyz. Die Animation ist dekorativ.</span>
+          </p>
+        </div>
+        <figcaption class="deck-cap" id="deck-cap-text">
+          <span data-lang="en"><b>Illustrative</b> — generic example crew (code-analyst, deploy-engineer, ops-officer, coordinator) over example clients (bigcorp, startupxyz). The agent reads the bridge, writes one log row, and re-reads it next session.</span>
+          <span data-lang="de"><b>Illustrativ</b> — generische Beispiel-Crew (code-analyst, deploy-engineer, ops-officer, coordinator) über Beispiel-Kunden (bigcorp, startupxyz). Der Agent liest die Bridge, schreibt eine Log-Zeile und liest sie in der nächsten Session wieder.</span>
+        </figcaption>
+        <div class="deck-legend" aria-hidden="true">
+          <span><i style="background:#10f5b3"></i><span data-lang="en">working</span><span data-lang="de">arbeitet</span></span>
+          <span><i style="background:#67e8f9"></i><span data-lang="en">idle</span><span data-lang="de">bereit</span></span>
+          <span><i style="background:#a78bfa"></i><span data-lang="en">break</span><span data-lang="de">Pause</span></span>
+          <span><i style="background:#ef4444"></i><span data-lang="en">offline</span><span data-lang="de">offline</span></span>
+        </div>
+      </figure>
+
+      <p class="seam-cap">
+        <span class="tag" data-lang="en">illustrative</span><span class="tag" data-lang="de">illustrativ</span>
+        <span data-lang="en">Pretty — but it is just files in git. <a href="#substrate">Look →</a></span>
+        <span data-lang="de">Schön — aber es sind nur Dateien in Git. <a href="#substrate">Schau →</a></span>
+      </p>
     </div>
-
-    <p class="beta-line"><span data-lang="en">Public and MIT — clone it, read it, run it. No waitlist, nothing to sign up for. Newly released, so expect rough edges and tell us where they are.</span><span data-lang="de">Public und MIT — klone es, lies es, nutze es. Keine Warteliste, nichts anzumelden. Frisch veröffentlicht — erwarte raue Kanten und sag uns, wo sie sind.</span></p>
-
-    <div class="mono-chip" aria-hidden="true"><span class="prompt">$</span> cat work/log.md</div>
   </div>
 </section>
 
@@ -507,21 +645,26 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 └── <span class="dir">.claude/agents/</span>          <span class="cmt"># ops-officer, code-analyst …</span></div>
 
         <div style="height:24px"></div>
-        <div class="code-label"><span>work/tasks/bigcorp-checkout/STATUS.md</span><span data-lang="en">illustrative shape</span><span data-lang="de">illustrative Form</span></div>
-        <div class="code"><span class="k">slug:</span> bigcorp-checkout
-<span class="k">type:</span> bug
-<span class="k">status:</span> doing
-<span class="k">priority:</span> P1
-<span class="k">created:</span> 2026-06-18
-<span class="k">last_updated:</span> 2026-06-20
-<span class="k">sync:</span>
-  <span class="k">github:</span> { project: bigcorp, status: "In Progress" }</div>
+
+        <!-- Verbatim README STATUS.md (README lines 84-89) -->
+        <div class="code-label"><span>work/tasks/bigcorp-migration/STATUS.md</span><span data-lang="en">verbatim from the README</span><span data-lang="de">wortgetreu aus dem README</span></div>
+        <div class="artifact" aria-label="STATUS.md, the shape a task takes">
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="cmt"># STATUS — bigcorp-migration</span></span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">status:</span> doing</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">context:</span> bigcorp</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">last:</span> Migrated the invoice pipeline to the new schema; one test still red.</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">next:</span> Fix the failing UBL-validation case, then open the PR.</span></div>
+        </div>
 
         <div style="height:24px"></div>
+
+        <!-- Verbatim README log row (README line 92) — the same row the hero canvas types -->
         <div class="code-label"><span>work/log.md</span><span>$ cat work/log.md</span></div>
-        <div class="code"><span class="cmt">## Fri 20.06</span>
-| <span class="k">14:02</span> | bug   | bigcorp | Checkout 500 traced to stale VAT cache; patched + logged |
-| <span class="k">15:18</span> | comm  | startupxyz | Drafted handover note — sender = you, not auto-sent |</div>
+        <div class="artifact" aria-label="A work-log row, diff-able plain text">
+          <div class="row"><span class="gut"> </span><span class="ln"><span class="cmt">## Fri 20.06</span></span></div>
+          <div class="row hl"><span class="gut"> </span><span class="ln">| <span class="tm">14:22</span> | <span class="k">Decision</span> | <span class="who">bigcorp</span> | Pinned the schema to v2 — v3 breaks the old exports. |</span></div>
+        </div>
+        <p class="verbatim-note"><span data-lang="en">That row is in the repo six months from now, in a diff, readable by any agent. (Copied character-exact from the README.)</span><span data-lang="de">Diese Zeile steht in sechs Monaten noch im Repo, in einem Diff, lesbar von jedem Agenten. (Zeichengenau aus dem README.)</span></p>
       </div>
 
       <div class="card" style="display:flex;flex-direction:column;justify-content:center">
@@ -529,14 +672,147 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         <h3 class="h3" data-lang="de">Was du heute schreibst, liest es in sechs Monaten.</h3>
         <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65" data-lang="en">Agents can <code>cat</code> a file, but they can't hold an API key. Because the whole thing is plain text in git, there is no migration, no second app, no proprietary store to outlive. It is inspectable, diff-able, and yours.</p>
         <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65" data-lang="de">Agenten können eine Datei <code>cat</code>ten, aber keinen API-Key halten. Weil das Ganze Plain Text in Git ist, gibt es keine Migration, keine zweite App, keinen proprietären Speicher, der überleben müsste. Es ist einsehbar, diff-bar und deins.</p>
-        <div class="status-row" style="justify-content:flex-start;margin-top:26px">
-          <span class="status-pill" data-lang="en">no database</span><span class="status-pill" data-lang="de">keine Datenbank</span>
-          <span class="status-pill" data-lang="en">no SaaS</span><span class="status-pill" data-lang="de">kein SaaS</span>
-          <span class="status-pill" data-lang="en">no daemon</span><span class="status-pill" data-lang="de">kein Daemon</span>
+        <p style="margin-top:18px;font-size:15px;line-height:1.6" data-lang="en">You watched that row get written on the bridge deck above. Here it is for real — and below, day two reads it back.</p>
+        <p style="margin-top:18px;font-size:15px;line-height:1.6" data-lang="de">Du hast gesehen, wie diese Zeile oben auf dem Bridge-Deck geschrieben wurde. Hier ist sie echt — und unten liest Tag zwei sie wieder.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:24px">
+          <span class="chip" data-lang="en">no database</span><span class="chip" data-lang="de">keine Datenbank</span>
+          <span class="chip" data-lang="en">no SaaS</span><span class="chip" data-lang="de">kein SaaS</span>
+          <span class="chip" data-lang="en">no daemon</span><span class="chip" data-lang="de">kein Daemon</span>
         </div>
         <p class="cap muted" style="margin-top:24px;font-size:13px" data-lang="en">A fresh clone starts mostly empty. <code>examples/agency/</code> ships a complete configuration to read; the <code>STATUS</code> and log above show the shape your <code>work/</code> takes as you fill it.</p>
         <p class="cap muted" style="margin-top:24px;font-size:13px" data-lang="de">Ein frischer Clone startet weitgehend leer. <code>examples/agency/</code> liefert eine vollständige Konfiguration zum Lesen; der <code>STATUS</code> und das Log oben zeigen die Form, die dein <code>work/</code> annimmt, während du es füllst.</p>
       </div>
+    </div>
+
+    <!-- ===== COMPOUNDING MICRO-DIAGRAM (mechanic.html, embedded) ===== -->
+    <div class="reveal" style="margin-top:72px">
+      <!-- ============================== EMBED START (mechanic) ============================== -->
+      <section id="mechanic-viz" aria-labelledby="mv-title">
+        <div class="mv-head">
+          <p class="mv-eyebrow">
+            <span data-lang="en">How it works</span><span data-lang="de">So funktioniert es</span>
+          </p>
+          <h2 class="mv-title" id="mv-title">
+            <span data-lang="en">At session start the agent reads the substrate — and the record <span class="grad">compounds</span>.</span>
+            <span data-lang="de">Bei Session-Start liest der Agent das Substrat — und der Datensatz <span class="grad">wächst</span>.</span>
+          </h2>
+          <p class="mv-sub">
+            <span data-lang="en">Plain text in git. The agent reads it before answering, then writes back what happened — so day two starts where day one ended.</span>
+            <span data-lang="de">Plain Text in Git. Der Agent liest es, bevor er antwortet, und schreibt zurück, was passiert ist — Tag zwei beginnt dort, wo Tag eins aufhörte.</span>
+          </p>
+        </div>
+
+        <div class="mv-stage">
+          <!-- LEFT: read the substrate -->
+          <div class="mv-panel" aria-label="Substrate read at session start">
+            <div class="mv-panel-h">
+              <span class="dot" aria-hidden="true"></span>
+              <span data-lang="en">Session start · read</span><span data-lang="de">Session-Start · gelesen</span>
+            </div>
+            <div class="mv-files">
+              <div class="mv-file" data-step="0"><span class="glyph" aria-hidden="true">▸</span>CLAUDE.md<span class="meta">2.1 KB</span></div>
+              <div class="mv-file" data-step="1"><span class="glyph" aria-hidden="true">▸</span>ecosystem.yaml<span class="meta">1.4 KB</span></div>
+              <div class="mv-file" data-step="2"><span class="glyph" aria-hidden="true">▸</span>work/board.md<span class="meta">0.8 KB</span></div>
+              <div class="mv-file" data-step="3"><span class="glyph" aria-hidden="true">▸</span>work/log.md<span class="meta">3.6 KB</span></div>
+            </div>
+            <div style="font:400 13px/1.5 var(--font-mono); color:var(--muted); border-top:1px solid var(--line); padding-top:12px;">
+              STATUS.md
+              <div style="margin-top:6px; color:var(--on-surface)">
+                status: <span style="color:var(--accent-text)">doing</span><br>
+                context: bigcorp<br>
+                owner: ops-officer
+              </div>
+            </div>
+          </div>
+
+          <!-- BRIDGE: flow of comprehension -->
+          <div class="mv-bridge" aria-hidden="true">
+            <svg viewBox="0 0 40 120">
+              <defs>
+                <linearGradient id="mvGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="var(--accent-from)"/>
+                  <stop offset="1" stop-color="var(--accent-to)"/>
+                </linearGradient>
+              </defs>
+              <path class="rail" d="M20 6 V114"/>
+              <path class="flow" d="M20 6 V114"/>
+              <circle class="pip" cx="20" cy="60" r="3.5"/>
+              <path d="M14 106 L20 114 L26 106" class="rail"/>
+            </svg>
+          </div>
+
+          <!-- RIGHT: the record that compounds -->
+          <div class="mv-panel" aria-label="The record the agent writes back">
+            <div class="mv-panel-h">
+              <span class="dot" aria-hidden="true"></span>
+              <span data-lang="en">work/log.md · written back</span><span data-lang="de">work/log.md · zurückgeschrieben</span>
+            </div>
+            <div class="mv-log">
+              <div class="mv-row" style="--d:0">
+                <span class="t">| 09:14 |</span> <span class="k">Decision</span> <span class="who">bigcorp</span> | scoped the inbound pipeline
+              </div>
+              <div class="mv-row" style="--d:1">
+                <span class="t">| 11:02 |</span> <span class="k">Fix</span> <span class="who">startupxyz</span> | retry on 429, backoff added
+              </div>
+              <!-- the verbatim README row — re-read on day two -->
+              <div class="mv-row fresh" style="--d:2">
+                <span class="t">| 14:22 |</span> <span class="k">Decision</span> <span class="who">bigcorp</span> | Pinned the schema to v2 — v3 breaks the old exports.
+              </div>
+            </div>
+
+            <div class="mv-panel-h" style="margin-top:4px">
+              <span class="dot" aria-hidden="true"></span>
+              <span data-lang="en">work/board.md</span><span data-lang="de">work/board.md</span>
+            </div>
+            <div class="mv-board">
+              <div class="mv-col">
+                <div class="mv-col-h"><span>backlog</span><span>1</span></div>
+                <div class="mv-card" style="--d:3">webhook auth</div>
+              </div>
+              <div class="mv-col">
+                <div class="mv-col-h"><span>doing</span><span>1</span></div>
+                <div class="mv-card" style="--d:4">inbound pipe</div>
+              </div>
+              <div class="mv-col">
+                <div class="mv-col-h"><span>review</span><span>1</span></div>
+                <div class="mv-card" style="--d:5">retry/backoff</div>
+              </div>
+              <div class="mv-col">
+                <div class="mv-col-h"><span>done</span><span>1</span></div>
+                <div class="mv-card done" style="--d:6">env bootstrap</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Day payoff -->
+        <div class="mv-days">
+          <div class="mv-day-chip">
+            <div class="num">1</div>
+            <p>
+              <span class="lab"><span data-lang="en">Day one</span><span data-lang="de">Tag eins</span></span>
+              <span data-lang="en">You explain the world once. The agent writes it down as it works.</span>
+              <span data-lang="de">Du erklärst die Welt einmal. Der Agent schreibt sie auf, während er arbeitet.</span>
+            </p>
+          </div>
+          <div class="mv-day-chip now">
+            <div class="num">2</div>
+            <p>
+              <span class="lab"><span data-lang="en">Day two</span><span data-lang="de">Tag zwei</span></span>
+              <span data-lang="en">It reads the record at start — and already knows your repos, clients and last decisions.</span>
+              <span data-lang="de">Er liest den Datensatz beim Start — und kennt schon deine Repos, Kunden und letzten Entscheidungen.</span>
+            </p>
+          </div>
+        </div>
+
+        <div class="mv-replay">
+          <button type="button" id="mvReplay">
+            <span aria-hidden="true">↻</span>
+            <span data-lang="en">Replay</span><span data-lang="de">Erneut abspielen</span>
+          </button>
+        </div>
+      </section>
+      <!-- =============================== EMBED END (mechanic) =============================== -->
     </div>
   </div>
 </section>
@@ -550,41 +826,40 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       <h2 class="h1" data-lang="en">Two properties, named at BKS-Lab.</h2>
       <h2 class="h1" data-lang="de">Zwei Eigenschaften, bei BKS-Lab benannt.</h2>
       <p data-lang="en">Both terms were coined by the team at BKS-Lab. The English view translates them plainly; the German view carries them verbatim.</p>
-      <p data-lang="de">Beide Begriffe wurden im Team bei BKS-Lab geprägt — hier in Originalform.</p>
+      <p data-lang="de">Beide Begriffe wurden im Team bei BKS-Lab geprägt. Die englische Ansicht übersetzt sie schlicht; die deutsche trägt sie wortgetreu.</p>
     </div>
 
     <div class="tiles">
-      <!-- Tile 1 -->
+      <!-- Tile 1 — helm / scan motif (page-chrome tokens, flat) -->
       <div class="tile reveal">
-        <svg class="tile-icon" viewBox="0 0 100 100" aria-hidden="true">
-          <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#9333EA"/></linearGradient></defs>
-          <circle cx="50" cy="50" r="42" fill="none" stroke="url(#g1)" stroke-width="7"/>
-          <circle cx="50" cy="50" r="9" fill="url(#g1)"/>
+        <svg class="tile-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="24" cy="24" r="16"/>
+          <circle cx="24" cy="24" r="4" fill="currentColor" stroke="none"/>
+          <path d="M24 8v6M24 34v6M8 24h6M34 24h6M12.7 12.7l4.2 4.2M31.1 31.1l4.2 4.2M35.3 12.7l-4.2 4.2M16.9 31.1l-4.2 4.2"/>
         </svg>
         <h3><span data-lang="en">Context Booster</span><span class="coined" data-lang="de">Context Booster</span></h3>
         <p class="attrib" data-lang="en">An independent context layer beside your model and your tool — coined "Context Booster" at BKS-Lab.</p>
-        <p class="attrib" data-lang="de">Eine modell- und frontend-unabhängige „dritte Seite" — geprägt bei BKS-Lab.</p>
+        <p class="attrib" data-lang="de">Eine modell- und frontend-unabhängige „dritte Seite" — als „Context Booster" geprägt bei BKS-Lab.</p>
         <p data-lang="en">You work with whatever model and whatever frontend you like. open-bridge layers in persistent context about your world — your repos and clients, your machines, what you worked on yesterday — so the agent stops asking "GitHub or Jira?" and stops loading the wrong client. The boost comes from a third side that doesn't care what you run, because the substrate is plain text every runtime can read.</p>
-        <p data-lang="de">Du arbeitest mit dem Modell und dem Frontend, das du willst. open-bridge legt persistenten Kontext über deine Welt darüber — deine Repos und Kunden, deine Maschinen, woran du gestern gearbeitet hast — damit der Agent aufhört zu fragen „GitHub oder Jira?" und aufhört, den falschen Kunden zu laden. „Ein System, das mir von dritter Seite, unabhängig davon was ich gerade mache, einen Kontext gibt, der in jedem Fall hilfreich ist."</p>
+        <p data-lang="de">Du arbeitest mit dem Modell und dem Frontend, das du willst. open-bridge legt persistenten Kontext über deine Welt darüber — deine Repos und Kunden, deine Maschinen, woran du gestern gearbeitet hast — damit der Agent aufhört zu fragen „GitHub oder Jira?" und aufhört, den falschen Kunden zu laden. Der Boost kommt von einer dritten Seite, der egal ist, was du nutzt — weil das Substrat Plain Text ist, den jede Runtime lesen kann.</p>
         <div class="demo" aria-hidden="true">$ good morning, briefing
 → board · today's git activity · what's stale
 → already knows: which repos, which client, last week</div>
       </div>
 
-      <!-- Tile 2 -->
+      <!-- Tile 2 — four-room / filing grid motif -->
       <div class="tile reveal">
-        <svg class="tile-icon" viewBox="0 0 100 100" aria-hidden="true">
-          <defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9333EA"/><stop offset="1" stop-color="#4F46E5"/></linearGradient></defs>
-          <rect x="14" y="14" width="34" height="34" rx="5" fill="url(#g2)"/>
-          <rect x="52" y="14" width="34" height="34" rx="5" fill="none" stroke="url(#g2)" stroke-width="6"/>
-          <rect x="14" y="52" width="34" height="34" rx="5" fill="none" stroke="url(#g2)" stroke-width="6"/>
-          <rect x="52" y="52" width="34" height="34" rx="5" fill="url(#g2)"/>
+        <svg class="tile-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+          <rect x="7" y="7" width="14" height="14" rx="2" fill="currentColor" stroke="none"/>
+          <rect x="27" y="7" width="14" height="14" rx="2"/>
+          <rect x="7" y="27" width="14" height="14" rx="2"/>
+          <rect x="27" y="27" width="14" height="14" rx="2" fill="currentColor" stroke="none"/>
         </svg>
-        <h3><span data-lang="en">KI-Chaos-Bändiger <span style="font-size:0.62em;font-weight:400;color:var(--secondary)">(AI-chaos tamer)</span></span><span class="coined" data-lang="de">KI-Chaos-Bändiger</span></h3>
-        <p class="attrib" data-lang="en">Structuring unstructured AI dialogues — coined at BKS-Lab.</p>
-        <p class="attrib" data-lang="de">„Strukturierung von unstrukturierten KI-Dialogen" — geprägt bei BKS-Lab.</p>
-        <p data-lang="en">open-bridge ships ready-made example structures, so you don't invent your own filing chaos. The Task-Management system — a board, a log, and per-task status (<code>backlog → doing → review → done</code>) over <code>tasks/</code> and <code>streams/</code> — is the concrete instance: unstructured agent sessions become a persistent, filed, compounding record.</p>
-        <p data-lang="de">open-bridge liefert fertige Beispielstrukturen mit, damit du nicht dein eigenes Ablage-Chaos erfindest. Das Task-Management — ein Board, ein Log und Per-Task-Status (<code>backlog → doing → review → done</code>) über <code>tasks/</code> und <code>streams/</code> — ist die konkrete Ausprägung: aus unstrukturierten Agenten-Sessions wird ein persistentes, abgelegtes, wachsendes Protokoll.</p>
+        <h3><span data-lang="en">Chaos Tamer</span><span class="coined" data-lang="de">Chaos Tamer</span></h3>
+        <p class="attrib" data-lang="en">Structuring unstructured AI dialogues — coined at BKS-Lab (originally „KI-Chaos-Bändiger").</p>
+        <p class="attrib" data-lang="de">„Strukturierung unstrukturierter KI-Dialoge" — geprägt bei BKS-Lab als „KI-Chaos-Bändiger".</p>
+        <p data-lang="en">open-bridge ships ready-made structure you don't have to invent — and helps you keep it. It holds a structure (a board, a log, per-task status <code>backlog → doing → review → done</code> over <code>tasks/</code> and <code>streams/</code>), files away knowledge as you work — decisions, findings and status land in plain text the agent reads back — and keeps the work from drifting into another My-Documents pile. Unstructured agent sessions become a persistent, filed, compounding record.</p>
+        <p data-lang="de">open-bridge liefert fertige Struktur mit, die du nicht erfinden musst — und hilft dir, sie zu halten. Es hält eine Struktur (ein Board, ein Log, Per-Task-Status <code>backlog → doing → review → done</code> über <code>tasks/</code> und <code>streams/</code>), legt Wissen ab, während du arbeitest — Entscheidungen, Erkenntnisse und Status landen als Plain Text, den der Agent später wieder liest — und bewahrt die Arbeit davor, in den nächsten My-Documents-Haufen abzudriften. Aus unstrukturierten Agenten-Sessions wird ein persistentes, abgelegtes, wachsendes Protokoll.</p>
         <div class="demo" aria-hidden="true">work/board.md
   Doing (2) · bigcorp-checkout · startupxyz-handover
   Streams (1) · infra-hardening
@@ -694,39 +969,51 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       <p data-lang="de">Dein angesammelter Kontext kollidiert nie mit mitgelieferten Templates — Updates mergen konfliktfrei, und deine Daten bleiben privat.</p>
     </div>
 
-    <div class="cu reveal">
-      <div class="cu-node">
-        <span class="lbl">user/&lt;you&gt;</span>
-        <h4 class="h4" data-lang="en">Your context (USER)</h4>
-        <h4 class="h4" data-lang="de">Dein Kontext (USER)</h4>
-        <ul>
-          <li>bridge-config.yaml · ecosystem.yaml</li>
-          <li data-lang="en">work/ · personas · accounts</li>
-          <li data-lang="de">work/ · Personas · Accounts</li>
-          <li data-lang="en">private, never on the shared branch</li>
-          <li data-lang="de">privat, nie auf dem geteilten Branch</li>
-        </ul>
-      </div>
-      <div class="cu-merge">
-        <span class="arr">⤞</span>
-        <span data-lang="en">conflict-free<br>merge</span>
-        <span data-lang="de">konfliktfreier<br>Merge</span>
-        <span class="arr">⤝</span>
-      </div>
-      <div class="cu-node">
-        <span class="lbl">main (CORE)</span>
-        <h4 class="h4" data-lang="en">Shipped templates (CORE)</h4>
-        <h4 class="h4" data-lang="de">Mitgelieferte Templates (CORE)</h4>
-        <ul>
-          <li data-lang="en">skills, docs, schemas</li>
-          <li data-lang="de">Skills, Docs, Schemas</li>
-          <li data-lang="en">standing orders, examples</li>
-          <li data-lang="de">Standing Orders, Examples</li>
-          <li data-lang="en">pull updates anytime</li>
-          <li data-lang="de">jederzeit Updates ziehen</li>
-        </ul>
-      </div>
+    <!-- Disjoint-tracks → conflict-free merge (page-chrome tokens, animated dashoffset) -->
+    <div class="diagram-frame reveal" role="img"
+         aria-label="Two git tracks over disjoint file paths: the user branch carries bridge-config, work/, personas and accounts; the CORE branch carries skills, docs, schemas and examples. Because the paths never overlap, the two merge without conflict, and a single scope:core file is promoted upstream.">
+      <svg viewBox="0 0 640 280" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="dgGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="var(--accent-from)"/>
+            <stop offset="1" stop-color="var(--accent-to)"/>
+          </linearGradient>
+        </defs>
+
+        <!-- USER box -->
+        <rect class="dg-box" x="16" y="40" width="190" height="92" rx="10"/>
+        <text class="dg-mono" x="30" y="62" fill="var(--accent-text)">user/&lt;you&gt;</text>
+        <text class="dg-lbl" x="30" y="82"><tspan data-lang="en">Your context (USER)</tspan><tspan data-lang="de">Dein Kontext (USER)</tspan></text>
+        <text class="dg-sub" x="30" y="102">bridge-config · work/</text>
+        <text class="dg-sub" x="30" y="118">personas · accounts</text>
+
+        <!-- CORE box -->
+        <rect class="dg-box" x="16" y="160" width="190" height="92" rx="10"/>
+        <text class="dg-mono" x="30" y="182" fill="var(--accent-secondary)">main (CORE)</text>
+        <text class="dg-lbl" x="30" y="202"><tspan data-lang="en">Shipped templates (CORE)</tspan><tspan data-lang="de">Mitgelieferte Templates (CORE)</tspan></text>
+        <text class="dg-sub" x="30" y="222">skills · docs · schemas</text>
+        <text class="dg-sub" x="30" y="238">standing orders · examples</text>
+
+        <!-- tracks: disjoint lanes converging -->
+        <path class="dg-track" d="M206 86 H360"/>
+        <path class="dg-track" d="M206 206 H360"/>
+        <path class="dg-flow user" d="M206 86 C300 86 320 146 392 146"/>
+        <path class="dg-flow core" d="M206 206 C300 206 320 146 392 146"/>
+
+        <!-- merge node -->
+        <circle class="dg-merge" cx="412" cy="146" r="26"/>
+        <path d="M401 146 l8 8 l14 -16" fill="none" stroke="var(--accent-text)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <text class="dg-cap" x="412" y="200" text-anchor="middle"><tspan data-lang="en">conflict-free merge</tspan><tspan data-lang="de">konfliktfreier Merge</tspan></text>
+        <text class="dg-sub" x="412" y="216" text-anchor="middle"><tspan data-lang="en">paths never overlap</tspan><tspan data-lang="de">Pfade überlappen nie</tspan></text>
+
+        <!-- /promote one core file upstream -->
+        <path class="dg-flow promote" d="M438 132 C500 96 540 96 588 96"/>
+        <rect class="dg-box" x="498" y="50" width="126" height="40" rx="8"/>
+        <text class="dg-mono" x="561" y="68" text-anchor="middle" fill="var(--accent-text)">/promote</text>
+        <text class="dg-sub" x="561" y="82" text-anchor="middle"><tspan data-lang="en">scope:core → upstream</tspan><tspan data-lang="de">scope:core → upstream</tspan></text>
+      </svg>
     </div>
+
     <p class="cu-foot"><span data-lang="en">CORE and USER touch different paths, so merges never conflict. Contribute improvements upstream with <code>/promote</code> — promote-routing depth lives in the docs.</span><span data-lang="de">CORE und USER berühren verschiedene Pfade, deshalb kollidieren Merges nie. Verbesserungen mit <code>/promote</code> nach upstream beitragen — die Promote-Routing-Tiefe steht in den Docs.</span></p>
   </div>
 </section>
@@ -743,14 +1030,52 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       <p data-lang="de">Skills sind die Verben über dem Substrat — modell-unabhängig per Design. Ehrlich gekennzeichnet: getestet, wo wir es betreiben, anderswo ungetestet.</p>
     </div>
 
-    <div class="runtimes reveal">
-      <span class="rt">Claude Code <span class="st tested" data-lang="en">tested</span><span class="st tested" data-lang="de">getestet</span></span>
-      <span class="rt">Codex <span class="st" data-lang="en">via AGENTS.md + skills symlink</span><span class="st" data-lang="de">via AGENTS.md + Skills-Symlink</span></span>
-      <span class="rt">Copilot CLI <span class="st" data-lang="en">via AGENTS.md + skills symlink</span><span class="st" data-lang="de">via AGENTS.md + Skills-Symlink</span></span>
-      <span class="rt">Gemini <span class="st untested" data-lang="en">untested</span><span class="st untested" data-lang="de">ungetestet</span></span>
-      <span class="rt">Cursor <span class="st untested" data-lang="en">untested</span><span class="st untested" data-lang="de">ungetestet</span></span>
-      <span class="rt">Windsurf <span class="st untested" data-lang="en">untested</span><span class="st untested" data-lang="de">ungetestet</span></span>
+    <!-- One skills/ tree → three symlinks → runtimes (page-chrome tokens, animated edges) -->
+    <div class="diagram-frame reveal" role="img"
+         aria-label="One skills/ folder fans out via three symlinks — .claude/skills, .agents/skills and .github/skills — into the runtimes that read them. Claude Code is tested. Codex and Copilot CLI work via AGENTS.md and the skills symlink. Gemini, Cursor and Windsurf are untested.">
+      <svg viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet">
+        <!-- hub -->
+        <rect class="rt-hub" x="20" y="128" width="150" height="64" rx="12"/>
+        <text class="rt-hublbl" x="95" y="156" text-anchor="middle">skills/</text>
+        <text class="rt-symlbl" x="95" y="176" text-anchor="middle"><tspan data-lang="en">one tree</tspan><tspan data-lang="de">ein Baum</tspan></text>
+
+        <!-- symlink edges to three discovery paths -->
+        <path class="rt-edge" d="M170 150 C230 90 250 70 300 64"/>
+        <path class="rt-edge" d="M170 160 C240 160 250 160 300 160"/>
+        <path class="rt-edge" d="M170 170 C230 230 250 250 300 256"/>
+
+        <text class="rt-symlbl rt-edgelbl" x="234" y="74" text-anchor="middle">.claude/skills</text>
+        <text class="rt-symlbl rt-edgelbl" x="234" y="150" text-anchor="middle">.agents/skills</text>
+        <text class="rt-symlbl rt-edgelbl" x="234" y="244" text-anchor="middle">.github/skills</text>
+
+        <!-- runtime pills (6) -->
+        <!-- tested -->
+        <rect class="rt-pill" x="300" y="44" width="320" height="40" rx="20"/>
+        <text class="rt-name" x="318" y="69">Claude Code</text>
+        <text class="rt-state tested" x="604" y="69" text-anchor="end"><tspan data-lang="en">tested</tspan><tspan data-lang="de">getestet</tspan></text>
+
+        <rect class="rt-pill" x="300" y="92" width="320" height="40" rx="20"/>
+        <text class="rt-name" x="318" y="117">Codex</text>
+        <text class="rt-state via" x="604" y="117" text-anchor="end"><tspan data-lang="en">via AGENTS.md + symlink</tspan><tspan data-lang="de">via AGENTS.md + Symlink</tspan></text>
+
+        <rect class="rt-pill" x="300" y="140" width="320" height="40" rx="20"/>
+        <text class="rt-name" x="318" y="165">Copilot CLI</text>
+        <text class="rt-state via" x="604" y="165" text-anchor="end"><tspan data-lang="en">via AGENTS.md + symlink</tspan><tspan data-lang="de">via AGENTS.md + Symlink</tspan></text>
+
+        <rect class="rt-pill" x="300" y="188" width="320" height="40" rx="20"/>
+        <text class="rt-name" x="318" y="213">Gemini</text>
+        <text class="rt-state untested" x="604" y="213" text-anchor="end"><tspan data-lang="en">untested</tspan><tspan data-lang="de">ungetestet</tspan></text>
+
+        <rect class="rt-pill" x="300" y="236" width="320" height="40" rx="20"/>
+        <text class="rt-name" x="318" y="261">Cursor</text>
+        <text class="rt-state untested" x="604" y="261" text-anchor="end"><tspan data-lang="en">untested</tspan><tspan data-lang="de">ungetestet</tspan></text>
+
+        <rect class="rt-pill" x="300" y="284" width="320" height="40" rx="20"/>
+        <text class="rt-name" x="318" y="309">Windsurf</text>
+        <text class="rt-state untested" x="604" y="309" text-anchor="end"><tspan data-lang="en">untested</tspan><tspan data-lang="de">ungetestet</tspan></text>
+      </svg>
     </div>
+
     <p class="rt-foot muted"><span data-lang="en">No logos as proof, no skill-count as a selling point — the agnosticism is the claim.</span><span data-lang="de">Keine Logos als Beweis, keine Skill-Anzahl als Verkaufsargument — die Unabhängigkeit ist die Aussage.</span></p>
   </div>
 </section>
@@ -768,10 +1093,11 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     <div class="reveal">
       <div class="code" id="start-code"><button class="copy-btn" id="copy-start" type="button">copy</button>git clone https://github.com/bks-lab/open-bridge.git
 cd open-bridge
-./bin/setup        <span class="cmt"># macOS / Linux / WSL</span>
-<span class="cmt"># then, in Claude Code:</span>
+./bin/setup        <span class="cmt"># macOS / Linux / WSL — Windows: ./bin/setup.ps1</span>
+<span class="cmt"># then start the guided onboarding in Claude Code:</span>
 /bridge-onboard</div>
-      <p class="run-note"><span data-lang="en">Scaffolds a running, empty workspace in minutes — value compounds as you log work. Windows symlink notes and the cross-tool setup detail live in the docs, not on this page.</span><span data-lang="de">Stellt in Minuten einen laufenden, leeren Workspace bereit — der Wert wächst, während du Arbeit protokollierst. Windows-Symlink-Hinweise und das Cross-Tool-Setup stehen in den Docs, nicht auf dieser Seite.</span></p>
+      <p class="run-note"><span data-lang="en"><code>./bin/setup</code> wires the cross-tool symlinks; then run <code>/bridge-onboard</code> — the guided onboarding walks ecosystem detection, work-system config, and your own <code>user/{name}</code> branch. You get a running, empty workspace in minutes; the value compounds as you log real work. Windows symlink notes and cross-tool setup detail live in the docs.</span><span data-lang="de"><code>./bin/setup</code> legt die Cross-Tool-Symlinks an; danach <code>/bridge-onboard</code> ausführen — das geführte Onboarding führt durch Ecosystem-Erkennung, Work-System-Konfiguration und deinen eigenen <code>user/{name}</code>-Branch. In Minuten hast du einen laufenden, leeren Workspace; der Wert wächst, während du echte Arbeit protokollierst. Windows-Symlink-Hinweise und Cross-Tool-Setup stehen in den Docs.</span></p>
+      <p class="tertiary-cta"><span data-lang="en">Found a rough edge? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Open an issue</a> — the most useful thing you can do right now.</span><span data-lang="de">Eine raue Kante gefunden? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Öffne ein Issue</a> — das Nützlichste, was du gerade tun kannst.</span></p>
     </div>
   </div>
 </section>
@@ -821,6 +1147,201 @@ cd open-bridge
   </div>
 </footer>
 
+<!-- ============================================================
+     Scoped CSS for the two embedded components (deck + mechanic).
+     ============================================================ -->
+<style>
+/* ---- #deck-viz (bridge-deck canvas) — scoped ---- */
+#deck-viz .deck-frame{
+  position:relative; width:100%; border-radius:14px; overflow:hidden;
+  background:var(--deck-bg);
+  border:1px solid var(--line);
+  box-shadow:var(--shadow-soft);
+}
+html.dark #deck-viz .deck-frame{ border-color:#374151; }
+#deck-viz canvas{ display:block; width:100%; height:auto; }
+#deck-viz .deck-cap{
+  display:flex; gap:8px; align-items:baseline; flex-wrap:wrap;
+  margin-top:12px; font-size:13px; line-height:1.5; color:var(--muted);
+}
+#deck-viz .deck-cap b{ color:var(--ink); font-weight:600; }
+#deck-viz .deck-legend{
+  display:flex; gap:14px; flex-wrap:wrap; margin-top:10px;
+  font-size:12px; color:var(--muted);
+}
+#deck-viz .deck-legend > span{ display:inline-flex; align-items:center; gap:6px; }
+#deck-viz .deck-legend i{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+/* inner per-language labels toggle (override the .deck-legend>span layout rule) */
+#deck-viz .deck-legend span[data-lang]{ display:none; }
+html[data-active-lang="en"] #deck-viz .deck-legend span[data-lang="en"],
+html[data-active-lang="de"] #deck-viz .deck-legend span[data-lang="de"]{ display:inline; }
+#deck-viz .deck-sr{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0 0 0 0); white-space:nowrap; border:0;
+}
+
+/* ---- #mechanic-viz (compounding micro-diagram) — scoped ---- */
+#mechanic-viz{
+  --mv-day:0;
+  max-width:980px; margin:0 auto;
+  font-family:var(--font-sans); color:var(--on-surface);
+}
+#mechanic-viz *{box-sizing:border-box}
+#mechanic-viz .mv-head{ text-align:center; margin-bottom:36px }
+#mechanic-viz .mv-eyebrow{
+  font:500 14px/1.2 var(--font-sans); letter-spacing:.05em; text-transform:uppercase;
+  color:var(--muted); margin:0 0 12px;
+}
+#mechanic-viz .mv-title{
+  font:300 clamp(26px,3.6vw,34px)/1.15 var(--font-sans); letter-spacing:-.01em; color:var(--ink); margin:0 auto; max-width:34ch;
+}
+#mechanic-viz .mv-title .grad{
+  background:linear-gradient(135deg,var(--accent-from),var(--accent-to));
+  -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:400;
+}
+#mechanic-viz .mv-sub{
+  font:300 18px/1.6 var(--font-sans); color:var(--on-surface); margin:14px auto 0; max-width:52ch;
+}
+#mechanic-viz .mv-stage{
+  display:grid; grid-template-columns:minmax(0,1fr) 56px minmax(0,1fr); align-items:stretch; gap:0;
+}
+@media (max-width:780px){
+  #mechanic-viz .mv-stage{ grid-template-columns:1fr; gap:20px }
+  #mechanic-viz .mv-bridge{ display:none }
+}
+#mechanic-viz .mv-panel{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg);
+  padding:20px; display:flex; flex-direction:column; gap:14px;
+}
+#mechanic-viz .mv-panel-h{
+  display:flex; align-items:center; gap:8px;
+  font:500 14px/1.2 var(--font-sans); letter-spacing:.04em; text-transform:uppercase; color:var(--muted);
+}
+#mechanic-viz .mv-panel-h .dot{ width:8px; height:8px; border-radius:50%; background:var(--accent) }
+#mechanic-viz .mv-files{ display:flex; flex-direction:column; gap:7px }
+#mechanic-viz .mv-file{
+  display:flex; align-items:center; gap:10px;
+  font:400 14px/1.4 var(--font-mono); color:var(--on-surface);
+  border:1px solid var(--line); border-radius:var(--r-md); padding:9px 12px;
+  background:var(--surface-subtle); position:relative; overflow:hidden;
+}
+#mechanic-viz .mv-file .glyph{ color:var(--muted); flex:0 0 auto }
+#mechanic-viz .mv-file .meta{ margin-left:auto; font:400 12px/1 var(--font-mono); color:var(--muted) }
+#mechanic-viz .mv-file::after{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(90deg,transparent, color-mix(in srgb,var(--accent) 22%, transparent), transparent);
+  transform:translateX(-110%); opacity:0;
+}
+#mechanic-viz.playing .mv-file.scan::after{ animation:mv-sweep 900ms ease-out }
+#mechanic-viz .mv-file.read{ border-color:color-mix(in srgb,var(--accent) 45%, var(--line)) }
+#mechanic-viz .mv-file.read .glyph{ color:var(--accent-text) }
+@keyframes mv-sweep{
+  0%{ transform:translateX(-110%); opacity:0 }
+  20%{ opacity:1 }
+  100%{ transform:translateX(110%); opacity:0 }
+}
+#mechanic-viz .mv-bridge{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; position:relative;
+}
+#mechanic-viz .mv-bridge svg{ width:40px; height:120px; overflow:visible }
+#mechanic-viz .mv-bridge .rail{ stroke:var(--line); stroke-width:2; fill:none }
+#mechanic-viz .mv-bridge .flow{
+  stroke:url(#mvGrad); stroke-width:2.5; fill:none; stroke-linecap:round;
+  stroke-dasharray:8 10; stroke-dashoffset:0;
+}
+#mechanic-viz.playing .mv-bridge .flow{ animation:mv-flow 1.1s linear infinite }
+@keyframes mv-flow{ to{ stroke-dashoffset:-36 } }
+#mechanic-viz .mv-bridge .pip{ fill:var(--accent); opacity:0 }
+#mechanic-viz.playing .mv-bridge .pip{ animation:mv-pip 1.6s ease-in-out infinite }
+@keyframes mv-pip{ 0%,100%{opacity:0; transform:translateY(0)} 15%{opacity:1} 85%{opacity:.4} }
+#mechanic-viz .mv-log{ display:flex; flex-direction:column; gap:6px }
+#mechanic-viz .mv-row{
+  font:400 12.5px/1.4 var(--font-mono); color:var(--on-surface);
+  border-left:2px solid var(--line); padding:6px 0 6px 12px;
+  opacity:0; transform:translateY(4px);
+}
+#mechanic-viz.composed .mv-row{ opacity:1; transform:none }
+#mechanic-viz .mv-row .t{ color:var(--muted) }
+#mechanic-viz .mv-row .k{ color:var(--accent-text); font-weight:500 }
+#mechanic-viz .mv-row .who{ color:var(--accent-secondary) }
+#mechanic-viz .mv-row.fresh{ border-left-color:var(--accent) }
+#mechanic-viz .mv-board{
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:4px;
+}
+#mechanic-viz .mv-col{
+  border:1px solid var(--line); border-radius:var(--r-md); padding:8px; min-height:70px;
+  background:var(--surface-subtle); min-width:0;
+}
+#mechanic-viz .mv-col-h{
+  font:500 10px/1.2 var(--font-sans); letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+  margin-bottom:7px; display:flex; justify-content:space-between;
+}
+#mechanic-viz .mv-card{
+  font:400 11px/1.3 var(--font-mono); color:var(--on-surface);
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:5px 7px; margin-bottom:5px; opacity:0; transform:translateY(3px);
+}
+#mechanic-viz.composed .mv-card{ opacity:1; transform:none }
+#mechanic-viz .mv-card.done{ border-color:color-mix(in srgb,var(--ok) 40%, var(--line)) }
+#mechanic-viz .mv-card.done::before{ content:"✓ "; color:var(--ok-text) }
+#mechanic-viz .mv-days{
+  display:flex; gap:10px; justify-content:center; margin:34px 0 0; flex-wrap:wrap;
+}
+#mechanic-viz .mv-day-chip{
+  display:flex; align-items:center; gap:10px;
+  border:1px solid var(--line); border-radius:var(--r-lg); padding:12px 16px;
+  background:var(--surface); max-width:430px;
+}
+#mechanic-viz .mv-day-chip .num{
+  width:34px; height:34px; flex:0 0 auto; border-radius:50%;
+  display:grid; place-items:center; font:300 16px/1 var(--font-sans);
+  border:1px solid var(--line); color:var(--ink);
+}
+#mechanic-viz .mv-day-chip.now .num{
+  border-color:transparent; color:var(--on-primary);
+  background:linear-gradient(135deg,var(--accent-from),var(--accent-to));
+}
+#mechanic-viz .mv-day-chip p{ margin:0; font:400 13px/1.45 var(--font-sans) }
+#mechanic-viz .mv-day-chip .lab{
+  font:500 11px/1.2 var(--font-sans); letter-spacing:.05em; text-transform:uppercase; color:var(--muted);
+  display:block; margin-bottom:2px;
+}
+#mechanic-viz .mv-compound-only{ opacity:0; transition:opacity .5s ease-out }
+#mechanic-viz.compounded .mv-compound-only{ opacity:1 }
+#mechanic-viz .mv-replay{ display:flex; justify-content:center; margin-top:24px }
+#mechanic-viz .mv-replay button{
+  font:500 14px/1.2 var(--font-sans); cursor:pointer;
+  background:var(--surface); color:var(--on-surface);
+  border:1px solid var(--line); border-radius:var(--r-md); padding:9px 18px;
+  display:inline-flex; align-items:center; gap:8px;
+}
+#mechanic-viz .mv-replay button:hover{ border-color:var(--accent); color:var(--accent-text) }
+/* mobile: collapse the 4-col board to 2 cols — placed AFTER the base rules so it wins the cascade */
+@media (max-width:520px){
+  #mechanic-viz .mv-board{ grid-template-columns:repeat(2,1fr) }
+  #mechanic-viz .mv-day-chip{ max-width:100% }
+  #mechanic-viz .mv-card{ overflow-wrap:anywhere }
+}
+@media (prefers-reduced-motion:reduce){
+  #mechanic-viz .mv-row,
+  #mechanic-viz .mv-card,
+  #mechanic-viz .mv-compound-only{ opacity:1 !important; transform:none !important; transition:none !important }
+  #mechanic-viz .mv-file.read{ border-color:color-mix(in srgb,var(--accent) 45%, var(--line)) }
+  #mechanic-viz .mv-bridge .flow{ animation:none !important }
+  #mechanic-viz .mv-bridge .pip{ animation:none !important; opacity:.6 }
+  #mechanic-viz .mv-file::after{ animation:none !important; opacity:0 }
+  #mechanic-viz .mv-replay{ display:none }
+}
+@media print{
+  #mechanic-viz .mv-row,#mechanic-viz .mv-card,#mechanic-viz .mv-compound-only{ opacity:1!important; transform:none!important }
+  #mechanic-viz .mv-replay,#mechanic-viz .mv-bridge .flow,#mechanic-viz .mv-bridge .pip{ animation:none!important }
+  #mechanic-viz .mv-panel,#mechanic-viz .mv-day-chip{ break-inside:avoid }
+}
+</style>
+
+<!-- ============================================================
+     Page controllers: theme (T) + language (L) + copy + reveal.
+     ============================================================ -->
 <script>
 (function(){
   "use strict";
@@ -831,13 +1352,6 @@ cd open-bridge
     if(mode === "dark"){ root.classList.add("dark"); }
     else { root.classList.remove("dark"); }
   }
-  var storedTheme = null;
-  try { storedTheme = localStorage.getItem("ob-theme"); } catch(e){}
-  if(storedTheme){
-    applyTheme(storedTheme);
-  } else if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches){
-    applyTheme("dark");
-  }
   function toggleTheme(){
     var next = root.classList.contains("dark") ? "light" : "dark";
     applyTheme(next);
@@ -845,16 +1359,8 @@ cd open-bridge
   }
   var themeBtn = document.getElementById("theme-toggle");
   if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
-  document.addEventListener("keydown", function(ev){
-    if(ev.key === "t" || ev.key === "T"){
-      var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
-      if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
-      if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
-      toggleTheme();
-    }
-  });
 
-  // ---- Language (EN/DE) — data-active-lang on <html>, persisted ----
+  // ---- Language (EN/DE) — data-active-lang on <html>, persisted, L-key ----
   function applyLang(lang){
     root.setAttribute("data-active-lang", lang);
     root.setAttribute("lang", lang);
@@ -863,9 +1369,8 @@ cd open-bridge
     if(en){ en.setAttribute("aria-pressed", lang === "en" ? "true" : "false"); }
     if(de){ de.setAttribute("aria-pressed", lang === "de" ? "true" : "false"); }
   }
-  var storedLang = null;
-  try { storedLang = localStorage.getItem("ob-lang"); } catch(e){}
-  applyLang(storedLang === "de" ? "de" : "en");
+  // pre-paint already set data-active-lang; sync buttons to it.
+  applyLang(root.getAttribute("data-active-lang") === "de" ? "de" : "en");
   function setLang(lang){
     applyLang(lang);
     try { localStorage.setItem("ob-lang", lang); } catch(e){}
@@ -875,11 +1380,20 @@ cd open-bridge
   if(enBtn){ enBtn.addEventListener("click", function(){ setLang("en"); }); }
   if(deBtn){ deBtn.addEventListener("click", function(){ setLang("de"); }); }
 
+  // ---- Keyboard: T (theme) + L (language) ----
+  document.addEventListener("keydown", function(ev){
+    if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
+    if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
+    var k = ev.key.toLowerCase();
+    if(k === "t"){ toggleTheme(); }
+    if(k === "l"){ setLang(root.getAttribute("data-active-lang") === "en" ? "de" : "en"); }
+  });
+
   // ---- Copy button ----
   var copyBtn = document.getElementById("copy-start");
   if(copyBtn){
     copyBtn.addEventListener("click", function(){
-      var block = document.getElementById("start-code");
       var text = "git clone https://github.com/bks-lab/open-bridge.git\ncd open-bridge\n./bin/setup\n/bridge-onboard";
       var done = function(){
         var prev = copyBtn.textContent;
@@ -898,7 +1412,7 @@ cd open-bridge
     });
   }
 
-  // ---- Reveal on scroll ----
+  // ---- Reveal on scroll (also un-gates the diagram-frame animations) ----
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if("IntersectionObserver" in window && !reduceMotion){
     var io = new IntersectionObserver(function(entries){
@@ -925,5 +1439,353 @@ cd open-bridge
   }
 })();
 </script>
+
+<!-- ============================================================
+     EMBED SCRIPT — #deck-viz (bridge-deck canvas). Self-contained.
+     ============================================================ -->
+<script data-deck>
+(function(){
+  "use strict";
+  var root = document.getElementById('deck-viz');
+  if(!root) return;
+  var canvas = root.querySelector('#deck-canvas');
+  var ctx = canvas.getContext('2d', { alpha:false });
+
+  // ---- Palette (bridge-deck dark deck; SCOPED EXCEPTION, confined here) ----
+  var C = {
+    bg:'#0a0e14', hull:'#0d1320', hullLine:'#1c2433', panel:'#121a2b', panelLine:'#243049',
+    indigo:'#6366f1', violet:'#8b5cf6', violetLt:'#a78bfa', cyan:'#22d3ee', cyanDk:'#0ea5e9',
+    green:'#10b981', greenLt:'#10f5b3', amber:'#f59e0b', red:'#ef4444',
+    claude:'#D97757', visor:'#67e8f9', grid:'#16324a', txt:'#9fb3c8', txtDim:'#5b6b82', sign:'#cdd9e8',
+    idle:'#67e8f9', breakC:'#a78bfa'
+  };
+
+  var BASE_W = 720, BASE_H = 320;
+  var dpr = 1, cssW = BASE_W, cssH = BASE_H, scale = 1;
+
+  var staticCanvas = document.createElement('canvas');
+  var sctx = staticCanvas.getContext('2d', { alpha:false });
+
+  var reduceMotion = false;
+  try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
+
+  var roomY = 196, roomH = 96;
+  var rooms = [
+    { x:24,  w:212, name:'code-analyst',   tone:C.cyan,   status:'working' },
+    { x:254, w:212, name:'deploy-engineer',tone:C.indigo, status:'working' },
+    { x:484, w:212, name:'ops-officer',    tone:C.green,  status:'idle' }
+  ];
+  var helm = { cx:BASE_W/2, cy:74 };
+  var clients = [ { x:150, label:'bigcorp' }, { x:540, label:'startupxyz' } ];
+
+  function statusColor(s){
+    if(s==='working') return C.greenLt;
+    if(s==='idle')    return C.idle;
+    if(s==='break')   return C.breakC;
+    return C.red;
+  }
+  var crew = [
+    { role:'coordinator', home:{x:helm.cx, y:helm.cy+34}, torso:C.violet, collar:C.claude,
+      x:helm.cx, y:helm.cy+34, status:'working', state:'desk', t:0, phase:Math.random()*6.28 },
+    { role:'code-analyst',   home:{x:rooms[0].x+rooms[0].w/2, y:roomY+54}, torso:C.cyan,
+      x:0,y:0, status:'working', state:'desk', t:0, phase:Math.random()*6.28 },
+    { role:'deploy-engineer',home:{x:rooms[1].x+rooms[1].w/2, y:roomY+54}, torso:C.indigo,
+      x:0,y:0, status:'working', state:'desk', t:0, phase:Math.random()*6.28 },
+    { role:'ops-officer',    home:{x:rooms[2].x+rooms[2].w/2, y:roomY+54}, torso:C.green,
+      x:0,y:0, status:'idle', state:'desk', t:0, phase:Math.random()*6.28 }
+  ];
+  crew.forEach(function(c){ if(c.role!=='coordinator'){ c.x=c.home.x; c.y=c.home.y; } });
+
+  function px(x){ return Math.round(x); }
+  function drawRoundRect(c, x,y,w,h,r){
+    c.beginPath();
+    c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
+  }
+
+  function drawStatic(){
+    var c = sctx;
+    c.setTransform(dpr,0,0,dpr,0,0);
+    c.imageSmoothingEnabled = false;
+    c.clearRect(0,0,cssW,cssH);
+    c.save();
+    c.scale(scale, scale);
+
+    c.fillStyle = C.bg; c.fillRect(0,0,BASE_W,BASE_H);
+    c.fillStyle = 'rgba(103,232,249,0.06)';
+    for(var i=0;i<46;i++){
+      var sx=(i*97+13)%BASE_W, sy=(i*53+7)%BASE_H;
+      c.fillRect(sx, sy, 1, 1);
+    }
+    c.fillStyle = C.hull; c.fillRect(0,0,BASE_W,148);
+    c.strokeStyle = C.hullLine; c.lineWidth=1;
+    c.beginPath(); c.moveTo(0,148.5); c.lineTo(BASE_W,148.5); c.stroke();
+    c.fillStyle = C.txtDim; c.font = '600 9px monospace'; c.textBaseline='alphabetic';
+    c.fillText('CAPTAIN · BRIDGE', 14, 20);
+
+    var tt = { x:60, y:40, w:120, h:64 };
+    c.fillStyle = C.panel; drawRoundRect(c, tt.x,tt.y,tt.w,tt.h,6); c.fill();
+    c.strokeStyle = C.panelLine; c.lineWidth=1; c.stroke();
+    c.save();
+    drawRoundRect(c, tt.x,tt.y,tt.w,tt.h,6); c.clip();
+    c.strokeStyle = C.grid; c.lineWidth=1;
+    for(var gx=tt.x+10; gx<tt.x+tt.w; gx+=14){ c.beginPath(); c.moveTo(gx,tt.y); c.lineTo(gx,tt.y+tt.h); c.stroke(); }
+    for(var gy=tt.y+10; gy<tt.y+tt.h; gy+=14){ c.beginPath(); c.moveTo(tt.x,gy); c.lineTo(tt.x+tt.w,gy); c.stroke(); }
+    c.fillStyle = C.cyan; c.fillRect(tt.x+38,tt.y+26,3,3); c.fillRect(tt.x+74,tt.y+44,3,3);
+    c.fillStyle = C.amber; c.fillRect(tt.x+92,tt.y+18,3,3);
+    c.restore();
+
+    var hw=150, hh=34, hx=helm.cx-hw/2, hy=helm.cy+18;
+    c.fillStyle = C.panel; drawRoundRect(c, hx,hy,hw,hh,8); c.fill();
+    c.strokeStyle = C.panelLine; c.stroke();
+    c.fillStyle = C.indigo;  c.globalAlpha=0.85; c.fillRect(hx+16, hy+9, 28, 16); c.globalAlpha=1;
+    c.fillStyle = C.violet;  c.globalAlpha=0.85; c.fillRect(hx+52, hy+9, 28, 16); c.globalAlpha=1;
+    c.fillStyle = C.cyan;    c.globalAlpha=0.85; c.fillRect(hx+88, hy+9, 28, 16); c.globalAlpha=1;
+    c.fillStyle = C.amber;   c.fillRect(hx+122, hy+12, 10, 10);
+    c.fillStyle = C.txtDim; c.font='600 8px monospace';
+    c.fillText('HELM', helm.cx-12, hy-4);
+
+    var corrY=148, corrH=48;
+    c.fillStyle = C.bg; c.fillRect(0,corrY,BASE_W,corrH);
+    c.setLineDash([8,7]); c.strokeStyle = 'rgba(99,102,241,0.35)'; c.lineWidth=2;
+    c.beginPath(); c.moveTo(20, corrY+corrH/2); c.lineTo(BASE_W-20, corrY+corrH/2); c.stroke();
+    c.setLineDash([]);
+
+    clients.forEach(function(cl){
+      var dx=cl.x, dy=corrY+10, dw=64, dh=12;
+      c.fillStyle = C.panel; drawRoundRect(c, dx,dy,dw,dh,3); c.fill();
+      c.strokeStyle = C.panelLine; c.stroke();
+      c.fillStyle = C.cyanDk; c.fillRect(dx+5, dy+3, 6, 6);
+      c.fillStyle = C.cyan;   c.font='500 9px monospace';
+      c.fillText(cl.label, dx+16, dy+9.5);
+    });
+    c.fillStyle = C.txtDim; c.font='600 8px monospace';
+    c.fillText('SUBSTRATE · CLIENTS', 14, corrY+corrH-6);
+
+    rooms.forEach(function(r){
+      c.fillStyle = C.hull; drawRoundRect(c, r.x, roomY, r.w, roomH, 8); c.fill();
+      c.strokeStyle = C.hullLine; c.lineWidth=1; c.stroke();
+      c.fillStyle = r.tone; c.globalAlpha=0.10;
+      c.fillRect(r.x+8, roomY+roomH-14, r.w-16, 6); c.globalAlpha=1;
+      var sw = Math.min(r.w-24, r.name.length*6.2+22), sx=r.x+12, sy=roomY+10;
+      c.fillStyle = C.panel; drawRoundRect(c, sx, sy, sw, 16, 8); c.fill();
+      c.strokeStyle = r.tone; c.globalAlpha=0.55; c.stroke(); c.globalAlpha=1;
+      c.fillStyle = r.tone; c.fillRect(sx+6, sy+6, 4, 4);
+      c.fillStyle = C.sign; c.font='500 9px monospace';
+      c.fillText(r.name, sx+16, sy+11.5);
+      var px0 = r.x+r.w-44, py0 = roomY+12;
+      for(var s=0;s<3;s++){
+        c.fillStyle = (r.status==='working') ? (s<3?C.green:C.panelLine)
+                    : (r.status==='idle') ? (s<2?C.cyan:C.panelLine)
+                    : C.panelLine;
+        c.fillRect(px0 + s*11, py0, 8, 5);
+      }
+      c.fillStyle = C.panelLine; c.fillRect(r.x+r.w-6, roomY+roomH-34, 6, 22);
+      c.fillStyle = r.tone; c.globalAlpha=0.5; c.fillRect(r.x+r.w-5, roomY+roomH-24, 4, 2); c.globalAlpha=1;
+      var dcx=r.x+r.w/2-26, dcy=roomY+roomH-26;
+      c.fillStyle = C.panel; drawRoundRect(c, dcx, dcy, 52, 12, 3); c.fill();
+      c.strokeStyle = C.panelLine; c.stroke();
+      c.fillStyle = r.tone; c.globalAlpha=0.8; c.fillRect(dcx+6, dcy+3, 12, 6); c.globalAlpha=1;
+      c.fillStyle = C.amber; c.fillRect(dcx+38, dcy+4, 4, 4);
+    });
+    c.restore();
+  }
+
+  function drawCrew(c, cr){
+    var x=px(cr.x), y=px(cr.y);
+    var bob = (cr.state==='desk' && !reduceMotion) ? Math.round(Math.sin(cr.phase)*1) : 0;
+    y += bob;
+    c.fillStyle = statusColor(cr.status);
+    c.globalAlpha = 0.20;
+    c.beginPath(); c.ellipse(x, y+13, 11, 4, 0, 0, 6.283); c.fill();
+    c.globalAlpha = 1;
+    c.fillStyle = statusColor(cr.status);
+    c.beginPath(); c.ellipse(x, y+13, 7, 2.5, 0, 0, 6.283); c.fill();
+    c.globalAlpha = 0.45;
+    c.beginPath(); c.ellipse(x, y+13, 11, 4, 0, 0, 6.283);
+    c.strokeStyle = statusColor(cr.status); c.lineWidth=1; c.stroke();
+    c.globalAlpha = 1;
+    c.fillStyle = '#0b111c';
+    c.fillRect(x-4, y+6, 3, 7);
+    c.fillRect(x+1, y+6, 3, 7);
+    c.fillStyle = cr.torso;
+    c.fillRect(x-5, y-3, 10, 10);
+    if(cr.collar){ c.fillStyle = cr.collar; c.fillRect(x-5, y-3, 10, 2); }
+    c.fillStyle = cr.torso;
+    c.globalAlpha=0.85; c.fillRect(x-7, y-1, 2, 6); c.fillRect(x+5, y-1, 2, 6); c.globalAlpha=1;
+    c.fillStyle = '#d7e2f0';
+    c.fillRect(x-4, y-12, 8, 8);
+    c.fillStyle = C.visor;
+    c.fillRect(x-3, y-9, 6, 2);
+    if(cr.status==='working' && !reduceMotion && Math.sin(cr.phase*2)>0.6){
+      c.fillStyle = statusColor(cr.status);
+      c.fillRect(x-1, y-17, 2, 2);
+    }
+  }
+
+  function updateCrew(cr, dt){
+    cr.phase += dt*0.0026;
+    cr.t -= dt;
+    if(cr.role==='coordinator'){ return; }
+    if(cr.state==='desk'){
+      if(cr.t<=0 && movingCount() < 2 && Math.random()<0.012){
+        var marchToCorridor = Math.random()<0.25;
+        cr.tgt = marchToCorridor
+          ? { x: cr.home.x + (Math.random()*120-60), y: 172 }
+          : { x: cr.home.x + (Math.random()*70-35), y: cr.home.y + (Math.random()*16-8) };
+        cr.state='move'; cr.status = marchToCorridor ? 'break' : cr.status;
+        cr.t = 1200 + Math.random()*1600;
+      } else if(cr.t<=0){
+        cr.t = 600 + Math.random()*1400;
+      }
+    } else if(cr.state==='move'){
+      var dx=cr.tgt.x-cr.x, dy=cr.tgt.y-cr.y, d=Math.hypot(dx,dy);
+      var sp = dt*0.018;
+      if(d < sp || cr.t<=0){
+        var hx=cr.home.x-cr.x, hy=cr.home.y-cr.y, hd=Math.hypot(hx,hy);
+        if(hd<2){ cr.x=cr.home.x; cr.y=cr.home.y; cr.state='desk'; cr.status='working'; cr.t=2000+Math.random()*3000; }
+        else { cr.tgt={x:cr.home.x,y:cr.home.y}; cr.x+=hx/hd*sp; cr.y+=hy/hd*sp; }
+      } else {
+        cr.x += dx/d*sp; cr.y += dy/d*sp;
+      }
+    }
+  }
+  function movingCount(){ var n=0; crew.forEach(function(c){ if(c.state==='move') n++; }); return n; }
+
+  function drawFrame(){
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(staticCanvas, 0, 0, staticCanvas.width, staticCanvas.height, 0, 0, cssW, cssH);
+    ctx.save();
+    ctx.scale(scale, scale);
+    ctx.imageSmoothingEnabled = false;
+    drawCrew(ctx, crew[0]);
+    for(var i=1;i<crew.length;i++) drawCrew(ctx, crew[i]);
+    ctx.restore();
+  }
+
+  function resize(){
+    var w = root.querySelector('.deck-frame').clientWidth || BASE_W;
+    if(w < 1) w = BASE_W;
+    cssW = w;
+    cssH = Math.round(w * (BASE_H/BASE_W));
+    scale = cssW / BASE_W;
+    dpr = Math.max(1, Math.min(window.devicePixelRatio||1, 2));
+    canvas.width = Math.round(cssW*dpr);
+    canvas.height = Math.round(cssH*dpr);
+    canvas.style.height = cssH + 'px';
+    staticCanvas.width = Math.round(cssW*dpr);
+    staticCanvas.height = Math.round(cssH*dpr);
+    drawStatic();
+    drawFrame();
+  }
+
+  var running=false, visible=false, raf=null, last=0;
+  var FRAME_MS = 1000/24;
+  function loop(ts){
+    if(!running){ return; }
+    raf = requestAnimationFrame(loop);
+    var dt = ts-last;
+    if(dt < FRAME_MS) return;
+    last = ts;
+    crew.forEach(function(c){ updateCrew(c, Math.min(dt, 80)); });
+    drawFrame();
+  }
+  function start(){
+    if(running || reduceMotion) return;
+    running=true; last=performance.now(); raf=requestAnimationFrame(loop);
+  }
+  function stop(){ running=false; if(raf) cancelAnimationFrame(raf); raf=null; }
+
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden) stop();
+    else if(visible) start();
+  });
+
+  if('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        visible = e.isIntersecting;
+        if(visible && !document.hidden) start(); else stop();
+      });
+    }, { threshold:0.05 });
+    io.observe(root);
+  } else {
+    visible=true; start();
+  }
+
+  var rT=null;
+  window.addEventListener('resize', function(){ clearTimeout(rT); rT=setTimeout(resize, 120); });
+
+  resize();
+  if(reduceMotion){ drawFrame(); }
+})();
+</script>
+
+<!-- ============================================================
+     EMBED SCRIPT — #mechanic-viz behaviour. Self-contained.
+     ============================================================ -->
+<script data-mechanic>
+(function(){
+  "use strict";
+  var viz = document.getElementById("mechanic-viz");
+  if(!viz) return;
+  var files = Array.prototype.slice.call(viz.querySelectorAll(".mv-file"));
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var timers = [];
+  var running = false;
+
+  function clearTimers(){ timers.forEach(clearTimeout); timers = []; }
+  function at(ms, fn){ timers.push(setTimeout(fn, ms)); }
+
+  function staticFinal(){
+    clearTimers();
+    viz.classList.remove("playing");
+    viz.classList.add("composed","compounded");
+    files.forEach(function(f){ f.classList.add("read"); f.classList.remove("scan"); });
+  }
+
+  function play(){
+    if(reduce.matches){ staticFinal(); return; }
+    clearTimers();
+    running = true;
+    viz.classList.remove("composed");
+    files.forEach(function(f){ f.classList.remove("read","scan"); });
+    viz.classList.add("playing");
+    files.forEach(function(f, i){
+      at(300 + i*420, function(){
+        f.classList.add("scan");
+        at(360, function(){ f.classList.add("read"); });
+      });
+    });
+    var composeAt = 300 + files.length*420 + 250;
+    at(composeAt, function(){ viz.classList.add("composed"); });
+    at(composeAt + 900, function(){ viz.classList.add("compounded"); });
+    at(composeAt + 4200, function(){ if(running) play(); });
+  }
+
+  function stop(){ running = false; clearTimers(); viz.classList.remove("playing"); }
+
+  if("IntersectionObserver" in window && !reduce.matches){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){ if(!running) play(); }
+        else { stop(); }
+      });
+    }, { threshold: 0.35 });
+    io.observe(viz);
+  } else {
+    staticFinal();
+  }
+
+  var replay = document.getElementById("mvReplay");
+  if(replay){ replay.addEventListener("click", function(){ stop(); play(); }); }
+
+  if(reduce.addEventListener){
+    reduce.addEventListener("change", function(){ if(reduce.matches){ stop(); staticFinal(); } });
+  }
+})();
+</script>
+
 </body>
 </html>
