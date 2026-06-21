@@ -115,9 +115,8 @@ on every tick. If a user says "I want the report at 17:00" and generation takes
 
 The bridge-deck collector emits jobs as `scheduled:calendar:${entry.id}:slot-${N}`.
 Each poll tick overwrites the same slot in the daemon's store — no accumulation,
-no orphan jobs. This is a critical invariant (see
-[the bridge-deck calendar-system doc](https://github.com/bks-lab/bridge-deck/blob/main/docs/calendar-system.md)
-for the full background).
+no orphan jobs. This is a critical invariant — re-emitting an entry updates
+its job in place rather than creating a duplicate.
 
 ## Fire-loop
 

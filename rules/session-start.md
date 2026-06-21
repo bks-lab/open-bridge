@@ -61,7 +61,7 @@ switches. Its presence does NOT depend on the current branch.
 | **core** | none | present | **ORPHAN STATE** | User branch was deleted but local config remains (gitignored, persisted). Offer: (a) create a fresh `user/{name}` branch from current state, (b) remove `bridge-config.yaml` and run onboarding fresh, (c) stay on the core branch for CORE-only work. |
 | **core** | exists | missing | **BROKEN CONFIG** | Rare. The user branch likely has the config. Suggest `git checkout user/{name}` to restore state. |
 | `user/*` | (self) | present | **NORMAL** | Proceed to Phase 1 — see `rules/operations.md` § Session Start. |
-| `user/*` | (self) | missing | **BROKEN USER BRANCH** | Config missing on the user branch. Offer `/onboard` to re-create or inspect `git status` for accidentally deleted files. |
+| `user/*` | (self) | missing | **BROKEN USER BRANCH** | Config missing on the user branch. Offer `/bridge-onboard` to re-create or inspect `git status` for accidentally deleted files. |
 | any other branch (`feature/*`, the non-default of `main`/`development`, detached HEAD, etc.) | — | — | **CORE DEV MODE** | Working on CORE directly. Skip the work-system load. Answer the user's request normally. |
 
 When you switch FROM the core branch into a `user/*` branch (NEW USER

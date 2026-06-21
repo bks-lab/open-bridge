@@ -24,15 +24,15 @@ self-contained. Skim the index, jump to what you need, ignore the rest.
 
 | Wrapper | Folder | When you need it |
 |---|---|---|
-| identity | [personas](#identity-personas) | tax data, signatures, persona-aware filing destinations |
-| identity | [accounts](#identity-accounts) | mail/calendar accounts your skills authenticate against |
-| identity | [mandants](#identity-mandants) | recipient groups (team, family, clients) for outbound messages |
-| infra | [remotes](#infra-remotes) | physical/virtual machines, SSH, Wake-on-LAN, services |
-| infra | [channels](#infra-channels) | iMessage, email, Telegram, voice — outbound transports |
-| infra | [backups](#infra-backups) | sources × targets × pipelines, scheduled or continuous |
-| workflow | [calendars](#workflow-calendars) | scheduled outbound: emails, reports, digests, with recipients |
-| workflow | [contexts](#workflow-contexts) | per-domain routing rules (document intake, mail attachments) |
-| workflow | [projects](#workflow-projects) | GitHub/ADO project-board configs (fields, governance) |
+| identity | [personas](#identitypersonas) | tax data, signatures, persona-aware filing destinations |
+| identity | [accounts](#identityaccounts) | mail/calendar accounts your skills authenticate against |
+| identity | [mandants](#identitymandants) | recipient groups (team, family, clients) for outbound messages |
+| infra | [remotes](#infraremotes) | physical/virtual machines, SSH, Wake-on-LAN, services |
+| infra | [channels](#infrachannels) | iMessage, email, Telegram, voice — outbound transports |
+| infra | [backups](#infrabackups) | sources × targets × pipelines, scheduled or continuous |
+| workflow | [calendars](#workflowcalendars) | scheduled outbound: emails, reports, digests, with recipients |
+| workflow | [contexts](#workflowcontexts) | per-domain routing rules (document intake, mail attachments) |
+| workflow | [projects](#workflowprojects) | GitHub/ADO project-board configs (fields, governance) |
 
 Validation note: every wrapper that ships a `_schema.yaml` is enforced
 by `scripts/validate-bridge.py` (JSON Schema Draft 2020-12 via
@@ -65,9 +65,10 @@ URI — never plaintext credentials.
 
 **Create:** `cp identity/accounts/_template.yaml identity/accounts/<id>.yaml`
 
-**Used by:** `apple-notes-manager`, calendar skills, and the `doc-system`
-skill's mail sources. An org overlay can add account-bound skills such as
-`email-manager` or `outlook-attachment-processor` (`scope: org`).
+**Used by:** the `doc-system` skill's mail sources and calendar skills. A
+user-supplied or org-overlay skill (e.g. `apple-notes-manager`,
+`email-manager`, `outlook-attachment-processor`, `scope: org`) can add more
+account-bound consumers — those are not shipped in open-bridge.
 
 **Hard rule:** never commit a real token. Always reference an external
 secret store via `keychain://`, `keyvault://`, or `1password://` URIs.
@@ -142,7 +143,7 @@ time-machine), on which schedule.
 **State:** `infra/backups/_state.yaml` is written by the `backup` skill —
 never hand-edit. `volumes/` and `launchd/` hold supporting files.
 
-**Used by:** the `backup` skill (topology-reader + tool-dispatcher).
+**Used by:** a user-supplied or org-overlay `backup` skill (topology-reader + tool-dispatcher) — not shipped in open-bridge; CORE ships the topology data model + schema only.
 
 **Three validation rules** the skill enforces before any run:
 1. `sensitivity: encrypted-required` × `tool: rclone-sync` → abort

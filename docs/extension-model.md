@@ -53,7 +53,7 @@ your extension. This is the working model.
 
 1. Clone open-bridge → get CORE platform on `main` (templates, schemas, skills — you create `ecosystem.yaml` at onboarding)
 2. Create `user/{name}` branch → start your extension
-3. Run `/onboard` → creates `bridge-config.yaml`, work system, optionally first persona/mandant/context from templates
+3. Run `/bridge-onboard` → creates `bridge-config.yaml`, work system, optionally first persona/mandant/context from templates
 4. Add project configs, sub-agents, contexts as needed
 5. `git merge main` → pull CORE updates without conflicts (paths don't overlap by design — see CLAUDE.md "Git & Branches")
 
@@ -207,7 +207,7 @@ When ready to extract from USER branch to Plugin:
 - [ ] Create `plugin.json` manifest
 - [ ] Neutralize absolute paths (use `${CLAUDE_PLUGIN_ROOT}` + `${onedrive_root}` for script refs)
 - [ ] Run `rules/promote-safety.md` scan on all files (no secrets, no PII)
-- [ ] Test: fresh bridge clone + plugin install + `/onboard` → working system
+- [ ] Test: fresh bridge clone + plugin install + `/bridge-onboard` → working system
 
 ### What stays on USER branch (never in plugin)
 
@@ -232,8 +232,8 @@ git checkout -b user/alice
 claude plugins add <your-org>/bridge-org-extension
 
 # Run onboard:
-# /onboard detects context.doc-system.yaml.template, offers to instantiate
-# /onboard detects customer-a-coordinator skill, registers it
+# /bridge-onboard detects context.doc-system.yaml.template, offers to instantiate
+# /bridge-onboard detects customer-a-coordinator skill, registers it
 ```
 
 ---

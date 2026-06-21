@@ -3,7 +3,6 @@ summary: "File-based memory model — one fact per file, MEMORY.md as a lean ind
 type: guide
 last_updated: 2026-06-19
 related:
-  - knowledge-growth.md
   - ../rules/knowledge-growth.md
 ---
 
