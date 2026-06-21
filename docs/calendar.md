@@ -1,3 +1,12 @@
+---
+summary: "Calendar system: scheduled outbound actions (emails, messages, reports) as structured entries with recipients, timing, and origin."
+type: guide
+last_updated: 2026-06-21
+related:
+  - docs/mandants.md
+  - docs/channels.md
+---
+
 # Calendar System
 
 The calendar tracks every scheduled outbound action — emails, messages,

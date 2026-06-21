@@ -23,7 +23,7 @@ Most people's AI work is a bare My-Documents folder — every conversation rebui
 - "My agent forgets which conventions apply where."
 - "Every session, I re-explain who I am and what I'm working on."
 
-The fix isn't a smarter prompt. It's giving the agent a place to remember.
+The fix isn't a smarter prompt — it's a persistent place the agent reads and writes every session.
 
 ---
 
@@ -187,7 +187,7 @@ Commands are skills whose `description` declares a `/cmd` trigger. The handful t
 
 | Command | Action |
 |---------|--------|
-| `/bridge` | Status dashboard: ecosystem, agents, work |
+| `/bridge-status` | Status dashboard: ecosystem, agents, work |
 | `/briefing` | Daily briefing: board, git activity, goals |
 | `/debrief` | Turn a meeting transcript into filed tasks + a protocol |
 | `/archive` | Archive the week + generate a summary |

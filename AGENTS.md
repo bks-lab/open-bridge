@@ -243,14 +243,15 @@ The canonical location remains `skills/` — edit there, the symlinks follow.
 
 | Group | Skills |
 |-------|--------|
-| **Bridge ops** (session lifecycle) | `briefing`, `archive`, `bridge-status`, `bridge-explorer` |
-| **Bridge maintenance** | `bridge-audit` (drift detection), `bridge-leak-check` (categorized content scan) |
-| **Bridge setup + sync** | `bridge-onboard`, `bridge-promote`, `bridge-sync` (sprint-level batch sync to upstreams) |
+| **Bridge ops** (session lifecycle) | `briefing`, `archive`, `bridge-status`, `bridge-explorer`, `bridge-greeting` |
+| **Bridge maintenance** | `bridge-audit` (drift detection), `bridge-leak-check` (categorized content scan), `bridge-curator` (consolidation pass), `bridge-learn` (learning-loop proposals) |
+| **Bridge setup + sync** | `bridge-onboard`, `bridge-promote`, `bridge-sync` (sprint-level batch sync to upstreams), `bridge-contribute` (fork-based upstream PRs), `knowledge-repo-init` (pair a knowledge repo) |
 | **Communication / meetings** | `debrief` (full / `--quick` / `--all` / `--date`) |
 | **Messaging + scheduling** | `channel`, `schedule`, `calendar`, `mandants` |
 | **Infrastructure** | `remote` |
-| **Projects** | `dashboard`, `project-advisor`, `github-projects-manager` |
+| **Projects** | `dashboard`, `project-advisor`, `github-projects-manager`, `tracker-sync`, `task-close-postmortem` |
 | **Documents** | `doc-system` |
+| **Authoring / visuals** | `html-canvas` (single-file HTML deliverables), `bridge-dashboard` (Bridge Control Center) |
 | **USER-scoped (`scope: org`)** | downstream `*-bridge` overlays add their own (e.g. customer coordinators, document routers, dashboards) |
 
 The groups above are a human-readable index. The **authoritative tier** (what `/promote` and
@@ -553,7 +554,7 @@ Cursor) load the skill from `skills/` directly.
 
 | Command | Backing skill | Action |
 |---------|---------------|--------|
-| `/bridge` | `bridge-status` | Status dashboard: ecosystem, agents, work, remotes |
+| `/bridge-status` | `bridge-status` | Status dashboard: ecosystem, agents, work, remotes |
 | `/bridge-explorer` | `bridge-explorer` | Ecosystem + repo-layout + constellation visualizations |
 | `/briefing` | `briefing` | Daily briefing: board, git activity, goals, alerts |
 | `/archive` | `archive` | Archive week + create summary |

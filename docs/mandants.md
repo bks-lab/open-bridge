@@ -1,3 +1,12 @@
+---
+summary: "Mandants: named recipient groups for scheduled outbound, organized by relationship type (team, family, external colleagues)."
+type: guide
+last_updated: 2026-06-21
+related:
+  - docs/calendar.md
+  - docs/personas.md
+---
+
 # Mandants — Recipient Groups
 
 A mandant is a named group of people who receive scheduled messages.

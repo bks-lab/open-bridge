@@ -1,3 +1,12 @@
+---
+summary: "Running multiple Bridge instances for data isolation across organizations — shared CORE upstream, separate USER data per instance."
+type: guide
+last_updated: 2026-06-21
+related:
+  - docs/structure.md
+  - docs/extension-model.md
+---
+
 # Multi-Instance Setup
 
 Run multiple Bridge instances when you work across organizations that
@@ -125,19 +134,19 @@ Every Bridge instance is a full, independent setup:
 |---------|-------------|
 | `ecosystem.yaml` | Own project registry |
 | `bridge-config.yaml` | Own theme, language, integrations |
-| `contexts/` | Own project bundles |
+| `workflow/contexts/` | Own project bundles |
 | `work/` | Own board, log, tasks, archives |
-| `agents/` | Own agent definitions or preset |
+| `.claude/agents/` | Own agent definitions or preset |
 | `protocols/standing-orders/` | Shared CORE + own orders in `standing-orders/user/` |
 | `infra/channels/`, `infra/remotes/` | Own messaging + remote machines |
-| `mandants/`, `calendar/` | Own recipients + scheduled actions |
+| `identity/mandants/`, `workflow/calendars/` | Own recipients + scheduled actions |
 
 ## Data Isolation
 
 The CORE/USER branch split ensures isolation:
 
-- **USER paths** (bridge-config.yaml, contexts/, work/, agents/,
-  infra/channels/, infra/remotes/, mandants/, calendar/) live only on `user/{name}`
+- **USER paths** (bridge-config.yaml, workflow/contexts/, work/, .claude/agents/,
+  infra/channels/, infra/remotes/, identity/mandants/, workflow/calendars/) live only on `user/{name}`
 - If you never push `user/{name}`, none of that data leaves your machine
 - CORE paths (CLAUDE.md, docs/, templates, commands) contain no
   organization-specific data

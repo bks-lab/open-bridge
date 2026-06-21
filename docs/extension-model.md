@@ -5,7 +5,7 @@ last_updated: 2026-05-02
 related:
   - CLAUDE.md
   - docs/structure.md
-  - docs/repo-layout/c-prime.html
+  - docs/repo-layout.md
 ---
 
 # Bridge Extension Model
@@ -179,8 +179,8 @@ bridge-org-extension/
 {
   "name": "bridge-org-extension",
   "version": "1.0.0",
-  "description": "bks-lab extension for The Bridge — CustomerA coordinator, project configs, doc-system",
-  "author": "bks-lab",
+  "description": "Org overlay for open-bridge — a customer coordinator, project configs, doc-system",
+  "author": "<your-org>",
   "requires": {
     "open-bridge": ">=1.0.0"
   },
@@ -188,7 +188,7 @@ bridge-org-extension/
     "copy": [
       { "from": ".claude/agents/", "to": ".claude/agents/", "merge": true },
       { "from": "skills/", "to": "skills/", "merge": true },
-      { "from": "workflow/", "to": "workflow/", "merge": true, "rename": ".template": "" },
+      { "from": "workflow/", "to": "workflow/", "merge": true, "rename": { ".template": "" } },
       { "from": "protocols/standing-orders/", "to": "protocols/standing-orders/", "merge": true }
     ]
   }
@@ -286,7 +286,7 @@ Generic CORE Skills](../CLAUDE.md).
 
 ## Related
 
-- [`docs/structure.md`](structure.md) — full C-prime layout (Cluster-Wrappers + Drei-Test-Regel)
+- [`docs/structure.md`](structure.md) — full C-prime layout (cluster-wrappers + Default-to-Folder)
 - [`docs/personas.md`](personas.md) — persona schema + multi-persona patterns
 - [`docs/mandants.md`](mandants.md) — mandant schema + recipient groups
 - [`docs/calendar.md`](calendar.md) — calendar entries + scheduling
