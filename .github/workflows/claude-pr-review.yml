@@ -80,7 +80,7 @@ jobs:
     # isolation, kept explicit so the guarantee survives future edits.
     if: github.event.pull_request.head.repo.full_name == github.repository
 
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       # Check out the BASE ref (default for `pull_request`). We read the PR diff
@@ -105,6 +105,13 @@ jobs:
         with:
           # >>> Subscription auth — the whole point: NOT an API key. <<<
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Model: Haiku 4.5 — fast + low-cost for a diff-focused review. The
+          # action default (Sonnet 4.6) ran ~12-15 min / ~$2.40 per PR and
+          # intermittently hit the job timeout; Haiku turns this into a couple of
+          # minutes / a fraction of the cost against the Max quota, and is capable
+          # enough for the mechanical scope/leak/DCO/English checks below.
+          model: claude-haiku-4-5
 
           # Review instructions = the CORE prompt file checked into the repo.
           # Keeping it in-repo (vs. inline) makes the criteria reviewable and
@@ -133,18 +140,14 @@ jobs:
 
           # Tool lockdown via DISALLOW only (an --allowedTools allowlist would
           # also exclude the Action's own sticky-comment tool → bot runs but
-          # cannot post). We disallow:
-          #   * Edit/Replace/Write/Bash → no file or shell mutation
-          #   * Glob/Grep               → no repo-wide exploration, so the review
-          #                               stays LEAN: Claude judges from the
-          #                               injected diff + targeted Read only
-          #                               (keeps the run to a few minutes / low
-          #                               token cost against the Max quota).
-          # The sticky-comment tool is an MCP tool and stays available. With
-          # `contents: read` (no push/merge), the worst case under prompt
+          # cannot post). Disallow Edit/Replace/Write/Bash → no file or shell
+          # mutation; the read + sticky-comment tools stay available. (We do NOT
+          # disallow Glob/Grep: locking those down did not speed the run up and
+          # risked denial loops — the real latency/cost lever is the model above.)
+          # With `contents: read` (no push/merge), the worst case under a prompt
           # injection is a misleading COMMENT — never a merge/approve/push.
           claude_args: >-
-            --disallowedTools "Edit,Replace,Write,Bash,Glob,Grep"
+            --disallowedTools "Edit,Replace,Write,Bash"
 
       # NOTE — deliberately absent:
       #   * no `gh pr review --approve`
