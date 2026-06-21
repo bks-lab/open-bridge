@@ -311,3 +311,5 @@ open-bridge is **public and MIT** — there's no waitlist and nothing to sign up
 - **Read the code on GitHub:** [`bks-lab/open-bridge`](https://github.com/bks-lab/open-bridge)
 - **See a complete example:** [`examples/agency/`](examples/agency/)
 - **Found a rough edge?** Open an issue — that's the most useful thing you can do right now.
+
+<!-- pr-review-bot lean-test 2026-06-21 — throwaway, not for merge -->
