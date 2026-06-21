@@ -135,20 +135,33 @@ jobs:
           # (SETUP-checklist Schritt 0). Confirm on the smoke test (SETUP Schritt 5).
           use_sticky_comment: "true"
 
-          # NO claude_args tool restriction — on purpose. Disallowing tools
-          # (Edit/Write/Bash/Glob/Grep) made the bot FIGHT the lockdown: ~14
-          # permission denials per run that bloated latency + token cost AND
-          # left it unable to post at all (every restricted config posted zero
-          # comments). The bot now uses the action's default tool set, including
-          # its own sticky-comment tool. Assessment-only is enforced STRUCTURALLY
-          # without a tool lock:
-          #   * permissions: contents: read  → the token cannot push or merge
-          #   * the bot account is not a CODEOWNER → even an approval would not
-          #     satisfy branch protection on `main`
-          #   * the runner is ephemeral, GitHub-hosted → any file the bot edits
-          #     in the checkout is discarded, never pushed
-          # Worst case under a prompt injection is a misleading COMMENT — never a
-          # merge/approve/push. This mirrors Anthropic's own generic review setup.
+          # Tool permissions via the action's `settings` input — NOT claude_args.
+          # The action has its OWN default permission gate that denies Bash(gh:*)
+          # and Bash(git:*) in non-interactive CI, so even with no claude_args the
+          # bot still could not post (observed: permission_denials_count > 0, zero
+          # comments). The documented fix (anthropics/claude-code#32459) is an
+          # explicit allow-list here. This list is ALSO the assessment-only gate:
+          # it permits ONLY read + the PR comment/diff/checks tools. `gh pr merge`,
+          # `gh pr review --approve`, `git push`, Edit/Write and arbitrary Bash are
+          # NOT listed, so the action's default-deny blocks them. With
+          # `contents: read`, the bot can read + comment, never merge/approve/push.
+          settings: |
+            {
+              "permissions": {
+                "allow": [
+                  "Read",
+                  "Glob",
+                  "Grep",
+                  "Bash(gh pr comment:*)",
+                  "Bash(gh pr view:*)",
+                  "Bash(gh pr diff:*)",
+                  "Bash(gh pr checks:*)",
+                  "Bash(git diff:*)",
+                  "Bash(git log:*)",
+                  "Bash(git show:*)"
+                ]
+              }
+            }
 
       # NOTE — deliberately absent:
       #   * no `gh pr review --approve`
