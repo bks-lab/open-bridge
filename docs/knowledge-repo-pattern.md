@@ -18,7 +18,7 @@ keeps short, structured records (tasks, configs, logs); the knowledge repo
 keeps long-form prose and durable history.
 
 This is a **pattern**, not a requirement. Bridge works without it. Use this
-doc as a bauplan if you want to set one up.
+doc as a blueprint if you want to set one up.
 
 ## When to add a knowledge repo
 
@@ -200,7 +200,7 @@ optional, mix as needed:
 
 | Surface | File | Purpose |
 |---|---|---|
-| **Registration** | `ecosystem.yaml` → top-level entry | Lists the repo so `/bridge` sees it |
+| **Registration** | `ecosystem.yaml` → top-level entry | Lists the repo so `/bridge-status` sees it |
 | **Routing** | `workflow/contexts/<slug>.yaml` → `sync.wiki.*` | Per-context knowledge-repo defaults |
 | **Conventions** | `rules/<your>-principles.md` (path-triggered) | Auto-loads when working under your knowledge repo's path |
 

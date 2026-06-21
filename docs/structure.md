@@ -1,3 +1,12 @@
+---
+summary: "Directory structure: where everything lives, what format, what it does — the cluster-wrapper layout in prose (mirrors AGENTS.md)."
+type: reference
+last_updated: 2026-06-21
+related:
+  - AGENTS.md
+  - docs/extension-model.md
+---
+
 # Bridge Directory Structure
 
 Where everything lives, what format, what it does.

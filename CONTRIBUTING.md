@@ -13,13 +13,15 @@ Sub-agents, standing orders, themes, bug fixes — all welcome.
 ## Getting Started
 
 1. **Fork and clone** the repo
-2. **Run `./bin/setup`** (Windows: `powershell -File bin\setup.ps1`) to
-   create the cross-tool skill-discovery symlinks (`.claude/skills`,
-   `.agents/skills`, `.github/skills`) — without them your agent won't
-   find the skills.
-3. **Run `/onboard`** in Claude Code — the wizard creates your
+2. **Skill-discovery symlinks** (`.claude/skills`, `.agents/skills`,
+   `.github/skills`) ship committed, so a fresh clone works on macOS /
+   Linux / WSL out of the box. Only if your checkout dropped them (native
+   Windows, or a git without symlink support) run `./bin/setup` (Windows:
+   `powershell -File bin\setup.ps1`) to recreate them — without them your
+   agent won't find the skills.
+3. **Run `/bridge-onboard`** in Claude Code — the wizard creates your
    `user/your-name` branch and sets up ecosystem and preferences
-4. **Test commands:** `/briefing` (daily status), `/bridge` (dashboard),
+4. **Test commands:** `/briefing` (daily status), `/bridge-status` (dashboard),
    `/debrief` (transcript processing), `/archive` (weekly archive)
 
 Something broken? Open an issue with your `bridge-config.yaml` (redact
@@ -27,14 +29,19 @@ secrets) and the error output.
 
 ### Validation toolchain (for contributors)
 
-CI runs these on every PR — run them locally first:
+CI runs several checks on every PR — DCO sign-off, YAML lint, schema
+validation, a content-leak scan, skill-scope, and frontmatter checks (see
+[`.github/workflows/validate.yml`](.github/workflows/validate.yml)).
+`pre-commit` covers most of them; the main ones to run locally first:
 
 ```bash
-pipx install check-jsonschema    # schema validation (validate-bridge.py)
-pip install pyyaml               # optional — richer ecosystem cross-checks
-pre-commit install               # the repo ships .pre-commit-config.yaml
+pipx install check-jsonschema       # schema validation (validate-bridge.py)
+pip install pyyaml yamllint         # ecosystem cross-checks + YAML lint
+pre-commit install                  # the repo ships .pre-commit-config.yaml
+yamllint -c .yamllint.yml .
 python3 scripts/validate-bridge.py
 python3 scripts/validate-skill-scope.py
+python3 scripts/no-scrub-leak.py    # content-leak / PII scan
 ```
 
 All validators fail gracefully with install instructions if a tool is
@@ -67,7 +74,7 @@ Themes control vocabulary — the system stays the same, only wording changes.
 3. **Override vocabulary** — only keys you want to change; the rest
    inherits from the parent. See `themes/_schema.yaml` for all keys.
 4. **Test** — set `theme: your-theme` in `bridge-config.yaml`, run
-   `/briefing` and `/bridge` to verify vocabulary.
+   `/briefing` and `/bridge-status` to verify vocabulary.
 5. **Submit a PR** to `main`.
 
 ---

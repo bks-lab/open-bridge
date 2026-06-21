@@ -17,7 +17,7 @@ instead of a bespoke `_MOC.md` / `index.md` convention.
 - The onboarding wizard lives in the `bridge-onboard` skill (`skills/bridge-onboard/`) — trigger via `/bridge-onboard`.
 - [`feature-tour.md`](feature-tour.md) — per-cluster-wrapper "create your first X" guide (post-onboarding).
 - [`structure.md`](structure.md) — Cluster-wrapper layout in prose form (Default-to-Folder).
-- [`repo-layout.md`](repo-layout.md) — Visualisations. Primary view `repo-layout/c-prime.html`, brain-metaphor variants v1–v4 as alternatives.
+- [`repo-layout.md`](repo-layout.md) — Visualisations. The primary C-prime view is generated on demand; brain-metaphor variants v1–v4 are alternatives.
 - [`extension-model.md`](extension-model.md) — how CORE extends, how USER customises.
 - [`multi-instance.md`](multi-instance.md) — running multiple Bridge instances.
 - [`knowledge-repo-pattern.md`](knowledge-repo-pattern.md) — pairing a Bridge instance with an optional knowledge/documentation repo.

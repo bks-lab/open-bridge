@@ -85,4 +85,4 @@ reporting, and confirm the issue still reproduces there.
 
 ---
 
-Last updated: 2026-05-31.
+Last updated: 2026-06-21.

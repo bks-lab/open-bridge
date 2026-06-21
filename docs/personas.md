@@ -1,3 +1,12 @@
+---
+summary: "Personas: identities the user holds (freelancer, company director, private citizen) carrying tax data, signatures, and destination paths."
+type: guide
+last_updated: 2026-06-21
+related:
+  - docs/mandants.md
+  - docs/structure.md
+---
+
 # Personas — Self-Identity Definitions
 
 A persona represents an **identity the user holds**. It answers the

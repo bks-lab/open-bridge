@@ -190,7 +190,7 @@ the YAML.
 customer-specific coordinators (all `scope: org`).
 
 **Source-of-truth rule:** routing decisions live in exactly one place per
-domain — see the routing map in [`docs/structure.md`](structure.md#routing-map-kurz)
+domain — see the routing map in [`docs/structure.md`](structure.md#routing-map-short)
 and [`rules/operations.md`](../rules/operations.md). Standing-orders are
 NOT routing sources.
 

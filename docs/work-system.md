@@ -1,3 +1,12 @@
+---
+summary: "Task Management concept: log/board/tasks lifecycle, status enum, KIND-as-folder — the human-readable companion to AGENTS.md § Task Management."
+type: guide
+last_updated: 2026-06-21
+related:
+  - AGENTS.md
+  - docs/structure.md
+---
+
 # Task Management
 
 ## Concept
@@ -176,7 +185,7 @@ Three-class rule from [`protocols/standing-orders/board-task-criteria.md`](../pr
 
 - **A — Board task** (STATUS.md + board row): cross-session pickup needed **or** external recipient (mandant / external tracker / customer wiki).
 - **B — Log-only**: state changed, but session-bounded and no external party.
-- **C — Silent**: read-only routine commands (`/briefing`, `/bridge`, `/archive`).
+- **C — Silent**: read-only routine commands (`/briefing`, `/bridge-status`, `/archive`).
 
 Sub-items of an existing task are checked off in the parent STATUS.md — no own task. Cold ideas without pickup plan live in `work/backlog.md` (lazily created, split threshold >15 backlog rows).
 
@@ -193,7 +202,7 @@ The legacy `work/.config.yaml` is obsolete (merged into `bridge-config.yaml` on 
 ## Activation
 
 Say "set up task management" (or the legacy "set up work system") or enable during
-/bridge setup. The toggle is `work.enabled` in `bridge-config.yaml`.
+`/bridge-onboard`. The toggle is `work.enabled` in `bridge-config.yaml`.
 
 ## Task Artifacts
 

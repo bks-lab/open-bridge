@@ -304,9 +304,9 @@ typographic signal of the brand.
 - **Stat-display (36px/300)** — KPIs. Pair with a 14px uppercase `label-caps`
   underneath for the classic consulting-stat presentation.
 
-Headlines commonly mix weights inline: `<span>Digitale Transformation</span>`
-in `font-weight: 300` followed by `<span class="text-gradient">Intelligenz
-beschleunigen</span>` in `font-weight: 400`. The gradient span always gets a
+Headlines commonly mix weights inline: `<span>Digital Transformation</span>`
+in `font-weight: 300` followed by `<span class="text-gradient">accelerate
+intelligence</span>` in `font-weight: 400`. The gradient span always gets a
 one-step-heavier weight so it reads as the focal point.
 
 ## Layout
@@ -371,7 +371,7 @@ Two variants, always rectangular with `rounded.md` corners.
   padding is `32px` (md) / `16px` (sm). Never use full-width buttons on desktop.
 - Icons inside buttons are 20×20 (`w-5 h-5`), with `margin-left: 8px` when
   trailing, and should translate `+4px` on hover when the button implies
-  forward motion (e.g. "Beratung vereinbaren").
+  forward motion (e.g. "Book a consultation").
 
 ### Cards
 
@@ -380,7 +380,7 @@ Two variants, always rectangular with `rounded.md` corners.
   that scales from 0 to 100% width (`transform-origin: left`). The card itself
   lifts `-2px` and swaps to `shadow-hover`.
 - **Team card** — 256px-tall gradient portrait with initials placeholder (until
-  real photography is supplied), hover-reveals a "Profil ansehen" pill. The
+  real photography is supplied), hover-reveals a "View profile" pill. The
   portrait applies `filter: grayscale(1)` at rest and transitions to
   `grayscale(0)` on group hover over 500ms.
 - **CTA card** — white/glass surface inside a `surface-subtle` section,

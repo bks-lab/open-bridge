@@ -75,8 +75,7 @@ org overlay).
 ### Removed
 - Documentation reduction pass (fewer docs over more docs): deleted the
   pointer-only `docs/promote-rules.md` (rules live in `rules/operations.md`
-  + `rules/promote-safety.md`), `docs/work-system.md` (CLAUDE.md § Work
-  System is the source of truth), `DESIGN-md-guide.md` (condensed into
+  + `rules/promote-safety.md`), `DESIGN-md-guide.md` (condensed into
   DESIGN.md § Maintaining this file), and two unreferenced HTML templates.
   `docs/bridge-deck.md` reduced to a coming-soon stub; `docs/remotes.md` and
   `docs/channels.md` trimmed to concept + pointers (schemas/workflows live
