@@ -147,8 +147,9 @@ a{color:var(--accent-text)}
 }
 
 /* ---- Toggles & header ---- */
+.topbar{position:sticky;top:0;z-index:50}
 header.nav{
-  position:sticky;top:0;z-index:50;height:auto;min-height:64px;
+  height:auto;min-height:64px;
   display:flex;align-items:center;
   background:color-mix(in srgb,var(--surface) 82%,transparent);
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
@@ -181,6 +182,41 @@ header.nav{
 }
 @media (max-width:560px){
   .site-nav a{padding:6px 9px;font-size:13px}
+}
+
+/* ---- In-page section nav (landing only) — docks UNDER the sticky header ----
+   Same chrome grammar as header.nav (blur + translucent surface + bottom
+   border) so the two read as one stacked bar. A horizontally-scrollable row of
+   anchor pills styled like .site-nav a; the active link reuses the brand
+   gradient underline. Scroll-spy toggles .active + aria-current via JS;
+   degrades to plain anchors with JS off. */
+.page-nav{
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.page-nav-inner{
+  max-width:var(--container);margin:0 auto;padding:0 24px;
+  display:flex;align-items:center;gap:2px;
+  overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;-ms-overflow-style:none;
+}
+.page-nav-inner::-webkit-scrollbar{display:none}
+.page-nav a{
+  position:relative;flex:0 0 auto;
+  font-size:13.5px;font-weight:500;line-height:1.2;text-decoration:none;white-space:nowrap;
+  color:var(--secondary);padding:11px 12px;
+  transition:color .18s ease,background .18s ease;
+}
+.page-nav a:hover{color:var(--primary);background:var(--surface-muted)}
+.page-nav a.active,
+.page-nav a[aria-current="true"]{color:var(--primary)}
+.page-nav a.active::after{
+  content:"";position:absolute;left:12px;right:12px;bottom:0;height:2px;border-radius:2px;
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+}
+@media (max-width:560px){
+  .page-nav a{padding:11px 10px;font-size:13px}
 }
 
 .chip{
@@ -229,7 +265,9 @@ html.dark .btn-primary{background:var(--accent);color:#0B1220}
 .btn:hover .arrow{transform:translateX(3px)}
 
 /* ---- Sections ---- */
-section{padding-block:var(--section-y)}
+section{padding-block:var(--section-y);scroll-margin-top:112px}
+/* in-page anchors that target a figure/sub-block inside a section */
+[id="mechanic-viz"],[id="structure-viz"]{scroll-margin-top:112px}
 .alt{background:var(--surface-subtle)}
 .sec-head{max-width:var(--prose-w);margin:0 auto 56px;text-align:center}
 .sec-head .h1{margin-top:14px}
@@ -596,7 +634,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
   }
   *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
-  header.nav,.icon-btn,.seg,.copy-btn{display:none!important}
+  header.nav,.page-nav,.icon-btn,.seg,.copy-btn{display:none!important}
   .reveal,.reset-line{opacity:1!important;transform:none!important}
   section{padding-block:32px}
 }
@@ -605,6 +643,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <body>
 
 <!-- ======================= STICKY HEADER ======================= -->
+<div class="topbar">
 <header class="nav">
   <div class="nav-inner">
     <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
@@ -632,18 +671,31 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   </div>
 </header>
 
+<!-- ======================= IN-PAGE SECTION NAV (landing only) ======================= -->
+<nav class="page-nav" id="page-nav" aria-label="On this page / Auf dieser Seite">
+  <div class="page-nav-inner">
+    <a href="#problem"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></a>
+    <a href="#substrate"><span data-lang="en">The substrate</span><span data-lang="de">Das Substrat</span></a>
+    <a href="#mechanic-viz"><span data-lang="en">How it works</span><span data-lang="de">So funktioniert es</span></a>
+    <a href="#properties"><span data-lang="en">What you get</span><span data-lang="de">Was du bekommst</span></a>
+    <a href="#usecases"><span data-lang="en">Use-cases</span><span data-lang="de">Anwendungsfälle</span></a>
+    <a href="#honesty"><span data-lang="en">Honesty</span><span data-lang="de">Ehrlichkeit</span></a>
+    <a href="#concept"><span data-lang="en">Concept</span><span data-lang="de">Konzept</span></a>
+    <a href="#start"><span data-lang="en">Get started</span><span data-lang="de">Loslegen</span></a>
+  </div>
+</nav>
+</div><!-- /.topbar -->
+
 <!-- ======================= HERO (copy on top · constellation full-width below) ======================= -->
 <section class="hero">
   <div class="hero-grid container">
     <div class="hero-copy">
-      <p class="eyebrow" data-lang="en">Persistent context for your AI coding agent</p>
-      <p class="eyebrow" data-lang="de">Bleibender Kontext für deinen KI-Coding-Agenten</p>
+      <p class="eyebrow"><span data-lang="en">Persistent context for your AI coding agent</span><span data-lang="de">Bleibender Kontext für deinen KI-Coding-Agenten</span></p>
 
       <h1 class="display" data-lang="en">Stop re-explaining your project to your AI agent. It <span class="text-gradient">already knows</span> your repos.</h1>
       <h1 class="display" data-lang="de">Erklär deinem KI-Agenten nicht jedes Mal alles neu. Er <span class="text-gradient">kennt</span> deine Repos <span class="text-gradient">schon</span>.</h1>
 
-      <p class="hero-sub" data-lang="en">Your repos, clients, conventions, last week's decisions — your coding agent reads them back at the start of every session, so context compounds instead of resetting. It's just plain markdown and YAML in git you own and can read yourself — any model or frontend, no database, no SaaS.</p>
-      <p class="hero-sub" data-lang="de">Deine Repos, Kunden, Konventionen, die Entscheidungen von letzter Woche — dein Coding-Agent liest sie zu Beginn jeder Session wieder ein, damit Kontext wächst, statt sich zurückzusetzen. Es ist nur Plain-Markdown und YAML in Git, das dir gehört und das du selbst lesen kannst — egal welches Modell oder Frontend, keine Datenbank, kein SaaS.</p>
+      <p class="hero-sub"><span data-lang="en">Your repos, clients, conventions, last week's decisions — your coding agent reads them back at the start of every session, so context compounds instead of resetting. Just plain markdown and YAML in git, any model or frontend.</span><span data-lang="de">Deine Repos, Kunden, Konventionen, die Entscheidungen von letzter Woche — dein Coding-Agent liest sie zu Beginn jeder Session wieder ein, damit Kontext wächst, statt sich zurückzusetzen. Nur Plain-Markdown und YAML in Git, egal welches Modell oder Frontend.</span></p>
 
       <p class="honesty-strip">
         <span data-lang="en">Public<span class="sep">·</span>MIT<span class="sep">·</span>clone &amp; read it yourself<span class="sep">·</span><b>self-used (N=1)</b></span>
@@ -661,7 +713,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         </a>
       </div>
 
-      <p class="beta-line"><span data-lang="en">Public and MIT — clone it, read it, run it. No waitlist, nothing to sign up for. Newly released, so expect rough edges and tell us where they are.</span><span data-lang="de">Public und MIT — klone es, lies es, nutze es. Keine Warteliste, nichts anzumelden. Frisch veröffentlicht — erwarte raue Kanten und sag uns, wo sie sind.</span></p>
+      <p class="beta-line"><span data-lang="en">Newly released, so expect rough edges — tell us where they are.</span><span data-lang="de">Frisch veröffentlicht — erwarte raue Kanten und sag uns, wo sie sind.</span></p>
     </div>
 
     <div class="hero-visual">
@@ -761,10 +813,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <section class="alt" id="problem">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">The cold-start problem</p>
-      <p class="eyebrow" data-lang="de">Das Kaltstart-Problem</p>
-      <h2 class="h1" data-lang="en">Every session starts from scratch.</h2>
-      <h2 class="h1" data-lang="de">Jede Session beginnt bei null.</h2>
+      <p class="eyebrow"><span data-lang="en">The cold-start problem</span><span data-lang="de">Das Kaltstart-Problem</span></p>
+      <h2 class="h1"><span data-lang="en">Every session starts from scratch.</span><span data-lang="de">Jede Session beginnt bei null.</span></h2>
     </div>
 
     <div class="reset-lines">
@@ -775,8 +825,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 
     <div class="split reveal">
       <div class="doc-card card">
-        <h4 class="h4" data-lang="en">Most AI work today</h4>
-        <h4 class="h4" data-lang="de">KI-Arbeit heute</h4>
+        <h4 class="h4"><span data-lang="en">Most AI work today</span><span data-lang="de">KI-Arbeit heute</span></h4>
         <div class="flat-dump" aria-hidden="true">
 <span class="f">📄 chat-export-final.txt</span>
 <span class="f">📄 notes (3).md</span>
@@ -786,12 +835,10 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <span class="f">📄 chat-export-final-v2.txt</span>
 <span class="f">📄 untitled.md</span>
         </div>
-        <p class="cap" data-lang="en">A bare "My Documents" folder — everyone piling up their own chaos, every conversation rebuilding context and structure from scratch.</p>
-        <p class="cap" data-lang="de">Ein nackter „Eigene Dateien"-Ordner — jeder häuft sein eigenes Chaos an, jede Unterhaltung baut Kontext und Struktur von Grund auf neu.</p>
+        <p class="cap"><span data-lang="en">A bare "My Documents" folder — everyone piling up their own chaos, every conversation rebuilding context and structure from scratch.</span><span data-lang="de">Ein nackter „Eigene Dateien"-Ordner — jeder häuft sein eigenes Chaos an, jede Unterhaltung baut Kontext und Struktur von Grund auf neu.</span></p>
       </div>
       <div class="doc-card card">
-        <h4 class="h4" data-lang="en">With open-bridge</h4>
-        <h4 class="h4" data-lang="de">Mit open-bridge</h4>
+        <h4 class="h4"><span data-lang="en">With open-bridge</span><span data-lang="de">Mit open-bridge</span></h4>
         <div class="code" aria-hidden="true"><span class="dir">identity/</span>          who you are, who you send to
 <span class="dir">workflow/</span>          per-context worlds
 <span class="dir">work/</span>
@@ -800,8 +847,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   <span class="dir">done/</span>            closed, archived
   board.md           live task board
   log.md             the persistent record</div>
-        <p class="cap" data-lang="en">A clear, separated layout the agent files into — shipped as example structures, not invented per user.</p>
-        <p class="cap" data-lang="de">Ein klares, getrenntes Layout, in das der Agent ablegt — als Beispielstrukturen mitgeliefert, nicht von jedem Nutzer neu erfunden.</p>
+        <p class="cap"><span data-lang="en">A clear, separated layout the agent files into — shipped as example structures, not invented per user.</span><span data-lang="de">Ein klares, getrenntes Layout, in das der Agent ablegt — als Beispielstrukturen mitgeliefert, nicht von jedem Nutzer neu erfunden.</span></p>
       </div>
     </div>
   </div>
@@ -811,12 +857,9 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <section id="substrate">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">The substrate, shown</p>
-      <p class="eyebrow" data-lang="de">Das Substrat, gezeigt</p>
-      <h2 class="h1" data-lang="en">Plain text in git — clone it and look.</h2>
-      <h2 class="h1" data-lang="de">Plain Text in Git — klone es und schau rein.</h2>
-      <p data-lang="en">No adjectives. <code>examples/agency/</code> is a real, complete configuration you can clone today — and the task <code>STATUS</code> and work-log below are the shape your own <code>work/</code> takes once you start logging.</p>
-      <p data-lang="de">Keine Adjektive. <code>examples/agency/</code> ist eine echte, vollständige Konfiguration, die du heute klonen kannst — und der Task-<code>STATUS</code> und das Worklog unten sind die Form, die dein eigenes <code>work/</code> annimmt, sobald du loslegst.</p>
+      <p class="eyebrow"><span data-lang="en">The substrate, shown</span><span data-lang="de">Das Substrat, gezeigt</span></p>
+      <h2 class="h1"><span data-lang="en">Plain text in git — clone it and look.</span><span data-lang="de">Plain Text in Git — klone es und schau rein.</span></h2>
+      <p><span data-lang="en">No adjectives. <code>examples/agency/</code> is a real, complete config you can clone today; the <code>STATUS</code> and work-log below are the shape your own <code>work/</code> takes once you start logging.</span><span data-lang="de">Keine Adjektive. <code>examples/agency/</code> ist eine echte, vollständige Config, die du heute klonen kannst; der <code>STATUS</code> und das Worklog unten sind die Form, die dein eigenes <code>work/</code> annimmt, sobald du loslegst.</span></p>
     </div>
 
     <div class="split reveal">
@@ -861,17 +904,12 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       <div class="card" style="display:flex;flex-direction:column;justify-content:center">
         <h3 class="h3" data-lang="en">What you write today, it reads in six months.</h3>
         <h3 class="h3" data-lang="de">Was du heute schreibst, liest es in sechs Monaten.</h3>
-        <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65" data-lang="en">Agents can <code>cat</code> a file, but they can't hold an API key. Because the whole thing is plain text in git, there is no migration, no second app, no proprietary store to outlive. It is inspectable, diff-able, and yours.</p>
-        <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65" data-lang="de">Agenten können eine Datei <code>cat</code>ten, aber keinen API-Key halten. Weil das Ganze Plain Text in Git ist, gibt es keine Migration, keine zweite App, keinen proprietären Speicher, der überleben müsste. Es ist einsehbar, diff-bar und deins.</p>
-        <p style="margin-top:18px;font-size:15px;line-height:1.6" data-lang="en">The constellation at the top is this same knowledge base as a graph. Here is one row of it for real — and below, day two reads it back.</p>
-        <p style="margin-top:18px;font-size:15px;line-height:1.6" data-lang="de">Die Konstellation ganz oben ist genau diese Wissensbasis als Graph. Hier ist eine Zeile davon echt — und unten liest Tag zwei sie wieder.</p>
+        <p style="margin-top:18px;font-size:18px;font-weight:300;line-height:1.65"><span data-lang="en">Agents can <code>cat</code> a file, but they can't hold an API key. Because the whole thing is plain text in git, there is no migration, no second app, no proprietary store to outlive — it is inspectable, diff-able, and yours. The constellation below is this same knowledge base as a graph; the <code>STATUS</code> and log to the left are one real row of it.</span><span data-lang="de">Agenten können eine Datei <code>cat</code>ten, aber keinen API-Key halten. Weil das Ganze Plain Text in Git ist, gibt es keine Migration, keine zweite App, keinen proprietären Speicher, der überleben müsste — es ist einsehbar, diff-bar und deins. Die Konstellation unten ist genau diese Wissensbasis als Graph; der <code>STATUS</code> und das Log links sind eine echte Zeile davon.</span></p>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:24px">
           <span class="chip" data-lang="en">no database</span><span class="chip" data-lang="de">keine Datenbank</span>
           <span class="chip" data-lang="en">no SaaS</span><span class="chip" data-lang="de">kein SaaS</span>
           <span class="chip" data-lang="en">no daemon</span><span class="chip" data-lang="de">kein Daemon</span>
         </div>
-        <p class="cap muted" style="margin-top:24px;font-size:13px" data-lang="en">A fresh clone starts mostly empty. <code>examples/agency/</code> ships a complete configuration to read; the <code>STATUS</code> and log above show the shape your <code>work/</code> takes as you fill it.</p>
-        <p class="cap muted" style="margin-top:24px;font-size:13px" data-lang="de">Ein frischer Clone startet weitgehend leer. <code>examples/agency/</code> liefert eine vollständige Konfiguration zum Lesen; der <code>STATUS</code> und das Log oben zeigen die Form, die dein <code>work/</code> annimmt, während du es füllst.</p>
       </div>
     </div>
 
@@ -919,8 +957,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <div class="sv-legend" id="sv-legend" role="group" aria-label="Group and edge legend"></div>
 
           <figcaption class="sv-cap" id="sv-cap-text">
-            <span data-lang="en"><b>Generic example pieces</b> — this is the knowledge base you build over time; your real config fills it in. A fresh clone is nearly empty, then it thickens as you add pieces.</span>
-            <span data-lang="de"><b>Generische Beispiel-Bausteine</b> — das ist die Wissensbasis, die du mit der Zeit aufbaust; deine echte Config füllt sie. Ein frischer Klon ist fast leer und verdichtet sich, sobald du Bausteine ergänzt.</span>
+            <span data-lang="en"><b>Generic example pieces</b> — this is the knowledge base you build over time; your real config fills it in.</span>
+            <span data-lang="de"><b>Generische Beispiel-Bausteine</b> — das ist die Wissensbasis, die du mit der Zeit aufbaust; deine echte Config füllt sie.</span>
           </figcaption>
         </div>
       </figure>
@@ -1073,12 +1111,9 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <section class="alt" id="properties">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">What your agent gains</p>
-      <p class="eyebrow" data-lang="de">Was dein Agent gewinnt</p>
-      <h2 class="h1" data-lang="en">Two things this gives your agent: more context, less chaos.</h2>
-      <h2 class="h1" data-lang="de">Zwei Dinge, die das deinem Agenten gibt: mehr Kontext, weniger Chaos.</h2>
-      <p data-lang="en">Both were coined by the team at BKS-Lab — the plain meaning leads, the name follows.</p>
-      <p data-lang="de">Beide wurden im Team bei BKS-Lab geprägt — die schlichte Bedeutung führt, der Name folgt.</p>
+      <p class="eyebrow"><span data-lang="en">What your agent gains</span><span data-lang="de">Was dein Agent gewinnt</span></p>
+      <h2 class="h1"><span data-lang="en">Two things this gives your agent: more context, less chaos.</span><span data-lang="de">Zwei Dinge, die das deinem Agenten gibt: mehr Kontext, weniger Chaos.</span></h2>
+      <p><span data-lang="en">Both were coined by the team at BKS-Lab — the plain meaning leads, the name follows.</span><span data-lang="de">Beide wurden im Team bei BKS-Lab geprägt — die schlichte Bedeutung führt, der Name folgt.</span></p>
     </div>
 
     <div class="tiles">
@@ -1090,10 +1125,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <path d="M24 8v6M24 34v6M8 24h6M34 24h6M12.7 12.7l4.2 4.2M31.1 31.1l4.2 4.2M35.3 12.7l-4.2 4.2M16.9 31.1l-4.2 4.2"/>
         </svg>
         <h3><span data-lang="en">Context Booster</span><span class="coined" data-lang="de">Context Booster</span></h3>
-        <p class="attrib" data-lang="en">An independent context layer beside your model and your tool — coined "Context Booster" at BKS-Lab.</p>
-        <p class="attrib" data-lang="de">Eine modell- und frontend-unabhängige „dritte Seite" — als „Context Booster" geprägt bei BKS-Lab.</p>
-        <p data-lang="en">You work with whatever model and whatever frontend you like. open-bridge layers in persistent context about your world — your repos and clients, your machines, what you worked on yesterday — so the agent stops loading the wrong client. The boost comes from a third side that doesn't care what you run, because the substrate is plain text every runtime can read.</p>
-        <p data-lang="de">Du arbeitest mit dem Modell und dem Frontend, das du willst. open-bridge legt persistenten Kontext über deine Welt darüber — deine Repos und Kunden, deine Maschinen, woran du gestern gearbeitet hast — damit der Agent aufhört, den falschen Kunden zu laden. Der Boost kommt von einer dritten Seite, der egal ist, was du nutzt — weil das Substrat Plain Text ist, den jede Runtime lesen kann.</p>
+        <p class="attrib"><span data-lang="en">An independent context layer beside your model and your tool — coined "Context Booster" at BKS-Lab.</span><span data-lang="de">Eine modell- und frontend-unabhängige „dritte Seite" — als „Context Booster" geprägt bei BKS-Lab.</span></p>
+        <p><span data-lang="en">You work with whatever model and whatever frontend you like. open-bridge layers in persistent context about your world — your repos and clients, your machines, what you worked on yesterday — so the agent stops loading the wrong client. The boost comes from a third side that doesn't care what you run, because the substrate is plain text every runtime can read.</span><span data-lang="de">Du arbeitest mit dem Modell und dem Frontend, das du willst. open-bridge legt persistenten Kontext über deine Welt darüber — deine Repos und Kunden, deine Maschinen, woran du gestern gearbeitet hast — damit der Agent aufhört, den falschen Kunden zu laden. Der Boost kommt von einer dritten Seite, der egal ist, was du nutzt — weil das Substrat Plain Text ist, den jede Runtime lesen kann.</span></p>
       </div>
 
       <!-- Tile 2 — four-room / filing grid motif -->
@@ -1105,10 +1138,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <rect x="27" y="27" width="14" height="14" rx="2" fill="currentColor" stroke="none"/>
         </svg>
         <h3><span data-lang="en">Chaos Tamer</span><span class="coined" data-lang="de">Chaos Tamer</span></h3>
-        <p class="attrib" data-lang="en">Structuring unstructured AI dialogues — coined at BKS-Lab (originally „KI-Chaos-Bändiger").</p>
-        <p class="attrib" data-lang="de">„Strukturierung unstrukturierter KI-Dialoge" — geprägt bei BKS-Lab als „KI-Chaos-Bändiger".</p>
-        <p data-lang="en">open-bridge ships ready-made structure you don't have to invent — and helps you keep it. It holds a structure (a board, a log, per-task status <code>backlog → doing → review → done</code> over <code>tasks/</code> and <code>streams/</code>), files away knowledge as you work — decisions, findings and status land in plain text the agent reads back — and keeps the work from drifting into another My-Documents pile. Unstructured agent sessions become a persistent, filed, compounding record.</p>
-        <p data-lang="de">open-bridge liefert fertige Struktur mit, die du nicht erfinden musst — und hilft dir, sie zu halten. Es hält eine Struktur (ein Board, ein Log, Per-Task-Status <code>backlog → doing → review → done</code> über <code>tasks/</code> und <code>streams/</code>), legt Wissen ab, während du arbeitest — Entscheidungen, Erkenntnisse und Status landen als Plain Text, den der Agent später wieder liest — und bewahrt die Arbeit davor, in den nächsten My-Documents-Haufen abzudriften. Aus unstrukturierten Agenten-Sessions wird ein persistentes, abgelegtes, wachsendes Protokoll.</p>
+        <p class="attrib"><span data-lang="en">Structuring unstructured AI dialogues — coined at BKS-Lab.</span><span data-lang="de">„Strukturierung unstrukturierter KI-Dialoge" — geprägt bei BKS-Lab.</span></p>
+        <p><span data-lang="en">It ships ready-made structure you don't have to invent: a board, a log, and per-task status (<code>backlog → doing → review → done</code> over <code>tasks/</code> and <code>streams/</code>). Decisions, findings and status get filed in plain text as you work — so unstructured sessions become a persistent, compounding record instead of another My-Documents pile.</span><span data-lang="de">Es liefert fertige Struktur mit, die du nicht erfinden musst: ein Board, ein Log und Per-Task-Status (<code>backlog → doing → review → done</code> über <code>tasks/</code> und <code>streams/</code>). Entscheidungen, Erkenntnisse und Status werden als Plain Text abgelegt, während du arbeitest — aus unstrukturierten Sessions wird ein persistentes, wachsendes Protokoll statt des nächsten My-Documents-Haufens.</span></p>
         <div class="demo" aria-hidden="true">work/board.md
   Doing (2) · bigcorp-checkout · startupxyz-handover
   Streams (1) · infra-hardening
@@ -1118,8 +1149,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 
     <p class="stance-note reveal">
       <span class="tag-bet">Bet / Roadmap</span>
-      <span data-lang="en"><strong>Workspace separation as the default</strong> — keep each engagement's facts apart, and "if you can't place it into your known world-models, ask" instead of guessing. This is the intended design stance, agreed in principle, but not yet built into open-bridge. We label it honestly below.</span>
-      <span data-lang="de"><strong>Workspace-Trennung als Default</strong> — die Fakten jeder Beauftragung getrennt halten, und „wenn du es nicht in deine bekannten Weltmodelle einordnen kannst, dann frage" statt zu raten. Das ist die beabsichtigte Design-Haltung, im Prinzip vereinbart, aber noch nicht in open-bridge eingebaut. Wir kennzeichnen das unten ehrlich.</span>
+      <span data-lang="en"><strong>Workspace separation as the default</strong> is the intended stance — agreed in principle, not yet built (labelled honestly below).</span>
+      <span data-lang="de"><strong>Workspace-Trennung als Default</strong> ist die beabsichtigte Haltung — im Prinzip vereinbart, noch nicht gebaut (unten ehrlich gekennzeichnet).</span>
     </p>
   </div>
 </section>
@@ -1128,10 +1159,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <section id="usecases">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">A day with it</p>
-      <p class="eyebrow" data-lang="de">Ein Tag damit</p>
-      <h2 class="h1" data-lang="en">Say it plainly — get the work, already in context.</h2>
-      <h2 class="h1" data-lang="de">Sag es schlicht — bekomm die Arbeit, schon im Kontext.</h2>
+      <p class="eyebrow"><span data-lang="en">A day with it</span><span data-lang="de">Ein Tag damit</span></p>
+      <h2 class="h1"><span data-lang="en">Say it plainly — get the work, already in context.</span><span data-lang="de">Sag es schlicht — bekomm die Arbeit, schon im Kontext.</span></h2>
     </div>
 
     <div class="cap-grid reveal">
@@ -1163,39 +1192,15 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   </div>
 </section>
 
-<!-- ======================= CAPABILITIES: WHAT ELSE IT CAN DO ======================= -->
+<!-- ======================= WHAT ELSE IT CAN DO (merged appendix under Use-cases) ======================= -->
 <section class="alt" id="capabilities">
   <div class="container">
-    <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">What else it can do</p>
-      <p class="eyebrow" data-lang="de">Was es noch kann</p>
-      <h2 class="h1" data-lang="en">More than memory — a whole working surface.</h2>
-      <h2 class="h1" data-lang="de">Mehr als ein Gedächtnis — eine ganze Arbeitsfläche.</h2>
+    <div class="sec-head reveal" style="margin-bottom:40px">
+      <p class="eyebrow"><span data-lang="en">What else it can do</span><span data-lang="de">Was es noch kann</span></p>
+      <h2 class="h2"><span data-lang="en">The four core pieces already give you value. The rest is optional.</span><span data-lang="de">Die vier Kernteile bringen schon Wert. Der Rest ist optional.</span></h2>
     </div>
 
-    <p class="cap-intro reveal"><span data-lang="en">You get value from the four core pieces alone. Everything below is optional, USER-scope, and off until you turn it on — the code ships, you opt in.</span><span data-lang="de">Schon die vier Kernteile bringen Wert. Alles darunter ist optional, USER-scope und aus, bis du es einschaltest — der Code ist dabei, du aktivierst ihn.</span></p>
-
-    <div class="cap-group reveal">
-      <p class="cap-grouphead"><span data-lang="en">Core — works from a fresh clone</span><span data-lang="de">Kern — läuft aus einem frischen Clone</span></p>
-      <div class="cap-grid">
-        <div class="cap-item">
-          <div class="cap-label"><span data-lang="en">Context registry</span><span data-lang="de">Kontext-Registry</span></div>
-          <p class="cap-benefit"><span data-lang="en">Your repos, packages, clients in one file — the agent loads the right world, stops asking "GitHub or Jira?".</span><span data-lang="de">Deine Repos, Packages, Kunden in einer Datei — der Agent lädt die richtige Welt und fragt nicht „GitHub oder Jira?".</span></p>
-        </div>
-        <div class="cap-item">
-          <div class="cap-label"><span data-lang="en">Task management</span><span data-lang="de">Task-Management</span></div>
-          <p class="cap-benefit"><span data-lang="en">A board, a daily log, per-task status — AI sessions become a filed record you can search.</span><span data-lang="de">Ein Board, ein Tageslog, Per-Task-Status — KI-Sessions werden zum durchsuchbaren, abgelegten Protokoll.</span></p>
-        </div>
-        <div class="cap-item">
-          <div class="cap-label"><span data-lang="en">Skills &amp; commands</span><span data-lang="de">Skills &amp; Befehle</span></div>
-          <p class="cap-benefit"><span data-lang="en">Describe what you need in plain words; ready-made commands like <code>/briefing</code> and <code>/debrief</code> just load.</span><span data-lang="de">Sag in einfachen Worten, was du brauchst; fertige Befehle wie <code>/briefing</code> und <code>/debrief</code> laden einfach.</span></p>
-        </div>
-        <div class="cap-item">
-          <div class="cap-label"><span data-lang="en">Standing orders</span><span data-lang="de">Standing Orders</span></div>
-          <p class="cap-benefit"><span data-lang="en">Always-on rules (code style, security, logging) ride into every agent prompt — enforced everywhere.</span><span data-lang="de">Immer-aktive Regeln (Code-Stil, Security, Logging) reiten in jeden Agenten-Prompt — überall durchgesetzt.</span></p>
-        </div>
-      </div>
-    </div>
+    <p class="cap-intro reveal" style="margin-bottom:28px"><span data-lang="en">The four core pieces — <strong>context registry</strong>, <strong>task management</strong>, <strong>skills &amp; commands</strong>, <strong>standing orders</strong> — run from a fresh clone (you saw them in the day above). Everything below is optional, USER-scope, off until you turn it on.</span><span data-lang="de">Die vier Kernteile — <strong>Kontext-Registry</strong>, <strong>Task-Management</strong>, <strong>Skills &amp; Befehle</strong>, <strong>Standing Orders</strong> — laufen aus einem frischen Clone (du hast sie oben im Tagesablauf gesehen). Alles darunter ist optional, USER-scope, aus bis du es einschaltest.</span></p>
 
     <div class="cap-group reveal">
       <p class="cap-grouphead"><span data-lang="en">Optional — turn on when you want it</span><span data-lang="de">Optional — einschalten, wenn du es brauchst</span></p>
@@ -1237,16 +1242,13 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <section id="objection">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">The honest objection</p>
-      <p class="eyebrow" data-lang="de">Der ehrliche Einwand</p>
-      <h2 class="h1" data-lang="en">Why not just a CLAUDE.md and a folder of my own?</h2>
-      <h2 class="h1" data-lang="de">Warum nicht einfach eine CLAUDE.md und ein eigener Ordner?</h2>
+      <p class="eyebrow"><span data-lang="en">The honest objection</span><span data-lang="de">Der ehrliche Einwand</span></p>
+      <h2 class="h1"><span data-lang="en">Why not just a CLAUDE.md and a folder of my own?</span><span data-lang="de">Warum nicht einfach eine CLAUDE.md und ein eigener Ordner?</span></h2>
     </div>
 
     <div class="compare reveal">
       <div class="col before">
-        <h4 class="h4" data-lang="en">A dotfile of instructions</h4>
-        <h4 class="h4" data-lang="de">Ein Dotfile mit Anweisungen</h4>
+        <h4 class="h4"><span data-lang="en">A dotfile of instructions</span><span data-lang="de">Ein Dotfile mit Anweisungen</span></h4>
         <ul>
           <li><span class="mk">—</span><span data-lang="en">One flat instruction sheet, re-read each session.</span><span data-lang="de">Ein flaches Anweisungsblatt, jede Session neu gelesen.</span></li>
           <li><span class="mk">—</span><span data-lang="en">No persistent record of what happened last week.</span><span data-lang="de">Kein persistentes Protokoll dessen, was letzte Woche passierte.</span></li>
@@ -1255,8 +1257,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         </ul>
       </div>
       <div class="col after">
-        <h4 class="h4" data-lang="en">A structured workspace</h4>
-        <h4 class="h4" data-lang="de">Ein strukturierter Workspace</h4>
+        <h4 class="h4"><span data-lang="en">A structured workspace</span><span data-lang="de">Ein strukturierter Workspace</span></h4>
         <ul>
           <li><span class="mk">+</span><span data-lang="en">Separate per-context worlds — identity, workflow, work.</span><span data-lang="de">Getrennte Kontext-Welten — identity, workflow, work.</span></li>
           <li><span class="mk">+</span><span data-lang="en">A work log + task board that survive across sessions.</span><span data-lang="de">Ein Worklog + Task-Board, die über Sessions hinweg bestehen.</span></li>
@@ -1266,8 +1267,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       </div>
     </div>
 
-    <p class="punch reveal"><span data-lang="en">The structure is shipped, not invented — the same relief as moving from a bare "My Documents" dump to a place where everything has a home.</span><span data-lang="de">Die Struktur wird mitgeliefert, nicht erfunden — dieselbe Entlastung wie der Wechsel von einem nackten „Eigene Dateien"-Haufen zu einem Ort, an dem alles seinen Platz hat.</span></p>
-    <p class="punch muted reveal" style="font-size:14px;margin-top:18px"><span data-lang="en"><strong>Not for</strong> a single-repo project or ad-hoc one-off scripting — the coordination layer is overhead you won't use.</span><span data-lang="de"><strong>Nicht für</strong> ein Single-Repo-Projekt oder Ad-hoc-Einmal-Scripting — die Koordinationsschicht ist Overhead, den du nicht brauchst.</span></p>
+    <p class="punch muted reveal" style="font-size:14px;margin-top:24px"><span data-lang="en"><strong>Not for</strong> a single-repo project or ad-hoc one-off scripting — the coordination layer is overhead you won't use.</span><span data-lang="de"><strong>Nicht für</strong> ein Single-Repo-Projekt oder Ad-hoc-Einmal-Scripting — die Koordinationsschicht ist Overhead, den du nicht brauchst.</span></p>
   </div>
 </section>
 
@@ -1275,12 +1275,9 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <section class="alt" id="honesty">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">The evidence boundary</p>
-      <p class="eyebrow" data-lang="de">Die Beweis-Grenze</p>
-      <h2 class="h1" data-lang="en">What's proven, what's a bet, what's open.</h2>
-      <h2 class="h1" data-lang="de">Was bewiesen ist, was eine Wette ist, was offen ist.</h2>
-      <p data-lang="en">Built and used at BKS-Lab to run BKS-Lab — one team, on one self-hosted instance (N=1). Zero external users today — newly public, not yet adopted. This documents method and substrate, not a user base.</p>
-      <p data-lang="de">Gebaut und bei BKS-Lab genutzt, um BKS-Lab zu betreiben — ein Team, auf einer selbst gehosteten Instanz (N=1). Heute null externe Nutzer — frisch public, noch nicht verbreitet. Das dokumentiert Methode und Substrat, keine Nutzerbasis.</p>
+      <p class="eyebrow"><span data-lang="en">The evidence boundary</span><span data-lang="de">Die Beweis-Grenze</span></p>
+      <h2 class="h1"><span data-lang="en">What's proven, what's a bet, what's open.</span><span data-lang="de">Was bewiesen ist, was eine Wette ist, was offen ist.</span></h2>
+      <p><span data-lang="en">Built and used at BKS-Lab to run BKS-Lab — one team, on one self-hosted instance (N=1). Zero external users today — newly public, not yet adopted. This documents method and substrate, not a user base.</span><span data-lang="de">Gebaut und bei BKS-Lab genutzt, um BKS-Lab zu betreiben — ein Team, auf einer selbst gehosteten Instanz (N=1). Heute null externe Nutzer — frisch public, noch nicht verbreitet. Das dokumentiert Methode und Substrat, keine Nutzerbasis.</span></p>
     </div>
 
     <div class="board3 reveal">
@@ -1315,38 +1312,13 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   </div>
 </section>
 
-<!-- ======================= WHAT IS A BRIDGE (+ one or many) ======================= -->
-<section id="bridge-concept">
+<!-- ======================= CONCEPT (collapsed: bridge · CORE/USER · runtimes) ======================= -->
+<section id="concept">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">What is a bridge</p>
-      <p class="eyebrow" data-lang="de">Was ist eine Bridge</p>
-      <h2 class="h1" data-lang="en">And you can run many.</h2>
-      <h2 class="h1" data-lang="de">Und du kannst viele betreiben.</h2>
-    </div>
-
-    <div class="diagram-frame reveal" style="max-width:48rem;padding:28px 30px">
-      <p style="font-size:16px;line-height:1.7;color:var(--on-surface);margin:0" data-lang="en">A bridge is your agent's memory of your world — a plain folder of text files (markdown + YAML in git) it reads at the start of every session. No database, no app to run: who you are, your repos and clients, your rules, and what you worked on yesterday — all in files you own.</p>
-      <p style="font-size:16px;line-height:1.7;color:var(--on-surface);margin:0" data-lang="de">Eine Bridge ist das Gedächtnis deines Agenten für deine Welt — ein einfacher Ordner aus Textdateien (Markdown + YAML in Git), den er zu Beginn jeder Session liest. Keine Datenbank, keine App: wer du bist, deine Repos und Kunden, deine Regeln und woran du gestern gearbeitet hast — alles in Dateien, die dir gehören.</p>
-
-      <p style="font-size:16px;line-height:1.7;color:var(--on-surface);margin:20px 0 0" data-lang="en">And you can run many. An organisation can run several bridges — one per client, team or context. A consultancy might run one for bigcorp, one for startupxyz, and one for its own internal ops — each with its own rules, processes and workflows, each keeping that context's data to itself. All of them stand on one shared foundation: a common CORE of skills, templates and docs that updates once for everyone, while each bridge keeps its own private data separate — one shared foundation, separate private rooms. The mechanism ships and is documented; today it runs on one self-hosted bridge.</p>
-      <p style="font-size:16px;line-height:1.7;color:var(--on-surface);margin:20px 0 0" data-lang="de">Und du kannst viele betreiben. Eine Organisation kann mehrere Bridges betreiben — eine pro Kunde, Team oder Kontext. Eine Beratung könnte eine für bigcorp betreiben, eine für startupxyz und eine für die eigene interne Ops — jede mit eigenen Regeln, Prozessen und Workflows, jede hält die Daten ihres Kontexts für sich. Alle stehen auf einem gemeinsamen Fundament: ein gemeinsamer CORE aus Skills, Templates und Docs, der sich einmal für alle aktualisiert, während jede Bridge ihre eigenen privaten Daten getrennt hält — ein gemeinsames Fundament, getrennte private Räume. Der Mechanismus ist da und dokumentiert; heute läuft er auf einer einzigen selbst-gehosteten Bridge.</p>
-
-      <p style="margin:22px 0 0;font-size:15px"><a href="#coreuser" style="color:var(--accent-text);font-weight:500;text-decoration:none"><span data-lang="en">How that update stays safe →</span><span data-lang="de">Wie dieses Update sicher bleibt →</span></a></p>
-    </div>
-  </div>
-</section>
-
-<!-- ======================= CORE/USER COMPOUNDING ======================= -->
-<section id="coreuser">
-  <div class="container">
-    <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">How it compounds safely</p>
-      <p class="eyebrow" data-lang="de">Wie es sicher wächst</p>
-      <h2 class="h1" data-lang="en">Pull template updates without ever touching your data.</h2>
-      <h2 class="h1" data-lang="de">Hol dir Template-Updates, ohne je deine Daten anzufassen.</h2>
-      <p data-lang="en">Your accumulated context lives on one branch, shipped templates on another — they touch different paths, so updates merge without conflict and your data stays private. (The CORE/USER split.)</p>
-      <p data-lang="de">Dein angesammelter Kontext liegt auf einem Branch, mitgelieferte Templates auf einem anderen — sie berühren verschiedene Pfade, deshalb mergen Updates konfliktfrei und deine Daten bleiben privat. (Der CORE/USER-Split.)</p>
+      <p class="eyebrow"><span data-lang="en">The concept, in brief</span><span data-lang="de">Das Konzept, kurz</span></p>
+      <h2 class="h1"><span data-lang="en">A bridge — and you can run many, safely.</span><span data-lang="de">Eine Bridge — und du kannst viele betreiben, sicher.</span></h2>
+      <p><span data-lang="en">A bridge is your agent's memory of your world — plain markdown and YAML in git it reads at session start. You can run many: one per client or context, all on one shared CORE — one foundation, separate private rooms. It compounds safely because your data and the shipped templates live on different paths.</span><span data-lang="de">Eine Bridge ist das Gedächtnis deines Agenten für deine Welt — Plain-Markdown und YAML in Git, das er zum Session-Start liest. Du kannst viele betreiben: eine pro Kunde oder Kontext, alle auf einem gemeinsamen CORE — ein Fundament, getrennte private Räume. Es wächst sicher, weil deine Daten und die mitgelieferten Templates auf verschiedenen Pfaden liegen.</span></p>
     </div>
 
     <!-- Disjoint-tracks → conflict-free merge (page-chrome tokens, animated dashoffset) -->
@@ -1394,69 +1366,15 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       </svg>
     </div>
 
-    <p class="cu-foot"><span data-lang="en">CORE and USER touch different paths, so merges never conflict. Contribute improvements upstream with <code>/promote</code> — promote-routing depth lives in the docs.</span><span data-lang="de">CORE und USER berühren verschiedene Pfade, deshalb kollidieren Merges nie. Verbesserungen mit <code>/promote</code> nach upstream beitragen — die Promote-Routing-Tiefe steht in den Docs.</span></p>
-  </div>
-</section>
+    <p class="cu-foot"><span data-lang="en">Improvements go upstream with <code>/promote</code>. And it's runtime-agnostic: one <code>skills/</code> tree symlinks into each tool — tested on Claude Code, working via <code>AGENTS.md</code> elsewhere, honestly labelled.</span><span data-lang="de">Verbesserungen gehen mit <code>/promote</code> nach upstream. Und es ist runtime-unabhängig: ein <code>skills/</code>-Baum wird in jedes Tool symverlinkt — getestet auf Claude Code, anderswo via <code>AGENTS.md</code>, ehrlich gekennzeichnet.</span></p>
 
-<!-- ======================= RUNTIME AGNOSTIC STRIP ======================= -->
-<section class="alt" id="runtimes">
-  <div class="container">
-    <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">Works across runtimes</p>
-      <p class="eyebrow" data-lang="de">Funktioniert über Runtimes hinweg</p>
-      <h2 class="h1" data-lang="en">One skill works no matter which AI tool you run.</h2>
-      <h2 class="h1" data-lang="de">Eine Skill funktioniert, egal welches KI-Tool du nutzt.</h2>
-      <p data-lang="en">Skills are the verbs over the substrate — model-agnostic by design, from one <code>skills/</code> tree symlinked into each tool. Honestly labeled: tested where we run it, untested elsewhere.</p>
-      <p data-lang="de">Skills sind die Verben über dem Substrat — modell-unabhängig per Design, aus einem <code>skills/</code>-Baum, in jedes Tool symverlinkt. Ehrlich gekennzeichnet: getestet, wo wir es betreiben, anderswo ungetestet.</p>
+    <div class="reveal sub-cta" style="margin-top:36px;text-align:center">
+      <p style="font-size:16px;line-height:1.7;margin-bottom:18px"><span data-lang="en">The runtime matrix and the full CORE/USER routing live in the concept guide and the interactive map.</span><span data-lang="de">Die Runtime-Matrix und das vollständige CORE/USER-Routing stehen im Konzept-Leitfaden und in der interaktiven Karte.</span></p>
+      <div class="cta-row" style="justify-content:center">
+        <a class="btn btn-primary" href="concepts.html"><span data-lang="en">Read the concept guide</span><span data-lang="de">Konzept-Leitfaden lesen</span><span class="arrow">→</span></a>
+        <a class="btn btn-secondary" href="explore.html"><span data-lang="en">Explore the concepts</span><span data-lang="de">Konzepte erkunden</span><span class="arrow">→</span></a>
+      </div>
     </div>
-
-    <!-- One skills/ tree → three symlinks → runtimes (page-chrome tokens, animated edges) -->
-    <div class="diagram-frame reveal" role="img"
-         aria-label="One skills/ folder fans out via three symlinks — .claude/skills, .agents/skills and .github/skills — into the runtimes that read them. Claude Code is tested. Codex and Copilot CLI work via AGENTS.md and the skills symlink. Gemini, Cursor and Windsurf are untested.">
-      <svg viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet">
-        <!-- hub -->
-        <rect class="rt-hub" x="20" y="128" width="150" height="64" rx="12"/>
-        <text class="rt-hublbl" x="95" y="156" text-anchor="middle">skills/</text>
-        <text class="rt-symlbl" x="95" y="176" text-anchor="middle"><tspan data-lang="en">one tree</tspan><tspan data-lang="de">ein Baum</tspan></text>
-
-        <!-- symlink edges to three discovery paths -->
-        <path class="rt-edge" d="M170 150 C230 90 250 70 300 64"/>
-        <path class="rt-edge" d="M170 160 C240 160 250 160 300 160"/>
-        <path class="rt-edge" d="M170 170 C230 230 250 250 300 256"/>
-
-        <text class="rt-symlbl rt-edgelbl" x="234" y="74" text-anchor="middle">.claude/skills</text>
-        <text class="rt-symlbl rt-edgelbl" x="234" y="150" text-anchor="middle">.agents/skills</text>
-        <text class="rt-symlbl rt-edgelbl" x="234" y="244" text-anchor="middle">.github/skills</text>
-
-        <!-- runtime pills (6) -->
-        <!-- tested -->
-        <rect class="rt-pill" x="300" y="44" width="320" height="40" rx="20"/>
-        <text class="rt-name" x="318" y="69">Claude Code</text>
-        <text class="rt-state tested" x="604" y="69" text-anchor="end"><tspan data-lang="en">tested</tspan><tspan data-lang="de">getestet</tspan></text>
-
-        <rect class="rt-pill" x="300" y="92" width="320" height="40" rx="20"/>
-        <text class="rt-name" x="318" y="117">Codex</text>
-        <text class="rt-state via" x="604" y="117" text-anchor="end"><tspan data-lang="en">via AGENTS.md + symlink</tspan><tspan data-lang="de">via AGENTS.md + Symlink</tspan></text>
-
-        <rect class="rt-pill" x="300" y="140" width="320" height="40" rx="20"/>
-        <text class="rt-name" x="318" y="165">Copilot CLI</text>
-        <text class="rt-state via" x="604" y="165" text-anchor="end"><tspan data-lang="en">via AGENTS.md + symlink</tspan><tspan data-lang="de">via AGENTS.md + Symlink</tspan></text>
-
-        <rect class="rt-pill" x="300" y="188" width="320" height="40" rx="20"/>
-        <text class="rt-name" x="318" y="213">Gemini</text>
-        <text class="rt-state untested" x="604" y="213" text-anchor="end"><tspan data-lang="en">untested</tspan><tspan data-lang="de">ungetestet</tspan></text>
-
-        <rect class="rt-pill" x="300" y="236" width="320" height="40" rx="20"/>
-        <text class="rt-name" x="318" y="261">Cursor</text>
-        <text class="rt-state untested" x="604" y="261" text-anchor="end"><tspan data-lang="en">untested</tspan><tspan data-lang="de">ungetestet</tspan></text>
-
-        <rect class="rt-pill" x="300" y="284" width="320" height="40" rx="20"/>
-        <text class="rt-name" x="318" y="309">Windsurf</text>
-        <text class="rt-state untested" x="604" y="309" text-anchor="end"><tspan data-lang="en">untested</tspan><tspan data-lang="de">ungetestet</tspan></text>
-      </svg>
-    </div>
-
-    <p class="rt-foot muted"><span data-lang="en">No logos as proof, no skill-count as a selling point — the agnosticism is the claim.</span><span data-lang="de">Keine Logos als Beweis, keine Skill-Anzahl als Verkaufsargument — die Unabhängigkeit ist die Aussage.</span></p>
   </div>
 </section>
 
@@ -1464,19 +1382,15 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 <section id="start" class="steps">
   <div class="container">
     <div class="sec-head reveal">
-      <p class="eyebrow" data-lang="en">Get started</p>
-      <p class="eyebrow" data-lang="de">Loslegen</p>
-      <h2 class="h1" data-lang="en">Three commands.</h2>
-      <h2 class="h1" data-lang="de">Drei Befehle.</h2>
+      <p class="eyebrow"><span data-lang="en">Get started</span><span data-lang="de">Loslegen</span></p>
+      <h2 class="h1"><span data-lang="en">Two steps.</span><span data-lang="de">Zwei Schritte.</span></h2>
     </div>
 
     <div class="reveal">
       <div class="code" id="start-code"><button class="copy-btn" id="copy-start" type="button">copy</button>git clone https://github.com/bks-lab/open-bridge.git
 cd open-bridge
-./bin/setup        <span class="cmt"># macOS / Linux / WSL — Windows: ./bin/setup.ps1</span>
-<span class="cmt"># then start the guided onboarding in Claude Code:</span>
-/bridge-onboard</div>
-      <p class="run-note"><span data-lang="en"><code>./bin/setup</code> wires the cross-tool symlinks; then <code>/bridge-onboard</code> walks ecosystem detection, work-system config, and your own <code>user/{name}</code> branch. You get a running, empty workspace in minutes — then the value compounds as you log real work (a fresh clone starts mostly empty; that's the honest trade). Windows symlink notes and cross-tool setup detail live in the docs.</span><span data-lang="de"><code>./bin/setup</code> legt die Cross-Tool-Symlinks an; danach führt <code>/bridge-onboard</code> durch Ecosystem-Erkennung, Work-System-Konfiguration und deinen eigenen <code>user/{name}</code>-Branch. In Minuten hast du einen laufenden, leeren Workspace — dann wächst der Wert, während du echte Arbeit protokollierst (ein frischer Clone startet weitgehend leer; das ist der ehrliche Tausch). Windows-Symlink-Hinweise und Cross-Tool-Setup stehen in den Docs.</span></p>
+/bridge-onboard      <span class="cmt"># in Claude Code — onboarding sets everything up</span></div>
+      <p class="run-note"><span data-lang="en"><code>/bridge-onboard</code> walks the guided onboarding and sets everything up (ecosystem detection, work-system, your own <code>user/{name}</code> branch). The cross-tool symlinks ship in the repo, so macOS / Linux / WSL work out of the box; on native Windows, run <code>bin/setup.ps1</code> once to repair symlinks. You get a running, empty workspace in minutes; the value compounds as you log work (a fresh clone starts mostly empty — that's the honest trade).</span><span data-lang="de"><code>/bridge-onboard</code> führt durch die geführte Onboarding-Routine und richtet alles ein (Ecosystem-Erkennung, Work-System, deinen eigenen <code>user/{name}</code>-Branch). Die Cross-Tool-Symlinks sind im Repo enthalten, daher laufen macOS / Linux / WSL out of the box; unter nativem Windows einmal <code>bin/setup.ps1</code> ausführen, um die Symlinks zu reparieren. In Minuten hast du einen laufenden, leeren Workspace; der Wert wächst, während du Arbeit protokollierst (ein frischer Clone startet weitgehend leer — das ist der ehrliche Tausch).</span></p>
       <p class="tertiary-cta"><span data-lang="en">Found a rough edge? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Open an issue</a> — the most useful thing you can do right now.</span><span data-lang="de">Eine raue Kante gefunden? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Öffne ein Issue</a> — das Nützlichste, was du gerade tun kannst.</span></p>
     </div>
   </div>
@@ -1930,7 +1844,7 @@ cd open-bridge
   var copyBtn = document.getElementById("copy-start");
   if(copyBtn){
     copyBtn.addEventListener("click", function(){
-      var text = "git clone https://github.com/bks-lab/open-bridge.git\ncd open-bridge\n./bin/setup\n/bridge-onboard";
+      var text = "git clone https://github.com/bks-lab/open-bridge.git\ncd open-bridge\n/bridge-onboard";
       var done = function(){
         var prev = copyBtn.textContent;
         copyBtn.textContent = "copied";
@@ -1972,6 +1886,64 @@ cd open-bridge
     if(firstLine){ lineObs.observe(firstLine); }
   } else {
     document.querySelectorAll(".reveal,.reset-line").forEach(function(el){ el.classList.add("in"); });
+  }
+
+  // ---- In-page nav scroll-spy ----
+  // Maps each .page-nav link to its target section; an IntersectionObserver
+  // (root-margin biased to the header+subnav height) toggles aria-current + the
+  // active class as each section crosses. Class toggle only — reduced-motion-safe.
+  // Degrades to plain anchors if IntersectionObserver is missing.
+  var pageNav = document.getElementById("page-nav");
+  if(pageNav){
+    var navLinks = Array.prototype.slice.call(pageNav.querySelectorAll("a"));
+    var navMap = {};      // id -> link
+    var targets = [];     // [{id, el}] in document order
+    navLinks.forEach(function(a){
+      var id = (a.getAttribute("href") || "").replace(/^#/, "");
+      var el = id && document.getElementById(id);
+      if(el){ navMap[id] = a; targets.push({ id: id, el: el }); }
+    });
+    var navInner = pageNav.querySelector(".page-nav-inner");
+    var current = null;
+    function setActive(id){
+      if(id === current) return;
+      current = id;
+      navLinks.forEach(function(a){
+        var on = (a.getAttribute("href") === "#" + id);
+        a.classList.toggle("active", on);
+        if(on){ a.setAttribute("aria-current", "true"); }
+        else { a.removeAttribute("aria-current"); }
+      });
+      var active = navMap[id];
+      if(active && navInner && navInner.scrollWidth > navInner.clientWidth){
+        try { active.scrollIntoView({ block:"nearest", inline:"center" }); } catch(e){}
+      }
+    }
+    // Position-based spy: the active section is the last one whose top has
+    // crossed the line just below the sticky header + sub-nav (~120px).
+    // Class toggle only — reduced-motion-safe. rAF-throttled scroll listener.
+    function computeActive(){
+      var line = 120;
+      var pick = targets.length ? targets[0].id : null;
+      for(var i = 0; i < targets.length; i++){
+        if(targets[i].el.getBoundingClientRect().top - line <= 1){ pick = targets[i].id; }
+        else { break; }
+      }
+      // at the very bottom, force the last target active
+      if(window.innerHeight + window.scrollY >= document.body.scrollHeight - 2 && targets.length){
+        pick = targets[targets.length - 1].id;
+      }
+      if(pick) setActive(pick);
+    }
+    var ticking = false;
+    function onScroll(){
+      if(ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function(){ computeActive(); ticking = false; });
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    computeActive();
   }
 })();
 </script>

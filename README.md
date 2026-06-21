@@ -55,7 +55,7 @@ It works across Claude Code, Codex, and Copilot CLI through a single `skills/` t
 
 Most people's AI work looks like that bare My-Documents folder — everyone piles up their own chaos, and every new conversation starts over. open-bridge tames that by shipping example structures you don't have to invent, then helping you keep them. It does three things: it **holds a structure** (a board, a daily log, and per-task status — `backlog` → `doing` → `review` → `done`); it **files away knowledge as you go**, so decisions, findings, and status land in plain text the agent reads back later; and it **keeps the work from drifting** back into an unsorted pile. The concrete instance is the **Task-Management system**: finite tasks in `work/tasks/`, long-running streams in `work/streams/`, closed work in `work/done/`. Unstructured sessions become a filed, persistent, compounding record.
 
-> *Coined at BKS-Lab: "structuring unstructured AI dialogues" — originally "KI-Chaos-Bändiger".*
+> *Coined at BKS-Lab: "structuring unstructured AI dialogues."*
 
 > **Design stance — roadmap (BET/OPEN).** The intended default is *workspace separation*: tasks kept separate per context, no information bleeding between engagements, with a general rule — *"if you can't place it into your known world-models, ask."* This is agreed in principle but **not yet built into open-bridge**, and the hard-silo-vs-soft-folder default is unresolved. See [What's proven, what's a bet, what's open](#whats-proven-whats-a-bet-whats-open). Do not read it as a shipped feature.
 
@@ -239,11 +239,10 @@ These are conventions the agent follows, not an OS-level sandbox — read them i
 ```bash
 git clone https://github.com/bks-lab/open-bridge.git
 cd open-bridge
-./bin/setup          # macOS / Linux / WSL   —   Windows (PowerShell): ./bin/setup.ps1
-/bridge-onboard      # run inside Claude Code
+/bridge-onboard      # run inside Claude Code — onboarding sets everything up
 ```
 
-`./bin/setup` (or `bin/setup.ps1` on Windows) verifies the cross-tool discovery symlinks; `/bridge-onboard` walks ecosystem detection, work-system config, and your `user/{name}` branch.
+`/bridge-onboard` walks the guided onboarding and sets everything up (ecosystem detection, work-system config, your own `user/{name}` branch). The cross-tool discovery symlinks ship committed in the repo, so macOS / Linux / WSL work out of the box; on native Windows, run `bin/setup.ps1` once to repair the symlinks.
 
 **What's instant:** a running, empty workspace. **What's a bet:** the compounding value — that needs `work/log.md` filled with real work over time.
 
