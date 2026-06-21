@@ -129,16 +129,15 @@ jobs:
           # (SETUP-checklist Schritt 0). Confirm on the smoke test (SETUP Schritt 5).
           use_sticky_comment: "true"
 
-          # Tool lockdown: Claude may only READ — never edit/replace/run a shell.
-          # Do NOT hand-list a github comment tool here: the Action manages its
-          # own PR-comment tool via the GitHub App. (The earlier
-          # `mcp__github__add_pull_request_review_comment` posts diff-anchored
-          # line comments, not the top-level sticky assessment we want.)
-          # Combined with `contents: read`, mutation is structurally impossible —
-          # even under a successful prompt injection the worst case is a
-          # misleading COMMENT, never a merge/approve/push.
+          # Tool lockdown via DISALLOW only — never edit files or run a shell.
+          # Do NOT add an --allowedTools allowlist: it also excludes the Action's
+          # own sticky-comment tool, so Claude runs but cannot post (observed:
+          # permission_denials_count>0, zero comments posted). Disallowing
+          # Edit/Replace/Write/Bash blocks all file/shell mutation while leaving
+          # the read + comment tools available. Combined with `contents: read`
+          # (no push / no merge), the worst case under a successful prompt
+          # injection is a misleading COMMENT — never a merge/approve/push.
           claude_args: >-
-            --allowedTools "Read,Glob,Grep"
             --disallowedTools "Edit,Replace,Write,Bash"
 
       # NOTE — deliberately absent:
