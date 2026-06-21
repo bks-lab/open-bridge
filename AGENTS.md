@@ -640,7 +640,7 @@ globally installed `~/.claude/skills/backup/`) reads the topology and dispatches
 **Key rules:** `topology.yaml` is the truth — never hardcode paths (one instance of generic
 CORE skills). `_state.yaml` is written only by the skill. Time-Machine pipelines
 (`tool: time-machine`) are passive on macOS — the skill only documents intended state. Drift
-surfaces as a briefing block, never a crash. Validation rules + Soll/Ist comparison:
+surfaces as a briefing block, never a crash. Validation rules + target/actual comparison:
 [`infra/backups/README.md`](infra/backups/README.md).
 
 ---

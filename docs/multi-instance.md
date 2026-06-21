@@ -82,7 +82,7 @@ Standard setup — clone, onboard, push your user branch:
 ```bash
 git clone https://github.com/bks-lab/open-bridge.git ~/work/org-a/open-bridge
 cd ~/work/org-a/open-bridge
-claude    # /onboard runs automatically
+claude    # /bridge-onboard runs automatically
 git push -u origin user/your-name
 ```
 
@@ -93,7 +93,7 @@ Clone the same repo but never push the user branch:
 ```bash
 git clone https://github.com/bks-lab/open-bridge.git ~/work/org-b/open-bridge
 cd ~/work/org-b/open-bridge
-claude    # /onboard — configure for org-b
+claude    # /bridge-onboard — configure for org-b
 ```
 
 To pull CORE updates without pushing user data:

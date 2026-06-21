@@ -1,12 +1,12 @@
 ---
-summary: "Backup topology: sources, targets, pipelines"
-type: index
-last_updated: 2026-05-01
+summary: "Backup topology: sources, targets, pipelines — the data model + schema open-bridge ships (the executor skill is user-supplied)."
+type: readme
+last_updated: 2026-06-21
 ---
 
 # backups/
 
-Single source of truth for the user's backup topology. Three concepts:
+Single source of truth for your backup topology. Three concepts:
 
 | Concept | Means | Lives in |
 |---|---|---|
@@ -14,36 +14,48 @@ Single source of truth for the user's backup topology. Three concepts:
 | **targets** | Where (local / NAS / cloud) with capabilities | `topology.yaml` |
 | **pipelines** | How connected (source × target × tool × schedule) | `topology.yaml` |
 
-State (what last ran when, restic snapshot IDs) lives in `_state.yaml` and is written by the skill — `topology.yaml` stays a pure configuration in git.
+> **What open-bridge ships here:** the **data model + schema** (`_template.yaml`,
+> `_schema.yaml`, and these conventions). It does **not** ship an executor. The
+> actual backups are run by a *backup skill you supply* — a topology-reader +
+> tool-dispatcher (e.g. a globally installed `~/.claude/skills/backup/`) — or by
+> an org overlay. Everywhere below, "the backup skill" means that user-supplied
+> executor. You create `topology.yaml` (your instance config) from `_template.yaml`.
+
+State (what last ran when, restic snapshot IDs) lives in `_state.yaml`, written by
+the backup skill — `topology.yaml` stays pure configuration in git.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `topology.yaml` | Live config, maintained by the user |
-| `_template.yaml` | Boilerplate with commented defaults |
-| `_state.yaml` | Last-run state (written by the skill, no hand edits) |
+| `_template.yaml` | Boilerplate with commented defaults (ships in CORE) |
+| `_schema.yaml` | JSON Schema for `topology.yaml`, validated in CI (ships in CORE) |
+| `topology.yaml` | Your live config (you create + maintain it; USER-scope) |
+| `_state.yaml` | Last-run state (written by the backup skill, no hand edits) |
 | `volumes/<id>.md` | Layout docs per backup volume (what goes where, cleanup rules, history) |
 | `README.md` | This file |
 
 ## Volume layout docs
 
-Every backup volume registered as a target gets a markdown layout doc under `volumes/<id>.md`. The doc describes:
+Every backup volume registered as a target gets a markdown layout doc under
+`volumes/<id>.md`. The doc describes:
 
 - the internal folder structure (class schema like `00_Snapshots/`, `01_Live/`, etc.)
 - per class: content with sizes, lifecycle, retention
 - cleanup rules and sub-projects
 - history (what changed when)
 
-`topology.yaml` links via `targets.<id>.layout_ref:` to the matching doc. This keeps `topology.yaml` lean (only machine-readable pipeline config), while prose knowledge about volumes has its own place.
+`topology.yaml` links via `targets.<id>.layout_ref:` to the matching doc. This keeps
+`topology.yaml` lean (only machine-readable pipeline config), while prose knowledge
+about volumes has its own place.
 
 ## Who writes what
 
 | File | Writer |
 |---|---|
-| `topology.yaml` | user only (by hand) |
-| `_state.yaml` | skill only (`~/.claude/skills/backup/`) |
-| `_template.yaml` | Bridge CORE updates |
+| `topology.yaml` | you only (by hand) |
+| `_state.yaml` | the backup skill only (user-supplied executor) |
+| `_template.yaml` / `_schema.yaml` | open-bridge CORE updates |
 
 ## Sensitivity levels
 
@@ -51,11 +63,12 @@ Every backup volume registered as a target gets a markdown layout doc under `vol
 |---|---|---|
 | `clear` | no special confidentiality | any tool OK |
 | `encrypted-at-rest` | volume encryption at both ends + encrypted transport is enough | any tool that runs over SSH/TLS (rsync, rclone-sync via SFTP) — the sync tool does NOT need to encrypt itself |
-| `encrypted-required` | the sync tool MUST encrypt itself (e.g. because target storage is untrusted, cloud without BAA) | only restic or rclone crypt backend |
+| `encrypted-required` | the sync tool MUST encrypt itself (e.g. because target storage is untrusted, or cloud without a data-processing agreement) | only restic or rclone crypt backend |
 
-Prerequisite for `encrypted-at-rest`: FileVault active on the source mac AND target volume volume-encrypted. Otherwise drift alert in the briefing.
+Prerequisite for `encrypted-at-rest`: disk encryption active on the source machine
+AND the target volume encrypted. Otherwise a drift alert surfaces in the briefing.
 
-## Schema rules (enforced by the skill)
+## Schema rules (for the backup skill / validator to enforce)
 
 1. `sensitivity: encrypted-required` + non-encrypting tool (rsync, rclone-sync) → **error**
 2. `sensitivity: encrypted-at-rest` + target without volume encryption → **drift alert**, no crash
@@ -64,38 +77,32 @@ Prerequisite for `encrypted-at-rest`: FileVault active on the source mac AND tar
 5. `mode: scheduled` without `schedule:` → **error**
 6. Pipeline IDs must be unique
 
-## Triggers for the skill
+## Triggers (for a user-supplied backup skill)
 
-The global skill `~/.claude/skills/backup/` triggers on:
+A backup skill typically triggers on natural language such as:
+
 - "backup start / status / dry-run"
-- "backup PARA to Backup4T" → match a single pipeline ID
-- "back up Developer / MoneyMoney / BK"
-- "upload to OneDrive" / "upload archive"
+- "back up &lt;source&gt; to &lt;target&gt;" → match a single pipeline ID
+- "upload &lt;source&gt; to &lt;cloud target&gt;"
 - "backup status" → reads `_state.yaml`
 
 ## Change workflow
 
-1. Edit `topology.yaml` (new source/target/pipeline; or toggle enabled)
-2. `git diff backups/topology.yaml` → review
-3. Commit on user branch
-4. Skill invocation tests the new pipeline with `--dry-run`
-5. Only then set `enabled: true` once dry-run is clean
+1. Edit `topology.yaml` (new source/target/pipeline; or toggle `enabled`)
+2. `git diff infra/backups/topology.yaml` → review
+3. Commit on your user branch
+4. The backup skill tests the new pipeline with `--dry-run`
+5. Only then set `enabled: true` once the dry-run is clean
 
-## Roadmap
+## Wiring an executor
 
-- **Phase 1 ✓** (2026-05-01): schema + topology.yaml + volume layout docs
-- **Phase 2 ✓** (2026-05-01): global skill reads topology instead of hardcoded values
-- **Phase 3 ✓** (2026-05-01): CLAUDE.md backup block
-- **Phase 4** (in preparation): continuous sync via SSH (rsync), 15-min polling, with `--backup-dir` (30-day retention) — four pipelines:
-  - `para-continuous-to-backup4t`
-  - `developer-continuous-to-backup4t`
-  - `onedrive-org-continuous-to-backup4t`
-  - `finance-db-continuous-to-backup4t`
+open-bridge ships the topology + schema only. To make backups actually run, supply
+a backup skill (or org overlay) that:
 
-  All sources are `clear` or `encrypted-at-rest` — FileVault at both ends + SSH transport is enough, no application-layer encryption needed.
-
-  Setup: SSH to homeserver is there → manual dry-run → real run → smoke test (drop in a test file + delete, check) → deploy launchd plist → observe for 24h → `enabled: true`.
-
-- **Phase 5** (when there is room on the Synology): enable `ds-synology` for a restic repo as a second layer of backup
-- **Phase 6** (when rclone-OneDrive-OAuth is ready): reactivate `onedrive-cloud` for 4_ARCHIV cloud backup as 2nd tier
-- **Phase 7** (open): backup strategy for `homeserver-backups` (media volume, currently unsecured)
+1. reads `topology.yaml` and resolves the enabled pipelines,
+2. dispatches the matching tool per pipeline (rsync / rclone / restic / time-machine —
+   Time Machine is configured in macOS; the skill only documents the intended state),
+3. honours the sensitivity rules above (refuse `encrypted-required` on a non-encrypting tool),
+4. tests new pipelines with `--dry-run` before flipping `enabled: true`,
+5. writes results to `_state.yaml`; drift (unreachable source/target, missing
+   encryption) surfaces in the daily briefing rather than crashing.

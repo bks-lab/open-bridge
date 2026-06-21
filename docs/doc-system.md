@@ -193,9 +193,9 @@ routing:
       identity/personas/<your-persona-id>.yaml
    # Edit destinations + tax data, then add to context.yaml personas: map
    ```
-6. **Test:** drop a PDF in `0_Import/`, run `/doc-status`, then
-   `/doc-process --preview 1`. Confirm the suggested rename + destination
-   look right before letting it move.
+6. **Test:** drop a PDF in `0_Import/`, run `/doc-system` and check the
+   inbox status, then process it. Confirm the suggested rename +
+   destination look right before letting it move.
 
 ## What the skill will NEVER do
 
@@ -211,5 +211,5 @@ routing:
 - Skill: [`skills/doc-system/SKILL.md`](../skills/doc-system/SKILL.md)
 - Template: [`workflow/contexts/_doc-system.template.yaml`](../workflow/contexts/_doc-system.template.yaml)
 - Persona concept: [`docs/personas.md`](personas.md)
-- How this skill is `scope: org` and where it sits in the layered repo:
+- How this skill is `scope: core` and where it sits in the layered repo:
   [`docs/extension-model.md`](extension-model.md)

@@ -27,7 +27,7 @@ company team, your family, friends, external colleagues, etc.
    collectors:
      - package: "@bridge-deck/collector-mandants"
        options:
-         mandantsPath: "~/Developer/<org>/<your-bridge>/mandants"
+         mandantsPath: "~/Developer/<org>/<your-bridge>/identity/mandants"
    ```
 5. Your mandants appear on the Mandants tab (grouped by type with person
    detail panels) and inform the Calendar + Timeline views
