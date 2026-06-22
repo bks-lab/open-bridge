@@ -12,6 +12,8 @@ Your AI coding agent starts every session knowing your repos, your clients, and 
 [![CI](https://github.com/bks-lab/open-bridge/actions/workflows/validate.yml/badge.svg)](https://github.com/bks-lab/open-bridge/actions/workflows/validate.yml)
 [![Release](https://img.shields.io/github/v/release/bks-lab/open-bridge?include_prereleases&label=release&color=blue)](https://github.com/bks-lab/open-bridge/releases)
 
+**▶ [See a live session](https://bks-lab.github.io/open-bridge/demo.html)** — a browser walkthrough of four real flows: the morning session-start, the `/briefing` dashboard, an incident taken from log triage to a TDD fix shipped to UAT, and first-run onboarding.
+
 ---
 
 ## The problem
