@@ -33,7 +33,8 @@ examples/agency/
 ├── workflow/
 │   ├── calendars/              ← scheduled outbound
 │   └── contexts/               ← per-domain routing
-└── protocols/standing-orders/  ← always-on rules
+├── protocols/standing-orders/  ← always-on rules
+└── work/                       ← task board, daily log, task lifecycle
 ```
 
 ## Agents (`.claude/agents/`)
@@ -59,3 +60,11 @@ examples/agency/
 - [channels/slack-bot.yaml](infra/channels/slack-bot.yaml) — Slack integration
 - [channels/_scheduled.yaml](infra/channels/_scheduled.yaml) — Scheduled messages
 - [channels/scheduled/weekend-check/context.md](infra/channels/scheduled/weekend-check/context.md) — Example scheduled job: weekend deploy health check
+
+## Work (`work/`)
+The Chaos-Tamer system, populated with example data so a clone shows a *filled* board instead of an empty one:
+- [board.md](work/board.md) — generated snapshot: Doing (2), Review (1), Streams (1), Done (1)
+- [log.md](work/log.md) — append-only daily log (`| Time | Glyph | Context | What |`)
+- [tasks/](work/tasks/) — finite tasks, one `STATUS.md` each (`backlog → doing → review → done`)
+- [streams/](work/streams/) — long-runners, excluded from the WIP cap (e.g. `platform-maintenance`)
+- [done/2026-06/](work/done/2026-06/) — closed work, archived by month
