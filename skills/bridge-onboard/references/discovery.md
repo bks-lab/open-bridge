@@ -2,7 +2,7 @@
 
 > **Scope note (2026-05-16):** This file describes only the
 > **repo-detection** part of discovery. The broader system scan
-> (apps, tailscale, mail accounts, MoneyMoney, documents structure)
+> (apps, mesh-VPN, mail accounts, finance apps, documents structure)
 > moved to [`system-discovery.md`](system-discovery.md) as Phase B of
 > the wizard, and this file is now invoked as a sub-step from there
 > (matching `evidence.developer.*` in the scan output).

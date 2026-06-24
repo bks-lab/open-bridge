@@ -27,9 +27,11 @@ user_profile: both
 # Edit to revoke; use /bridge-onboard --reset for a clean re-prompt.
 discovery:
   permissions: []            # subset of: git_config, developer_dir, os_and_apps,
-                             #   homebrew_packages, tailscale_devices,
-                             #   documents_structure, mail_accounts,
-                             #   moneymoney_accounts, calendar_list, ssh_known_hosts
+                             #   homebrew_packages, documents_structure,
+                             #   mail_accounts, calendar_list, ssh_known_hosts,
+                             #   mesh_vpn_devices, finance_accounts
+                             #   (mesh_vpn_devices + finance_accounts are deep
+                             #    probes — offered only if the app scan found a match)
   last_scan: null            # ISO-8601 timestamp of last scan
 
 # ─── Theme ────────────────────────────────────────────────────────────

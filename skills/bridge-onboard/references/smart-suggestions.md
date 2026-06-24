@@ -28,8 +28,8 @@ Will you mostly use Bridge for:
 This is **not** a feature-toggle — it's a sort-order hint. It biases:
 
 - **work** → suggestions for GitHub-projects, channels (team), remotes,
-  m365-admin surface first; MoneyMoney / voice surface last
-- **private** → MoneyMoney, voice, household mandant
+  m365-admin surface first; finance / voice surface last
+- **private** → finance, voice, household mandant
   surface first; m365-admin and team channels surface last
 - **both** → balanced order, drives nothing else
 - **skip** → strict evidence-strength order only
@@ -41,7 +41,9 @@ suggestions ("for your team" vs "for your family").
 ## Principles for Suggestions
 
 1. **No suggestion without evidence.** If Phase B found nothing matching
-   a feature, it goes to Phase E (catalogue), not to Phase C.
+   a feature, it goes to Phase E (catalogue), not to Phase C. That feature
+   is NOT mentioned in Phase C at all — no "not detected" line, no "you
+   don't have X". It lives only in the Phase E catalogue.
 2. **Concrete advice, not toggles.** Each suggestion explains *what
    gets created*, *what becomes possible*, and *what stays manual*.
 3. **Three answers per suggestion:**
@@ -55,9 +57,11 @@ suggestions ("for your team" vs "for your family").
 4. **Memory-check first.** Each suggestion section starts by reading
    `work/onboarding-state.yaml` — skip if `accepted` or `silenced`,
    honour `remind_after` if `deferred`.
-5. **Bridge-specific MEMORY warnings.** Where the user's own MEMORY file
-   contains a known gotcha (e.g. OneDrive FileProvider Orphan-Stub Bug),
-   surface it as part of the advisory. See "Known-gotcha overlay" below.
+5. **Curated gotcha warnings only.** Where a suggestion has a known
+   product-level gotcha (e.g. OneDrive FileProvider Orphan-Stub Bug),
+   surface it from the curated CORE table — see "Known-Gotcha Overlay"
+   below. Never free-scan the operator's memory base, and never name a
+   customer, employer, persona, or contact.
 
 ## Evidence → Suggestion Mapping
 
@@ -100,15 +104,15 @@ git remote land as `local-only: true`.
 
 ---
 
-### S2 — Remotes (when tailscale or known_hosts present)
+### S2 — Remotes (when a mesh-VPN or known_hosts present)
 
-**Trigger:** `evidence.tailscale.devices.length >= 2`
+**Trigger:** `evidence.mesh_vpn.devices.length >= 2`
 **OR:** `evidence.ssh_known_hosts.length >= 3`
 
-**Advisory (tailscale variant):**
+**Advisory (mesh-VPN variant):**
 
 ```
-Tailscale found {N} devices in your tailnet:
+Your mesh-VPN ({evidence.mesh_vpn.impl}) reports {N} devices:
   {device_list}
 
 Bridge can manage these as a "fleet" — SSH config + Wake-on-LAN +
@@ -118,7 +122,7 @@ service inventory per box. Useful when you say "wake alice-mini" or
 What this enables:
   • /remote status — health-check across all devices
   • /remote wake <name> — Wake-on-LAN via LAN-relay
-  • SSH config templates with Tailscale-first, LAN-fallback
+  • SSH config templates with mesh-VPN-first, LAN-fallback
 
 What stays manual:
   • Credentials never live in YAML — KeyVault / 1Password URIs only
@@ -131,8 +135,8 @@ What stays manual:
 
 **On accept:**
 - Copy `infra/remotes/_template.yaml` → `infra/remotes/<hostname>.yaml`
-  for each detected device, pre-filling: `hostname`, `network.tailscale_ip`,
-  `os` (best-guess from device-name patterns or known)
+  for each detected device, pre-filling: `hostname`, the mesh-VPN IP
+  (e.g. `network.tailscale_ip`), `os` (best-guess from device-name patterns or known)
 - Set `remotes.enabled: true` in `bridge-config.yaml`
 - Mention follow-up: "Edit each file to add `capabilities`, `services`,
   `wake_on_lan` settings as you need them — see `docs/feature-tour.md
@@ -209,10 +213,10 @@ What stays for later:
   • Routing rules — you define these when you actually have files to sort
   • Persona-specific queues (e.g. tax-folder destinations) — wire when needed
 
-{if MEMORY contains FileProvider/OneDrive warning AND docs_root contains "OneDrive":}
-  ⚠ Heads-up: your MEMORY notes a FileProvider Orphan-Stub bug under
-    macOS Tahoe with OneDrive. Consider migrating PARA to ~/PARA-Documents
-    before enabling. Check feedback_fileprovider_orphan_stubs.md.
+{if docs_root contains "OneDrive":}
+  ⚠ Heads-up (from the curated gotcha table): macOS Tahoe + OneDrive can hit
+    a FileProvider Orphan-Stub bug. Consider migrating PARA to a local tree
+    (e.g. ~/PARA-Documents) before enabling.
 {endif}
 
   [y] Enable with PARA defaults
@@ -238,17 +242,19 @@ What stays for later:
 
 ---
 
-### S5 — MoneyMoney (when MoneyMoney.app installed)
+### S5 — Finance (when a finance app is installed)
 
-**Trigger:** `evidence.apps` includes `MoneyMoney.app`
+**Trigger:** the Capability Map matched a finance app (e.g. MoneyMoney). If
+none is installed, this block never appears.
 
 **Advisory:**
 
 ```
-MoneyMoney.app detected{, with {N} accounts: {account_names} if scanned}.
+Finance app detected: {app_name}{, with {N} accounts: {account_names} if scanned}.
 
-Bridge can read MoneyMoney via AppleScript — read-only, no transfers
-ever triggered automatically.
+If it's MoneyMoney, Bridge can read it via AppleScript — read-only, no
+transfers ever triggered automatically. Any finance app maps to the same
+read-only finance capability.
 
 What this enables:
   • "Is invoice X paid?" → a private finance skill looks up the transaction
@@ -256,7 +262,7 @@ What this enables:
   • Invoice-status checks for freelancer workflows
 
 What stays manual:
-  • Any actual transfer needs your TAN in MoneyMoney itself
+  • Any actual transfer needs your TAN in the finance app itself
   • Bridge writes nothing — read-only by design
 
   [y] Note as a private skill to build (open-bridge ships no finance
@@ -264,7 +270,7 @@ What stays manual:
   [l] Later
 ```
 
-**On accept:** record `suggestions.moneymoney: accepted` so we don't
+**On accept:** record `suggestions.finance: accepted` so we don't
 re-suggest; building the skill is up to the user (`scope: private`).
 
 ---
@@ -334,7 +340,7 @@ What stays manual:
 **Trigger:**
 - `evidence.os.platform == "darwin"` AND
 - agent count after Phase E ≥ 3 AND
-- another machine on the network is also user-controlled (from tailscale or known_hosts)
+- another machine on the network is also user-controlled (from the mesh-VPN or known_hosts)
 
 **Advisory:**
 
@@ -412,22 +418,22 @@ Mention it in Phase E if not surfaced here.
 
 ---
 
-## Known-Gotcha Overlay (MEMORY-aware)
+## Known-Gotcha Overlay (curated, generic only)
 
-Before showing any suggestion, check the user's MEMORY index
-(`~/.claude/projects/<project-hash>/memory/MEMORY.md`) for relevant
-warnings. If a memory tag matches the suggestion topic, append a
-`⚠ Heads-up:` line citing the memory file.
+These heads-ups come from the curated CORE table below — a fixed,
+CORE-shipped list of generic, product-level gotchas. The wizard does
+**not** read or scan the operator's memory base, and **never** names a
+customer, employer, persona, or contact. Where a suggestion's condition
+matches a row, append the row's `⚠ Heads-up:` line.
 
-Examples baked into the wizard:
+| Suggestion / condition | Heads-up to surface |
+|---|---|
+| S4 doc-system + docs_root contains "OneDrive" | "macOS Tahoe OneDrive FileProvider Orphan-Stub bug — consider a local PARA tree" |
+| S2 remotes + ssh involved | "macOS remote SSH lacks Homebrew PATH unless you source ~/.zprofile" |
+| S5 finance (e.g. MoneyMoney) | "Read-only via AppleScript; the DB is encrypted, no direct access" |
 
-| Suggestion | Memory tag to check | Warning to surface |
-|---|---|---|
-| S4 doc-system + docs_root contains "OneDrive" | `feedback_fileprovider_orphan_stubs` | "macOS Tahoe OneDrive FileProvider Orphan-Stub bug — consider local PARA tree" |
-| S2 remotes + ssh involved | `reference_remote_ssh_path` | "macOS remote SSH lacks Homebrew PATH unless you source ~/.zprofile" |
-| S5 MoneyMoney | `reference_moneymoney_accounts` | "Read-only via AppleScript; DB is encrypted, no direct access" |
-
-This makes the wizard feel like it knows the user, not generic.
+Add a row only when the gotcha is generic and product-level. Anything
+instance-, customer-, or person-specific does not belong here.
 
 ## After Walking Suggestions
 
