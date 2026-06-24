@@ -20,9 +20,11 @@ sense to activate. Used in two contexts:
 - **No surprise quiz.** Each entry is descriptive, not interrogative.
 - **"When you need it" beats "what it is."** Sell the moment, not the
   spec.
-- **Show evidence status.** If Phase B's scan saw nothing relevant, say
-  so ("no signal found yet — that's fine"). If it saw something but the
-  user deferred, say so ("you said later — I'll remind in 30 days").
+- **Show positive evidence only.** If Phase B's scan saw something
+  relevant, surface it ("found N accounts in Phase B"); if it saw
+  something the user deferred, say so ("you said later — I'll remind in
+  30 days"). If nothing matched, **omit the evidence line entirely** —
+  never print "not detected" / "no signal".
 - **One-line re-entry path.** Every entry ends with the exact command
   to activate.
 - **Bridge will surface itself.** End with the trust-builder: "I'll
@@ -60,7 +62,7 @@ Order within each group: highest-evidence-likelihood first, niche last.
 
 **When you need it:** You drop scans into an inbox folder and want them in the right place without manual sorting. You file tax-relevant documents per legal entity.
 
-**Scan evidence:** {if doc_sensor surfaced in Phase C → "you decided X"; else → "no PARA/JD structure detected"}
+**Scan evidence:** {if doc_sensor surfaced in Phase C → "you decided X"; else → omit this line}
 
 **Activate:** `/bridge-onboard --add doc-system`
 
@@ -111,11 +113,11 @@ skills.
 ## 3. Infrastructure
 
 ### Remotes
-**What:** `infra/remotes/<id>.yaml` per physical/virtual machine you administer. SSH config, Tailscale/LAN topology, Wake-on-LAN settings, service inventory, hardware notes.
+**What:** `infra/remotes/<id>.yaml` per physical/virtual machine you administer. SSH config, mesh-VPN (e.g. Tailscale) / LAN topology, Wake-on-LAN settings, service inventory, hardware notes.
 
 **When you need it:** You say "wake alice-mini", "is alice-nas online", "ssh into the workshop PC". You want fleet ops (status across all boxes) and Wake-on-LAN to just work.
 
-**Scan evidence:** {if tailscale surfaced in Phase C → "you decided X"; else if known_hosts hit → "I saw N hosts in ~/.ssh/known_hosts"; else → "no fleet evidence found"}
+**Scan evidence:** {if a mesh-VPN surfaced in Phase C → "you decided X"; else if known_hosts hit → "I saw N hosts in ~/.ssh/known_hosts"; else → omit this line}
 
 **Activate:** `/bridge-onboard --add remotes`
 
@@ -160,12 +162,12 @@ skills.
 
 **Activate:** `/debrief` autoloads on triggers. If you want automated transcription, add your own transcriber skill in your overlay/seed repo and point it at your recording inbox.
 
-### MoneyMoney (banking)
-**What:** Read-only banking integration via AppleScript — account balances, transaction lookups, "is invoice X paid?". Never triggers transfers automatically.
+### Banking / Finance
+**What:** Read-only finance integration — account balances, transaction lookups, "is invoice X paid?". Never triggers transfers automatically. MoneyMoney is the reference implementation (read via AppleScript, ships a `/moneymoney` skill); other finance apps map to the same capability.
 
-**When you need it:** You manage German bank accounts via MoneyMoney and want invoice-paid checks during freelancer workflows.
+**When you need it:** You manage bank accounts via a finance app and want invoice-paid checks during freelancer workflows.
 
-**Scan evidence:** {if MoneyMoney.app detected → "found N accounts in Phase B"; else → "not detected"}
+**Scan evidence:** {if a finance app detected → "found N accounts in Phase B"; else → omit this line}
 
 **Activate:** Skill autoloads on trigger; no config flip needed.
 

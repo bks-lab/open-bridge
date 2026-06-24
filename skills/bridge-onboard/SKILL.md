@@ -49,7 +49,7 @@ This file is the entry point; the heavy lifting lives in `references/`.
   explains the trade-off but suggests `[y]`.
 - **Discovery scan is opt-in per source.** Default-on sources are
   non-invasive (git config, dir listings, app list). Sensitive sources
-  (mail accounts, MoneyMoney accounts, calendar names) are default-off
+  (mail accounts, finance-app accounts, calendar names) are default-off
   and only opt-in.
 - **Nothing scanned beyond names.** Mail content, document content,
   message bodies, keychain, passwords — NEVER touched. Explicit in the

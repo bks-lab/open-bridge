@@ -137,9 +137,9 @@ Permission-gated system scan. Full details in
    ```
    ✓ git_config (alice)
    ✓ developer (12 repos in 3 orgs)
-   ✓ os_and_apps (47 apps found, incl. MoneyMoney, Tailscale, Backblaze)
-   ✓ homebrew (rclone, restic, gh, tailscale, wakeonlan)
-   ✓ tailscale (3 devices: alice-macbook, alice-mini, alice-nas)
+   ✓ os_and_apps (47 apps — mapped to capabilities via the Capability Map)
+   ✓ homebrew (rclone, restic, gh, wakeonlan)
+   ✓ mesh_vpn (tailscale, 3 devices: alice-macbook, alice-mini, alice-nas)
    ⚠ mail_accounts (permission denied — System Settings → Privacy → Automation)
    ```
 
@@ -150,7 +150,7 @@ Permission-gated system scan. Full details in
    so `--rescan` and `feature-discovery` standing-order know what's allowed:
    ```yaml
    discovery:
-     permissions: [git_config, developer_dir, os_and_apps, homebrew_packages, tailscale_devices]
+     permissions: [git_config, developer_dir, os_and_apps, homebrew_packages, mesh_vpn_devices]
      last_scan: 2026-05-16T14:30:00+02:00
    ```
 
@@ -182,9 +182,9 @@ table in [`references/smart-suggestions.md`](smart-suggestions.md).
    `smart-suggestions.md`), in priority order:
    - Read the advisory text for that block
    - Substitute the variable parts with actual scan data
-   - Apply the **known-gotcha overlay** — check user MEMORY for relevant
-     warnings (e.g. OneDrive FileProvider bug if docs_root is OneDrive)
-     and append as `⚠ Heads-up: ...`
+   - Apply the **known-gotcha overlay** — from the curated CORE table in
+     `smart-suggestions.md` only (never scans the operator's memory, never
+     names a customer / employer / contact); append as `⚠ Heads-up: ...`
    - Present with `[y]` / `[m]` / `[l]` options
    - Record decision in `work/onboarding-state.yaml`
 
@@ -541,7 +541,7 @@ user has already had their decision moment in Phase C; this is the
 | `gh` not installed | Ecosystem scan still works via local `.git/config`. Install `gh` later if you want GitHub features. |
 | No GitHub at all | Leave `identity.org` empty + `integrations.github.enabled: false`. Onboarding completes; GitHub-dependent skills warn at use-time. |
 | No repos found | Minimal `ecosystem.yaml` written. Add manually or `git clone` first, then `/bridge --rescan`. |
-| `osascript` permission denied (Apple Mail / MoneyMoney scan) | Grant in System Settings → Privacy & Security → Automation, then `/bridge-onboard --rescan`. |
+| `osascript` permission denied (Apple Mail / finance-app scan) | Grant in System Settings → Privacy & Security → Automation, then `/bridge-onboard --rescan`. |
 | `/bridge` red | Usually missing `ecosystem.yaml` or `bridge-config.yaml` — error tells you which. |
 | Wrong projects root | Edit `bridge-config.yaml` → `identity.projects_root`, then `/bridge --rescan`. |
 | `validate-bridge.py` fails | `pipx install check-jsonschema` (the wrapper depends on it). |

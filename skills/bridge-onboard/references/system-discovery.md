@@ -34,22 +34,28 @@ features instead of asking abstract questions. What may I look at?
 DEFAULT-ON (non-invasive, safe to leave checked):
   [x] git config            name + email
   [x] ~/Developer           directory listing (folder names, no file contents)
-  [x] OS + installed apps   uname + ls /Applications
+  [x] OS + installed apps   uname + the full list of installed app names, read
+                            generically and mapped to capabilities. No app is
+                            assumed, nothing is searched for by name.
   [x] Homebrew packages     brew list
 
 DEFAULT-OFF (opt in explicitly — surface only):
-  [ ] Tailscale devices     tailscale status (devices only, no peers)
   [ ] ~/Documents structure top-level folder names only
   [ ] Mail account list     account names from Apple Mail / Outlook (NO mail content)
-  [ ] MoneyMoney accounts   account names via AppleScript (NO transactions)
   [ ] Calendar list         which calendars are connected (NO events)
   [ ] SSH known_hosts       hostnames you've connected to before
+
+DEEPER PROBES (offered only if the app scan already found a matching app —
+you're asked per match, never up front, never for an app you don't have):
+  [ ] Mesh-VPN device list  if a mesh-VPN is installed (e.g. Tailscale): device names only, no peers from other tailnets
+  [ ] Finance-app accounts  if a finance app is installed (e.g. MoneyMoney): account display names only, NO transactions
 
 NEVER SCANNED:
   · Mail / message / document CONTENT
   · Passwords, OAuth tokens, keychain entries
   · Browser history
   · iMessage / WhatsApp / Signal conversations
+  · Your memory / notes base — onboarding never reads cross-context memory and never names a real customer, employer, or contact in its output
 
   [y] Defaults + opt-ins all on (recommended)
   [d] Defaults only (cautious)
@@ -81,8 +87,8 @@ For each source: what it runs, what it captures, why it matters.
 
 #### `os_and_apps`
 - **Runs:** `uname -srm`, `ls -1 /Applications 2>/dev/null` (macOS), `dpkg -l` or equivalent (Linux)
-- **Captures:** OS + app names (e.g. "MoneyMoney.app", "Tailscale.app", "Backblaze.app", "Things.app", "Obsidian.app")
-- **Why:** Apps are the strongest evidence for features — MoneyMoney installed → suggest building a private finance skill; Backblaze → suggest backup-topology with Backblaze as target
+- **Captures:** OS + the FULL list of installed app names, generically — nothing is searched for by name (e.g. "MoneyMoney.app", "Tailscale.app", "Backblaze.app", "Things.app", "Obsidian.app" are just illustrative of what the list might contain)
+- **Why:** apps are the strongest evidence for features — but they map to capabilities through the **Capability Map** below, never hard-coded to a single product. An app matching no capability is ignored, not surfaced. (e.g. a finance app maps to "Banking / finance" and surfaces S5; a backup app maps to "Backup" and surfaces S3)
 - **Sensitivity:** low
 
 #### `homebrew_packages`
@@ -93,10 +99,11 @@ For each source: what it runs, what it captures, why it matters.
 
 ### Opt-in (surface only)
 
-#### `tailscale_devices`
-- **Runs:** `tailscale status --json 2>/dev/null`
+#### `mesh_vpn_devices` *(deep probe — only offered if a mesh-VPN app was found)*
+- **Runs:** the installed mesh-VPN's device-list command (e.g. `tailscale status --json 2>/dev/null`; equivalent for Netbird/Headscale/Nebula). Never offered when no mesh-VPN is installed.
 - **Captures:** hostnames + OS per device — **not** peers from other tailnets, **not** ACL info
 - **Why:** drives `infra/remotes/*.yaml` skeleton suggestions; same network = fleet
+- **Note:** Tailscale is the reference implementation, not a requirement — any mesh-VPN maps to the same capability.
 - **Sensitivity:** medium — reveals device names
 
 #### `documents_structure`
@@ -112,10 +119,11 @@ For each source: what it runs, what it captures, why it matters.
 - **Why:** drives `identity/accounts/*.yaml` skeleton + `integrations.context_sources.outlook` toggle
 - **Sensitivity:** medium
 
-#### `moneymoney_accounts`
-- **Runs:** `osascript -e 'tell application "MoneyMoney" to get name of every account'`
-- **Captures:** account display names (e.g. "Comdirect Giro", "Fyrst Base")
-- **Why:** confirms MoneyMoney usage, can scaffold persona-banking link
+#### `finance_accounts` *(deep probe — only offered if a finance app was found)*
+- **Runs:** the detected finance app's account-list command — for MoneyMoney that is `osascript -e 'tell application "MoneyMoney" to get name of every account'`
+- **Captures:** account display names only (e.g. "Checking", "Business") — **NO** transactions, **NO** balances
+- **Why:** confirms finance-app usage, can scaffold a persona-banking link
+- **Note:** MoneyMoney is the reference implementation (ships a `/moneymoney` skill); any finance app maps to the same capability.
 - **Sensitivity:** medium
 
 #### `calendar_list`
@@ -127,8 +135,30 @@ For each source: what it runs, what it captures, why it matters.
 #### `ssh_known_hosts`
 - **Runs:** `cut -d ' ' -f 1 ~/.ssh/known_hosts | sort -u | head -30`
 - **Captures:** hostnames the user has SSHed to
-- **Why:** secondary evidence for remotes (especially when tailscale is off)
+- **Why:** secondary evidence for remotes (especially when no mesh-VPN is installed)
 - **Sensitivity:** medium — reveals infrastructure
+
+## Capability Map — Detected App/Tool → Capability → Suggestion
+
+The scan captures **everything** installed; this map turns raw app/tool names
+into capabilities. It is **extensible and example-driven** — add a row when a
+new product maps to an existing capability; never special-case a single product
+in the scan logic. An app matching **no** row is ignored — not surfaced as
+"unknown", not mentioned at all.
+
+| Capability | Example apps / tools (non-exhaustive) | Suggestion block |
+|---|---|---|
+| Fleet / mesh-VPN | Tailscale, Netbird, Headscale, Nebula; or ≥3 `ssh_known_hosts` | S2 — Remotes |
+| Backup | rclone, restic, borg, kopia; Backblaze, Arq, Carbon Copy Cloner | S3 — Backups |
+| Banking / finance | MoneyMoney, Banktivity, … (read-only via AppleScript/API) | S5 — Finance |
+| Document filing | a PARA / Johnny-Decimal folder tree under a docs root | S4 — Document Sensor |
+| Mail / calendar | Apple Mail, Outlook, any configured account | S6 / S7 |
+| Notes / knowledge | Obsidian, a `*-wiki` / `docs` repo | S11 — Knowledge repo |
+
+**Rule of thumb:** match by capability, not by brand. A finance app you've
+never heard of still maps to "Banking / finance" and surfaces S5. If the user
+has none in a category, that category's block **never appears** — no "not
+detected" line, no mention of the absent product.
 
 ## What's NEVER Scanned
 
@@ -153,7 +183,7 @@ Write findings to a structured file the wizard, Phase C, and the
 ```json
 {
   "scan_timestamp": "2026-05-16T14:30:00+02:00",
-  "permissions_granted": ["git_config", "developer_dir", "os_and_apps", "homebrew_packages", "tailscale_devices"],
+  "permissions_granted": ["git_config", "developer_dir", "os_and_apps", "homebrew_packages", "mesh_vpn_devices"],
   "evidence": {
     "git": { "name": "alice", "email": "alice@example.com" },
     "developer": {
@@ -173,7 +203,8 @@ Write findings to a structured file the wizard, Phase C, and the
       "formula": ["rclone", "restic", "gh", "wakeonlan", "pandoc"],
       "cask": ["docker", "iterm2"]
     },
-    "tailscale": {
+    "mesh_vpn": {
+      "impl": "tailscale",
       "self": "alice-macbook",
       "devices": ["alice-macbook", "alice-mini", "alice-nas"]
     }
@@ -199,7 +230,7 @@ suggestion. Phase C and the standing-order both read+write this.
 
 ```yaml
 suggestions:
-  moneymoney:
+  finance:
     status: accepted
     decided_at: 2026-05-16T14:32:00+02:00
   doc_system:
@@ -211,7 +242,7 @@ suggestions:
     decided_at: 2026-05-16T14:34:00+02:00
     decline_count: 1   # 3 declines → silenced forever
   remotes:
-    status: nothing_found   # scan ran but no tailscale + 0 ssh hosts
+    status: nothing_found   # scan ran but no mesh-VPN + 0 ssh hosts
 ```
 
 Status values:
@@ -244,7 +275,7 @@ decides "actually, I do need that now" — no full re-run.
 
 - Scan runs **in parallel** where possible (each source is independent).
   Show a progress line per source: `✓ git_config (alice)`, `✓ apps (47 found)`,
-  `✓ tailscale (3 devices)`. Trust-building.
+  `✓ mesh_vpn (tailscale, 3 devices)`. Trust-building.
 - Errors are **non-fatal** — if `osascript` permission is denied (e.g.
   user hasn't given Bridge automation rights yet), record the source as
   `error: permission_denied` and continue with the rest.
