@@ -1,119 +1,77 @@
 ---
-summary: "Maintainer runbook for cutting a release — automated via release-please (conventional commits -> version + CHANGELOG + tag + GitHub release)"
+summary: "How releases work — fully automatic, conventional-commit-driven (push to main -> version computed -> tag + GitHub release)"
 type: guide
 last_updated: 2026-06-24
 related:
-  - ../CHANGELOG.md
-  - ../release-please-config.json
-  - ../.release-please-manifest.json
-  - ../.github/workflows/release-please.yml
+  - ../.github/workflows/release.yml
   - ../.github/workflows/validate.yml
 ---
 
 # Releasing
 
-Releases are **automated from conventional commits**. You do not bump the
-version or write the CHANGELOG by hand, and you do not push tags. You merge a
-PR.
+Releases are **fully automatic**. There is no release PR, no manual version
+bump, no tag to push. You merge ordinary PRs into `main`; the release workflow
+cuts the release.
 
 ## How it works
 
-[release-please](https://github.com/googleapis/release-please) watches `main`.
-On every push it reads the merged commit subjects and maintains a single open
-**release PR** (titled `chore(main): release X.Y.Z`). That PR:
+On every push to `main`, [`release.yml`](../.github/workflows/release.yml):
 
-- computes the next version from the commit types since the last release, and
-- assembles the matching `CHANGELOG.md` section.
-
-When you **merge the release PR**, release-please creates the git tag and the
-GitHub release (release notes = the new CHANGELOG section), and GitHub marks it
-as the latest release. The merge is the only manual step — and the gate.
+1. Finds the latest version tag (`vX.Y.Z`).
+2. Reads the commit subjects since that tag and computes the next version from
+   their conventional-commit types.
+3. If there is a releasable change, creates the tag and a GitHub release with
+   notes auto-generated from the merged PRs. Otherwise it does nothing.
 
 ```
-feat:/fix: PRs merged to main  ->  release-please opens/updates "release X.Y.Z" PR
-you review + merge that PR      ->  tag vX.Y.Z + GitHub release (automatic)
+feat:/fix: PR merged to main  ->  release.yml computes next version
+                              ->  tag vX.Y.Z + GitHub release (auto notes)
 ```
+
+The README release badge reads the latest release live, so it updates on its
+own. The "what changed" lives on the **GitHub Releases page** (there is no
+hand-maintained CHANGELOG file).
 
 ## What you do
 
-1. **Land work as usual** via PRs to `main`. The only requirement is a
-   **conventional-commit PR title** — squash-merge uses it as the commit
-   subject, and that is what release-please parses. See "Commit types" below.
-2. **Review the release PR** when you are ready to ship. It shows the computed
-   version and the CHANGELOG diff. Edit the PR's CHANGELOG if you want to
-   reword anything; release-please respects manual edits.
-3. **Merge it.** The tag and GitHub release appear automatically. The README
-   release badge (reads the latest release live) updates on its own.
+**Land work via PRs with a conventional-commit title.** That is the only rule —
+squash-merge turns the PR title into the commit subject, and that is what the
+workflow parses. Nothing else: the release appears within a minute of merge.
 
-There is nothing to do for a version that should *not* ship yet — just leave
-the release PR open. It keeps updating as more PRs land.
+To hold a release back, just don't merge releasable work yet — a stream of
+`docs:`/`chore:` PRs never cuts a release.
 
-## Commit types -> version bump
+## Commit type -> version bump
 
 The version adapts to what merged, per [SemVer](https://semver.org/). While in
-the `0.x` series (`bump-minor-pre-major`):
+the `0.x` series the middle (minor) digit moves **only** on `feat:` or an
+explicit breaking change — ordinary fixes bump the patch:
 
-| Commit type | Example PR title | Bump | 0.2.0 -> |
+| PR title prefix | bump | `0.3.0` -> | from `1.0.0` |
 |---|---|---|---|
-| `fix:` | `fix: correct theme fallback` | patch | `0.2.1` |
-| `feat:` | `feat: add agency work board` | minor | `0.3.0` |
-| `feat!:` / `BREAKING CHANGE:` | `feat!: rename config key` | minor (0.x) | `0.3.0` |
-| `docs:` `ci:` `chore:` `refactor:` `test:` `style:` `build:` | — | none on their own | (no release) |
+| `fix:` | patch | `0.3.1` | patch |
+| `feat:` | minor | `0.4.0` | minor |
+| `feat!:` / `BREAKING CHANGE:` | minor (0.x) | `0.4.0` | **major** |
+| `docs:` `ci:` `chore:` `refactor:` `test:` `style:` `build:` | none | — | none |
 
-A batch of only `docs:`/`chore:`/`ci:` PRs does **not** open a release PR —
-that is intentional. The version moves when there is a `feat:` or `fix:`. Those
-non-bumping types still get credited in the CHANGELOG of the next release that
-ships (only `docs:` is shown; the rest are hidden — see
-`release-please-config.json` `changelog-sections`).
+While `major == 0`, a breaking change bumps the **minor**, not the major, so it
+never jumps to `1.0.0` by accident. From `1.0.0` on, a breaking change bumps the
+major and starts the usual compatibility guarantees.
 
-`1.0.0` starts compatibility guarantees; until then breaking changes bump the
-minor version.
+## Editing the bump rules
 
-## When the release PR's checks are red
-
-The release PR runs the same suite as any PR (`validate.yml` + DCO). Branch
-protection blocks the merge until green:
-
-- **Validation failure:** fix on `main` like any CI failure — the release PR
-  rebases itself on the next push.
-- **DCO:** the release PR's bot commit is exempt from the DCO check
-  (`dco.yml` skips the `release-please--branches--main` branch), so it passes
-  without intervention. DCO stays strict for every other branch.
-- **Checks not running at all:** the GitHub App token is not configured (see
-  setup below) — the release PR was opened by the built-in token, which GitHub
-  refuses to run CI for. Close and reopen the release PR once to trigger it.
-
-## One-time setup: GitHub App token
-
-GitHub will not run CI on a PR opened by the built-in `GITHUB_TOKEN`
-(loop-prevention), so the release PR is opened with a **GitHub App token**
-instead. Configure it once:
-
-1. Create a GitHub App under the org (Settings -> Developer settings -> GitHub
-   Apps -> New). Repository permissions: **Contents: Read & write**,
-   **Pull requests: Read & write**, **Workflows: Read & write**. No webhook.
-2. Generate a private key for the App and **install** it on this repository.
-3. Add to this repo: a **variable** `RP_APP_ID` (the App's numeric ID) and a
-   **secret** `RP_APP_PRIVATE_KEY` (the full `.pem` contents).
-
-`release-please.yml` mints a short-lived token from these per run
-(`actions/create-github-app-token`). Until they exist the workflow falls back
-to `GITHUB_TOKEN` — the release PR is still created, but you must close+reopen
-it once to make its checks run. No PAT, no expiry to track.
-
-## Editing version rules
-
-- **Bump behaviour** (pre-major handling, what counts as a release):
-  `release-please-config.json`.
-- **CHANGELOG section names / what is shown vs hidden:** the
-  `changelog-sections` block in the same file.
-- **Current version baseline:** `.release-please-manifest.json` (release-please
-  updates this automatically on each release — do not edit by hand unless
-  bootstrapping).
+All of it lives in [`release.yml`](../.github/workflows/release.yml) — the
+`Compute next version` step is a small, readable shell block. Change the regexes
+or the bump arithmetic there. The version is always derived from the latest
+git tag; there is no version file to keep in sync.
 
 ## Manual fallback
 
-If you ever need a release outside this flow, edit
-`.release-please-manifest.json` + `CHANGELOG.md` in a PR, then create the tag
-and release by hand (`gh release create vX.Y.Z --notes-file …`). This is not
-the normal path — prefer the release PR.
+To force a specific version, create the tag + release by hand:
+
+```bash
+gh release create vX.Y.Z --target main --generate-notes --latest
+```
+
+The next automatic run computes from whatever the latest tag is, so a manual
+release slots in cleanly.

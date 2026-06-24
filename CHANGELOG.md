@@ -1,13 +1,14 @@
 # Changelog
 
-All notable changes to open-bridge are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/), and versions follow
-[Semantic Versioning](https://semver.org/). open-bridge is in the `0.x`
-series: APIs, conventions, and layout may change between minor releases.
+> **Releases are now automated.** From **v0.3.1** on, per-release notes live on
+> the **[GitHub Releases page](https://github.com/bks-lab/open-bridge/releases)**
+> (generated on each `main` merge — see [`docs/releasing.md`](docs/releasing.md)).
+> This file is kept as the early history below; it is no longer hand-maintained.
 
-The current version is the latest entry below and the latest
-[GitHub release](https://github.com/bks-lab/open-bridge/releases) — the
-release badge in the README reads it live.
+open-bridge follows [Semantic Versioning](https://semver.org/) and is in the
+`0.x` series: APIs, conventions, and layout may change between minor releases.
+The current version is the latest [GitHub release](https://github.com/bks-lab/open-bridge/releases)
+— the release badge in the README reads it live.
 
 ## [0.3.0](https://github.com/bks-lab/open-bridge/compare/v0.2.0...v0.3.0) (2026-06-24)
 
