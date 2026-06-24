@@ -9,6 +9,13 @@ The current version is the latest entry below and the latest
 [GitHub release](https://github.com/bks-lab/open-bridge/releases) — the
 release badge in the README reads it live.
 
+## [0.3.1](https://github.com/bks-lab/open-bridge/compare/v0.3.0...v0.3.1) (2026-06-24)
+
+
+### Fixed
+
+* **bridge-onboard:** generic capability detection, drop memory-scan from onboarding ([#40](https://github.com/bks-lab/open-bridge/issues/40)) ([e4a4e26](https://github.com/bks-lab/open-bridge/commit/e4a4e2686bf4ef168fc45330f4b935681484a16d))
+
 ## [0.3.0](https://github.com/bks-lab/open-bridge/compare/v0.2.0...v0.3.0) (2026-06-24)
 
 
