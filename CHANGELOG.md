@@ -9,6 +9,33 @@ The current version is the latest entry below and the latest
 [GitHub release](https://github.com/bks-lab/open-bridge/releases) — the
 release badge in the README reads it live.
 
+## [0.3.0](https://github.com/bks-lab/open-bridge/compare/v0.2.0...v0.3.0) (2026-06-24)
+
+
+### Added
+
+* populate the agency example's work board ([#33](https://github.com/bks-lab/open-bridge/issues/33)) ([4f85de8](https://github.com/bks-lab/open-bridge/commit/4f85de8b662747baec96b960c88d3080847adc38))
+
+
+### Documentation
+
+* add Demo to nav on explore + concepts pages ([#34](https://github.com/bks-lab/open-bridge/issues/34)) ([968035f](https://github.com/bks-lab/open-bridge/commit/968035fb07449f9456c037e8d175b0350ded8cb3))
+* animated live-session demo (4 scenes) ([#31](https://github.com/bks-lab/open-bridge/issues/31)) ([e269681](https://github.com/bks-lab/open-bridge/commit/e269681fea8953a0e259850c38f9d37dab676669))
+* animated session GIF as the README hero ([#35](https://github.com/bks-lab/open-bridge/issues/35)) ([bfc5941](https://github.com/bks-lab/open-bridge/commit/bfc59419d514e54892b9af2c56d5c8f930a141f3))
+* close doc-index drift (standing-orders table, docs/README, agency example) ([ef43d62](https://github.com/bks-lab/open-bridge/commit/ef43d62622dce7e6dff6481a2431a2fa2ea45b9e))
+* **community:** SUPPORT.md, issue-template config, OG/social preview ([69abb68](https://github.com/bks-lab/open-bridge/commit/69abb6885be531e2a7a1c2b7ed6cf5eb8e50cd41))
+* fix audit findings — dead command, drift, English-only, frontmatter ([8692aaf](https://github.com/bks-lab/open-bridge/commit/8692aaf825a8557005b2f68f091371824799bb67))
+* fix second-pass audit findings — anchors, private link, shipped-vs-documented, /onboard ([913d56f](https://github.com/bks-lab/open-bridge/commit/913d56fa67c039222ac0c2ae120d8dfd1b901035))
+* **landing:** add "a day with it" use-cases + what-is-a-bridge / multi-bridge ([5b75469](https://github.com/bks-lab/open-bridge/commit/5b754691b2b3b66eceb6cd8b7882afa110d1116a))
+* **landing:** benefit-led copy overhaul + knowledge-constellation hero ([fcd580d](https://github.com/bks-lab/open-bridge/commit/fcd580dfec2e82413d4b2f6c78cb44f7f13a68b6))
+* **landing:** drop the duplicate static constellation (lives on Explore now) ([1a1bb4e](https://github.com/bks-lab/open-bridge/commit/1a1bb4e955870bbb4749f2fc6c008a3b0fd9f687))
+* **landing:** elevate landing page + fully-English README ([8fe398e](https://github.com/bks-lab/open-bridge/commit/8fe398e3fbbbd43a61313f20d7d2351865fca5bb))
+* **landing:** simpler hero net + full constellation in substrate ([0d619ed](https://github.com/bks-lab/open-bridge/commit/0d619ed7468524aa6edd27ea9535f005d98774fa))
+* **landing:** sticky in-page nav + remove all German terms + onboarding-does-setup + condense ([9d3d211](https://github.com/bks-lab/open-bridge/commit/9d3d21151744abfae5b5cee31b5297d75e4bf955))
+* link the live demo from the landing page ([#32](https://github.com/bks-lab/open-bridge/issues/32)) ([b502d8b](https://github.com/bks-lab/open-bridge/commit/b502d8b8cba5c723ecd4564492bb78c6fe2cae7b))
+* **pages:** serve the landing page via GitHub Pages ([36fdfa3](https://github.com/bks-lab/open-bridge/commit/36fdfa3f67305d3678c708990ef9b90f1f360c85))
+* **site:** mini-site — Explore constellation + Concepts deep-dive + shared nav ([6aac5ed](https://github.com/bks-lab/open-bridge/commit/6aac5ed7fe40194a70004eb03c927d28c71a22d8))
+
 ## [0.2.0] — public preview
 
 First public-preview release of open-bridge, the open-source layer of the
