@@ -144,6 +144,8 @@ files.
 
 All PRs target the `main` branch. Before submitting:
 
+- [ ] PR title is a [conventional commit](https://www.conventionalcommits.org/)
+      (`feat:`, `fix:`, `docs:`, `ci:`, …) — see "PR title" below
 - [ ] Every commit is signed off (`git commit -s`) — see "Legal" section below
 - [ ] No absolute paths — use `${variables}`
 - [ ] No secrets or credentials
@@ -153,6 +155,22 @@ All PRs target the `main` branch. Before submitting:
 - [ ] Existing commands and standing orders still work
 
 See `.github/PULL_REQUEST_TEMPLATE.md` for the full checklist.
+
+### PR title
+
+PRs are squash-merged, so the **PR title becomes the commit subject on `main`**
+— and releases are driven from it. Use a
+[conventional commit](https://www.conventionalcommits.org/) prefix:
+
+- `feat: …` — a new capability (bumps the minor version)
+- `fix: …` — a bug fix (bumps the patch version)
+- `feat!: …` or a `BREAKING CHANGE:` footer — a breaking change
+- `docs:` / `ci:` / `chore:` / `refactor:` / `test:` / `build:` — no release on
+  their own, but credited in the next release's CHANGELOG
+
+`release-please` reads these titles to compute the next version and assemble the
+CHANGELOG automatically — no manual version bump or tag. Full flow:
+[`docs/releasing.md`](docs/releasing.md).
 
 ---
 

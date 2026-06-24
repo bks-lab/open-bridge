@@ -1,0 +1,45 @@
+name: Release Please
+
+# Conventional-commit-driven releases. On every push to main, release-please
+# reads the merged commit subjects (squash-merge uses the PR title, so PR
+# titles must be conventional) and maintains a single open "release" PR that:
+#   - computes the next SemVer version from the commit types
+#     (fix: -> patch, feat: -> minor, breaking -> minor while in 0.x), and
+#   - assembles the CHANGELOG section for that version.
+# Merging that PR creates the git tag and the GitHub release. The release PR
+# is a normal PR, so the full validation suite (validate.yml) + DCO run on it
+# and branch protection blocks the merge while red — the merge is the gate.
+#
+# Version rules: release-please-config.json  ·  baseline: .release-please-manifest.json
+# Maintainer runbook: docs/releasing.md
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write        # create the tag + GitHub release on release-PR merge
+  pull-requests: write   # open / update the rolling release PR
+
+jobs:
+  release-please:
+    name: Release PR + GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # DCO requires a Signed-off-by trailer on every commit in a PR.
+          # Add one to release-please's own release-PR commit so the PR can merge.
+          signoff: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+
+      # GitHub marks a release as "Latest" unless the version string is itself a
+      # SemVer prerelease. The 0.x series is public preview, so flag those
+      # releases as pre-release explicitly (matches the previous release.yml).
+      - name: Mark 0.x release as pre-release
+        if: ${{ steps.release.outputs.release_created && startsWith(steps.release.outputs.tag_name, 'v0.') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ steps.release.outputs.tag_name }}" --prerelease --repo "${{ github.repository }}"
