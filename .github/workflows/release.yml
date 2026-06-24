@@ -1,0 +1,88 @@
+name: Release
+
+# Fully automatic, conventional-commit-driven releases — no release PR, no
+# manual step. On every push to main, compute the next SemVer version from the
+# commit subjects since the last tag and, if there is a releasable change,
+# create the tag + GitHub release directly (notes auto-generated from the merged
+# PRs). Squash-merge uses the PR title as the commit subject, so PR titles must
+# be conventional (feat:/fix:/docs:/…).
+#
+# Bump rules (see docs/releasing.md):
+#   while 0.x:   feat: or breaking -> minor   ·  fix: -> patch   ·  others -> no release
+#   from 1.0.0:  breaking -> major  ·  feat: -> minor  ·  fix: -> patch
+# This keeps the middle (minor) digit moving only on feat/breaking; ordinary
+# fixes bump the patch; docs/ci/chore/refactor/test/style/build cut no release.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # create tags + GitHub releases
+
+concurrency: release   # never cut two releases at once
+
+jobs:
+  release:
+    name: Auto Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history + tags, to diff since the last tag
+
+      - name: Compute next version
+        id: bump
+        run: |
+          set -euo pipefail
+
+          last_tag="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n1)"
+          if [ -z "$last_tag" ]; then
+            echo "No prior version tag — skipping (bootstrap a v0.0.0 tag once)."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          IFS=. read -r major minor patch <<< "${last_tag#v}"
+
+          breaking=false; feat=false; fix=false
+          while IFS= read -r -d '' msg; do
+            subject="${msg%%$'\n'*}"
+            if printf '%s' "$subject" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:'; then breaking=true; fi
+            if printf '%s' "$msg"     | grep -qE '^BREAKING[ -]CHANGE:';    then breaking=true; fi
+            if printf '%s' "$subject" | grep -qE '^feat(\([^)]*\))?!?:';    then feat=true; fi
+            if printf '%s' "$subject" | grep -qE '^fix(\([^)]*\))?!?:';     then fix=true; fi
+          done < <(git log "${last_tag}..HEAD" -z --format='%B')
+
+          if [ "$major" -eq 0 ]; then
+            if $breaking || $feat; then minor=$((minor + 1)); patch=0
+            elif $fix; then patch=$((patch + 1))
+            else
+              echo "No releasable commits since ${last_tag} (breaking=$breaking feat=$feat fix=$fix)."
+              echo "release=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          else
+            if $breaking; then major=$((major + 1)); minor=0; patch=0
+            elif $feat; then minor=$((minor + 1)); patch=0
+            elif $fix; then patch=$((patch + 1))
+            else
+              echo "No releasable commits since ${last_tag}."
+              echo "release=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          fi
+
+          new="v${major}.${minor}.${patch}"
+          echo "Next version: ${new}  (since ${last_tag}; breaking=$breaking feat=$feat fix=$fix)"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "tag=${new}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        if: steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.bump.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --title "${{ steps.bump.outputs.tag }}" \
+            --generate-notes \
+            --latest

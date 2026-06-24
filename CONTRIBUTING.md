@@ -166,11 +166,11 @@ PRs are squash-merged, so the **PR title becomes the commit subject on `main`**
 - `fix: …` — a bug fix (bumps the patch version)
 - `feat!: …` or a `BREAKING CHANGE:` footer — a breaking change
 - `docs:` / `ci:` / `chore:` / `refactor:` / `test:` / `build:` — no release on
-  their own, but credited in the next release's CHANGELOG
+  their own, but credited in the release notes
 
-`release-please` reads these titles to compute the next version and assemble the
-CHANGELOG automatically — no manual version bump or tag. Full flow:
-[`docs/releasing.md`](docs/releasing.md).
+The release workflow reads these titles on every push to `main` to compute the
+next version and cut the tag + GitHub release automatically — no manual version
+bump, tag, or release PR. Full flow: [`docs/releasing.md`](docs/releasing.md).
 
 ---
 
