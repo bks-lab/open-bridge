@@ -47,12 +47,3 @@ jobs:
           token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      # GitHub marks a release as "Latest" unless the version string is itself a
-      # SemVer prerelease. The 0.x series is public preview, so flag those
-      # releases as pre-release explicitly.
-      - name: Mark 0.x release as pre-release
-        if: ${{ steps.release.outputs.release_created && startsWith(steps.release.outputs.tag_name, 'v0.') }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ steps.release.outputs.tag_name }}" --prerelease --repo "${{ github.repository }}"

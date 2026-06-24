@@ -26,8 +26,8 @@ On every push it reads the merged commit subjects and maintains a single open
 - assembles the matching `CHANGELOG.md` section.
 
 When you **merge the release PR**, release-please creates the git tag and the
-GitHub release (release notes = the new CHANGELOG section; `0.x` is marked
-*pre-release*). The merge is the only manual step — and the gate.
+GitHub release (release notes = the new CHANGELOG section), and GitHub marks it
+as the latest release. The merge is the only manual step — and the gate.
 
 ```
 feat:/fix: PRs merged to main  ->  release-please opens/updates "release X.Y.Z" PR
