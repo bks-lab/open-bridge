@@ -1,46 +1,97 @@
 ---
-summary: "Maintainer runbook for cutting a release — CHANGELOG bump, tag, automated validation + GitHub release"
+summary: "Maintainer runbook for cutting a release — automated via release-please (conventional commits -> version + CHANGELOG + tag + GitHub release)"
 type: guide
-last_updated: 2026-06-10
+last_updated: 2026-06-24
 related:
   - ../CHANGELOG.md
-  - ../.github/workflows/release.yml
+  - ../release-please-config.json
+  - ../.release-please-manifest.json
+  - ../.github/workflows/release-please.yml
   - ../.github/workflows/validate.yml
 ---
 
 # Releasing
 
-Releases are tag-driven. The pipeline does the rest.
+Releases are **automated from conventional commits**. You do not bump the
+version or write the CHANGELOG by hand, and you do not push tags. You merge a
+PR.
 
-## Cutting a release
+## How it works
 
-1. **Bump the CHANGELOG.** Add a `## [X.Y.Z]` section at the top of
-   `CHANGELOG.md` ([Keep a Changelog](https://keepachangelog.com/) format).
-   Commit it to `main` (via PR, DCO sign-off required).
-2. **Tag and push.**
+[release-please](https://github.com/googleapis/release-please) watches `main`.
+On every push it reads the merged commit subjects and maintains a single open
+**release PR** (titled `chore(main): release X.Y.Z`). That PR:
 
-   ```bash
-   git tag vX.Y.Z && git push origin vX.Y.Z
-   ```
+- computes the next version from the commit types since the last release, and
+- assembles the matching `CHANGELOG.md` section.
 
-3. **The `Release` workflow** (`.github/workflows/release.yml`) then:
-   - runs the full validation suite (reuses `validate.yml` via `workflow_call`),
-   - verifies the tag has a matching `## [X.Y.Z]` CHANGELOG entry,
-   - creates the GitHub release with that CHANGELOG section as release notes
-     (`0.x` tags are marked *pre-release*).
+When you **merge the release PR**, release-please creates the git tag and the
+GitHub release (release notes = the new CHANGELOG section; `0.x` is marked
+*pre-release*). The merge is the only manual step — and the gate.
 
-## When the release run is red
+```
+feat:/fix: PRs merged to main  ->  release-please opens/updates "release X.Y.Z" PR
+you review + merge that PR      ->  tag vX.Y.Z + GitHub release (automatic)
+```
 
-No release is created — fix first, then re-tag:
+## What you do
 
-- **Validation failure:** fix on `main` like any CI failure.
-- **Missing CHANGELOG entry:** add the section, merge, re-tag.
-- Re-tagging: `git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z`,
-  then tag the fixed commit. Never re-tag a version that already produced
-  a published release — bump the patch version instead.
+1. **Land work as usual** via PRs to `main`. The only requirement is a
+   **conventional-commit PR title** — squash-merge uses it as the commit
+   subject, and that is what release-please parses. See "Commit types" below.
+2. **Review the release PR** when you are ready to ship. It shows the computed
+   version and the CHANGELOG diff. Edit the PR's CHANGELOG if you want to
+   reword anything; release-please respects manual edits.
+3. **Merge it.** The tag and GitHub release appear automatically. The README
+   release badge (reads the latest release live) updates on its own.
 
-## Versioning policy
+There is nothing to do for a version that should *not* ship yet — just leave
+the release PR open. It keeps updating as more PRs land.
 
-SemVer. The `0.x` series is **public preview**: conventions and layout may
-change between minor releases; breaking changes bump the minor version.
-`1.0.0` starts compatibility guarantees. First public release: `v0.2.0`.
+## Commit types -> version bump
+
+The version adapts to what merged, per [SemVer](https://semver.org/). While in
+the `0.x` series (`bump-minor-pre-major`):
+
+| Commit type | Example PR title | Bump | 0.2.0 -> |
+|---|---|---|---|
+| `fix:` | `fix: correct theme fallback` | patch | `0.2.1` |
+| `feat:` | `feat: add agency work board` | minor | `0.3.0` |
+| `feat!:` / `BREAKING CHANGE:` | `feat!: rename config key` | minor (0.x) | `0.3.0` |
+| `docs:` `ci:` `chore:` `refactor:` `test:` `style:` `build:` | — | none on their own | (no release) |
+
+A batch of only `docs:`/`chore:`/`ci:` PRs does **not** open a release PR —
+that is intentional. The version moves when there is a `feat:` or `fix:`. Those
+non-bumping types still get credited in the CHANGELOG of the next release that
+ships (only `docs:` is shown; the rest are hidden — see
+`release-please-config.json` `changelog-sections`).
+
+`1.0.0` starts compatibility guarantees; until then breaking changes bump the
+minor version.
+
+## When the release PR's checks are red
+
+The release PR runs the same suite as any PR (`validate.yml` + DCO). Branch
+protection blocks the merge until green:
+
+- **Validation failure:** fix on `main` like any CI failure — the release PR
+  rebases itself on the next push.
+- **DCO:** release-please signs off its own commit (`signoff` input in
+  `release-please.yml`), so the release PR passes DCO without intervention.
+
+## Editing version rules
+
+- **Bump behaviour** (pre-major handling, what counts as a release):
+  `release-please-config.json`.
+- **CHANGELOG section names / what is shown vs hidden:** the
+  `changelog-sections` block in the same file.
+- **Current version baseline:** `.release-please-manifest.json` (release-please
+  updates this automatically on each release — do not edit by hand unless
+  bootstrapping).
+
+## Manual fallback
+
+If you ever need a release outside this flow, edit
+`.release-please-manifest.json` + `CHANGELOG.md` in a PR, then create the tag
+and release by hand (`gh release create vX.Y.Z --notes-file …`). This is not
+the normal path — prefer the release PR.
