@@ -16,6 +16,7 @@ name: Release Please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write        # create the tag + GitHub release on release-PR merge
@@ -26,18 +27,30 @@ jobs:
     name: Release PR + GitHub Release
     runs-on: ubuntu-latest
     steps:
+      # GitHub will not run CI on a PR opened by the built-in GITHUB_TOKEN, so
+      # the release PR must be opened by a GitHub App token. Configure the repo
+      # variable RP_APP_ID + secret RP_APP_PRIVATE_KEY (see docs/releasing.md).
+      # Until those exist this step is skipped and the job falls back to
+      # GITHUB_TOKEN — the release PR is still created, but its checks won't run
+      # automatically (close + reopen it once to trigger them).
+      - name: Mint GitHub App token
+        id: app-token
+        if: ${{ vars.RP_APP_ID != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RP_APP_ID }}
+          private-key: ${{ secrets.RP_APP_PRIVATE_KEY }}
+
       - uses: googleapis/release-please-action@v4
         id: release
         with:
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # DCO requires a Signed-off-by trailer on every commit in a PR.
-          # Add one to release-please's own release-PR commit so the PR can merge.
-          signoff: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
 
       # GitHub marks a release as "Latest" unless the version string is itself a
       # SemVer prerelease. The 0.x series is public preview, so flag those
-      # releases as pre-release explicitly (matches the previous release.yml).
+      # releases as pre-release explicitly.
       - name: Mark 0.x release as pre-release
         if: ${{ steps.release.outputs.release_created && startsWith(steps.release.outputs.tag_name, 'v0.') }}
         env:

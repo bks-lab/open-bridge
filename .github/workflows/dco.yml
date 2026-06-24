@@ -15,6 +15,15 @@ jobs:
 
       - name: Check Signed-off-by trailers
         run: |
+          # release-please opens its release PR from this bot branch. Its single
+          # "chore(main): release X.Y.Z" commit only re-derives content already
+          # DCO-signed on main (CHANGELOG + version), and release-please's commit
+          # carries no sign-off — so exempt that branch. Everyone else is strict.
+          if [ "${GITHUB_HEAD_REF}" = "release-please--branches--main" ]; then
+            echo "release-please automation branch — DCO exempt (bot release commit)."
+            exit 0
+          fi
+
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
 

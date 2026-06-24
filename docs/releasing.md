@@ -76,8 +76,30 @@ protection blocks the merge until green:
 
 - **Validation failure:** fix on `main` like any CI failure — the release PR
   rebases itself on the next push.
-- **DCO:** release-please signs off its own commit (`signoff` input in
-  `release-please.yml`), so the release PR passes DCO without intervention.
+- **DCO:** the release PR's bot commit is exempt from the DCO check
+  (`dco.yml` skips the `release-please--branches--main` branch), so it passes
+  without intervention. DCO stays strict for every other branch.
+- **Checks not running at all:** the GitHub App token is not configured (see
+  setup below) — the release PR was opened by the built-in token, which GitHub
+  refuses to run CI for. Close and reopen the release PR once to trigger it.
+
+## One-time setup: GitHub App token
+
+GitHub will not run CI on a PR opened by the built-in `GITHUB_TOKEN`
+(loop-prevention), so the release PR is opened with a **GitHub App token**
+instead. Configure it once:
+
+1. Create a GitHub App under the org (Settings -> Developer settings -> GitHub
+   Apps -> New). Repository permissions: **Contents: Read & write**,
+   **Pull requests: Read & write**, **Workflows: Read & write**. No webhook.
+2. Generate a private key for the App and **install** it on this repository.
+3. Add to this repo: a **variable** `RP_APP_ID` (the App's numeric ID) and a
+   **secret** `RP_APP_PRIVATE_KEY` (the full `.pem` contents).
+
+`release-please.yml` mints a short-lived token from these per run
+(`actions/create-github-app-token`). Until they exist the workflow falls back
+to `GITHUB_TOKEN` — the release PR is still created, but you must close+reopen
+it once to make its checks run. No PAT, no expiry to track.
 
 ## Editing version rules
 
