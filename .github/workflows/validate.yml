@@ -258,3 +258,24 @@ jobs:
             exit 1
           fi
           echo "No private leak roster tracked — public repo is clean."
+
+  onboard-safety:
+    name: Onboarding Safety (push guard + leak sim)
+    runs-on: ubuntu-latest
+    # Proves the public-origin push guard (rules/push-guard.md): a user/* branch
+    # of private data can never be published to a public upstream. Unit contract
+    # + a model-free end-to-end leak simulation (skills/onboard-sim).
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push-guard unit contract
+        run: bash scripts/tests/test-push-guard.sh
+
+      - name: Onboarding leak simulation (scripted, model-free)
+        run: |
+          set -euo pipefail
+          SBX="$RUNNER_TEMP/obsim"
+          bash skills/onboard-sim/assets/build-sandbox.sh "$PWD" "$SBX"
+          # the scripted newcomer's push SHOULD be rejected by the guard (non-zero exit)
+          bash skills/onboard-sim/assets/run-scripted-newcomer.sh "$SBX/newcomer" || true
+          bash skills/onboard-sim/assets/assert-no-leak.sh "$SBX"
