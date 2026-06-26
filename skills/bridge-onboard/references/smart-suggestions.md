@@ -11,32 +11,61 @@ Phase C of the onboarding wizard. The scan from Phase B
 pattern to a concrete suggestion with the advisory text the wizard
 shows the user.
 
-## The Single Bias-Setting Question (asked once, optional)
+## Ordering Signals — Purpose + Profile (both set in Phase A)
 
-Before walking suggestions, ask **one** question — purely to prioritise
-which suggestions surface first:
+Phase C **asks no bias question here.** Both ordering signals were captured in
+Phase A (step 5); the standalone bias-question that used to live in this file (and
+in broader-only Phase B) has moved there — so confined-default users get asked it
+too. *(Phase C is skipped entirely in confined mode — that's fine; these signals
+then only matter on `--add` and in the Phase E catalogue.)*
 
-```
-Will you mostly use Bridge for:
+- **`purpose.focus`** — the **primary order**. A subset of the six catalog
+  life-domains (`identity`, `communication`, `infrastructure`, `productivity`,
+  `integrations`, `visualization`) derived from the user's one-line purpose statement.
+- **`user_profile`** (`work | private | both`) — the **secondary tiebreak**, and it
+  still colours suggestion *language* ("for your team" vs "for your family").
 
-  [w] work    (clients, team, deadlines, infrastructure)
-  [p] private (personal organisation, household, finances)
-  [b] both    (recommended for most users)
-  [s] skip    (treat everything as equally relevant)
-```
+**Precedence for every suggestion (the whole filtering contract):**
+evidence-strength → `purpose.focus` membership → `user_profile`.
 
-This is **not** a feature-toggle — it's a sort-order hint. It biases:
+1. **evidence-strength** gates whether a suggestion appears at all — **UNCHANGED**
+   ("no suggestion without evidence", below).
+2. **`purpose.focus` membership** is the primary sort: a suggestion whose tagged
+   life-domain is in focus sorts first. A strong-evidence suggestion **outside**
+   focus still appears — never hidden — after the focus ones, prefixed
+   `Outside your stated focus, but strong evidence:`.
+3. **`user_profile`** breaks ties under focus: **work** → GitHub-projects, channels
+   (team), remotes, m365-admin tiebreak up, finance/voice down; **private** →
+   finance, voice, household mandant up, m365-admin and team channels down;
+   **both** → balanced.
 
-- **work** → suggestions for GitHub-projects, channels (team), remotes,
-  m365-admin surface first; finance / voice surface last
-- **private** → finance, voice, household mandant
-  surface first; m365-admin and team channels surface last
-- **both** → balanced order, drives nothing else
-- **skip** → strict evidence-strength order only
+> **Guardrail — purpose SUGGESTS/ORDERS/LABELS only.** Neither `purpose.focus` nor
+> `user_profile` gates, hides, removes, or blocks a feature. Treating `focus` as an
+> allowlist is a bug. Every capability stays one `/bridge-onboard --add`/`enabled:`
+> flip away. **Empty purpose (focus `[]`) → ordering falls back to the
+> `user_profile` tiebreak only, i.e. today's exact behaviour.**
 
-Persist as `bridge-config.yaml.user_profile: work | private | both`.
-Doesn't gate any feature; only affects ordering and the language of
-suggestions ("for your team" vs "for your family").
+Where it reads naturally, substitute `purpose.statement` into the advisory copy
+("This fits what you said this Bridge is for — {statement}.") — copy only, never a
+gate.
+
+### Catalog-domain tag per S-block
+
+Used for the `purpose.focus`-first sort above:
+
+| S-block | Feature | Catalog domain |
+|---|---|---|
+| S1 | Repos & GitHub | `integrations` |
+| S2 | Remotes | `infrastructure` |
+| S3 | Backups | `infrastructure` |
+| S4 | Document Sensor | `identity` |
+| S5 | Finance | `productivity` |
+| S6 | Mail Accounts | `identity` |
+| S7 | Calendar integration | `integrations` |
+| S8 | Bridge-Deck | `visualization` |
+| S10 | Voice messages | `communication` |
+| S11 | Knowledge / Wiki repo | `productivity` |
+| S12 | Upstream wiring | `integrations` |
 
 ## Principles for Suggestions
 

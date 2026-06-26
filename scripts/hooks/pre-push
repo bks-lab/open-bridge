@@ -1,0 +1,145 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# pre-push guard — never publish USER data to a PUBLIC upstream.
+#
+# Why this exists: a Bridge cloned directly from a PUBLIC upstream (e.g.
+# bks-lab/open-bridge) has `origin` pointing at that public repo. Onboarding
+# commits identity + work/ to a user/* branch; the agent's auto-end-of-work
+# cycle then pushes it — and a server-side ruleset can't stop the repo
+# owner/org-admin's own push. This client-side hook is the deterministic
+# backstop: it converts an accidental publish of your private branch into a
+# deliberate, opt-in action — for the autopilot and the human alike.
+#
+# Detection is offline-first: the push target slug is matched against a built-in
+# list + `.bridge-origin` (is_public) + bridge-config.yaml push_guard.*; only an
+# UNKNOWN remote escalates to `gh repo view --json visibility` (and unknown =>
+# allow, so private forks are never falsely blocked).
+#
+# Deliberate bypass (visible, per-push):  BRIDGE_PUSH_GUARD=off git push ...
+# Full rationale + remediation: rules/push-guard.md
+set -u
+
+REMOTE_NAME="${1:-}"
+REMOTE_URL="${2:-}"
+
+[ "${BRIDGE_PUSH_GUARD:-on}" = "off" ] && exit 0
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=$(pwd)
+
+# normalize any git remote URL to a lowercase owner/repo slug
+slug_of() {
+  printf '%s' "$1" \
+    | sed -E 's#^git@[^:]+:##; s#^ssh://git@[^/]+/##; s#^https?://[^/]+/##; s#/$##; s#\.git$##' \
+    | tr '[:upper:]' '[:lower:]'
+}
+
+# read a space-separated list under push_guard.<key> from a YAML file
+# (supports inline `key: [a, b]` and block `- a` forms; best-effort, optional)
+yaml_list() {
+  _file="$1"; _key="$2"
+  [ -f "$_file" ] || return 0
+  awk -v key="$_key" '
+    /^push_guard:/ { inpg=1; next }
+    inpg && /^[^[:space:]#]/ { inpg=0 }
+    inpg && $0 ~ "^[[:space:]]+" key ":" {
+      l=$0; sub(/^[[:space:]]*[^:]+:[[:space:]]*/, "", l)
+      if (l ~ /^\[/) { gsub(/[][,]/, " ", l); print l; ink=0; next }
+      ink=1; next
+    }
+    ink && /^[[:space:]]*-[[:space:]]*/ { v=$0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); printf "%s ", v; next }
+    ink && /^[[:space:]]*[^[:space:]-]/ { ink=0 }
+  ' "$_file" | tr -d "\"'" | tr '[:upper:]' '[:lower:]'
+}
+
+TARGET=$(slug_of "$REMOTE_URL")
+CFG="$ROOT/bridge-config.yaml"
+
+# 1) your own private remotes short-circuit to ALLOW
+for p in $(yaml_list "$CFG" private_remotes); do
+  [ "$TARGET" = "$p" ] && exit 0
+done
+
+# 2) is the target a PUBLIC upstream?  built-in + .bridge-origin + config
+PUBLIC="bks-lab/open-bridge $(yaml_list "$CFG" public_upstreams)"
+if [ -f "$ROOT/.bridge-origin" ]; then
+  ob_repo=$(sed -n 's/^repo:[[:space:]]*//p' "$ROOT/.bridge-origin" | head -1 | tr -d "\"' " | tr '[:upper:]' '[:lower:]')
+  ob_pub=$(sed -n 's/^is_public:[[:space:]]*//p' "$ROOT/.bridge-origin" | head -1 | tr -d " ")
+  [ "$ob_pub" = "true" ] && [ -n "$ob_repo" ] && PUBLIC="$PUBLIC $ob_repo"
+fi
+is_public=no
+for u in $PUBLIC; do
+  [ "$TARGET" = "$u" ] && { is_public=yes; break; }
+done
+
+# 3) unknown remote → escalate to gh (best-effort); unknown/offline ⇒ allow
+if [ "$is_public" = no ] && command -v gh >/dev/null 2>&1; then
+  vis=$(gh repo view "$TARGET" --json visibility -q .visibility 2>/dev/null)
+  [ "$vis" = "PUBLIC" ] && is_public=yes
+fi
+
+# not a public target → nothing to guard
+[ "$is_public" = yes ] || exit 0
+
+ZERO="0000000000000000000000000000000000000000"
+# USER *instance* paths only — never CORE templates (_template/_schema, examples/,
+# any _-prefixed basename, or a directory's own README.md). The destination-branch
+# rule below is the primary guard; this content net is the backstop that catches
+# USER instance files smuggled onto ANY other branch name (main, feature/*, a
+# renamed user branch, …) — names are not trusted, content is.
+USER_PATHS='^(work/(log\.md|board\.md|tasks/|streams/|done/|archive/)|identity/agent/(IDENTITY|SOUL)\.md|identity/(personas|mandants|accounts)/[^_]|infra/(remotes|channels|backups)/[^_]|workflow/calendars/[^_]|bridge-config\.yaml$)'
+
+blocked=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${remote_ref:-}" ] && continue
+  [ "$local_sha" = "$ZERO" ] && continue          # branch deletion — nothing pushed
+  # Decide from where the ref LANDS (remote_ref), never the local ref: git feeds the
+  # hook local_ref="HEAD" for `git push origin HEAD` and a raw sha for
+  # `git push origin <sha>:refs/heads/user/x`, but remote_ref is ALWAYS the
+  # fully-qualified destination. Keying on it means HEAD / detached / sha push forms
+  # can't dodge the user/* rule (they did when this keyed on local_ref — leak vector).
+  dest=${remote_ref#refs/heads/}
+  case "$dest" in
+    user/*) blocked="$blocked $dest"; continue ;;   # a USER branch never reaches a public upstream
+  esac
+  # Any other destination (main, feature/*, ci/*, promote-*, a renamed user branch):
+  # allow it ONLY if the COMMITS being pushed carry no USER instance content. Inspect
+  # the pushed commits, NOT the working tree — `git diff <sha>` against a clean tree
+  # looks empty and hid the content (the other half of the leak vector).
+  if [ "$remote_sha" = "$ZERO" ]; then
+    push_commits=$(git rev-list "$local_sha" --not --remotes 2>/dev/null) || push_commits=""
+  else
+    push_commits=$(git rev-list "$remote_sha..$local_sha" 2>/dev/null) || push_commits=""
+  fi
+  changed=$(printf '%s\n' "$push_commits" | sed '/^$/d' \
+            | git diff-tree -r --no-commit-id --name-only --root --stdin 2>/dev/null \
+            | grep -v '/README\.md$') || changed=""
+  if [ -n "$changed" ] && printf '%s\n' "$changed" | grep -Eq "$USER_PATHS"; then
+    blocked="$blocked ${dest}(USER-content)"
+  fi
+done
+
+[ -z "$blocked" ] && exit 0
+
+cat >&2 <<EOF
+
+  ✋ Push blocked — public-upstream guard (rules/push-guard.md)
+
+     remote   $REMOTE_NAME → $TARGET   ← PUBLIC upstream
+     refs    $blocked
+
+  USER-branch content (identity/agent, work/, client data) must never land on a
+  public repo. The sanctioned path to a public upstream is a fork-based PR via
+  /promote — never a direct push of your branch.
+
+  Fix (recommended) — re-home this clone to a PRIVATE origin:
+     git remote rename origin upstream
+     gh repo create <you>/my-bridge --private --source=. --remote=origin --push
+  open-bridge then stays a read-only pull/PR upstream you /promote into.
+
+  Just evaluating? Keep user/* local — don't push at all.
+  Intentional CORE-maintainer push? Override deliberately:
+     BRIDGE_PUSH_GUARD=off git push ...
+
+EOF
+exit 1

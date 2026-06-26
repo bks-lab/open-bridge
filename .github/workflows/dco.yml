@@ -20,13 +20,19 @@ jobs:
 
           echo "Checking commits in range ${BASE_SHA}..${HEAD_SHA}"
 
+          # --no-merges: a merge commit introduces no newly-authored content
+          # (it is the union of commits already signed off), so the DCO does not
+          # apply to it. This also stops a green PR from going red the moment the
+          # branch is updated via GitHub's "Update branch" button, which creates
+          # an unsigned merge commit (committer: GitHub). Matches the behaviour of
+          # GitHub's official DCO app, which skips merge commits by default.
           MISSING=()
           while IFS= read -r commit; do
             [ -z "$commit" ] && continue
             if ! git log -1 --format=%B "$commit" | grep -qE "^Signed-off-by: .+ <.+@.+>"; then
               MISSING+=("$commit")
             fi
-          done < <(git log --format=%H "${BASE_SHA}..${HEAD_SHA}")
+          done < <(git log --no-merges --format=%H "${BASE_SHA}..${HEAD_SHA}")
 
           if [ ${#MISSING[@]} -gt 0 ]; then
             echo ""

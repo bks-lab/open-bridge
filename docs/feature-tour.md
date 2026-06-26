@@ -11,11 +11,17 @@ related:
 # Feature Tour — Fill the Cluster-Wrappers
 
 Onboarding (`/bridge-onboard`) gives you a running shell: identity,
-ecosystem, branch, optional work-system, default agents. **Most cluster-
+ecosystem (opt-in detection), branch, optional work-system, default agents. **Most cluster-
 wrapper folders start empty** — `identity/personas/`,
 `identity/mandants/`, `infra/channels/`, `workflow/calendars/`, etc.
-ship only the templates and schemas. You fill them when a real need
-shows up.
+ship only the templates and schemas. The goal is **not** to fill the whole
+universe of wrappers — it's to fill what serves *this* instance's purpose; the
+rest stays dormant until a real need earns it a place.
+
+Onboarding captures that purpose as a one-line north-star (`bridge-config.yaml`
+`purpose.statement`/`focus`; change it anytime with `/bridge-onboard --purpose`).
+It only ORDERS what surfaces first — it never gates or hides a wrapper, so every
+section below is available whenever you reach for it.
 
 This doc is the per-wrapper "create your first X" guide. Each section is
 self-contained. Skim the index, jump to what you need, ignore the rest.

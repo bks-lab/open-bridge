@@ -10,6 +10,13 @@ identity:
   projects_root: ~/Developer
   home: ~
 
+# ─── Purpose (north-star — ORDERS the catalog/suggestions, never gates) ───
+# A focused instance: the catalog leads with these domains, everything else
+# stays one flip away. Empty statement+focus would give the flat catalog instead.
+purpose:
+  statement: "Two-client web-agency delivery — client work + team ops"
+  focus: [integrations, communication, productivity]
+
 user_profile: work
 
 # ─── Theme + Language ─────────────────────────────────────────────────

@@ -57,9 +57,9 @@ wall.
 # Phase Map
 
 ```
-A  Quick Identity              30 sec   name + projects_root + GitHub-opt + lang
-B  Discovery Scan             ~60 sec   permission-gated system scan
-C  Smart Suggestions         ~2-3 min   evidence → feature recommendations
+A  Quick Identity              60 sec   purpose + name + projects_root + GitHub-opt + lang + scope-consent gate
+B  Discovery Scan             ~60 sec   permission-gated system scan (broader mode only; skipped if confined)
+C  Smart Suggestions         ~2-3 min   evidence → feature recommendations (skipped if confined)
 D  Quick-Wins                ~2 min    work-system + theme + 3 starter agents + agent soul/identity (deck-picked)
 E  Feature Catalog          read-only   "what else Bridge can do, when to add it"
 F  Validate + Preview        ~30 sec   schema check, HTML preview, re-entry hints
@@ -71,7 +71,7 @@ Total: 5-8 minutes for a tailored setup, ~3 minutes for "defaults only".
 
 ## Phase A — Quick Identity
 
-A tight identity block — four questions, one branch creation.
+A tight identity block — five questions (purpose included), one branch creation, and the scope-consent gate (step 7, always last).
 
 1. **Name** — detect from `git config user.name`; offer it back. Becomes
    `identity.name` and the suffix of the user branch. If `git config
@@ -87,26 +87,127 @@ A tight identity block — four questions, one branch creation.
    - Without GitHub → `~/Developer` or `~/Code` (offer both, pick what exists)
 4. **Language** — auto-detected from the user's first message; confirm
    only if ambiguous. Sets `language.conversation` and `language.artifacts`.
-5. **Create `user/{name}` branch** — your personal data lives here, CORE
-   stays clean. Run it explicitly from the core/default branch:
+5. **Purpose — the instance's north-star.** One line before wiring anything.
+   **Discover, don't interrogate:** if `identity.org` was given (step 2),
+   pre-fill the lead from it. Render verbatim (EN source; render bilingually at
+   runtime — German in → German out):
+   ```
+   One line before we wire anything — what will you mainly use this Bridge for?
+
+   This becomes its north-star: I lead with the features that serve it and keep the
+   rest one keystroke away, so this instance stays focused instead of fanning out
+   everything at once. It's a compass, not a fence — every feature stays available and
+   you can change this anytime (/bridge-onboard --purpose).
+
+     examples:  "Client delivery for my two freelance engagements"
+                "Running ops for the Acme team"
+                "Personal life admin — finances, documents, the household"
+
+     [type a line]   [w] mostly work   [p] mostly private   [b] a bit of both   [skip]
+
+     Purpose ▸
+   ```
+   **Handling** (purpose SUGGESTS/ORDERS/LABELS only — it never gates, hides, or
+   removes a feature; every capability stays one `--add`/`enabled:` flip away):
+   - **A typed line** → write it verbatim to `purpose.statement`. Then derive
+     `purpose.focus` — a subset of the six catalog domains (`identity`,
+     `communication`, `infrastructure`, `productivity`, `integrations`,
+     `visualization`) — AND `user_profile` (`work | private | both`) from the
+     statement. Echo ONE soft confirm:
+     > Got it — I'll keep this Bridge pointed at {statement}, leading with {focus
+     > domains}; everything else stays one step back. **[ok]** **[adjust domains]**
+
+     `[adjust domains]` is the only correction path (toggle the inferred focus
+     domains); it never blocks.
+   - **`[w]` / `[p]` / `[b]`** → set `user_profile` to `work` / `private` / `both`
+     explicitly; leave `purpose.statement: ""` and `purpose.focus: []`.
+   - **`[skip]`** → `purpose.statement: ""`, `purpose.focus: []`,
+     `user_profile: both`, with one line:
+     > Kept general-purpose — the catalog stays flat; set a focus later with
+     > /bridge-onboard --purpose.
+
+   Empty purpose (statement `""` + focus `[]`) reproduces today's exact flat,
+   general-purpose behaviour — zero regression.
+6. **Check the origin, then create the `user/{name}` branch.** First resolve where
+   this clone pushes: `git remote get-url origin` (and `gh repo view --json
+   visibility,nameWithOwner` if unsure). **If `origin` is a PUBLIC repo or a known
+   upstream (e.g. `bks-lab/open-bridge`) — or `.bridge-origin` says
+   `is_public: true` — STOP.** The user's data must not live on a public origin.
+   Advise the private-origin setup (GitHub *Use this template → Private*, or re-home
+   `origin` to a new private repo with open-bridge as a read-only `upstream`) and
+   continue only once `origin` is private — or the user explicitly chooses
+   local-only and will never push. Then create the branch from the core/default
+   branch — but **arm the push guard FIRST**, before the branch (and any private
+   commit) exists, so the deterministic backstop is live from the very first commit:
    ```bash
+   git config core.hooksPath scripts/hooks   # arm the pre-push guard (idempotent)
    git checkout -b user/{name}
    ```
-   (where `{name}` is the slug from step 1). Confirm the new branch is
-   checked out before writing any USER files.
+   (where `{name}` is the slug from step 1). Arming here — not relying on the user to
+   have run `bin/setup` — is what makes the guard actually present on a fresh clone;
+   without it the backstop is inert and only the instruction layer protects you. Your
+   personal data lives here, CORE stays clean. Confirm the new branch is checked out
+   before writing any USER files. **Never push `user/{name}` to a public origin** —
+   CORE reaches a public upstream only via `/promote`. See
+   [`../../../rules/push-guard.md`](../../../rules/push-guard.md).
 
 **Upstream wiring — defer.** Keep `upstreams: []`. Mention in passing:
 "Once `bks-lab/open-bridge` (public) or your own upstream is live, wire
 it via `/bridge-onboard --upstream`". No Variant-Wahl prompt while the
 upstream repos are not public yet.
 
+7. **Scope consent gate — the last step before any scanning.** Before Phase B
+   looks at anything beyond this folder, the user makes one explicit choice.
+   This is the consent boundary: with no explicit "yes", the Bridge never
+   scans — not now, not later. Render this verbatim:
+   ```
+   Before I look at anything beyond this folder, one choice — there's no wrong answer:
+
+     [1] Confined (default) — I stay inside this Bridge folder. I won't scan your other
+         repos, installed apps, devices, files, or mail. You still get every feature;
+         I just won't auto-suggest them — you turn on exactly what you want, when you want.
+
+     [2] Broader — I take a quick look at your machine (with your per-item permission in
+         the next step) so I can suggest features that fit what you already use: your
+         repos → an ecosystem map, a mesh-VPN → remote-machine control, backup tools →
+         a backup topology, and so on. I only ever read names and structure — never file,
+         mail, or message content, never secrets. Findings stay local (gitignored).
+
+   You can change your mind anytime: /bridge-onboard --rescan (to broaden) or set
+   discovery.mode in bridge-config.yaml.
+
+     [1] Confined   [2] Broader   [?] What exactly would broader look at?
+   ```
+   - **`[1]` Confined (default)** — write `discovery.mode: confined` and
+     `discovery.permissions: []` to `bridge-config.yaml`, then **skip Phase B
+     and Phase C entirely → jump to Phase D**. Nothing on the machine is read.
+     The user keeps every feature; they enable what they want from the Phase E
+     catalog, via `/bridge-onboard --add <feature>`, or by flipping the
+     feature's `enabled:` flag in `bridge-config.yaml`.
+   - **`[2]` Broader** — write `discovery.mode: broader` and continue into
+     Phase B, where the existing per-source permission model applies as today.
+   - **`[?]`** — answer from the Phase B permission prompt
+     (`system-discovery.md`): which sources, default-on vs opt-in,
+     names-and-structure-only, never content/secrets — then re-show the two
+     options.
+
+   An absent or unset `discovery.mode` means **confined** — no explicit
+   consent, no scan.
+
 **Output of Phase A:**
-- `bridge-config.yaml` skeleton (identity block populated, all features off)
+- `bridge-config.yaml` skeleton (identity block populated, all features off,
+  `purpose.statement` + `purpose.focus` set from step 5 — both empty if the user
+  skipped, `user_profile` derived from the statement or from `[w]/[p]/[b]`,
+  `discovery.mode` set to the user's choice — `confined` if unset)
 - `user/{name}` branch created (`git checkout -b user/{name}`) and checked out
+- On `[1]` Confined: control jumps to Phase D; on `[2]` Broader: continue to Phase B
 
 ---
 
 ## Phase B — Discovery Scan
+
+> **Only runs when `discovery.mode: broader`.** If confined, this phase was
+> skipped in Phase A (control jumped straight to Phase D).
 
 Permission-gated system scan. Full details in
 [`references/system-discovery.md`](system-discovery.md).
@@ -154,18 +255,23 @@ Permission-gated system scan. Full details in
      last_scan: 2026-05-16T14:30:00+02:00
    ```
 
-5. **If user picked `[s]` Skip** — write `discovery.permissions: []`,
-   skip Phase C entirely, jump to Phase D. Mention: "Phase C suggestions
-   skipped. I'll surface features later as needs become clear, or you
-   can run `/bridge-onboard --rescan` any time."
+5. **If user picked `[s]` Skip** — this is "scan nothing after all": write
+   `discovery.mode: confined` and `discovery.permissions: []`, skip Phase C
+   entirely, jump to Phase D. Mention: "Scanning skipped — staying confined.
+   Enable features yourself from the catalog or `/bridge-onboard --add`, and
+   broaden later with `/bridge-onboard --rescan` if you change your mind."
 
-6. **One bias-setting question** (only if Phase C will run):
+6. **Confirm the Phase-A profile** (silent, only if Phase C will run): the
+   `user_profile` was already set in Phase A step 5 — from the purpose statement
+   (derived) or from the `[w]/[p]/[b]` answer. **Don't re-ask it here** — that was
+   the standalone bias-question's job and it has moved to Phase A (net-zero question
+   count, and it fixes that confined-default users were never asked it at all). Just
+   note it in one line so the Phase C ordering is transparent:
    ```
-   Will you mostly use Bridge for:
-     [w] work    [p] private    [b] both (recommended)    [s] skip
+   Ordering Phase C for {user_profile} use{, focus: <focus domains> if purpose.focus set}.
    ```
-   Persist as `bridge-config.yaml.user_profile`. This only re-orders
-   Phase C suggestions; doesn't gate any feature.
+   Purpose (`purpose.focus`) is the primary order, `user_profile` the secondary
+   tiebreak; neither gates any feature.
 
 ---
 
@@ -414,6 +520,12 @@ conventions: `identity/agent/README.md`; deck: `identity/agent/_soul-deck.yaml`.
 
 ## Phase E — Feature Catalog *(read-only, no questions)*
 
+**Modular by design — there is no "full package".** Every feature is à la
+carte: take the individual ones you want, decline the rest, nothing is
+bundled or all-or-nothing. Confined users (who skipped Phase B/C) enable any
+feature manually — via `/bridge-onboard --add <feature>` or by setting its
+`enabled:` flag in `bridge-config.yaml`.
+
 Print the full catalogue from
 [`references/feature-catalog.md`](feature-catalog.md), grouped by
 life-domain, with state annotations from `work/onboarding-state.yaml`:
@@ -422,6 +534,19 @@ life-domain, with state annotations from `work/onboarding-state.yaml`:
 - ⏸ deferred until {date} (will resurface via `feature-discovery`)
 - (no signal yet) (Phase B found nothing; surface later if evidence appears)
 - (not yet considered) (no evidence, no opt-in)
+
+**Purpose banding (the do-everything fix — applies in confined mode too).** When
+`purpose.statement`/`purpose.focus` are set, print `purpose.statement` as the
+catalogue header, then split the life-domain groups into two bands per
+`feature-catalog.md` § Purpose Banding:
+
+- a lead band **"Most relevant to '{statement}'"** — the `purpose.focus` groups first;
+- a collapsed/dimmed secondary band **"Beyond your focus — here whenever you need it"**
+  — the full remainder.
+
+Nothing is removed, hidden, or gated — banding ORDERS and LABELS only; every feature
+keeps its one-line re-entry command and the trust-closer is unchanged. **Empty
+purpose (statement `""` + focus `[]`) → today's flat grouped catalogue, byte-for-byte.**
 
 End the catalogue with the trust-building closer (verbatim from
 `feature-catalog.md`):
@@ -502,8 +627,9 @@ user has already had their decision moment in Phase C; this is the
 | Mode | Behaviour |
 |---|---|
 | `/bridge-onboard` | full wizard (Phases A–F) |
-| `/bridge-onboard --rescan` | re-run Phase B+C with previously granted permissions |
-| `/bridge-onboard --reset` | delete scan + state files, restart from Phase B |
+| `/bridge-onboard --rescan` | set `discovery.mode: broader`, then re-run Phase B+C with persisted permissions; surface new evidence; skip already-accepted features |
+| `/bridge-onboard --reset` | delete scan + state files, restart from Phase A (re-runs the scope-consent gate + purpose before any scan) |
+| `/bridge-onboard --purpose` | skip everything except the Phase-A purpose step — set/change `purpose.statement` + `purpose.focus` (re-derive `user_profile`), re-render the Phase F preview ordering |
 | `/bridge-onboard --add <feature>` | skip A+B+D+E+F, run only the matching S-block in `smart-suggestions.md` |
 | `/bridge-onboard --add agent-soul` | skip everything except D4 — re-pick the soul deck and reshape SOUL.md / IDENTITY.md |
 | `/bridge-onboard --features` | read-only Phase E catalogue, interactive |
@@ -540,10 +666,10 @@ user has already had their decision moment in Phase C; this is the
 |---|---|
 | `gh` not installed | Ecosystem scan still works via local `.git/config`. Install `gh` later if you want GitHub features. |
 | No GitHub at all | Leave `identity.org` empty + `integrations.github.enabled: false`. Onboarding completes; GitHub-dependent skills warn at use-time. |
-| No repos found | Minimal `ecosystem.yaml` written. Add manually or `git clone` first, then `/bridge --rescan`. |
+| No repos found | Minimal `ecosystem.yaml` written. Add manually or `git clone` first, then `/bridge-onboard --rescan`. |
 | `osascript` permission denied (Apple Mail / finance-app scan) | Grant in System Settings → Privacy & Security → Automation, then `/bridge-onboard --rescan`. |
 | `/bridge` red | Usually missing `ecosystem.yaml` or `bridge-config.yaml` — error tells you which. |
-| Wrong projects root | Edit `bridge-config.yaml` → `identity.projects_root`, then `/bridge --rescan`. |
+| Wrong projects root | Edit `bridge-config.yaml` → `identity.projects_root`, then `/bridge-onboard --rescan`. |
 | `validate-bridge.py` fails | `pipx install check-jsonschema` (the wrapper depends on it). |
 | `validate-bridge.py` passes suspiciously fast | It **silently skips** all schema checks when PyYAML isn't installed — it returns an empty result set, not an error. Install PyYAML (`pip install pyyaml`) and re-run to get real validation. |
 | Want to start over | `/bridge-onboard --reset` then `/bridge-onboard`. |

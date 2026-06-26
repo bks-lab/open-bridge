@@ -17,6 +17,39 @@ briefing-window.
 
 ## Rules
 
+- **Honour `discovery.mode` — this is the master gate.** When
+  `discovery.mode: confined` (the template/absent default), the
+  evidence heuristics below **never run**: no scanning, no
+  heuristic-driven suggestions, not now and not later. In confined
+  mode this order may surface ONLY features the user explicitly
+  deferred during onboarding (`deferred` in `onboarding-state.yaml`)
+  or asked for via `/bridge-onboard --add`. When `discovery.mode:
+  broader`, behave as documented below — heuristics run, each still
+  subject to its own Phase-B per-source permission (see Configuration).
+  The choice is reversible: `/bridge-onboard --rescan` to broaden, or
+  edit `discovery.mode` in `bridge-config.yaml`.
+- **`purpose.focus` sets surfacing PRIORITY — never a suppress.** When more than
+  one heuristic fires inside a briefing window, prefer the one whose catalog
+  life-domain is in `bridge-config.yaml.purpose.focus` (then fall back to
+  `user_profile`, then evidence recency). This is **only a tiebreak**: `max_per_briefing`
+  is unchanged (still one surfaces). A heuristic whose domain is **outside** focus is
+  **never suppressed** — if it is the SOLE fire in the window, it STILL surfaces,
+  just reframed to acknowledge the stated purpose:
+  ```
+  🌱 Feature Discovery
+
+  I noticed: {evidence_sentence}.
+
+  This is outside what you said this Bridge is for ({purpose.statement}) — want it anyway?
+
+    [y] Walk me through it now   [l] Later   [n] Not interested
+  ```
+  `purpose.focus` orders/labels; `discovery.mode: confined` (above) stays the master
+  gate. **Treating `purpose.focus` as an allowlist — suppressing a non-focus
+  heuristic — is a bug.** Empty `purpose.focus` (`[]`) → no priority effect, today's
+  exact behaviour. Heuristic → domain map: H1 `identity`, H2 `communication`,
+  H3 `infrastructure`, H5 `infrastructure`, H6 `communication`, H7 `productivity`,
+  H8 `identity`, H9 `communication`, H10 `visualization`.
 - **Max one suggestion per `/briefing`.** Never overwhelm.
 - **Surface day default: Wednesday.** Configurable via
   `feature_discovery.surface_day` (cron weekday name).
@@ -30,6 +63,11 @@ briefing-window.
   any briefing, set `feature_discovery.enabled: false` and confirm.
 
 ## Triggers — Evidence Heuristics
+
+> **Only in `discovery.mode: broader`.** In `confined` mode none of the
+> heuristics below execute (see the master gate under Rules) — the
+> Bridge stays inside its own folder and never scans repos, apps,
+> devices, files, or mail.
 
 Each heuristic checks recent activity (last 30 days unless noted).
 If a heuristic fires, generate a suggestion using the matching S-block
@@ -111,9 +149,15 @@ This is an advisory standing-order — no hard violation. Soft violations:
 - Re-surfacing `accepted` features → annoying, breaks trust
 - Surfacing a `silenced` feature → bug
 - Not respecting `feature_discovery.enabled: false` → bug
+- Running any heuristic while `discovery.mode: confined` → bug
+  (privacy violation — the user declined broader scanning)
+- Treating `purpose.focus` as an allowlist — suppressing a non-focus heuristic that
+  is the sole fire, instead of surfacing it reframed → bug (purpose is a PRIORITY/
+  ordering signal, never a gate; it must never hide a feature)
 
-All of the above should be caught by reading `onboarding-state.yaml`
-before surfacing and the `enabled:` flag before running heuristics.
+All of the above should be caught by reading `discovery.mode` and the
+`enabled:` flag before running heuristics, and `onboarding-state.yaml`
+before surfacing.
 
 ## Configuration
 

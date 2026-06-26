@@ -167,9 +167,9 @@ And you can run many. An organisation can run several bridges — one per client
 
 open-bridge uses two branches that split your data from shared templates. Your accumulated context — tasks, config, agent definitions, credentials — lives on `user/{name}`. Shipped templates, skills, and docs live on CORE (`main`). The two touch different paths, so:
 
-- **Merges never conflict** — pull upstream template updates anytime with `git merge main`.
-- **Your data stays private** — credentials and client data never land on `main`.
-- **Improvements flow back** — `/promote` reads each file's `scope:` and routes `scope: core` changes upstream as PRs.
+- **Merges never conflict** — pull CORE updates anytime with `git fetch upstream && git merge upstream/main` (CORE and your data touch disjoint paths).
+- **Your data stays private** — your `user/{name}` branch lives on **your own private repo**, never a public upstream; a `pre-push` guard ([`rules/push-guard.md`](rules/push-guard.md)) blocks publishing it by accident. Privacy is about which *remote* you push to, not just which *branch*.
+- **Improvements flow back** — `/promote` reads each file's `scope:` and routes `scope: core` changes upstream as fork-based PRs.
 
 The branch-model mermaid and the full promote-routing rules live in [`docs/structure.md`](docs/structure.md) and [`docs/extension-model.md`](docs/extension-model.md).
 
@@ -240,15 +240,39 @@ These are conventions the agent follows, not an OS-level sandbox — read them i
 
 ## Get started
 
+> ### ⚠️ This is a public repo — give your data a private home first
+>
+> Onboarding writes your private data — personas, client names, `work/` logs,
+> credential-reference URIs — onto a `user/{name}` branch. It stays private for
+> exactly one reason: **it never leaves your machine.** A bare `git clone` of this
+> repo leaves `origin` pointing at this **public** repo, so a single `git push` (or
+> the agent's auto-end-of-work cycle) would publish your branch to the world. The
+> intended setup is therefore **not** "clone this and push here" — it's: make your
+> **own private** repo your `origin`, keep open-bridge as a read-only `upstream`,
+> and let CORE flow back only through `/promote` (a fork-based PR). The steps below
+> do exactly that.
+
 ```bash
-git clone https://github.com/bks-lab/open-bridge.git
-cd open-bridge
-/bridge-onboard      # run inside Claude Code — onboarding sets everything up
+# 1. Make your own PRIVATE copy. Cleanest: GitHub "Use this template" → Private,
+#    then clone THAT. (A fork of a public repo is itself public, so a fork won't do.)
+#    No template button yet? Clone here and re-home the remotes in steps 2–3:
+git clone https://github.com/bks-lab/open-bridge.git my-bridge
+cd my-bridge
+
+# 2. open-bridge becomes a READ-ONLY upstream; your private repo becomes origin:
+git remote rename origin upstream
+gh repo create <you>/my-bridge --private --source=. --remote=origin --push
+
+# 3. Onboard inside Claude Code — it writes your data to a user/{name} branch
+#    on your PRIVATE origin, never the public upstream:
+/bridge-onboard
 ```
 
-`/bridge-onboard` walks the guided onboarding and sets everything up (ecosystem detection, work-system config, your own `user/{name}` branch). The cross-tool discovery symlinks ship committed in the repo, so macOS / Linux / WSL work out of the box; on native Windows, run `bin/setup.ps1` once to repair the symlinks.
+`/bridge-onboard` walks the guided onboarding and sets everything up (optional ecosystem detection, work-system config, your own `user/{name}` branch). It also pins the instance's one-line purpose, so the feature catalog leads with what fits that instead of fanning out the whole feature universe at once (a compass, never a fence — every feature stays one flip away). It also **arms the `pre-push` guard** (`git config core.hooksPath scripts/hooks`) before creating that branch, so the deterministic backstop is live from your first commit. Because `origin` is now **your** private repo, that branch never touches the public upstream — and the guard ([`rules/push-guard.md`](rules/push-guard.md)) blocks it at the git layer if anything tries. Pull CORE updates anytime, conflict-free, with `git fetch upstream && git merge upstream/main`. If you skip the wizard, run `./bin/setup` once on any OS — it arms the same guard and repairs the cross-tool discovery symlinks (on native Windows use `bin/setup.ps1`).
 
-**What's instant:** a running, empty workspace. **What's a bet:** the compounding value — that needs `work/log.md` filled with real work over time.
+Before any of that "ecosystem detection" runs, onboarding asks one privacy choice — `discovery.mode`, default **confined**: the Bridge stays inside this folder and never scans your other repos, installed apps, devices, files, or mail. **Broader** is the opt-in alternative — a per-item-permissioned look at your machine so it can suggest features that fit what you already use (names and structure only, never file/mail content or secrets; findings stay local and gitignored). Either way the features are modular: confined costs you nothing, you just enable each capability yourself when you want it — reversible anytime with `/bridge-onboard --rescan` or by editing `discovery.mode` in `bridge-config.yaml`.
+
+**Just kicking the tires?** Clone, read, and run locally — but don't `git push` (a bare clone's `origin` is this public repo). **What's instant:** a running, empty workspace. **What's a bet:** the compounding value — `work/log.md` filled with real work over time, on your private origin.
 
 **Cross-tool reality:** tested with [Claude Code](https://claude.ai/code) (most complete — slash commands and hooks live under `.claude/`). Codex and Copilot CLI work via `AGENTS.md` plus the `skills/` symlink. Gemini CLI, Cursor, and Windsurf follow the same standard but are untested. Windows symlink mechanics and the `.agents/`/`.github/` discovery paths are covered in the layout table in [`docs/structure.md`](docs/structure.md).
 
@@ -276,12 +300,12 @@ The full layout map — every path and the CORE/USER split — lives in [`docs/s
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). Short version:
 
-1. Fork and clone `bks-lab/open-bridge`.
-2. Create your `user/{name}` branch.
-3. Build something on CORE (docs, commands, skills, templates).
-4. Run `/contribute` — it scans your branch, runs the mandatory content-safety gate, and opens a fork-based PR against `bks-lab/open-bridge` with a DCO sign-off (`git commit -s`) for you.
+Contributing CORE is a separate action from running your own Bridge — don't conflate them. You contribute from the private instance you set up in *Get started*; you do **not** run `/bridge-onboard` into a public fork, and you never push your `user/{name}` branch upstream.
 
-Routing by `scope:`: `scope: core` belongs upstream — anyone can PR it here. `scope: org` content goes to your own shared overlay repo, if you maintain one. `scope: user` stays local on your branch and is never pushed upstream.
+1. On CORE, build something generic (docs, commands, skills, templates).
+2. Run `/contribute` (or `/promote`) — it categorises commits by `scope:`, runs the **mandatory content-safety gate** (leak scanner + blocklist, refuses on PII/customer hits), then mints its **own** throwaway personal fork and opens a **fork-based** PR against `bks-lab/open-bridge` with a DCO sign-off (`git commit -s`) for you. It pushes to that fork — never your private `origin`, and never a direct push to `bks-lab/open-bridge`.
+
+Routing by `scope:`: `scope: core` belongs upstream — `/promote` PRs it here. `scope: org` content goes to your own shared overlay repo, if you maintain one. **`scope: user` stays on your private origin and is never pushed anywhere public.** A manual `git push` to a public remote bypasses this router and its safety gate — let `/promote` do it.
 
 ---
 

@@ -33,16 +33,40 @@ sense to activate. Used in two contexts:
 
 ## Grouping
 
-By life-domain, not by config block:
+By life-domain, not by config block. Each group carries the `focus` slug used by
+`purpose.focus` (see § Purpose Banding):
 
-1. Identity & Filing
-2. Communication & Calendar
-3. Infrastructure
-4. Productivity & Knowledge
-5. Integrations
-6. Visualisation & Polish
+| # | Group | `focus` slug |
+|---|---|---|
+| 1 | Identity & Filing | `identity` |
+| 2 | Communication & Calendar | `communication` |
+| 3 | Infrastructure | `infrastructure` |
+| 4 | Productivity & Knowledge | `productivity` |
+| 5 | Integrations | `integrations` |
+| 6 | Visualisation & Polish | `visualization` |
 
 Order within each group: highest-evidence-likelihood first, niche last.
+
+## Purpose Banding
+
+This is **the do-everything fix** — and it must work in confined mode too (the
+catalogue is the confined user's only feature surface). It reads
+`bridge-config.yaml.purpose`:
+
+- **`purpose.statement` + `purpose.focus` set** → print `purpose.statement` as the
+  catalogue header line, then split the six groups into two bands:
+  - a lead band **"Most relevant to '{statement}'"** — the groups whose `focus`
+    slug is in `purpose.focus`, in `focus` order;
+  - a collapsed/dimmed secondary band **"Beyond your focus — here whenever you
+    need it"** — the full remainder, every other group, in catalogue order.
+- **Empty purpose** (`statement: ""` + `focus: []`) → today's flat grouped
+  catalogue, byte-for-byte (all six groups in numeric order, no bands, no header).
+
+**Hard rule — banding ORDERS, DIMS, and LABELS; it never removes, hides, or gates.**
+Nothing is dropped: every group, every feature, and every one-line re-entry command
+appears in both modes — the secondary band is collapsed/dimmed, not omitted. The
+trust-closer is printed unchanged in both modes. `purpose.focus` is never an
+allowlist; treating it as one is a bug.
 
 ---
 

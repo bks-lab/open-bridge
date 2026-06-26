@@ -16,16 +16,43 @@ identity:
   # docs_root: ~/Documents
   # onedrive_root: ~/OneDrive
 
-# ─── User Profile (sort-order hint, set by Phase B of /bridge-onboard) ────
-# Re-orders feature suggestions in Phase C and feature-discovery. Does not
-# gate any feature. Values: work | private | both | (unset = both).
+# ─── Purpose (this instance's north-star — set in Phase A of /bridge-onboard) ──
+# One line: what THIS Bridge is for, in your own words. A COMPASS, not a fence —
+# it never gates or hides a feature. `statement` focuses the Phase E catalog, the
+# Phase C suggestions and the feature-discovery standing-order, and is echoed back
+# in the greeting + Phase F preview so the instance reads as focused, not a
+# do-everything all-rounder. `focus` is the derived ordering lever: a subset of the
+# six catalog domains the wizard infers from your statement (you can adjust it).
+# Empty statement + empty focus = today's flat, general-purpose behaviour.
+# Relationship: `purpose` is the primary ordering signal; `user_profile` (below)
+# stays the orthogonal work|private tiebreak. Change anytime: /bridge-onboard --purpose.
+purpose:
+  statement: ""          # e.g. "Client delivery for my two freelance engagements"
+  focus: []              # subset of: identity, communication, infrastructure, productivity, integrations, visualization
+
+# ─── User Profile (sort-order tiebreak, set by Phase A of /bridge-onboard) ────
+# Secondary tiebreak under `purpose.focus` — re-orders feature suggestions in
+# Phase C and feature-discovery. Does not gate any feature. Values: work |
+# private | both | (unset = both).
 user_profile: both
 
 # ─── Discovery (Phase B scan boundary) ────────────────────────────────
-# What system data /bridge-onboard scanned with permission. Persisted so
+# `mode` is the top-level scan boundary, chosen at the end of Phase A:
+#   confined (default) — the Bridge stays inside this repo folder. It does NOT
+#     scan your other repos, installed apps, devices, files, or mail. No explicit
+#     consent ⇒ no scan, ever — not during onboarding, not later. You keep every
+#     feature; they just aren't auto-suggested. Enable exactly what you want via
+#     the onboarding feature catalog, /bridge-onboard --add <feature>, or by
+#     flipping a feature's `enabled:` flag below.
+#   broader — the Bridge may scan the machine; the per-source `permissions:` model
+#     below then applies. It only ever reads NAMES and STRUCTURE — never file,
+#     mail, or message CONTENT, never secrets. Findings stay local (gitignored).
+# Reversible anytime: /bridge-onboard --rescan to broaden, or edit `mode` here.
+# `permissions:` records what /bridge-onboard scanned with permission, persisted so
 # /bridge-onboard --rescan honours the same boundary without re-asking.
 # Edit to revoke; use /bridge-onboard --reset for a clean re-prompt.
 discovery:
+  mode: confined             # confined (default, no scan) | broader (scan with permission)
   permissions: []            # subset of: git_config, developer_dir, os_and_apps,
                              #   homebrew_packages, documents_structure,
                              #   mail_accounts, calendar_list, ssh_known_hosts,

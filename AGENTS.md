@@ -63,10 +63,11 @@ case this gate exists for — they don't bypass it.
 hardcoded branch name has caused a real misfire before. Resolve the default at session
 start; do not assume it.
 
-**For NEW USER:** trigger the `bridge-onboard` skill — a wizard (Quick Identity → Discovery
-Scan → Smart Suggestions → Quick-Wins → Feature Catalog → Validate). Explain CORE/USER
-split, ecosystem vs cluster wrappers, and sub-agents as you go. Goal: running in 5 minutes.
-Then point at [`docs/feature-tour.md`](docs/feature-tour.md).
+**For NEW USER:** trigger the `bridge-onboard` skill — a wizard (Quick Identity + Purpose →
+Discovery Scan (broader mode only — confined default skips it) → Smart Suggestions →
+Quick-Wins → Feature Catalog → Validate). Explain CORE/USER split, ecosystem vs cluster
+wrappers, and sub-agents as you go. Goal: running in 5 minutes. Then point at
+[`docs/feature-tour.md`](docs/feature-tour.md).
 
 The load-bearing detail for the NEW-USER turn lives in
 [`rules/session-start.md`](rules/session-start.md): the exact **NEW-USER greeting**, the
@@ -264,7 +265,7 @@ load-bearing instead of drift-prone. USER-scoped skills never land on `main` —
 
 | Scope | Ships to | Skills |
 |-------|----------|--------|
-| `core` | open-bridge + your org overlay + local | `archive`, `bridge-audit`, `bridge-contribute`, `bridge-curator`, `bridge-dashboard`, `bridge-explorer`, `bridge-greeting`, `bridge-leak-check`, `bridge-learn`, `bridge-onboard`, `bridge-promote`, `bridge-status`, `bridge-sync`, `briefing`, `calendar`, `channel`, `dashboard`, `debrief`, `doc-system`, `github-projects-manager`, `html-canvas`, `knowledge-repo-init`, `mandants`, `project-advisor`, `remote`, `schedule`, `task-close-postmortem`, `tracker-sync` |
+| `core` | open-bridge + your org overlay + local | `archive`, `bridge-audit`, `bridge-contribute`, `bridge-curator`, `bridge-dashboard`, `bridge-explorer`, `bridge-greeting`, `bridge-leak-check`, `bridge-learn`, `bridge-onboard`, `bridge-promote`, `bridge-status`, `bridge-sync`, `briefing`, `calendar`, `channel`, `dashboard`, `debrief`, `doc-system`, `github-projects-manager`, `html-canvas`, `knowledge-repo-init`, `mandants`, `onboard-sim`, `project-advisor`, `remote`, `schedule`, `task-close-postmortem`, `tracker-sync` |
 | `org` | your org overlay + local | — |
 | `user` | local only | — |
 
@@ -336,6 +337,14 @@ and USER touch disjoint paths, so merges are conflict-free by construction. Full
 table: [`docs/structure.md`](docs/structure.md).
 
 - NEVER commit secrets or credentials on any branch
+- **NEVER push a `user/*` branch (or USER content) to a PUBLIC upstream** (e.g.
+  `bks-lab/open-bridge`). Your private data lives on a **private `origin`**; CORE
+  reaches a public upstream only via `/promote` (a fork-based, content-scanned PR).
+  Cloned the public repo directly? Re-home `origin` to your own private repo (or
+  GitHub *Use this template → Private*) and keep open-bridge as a read-only
+  `upstream`. Enforced behaviourally (onboarding + auto-end-of-work) and
+  deterministically by `scripts/hooks/pre-push`. Full rule:
+  [`rules/push-guard.md`](rules/push-guard.md)
 - Layout reorgs land directly on `user/{name}` — promote later
 
 ### Multiple Instances

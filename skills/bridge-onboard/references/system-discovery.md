@@ -24,8 +24,20 @@ the scan runs, and **never persisted beyond `work/onboarding-scan.json`**
 
 ## The Permission Prompt
 
-Run once, at the start of Phase B. Theme it bilingually (German speakers
-get the German labels; default English):
+> **This whole phase only runs in `broader` mode.** The `confined` vs.
+> `broader` choice (`discovery.mode` in `bridge-config.yaml`) was already
+> made at the **end of Phase A**, via the gate prompt in `workflow.md`. If
+> the user chose `confined` (the template/absent default — no explicit
+> consent ⇒ never scan), **no scan happens at all** and Phase B is skipped
+> entirely: the Bridge stays inside this repo folder and the user enables
+> features explicitly (onboarding feature catalog, `/bridge-onboard --add
+> <feature>`, or the feature's `enabled:` flag). The choice is reversible
+> — `/bridge-onboard --rescan` broadens, or edit `discovery.mode`. The
+> per-source permission model below is the **per-item permission within
+> `broader` mode**, not a second confined/broader decision.
+
+Run once, at the start of Phase B (broader mode only). Theme it bilingually
+(German speakers get the German labels; default English):
 
 ```
 Bridge can take a quick look at what you already use, so I can suggest
@@ -60,12 +72,15 @@ NEVER SCANNED:
   [y] Defaults + opt-ins all on (recommended)
   [d] Defaults only (cautious)
   [c] Choose individually
-  [s] Skip — no scan, I'll ask you instead
+  [s] Scan nothing — switch to confined (no scan now or later)
 ```
 
-If the user picks `[s]`, jump straight to Phase D (Quick-Wins) — we'll
-surface the full feature catalog in Phase E and let `feature-discovery`
-standing-order pick things up later.
+If the user picks `[s]`, they are choosing confined after all: set
+`discovery.mode: confined` and `discovery.permissions: []`, then jump
+straight to Phase D (Quick-Wins). No scan runs now or later — the
+`feature-discovery` standing-order honours confined mode. Surface the full
+feature catalog in Phase E and let the user enable features explicitly
+(catalog, `/bridge-onboard --add <feature>`, or the `enabled:` flag).
 
 ## Scan Sources — What Each Looks At
 
@@ -263,7 +278,7 @@ useful in commits as a record of setup decisions.
 | Mode | Behaviour |
 |---|---|
 | `/bridge-onboard` | full wizard, including discovery |
-| `/bridge-onboard --rescan` | re-run scan with previously granted permissions, recompute suggestions, ignore `accepted`/`silenced`, surface new evidence |
+| `/bridge-onboard --rescan` | broaden discovery (set `discovery.mode: broader`), then re-run the scan, recompute suggestions, ignore `accepted`/`silenced`, surface new evidence |
 | `/bridge-onboard --reset` | delete `onboarding-scan.json` + `onboarding-state.yaml`, restart Phase B from scratch |
 | `/bridge-onboard --add <feature>` | skip A+B+E, run Phase C scaffold for one specific feature (e.g. `--add personas`, `--add doc-system`) |
 | `/bridge-onboard --features` | read-only Phase E catalogue, interactive |
