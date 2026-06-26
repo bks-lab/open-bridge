@@ -1,0 +1,129 @@
+# Overlays Lock Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates `overlays.lock.yaml`, a GENERATED root file (scope: user) that
+# records exactly which overlays a consumer has applied, pinned to immutable
+# hashes. It is the audit trail + drift detector for org-overlays: a re-sync
+# diffs the live files against this lock. In a public fork the lock is
+# gitignored (it names local material paths).
+#
+# Integrity rule, per file:
+#   materialized_sha256 == source_sha256  ⇒  a clean copy (no prompts injected)
+#   materialized_sha256 != source_sha256  ⇒  prompt-fields were injected
+# `prompted_fields` stores PATHS only — NEVER the user's supplied values.
+#
+# Validation:
+#   check-jsonschema --schemafile docs/schemas/overlays-lock.schema.yaml \
+#                    overlays.lock.yaml
+#
+# IDE support: add this line at the top of overlays.lock.yaml:
+#   # yaml-language-server: $schema=./docs/schemas/overlays-lock.schema.yaml
+#
+# Full docs: docs/org-overlays.md
+# Related: docs/schemas/overlay-manifest.schema.yaml (the source manifest)
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/overlays-lock.yaml"
+title: Overlays Lock
+description: |
+  Generated lockfile recording every applied overlay — its resolved git SHA,
+  manifest digest, precedence, sync timestamp, and the per-file hash pair that
+  proves clean-copy vs prompt-injected. Author-generated, never hand-edited.
+
+type: object
+required: [schema_version, overlays]
+additionalProperties: false
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  overlays:
+    type: object
+    description: "Applied overlays keyed by overlay name (the manifest's overlay.name slug)."
+    propertyNames:
+      pattern: "^[a-z][a-z0-9-]*$"
+    additionalProperties:
+      $ref: "#/$defs/OverlayLock"
+
+$defs:
+
+  OverlayLock:
+    type: object
+    required: [url, ref, resolved_sha, manifest_sha256, precedence, last_synced, files]
+    additionalProperties: false
+    properties:
+      url:
+        type: string
+        format: uri
+        description: "Clone URL of the overlay repo."
+      ref:
+        type: string
+        minLength: 1
+        description: "Requested git ref (branch / tag) before resolution."
+      resolved_sha:
+        type: string
+        pattern: "^[0-9a-f]{40}$"
+        description: "Full git commit SHA the ref resolved to (immutable pin)."
+      manifest_sha256:
+        $ref: "#/$defs/Sha256"
+        description: "SHA-256 of overlay.manifest.yaml at resolved_sha."
+      precedence:
+        type: integer
+        minimum: 0
+        description: "Layering order across overlays — higher wins a dest collision."
+      last_synced:
+        $ref: "#/$defs/Iso8601Utc"
+        description: "When this overlay was last materialized (ISO-8601 UTC)."
+      files:
+        type: array
+        description: "Every file this overlay materialized into the consumer."
+        items:
+          $ref: "#/$defs/FileLock"
+
+  FileLock:
+    type: object
+    required: [src, dest, source_sha256, materialized_sha256]
+    additionalProperties: false
+    properties:
+      src:
+        type: string
+        minLength: 1
+        description: "Source path inside the overlay repo (under source_root)."
+      dest:
+        type: string
+        minLength: 1
+        description: "Destination path in the consumer, relative to repo root."
+      source_sha256:
+        $ref: "#/$defs/Sha256"
+        description: "SHA-256 of the overlay's source file."
+      materialized_sha256:
+        $ref: "#/$defs/Sha256"
+        description: |
+          SHA-256 of the file as written into the consumer. Equal to
+          source_sha256 ⇒ clean copy; differing ⇒ prompt-fields injected.
+      prompted_fields:
+        type: array
+        description: |
+          PATHS of the fields the user was prompted for — NEVER the values.
+          Same JSONPath-lite form as the manifest's prompt_fields[].path.
+        items:
+          type: string
+          pattern: "^\\$(\\.[A-Za-z_][A-Za-z0-9_-]*(\\[\\*\\])?)+$"
+
+  Sha256:
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+    description: "Lowercase hex SHA-256 digest (64 chars)."
+
+  Iso8601Utc:
+    type: string
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    description: "ISO-8601 timestamp in UTC (trailing Z, no offset)."
+
+# Notes (advisory):
+# - GENERATED — never hand-edit; the overlay add/sync tooling rewrites it.
+# - scope: user — gitignored in public forks (names local material paths).
+# - prompted_fields holds PATHS only; the user's values never land in the lock.
+# - resolved_sha + manifest_sha256 are the immutable pins a re-sync verifies.
