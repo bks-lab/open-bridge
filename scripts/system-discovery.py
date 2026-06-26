@@ -15,10 +15,19 @@ Design principles:
   - Stdlib only — Python 3.11+, no PyYAML, no requests
   - Cross-platform — macOS sources gracefully skip on Linux
 
+Scope-consent backstop (deterministic, not LLM-mediated):
+  This script reads `discovery.mode` from bridge-config.yaml. When the mode is
+  `confined` (the template default) — or unset, or the config is absent — the
+  script REFUSES to scan: it prints a no-op `{"refused": true, ...}` result and
+  a clear stderr message, and exits non-zero (REFUSE_EXIT). Scanning happens only
+  with explicit consent: `discovery.mode: broader` in the config, or the
+  `--broader` / `--force` flag. `--permissions` selects WHICH sources to scan; it
+  is NOT consent to scan on its own.
+
 Usage:
-  scripts/system-discovery.py
-  scripts/system-discovery.py --permissions git_config,os_and_apps
-  scripts/system-discovery.py --projects-root ~/Code --output -
+  scripts/system-discovery.py --broader
+  scripts/system-discovery.py --broader --permissions git_config,os_and_apps
+  scripts/system-discovery.py --broader --projects-root ~/Code --output -
 """
 from __future__ import annotations
 
@@ -49,6 +58,11 @@ SOURCES: dict[str, tuple[bool, bool]] = {
 
 DEFAULT_PERMISSIONS = [name for name, (on, _) in SOURCES.items() if on]
 IS_MACOS = platform.system() == "Darwin"
+
+# Exit code for a scope-consent refusal — distinct from argparse's 2 (usage
+# error) and 0 (success), so a caller can tell "refused to scan" apart from
+# "scanned and found nothing". See the scope-consent backstop in the docstring.
+REFUSE_EXIT = 3
 
 
 # --- Helpers -----------------------------------------------------------------
@@ -112,6 +126,59 @@ def _parse_projects_root_from_config(config_path: Path) -> str | None:
                 value = m.group(1).strip().strip('"').strip("'")
                 return value
     return None
+
+
+def _read_discovery_mode(config_path: Path) -> str | None:
+    """Minimal YAML grep: pull `discovery.mode` value without PyYAML.
+
+    Returns the mode string (e.g. 'confined' / 'broader') or None when the key
+    is absent or the file cannot be read. None is treated as confined by the
+    caller (safest default).
+    """
+    if not config_path.is_file():
+        return None
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    in_discovery = False
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if not line or line.lstrip().startswith("#"):
+            continue
+        # Detect the top-level `discovery:` block (unindented key).
+        if re.match(r"^discovery:\s*$", line):
+            in_discovery = True
+            continue
+        # Leaving the block when a new top-level key appears.
+        if in_discovery and re.match(r"^[A-Za-z_][\w-]*:", line):
+            in_discovery = False
+        if in_discovery:
+            m = re.match(r"^\s+mode:\s*(.+?)\s*(?:#.*)?$", line)
+            if m:
+                return m.group(1).strip().strip('"').strip("'")
+    return None
+
+
+def _find_config(explicit: str | None) -> Path:
+    """Resolve the bridge-config.yaml path robustly.
+
+    With --config, honour it verbatim. Otherwise walk up from the script dir
+    until a bridge-config.yaml is found. If none exists (e.g. a fresh CORE
+    checkout with no config), return the conventional <repo-root>/bridge-config.yaml
+    path — which won't exist, so the caller treats it as confined (refuse).
+    """
+    if explicit:
+        return _resolve_path(explicit)
+    start = Path(__file__).resolve().parent
+    for parent in [start, *start.parents]:
+        cand = parent / "bridge-config.yaml"
+        if cand.is_file():
+            return cand
+        # Repo-root markers — stop here and report the (absent) conventional path.
+        if (parent / "bridge-config.yaml.template").is_file() or (parent / ".git").exists():
+            return cand
+    return start.parent / "bridge-config.yaml"
 
 
 def _resolve_path(p: str) -> Path:
@@ -521,10 +588,8 @@ def _parse_permissions(arg: str | None) -> list[str]:
     return items
 
 
-def _default_projects_root() -> Path:
-    here = Path(__file__).resolve().parent.parent
-    config = here / "bridge-config.yaml"
-    parsed = _parse_projects_root_from_config(config)
+def _default_projects_root(config_path: Path) -> Path:
+    parsed = _parse_projects_root_from_config(config_path)
     if parsed:
         return _resolve_path(parsed)
     return Path.home() / "Developer"
@@ -538,8 +603,25 @@ def main(argv: list[str] | None = None) -> int:
         "--permissions",
         help=(
             "Comma-separated source list. Default: all default-on sources "
-            f"({','.join(DEFAULT_PERMISSIONS)})."
+            f"({','.join(DEFAULT_PERMISSIONS)}). Selects WHICH sources to scan; "
+            "it is NOT consent to scan — that requires --broader or "
+            "discovery.mode: broader."
         ),
+    )
+    parser.add_argument(
+        "--broader",
+        "--force",
+        dest="broader",
+        action="store_true",
+        help=(
+            "Explicit operator consent to scan, overriding a confined/unset "
+            "discovery.mode. Required (or discovery.mode: broader in the config) "
+            "for any scan to run."
+        ),
+    )
+    parser.add_argument(
+        "--config",
+        help="Path to bridge-config.yaml (default: discovered by walking up from the script dir).",
     )
     parser.add_argument(
         "--projects-root",
@@ -552,9 +634,38 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # --- Scope-consent gate (deterministic backstop) -------------------------
+    config_path = _find_config(args.config)
+    mode = _read_discovery_mode(config_path)
+    consent = args.broader or (mode == "broader")
+
+    if not consent:
+        if not config_path.is_file():
+            reason = "bridge-config.yaml not found — treating as confined"
+        elif mode in (None, "confined"):
+            reason = "discovery.mode is confined"
+        else:
+            reason = f"discovery.mode is {mode!r} (not 'broader')"
+        print(
+            f"refusing to scan: {reason}. Pass --broader to override, "
+            "or set discovery.mode: broader in bridge-config.yaml.",
+            file=sys.stderr,
+        )
+        noop = {
+            "refused": True,
+            "reason": reason,
+            "scan_timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+            "permissions_granted": [],
+            "evidence": {},
+        }
+        # No-op result to stdout; deliberately do NOT write the output file so no
+        # stale scan json is left that a caller could mistake for a real scan.
+        print(json.dumps(noop, indent=2, ensure_ascii=False))
+        return REFUSE_EXIT
+
     permissions = _parse_permissions(args.permissions)
     projects_root = (
-        _resolve_path(args.projects_root) if args.projects_root else _default_projects_root()
+        _resolve_path(args.projects_root) if args.projects_root else _default_projects_root(config_path)
     )
 
     report = run_scan(permissions, projects_root)

@@ -6,8 +6,18 @@
 #
 # PER-REPO DIVERGENT, intentionally: the public open-bridge repo ships
 # `is_public: true`; a PRIVATE downstream (your own clone re-homed to your own
-# repo) sets `is_public: false`. Because the value differs per tier, /promote
-# and /bridge-sync must NOT overwrite this file (same convention as the
-# ecosystem self-entry and the .claude/commands tier slot).
+# repo) sets `is_public: false` AND points `repo:` at that private origin's
+# owner/name. Because the value differs per tier, /promote and /bridge-sync must
+# NOT overwrite this file (same convention as the ecosystem self-entry and the
+# .claude/commands tier slot).
+#
+# How the guard reads it (only when `repo:` matches the push TARGET — a stale
+# marker from a previous origin never vouches for a re-homed remote):
+#   is_public: true   → TARGET classified PUBLIC  → user/* / USER content BLOCKED
+#   is_public: false  → TARGET classified PRIVATE → push ALLOWED (the deterministic,
+#                       offline "this is my private origin, allow" signal)
+# A target this file says nothing about (repo: mismatch) stays UNKNOWN, and the
+# guard fails CLOSED for USER data — re-point `repo:` (or use
+# bridge-config.yaml push_guard.private_remotes) after re-homing origin.
 repo: bks-lab/open-bridge
 is_public: true
