@@ -262,27 +262,27 @@ footer.foot code{font-family:var(--font-mono)}
       <h3 class="chap-h">③ Operator — find the bug, TDD the fix, ship</h3>
       <div class="lines">
         <div class="line cmd" data-type data-after="450"><span class="pr">&gt;</span> <span class="ti">inbound invoices aren't booking — what happened?</span></div>
-        <div class="line"><span class="ti">Loading the Peppol ops playbook. Dispatching the log-analyst against</span></div>
-        <div class="line" data-after="300"><span class="ti">the last 3h of fn-peppol-in-prd logs — read-only, isolated.</span></div>
+        <div class="line"><span class="ti">Loading the e-invoicing ops playbook. Dispatching the log-analyst against</span></div>
+        <div class="line" data-after="300"><span class="ti">the last 3h of fn-invoicing-in-prd logs — read-only, isolated.</span></div>
         <div class="line dim" data-after="500">  <span class="spin">◐</span> <span class="dim">Task · subagent_type=log-analyst · running …</span></div>
         <div class="line fx"><span class="ag">◇ log-analyst → returned</span></div>
         <div class="line fx">  <span class="lbl">Summary</span>      <span class="warn">NEW BLOCKER</span> — inbound parse fails in prod since 08:31 UTC; docs stuck in retry</div>
-        <div class="line fx">  <span class="lbl">Scope</span>        last 3h · fn-peppol-in-prd · 1,120 hits</div>
+        <div class="line fx">  <span class="lbl">Scope</span>        last 3h · fn-invoicing-in-prd · 1,120 hits</div>
         <div class="line fx">  <span class="lbl">Clusters</span>     🔴 parse_error @ map_invoice   54×  08:31→now  NEW</div>
         <div class="line fx">  <span class="lbl">Correlation</span>  doc_8842 — received OK · parse <span class="warn">FAIL</span> @ map_invoice · never booked</div>
         <div class="line fx" data-after="450">  <span class="lbl">Root cause</span>   payment_means code "59" (SEPA DD) missing from the enum → KeyError aborts the pipeline</div>
-        <div class="line scene" data-after="500"><span class="ti">That's a code bug in invoice-package, not the operator. Fixing it test-first.</span></div>
+        <div class="line scene" data-after="500"><span class="ti">That's a code bug in invoicing-service, not the operator. Fixing it test-first.</span></div>
         <div class="line fx"><span class="ag">▸ red</span>  <span class="dim">— a test that reproduces doc_8842</span></div>
         <div class="line fx">  <span class="ok">+</span> tests/test_payment_means.py::test_sepa_dd_59</div>
         <div class="line fx">  <span class="dim">▸ pytest -k payment_means</span></div>
         <div class="line fx" data-after="400">  <span class="warn">✗ 1 failed — KeyError: '59'</span>   <span class="dim">← reproduced</span></div>
         <div class="line fx"><span class="ag">▸ green</span>  <span class="dim">— minimal fix</span></div>
-        <div class="line fx">  <span class="warn">~</span> invoice-package/mapping.py · payment_means via .get(code, OTHER)</div>
+        <div class="line fx">  <span class="warn">~</span> invoicing-service/mapping.py · payment_means via .get(code, OTHER)</div>
         <div class="line fx">  <span class="dim">▸ pytest · ruff · mypy</span></div>
         <div class="line fx" data-after="400">  <span class="ok">✓ 214 passed</span> · ruff <span class="ok">✓</span> · mypy <span class="ok">✓</span> · coverage 100%</div>
         <div class="line fx"><span class="ag">▸ ship</span></div>
         <div class="line fx">  <span class="ok">✓</span> commit a3f1c9 · branch fix/payment-means-59 · pushed · PR #87</div>
-        <div class="line fx">  <span class="ok">✓</span> deploy uat → fn-peppol-in-uat · health ok</div>
+        <div class="line fx">  <span class="ok">✓</span> deploy uat → fn-invoicing-in-uat · health ok</div>
         <div class="line fx" data-after="450">  <span class="ok">✓</span> replayed doc_8842 on UAT → <span class="ok">booked</span></div>
         <div class="line scene"><span class="ti">Done: off-spec SEPA-DD code "59" hit a non-tolerant enum → KeyError, so every</span></div>
         <div class="line"><span class="ti">inbound aborted. Test-first fix red→green, full suite + lint + types green,</span></div>
