@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=./_schema.yaml
+#
+# Org-overlay project board — materializes to workflow/projects/example-board.yaml
+# in the consumer when the example-org overlay is applied.
+#
+# This file doubles as the overlay engine's prompt_fields demo: the manifest
+# marks `$.project.number` and `$.project.org` as fields the human must supply
+# before materialize (placeholders below). The lockfile records only the PATHS,
+# never the values the consumer types.
+#
+# Slug is org-namespaced (example-*) so flat discovery never collides with a
+# user's own board file.
+
+schema_version: 1
+scope: org                  # org/customer board → org tier (overlay content)
+
+# ---------------------------------------------------------------------------
+# Identity — who and what
+# ---------------------------------------------------------------------------
+identity:
+  slug: example-board              # must match the filename without .yaml
+  display_name: "Example Org Board"
+  description: "Shared delivery board for the example-org engagement"
+
+# ---------------------------------------------------------------------------
+# Tracker target — where the board actually lives.
+# `org` and `number` are PROMPT FIELDS (see overlay.manifest.yaml): the values
+# below are placeholders the consumer replaces at materialize time.
+# ---------------------------------------------------------------------------
+project:
+  tracker: github
+  org: REPLACE_ME-org              # prompt_field: $.project.org
+  number: 0                        # prompt_field: $.project.number
+  issue_repo: REPLACE_ME-org/REPLACE_ME-repo
+  url: "https://github.com/orgs/REPLACE_ME-org/projects/0"
+
+# ---------------------------------------------------------------------------
+# Cross-references — tie the board to its context + recipient group.
+# ---------------------------------------------------------------------------
+context_ref: example-docs          # → workflow/contexts/example-docs.yaml
+mandant_ref: example-team          # → identity/mandants/example-team.yaml
+
+# ---------------------------------------------------------------------------
+# Fields — every custom field on the project board.
+# ---------------------------------------------------------------------------
+fields:
+
+  Status:
+    type: single-select
+    values: [Backlog, "Ready for Dev", "In Progress", "In Review", Done, Declined]
+    default: Backlog
+
+  Priority:
+    type: single-select
+    values: [P0, P1, P2, P3]
+    default: P2
+
+# ---------------------------------------------------------------------------
+# State mapping — raw board states → normalized states (trackers/README.md).
+# ---------------------------------------------------------------------------
+state_map:
+  Backlog:        new
+  "Ready for Dev": ready
+  "In Progress":  in_progress
+  "In Review":    review
+  Done:           done
+  Declined:       removed
+
+# ---------------------------------------------------------------------------
+# Status mapping — internal STATUS.md status → tracker Status (WRITE dir).
+# ---------------------------------------------------------------------------
+status_mapping:
+  backlog: Backlog
+  doing:   "In Progress"
+  review:  "In Review"
+  done:    Done
+  declined: Declined        # internal: status=done + outcome=declined
+  blocked: { status_unchanged: true, set_flag: Blocked }
+
+# ---------------------------------------------------------------------------
+# Governance — rules that project-advisor enforces.
+# ---------------------------------------------------------------------------
+governance:
+  level: standard
+  rules:
+    - done_requires_review
+    - assignee_on_in_progress
+  review_states: ["In Review"]
+  done_states:   [Done, Declined]
+
+# ---------------------------------------------------------------------------
+# Conventions — free-form notes that skills should respect.
+# ---------------------------------------------------------------------------
+conventions:
+  field_language: en
+  english_only_fields: true

@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../../../../../docs/schemas/overlay-manifest.schema.yaml
+#
+# Test fixture — an overlay that (mis)ships CORE-only destinations: a
+# `_`-prefixed template and a cluster-wrapper README. The engine must HARD-REFUSE
+# both (core-refused) and never write them, while a clean sibling materializes.
+# selection is omitted ⇒ include ['**'] (so the _-file and README are planned,
+# then refused at the dest gate — this proves the gate, not the glob).
+
+schema_version: 1
+
+overlay:
+  name: core-refusal-overlay
+  org: core-demo
+  description: "CORE-refusal fixture — _template + wrapper README dests, hard-refused."
+
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt

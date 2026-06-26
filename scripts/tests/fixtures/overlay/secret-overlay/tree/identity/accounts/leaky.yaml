@@ -1,0 +1,11 @@
+# Fixture: an account file that inlines a RAW secret instead of a reference URI.
+# The overlay leak gate must REFUSE this (raw-secret regex / no-scrub-leak) and
+# never materialize it. scope:org keeps it out of the CORE-refusal path so the
+# refusal we exercise here is the LEAK gate specifically.
+scope: org
+id: leaky
+display_name: "Leaky account (fixture)"
+access:
+  primary: cli
+  # Raw AWS-style access key id — NEVER allowed in a materialized file.
+  aws_access_key_id: AKIAIOSFODNN7EXAMPLE

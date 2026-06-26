@@ -1,0 +1,5 @@
+# Fixture: a clean sibling that carries no secret material. It must still
+# materialize even though a sibling file in the same overlay was leak-refused.
+scope: org
+id: clean-sibling
+description: "Clean context fixture — materializes alongside a refused sibling."

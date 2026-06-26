@@ -1,0 +1,56 @@
+# Org-overlay account inventory — materializes to
+# identity/accounts/example-cloud.yaml in the consumer when the example-org
+# overlay is applied.
+#
+# Accounts describe WHERE an account lives and HOW Claude reaches it. Credentials
+# are NEVER inlined — only azure-keyvault:// / keychain:// / 1password:// URIs.
+# The overlay engine's raw-secret scan REFUSES to materialize an account file
+# that carries anything but those reference URIs.
+#
+# Slug is org-namespaced (example-*) to avoid flat-discovery collision.
+
+scope: org                         # org-owned + org-billed account → org tier
+                                   # (accounts carry secret URIs, never core)
+id: example-cloud
+display_name: "ExampleCloud (example-org tenant)"
+owner: example-org-ops             # persona id or handle for self
+status: active
+
+# ---------------------------------------------------------------------------
+# Cloud configuration — tenant_id is a prompt field (placeholder below).
+# ---------------------------------------------------------------------------
+cloud:
+  provider: examplecloud           # fictional IaaS provider
+  tenant_id: "00000000-0000-0000-0000-000000000000"   # prompt_field: $.cloud.tenant_id
+  console_url: "https://console.examplecloud.test/example-org"
+  regions: [eu-central]
+  projects:
+    - id: example-org-prod
+      description: "Production workloads"
+    - id: example-org-staging
+      description: "Staging + CI runners"
+
+# ---------------------------------------------------------------------------
+# How Claude reaches the account — CLI first, token from the secret store.
+# Only a reference URI is allowed here, never the token itself.
+# ---------------------------------------------------------------------------
+access:
+  primary: cli                     # cli | api
+  cli: examplecloud                # command name
+  token_ref: "keychain://example-org/examplecloud-api-token"   # NEVER inline
+
+# ---------------------------------------------------------------------------
+# Optional code-host / KeyVault references — reference URIs only.
+# ---------------------------------------------------------------------------
+keyvault_ref: "azure-keyvault://kv-example-org/examplecloud"
+
+# Ready-to-copy session bootstrap (resolves the token at runtime, no secrets).
+bootstrap: |
+  export EXAMPLECLOUD_TOKEN="$(security find-generic-password -s examplecloud-api-token -w)"
+  examplecloud auth login --tenant 00000000-0000-0000-0000-000000000000
+
+notes: |
+  Example org-overlay cloud account. One file per account under
+  identity/accounts/ — tenant map + bootstrap live here; the secrets live in
+  the keychain/KeyVault referenced by URI. The tenant_id is a prompt field the
+  consumer fills at materialize time.

@@ -1,0 +1,7 @@
+# Fixture: a `_`-prefixed file. `_template.yaml` / `_schema.yaml` are reserved
+# CORE files — the overlay engine must refuse any dest whose basename starts
+# with `_`, before any write. scope:org here would otherwise pass the scope gate;
+# the `_`-prefix refusal fires first.
+scope: org
+id: _fixture
+description: "Reserved _-prefixed dest (basename starts with _) — must be core-refused."

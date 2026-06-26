@@ -1,0 +1,6 @@
+# Fixture: the contested dest, A's version. When A is added at higher
+# precedence, this content is what stays on disk; B may not override it.
+scope: org
+id: shared
+owner: overlay-a
+description: "Shared dest — overlay-a copy (higher precedence wins)."

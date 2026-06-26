@@ -1,0 +1,51 @@
+# Org-overlay mandant — materializes to identity/mandants/example-team.yaml
+# in the consumer when the example-org overlay is applied.
+#
+# A mandant is a group of related people who receive scheduled messages.
+# The recipient emails below are obvious placeholders: the overlay manifest
+# marks `$.persons[*].channels.email` as a PII prompt field, so the consumer
+# supplies real addresses at materialize time and the engine keeps them out of
+# any log (lockfile records the PATH only, never the value).
+#
+# Slug is org-namespaced (example-*) to avoid flat-discovery collision.
+
+# yaml-language-server: $schema=./_schema.yaml
+schema_version: 1
+scope: org                  # shared team mandant → org tier (overlay content)
+id: example-team
+type: company
+display_name: "Example Org Team"
+
+context_ref: example-docs
+
+default_channel: email
+
+persons:
+  - id: lead
+    display_name: "Team Lead"
+    role: "Project Lead"
+    channels:
+      email: "lead@REPLACE_ME.example"      # PII prompt: $.persons[*].channels.email
+    defaults:
+      language: en
+      timezone: Europe/Berlin
+      detail_level: summary
+      preferred_time_of_day: morning
+      quiet_hours: [22, 7]
+
+  - id: developer
+    display_name: "Developer"
+    role: "Backend Developer"
+    channels:
+      email: "dev@REPLACE_ME.example"       # PII prompt: $.persons[*].channels.email
+    defaults:
+      language: en
+      timezone: Europe/Berlin
+      detail_level: full
+      preferred_time_of_day: morning
+      quiet_hours: [23, 8]
+
+notes: |
+  Example org-overlay mandant. Two people covering lead + delivery roles.
+  Calendar entries reference these persons by mandant + person ID pair.
+  Replace the REPLACE_ME.example addresses when the overlay is materialized.

@@ -1,0 +1,5 @@
+# Fixture: a tree file that should never be reached — the manifest fails schema
+# validation first, so nothing materializes.
+scope: org
+id: x
+description: "Unreachable — manifest is rejected before any plan runs."

@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=./_schema.yaml
+#
+# Org-overlay context — materializes to workflow/contexts/example-docs.yaml
+# in the consumer when the example-org overlay is applied.
+#
+# FLAT on purpose: a context MUST live at workflow/contexts/<slug>.yaml so the
+# simple-glob discover() can see it. A nested workflow/contexts/<slug>/context.yaml
+# is invisible to discovery — the overlay engine warns on that shape. Slug is
+# org-namespaced (example-*) to avoid collision with a user's own contexts.
+
+schema_version: 1
+scope: org                  # customer/project context → org tier (overlay content)
+id: example-docs
+description: "Documentation + routing context for the example-org engagement"
+
+# ---------------------------------------------------------------------
+# Repos in this workspace.
+# ---------------------------------------------------------------------
+repos:
+  - name: api
+    path: "${projects_root}/example-org-api"
+    github: example-org/example-org-api
+
+# ---------------------------------------------------------------------
+# Sync defaults — consumed by protocols/standing-orders/task-sync.md.
+# Tasks with `context: example-docs` inherit these unless their own
+# `sync:` block overrides.
+# ---------------------------------------------------------------------
+sync:
+  defaults:
+    github:
+      repo: example-org/example-org-api
+      project:
+        ref: workflow/projects/example-board.yaml
+  dual_doku:
+    required: false
+
+# ---------------------------------------------------------------------
+# Default mandant — recipient group for outbound messages in this context.
+# ---------------------------------------------------------------------
+default_mandant: example-team
+
+# ---------------------------------------------------------------------
+# Sub-agents typically dispatched in this context.
+# ---------------------------------------------------------------------
+agents: [example-org-coordinator]
+
+# ---------------------------------------------------------------------
+# Infrastructure references.
+# ---------------------------------------------------------------------
+infra:
+  github_project:
+    org: example-org
+    number: 1

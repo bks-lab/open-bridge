@@ -1,0 +1,5 @@
+# Fixture: a clean, materializable sibling. It proves the overlay continues
+# past the CORE-refused siblings and still materializes legitimate org content.
+scope: org
+id: clean
+description: "Clean context fixture — materializes despite refused siblings."

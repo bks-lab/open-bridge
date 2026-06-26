@@ -1,0 +1,42 @@
+# Ecosystem fragment — example-org overlay (scope: org)
+#
+# This is a FRAGMENT, not a full ecosystem.yaml. The overlay engine copies it
+# verbatim to the consumer root as `ecosystem.example-org.yaml` and registers it
+# as an @import in CLAUDE.md (next to @ecosystem.yaml). It is NEVER block-merged
+# into the consumer's own ecosystem.yaml — the @import keeps the two registries
+# separate, so a consumer's `org:` / `local_root:` / `work_system:` are untouched.
+#
+# Use org-namespaced top-level keys (example_org:) so the fragment never collides
+# with the consumer's own top-level ecosystem keys.
+
+# ---------------------------------------------------------------------------
+# example-org repositories — registered alongside the consumer's own repos.
+# ---------------------------------------------------------------------------
+example_org:
+  org: example-org
+  display_name: "Example Org"
+
+  repos:
+    example-org-api:
+      github: example-org/example-org-api
+      description: "Example API service"
+      type: function-app
+      language: python
+    example-org-frontend:
+      github: example-org/example-org-frontend
+      description: "Example storefront"
+      type: web
+      language: typescript
+
+  # Bridge wiring — points at the org-overlay instances this fragment travels
+  # with (all materialized from the same overlay's tree/).
+  bridge_refs:
+    context: workflow/contexts/example-docs.yaml
+    project: workflow/projects/example-board.yaml
+    mandant: identity/mandants/example-team.yaml
+    account: identity/accounts/example-cloud.yaml
+
+  infra:
+    github_project:
+      org: example-org
+      number: 1
