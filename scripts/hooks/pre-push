@@ -11,10 +11,17 @@
 # backstop: it converts an accidental publish of your private branch into a
 # deliberate, opt-in action — for the autopilot and the human alike.
 #
-# Detection is offline-first: the push target slug is matched against a built-in
-# list + `.bridge-origin` (is_public) + bridge-config.yaml push_guard.*; only an
-# UNKNOWN remote escalates to `gh repo view --json visibility` (and unknown =>
-# allow, so private forks are never falsely blocked).
+# Detection is offline-first: the push target is classified into ONE of three
+# states — private / public / unknown — from a built-in list + bridge-config.yaml
+# push_guard.* + the `.bridge-origin` marker (is_public:true => public,
+# is_public:false with a MATCHING repo: slug => private); only a still-unknown
+# remote escalates to `gh repo view --json visibility`.
+#
+# SENSITIVE payload = a user/* destination OR pushed commits carrying USER content.
+# It is ALLOWED to a CONFIRMED-PRIVATE target, BLOCKED to a CONFIRMED-PUBLIC one,
+# and BLOCKED to an UNKNOWN/unverifiable one (fail-CLOSED — a re-homed origin that
+# can't be proven private must not leak). A CORE-clean push (no user/* dest, no
+# USER content) is ALLOWED to all three, so /promote forks + feature/* keep working.
 #
 # Deliberate bypass (visible, per-push):  BRIDGE_PUSH_GUARD=off git push ...
 # Full rationale + remediation: rules/push-guard.md
@@ -55,31 +62,57 @@ yaml_list() {
 TARGET=$(slug_of "$REMOTE_URL")
 CFG="$ROOT/bridge-config.yaml"
 
-# 1) your own private remotes short-circuit to ALLOW
+# ── Classify the push TARGET → private | public | unknown ───────────────────
+# This drives how a SENSITIVE payload (user/* destination, or pushed commits that
+# carry USER instance content) is handled in the ref loop below:
+#   private  → ALLOW   (your own origin; deterministic & offline)
+#   public   → BLOCK   (the 2026-06-24 user/* leak class)
+#   unknown  → BLOCK   (fail-CLOSED: a re-homed / unverifiable remote can't be
+#                       proven private, so sensitive data must not flow to it)
+# A CORE-clean push is allowed to ALL THREE — see the [ -z "$blocked" ] gate below.
+target_state=unknown
+
+# 1) your own private remotes (config) — deterministic, offline → private
 for p in $(yaml_list "$CFG" private_remotes); do
-  [ "$TARGET" = "$p" ] && exit 0
+  [ "$TARGET" = "$p" ] && { target_state=private; break; }
 done
 
-# 2) is the target a PUBLIC upstream?  built-in + .bridge-origin + config
-PUBLIC="bks-lab/open-bridge $(yaml_list "$CFG" public_upstreams)"
-if [ -f "$ROOT/.bridge-origin" ]; then
+# 2) built-in + config public upstreams → public
+if [ "$target_state" = unknown ]; then
+  for u in bks-lab/open-bridge $(yaml_list "$CFG" public_upstreams); do
+    [ "$TARGET" = "$u" ] && { target_state=public; break; }
+  done
+fi
+
+# 3) .bridge-origin marker — applied ONLY when its repo: slug matches THIS target,
+#    so a stale marker from a previous origin can't vouch for a re-homed remote.
+#    is_public:true => public; is_public:false => the deterministic, offline
+#    "this is my private origin → allow" signal (previously a no-op).
+if [ "$target_state" = unknown ] && [ -f "$ROOT/.bridge-origin" ]; then
   ob_repo=$(sed -n 's/^repo:[[:space:]]*//p' "$ROOT/.bridge-origin" | head -1 | tr -d "\"' " | tr '[:upper:]' '[:lower:]')
   ob_pub=$(sed -n 's/^is_public:[[:space:]]*//p' "$ROOT/.bridge-origin" | head -1 | tr -d " ")
-  [ "$ob_pub" = "true" ] && [ -n "$ob_repo" ] && PUBLIC="$PUBLIC $ob_repo"
+  if [ -n "$ob_repo" ] && [ "$ob_repo" = "$TARGET" ]; then
+    case "$ob_pub" in
+      true)  target_state=public ;;
+      false) target_state=private ;;
+    esac
+  fi
 fi
-is_public=no
-for u in $PUBLIC; do
-  [ "$TARGET" = "$u" ] && { is_public=yes; break; }
-done
 
-# 3) unknown remote → escalate to gh (best-effort); unknown/offline ⇒ allow
-if [ "$is_public" = no ] && command -v gh >/dev/null 2>&1; then
+# 4) still unknown → escalate to gh (best-effort). Offline / unknown repo / gh
+#    absent ⇒ target_state stays `unknown` ⇒ sensitive payloads fail CLOSED.
+#    Only an EXPLICIT PUBLIC/PRIVATE answer moves it off unknown (INTERNAL and any
+#    other value stay unknown → blocked-for-sensitive, escapable via private_remotes).
+if [ "$target_state" = unknown ] && command -v gh >/dev/null 2>&1; then
   vis=$(gh repo view "$TARGET" --json visibility -q .visibility 2>/dev/null)
-  [ "$vis" = "PUBLIC" ] && is_public=yes
+  case "$vis" in
+    PUBLIC)  target_state=public ;;
+    PRIVATE) target_state=private ;;
+  esac
 fi
 
-# not a public target → nothing to guard
-[ "$is_public" = yes ] || exit 0
+# A confirmed-private target is your own repo — nothing to guard, allow everything.
+[ "$target_state" = private ] && exit 0
 
 ZERO="0000000000000000000000000000000000000000"
 # USER *instance* paths only — never CORE templates (_template/_schema, examples/,
@@ -119,9 +152,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
 done
 
+# CORE-clean push (no user/* dest, no USER content) → allowed to ANY target.
 [ -z "$blocked" ] && exit 0
 
-cat >&2 <<EOF
+if [ "$target_state" = public ]; then
+  cat >&2 <<EOF
 
   ✋ Push blocked — public-upstream guard (rules/push-guard.md)
 
@@ -142,4 +177,29 @@ cat >&2 <<EOF
      BRIDGE_PUSH_GUARD=off git push ...
 
 EOF
+else
+  cat >&2 <<EOF
+
+  ✋ Push blocked — unverified remote, USER data withheld (rules/push-guard.md)
+
+     remote   $REMOTE_NAME → $TARGET   ← NOT confirmed private (offline / unknown)
+     refs    $blocked
+
+  This push carries USER data (a user/* branch or USER instance content) to a
+  remote I can't confirm is private — gh is offline/unavailable or the repo's
+  visibility is unknown. To prevent an accidental public leak, USER data is held
+  back until the remote is known to be yours.
+
+  Fix — tell the guard this remote is private (pick one), then re-push:
+     • bridge-config.yaml →  push_guard:
+                               private_remotes: [$TARGET]
+     • or .bridge-origin  →  repo: $TARGET
+                             is_public: false
+
+  CORE-only pushes (no user/* branch, no USER content) are NOT affected — they
+  flow to any remote. Deliberate one-off override (visible, per-push):
+     BRIDGE_PUSH_GUARD=off git push ...
+
+EOF
+fi
 exit 1

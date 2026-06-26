@@ -39,9 +39,29 @@ never a direct branch push.
 
 ## What is allowed
 
-`ci/*`, `feature/*`, and `promote-*/contrib-*` refs (CORE work) may go to a public
-upstream — that is what it is for. Any push to a **private** origin you own is
-unrestricted. The guard only ever bites `user/*` / USER-content → a public remote.
+`ci/*`, `feature/*`, and `promote-*/contrib-*` refs (CORE work) may go to **any**
+remote — public, private, or unverified — because they carry no USER data; that is
+what the public upstream is for. Any push to a **confirmed-private** origin you own
+is unrestricted. The guard only ever bites a **sensitive payload** (`user/*`
+destination, or pushed commits carrying USER instance content).
+
+## Three target states (fail-closed for sensitive payloads)
+
+The guard classifies the push **target** before inspecting the payload, and a
+sensitive payload is gated on that state:
+
+| Target state | How it's decided (offline-first) | Sensitive payload |
+|---|---|---|
+| **private** | target in `push_guard.private_remotes`, **or** `.bridge-origin` `is_public:false` with a `repo:` slug matching the target, **or** `gh repo view` reports `PRIVATE` | **ALLOW** |
+| **public** | built-in `bks-lab/open-bridge`, **or** `push_guard.public_upstreams`, **or** `.bridge-origin` `is_public:true` matching the target, **or** `gh` reports `PUBLIC` | **BLOCK** |
+| **unknown** | none of the above — `gh` offline / absent / repo visibility unresolved | **BLOCK** (fail-closed) |
+
+The `unknown → BLOCK` rule is the 2026-06-26 hardening: an earlier build *failed
+open* (unknown ⇒ allow), so re-homing `origin` to a *different* public repo not on
+the list — while `.bridge-origin` still said `is_public:false` and `gh` was offline —
+let a `user/*` push leak. Now an unverifiable target withholds USER data and tells
+you exactly how to mark it private. A **CORE-clean** push is unaffected — it flows
+to all three states.
 
 ## Enforcement (defense in depth)
 
@@ -56,9 +76,13 @@ unrestricted. The guard only ever bites `user/*` / USER-content → a public rem
    the hook is present. The decision keys on the **destination** ref (`remote_ref`),
    so `git push origin HEAD` / a sha push / a detached-HEAD push can't dodge the
    `user/*` rule; the content backstop inspects the pushed **commits** (not the
-   working tree). Detection is offline-first (the
-   [`.bridge-origin`](../.bridge-origin) marker + a built-in/config list;
-   `gh repo view --json visibility` only escalates an unknown remote).
+   working tree). Detection is offline-first and sorts the target into
+   **private / public / unknown** (the [`.bridge-origin`](../.bridge-origin) marker —
+   `is_public:false` + matching `repo:` is the deterministic "this is my private
+   origin → allow" signal — plus a built-in/config list; `gh repo view --json
+   visibility` only escalates a still-unknown remote). A sensitive payload is allowed
+   to **private**, blocked to **public**, and blocked to **unknown** (fail-closed);
+   CORE-clean pushes flow to all three.
 3. **Verification.** The [`onboard-sim`](../skills/onboard-sim/) skill proves the
    invariant end-to-end against a naive newcomer (a leak-safe sandbox, a cheap
    model or a model-free CI run, a deterministic no-leak assertion).
