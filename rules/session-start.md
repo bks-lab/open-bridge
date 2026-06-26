@@ -147,7 +147,7 @@ confident, immediately useful, with a clear next-action.
 > config yet. Nothing's wired up, but that's a 5-minute fix.
 >
 > **Want me to onboard you?** Guided and reversible. I'll:
-> 1. Spin up your personal `user/{name}` branch (keeps your data out of CORE)
+> 1. Spin up your personal `user/{name}` branch on **your own private repo** (your data never lands on a public upstream)
 > 2. Scan your projects folder and map your ecosystem
 > 3. Pick a theme and wire up your first agents
 >

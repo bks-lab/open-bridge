@@ -75,20 +75,25 @@ ecosystem.yaml) is completely independent per instance.
 
 ## Setup
 
-### Instance 1 (pushed)
+### Instance 1 (pushed to your private repo)
 
-Standard setup — clone, onboard, push your user branch:
+A pushed instance must push to a **private repo you own** — never to public
+open-bridge. Make a private copy first (GitHub *Use this template → Private*, or
+clone + re-home), then onboard:
 
 ```bash
-git clone https://github.com/bks-lab/open-bridge.git ~/work/org-a/open-bridge
-cd ~/work/org-a/open-bridge
-claude    # /bridge-onboard runs automatically
-git push -u origin user/your-name
+git clone https://github.com/bks-lab/open-bridge.git ~/work/org-a/my-bridge
+cd ~/work/org-a/my-bridge
+git remote rename origin upstream                       # open-bridge = read-only upstream
+gh repo create <you>/org-a-bridge --private --source=. --remote=origin --push
+claude    # /bridge-onboard runs automatically — writes user data to your private origin
+git push -u origin user/your-name                       # safe: origin is YOUR private repo
 ```
 
 ### Instance 2 (local-only)
 
-Clone the same repo but never push the user branch:
+Clone, configure, but never push the user branch — `origin` stays the public repo,
+used read-only:
 
 ```bash
 git clone https://github.com/bks-lab/open-bridge.git ~/work/org-b/open-bridge
@@ -102,7 +107,8 @@ To pull CORE updates without pushing user data:
 cd ~/work/org-b/open-bridge
 git fetch origin main
 git merge origin/main
-# user/ branch stays local — never git push
+# user/ branch stays local — never git push (origin is the PUBLIC repo; the
+# pre-push guard blocks it anyway). See rules/push-guard.md.
 ```
 
 ### Fork Variant
