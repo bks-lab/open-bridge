@@ -48,8 +48,8 @@ if it is provided to you and summarize it.
 Evaluate in this order; emit a ✅ line when a criterion is clean.
 
 1. **[P0 Scope]** Does every changed file belong in open-bridge (`core`)?
-   open-bridge is the OSS tier; customer/`bks` content and `user` content
-   (personas, `work/`, anything marked `scope: bks` or `scope: user`) do not.
+   open-bridge is the OSS tier; customer/`org` content and `user` content
+   (personas, `work/`, anything marked `scope: org` or `scope: user`) do not.
    Judge from the file **paths** + any scope frontmatter visible in the diff.
    Non-core content ⇒ **scope-mismatch**; mixed-scope commit ⇒ scope-mismatch +
    recommend a split.
