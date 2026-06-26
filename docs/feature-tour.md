@@ -11,7 +11,7 @@ related:
 # Feature Tour — Fill the Cluster-Wrappers
 
 Onboarding (`/bridge-onboard`) gives you a running shell: identity,
-ecosystem, branch, optional work-system, default agents. **Most cluster-
+ecosystem (opt-in detection), branch, optional work-system, default agents. **Most cluster-
 wrapper folders start empty** — `identity/personas/`,
 `identity/mandants/`, `infra/channels/`, `workflow/calendars/`, etc.
 ship only the templates and schemas. You fill them when a real need

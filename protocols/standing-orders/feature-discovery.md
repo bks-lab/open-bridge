@@ -17,6 +17,17 @@ briefing-window.
 
 ## Rules
 
+- **Honour `discovery.mode` — this is the master gate.** When
+  `discovery.mode: confined` (the template/absent default), the
+  evidence heuristics below **never run**: no scanning, no
+  heuristic-driven suggestions, not now and not later. In confined
+  mode this order may surface ONLY features the user explicitly
+  deferred during onboarding (`deferred` in `onboarding-state.yaml`)
+  or asked for via `/bridge-onboard --add`. When `discovery.mode:
+  broader`, behave as documented below — heuristics run, each still
+  subject to its own Phase-B per-source permission (see Configuration).
+  The choice is reversible: `/bridge-onboard --rescan` to broaden, or
+  edit `discovery.mode` in `bridge-config.yaml`.
 - **Max one suggestion per `/briefing`.** Never overwhelm.
 - **Surface day default: Wednesday.** Configurable via
   `feature_discovery.surface_day` (cron weekday name).
@@ -30,6 +41,11 @@ briefing-window.
   any briefing, set `feature_discovery.enabled: false` and confirm.
 
 ## Triggers — Evidence Heuristics
+
+> **Only in `discovery.mode: broader`.** In `confined` mode none of the
+> heuristics below execute (see the master gate under Rules) — the
+> Bridge stays inside its own folder and never scans repos, apps,
+> devices, files, or mail.
 
 Each heuristic checks recent activity (last 30 days unless noted).
 If a heuristic fires, generate a suggestion using the matching S-block
@@ -111,9 +127,12 @@ This is an advisory standing-order — no hard violation. Soft violations:
 - Re-surfacing `accepted` features → annoying, breaks trust
 - Surfacing a `silenced` feature → bug
 - Not respecting `feature_discovery.enabled: false` → bug
+- Running any heuristic while `discovery.mode: confined` → bug
+  (privacy violation — the user declined broader scanning)
 
-All of the above should be caught by reading `onboarding-state.yaml`
-before surfacing and the `enabled:` flag before running heuristics.
+All of the above should be caught by reading `discovery.mode` and the
+`enabled:` flag before running heuristics, and `onboarding-state.yaml`
+before surfacing.
 
 ## Configuration
 

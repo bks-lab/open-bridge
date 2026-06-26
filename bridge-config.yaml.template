@@ -22,10 +22,22 @@ identity:
 user_profile: both
 
 # ─── Discovery (Phase B scan boundary) ────────────────────────────────
-# What system data /bridge-onboard scanned with permission. Persisted so
+# `mode` is the top-level scan boundary, chosen at the end of Phase A:
+#   confined (default) — the Bridge stays inside this repo folder. It does NOT
+#     scan your other repos, installed apps, devices, files, or mail. No explicit
+#     consent ⇒ no scan, ever — not during onboarding, not later. You keep every
+#     feature; they just aren't auto-suggested. Enable exactly what you want via
+#     the onboarding feature catalog, /bridge-onboard --add <feature>, or by
+#     flipping a feature's `enabled:` flag below.
+#   broader — the Bridge may scan the machine; the per-source `permissions:` model
+#     below then applies. It only ever reads NAMES and STRUCTURE — never file,
+#     mail, or message CONTENT, never secrets. Findings stay local (gitignored).
+# Reversible anytime: /bridge-onboard --rescan to broaden, or edit `mode` here.
+# `permissions:` records what /bridge-onboard scanned with permission, persisted so
 # /bridge-onboard --rescan honours the same boundary without re-asking.
 # Edit to revoke; use /bridge-onboard --reset for a clean re-prompt.
 discovery:
+  mode: confined             # confined (default, no scan) | broader (scan with permission)
   permissions: []            # subset of: git_config, developer_dir, os_and_apps,
                              #   homebrew_packages, documents_structure,
                              #   mail_accounts, calendar_list, ssh_known_hosts,

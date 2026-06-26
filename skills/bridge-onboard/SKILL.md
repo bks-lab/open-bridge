@@ -36,6 +36,14 @@ Instead, the wizard:
 4. Surfaces features proactively later (`feature-discovery`
    standing-order) when patterns suggest they'd help
 
+All of this is **consent-first**: before step 1, the user picks
+`discovery.mode` — **confined** (default) or **broader**. Confined means
+the Bridge never scans the machine (other repos, installed apps, devices,
+files, and mail stay untouched) — you still get every feature, just
+enabled modularly when you want it via the Phase E catalog, `--add
+<feature>`, or the feature's `enabled:` flag in `bridge-config.yaml`.
+Only **broader** unlocks the permission-gated scan in step 1.
+
 This file is the entry point; the heavy lifting lives in `references/`.
 
 ## Defaults — what the wizard assumes
@@ -87,7 +95,7 @@ origin; CORE reaches a public upstream only via `/promote`. Canonical rule:
 | Invocation | Behaviour |
 |---|---|
 | `/bridge-onboard` | Full wizard (Phases A–F) |
-| `/bridge-onboard --rescan` | Re-run Phase B+C with persisted permissions; surface new evidence; skip already-accepted features |
+| `/bridge-onboard --rescan` | Broaden discovery (sets `discovery.mode: broader`); re-run Phase B+C with persisted permissions; surface new evidence; skip already-accepted features |
 | `/bridge-onboard --reset` | Delete scan + state files; restart Phase B from scratch. Prompts to delete `bridge-config.yaml` for true clean-slate |
 | `/bridge-onboard --add <feature>` | Skip A+B+D+E+F, run only the matching S-block from `smart-suggestions.md` (e.g. `--add personas`, `--add doc-system`) |
 | `/bridge-onboard --add agent-soul` | Skip everything except D4 — re-pick the soul deck and reshape SOUL.md / IDENTITY.md |

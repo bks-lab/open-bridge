@@ -57,9 +57,9 @@ wall.
 # Phase Map
 
 ```
-A  Quick Identity              30 sec   name + projects_root + GitHub-opt + lang
-B  Discovery Scan             ~60 sec   permission-gated system scan
-C  Smart Suggestions         ~2-3 min   evidence → feature recommendations
+A  Quick Identity              45 sec   name + projects_root + GitHub-opt + lang + scope-consent gate
+B  Discovery Scan             ~60 sec   permission-gated system scan (broader mode only; skipped if confined)
+C  Smart Suggestions         ~2-3 min   evidence → feature recommendations (skipped if confined)
 D  Quick-Wins                ~2 min    work-system + theme + 3 starter agents + agent soul/identity (deck-picked)
 E  Feature Catalog          read-only   "what else Bridge can do, when to add it"
 F  Validate + Preview        ~30 sec   schema check, HTML preview, re-entry hints
@@ -71,7 +71,7 @@ Total: 5-8 minutes for a tailored setup, ~3 minutes for "defaults only".
 
 ## Phase A — Quick Identity
 
-A tight identity block — four questions, one branch creation.
+A tight identity block — four questions, one branch creation, and the scope-consent gate (step 6).
 
 1. **Name** — detect from `git config user.name`; offer it back. Becomes
    `identity.name` and the suffix of the user branch. If `git config
@@ -111,13 +111,56 @@ A tight identity block — four questions, one branch creation.
 it via `/bridge-onboard --upstream`". No Variant-Wahl prompt while the
 upstream repos are not public yet.
 
+6. **Scope consent gate — the last step before any scanning.** Before Phase B
+   looks at anything beyond this folder, the user makes one explicit choice.
+   This is the consent boundary: with no explicit "yes", the Bridge never
+   scans — not now, not later. Render this verbatim:
+   ```
+   Before I look at anything beyond this folder, one choice — there's no wrong answer:
+
+     [1] Confined (default) — I stay inside this Bridge folder. I won't scan your other
+         repos, installed apps, devices, files, or mail. You still get every feature;
+         I just won't auto-suggest them — you turn on exactly what you want, when you want.
+
+     [2] Broader — I take a quick look at your machine (with your per-item permission in
+         the next step) so I can suggest features that fit what you already use: your
+         repos → an ecosystem map, a mesh-VPN → remote-machine control, backup tools →
+         a backup topology, and so on. I only ever read names and structure — never file,
+         mail, or message content, never secrets. Findings stay local (gitignored).
+
+   You can change your mind anytime: /bridge-onboard --rescan (to broaden) or set
+   discovery.mode in bridge-config.yaml.
+
+     [1] Confined   [2] Broader   [?] What exactly would broader look at?
+   ```
+   - **`[1]` Confined (default)** — write `discovery.mode: confined` and
+     `discovery.permissions: []` to `bridge-config.yaml`, then **skip Phase B
+     and Phase C entirely → jump to Phase D**. Nothing on the machine is read.
+     The user keeps every feature; they enable what they want from the Phase E
+     catalog, via `/bridge-onboard --add <feature>`, or by flipping the
+     feature's `enabled:` flag in `bridge-config.yaml`.
+   - **`[2]` Broader** — write `discovery.mode: broader` and continue into
+     Phase B, where the existing per-source permission model applies as today.
+   - **`[?]`** — answer from the Phase B permission prompt
+     (`system-discovery.md`): which sources, default-on vs opt-in,
+     names-and-structure-only, never content/secrets — then re-show the two
+     options.
+
+   An absent or unset `discovery.mode` means **confined** — no explicit
+   consent, no scan.
+
 **Output of Phase A:**
-- `bridge-config.yaml` skeleton (identity block populated, all features off)
+- `bridge-config.yaml` skeleton (identity block populated, all features off,
+  `discovery.mode` set to the user's choice — `confined` if unset)
 - `user/{name}` branch created (`git checkout -b user/{name}`) and checked out
+- On `[1]` Confined: control jumps to Phase D; on `[2]` Broader: continue to Phase B
 
 ---
 
 ## Phase B — Discovery Scan
+
+> **Only runs when `discovery.mode: broader`.** If confined, this phase was
+> skipped in Phase A (control jumped straight to Phase D).
 
 Permission-gated system scan. Full details in
 [`references/system-discovery.md`](system-discovery.md).
@@ -165,10 +208,11 @@ Permission-gated system scan. Full details in
      last_scan: 2026-05-16T14:30:00+02:00
    ```
 
-5. **If user picked `[s]` Skip** — write `discovery.permissions: []`,
-   skip Phase C entirely, jump to Phase D. Mention: "Phase C suggestions
-   skipped. I'll surface features later as needs become clear, or you
-   can run `/bridge-onboard --rescan` any time."
+5. **If user picked `[s]` Skip** — this is "scan nothing after all": write
+   `discovery.mode: confined` and `discovery.permissions: []`, skip Phase C
+   entirely, jump to Phase D. Mention: "Scanning skipped — staying confined.
+   Enable features yourself from the catalog or `/bridge-onboard --add`, and
+   broaden later with `/bridge-onboard --rescan` if you change your mind."
 
 6. **One bias-setting question** (only if Phase C will run):
    ```
@@ -424,6 +468,12 @@ conventions: `identity/agent/README.md`; deck: `identity/agent/_soul-deck.yaml`.
 ---
 
 ## Phase E — Feature Catalog *(read-only, no questions)*
+
+**Modular by design — there is no "full package".** Every feature is à la
+carte: take the individual ones you want, decline the rest, nothing is
+bundled or all-or-nothing. Confined users (who skipped Phase B/C) enable any
+feature manually — via `/bridge-onboard --add <feature>` or by setting its
+`enabled:` flag in `bridge-config.yaml`.
 
 Print the full catalogue from
 [`references/feature-catalog.md`](feature-catalog.md), grouped by

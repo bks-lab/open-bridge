@@ -148,7 +148,7 @@ confident, immediately useful, with a clear next-action.
 >
 > **Want me to onboard you?** Guided and reversible. I'll:
 > 1. Spin up your personal `user/{name}` branch on **your own private repo** (your data never lands on a public upstream)
-> 2. Scan your projects folder and map your ecosystem
+> 2. Ask whether I stay in this folder or may look around — and map only what you allow
 > 3. Pick a theme and wire up your first agents
 >
 > **[y]** Let's go &nbsp; **[t]** Tell me more first &nbsp; **[n]** Not now
