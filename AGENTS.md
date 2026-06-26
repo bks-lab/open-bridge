@@ -63,10 +63,11 @@ case this gate exists for — they don't bypass it.
 hardcoded branch name has caused a real misfire before. Resolve the default at session
 start; do not assume it.
 
-**For NEW USER:** trigger the `bridge-onboard` skill — a wizard (Quick Identity → Discovery
-Scan → Smart Suggestions → Quick-Wins → Feature Catalog → Validate). Explain CORE/USER
-split, ecosystem vs cluster wrappers, and sub-agents as you go. Goal: running in 5 minutes.
-Then point at [`docs/feature-tour.md`](docs/feature-tour.md).
+**For NEW USER:** trigger the `bridge-onboard` skill — a wizard (Quick Identity + Purpose →
+Discovery Scan (broader mode only — confined default skips it) → Smart Suggestions →
+Quick-Wins → Feature Catalog → Validate). Explain CORE/USER split, ecosystem vs cluster
+wrappers, and sub-agents as you go. Goal: running in 5 minutes. Then point at
+[`docs/feature-tour.md`](docs/feature-tour.md).
 
 The load-bearing detail for the NEW-USER turn lives in
 [`rules/session-start.md`](rules/session-start.md): the exact **NEW-USER greeting**, the

@@ -80,7 +80,7 @@ cannot cause one.
   `skills/bridge-onboard/`, `bin/setup`, `.bridge-origin`, `bridge-config.yaml.template`.
 - As the **verify gate** for the dev-board's `verify_policy` on that surface.
 - In CI (scripted mode) as a deterministic safety regression — see the
-  `onboard-sim` job in `.github/workflows/validate.yml`.
+  `onboard-safety` job in `.github/workflows/validate.yml`.
 
 ## Hard rules
 

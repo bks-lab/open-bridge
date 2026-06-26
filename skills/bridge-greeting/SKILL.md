@@ -37,6 +37,15 @@ instance the same way `identity/agent/` and vocabulary do. Three layers:
 Discovery scans `~/Developer/*/*/bridge-config.yaml` to build the
 org-folder → instance map automatically — no hardcoded instance names in the engine.
 
+## Purpose tagline — the instance's north-star under the logo
+
+When the resolved instance's `bridge-config.yaml` has a non-empty
+`purpose.statement`, render it as the **subtitle / tagline directly under the
+logo**, alongside the theme-derived identity the greeting already shows — so the
+terminal opens reading as *what this Bridge is for*, not a bare wordmark. Empty
+`purpose.statement` → no tagline line (today's behaviour). This is display only; the
+purpose never changes what the greeting can show.
+
 ## gen-logo.py — make an instance its logo
 
 ```bash

@@ -28,6 +28,28 @@ briefing-window.
   subject to its own Phase-B per-source permission (see Configuration).
   The choice is reversible: `/bridge-onboard --rescan` to broaden, or
   edit `discovery.mode` in `bridge-config.yaml`.
+- **`purpose.focus` sets surfacing PRIORITY — never a suppress.** When more than
+  one heuristic fires inside a briefing window, prefer the one whose catalog
+  life-domain is in `bridge-config.yaml.purpose.focus` (then fall back to
+  `user_profile`, then evidence recency). This is **only a tiebreak**: `max_per_briefing`
+  is unchanged (still one surfaces). A heuristic whose domain is **outside** focus is
+  **never suppressed** — if it is the SOLE fire in the window, it STILL surfaces,
+  just reframed to acknowledge the stated purpose:
+  ```
+  🌱 Feature Discovery
+
+  I noticed: {evidence_sentence}.
+
+  This is outside what you said this Bridge is for ({purpose.statement}) — want it anyway?
+
+    [y] Walk me through it now   [l] Later   [n] Not interested
+  ```
+  `purpose.focus` orders/labels; `discovery.mode: confined` (above) stays the master
+  gate. **Treating `purpose.focus` as an allowlist — suppressing a non-focus
+  heuristic — is a bug.** Empty `purpose.focus` (`[]`) → no priority effect, today's
+  exact behaviour. Heuristic → domain map: H1 `identity`, H2 `communication`,
+  H3 `infrastructure`, H5 `infrastructure`, H6 `communication`, H7 `productivity`,
+  H8 `identity`, H9 `communication`, H10 `visualization`.
 - **Max one suggestion per `/briefing`.** Never overwhelm.
 - **Surface day default: Wednesday.** Configurable via
   `feature_discovery.surface_day` (cron weekday name).
@@ -129,6 +151,9 @@ This is an advisory standing-order — no hard violation. Soft violations:
 - Not respecting `feature_discovery.enabled: false` → bug
 - Running any heuristic while `discovery.mode: confined` → bug
   (privacy violation — the user declined broader scanning)
+- Treating `purpose.focus` as an allowlist — suppressing a non-focus heuristic that
+  is the sole fire, instead of surfacing it reframed → bug (purpose is a PRIORITY/
+  ordering signal, never a gate; it must never hide a feature)
 
 All of the above should be caught by reading `discovery.mode` and the
 `enabled:` flag before running heuristics, and `onboarding-state.yaml`

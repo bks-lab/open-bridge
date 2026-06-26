@@ -25,6 +25,7 @@ left for later — in one visual overview.
 |-------------|--------|
 | `{{USER_NAME}}` | `bridge-config.yaml` → `identity.name` |
 | `{{ORG}}` | `bridge-config.yaml` → `identity.org` (empty if not set) |
+| `{{PURPOSE}}` | `bridge-config.yaml` → `purpose.statement` (empty string ⇒ omit the header line entirely) |
 | `{{THEME_NAME}}` | `bridge-config.yaml` → `theme` (capitalized display name) |
 | `{{ECOSYSTEM_CARDS}}` | Generated from `ecosystem.yaml` repos — see format below |
 | `{{CREW_CARDS}}` | Generated from `.claude/agents/*.md` sub-agent frontmatter |
@@ -36,6 +37,19 @@ left for later — in one visual overview.
 | `{{DATE}}` | Current date in `YYYY-MM-DD` format |
 
 ## Placeholder formats
+
+### {{PURPOSE}}
+
+A header line, rendered **above** "Activated Features", that states what this
+instance is for. Source: `bridge-config.yaml` → `purpose.statement`. If the
+statement is empty (general-purpose instance), **omit this block entirely** — the
+preview then looks exactly as it did before purpose existed.
+
+```html
+<div class="purpose-banner">
+  This Bridge is for <strong>{{PURPOSE}}</strong>.
+</div>
+```
 
 ### {{ECOSYSTEM_CARDS}}
 
@@ -175,7 +189,10 @@ Two sub-sections.
 full feature list and skip those already in `accepted`, `deferred`, or
 `silenced`. Show the rest grouped by life-domain (Identity & Filing,
 Communication, Infrastructure, etc.) with one-line description and
-re-entry command:
+re-entry command. **Order focus-first when `purpose.focus` is set:** the groups
+whose `focus` slug is in `purpose.focus` come first, the remainder after — same
+ORDER-only banding as the Phase E catalogue, nothing hidden. Empty `purpose.focus`
+→ today's catalogue order.
 
 ```html
 <div class="feature-group">
@@ -188,9 +205,22 @@ re-entry command:
 </div>
 ```
 
-End the {{SUGGESTED_LATER}} section with the trust-building closer:
+End the {{SUGGESTED_LATER}} section with the trust-building closer. When
+`purpose.statement` is set, reference it so the section reads as "kept back, not
+withheld"; otherwise use the neutral form:
 
 ```html
+<!-- purpose set: -->
+<div class="trust-closer">
+  These stay one step back so this Bridge stays pointed at
+  <strong>{{PURPOSE}}</strong> — none of them is hidden or gated. Bridge surfaces
+  the relevant ones proactively: <strong>feature-discovery</strong> checks weekly
+  for new evidence and proposes ONE at most per briefing, prioritising your focus
+  but never suppressing a strong-evidence match outside it. Disable any time via
+  <code>bridge-config.yaml.feature_discovery.enabled</code>.
+</div>
+
+<!-- purpose empty (general-purpose): -->
 <div class="trust-closer">
   Bridge surfaces features proactively. <strong>feature-discovery</strong>
   checks weekly for new evidence and proposes ONE at most per briefing.
@@ -281,6 +311,7 @@ Crew/Protocols block:
 
 ```html
 <section class="features-section">
+  {{PURPOSE}}
   <h2>Activated Features</h2>
   {{DISCOVERY_SUMMARY}}
   <div class="features-list">{{ACTIVATED_FEATURES}}</div>

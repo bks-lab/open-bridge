@@ -24,7 +24,10 @@ bridge-config.yaml:
 3. Create today's day-block if missing (from `work/templates/day.md`; header `## {Weekday} DD.MM`)
 4. Load standing orders from `protocols/standing-orders/` (scope: always)
 5. Check CORE updates: `git log HEAD..main --oneline` — offer merge if new commits
-6. On "continue", "morning", "status": show summary, don't ask questions
+6. On "continue", "morning", "status": show summary, don't ask questions. When
+   `bridge-config.yaml` `purpose.statement` is non-empty, **lead the summary with**
+   `This Bridge is for {statement}.` so the session opens oriented around the
+   instance's north-star. Empty statement → omit the line (today's behaviour).
 
 ## Commit Hygiene
 

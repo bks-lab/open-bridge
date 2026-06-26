@@ -48,6 +48,12 @@ This file is the entry point; the heavy lifting lives in `references/`.
 
 ## Defaults — what the wizard assumes
 
+- **Purpose pins a north-star (ordering, never gating).** Phase A captures one
+  line — what this instance is for — into `purpose.statement` (+ a derived
+  `purpose.focus`). It ORDERS the Phase C suggestions, the Phase E catalogue, and
+  the `feature-discovery` standing-order, and is echoed in the greeting + preview;
+  it **never** hides, gates, or removes a feature. Empty purpose = today's flat,
+  general-purpose behaviour. Change anytime via `--purpose`.
 - **GitHub is optional.** Onboarding completes end-to-end without a
   GitHub org, without `gh` CLI, and without GitHub-projects integration.
 - **Upstreams stay empty (`upstreams: []`) by default.** Upstream
@@ -79,7 +85,7 @@ true`) uses the same state file to avoid double-suggesting.
 
 **Mirror-safety — check the origin before writing any private data.** Onboarding
 writes the user's identity and `work/` to a `user/{name}` branch. Before creating
-that branch (Phase A step 5), resolve where the clone pushes: `git remote get-url
+that branch (Phase A step 6), resolve where the clone pushes: `git remote get-url
 origin` (and `gh repo view --json visibility,nameWithOwner` if unsure). **If
 `origin` is a PUBLIC repo or a known upstream (e.g. `bks-lab/open-bridge`) — or
 [`.bridge-origin`](../../.bridge-origin) says `is_public: true` — STOP and advise,
@@ -99,6 +105,7 @@ origin; CORE reaches a public upstream only via `/promote`. Canonical rule:
 | `/bridge-onboard --reset` | Delete scan + state files; restart Phase B from scratch. Prompts to delete `bridge-config.yaml` for true clean-slate |
 | `/bridge-onboard --add <feature>` | Skip A+B+D+E+F, run only the matching S-block from `smart-suggestions.md` (e.g. `--add personas`, `--add doc-system`) |
 | `/bridge-onboard --add agent-soul` | Skip everything except D4 — re-pick the soul deck and reshape SOUL.md / IDENTITY.md |
+| `/bridge-onboard --purpose` | Skip everything except the Phase-A purpose step — set/change `purpose.statement` + `purpose.focus` (re-derive `user_profile`), then re-render the Phase F preview ordering. Never gates a feature |
 | `/bridge-onboard --features` | Read-only Phase E catalogue, interactive — explore what Bridge can do, click into entries to activate |
 | `/bridge-onboard --upstream` | Skip everything except upstream wiring (see below) |
 
@@ -133,6 +140,7 @@ User wants to...
 ├── Re-scan and resurface deferred     → Read references/system-discovery.md (--rescan)
 ├── Start fresh                        → Read references/system-discovery.md § Re-Run Modes (--reset)
 ├── Activate one specific feature      → Read references/smart-suggestions.md § Adding a Feature Later
+├── Set or change the instance purpose → Read references/workflow.md § Phase A step 5 (--purpose)
 ├── Browse what Bridge can do          → Read references/feature-catalog.md (--features)
 ├── Wire an upstream after the fact    → This file § Optional: --upstream mode
 └── Questions about setup              → Answer from references/workflow.md + CLAUDE.md § Session Start
