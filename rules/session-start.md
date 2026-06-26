@@ -69,6 +69,15 @@ flow), always branch off the core branch — never off `main` or
 `development` literal: `git checkout -b user/{name}` while sitting on
 the core branch does the right thing automatically.
 
+**Push-guard arming check (all states except NEW USER).** If
+`scripts/hooks/pre-push` exists but `git config --get core.hooksPath` is not
+`scripts/hooks`, the deterministic public-upstream backstop is **disarmed** —
+warn once and offer to arm it: `git config core.hooksPath scripts/hooks` (or
+`./bin/setup`). Onboarding arms it in Phase A, but a clone made before that, or
+one set up without the wizard, can sit unarmed; until armed, only the
+behavioural layer protects a `user/*` branch from reaching a public origin. See
+[`push-guard.md`](push-guard.md).
+
 ## Reporting the check
 
 When Phase 0 identifies any non-NORMAL state, tell the user what you found

@@ -96,14 +96,18 @@ A tight identity block — four questions, one branch creation, and the scope-co
    `origin` to a new private repo with open-bridge as a read-only `upstream`) and
    continue only once `origin` is private — or the user explicitly chooses
    local-only and will never push. Then create the branch from the core/default
-   branch:
+   branch — but **arm the push guard FIRST**, before the branch (and any private
+   commit) exists, so the deterministic backstop is live from the very first commit:
    ```bash
+   git config core.hooksPath scripts/hooks   # arm the pre-push guard (idempotent)
    git checkout -b user/{name}
    ```
-   (where `{name}` is the slug from step 1). Your personal data lives here, CORE
-   stays clean. Confirm the new branch is checked out before writing any USER
-   files. **Never push `user/{name}` to a public origin** — CORE reaches a public
-   upstream only via `/promote`. See
+   (where `{name}` is the slug from step 1). Arming here — not relying on the user to
+   have run `bin/setup` — is what makes the guard actually present on a fresh clone;
+   without it the backstop is inert and only the instruction layer protects you. Your
+   personal data lives here, CORE stays clean. Confirm the new branch is checked out
+   before writing any USER files. **Never push `user/{name}` to a public origin** —
+   CORE reaches a public upstream only via `/promote`. See
    [`../../../rules/push-guard.md`](../../../rules/push-guard.md).
 
 **Upstream wiring — defer.** Keep `upstreams: []`. Mention in passing:

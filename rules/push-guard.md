@@ -51,7 +51,12 @@ unrestricted. The guard only ever bites `user/*` / USER-content → a public rem
    re-home below instead.
 2. **Deterministic (backstop).** [`scripts/hooks/pre-push`](../scripts/hooks/pre-push)
    blocks the push at the git layer regardless of what the agent does. Armed via
-   `core.hooksPath` by `bin/setup`. Detection is offline-first (the
+   `core.hooksPath` — set by `/bridge-onboard` (Phase A, before the `user/*` branch
+   exists) and by `./bin/setup` on any OS; session-start warns if it is unset while
+   the hook is present. The decision keys on the **destination** ref (`remote_ref`),
+   so `git push origin HEAD` / a sha push / a detached-HEAD push can't dodge the
+   `user/*` rule; the content backstop inspects the pushed **commits** (not the
+   working tree). Detection is offline-first (the
    [`.bridge-origin`](../.bridge-origin) marker + a built-in/config list;
    `gh repo view --json visibility` only escalates an unknown remote).
 3. **Verification.** The [`onboard-sim`](../skills/onboard-sim/) skill proves the

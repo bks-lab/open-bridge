@@ -83,24 +83,39 @@ fi
 
 ZERO="0000000000000000000000000000000000000000"
 # USER *instance* paths only — never CORE templates (_template/_schema, examples/,
-# any _-prefixed basename). The user/* branch rule above is the primary guard;
-# this catches USER content smuggled onto a non-user branch (e.g. main).
+# any _-prefixed basename, or a directory's own README.md). The destination-branch
+# rule below is the primary guard; this content net is the backstop that catches
+# USER instance files smuggled onto ANY other branch name (main, feature/*, a
+# renamed user branch, …) — names are not trusted, content is.
 USER_PATHS='^(work/(log\.md|board\.md|tasks/|streams/|done/|archive/)|identity/agent/(IDENTITY|SOUL)\.md|identity/(personas|mandants|accounts)/[^_]|infra/(remotes|channels|backups)/[^_]|workflow/calendars/[^_]|bridge-config\.yaml$)'
 
 blocked=""
 while read -r local_ref local_sha remote_ref remote_sha; do
-  [ -z "${local_ref:-}" ] && continue
+  [ -z "${remote_ref:-}" ] && continue
   [ "$local_sha" = "$ZERO" ] && continue          # branch deletion — nothing pushed
-  branch=${local_ref#refs/heads/}
-  case "$branch" in
-    user/*)                              blocked="$blocked $branch"; continue ;;
-    ci/*|feature/*|promote-*|contrib-*)  continue ;;                  # sanctioned CORE refs
+  # Decide from where the ref LANDS (remote_ref), never the local ref: git feeds the
+  # hook local_ref="HEAD" for `git push origin HEAD` and a raw sha for
+  # `git push origin <sha>:refs/heads/user/x`, but remote_ref is ALWAYS the
+  # fully-qualified destination. Keying on it means HEAD / detached / sha push forms
+  # can't dodge the user/* rule (they did when this keyed on local_ref — leak vector).
+  dest=${remote_ref#refs/heads/}
+  case "$dest" in
+    user/*) blocked="$blocked $dest"; continue ;;   # a USER branch never reaches a public upstream
   esac
-  # any other ref (e.g. main): block only if the outgoing diff carries USER content
-  if [ "$remote_sha" = "$ZERO" ]; then range="$local_sha"; else range="$remote_sha..$local_sha"; fi
-  changed=$(git diff --name-only "$range" 2>/dev/null) || changed=""
+  # Any other destination (main, feature/*, ci/*, promote-*, a renamed user branch):
+  # allow it ONLY if the COMMITS being pushed carry no USER instance content. Inspect
+  # the pushed commits, NOT the working tree — `git diff <sha>` against a clean tree
+  # looks empty and hid the content (the other half of the leak vector).
+  if [ "$remote_sha" = "$ZERO" ]; then
+    push_commits=$(git rev-list "$local_sha" --not --remotes 2>/dev/null) || push_commits=""
+  else
+    push_commits=$(git rev-list "$remote_sha..$local_sha" 2>/dev/null) || push_commits=""
+  fi
+  changed=$(printf '%s\n' "$push_commits" | sed '/^$/d' \
+            | git diff-tree -r --no-commit-id --name-only --root --stdin 2>/dev/null \
+            | grep -v '/README\.md$') || changed=""
   if [ -n "$changed" ] && printf '%s\n' "$changed" | grep -Eq "$USER_PATHS"; then
-    blocked="$blocked ${branch}(USER-content)"
+    blocked="$blocked ${dest}(USER-content)"
   fi
 done
 

@@ -28,7 +28,26 @@ git checkout -q -b user/sim
 git add -A
 git commit -q -m "personal setup: identity + ACME work"
 
-echo "--- attempting push of user/sim to origin (the guard should block this) ---"
+echo "--- attempt 1: push user/sim by name to origin (the guard should block this) ---"
 git push -u origin user/sim
 echo "push exit: $?   (non-zero = guard blocked, as intended)"
+
+# Regression (2026-06-26 P0): the same private branch via `git push origin HEAD` —
+# the muscle-memory form and what the auto-end-of-work autopilot uses. git feeds the
+# hook local_ref=HEAD, which once slipped past the user/* check. Must also be blocked.
+echo "--- attempt 2: same private branch via 'git push origin HEAD' (must also block) ---"
+git push origin HEAD
+echo "push exit: $?   (non-zero = guard blocked, as intended)"
+
+# Positive control: a CORE-only sanctioned branch MUST be able to reach the upstream.
+# If it can't, the sandbox transport is dead and the no-leak assertion is vacuous —
+# assert-no-leak.sh fails loudly when this probe is missing from the bare.
+echo "--- positive control: push CORE-only ci/probe (the guard must ALLOW this) ---"
+git checkout -q main
+git checkout -q -b ci/probe
+: > .onboard-sim-probe
+git add .onboard-sim-probe
+git commit -q -m "ci: onboard-sim transport probe (CORE-only, no USER content)"
+git push -u origin ci/probe
+echo "probe push exit: $?   (zero = transport works + CORE push allowed, as intended)"
 exit 0

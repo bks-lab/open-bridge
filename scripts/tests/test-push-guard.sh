@@ -42,6 +42,25 @@ assert_allow() { # <desc> <url> <ref> [env]
   else echo "  FAIL (should allow, got exit $rc) — $desc"; FAIL=$((FAIL+1)); fi
 }
 
+# run_hook2 <remote_url> <local_ref> <remote_ref> [env]
+#   like run_hook, but feeds DIFFERENT local and remote refs — the case `git push
+#   origin HEAD` / `git push origin <sha>:refs/heads/user/x` / a detached-HEAD push
+#   produce (local_ref=HEAD or a raw sha, remote_ref=the real destination). The guard
+#   must decide on the DESTINATION (remote_ref), so these must still block.
+run_hook2() {
+  local url="$1" lref="$2" rref="$3" envp="${4:-}"
+  local zero="0000000000000000000000000000000000000000"
+  local local_sha="1111111111111111111111111111111111111111"
+  printf '%s %s %s %s\n' "$lref" "$local_sha" "$rref" "$zero" \
+    | env ${envp} bash "$HOOK" origin "$url" >/dev/null 2>&1
+  echo $?
+}
+assert_block2() { # <desc> <url> <local_ref> <remote_ref> [env]
+  local desc="$1" rc; rc=$(run_hook2 "$2" "$3" "$4" "${5:-}")
+  if [ "$rc" -ne 0 ]; then echo "  PASS (blocked) — $desc"; PASS=$((PASS+1));
+  else echo "  FAIL (should block, got exit 0) — $desc"; FAIL=$((FAIL+1)); fi
+}
+
 echo "== push-guard fixture =="
 
 # Precondition: the hook must exist and be executable (RED until implemented).
@@ -59,6 +78,13 @@ PRIV="git@github.com:obfixture-nonexistent-owner/my-private-bridge.git"
 # BLOCK: user/* to the public upstream (https + ssh forms — slug normalization)
 assert_block "user/* → public upstream (https)" "$PUB_HTTPS" "refs/heads/user/alice"
 assert_block "user/* → public upstream (ssh)"   "$PUB_SSH"   "refs/heads/user/alice"
+
+# BLOCK (regression — 2026-06-26 P0): the leak forms where local_ref != destination.
+# `git push origin HEAD` feeds local_ref=HEAD; a sha push feeds a raw sha; both land
+# the private branch as refs/heads/user/*. Keying on local_ref let these through.
+assert_block2 "git push origin HEAD (local_ref=HEAD) → user/* dest" "$PUB_HTTPS" "HEAD" "refs/heads/user/bob"
+assert_block2 "sha push (<sha>:refs/heads/user/x) → user/* dest"    "$PUB_HTTPS" "1234567890123456789012345678901234567890" "refs/heads/user/carol"
+assert_block2 "detached-HEAD push → user/* dest"                    "$PUB_SSH"   "HEAD" "refs/heads/user/dave"
 
 # ALLOW: CORE-shaped refs to the public upstream are fine (that is what open-bridge is for)
 assert_allow "feature/* → public upstream" "$PUB_HTTPS" "refs/heads/feature/onboard-mirror-guard"
