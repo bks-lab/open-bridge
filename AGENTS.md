@@ -264,7 +264,7 @@ load-bearing instead of drift-prone. USER-scoped skills never land on `main` —
 
 | Scope | Ships to | Skills |
 |-------|----------|--------|
-| `core` | open-bridge + your org overlay + local | `archive`, `bridge-audit`, `bridge-contribute`, `bridge-curator`, `bridge-dashboard`, `bridge-explorer`, `bridge-greeting`, `bridge-leak-check`, `bridge-learn`, `bridge-onboard`, `bridge-promote`, `bridge-status`, `bridge-sync`, `briefing`, `calendar`, `channel`, `dashboard`, `debrief`, `doc-system`, `github-projects-manager`, `html-canvas`, `knowledge-repo-init`, `mandants`, `project-advisor`, `remote`, `schedule`, `task-close-postmortem`, `tracker-sync` |
+| `core` | open-bridge + your org overlay + local | `archive`, `bridge-audit`, `bridge-contribute`, `bridge-curator`, `bridge-dashboard`, `bridge-explorer`, `bridge-greeting`, `bridge-leak-check`, `bridge-learn`, `bridge-onboard`, `bridge-promote`, `bridge-status`, `bridge-sync`, `briefing`, `calendar`, `channel`, `dashboard`, `debrief`, `doc-system`, `github-projects-manager`, `html-canvas`, `knowledge-repo-init`, `mandants`, `onboard-sim`, `project-advisor`, `remote`, `schedule`, `task-close-postmortem`, `tracker-sync` |
 | `org` | your org overlay + local | — |
 | `user` | local only | — |
 

@@ -1,0 +1,13 @@
+# .bridge-origin — identity of the upstream this Bridge's CORE was published from.
+#
+# Read by scripts/hooks/pre-push to decide whether a push target is the PUBLIC
+# OSS upstream — the one place your USER data (identity/agent, work/, client
+# content on a user/* branch) must never land.
+#
+# PER-REPO DIVERGENT, intentionally: the public open-bridge repo ships
+# `is_public: true`; a PRIVATE downstream (your own clone re-homed to your own
+# repo) sets `is_public: false`. Because the value differs per tier, /promote
+# and /bridge-sync must NOT overwrite this file (same convention as the
+# ecosystem self-entry and the .claude/commands tier slot).
+repo: bks-lab/open-bridge
+is_public: true

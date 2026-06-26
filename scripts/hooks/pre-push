@@ -1,0 +1,130 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# pre-push guard — never publish USER data to a PUBLIC upstream.
+#
+# Why this exists: a Bridge cloned directly from a PUBLIC upstream (e.g.
+# bks-lab/open-bridge) has `origin` pointing at that public repo. Onboarding
+# commits identity + work/ to a user/* branch; the agent's auto-end-of-work
+# cycle then pushes it — and a server-side ruleset can't stop the repo
+# owner/org-admin's own push. This client-side hook is the deterministic
+# backstop: it converts an accidental publish of your private branch into a
+# deliberate, opt-in action — for the autopilot and the human alike.
+#
+# Detection is offline-first: the push target slug is matched against a built-in
+# list + `.bridge-origin` (is_public) + bridge-config.yaml push_guard.*; only an
+# UNKNOWN remote escalates to `gh repo view --json visibility` (and unknown =>
+# allow, so private forks are never falsely blocked).
+#
+# Deliberate bypass (visible, per-push):  BRIDGE_PUSH_GUARD=off git push ...
+# Full rationale + remediation: rules/push-guard.md
+set -u
+
+REMOTE_NAME="${1:-}"
+REMOTE_URL="${2:-}"
+
+[ "${BRIDGE_PUSH_GUARD:-on}" = "off" ] && exit 0
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=$(pwd)
+
+# normalize any git remote URL to a lowercase owner/repo slug
+slug_of() {
+  printf '%s' "$1" \
+    | sed -E 's#^git@[^:]+:##; s#^ssh://git@[^/]+/##; s#^https?://[^/]+/##; s#/$##; s#\.git$##' \
+    | tr '[:upper:]' '[:lower:]'
+}
+
+# read a space-separated list under push_guard.<key> from a YAML file
+# (supports inline `key: [a, b]` and block `- a` forms; best-effort, optional)
+yaml_list() {
+  _file="$1"; _key="$2"
+  [ -f "$_file" ] || return 0
+  awk -v key="$_key" '
+    /^push_guard:/ { inpg=1; next }
+    inpg && /^[^[:space:]#]/ { inpg=0 }
+    inpg && $0 ~ "^[[:space:]]+" key ":" {
+      l=$0; sub(/^[[:space:]]*[^:]+:[[:space:]]*/, "", l)
+      if (l ~ /^\[/) { gsub(/[][,]/, " ", l); print l; ink=0; next }
+      ink=1; next
+    }
+    ink && /^[[:space:]]*-[[:space:]]*/ { v=$0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); printf "%s ", v; next }
+    ink && /^[[:space:]]*[^[:space:]-]/ { ink=0 }
+  ' "$_file" | tr -d "\"'" | tr '[:upper:]' '[:lower:]'
+}
+
+TARGET=$(slug_of "$REMOTE_URL")
+CFG="$ROOT/bridge-config.yaml"
+
+# 1) your own private remotes short-circuit to ALLOW
+for p in $(yaml_list "$CFG" private_remotes); do
+  [ "$TARGET" = "$p" ] && exit 0
+done
+
+# 2) is the target a PUBLIC upstream?  built-in + .bridge-origin + config
+PUBLIC="bks-lab/open-bridge $(yaml_list "$CFG" public_upstreams)"
+if [ -f "$ROOT/.bridge-origin" ]; then
+  ob_repo=$(sed -n 's/^repo:[[:space:]]*//p' "$ROOT/.bridge-origin" | head -1 | tr -d "\"' " | tr '[:upper:]' '[:lower:]')
+  ob_pub=$(sed -n 's/^is_public:[[:space:]]*//p' "$ROOT/.bridge-origin" | head -1 | tr -d " ")
+  [ "$ob_pub" = "true" ] && [ -n "$ob_repo" ] && PUBLIC="$PUBLIC $ob_repo"
+fi
+is_public=no
+for u in $PUBLIC; do
+  [ "$TARGET" = "$u" ] && { is_public=yes; break; }
+done
+
+# 3) unknown remote → escalate to gh (best-effort); unknown/offline ⇒ allow
+if [ "$is_public" = no ] && command -v gh >/dev/null 2>&1; then
+  vis=$(gh repo view "$TARGET" --json visibility -q .visibility 2>/dev/null)
+  [ "$vis" = "PUBLIC" ] && is_public=yes
+fi
+
+# not a public target → nothing to guard
+[ "$is_public" = yes ] || exit 0
+
+ZERO="0000000000000000000000000000000000000000"
+# USER *instance* paths only — never CORE templates (_template/_schema, examples/,
+# any _-prefixed basename). The user/* branch rule above is the primary guard;
+# this catches USER content smuggled onto a non-user branch (e.g. main).
+USER_PATHS='^(work/(log\.md|board\.md|tasks/|streams/|done/|archive/)|identity/agent/(IDENTITY|SOUL)\.md|identity/(personas|mandants|accounts)/[^_]|infra/(remotes|channels|backups)/[^_]|workflow/calendars/[^_]|bridge-config\.yaml$)'
+
+blocked=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${local_ref:-}" ] && continue
+  [ "$local_sha" = "$ZERO" ] && continue          # branch deletion — nothing pushed
+  branch=${local_ref#refs/heads/}
+  case "$branch" in
+    user/*)                              blocked="$blocked $branch"; continue ;;
+    ci/*|feature/*|promote-*|contrib-*)  continue ;;                  # sanctioned CORE refs
+  esac
+  # any other ref (e.g. main): block only if the outgoing diff carries USER content
+  if [ "$remote_sha" = "$ZERO" ]; then range="$local_sha"; else range="$remote_sha..$local_sha"; fi
+  changed=$(git diff --name-only "$range" 2>/dev/null) || changed=""
+  if [ -n "$changed" ] && printf '%s\n' "$changed" | grep -Eq "$USER_PATHS"; then
+    blocked="$blocked ${branch}(USER-content)"
+  fi
+done
+
+[ -z "$blocked" ] && exit 0
+
+cat >&2 <<EOF
+
+  ✋ Push blocked — public-upstream guard (rules/push-guard.md)
+
+     remote   $REMOTE_NAME → $TARGET   ← PUBLIC upstream
+     refs    $blocked
+
+  USER-branch content (identity/agent, work/, client data) must never land on a
+  public repo. The sanctioned path to a public upstream is a fork-based PR via
+  /promote — never a direct push of your branch.
+
+  Fix (recommended) — re-home this clone to a PRIVATE origin:
+     git remote rename origin upstream
+     gh repo create <you>/my-bridge --private --source=. --remote=origin --push
+  open-bridge then stays a read-only pull/PR upstream you /promote into.
+
+  Just evaluating? Keep user/* local — don't push at all.
+  Intentional CORE-maintainer push? Override deliberately:
+     BRIDGE_PUSH_GUARD=off git push ...
+
+EOF
+exit 1
