@@ -271,6 +271,9 @@ jobs:
       - name: Push-guard unit contract
         run: bash scripts/tests/test-push-guard.sh
 
+      - name: System-discovery scope-consent backstop
+        run: bash scripts/tests/test-system-discovery.sh
+
       - name: Onboarding leak simulation (scripted, model-free)
         run: |
           set -euo pipefail

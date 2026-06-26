@@ -234,7 +234,11 @@ Permission-gated system scan. Full details in
    — what gets scanned, what's default-on, what's opt-in, what's NEVER
    scanned. Trust-building is critical here; the user must feel in control.
 
-2. **Run scans in parallel** with live progress per source:
+2. **Run scans in parallel** with live progress per source. When invoking
+   `scripts/system-discovery.py`, pass `--broader` (its scope-consent backstop
+   refuses to scan under a confined/unset `discovery.mode`, exit code 3) along
+   with the granted `--permissions` — e.g.
+   `scripts/system-discovery.py --broader --permissions git_config,developer_dir,os_and_apps`:
    ```
    ✓ git_config (alice)
    ✓ developer (12 repos in 3 orgs)

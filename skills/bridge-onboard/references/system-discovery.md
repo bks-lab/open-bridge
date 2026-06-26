@@ -300,3 +300,24 @@ decides "actually, I do need that now" — no full re-run.
 - **Never** ask for system-level permissions outside of the explicit scan
   prompt. If a scan source needs TCC permission, mention it once in the
   permission prompt's hover-help, not as a follow-up modal.
+
+### Scope-consent backstop in `system-discovery.py`
+
+The scan script is not just LLM-driven — it enforces the confined/broader gate
+itself, so a direct or ad-hoc run can't bypass the scope-consent promise:
+
+- The script reads `discovery.mode` from `bridge-config.yaml`. When the mode is
+  `confined` (the template default), unset, or the config is absent, the script
+  **refuses to scan**: it prints a no-op `{"refused": true, …}` result and a
+  clear stderr message, and exits with code `3` (`REFUSE_EXIT`) — distinct from a
+  successful empty scan (exit `0`).
+- A scan runs only with explicit consent: `discovery.mode: broader` in the
+  config, **or** the `--broader` (alias `--force`) flag.
+- `--permissions` selects *which* sources to scan; it is **not** consent to scan
+  on its own. Under a confined/unset config, `--permissions …` alone still refuses.
+- **Any wizard / automation that runs the script for a broader scan MUST pass
+  `--broader`** (or have already written `discovery.mode: broader` to the config
+  before invoking it). The recommended invocation is:
+  `scripts/system-discovery.py --broader --permissions <granted,sources>`.
+- Contract test: `scripts/tests/test-system-discovery.sh` (run in CI's
+  `onboard-safety` job).
