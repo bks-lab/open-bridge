@@ -69,6 +69,19 @@ Decision history lives in `work/onboarding-state.yaml` (NOT gitignored
 The `feature-discovery` standing-order (active when `work.enabled:
 true`) uses the same state file to avoid double-suggesting.
 
+**Mirror-safety — check the origin before writing any private data.** Onboarding
+writes the user's identity and `work/` to a `user/{name}` branch. Before creating
+that branch (Phase A step 5), resolve where the clone pushes: `git remote get-url
+origin` (and `gh repo view --json visibility,nameWithOwner` if unsure). **If
+`origin` is a PUBLIC repo or a known upstream (e.g. `bks-lab/open-bridge`) — or
+[`.bridge-origin`](../../.bridge-origin) says `is_public: true` — STOP and advise,
+do not proceed silently.** The user's private data must not live on a public
+origin. Offer to set them up on their **own private** repo first (GitHub *Use this
+template → Private*, or re-home `origin` to a new private repo with open-bridge as
+a read-only `upstream`), then continue. Never push the `user/*` branch to a public
+origin; CORE reaches a public upstream only via `/promote`. Canonical rule:
+[`../../rules/push-guard.md`](../../rules/push-guard.md).
+
 ## Modes
 
 | Invocation | Behaviour |

@@ -171,12 +171,17 @@ After an **approved** merge: sync local clones to the default
 verified, run the cycle yourself without being asked — deploy/restart the affected
 service and verify it runs, document (STATUS.md + `work/log.md` + relevant repo
 docs), commit + push the whole `work/` folder plus your own files to the
-Feature-/USER-branch (atomic — stage only the intended paths, never sweep in
-unrelated in-flight changes), then confirm briefly (commit hashes + service state).
+Feature-/USER-branch — **but only when `origin` is a private repo you own; never
+push a `user/*` branch to a public/upstream origin** ([`push-guard.md`](push-guard.md)) —
+(atomic — stage only the intended paths, never sweep in unrelated in-flight
+changes), then confirm briefly (commit hashes + service state).
 
-**Hard gates stay** regardless of the above: no push to `main`/`development`, no
-merge, no real Prod deploy, no outward-facing action (live number, `dry_run=false`,
-secret rotation) without explicit OK.
+**Hard gates stay** regardless of the above: no push to `main`/`development`;
+**no push of a `user/*` branch (or USER content) to a PUBLIC/upstream origin** —
+gate on origin *visibility*, not just the branch name (a `user/*` push is not a
+`main` push but is the worse leak; resolve `gh repo view --json visibility` and see
+[`push-guard.md`](push-guard.md)); no merge, no real Prod deploy, no outward-facing
+action (live number, `dry_run=false`, secret rotation) without explicit OK.
 
 **Maestro exception:** a real Maestro mission (P3+) overrides the auto-commit —
 nothing the mission produces is committed or pushed until the user's **end-approval**.

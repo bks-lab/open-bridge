@@ -336,6 +336,14 @@ and USER touch disjoint paths, so merges are conflict-free by construction. Full
 table: [`docs/structure.md`](docs/structure.md).
 
 - NEVER commit secrets or credentials on any branch
+- **NEVER push a `user/*` branch (or USER content) to a PUBLIC upstream** (e.g.
+  `bks-lab/open-bridge`). Your private data lives on a **private `origin`**; CORE
+  reaches a public upstream only via `/promote` (a fork-based, content-scanned PR).
+  Cloned the public repo directly? Re-home `origin` to your own private repo (or
+  GitHub *Use this template → Private*) and keep open-bridge as a read-only
+  `upstream`. Enforced behaviourally (onboarding + auto-end-of-work) and
+  deterministically by `scripts/hooks/pre-push`. Full rule:
+  [`rules/push-guard.md`](rules/push-guard.md)
 - Layout reorgs land directly on `user/{name}` — promote later
 
 ### Multiple Instances

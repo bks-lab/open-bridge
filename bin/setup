@@ -52,4 +52,15 @@ else
     rc=1
 fi
 
+# Arm the push guard (rules/push-guard.md): route git hooks to the tracked dir so
+# scripts/hooks/pre-push blocks publishing a user/* branch to a public upstream.
+# A hook that isn't on core.hooksPath is present but NOT wired.
+if [ -d "scripts/hooks" ]; then
+    git config core.hooksPath scripts/hooks
+    chmod +x scripts/hooks/* 2>/dev/null || true
+    echo "OK  Push guard armed (core.hooksPath -> scripts/hooks)"
+else
+    echo "WARN scripts/hooks/ missing — push guard not armed"
+fi
+
 exit "$rc"

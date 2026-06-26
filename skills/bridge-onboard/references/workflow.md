@@ -87,13 +87,24 @@ A tight identity block — four questions, one branch creation.
    - Without GitHub → `~/Developer` or `~/Code` (offer both, pick what exists)
 4. **Language** — auto-detected from the user's first message; confirm
    only if ambiguous. Sets `language.conversation` and `language.artifacts`.
-5. **Create `user/{name}` branch** — your personal data lives here, CORE
-   stays clean. Run it explicitly from the core/default branch:
+5. **Check the origin, then create the `user/{name}` branch.** First resolve where
+   this clone pushes: `git remote get-url origin` (and `gh repo view --json
+   visibility,nameWithOwner` if unsure). **If `origin` is a PUBLIC repo or a known
+   upstream (e.g. `bks-lab/open-bridge`) — or `.bridge-origin` says
+   `is_public: true` — STOP.** The user's data must not live on a public origin.
+   Advise the private-origin setup (GitHub *Use this template → Private*, or re-home
+   `origin` to a new private repo with open-bridge as a read-only `upstream`) and
+   continue only once `origin` is private — or the user explicitly chooses
+   local-only and will never push. Then create the branch from the core/default
+   branch:
    ```bash
    git checkout -b user/{name}
    ```
-   (where `{name}` is the slug from step 1). Confirm the new branch is
-   checked out before writing any USER files.
+   (where `{name}` is the slug from step 1). Your personal data lives here, CORE
+   stays clean. Confirm the new branch is checked out before writing any USER
+   files. **Never push `user/{name}` to a public origin** — CORE reaches a public
+   upstream only via `/promote`. See
+   [`../../../rules/push-guard.md`](../../../rules/push-guard.md).
 
 **Upstream wiring — defer.** Keep `upstreams: []`. Mention in passing:
 "Once `bks-lab/open-bridge` (public) or your own upstream is live, wire
