@@ -8,6 +8,14 @@
 # Tier: this file is registry/org content. Personal entries that carry PII
 # (private clients, personal repos) belong in a separate ecosystem.local.yaml
 # (user scope, never promoted), loaded alongside via @ecosystem.local.yaml.
+#
+# Org-overlay fragment: when you subscribe to an org overlay (/overlay add),
+# its registry slice is materialized as a SEPARATE root file ecosystem.<org>.yaml
+# (e.g. ecosystem.example-org.yaml) and wired in via an @ecosystem.<org>.yaml
+# import appended to CLAUDE.md — it is NEVER merged into this file. That keeps
+# the overlay's entries hash-pinned and re-syncable on their own, and removable
+# cleanly on /overlay remove. Your own registry stays here; the org's plugs in
+# beside it. See docs/org-overlays.md.
 
 org: your-org
 local_root: ~/Developer/your-org          # local clones live under <local_root>/<repo>

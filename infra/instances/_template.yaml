@@ -23,6 +23,11 @@ data_policy: local-only      # local-only | private-tracked | public
 push_policy: never           # never | user-branch | upstream
 feature_flow: inbound        # none | inbound | outbound | bidirectional
 
+# Org overlays this instance subscribes to (overlay.name slugs). The
+# materialize: routing lives in bridge-config.yaml.upstreams; this only
+# records WHICH apply. Omit or [] = overlay-incapable. See docs/org-overlays.md.
+# subscribes_overlays: [example-org]
+
 # Where it pulls CORE from (if any). Routing SoT stays in bridge-config.upstreams.
 # upstream: { repo: bks-lab/open-bridge, branch: main, status: ok }
 # promote_config_ref: "bridge-config.yaml.upstreams[open-bridge]"   # for relationship=upstream

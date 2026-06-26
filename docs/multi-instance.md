@@ -52,6 +52,22 @@ licence to reach into it. The isolation hard rule
 still governs: read-only from here, operate each instance in its own
 session at its path.
 
+### Subscribing an instance to org overlays
+
+An instance can declare which org overlays it subscribes to with the optional
+`subscribes_overlays: [<name>]` field in `infra/instances/<slug>.yaml`. Each name
+matches a `role: org-overlay` upstream in that instance's `bridge-config.yaml`,
+where the actual `materialize:` block (url / ref / cache / precedence / select)
+lives — the instance file only records *which* overlays apply, never the routing.
+The separation is **per-URL and structural, not declarative**: an instance with
+`subscribes_overlays: []` (or the field omitted) is overlay-incapable — there is
+nothing to disable, the engine simply has no work and reports CORE-only. You opt
+*in* per overlay by adding its materialize block via `/overlay add`, never out.
+This keeps each instance's overlay subscriptions isolated: two instances sharing
+the same CORE upstream can subscribe to entirely different org overlays without
+their `scope:org` material ever crossing. Full guide:
+[`docs/org-overlays.md`](org-overlays.md).
+
 ## Architecture
 
 ```

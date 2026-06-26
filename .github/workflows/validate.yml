@@ -268,11 +268,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install deps for the org-overlay engine contract
+        run: |
+          pip install pyyaml
+          pipx install check-jsonschema
+
       - name: Push-guard unit contract
         run: bash scripts/tests/test-push-guard.sh
 
       - name: System-discovery scope-consent backstop
         run: bash scripts/tests/test-system-discovery.sh
+
+      - name: Org-overlay engine contract (scope routing + materialize gates)
+        run: bash scripts/tests/test-overlay.sh
 
       - name: Onboarding leak simulation (scripted, model-free)
         run: |

@@ -40,6 +40,10 @@ USER_PATTERNS = [
     r"^docs/applications\.md$",                       # personal applications feature — user-tier
     r"^bridge-config\.yaml$",
     r"^bridge-deck\.config\.yaml$",
+    r"^overlays\.lock\.yaml$",                         # generated org-overlay lockfile — local-only, never promoted
+    r"^\.bridge/",                                     # sparse org-overlay cache (.bridge/overlays/<name>/) — local-only
+    # NB: the overlay ENGINE stays core — scripts/overlay.py + docs/schemas/*
+    # match no USER/ORG pattern and fall through to CORE (ships to open-bridge).
     r"^identity/personas/(?!_(schema|template))",     # personas/<id>.yaml
     r"^identity/mandants/(?!_(schema|template))",     # mandants/<id>.yaml
     r"^identity/accounts/(?!_template)",              # accounts/<id>.yaml — instance-specific

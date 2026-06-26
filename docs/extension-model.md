@@ -137,6 +137,32 @@ a routing context, not a standing order. Create `workflow/contexts/<your-domain>
 
 ---
 
+## Downstream materialization (org overlays)
+
+The extension inventory above is the **publish** side: `/promote` reads each
+file's tier from where it lives ([`scripts/categorize-commits.py`](../scripts/categorize-commits.py))
+and routes `scope:org` content up to your org overlay, `scope:core` to
+open-bridge, `scope:user` nowhere. **Org overlays are the downstream inverse**:
+they answer how a teammate's *fresh* clone gets that `scope:org` content back —
+without cloning the whole seed and without the org content ever leaking into the
+OSS CORE.
+
+The `/overlay` skill (`bridge-overlay`, engine [`scripts/overlay.py`](../scripts/overlay.py))
+subscribes a consumer Bridge to one or more overlay repos and **materializes**
+their files into the live tree as tracked copies, each pinned to an immutable
+git SHA. Subscription state lives in two USER-tier root files — a generated
+`overlays.lock.yaml` (per-file source/materialized hashes, the drift detector)
+and a sparse `.bridge/` cache — both gitignored in a public fork. Each
+subscription is a `role: org-overlay` entry in `bridge-config.yaml.upstreams[]`
+carrying its own `materialize:` block; an instance opts in via
+`infra/instances/<slug>.yaml` `subscribes_overlays:`. The same classifier and
+scope tripwire run in both directions, so a file `/promote` routes to the org
+overlay is exactly the file `/overlay` pulls back — and exactly the file both
+refuse to let reach open-bridge. Full guide:
+[`docs/org-overlays.md`](org-overlays.md).
+
+---
+
 ## Option B — Future Plugin Extraction
 
 When the Org extension needs to be shared as a proper package, extract it

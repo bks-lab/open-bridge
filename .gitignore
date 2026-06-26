@@ -22,6 +22,15 @@
 
 # ecosystem.yaml — your real repo registry (created at onboarding, user-specific).
 /ecosystem.yaml
+
+# Org-overlay subscription state (scope: user). overlays.lock.yaml names local
+# material paths; .bridge/ is the sparse cache of materialized overlay repos.
+# Both stay local on a PUBLIC fork. A PRIVATE instance may un-ignore the lock
+# (per the OPT-IN note above, like the other USER-layer PII files) for
+# GitHub-as-offsite-backup — NEVER on a public fork. The .bridge/ cache always
+# stays ignored. See docs/org-overlays.md.
+/overlays.lock.yaml
+/.bridge/
 # Personas — tax data, signature blocks, filing destinations.
 identity/personas/*.yaml
 !identity/personas/_template.yaml
