@@ -150,8 +150,10 @@ default branch:
    `check-jsonschema --schemafile <pinned overlay-manifest.schema.yaml> overlay.manifest.yaml`
 2. **Leak + secret scan over `tree/`** — the same classes the consumer enforces:
    no raw secrets (accounts must be `*://` URI refs only), no personal PII, no
-   absolute user paths. Reuse `no-scrub-leak.py` (the consumer runs it per-file
-   on subscribe; running it at publish is the *first* line of defence).
+   absolute user paths. Reuse `no-scrub-leak.py` here at publish as the *first*
+   line of defence (the consumer's own per-file gate on subscribe is a
+   raw-secret regex — it does not re-run no-scrub-leak for org material, which
+   would false-positive on legitimate org names/emails).
 3. **Refuse-list lint** — fail if `tree/` contains any `_*.yaml`, a
    cluster-wrapper `README.md`, `identity/personas/**`, or `work/**` (the engine
    would refuse them anyway; failing at publish keeps the artifact honest).
@@ -160,7 +162,7 @@ default branch:
 
 The guard is the publisher's mirror of the consumer's Step-3/Step-9 gates:
 catching it at publish means every subscriber gets a clean artifact and the
-per-file leak gate on the consumer side stays a backstop, not the only net.
+consumer's per-file raw-secret gate stays a backstop, not the only net.
 
 ## Build-artifact discipline
 

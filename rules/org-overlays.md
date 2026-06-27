@@ -100,6 +100,20 @@ place. The lockfile records the **JSONPath of each prompted field, never the
 value** (the value may be PII). The `materialized_sha256` ≠ `source_sha256`
 inequality is the only record that a prompt happened.
 
+**Re-sync preservation (no silent clobber).** A later non-interactive re-sync
+(`--yes`) must not revert a teammate's override to the shipped default. Because
+the lock keeps **paths only**, the engine recovers the override from the on-disk
+file — but **only for a SCALAR path** (one leaf), which is unambiguous. A
+**wildcard `[*]` path** resolves to many leaves whose only cross-reference to
+disk is list position; a reordered or resized upstream list would map an
+override onto the **wrong element** (e.g. a recipient email onto the wrong
+person), so positional restore is **deliberately refused**. While the source is
+unchanged the file is skipped untouched (the override survives); a source-side
+change to a wildcard-prompted file resets it to the source value — re-run the
+prompt interactively to re-apply. A source-unchanged re-sync is a **skip**
+regardless of the recomputed hash, so an override is never overwritten on the
+common path.
+
 ## Gate 8 — behavioural files need an explicit `[y]`
 
 A `kind` of `skill`, `agent`, or `standing-order` is behavioural: it requires an

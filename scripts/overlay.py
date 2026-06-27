@@ -116,6 +116,7 @@ RAW_SECRET_PATTERNS = [
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),           # Slack token
     re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"),                    # OpenAI-style key
     re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),  # JWT
+    re.compile(r"AccountKey=[A-Za-z0-9+/]{20,}={0,2}"),        # Azure conn-string key
 ]
 # password:/secret:/token: assignments to a literal that is NOT a URI ref
 # Anchored to a YAML-key position (^\s*, optional list dash) so the heuristic
@@ -129,7 +130,7 @@ RAW_SECRET_PATTERNS = [
 RAW_ASSIGN = re.compile(
     r"(?i)^\s*(?:-\s+)?(password|passwd|passphrase|secret|api[_-]?key|"
     r"client[_-]?secret|token|bearer|credential|webhook[_-]?secret|sas[_-]?token|"
-    r"access[_-]?key|private[_-]?key)\b\s*[:=]\s*['\"]?([^\s'\"#]{8,})"
+    r"totp[_-]?secret|mfa[_-]?seed|access[_-]?key|private[_-]?key)\b\s*[:=]\s*['\"]?([^\s'\"#]{8,})"
 )
 
 
@@ -786,23 +787,29 @@ def inject_prompt_fields(content: bytes, prompt_fields: list[dict],
             continue
         if not interactive:
             # Non-interactive (--yes / apply / re-sync): preserve an existing
-            # on-disk override at this path rather than reverting to the source
-            # default (Gate 2 — never a silent clobber). A fresh add has no
-            # existing file, so the shipped default stands. Aligned by position;
-            # if the structure diverged (count mismatch) keep the source default.
-            if edata is not None:
+            # on-disk override at this path instead of reverting to the source
+            # default (Gate 2 — no silent clobber). SCALAR paths ONLY: a path
+            # that resolves to exactly one leaf can be recovered from disk
+            # unambiguously. A wildcard [*] path resolves to many leaves whose
+            # only cross-reference to the on-disk file is list POSITION, and the
+            # lock stores PATHS only (never the value), so a reordered/resized
+            # upstream list would map an override onto the WRONG element (e.g. a
+            # recipient email onto the wrong person). A multi-valued override is
+            # therefore NOT positionally restored: while the source is unchanged
+            # the file is skipped untouched (discriminator), and a source-side
+            # change resets it to the source value — re-run interactively to
+            # re-apply. A fresh add has no existing file, so the default stands.
+            if edata is not None and len(refs) == 1:
                 try:
                     erefs = list(jsonpath_refs(edata, path))
                 except OverlayError:
                     erefs = []
-                if erefs and len(erefs) == len(refs):
-                    restored = False
-                    for (container, key, current), (_, _, eprev) in zip(refs, erefs):
-                        if eprev is not None and eprev != current:
-                            container[key] = eprev
-                            changed = True
-                            restored = True
-                    if restored:
+                if len(erefs) == 1:
+                    container, key, current = refs[0]
+                    _, _, eprev = erefs[0]
+                    if eprev is not None and eprev != current:
+                        container[key] = eprev
+                        changed = True
                         prompted.append(path)
             continue
         recorded = False

@@ -152,13 +152,18 @@ the supplied value.
 
 ### 9 — Per-file leak gate (BEFORE write)
 
+A **raw-secret regex** runs on the staged temp (accounts must carry **only**
+`azure-keyvault://` / `keychain://` / `1password://` URI references). The
+`no-scrub-leak.py` CORE-boundary scan runs **only when the materialize target is
+itself `core`** — an org overlay writes `scope:org`, never core, so it is not
+run there (core-leak protection lives at the consumer's push boundary):
+
 ```bash
+# only when target == core (never reached for an org overlay):
 python3 scripts/no-scrub-leak.py <staged-temp-file>
 ```
 
-plus a raw-secret regex on the staged temp (accounts must carry **only**
-`azure-keyvault://` / `keychain://` / `1password://` URI references). A hit
-**refuses THAT file**, surfaces it, and **continues** with the rest of the
+A hit **refuses THAT file**, surfaces it, and **continues** with the rest of the
 plan. One poisoned file never aborts the whole sync.
 
 ### 10 — Scope tripwire

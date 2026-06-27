@@ -23,9 +23,13 @@
 #   - schema validation (malformed manifest aborts add; example validates)
 #   - effective scope classifier coverage (every example dest → org/user)
 #   - prompt-field override survives a re-sync — source-unchanged (skip) AND
-#     source-changed (re-materialize): no silent clobber, lock keeps PATHS only
-#   - leak gate refuses a real ALL-CAPS secret (base32 TOTP / uppercase-hex) at a
-#     covered key; URI / ${var} / comment / prose pass (security-regression unit)
+#     source-changed (re-materialize) for SCALAR paths: no silent clobber, lock
+#     keeps PATHS only
+#   - leak gate refuses a real ALL-CAPS secret (base32 TOTP / uppercase-hex),
+#     totp_secret/mfa_seed keys, and an Azure AccountKey= conn-string; URI /
+#     ${var} / comment / prose pass (security-regression unit)
+#   - a wildcard [*] override NEVER cross-wires to the wrong list element on a
+#     roster reorder (positional restore is refused for multi-valued paths)
 #
 # Run:  bash scripts/tests/test-overlay.sh        (exits non-zero on any failure)
 set -u
@@ -474,6 +478,9 @@ refused = (
     chk(b"  secret: JBSWY3DPEHPK3PXP\n")            # base32 TOTP seed — all-caps
     and chk(b"  password: A1B2C3D4E5F6A7B8C9D0\n")  # uppercase-hex key
     and chk(b"  api_key: aB3xK9mNpQrS\n")           # mixed-case secret
+    and chk(b"  totp_secret: JBSWY3DPEHPK3PXP\n")   # totp_secret key (widened dict)
+    and chk(b"  mfa_seed: ABCDEF1234567890\n")      # mfa_seed key (widened dict)
+    and chk(b"  conn: Endpoint=x;AccountKey=A1B2C3D4E5F6+/aBcD1234eFgH==;\n")  # Azure conn-string
 )
 passes = (
     not chk(b'  api_key: "${ELASTIC_API_KEY}"\n')   # ${var} reference
@@ -485,6 +492,71 @@ print("OK" if (refused and passes) else "FAIL")
 PY
 )"
 assert_eq "all-caps secrets refused; URI/\${}/comment/prose pass" "$SECCHK" "OK"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 18. wildcard [*] override never cross-wires on a roster reorder ──"
+CON="$(mkcon)"
+OV="$(mktemp -d "$TMP/ovwild.XXXXXX")"
+mkdir -p "$OV/tree/identity/mandants"
+cat > "$OV/overlay.manifest.yaml" <<'YAML'
+schema_version: 1
+overlay:
+  name: wl
+  org: wl
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt
+selection:
+  include: ["**"]
+  exclude: ["**/_*.yaml", "**/README.md"]
+files:
+  - dest: identity/mandants/team.yaml
+    kind: config
+    prompt_fields:
+      - path: "$.persons[*].channels.email"
+        reason: "recipient emails"
+        pii: true
+YAML
+cat > "$OV/tree/identity/mandants/team.yaml" <<'YAML'
+scope: org
+persons:
+  - name: Lead
+    channels:
+      email: lead-SRC@org.test
+  - name: Dev
+    channels:
+      email: dev-SRC@org.test
+YAML
+git_overlay "$OV" wl-init
+# interactive add overrides BOTH emails (PII wildcard → one prompt per person)
+OUT="$(printf 'lead-REAL@org.test\ndev-REAL@org.test\n' | python3 "$OVERLAY" --repo-root "$CON" add "file://$OV" --name wl 2>&1)"; RC=$?
+assert_rc "add with wildcard PII overrides succeeds" 0
+assert_grep "Lead override materialized" "$CON/identity/mandants/team.yaml" "lead-REAL@org.test"
+# upstream REORDERS the roster (Dev first), then a non-interactive re-sync
+cat > "$OV/tree/identity/mandants/team.yaml" <<'YAML'
+scope: org
+persons:
+  - name: Dev
+    channels:
+      email: dev-SRC@org.test
+  - name: Lead
+    channels:
+      email: lead-SRC@org.test
+YAML
+git -C "$OV" add -A; git -C "$OV" -c user.email=t@t -c user.name=t commit -qm reorder >/dev/null 2>&1
+run_overlay "$CON" sync wl --yes
+assert_rc "re-sync after a roster reorder succeeds" 0
+# the override must NEVER land on the wrong person (no positional cross-wire)
+XW="$(python3 - "$CON/identity/mandants/team.yaml" <<'PY'
+import yaml, sys
+d = yaml.safe_load(open(sys.argv[1]))
+by = {p["name"]: p["channels"]["email"] for p in d["persons"]}
+print("CROSS-WIRED" if ("lead-REAL" in by.get("Dev", "") or "dev-REAL" in by.get("Lead", "")) else "SAFE")
+PY
+)"
+assert_eq "wildcard override never cross-wires to the wrong person" "$XW" "SAFE"
 
 # ───────────────────────────────────────────────────────────────────
 echo

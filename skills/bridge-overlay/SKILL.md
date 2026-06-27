@@ -77,9 +77,11 @@ live in `references/workflow.md`.
    requires an **explicit per-file `[y]`** at first materialize (shown in the
    preview). config / rule files batch-confirm. `--yes` is valid
    non-interactively for **non-behavioural** files only.
-4. **Leak gate BEFORE write.** Every staged file passes `no-scrub-leak.py` +
-   a raw-secret regex (accounts = `azure-keyvault://` / `keychain://` /
-   `1password://` URI refs only) on the staged temp file. A hit refuses
+4. **Leak gate BEFORE write.** Every staged file passes a **raw-secret regex**
+   (accounts = `azure-keyvault://` / `keychain://` / `1password://` URI refs
+   only) on the staged temp file; the `no-scrub-leak.py` CORE-boundary scan runs
+   only when the materialize target is itself `core` (never for an org overlay —
+   its org names/emails are not a leak). A hit refuses
    **that file**, surfaces it, and continues the rest.
 5. **Never clobber a user edit.** A locally-modified dest goes through 3-way
    merge (overlay = lower layer, user = upper). Markers / a GC'd base escalate
