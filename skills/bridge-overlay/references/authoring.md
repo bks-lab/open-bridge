@@ -130,6 +130,14 @@ Notes:
 - `kind: skill|agent|standing-order` = **behavioural** → the consumer sees an
   explicit per-file `[y]`; `--yes` can't auto-accept it. `kind: config|rule` =
   batch-confirmable.
+- **Prompt-fields are for per-CONSUMER values only** (a subscription GUID, the
+  consumer's own board). NEVER mark a **shared org fact** — a GitHub board number,
+  an org recipient email — as a `prompt_field`: it is identical for every consumer,
+  so it must mirror **verbatim** (just ship it, no `files[]` entry). Mis-modelling
+  an org fact as a prompt-field is a real footgun: under `--yes`/automation (or a
+  fat-fingered `y` at the value prompt) the confirm token gets written into the
+  field — and it's valid YAML, so parse/CI checks sail right past the corruption. A
+  consumer who must diverge edits the file locally; the 3-way merge keeps that edit.
 
 ### The ecosystem fragment
 
@@ -187,6 +195,38 @@ consumer.** The whole point is that every member materializes the *same* files.
   consumers subscribe to both with distinct `precedence` — don't fork the tree
   into per-team conditionals.
 
+## Portability — genericize a cut from a personal instance
+
+Config genericizes cleanly (URI refs, no machine paths). **Skills and agents do
+not** — they were authored on *your* Bridge and quietly carry your world. The
+export step must scrub three classes the leak scan won't catch (they aren't
+secrets, so a secret scan passes them):
+
+- **Foreign-instance content.** A skill that names another Bridge instance you run
+  (a different org/customer instance, its contexts, its routing defaults) ships that
+  instance into every member's bridge. Strip it; default the skill to *this*
+  instance's own contexts. Deleting the symptom config file is **not** enough — grep
+  the skill bodies (`SKILL.md`, `references/`, `scripts/`) for the foreign name, and
+  watch for an executable default that now dangles (e.g. `CONTEXTS="${VAR:-mine theirs}"`).
+- **Author-local absolute paths.** A `/Users/<you>/…` or `~/Developer/<your-layout>`
+  path baked into a script as a **default** resolves to nothing on a member's
+  machine. Anchor scripts to *the shipping repo* via `BASH_SOURCE`
+  (`REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"`), not a
+  hardcoded path; keep the env override. **Exception:** paths inside a runtime
+  launchd/systemd **unit** are per-host — the member re-provisions those (see below).
+- **Build artifacts.** Running a script during export creates `__pycache__/*.pyc`
+  (and `.DS_Store`, …). A broad `git add tree/` then sweeps them into the overlay —
+  stale, interpreter-version-pinned bytecode that every member materializes.
+  Gitignore them in the overlay repo (`__pycache__/`, `*.pyc`, `*.pyo`, `.DS_Store`).
+
+**Portable tool vs runtime service.** A knowledge/process skill (email templates,
+log queries, an admin CLI) is portable — ship it. A skill that *is* a deployed
+service bound to a specific host (a transcription pipeline, a dashboard daemon with
+its launchd plists and machine paths) is runtime the member re-provisions; ship it
+if you want, but **say so in the SKILL** — don't present a host-bound service as
+turnkey. The host binding is an accepted per-member boundary; foreign-instance
+content and author-path *defaults* are not.
+
 ## Checklist before you publish
 
 - [ ] `overlay.manifest.yaml` validates against the pinned schema
@@ -194,7 +234,15 @@ consumer.** The whole point is that every member materializes the *same* files.
 - [ ] No `_*.yaml`, wrapper `README.md`, `identity/personas/**`, or `work/**` in `tree/`
 - [ ] Accounts carry only `azure-keyvault://` / `keychain://` / `1password://` refs
 - [ ] Behavioural files (`skill`/`agent`/`standing-order`) tagged in `files[]`
-- [ ] Placeholders + `prompt_fields[]` set for anything a consumer must complete
+- [ ] Placeholders + `prompt_fields[]` set for anything a consumer must complete —
+      and **no shared org fact** (board number, recipient email) is a prompt-field
+- [ ] Skills/agents carry no **foreign-instance** content, no **author-local path
+      defaults** (anchor scripts via `BASH_SOURCE`), no `__pycache__`/`*.pyc`
+- [ ] Host-bound runtime skills are labelled as such (member re-provisions)
 - [ ] `ecosystem.<org>.yaml` present iff `ecosystem_fragment` is declared
 - [ ] `publish-guard.yml` green
 - [ ] `tree/` was **exported** from the org Bridge, not hand-edited
+- [ ] **Smoke-tested before publish:** materialized into a throwaway vanilla
+      consumer (`/overlay add file://<repo> --name test` on a `user/*` branch) →
+      `clean=N` / `conflict=0` / `0 leak-refused` / `0 user-owned`, org facts real,
+      and `git add -A` stages nothing
