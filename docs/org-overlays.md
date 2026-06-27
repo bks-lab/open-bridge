@@ -357,9 +357,10 @@ load-bearing order, condensed:
 8. **Prompt fields** — JSONPath-lite into the staged YAML; prompt where the
    value still equals the shipped placeholder (`pii: true` masks it); record
    **paths** only.
-9. **Leak gate BEFORE write** — `scripts/no-scrub-leak.py` plus a raw-secret
-   regex on the staged temp file; a hit refuses **that** file and continues the
-   rest.
+9. **Leak gate BEFORE write** — a raw-secret regex on the staged temp file (the
+   `scripts/no-scrub-leak.py` CORE-boundary scan runs only when the target is
+   itself `core`, never for an org overlay); a hit refuses **that** file and
+   continues the rest.
 10. **Scope tripwire** — verify or inject inline `scope: org`.
 11. **Behavioural gate** — skill / agent / standing-order require an explicit
     per-file `[y]` at first materialize; config and rule files batch-confirm.

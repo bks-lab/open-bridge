@@ -34,7 +34,10 @@ Safety model:
   - never materialize off a user/* branch (CORE branches stay clean)
   - HARD-REFUSE a dest that classifies CORE, is `_`-prefixed, is a wrapper
     README/_template/_schema, or path-escapes the repo root
-  - leak gate (no-scrub-leak + raw-secret regex) runs BEFORE every write
+  - the raw-secret regex runs BEFORE every write; the no-scrub-leak
+    CORE-boundary scan runs ONLY when the materialize target is itself core
+    (an org overlay never writes core — core-leak protection lives at the
+    consumer's push boundary + scope tiering, not at materialization)
   - behavioural files (skill/agent/standing-order) force a per-file [y]
   - the lock stores prompted-field PATHS only, never the user's values
   - writes are atomic COPIES (never symlinks); --dry-run stops before any write
@@ -115,8 +118,17 @@ RAW_SECRET_PATTERNS = [
     re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),  # JWT
 ]
 # password:/secret:/token: assignments to a literal that is NOT a URI ref
+# Anchored to a YAML-key position (^\s*, optional list dash) so the heuristic
+# fires on an actual assignment — not a secret word mid-prose or a trailing
+# comment. NOTE the anchor deliberately leaves a secret inside a flow-map
+# ({k: v}) or block scalar to the high-precision RAW_SECRET_PATTERNS above
+# (which scan the whole line) — un-anchoring would false-positive on every doc
+# comment. A placeholder/NAME value is NOT skipped by shape (an ALL-CAPS skip
+# would pass base32 TOTP seeds + uppercase-hex keys); only a URI ref or ${var}
+# is treated as a non-secret, so placeholders must be expressed as references.
 RAW_ASSIGN = re.compile(
-    r"(?i)\b(password|passwd|secret|api[_-]?key|client[_-]?secret|token|"
+    r"(?i)^\s*(?:-\s+)?(password|passwd|passphrase|secret|api[_-]?key|"
+    r"client[_-]?secret|token|bearer|credential|webhook[_-]?secret|sas[_-]?token|"
     r"access[_-]?key|private[_-]?key)\b\s*[:=]\s*['\"]?([^\s'\"#]{8,})"
 )
 
@@ -639,40 +651,59 @@ def dest_refusal(dest: str, content: bytes, consumer: Consumer,
 # Leak gate (step 9)
 # ---------------------------------------------------------------------------
 
-def leak_check(content: bytes) -> list[str]:
-    """Return a list of leak reasons; empty == clean."""
+def leak_check(content: bytes, target_scope: str = "org") -> list[str]:
+    """Return a list of leak reasons; empty == clean.
+
+    The no-scrub-leak scanner answers a CORE-boundary question ("would this leak
+    into public core?"). That is the wrong layer for overlay materialization: an
+    overlay legitimately lands org content — team names, org emails — into a
+    consumer's org/user tier. The public-leak boundary is enforced where it
+    belongs: at PUSH time (the consumer's pre-push guard) and by scope tiering
+    (org/user never reach a core/public upstream); CORE dests are already refused
+    upstream at Gate 1. So the core scanner runs ONLY when the materialize target
+    is itself `core` (which overlays never do). The raw-secret regex runs
+    unconditionally — a raw secret is never written to disk, even privately.
+    """
     reasons: list[str] = []
-    # 1) delegate to no-scrub-leak.py on a temp file (its builtin classes run
-    #    regardless of where the file lives).
-    fd, tmp = tempfile.mkstemp(prefix="overlay-leak-", suffix=".yaml")
-    try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(content)
-        proc = subprocess.run(
-            [sys.executable, NO_SCRUB_LEAK, tmp],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        )
-        if proc.returncode == 1:
-            detail = (proc.stderr or proc.stdout).strip().splitlines()
-            reasons.append("no-scrub-leak: " + "; ".join(
-                ln.strip() for ln in detail if ln.strip())[:400])
-        elif proc.returncode not in (0, 1):
-            reasons.append(f"no-scrub-leak gate errored (exit {proc.returncode})")
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-    # 2) raw-secret regex (accounts = URI refs only).
+    # 1) core-boundary scanner (no-scrub-leak) — only when writing a CORE file.
+    if target_scope == "core":
+        fd, tmp = tempfile.mkstemp(prefix="overlay-leak-", suffix=".yaml")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(content)
+            proc = subprocess.run(
+                [sys.executable, NO_SCRUB_LEAK, tmp],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            if proc.returncode == 1:
+                detail = (proc.stderr or proc.stdout).strip().splitlines()
+                reasons.append("no-scrub-leak: " + "; ".join(
+                    ln.strip() for ln in detail if ln.strip())[:400])
+            elif proc.returncode not in (0, 1):
+                reasons.append(f"no-scrub-leak gate errored (exit {proc.returncode})")
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    # 2) raw-secret scan. High-precision format patterns scan the whole line (a
+    #    real key is a leak even in a comment). The generic key:value heuristic
+    #    only fires on an actual YAML assignment — never a prose mention, a
+    #    trailing comment, a documented secret NAME, or an all-caps placeholder —
+    #    which would otherwise false-positive on the doc comments that fill real
+    #    org config.
     text = content.decode("utf-8", errors="ignore")
-    for line in text.splitlines():
+    for raw_line in text.splitlines():
         for pat in RAW_SECRET_PATTERNS:
-            if pat.search(line):
-                reasons.append(f"raw secret material: {line.strip()[:60]}")
+            if pat.search(raw_line):
+                reasons.append(f"raw secret material: {raw_line.strip()[:60]}")
                 break
-        m = RAW_ASSIGN.search(line)
-        if m:
-            value = m.group(2)
-            if not value.startswith(SECRET_URI_PREFIXES) and "${" not in value:
-                reasons.append(f"raw secret assignment: {line.strip()[:60]}")
+        code = raw_line.split("#", 1)[0]            # drop trailing comment
+        m = RAW_ASSIGN.search(code)
+        if not m:
+            continue
+        value = m.group(2)
+        if value.startswith(SECRET_URI_PREFIXES) or "${" in value:
+            continue
+        reasons.append(f"raw secret assignment: {code.strip()[:60]}")
     return reasons
 
 
@@ -711,10 +742,18 @@ def inject_scope_tripwire(dest: str, content: bytes, kind: str,
 # ---------------------------------------------------------------------------
 
 def inject_prompt_fields(content: bytes, prompt_fields: list[dict],
-                         interactive: bool) -> tuple[bytes, list[str]]:
-    """Prompt for declared fields where the value is still a placeholder.
+                         interactive: bool,
+                         existing: bytes | None = None) -> tuple[bytes, list[str]]:
+    """Inject prompt-field values into the staged content.
 
-    Returns (possibly-edited bytes, list-of-prompted-PATHS). Records PATHS only.
+    Interactive: prompt the human. Non-interactive (--yes / apply / re-sync):
+    preserve any existing on-disk override at the field's path rather than
+    reverting to the shipped source default — so a teammate's customized board
+    number / recipient email survives a re-sync (Gate 2: never a silent clobber).
+    A fresh add has no existing file, so the source default stands.
+
+    Returns (possibly-edited bytes, list-of-prompted/preserved PATHS). The lock
+    records PATHS only, never the value.
     """
     if not prompt_fields:
         return content, []
@@ -724,6 +763,13 @@ def inject_prompt_fields(content: bytes, prompt_fields: list[dict],
         return content, []  # not YAML — nothing to inject
     if not isinstance(data, (dict, list)):
         return content, []
+    edata = None
+    if existing is not None:
+        try:
+            ed = yaml.safe_load(existing)
+            edata = ed if isinstance(ed, (dict, list)) else None
+        except yaml.YAMLError:
+            edata = None
     prompted: list[str] = []
     changed = False
     for pf in prompt_fields:
@@ -739,7 +785,25 @@ def inject_prompt_fields(content: bytes, prompt_fields: list[dict],
         if not refs:
             continue
         if not interactive:
-            # dry-run / --yes: keep placeholder, do not record (no edit made).
+            # Non-interactive (--yes / apply / re-sync): preserve an existing
+            # on-disk override at this path rather than reverting to the source
+            # default (Gate 2 — never a silent clobber). A fresh add has no
+            # existing file, so the shipped default stands. Aligned by position;
+            # if the structure diverged (count mismatch) keep the source default.
+            if edata is not None:
+                try:
+                    erefs = list(jsonpath_refs(edata, path))
+                except OverlayError:
+                    erefs = []
+                if erefs and len(erefs) == len(refs):
+                    restored = False
+                    for (container, key, current), (_, _, eprev) in zip(refs, erefs):
+                        if eprev is not None and eprev != current:
+                            container[key] = eprev
+                            changed = True
+                            restored = True
+                    if restored:
+                        prompted.append(path)
             continue
         recorded = False
         for container, key, current in refs:
@@ -881,10 +945,22 @@ def build_plan(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
             continue
         it.source_sha = sha256_bytes(it.source_bytes)
 
+        # Existing on-disk content — passed to prompt-field injection so a
+        # non-interactive re-sync preserves a teammate's override instead of
+        # reverting to the source default (only for an already-managed file;
+        # a fresh add keeps the shipped default).
+        dest_abs = os.path.join(consumer.root, it.dest)
+        existing = None
+        if it.dest in lock_files and os.path.exists(dest_abs):
+            try:
+                with open(dest_abs, "rb") as fh:
+                    existing = fh.read()
+            except OSError:
+                existing = None
         # Stage: scope tripwire + prompt-field injection.
         staged = inject_scope_tripwire(it.dest, it.source_bytes, it.kind, scope)
         staged, prompted = inject_prompt_fields(staged, it.prompt_fields,
-                                                interactive)
+                                                interactive, existing)
         it.staged_bytes = staged
         it.materialized_sha = sha256_bytes(staged)
         it.prompted_fields = prompted
@@ -897,8 +973,9 @@ def build_plan(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
             it.reason = refusal
             continue
 
-        # Step 9 — leak gate (before any write).
-        leaks = leak_check(staged)
+        # Step 9 — leak gate (before any write). Org/user materialization keeps
+        # only the raw-secret check; the core-boundary scan runs at push time.
+        leaks = leak_check(staged, scope)
         if leaks:
             it.state = "leak-refused"
             it.reason = "; ".join(leaks)[:300]
@@ -922,8 +999,14 @@ def build_plan(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
             it.state = "clean-new"  # was materialized, user deleted → restore
             continue
         if live_sha == prev_mat:
-            if it.source_sha == prev_src and it.materialized_sha == prev_mat:
-                it.state = "skip"            # idempotent — nothing changed
+            # Source unchanged ⇒ nothing upstream to apply: keep the on-disk file
+            # (which carries any prompt-field override) + the lock entry. We do
+            # NOT also require materialized_sha == prev_mat: a non-interactive
+            # re-sync does not re-inject prompts, so the recomputed materialized
+            # hash reverts to the source default — treating that as upstream-ahead
+            # would silently clobber a teammate's override (violates Gate 2).
+            if it.source_sha == prev_src:
+                it.state = "skip"            # idempotent — source unchanged
             else:
                 it.state = "upstream-ahead"  # source moved, local untouched
             continue

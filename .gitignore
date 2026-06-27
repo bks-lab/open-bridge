@@ -51,6 +51,20 @@ workflow/contexts/*.yaml
 workflow/calendars/*.yaml
 !workflow/calendars/_template.yaml
 !workflow/calendars/_schema.yaml
+# Project boards — GitHub Project numbers/field maps (org/instance-specific).
+# (overlay materialization destination — must be ignored on a public fork.)
+workflow/projects/*.yaml
+!workflow/projects/_template.yaml
+!workflow/projects/_schema.yaml
+# Remotes — machine inventory (hostnames, IPs, services).
+infra/remotes/*.yaml
+!infra/remotes/_template.yaml
+!infra/remotes/_schema.yaml
+# Org-namespaced rules + the org ecosystem fragment — overlay-materialized,
+# org-internal. (rules/*.md at the repo root are CORE and stay tracked.)
+rules/org/**
+/ecosystem.*.yaml
+!/ecosystem.example.yaml
 # ---------------------------------------------------------------------------
 
 # Doc-system audit log — concrete filenames + persona refs = PII.

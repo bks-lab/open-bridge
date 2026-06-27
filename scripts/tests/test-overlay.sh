@@ -22,6 +22,10 @@
 #   - multi-overlay precedence (higher wins; lock owner) + CORE-only separation
 #   - schema validation (malformed manifest aborts add; example validates)
 #   - effective scope classifier coverage (every example dest → org/user)
+#   - prompt-field override survives a re-sync — source-unchanged (skip) AND
+#     source-changed (re-materialize): no silent clobber, lock keeps PATHS only
+#   - leak gate refuses a real ALL-CAPS secret (base32 TOTP / uppercase-hex) at a
+#     covered key; URI / ${var} / comment / prose pass (security-regression unit)
 #
 # Run:  bash scripts/tests/test-overlay.sh        (exits non-zero on any failure)
 set -u
@@ -404,6 +408,83 @@ print("OK" if not bad else "BAD:" + ",".join(bad))
 PY
 )"
 assert_eq "every example dest classifies org/user (never core)" "$CLS" "OK"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 16. prompt-field override survives a re-sync (no silent clobber) ─"
+CON="$(mkcon)"
+OV="$(mktemp -d "$TMP/ovpf.XXXXXX")"
+mkdir -p "$OV/tree/workflow/projects"
+cat > "$OV/overlay.manifest.yaml" <<'YAML'
+schema_version: 1
+overlay:
+  name: pf
+  org: pf
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt
+selection:
+  include: ["**"]
+  exclude: ["**/_*.yaml", "**/README.md"]
+files:
+  - dest: workflow/projects/pf.yaml
+    kind: config
+    prompt_fields:
+      - path: "$.project.number"
+        reason: "board number (org/instance-specific)"
+YAML
+cat > "$OV/tree/workflow/projects/pf.yaml" <<'YAML'
+scope: org
+project:
+  number: 1
+  name: PF
+YAML
+git_overlay "$OV" pf-init
+# interactive add — a teammate overrides the board number to 999
+OUT="$(printf '999\n' | python3 "$OVERLAY" --repo-root "$CON" add "file://$OV" --name pf 2>&1)"; RC=$?
+assert_rc "add with an interactive override succeeds" 0
+assert_grep "override 999 materialized" "$CON/workflow/projects/pf.yaml" "999"
+assert_grep "lock records the prompted PATH" "$CON/overlays.lock.yaml" "project.number"
+assert_nogrep "lock never stores the override VALUE" "$CON/overlays.lock.yaml" "999"
+# re-sync, source unchanged, non-interactive — must NOT revert to the default
+run_overlay "$CON" sync pf --yes
+assert_rc "re-sync (source unchanged) succeeds" 0
+assert_out "unchanged source is a skip, not upstream-ahead" "skipped=1"
+assert_grep "override 999 PRESERVED across the re-sync" "$CON/workflow/projects/pf.yaml" "999"
+assert_nogrep "did NOT revert to the source default" "$CON/workflow/projects/pf.yaml" "number: 1"
+assert_grep "lock still records the prompted PATH" "$CON/overlays.lock.yaml" "project.number"
+# source changes a DIFFERENT field — the override must survive the re-materialize
+sed -i.bak 's/name: PF/name: PF-RENAMED/' "$OV/tree/workflow/projects/pf.yaml" && rm -f "$OV/tree/workflow/projects/pf.yaml.bak"
+git -C "$OV" add -A; git -C "$OV" -c user.email=t@t -c user.name=t commit -qm v2 >/dev/null 2>&1
+run_overlay "$CON" sync pf --yes
+assert_rc "re-sync after a source change succeeds" 0
+assert_grep "source change (rename) applied" "$CON/workflow/projects/pf.yaml" "PF-RENAMED"
+assert_grep "override 999 STILL preserved across a source change" "$CON/workflow/projects/pf.yaml" "999"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 17. leak gate — real all-caps secret refused (security unit) ────"
+SECCHK="$(python3 - "$OVERLAY" <<'PY'
+import importlib.util, sys
+s = importlib.util.spec_from_file_location("o", sys.argv[1])
+m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+chk = lambda b: bool(m.leak_check(b, "org"))
+refused = (
+    chk(b"  secret: JBSWY3DPEHPK3PXP\n")            # base32 TOTP seed — all-caps
+    and chk(b"  password: A1B2C3D4E5F6A7B8C9D0\n")  # uppercase-hex key
+    and chk(b"  api_key: aB3xK9mNpQrS\n")           # mixed-case secret
+)
+passes = (
+    not chk(b'  api_key: "${ELASTIC_API_KEY}"\n')   # ${var} reference
+    and not chk(b"  token: keychain://acct/x\n")        # URI reference
+    and not chk(b"  # secret: SOME_NAME in a comment\n") # comment, not an assignment
+    and not chk(b"  note: see Token: ephemeral zone\n")  # prose, not an assignment
+)
+print("OK" if (refused and passes) else "FAIL")
+PY
+)"
+assert_eq "all-caps secrets refused; URI/\${}/comment/prose pass" "$SECCHK" "OK"
 
 # ───────────────────────────────────────────────────────────────────
 echo

@@ -75,8 +75,14 @@ and `/promote` can never carry it to open-bridge.
 
 ## Gate 5 — leak gate BEFORE write
 
-Before any file is written, run [`scripts/no-scrub-leak.py`](../scripts/no-scrub-leak.py)
-plus a raw-secret regex on the **staged temp file**. A hit refuses **that** file,
+Before any file is written, a **raw-secret regex** runs on the **staged temp
+file**. The [`scripts/no-scrub-leak.py`](../scripts/no-scrub-leak.py)
+CORE-boundary scan runs **only when the materialize target is itself `core`** —
+an org overlay's content is `scope:org` and never writes core, so the org-internal
+team names and org emails that are the *normal substance* of org config are not
+treated as a leak. Core-leak protection lives where it belongs: the consumer's
+pre-push guard + scope tiering (org/user never reach a core/public upstream), and
+Gate 1 already refuses a CORE dest. A raw-secret hit refuses **that** file,
 surfaces it, and continues with the rest — one poisoned file never aborts the
 whole sync, and a poisoned file never reaches disk.
 
