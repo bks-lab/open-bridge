@@ -634,11 +634,32 @@ def read_manifest(cache: str) -> tuple[dict, str]:
     return manifest, digest
 
 
+FRAGMENT_NAME_RE = re.compile(r"^ecosystem\.[a-z][a-z0-9-]*\.yaml$")
+
+
+def valid_fragment_name(frag: object) -> bool:
+    """An ecosystem fragment must be a flat `ecosystem.<org>.yaml` at the repo
+    root. This forecloses traversal / `_`-prefix / subdir / arbitrary-name writes
+    that would otherwise reach `os.path.join(consumer.root, fragment)` plus a
+    CLAUDE.md @import. Enforced in-engine so it holds even on a consumer WITHOUT
+    the optional check-jsonschema. See test-overlay.sh §22."""
+    return isinstance(frag, str) and bool(FRAGMENT_NAME_RE.match(frag))
+
+
 def validate_manifest(cache: str) -> None:
     schema = os.path.join(SCRIPT_DIR, "..", "docs", "schemas",
                           "overlay-manifest.schema.yaml")
     schema = os.path.normpath(schema)
     manifest = os.path.join(cache, MANIFEST_FILE)
+    # In-engine guard that must hold regardless of check-jsonschema availability:
+    # a declared ecosystem_fragment must be a flat ecosystem.<org>.yaml name.
+    _mdata = load_yaml_file(manifest)
+    if isinstance(_mdata, dict):
+        _frag = _mdata.get("ecosystem_fragment")
+        if _frag is not None and not valid_fragment_name(_frag):
+            raise OverlayError(
+                f"ecosystem_fragment '{_frag}' is not a valid 'ecosystem.<org>.yaml' "
+                f"name (no traversal / subdir / arbitrary names)")
     if shutil.which("check-jsonschema") and os.path.exists(schema):
         proc = subprocess.run(
             ["check-jsonschema", "--schemafile", schema, manifest],
@@ -676,6 +697,18 @@ def manifest_defaults(manifest: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 CLUSTER_WRAPPERS = ("identity/", "infra/", "workflow/")
+
+# Paths where the framework treats frontmatter `scope:` as authoritative
+# (classify_file reads frontmatter ONLY for these). Inline/resolved scope may
+# RESCUE a core-classified dest here — and ONLY here. Everywhere else path
+# classification is final, so a `scope: org` line in overlay-controlled content
+# cannot smuggle a CORE file (rules/, docs/, scripts/, CLAUDE.md, themes/,
+# protocols/standing-orders/*, …) past the gate. See test-overlay.sh §21.
+FRONTMATTER_SCOPED = (
+    re.compile(r"^skills/[^/]+/"),
+    re.compile(r"^\.claude/agents/[^/]+\.md$"),
+    re.compile(r"^identity/agent/(IDENTITY|SOUL)\.md$"),
+)
 
 
 def staged_scope(content: bytes) -> str | None:
@@ -733,9 +766,15 @@ def dest_refusal(dest: str, content: bytes, consumer: Consumer,
     # Cluster-wrapper README is CORE.
     if base == "README.md" and dest.startswith(CLUSTER_WRAPPERS):
         return "cluster-wrapper README (CORE)"
-    # Effective scope: inline staged scope wins, then a caller-resolved scope
-    # (e.g. a skill script inheriting its source SKILL.md tier), else path-based.
-    scope = staged_scope(content) or resolved_scope or classify_file(dest)
+    # Effective scope. Path classification is AUTHORITATIVE for a CORE dest:
+    # inline/resolved scope may only rescue it on a frontmatter-bearing path
+    # (skills/agents/identity), where the framework reads frontmatter anyway —
+    # otherwise a `scope: org` line in overlay-controlled content could smuggle a
+    # CORE file past the gate and overwrite it. (test-overlay.sh §21)
+    path_class = classify_file(dest)
+    if path_class == "core" and not any(p.match(dest) for p in FRONTMATTER_SCOPED):
+        return "classifies CORE (org overlays never ship CORE files)"
+    scope = staged_scope(content) or resolved_scope or path_class
     if scope == "core":
         return "classifies CORE (org overlays never ship CORE files)"
     # Ownership across overlays — a lower-precedence overlay cannot override a
@@ -1323,6 +1362,14 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
 
     # Ecosystem fragment (step 13).
     fragment = manifest.get("ecosystem_fragment")
+    if fragment and not valid_fragment_name(fragment):
+        # Defense-in-depth: validate_manifest already rejects this at add, but
+        # guard the actual write so sync/apply can never land an out-of-name
+        # fragment (traversal / arbitrary name / CLAUDE.md @import).
+        sys.stderr.write(
+            f"  REFUSE ecosystem_fragment '{fragment}': not a valid "
+            f"ecosystem.<org>.yaml name\n")
+        fragment = None
     if fragment:
         frag_src = os.path.join(cache, fragment)
         if os.path.exists(frag_src):

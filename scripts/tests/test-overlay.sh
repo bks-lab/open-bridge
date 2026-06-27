@@ -675,6 +675,67 @@ assert_nogrep "exclude block removed on remove" "$CON/.git/info/exclude" "overla
 
 # ───────────────────────────────────────────────────────────────────
 echo
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 21. CORE-refusal is path-authoritative (inline scope can't smuggle CORE) ──"
+# Unit-drive dest_refusal: a CORE-path dest carrying an inline `scope: org` line
+# must STILL be refused — otherwise an overlay overwrites rules/, docs/, scripts/,
+# CLAUDE.md, …  Frontmatter-bearing paths (skills/agents/identity) stay rescuable
+# so a real org skill/agent still ships (skill-completeness, §19).
+refusal() {  # <dest> <content> → prints the refusal reason, or ALLOWED
+  python3 - "$ROOT" "$1" "$2" <<'PY'
+import importlib.util, os, sys, tempfile
+repo, dest, content = sys.argv[1], sys.argv[2], sys.argv[3].encode()
+spec = importlib.util.spec_from_file_location("ov", os.path.join(repo, "scripts", "overlay.py"))
+ov = importlib.util.module_from_spec(spec); spec.loader.exec_module(ov)
+c = ov.Consumer(tempfile.mkdtemp())
+print(ov.dest_refusal(dest, content, c, {"overlays": {}}, "t", 0) or "ALLOWED")
+PY
+}
+CORE_REASON="classifies CORE (org overlays never ship CORE files)"
+ORGFM="---
+scope: org
+---
+x"
+assert_eq "inline scope:org cannot smuggle a rules/ CORE file" "$(refusal "rules/git-hygiene.md" "$ORGFM")" "$CORE_REASON"
+assert_eq "inline scope:org cannot smuggle CLAUDE.md"          "$(refusal "CLAUDE.md" "$ORGFM")"           "$CORE_REASON"
+assert_eq "inline scope:org cannot smuggle the engine itself"  "$(refusal "scripts/overlay.py" "$ORGFM")"   "$CORE_REASON"
+assert_eq "a scope:org SKILL.md still ships (carve-out, not over-refused)" "$(refusal "skills/bks-coordinator/SKILL.md" "---
+metadata:
+  scope: org
+---
+x")" "ALLOWED"
+assert_eq "a scope:org sub-agent still ships (carve-out, not over-refused)" "$(refusal ".claude/agents/bks-coordinator.md" "$ORGFM")" "ALLOWED"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 22. ecosystem_fragment name guarded in-engine (no check-jsonschema dep) ──"
+# The ^ecosystem.<org>.yaml$ name must be enforced even on a consumer WITHOUT the
+# optional check-jsonschema — else a bad-named fragment is written at repo root and
+# @import-wired into CLAUDE.md (instruction injection).
+fragcheck() {  # <fragment-name> → REFUSED | OK
+  python3 - "$ROOT" "$1" <<'PY'
+import importlib.util, os, sys, tempfile
+repo, frag = sys.argv[1], sys.argv[2]
+spec = importlib.util.spec_from_file_location("ov", os.path.join(repo, "scripts", "overlay.py"))
+ov = importlib.util.module_from_spec(spec); spec.loader.exec_module(ov)
+ov.shutil.which = lambda *_a, **_k: None   # simulate a consumer WITHOUT check-jsonschema
+d = tempfile.mkdtemp()
+with open(os.path.join(d, ov.MANIFEST_FILE), "w") as fh:
+    fh.write("schema_version: 1\noverlay: {name: x, org: x}\n"
+             f"ecosystem_fragment: {frag}\n")
+try:
+    ov.validate_manifest(d); print("OK")
+except ov.OverlayError:
+    print("REFUSED")
+PY
+}
+assert_eq "a bad ecosystem_fragment name aborts even without check-jsonschema" "$(fragcheck "NOT-an-ecosystem.yaml")" "REFUSED"
+assert_eq "a traversal ecosystem_fragment aborts even without check-jsonschema" "$(fragcheck "../escape.yaml")" "REFUSED"
+assert_eq "a valid ecosystem.<org>.yaml fragment name still passes" "$(fragcheck "ecosystem.acme.yaml")" "OK"
+
+# ───────────────────────────────────────────────────────────────────
+echo
 echo "════════════════════════════════════════════════════════════════"
 echo "RESULT: $PASS passed, $FAIL failed"
 echo "════════════════════════════════════════════════════════════════"

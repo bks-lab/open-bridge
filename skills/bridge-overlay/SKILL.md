@@ -98,10 +98,13 @@ live in `references/workflow.md`.
 
 1. **Refuse off `user/*`.** CORE branches (`main` / `development`) **never**
    materialize. An overlay writes USER-tier files onto a user branch only.
-2. **CORE-refusal.** Never materialize a dest that classifies `core`, is
-   `_`-prefixed, is a cluster-wrapper `README.md`, is a `_template`/`_schema`,
-   or path-escapes the tree. An overlay ships `scope: org` content only —
-   it can never overwrite CORE.
+2. **CORE-refusal (path-authoritative).** Never materialize a dest that
+   classifies `core`, is `_`-prefixed, is a cluster-wrapper `README.md`, is a
+   `_template`/`_schema`, or path-escapes the tree. **Path classification wins:**
+   an inline `scope: org` line can only re-tier a dest on a frontmatter-bearing
+   path (`skills/`, `.claude/agents/`, `identity/agent/{IDENTITY,SOUL}`) — it can
+   never smuggle a CORE file (`rules/`, `docs/`, `scripts/`, `CLAUDE.md`, …) past
+   the gate. An overlay ships `scope: org` content only — it can never overwrite CORE.
 3. **Behavioural per-file `[y]`.** A `skill` / `agent` / `standing-order`
    requires an **explicit per-file `[y]`** at first materialize (shown in the
    preview). config / rule files batch-confirm. `--yes` is valid
@@ -154,7 +157,7 @@ behaviour.** Run before every commit:
 bash scripts/tests/test-overlay.sh        # must end "N passed, 0 failed"
 ```
 
-The suite's 19 sections assert, among others:
+The suite's 21 sections assert, among others:
 
 - subscribe + materialize (every dest exists · inline `scope: org` · lock hashes);
   idempotent re-apply; dry-run writes nothing; `remove` restores a clean tree
@@ -167,6 +170,11 @@ The suite's 19 sections assert, among others:
   literal in a `.py` is caught)
 - **§19 a `scope:org` skill ships COMPLETE** — its scripts materialize (inherit the
   SKILL.md tier), never CORE-refused
+- **§21 CORE-refusal is path-authoritative** — an inline `scope: org` on a core
+  path (`rules/`, `CLAUDE.md`, `scripts/`) is still refused; a real org
+  SKILL.md/agent still ships (the carve-out doesn't over-refuse)
+- **§22 ecosystem_fragment name** is enforced in-engine (flat `ecosystem.<org>.yaml`)
+  even on a consumer without check-jsonschema
 
 **When carrying skills/agents in a real overlay**, also smoke-test a full
 materialize before you publish — `add --dry-run` then `status` — and confirm
