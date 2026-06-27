@@ -120,6 +120,25 @@ live in `references/workflow.md`.
 7. **Never auto-merge config.** The ecosystem fragment is wired as an
    idempotent `@ecosystem.<org>.yaml` `@import` line — never block-merged into
    `ecosystem.yaml`. No config file is structurally merged.
+8. **Gitignore the managed dests.** At materialize, the engine writes a marked,
+   idempotent `# >>> overlay:<name>` block into `.gitignore` listing every
+   managed dest — because skills/agents land in **tracked** paths (`skills/`,
+   `.claude/agents/`) that config patterns don't cover, and a fork of a public
+   repo is itself public: without this, a `git add -A` would publish org-internal
+   content. The block is dropped on `remove`. Org content is consumed, never
+   re-committed.
+
+## Authoring note — org facts mirror VERBATIM, not as prompt-fields
+
+A `prompt_field` in the manifest marks a value a **consumer may override** (it is
+prompted interactively; under `--yes` the source value is kept). Do **not** mark a
+**shared org fact** — a GitHub board number, an org recipient email — as a
+prompt-field: it is the same for every consumer, so it must mirror **verbatim**.
+Mis-modelling an org fact as a prompt-field is a real footgun (an automated/`--yes`
+run, or a fat-fingered `y` at the value prompt, silently overwrites the org fact —
+and it is valid YAML, so parse checks sail past it). Reserve prompt-fields for
+genuinely per-consumer values; ship org facts plain. A consumer that must diverge
+edits the file locally — the 3-way merge protects that edit on re-sync.
 
 ## Testing (required) — the engine is test-locked
 

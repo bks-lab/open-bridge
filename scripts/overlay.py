@@ -425,6 +425,70 @@ class Consumer:
         if len(kept) != len(lines):
             atomic_write_bytes(self.claude_md, "".join(kept).encode("utf-8"))
 
+    # --- gitignore guard for managed dests --------------------------------
+    def _gitignore_markers(self, overlay_name: str) -> tuple[str, str]:
+        return (f"# >>> overlay:{overlay_name} (managed by scripts/overlay.py — do not edit) >>>",
+                f"# <<< overlay:{overlay_name} <<<")
+
+    def _strip_gitignore_block(self, text: str, begin: str, end: str) -> str:
+        if begin not in text:
+            return text
+        out: list[str] = []
+        skip = False
+        for ln in text.splitlines(keepends=True):
+            s = ln.strip()
+            if s == begin:
+                skip = True
+                continue
+            if skip:
+                if s == end:
+                    skip = False
+                continue
+            out.append(ln)
+        return "".join(out)
+
+    def ensure_gitignore_block(self, overlay_name: str, dests: list, dry: bool) -> bool:
+        """Keep overlay-materialized org content OUT of git. A fork of a public
+        repo is itself public, so a `git add -A` must not be able to stage org
+        files that landed in TRACKED paths (skills/, .claude/agents/) — the
+        config dests are typically pattern-ignored, but skills/agents are not.
+        Writes a marked, idempotent block listing every managed dest, rooted at
+        the repo top so it matches from the repo root only."""
+        begin, end = self._gitignore_markers(overlay_name)
+        body = [begin,
+                "# overlay-materialized org content — NEVER commit it: a fork of a",
+                "# public repo is itself public, and these are org-internal files.",
+                "# Dropped automatically on `overlay remove`.",
+                *(f"/{d}" for d in sorted(set(dests))),
+                end]
+        block = "\n".join(body) + "\n"
+        path = os.path.join(self.root, ".gitignore")
+        existing = ""
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                existing = fh.read()
+        stripped = self._strip_gitignore_block(existing, begin, end)
+        if stripped and not stripped.endswith("\n"):
+            stripped += "\n"
+        new = stripped + ("\n" if stripped.strip() else "") + block
+        if new == existing:
+            return False
+        if dry:
+            return True
+        atomic_write_bytes(path, new.encode("utf-8"))
+        return True
+
+    def drop_gitignore_block(self, overlay_name: str) -> None:
+        begin, end = self._gitignore_markers(overlay_name)
+        path = os.path.join(self.root, ".gitignore")
+        if not os.path.exists(path):
+            return
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        new = self._strip_gitignore_block(text, begin, end)
+        if new != text:
+            atomic_write_bytes(path, new.encode("utf-8"))
+
     # --- fleet record -----------------------------------------------------
     def self_instance_path(self) -> str | None:
         inst_dir = os.path.join(self.root, "infra", "instances")
@@ -1256,6 +1320,14 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
                 f"  WARN   manifest declares ecosystem_fragment '{fragment}' "
                 f"but it is absent from the overlay\n")
 
+    # Gitignore guard (step 14): keep overlay-materialized org content OUT of
+    # git so a fork (public by default) can't publish it via `git add -A`.
+    ig_dests = [fl["dest"] for fl in file_locks]
+    if fragment:
+        ig_dests.append(fragment)
+    if ig_dests and consumer.ensure_gitignore_block(overlay_name, ig_dests, dry):
+        print(f"  .gitignore ← {len(ig_dests)} managed dests (overlay:{overlay_name})")
+
     # Lockfile (step 15).
     if not dry:
         prev_entry = (lock.get("overlays") or {}).get(overlay_name)
@@ -1628,6 +1700,9 @@ def cmd_remove(consumer: Consumer, args) -> int:
                         os.remove(fp)
             except OverlayError:
                 pass
+        # Drop the gitignore guard block (files are being removed).
+        if not args.keep_files:
+            consumer.drop_gitignore_block(name)
         # Drop cache.
         if os.path.isdir(cache):
             shutil.rmtree(cache, ignore_errors=True)

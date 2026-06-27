@@ -33,6 +33,9 @@
 #     roster reorder (positional restore is refused for multi-valued paths)
 #   - a scope:org SKILL ships COMPLETE — its scripts inherit the SKILL.md tier
 #     and materialize, never CORE-refused (§19)
+#   - the overlay gitignores its managed dests (skills/agents land in tracked
+#     paths) so a public fork can't `git add -A`-publish org content; the block
+#     is dropped on remove (§20)
 #
 # Run:  bash scripts/tests/test-overlay.sh        (exits non-zero on any failure)
 set -u
@@ -614,6 +617,52 @@ assert_file "SKILL.md materialized" "$CON/skills/demo-skill/SKILL.md"
 assert_file "the skill SCRIPT materialized (inherits SKILL.md tier, not core-refused)" "$CON/skills/demo-skill/scripts/run.py"
 assert_grep "script recorded in the lock" "$CON/overlays.lock.yaml" "skills/demo-skill/scripts/run.py"
 assert_grep "skill carries scope:org" "$CON/skills/demo-skill/SKILL.md" "scope: org"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 20. overlay gitignores its managed dests (public-fork add -A guard) ─"
+CON="$(mkcon)"
+OV="$(mktemp -d "$TMP/ovgi.XXXXXX")"
+mkdir -p "$OV/tree/skills/demo-skill/scripts"
+cat > "$OV/overlay.manifest.yaml" <<'YAML'
+schema_version: 1
+overlay:
+  name: gi
+  org: gi
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt
+selection:
+  include: ["**"]
+  exclude: ["**/_*.yaml", "**/README.md"]
+YAML
+cat > "$OV/tree/skills/demo-skill/SKILL.md" <<'MD'
+---
+name: demo-skill
+description: A demo skill.
+metadata:
+  scope: org
+---
+# Demo
+MD
+echo 'print("x")' > "$OV/tree/skills/demo-skill/scripts/run.py"
+git_overlay "$OV" gi-init
+run_overlay "$CON" add "file://$OV" --name gi
+assert_rc "add succeeds" 0
+assert_grep ".gitignore carries the managed block" "$CON/.gitignore" "overlay:gi"
+assert_grep ".gitignore lists the skill SKILL.md dest" "$CON/.gitignore" "/skills/demo-skill/SKILL.md"
+assert_grep ".gitignore lists the skill SCRIPT dest" "$CON/.gitignore" "/skills/demo-skill/scripts/run.py"
+# git must ACTUALLY ignore the materialized skill → git add -A cannot stage it
+if ( cd "$CON" && git check-ignore -q skills/demo-skill/scripts/run.py ); then
+  pass "git ignores the materialized skill script (add -A can't publish org content)"
+else
+  fail "git does NOT ignore the materialized skill script — public-fork leak"
+fi
+# remove drops the managed block
+run_overlay "$CON" remove gi
+assert_rc "remove succeeds" 0
+assert_nogrep "gitignore block removed on remove" "$CON/.gitignore" "overlay:gi"
 
 # ───────────────────────────────────────────────────────────────────
 echo
