@@ -49,6 +49,35 @@ Read the referenced file ONLY when triggered.
 - Pushing YOUR changes upstream (`/promote`, `/bridge-sync`)
 - One-off file copies with no ongoing subscription (just copy the file)
 
+## What an overlay carries
+
+An overlay ships an org's `scope: org` building blocks as a flat `tree/` mirror —
+**config AND tools**, so one git-URL is a *complete* org bridge, not just config:
+
+| Group | Path | Kind | Gate |
+|---|---|---|---|
+| Contexts / projects / mandants / accounts | `workflow/` · `identity/` | config | batch-confirm |
+| Remotes / shared infra | `infra/` | config | batch-confirm |
+| Org rules | `rules/org/**` | rule | batch-confirm |
+| **Org skills (complete)** | `skills/<name>/**` | skill | **per-file `[y]`** |
+| **Org sub-agents** | `.claude/agents/<name>.md` | agent | **per-file `[y]`** |
+| Ecosystem fragment | `ecosystem.<org>.yaml` | ecosystem-fragment | `@import` |
+
+**Skills ship COMPLETE.** A skill is a directory: `SKILL.md` declares the tier in
+its `metadata.scope`; the sibling `scripts/`, `references/`, `assets/` carry no
+inline scope and **inherit the tier of their SKILL.md** (resolved from the overlay
+SOURCE, so a fresh `add` ships the scripts too — they are NOT refused as CORE).
+A markdown-only skill and a script-bearing skill both transfer whole.
+
+**Don't ship framework as org.** A skill/agent that already exists in the
+consumer's CORE (e.g. a generic `bridge-*` tool, or a `scope:core` sub-agent like
+`archivist`) must NOT be in the overlay — it collides (`user-owned`) and would
+clobber the canonical core copy. Carry only what is genuinely org-specific; leave
+framework to the framework. The CORE-refusal gate stops anything that classifies
+`core`, but a core tool mis-tagged `scope: org` in the source slips that gate — so
+exclude it at authoring time (the publish guard + a `user-owned` count in
+`status` are the backstops).
+
 ## The 7 commands (`/overlay <cmd>`)
 
 | Command | What it does |
@@ -91,6 +120,37 @@ live in `references/workflow.md`.
 7. **Never auto-merge config.** The ecosystem fragment is wired as an
    idempotent `@ecosystem.<org>.yaml` `@import` line — never block-merged into
    `ecosystem.yaml`. No config file is structurally merged.
+
+## Testing (required) — the engine is test-locked
+
+The engine `scripts/overlay.py` is covered by **`scripts/tests/test-overlay.sh`**
+(deterministic, model-free — it drives the REAL engine against a throwaway copy of
+the tree). **Any engine change MUST keep the suite green AND add a case for the new
+behaviour.** Run before every commit:
+
+```bash
+bash scripts/tests/test-overlay.sh        # must end "N passed, 0 failed"
+```
+
+The suite's 19 sections assert, among others:
+
+- subscribe + materialize (every dest exists · inline `scope: org` · lock hashes);
+  idempotent re-apply; dry-run writes nothing; `remove` restores a clean tree
+- 3-way merge (clean + conflict) · precedence · **CORE-refusal** · path-traversal
+- **§16 prompt-field override survives a re-sync** — scalar restore, no silent
+  clobber; **§18 a wildcard `[*]` override never cross-wires** to the wrong element
+- **§17 leak gate** — real secrets (base32/hex, `AccountKey=`, `totp_secret`)
+  refused; URI / `${}` / comment / prose pass; **code files** skip the assignment
+  heuristic but still get the format scan (`api_key = get()` passes, an `AKIA…`
+  literal in a `.py` is caught)
+- **§19 a `scope:org` skill ships COMPLETE** — its scripts materialize (inherit the
+  SKILL.md tier), never CORE-refused
+
+**When carrying skills/agents in a real overlay**, also smoke-test a full
+materialize before you publish — `add --dry-run` then `status` — and confirm
+**zero `user-owned`** (no framework skill rode along), **zero `leak-refused`**, and
+every skill's `scripts/` present on disk. A `user-owned` count > 0 means a CORE
+tool is mis-tagged in the overlay; pull it out.
 
 ## Decision Tree
 

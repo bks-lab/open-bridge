@@ -615,8 +615,28 @@ def staged_scope(content: bytes) -> str | None:
     return None
 
 
+def skill_dir_scope(cache: str, source_root: str, dest: str) -> str | None:
+    """Tier of a file UNDER a skill dir, resolved from that skill's SOURCE
+    SKILL.md. A skill's scripts/ + assets/ carry no inline scope, and
+    classify_file reads the sibling SKILL.md relative to the CONSUMER root —
+    absent during a fresh add — so it would default to CORE and the script would
+    be refused, materializing the skill WITHOUT its scripts. The source SKILL.md
+    (already in the overlay cache) carries the real scope, so a `scope:org` skill
+    ships COMPLETE."""
+    m = re.match(r"^skills/([^/]+)/(.+)$", dest)
+    if not m or m.group(2) == "SKILL.md":
+        return None
+    md = os.path.join(cache, source_root.rstrip("/"), "skills", m.group(1), "SKILL.md")
+    try:
+        with open(md, "rb") as fh:
+            return staged_scope(fh.read())
+    except OSError:
+        return None
+
+
 def dest_refusal(dest: str, content: bytes, consumer: Consumer,
-                 lock: dict, overlay_name: str, precedence: int) -> str | None:
+                 lock: dict, overlay_name: str, precedence: int,
+                 resolved_scope: str | None = None) -> str | None:
     """Return a refusal reason for `dest`, or None if it may be materialized."""
     # Path traversal — dest must resolve strictly under the repo root.
     if os.path.isabs(dest) or dest.startswith("~"):
@@ -631,8 +651,9 @@ def dest_refusal(dest: str, content: bytes, consumer: Consumer,
     # Cluster-wrapper README is CORE.
     if base == "README.md" and dest.startswith(CLUSTER_WRAPPERS):
         return "cluster-wrapper README (CORE)"
-    # Effective scope: inline staged scope wins, else path-based classification.
-    scope = staged_scope(content) or classify_file(dest)
+    # Effective scope: inline staged scope wins, then a caller-resolved scope
+    # (e.g. a skill script inheriting its source SKILL.md tier), else path-based.
+    scope = staged_scope(content) or resolved_scope or classify_file(dest)
     if scope == "core":
         return "classifies CORE (org overlays never ship CORE files)"
     # Ownership across overlays — a lower-precedence overlay cannot override a
@@ -652,7 +673,7 @@ def dest_refusal(dest: str, content: bytes, consumer: Consumer,
 # Leak gate (step 9)
 # ---------------------------------------------------------------------------
 
-def leak_check(content: bytes, target_scope: str = "org") -> list[str]:
+def leak_check(content: bytes, target_scope: str = "org", dest: str = "") -> list[str]:
     """Return a list of leak reasons; empty == clean.
 
     The no-scrub-leak scanner answers a CORE-boundary question ("would this leak
@@ -692,17 +713,29 @@ def leak_check(content: bytes, target_scope: str = "org") -> list[str]:
     #    which would otherwise false-positive on the doc comments that fill real
     #    org config.
     text = content.decode("utf-8", errors="ignore")
+    # The generic key=value heuristic is for config (YAML/env/properties). Code
+    # files assign secret-named variables from EXPRESSIONS (api_key = get_key(),
+    # token = os.environ[...]) that are not literals — running the heuristic there
+    # only false-positives. Code still gets the high-precision format scan, which
+    # catches a real key (AKIA…, ghp_…) wherever it appears.
+    is_code = dest.endswith((
+        ".py", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".go", ".rb", ".rs",
+        ".java", ".kt", ".c", ".h", ".cpp", ".cs", ".php", ".sh", ".bash",
+        ".zsh", ".ps1", ".psm1", ".lua", ".pl", ".swift", ".sql"))
     for raw_line in text.splitlines():
         for pat in RAW_SECRET_PATTERNS:
             if pat.search(raw_line):
                 reasons.append(f"raw secret material: {raw_line.strip()[:60]}")
                 break
+        if is_code:
+            continue                                # format scan only on code
         code = raw_line.split("#", 1)[0]            # drop trailing comment
         m = RAW_ASSIGN.search(code)
         if not m:
             continue
         value = m.group(2)
-        if value.startswith(SECRET_URI_PREFIXES) or "${" in value:
+        # URI ref, ${var}, or a function-call/expression (has `(`) is not a literal.
+        if value.startswith(SECRET_URI_PREFIXES) or "${" in value or "(" in value:
             continue
         reasons.append(f"raw secret assignment: {code.strip()[:60]}")
     return reasons
@@ -972,9 +1005,11 @@ def build_plan(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
         it.materialized_sha = sha256_bytes(staged)
         it.prompted_fields = prompted
 
-        # Step 5 — CORE / structural / ownership refusal.
-        refusal = dest_refusal(it.dest, staged, consumer, lock,
-                               overlay_name, precedence)
+        # Step 5 — CORE / structural / ownership refusal. A skill's non-frontmatter
+        # files (scripts/assets) inherit the tier of their source SKILL.md so a
+        # scope:org skill ships COMPLETE, not just its markdown.
+        refusal = dest_refusal(it.dest, staged, consumer, lock, overlay_name,
+                               precedence, skill_dir_scope(cache, source_root, it.dest))
         if refusal:
             it.state = "core-refused"
             it.reason = refusal
@@ -982,7 +1017,7 @@ def build_plan(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
 
         # Step 9 — leak gate (before any write). Org/user materialization keeps
         # only the raw-secret check; the core-boundary scan runs at push time.
-        leaks = leak_check(staged, scope)
+        leaks = leak_check(staged, scope, it.dest)
         if leaks:
             it.state = "leak-refused"
             it.reason = "; ".join(leaks)[:300]

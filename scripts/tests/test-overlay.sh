@@ -27,9 +27,12 @@
 #     keeps PATHS only
 #   - leak gate refuses a real ALL-CAPS secret (base32 TOTP / uppercase-hex),
 #     totp_secret/mfa_seed keys, and an Azure AccountKey= conn-string; URI /
-#     ${var} / comment / prose pass (security-regression unit)
+#     ${var} / comment / prose pass; CODE files skip the assignment heuristic
+#     (api_key=get()) but still get the format scan (AKIA in a .py caught)
 #   - a wildcard [*] override NEVER cross-wires to the wrong list element on a
 #     roster reorder (positional restore is refused for multi-valued paths)
+#   - a scope:org SKILL ships COMPLETE — its scripts inherit the SKILL.md tier
+#     and materialize, never CORE-refused (§19)
 #
 # Run:  bash scripts/tests/test-overlay.sh        (exits non-zero on any failure)
 set -u
@@ -488,7 +491,16 @@ passes = (
     and not chk(b"  # secret: SOME_NAME in a comment\n") # comment, not an assignment
     and not chk(b"  note: see Token: ephemeral zone\n")  # prose, not an assignment
 )
-print("OK" if (refused and passes) else "FAIL")
+# code-aware: the key=value heuristic does not run on code files (it would
+# false-positive on `api_key = get_key()`), but the format scan still does.
+codechk = lambda b, d: bool(m.leak_check(b, "org", d))
+code_ok = (
+    not codechk(b"api_key = os.environ.get('X')\n", "s.py")        # code: function call
+    and not codechk(b"token = fetch_token(args.hf_token)\n", "s.py")  # code: function call
+    and codechk(b'aws = "AKIA1234567890ABCDEF"\n', "s.py")         # format secret in CODE still caught
+    and codechk(b"api_key: realLiteralValue123\n", "c.yaml")       # config literal still caught
+)
+print("OK" if (refused and passes and code_ok) else "FAIL")
 PY
 )"
 assert_eq "all-caps secrets refused; URI/\${}/comment/prose pass" "$SECCHK" "OK"
@@ -557,6 +569,51 @@ print("CROSS-WIRED" if ("lead-REAL" in by.get("Dev", "") or "dev-REAL" in by.get
 PY
 )"
 assert_eq "wildcard override never cross-wires to the wrong person" "$XW" "SAFE"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 19. a scope:org skill ships COMPLETE (scripts inherit SKILL.md) ─"
+CON="$(mkcon)"
+OV="$(mktemp -d "$TMP/ovskill.XXXXXX")"
+mkdir -p "$OV/tree/skills/demo-skill/scripts"
+cat > "$OV/overlay.manifest.yaml" <<'YAML'
+schema_version: 1
+overlay:
+  name: sk
+  org: sk
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt
+selection:
+  include: ["**"]
+  exclude: ["**/_*.yaml", "**/README.md"]
+YAML
+cat > "$OV/tree/skills/demo-skill/SKILL.md" <<'MD'
+---
+name: demo-skill
+description: A demo skill for overlay testing.
+metadata:
+  scope: org
+---
+# Demo
+MD
+# a script with NO inline scope + a line that LOOKS like a secret assignment but
+# is a function call (the leak gate must not false-positive on code).
+cat > "$OV/tree/skills/demo-skill/scripts/run.py" <<'PY'
+import os
+api_key = os.environ.get("DEMO_API_KEY")
+token = fetch_token(args.hf_token)
+print(api_key, token)
+PY
+git_overlay "$OV" sk-init
+run_overlay "$CON" add "file://$OV" --name sk
+assert_rc "add a skill-with-scripts succeeds" 0
+assert_out "add reports no refusals" "clean=2"
+assert_file "SKILL.md materialized" "$CON/skills/demo-skill/SKILL.md"
+assert_file "the skill SCRIPT materialized (inherits SKILL.md tier, not core-refused)" "$CON/skills/demo-skill/scripts/run.py"
+assert_grep "script recorded in the lock" "$CON/overlays.lock.yaml" "skills/demo-skill/scripts/run.py"
+assert_grep "skill carries scope:org" "$CON/skills/demo-skill/SKILL.md" "scope: org"
 
 # ───────────────────────────────────────────────────────────────────
 echo
