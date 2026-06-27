@@ -120,12 +120,15 @@ live in `references/workflow.md`.
 7. **Never auto-merge config.** The ecosystem fragment is wired as an
    idempotent `@ecosystem.<org>.yaml` `@import` line — never block-merged into
    `ecosystem.yaml`. No config file is structurally merged.
-8. **Gitignore the managed dests.** At materialize, the engine writes a marked,
-   idempotent `# >>> overlay:<name>` block into `.gitignore` listing every
-   managed dest — because skills/agents land in **tracked** paths (`skills/`,
+8. **Exclude the managed dests from git.** At materialize, the engine writes a
+   marked, idempotent `# >>> overlay:<name>` block into the **local, untracked**
+   `.git/info/exclude` (never the tracked `.gitignore`) listing every managed
+   dest — because skills/agents land in **tracked** paths (`skills/`,
    `.claude/agents/`) that config patterns don't cover, and a fork of a public
-   repo is itself public: without this, a `git add -A` would publish org-internal
-   content. The block is dropped on `remove`. Org content is consumed, never
+   repo is itself public: without this a `git add -A` would publish org-internal
+   content. Using `.git/info/exclude` keeps the dests ignored **without** touching
+   any tracked file, so neither the content nor the org filenames can be
+   published. The block is dropped on `remove`. Org content is consumed, never
    re-committed.
 
 ## Authoring note — org facts mirror VERBATIM, not as prompt-fields

@@ -33,9 +33,10 @@
 #     roster reorder (positional restore is refused for multi-valued paths)
 #   - a scope:org SKILL ships COMPLETE — its scripts inherit the SKILL.md tier
 #     and materialize, never CORE-refused (§19)
-#   - the overlay gitignores its managed dests (skills/agents land in tracked
-#     paths) so a public fork can't `git add -A`-publish org content; the block
-#     is dropped on remove (§20)
+#   - the overlay excludes its managed dests via the UNTRACKED .git/info/exclude
+#     (skills/agents land in tracked paths) so a public fork can't `git add -A`-
+#     publish org content OR its filenames; .gitignore is untouched; dropped on
+#     remove (§20)
 #
 # Run:  bash scripts/tests/test-overlay.sh        (exits non-zero on any failure)
 set -u
@@ -620,7 +621,7 @@ assert_grep "skill carries scope:org" "$CON/skills/demo-skill/SKILL.md" "scope: 
 
 # ───────────────────────────────────────────────────────────────────
 echo
-echo "── 20. overlay gitignores its managed dests (public-fork add -A guard) ─"
+echo "── 20. overlay excludes managed dests via UNTRACKED .git/info/exclude ─"
 CON="$(mkcon)"
 OV="$(mktemp -d "$TMP/ovgi.XXXXXX")"
 mkdir -p "$OV/tree/skills/demo-skill/scripts"
@@ -650,19 +651,27 @@ echo 'print("x")' > "$OV/tree/skills/demo-skill/scripts/run.py"
 git_overlay "$OV" gi-init
 run_overlay "$CON" add "file://$OV" --name gi
 assert_rc "add succeeds" 0
-assert_grep ".gitignore carries the managed block" "$CON/.gitignore" "overlay:gi"
-assert_grep ".gitignore lists the skill SKILL.md dest" "$CON/.gitignore" "/skills/demo-skill/SKILL.md"
-assert_grep ".gitignore lists the skill SCRIPT dest" "$CON/.gitignore" "/skills/demo-skill/scripts/run.py"
+assert_grep ".git/info/exclude carries the managed block" "$CON/.git/info/exclude" "overlay:gi"
+assert_grep ".git/info/exclude lists the skill SKILL.md dest" "$CON/.git/info/exclude" "/skills/demo-skill/SKILL.md"
+assert_grep ".git/info/exclude lists the skill SCRIPT dest" "$CON/.git/info/exclude" "/skills/demo-skill/scripts/run.py"
 # git must ACTUALLY ignore the materialized skill → git add -A cannot stage it
 if ( cd "$CON" && git check-ignore -q skills/demo-skill/scripts/run.py ); then
   pass "git ignores the materialized skill script (add -A can't publish org content)"
 else
   fail "git does NOT ignore the materialized skill script — public-fork leak"
 fi
+# the guard touches NO tracked file: .gitignore is unchanged (no filename leak)
+# AND the managed dests don't even show as untracked → add -A can't publish them
+assert_nogrep ".gitignore (tracked) was NOT modified — no filename leak" "$CON/.gitignore" "overlay:gi"
+if [ -z "$(cd "$CON" && git status --porcelain skills/ .claude/ 2>/dev/null)" ]; then
+  pass "materialized skill/agent dests are excluded (git status shows nothing under them)"
+else
+  fail "materialized dests NOT excluded — would be staged: $(cd "$CON" && git status --porcelain skills/ | head -2 | tr '\n' '|')"
+fi
 # remove drops the managed block
 run_overlay "$CON" remove gi
 assert_rc "remove succeeds" 0
-assert_nogrep "gitignore block removed on remove" "$CON/.gitignore" "overlay:gi"
+assert_nogrep "exclude block removed on remove" "$CON/.git/info/exclude" "overlay:gi"
 
 # ───────────────────────────────────────────────────────────────────
 echo
