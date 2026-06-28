@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<!-- ============================================================================
+     open-bridge — use-cases.html  (use cases & solutions)
+     Built from the shared shell (NAV_ACTIVE = use-cases), mirroring concepts.html.
+     Self-contained single file, GitHub-Pages-ready, fully offline, native UTF-8.
+     Describes CAPABILITIES generically — no customer names, no PII, no internal hosts.
+     ============================================================================ -->
+<html lang="en" data-active-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>open-bridge — Use cases &amp; solutions</title>
+<meta name="description" content="Eight concrete jobs teams run on open-bridge — each pairs a problem you'll recognise with what the Bridge does about it, the primitives involved, and where to read more. Plain files in git, nothing to host.">
+<!-- Social / Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="open-bridge — Use cases &amp; solutions">
+<meta property="og:description" content="Eight concrete jobs teams run on open-bridge — problem, solution, primitives, and a link to read more.">
+<meta property="og:url" content="https://bks-lab.github.io/open-bridge/use-cases.html">
+<meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="open-bridge — Use cases &amp; solutions">
+<meta name="twitter:description" content="Eight concrete jobs teams run on open-bridge — problem, solution, primitives, and a link to read more.">
+
+<!-- Anti-FOUC pre-paint: theme + language set BEFORE the stylesheet paints. -->
+<script>
+(function(){
+  var r = document.documentElement;
+  try{
+    var t = localStorage.getItem("ob-theme");
+    if(t === "dark" || (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)){
+      r.classList.add("dark");
+    }
+  }catch(e){}
+  try{
+    var l = localStorage.getItem("ob-lang");
+    var lang = (l === "de") ? "de" : (r.getAttribute("lang") || "en");
+    r.setAttribute("data-active-lang", lang); r.setAttribute("lang", lang);
+  }catch(e){ r.setAttribute("data-active-lang","en"); }
+})();
+</script>
+
+<style>
+/* ============================================================
+   open-bridge shared shell — single file, fully offline.
+   Colour / type / space tokens lifted from DESIGN.md (Editorial
+   Minimalism) via landing/tokens.css. AA-correct text tokens
+   (--accent-text, --code-bg, --ok-text …) layered on top — these
+   are NOT in tokens.css and must be preserved.
+   No external fonts, no CDN, no network calls.
+   ============================================================ */
+
+:root{
+  /* ---- tokens.css (generated from DESIGN.md) ---- */
+  --ink:#111827; --muted:#6B7280;
+  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
+  --on-primary:#FFFFFF; --on-surface:#374151;
+  --line:#E5E7EB; --line-subtle:#F3F4F6;
+  --accent-from:#667EEA; --accent-to:#764BA2;
+  --accent:#6366F1; --accent-secondary:#8B5CF6;
+  --ok:#10B981; --info:#3B82F6;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+
+  /* ---- AA-correct text tokens (added on top of tokens.css) ---- */
+  --accent-text:#4F46E5;        /* links + the one accent word, AA on white */
+  --accent-soft:#EEF2FF;
+  --ok-text:#047857;            /* status text, AA */
+  --info-text:#1D4ED8;
+  --attention-text:#7C3AED;
+  --code-bg:#F9FAFB;
+
+  /* legacy aliases the markup uses */
+  --primary:var(--ink); --secondary:var(--muted);
+  --border:var(--line); --border-subtle:var(--line-subtle);
+  --on-surface-muted:var(--muted);
+  --success:var(--ok); --attention:var(--accent-secondary);
+  --feature-indigo-from:#4F46E5; --feature-indigo-to:#9333EA;
+  --mono:var(--font-mono);
+
+  /* shadows — whisper quiet */
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+
+  --section-y:96px;
+  --container:80rem; --hero-w:72rem; --prose-w:48rem;
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
+}
+
+html.dark{
+  --ink:#F9FAFB; --muted:#9CA3AF;
+  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
+  --on-surface:#D1D5DB;
+  --line:#374151; --line-subtle:#1F2937;
+  --accent-from:#A78BFA; --accent-to:#818CF8;
+  --accent:#818CF8;
+  --accent-text:#A78BFA;        /* AA on dark surfaces */
+  --accent-soft:#312E81;
+  --ok-text:#34D399;
+  --info-text:#93C5FD;
+  --attention-text:#C4B5FD;
+  --code-bg:#0B1220;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-sans);
+  background:var(--surface); color:var(--on-surface);
+  font-size:16px; line-height:1.6; font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:3px}
+
+/* ---- Language visibility (EN default) ---- */
+[data-lang]{display:none}
+html[data-active-lang="en"] [data-lang="en"]{display:revert}
+html[data-active-lang="de"] [data-lang="de"]{display:revert}
+/* inline variants keep inline display */
+:is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang]{display:none}
+html[data-active-lang="en"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="en"],
+html[data-active-lang="de"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="de"]{display:inline}
+
+.container{max-width:var(--container);margin:0 auto;padding-inline:24px}
+.prose{max-width:var(--prose-w);margin-inline:auto}
+
+/* ---- Typography ---- */
+h1,h2,h3,h4{color:var(--primary);letter-spacing:-0.02em}
+.display{font-size:clamp(38px,5.4vw,64px);font-weight:300;line-height:1.06;letter-spacing:-0.02em}
+.h1{font-size:clamp(30px,4.4vw,46px);font-weight:300;line-height:1.12}
+.h2{font-size:clamp(26px,3.6vw,34px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
+.h3{font-size:24px;font-weight:500;line-height:1.3;letter-spacing:-0.01em}
+.h4{font-size:20px;font-weight:500;line-height:1.4}
+.body-xl{font-size:20px;font-weight:300;line-height:1.6}
+.eyebrow{font-size:13px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
+.muted{color:var(--on-surface-muted)}
+a{color:var(--accent-text)}
+
+.text-gradient{
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+  font-weight:400;
+}
+
+/* ---- Toggles & header ---- */
+header.nav{
+  position:sticky;top:0;z-index:50;height:auto;min-height:64px;
+  display:flex;align-items:center;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap;text-decoration:none}
+.wordmark .text-gradient{font-weight:400}
+.nav-spacer{flex:1}
+.nav-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---- Site nav (Home / Explore / Concepts) — shell addition ---- */
+.site-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.site-nav a{
+  font-size:14px;font-weight:500;line-height:1.2;text-decoration:none;
+  color:var(--secondary);padding:6px 12px;border-radius:var(--r-full);
+  transition:color .18s ease,background .18s ease;white-space:nowrap;
+}
+.site-nav a:hover{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active,
+.site-nav a[aria-current="page"]{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active{position:relative}
+.site-nav a.active::after{
+  content:"";position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+}
+@media (max-width:560px){
+  .site-nav a{padding:6px 9px;font-size:13px}
+}
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:400;line-height:1.2;
+  padding:5px 11px;border-radius:var(--r-full);
+  background:var(--surface-muted);color:var(--on-surface);
+  border:1px solid var(--border);white-space:nowrap;text-decoration:none;
+}
+a.chip{color:var(--on-surface)}
+a.chip:hover{color:var(--primary)}
+
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-full);overflow:hidden;background:var(--surface)}
+.seg button{
+  font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;
+  padding:5px 12px;border:none;background:transparent;color:var(--secondary);
+  transition:color .2s ease;
+}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--surface)}
+
+.icon-btn{
+  width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-full);background:var(--surface);
+  cursor:pointer;color:var(--secondary);padding:0;
+}
+.icon-btn:hover{color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.sun{display:none}
+html.dark .sun{display:block}
+html.dark .moon{display:none}
+
+/* ---- Buttons ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:16px;font-weight:500;line-height:1.25;
+  padding:14px 28px;border-radius:var(--r-md);border:1px solid transparent;
+  transition:transform .2s ease,background .2s ease,border-color .2s ease;
+}
+.btn svg{width:18px;height:18px}
+.btn-primary{background:var(--primary);color:var(--surface)}
+html.dark .btn-primary{background:var(--accent);color:#0B1220}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-secondary{background:var(--surface);color:var(--on-surface);border-color:var(--border)}
+.btn-secondary:hover{background:var(--surface-subtle)}
+.btn .arrow{transition:transform .2s ease}
+.btn:hover .arrow{transform:translateX(3px)}
+
+/* ---- Sections ---- */
+section{padding-block:var(--section-y)}
+.alt{background:var(--surface-subtle)}
+.sec-head{max-width:var(--prose-w);margin:0 auto 56px;text-align:center}
+.sec-head .h1{margin-top:14px}
+.sec-head p{margin-top:18px;font-size:18px;font-weight:300}
+
+/* ---- Generic cards ---- */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:32px;box-shadow:var(--shadow-soft);
+}
+
+/* ---- Footer ---- */
+footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;max-width:var(--container);margin:0 auto;padding-inline:24px}
+.foot-grid h4{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:var(--secondary);font-weight:600;margin-bottom:16px}
+.foot-grid a{color:var(--on-surface);text-decoration:none;font-size:14.5px;display:block;margin-bottom:9px}
+.foot-grid a:hover{color:var(--primary)}
+.foot-blurb{font-size:14px;color:var(--on-surface-muted);line-height:1.65}
+.foot-blurb .wordmark{font-size:20px;display:block;margin-bottom:14px}
+.license-table{margin-top:18px;font-size:13px;border-collapse:collapse;width:100%}
+.license-table td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);color:var(--on-surface);vertical-align:top}
+.license-table td a{display:inline}
+.foot-bottom{max-width:var(--container);margin:40px auto 0;padding:28px 24px 0;border-top:1px solid var(--border);
+  display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;font-size:13px;color:var(--secondary)}
+.roadmap{list-style:none;display:flex;flex-direction:column;gap:9px}
+.roadmap li{font-size:14px;color:var(--on-surface);display:flex;gap:9px}
+.roadmap li .ph{font-family:var(--mono);font-size:12px;color:var(--accent-text);flex:none}
+
+/* ---- Reveal on scroll ---- */
+.reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (max-width:860px){
+  .foot-grid{grid-template-columns:1fr}
+  .foot-grid>*{min-width:0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .reveal{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+}
+@media print{
+  html.dark{
+    --ink:#111827;--muted:#6B7280;--surface:#FFFFFF;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;
+    --on-surface:#374151;--line:#E5E7EB;--accent-from:#667EEA;--accent-to:#764BA2;--accent:#6366F1;
+    --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
+  }
+  *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  header.nav,.icon-btn,.seg{display:none!important}
+  .reveal{opacity:1!important;transform:none!important}
+  section{padding-block:32px}
+}
+</style>
+
+<!-- ============ page-specific styles (use-cases.html) ============ -->
+<style>
+/* offset anchored sections so the sticky header never hides the heading */
+:target{scroll-margin-top:84px}
+[id]{scroll-margin-top:84px}
+
+/* ---- intro / hero of the page ---- */
+.page-hero{padding-block:64px 36px}
+.page-hero .eyebrow{margin-bottom:14px}
+.page-hero p.lede{margin-top:18px;font-size:18px;font-weight:300;color:var(--on-surface)}
+
+/* ---- use-case grid ---- */
+.uc-section{padding-block:8px 96px}
+.uc-grid{
+  max-width:var(--container);margin:0 auto;
+  display:grid;grid-template-columns:repeat(2,1fr);gap:24px;
+}
+.uc{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-soft);
+  padding:30px 32px;display:flex;flex-direction:column;
+  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;
+}
+.uc:hover{
+  transform:translateY(-2px);box-shadow:var(--shadow-hover);
+  border-color:color-mix(in srgb,var(--accent-text) 30%,var(--border));
+}
+.uc-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.uc-num{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent-text);letter-spacing:0.04em}
+.uc-badge{
+  font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+  color:var(--on-primary);background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+  padding:4px 11px;border-radius:var(--r-full);
+}
+.uc h3.uc-title{font-size:21px;font-weight:600;line-height:1.25;color:var(--primary);margin-bottom:16px}
+.uc .lab{
+  display:block;font-size:11.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;
+  color:var(--secondary);margin-bottom:5px;
+}
+.uc .uc-problem{font-size:15.5px;line-height:1.55;color:var(--primary);font-weight:500;margin-bottom:18px}
+.uc .uc-solution{font-size:15.5px;line-height:1.65;color:var(--on-surface);margin-bottom:18px}
+.uc .uc-solution code,.uc .uc-problem code{
+  font-family:var(--mono);font-size:0.85em;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:1px 6px;color:var(--on-surface);
+}
+.uc .uc-prim{margin-bottom:22px}
+.uc .uc-prim .chips{display:flex;flex-wrap:wrap;gap:7px}
+.uc .uc-prim code{
+  font-family:var(--mono);font-size:12.5px;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:3px 8px;color:var(--on-surface);
+}
+.uc .uc-prim .pchip{
+  font-family:var(--font-sans);font-size:12.5px;background:var(--surface-muted);
+  border:1px solid var(--border);border-radius:var(--r-full);padding:3px 11px;color:var(--on-surface);
+}
+.uc .uc-more{
+  margin-top:auto;align-self:flex-start;
+  font-size:14.5px;font-weight:500;text-decoration:none;color:var(--accent-text);
+  display:inline-flex;align-items:center;gap:6px;
+}
+.uc .uc-more .arrow{transition:transform .2s ease}
+.uc .uc-more:hover{text-decoration:underline}
+.uc .uc-more:hover .arrow{transform:translateX(3px)}
+
+/* ---- flagship card (#1) ---- */
+.uc.flagship{
+  grid-column:1 / -1;
+  border-left:3px solid var(--accent-text);
+  background:linear-gradient(180deg,var(--accent-soft),var(--surface) 62%);
+}
+.uc.flagship h3.uc-title{font-size:26px}
+.uc.flagship .uc-problem,.uc.flagship .uc-solution{font-size:16.5px}
+.uc.flagship .uc-solution{max-width:62ch}
+
+@media (max-width:780px){
+  .uc-grid{grid-template-columns:1fr}
+  .uc.flagship{grid-column:auto}
+}
+@media (max-width:560px){
+  .uc{padding:24px 22px}
+}
+</style>
+</head>
+<body>
+
+<!-- ======================= STICKY HEADER (shared) ======================= -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
+      <a class="active" aria-current="page" href="use-cases.html"><span data-lang="en">Use Cases</span><span data-lang="de">Anwendungsfälle</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+      <a href="demo.html"><span data-lang="en">Demo</span><span data-lang="de">Demo</span></a>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="nav-chips">
+      <a class="chip" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="chip" href="index.html#license" aria-label="MIT license">MIT</a>
+      <div class="seg" role="group" aria-label="Language / Sprache">
+        <button id="lang-en" type="button" aria-pressed="true" title="Toggle language — press L">EN</button>
+        <button id="lang-de" type="button" aria-pressed="false" title="Sprache umschalten — Taste L">DE</button>
+      </div>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================ PAGE CONTENT ============================ -->
+<main id="top">
+
+  <!-- ---- intro ---- -->
+  <section class="page-hero">
+    <div class="container">
+      <div class="prose">
+        <p class="eyebrow" data-lang="en">Use cases &amp; solutions</p>
+        <p class="eyebrow" data-lang="de">Anwendungsfälle &amp; Lösungen</p>
+        <h1 class="h1">
+          <span data-lang="en">What teams actually do with it.</span>
+          <span data-lang="de">Was Teams wirklich damit tun.</span>
+        </h1>
+        <p class="lede" data-lang="en">open-bridge is a framework, not a product with one fixed workflow. Below are seven concrete jobs teams run on it — each pairs a problem you'll recognise with what the Bridge actually does about it, the primitives involved, and where to read more. Everything here works on plain files in git: there is nothing to host, and the agent never sends or merges anything without a human gate.</p>
+        <p class="lede" data-lang="de">open-bridge ist ein Framework, kein Produkt mit einem festen Ablauf. Unten stehen sieben konkrete Aufgaben, die Teams damit erledigen — jede paart ein Problem, das du wiedererkennst, mit dem, was die Bridge tatsächlich dagegen tut, den beteiligten Primitiven und einem Link zum Weiterlesen. Alles hier arbeitet auf schlichten Dateien in Git: nichts zu hosten, und der Agent sendet oder merged nie etwas ohne menschliches Gate.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- the eight use cases ---- -->
+  <section class="uc-section alt">
+    <div class="container">
+      <div class="uc-grid">
+
+        <!-- ① FLAGSHIP — Org-aware without forking -->
+        <article class="uc flagship reveal" id="org-aware">
+          <div class="uc-head">
+            <span class="uc-num">01</span>
+            <span class="uc-badge"><span data-lang="en">Flagship</span><span data-lang="de">Flaggschiff</span></span>
+          </div>
+          <h3 class="uc-title">
+            <span data-lang="en">Org-aware without forking</span>
+            <span data-lang="de">Org-bewusst ohne Fork</span>
+          </h3>
+          <p class="uc-problem">
+            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
+            <span data-lang="en">Every teammate needs your org's customizations — skills, configs, accounts — but forking a tailored Bridge per person is unmaintainable.</span>
+            <span data-lang="de">Jede:r im Team braucht die Anpassungen deiner Organisation — Skills, Configs, Accounts — aber pro Person eine angepasste Bridge zu forken ist nicht wartbar.</span>
+          </p>
+          <p class="uc-solution">
+            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en"><code>/overlay add &lt;git-url&gt;</code> subscribes a vanilla Bridge to a private org-config repo and materializes its scattered files as tracked copies — a copy, a manifest, and a lockfile, the downstream inverse of <code>/promote</code>. CORE files are never overridable; managed files stay public-fork-safe; and your own edits always win on conflict. One URL gives a teammate a full org Bridge — no fork, no per-person drift.</span>
+            <span data-lang="de"><code>/overlay add &lt;git-url&gt;</code> abonniert eine schlichte Bridge an ein privates Org-Config-Repo und materialisiert dessen verstreute Dateien als getrackte Kopien — eine Kopie, ein Manifest und eine Lockfile, die Downstream-Umkehrung von <code>/promote</code>. CORE-Dateien sind nie überschreibbar; verwaltete Dateien bleiben public-fork-sicher; und bei Konflikt gewinnen stets deine eigenen Edits. Eine URL gibt einem Teammitglied eine vollständige Org-Bridge — kein Fork, kein Drift pro Person.</span>
+          </p>
+          <div class="uc-prim">
+            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
+            <div class="chips">
+              <code>bridge-overlay</code>
+              <code>scripts/overlay.py</code>
+            </div>
+          </div>
+          <a class="uc-more" href="org-overlays.md">
+            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
+          </a>
+        </article>
+
+        <!-- ② Client status updates with sender discipline -->
+        <article class="uc reveal" id="client-updates">
+          <div class="uc-head"><span class="uc-num">02</span></div>
+          <h3 class="uc-title">
+            <span data-lang="en">Client status updates with sender discipline</span>
+            <span data-lang="de">Kunden-Status-Updates mit Absender-Disziplin</span>
+          </h3>
+          <p class="uc-problem">
+            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
+            <span data-lang="en">Recurring status emails to clients must come from you, with correct attribution — and must never address the recipient as "you".</span>
+            <span data-lang="de">Wiederkehrende Status-Mails an Kunden müssen von dir kommen, mit korrekter Zuordnung — und dürfen die Empfänger nie mit „Du" ansprechen.</span>
+          </p>
+          <p class="uc-solution">
+            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">Turn a task or board item into a styled email routed to the right recipient group, optionally scheduled for later. The sender is always you; recipients are kept in the third person by construction, so attribution never slips.</span>
+            <span data-lang="de">Verwandle einen Task oder ein Board-Item in eine gestylte E-Mail, geroutet an die richtige Empfängergruppe, optional für später geplant. Absender bist immer du; Empfänger bleiben per Konstruktion in der dritten Person — die Zuordnung rutscht nie.</span>
+          </p>
+          <div class="uc-prim">
+            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
+            <div class="chips">
+              <code>mandants</code>
+              <code>calendar</code>
+            </div>
+          </div>
+          <a class="uc-more" href="mandants.md">
+            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
+          </a>
+        </article>
+
+        <!-- ③ Meeting → protocol → tasks -->
+        <article class="uc reveal" id="meeting-to-tasks">
+          <div class="uc-head"><span class="uc-num">03</span></div>
+          <h3 class="uc-title">
+            <span data-lang="en">Meeting → protocol → tasks</span>
+            <span data-lang="de">Meeting → Protokoll → Tasks</span>
+          </h3>
+          <p class="uc-problem">
+            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
+            <span data-lang="en">Meeting decisions evaporate the moment the call ends.</span>
+            <span data-lang="de">Meeting-Entscheidungen verdampfen, sobald das Gespräch endet.</span>
+          </p>
+          <p class="uc-solution">
+            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">A debrief step takes your meeting notes, classifies the meeting, extracts insights across categories, and proposes board-mapped tasks you approve — so a conversation becomes tracked work instead of a fading memory.</span>
+            <span data-lang="de">Ein Debrief-Schritt nimmt deine Meeting-Notizen, klassifiziert das Meeting, extrahiert Erkenntnisse über Kategorien hinweg und schlägt board-zugeordnete Tasks vor, die du freigibst — aus einem Gespräch wird verfolgte Arbeit statt verblassender Erinnerung.</span>
+          </p>
+          <div class="uc-prim">
+            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
+            <div class="chips">
+              <code>debrief</code>
+              <code>github-projects-manager</code>
+            </div>
+          </div>
+          <a class="uc-more" href="work-system.md">
+            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
+          </a>
+        </article>
+
+        <!-- ④ Document intake & filing -->
+        <article class="uc reveal" id="doc-intake">
+          <div class="uc-head"><span class="uc-num">04</span></div>
+          <h3 class="uc-title">
+            <span data-lang="en">Document intake &amp; filing</span>
+            <span data-lang="de">Dokumenten-Intake &amp; Ablage</span>
+          </h3>
+          <p class="uc-problem">
+            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
+            <span data-lang="en">Inboxes and mail attachments pile up unsorted until nothing can be found.</span>
+            <span data-lang="de">Postfächer und Mail-Anhänge stapeln sich unsortiert, bis nichts mehr auffindbar ist.</span>
+          </p>
+          <p class="uc-solution">
+            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">The doc-system scans your sources — filesystem inboxes and flagged mail — categorizes each document, and files it using routing rules plus per-persona destinations, for example a PARA tree. Renamed, tagged, filed, and audited.</span>
+            <span data-lang="de">Das Doc-System scannt deine Quellen — Dateisystem-Inboxen und geflaggte Mails — kategorisiert jedes Dokument und legt es per Routing-Regeln plus Persona-Zielpfaden ab, etwa einem PARA-Baum. Umbenannt, getaggt, abgelegt und auditiert.</span>
+          </p>
+          <div class="uc-prim">
+            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
+            <div class="chips">
+              <code>doc-system</code>
+              <code>personas</code>
+            </div>
+          </div>
+          <a class="uc-more" href="doc-system.md">
+            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
+          </a>
+        </article>
+
+        <!-- ⑤ Multi-instance data isolation -->
+        <article class="uc reveal" id="multi-instance">
+          <div class="uc-head"><span class="uc-num">05</span></div>
+          <h3 class="uc-title">
+            <span data-lang="en">Multi-instance data isolation</span>
+            <span data-lang="de">Multi-Instanz-Datentrennung</span>
+          </h3>
+          <p class="uc-problem">
+            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
+            <span data-lang="en">Different orgs' or clients' data must never share a git history.</span>
+            <span data-lang="de">Daten verschiedener Organisationen oder Kunden dürfen nie eine Git-Historie teilen.</span>
+          </p>
+          <p class="uc-solution">
+            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">Run a separate Bridge instance per org — each its own clone with its own user branch, some pushed to a remote and some kept strictly local-only. A registry indexes them all, so you stay aware of every instance without ever cross-contaminating their data.</span>
+            <span data-lang="de">Betreibe eine eigene Bridge-Instanz pro Organisation — jede ein eigener Clone mit eigenem User-Branch, manche zu einem Remote gepusht, manche strikt nur lokal. Eine Registry indiziert sie alle, sodass du jede Instanz im Blick hast, ohne ihre Daten je querzukontaminieren.</span>
+          </p>
+          <div class="uc-prim">
+            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
+            <div class="chips">
+              <span class="pchip"><span data-lang="en">multi-instance model</span><span data-lang="de">Multi-Instanz-Modell</span></span>
+              <code>infra/instances</code>
+            </div>
+          </div>
+          <a class="uc-more" href="multi-instance.md">
+            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
+          </a>
+        </article>
+
+        <!-- ⑥ Knowledge that grows itself -->
+        <article class="uc reveal" id="self-growing-knowledge">
+          <div class="uc-head"><span class="uc-num">06</span></div>
+          <h3 class="uc-title">
+            <span data-lang="en">Knowledge that grows itself</span>
+            <span data-lang="de">Wissen, das sich selbst aufbaut</span>
+          </h3>
+          <p class="uc-problem">
+            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
+            <span data-lang="en">Lessons learned in one session evaporate before the next.</span>
+            <span data-lang="de">In einer Session Gelerntes verdampft vor der nächsten.</span>
+          </p>
+          <p class="uc-solution">
+            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">A file-based memory keeps durable facts as plain text the agent reads back later. A learning loop closes the gap: postmortems and audits emit improvement proposals you review, and a curator consolidates recurring patterns — so the system compounds instead of forgetting.</span>
+            <span data-lang="de">Ein datei-basiertes Gedächtnis hält dauerhafte Fakten als Klartext, den der Agent später wieder liest. Eine Lernschleife schließt die Lücke: Postmortems und Audits erzeugen Verbesserungsvorschläge, die du prüfst, und ein Kurator konsolidiert wiederkehrende Muster — das System summiert sich auf, statt zu vergessen.</span>
+          </p>
+          <div class="uc-prim">
+            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
+            <div class="chips">
+              <code>memory</code>
+              <code>bridge-learn</code>
+              <code>bridge-curator</code>
+            </div>
+          </div>
+          <a class="uc-more" href="memory.md">
+            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
+          </a>
+        </article>
+
+        <!-- ⑦ Cross-tool skills + private-by-default contribution -->
+        <article class="uc reveal" id="cross-tool-skills">
+          <div class="uc-head"><span class="uc-num">07</span></div>
+          <h3 class="uc-title">
+            <span data-lang="en">Cross-tool skills, private by default</span>
+            <span data-lang="de">Tool-übergreifende Skills, privat per Default</span>
+          </h3>
+          <p class="uc-problem">
+            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
+            <span data-lang="en">You want portable tooling and a way to keep org content private while still contributing generic improvements upstream.</span>
+            <span data-lang="de">Du willst portables Tooling und einen Weg, Org-Inhalte privat zu halten und trotzdem generische Verbesserungen upstream beizutragen.</span>
+          </p>
+          <p class="uc-solution">
+            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">Agent Skills follow the open SKILL.md standard, discoverable by Claude Code, Copilot, Codex, Cursor and Gemini through one shared tree. A three-tier promote/contribute flow routes every change by its scope, so private content stays local while generic CORE flows upstream — decided by structure, not by a tag you can forget.</span>
+            <span data-lang="de">Agent-Skills folgen dem offenen SKILL.md-Standard, auffindbar für Claude Code, Copilot, Codex, Cursor und Gemini über einen gemeinsamen Baum. Ein dreistufiger Promote/Contribute-Fluss routet jede Änderung nach ihrem Scope, sodass private Inhalte lokal bleiben und generisches CORE upstream fließt — entschieden durch Struktur, nicht durch ein Tag, das man vergessen kann.</span>
+          </p>
+          <div class="uc-prim">
+            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
+            <div class="chips">
+              <code>skills/</code>
+              <code>/promote</code>
+              <code>/contribute</code>
+            </div>
+          </div>
+          <a class="uc-more" href="extension-model.md">
+            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
+          </a>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+<!-- ========================== END PAGE CONTENT ============================== -->
+
+<!-- ======================= FOOTER (shared) ======================= -->
+<footer id="license">
+  <div class="foot-grid">
+    <div class="foot-blurb">
+      <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — ein kleines Team — und genutzt, um es zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
+      <table class="license-table">
+        <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
+        <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
+      </table>
+      <p class="cap muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. <span data-lang="en">Licenses cover copyright, not brands.</span><span data-lang="de">Lizenzen decken Copyright ab, nicht Marken.</span> <span data-lang="en">Contributions require a DCO sign-off (</span><span data-lang="de">Beiträge erfordern einen DCO-Sign-off (</span><code>git commit -s</code>).</p>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Explore</h4>
+      <h4 data-lang="de">Erkunden</h4>
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="explore.html"><span data-lang="en">Explore the concepts</span><span data-lang="de">Konzepte erkunden</span></a>
+      <a href="use-cases.html"><span data-lang="en">Use cases &amp; solutions</span><span data-lang="de">Anwendungsfälle &amp; Lösungen</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts in depth</span><span data-lang="de">Konzepte im Detail</span></a>
+      <a href="demo.html"><span data-lang="en">Live session demo</span><span data-lang="de">Live-Session-Demo</span></a>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Links</h4>
+      <h4 data-lang="de">Links</h4>
+      <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/README.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/examples/agency" target="_blank" rel="noopener"><span data-lang="en">Example workspace</span><span data-lang="de">Beispiel-Workspace</span></a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+    </div>
+  </div>
+
+  <div class="foot-bottom">
+    <span data-lang="en">Public · MIT · no waitlist · newly released</span>
+    <span data-lang="de">Public · MIT · keine Warteliste · frisch veröffentlicht</span>
+    <a class="btn btn-secondary" style="padding:10px 20px;font-size:14px" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+      <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
+      <span class="arrow">→</span>
+    </a>
+  </div>
+</footer>
+
+<!-- ======================= Shared page controller ======================= -->
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+
+  function applyTheme(mode){
+    if(mode === "dark"){ root.classList.add("dark"); }
+    else { root.classList.remove("dark"); }
+  }
+  function toggleTheme(){
+    var next = root.classList.contains("dark") ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("ob-theme", next); } catch(e){}
+  }
+  var themeBtn = document.getElementById("theme-toggle");
+  if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
+
+  function applyLang(lang){
+    root.setAttribute("data-active-lang", lang);
+    root.setAttribute("lang", lang);
+    var en = document.getElementById("lang-en");
+    var de = document.getElementById("lang-de");
+    if(en){ en.setAttribute("aria-pressed", lang === "en" ? "true" : "false"); }
+    if(de){ de.setAttribute("aria-pressed", lang === "de" ? "true" : "false"); }
+  }
+  applyLang(root.getAttribute("data-active-lang") === "de" ? "de" : "en");
+  function setLang(lang){
+    applyLang(lang);
+    try { localStorage.setItem("ob-lang", lang); } catch(e){}
+  }
+  var enBtn = document.getElementById("lang-en");
+  var deBtn = document.getElementById("lang-de");
+  if(enBtn){ enBtn.addEventListener("click", function(){ setLang("en"); }); }
+  if(deBtn){ deBtn.addEventListener("click", function(){ setLang("de"); }); }
+
+  document.addEventListener("keydown", function(ev){
+    if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
+    if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
+    var k = ev.key.toLowerCase();
+    if(k === "t"){ toggleTheme(); }
+    if(k === "l"){ setLang(root.getAttribute("data-active-lang") === "en" ? "de" : "en"); }
+  });
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.08, rootMargin: "0px 0px -6% 0px" });
+    document.querySelectorAll(".reveal").forEach(function(el){ io.observe(el); });
+    // safety net: guarantee visibility even with no scroll (headless capture, scrapers).
+    setTimeout(function(){ document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); }); }, 1600);
+  } else {
+    document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); });
+  }
+
+  // ---- if loaded with a deep-link hash, scroll to it ----
+  if(location.hash){
+    var t = document.getElementById(location.hash.slice(1));
+    if(t){ requestAnimationFrame(function(){ t.scrollIntoView(); }); }
+  }
+})();
+</script>
+
+</body>
+</html>
