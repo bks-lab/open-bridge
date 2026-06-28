@@ -193,6 +193,11 @@ Result: CORE skills available inside the Bridge CWD. No plugin layer
 needed because CORE skills have no standalone value (they read Bridge
 state).
 
+> This is read-only skills consumption — `origin` stays public open-bridge,
+> and `bin/setup` arms the pre-push guard. To run your *own* instance with
+> private data (personas, `work/` logs), follow the private-origin setup in
+> the [README](../README.md#get-started), not a bare clone of this repo.
+
 ### Seed user (the contributor who edits skills)
 
 ```bash

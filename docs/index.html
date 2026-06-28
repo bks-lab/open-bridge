@@ -1340,14 +1340,22 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   <div class="container">
     <div class="sec-head reveal">
       <p class="eyebrow"><span data-lang="en">Get started</span><span data-lang="de">Loslegen</span></p>
-      <h2 class="h1"><span data-lang="en">Two steps.</span><span data-lang="de">Zwei Schritte.</span></h2>
+      <h2 class="h1"><span data-lang="en">Private origin first.</span><span data-lang="de">Erst ein privates Origin.</span></h2>
     </div>
 
     <div class="reveal">
-      <div class="code" id="start-code"><button class="copy-btn" id="copy-start" type="button">copy</button>git clone https://github.com/bks-lab/open-bridge.git
-cd open-bridge
-/bridge-onboard      <span class="cmt"># in Claude Code — onboarding sets everything up</span></div>
-      <p class="run-note"><span data-lang="en"><code>/bridge-onboard</code> walks the guided onboarding and sets everything up (ecosystem detection, work-system, your own <code>user/{name}</code> branch). The cross-tool symlinks ship in the repo, so macOS / Linux / WSL work out of the box; on native Windows, run <code>bin/setup.ps1</code> once to repair symlinks. You get a running, empty workspace in minutes; the value compounds as you log work (a fresh clone starts mostly empty — that's the honest trade).</span><span data-lang="de"><code>/bridge-onboard</code> führt durch die geführte Onboarding-Routine und richtet alles ein (Ecosystem-Erkennung, Work-System, deinen eigenen <code>user/{name}</code>-Branch). Die Cross-Tool-Symlinks sind im Repo enthalten, daher laufen macOS / Linux / WSL out of the box; unter nativem Windows einmal <code>bin/setup.ps1</code> ausführen, um die Symlinks zu reparieren. In Minuten hast du einen laufenden, leeren Workspace; der Wert wächst, während du Arbeit protokollierst (ein frischer Clone startet weitgehend leer — das ist der ehrliche Tausch).</span></p>
+      <div class="code" id="start-code"><button class="copy-btn" id="copy-start" type="button">copy</button><span class="cmt"># 1. Make your own PRIVATE copy — GitHub "Use this template" → Private, then clone THAT.</span>
+<span class="cmt">#    No template button yet? Clone here and re-home the remotes in step 2:</span>
+git clone https://github.com/bks-lab/open-bridge.git my-bridge
+cd my-bridge
+
+<span class="cmt"># 2. open-bridge becomes a read-only upstream; your private repo becomes origin:</span>
+git remote rename origin upstream
+gh repo create &lt;you&gt;/my-bridge --private --source=. --remote=origin --push
+
+<span class="cmt"># 3. Onboard in Claude Code — writes to a user/{name} branch on YOUR private origin:</span>
+/bridge-onboard</div>
+      <p class="run-note"><span data-lang="en">Because this is a public repo, the first move gives your data a private home — your own private repo is <code>origin</code>, open-bridge stays a read-only <code>upstream</code>, and CORE flows back only via <code>/promote</code> (a fork-based PR). A bare clone would leave <code>origin</code> pointing here, so one push could publish your branch. Then <code>/bridge-onboard</code> walks the guided onboarding and sets everything up (ecosystem detection, work-system, your own <code>user/{name}</code> branch) — and arms the <code>pre-push</code> guard before that branch exists, so the backstop is live from your first commit. The cross-tool symlinks ship in the repo, so macOS / Linux / WSL work out of the box; on native Windows, run <code>bin/setup.ps1</code> once to repair symlinks. You get a running, empty workspace in minutes; the value compounds as you log work (a fresh clone starts mostly empty — that's the honest trade).</span><span data-lang="de">Weil dies ein öffentliches Repo ist, gibt der erste Schritt deinen Daten ein privates Zuhause — dein eigenes privates Repo ist <code>origin</code>, open-bridge bleibt ein read-only <code>upstream</code>, und CORE fließt nur über <code>/promote</code> (ein Fork-basierter PR) zurück. Ein bloßer Clone ließe <code>origin</code> hierher zeigen, ein Push könnte deinen Branch veröffentlichen. Dann führt <code>/bridge-onboard</code> durch die geführte Onboarding-Routine und richtet alles ein (Ecosystem-Erkennung, Work-System, deinen eigenen <code>user/{name}</code>-Branch) — und schärft den <code>pre-push</code>-Guard, bevor dieser Branch existiert, sodass der Backstop ab dem ersten Commit aktiv ist. Die Cross-Tool-Symlinks sind im Repo enthalten, daher laufen macOS / Linux / WSL out of the box; unter nativem Windows einmal <code>bin/setup.ps1</code> ausführen, um die Symlinks zu reparieren. In Minuten hast du einen laufenden, leeren Workspace; der Wert wächst, während du Arbeit protokollierst (ein frischer Clone startet weitgehend leer — das ist der ehrliche Tausch).</span></p>
       <p class="tertiary-cta"><span data-lang="en">Found a rough edge? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Open an issue</a> — the most useful thing you can do right now.</span><span data-lang="de">Eine raue Kante gefunden? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Öffne ein Issue</a> — das Nützlichste, was du gerade tun kannst.</span></p>
     </div>
   </div>
@@ -1617,7 +1625,7 @@ cd open-bridge
   var copyBtn = document.getElementById("copy-start");
   if(copyBtn){
     copyBtn.addEventListener("click", function(){
-      var text = "git clone https://github.com/bks-lab/open-bridge.git\ncd open-bridge\n/bridge-onboard";
+      var text = "# 1. Make your own PRIVATE copy — GitHub \"Use this template\" → Private, then clone THAT.\n#    No template button yet? Clone here and re-home the remotes in step 2:\ngit clone https://github.com/bks-lab/open-bridge.git my-bridge\ncd my-bridge\n\n# 2. open-bridge becomes a read-only upstream; your private repo becomes origin:\ngit remote rename origin upstream\ngh repo create <you>/my-bridge --private --source=. --remote=origin --push\n\n# 3. Onboard in Claude Code — writes to a user/{name} branch on YOUR private origin:\n/bridge-onboard";
       var done = function(){
         var prev = copyBtn.textContent;
         copyBtn.textContent = "copied";
