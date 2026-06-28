@@ -1,0 +1,179 @@
+# Overlay Manifest Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates `overlay.manifest.yaml`, the single declaration file that lives at
+# the ROOT of an org-overlay repository. A Bridge consumes an overlay by reading
+# this manifest at add-time: it describes which files mirror into the consumer,
+# how conflicts are resolved, which fields must be prompted before a behavioural
+# file is materialized, and where the ecosystem fragment is wired in.
+#
+# An overlay NEVER block-merges the consumer's config — the manifest mirrors a
+# flat tree of files and copies the ecosystem fragment in as an @import. The
+# `on_conflict` enum guarantees a user file is never silently clobbered.
+#
+# Validation:
+#   check-jsonschema --schemafile docs/schemas/overlay-manifest.schema.yaml \
+#                    overlay.manifest.yaml
+#
+# IDE support: add this line at the top of overlay.manifest.yaml:
+#   # yaml-language-server: $schema=./docs/schemas/overlay-manifest.schema.yaml
+#
+# Full docs: docs/org-overlays.md
+# Related: docs/schemas/overlays-lock.schema.yaml (the generated lockfile)
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/overlay-manifest.yaml"
+title: Overlay Manifest
+description: |
+  Root declaration of an org-overlay repository — overlay identity, mirror
+  defaults, file selection globs, the ecosystem fragment, and the per-file
+  exception list (kinds + prompt fields). Consumed at overlay add/sync time.
+
+type: object
+required: [schema_version, overlay]
+additionalProperties: false
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  overlay:
+    type: object
+    description: "Overlay identity — who ships it and what it is."
+    required: [name, org]
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Overlay slug (lowercase-kebab-case) — the key under overlays.lock.yaml."
+      org:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Owning org slug (e.g. example-org). Generic, PII-free."
+      description:
+        type: string
+        minLength: 1
+      homepage:
+        type: string
+        format: uri
+
+  defaults:
+    type: object
+    description: |
+      Defaults applied to every mirrored file unless a `files[]` exception
+      overrides. Absent ⇒ the documented defaults (scope=org, source_root=tree/,
+      on_conflict=prompt) apply.
+    additionalProperties: false
+    properties:
+      scope:
+        enum: [core, org, user, private]
+        default: org
+        description: |
+          Promote-routing tier the mirrored files inherit. An overlay's content
+          is org-internal by default (never CORE/public).
+      source_root:
+        type: string
+        default: "tree/"
+        pattern: "^[A-Za-z0-9._-]+/$"
+        description: "Path prefix in the overlay repo that holds the mirror tree (trailing slash)."
+      on_conflict:
+        $ref: "#/$defs/OnConflict"
+        default: prompt
+
+  selection:
+    type: object
+    description: "Glob include/exclude over source_root deciding what mirrors."
+    additionalProperties: false
+    properties:
+      include:
+        type: array
+        minItems: 1
+        items: {type: string, minLength: 1}
+        description: "Glob(s) of files to mirror (e.g. ['**'])."
+      exclude:
+        type: array
+        items: {type: string, minLength: 1}
+        description: |
+          Glob(s) to exclude — never mirror CORE templates/schemas (_*.yaml),
+          READMEs, personas, or work/ from an overlay.
+
+  ecosystem_fragment:
+    type: string
+    pattern: "^ecosystem\\.[a-z][a-z0-9-]*\\.yaml$"
+    description: |
+      Filename of the overlay's ecosystem fragment (ecosystem.<org>.yaml).
+      Copied verbatim to the consumer root and registered as an @import —
+      NEVER block-merged into ecosystem.yaml.
+
+  files:
+    type: array
+    description: |
+      EXCEPTIONS ONLY. The flat mirror handled by `defaults` covers the common
+      case; list a file here only when it needs a kind tag, a per-file conflict
+      policy, or prompt fields. Behavioural kinds (skill/agent/standing-order)
+      force a per-file human [y] regardless of on_conflict.
+    items:
+      $ref: "#/$defs/FileEntry"
+
+$defs:
+
+  OnConflict:
+    enum: [prompt, skip, overlay-wins]
+    description: |
+      How a destination collision is resolved — never a silent user-clobber:
+        prompt        — ask the human (default)
+        skip          — keep the consumer's file, drop the overlay copy
+        overlay-wins  — overlay replaces the consumer file
+
+  FileEntry:
+    type: object
+    required: [dest, kind]
+    additionalProperties: false
+    properties:
+      dest:
+        type: string
+        minLength: 1
+        description: "Destination path in the consumer, relative to repo root."
+      kind:
+        enum: [config, skill, agent, standing-order, rule, ecosystem-fragment]
+        description: |
+          File class. skill/agent/standing-order are BEHAVIOURAL — they force a
+          per-file [y] confirmation before materialize, never auto-applied.
+      on_conflict:
+        $ref: "#/$defs/OnConflict"
+        description: "Per-file override of defaults.on_conflict."
+      prompt_fields:
+        type: array
+        description: "Fields whose value the human must supply before materialize."
+        items:
+          $ref: "#/$defs/PromptField"
+
+  PromptField:
+    type: object
+    required: [path, reason]
+    additionalProperties: false
+    properties:
+      path:
+        type: string
+        pattern: "^\\$(\\.[A-Za-z_][A-Za-z0-9_-]*(\\[\\*\\])?)+$"
+        description: |
+          JSONPath-lite into the file. Supports `$.a.b` and `$.arr[*].c`
+          (whole-array wildcard only). The lockfile records this PATH, never
+          the supplied value.
+      reason:
+        type: string
+        minLength: 1
+        description: "Why the human must fill this (shown at the prompt)."
+      pii:
+        type: boolean
+        default: false
+        description: "True if the value is personal/sensitive — keeps it out of any log."
+
+# Notes (advisory):
+# - One manifest per overlay repo, at its root.
+# - The flat mirror is the default path; `files[]` is the exception list.
+# - Never mirror `_*.yaml`, READMEs, personas, or work/ — they are CORE/USER,
+#   not overlay content (see selection.exclude).
+# - The ecosystem fragment is @import-wired, never block-merged.

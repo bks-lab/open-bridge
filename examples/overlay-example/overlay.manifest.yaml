@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=../../docs/schemas/overlay-manifest.schema.yaml
+#
+# Worked example overlay manifest — the single root declaration of the
+# "example-org" overlay. A consuming Bridge reads THIS file at overlay add-time:
+# it mirrors tree/ into the consumer, wires the ecosystem fragment as an @import,
+# and prompts the human for the fields listed under files[].
+#
+# Everything here is generic and PII-free — the only org named anywhere is the
+# fictional "example-org". This manifest doubles as a schema-validation fixture:
+#   check-jsonschema --schemafile docs/schemas/overlay-manifest.schema.yaml \
+#                    examples/overlay-example/overlay.manifest.yaml
+
+schema_version: 1
+
+overlay:
+  name: example-org
+  org: example-org
+  description: "Worked example org overlay — boards, contexts, mandants, accounts, a rule, an agent, and a skill, all scope:org."
+  homepage: "https://example.com/example-org"
+
+# ---------------------------------------------------------------------------
+# Defaults applied to every mirrored file unless a files[] exception overrides.
+# org tier · tree/ source root · prompt-on-conflict (never a silent clobber).
+# ---------------------------------------------------------------------------
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt
+
+# ---------------------------------------------------------------------------
+# Flat selection over source_root. include: ['**'] mirrors the whole tree;
+# exclude documents the hard refuse-list (the tree carries none of these, but
+# the guard is explicit): CORE templates/schemas, wrapper READMEs, personas,
+# and work/ are never overlay content.
+# ---------------------------------------------------------------------------
+selection:
+  include: ["**"]
+  exclude:
+    - "**/_*.yaml"          # CORE _template.yaml / _schema.yaml
+    - "**/README.md"        # wrapper READMEs (this overlay's own root README is outside tree/)
+    - "identity/personas/**" # personas are USER-tier, never shipped
+    - "work/**"             # task board / log are USER-tier, never shipped
+
+# ---------------------------------------------------------------------------
+# Ecosystem fragment — copied verbatim to the consumer root and registered as
+# an @import. NEVER block-merged into the consumer's ecosystem.yaml.
+# ---------------------------------------------------------------------------
+ecosystem_fragment: ecosystem.example-org.yaml
+
+# ---------------------------------------------------------------------------
+# EXCEPTIONS ONLY. The flat mirror above handles the common case (e.g.
+# workflow/contexts/example-docs.yaml mirrors with no entry here). List a file
+# only when it needs a kind tag, a per-file conflict policy, or prompt fields.
+# Behavioural kinds (skill/agent/standing-order) force a per-file [y] regardless
+# of on_conflict.
+# ---------------------------------------------------------------------------
+files:
+
+  # --- config files with prompt fields -------------------------------------
+  - dest: workflow/projects/example-board.yaml
+    kind: config
+    prompt_fields:
+      - path: "$.project.org"
+        reason: "GitHub org that owns the project board"
+      - path: "$.project.number"
+        reason: "GitHub Project V2 number for this org's board"
+
+  - dest: identity/mandants/example-team.yaml
+    kind: config
+    prompt_fields:
+      - path: "$.persons[*].channels.email"
+        reason: "Real recipient email addresses for the team mandant"
+        pii: true
+
+  - dest: identity/accounts/example-cloud.yaml
+    kind: config
+    prompt_fields:
+      - path: "$.cloud.tenant_id"
+        reason: "Cloud tenant ID for the example-org account"
+
+  # --- behavioural kinds (each forces a per-file human [y]) -----------------
+  # NB: kind: standing-order is engine-supported but intentionally NOT shown
+  # here — org-tiering of a flat standing order is an open framework question
+  # (its `scope:` is the dispatch mode, not a tier). See docs/org-overlays.md.
+  - dest: .claude/agents/example-org-coordinator.md
+    kind: agent
+
+  - dest: skills/example-org-coordinator/SKILL.md
+    kind: skill
+
+  # --- org-namespaced rule --------------------------------------------------
+  - dest: rules/org/example-routing.md
+    kind: rule

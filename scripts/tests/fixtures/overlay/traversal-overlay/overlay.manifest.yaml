@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../../../docs/schemas/overlay-manifest.schema.yaml
+#
+# Test fixture — an overlay with a files[] entry whose dest path-escapes the
+# consumer repo root (`../escaped.yaml`). The source for that dest lives at the
+# overlay root (escaped.yaml, sibling of tree/), so it is read and PLANNED, then
+# the dest gate must refuse it ("escapes repo root") before any write. A clean
+# in-tree sibling still materializes.
+
+schema_version: 1
+
+overlay:
+  name: traversal-overlay
+  org: traversal-demo
+  description: "Path-traversal fixture — a dest that escapes the repo root, refused pre-write."
+
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt
+
+files:
+  # dest resolves to <consumer>/../escaped.yaml — outside the repo root.
+  # source = <overlay>/escaped.yaml (join(tree/, ../escaped.yaml) → overlay root).
+  - dest: "../escaped.yaml"
+    kind: config

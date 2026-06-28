@@ -1,0 +1,6 @@
+# Fixture: the source whose declared dest ("../escaped.yaml") escapes the repo
+# root. It lives at the overlay ROOT (sibling of tree/) so the engine reads it,
+# then refuses the dest. It must NEVER appear outside the consumer repo root.
+scope: org
+id: escaped
+description: "Source for a path-escaping dest — must be refused, never written."

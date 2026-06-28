@@ -114,6 +114,16 @@ SURFACES = [
         "instances": "workflow/calendars/*.yaml",
         "exclude_prefixes": ["_"],
     },
+    {
+        # Generated root-config lockfile (scope: user) recording applied org
+        # overlays, pinned to immutable hashes. Absent on a fresh clone → the
+        # glob finds no instances and the surface is a no-op; validated when
+        # an /overlay subscription has written it. See docs/org-overlays.md.
+        "name": "overlays-lock",
+        "schema": "docs/schemas/overlays-lock.schema.yaml",
+        "instances": "overlays.lock.yaml",
+        "exclude_prefixes": [],
+    },
 ]
 
 

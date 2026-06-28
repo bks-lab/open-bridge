@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../../../../../docs/schemas/overlay-manifest.schema.yaml
+#
+# Test fixture — overlay "A" in the multi-overlay precedence pair. It ships the
+# SAME dest (workflow/contexts/shared.yaml) as overlay "B" but with distinct
+# content. Added at HIGHER precedence, A owns the dest; B is then refused.
+schema_version: 1
+overlay:
+  name: overlay-a
+  org: alpha-demo
+  description: "Precedence fixture A — owns the shared dest at higher precedence."
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt

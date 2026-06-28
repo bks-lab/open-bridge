@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../../../../docs/schemas/overlay-manifest.schema.yaml
+#
+# Test fixture — a DELIBERATELY schema-invalid manifest. `overlay.name` violates
+# the `^[a-z][a-z0-9-]*$` pattern (uppercase + underscore), so check-jsonschema
+# (and the engine's stdlib fallback) must reject it. `overlay add` against this
+# overlay must abort with a schema error and write nothing.
+
+schema_version: 1
+
+overlay:
+  name: Bad_Name
+  org: malformed-demo
+  description: "Invalid name on purpose — schema validation must fail."
+
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt

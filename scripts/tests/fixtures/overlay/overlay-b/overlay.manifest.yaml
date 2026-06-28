@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../../../../../docs/schemas/overlay-manifest.schema.yaml
+#
+# Test fixture — overlay "B" in the multi-overlay precedence pair. Ships the same
+# dest as A. Added at LOWER precedence after A, the engine must refuse B's copy
+# of the dest (owned by a higher-precedence overlay).
+schema_version: 1
+overlay:
+  name: overlay-b
+  org: beta-demo
+  description: "Precedence fixture B — refused on the shared dest at lower precedence."
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt

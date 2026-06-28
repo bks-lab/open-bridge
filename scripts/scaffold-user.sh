@@ -84,6 +84,8 @@ MKDIR_DIRS=(
   workflow/contexts
   workflow/projects
   workflow/calendars
+  .bridge                # org-overlay sparse cache root (gitignored, scope: user)
+  .bridge/overlays       # one .bridge/overlays/<name>/ per applied overlay
 )
 
 # ---------------------------------------------------------------------------

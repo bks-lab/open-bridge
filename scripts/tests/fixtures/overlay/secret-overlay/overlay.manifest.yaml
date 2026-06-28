@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../../../../docs/schemas/overlay-manifest.schema.yaml
+#
+# Test fixture — an overlay whose tree carries one file with raw secret material
+# next to a clean sibling. The overlay engine's leak gate MUST refuse the leaky
+# file (leak-refused) while the clean sibling still materializes.
+# selection is omitted ⇒ include ['**'].
+
+schema_version: 1
+
+overlay:
+  name: secret-overlay
+  org: secret-demo
+  description: "Leak-gate fixture — one raw-secret file plus a clean sibling."
+
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt

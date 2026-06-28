@@ -153,13 +153,27 @@ upstreams:
     pull_interval_days: 7
     primary: true
 # Optional: your org overlay (scope: org content routes here, never to
-# the OSS upstream). Uncomment and adapt once your org has one:
+# the OSS upstream). Uncomment and adapt once your org has one. The
+# `materialize:` sub-block makes the entry overlay-capable: /overlay
+# sparse-clones `url@ref` into `cache`, then materializes the org's
+# scope:org files (skills, agents, contexts, project configs, an ecosystem
+# fragment) into the live tree as tracked copies pinned to immutable hashes.
+# Overlay subscriptions are managed by /overlay (skill bridge-overlay) — you
+# opt IN by adding this block via `/overlay add`, never by hand. An entry
+# WITHOUT a materialize block is overlay-incapable (CORE-only no-op).
+# Full guide: docs/org-overlays.md.
 #  - name: my-org-bridge
 #    repo: my-org/my-org-bridge
 #    branch: development
 #    role: org-overlay
 #    contribute: true
 #    pull_interval_days: 7
+#    materialize:
+#      url: https://github.com/my-org/my-org-bridge.git
+#      ref: development                       # branch or tag to pin from
+#      cache: .bridge/overlays/my-org/        # own sparse cache (gitignored)
+#      precedence: 10                         # higher wins a dest collision
+#      select: ["**"]                         # glob of overlay paths to pull
 
 # ─── Promote Safety ───────────────────────────────────────────────────
 # Content scanned before cherry-pick onto CORE branches.

@@ -88,6 +88,18 @@ properties:
         bidirectional — both
         none          — isolated
 
+  subscribes_overlays:
+    type: array
+    items:
+      type: string
+      pattern: "^[a-z][a-z0-9-]*$"
+    description: |
+      Optional — names of the org overlays this instance subscribes to (the
+      overlay.name slug, matching a `role: org-overlay` upstream in this
+      instance's bridge-config.yaml). The actual `materialize:` routing lives
+      there; this field only records WHICH overlays apply. Omitted or [] =
+      overlay-incapable (CORE-only). See docs/org-overlays.md.
+
   upstream:
     type: object
     additionalProperties: true

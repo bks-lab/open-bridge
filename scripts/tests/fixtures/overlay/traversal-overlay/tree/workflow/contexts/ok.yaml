@@ -1,0 +1,5 @@
+# Fixture: a clean in-tree sibling that materializes normally while the escaping
+# dest is refused.
+scope: org
+id: ok
+description: "Clean in-tree context — materializes; the escaping dest does not."

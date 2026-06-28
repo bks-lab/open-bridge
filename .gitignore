@@ -22,6 +22,15 @@
 
 # ecosystem.yaml — your real repo registry (created at onboarding, user-specific).
 /ecosystem.yaml
+
+# Org-overlay subscription state (scope: user). overlays.lock.yaml names local
+# material paths; .bridge/ is the sparse cache of materialized overlay repos.
+# Both stay local on a PUBLIC fork. A PRIVATE instance may un-ignore the lock
+# (per the OPT-IN note above, like the other USER-layer PII files) for
+# GitHub-as-offsite-backup — NEVER on a public fork. The .bridge/ cache always
+# stays ignored. See docs/org-overlays.md.
+/overlays.lock.yaml
+/.bridge/
 # Personas — tax data, signature blocks, filing destinations.
 identity/personas/*.yaml
 !identity/personas/_template.yaml
@@ -42,6 +51,20 @@ workflow/contexts/*.yaml
 workflow/calendars/*.yaml
 !workflow/calendars/_template.yaml
 !workflow/calendars/_schema.yaml
+# Project boards — GitHub Project numbers/field maps (org/instance-specific).
+# (overlay materialization destination — must be ignored on a public fork.)
+workflow/projects/*.yaml
+!workflow/projects/_template.yaml
+!workflow/projects/_schema.yaml
+# Remotes — machine inventory (hostnames, IPs, services).
+infra/remotes/*.yaml
+!infra/remotes/_template.yaml
+!infra/remotes/_schema.yaml
+# Org-namespaced rules + the org ecosystem fragment — overlay-materialized,
+# org-internal. (rules/*.md at the repo root are CORE and stay tracked.)
+rules/org/**
+/ecosystem.*.yaml
+!/ecosystem.example.yaml
 # ---------------------------------------------------------------------------
 
 # Doc-system audit log — concrete filenames + persona refs = PII.

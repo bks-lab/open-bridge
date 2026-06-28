@@ -265,7 +265,7 @@ load-bearing instead of drift-prone. USER-scoped skills never land on `main` —
 
 | Scope | Ships to | Skills |
 |-------|----------|--------|
-| `core` | open-bridge + your org overlay + local | `archive`, `bridge-audit`, `bridge-contribute`, `bridge-curator`, `bridge-dashboard`, `bridge-explorer`, `bridge-greeting`, `bridge-leak-check`, `bridge-learn`, `bridge-onboard`, `bridge-promote`, `bridge-status`, `bridge-sync`, `briefing`, `calendar`, `channel`, `dashboard`, `debrief`, `doc-system`, `github-projects-manager`, `html-canvas`, `knowledge-repo-init`, `mandants`, `onboard-sim`, `project-advisor`, `remote`, `schedule`, `task-close-postmortem`, `tracker-sync` |
+| `core` | open-bridge + your org overlay + local | `archive`, `bridge-audit`, `bridge-contribute`, `bridge-curator`, `bridge-dashboard`, `bridge-explorer`, `bridge-greeting`, `bridge-leak-check`, `bridge-learn`, `bridge-onboard`, `bridge-overlay`, `bridge-promote`, `bridge-status`, `bridge-sync`, `briefing`, `calendar`, `channel`, `dashboard`, `debrief`, `doc-system`, `github-projects-manager`, `html-canvas`, `knowledge-repo-init`, `mandants`, `onboard-sim`, `project-advisor`, `remote`, `schedule`, `task-close-postmortem`, `tracker-sync` |
 | `org` | your org overlay + local | — |
 | `user` | local only | — |
 
@@ -371,6 +371,8 @@ private fork it names itself (`<your-org>/<your-bridge>`), and `scope: org` rout
 - **Promote-safety is repo-specific:** open-bridge has a strict block-list; your org overlay is relaxed.
 - **Licence: MIT.**
 - **open-bridge is English-only.** Every file in this repo (CLAUDE.md, README.md, AGENTS.md, GEMINI.md, docs/, rules/, skills/, themes/, trackers/, examples/) must be entirely in English — no German sentences, headings, or comments in templates/schemas. CORE here is authored in English from the first keystroke — never written in another language and translated later. A downstream fork that contributes CORE upward must translate it to English before it lands; open-bridge itself never translates at promote. Runtime/output language is a separate axis (set per fork via `bridge-config.yaml` `language.conversation` / `language.artifacts`) — a German-speaking user still gets German conversation while these CORE files stay English. **Exception:** locale theme files under `themes/` (e.g. `professional-de.yaml`) legitimately carry non-English *vocabulary translations* — the theme's structural comments/keys stay English, but the user-facing vocabulary values may be in the target language. Full policy: [`rules/language-policy.md`](rules/language-policy.md).
+
+**Org Overlays — the subscribe direction.** `/promote` publishes `scope:org` content *up* to your org overlay; **org overlays** pull it back *down* into a teammate's fresh clone. The `/overlay` skill (`bridge-overlay`) sparse-clones an overlay repo named in a `role: org-overlay` upstream's `materialize:` block and materializes its files as tracked copies pinned to immutable hashes — never touching the public OSS upstream, conflict-free against `git merge main`. Full guide: [`docs/org-overlays.md`](docs/org-overlays.md).
 
 ### Commits & PRs
 
@@ -573,6 +575,7 @@ Cursor) load the skill from `skills/` directly.
 | `/remote` | `remote` | Remote management: status, health, logs, restart, sync |
 | `/schedule` | `schedule` | Scheduled tasks: list, create, deploy, disable |
 | `/promote` | `bridge-promote` | Promote CORE changes upstream (scope:core → `bks-lab/open-bridge`, scope:org → your optional org overlay) |
+| `/overlay` | `bridge-overlay` | Subscribe to org overlays + materialize scope:org content into the live tree (downstream inverse of `/promote`) |
 | `/contribute` | `bridge-contribute` | Scan user branch for upstream-worthy contributions |
 | `/calendar` | `calendar` | Calendar entries: list, add, cancel, confirm, show, status |
 | `/mandants` | `mandants` | Mandant management: list, add, show, add-person |

@@ -1,0 +1,6 @@
+# Fixture: the contested dest, B's version. It must NOT overwrite A's copy when
+# B is added at lower precedence.
+scope: org
+id: shared
+owner: overlay-b
+description: "Shared dest — overlay-b copy (lower precedence, refused)."
