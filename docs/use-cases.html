@@ -410,8 +410,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <span data-lang="en">What teams actually do with it.</span>
           <span data-lang="de">Was Teams wirklich damit tun.</span>
         </h1>
-        <p class="lede" data-lang="en">open-bridge is a framework, not a product with one fixed workflow. Below are eight concrete jobs teams run on it — each pairs a problem you'll recognise with what the Bridge actually does about it, the primitives involved, and where to read more. Everything here works on plain files in git: there is nothing to host, and the agent never sends or merges anything without a human gate.</p>
-        <p class="lede" data-lang="de">open-bridge ist ein Framework, kein Produkt mit einem festen Ablauf. Unten stehen acht konkrete Aufgaben, die Teams damit erledigen — jede paart ein Problem, das du wiedererkennst, mit dem, was die Bridge tatsächlich dagegen tut, den beteiligten Primitiven und einem Link zum Weiterlesen. Alles hier arbeitet auf schlichten Dateien in Git: nichts zu hosten, und der Agent sendet oder merged nie etwas ohne menschliches Gate.</p>
+        <p class="lede" data-lang="en">open-bridge is a framework, not a product with one fixed workflow. Below are seven concrete jobs teams run on it — each pairs a problem you'll recognise with what the Bridge actually does about it, the primitives involved, and where to read more. Everything here works on plain files in git: there is nothing to host, and the agent never sends or merges anything without a human gate.</p>
+        <p class="lede" data-lang="de">open-bridge ist ein Framework, kein Produkt mit einem festen Ablauf. Unten stehen sieben konkrete Aufgaben, die Teams damit erledigen — jede paart ein Problem, das du wiedererkennst, mit dem, was die Bridge tatsächlich dagegen tut, den beteiligten Primitiven und einem Link zum Weiterlesen. Alles hier arbeitet auf schlichten Dateien in Git: nichts zu hosten, und der Agent sendet oder merged nie etwas ohne menschliches Gate.</p>
       </div>
     </div>
   </section>
@@ -473,8 +473,6 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <div class="uc-prim">
             <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
             <div class="chips">
-              <code>customer-correspondence</code>
-              <code>email-composer</code>
               <code>mandants</code>
               <code>calendar</code>
             </div>
@@ -498,13 +496,12 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           </p>
           <p class="uc-solution">
             <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
-            <span data-lang="en">A transcription pipeline produces a clean transcript; a debrief step classifies the meeting, extracts insights across categories, and proposes board-mapped tasks you approve — so a conversation becomes tracked work instead of a fading memory.</span>
-            <span data-lang="de">Eine Transkriptions-Pipeline erzeugt ein sauberes Transkript; ein Debrief-Schritt klassifiziert das Meeting, extrahiert Erkenntnisse über Kategorien hinweg und schlägt board-zugeordnete Tasks vor, die du freigibst — aus einem Gespräch wird verfolgte Arbeit statt verblassender Erinnerung.</span>
+            <span data-lang="en">A debrief step takes your meeting notes, classifies the meeting, extracts insights across categories, and proposes board-mapped tasks you approve — so a conversation becomes tracked work instead of a fading memory.</span>
+            <span data-lang="de">Ein Debrief-Schritt nimmt deine Meeting-Notizen, klassifiziert das Meeting, extrahiert Erkenntnisse über Kategorien hinweg und schlägt board-zugeordnete Tasks vor, die du freigibst — aus einem Gespräch wird verfolgte Arbeit statt verblassender Erinnerung.</span>
           </p>
           <div class="uc-prim">
             <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
             <div class="chips">
-              <code>meeting-transcription</code>
               <code>debrief</code>
               <code>github-projects-manager</code>
             </div>
@@ -602,37 +599,9 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           </a>
         </article>
 
-        <!-- ⑦ Board-driven auto-implementation -->
-        <article class="uc reveal" id="board-pipeline">
-          <div class="uc-head"><span class="uc-num">07</span></div>
-          <h3 class="uc-title">
-            <span data-lang="en">Board-driven auto-implementation</span>
-            <span data-lang="de">Board-getriebene Auto-Implementierung</span>
-          </h3>
-          <p class="uc-problem">
-            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
-            <span data-lang="en">Small board items need implementing, but you can't babysit each one.</span>
-            <span data-lang="de">Kleine Board-Items wollen umgesetzt werden, aber du kannst nicht jedes einzelne betreuen.</span>
-          </p>
-          <p class="uc-solution">
-            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
-            <span data-lang="en">A board pipeline arms an item the moment a human drags it into the trigger column, advances it one stage per tick, and stops at a human-gated draft PR — it never auto-merges and never sets a card to Done. You stay the gate; the grind is automated.</span>
-            <span data-lang="de">Eine Board-Pipeline scharft ein Item, sobald ein Mensch es in die Trigger-Spalte zieht, bringt es pro Tick eine Stufe voran und stoppt an einem menschlich gegateten Draft-PR — sie merged nie automatisch und setzt nie eine Karte auf „Done". Du bleibst das Gate; die Fleißarbeit ist automatisiert.</span>
-          </p>
-          <div class="uc-prim">
-            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
-            <div class="chips">
-              <code>board-pilot</code>
-            </div>
-          </div>
-          <a class="uc-more" href="extension-model.md">
-            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
-          </a>
-        </article>
-
-        <!-- ⑧ Cross-tool skills + private-by-default contribution -->
+        <!-- ⑦ Cross-tool skills + private-by-default contribution -->
         <article class="uc reveal" id="cross-tool-skills">
-          <div class="uc-head"><span class="uc-num">08</span></div>
+          <div class="uc-head"><span class="uc-num">07</span></div>
           <h3 class="uc-title">
             <span data-lang="en">Cross-tool skills, private by default</span>
             <span data-lang="de">Tool-übergreifende Skills, privat per Default</span>
