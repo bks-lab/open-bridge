@@ -15,6 +15,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>open-bridge — live session demo</title>
+<meta name="description" content="Watch open-bridge run — four format-faithful session flows (briefing, session-start, operator incident, onboarding) replayed from BKS-Lab's own instance. Offline, no deps.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="open-bridge — live session demo">
+<meta property="og:description" content="Four format-faithful Bridge session flows, replayed live. Offline, no deps.">
+<meta property="og:url" content="https://bks-lab.github.io/open-bridge/demo.html">
+<meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="open-bridge — live session demo">
+<meta name="twitter:description" content="Four format-faithful Bridge session flows, replayed live. Offline, no deps.">
 
 <script>
 (function(){
@@ -73,10 +84,15 @@ h1{font-weight:300;letter-spacing:-.02em;line-height:1.1;color:var(--ink);font-s
 kbd{font-family:var(--font-mono);font-size:.86em;border:1px solid var(--line);border-bottom-width:2px;border-radius:var(--radius-sm);padding:1px 6px;background:var(--surface)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius-sm)}
 
-.topbar{max-width:920px;margin:18px auto 0;padding:0 24px;display:flex;justify-content:flex-end;gap:8px}
+.topbar{max-width:920px;margin:18px auto 0;padding:0 24px;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .topbar button{font-family:var(--font-sans);font-size:12.5px;color:var(--ink);border:1px solid var(--line);
   background:var(--surface);border-radius:var(--radius-md);padding:6px 11px;cursor:pointer}
 .topbar button:hover{background:var(--surface-subtle)}
+.topnav{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.topnav .wordmark{font-size:18px;font-weight:300;color:var(--ink);text-decoration:none;margin-right:10px;white-space:nowrap}
+.topnav a.lnk{font-size:13px;font-weight:500;color:var(--muted);text-decoration:none;padding:5px 10px;border-radius:var(--radius-full);white-space:nowrap}
+.topnav a.lnk:hover{color:var(--ink);background:var(--surface-subtle)}
+.topnav a.lnk[aria-current="page"]{color:var(--ink);background:var(--surface-subtle)}
 header.doc{padding:30px 0 6px}
 
 #stage{display:none}
@@ -148,6 +164,14 @@ footer.foot code{font-family:var(--font-mono)}
 <body>
 
 <div class="topbar">
+  <nav class="topnav" aria-label="Site">
+    <a class="wordmark" href="index.html">open<span class="grad">-bridge</span></a>
+    <a class="lnk" href="index.html">Home</a>
+    <a class="lnk" href="explore.html">Explore</a>
+    <a class="lnk" href="use-cases.html">Use Cases</a>
+    <a class="lnk" href="concepts.html">Concepts</a>
+    <a class="lnk" href="demo.html" aria-current="page">Demo</a>
+  </nav>
   <button id="themeToggle" title="Light/Dark (T)">&#9680; Dark</button>
 </div>
 
