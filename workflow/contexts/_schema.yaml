@@ -179,12 +179,12 @@ $defs:
     type: object
     additionalProperties: false
     description: |
-      Transcription pipeline hints for this context, consumed by a
-      bring-your-own transcription worker (docs/transcription-worker.md;
-      open-bridge ships the contract, not a pipeline). When present, this
-      context is treated as a transcription context; a worker's deploy step
-      typically extracts these fields into a flat runtime yaml on the
-      worker host.
+      Transcription pipeline settings for this context, consumed by a
+      transcription worker (contract: docs/transcription-worker.md;
+      reference implementation: skills/meeting-transcription/). When
+      present, this context is treated as a transcription context; the
+      deploy step extracts these fields into a flat runtime yaml on the
+      worker host (skills/meeting-transcription/scripts/extract_runtime_contexts.py).
     required: [language, library, output]
     properties:
       language:
@@ -201,7 +201,14 @@ $defs:
       notify:
         type: boolean
         default: true
-        description: "Send iMessage on completion"
+        description: "Completion ping (e.g. iMessage on macOS)"
+      mic_speaker:
+        type: string
+        description: |
+          Display name for the dedicated mic channel in dual-track
+          recordings (the recording user). Falls back to a per-bundle
+          manifest `mic_speaker:` override, then to "Me". Irrelevant for
+          single-track bundles (every speaker is voice-matched).
       tracks_default:
         enum: [dual, single]
         default: dual

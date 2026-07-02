@@ -40,8 +40,11 @@ talks to your worker directly.
 integrations:
   transcription:
     enabled: true
-    sync_script: "skills/<your-skill>/scripts/sync.sh"  # repo-relative
+    sync_script: "skills/meeting-transcription/scripts/debrief_sync.sh"  # repo-relative; swap for your own
     default_context: main       # context for audio handed off without an explicit one
+    worker:                     # read by the reference implementation (yours may differ)
+      host: worker-host         # SSH/Tailscale alias — see infra/remotes/
+      launchd_label: com.openbridge.transcribe-worker
     contexts:
       main:                     # → workflow/contexts/main.yaml
         imports: work/imports   # where this context's finished transcripts land
@@ -76,12 +79,16 @@ Failure semantics (hard rules — `/debrief` relies on these):
 A context that participates in transcription can declare pipeline hints in its
 `workflow/contexts/<slug>.yaml` — see `IntegrationTranscription` in
 `workflow/contexts/_schema.yaml` (language, voice-library slug, output folder,
-notify). Your worker's deploy step is free to consume or ignore them.
+notify, mic_speaker). Your worker's deploy step is free to consume or ignore
+them.
 
-## Reference shape
+## Reference implementation
 
-A worked implementation of this contract (whisper.cpp large-v3 + pyannote
-diarization on a home server, watched staging folder, two-track recordings)
-runs in a private downstream instance; it is intentionally not part of
-open-bridge. If you build an open one, a PR is welcome — the contract above is
-everything `/debrief` needs.
+open-bridge ships a full implementation of this contract:
+[`skills/meeting-transcription/`](../skills/meeting-transcription/SKILL.md) —
+whisper.cpp large-v3 (Metal) + pyannote diarization (MPS) on a worker host you
+provision, per-context voice libraries for speaker naming, launchd automation,
+and `scripts/debrief_sync.sh` as the sync script. Point
+`integrations.transcription.sync_script` at it and follow its
+`references/deployment.md`. The contract above stays the boundary — any other
+worker that honours it plugs in the same way.

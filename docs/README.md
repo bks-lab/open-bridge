@@ -30,7 +30,7 @@ instead of a bespoke `_MOC.md` / `index.md` convention.
 - [`calendar.md`](calendar.md), [`mandants.md`](mandants.md) — scheduled outbound + recipient groups.
 - [`personas.md`](personas.md) — user identities (tax data, signatures, paths).
 - [`doc-system.md`](doc-system.md) — document intake & filing (scan, name, tag, file, audit).
-- [`transcription-worker.md`](transcription-worker.md) — bring-your-own transcription worker: the `/debrief` ↔ pipeline contract + the no-worker manual path.
+- [`transcription-worker.md`](transcription-worker.md) — bring-your-own transcription worker: the `/debrief` ↔ pipeline contract + the no-worker manual path. Reference implementation: `skills/meeting-transcription/`.
 - [`cloud-accounts.md`](cloud-accounts.md) — cloud-account inventory convention (read the inventory file before any cloud op).
 - [`memory.md`](memory.md) — file-based memory model (one fact per file, MEMORY.md as a lean index).
 - [`work-system.md`](work-system.md) — Task Management concept: log/board/tasks lifecycle (KIND folder vs `status:` field).
