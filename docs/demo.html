@@ -18,14 +18,14 @@
 <meta name="description" content="Watch open-bridge run — four format-faithful session flows (briefing, session-start, operator incident, onboarding) replayed from BKS-Lab's own instance. Offline, no deps.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="open-bridge — live session demo">
-<meta property="og:description" content="Four format-faithful Bridge session flows, replayed live. Offline, no deps.">
+<meta property="og:description" content="Four format-faithful open-bridge session flows, replayed live. Offline, no deps.">
 <meta property="og:url" content="https://bks-lab.github.io/open-bridge/demo.html">
 <meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="open-bridge — live session demo">
-<meta name="twitter:description" content="Four format-faithful Bridge session flows, replayed live. Offline, no deps.">
+<meta name="twitter:description" content="Four format-faithful open-bridge session flows, replayed live. Offline, no deps.">
 
 <script>
 (function(){
@@ -204,7 +204,7 @@ footer.foot code{font-family:var(--font-mono)}
   <header class="doc">
     <div class="eyebrow">open-bridge · live demo</div>
     <h1>What a real session <span class="grad">looks like</span></h1>
-    <p class="lead">Four flows from the instance that builds open-bridge — BKS-Lab's own. Branding and work are real; client names are kept generic. The formats are exactly what you'd see: the morning greeting, the briefing dashboard, an incident handed to a specialist, and first-run onboarding.</p>
+    <p class="lead">Four flows from the team that builds open-bridge — replayed from BKS-Lab's own instance. Branding and work are real; client names are kept generic. The formats are exactly what a live session prints: the morning greeting, the briefing dashboard, an incident handed to a specialist, and first-run onboarding.</p>
   </header>
 
   <div id="stage">
@@ -323,7 +323,7 @@ footer.foot code{font-family:var(--font-mono)}
 
     <!-- ───── Chapter 3: Operator — find the bug, TDD the fix, ship (UAT autonomous, prod gated) ───── -->
     <div class="chap" data-title="Operator"
-         data-sub="<b>Incident → code fix.</b> The log-analyst pinpoints the bug in the code; the agent writes a failing test (red), fixes it (green), passes the gates, ships to UAT — and stops at the prod gate.">
+         data-sub="<b>Incident → code fix.</b> The log-analyst pinpoints the bug in the code; the agent writes a failing test (red), fixes it (green), passes suite, lint and types, ships to UAT — and stops at the prod gate.">
       <h3 class="chap-h">③ Operator — find the bug, TDD the fix, ship</h3>
       <div class="lines">
         <div class="line cmd" data-type data-after="300"><span class="pr">&gt;</span> <span class="ti">inbound invoices aren't booking — what happened?</span></div>
@@ -349,8 +349,8 @@ footer.foot code{font-family:var(--font-mono)}
         <div class="line fx">  <span class="ok">✓</span> commit a3f1c9 · branch fix/payment-means-59 · pushed · PR #87</div>
         <div class="line fx">  <span class="ok">✓</span> deploy uat → fn-invoicing-in-uat · health ok</div>
         <div class="line fx" data-after="400">  <span class="ok">✓</span> replayed doc_8842 on UAT → <span class="ok">booked</span></div>
-        <div class="line scene"><span class="ti">Done: off-spec SEPA-DD code "59" hit a non-tolerant enum → KeyError, so every</span></div>
-        <div class="line"><span class="ti">inbound aborted. Test-first fix red→green, full suite + lint + types green,</span></div>
+        <div class="line scene"><span class="ti">Done: off-spec SEPA-DD code "59" hit an enum with no fallback → KeyError, so every</span></div>
+        <div class="line"><span class="ti">inbound aborted. Test-first fix red→green, full suite + lint + types pass,</span></div>
         <div class="line" data-after="200"><span class="ti">shipped to UAT and replayed doc_8842 — it books cleanly now.</span></div>
         <div class="line" data-after="500"><span class="ti">Prod deploy + PR #87 merge are your call. Ship it? <span class="k">[y/n]</span></span></div>
       </div>
@@ -358,11 +358,11 @@ footer.foot code{font-family:var(--font-mono)}
 
     <!-- ───── Chapter 4: First run — onboarding (NEW_USER, realistic BKS stack) ───── -->
     <div class="chap" data-title="First run"
-         data-sub="<b>Onboarding.</b> On a fresh clone ELOPe introduces itself, then a guided, reversible 5-minute wizard scans your real setup and wires features from the evidence.">
+         data-sub="<b>Onboarding.</b> On a fresh clone ELOPe introduces itself, then a guided, reversible 5-minute wizard scans your real setup and wires features from the evidence — each one gated on your yes.">
       <h3 class="chap-h">④ First run — onboarding</h3>
       <div class="lines">
         <div class="line cmd" data-type data-after="250"><span class="pr">&gt;</span> <span class="ti">hi</span></div>
-        <div class="line" data-block><span class="ti">Hi — I'm ELOPe, the AI running in The Bridge: your command hub for</span></div>
+        <div class="line" data-block><span class="ti">Hi — I'm ELOPe, the AI running this bridge: your command hub for</span></div>
         <div class="line" data-block><span class="ti">agents, repos and standing orders — and I remember every session.</span></div>
         <div class="line" data-block data-after="300"><span class="ti">Fresh clone, nothing wired up yet — a 5-minute, reversible fix. I'll:</span></div>
         <div class="line dim" data-block>  1. spin up your user/alex branch (keeps your data out of CORE)</div>
@@ -385,19 +385,19 @@ footer.foot code{font-family:var(--font-mono)}
         <div class="line">  ② tailscale (4 devices) → scaffold <span class="lbl">infra/remotes/</span>? <span class="k">[y/m/l]</span></div>
         <div class="line ag" data-after="250">     ✓ infra/remotes/ scaffolded · 4 machines registered</div>
         <div class="line gap"></div>
-        <div class="line money" data-after="500"><span class="ok">✓ Onboarding complete</span><span class="ti"> — your Bridge is live. See you tomorrow, Alex.</span></div>
+        <div class="line money" data-after="500"><span class="ok">✓ Onboarding complete</span><span class="ti"> — your bridge is live. See you tomorrow, Alex.</span></div>
       </div>
     </div>
 
   </div>
 
-  <p class="caption">Live <code>BKS-Lab</code> instance — the team behind open-bridge. Branding, repos and stack are real; client names are kept generic and there is <b>no customer data, no secrets, no PII</b>. Formats mirror the live <code>briefing</code>, session-start, coordinator/sub-agent and <code>bridge-onboard</code> flows.</p>
+  <p class="caption">The live instance of <code>BKS-Lab</code> — the team behind open-bridge. Branding, repos and stack are real; client names are kept generic and there is <b>no customer data, no secrets, no PII</b>. Formats mirror the live <code>briefing</code>, session-start, coordinator/sub-agent and <code>bridge-onboard</code> flows.</p>
 
   <!-- ─── Funnel CTA ─── -->
   <div class="cta-funnel">
     <p class="cta-lead">
-      <span data-lang="en">Liked what you saw? Try this exact workspace yourself — 2 minutes, nothing to configure.</span>
-      <span data-lang="de">Gefällt dir, was du siehst? Probier genau diesen Workspace selbst aus — 2 Minuten, nichts zu konfigurieren.</span>
+      <span data-lang="en">Liked what you saw? Run it yourself in a ready-made workspace — 2 minutes, nothing to configure.</span>
+      <span data-lang="de">Gefällt dir, was du siehst? Probier es selbst in einem fertigen Workspace aus — 2 Minuten, nichts zu konfigurieren.</span>
     </p>
     <div class="cta-btns">
       <a class="cta-go" href="index.html#get-started">
