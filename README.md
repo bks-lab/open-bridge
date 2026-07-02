@@ -153,6 +153,9 @@ open-bridge is built and used at BKS-Lab to run BKS-Lab — a small team at BKS-
 - Terminology cleanup is pending (`work-task` → Task-Management; the `work/` folder made unambiguous).
 - The submodule architecture between open-bridge and a private org overlay is deferred and must be settled before the fork.
 
+The OPEN column, made votable: **[ROADMAP.md](ROADMAP.md)** — every open item
+links to its issue; 👍 the ones you want most.
+
 ---
 
 ## How it works
