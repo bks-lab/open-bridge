@@ -1,8 +1,10 @@
 ---
-summary: "Example agency setup — cluster-wrapper layout (identity/, infra/, workflow/) plus .claude/agents/ and standing orders"
+summary: "Runnable demo workspace (Acme Dev) — try open-bridge live in 2 minutes, then a full config tour: cluster-wrapper layout (identity/, infra/, workflow/), .claude/agents/, standing orders"
 type: readme
-last_updated: 2026-06-20
+last_updated: 2026-07-02
 related:
+  - CLAUDE.md
+  - AGENTS.md
   - ecosystem.yaml
   - bridge-config.yaml
   - .claude/agents/ops-officer.md
@@ -12,6 +14,35 @@ related:
 ---
 # Agency Example
 
+Acme Dev — a runnable demo workspace for The Bridge. All data is fictional.
+
+## Try it — 2 minutes, nothing to configure
+
+```bash
+git clone https://github.com/bks-lab/open-bridge.git
+cd open-bridge/examples/agency
+claude        # or: codex, copilot
+```
+
+Then ask:
+
+- `good morning`
+- `where was I on the payment retry?`
+- `why is the cart task in review?`
+
+Everything it answers is read from plain markdown sitting in that folder —
+open `work/log.md` next to it and watch the trick disappear. That's the
+product.
+
+The workspace ships with two clients (BigCorp, StartupXYZ), a filled board,
+a daily log, and a P1 incident mid-flight. [`CLAUDE.md`](CLAUDE.md) /
+[`AGENTS.md`](AGENTS.md) in this folder put any agent runtime into demo
+mode — no onboarding, no setup. One caveat: don't push — this clone points
+at the public repo. For a real, private setup, see the repo-root README's
+"Adopt it — private origin first" section.
+
+## Config tour
+
 Complete reference setup for a small dev team running The Bridge.
 Layout follows the cluster-wrapper convention — see
 [`docs/structure.md`](../../docs/structure.md) for the full map.
@@ -20,6 +51,8 @@ Layout follows the cluster-wrapper convention — see
 
 ```
 examples/agency/
+├── CLAUDE.md                   ← demo brief (overrides the repo root in here)
+├── AGENTS.md                   ← thin pointer to CLAUDE.md for other runtimes
 ├── bridge-config.yaml          ← user config
 ├── ecosystem.yaml              ← repo registry
 ├── .claude/agents/             ← native Claude Code sub-agents
