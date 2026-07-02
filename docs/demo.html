@@ -232,7 +232,7 @@ footer.foot code{font-family:var(--font-mono)}
 
     <!-- ───── Chapter 1: Morning — session start ───── -->
     <div class="chap" data-title="Morning"
-         data-sub="<b>Session start.</b> The terminal greeting already knows your repos, board and uncommitted work — before your first prompt.">
+         data-sub="<b>Session start.</b> Not a status dump — a briefing: an overnight CI failure, its collision with today's 14:00 review, and an answer quoted from a dated log row.">
       <h3 class="chap-h">① Morning — session start</h3>
       <div class="lines">
         <div class="line cmd" data-type data-after="250"><span class="pr">$</span> <span class="ti">cd ~/Developer/bks/the-bridge</span></div>
@@ -247,6 +247,8 @@ footer.foot code{font-family:var(--font-mono)}
         <div class="line fx" data-block><span class="fr">&#9656;</span> <span class="lbl">BKS-Lab</span> <span class="dim">· the-bridge · user/alex</span></div>
         <div class="line fx dim" data-block>  the-bridge  user/alex  ↑3 ±6</div>
         <div class="line fx dim" data-block data-after="200">  &#10227; docs(open-bridge): launch strategy + live demo  (1h ago)</div>
+        <div class="line fx" data-block>  <span class="ag">◆</span> 11:00  Weekly · BKS-Lab · 45m</div>
+        <div class="line fx" data-block data-after="200">  <span class="ag">◆</span> 14:00  Launch review · open-bridge live demo · 60m</div>
         <div class="line" data-after="150">🔴 2 waiting for your review     ⚠ WIP 5/5</div>
         <div class="line gap"></div>
         <div class="line fx fr" data-block>┌─ <span class="lbl">Doing — BKS-Lab</span> <span class="fr">─────────────────────────────┐</span></div>
@@ -260,9 +262,21 @@ footer.foot code{font-family:var(--font-mono)}
         <div class="line fx dim" data-block>  state=<span class="ok">NORMAL</span> · branch=user/alex · config=yes</div>
         <div class="line fx dim" data-block>  3 CORE commits ahead — offer `git merge development`</div>
         <div class="line fx dim" data-block data-after="300">&lt;/bridge-phase0&gt;</div>
-        <div class="line scene money" data-after="400"><span class="ti">Morning. Week 26: 5 in Doing — open-bridge launch leads, plus</span></div>
-        <div class="line"><span class="ti">bridge-deck and bks-news. 2 PRs wait on your review, WIP 5/5 at cap.</span></div>
-        <div class="line" data-after="400"><span class="ti">development is 3 commits ahead — merge when convenient. What's first?</span></div>
+        <div class="line cmd" data-type data-after="300"><span class="pr">&gt;</span> <span class="ti">good morning</span></div>
+        <div class="line scene" data-after="350"><span class="ti">Morning. Three things since last night:</span></div>
+        <div class="line"><span class="ti">1. 02:14 — CI went red on open-bridge main: the release publish step</span></div>
+        <div class="line" data-after="400"><span class="ti">   flaked. Same failure you fixed Tuesday — that fix never reached main.</span></div>
+        <div class="line"><span class="ti">2. Pages deploys from main, so the live demo hasn't rebuilt since 02:14 —</span></div>
+        <div class="line" data-after="400"><span class="ti">   and your 14:00 launch review walks exactly that page.</span></div>
+        <div class="line"><span class="ti">3. PR #61 (bridge-deck) hits day 4 today — your own three-day review</span></div>
+        <div class="line" data-after="450"><span class="ti">   rule fired yesterday.</span></div>
+        <div class="line money"><span class="ti">Suggest: merge the retry fix first — ~15 min, and Pages rebuilds well</span></div>
+        <div class="line" data-after="550"><span class="ti">before 14:00. Demo prep second, #61 review after. Want the diff summary?</span></div>
+        <div class="line cmd" data-type data-after="250"><span class="pr">&gt;</span> <span class="ti">what did I fix on tuesday?</span></div>
+        <div class="line" data-after="250"><span class="ti">One row from </span><span class="k">work/log.md</span><span class="ti"> — Tue 24.06:</span></div>
+        <div class="line fx" data-after="450">  <span class="dim">| 14:32 | 🔧 | open-bridge |</span> release publish flaked 3× — pinned retry backoff in <span class="k">release.yml</span>. Config, not code. <span class="dim">|</span></div>
+        <div class="line"><span class="ti">Same root cause, red on main since 02:14 — the pin never left</span></div>
+        <div class="line" data-after="450"><span class="ti">fix/release-retry. One merge and tonight's 02:14 run is green again.</span></div>
       </div>
     </div>
 
