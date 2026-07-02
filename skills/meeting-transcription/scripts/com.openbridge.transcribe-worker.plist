@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.openbridge.transcribe-worker.plist
+  ──────────────────────────────────────
+  Runs on the worker host. Watches ~/transcribe-inbox/ for bundles pushed from
+  the capture machine by transcribe-bundler.sh, invokes the whisper.cpp +
+  pyannote pipeline.
+
+  REPLACE_ME_HOME: plists cannot expand ~ — substitute REPLACE_ME_HOME with
+  your home directory at deploy time (the deploy step does this — see
+  references/deployment.md), e.g.:
+    sed -i '' "s|REPLACE_ME_HOME|$HOME|g" com.openbridge.transcribe-worker.plist
+
+  Install (canonical scripts live in skills/meeting-transcription/scripts/):
+    rsync skills/meeting-transcription/scripts/*.{sh,py} worker-host:~/transcribe-pipeline/bin/
+    rsync skills/meeting-transcription/scripts/com.openbridge.transcribe-worker.plist worker-host:~/Library/LaunchAgents/
+    ssh worker-host 'launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.openbridge.transcribe-worker.plist'
+
+  Pre-req on the worker host:
+    - venv: ~/venvs/whisperx/ (WhisperX + pyannote-audio installed)
+    - HF token: ~/.config/open-bridge/hf-token (keychain hf-token-pyannote also
+      works; the file is the deployed default since keychain writes over SSH fail)
+    - pyannote/speaker-diarization-community-1 license accepted on huggingface.co
+    - voice library: ~/transcribe-pipeline/speaker-library/<context>/*.npy
+    - optional: set CAPTURE_HOST in EnvironmentVariables below to push finished
+      transcripts back to the capture machine (absent/empty = skip)
+
+  Logs:
+    ~/Library/Logs/transcribe-worker.log
+    ~/Library/Logs/transcribe-worker.launchd.{out,err}
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openbridge.transcribe-worker</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACE_ME_HOME/transcribe-pipeline/bin/transcribe-worker.sh</string>
+    </array>
+
+    <key>WatchPaths</key>
+    <array>
+        <string>REPLACE_ME_HOME/transcribe-inbox</string>
+    </array>
+
+    <!-- Run jobs back-to-back, not in parallel (16GB RAM ceiling) -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_ME_HOME/Library/Logs/transcribe-worker.launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>REPLACE_ME_HOME/Library/Logs/transcribe-worker.launchd.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>REPLACE_ME_HOME/venvs/whisperx/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>REPLACE_ME_HOME</string>
+        <!-- Optional: push finished transcripts back to the capture machine.
+             Uncomment and set to its SSH/Tailscale name:
+        <key>CAPTURE_HOST</key>
+        <string>capture-mac</string>
+        -->
+    </dict>
+</dict>
+</plist>

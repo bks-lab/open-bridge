@@ -150,14 +150,15 @@ repos:
 # ---------------------------------------------------------------------
 #
 # integrations:
-#   # transcription — pipeline hints for a bring-your-own transcription
-#   # worker (docs/transcription-worker.md; open-bridge ships the contract,
-#   # not a pipeline). A worker's deploy step typically extracts these
-#   # fields into a flat runtime yaml on the worker host. Library + output
-#   # use this context's slug by convention unless you override.
+#   # transcription — owned by skills/meeting-transcription/ (the reference
+#   # implementation of the worker contract in docs/transcription-worker.md;
+#   # any worker honouring that contract works too). The deploy step extracts
+#   # these fields into a flat runtime yaml on the worker host. Library +
+#   # output use this context's slug by convention unless you override.
 #   transcription:
-#     language: de           # de | en | auto
+#     language: auto         # de | en | auto
 #     library: my-context    # → speaker-library/<library>/*.npy
 #     output:  my-context    # → ~/Transcripts/<output>/
 #     notify:  true
-#     # tracks_default: dual   # dual (Audio-Hijack 2-track) | single (mix/mono)
+#     # mic_speaker: Alice     # display name for the dual-track mic channel (default "Me")
+#     # tracks_default: dual   # dual (2-track recorder) | single (mix/mono)

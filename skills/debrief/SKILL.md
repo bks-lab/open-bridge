@@ -89,6 +89,7 @@ output format) lives in
 
 - **Transcription worker** (optional, bring-your-own): see § Transcription
   pipeline above + [`docs/transcription-worker.md`](../../docs/transcription-worker.md).
+  A full reference implementation ships as `skills/meeting-transcription/`.
 - **process-transcription** (global, if installed): owns Org-specific
   participant lists and wiki routing — debrief defers to it.
 - **project-advisor**: governance + execution for GitHub issues created from

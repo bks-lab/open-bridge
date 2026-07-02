@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.openbridge.voiceprint-backup.plist
+  ──────────────────────────────────────
+  Weekly (Sun 09:00) pull of the worker's speaker-library/*.npy voiceprints
+  into the Bridge repo under identity/voiceprints/. Runs on the machine where
+  the Bridge repo lives. launchd runs a missed calendar interval on next wake,
+  so a laptop asleep on Sunday still gets the backup when it comes up.
+
+  REPLACE_ME_HOME: plists cannot expand ~ — substitute REPLACE_ME_HOME with
+  your home directory at deploy time (the deploy step does this — see
+  references/deployment.md), e.g.:
+    sed -i '' "s|REPLACE_ME_HOME|$HOME|g" com.openbridge.voiceprint-backup.plist
+  Also adjust BRIDGE_ROOT below to the absolute path of your Bridge repo
+  checkout — the deployed ~/bin copy of the script needs it to find the repo.
+
+  Install:
+    cp com.openbridge.voiceprint-backup.plist ~/Library/LaunchAgents/
+    cp voiceprint_backup.sh ~/bin/ && chmod +x ~/bin/voiceprint_backup.sh
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.openbridge.voiceprint-backup.plist
+
+  Run now (test):  launchctl kickstart -k gui/$(id -u)/com.openbridge.voiceprint-backup
+  Verify:          launchctl print gui/$(id -u)/com.openbridge.voiceprint-backup
+  Logs:            ~/Library/Logs/voiceprint-backup.log (+ .launchd.{out,err})
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openbridge.voiceprint-backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACE_ME_HOME/bin/voiceprint_backup.sh</string>
+    </array>
+
+    <!-- Weekly: Sunday (Weekday 0) at 09:00 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_ME_HOME/Library/Logs/voiceprint-backup.launchd.out</string>
+
+    <key>StandardErrorPath</key>
+    <string>REPLACE_ME_HOME/Library/Logs/voiceprint-backup.launchd.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>REPLACE_ME_HOME</string>
+        <!-- Absolute path of your Bridge repo checkout (adjust) -->
+        <key>BRIDGE_ROOT</key>
+        <string>REPLACE_ME_HOME/open-bridge</string>
+    </dict>
+</dict>
+</plist>

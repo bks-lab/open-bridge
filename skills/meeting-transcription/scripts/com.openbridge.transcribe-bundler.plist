@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.openbridge.transcribe-bundler.plist
+  ───────────────────────────────────────
+  Runs on the capture machine. Watches ~/Recordings/meetings/ for new MP3s
+  written by Audio Hijack, invokes transcribe-bundler.sh to wait for
+  write-stability + bundle + rsync to the worker host. Replaces the v1
+  JS-hook approach (AH automation has no shell).
+
+  REPLACE_ME_HOME: plists cannot expand ~ — substitute REPLACE_ME_HOME with
+  your home directory at deploy time (the deploy step does this — see
+  references/deployment.md), e.g.:
+    sed -i '' "s|REPLACE_ME_HOME|$HOME|g" com.openbridge.transcribe-bundler.plist
+
+  Install:
+    cp com.openbridge.transcribe-bundler.plist ~/Library/LaunchAgents/
+    cp transcribe-bundler.sh ~/bin/ && chmod +x ~/bin/transcribe-bundler.sh
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.openbridge.transcribe-bundler.plist
+
+  Verify:
+    launchctl print gui/$(id -u)/com.openbridge.transcribe-bundler
+
+  Logs:
+    ~/Library/Logs/transcribe-bundler.log
+    ~/Library/Logs/transcribe-bundler.launchd.{out,err}
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openbridge.transcribe-bundler</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACE_ME_HOME/bin/transcribe-bundler.sh</string>
+    </array>
+
+    <key>WatchPaths</key>
+    <array>
+        <string>REPLACE_ME_HOME/Recordings/meetings</string>
+    </array>
+
+    <!-- Debounce: throttle to once per 10s even on rapid filesystem events
+         (AH writes incremental MP3 fragments while recording) -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_ME_HOME/Library/Logs/transcribe-bundler.launchd.out</string>
+
+    <key>StandardErrorPath</key>
+    <string>REPLACE_ME_HOME/Library/Logs/transcribe-bundler.launchd.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>REPLACE_ME_HOME</string>
+        <!-- Set to your worker host's SSH/Tailscale name -->
+        <key>TRANSCRIBE_WORKER</key>
+        <string>worker-host</string>
+    </dict>
+</dict>
+</plist>
