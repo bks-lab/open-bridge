@@ -34,7 +34,7 @@ Skip silently if the integration is disabled, and continue gracefully if the
 worker is unreachable (the script exits non-zero — just proceed with whatever is
 already in imports). The reverse `push` direction (handing un-transcribed audio
 found in the scan to the pipeline) is described in SKILL.md § Transcription
-pipeline.
+pipeline; the full worker contract lives in `docs/transcription-worker.md`.
 
 If no path argument, scan **all** of these sources (deduplicate by filename):
 
@@ -77,7 +77,9 @@ PARA processed/ archive (`work.audio_archive_dir` under `doc_sensor.onedrive_roo
    drop the redundant inbox bundle.
 3. Also treat any transcript already under `~/Transcripts/<ctx>/_debriefed/` as
    done — never re-pull it. Only a true orphan (no md5 match **and** no
-   `_debriefed/` entry) goes to the `meeting-transcription` worker.
+   `_debriefed/` entry) goes to the configured transcription worker (if any —
+   see `docs/transcription-worker.md`; with no worker, list it for manual
+   transcription instead).
 
 This prevents a redundant re-transcript of a meeting that was already archived.
 

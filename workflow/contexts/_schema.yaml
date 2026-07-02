@@ -179,11 +179,12 @@ $defs:
     type: object
     additionalProperties: false
     description: |
-      Meeting-transcription pipeline settings for this context. Owned by
-      the `meeting-transcription` skill (skills/meeting-transcription/).
-      When present, this context is treated as a transcription context;
-      the skill's deploy step extracts these fields into a flat runtime
-      yaml on the worker host (~/transcribe-pipeline/contexts/).
+      Transcription pipeline hints for this context, consumed by a
+      bring-your-own transcription worker (docs/transcription-worker.md;
+      open-bridge ships the contract, not a pipeline). When present, this
+      context is treated as a transcription context; a worker's deploy step
+      typically extracts these fields into a flat runtime yaml on the
+      worker host.
     required: [language, library, output]
     properties:
       language:

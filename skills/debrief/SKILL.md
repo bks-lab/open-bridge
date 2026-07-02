@@ -65,8 +65,30 @@ Updates **before** protocol (so wiki has real URLs). Protocol **before** email
 Both flows are checkpoint-gated — user confirms at classification and task
 creation. Neither flow writes to GitHub, wiki, or archive without explicit `[y]`.
 
+## Transcription pipeline (optional)
+
+Debrief consumes transcripts; it does **not** transcribe. A transcription
+worker is an optional integration — never a dependency:
+
+- **No worker configured** (the default): transcribe with any tool and drop
+  the transcript (or the audio + transcript pair, same basename) into imports —
+  the Find phase picks it up. Nothing else is required.
+- **Worker configured** (`integrations.transcription.enabled: true` in
+  `bridge-config.yaml`): Phase 0 pulls finished transcripts via the
+  `sync_script` before scanning (`pull`), and the Find phase may hand
+  un-transcribed audio back to the worker (`push`).
+- **Fail-soft (hard rule):** integration disabled → skip silently; worker
+  unreachable (sync script exits non-zero) → proceed with whatever is already
+  in imports. A missing or broken worker must never block a debrief run.
+
+The full worker contract (config block, sync-script verbs, failure semantics,
+output format) lives in
+[`docs/transcription-worker.md`](../../docs/transcription-worker.md).
+
 ## Integration points
 
+- **Transcription worker** (optional, bring-your-own): see § Transcription
+  pipeline above + [`docs/transcription-worker.md`](../../docs/transcription-worker.md).
 - **process-transcription** (global, if installed): owns Org-specific
   participant lists and wiki routing — debrief defers to it.
 - **project-advisor**: governance + execution for GitHub issues created from
