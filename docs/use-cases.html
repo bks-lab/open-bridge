@@ -10,18 +10,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>open-bridge — Use cases &amp; solutions</title>
-<meta name="description" content="Eight concrete jobs teams run on open-bridge — each pairs a problem you'll recognise with what the Bridge does about it, the primitives involved, and where to read more. Plain files in git, nothing to host.">
+<meta name="description" content="Seven concrete jobs teams run on open-bridge — each pairs a problem you'll recognise with what the bridge does about it, the primitives involved, and where to read more. Plain files in git, nothing to host.">
 <!-- Social / Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="open-bridge — Use cases &amp; solutions">
-<meta property="og:description" content="Eight concrete jobs teams run on open-bridge — problem, solution, primitives, and a link to read more.">
+<meta property="og:description" content="Seven concrete jobs teams run on open-bridge — problem, solution, primitives, and a link to read more.">
 <meta property="og:url" content="https://bks-lab.github.io/open-bridge/use-cases.html">
 <meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="open-bridge — Use cases &amp; solutions">
-<meta name="twitter:description" content="Eight concrete jobs teams run on open-bridge — problem, solution, primitives, and a link to read more.">
+<meta name="twitter:description" content="Seven concrete jobs teams run on open-bridge — problem, solution, primitives, and a link to read more.">
 
 <!-- Anti-FOUC pre-paint: theme + language set BEFORE the stylesheet paints. -->
 <script>
@@ -410,8 +410,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <span data-lang="en">What teams actually do with it.</span>
           <span data-lang="de">Was Teams wirklich damit tun.</span>
         </h1>
-        <p class="lede" data-lang="en">open-bridge is a framework, not a product with one fixed workflow. Below are seven concrete jobs teams run on it — each pairs a problem you'll recognise with what the Bridge actually does about it, the primitives involved, and where to read more. Everything here works on plain files in git: there is nothing to host, and the agent never sends or merges anything without a human gate.</p>
-        <p class="lede" data-lang="de">open-bridge ist ein Framework, kein Produkt mit einem festen Ablauf. Unten stehen sieben konkrete Aufgaben, die Teams damit erledigen — jede paart ein Problem, das du wiedererkennst, mit dem, was die Bridge tatsächlich dagegen tut, den beteiligten Primitiven und einem Link zum Weiterlesen. Alles hier arbeitet auf schlichten Dateien in Git: nichts zu hosten, und der Agent sendet oder merged nie etwas ohne menschliches Gate.</p>
+        <p class="lede" data-lang="en">open-bridge is a framework, not a product with one fixed workflow. Below are seven concrete jobs teams run on it — each names a problem you'll recognise, what your bridge does about it, the primitives involved, and where to read more. Everything here works on plain files in git: nothing to host, and the agent never sends or merges anything without a human gate.</p>
+        <p class="lede" data-lang="de">open-bridge ist ein Framework, kein Produkt mit einem festen Ablauf. Unten stehen sieben konkrete Aufgaben, die Teams damit erledigen — jede nennt ein Problem, das du wiedererkennst, was deine Bridge dagegen tut, die beteiligten Primitive und einen Link zum Weiterlesen. Alles hier läuft auf schlichten Dateien in Git: nichts zu hosten, und der Agent sendet oder merged nie etwas ohne menschliches Gate.</p>
       </div>
     </div>
   </section>
@@ -433,13 +433,13 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           </h3>
           <p class="uc-problem">
             <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
-            <span data-lang="en">Every teammate needs your org's customizations — skills, configs, accounts — but forking a tailored Bridge per person is unmaintainable.</span>
+            <span data-lang="en">Every teammate needs your org's customizations — skills, configs, accounts — but forking a tailored bridge per person is unmaintainable.</span>
             <span data-lang="de">Jede:r im Team braucht die Anpassungen deiner Organisation — Skills, Configs, Accounts — aber pro Person eine angepasste Bridge zu forken ist nicht wartbar.</span>
           </p>
           <p class="uc-solution">
-            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
-            <span data-lang="en"><code>/overlay add &lt;git-url&gt;</code> subscribes a vanilla Bridge to a private org-config repo and materializes its scattered files as tracked copies — a copy, a manifest, and a lockfile, the downstream inverse of <code>/promote</code>. CORE files are never overridable; managed files stay public-fork-safe; and your own edits always win on conflict. One URL gives a teammate a full org Bridge — no fork, no per-person drift.</span>
-            <span data-lang="de"><code>/overlay add &lt;git-url&gt;</code> abonniert eine schlichte Bridge an ein privates Org-Config-Repo und materialisiert dessen verstreute Dateien als getrackte Kopien — eine Kopie, ein Manifest und eine Lockfile, die Downstream-Umkehrung von <code>/promote</code>. CORE-Dateien sind nie überschreibbar; verwaltete Dateien bleiben public-fork-sicher; und bei Konflikt gewinnen stets deine eigenen Edits. Eine URL gibt einem Teammitglied eine vollständige Org-Bridge — kein Fork, kein Drift pro Person.</span>
+            <span class="lab"><span data-lang="en">What the bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en"><code>/overlay add &lt;git-url&gt;</code> subscribes a vanilla bridge to a private org-config repo and materializes its files across your tree as tracked copies, recorded in a manifest and a lockfile. It is the downstream inverse of <code>/promote</code>. CORE files are never overridable; managed files stay public-fork-safe; and your own edits always win on conflict. One URL gives a teammate a full org bridge — no fork, no per-person drift.</span>
+            <span data-lang="de"><code>/overlay add &lt;git-url&gt;</code> abonniert für eine unveränderte Bridge ein privates Org-Config-Repo und materialisiert dessen Dateien über deinen Baum verteilt als getrackte Kopien, festgehalten in einem Manifest und einem Lockfile. Es ist die Downstream-Umkehrung von <code>/promote</code>. CORE-Dateien sind nie überschreibbar; verwaltete Dateien bleiben public-fork-sicher; und bei Konflikt gewinnen stets deine eigenen Edits. Eine URL gibt einem Teammitglied eine vollständige Org-Bridge — kein Fork, kein Drift pro Person.</span>
           </p>
           <div class="uc-prim">
             <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
@@ -463,12 +463,12 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <p class="uc-problem">
             <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
             <span data-lang="en">Recurring status emails to clients must come from you, with correct attribution — and must never address the recipient as "you".</span>
-            <span data-lang="de">Wiederkehrende Status-Mails an Kunden müssen von dir kommen, mit korrekter Zuordnung — und dürfen die Empfänger nie mit „Du" ansprechen.</span>
+            <span data-lang="de">Wiederkehrende Status-Mails an Kunden müssen von dir kommen, mit korrektem Absender — und dürfen die Empfänger nie mit „Du" ansprechen.</span>
           </p>
           <p class="uc-solution">
-            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span class="lab"><span data-lang="en">What the bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
             <span data-lang="en">Turn a task or board item into a styled email routed to the right recipient group, optionally scheduled for later. The sender is always you; recipients are kept in the third person by construction, so attribution never slips.</span>
-            <span data-lang="de">Verwandle einen Task oder ein Board-Item in eine gestylte E-Mail, geroutet an die richtige Empfängergruppe, optional für später geplant. Absender bist immer du; Empfänger bleiben per Konstruktion in der dritten Person — die Zuordnung rutscht nie.</span>
+            <span data-lang="de">Verwandle einen Task oder ein Board-Item in eine gestylte E-Mail, geroutet an die richtige Empfängergruppe, optional für später geplant. Absender bist immer du; Empfänger bleiben konstruktionsbedingt in der dritten Person — der Absender verrutscht nie.</span>
           </p>
           <div class="uc-prim">
             <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
@@ -495,9 +495,9 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
             <span data-lang="de">Meeting-Entscheidungen verdampfen, sobald das Gespräch endet.</span>
           </p>
           <p class="uc-solution">
-            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span class="lab"><span data-lang="en">What the bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
             <span data-lang="en">A debrief step takes your meeting notes, classifies the meeting, extracts insights across categories, and proposes board-mapped tasks you approve — so a conversation becomes tracked work instead of a fading memory.</span>
-            <span data-lang="de">Ein Debrief-Schritt nimmt deine Meeting-Notizen, klassifiziert das Meeting, extrahiert Erkenntnisse über Kategorien hinweg und schlägt board-zugeordnete Tasks vor, die du freigibst — aus einem Gespräch wird verfolgte Arbeit statt verblassender Erinnerung.</span>
+            <span data-lang="de">Ein Debrief-Schritt nimmt deine Meeting-Notizen, klassifiziert das Meeting, extrahiert Erkenntnisse über Kategorien hinweg und schlägt board-zugeordnete Tasks vor, die du freigibst — aus einem Gespräch wird getrackte Arbeit statt verblassender Erinnerung.</span>
           </p>
           <div class="uc-prim">
             <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
@@ -524,7 +524,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
             <span data-lang="de">Postfächer und Mail-Anhänge stapeln sich unsortiert, bis nichts mehr auffindbar ist.</span>
           </p>
           <p class="uc-solution">
-            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span class="lab"><span data-lang="en">What the bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
             <span data-lang="en">The doc-system scans your sources — filesystem inboxes and flagged mail — categorizes each document, and files it using routing rules plus per-persona destinations, for example a PARA tree. Renamed, tagged, filed, and audited.</span>
             <span data-lang="de">Das Doc-System scannt deine Quellen — Dateisystem-Inboxen und geflaggte Mails — kategorisiert jedes Dokument und legt es per Routing-Regeln plus Persona-Zielpfaden ab, etwa einem PARA-Baum. Umbenannt, getaggt, abgelegt und auditiert.</span>
           </p>
@@ -553,9 +553,9 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
             <span data-lang="de">Daten verschiedener Organisationen oder Kunden dürfen nie eine Git-Historie teilen.</span>
           </p>
           <p class="uc-solution">
-            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
-            <span data-lang="en">Run a separate Bridge instance per org — each its own clone with its own user branch, some pushed to a remote and some kept strictly local-only. A registry indexes them all, so you stay aware of every instance without ever cross-contaminating their data.</span>
-            <span data-lang="de">Betreibe eine eigene Bridge-Instanz pro Organisation — jede ein eigener Clone mit eigenem User-Branch, manche zu einem Remote gepusht, manche strikt nur lokal. Eine Registry indiziert sie alle, sodass du jede Instanz im Blick hast, ohne ihre Daten je querzukontaminieren.</span>
+            <span class="lab"><span data-lang="en">What the bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">Run a separate bridge instance per org — each its own clone with its own user branch, some pushed to a remote, some kept local-only. A registry indexes them all, so you stay aware of every instance without ever cross-contaminating their data.</span>
+            <span data-lang="de">Betreibe eine eigene Bridge-Instanz pro Organisation — jede ein eigener Clone mit eigenem User-Branch, manche zu einem Remote gepusht, manche nur lokal. Eine Registry indiziert sie alle, sodass du jede Instanz im Blick hast, ohne dass sich ihre Daten je vermischen.</span>
           </p>
           <div class="uc-prim">
             <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
@@ -578,13 +578,13 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           </h3>
           <p class="uc-problem">
             <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
-            <span data-lang="en">Lessons learned in one session evaporate before the next.</span>
-            <span data-lang="de">In einer Session Gelerntes verdampft vor der nächsten.</span>
+            <span data-lang="en">Lessons learned in one session are forgotten by the next.</span>
+            <span data-lang="de">In einer Session Gelerntes ist bis zur nächsten vergessen.</span>
           </p>
           <p class="uc-solution">
-            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span class="lab"><span data-lang="en">What the bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
             <span data-lang="en">A file-based memory keeps durable facts as plain text the agent reads back later. A learning loop closes the gap: postmortems and audits emit improvement proposals you review, and a curator consolidates recurring patterns — so the system compounds instead of forgetting.</span>
-            <span data-lang="de">Ein datei-basiertes Gedächtnis hält dauerhafte Fakten als Klartext, den der Agent später wieder liest. Eine Lernschleife schließt die Lücke: Postmortems und Audits erzeugen Verbesserungsvorschläge, die du prüfst, und ein Kurator konsolidiert wiederkehrende Muster — das System summiert sich auf, statt zu vergessen.</span>
+            <span data-lang="de">Ein dateibasiertes Gedächtnis hält dauerhafte Fakten als Klartext, den der Agent später wieder liest. Eine Lernschleife schließt die Lücke: Postmortems und Audits erzeugen Verbesserungsvorschläge, die du prüfst, und ein Kurator konsolidiert wiederkehrende Muster — das System wächst, statt zu vergessen.</span>
           </p>
           <div class="uc-prim">
             <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
@@ -608,13 +608,13 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           </h3>
           <p class="uc-problem">
             <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
-            <span data-lang="en">You want portable tooling and a way to keep org content private while still contributing generic improvements upstream.</span>
-            <span data-lang="de">Du willst portables Tooling und einen Weg, Org-Inhalte privat zu halten und trotzdem generische Verbesserungen upstream beizutragen.</span>
+            <span data-lang="en">Tooling built for one agent CLI is stuck there — and contributing improvements upstream risks dragging private org content along.</span>
+            <span data-lang="de">Tooling, das für ein einzelnes Agent-CLI gebaut ist, bleibt dort hängen — und Verbesserungen upstream beizutragen riskiert, private Org-Inhalte mitzuschleppen.</span>
           </p>
           <p class="uc-solution">
-            <span class="lab"><span data-lang="en">What the Bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
-            <span data-lang="en">Agent Skills follow the open SKILL.md standard, discoverable by Claude Code, Copilot, Codex, Cursor and Gemini through one shared tree. A three-tier promote/contribute flow routes every change by its scope, so private content stays local while generic CORE flows upstream — decided by structure, not by a tag you can forget.</span>
-            <span data-lang="de">Agent-Skills folgen dem offenen SKILL.md-Standard, auffindbar für Claude Code, Copilot, Codex, Cursor und Gemini über einen gemeinsamen Baum. Ein dreistufiger Promote/Contribute-Fluss routet jede Änderung nach ihrem Scope, sodass private Inhalte lokal bleiben und generisches CORE upstream fließt — entschieden durch Struktur, nicht durch ein Tag, das man vergessen kann.</span>
+            <span class="lab"><span data-lang="en">What the bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">Agent Skills follow the open SKILL.md standard, discoverable by Claude Code, Copilot CLI, Codex, Cursor and Gemini through one shared tree. A three-tier promote/contribute flow routes every change by its scope, so private content stays local while generic CORE content flows upstream — decided by structure, not by a tag you can forget.</span>
+            <span data-lang="de">Agent-Skills folgen dem offenen SKILL.md-Standard, auffindbar für Claude Code, Copilot CLI, Codex, Cursor und Gemini über einen gemeinsamen Baum. Ein dreistufiger Promote/Contribute-Fluss routet jede Änderung nach ihrem Scope, sodass private Inhalte lokal bleiben und generische CORE-Inhalte upstream fließen — entschieden durch Struktur, nicht durch ein Tag, das man vergessen kann.</span>
           </p>
           <div class="uc-prim">
             <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
@@ -669,8 +669,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   <div class="foot-grid">
     <div class="foot-blurb">
       <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
-      <span data-lang="en">Built at BKS-Lab — a small team — and used to run it. Present tense, no hero arc: this is method and substrate.</span>
-      <span data-lang="de">Gebaut bei BKS-Lab — ein kleines Team — und genutzt, um es zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used daily to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — einem kleinen Team — und täglich genutzt, um genau diese Firma zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
       <table class="license-table">
         <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
         <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
