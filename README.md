@@ -1,10 +1,8 @@
 # open-bridge
 
-Your AI coding agent starts every session knowing your repos, your clients, and how you work — because open-bridge is a plain git repo of markdown and YAML it reads at the start of every session, independent of which model or frontend you run. No database, no SaaS, no second app to maintain.
+Your AI coding agent starts every session knowing your repos, your clients, and how you work — because open-bridge is a plain git repo of markdown and YAML it reads at session start, independent of which model or frontend you run. No database, no SaaS, no second app to maintain.
 
-> **The fix isn't a smarter prompt. It's giving the agent a place to remember.**
-
-> **Status:** Public, MIT (with a separate trademark policy). Built at BKS-Lab and used to run it — one self-hosted instance, no external users yet. This README documents the method and substrate, not adoption.
+> **Status:** open-bridge runs the company that builds it, daily — every feature exists because we needed it on a real workday; you're early (newly public, no external users yet), and [the ledger](#whats-proven-whats-a-bet-whats-open) says exactly what that means.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Trademark](https://img.shields.io/badge/trademark-policy-orange.svg)](TRADEMARK.md)
@@ -12,93 +10,60 @@ Your AI coding agent starts every session knowing your repos, your clients, and 
 [![CI](https://github.com/bks-lab/open-bridge/actions/workflows/validate.yml/badge.svg)](https://github.com/bks-lab/open-bridge/actions/workflows/validate.yml)
 [![Release](https://img.shields.io/github/v/release/bks-lab/open-bridge?include_prereleases&label=release&color=blue)](https://github.com/bks-lab/open-bridge/releases)
 
+```
+> good morning
+
+Morning. You're mid-incident on bigcorp: Stripe webhook retries are
+failing in prod (P1, opened yesterday) — root cause traced to the
+webhook secret; next step is the retry fix. startupxyz onboarding:
+email-verification wired, 6 tests green. Board: 2 doing · 1 review ·
+cart-a11y waits on PR #214.
+```
+
+*That's the shipped demo workspace answering — [run it yourself in 2 minutes](#try-it-in-2-minutes--nothing-to-configure).*
+
 [![open-bridge — the /briefing dashboard, generated from plain markdown + YAML](docs/demo.gif)](https://bks-lab.github.io/open-bridge/demo.html)
 
 **▶ [See the full live session](https://bks-lab.github.io/open-bridge/demo.html)** — the clip above is the `/briefing` dashboard; the browser walkthrough adds three more real flows: the morning session-start, an incident taken from log triage to a TDD fix shipped to UAT, and first-run onboarding.
 
 ---
 
-## The problem
+## What it is
 
-Most people's AI work is a bare My-Documents folder — every conversation rebuilds context and structure from scratch:
+Most people's AI work is a bare My-Documents folder: every conversation rebuilds context from scratch — the wrong client loaded, last week's decisions gone, who-you-are re-explained daily.
+The fix isn't a smarter prompt. It's a persistent place the agent reads and writes every session.
 
-- "I switch between clients and load the wrong context."
-- "I have no record of what I decided last week."
-- "My agent forgets which conventions apply where."
-- "Every session, I re-explain who I am and what I'm working on."
-
-The fix isn't a smarter prompt — it's a persistent place the agent reads and writes every session.
-
----
-
-## What it is — the substrate
-
-Everything in open-bridge is plain text: markdown and YAML in a git repo, read at session start. The substrate itself runs nothing — no database, no daemon, no SaaS, no hosted service. It's just files your agent reads. There's nothing to host and no second app to maintain.
-
-That choice is the whole point:
+Everything in open-bridge is plain text: markdown and YAML in a git repo, read at session start. The substrate itself runs nothing — no database, no daemon, no hosted service. And because it's inspectable text, you don't have to trust a black box: `cat` any file the agent reads, diff it, version it. The agent's "memory" is just files you own.
 
 > **Agents can read a file but can't hold an API key.** What you write into open-bridge today, your agent still reads in six months — no migration, no second app, no vendor lock-in.
 
-Because the substrate is inspectable text, you don't have to trust a black box. Clone the repo and `cat` any file your agent reads. Diff it. Version it. The agent's "memory" is just files you own.
+**More context.** Whatever model and frontend you run, open-bridge adds an independent layer of context the agent always reads — a persistent "third side" beside your model and your tool: who you are, your repos and clients, what you worked on yesterday. It stops asking "GitHub or Jira?", stops loading the wrong client — *"good morning"* gets you what matters today. **Less chaos.** Instead of everyone piling up their own My-Documents mess, it ships the structure you'd otherwise have to invent — a board, a daily log, per-task status — and files your decisions, findings, and progress into plain text as you go, so unstructured sessions become a persistent, compounding record every agent runtime can read.
+
+*One design stance is roadmap, not shipped:* strict per-client workspace separation is the intended default but not built yet — see [What's proven, what's a bet, what's open](#whats-proven-whats-a-bet-whats-open).
 
 ---
 
-## Two properties this substrate enables
+## Try it in 2 minutes — nothing to configure
 
-These are the two named claims the project is built around. Both were coined at BKS-Lab; the plain-English meaning leads, the coined term follows.
+The repo ships a runnable demo workspace ([`examples/agency/`](examples/agency/)): a fictional two-client agency with a filled board, two days of logged work, and a P1 incident mid-flight.
 
-### Context Booster
-
-Whatever model and frontend you use, open-bridge adds an independent layer of context the agent always reads — a "third side" beside your model and your tool. The project/ecosystem registry ([`ecosystem.example.yaml`](ecosystem.example.yaml) — your live `ecosystem.yaml` is generated at onboarding) plus always-on standing orders give the agent persistent, structured knowledge of your world: who you are, your repos and clients, what you worked on yesterday. So it stops asking "GitHub or Jira?", stops loading the wrong client, and you can just say *"good morning, briefing"* and get what matters today.
-
-It works across Claude Code, Codex, and Copilot CLI through a single `skills/` tree — because plain text is something every agent runtime can read.
-
-> *Coined at BKS-Lab as the "Context Booster" — the most important purpose of open-bridge.*
-
-### Chaos Tamer
-
-Most people's AI work looks like that bare My-Documents folder — everyone piles up their own chaos, and every new conversation starts over. open-bridge tames that by shipping example structures you don't have to invent, then helping you keep them. It does three things: it **holds a structure** (a board, a daily log, and per-task status — `backlog` → `doing` → `review` → `done`); it **files away knowledge as you go**, so decisions, findings, and status land in plain text the agent reads back later; and it **keeps the work from drifting** back into an unsorted pile. The concrete instance is the **Task-Management system**: finite tasks in `work/tasks/`, long-running streams in `work/streams/`, closed work in `work/done/`. Unstructured sessions become a filed, persistent, compounding record.
-
-> *Coined at BKS-Lab: "structuring unstructured AI dialogues."*
-
-> **Design stance — roadmap (BET/OPEN).** The intended default is *workspace separation*: tasks kept separate per context, no information bleeding between engagements, with a general rule — *"if you can't place it into your known world-models, ask."* This is agreed in principle but **not yet built into open-bridge**, and the hard-silo-vs-soft-folder default is unresolved. See [What's proven, what's a bet, what's open](#whats-proven-whats-a-bet-whats-open). Do not read it as a shipped feature.
-
----
-
-## Show, don't tell
-
-A fresh clone starts mostly empty — the value compounds as you fill `work/log.md`. [`examples/agency/`](examples/agency/) ships a complete two-client *configuration* (identity, infra, workflow, standing orders) to clone and read. The `work/` tree below is the shape your own work gets filed into as you go:
-
-```
-your-bridge/
-├── identity/                  WHO am I, to WHOM do I send
-├── infra/                     WHERE runs what, HOW to reach it
-├── workflow/                  WHAT happens when (contexts, projects)
-└── work/
-    ├── board.md               live task board
-    ├── log.md                 daily work log
-    ├── tasks/                 finite tasks
-    │   ├── bigcorp-migration/STATUS.md      ← client A, isolated
-    │   └── startupxyz-mvp/STATUS.md         ← client B, isolated
-    ├── streams/               long-running streams (never "done")
-    └── done/2026-06/          closed, archived monthly
+```bash
+git clone https://github.com/bks-lab/open-bridge.git
+cd open-bridge/examples/agency
+claude        # or: codex, copilot
 ```
 
-A task `STATUS.md` and a `work/log.md` row are just text the agent reads and writes:
+Needs an agent CLI on your machine — e.g. `npm install -g @anthropic-ai/claude-code`.
 
-```markdown
-# STATUS — bigcorp-migration
-status: doing
-context: bigcorp
-last: Migrated the invoice pipeline to the new schema; one test still red.
-next: Fix the failing UBL-validation case, then open the PR.
-```
+Then ask:
 
-```markdown
-| 14:22 | Decision | bigcorp | Pinned the schema to v2 — v3 breaks the old exports. |
-```
+- `good morning`
+- `where was I on the payment retry?`
+- `why is the cart task in review?`
 
-That row is in the repo six months from now, in a diff, readable by any agent.
+Everything it answers is read from plain markdown sitting in that folder — open `work/log.md` next to it and watch the trick disappear. That's the product.
+
+Tested with Claude Code; Codex and Copilot CLI read the same files via `AGENTS.md`. One caveat: don't `git push` — this throwaway clone points at the public repo.
 
 ---
 
@@ -108,7 +73,7 @@ You say it plainly; you get the work, already in context:
 
 - **"good morning, briefing"** → today's board, the day's git activity, and what's gone stale — it already knows which repos and which client you're on.
 - **"where was I on the bigcorp migration?"** → the task's exact state read back ("last: migrated the pipeline, one test still red. next: fix it, then open the PR") so you resume mid-thought.
-- **"switch to startupxyz"** → that client's repos, conventions, and open tasks loaded from its own workspace — the agent works from startupxyz's facts, not bigcorp's.
+- **"switch to startupxyz"** → that client's repos, conventions, and open tasks — the agent works from startupxyz's facts, not bigcorp's.
 - **"why did we pin the schema to v2?"** → the answer pulled from a dated log row you wrote months ago, still in the repo as plain text.
 - **"draft a status mail to the bigcorp lead"** → a ready message in your voice and signature, facts pulled from the task — you read it and send; the agent never sends for you.
 - **`/archive`** → the week's log rolled into a dated summary and a fresh log started — a paper trail that compounds week over week.
@@ -125,36 +90,16 @@ A `CLAUDE.md` is one flat instruction sheet. open-bridge is a persistent, struct
 
 The relief is that the structure is *shipped, not invented*: you get a clear, opinionated place for everything instead of reinventing your own My-Documents chaos.
 
+| | a `CLAUDE.md` | memory-MCP server | Notion/Linear + MCP | open-bridge |
+|---|---|---|---|---|
+| Survives across sessions | partly — static instructions | yes | yes | yes |
+| Plain files you own — diffable, no lock-in | yes | usually a DB/vendor store | no — SaaS | yes |
+| Same context in Claude Code, Codex, Copilot CLI | partly | per-tool wiring | per-tool wiring | yes — one `skills/` tree |
+| Shipped work structure (board, log, task status) | no | no | you build it yourself | yes |
+| Separate per-client worlds | no | no | manual discipline | yes |
+| Safety gates written in (propose-confirm, push guard) | no | no | no | yes |
+
 **Not for** a single-repo project or ad-hoc one-off scripting — the coordination layer is overhead you won't use.
-
----
-
-## What's proven, what's a bet, what's open
-
-open-bridge is built and used at BKS-Lab to run BKS-Lab — a small team at BKS-Lab, self-used on one instance (N=1). It has zero external users today — it is newly public, not yet adopted. This README documents method and substrate, not a user base.
-
-**PROVEN — built and self-used (N=1):**
-
-- The three-cluster layout (`identity/` · `infra/` · `workflow/`), the Task-Management system (board, log, per-task STATUS), the CORE/USER branch split, personas, standing orders, and the skills layer all run from a fresh clone today.
-- Scope-routing works in practice: each file carries a scope (`core` / `org` / `user`); `/promote` routes per scope — demonstrated, not theoretical.
-- GitHub task sync works for our own use (the agent already knows whether a task also exists in GitHub and syncs it). Jira is untested.
-
-**BET — falsifiable wagers:**
-
-- Markdown + YAML + git is the substrate successive agent-runtime generations keep reading natively, because models read text, not a vendor API. *Falsified if* the dominant agent stack later forces a schema-vendor (e.g. Notion-MCP / Linear-MCP) as the standard.
-- A lean, opinionated, MIT-OSS method beats a vendor workflow-builder for users who want to switch models freely. *Falsified if* Cursor/Anthropic ship a first-class markdown-in-git mode.
-- Workspace separation as a hard default — once built — is the right call for most users, not an opt-in switch. (The default itself is still on the roadmap; see OPEN.)
-
-**OPEN — unsolved:**
-
-- Zero external users today — newly public, not yet adopted. Until real users arrive, every statement about a target audience is a hypothesis, not a market test.
-- Workspace-separation-as-default, the "if you can't place it into your known world-models → ask" rule, and off-topic stripping of unrelated tangents are agreed in principle — off-topic stripping is hand-tested as a *separate* Bridge skill, but **none of these are built into open-bridge yet**; the hard-silo vs soft-folder default is unresolved.
-- First-session value is thin: a fresh clone gives little reward until `work/log.md` is filled.
-- Terminology cleanup is pending (`work-task` → Task-Management; the `work/` folder made unambiguous).
-- The submodule architecture between open-bridge and a private org overlay is deferred and must be settled before the fork.
-
-The OPEN column, made votable: **[ROADMAP.md](ROADMAP.md)** — every open item
-links to its issue; 👍 the ones you want most.
 
 ---
 
@@ -164,7 +109,42 @@ links to its issue; 👍 the ones you want most.
 
 A *bridge* is your agent's memory of your world: a plain folder of text files (markdown + YAML in git) it reads at the start of every session. No database, no app to run — who you are, your repos and clients, your rules, and what you worked on yesterday, all in files you own.
 
-And you can run many. An organisation can run several bridges — one per client, team, or context. A consultancy might run one for bigcorp, one for startupxyz, and one for its own internal ops — each with its own rules, processes, and workflows, each keeping that context's data to itself. All of them stand on one shared foundation: a common CORE of skills, templates, and docs that updates once for everyone, while each bridge keeps its own private data separate — one shared foundation, separate private rooms. The mechanism (the CORE/USER split below, plus per-instance isolation) ships and is documented; today it runs on one self-hosted bridge.
+And you can run many. An organisation can run several bridges — one per client, team, or context. A consultancy might run one for bigcorp, one for startupxyz, and one for its own internal ops — each with its own rules, processes, and workflows, each keeping that context's data to itself. All of them stand on one shared foundation: a common CORE of skills, templates, and docs that updates once for everyone, while each bridge keeps its own private data separate — one shared foundation, separate private rooms. The mechanism (the CORE/USER split below, plus per-instance isolation) ships and is documented.
+
+### What it looks like on disk
+
+A fresh clone starts mostly empty — the value compounds as you fill `work/log.md`. Your repos and clients live in one registry file: [`ecosystem.example.yaml`](ecosystem.example.yaml) ships as the template, and onboarding generates your live `ecosystem.yaml` from it. [`examples/agency/`](examples/agency/) ships a complete two-client configuration (the same one § *Try it in 2 minutes* runs on). The `work/` tree below is the shape your own work gets filed into as you go:
+
+```
+your-bridge/
+├── identity/                  WHO am I, to WHOM do I send
+├── infra/                     WHERE runs what, HOW to reach it
+├── workflow/                  WHAT happens when (contexts, projects)
+└── work/
+    ├── board.md               live task board
+    ├── log.md                 daily work log
+    ├── tasks/                 finite tasks
+    │   ├── bigcorp-migration/STATUS.md      ← client A, isolated
+    │   └── startupxyz-mvp/STATUS.md         ← client B, isolated
+    ├── streams/               long-running streams (never "done")
+    └── done/2026-06/          closed, archived monthly
+```
+
+A task `STATUS.md` — its `status` field moves through a closed enum (`backlog` → `doing` → `review` → `done`) — and a `work/log.md` row are just text the agent reads and writes:
+
+```markdown
+# STATUS — bigcorp-migration
+status: doing
+context: bigcorp
+last: Migrated the invoice pipeline to the new schema; one test still red.
+next: Fix the failing UBL-validation case, then open the PR.
+```
+
+```markdown
+| 14:22 | Decision | bigcorp | Pinned the schema to v2 — v3 breaks the old exports. |
+```
+
+That row is in the repo six months from now, in a diff, readable by any agent.
 
 ### CORE/USER split — why the context compounds safely
 
@@ -182,7 +162,7 @@ Skills are the verbs over the substrate. They live in one `skills/` tree, symlin
 
 ### Standing orders
 
-Always-on rules in `protocols/standing-orders/` get injected into every agent dispatch's system prompt — code-style rules, security baselines, logging habits. They are the supporting mechanism behind the Context Booster: third-side rules that ride into every prompt, which a static `CLAUDE.md` can't do per-context.
+Always-on rules in `protocols/standing-orders/` get injected into every agent dispatch's system prompt — code-style rules, security baselines, logging habits. They are third-side rules that ride into every prompt, which a static `CLAUDE.md` can't do per-context.
 
 ### Sub-agents
 
@@ -200,9 +180,7 @@ Commands are skills whose `description` declares a `/cmd` trigger. The handful t
 | `/archive` | Archive the week + generate a summary |
 | `/bridge-onboard` | New-user setup or reconfiguration |
 
----
-
-## System Overview
+### System overview
 
 ```mermaid
 %%{init: {'theme': 'dark'}}%%
@@ -241,28 +219,59 @@ These are conventions the agent follows, not an OS-level sandbox — read them i
 
 ---
 
-## Get started
+## What's proven, what's a bet, what's open
+
+open-bridge runs the company that builds it — every feature exists because we needed it on a real workday. You're early: it's newly public, no external users yet. The ledger below says exactly what that means.
+
+**PROVEN — built and self-used (N=1):**
+
+- The three-cluster layout (`identity/` · `infra/` · `workflow/`), the Task-Management system (board, log, per-task STATUS), the CORE/USER branch split, personas, standing orders, and the skills layer all run from a fresh clone today.
+- Scope-routing works in practice: each file carries a scope (`core` / `org` / `user`); `/promote` routes per scope — demonstrated, not theoretical.
+- GitHub task sync works for our own use (the agent already knows whether a task also exists in GitHub and syncs it). Jira is untested.
+
+**BET — falsifiable wagers:**
+
+- Markdown + YAML + git is the substrate successive agent-runtime generations keep reading natively, because models read text, not a vendor API. *Falsified if* the dominant agent stack later forces a schema-vendor (e.g. Notion-MCP / Linear-MCP) as the standard.
+- A lean, opinionated, MIT-OSS method beats a vendor workflow-builder for users who want to switch models freely. *Falsified if* Cursor/Anthropic ship a first-class markdown-in-git mode.
+- Workspace separation as a hard default — once built — is the right call for most users, not an opt-in switch. (The default itself is still on the roadmap; see OPEN.)
+
+**OPEN — unsolved:**
+
+- Until real users arrive, every statement about a target audience is a hypothesis, not a market test.
+- Workspace-separation-as-default, the "if you can't place it into your known world-models → ask" rule, and off-topic stripping of unrelated tangents are agreed in principle — off-topic stripping is hand-tested as a *separate* Bridge skill, but **none of these are built into open-bridge yet**; the hard-silo vs soft-folder default is unresolved.
+- First-session value is thin: a fresh clone gives little reward until `work/log.md` is filled.
+- Terminology cleanup is pending (`work-task` → Task-Management; the `work/` folder made unambiguous).
+- The submodule architecture between open-bridge and a private org overlay is deferred and must be settled before the fork.
+
+The OPEN column, made votable: **[ROADMAP.md](ROADMAP.md)** — every open item links to its issue.
+
+If this resonates: star the repo and 👍 the [ROADMAP](ROADMAP.md) issues you want most — that's literally the signal priorities are decided by. Found a rough edge? [Open an issue](https://github.com/bks-lab/open-bridge/issues) — that's the most useful thing you can do right now.
+
+---
+
+<a id="get-started"></a>
+
+## Adopt it — private origin first
 
 > ### ⚠️ This is a public repo — give your data a private home first
 >
-> Onboarding writes your private data — personas, client names, `work/` logs,
-> credential-reference URIs — onto a `user/{name}` branch. It stays private for
-> exactly one reason: **it never leaves your machine.** A bare `git clone` of this
-> repo leaves `origin` pointing at this **public** repo, so a single `git push` (or
-> the agent's auto-end-of-work cycle) would publish your branch to the world. The
-> intended setup is therefore **not** "clone this and push here" — it's: make your
-> **own private** repo your `origin`, keep open-bridge as a read-only `upstream`,
-> and let CORE flow back only through `/promote` (a fork-based PR). The steps below
-> do exactly that.
+> Onboarding writes your private data (personas, client names, `work/` logs,
+> credential-reference URIs) onto a `user/{name}` branch. A bare clone's `origin`
+> points at this **public** repo, so a single `git push` would publish that branch
+> to the world. The steps below make your **own private repo** your `origin` and
+> keep open-bridge as a read-only `upstream`.
 
 ```bash
-# 1. Make your own PRIVATE copy. Cleanest: GitHub "Use this template" → Private,
-#    then clone THAT. (A fork of a public repo is itself public, so a fork won't do.)
-#    No template button yet? Clone here and re-home the remotes in steps 2–3:
+# 1. Make your own PRIVATE copy. Primary path: GitHub "Use this template" → Private,
+#    then clone THAT and add this repo as read-only upstream:
+#      git remote add upstream https://github.com/bks-lab/open-bridge.git
+#    (A fork of a public repo is itself public, so a fork won't do.)
+#    Fallback without the template: clone here and re-home the remotes in step 2:
 git clone https://github.com/bks-lab/open-bridge.git my-bridge
 cd my-bridge
 
-# 2. open-bridge becomes a READ-ONLY upstream; your private repo becomes origin:
+# 2. (fallback path) open-bridge becomes a READ-ONLY upstream; your private repo
+#    becomes origin:
 git remote rename origin upstream
 gh repo create <you>/my-bridge --private --source=. --remote=origin --push
 
@@ -271,15 +280,37 @@ gh repo create <you>/my-bridge --private --source=. --remote=origin --push
 /bridge-onboard
 ```
 
-`/bridge-onboard` walks the guided onboarding and sets everything up (optional ecosystem detection, work-system config, your own `user/{name}` branch). It also pins the instance's one-line purpose, so the feature catalog leads with what fits that instead of fanning out the whole feature universe at once (a compass, never a fence — every feature stays one flip away). It also **arms the `pre-push` guard** (`git config core.hooksPath scripts/hooks`) before creating that branch, so the deterministic backstop is live from your first commit. Because `origin` is now **your** private repo, that branch never touches the public upstream — and the guard ([`rules/push-guard.md`](rules/push-guard.md)) blocks it at the git layer if anything tries. Pull CORE updates anytime, conflict-free, with `git fetch upstream && git merge upstream/main`. If you skip the wizard, run `./bin/setup` once on any OS — it arms the same guard and repairs the cross-tool discovery symlinks (on native Windows use `bin/setup.ps1`).
+`/bridge-onboard` walks the guided setup (optional ecosystem detection, work-system config, your own `user/{name}` branch) and **arms the `pre-push` guard** ([`rules/push-guard.md`](rules/push-guard.md)) *before* creating that branch — the git-layer backstop that blocks publishing it by accident. If you skip the wizard, run `./bin/setup` once on any OS (`bin/setup.ps1` on native Windows) — it arms the same guard and repairs the cross-tool discovery symlinks. Onboarding also asks one privacy choice — `discovery.mode`, default **confined**: the Bridge stays inside this folder and never scans your other repos, apps, devices, or mail unless you opt in per item (reversible anytime in `bridge-config.yaml`). Pull CORE updates anytime, conflict-free, with `git fetch upstream && git merge upstream/main`.
 
-Before any of that "ecosystem detection" runs, onboarding asks one privacy choice — `discovery.mode`, default **confined**: the Bridge stays inside this folder and never scans your other repos, installed apps, devices, files, or mail. **Broader** is the opt-in alternative — a per-item-permissioned look at your machine so it can suggest features that fit what you already use (names and structure only, never file/mail content or secrets; findings stay local and gitignored). Either way the features are modular: confined costs you nothing, you just enable each capability yourself when you want it — reversible anytime with `/bridge-onboard --rescan` or by editing `discovery.mode` in `bridge-config.yaml`.
+**Or: hand the whole setup to your agent.** You already run an AI coding agent — paste this prompt into Claude Code, Codex, or Copilot CLI, and it plans first, creates your private copy, arms the push guard, verifies both, and starts onboarding:
 
-**Just kicking the tires?** Clone, read, and run locally — but don't `git push` (a bare clone's `origin` is this public repo). **What's instant:** a running, empty workspace. **What's a bet:** the compounding value — `work/log.md` filled with real work over time, on your private origin.
+```text
+Set up open-bridge for me (https://github.com/bks-lab/open-bridge — a
+plain-text memory layer your agent reads at session start). Plan first:
+check that git and the GitHub CLI (gh) are installed and authenticated,
+ask me what to name my private copy (default: my-bridge), then show me
+your plan before you act. Then:
+
+1. Create my PRIVATE copy from the template and clone it:
+   gh repo create <name> --template bks-lab/open-bridge --private --clone
+   (If templating fails: clone bks-lab/open-bridge, rename origin to
+   upstream, create a private repo, add it as origin, push main there.)
+2. Add the public repo as read-only upstream if it is missing:
+   git remote add upstream https://github.com/bks-lab/open-bridge.git
+3. Arm the safety hooks: run ./bin/setup (native Windows: bin/setup.ps1).
+4. Verify and show me: git remote -v (origin = MY private repo), and
+   git config core.hooksPath (= scripts/hooks).
+5. Start onboarding: run /bridge-onboard if you support slash commands;
+   otherwise read skills/bridge-onboard/SKILL.md and walk me through it.
+
+Hard rules: never push anything to bks-lab/open-bridge; my user/* branch
+goes only to my private origin; no secrets in files; ask before anything
+destructive.
+```
+
+**Just kicking the tires?** Skip all of this — [the shipped demo workspace runs in 2 minutes](#try-it-in-2-minutes--nothing-to-configure), nothing to configure.
 
 **Cross-tool reality:** tested with [Claude Code](https://claude.ai/code) (most complete — slash commands and hooks live under `.claude/`). Codex and Copilot CLI work via `AGENTS.md` plus the `skills/` symlink. Gemini CLI, Cursor, and Windsurf follow the same standard but are untested. Windows symlink mechanics and the `.agents/`/`.github/` discovery paths are covered in the layout table in [`docs/structure.md`](docs/structure.md).
-
-See [`examples/agency/`](examples/agency/) for a complete two-client configuration to clone and read.
 
 ---
 
@@ -303,7 +334,7 @@ The full layout map — every path and the CORE/USER split — lives in [`docs/s
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). Short version:
 
-Contributing CORE is a separate action from running your own Bridge — don't conflate them. You contribute from the private instance you set up in *Get started*; you do **not** run `/bridge-onboard` into a public fork, and you never push your `user/{name}` branch upstream.
+Contributing CORE is a separate action from running your own Bridge — don't conflate them. You contribute from the private instance you set up in *Adopt it — private origin first*; you do **not** run `/bridge-onboard` into a public fork, and you never push your `user/{name}` branch upstream.
 
 1. On CORE, build something generic (docs, commands, skills, templates).
 2. Run `/contribute` (or `/promote`) — it categorises commits by `scope:`, runs the **mandatory content-safety gate** (leak scanner + blocklist, refuses on PII/customer hits), then mints its **own** throwaway personal fork and opens a **fork-based** PR against `bks-lab/open-bridge` with a DCO sign-off (`git commit -s`) for you. It pushes to that fork — never your private `origin`, and never a direct push to `bks-lab/open-bridge`.
@@ -332,13 +363,3 @@ Contributions are accepted under the MIT License and require a [Developer Certif
 ## Acknowledgments
 
 open-bridge draws on a large body of public work — agent-orchestration patterns, the propose-then-confirm posture, the identity/voice split, config-as-data conventions. A non-exhaustive list of named inspirations, plus the inspiration-is-not-endorsement note, lives in [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
-
----
-
-## Try it
-
-open-bridge is **public and MIT** — there's no waitlist and nothing to sign up for. Clone it, read it, run it. It's newly released with no external users yet, so expect rough edges and tell us where they are.
-
-- **Read the code on GitHub:** [`bks-lab/open-bridge`](https://github.com/bks-lab/open-bridge)
-- **See a complete example:** [`examples/agency/`](examples/agency/)
-- **Found a rough edge?** Open an issue — that's the most useful thing you can do right now.

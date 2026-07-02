@@ -592,6 +592,38 @@ html.dark .tile .demo{background:var(--code-bg)}
 .tertiary-cta a{color:var(--accent-text);text-decoration:none;font-weight:500}
 .tertiary-cta a:hover{text-decoration:underline}
 
+/* ---- Hero terminal (the magic-moment exchange) — reuses .code grammar,
+   tokens only. pre-wrap so the transcript never widens the hero column. ---- */
+.hero-term{margin-top:28px;max-width:44rem}
+.hero-term .code{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+.hero-term .code .k{font-weight:600}
+.hero-term-cap{margin-top:10px;font-size:13.5px;color:var(--secondary)}
+.hero-term-cap a{color:var(--accent-text);text-decoration:none;font-weight:500}
+.hero-term-cap a:hover{text-decoration:underline}
+
+/* ---- Use-case tile strip (What people run on it) — .cap-item as link ---- */
+.uc-strip a.cap-item{display:block;text-decoration:none;transition:border-color .18s ease,box-shadow .18s ease}
+.uc-strip a.cap-item:hover{border-color:var(--accent);box-shadow:var(--shadow-hover)}
+.uc-strip .cap-benefit{color:var(--on-surface)}
+
+/* ---- Get-started dual path (Try | Adopt) — stacks on mobile ---- */
+#get-started{scroll-margin-top:112px}
+.path-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:stretch}
+.path-grid>*{min-width:0}
+.path{display:flex;flex-direction:column;gap:16px}
+.path .h4{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.path .code{position:relative;max-width:none;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.path-note{font-size:14px;line-height:1.6;color:var(--on-surface-muted)}
+.path-prompts{font-size:14px;color:var(--on-surface)}
+.path-prompts code{
+  font-family:var(--mono);font-size:12.5px;background:var(--surface-subtle);
+  border:1px solid var(--border);border-radius:var(--r-sm);padding:2px 7px;white-space:nowrap;
+}
+html.dark .path-prompts code{background:var(--code-bg)}
+@media (max-width:860px){
+  .path-grid{grid-template-columns:1fr}
+}
+
 /* ---- Footer ---- */
 footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
 .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;max-width:var(--container);margin:0 auto;padding-inline:24px}
@@ -649,10 +681,10 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
     <nav class="site-nav" aria-label="Site">
       <a href="index.html" class="active" aria-current="page"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
-      <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
+      <a href="demo.html"><span data-lang="en">Demo</span><span data-lang="de">Demo</span></a>
       <a href="use-cases.html"><span data-lang="en">Use Cases</span><span data-lang="de">Anwendungsfälle</span></a>
       <a href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
-      <a href="demo.html"><span data-lang="en">Demo</span><span data-lang="de">Demo</span></a>
+      <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
     </nav>
     <div class="nav-spacer"></div>
     <div class="nav-chips">
@@ -681,7 +713,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     <a href="#mechanic-viz"><span data-lang="en">How it works</span><span data-lang="de">So funktioniert es</span></a>
     <a href="#properties"><span data-lang="en">What you get</span><span data-lang="de">Was du bekommst</span></a>
     <a href="#usecases"><span data-lang="en">Use-cases</span><span data-lang="de">Anwendungsfälle</span></a>
-    <a href="#honesty"><span data-lang="en">Honesty</span><span data-lang="de">Ehrlichkeit</span></a>
+    <a href="#honesty"><span data-lang="en">Status</span><span data-lang="de">Status</span></a>
     <a href="#concept"><span data-lang="en">Concept</span><span data-lang="de">Konzept</span></a>
     <a href="#start"><span data-lang="en">Get started</span><span data-lang="de">Loslegen</span></a>
   </div>
@@ -699,27 +731,50 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 
       <p class="hero-sub"><span data-lang="en">Your repos, clients, conventions, last week's decisions — your coding agent reads them back at the start of every session, so context compounds instead of resetting. Just plain markdown and YAML in git, any model or frontend.</span><span data-lang="de">Deine Repos, Kunden, Konventionen, die Entscheidungen von letzter Woche — dein Coding-Agent liest sie zu Beginn jeder Session wieder ein, damit Kontext wächst, statt sich zurückzusetzen. Nur Plain-Markdown und YAML in Git, egal welches Modell oder Frontend.</span></p>
 
+      <!-- The magic-moment exchange — real answers from the shipped demo
+           workspace (examples/agency/work/), not invented copy. -->
+      <div class="hero-term">
+        <div class="code-label"><span>examples/agency · <span data-lang="en">shipped demo workspace</span><span data-lang="de">mitgelieferter Demo-Workspace</span></span></div>
+        <div class="code" data-lang="en"><span class="k">&gt; good morning</span>
+
+Morning. You're mid-incident on bigcorp: Stripe webhook retries are
+failing in prod (P1, opened yesterday) — root cause traced to the
+webhook secret; next step is the retry fix. startupxyz onboarding:
+email-verification wired, 6 tests green. Board: 2 doing · 1 review ·
+cart-a11y waits on PR #214.</div>
+        <div class="code" data-lang="de"><span class="k">&gt; guten morgen</span>
+
+Morgen. Auf bigcorp läuft ein P1: Stripe-Webhook-Retries schlagen in
+prod fehl — Root Cause gestern gefunden (Webhook-Secret); nächster
+Schritt ist der Retry-Fix. startupxyz-Onboarding: E-Mail-Verifikation
+steht, 6 Tests grün. Board: 2 doing · 1 review · cart-a11y wartet
+auf PR #214.</div>
+        <p class="hero-term-cap">
+          <span data-lang="en">This is the shipped demo workspace answering — <a href="#get-started">run it yourself in 2 minutes</a>.</span>
+          <span data-lang="de">Das ist der mitgelieferte Demo-Workspace — <a href="#get-started">führ ihn in 2 Minuten selbst aus</a>.</span>
+        </p>
+      </div>
+
       <p class="honesty-strip">
-        <span data-lang="en">Public<span class="sep">·</span>MIT<span class="sep">·</span>clone &amp; read it yourself<span class="sep">·</span><b>self-used (N=1)</b></span>
-        <span data-lang="de">Public<span class="sep">·</span>MIT<span class="sep">·</span>selbst klonen &amp; lesen<span class="sep">·</span><b>selbst genutzt (N=1)</b></span>
+        <span data-lang="en">Public<span class="sep">·</span>MIT<span class="sep">·</span>clone &amp; read it yourself<span class="sep">·</span><b><a href="#honesty">runs our company daily</a></b></span>
+        <span data-lang="de">Public<span class="sep">·</span>MIT<span class="sep">·</span>selbst klonen &amp; lesen<span class="sep">·</span><b><a href="#honesty">betreibt täglich unsere Firma</a></b></span>
       </p>
 
       <div class="cta-row">
-        <a class="btn btn-primary" href="#start">
-          <span data-lang="en">Clone it — no signup</span><span data-lang="de">Klonen — ohne Anmeldung</span>
+        <a class="btn btn-primary" href="#get-started">
+          <span data-lang="en">Try it in 2 minutes</span><span data-lang="de">In 2 Minuten ausprobieren</span>
           <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-secondary" href="demo.html">
+          <span data-lang="en">▶ See it work — 90 sec</span><span data-lang="de">▶ Sieh es arbeiten — 90 Sek.</span>
         </a>
         <a class="btn btn-secondary" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
           <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
         </a>
-        <a class="btn btn-secondary" href="demo.html">
-          <span data-lang="en">See a live session</span><span data-lang="de">Live-Session ansehen</span>
-          <span class="arrow">→</span>
-        </a>
       </div>
 
-      <p class="beta-line"><span data-lang="en">Newly released, so expect rough edges — tell us where they are.</span><span data-lang="de">Frisch veröffentlicht — erwarte raue Kanten und sag uns, wo sie sind.</span></p>
+      <p class="beta-line"><span data-lang="en">Newly public — hit a rough edge? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Tell us</a>.</span><span data-lang="de">Frisch öffentlich — Kante gefunden? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Sag's uns</a>.</span></p>
     </div>
 
     <div class="hero-visual">
@@ -1149,6 +1204,49 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   </div>
 </section>
 
+<!-- ======================= WHAT PEOPLE RUN ON IT (tile strip → use-cases.html) ======================= -->
+<section id="what-runs" class="uc-strip">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow"><span data-lang="en">Jobs, not features</span><span data-lang="de">Aufgaben, keine Features</span></p>
+      <h2 class="h1"><span data-lang="en">What people run on it.</span><span data-lang="de">Was darauf läuft.</span></h2>
+    </div>
+
+    <div class="cap-grid reveal">
+      <a class="cap-item" href="use-cases.html#org-aware">
+        <div class="cap-label"><span data-lang="en">Org-aware without forking</span><span data-lang="de">Org-bewusst ohne Fork</span></div>
+        <p class="cap-benefit"><span data-lang="en">One <code>/overlay add &lt;git-url&gt;</code> gives every teammate your org's skills and configs on a vanilla clone — no per-person fork to maintain.</span><span data-lang="de">Ein <code>/overlay add &lt;git-url&gt;</code> gibt jedem im Team die Org-Skills und -Configs auf einem schlichten Clone — kein Fork pro Person.</span></p>
+      </a>
+      <a class="cap-item" href="use-cases.html#client-updates">
+        <div class="cap-label"><span data-lang="en">Client status updates</span><span data-lang="de">Kunden-Status-Updates</span></div>
+        <p class="cap-benefit"><span data-lang="en">Turn a board item into a styled status email to the right recipient group — the sender is always you, nothing sends itself.</span><span data-lang="de">Mach aus einem Board-Item eine gestylte Status-Mail an die richtige Empfängergruppe — Absender bist immer du, nichts sendet sich selbst.</span></p>
+      </a>
+      <a class="cap-item" href="use-cases.html#meeting-to-tasks">
+        <div class="cap-label"><span data-lang="en">Meeting → protocol → tasks</span><span data-lang="de">Meeting → Protokoll → Tasks</span></div>
+        <p class="cap-benefit"><span data-lang="en">Meeting notes become classified insights and board-mapped tasks you approve — decisions stop evaporating after the call.</span><span data-lang="de">Meeting-Notizen werden zu klassifizierten Erkenntnissen und board-zugeordneten Tasks, die du freigibst — Entscheidungen verdampfen nach dem Call nicht mehr.</span></p>
+      </a>
+      <a class="cap-item" href="use-cases.html#doc-intake">
+        <div class="cap-label"><span data-lang="en">Document intake &amp; filing</span><span data-lang="de">Dokumenten-Intake &amp; Ablage</span></div>
+        <p class="cap-benefit"><span data-lang="en">Point it at inboxes and flagged mail — every document gets renamed, tagged and filed by your routing rules, and never deleted.</span><span data-lang="de">Zeig auf Inboxen und geflaggte Mails — jedes Dokument wird umbenannt, getaggt und nach deinen Routing-Regeln abgelegt, und nie gelöscht.</span></p>
+      </a>
+      <a class="cap-item" href="use-cases.html#multi-instance">
+        <div class="cap-label"><span data-lang="en">Multi-instance data isolation</span><span data-lang="de">Multi-Instanz-Datentrennung</span></div>
+        <p class="cap-benefit"><span data-lang="en">One Bridge per client or org — separate clones, some strictly local-only, indexed in a registry so data never cross-contaminates.</span><span data-lang="de">Eine Bridge pro Kunde oder Organisation — getrennte Clones, manche strikt lokal, in einer Registry indiziert, damit sich Daten nie vermischen.</span></p>
+      </a>
+      <a class="cap-item" href="use-cases.html#self-growing-knowledge">
+        <div class="cap-label"><span data-lang="en">Knowledge that grows itself</span><span data-lang="de">Wissen, das sich selbst aufbaut</span></div>
+        <p class="cap-benefit"><span data-lang="en">File-based memory plus a learning loop — postmortems propose improvements, a curator consolidates patterns, the system compounds.</span><span data-lang="de">Datei-basiertes Gedächtnis plus Lernschleife — Postmortems schlagen Verbesserungen vor, ein Kurator konsolidiert Muster, das System summiert sich auf.</span></p>
+      </a>
+      <a class="cap-item" href="use-cases.html#cross-tool-skills">
+        <div class="cap-label"><span data-lang="en">Cross-tool skills, private by default</span><span data-lang="de">Tool-übergreifende Skills, privat per Default</span></div>
+        <p class="cap-benefit"><span data-lang="en">One skills tree serves Claude Code, Copilot, Codex, Cursor and Gemini — scope-routing keeps private content local while CORE flows upstream.</span><span data-lang="de">Ein Skills-Baum bedient Claude Code, Copilot, Codex, Cursor und Gemini — Scope-Routing hält Privates lokal, während CORE upstream fließt.</span></p>
+      </a>
+    </div>
+
+    <p class="cap-more reveal"><a href="use-cases.html"><span data-lang="en">All seven jobs, with the primitives behind each →</span><span data-lang="de">Alle sieben Aufgaben, mit den Primitiven dahinter →</span></a></p>
+  </div>
+</section>
+
 <!-- ======================= WHAT ELSE IT CAN DO (merged appendix under Use-cases) ======================= -->
 <section class="alt" id="capabilities">
   <div class="container">
@@ -1234,7 +1332,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     <div class="sec-head reveal">
       <p class="eyebrow"><span data-lang="en">The evidence boundary</span><span data-lang="de">Die Beweis-Grenze</span></p>
       <h2 class="h1"><span data-lang="en">What's proven, what's a bet, what's open.</span><span data-lang="de">Was bewiesen ist, was eine Wette ist, was offen ist.</span></h2>
-      <p><span data-lang="en">Built and used at BKS-Lab to run BKS-Lab — one team, on one self-hosted instance (N=1). Zero external users today — newly public, not yet adopted. This documents method and substrate, not a user base.</span><span data-lang="de">Gebaut und bei BKS-Lab genutzt, um BKS-Lab zu betreiben — ein Team, auf einer selbst gehosteten Instanz (N=1). Heute null externe Nutzer — frisch public, noch nicht verbreitet. Das dokumentiert Methode und Substrat, keine Nutzerbasis.</span></p>
+      <p><span data-lang="en">open-bridge runs the company that builds it — every feature exists because we needed it on a real workday. You're early: it's newly public, no external users yet. The ledger below says exactly what that means.</span><span data-lang="de">open-bridge betreibt die Firma, die es baut — jedes Feature existiert, weil wir es an einem echten Arbeitstag gebraucht haben. Du bist früh dran: frisch öffentlich, noch ohne externe Nutzer. Was genau das heißt, steht ehrlich im Status-Board.</span></p>
     </div>
 
     <div class="board3 reveal">
@@ -1266,6 +1364,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
         </ul>
       </div>
     </div>
+
+    <p class="cap-more reveal"><span data-lang="en">If this resonates: <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">star the repo</a> and 👍 the <a href="https://github.com/bks-lab/open-bridge/blob/main/ROADMAP.md" target="_blank" rel="noopener">ROADMAP</a> issues you want most — that's literally the signal priorities are decided by.</span><span data-lang="de">Wenn dich das anspricht: <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">Stern aufs Repo</a> und 👍 auf die <a href="https://github.com/bks-lab/open-bridge/blob/main/ROADMAP.md" target="_blank" rel="noopener">ROADMAP</a>-Issues, die du am dringendsten willst — genau daraus entsteht die Priorisierung.</span></p>
   </div>
 </section>
 
@@ -1335,17 +1435,34 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
   </div>
 </section>
 
-<!-- ======================= GET STARTED ======================= -->
+<!-- ======================= GET STARTED (Try | Adopt) ======================= -->
 <section id="start" class="steps">
+  <span id="get-started" aria-hidden="true"></span>
   <div class="container">
     <div class="sec-head reveal">
       <p class="eyebrow"><span data-lang="en">Get started</span><span data-lang="de">Loslegen</span></p>
-      <h2 class="h1"><span data-lang="en">Private origin first.</span><span data-lang="de">Erst ein privates Origin.</span></h2>
+      <h2 class="h1"><span data-lang="en">Try it now, or adopt it properly.</span><span data-lang="de">Jetzt ausprobieren — oder richtig übernehmen.</span></h2>
     </div>
 
-    <div class="reveal">
-      <div class="code" id="start-code"><button class="copy-btn" id="copy-start" type="button">copy</button><span class="cmt"># 1. Make your own PRIVATE copy — GitHub "Use this template" → Private, then clone THAT.</span>
-<span class="cmt">#    No template button yet? Clone here and re-home the remotes in step 2:</span>
+    <div class="path-grid reveal">
+      <!-- Path 1 — Try: the shipped demo workspace, nothing to configure -->
+      <div class="card path">
+        <h3 class="h4"><span data-lang="en">Try — 2 minutes, throwaway</span><span data-lang="de">Ausprobieren — 2 Minuten, wegwerfbar</span></h3>
+        <p class="path-note"><span data-lang="en">The shipped demo workspace: two clients, a filled board, two days of log, a P1 mid-flight. Don't push — this clone points at the public repo.</span><span data-lang="de">Der mitgelieferte Demo-Workspace: zwei Kunden, ein gefülltes Board, zwei Tage Log, ein P1 mitten im Flug. Nicht pushen — dieser Clone zeigt aufs öffentliche Repo.</span></p>
+        <div class="code" id="try-code"><button class="copy-btn" id="copy-try" type="button">copy</button>git clone https://github.com/bks-lab/open-bridge.git
+cd open-bridge/examples/agency
+claude        <span class="cmt"># or: codex, copilot</span></div>
+        <p class="path-note"><span data-lang="en">Needs an agent CLI on your machine — e.g. <code>npm install -g @anthropic-ai/claude-code</code>.</span><span data-lang="de">Braucht eine Agent-CLI auf deinem Rechner — z. B. <code>npm install -g @anthropic-ai/claude-code</code>.</span></p>
+        <p class="path-prompts"><span data-lang="en">Then ask:</span><span data-lang="de">Dann frag:</span> <code>good morning</code> · <code>where was I on the payment retry?</code> · <code>why is the cart task in review?</code></p>
+        <p class="path-note"><span data-lang="en">Everything it answers is read from plain markdown sitting in that folder — open <code>work/log.md</code> next to it and watch the trick disappear. That's the product.</span><span data-lang="de">Alles, was es antwortet, liest es aus purem Markdown in diesem Ordner — öffne daneben <code>work/log.md</code> und sieh zu, wie der Trick verschwindet. Genau das ist das Produkt.</span></p>
+      </div>
+
+      <!-- Path 2 — Adopt: private origin first -->
+      <div class="card path">
+        <h3 class="h4"><span data-lang="en">Adopt — private origin first</span><span data-lang="de">Übernehmen — erst ein privates Origin</span></h3>
+        <p class="path-note"><span data-lang="en">This is a public repo, so step 1 gives your data a private home: the GitHub "Use this template" button is live — private copy in one click (clone-and-re-home is the fallback). Your repo becomes <code>origin</code>; open-bridge stays a read-only <code>upstream</code>, so a stray push can't publish your branch.</span><span data-lang="de">Das ist ein öffentliches Repo, darum gibt Schritt 1 deinen Daten ein privates Zuhause: der GitHub-Button „Use this template" ist live — private Kopie mit einem Klick (Clone-und-Umziehen ist der Fallback). Dein Repo wird <code>origin</code>; open-bridge bleibt ein read-only <code>upstream</code> — ein versehentlicher Push kann deinen Branch nicht veröffentlichen.</span></p>
+        <div class="code" id="start-code"><button class="copy-btn" id="copy-start" type="button">copy</button><span class="cmt"># 1. Make your own PRIVATE copy — GitHub "Use this template" → Private, then clone THAT.</span>
+<span class="cmt">#    Prefer plain git? Clone here and re-home the remotes in step 2:</span>
 git clone https://github.com/bks-lab/open-bridge.git my-bridge
 cd my-bridge
 
@@ -1355,9 +1472,62 @@ gh repo create &lt;you&gt;/my-bridge --private --source=. --remote=origin --push
 
 <span class="cmt"># 3. Onboard in Claude Code — writes to a user/{name} branch on YOUR private origin:</span>
 /bridge-onboard</div>
-      <p class="run-note"><span data-lang="en">Because this is a public repo, the first move gives your data a private home — your own private repo is <code>origin</code>, open-bridge stays a read-only <code>upstream</code>, and CORE flows back only via <code>/promote</code> (a fork-based PR). A bare clone would leave <code>origin</code> pointing here, so one push could publish your branch. Then <code>/bridge-onboard</code> walks the guided onboarding and sets everything up (ecosystem detection, work-system, your own <code>user/{name}</code> branch) — and arms the <code>pre-push</code> guard before that branch exists, so the backstop is live from your first commit. The cross-tool symlinks ship in the repo, so macOS / Linux / WSL work out of the box; on native Windows, run <code>bin/setup.ps1</code> once to repair symlinks. You get a running, empty workspace in minutes; the value compounds as you log work (a fresh clone starts mostly empty — that's the honest trade).</span><span data-lang="de">Weil dies ein öffentliches Repo ist, gibt der erste Schritt deinen Daten ein privates Zuhause — dein eigenes privates Repo ist <code>origin</code>, open-bridge bleibt ein read-only <code>upstream</code>, und CORE fließt nur über <code>/promote</code> (ein Fork-basierter PR) zurück. Ein bloßer Clone ließe <code>origin</code> hierher zeigen, ein Push könnte deinen Branch veröffentlichen. Dann führt <code>/bridge-onboard</code> durch die geführte Onboarding-Routine und richtet alles ein (Ecosystem-Erkennung, Work-System, deinen eigenen <code>user/{name}</code>-Branch) — und schärft den <code>pre-push</code>-Guard, bevor dieser Branch existiert, sodass der Backstop ab dem ersten Commit aktiv ist. Die Cross-Tool-Symlinks sind im Repo enthalten, daher laufen macOS / Linux / WSL out of the box; unter nativem Windows einmal <code>bin/setup.ps1</code> ausführen, um die Symlinks zu reparieren. In Minuten hast du einen laufenden, leeren Workspace; der Wert wächst, während du Arbeit protokollierst (ein frischer Clone startet weitgehend leer — das ist der ehrliche Tausch).</span></p>
-      <p class="tertiary-cta"><span data-lang="en">Found a rough edge? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Open an issue</a> — the most useful thing you can do right now.</span><span data-lang="de">Eine raue Kante gefunden? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Öffne ein Issue</a> — das Nützlichste, was du gerade tun kannst.</span></p>
+        <p class="path-note"><span data-lang="en"><code>/bridge-onboard</code> then sets everything up and arms the <code>pre-push</code> guard before your <code>user/{name}</code> branch exists. On native Windows, run <code>bin/setup.ps1</code> once.</span><span data-lang="de"><code>/bridge-onboard</code> richtet dann alles ein und schärft den <code>pre-push</code>-Guard, bevor dein <code>user/{name}</code>-Branch existiert. Unter nativem Windows einmal <code>bin/setup.ps1</code> ausführen.</span></p>
+
+        <!-- Agent-setup prompt: the native install path for people who already run an agent.
+             One .code block per language (the page shows only the active data-lang variant),
+             each with its own copy button so "copy" always grabs the visible prompt. -->
+        <p class="eyebrow"><span data-lang="en">Or hand it to your agent</span><span data-lang="de">Oder gib es deiner KI</span></p>
+        <p class="path-note"><span data-lang="en">One prompt — it plans, builds your private copy, verifies the guard, and onboards you.</span><span data-lang="de">Ein Prompt — sie plant, baut deine private Kopie, verifiziert den Guard und onboardet dich.</span></p>
+        <div class="code" data-lang="en" id="agent-prompt-en"><button class="copy-btn" id="copy-agent-en" type="button">copy</button>Set up open-bridge for me (https://github.com/bks-lab/open-bridge — a
+plain-text memory layer your agent reads at session start). Plan first:
+check that git and the GitHub CLI (gh) are installed and authenticated,
+ask me what to name my private copy (default: my-bridge), then show me
+your plan before you act. Then:
+
+1. Create my PRIVATE copy from the template and clone it:
+   gh repo create &lt;name&gt; --template bks-lab/open-bridge --private --clone
+   (If templating fails: clone bks-lab/open-bridge, rename origin to
+   upstream, create a private repo, add it as origin, push main there.)
+2. Add the public repo as read-only upstream if it is missing:
+   git remote add upstream https://github.com/bks-lab/open-bridge.git
+3. Arm the safety hooks: run ./bin/setup (native Windows: bin/setup.ps1).
+4. Verify and show me: git remote -v (origin = MY private repo), and
+   git config core.hooksPath (= scripts/hooks).
+5. Start onboarding: run /bridge-onboard if you support slash commands;
+   otherwise read skills/bridge-onboard/SKILL.md and walk me through it.
+
+Hard rules: never push anything to bks-lab/open-bridge; my user/* branch
+goes only to my private origin; no secrets in files; ask before anything
+destructive.</div>
+        <div class="code" data-lang="de" id="agent-prompt-de"><button class="copy-btn" id="copy-agent-de" type="button">copy</button>Richte open-bridge für mich ein (https://github.com/bks-lab/open-bridge —
+eine Plain-Text-Gedächtnisschicht, die dein Agent bei Session-Start
+liest). Plane zuerst: prüfe, ob git und die GitHub CLI (gh) installiert
+und eingeloggt sind, frag mich, wie meine private Kopie heißen soll
+(Default: my-bridge), und zeig mir deinen Plan, bevor du handelst. Dann:
+
+1. Erstelle meine PRIVATE Kopie aus dem Template und klone sie:
+   gh repo create &lt;name&gt; --template bks-lab/open-bridge --private --clone
+   (Falls das Template scheitert: bks-lab/open-bridge klonen, origin zu
+   upstream umbenennen, privates Repo anlegen, als origin hinzufügen,
+   main dorthin pushen.)
+2. Ergänze das öffentliche Repo als read-only upstream, falls es fehlt:
+   git remote add upstream https://github.com/bks-lab/open-bridge.git
+3. Aktiviere die Safety-Hooks: ./bin/setup ausführen (natives Windows:
+   bin/setup.ps1).
+4. Verifiziere und zeig mir: git remote -v (origin = MEIN privates Repo)
+   und git config core.hooksPath (= scripts/hooks).
+5. Starte das Onboarding: /bridge-onboard, wenn du Slash-Commands
+   unterstützt; sonst lies skills/bridge-onboard/SKILL.md und führe mich
+   interaktiv hindurch.
+
+Harte Regeln: niemals irgendetwas nach bks-lab/open-bridge pushen; mein
+user/*-Branch geht nur auf mein privates origin; keine Secrets in
+Dateien; vor allem Destruktiven nachfragen.</div>
+      </div>
     </div>
+
+    <p class="tertiary-cta reveal"><span data-lang="en">Found a rough edge? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Open an issue</a> — the most useful thing you can do right now.</span><span data-lang="de">Eine raue Kante gefunden? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Öffne ein Issue</a> — das Nützlichste, was du gerade tun kannst.</span></p>
   </div>
 </section>
 
@@ -1379,7 +1549,7 @@ gh repo create &lt;you&gt;/my-bridge --private --source=. --remote=origin --push
       <h4 data-lang="en">Roadmap</h4>
       <h4 data-lang="de">Roadmap</h4>
       <ul class="roadmap">
-        <li><span class="ph">now</span><span data-lang="en">Substrate + Task-Management, self-used (N=1)</span><span data-lang="de">Substrat + Task-Management, selbst genutzt (N=1)</span></li>
+        <li><span class="ph">now</span><span data-lang="en">Substrate + Task-Management — runs the company that builds it, daily</span><span data-lang="de">Substrat + Task-Management — betreibt täglich die Firma, die es baut</span></li>
         <li><span class="ph">next</span><span data-lang="en">Workspace-separation default + "ask if unplaceable"</span><span data-lang="de">Workspace-Trennung-Default + „frage, wenn unzuordenbar"</span></li>
         <li><span class="ph">next</span><span data-lang="en">Terminology cleanup (work-task → Task-Management)</span><span data-lang="de">Begriffs-Bereinigung (work-task → Task-Management)</span></li>
         <li><span class="ph">later</span><span data-lang="en">First external users — none yet</span><span data-lang="de">Erste externe Nutzer — noch keine</span></li>
@@ -1621,11 +1791,11 @@ gh repo create &lt;you&gt;/my-bridge --private --source=. --remote=origin --push
     if(k === "l"){ setLang(root.getAttribute("data-active-lang") === "en" ? "de" : "en"); }
   });
 
-  // ---- Copy button ----
-  var copyBtn = document.getElementById("copy-start");
-  if(copyBtn){
+  // ---- Copy buttons (Adopt + Try code blocks) ----
+  function wireCopy(btnId, text){
+    var copyBtn = document.getElementById(btnId);
+    if(!copyBtn){ return; }
     copyBtn.addEventListener("click", function(){
-      var text = "# 1. Make your own PRIVATE copy — GitHub \"Use this template\" → Private, then clone THAT.\n#    No template button yet? Clone here and re-home the remotes in step 2:\ngit clone https://github.com/bks-lab/open-bridge.git my-bridge\ncd my-bridge\n\n# 2. open-bridge becomes a read-only upstream; your private repo becomes origin:\ngit remote rename origin upstream\ngh repo create <you>/my-bridge --private --source=. --remote=origin --push\n\n# 3. Onboard in Claude Code — writes to a user/{name} branch on YOUR private origin:\n/bridge-onboard";
       var done = function(){
         var prev = copyBtn.textContent;
         copyBtn.textContent = "copied";
@@ -1642,6 +1812,12 @@ gh repo create &lt;you&gt;/my-bridge --private --source=. --remote=origin --push
       }
     });
   }
+  wireCopy("copy-start", "# 1. Make your own PRIVATE copy — GitHub \"Use this template\" → Private, then clone THAT.\n#    Prefer plain git? Clone here and re-home the remotes in step 2:\ngit clone https://github.com/bks-lab/open-bridge.git my-bridge\ncd my-bridge\n\n# 2. open-bridge becomes a read-only upstream; your private repo becomes origin:\ngit remote rename origin upstream\ngh repo create <you>/my-bridge --private --source=. --remote=origin --push\n\n# 3. Onboard in Claude Code — writes to a user/{name} branch on YOUR private origin:\n/bridge-onboard");
+  wireCopy("copy-try", "git clone https://github.com/bks-lab/open-bridge.git\ncd open-bridge/examples/agency\nclaude        # or: codex, copilot");
+  // Agent-setup prompt — one button per language variant; only the visible
+  // (active-language) block is clickable, so copy always matches what you see.
+  wireCopy("copy-agent-en", "Set up open-bridge for me (https://github.com/bks-lab/open-bridge — a\nplain-text memory layer your agent reads at session start). Plan first:\ncheck that git and the GitHub CLI (gh) are installed and authenticated,\nask me what to name my private copy (default: my-bridge), then show me\nyour plan before you act. Then:\n\n1. Create my PRIVATE copy from the template and clone it:\n   gh repo create <name> --template bks-lab/open-bridge --private --clone\n   (If templating fails: clone bks-lab/open-bridge, rename origin to\n   upstream, create a private repo, add it as origin, push main there.)\n2. Add the public repo as read-only upstream if it is missing:\n   git remote add upstream https://github.com/bks-lab/open-bridge.git\n3. Arm the safety hooks: run ./bin/setup (native Windows: bin/setup.ps1).\n4. Verify and show me: git remote -v (origin = MY private repo), and\n   git config core.hooksPath (= scripts/hooks).\n5. Start onboarding: run /bridge-onboard if you support slash commands;\n   otherwise read skills/bridge-onboard/SKILL.md and walk me through it.\n\nHard rules: never push anything to bks-lab/open-bridge; my user/* branch\ngoes only to my private origin; no secrets in files; ask before anything\ndestructive.");
+  wireCopy("copy-agent-de", "Richte open-bridge für mich ein (https://github.com/bks-lab/open-bridge —\neine Plain-Text-Gedächtnisschicht, die dein Agent bei Session-Start\nliest). Plane zuerst: prüfe, ob git und die GitHub CLI (gh) installiert\nund eingeloggt sind, frag mich, wie meine private Kopie heißen soll\n(Default: my-bridge), und zeig mir deinen Plan, bevor du handelst. Dann:\n\n1. Erstelle meine PRIVATE Kopie aus dem Template und klone sie:\n   gh repo create <name> --template bks-lab/open-bridge --private --clone\n   (Falls das Template scheitert: bks-lab/open-bridge klonen, origin zu\n   upstream umbenennen, privates Repo anlegen, als origin hinzufügen,\n   main dorthin pushen.)\n2. Ergänze das öffentliche Repo als read-only upstream, falls es fehlt:\n   git remote add upstream https://github.com/bks-lab/open-bridge.git\n3. Aktiviere die Safety-Hooks: ./bin/setup ausführen (natives Windows:\n   bin/setup.ps1).\n4. Verifiziere und zeig mir: git remote -v (origin = MEIN privates Repo)\n   und git config core.hooksPath (= scripts/hooks).\n5. Starte das Onboarding: /bridge-onboard, wenn du Slash-Commands\n   unterstützt; sonst lies skills/bridge-onboard/SKILL.md und führe mich\n   interaktiv hindurch.\n\nHarte Regeln: niemals irgendetwas nach bks-lab/open-bridge pushen; mein\nuser/*-Branch geht nur auf mein privates origin; keine Secrets in\nDateien; vor allem Destruktiven nachfragen.");
 
   // ---- Reveal on scroll (also un-gates the diagram-frame animations) ----
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;

@@ -36,6 +36,11 @@
     }
     var r = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if(!r) document.documentElement.classList.add('anim');
+    /* Honour the site-wide language choice (set on the other pages) for the bilingual CTA. */
+    if (localStorage.getItem('ob-lang') === 'de') {
+      document.documentElement.setAttribute('data-active-lang','de');
+      document.documentElement.setAttribute('lang','de');
+    }
   } catch (e) { document.documentElement.classList.add('anim'); }
 })();
 </script>
@@ -125,7 +130,6 @@ html.anim #source{display:none}
 .ok{color:var(--ok-text)} .warn{color:var(--warn)}
 .ti{color:var(--ink)}
 .c1{color:var(--accent-from)} .c2{color:var(--accent-to)}     /* logo two-tone */
-.spark{color:var(--accent);letter-spacing:1px}
 .fr{color:var(--muted)}
 .k{color:var(--accent-text)}
 .caret{display:inline-block;width:7px;height:1.02em;vertical-align:-2px;margin-left:1px;
@@ -142,11 +146,31 @@ html.anim #source{display:none}
 .term-foot button:hover{background:var(--surface-subtle)}
 .caption{font-size:12.5px;color:var(--muted);max-width:80ch;margin:14px 0 0}
 .caption code{font-family:var(--font-mono)}
+.skip-hint{margin:8px 0 0;font-size:12px;color:var(--muted)}
+/* one-shot money-line highlight — existing accent token, no permanent glow */
+html.anim .line.money.show{animation:moneyFlash 1.4s ease-out 1}
+@keyframes moneyFlash{0%,30%{background:var(--accent-soft)}100%{background:transparent}}
 
 #source .chap{margin:22px 0;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
 .chap-h{margin:0;padding:11px 15px;background:var(--surface-muted);font-size:14px;color:var(--ink);font-weight:600;font-family:var(--font-sans)}
 #source .lines{padding:16px 18px;font-family:var(--font-mono);font-size:13px;line-height:1.6;overflow-x:auto}
 #source .line{opacity:1;transform:none}
+
+/* ─── Funnel CTA (end of page) — bilingual via the shared ob-lang choice; EN is the no-JS default ─── */
+[data-lang="de"]{display:none}
+html[data-active-lang="de"] [data-lang="en"]{display:none}
+html[data-active-lang="de"] [data-lang="de"]{display:revert}
+.cta-funnel{margin:44px 0 0;padding:28px 24px;border:1px solid var(--line);border-radius:var(--radius-lg);
+  background:var(--surface-subtle);text-align:center}
+.cta-funnel .cta-lead{margin:0;font-size:17px;font-weight:300;color:var(--ink);max-width:60ch;margin-inline:auto}
+.cta-funnel .cta-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+.cta-funnel a{display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:500;
+  text-decoration:none;padding:10px 20px;border-radius:var(--radius-md);border:1px solid transparent;
+  transition:transform .2s ease,background .2s ease}
+.cta-funnel a.cta-go{background:var(--accent);color:var(--on-primary)}
+.cta-funnel a.cta-go:hover{transform:translateY(-1px)}
+.cta-funnel a.cta-alt{background:var(--surface);color:var(--on-surface);border-color:var(--line)}
+.cta-funnel a.cta-alt:hover{background:var(--surface-muted)}
 
 footer.foot{max-width:920px;margin:40px auto 32px;padding:16px 24px 0;border-top:1px solid var(--line-subtle);font-size:12px;color:var(--muted)}
 footer.foot code{font-family:var(--font-mono)}
@@ -167,10 +191,11 @@ footer.foot code{font-family:var(--font-mono)}
   <nav class="topnav" aria-label="Site">
     <a class="wordmark" href="index.html">open<span class="grad">-bridge</span></a>
     <a class="lnk" href="index.html">Home</a>
-    <a class="lnk" href="explore.html">Explore</a>
+    <a class="lnk" href="demo.html" aria-current="page">Demo</a>
     <a class="lnk" href="use-cases.html">Use Cases</a>
     <a class="lnk" href="concepts.html">Concepts</a>
-    <a class="lnk" href="demo.html" aria-current="page">Demo</a>
+    <a class="lnk" href="explore.html">Explore</a>
+    <a class="lnk" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
   </nav>
   <button id="themeToggle" title="Light/Dark (T)">&#9680; Dark</button>
 </div>
@@ -196,6 +221,10 @@ footer.foot code{font-family:var(--font-mono)}
       <button id="replayBtn" title="Replay">&#10227; Replay</button>
       <button id="pauseBtn" title="Pause / Play">&#10073;&#10073; Pause</button>
     </div>
+    <p class="skip-hint">
+      <span data-lang="en">Click the terminal to skip ahead</span>
+      <span data-lang="de">Klick ins Terminal, um vorzuspulen</span>
+    </p>
   </div>
 
   <!-- ════ SOURCE OF TRUTH / NO-JS FALLBACK — four chapters ════ -->
@@ -203,37 +232,51 @@ footer.foot code{font-family:var(--font-mono)}
 
     <!-- ───── Chapter 1: Morning — session start ───── -->
     <div class="chap" data-title="Morning"
-         data-sub="<b>Session start.</b> The terminal greeting already knows your repos, board and uncommitted work — before your first prompt.">
+         data-sub="<b>Session start.</b> Not a status dump — a briefing: an overnight CI failure, its collision with today's 14:00 review, and an answer quoted from a dated log row.">
       <h3 class="chap-h">① Morning — session start</h3>
       <div class="lines">
-        <div class="line cmd" data-type data-after="450"><span class="pr">$</span> <span class="ti">cd ~/Developer/bks/the-bridge</span></div>
-        <div class="line fx logo"><span class="c1"> ██████╗ </span><span class="c2">██╗  ██╗</span><span class="c1">███████╗</span></div>
-        <div class="line fx logo"><span class="c1"> ██╔══██╗</span><span class="c2">██║ ██╔╝</span><span class="c1">██╔════╝</span></div>
-        <div class="line fx logo"><span class="c1"> ██████╔╝</span><span class="c2">█████╔╝ </span><span class="c1">███████╗</span></div>
-        <div class="line fx logo"><span class="c1"> ██╔══██╗</span><span class="c2">██╔═██╗ </span><span class="c1">╚════██║</span></div>
-        <div class="line fx logo"><span class="c1"> ██████╔╝</span><span class="c2">██║  ██╗</span><span class="c1">███████║</span></div>
-        <div class="line fx logo" data-after="240"><span class="c1"> ╚═════╝ </span><span class="c2">╚═╝  ╚═╝</span><span class="c1">╚══════╝</span>  <span class="dim">lab</span></div>
-        <div class="line">&#9889; Good morning, Alex.   🔥 5d   🔔 2</div>
+        <div class="line cmd" data-type data-after="250"><span class="pr">$</span> <span class="ti">cd ~/Developer/bks/the-bridge</span></div>
+        <div class="line fx logo" data-block><span class="c1"> ██████╗ </span><span class="c2">██╗  ██╗</span><span class="c1">███████╗</span></div>
+        <div class="line fx logo" data-block><span class="c1"> ██╔══██╗</span><span class="c2">██║ ██╔╝</span><span class="c1">██╔════╝</span></div>
+        <div class="line fx logo" data-block><span class="c1"> ██████╔╝</span><span class="c2">█████╔╝ </span><span class="c1">███████╗</span></div>
+        <div class="line fx logo" data-block><span class="c1"> ██╔══██╗</span><span class="c2">██╔═██╗ </span><span class="c1">╚════██║</span></div>
+        <div class="line fx logo" data-block><span class="c1"> ██████╔╝</span><span class="c2">██║  ██╗</span><span class="c1">███████║</span></div>
+        <div class="line fx logo" data-block data-after="240"><span class="c1"> ╚═════╝ </span><span class="c2">╚═╝  ╚═╝</span><span class="c1">╚══════╝</span>  <span class="dim">lab</span></div>
+        <div class="line" data-after="150">&#9889; Good morning, Alex.   🔥 5d   🔔 2</div>
         <div class="line gap"></div>
-        <div class="line fx"><span class="fr">&#9656;</span> <span class="lbl">BKS-Lab</span> <span class="dim">· the-bridge · user/alex</span></div>
-        <div class="line fx dim">  the-bridge  user/alex  ↑3 ±6</div>
-        <div class="line fx dim" data-after="240">  &#10227; docs(open-bridge): launch strategy + live demo  (1h ago)</div>
-        <div class="line">🔴 2 waiting for your review     ⚠ WIP 5/5</div>
+        <div class="line fx" data-block><span class="fr">&#9656;</span> <span class="lbl">BKS-Lab</span> <span class="dim">· the-bridge · user/alex</span></div>
+        <div class="line fx dim" data-block>  the-bridge  user/alex  ↑3 ±6</div>
+        <div class="line fx dim" data-block data-after="200">  &#10227; docs(open-bridge): launch strategy + live demo  (1h ago)</div>
+        <div class="line fx" data-block>  <span class="ag">◆</span> 11:00  Weekly · BKS-Lab · 45m</div>
+        <div class="line fx" data-block data-after="200">  <span class="ag">◆</span> 14:00  Launch review · open-bridge live demo · 60m</div>
+        <div class="line" data-after="150">🔴 2 waiting for your review     ⚠ WIP 5/5</div>
         <div class="line gap"></div>
-        <div class="line fx fr">┌─ <span class="lbl">Doing — BKS-Lab</span> <span class="fr">─────────────────────────────┐</span></div>
-        <div class="line fx"><span class="fr">│</span>  <span class="ag">●</span> open-bridge-launch  distribution + live demo  <span class="fr">│</span></div>
-        <div class="line fx"><span class="fr">│</span>  <span class="ag">●</span> bridge-deck         calendar timeline view     <span class="fr">│</span></div>
-        <div class="line fx"><span class="fr">│</span>  <span class="ag">●</span> bks-news            weekly briefing automation  <span class="fr">│</span></div>
-        <div class="line fx"><span class="fr">│</span>  <span class="dim">+2 more</span>                                      <span class="fr">│</span></div>
-        <div class="line fx fr" data-after="450">└───────────────────────────────────────────────┘</div>
-        <div class="line cmd" data-type data-after="450"><span class="pr">$</span> <span class="ti">claude</span></div>
-        <div class="line fx dim">&lt;bridge-phase0&gt;</div>
-        <div class="line fx dim">  state=<span class="ok">NORMAL</span> · branch=user/alex · config=yes</div>
-        <div class="line fx dim">  3 CORE commits ahead — offer `git merge development`</div>
-        <div class="line fx dim" data-after="400">&lt;/bridge-phase0&gt;</div>
-        <div class="line scene" data-after="400"><span class="ti">Morning. Week 26: 5 in Doing — open-bridge launch leads, plus</span></div>
-        <div class="line"><span class="ti">bridge-deck and bks-news. 2 PRs wait on your review, WIP 5/5 at cap.</span></div>
-        <div class="line" data-after="400"><span class="ti">development is 3 commits ahead — merge when convenient. What's first?</span></div>
+        <div class="line fx fr" data-block>┌─ <span class="lbl">Doing — BKS-Lab</span> <span class="fr">─────────────────────────────┐</span></div>
+        <div class="line fx" data-block><span class="fr">│</span>  <span class="ag">●</span> open-bridge-launch  distribution + live demo  <span class="fr">│</span></div>
+        <div class="line fx" data-block><span class="fr">│</span>  <span class="ag">●</span> bridge-deck         calendar timeline view     <span class="fr">│</span></div>
+        <div class="line fx" data-block><span class="fr">│</span>  <span class="ag">●</span> bks-news            weekly briefing automation  <span class="fr">│</span></div>
+        <div class="line fx" data-block><span class="fr">│</span>  <span class="dim">+2 more</span>                                      <span class="fr">│</span></div>
+        <div class="line fx fr" data-block data-after="300">└───────────────────────────────────────────────┘</div>
+        <div class="line cmd" data-type data-after="300"><span class="pr">$</span> <span class="ti">claude</span></div>
+        <div class="line fx dim" data-block>&lt;bridge-phase0&gt;</div>
+        <div class="line fx dim" data-block>  state=<span class="ok">NORMAL</span> · branch=user/alex · config=yes</div>
+        <div class="line fx dim" data-block>  3 CORE commits ahead — offer `git merge development`</div>
+        <div class="line fx dim" data-block data-after="300">&lt;/bridge-phase0&gt;</div>
+        <div class="line cmd" data-type data-after="300"><span class="pr">&gt;</span> <span class="ti">good morning</span></div>
+        <div class="line scene" data-after="350"><span class="ti">Morning. Three things since last night:</span></div>
+        <div class="line"><span class="ti">1. 02:14 — CI went red on open-bridge main: the release publish step</span></div>
+        <div class="line" data-after="400"><span class="ti">   flaked. Same failure you fixed Tuesday — that fix never reached main.</span></div>
+        <div class="line"><span class="ti">2. Pages deploys from main, so the live demo hasn't rebuilt since 02:14 —</span></div>
+        <div class="line" data-after="400"><span class="ti">   and your 14:00 launch review walks exactly that page.</span></div>
+        <div class="line"><span class="ti">3. PR #61 (bridge-deck) hits day 4 today — your own three-day review</span></div>
+        <div class="line" data-after="450"><span class="ti">   rule fired yesterday.</span></div>
+        <div class="line money"><span class="ti">Suggest: merge the retry fix first — ~15 min, and Pages rebuilds well</span></div>
+        <div class="line" data-after="550"><span class="ti">before 14:00. Demo prep second, #61 review after. Want the diff summary?</span></div>
+        <div class="line cmd" data-type data-after="250"><span class="pr">&gt;</span> <span class="ti">what did I fix on tuesday?</span></div>
+        <div class="line" data-after="250"><span class="ti">One row from </span><span class="k">work/log.md</span><span class="ti"> — Tue 24.06:</span></div>
+        <div class="line fx" data-after="450">  <span class="dim">| 14:32 | 🔧 | open-bridge |</span> release publish flaked 3× — pinned retry backoff in <span class="k">release.yml</span>. Config, not code. <span class="dim">|</span></div>
+        <div class="line"><span class="ti">Same root cause, red on main since 02:14 — the pin never left</span></div>
+        <div class="line" data-after="450"><span class="ti">fix/release-retry. One merge and tonight's 02:14 run is green again.</span></div>
       </div>
     </div>
 
@@ -242,41 +285,39 @@ footer.foot code{font-family:var(--font-mono)}
          data-sub="<b>/briefing.</b> A 76-column dashboard — warnings, focus, trackers, PRs, 7-day activity, calendar, next steps — generated from plain Markdown + YAML.">
       <h3 class="chap-h">② /briefing — the daily dashboard</h3>
       <div class="lines">
-        <div class="line cmd" data-type data-after="500"><span class="pr">&gt;</span> <span class="ti">/briefing</span></div>
-        <div class="line fx fr">╭──────────────────────────────────────────────────────────╮</div>
-        <div class="line fx fr">│  <span class="lbl">Week 26 · Tue 24 Jun · 09:02</span>   │   Doing: 5   │  ⚠ 2   │</div>
-        <div class="line fx fr">│  <span class="dim">Focus: ship the open-bridge launch demo → open the repo</span>  │</div>
-        <div class="line fx fr" data-after="500">╰──────────────────────────────────────────────────────────╯</div>
+        <div class="line cmd" data-type data-after="300"><span class="pr">&gt;</span> <span class="ti">/briefing</span></div>
+        <div class="line fx fr" data-block>╭──────────────────────────────────────────────────────────╮</div>
+        <div class="line fx fr" data-block>│  <span class="lbl">Week 26 · Tue 24 Jun · 09:02</span>   │   Doing: 5   │  ⚠ 2   │</div>
+        <div class="line fx fr" data-block>│  <span class="dim">Focus: ship the open-bridge launch demo → open the repo</span>  │</div>
+        <div class="line fx fr" data-block data-after="250">╰──────────────────────────────────────────────────────────╯</div>
         <div class="line gap"></div>
-        <div class="line fx dim">── ⚠ Warnings ──────────────────────────────────────────────</div>
-        <div class="line fx">  🟡 WIP 5/5 — at cap; close or reclassify before new work</div>
-        <div class="line fx" data-after="350">  🟡 Tailscale node-key expires in 18 days</div>
+        <div class="line fx dim" data-block>── ⚠ Warnings ──────────────────────────────────────────────</div>
+        <div class="line fx money" data-block>  🟡 WIP 5/5 — at cap; close or reclassify before new work</div>
+        <div class="line fx" data-block data-after="200">  🟡 Tailscale node-key expires in 18 days</div>
         <div class="line gap"></div>
-        <div class="line fx dim">── Focus today ─────────────────────────────────────────────</div>
-        <div class="line fx">  💻 open-bridge-launch  distribution + live demo     🟢 doing</div>
-        <div class="line fx">  🔧 bridge-deck         calendar timeline view        🟡 doing</div>
-        <div class="line fx" data-after="350">  📝 bks-news            weekly briefing automation      🟢 doing</div>
+        <div class="line fx dim" data-block>── Focus today ─────────────────────────────────────────────</div>
+        <div class="line fx" data-block>  💻 open-bridge-launch  distribution + live demo     🟢 doing</div>
+        <div class="line fx" data-block>  🔧 bridge-deck         calendar timeline view        🟡 doing</div>
+        <div class="line fx" data-block data-after="200">  📝 bks-news            weekly briefing automation      🟢 doing</div>
         <div class="line gap"></div>
-        <div class="line fx dim">── GitHub (BKS-Lab) ────────────────────────────────────────</div>
-        <div class="line fx">  Agents &amp; MCPs #20    4 open · 1 in review</div>
-        <div class="line fx" data-after="350">  BKS Operations #25   3 open</div>
+        <div class="line fx dim" data-block>── GitHub (BKS-Lab) ────────────────────────────────────────</div>
+        <div class="line fx" data-block>  Agents &amp; MCPs #20    4 open · 1 in review</div>
+        <div class="line fx" data-block data-after="200">  BKS Operations #25   3 open</div>
         <div class="line gap"></div>
-        <div class="line fx dim">── Open PRs (2 human · 1 bot) ──────────────────────────────</div>
-        <div class="line fx">  #61  calendar timeline      bridge-deck    ↑ sam     1d</div>
-        <div class="line fx" data-after="350">  #18  launch demo            open-bridge    ↑ alex  3h</div>
+        <div class="line fx dim" data-block>── Open PRs (2 human · 1 bot) ──────────────────────────────</div>
+        <div class="line fx" data-block>  #61  calendar timeline      bridge-deck    ↑ sam     1d</div>
+        <div class="line fx" data-block data-after="200">  #18  launch demo            open-bridge    ↑ alex  3h</div>
         <div class="line gap"></div>
-        <div class="line fx dim">── Activity (7 days) ───────────────────────────────────────</div>
-        <div class="line fx">  open-bridge   <span class="spark">▃▅▄▇▆█▅</span>  24 commits</div>
-        <div class="line fx">  bridge-deck   <span class="spark">▂▃▅▄▆▃▄</span>  13 commits</div>
-        <div class="line fx" data-after="350">  bks-news      <span class="spark">▁▂▁▃▂▄▂</span>   7 commits</div>
+        <div class="line fx dim" data-block>── Activity (7 days) ───────────────────────────────────────</div>
+        <div class="line fx" data-block data-after="200">  44 commits — open-bridge 24 · bridge-deck 13 · bks-news 7</div>
         <div class="line gap"></div>
-        <div class="line fx dim">── Calendar today ──────────────────────────────────────────</div>
-        <div class="line fx" data-after="350">  <span class="ag">◆</span> 11:00  Weekly · BKS-Lab · 45m</div>
+        <div class="line fx dim" data-block>── Calendar today ──────────────────────────────────────────</div>
+        <div class="line fx" data-block data-after="200">  <span class="ag">◆</span> 11:00  Weekly · BKS-Lab · 45m</div>
         <div class="line gap"></div>
-        <div class="line fx dim">── Next steps ──────────────────────────────────────────────</div>
-        <div class="line fx">  [ ] merge development (3 commits ahead)</div>
-        <div class="line fx">  [ ] review PR #61 (bridge-deck) → then it can land</div>
-        <div class="line fx" data-after="500">  [ ] renew the Tailscale node-key before it expires</div>
+        <div class="line fx dim" data-block>── Next steps ──────────────────────────────────────────────</div>
+        <div class="line fx" data-block>  [ ] merge development (3 commits ahead)</div>
+        <div class="line fx" data-block>  [ ] review PR #61 (bridge-deck) → then it can land</div>
+        <div class="line fx" data-block data-after="450">  [ ] renew the Tailscale node-key before it expires</div>
       </div>
     </div>
 
@@ -285,17 +326,17 @@ footer.foot code{font-family:var(--font-mono)}
          data-sub="<b>Incident → code fix.</b> The log-analyst pinpoints the bug in the code; the agent writes a failing test (red), fixes it (green), passes the gates, ships to UAT — and stops at the prod gate.">
       <h3 class="chap-h">③ Operator — find the bug, TDD the fix, ship</h3>
       <div class="lines">
-        <div class="line cmd" data-type data-after="450"><span class="pr">&gt;</span> <span class="ti">inbound invoices aren't booking — what happened?</span></div>
-        <div class="line"><span class="ti">Loading the e-invoicing ops playbook. Dispatching the log-analyst against</span></div>
-        <div class="line" data-after="300"><span class="ti">the last 3h of fn-invoicing-in-prd logs — read-only, isolated.</span></div>
+        <div class="line cmd" data-type data-after="300"><span class="pr">&gt;</span> <span class="ti">inbound invoices aren't booking — what happened?</span></div>
+        <div class="line" data-block><span class="ti">Loading the e-invoicing ops playbook. Dispatching the log-analyst against</span></div>
+        <div class="line" data-block data-after="250"><span class="ti">the last 3h of fn-invoicing-in-prd logs — read-only, isolated.</span></div>
         <div class="line dim" data-after="500">  <span class="spin">◐</span> <span class="dim">Task · subagent_type=log-analyst · running …</span></div>
-        <div class="line fx"><span class="ag">◇ log-analyst → returned</span></div>
-        <div class="line fx">  <span class="lbl">Summary</span>      <span class="warn">NEW BLOCKER</span> — inbound parse fails in prod since 08:31 UTC; docs stuck in retry</div>
-        <div class="line fx">  <span class="lbl">Scope</span>        last 3h · fn-invoicing-in-prd · 1,120 hits</div>
-        <div class="line fx">  <span class="lbl">Clusters</span>     🔴 parse_error @ map_invoice   54×  08:31→now  NEW</div>
-        <div class="line fx">  <span class="lbl">Correlation</span>  doc_8842 — received OK · parse <span class="warn">FAIL</span> @ map_invoice · never booked</div>
-        <div class="line fx" data-after="450">  <span class="lbl">Root cause</span>   payment_means code "59" (SEPA DD) missing from the enum → KeyError aborts the pipeline</div>
-        <div class="line scene" data-after="500"><span class="ti">That's a code bug in invoicing-service, not the operator. Fixing it test-first.</span></div>
+        <div class="line fx" data-block><span class="ag">◇ log-analyst → returned</span></div>
+        <div class="line fx" data-block>  <span class="lbl">Summary</span>      <span class="warn">NEW BLOCKER</span> — inbound parse fails in prod since 08:31 UTC; docs stuck in retry</div>
+        <div class="line fx" data-block>  <span class="lbl">Scope</span>        last 3h · fn-invoicing-in-prd · 1,120 hits</div>
+        <div class="line fx" data-block>  <span class="lbl">Clusters</span>     🔴 parse_error @ map_invoice   54×  08:31→now  NEW</div>
+        <div class="line fx" data-block>  <span class="lbl">Correlation</span>  doc_8842 — received OK · parse <span class="warn">FAIL</span> @ map_invoice · never booked</div>
+        <div class="line fx" data-block data-after="450">  <span class="lbl">Root cause</span>   payment_means code "59" (SEPA DD) missing from the enum → KeyError aborts the pipeline</div>
+        <div class="line scene" data-after="400"><span class="ti">That's a code bug in invoicing-service, not the operator. Fixing it test-first.</span></div>
         <div class="line fx"><span class="ag">▸ red</span>  <span class="dim">— a test that reproduces doc_8842</span></div>
         <div class="line fx">  <span class="ok">+</span> tests/test_payment_means.py::test_sepa_dd_59</div>
         <div class="line fx">  <span class="dim">▸ pytest -k payment_means</span></div>
@@ -303,14 +344,14 @@ footer.foot code{font-family:var(--font-mono)}
         <div class="line fx"><span class="ag">▸ green</span>  <span class="dim">— minimal fix</span></div>
         <div class="line fx">  <span class="warn">~</span> invoicing-service/mapping.py · payment_means via .get(code, OTHER)</div>
         <div class="line fx">  <span class="dim">▸ pytest · ruff · mypy</span></div>
-        <div class="line fx" data-after="400">  <span class="ok">✓ 214 passed</span> · ruff <span class="ok">✓</span> · mypy <span class="ok">✓</span> · coverage 100%</div>
+        <div class="line fx money" data-after="400">  <span class="ok">✓ 214 passed</span> · ruff <span class="ok">✓</span> · mypy <span class="ok">✓</span> · coverage 100%</div>
         <div class="line fx"><span class="ag">▸ ship</span></div>
         <div class="line fx">  <span class="ok">✓</span> commit a3f1c9 · branch fix/payment-means-59 · pushed · PR #87</div>
         <div class="line fx">  <span class="ok">✓</span> deploy uat → fn-invoicing-in-uat · health ok</div>
-        <div class="line fx" data-after="450">  <span class="ok">✓</span> replayed doc_8842 on UAT → <span class="ok">booked</span></div>
+        <div class="line fx" data-after="400">  <span class="ok">✓</span> replayed doc_8842 on UAT → <span class="ok">booked</span></div>
         <div class="line scene"><span class="ti">Done: off-spec SEPA-DD code "59" hit a non-tolerant enum → KeyError, so every</span></div>
         <div class="line"><span class="ti">inbound aborted. Test-first fix red→green, full suite + lint + types green,</span></div>
-        <div class="line" data-after="300"><span class="ti">shipped to UAT and replayed doc_8842 — it books cleanly now.</span></div>
+        <div class="line" data-after="200"><span class="ti">shipped to UAT and replayed doc_8842 — it books cleanly now.</span></div>
         <div class="line" data-after="500"><span class="ti">Prod deploy + PR #87 merge are your call. Ship it? <span class="k">[y/n]</span></span></div>
       </div>
     </div>
@@ -320,38 +361,57 @@ footer.foot code{font-family:var(--font-mono)}
          data-sub="<b>Onboarding.</b> On a fresh clone ELOPe introduces itself, then a guided, reversible 5-minute wizard scans your real setup and wires features from the evidence.">
       <h3 class="chap-h">④ First run — onboarding</h3>
       <div class="lines">
-        <div class="line cmd" data-type data-after="400"><span class="pr">&gt;</span> <span class="ti">hi</span></div>
-        <div class="line"><span class="ti">Hi — I'm ELOPe.</span></div>
-        <div class="line"><span class="ti">I'm the AI running in The Bridge — your command hub for agents, repos</span></div>
-        <div class="line"><span class="ti">and standing orders. I watch your stack, dispatch specialists, help</span></div>
-        <div class="line" data-after="250"><span class="ti">you ship, and remember every session so tomorrow-you picks up here.</span></div>
-        <div class="line"><span class="ti">Looks like you're running me for the first time — fresh clone, nothing</span></div>
-        <div class="line" data-after="250"><span class="ti">wired up yet. That's a 5-minute fix.</span></div>
-        <div class="line"><span class="ti">Want me to onboard you? Guided and reversible. I'll:</span></div>
-        <div class="line dim">  1. spin up your user/alex branch (keeps your data out of CORE)</div>
-        <div class="line dim">  2. scan your projects folder and map the BKS-Lab ecosystem</div>
-        <div class="line dim">  3. pick a theme and wire up your first agents</div>
+        <div class="line cmd" data-type data-after="250"><span class="pr">&gt;</span> <span class="ti">hi</span></div>
+        <div class="line" data-block><span class="ti">Hi — I'm ELOPe, the AI running in The Bridge: your command hub for</span></div>
+        <div class="line" data-block><span class="ti">agents, repos and standing orders — and I remember every session.</span></div>
+        <div class="line" data-block data-after="300"><span class="ti">Fresh clone, nothing wired up yet — a 5-minute, reversible fix. I'll:</span></div>
+        <div class="line dim" data-block>  1. spin up your user/alex branch (keeps your data out of CORE)</div>
+        <div class="line dim" data-block>  2. scan your projects folder and map the BKS-Lab ecosystem</div>
+        <div class="line dim" data-block data-after="200">  3. pick a theme and wire up your first agents</div>
         <div class="line" data-after="450"><span class="k">[y]</span> Let's go   <span class="k">[t]</span> Tell me more   <span class="k">[n]</span> Not now</div>
-        <div class="line cmd" data-type data-after="450"><span class="pr">&gt;</span> <span class="ti">y</span></div>
-        <div class="line dim" data-after="280">Great — about 5 minutes.  <span class="dim">[A] Identity</span></div>
-        <div class="line">  Name      → detected <span class="ok">"Alex"</span> from git config. Keep it? <span class="k">[y/edit]</span></div>
-        <div class="line">  GitHub    → <span class="ok">bks-lab</span>   ·   Projects → <span class="ok">~/Developer/bks</span></div>
-        <div class="line" data-after="500">  ✓ created + checked out branch <span class="ok">user/alex</span></div>
-        <div class="line dim">  <span class="dim">[B] May I look at your setup? (names + structure only, never content)</span></div>
-        <div class="line">  ✓ developer   <span class="dim">repos across bks-lab + reinvent-lab</span></div>
-        <div class="line">  ✓ homebrew    <span class="dim">gh, az, rclone, restic, tailscale, pandoc</span></div>
-        <div class="line">  ✓ azure-cli   <span class="dim">logged in · 1 subscription</span></div>
-        <div class="line" data-after="500">  ✓ tailscale   <span class="dim">4 devices: mac-mini, macbook-pro, +2</span></div>
-        <div class="line dim">  <span class="dim">[C] Based on what I found:</span></div>
+        <div class="line cmd" data-type data-after="300"><span class="pr">&gt;</span> <span class="ti">y</span></div>
+        <div class="line dim" data-after="200">Great — about 5 minutes.  <span class="dim">[A] Identity</span></div>
+        <div class="line" data-block>  Name      → detected <span class="ok">"Alex"</span> from git config. Keep it? <span class="k">[y/edit]</span></div>
+        <div class="line" data-block>  GitHub    → <span class="ok">bks-lab</span>   ·   Projects → <span class="ok">~/Developer/bks</span></div>
+        <div class="line" data-after="400">  ✓ created + checked out branch <span class="ok">user/alex</span></div>
+        <div class="line dim" data-after="150">  <span class="dim">[B] May I look at your setup? (names + structure only, never content)</span></div>
+        <div class="line" data-block>  ✓ developer   <span class="dim">repos across bks-lab + reinvent-lab</span></div>
+        <div class="line" data-block>  ✓ homebrew    <span class="dim">gh, az, rclone, restic, tailscale, pandoc</span></div>
+        <div class="line" data-block>  ✓ azure-cli   <span class="dim">logged in · 1 subscription</span></div>
+        <div class="line" data-block data-after="300">  ✓ tailscale   <span class="dim">4 devices: mac-mini, macbook-pro, +2</span></div>
+        <div class="line dim" data-after="150">  <span class="dim">[C] Based on what I found:</span></div>
         <div class="line">  ① rclone + restic detected → enable <span class="lbl">backup topology</span>? <span class="k">[y/m/l]</span></div>
-        <div class="line ag">     ✓ infra/backups/topology.yaml scaffolded · backup skill on</div>
-        <div class="line" data-after="400">  ② tailscale (4 devices) → scaffold <span class="lbl">infra/remotes/</span>? <span class="k">[y/m/l]</span></div>
+        <div class="line ag" data-after="250">     ✓ infra/backups/topology.yaml scaffolded · backup skill on</div>
+        <div class="line">  ② tailscale (4 devices) → scaffold <span class="lbl">infra/remotes/</span>? <span class="k">[y/m/l]</span></div>
+        <div class="line ag" data-after="250">     ✓ infra/remotes/ scaffolded · 4 machines registered</div>
+        <div class="line gap"></div>
+        <div class="line money" data-after="500"><span class="ok">✓ Onboarding complete</span><span class="ti"> — your Bridge is live. See you tomorrow, Alex.</span></div>
       </div>
     </div>
 
   </div>
 
   <p class="caption">Live <code>BKS-Lab</code> instance — the team behind open-bridge. Branding, repos and stack are real; client names are kept generic and there is <b>no customer data, no secrets, no PII</b>. Formats mirror the live <code>briefing</code>, session-start, coordinator/sub-agent and <code>bridge-onboard</code> flows.</p>
+
+  <!-- ─── Funnel CTA ─── -->
+  <div class="cta-funnel">
+    <p class="cta-lead">
+      <span data-lang="en">Liked what you saw? Try this exact workspace yourself — 2 minutes, nothing to configure.</span>
+      <span data-lang="de">Gefällt dir, was du siehst? Probier genau diesen Workspace selbst aus — 2 Minuten, nichts zu konfigurieren.</span>
+    </p>
+    <div class="cta-btns">
+      <a class="cta-go" href="index.html#get-started">
+        <span data-lang="en">Try it in 2 minutes</span>
+        <span data-lang="de">In 2 Minuten ausprobieren</span>
+        <span aria-hidden="true">→</span>
+      </a>
+      <a class="cta-alt" href="use-cases.html">
+        <span data-lang="en">What people run on it</span>
+        <span data-lang="de">Was darauf läuft</span>
+        <span aria-hidden="true">→</span>
+      </a>
+    </div>
+  </div>
 </main>
 
 <footer class="foot">
@@ -391,6 +451,7 @@ footer.foot code{font-family:var(--font-mono)}
     var lines=[].slice.call(chap.querySelectorAll('.line')).map(function(el){
       var pr=el.querySelector('.pr'), ti=el.querySelector('.ti');
       return { cls: el.getAttribute('class')||'line', typed: el.hasAttribute('data-type'),
+        block: el.hasAttribute('data-block'),
         prompt: pr?pr.outerHTML:'', text: ti?ti.textContent:'', html: el.innerHTML,
         after: parseInt(el.getAttribute('data-after')||'0',10) };
     });
@@ -398,10 +459,12 @@ footer.foot code{font-family:var(--font-mono)}
   });
   if(!chapters.length) return;
 
-  var active=0, userPaused=false, hoverPaused=false, runId=0;
+  var active=0, userPaused=false, hoverPaused=false, runId=0, skipTo=0, STEP=45;
   function paused(){return userPaused||hoverPaused;}
+  function skipping(){return skipTo===runId;}   /* click-to-skip: only ever targets the current run */
+  function reduced(){ try{ return matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } }
   function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
-  async function waitPause(){ while(paused()){ await sleep(120); } }
+  async function waitPause(){ while(paused()&&!skipping()){ await sleep(120); } }
   function mk(cls){ var e=document.createElement('div'); e.className=cls; return e; }
 
   chapters.forEach(function(c,i){
@@ -412,8 +475,10 @@ footer.foot code{font-family:var(--font-mono)}
   });
   function paintTabs(){ [].slice.call(tabsEl.children).forEach(function(b,i){ b.classList.toggle('active',i===active); }); }
 
-  async function typeInto(span, text){
+  async function typeInto(span, text, myId){
     for(var i=0;i<text.length;i++){
+      if(myId!==runId) return;
+      if(skipping()){ span.textContent=text; return; }   /* complete instantly, no partial span */
       if(paused()) await waitPause();
       span.textContent += text.charAt(i);
       await sleep(text.charAt(i)===' ' ? 11 : (15 + Math.random()*19));
@@ -427,27 +492,34 @@ footer.foot code{font-family:var(--font-mono)}
     for(var i=0;i<ch.lines.length;i++){
       if(myId!==runId) return;
       await waitPause();
+      if(myId!==runId) return;
       var s=ch.lines[i], line=mk(s.cls);
       screen.appendChild(line);
-      if(s.cls.indexOf('gap')>-1){ line.classList.add('show'); await sleep(70); continue; }
-      if(s.typed){
+      if(s.cls.indexOf('gap')>-1){ line.classList.add('show'); if(!skipping()) await sleep(45); continue; }
+      if(s.typed && !skipping()){
         line.innerHTML = s.prompt + ' <span class="ti"></span>';
         var caret=document.createElement('span'); caret.className='caret'; line.appendChild(caret);
         line.classList.add('show');
-        await typeInto(line.querySelector('.ti'), s.text);
+        await typeInto(line.querySelector('.ti'), s.text, myId);
         if(myId!==runId) return;
-        await sleep(160);
+        if(!skipping()) await sleep(160);
         if(caret.parentNode) caret.parentNode.removeChild(caret);
       } else {
         line.innerHTML = s.html; void line.offsetWidth; line.classList.add('show');
       }
       screen.scrollTop=screen.scrollHeight;
-      await sleep((s.after||0) + 80);
+      if(skipping()) continue;
+      var nx=ch.lines[i+1];
+      if(s.block && nx && nx.block && !s.after) continue;   /* block unit (logo, boxes, dashboard sections): pop as one */
+      await sleep((s.after||0) + STEP);
     }
     if(myId!==runId) return;
-    await sleep(2300);
+    if(skipTo===myId) skipTo=0;
+    await waitPause();   /* paused (or skipped-while-paused): hold the finished chapter on screen */
     if(myId!==runId) return;
-    screen.classList.add('fade'); await sleep(480);
+    await sleep(reduced() ? 400 : 1800);
+    if(myId!==runId) return;
+    screen.classList.add('fade'); await sleep(reduced() ? 60 : 480);
     if(myId!==runId) return;
     play();
   }
@@ -460,7 +532,8 @@ footer.foot code{font-family:var(--font-mono)}
   });
   if(replayBtn) replayBtn.addEventListener('click',function(){ select(active); });
   var term=document.getElementById('term');
-  if(term){ term.addEventListener('mouseenter',function(){hoverPaused=true;}); term.addEventListener('mouseleave',function(){hoverPaused=false;}); }
+  if(term){ term.addEventListener('mouseenter',function(){hoverPaused=true;}); term.addEventListener('mouseleave',function(){hoverPaused=false;});
+    term.addEventListener('click',function(){ skipTo=runId; }); }   /* click/tap the stage = finish this chapter now */
 
   play();
 })();
