@@ -20,6 +20,24 @@ against the source repo: nothing under `work/`, `docs/`, `rules/`, or
 `examples/` is ever rewritten. The bundle is a **derived artifact**, disposable
 and regenerable on every run.
 
+## Background
+
+[Open Knowledge Format (OKF)](https://okf.md/) is an open spec Google Cloud
+announced in June 2026, formalizing the same markdown + YAML frontmatter
+pattern that already underpins this repo's `docs/`, `rules/`, and memory
+files: one file per concept, the file's path doubles as the concept ID, and a
+single required `type` field says what kind of concept it is. It is governed
+openly — the working group is the W3C Holon Community Group, not a single
+vendor.
+
+open-bridge adopts OKF as an **interop target for the knowledge layer only**:
+`work/`, `docs/`, `rules/`, `examples/`, and memory facts map cleanly onto OKF
+concepts. The behaviour layer — skills, standing orders, task lifecycle — is
+deliberately left un-OKF-shaped; it is process the agent executes, not a
+knowledge concept to export.
+
+Sources: https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing · https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf · https://okf.md/
+
 ## Why an exporter and not in-place conformance
 
 A Bridge instance already carries most of an OKF concept's shape —

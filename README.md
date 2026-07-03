@@ -325,6 +325,7 @@ open-bridge ships more than the four pieces in the system overview above, but no
 - **Themes** — vocabulary layer; `professional` (en, default) and `professional-de` switch at runtime: [`rules/theme.md`](rules/theme.md)
 - **Agent Identity** — the orchestrator's own `SOUL.md` / `IDENTITY.md` voice and posture: [`identity/agent/README.md`](identity/agent/README.md)
 - **GitHub / ADO Projects** — advisory integration via the `project-advisor` skill, gated in `bridge-config.yaml`: [`trackers/README.md`](trackers/README.md)
+- **OKF export** — export the knowledge surfaces (`work/`, `docs/`, `rules/`, `examples/`) as a static Open Knowledge Format bundle for external tooling: [`docs/okf-export.md`](docs/okf-export.md)
 
 The full layout map — every path and the CORE/USER split — lives in [`docs/structure.md`](docs/structure.md). How open-bridge relates to a private org overlay — the CORE/USER/overlay tier model — is in [`docs/extension-model.md`](docs/extension-model.md).
 
