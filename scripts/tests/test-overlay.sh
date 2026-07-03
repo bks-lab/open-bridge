@@ -452,17 +452,17 @@ project:
   name: PF
 YAML
 git_overlay "$OV" pf-init
-# interactive add — a teammate overrides the board number to 999
-OUT="$(printf '999\n' | python3 "$OVERLAY" --repo-root "$CON" add "file://$OV" --name pf 2>&1)"; RC=$?
+# interactive add — a teammate overrides the board number to 31415926
+OUT="$(printf '31415926\n' | python3 "$OVERLAY" --repo-root "$CON" add "file://$OV" --name pf 2>&1)"; RC=$?
 assert_rc "add with an interactive override succeeds" 0
-assert_grep "override 999 materialized" "$CON/workflow/projects/pf.yaml" "999"
+assert_grep "override 31415926 materialized" "$CON/workflow/projects/pf.yaml" "31415926"
 assert_grep "lock records the prompted PATH" "$CON/overlays.lock.yaml" "project.number"
-assert_nogrep "lock never stores the override VALUE" "$CON/overlays.lock.yaml" "999"
+assert_nogrep "lock never stores the override VALUE" "$CON/overlays.lock.yaml" "31415926"
 # re-sync, source unchanged, non-interactive — must NOT revert to the default
 run_overlay "$CON" sync pf --yes
 assert_rc "re-sync (source unchanged) succeeds" 0
 assert_out "unchanged source is a skip, not upstream-ahead" "skipped=1"
-assert_grep "override 999 PRESERVED across the re-sync" "$CON/workflow/projects/pf.yaml" "999"
+assert_grep "override 31415926 PRESERVED across the re-sync" "$CON/workflow/projects/pf.yaml" "31415926"
 assert_nogrep "did NOT revert to the source default" "$CON/workflow/projects/pf.yaml" "number: 1"
 assert_grep "lock still records the prompted PATH" "$CON/overlays.lock.yaml" "project.number"
 # source changes a DIFFERENT field — the override must survive the re-materialize
@@ -471,7 +471,7 @@ git -C "$OV" add -A; git -C "$OV" -c user.email=t@t -c user.name=t commit -qm v2
 run_overlay "$CON" sync pf --yes
 assert_rc "re-sync after a source change succeeds" 0
 assert_grep "source change (rename) applied" "$CON/workflow/projects/pf.yaml" "PF-RENAMED"
-assert_grep "override 999 STILL preserved across a source change" "$CON/workflow/projects/pf.yaml" "999"
+assert_grep "override 31415926 STILL preserved across a source change" "$CON/workflow/projects/pf.yaml" "31415926"
 
 # ───────────────────────────────────────────────────────────────────
 echo
