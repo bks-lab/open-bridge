@@ -5,6 +5,7 @@ status: done
 priority: P2
 created: 2026-06-16
 last_updated: 2026-06-22
+headline: "Dark-mode toggle shipped — persists via localStorage, falls back to OS preference"
 sync:
   github:
     repo: acme-dev/startupxyz-app

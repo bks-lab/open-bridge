@@ -1,3 +1,6 @@
+---
+summary: "Weekend deploy health check — BigCorp API/Frontend + StartupXYZ, escalate only if fully down"
+---
 # Weekend Deploy Check — Context
 
 ## Services to Monitor

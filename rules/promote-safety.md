@@ -1,5 +1,6 @@
 ---
 scope: core
+description: Content-safety scan that runs before any cherry-pick, merge, or commit onto CORE — blocklist patterns, scrub rules, and the decision matrix for what leaks
 ---
 
 # Promote Safety — content leakage prevention

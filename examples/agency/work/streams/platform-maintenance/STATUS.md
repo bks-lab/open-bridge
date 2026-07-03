@@ -5,6 +5,7 @@ status: doing
 priority: P3
 created: 2026-05-02
 last_updated: 2026-06-23
+headline: "Ongoing Acme platform upkeep — dependency bumps, CI runners, infra tweaks"
 sync:
   bridge_only: true
 ---

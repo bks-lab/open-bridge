@@ -3,6 +3,7 @@ name: document-work
 scope: always
 enforcement: blocking
 applies_to: []   # empty = every dispatched sub-agent
+description: Mandatory work-log entry after every commit, skill/command invocation, repo switch, or significant finding — no placeholder timestamps, catch up after 30+ silent minutes
 ---
 # Document All Work
 

@@ -142,3 +142,7 @@ work/**/*.aif
 work/dashboard.html
 docs/repo-layout/schedule.html
 work/state.json
+
+# scripts/okf-export.py output — exported bundles may contain USER PII (work/ STATUS.md, deliverables); never commit.
+dist/
+okf/

@@ -64,6 +64,18 @@ jobs:
       - name: Validate all schema-bearing surfaces
         run: python3 scripts/validate-bridge.py
 
+  okf-export:
+    name: OKF Export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PyYAML + pytest
+        run: pip install pyyaml pytest
+
+      - name: Run OKF exporter test suite
+        run: bash scripts/tests/test-okf-export.sh
+
   content-leak:
     name: Content Leak Check
     runs-on: ubuntu-latest

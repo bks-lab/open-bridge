@@ -1,5 +1,6 @@
 ---
 scope: core
+description: Push-boundary gate blocking user/* branches and USER-instance content from reaching a public upstream — fail-closed on unknown remotes, enforced behaviourally and via pre-push hook
 ---
 
 # Push Guard — never publish your private data to a public upstream

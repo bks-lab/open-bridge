@@ -35,6 +35,7 @@ instead of a bespoke `_MOC.md` / `index.md` convention.
 - [`memory.md`](memory.md) — file-based memory model (one fact per file, MEMORY.md as a lean index).
 - [`work-system.md`](work-system.md) — Task Management concept: log/board/tasks lifecycle (KIND folder vs `status:` field).
 - Task Management (log/board/tasks lifecycle) — [`AGENTS.md` § Task Management](../AGENTS.md) (operational source of truth).
+- [`okf-export.md`](okf-export.md) — exports the knowledge surfaces (`work/`, `docs/`, `rules/`, `examples/`) as a static Open Knowledge Format bundle for external tooling.
 
 ## Operations
 
