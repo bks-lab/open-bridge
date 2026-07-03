@@ -5,6 +5,7 @@ status: doing
 priority: P1
 created: 2026-06-23
 last_updated: 2026-06-24
+headline: "Stripe webhook signatures failing in prod — secret rotated, deploy config not updated (P1)"
 sync:
   github:
     repo: acme-dev/bigcorp-issues

@@ -5,6 +5,7 @@ status: review
 priority: P2
 created: 2026-06-19
 last_updated: 2026-06-23
+headline: "BigCorp cart a11y fixes (focus-trap, Escape, aria-labels) in review as PR #214"
 sync:
   github:
     repo: acme-dev/bigcorp-frontend

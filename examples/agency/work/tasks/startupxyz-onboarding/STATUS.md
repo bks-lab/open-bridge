@@ -5,6 +5,7 @@ status: doing
 priority: P2
 created: 2026-06-20
 last_updated: 2026-06-24
+headline: "Guided 3-step onboarding for StartupXYZ — email-verify done, workspace-setup next"
 sync:
   github:
     repo: acme-dev/startupxyz-app
