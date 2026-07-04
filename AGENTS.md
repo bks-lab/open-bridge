@@ -475,27 +475,39 @@ Full level semantics: [`docs/work-system.md`](docs/work-system.md) (if present) 
 
 ### Consult before write
 
-The Bridge advises; it does not act autonomously. Before any write to productive folders
-(`skills/`, `protocols/`, `identity/`, `workflow/`, `infra/`, `work/tasks/<new-slug>/`,
-`work/streams/<new-slug>/`, `work/board.md`, `work/log.md`): **reflex pause**. Four-step gate:
+The Bridge advises; it does not act autonomously. **Reflex-pause before the first
+*write* of any unit of work** — and a write is not just a productive-folder change
+(`skills/`, `protocols/`, `identity/`, `workflow/`, `infra/`, `work/tasks/<slug>/`,
+`work/streams/<slug>/`, `work/board.md`, `work/log.md`) but **any state change
+anywhere**: a commit or push on *any* repo, a GitHub/ADO issue-or-PR-or-board operation
+(create · close · comment · merge), an outbound message. Reading is always free; the
+pause fires the instant you are about to change state.
 
-1. **Mode check — plan or build?** Classify by intent, not literal strings.
-   PLAN intent (research / sketch / draft / explore / analyze / evaluate / propose-as-plan)
-   → answer in chat, no write to productive folders. BUILD intent (build / implement /
-   create-file / deploy / merge / verify / commit / fix) → productive paths allowed after
-   steps 2+3. Ambivalent (create / review / audit / consolidate) → ask.
-2. **Active-task check** — skim `ls work/tasks/` + `ls work/streams/` + board.md Doing.
-   Slug/context/stakeholder match → propose *"Fits `<slug>`?"*. ≥3 siblings share a prefix
-   → cluster warning.
+**Escalation cancels the read-only exemption.** A turn that began as read / info /
+analysis is exempt only while it stays read-only. The instant it grows a write — an
+issue you're about to close, a PR you're about to open, a task you're about to
+create — re-enter this gate. Never ride the opening "just have a look" framing into
+real changes.
+
+Four steps; **step 1 is mandatory before the first write, whatever the mode:**
+
+1. **Active-task check** — `ls work/tasks/` + `ls work/streams/` + board.md Doing.
+   Slug / context / stakeholder match → propose *"Fits `<slug>`?"* before creating
+   anything new; ≥3 siblings share a prefix → cluster warning. Skipping this is how
+   duplicate tasks and orphaned streams get born.
+2. **Mode check — plan or build?** PLAN (research / sketch / draft / explore / analyze /
+   evaluate) → answer in chat. BUILD (implement / create-file / deploy / merge / verify /
+   commit / fix / close-issue / open-PR) → allowed after steps 1 + 3. Ambivalent (create /
+   review / audit / consolidate) → ask.
 3. **Class check** ([`board-task-criteria.md`](protocols/standing-orders/board-task-criteria.md)):
    cross-session pickup OR external recipient → **Class A** (STATUS.md + board row,
    task-sync runs). Otherwise Class B (log only) or Class C (silent for routine commands).
 4. **When in doubt: ONE question.** `[a] fits <slug>` / `[b] new as <proposal>` /
    `[c] chat only` / `[d] just do it`. Do not guess.
 
-**Don't reflex** on: slash commands (`/briefing`, `/archive`, `/bridge-*`); pure read/info
-queries without writes; quick fix <10 min and <3 files; a topic the user already declined
-this session.
+**Don't reflex** on: slash commands (`/briefing`, `/archive`, `/bridge-*`); read/info
+queries **that stay read-only** (once one produces a write, the escalation clause fires);
+quick fix <10 min and <3 files; a topic the user already declined this session.
 
 Full intent lists, similarity algorithm, cluster detection, class A/B/C examples, repair
 recipes: [`rules/task-management-workflow.md`](rules/task-management-workflow.md).
