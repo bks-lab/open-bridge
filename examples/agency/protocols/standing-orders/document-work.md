@@ -19,9 +19,9 @@ Log every significant action to work/log.md.
 
 ## Format
 
-`| HH:MM | Type | Context | What |`
+`| YYYY-MM-DD HH:MM | Type | Context | What |`
 
-- Time-only from `date '+%H:%M'` — the date lives in the day-block header (see docs/work-system.md); NEVER placeholders
+- Full-ISO date+time from `date '+%Y-%m-%d %H:%M'` — every row self-dates; the `## {Weekday} DD.MM` day-block header is a display anchor (see docs/work-system.md); NEVER placeholders
 - Type: emoji from activity_types in bridge-config.yaml
 - Context: project/repo tag from ecosystem.yaml
 

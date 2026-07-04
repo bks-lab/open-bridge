@@ -15,12 +15,13 @@ fr) and purely cosmetic — /archive and /briefing match it as
 `^## \S+ DD.MM` and derive any date/KW from DD.MM, never from the weekday
 name.
 
-ONE log row format, frozen: `| HH:MM | glyph | context | what |`. The date
-comes from the `## {Weekday} DD.MM` header above, so each row carries
-TIME-ONLY via `date '+%H:%M'` — never xx:xx or placeholders. The legacy
-`| YYYY-MM-DD HH:MM |` dated variant is retired; do not reintroduce it.
-Example row:
-| 14:32 | 🔧 | example | fixed inbound wedge, redeployed pre |
+ONE log row format, frozen: `| YYYY-MM-DD HH:MM | glyph | context | what |`.
+Every row carries a full-ISO date+time via `date '+%Y-%m-%d %H:%M'`, so it
+SELF-DATES — a stale or unarchived log is never ambiguous — never xx:xx or
+placeholders. The `## {Weekday} DD.MM` header above stays a display anchor for
+the parsers; do not add a year there. The legacy time-only `| HH:MM |` row is
+retired; do not reintroduce it. Example row:
+| 2026-05-18 14:32 | 🔧 | example | fixed inbound wedge, redeployed pre |
 
 The current day ships `<details open>`; once it is no longer today, drop the
 `open` so older blocks collapse.
@@ -31,7 +32,7 @@ The current day ships `<details open>`; once it is no longer today, drop the
 <details open>
 <summary>Worklog (0)</summary>
 
-| Time  | Glyph | Context | What |
-|-------|-------|---------|------|
+| Timestamp        | Glyph | Context | What |
+|------------------|-------|---------|------|
 
 </details>

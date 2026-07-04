@@ -462,10 +462,11 @@ switches, significant results, end of a work block) and remind if >30 min silent
 `auto` (triggers only) and `manual` (on request) are selectable in bridge-config.yaml.
 Document **insights, not just actions** — log.md is the working memory `/briefing` reads.
 
-**Format (one frozen row format):** `| HH:MM | glyph | context | what |`
-- **Timestamp:** time-only via `date '+%H:%M'` — the date comes from the day-block header
-  (`## {Weekday} DD.MM`); NEVER xx:xx or placeholders. The dated `| YYYY-MM-DD HH:MM |`
-  variant is retired.
+**Format (one frozen row format):** `| YYYY-MM-DD HH:MM | glyph | context | what |`
+- **Timestamp:** full-ISO date+time via `date '+%Y-%m-%d %H:%M'` — every row **self-dates**, so a
+  stale or unarchived log is never ambiguous; NEVER xx:xx or placeholders. The day-block header
+  stays `## {Weekday} DD.MM` (a display anchor the `/archive` + `/briefing` parsers key off — do
+  NOT add a year there). The old time-only `| HH:MM | … |` row is retired.
 - **glyph:** emoji from `activity_types` in bridge-config.yaml; **context:** repo tag from
   ecosystem.yaml; chronological append at the end of the current day-block.
 

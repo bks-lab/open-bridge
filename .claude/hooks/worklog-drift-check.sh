@@ -56,6 +56,13 @@ status_files=$(git status --porcelain 2>/dev/null \
 for sf in $status_files; do
   [ -f "$sf" ] || continue   # deleted/renamed-away → skip
 
+  # Streams never reach `done` (AGENTS.md: long-runners close via `mv` to
+  # work/done/, never via status:). A stream body legitimately reports ✅ on
+  # finished sub-items while its own status stays doing — that is by design, not
+  # zombie-claim drift. Gate 2 is meaningful only for finite tasks (work/tasks/),
+  # so skip streams to avoid a guaranteed false positive on every mature stream.
+  case "$sf" in work/streams/*) continue ;; esac
+
   # Frontmatter status: (first match wins; tolerate quotes + trailing comment).
   fm_status=$(grep -m1 -E '^status:' "$sf" 2>/dev/null \
               | sed -E 's/^status:[[:space:]]*"?([A-Za-z_-]+)"?.*/\1/')
@@ -106,7 +113,7 @@ Modified files without a log entry today:
 $(echo "$changed" | head -5 | sed 's/^/  - /')
 $( [ "$(echo "$changed" | wc -l)" -gt 5 ] && echo "  ... and $(( $(echo "$changed" | wc -l) - 5 )) more" )
 
-Add a row to work/log.md (format: | HH:MM | glyph | context | what |)
+Add a row to work/log.md (format: | YYYY-MM-DD HH:MM | glyph | context | what |)
 before ending the turn, or drop an empty .bridge-nolog file for a read-only session.
 EOF
 

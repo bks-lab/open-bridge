@@ -94,7 +94,7 @@ versioned in git — see the header of the file for format).
 
 **Bridge log** in `work/log.md` (once per run, compact):
 ```
-| {HH:MM} | 📁 | docs | {N} documents processed |
+| {YYYY-MM-DD HH:MM} | 📁 | docs | {N} documents processed |
 ```
 
 ## Modes

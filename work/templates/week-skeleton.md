@@ -16,9 +16,10 @@ purely cosmetic — parsers and all KW/date math read DD.MM, never the
 weekday name (see rules/language-policy.md). The day-block body below is
 byte-identical to work/templates/day.md.
 
-Each Worklog row uses the ONE frozen format `| HH:MM | glyph | context | what |`
-— TIME-ONLY via `date '+%H:%M'` (the date comes from the day-block header). The
-legacy `| YYYY-MM-DD HH:MM |` dated variant is retired.
+Each Worklog row uses the ONE frozen format `| YYYY-MM-DD HH:MM | glyph | context | what |`
+— full-ISO date+time via `date '+%Y-%m-%d %H:%M'` so each row SELF-DATES (the
+`## {Weekday} DD.MM` header stays a display anchor). The legacy time-only
+`| HH:MM |` row is retired.
 
 Replace every {placeholder}: {CW}, {DATE_FROM}, {DATE_TO}, the Active
 Focus areas, and today's day-block header (`date '+%a %d.%m'`).
@@ -33,7 +34,7 @@ Focus areas, and today's day-block header (`date '+%a %d.%m'`).
 <details open>
 <summary>Worklog (0)</summary>
 
-| Time  | Glyph | Context | What |
-|-------|-------|---------|------|
+| Timestamp        | Glyph | Context | What |
+|------------------|-------|---------|------|
 
 </details>

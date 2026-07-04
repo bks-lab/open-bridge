@@ -206,7 +206,7 @@ Move recording + transcript:
 1. **PROCESSING-LOG.md** (OneDrive) — entry with full filename, source, target
 2. **work/log.md** — work-log entry:
    ```
-   | {HH:MM} | Meeting | {context} | {meeting name} → {outputs} |
+   | {YYYY-MM-DD HH:MM} | Meeting | {context} | {meeting name} → {outputs} |
    ```
 
 ## Meeting-type detection
