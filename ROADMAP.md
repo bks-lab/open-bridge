@@ -25,6 +25,15 @@ Nothing below is a commitment to a date, and "Later / exploring" means exactly t
 - **Meeting transcription** — a bring-your-own-worker contract for `/debrief`
   plus a full reference pipeline (whisper.cpp + pyannote speaker naming) as a
   CORE skill (`docs/transcription-worker.md`, `skills/meeting-transcription/`).
+- **One-command health check** — `/bridge-status` reports whether an instance
+  is wired up correctly: configs resolve, the board generates from the task
+  dirs, and docs + links are healthy
+  ([#44](https://github.com/bks-lab/open-bridge/issues/44)).
+- **Mirror-aware install** — a clone commits to your own private repo, never a
+  silent push upstream: the armed `pre-push` guard, the private-template setup,
+  and the `git fetch upstream && git merge upstream/main` update path keep you
+  current without a public fork
+  ([#52](https://github.com/bks-lab/open-bridge/issues/52), `rules/push-guard.md`).
 
 ## Now — building
 
@@ -40,18 +49,12 @@ Nothing below is a commitment to a date, and "Later / exploring" means exactly t
 
 ## Next
 
-- **One-command health check**
-  ([#44](https://github.com/bks-lab/open-bridge/issues/44)) — a single command
-  that reports whether an instance is wired up correctly.
 - **More worked examples**
   ([#45](https://github.com/bks-lab/open-bridge/issues/45)) — additional
   end-to-end example setups beyond `examples/agency`.
 - **Faster, safer onboarding**
   ([#46](https://github.com/bks-lab/open-bridge/issues/46)) — make the first
   five minutes faster and harder to get wrong.
-- **Mirror-aware install**
-  ([#52](https://github.com/bks-lab/open-bridge/issues/52)) — clone as a
-  mirror, commit to your own private repo from day one.
 - **Representative agent (A2A)**
   ([#47](https://github.com/bks-lab/open-bridge/issues/47)) — publish the
   generic runtime + template so a bridge can front an addressable agent to the
@@ -64,10 +67,6 @@ Nothing below is a commitment to a date, and "Later / exploring" means exactly t
   ([#49](https://github.com/bks-lab/open-bridge/issues/49)) — document and lock
   the design for persistent, identity-bearing agents with two faces: an
   internal mesh (peer bridges) and an external representative.
-- **Self-versioning skills + discovery map**
-  ([#54](https://github.com/bks-lab/open-bridge/issues/54)) — per-skill
-  versions and a generated "what's installed where" map, enabling drift
-  detection across instances.
 - **Multiple bridges per org**
   ([#55](https://github.com/bks-lab/open-bridge/issues/55)) — several scoped
   instances (per team / per client) instead of one monolith.
