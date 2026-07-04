@@ -259,5 +259,5 @@ in the header of `work/doc-system/log.md`. Columns:
 
 On processing → entry in `work/log.md`:
 ```
-| {HH:MM} | 📁 | docs | /doc-inbox: {N} files processed |
+| {YYYY-MM-DD HH:MM} | 📁 | docs | /doc-inbox: {N} files processed |
 ```

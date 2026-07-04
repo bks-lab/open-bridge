@@ -97,7 +97,7 @@ examples/agency/
 ## Work (`work/`)
 The Chaos-Tamer system, populated with example data so a clone shows a *filled* board instead of an empty one:
 - [board.md](work/board.md) — generated snapshot: Doing (2), Review (1), Streams (1), Done (1)
-- [log.md](work/log.md) — append-only daily log (`| Time | Glyph | Context | What |`)
+- [log.md](work/log.md) — append-only daily log (`| YYYY-MM-DD HH:MM | Glyph | Context | What |`)
 - [tasks/](work/tasks/) — finite tasks, one `STATUS.md` each (`backlog → doing → review → done`)
 - [streams/](work/streams/) — long-runners, excluded from the WIP cap (e.g. `platform-maintenance`)
 - [done/2026-06/](work/done/2026-06/) — closed work, archived by month

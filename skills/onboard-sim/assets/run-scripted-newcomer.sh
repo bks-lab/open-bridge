@@ -21,7 +21,7 @@ cat > identity/agent/SOUL.md <<'M'
 # SOUL
 Pragmatic, terse. Works for ACME this quarter.
 M
-printf '| 09:00 | Decision | acme | Pinned the ACME contract rate; migration kickoff. |\n' > work/log.md
+printf '| 2026-06-24 09:00 | Decision | acme | Pinned the ACME contract rate; migration kickoff. |\n' > work/log.md
 printf 'status: doing\ncontext: acme\nnext: finish the ACME migration, then invoice.\n' > work/tasks/acme-migration/STATUS.md
 
 git checkout -q -b user/sim

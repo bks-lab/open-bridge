@@ -140,7 +140,7 @@ so prefer AppleScript for Outlook too if body > 2 kB.
 
 1. `work/log.md` entry:
    ```
-   | {ISO} | 📧 | {context} | /debrief email: {subject} → {n} recipients ({s|o|k}) |
+   | {YYYY-MM-DD HH:MM} | 📧 | {context} | /debrief email: {subject} → {n} recipients ({s|o|k}) |
    ```
 2. Protocol frontmatter: append `email_status: sent-at | draft-opened | draft-kept`.
 

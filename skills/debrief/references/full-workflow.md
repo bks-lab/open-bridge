@@ -432,7 +432,7 @@ Summary:
 1. Add log entry to `work/log.md`. Pick the type emoji from
    `bridge-config.yaml → activity_types` (fallback `📝` if not configured):
    ```
-   | {time} | {emoji} | {context} | /debrief: {filename} — {n} updates, {n} creates, email {s|o|k} |
+   | {YYYY-MM-DD HH:MM} | {emoji} | {context} | /debrief: {filename} — {n} updates, {n} creates, email {s|o|k} |
    ```
 2. For any action item that became neither an issue nor a calendar entry,
    add a TODO line to log.md under the current day-block.

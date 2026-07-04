@@ -28,14 +28,15 @@ reconstruct what happened, what was learned, and what's blocked.
 
 ## Format
 
-`| HH:MM | glyph | context | what |`
+`| YYYY-MM-DD HH:MM | glyph | context | what |`
 
-This is the **single, frozen** log row format. The date comes from the
-day-block header (`## {Weekday} DD.MM`), so the row carries **time-only**.
-The legacy dated variant `| YYYY-MM-DD HH:MM | ... |` is **retired** — do
-not author it.
+This is the **single, frozen** log row format. Every row carries a **full-ISO
+date+time** so it self-dates — a stale or unarchived log is never ambiguous. The
+day-block header stays `## {Weekday} DD.MM` (a display anchor for the parsers; do
+NOT add a year there). The legacy time-only variant `| HH:MM | ... |` is
+**retired** — do not author it.
 
-- Time from `date '+%H:%M'` — NEVER xx:xx or placeholders
+- Timestamp from `date '+%Y-%m-%d %H:%M'` — NEVER xx:xx or placeholders
 - glyph: emoji from activity_types in bridge-config.yaml
 - context: project tag from ecosystem.yaml, or #issue-number
 - Order: chronological, new entries at the end of the current day-block
@@ -49,6 +50,6 @@ not author it.
 ## Violations
 
 - Working for 30+ minutes without a log entry
-- Using placeholder timestamps (xx:xx) or the retired dated row format
-  `| YYYY-MM-DD HH:MM | ... |`
+- Using placeholder timestamps (xx:xx) or the retired time-only row format
+  `| HH:MM | ... |` (rows must carry the full `YYYY-MM-DD HH:MM`)
 - Hand-editing `board.md` instead of updating STATUS.md and regenerating

@@ -136,25 +136,27 @@ Each day-block (template: `work/templates/day.md`):
 <details open>
 <summary>Worklog (1)</summary>
 
-| HH:MM | Type | Context | What |
-|-------|------|---------|------|
-| 14:55 | 📋   | bridge  | ...  |
+| YYYY-MM-DD HH:MM | Type | Context | What |
+|------------------|------|---------|------|
+| 2026-05-18 14:55 | 📋   | bridge  | ...  |
 
 </details>
 ```
 
 Conventions:
 
-- **ONE log row format, frozen:** `| HH:MM | Type | Context | What |` — a `HH:MM`
-  time, a glyph/name Type, a context, and the what. The date comes from the
-  day-block header, so the row carries **time-only** via `date '+%H:%M'` (never
-  `xx:xx` placeholders). The legacy `| YYYY-MM-DD HH:MM | ... |` dated variant is
-  **retired** — do not emit it.
+- **ONE log row format, frozen:** `| YYYY-MM-DD HH:MM | Type | Context | What |` — a
+  full-ISO `YYYY-MM-DD HH:MM` timestamp via `date '+%Y-%m-%d %H:%M'`, a glyph/name Type, a
+  context, and the what. Every row **self-dates** (never `xx:xx` placeholders), so you can
+  always tell which day a row belongs to without scrolling to the header — a stale or
+  unarchived log is never ambiguous. The legacy time-only `| HH:MM | ... |` row is **retired**
+  — do not emit it.
 - **Header `## {Weekday} DD.MM`** (locale weekday name + `DD.MM`, no separators,
   no week suffix). `/archive` and `/briefing` parse exactly this as `^## \S+ DD.MM`
   and derive any date/CW from `DD.MM`, never from the weekday name — `## 2026-05-21 — Thursday`
   is drift and is invisible to the archive parser.
-- **Worklog rows carry time-only `HH:MM`** — the date lives in the header.
+- **Worklog rows carry a full `YYYY-MM-DD HH:MM`** — self-dating; the `## {Weekday} DD.MM`
+  header stays only a display anchor for the parsers.
 - **Logging is mandatory + continuous** — every substantive unit of work gets its own
   row the moment it lands, not batched. The `worklog-drift-check.sh` Stop hook is the
   deterministic backstop (it blocks end-of-turn when code changed without a log row for
