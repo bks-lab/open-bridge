@@ -1,0 +1,40 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Tool-agnostic gh wrapper — closes the remote-op logging blind spot that no git
+# hook can see (remote issue/PR/board writes touch no file and never commit).
+#
+# Passes through to the real gh UNCHANGED (exit code preserved). On a SUCCESSFUL
+# mutating subcommand it reminds — in-band on stderr — to append a work/log.md
+# row. Read-only gh calls pass straight through with no output. Warn-only: it
+# never alters gh behaviour and never writes the log itself (avoids malforming it).
+#
+# Arm by prepending <repo>/scripts/bin to $PATH (onboarding offers this). Bypass
+# with `command gh …` or the absolute path. Works for any tool that shells out to
+# gh (Claude Code, Copilot CLI, Codex, Gemini CLI, Cursor) — PATH is universal.
+
+SELF=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+
+# Resolve the real gh, excluding this wrapper's own dir from PATH (avoid recursion).
+REAL=$(PATH=$(printf '%s' "${PATH:-}" | tr ':' '\n' | grep -vxF "$SELF" | paste -sd: -) command -v gh 2>/dev/null)
+[ -n "$REAL" ] && [ "$REAL" != "$0" ] || REAL=/opt/homebrew/bin/gh
+
+case "$1 $2" in
+  "issue close"|"issue edit"|"issue comment"|"issue reopen"|"issue create"|"issue delete"|"issue transfer"| \
+  "pr create"|"pr merge"|"pr edit"|"pr comment"|"pr close"|"pr reopen"|"pr ready"| \
+  "project item-edit"|"project item-add"|"project item-delete"|"project item-archive"|"project item-create")
+    MUT=1 ;;
+  *) MUT=0 ;;
+esac
+
+"$REAL" "$@"
+RC=$?
+
+if [ "$MUT" = 1 ] && [ "$RC" = 0 ]; then
+  R=$(git rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$R" ] && [ -f "$R/work/log.md" ]; then
+    printf '⚠ gh-log: "%s" succeeded — this remote op needs a work/log.md row:\n  | %s | 🔧 | <context> | %s |\n' \
+      "$1 $2" "$(date '+%Y-%m-%d %H:%M')" "gh $*" >&2
+  fi
+fi
+
+exit $RC

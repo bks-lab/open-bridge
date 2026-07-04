@@ -133,9 +133,11 @@ When switching to another repo:
 > decision made (+ the *why*), a finding worth keeping, a deploy/restart, an
 > issue/PR/board operation. If you did work this turn and there is no row for it,
 > the turn is **not finished** — append the row before you hand back. The
-> `worklog-drift-check.sh` Stop hook is the deterministic backstop (it blocks
-> end-of-turn when code changed without a log row for today), but do not wait for
-> it to nag — log as you go. The user should never have to ask "did you log
+> **tool-agnostic** deterministic backstop is the `scripts/hooks/pre-commit` hook
+> (armed via `core.hooksPath=scripts/hooks`): at every productive commit, from any
+> tool, it prints a per-event log reminder + the live active-task list + a WIP
+> re-check — **warn-only**, it never blocks. The `worklog-drift-check.sh` Stop hook
+> is a Claude-only reinforcement on top. Do not wait for either to nag — log as you go. The user should never have to ask "did you log
 > that?". When `work.enabled` is false, no logging is expected.
 
 Mechanics under this gate:

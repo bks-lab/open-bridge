@@ -1,0 +1,75 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# open-bridge pre-commit — task-sync + continuous-logging reminder (WARN-only).
+#
+# The tool-agnostic backstop for the "Consult before write" gate + continuous
+# logging: fires for ANY tool that shells out to `git commit` (Claude Code,
+# GitHub Copilot CLI, Codex, Gemini CLI, Cursor) — because every one of them
+# commits through git. Mirrors scripts/hooks/pre-push arming:
+#     git config core.hooksPath scripts/hooks
+#
+# Philosophy: WARN, never block. Always exits 0 (unlike pre-push, which blocks
+# because it is a leak guard). Skip deliberately with `git commit --no-verify`.
+# Every gate prints to stderr, which the calling agent receives in-band in the
+# git tool result — re-anchoring the rule at the one seam a long, escalating
+# session cannot skip.
+
+set +e
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$ROOT" 2>/dev/null || exit 0
+
+# Instance-only: run on user/* branches with a work/ tree. No-op on CORE
+# branches (main/development) and repos without a work-system.
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+case "$BRANCH" in
+  user/*) : ;;
+  *)      exit 0 ;;
+esac
+[ -d work ] || exit 0
+
+STAGED=$(git diff --cached --name-only 2>/dev/null)
+[ -n "$STAGED" ] || exit 0
+
+# Productive change? (else stay silent — routine/Class-C commit)
+echo "$STAGED" | grep -Eq '^(skills|protocols|identity|infra|workflow|rules|docs|scripts)/|^work/(tasks|streams)/|\.(py|js|ts|sh|md|ya?ml)$' || exit 0
+
+TODAY=$(date +%F)
+warn() { printf '%s\n' "$*" >&2; }
+
+warn "── bridge pre-commit · warn-only · --no-verify to skip ─────────────"
+
+# (a) LOG gate — per-event + touch-proof: count today's DATED rows, not mtime.
+commits_today=$(git log --since="$TODAY 00:00" --oneline 2>/dev/null | wc -l | tr -d ' ')
+rows_today=$(grep -c "^| $TODAY " work/log.md 2>/dev/null || echo 0)
+if [ "${rows_today:-0}" -le "${commits_today:-0}" ]; then
+  warn "⚠ LOG: $rows_today dated row(s) vs $commits_today commit(s) today — this unit likely has no work/log.md row."
+  warn "  append →  | $TODAY $(date +%H:%M) | <glyph> | <context> | <what + why> |"
+fi
+
+# (b) ACTIVE-TASK re-anchor — surface existing homes before a duplicate is born.
+tasks=$(find work/tasks -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+streams=$(find work/streams -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+warn "→ ACTIVE-TASK: $tasks task dir(s), $streams stream(s). Does this commit belong to an existing one?"
+warn "  streams: $(ls work/streams 2>/dev/null | tr '\n' ' ')"
+warn "  If it grew out of a read-only query, re-run the four-step gate (rules/task-management-workflow.md)."
+
+# (c) WIP gate — re-checked every commit, not only at session start.
+max=$(grep -E '^[[:space:]]*max_active:' bridge-config.yaml 2>/dev/null | grep -oE '[0-9]+' | head -1)
+[ -n "$max" ] || max=10
+active=$(grep -lE '^status:[[:space:]]*(doing|review)' work/tasks/*/STATUS.md 2>/dev/null | wc -l | tr -d ' ')
+if [ "${active:-0}" -gt "$max" ]; then
+  warn "⚠ WIP: $active doing+review > max_active $max — close, reprioritise, or move a long-runner to work/streams/."
+fi
+
+# (d) STATUS-enum gate — only if the validator exists (FIX 6).
+if [ -x scripts/validate-status.py ]; then
+  echo "$STAGED" | grep -q 'work/.*/STATUS.md' && scripts/validate-status.py --staged 2>&1 | sed 's/^/  /' >&2
+fi
+
+# (e) BOARD-drift gate — only if gen-board supports a check mode.
+if echo "$STAGED" | grep -Eq '^work/(tasks|streams|done)/' && [ -f scripts/gen-board.py ]; then
+  python3 scripts/gen-board.py --check >/dev/null 2>&1 || warn "⚠ BOARD: work/ changed — regenerate with python3 scripts/gen-board.py"
+fi
+
+warn "───────────────────────────────────────────────────────────────────"
+exit 0

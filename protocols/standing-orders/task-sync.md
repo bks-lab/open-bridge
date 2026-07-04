@@ -1,7 +1,7 @@
 ---
 name: task-sync
 scope: always
-enforcement: blocking
+enforcement: hook-warned
 applies_to: []   # empty = every dispatched sub-agent
 ---
 # Task Sync Routing
