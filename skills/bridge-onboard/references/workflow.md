@@ -585,8 +585,11 @@ user has already had their decision moment in Phase C; this is the
      channels, remotes, mandants, calendars, contexts, projects.
    - If `check-jsonschema` is missing, prompt to install (don't skip silently).
 
-4. **Install pre-commit hook** if `.pre-commit-config.yaml` is present
-   (`pre-commit install`). Catches schema drift on every commit.
+   **Hooks need no separate install step:** the `core.hooksPath=scripts/hooks`
+   set during setup arms BOTH `pre-push` (leak guard) and `pre-commit` (task-sync
+   + logging reminder) for every tool. Do NOT run `pre-commit install` — the
+   `pre-commit` framework refuses when `core.hooksPath` is set, and
+   `.pre-commit-config.yaml` is for CI / manual `pre-commit run --all-files` only.
 
 4. **Commit** all generated files on `user/{name}` branch:
    ```
