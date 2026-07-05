@@ -1,7 +1,7 @@
 ---
 name: document-work
 scope: always
-enforcement: blocking
+enforcement: hook-warned
 applies_to: []   # empty = every dispatched sub-agent
 ---
 # Document All Work

@@ -101,6 +101,9 @@ jobs:
       - name: Validate skill scope + AGENTS.md SKILL-SCOPE block
         run: python3 scripts/validate-skill-scope.py
 
+      - name: Validate STATUS.md status enum
+        run: python3 scripts/validate-status.py
+
   frontmatter-check:
     name: Frontmatter Validation
     runs-on: ubuntu-latest
