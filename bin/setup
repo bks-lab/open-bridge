@@ -52,15 +52,27 @@ else
     rc=1
 fi
 
-# Arm the push guard (rules/push-guard.md): route git hooks to the tracked dir so
-# scripts/hooks/pre-push blocks publishing a user/* branch to a public upstream.
+# Arm the git hooks (rules/push-guard.md + the task-sync/logging backstop): route
+# git hooks to the tracked dir. One setting wires BOTH scripts/hooks/pre-push (blocks
+# publishing a user/* branch to a public upstream) AND scripts/hooks/pre-commit (the
+# task-sync + continuous-logging reminder), for every tool that shells out to git.
 # A hook that isn't on core.hooksPath is present but NOT wired.
+# NOTE: do NOT `pre-commit install` — the pre-commit framework refuses when
+# core.hooksPath is set; .pre-commit-config.yaml is for CI / manual runs only.
 if [ -d "scripts/hooks" ]; then
     git config core.hooksPath scripts/hooks
     chmod +x scripts/hooks/* 2>/dev/null || true
-    echo "OK  Push guard armed (core.hooksPath -> scripts/hooks)"
+    echo "OK  Git hooks armed (core.hooksPath -> scripts/hooks): pre-push guard + pre-commit task/log reminder"
 else
-    echo "WARN scripts/hooks/ missing — push guard not armed"
+    echo "WARN scripts/hooks/ missing — git hooks not armed"
+fi
+
+# Optional: the tool-agnostic gh wrapper (scripts/bin/gh) reminds you to log remote
+# issue/PR/board ops. Not auto-written into your shell profile — opt in by adding it
+# to PATH yourself:
+if [ -x "scripts/bin/gh" ]; then
+    echo "TIP gh log-reminder available — enable by adding to your shell profile:"
+    echo "      export PATH=\"$(pwd)/scripts/bin:\$PATH\""
 fi
 
 exit "$rc"
