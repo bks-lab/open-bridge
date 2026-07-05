@@ -208,6 +208,7 @@
 
       /* panel */
       '#obw-panel{position:fixed;bottom:1.25rem;right:1.25rem;z-index:2147483001;width:var(--obw-w);height:var(--obw-h);max-width:95vw;max-height:92vh;min-width:320px;min-height:420px;display:flex;flex-direction:column;background:var(--obw-surface);color:var(--obw-text);border:1px solid var(--obw-border);border-radius:16px;box-shadow:var(--obw-elev-panel);overflow:hidden;margin:0;padding:0;animation:obw-pop .2s ease-out;}',
+      '#obw-panel[hidden]{display:none;}',
       '#obw-panel.obw-resizing{animation:none;user-select:none;}',
       '#obw-panel.obw-is-max{width:var(--obw-max-w);height:var(--obw-max-h);}',
       '@keyframes obw-pop{from{opacity:0;transform:translateY(12px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}',
