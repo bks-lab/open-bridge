@@ -23,6 +23,7 @@ legacy task with incomplete frontmatter never breaks CI over the enum claim.
 from __future__ import annotations
 
 import glob
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -51,8 +52,25 @@ def load_schema():
     return required, enum
 
 
+def _shallow_parse(block):
+    """Recover top-level scalar keys via regex when full YAML won't parse
+    (e.g. an `origin:` value with an embedded quote breaks yaml.safe_load but
+    must not hide a perfectly valid `status:`). Only unindented `key: value`."""
+    d = {}
+    for ln in block:
+        if ln[:1] in (" ", "\t"):
+            continue
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", ln)
+        if m:
+            d.setdefault(m.group(1), (m.group(2).strip().strip("\"'") or None))
+    return d
+
+
 def frontmatter(path: Path):
-    """Return the YAML frontmatter dict, skipping leading comment/blank lines."""
+    """Return the YAML frontmatter dict, skipping leading comment/blank lines.
+    Returns None only when there is genuinely no `---` block; a block that fails
+    to parse as YAML falls back to a shallow regex scan so one malformed field
+    can't masquerade as a missing `status`."""
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     i = 0
     while i < len(lines) and (lines[i].strip() == "" or lines[i].lstrip().startswith("#")):
@@ -65,9 +83,12 @@ def frontmatter(path: Path):
         block.append(lines[i])
         i += 1
     try:
-        return yaml.safe_load("\n".join(block)) or {}
+        parsed = yaml.safe_load("\n".join(block))
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
-        return {}
+        pass
+    return _shallow_parse(block)  # malformed YAML — recover what we can
 
 
 def is_root_status(rel: str) -> bool:
