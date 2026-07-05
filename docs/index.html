@@ -316,18 +316,13 @@ section{padding-block:var(--section-y);scroll-margin-top:112px}
   .hero-visual{max-width:520px;margin-inline:auto}
 }
 
-/* ---- #hero-net (simple "your world, connected" net) — scoped ----
-   Same visual grammar as #structure-viz (circular glyph+label nodes, edges
-   under nodes), but MINIMAL: one centre node + 5 plain-language spokes. Static
-   SVG (no per-frame JS), so it's reduced-motion-clean by construction. Uses
-   page DESIGN.md tokens only; the centre ring uses the claude-orange accent. */
-#hero-net{
-  margin:0;font-family:var(--font-sans);
-  /* one scoped accent: the focal "your agent" ring. Indigo accent reads as the
-     brand orange-family focal on both themes; aliased here like #structure-viz. */
-  --hn-focus: var(--accent-text);
-  --hn-spoke: var(--accent-secondary);
-}
+/* ---- #hero-net (animated CORE ⟷ USER brain) — scoped ----
+   A living node-link "brain" in the hero-visual slot: a CORE lobe (the framework
+   open-bridge ships) and a USER lobe (your private instance), joined by a bright
+   bridge with signals crossing both ways. Canvas-based; every colour is read
+   from the page DESIGN.md tokens and recoloured on theme/lang toggle by the
+   scoped <script> below, which also honours prefers-reduced-motion. */
+#hero-net{ margin:0;font-family:var(--font-sans); }
 #hero-net .hn-frame{
   position:relative;width:100%;
   border:1px solid var(--line);border-radius:14px;
@@ -337,44 +332,9 @@ section{padding-block:var(--section-y);scroll-margin-top:112px}
 }
 html.dark #hero-net .hn-frame{box-shadow:0 6px 18px -8px rgba(0,0,0,.5)}
 #hero-net .hn-stage{position:relative;width:100%}
-#hero-net svg.hn-svg{display:block;width:100%;height:auto;overflow:visible}
-
-/* edges drawn before nodes (markup order) so nodes sit on top */
-#hero-net .hn-edge{
-  fill:none;stroke:var(--line);stroke-width:1.6;opacity:.9;
-  transition:opacity .18s ease,stroke .18s ease,stroke-width .18s ease;
-}
-html.dark #hero-net .hn-edge{stroke:#3a4660}
-/* radial edges from the centre read as the accent backbone */
-#hero-net .hn-edge.hn-edge-spoke{stroke:var(--accent);stroke-width:2;opacity:.85}
-/* light cross-links between spokes — dashed + quiet */
-#hero-net .hn-edge.hn-edge-cross{stroke:var(--line);stroke-width:1.4;opacity:.7;stroke-dasharray:3 4}
-html.dark #hero-net .hn-edge.hn-edge-cross{stroke:#3a4660}
-
-/* hover highlight (optional, reduced-motion-safe): dim the rest */
-#hero-net .hn-stage.hn-focus .hn-edge{opacity:.16}
-#hero-net .hn-stage.hn-focus .hn-node{opacity:.34}
-#hero-net .hn-stage.hn-focus .hn-edge.hn-on{opacity:1;stroke-width:2.6}
-#hero-net .hn-stage.hn-focus .hn-node.hn-on{opacity:1}
-
-#hero-net .hn-node{transition:opacity .18s ease;outline:none}
-#hero-net .hn-node .hn-dot{fill:var(--accent);stroke:var(--surface);stroke-width:2.4}
-#hero-net .hn-node.hn-spoke .hn-dot{fill:var(--hn-spoke)}
-#hero-net .hn-node.hn-center .hn-dot{fill:var(--surface);stroke:var(--hn-focus);stroke-width:3.2}
-html.dark #hero-net .hn-node.hn-center .hn-dot{fill:var(--surface)}
-#hero-net .hn-node .hn-glyph{
-  font-family:var(--font-mono);font-weight:700;font-size:13px;fill:#fff;
-  text-anchor:middle;dominant-baseline:central;pointer-events:none;
-  paint-order:stroke;stroke:rgba(0,0,0,.18);stroke-width:.5;
-}
-#hero-net .hn-node.hn-center .hn-glyph{fill:var(--hn-focus);stroke:none}
-#hero-net .hn-node .hn-label{
-  font-size:13px;font-weight:600;fill:var(--ink);text-anchor:middle;
-  dominant-baseline:hanging;pointer-events:none;
-}
-#hero-net .hn-node.hn-center .hn-label{font-size:14px}
-#hero-net .hn-node .hn-label-bg{fill:var(--surface);opacity:.78;rx:3}
-html.dark #hero-net .hn-node .hn-label-bg{opacity:.55}
+/* the brain canvas — fills the stage at the old net's 5:4 aspect, transparent
+   over the frame surface so it reads on both themes. */
+#hero-net .hn-canvas{display:block;width:100%;aspect-ratio:5/4;border-radius:10px}
 
 #hero-net .hn-cap{
   display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;justify-content:space-between;
@@ -394,9 +354,6 @@ html[data-active-lang="de"] #hero-net tspan[data-lang="de"]{display:inline}
 #hero-net .hn-sr{
   position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0 0 0 0);white-space:nowrap;border:0;
-}
-@media (prefers-reduced-motion:reduce){
-  #hero-net .hn-node,#hero-net .hn-edge{transition:none!important}
 }
 @media print{
   #hero-net .hn-frame{break-inside:avoid;box-shadow:none}
@@ -778,86 +735,27 @@ auf PR #214.</div>
     </div>
 
     <div class="hero-visual">
-      <!-- ===== HERO NET — simple "your world, connected" =====
-           A small, instantly-readable node-link graph in the same visual
-           grammar as the full #structure-viz constellation (which now lives
-           down in #substrate). One centre node (your agent, claude-orange
-           ring) + 5 plain-language spokes + two light cross-links. Static
-           inline SVG — no per-frame JS, so it's reduced-motion-clean by
-           construction. A tiny scoped <script> adds optional hover highlight. -->
+      <!-- ===== HERO BRAIN — animated CORE ⟷ USER =====
+           An animated node-link "brain" in the hero-visual slot: a CORE lobe
+           (skills · agents · protocols · schemas — what open-bridge ships) and a
+           USER lobe (your projects · clients · conventions · work log — what your
+           private instance holds), joined by a bright bridge with signals crossing
+           both ways. Canvas; all colour from page tokens; the scoped <script>
+           below drives it and honours reduced-motion + the theme/lang toggles. -->
       <figure id="hero-net" aria-labelledby="hn-cap-text">
         <div class="hn-frame">
           <div class="hn-stage" id="hn-stage">
-            <svg class="hn-svg" viewBox="0 0 400 320" role="img" aria-labelledby="hn-svg-title hn-svg-desc">
-              <title id="hn-svg-title">
-                <tspan data-lang="en">Your agent, connected to your projects, clients, conventions, work log and skills</tspan>
-                <tspan data-lang="de">Dein Agent, verbunden mit Projekten, Kunden, Konventionen, Arbeitslog und Skills</tspan>
-              </title>
-              <desc id="hn-svg-desc">
-                <tspan data-lang="en">A central "your agent" node with five spokes — projects, clients, conventions, work log, skills — that also link to each other.</tspan>
-                <tspan data-lang="de">Ein zentraler „dein Agent"-Knoten mit fünf Speichen — Projekte, Kunden, Konventionen, Arbeitslog, Skills — die auch untereinander verbunden sind.</tspan>
-              </desc>
-
-              <!-- edges first (drawn under the nodes) -->
-              <!-- radial spokes: centre (200,160) → each spoke -->
-              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="projects" x1="200" y1="160" x2="200" y2="52"/>
-              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="clients"  x1="200" y1="160" x2="332" y2="116"/>
-              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="conventions" x1="200" y1="160" x2="300" y2="258"/>
-              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="worklog"  x1="200" y1="160" x2="100" y2="258"/>
-              <line class="hn-edge hn-edge-spoke" data-from="agent" data-to="skills"   x1="200" y1="160" x2="68"  y2="116"/>
-              <!-- light cross-links: Work log ↔ Projects, Clients ↔ Conventions -->
-              <path class="hn-edge hn-edge-cross" data-from="worklog" data-to="projects" d="M100 258 Q120 130 200 52"/>
-              <path class="hn-edge hn-edge-cross" data-from="clients" data-to="conventions" d="M332 116 Q348 190 300 258"/>
-
-              <!-- nodes -->
-              <g class="hn-node hn-spoke" data-id="projects" tabindex="0" role="img">
-                <circle class="hn-dot" cx="200" cy="52" r="20"/>
-                <text class="hn-glyph" x="200" y="52">P</text>
-                <rect class="hn-label-bg" x="160" y="14" width="80" height="18"/>
-                <text class="hn-label" x="200" y="16"><tspan data-lang="en">Projects</tspan><tspan data-lang="de">Projekte</tspan></text>
-              </g>
-              <g class="hn-node hn-spoke" data-id="clients" tabindex="0" role="img">
-                <circle class="hn-dot" cx="332" cy="116" r="20"/>
-                <text class="hn-glyph" x="332" y="116">C</text>
-                <rect class="hn-label-bg" x="296" y="140" width="72" height="18"/>
-                <text class="hn-label" x="332" y="142"><tspan data-lang="en">Clients</tspan><tspan data-lang="de">Kunden</tspan></text>
-              </g>
-              <g class="hn-node hn-spoke" data-id="conventions" tabindex="0" role="img">
-                <circle class="hn-dot" cx="300" cy="258" r="20"/>
-                <text class="hn-glyph" x="300" y="258">K</text>
-                <rect class="hn-label-bg" x="246" y="282" width="108" height="18"/>
-                <text class="hn-label" x="300" y="284"><tspan data-lang="en">Conventions</tspan><tspan data-lang="de">Konventionen</tspan></text>
-              </g>
-              <g class="hn-node hn-spoke" data-id="worklog" tabindex="0" role="img">
-                <circle class="hn-dot" cx="100" cy="258" r="20"/>
-                <text class="hn-glyph" x="100" y="258">L</text>
-                <rect class="hn-label-bg" x="56" y="282" width="88" height="18"/>
-                <text class="hn-label" x="100" y="284"><tspan data-lang="en">Work log</tspan><tspan data-lang="de">Arbeitslog</tspan></text>
-              </g>
-              <g class="hn-node hn-spoke" data-id="skills" tabindex="0" role="img">
-                <circle class="hn-dot" cx="68" cy="116" r="20"/>
-                <text class="hn-glyph" x="68" y="116">S</text>
-                <rect class="hn-label-bg" x="40" y="140" width="56" height="18"/>
-                <text class="hn-label" x="68" y="142">Skills</text>
-              </g>
-              <!-- centre: your agent (focal claude-orange ring) -->
-              <g class="hn-node hn-center" data-id="agent" tabindex="0" role="img">
-                <circle class="hn-dot" cx="200" cy="160" r="30"/>
-                <text class="hn-glyph" x="200" y="160">◎</text>
-                <rect class="hn-label-bg" x="146" y="196" width="108" height="20"/>
-                <text class="hn-label" x="200" y="199"><tspan data-lang="en">your agent</tspan><tspan data-lang="de">dein Agent</tspan></text>
-              </g>
-            </svg>
+            <canvas class="hn-canvas" id="hn-brain" aria-hidden="true"></canvas>
             <p class="hn-sr">
-              <span data-lang="en">Your agent sits at the centre, connected to Projects, Clients, Conventions, Work log and Skills — which also link to one another. The full detailed view is below.</span>
-              <span data-lang="de">Dein Agent sitzt in der Mitte, verbunden mit Projekten, Kunden, Konventionen, Arbeitslog und Skills — die auch untereinander verbunden sind. Die ausführliche Ansicht steht weiter unten.</span>
+              <span data-lang="en">open-bridge is one shared CORE framework — skills, agents, protocols, schemas — bridged to your private USER instance, which holds your projects, clients, conventions and work log. CORE ships down; your knowledge promotes up. The full detailed view is below.</span>
+              <span data-lang="de">open-bridge ist ein gemeinsames CORE-Framework — Skills, Agenten, Protokolle, Schemas — verbunden mit deiner privaten USER-Instanz, die deine Projekte, Kunden, Konventionen und dein Arbeitslog hält. CORE kommt runter, dein Wissen wandert hoch. Die ausführliche Ansicht steht weiter unten.</span>
             </p>
           </div>
 
           <figcaption class="hn-cap" id="hn-cap-text">
             <span>
-              <span data-lang="en"><b>All connected</b> — the knowledge base you build.</span>
-              <span data-lang="de"><b>Alles verbunden</b> — die Wissensbasis, die du aufbaust.</span>
+              <span data-lang="en"><b>CORE ⟷ USER</b> — one framework, bridged to your world.</span>
+              <span data-lang="de"><b>CORE ⟷ USER</b> — ein Framework, verbunden mit deiner Welt.</span>
             </span>
             <a href="#substrate">
               <span data-lang="en">See the full picture →</span>
@@ -1977,33 +1875,116 @@ Dateien; vor allen destruktiven Aktionen nachfragen.</div>
 <script>
 (function(){
   "use strict";
-  var root = document.getElementById('hero-net');
-  if(!root) return;
-  var stage = root.querySelector('.hn-stage');
-  var edges = Array.prototype.slice.call(root.querySelectorAll('.hn-edge'));
-  var nodes = Array.prototype.slice.call(root.querySelectorAll('.hn-node'));
-  function clear(){
-    stage.classList.remove('hn-focus');
-    edges.forEach(function(e){ e.classList.remove('hn-on'); });
-    nodes.forEach(function(n){ n.classList.remove('hn-on'); });
+  var cv = document.getElementById('hn-brain');
+  if(!cv || !cv.getContext) return;
+  var ctx = cv.getContext('2d');
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // The model as a few legible nodes. CORE ships these; USER holds these; the
+  // bridge carries both ways. Labels track the page language toggle.
+  var LAB = {
+    core: { en:['Skills','Agents','Protocols','Schemas'], de:['Skills','Agenten','Protokolle','Schemas'] },
+    user: { en:['Projects','Clients','Conventions','Work log'], de:['Projekte','Kunden','Konventionen','Arbeitslog'] }
+  };
+  function lang(){ return document.documentElement.getAttribute('data-active-lang') === 'de' ? 'de' : 'en'; }
+  function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function hexA(h,a){ h=(h||'').replace('#',''); if(h.length===3) h=h.replace(/./g,'$&$&');
+    var n=parseInt(h||'888888',16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+
+  var W,H,DPR,COL={},nodes=[],edges=[],sig=[],coreA,userA,raf,running=false;
+  function recolor(){ COL={ core:css('--accent'), user:css('--accent-secondary'), spark:css('--accent-text'),
+    from:css('--accent-from'), to:css('--accent-to'), muted:css('--muted'), ink:css('--ink') }; }
+  function rnd(a,b){ return a+Math.random()*(b-a); }
+
+  function build(){
+    var r=cv.getBoundingClientRect(); if(!r.width||!r.height) return false;
+    DPR=Math.min(devicePixelRatio||1,2); W=r.width; H=r.height;
+    cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR); ctx.setTransform(DPR,0,0,DPR,0,0);
+    recolor();
+    var cy=H*0.52, lx=W*0.28, rx=W*0.72, rad=Math.min(W*0.17,H*0.30);
+    nodes=[]; edges=[]; sig=[];
+    coreA={x:lx,y:cy,hub:true,side:'core',r:7,cap:'CORE'};
+    userA={x:rx,y:cy,hub:true,side:'user',r:7,cap:'USER'};
+    nodes.push(coreA,userA);
+    function lobe(anchor,dir){
+      var lbl=LAB[anchor.side][lang()], n=lbl.length;
+      for(var i=0;i<n;i++){
+        var ang=(-0.82+(i/(n-1))*1.64);
+        var ax=anchor.x+Math.cos(ang)*dir*rad*rnd(.85,1.05);
+        var ay=anchor.y+Math.sin(ang)*rad*rnd(.9,1.08);
+        var nd={x:ax,y:ay,x0:ax,y0:ay,side:anchor.side,r:rnd(3.1,4.4),li:i,ph:rnd(0,6),amp:rnd(2.5,6),fire:0};
+        nodes.push(nd); edges.push({a:anchor,b:nd});
+      }
+      for(var f=0;f<3;f++){ var fa=rnd(-1.25,1.25),
+        fx=anchor.x+Math.cos(fa)*dir*rad*rnd(.4,1.15), fy=anchor.y+Math.sin(fa)*rad*rnd(.4,1.2);
+        var fn={x:fx,y:fy,x0:fx,y0:fy,side:anchor.side,r:rnd(1.2,2),ph:rnd(0,6),amp:rnd(3,7),fire:0};
+        nodes.push(fn); edges.push({a:anchor,b:fn}); }
+    }
+    lobe(coreA,-1); lobe(userA,1);
+    edges.push({a:coreA,b:userA,bridge:true});
+    return true;
   }
-  function focus(id){
-    stage.classList.add('hn-focus');
-    var lit = {}; lit[id] = true;
-    edges.forEach(function(e){
-      var f = e.getAttribute('data-from'), t = e.getAttribute('data-to');
-      if(f === id || t === id){ e.classList.add('hn-on'); lit[f] = true; lit[t] = true; }
-    });
-    nodes.forEach(function(n){ if(lit[n.getAttribute('data-id')]) n.classList.add('hn-on'); });
+  function labelFor(m){ return m.hub ? '' : (m.li!=null ? LAB[m.side][lang()][m.li] : ''); }
+  function sideCol(m){ return m.side==='core'?COL.core:COL.user; }
+  function spawnBridge(toUser){ sig.push({a:toUser?coreA:userA,b:toUser?userA:coreA,t:0,sp:rnd(.008,.013),cross:true}); }
+  function spawnSpoke(){ var sp=edges.filter(function(e){return !e.bridge;}); var e=sp[(Math.random()*sp.length)|0];
+    if(e) sig.push({a:Math.random()<.5?e.a:e.b, b:Math.random()<.5?e.b:e.a, t:0, sp:rnd(.012,.02), cross:false}); }
+
+  function draw(now){
+    ctx.clearRect(0,0,W,H);
+    var midx=(coreA.x+userA.x)/2, pulse=reduce?.6:(0.5+0.28*Math.sin(now/850));
+    var grd=ctx.createRadialGradient(midx,coreA.y,0,midx,coreA.y,Math.max(W*0.34,150));
+    grd.addColorStop(0,hexA(COL.from,.14*pulse)); grd.addColorStop(.55,hexA(COL.to,.06*pulse)); grd.addColorStop(1,'transparent');
+    ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+    if(!reduce) for(var i=0;i<nodes.length;i++){ var n=nodes[i]; if(n.hub||n.x0==null) continue;
+      n.ph+=0.02; n.x=n.x0+Math.cos(n.ph)*(n.amp||4)*.5; n.y=n.y0+Math.sin(n.ph*1.2)*(n.amp||4)*.4; }
+    for(var q=0;q<nodes.length;q++) if(nodes[q].fire>0) nodes[q].fire-=reduce?1:.03;
+    ctx.strokeStyle=hexA(COL.muted,.22); ctx.lineWidth=1; ctx.beginPath();
+    for(var e=0;e<edges.length;e++){ if(edges[e].bridge) continue; ctx.moveTo(edges[e].a.x,edges[e].a.y); ctx.lineTo(edges[e].b.x,edges[e].b.y); }
+    ctx.stroke();
+    var bg=ctx.createLinearGradient(coreA.x,0,userA.x,0);
+    bg.addColorStop(0,hexA(COL.core,.5)); bg.addColorStop(.5,hexA(COL.spark,.6*pulse+.25)); bg.addColorStop(1,hexA(COL.user,.5));
+    ctx.strokeStyle=bg; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(coreA.x,coreA.y); ctx.lineTo(userA.x,userA.y); ctx.stroke(); ctx.lineWidth=1;
+    if(!reduce) for(var s=sig.length-1;s>=0;s--){ var g=sig[s]; g.t+=g.sp;
+      var x=g.a.x+(g.b.x-g.a.x)*g.t, y=g.a.y+(g.b.y-g.a.y)*g.t;
+      var col=g.cross?COL.spark:(g.a.side==='core'?COL.core:COL.user);
+      var tx=g.a.x+(g.b.x-g.a.x)*Math.max(0,g.t-.18), ty=g.a.y+(g.b.y-g.a.y)*Math.max(0,g.t-.18);
+      var lg=ctx.createLinearGradient(tx,ty,x,y); lg.addColorStop(0,'transparent'); lg.addColorStop(1,hexA(col,g.cross?.95:.7));
+      ctx.strokeStyle=lg; ctx.lineWidth=g.cross?2.4:1.4; ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(x,y); ctx.stroke();
+      ctx.fillStyle=hexA(col,1); ctx.beginPath(); ctx.arc(x,y,g.cross?3:1.9,0,6.283); ctx.fill();
+      if(g.t>=1){ g.b.fire=1; sig.splice(s,1); } }
+    ctx.lineWidth=1; ctx.textAlign='center'; ctx.textBaseline='middle';
+    for(var k=0;k<nodes.length;k++){ var m=nodes[k], base=m.hub?COL.spark:sideCol(m);
+      if(m.fire>0){ ctx.fillStyle=hexA(COL.spark,.5*m.fire); ctx.beginPath(); ctx.arc(m.x,m.y,m.r+6*m.fire,0,6.283); ctx.fill(); }
+      if(m.hub){ ctx.fillStyle=hexA(sideCol(m),.18); ctx.beginPath(); ctx.arc(m.x,m.y,m.r+7,0,6.283); ctx.fill(); }
+      ctx.fillStyle=hexA(base,m.hub?1:.92); ctx.beginPath(); ctx.arc(m.x,m.y,m.r,0,6.283); ctx.fill();
+      var lb=labelFor(m);
+      if(lb){ ctx.fillStyle=hexA(COL.muted,1); ctx.font='500 11px '+css('--font-sans'); ctx.fillText(lb,m.x,m.y-m.r-8); }
+    }
+    ctx.font='600 12px '+css('--font-sans');
+    ctx.fillStyle=hexA(COL.core,.95); ctx.fillText('CORE',coreA.x,coreA.y+24);
+    ctx.fillStyle=hexA(COL.user,.95); ctx.fillText('USER',userA.x,userA.y+24);
   }
-  nodes.forEach(function(n){
-    var id = n.getAttribute('data-id');
-    n.addEventListener('mouseenter', function(){ focus(id); });
-    n.addEventListener('focus', function(){ focus(id); });
-    n.addEventListener('mouseleave', clear);
-    n.addEventListener('blur', clear);
-  });
-  stage.addEventListener('mouseleave', clear);
+
+  function loop(now){ draw(now||0); if(!reduce && running) raf=requestAnimationFrame(loop);
+    if(!reduce && running){ if(Math.random()<.05) spawnBridge(Math.random()<.5);
+      if(Math.random()<(sig.length<5?.32:.07)) spawnSpoke(); } }
+  function stop(){ running=false; cancelAnimationFrame(raf); }
+  function play(){ if(reduce||running) return; running=true; raf=requestAnimationFrame(loop); }
+
+  function start(){ stop(); if(!build()){ requestAnimationFrame(start); return; }
+    if(reduce){ for(var i=0;i<5;i++) nodes[(Math.random()*nodes.length)|0].fire=1; draw(0); }
+    else { spawnBridge(true); spawnBridge(false); for(var j=0;j<4;j++) spawnSpoke(); play(); } }
+
+  var rt; addEventListener('resize',function(){ clearTimeout(rt); rt=setTimeout(start,160); });
+  // theme + language toggle → recolour, relabel, redraw (loop picks colours up live)
+  new MutationObserver(function(){ if(!W) return; recolor(); if(reduce||!running) draw(0); })
+    .observe(document.documentElement,{attributes:true,attributeFilter:['class','data-active-lang']});
+  document.addEventListener('visibilitychange',function(){ document.hidden?stop():play(); });
+  if('IntersectionObserver' in window){
+    new IntersectionObserver(function(es){ es.forEach(function(en){ en.isIntersecting?play():stop(); }); },{threshold:0.05}).observe(cv);
+  }
+  start();
 })();
 </script>
 
