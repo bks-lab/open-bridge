@@ -280,11 +280,9 @@ section{padding-block:var(--section-y);scroll-margin-top:112px}
    it has the full width its labels need. */
 .hero-grid{
   max-width:var(--hero-w);margin:0 auto;
-  display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
-  align-items:center;gap:clamp(36px,5vw,64px);
 }
 .hero-copy{min-width:0}
-.hero .display{margin-top:10px}
+.hero .display{margin-top:10px;max-width:62rem}
 .hero-sub{margin:24px 0 0;max-width:48rem;font-size:19px;font-weight:300;line-height:1.6;color:var(--on-surface)}
 .honesty-strip{
   margin-top:26px;display:inline-flex;align-items:center;gap:0;flex-wrap:wrap;
@@ -297,7 +295,12 @@ section{padding-block:var(--section-y);scroll-margin-top:112px}
 .cta-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:30px}
 .beta-line{margin-top:18px;font-size:14px;color:var(--secondary);max-width:38rem}
 
-/* hero visual — compact "your world, connected" net in the right column */
+/* hero demo row — the code example and the CORE ⟷ USER brain, side by side */
+.hero-demo{
+  margin-top:clamp(28px,4.5vw,48px);
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  align-items:start;gap:clamp(22px,3vw,40px);
+}
 .hero-visual{min-width:0;width:100%}
 .seam-cap{
   margin-top:14px;font-size:13.5px;color:var(--secondary);line-height:1.5;text-align:center;
@@ -310,8 +313,8 @@ section{padding-block:var(--section-y);scroll-margin-top:112px}
 }
 
 @media (max-width:920px){
-  /* stack the net below the copy on tablet/mobile */
-  .hero-grid{grid-template-columns:1fr;gap:36px}
+  /* stack the code example + brain on tablet/mobile */
+  .hero-demo{grid-template-columns:1fr;gap:28px}
   .hero-sub,.beta-line{max-width:none}
   .hero-visual{max-width:520px;margin-inline:auto}
 }
@@ -334,7 +337,7 @@ html.dark #hero-net .hn-frame{box-shadow:0 6px 18px -8px rgba(0,0,0,.5)}
 #hero-net .hn-stage{position:relative;width:100%}
 /* the brain canvas — fills the stage at the old net's 5:4 aspect, transparent
    over the frame surface so it reads on both themes. */
-#hero-net .hn-canvas{display:block;width:100%;aspect-ratio:5/4;border-radius:10px}
+#hero-net .hn-canvas{display:block;width:100%;aspect-ratio:3/2;border-radius:10px}
 
 #hero-net .hn-cap{
   display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;justify-content:space-between;
@@ -551,7 +554,7 @@ html.dark .tile .demo{background:var(--code-bg)}
 
 /* ---- Hero terminal (the magic-moment exchange) — reuses .code grammar,
    tokens only. pre-wrap so the transcript never widens the hero column. ---- */
-.hero-term{margin-top:28px;max-width:44rem}
+.hero-term{margin-top:0;max-width:44rem}      /* top-aligned with the brain in .hero-demo */
 .hero-term .code{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
 .hero-term .code .k{font-weight:600}
 .hero-term-cap{margin-top:10px;font-size:13.5px;color:var(--secondary)}
@@ -688,6 +691,10 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
 
       <p class="hero-sub"><span data-lang="en">Your repos, clients, conventions, last week's decisions — your coding agent reads them at the start of every session, so context compounds instead of resetting. Just plain markdown and YAML in git, any model or frontend.</span><span data-lang="de">Deine Repos, Kunden, Konventionen, die Entscheidungen von letzter Woche — dein Coding-Agent liest sie zu Beginn jeder Session wieder ein, damit Kontext wächst, statt sich zurückzusetzen. Nur Plain-Markdown und YAML in Git, egal welches Modell oder Frontend.</span></p>
 
+      <!-- ===== HERO DEMO ROW — the code example paired with the CORE ⟷ USER brain =====
+           Two cards on one horizontal line: the shipped-workspace terminal (left)
+           and the animated brain (right), top-aligned. -->
+      <div class="hero-demo">
       <!-- The magic-moment exchange — real answers from the shipped demo
            workspace (examples/agency/work/), not invented copy. -->
       <div class="hero-term">
@@ -712,6 +719,36 @@ auf PR #214.</div>
         </p>
       </div>
 
+      <!-- ===== HERO BRAIN — animated CORE ⟷ USER =====
+           CORE lobe (skills · agents · protocols · schemas — what open-bridge ships)
+           and USER lobe (projects · clients · conventions · work log — what your
+           instance holds), joined by a bright bridge with signals both ways. Canvas;
+           colour from page tokens; the scoped <script> honours reduced-motion + theme/lang. -->
+      <div class="hero-visual">
+        <figure id="hero-net" aria-labelledby="hn-cap-text">
+          <div class="hn-frame">
+            <div class="hn-stage" id="hn-stage">
+              <canvas class="hn-canvas" id="hn-brain" aria-hidden="true"></canvas>
+              <p class="hn-sr">
+                <span data-lang="en">open-bridge is one shared CORE framework — skills, agents, protocols, schemas — bridged to your private USER instance, which holds your projects, clients, conventions and work log. CORE ships down; your knowledge promotes up. The full detailed view is below.</span>
+                <span data-lang="de">open-bridge ist ein gemeinsames CORE-Framework — Skills, Agenten, Protokolle, Schemas — verbunden mit deiner privaten USER-Instanz, die deine Projekte, Kunden, Konventionen und dein Arbeitslog hält. CORE kommt runter, dein Wissen wandert hoch. Die ausführliche Ansicht steht weiter unten.</span>
+              </p>
+            </div>
+            <figcaption class="hn-cap" id="hn-cap-text">
+              <span>
+                <span data-lang="en"><b>CORE ⟷ USER</b> — one framework, bridged to your world.</span>
+                <span data-lang="de"><b>CORE ⟷ USER</b> — ein Framework, verbunden mit deiner Welt.</span>
+              </span>
+              <a href="#substrate">
+                <span data-lang="en">See the full picture →</span>
+                <span data-lang="de">Ganzes Bild →</span>
+              </a>
+            </figcaption>
+          </div>
+        </figure>
+      </div>
+      </div><!-- /.hero-demo -->
+
       <p class="honesty-strip">
         <span data-lang="en">Public<span class="sep">·</span>MIT<span class="sep">·</span>clone &amp; read it yourself<span class="sep">·</span><b><a href="#honesty">runs our company daily</a></b></span>
         <span data-lang="de">Public<span class="sep">·</span>MIT<span class="sep">·</span>selbst klonen &amp; lesen<span class="sep">·</span><b><a href="#honesty">betreibt täglich unsere Firma</a></b></span>
@@ -732,38 +769,6 @@ auf PR #214.</div>
       </div>
 
       <p class="beta-line"><span data-lang="en">Newly public — hit a rough edge? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Tell us</a>.</span><span data-lang="de">Frisch öffentlich — irgendwo hakt es? <a href="https://github.com/bks-lab/open-bridge/issues" target="_blank" rel="noopener">Sag's uns</a>.</span></p>
-    </div>
-
-    <div class="hero-visual">
-      <!-- ===== HERO BRAIN — animated CORE ⟷ USER =====
-           An animated node-link "brain" in the hero-visual slot: a CORE lobe
-           (skills · agents · protocols · schemas — what open-bridge ships) and a
-           USER lobe (your projects · clients · conventions · work log — what your
-           private instance holds), joined by a bright bridge with signals crossing
-           both ways. Canvas; all colour from page tokens; the scoped <script>
-           below drives it and honours reduced-motion + the theme/lang toggles. -->
-      <figure id="hero-net" aria-labelledby="hn-cap-text">
-        <div class="hn-frame">
-          <div class="hn-stage" id="hn-stage">
-            <canvas class="hn-canvas" id="hn-brain" aria-hidden="true"></canvas>
-            <p class="hn-sr">
-              <span data-lang="en">open-bridge is one shared CORE framework — skills, agents, protocols, schemas — bridged to your private USER instance, which holds your projects, clients, conventions and work log. CORE ships down; your knowledge promotes up. The full detailed view is below.</span>
-              <span data-lang="de">open-bridge ist ein gemeinsames CORE-Framework — Skills, Agenten, Protokolle, Schemas — verbunden mit deiner privaten USER-Instanz, die deine Projekte, Kunden, Konventionen und dein Arbeitslog hält. CORE kommt runter, dein Wissen wandert hoch. Die ausführliche Ansicht steht weiter unten.</span>
-            </p>
-          </div>
-
-          <figcaption class="hn-cap" id="hn-cap-text">
-            <span>
-              <span data-lang="en"><b>CORE ⟷ USER</b> — one framework, bridged to your world.</span>
-              <span data-lang="de"><b>CORE ⟷ USER</b> — ein Framework, verbunden mit deiner Welt.</span>
-            </span>
-            <a href="#substrate">
-              <span data-lang="en">See the full picture →</span>
-              <span data-lang="de">Ganzes Bild →</span>
-            </a>
-          </figcaption>
-        </div>
-      </figure>
     </div>
   </div>
 </section>
@@ -1901,23 +1906,26 @@ Dateien; vor allen destruktiven Aktionen nachfragen.</div>
     DPR=Math.min(devicePixelRatio||1,2); W=r.width; H=r.height;
     cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR); ctx.setTransform(DPR,0,0,DPR,0,0);
     recolor();
-    var cy=H*0.52, lx=W*0.28, rx=W*0.72, rad=Math.min(W*0.17,H*0.30);
+    // two hubs mid-height; each lobe is a tall, narrow ellipse fanning nearly
+    // vertically so it fills the box height while labels stay inside the width.
+    var cy=H*0.50, lx=W*0.32, rx=W*0.68;
+    var radX=Math.min(W*0.15,92), radY=H*0.38;
     nodes=[]; edges=[]; sig=[];
-    coreA={x:lx,y:cy,hub:true,side:'core',r:7,cap:'CORE'};
-    userA={x:rx,y:cy,hub:true,side:'user',r:7,cap:'USER'};
+    coreA={x:lx,y:cy,hub:true,side:'core',r:8,cap:'CORE'};
+    userA={x:rx,y:cy,hub:true,side:'user',r:8,cap:'USER'};
     nodes.push(coreA,userA);
     function lobe(anchor,dir){
       var lbl=LAB[anchor.side][lang()], n=lbl.length;
       for(var i=0;i<n;i++){
-        var ang=(-0.82+(i/(n-1))*1.64);
-        var ax=anchor.x+Math.cos(ang)*dir*rad*rnd(.85,1.05);
-        var ay=anchor.y+Math.sin(ang)*rad*rnd(.9,1.08);
-        var nd={x:ax,y:ay,x0:ax,y0:ay,side:anchor.side,r:rnd(3.1,4.4),li:i,ph:rnd(0,6),amp:rnd(2.5,6),fire:0};
+        var ang=(-1.12+(i/(n-1))*2.24);                 // vertical-ish fan hugging the hub
+        var ax=anchor.x+Math.cos(ang)*dir*radX*rnd(.92,1.04);
+        var ay=cy+Math.sin(ang)*radY*rnd(.94,1.02);
+        var nd={x:ax,y:ay,x0:ax,y0:ay,side:anchor.side,r:rnd(3.6,5),li:i,ph:rnd(0,6),amp:rnd(1.5,3.4),fire:0};
         nodes.push(nd); edges.push({a:anchor,b:nd});
       }
-      for(var f=0;f<3;f++){ var fa=rnd(-1.25,1.25),
-        fx=anchor.x+Math.cos(fa)*dir*rad*rnd(.4,1.15), fy=anchor.y+Math.sin(fa)*rad*rnd(.4,1.2);
-        var fn={x:fx,y:fy,x0:fx,y0:fy,side:anchor.side,r:rnd(1.2,2),ph:rnd(0,6),amp:rnd(3,7),fire:0};
+      for(var f=0;f<5;f++){ var fa=rnd(.34,1.1)*(f%2?-1:1);   // off-midline, inside the lobe
+        var fx=anchor.x+Math.cos(fa)*dir*radX*rnd(.4,.82), fy=cy+Math.sin(fa)*radY*rnd(.42,.82);
+        var fn={x:fx,y:fy,x0:fx,y0:fy,side:anchor.side,r:rnd(1.5,2.3),ph:rnd(0,6),amp:rnd(2,4.5),fire:0};
         nodes.push(fn); edges.push({a:anchor,b:fn}); }
     }
     lobe(coreA,-1); lobe(userA,1);
@@ -1967,14 +1975,15 @@ Dateien; vor allen destruktiven Aktionen nachfragen.</div>
   }
 
   function loop(now){ draw(now||0); if(!reduce && running) raf=requestAnimationFrame(loop);
-    if(!reduce && running){ if(Math.random()<.05) spawnBridge(Math.random()<.5);
-      if(Math.random()<(sig.length<5?.32:.07)) spawnSpoke(); } }
+    if(!reduce && running){ var xc=0; for(var i=0;i<sig.length;i++) if(sig[i].cross) xc++;
+      if(xc<2 && Math.random()<.03) spawnBridge(Math.random()<.5);
+      if(Math.random()<(sig.length<5?.26:.05)) spawnSpoke(); } }
   function stop(){ running=false; cancelAnimationFrame(raf); }
   function play(){ if(reduce||running) return; running=true; raf=requestAnimationFrame(loop); }
 
   function start(){ stop(); if(!build()){ requestAnimationFrame(start); return; }
     if(reduce){ for(var i=0;i<5;i++) nodes[(Math.random()*nodes.length)|0].fire=1; draw(0); }
-    else { spawnBridge(true); spawnBridge(false); for(var j=0;j<4;j++) spawnSpoke(); play(); } }
+    else { spawnBridge(true); for(var j=0;j<3;j++) spawnSpoke(); play(); } }
 
   var rt; addEventListener('resize',function(){ clearTimeout(rt); rt=setTimeout(start,160); });
   // theme + language toggle → recolour, relabel, redraw (loop picks colours up live)
