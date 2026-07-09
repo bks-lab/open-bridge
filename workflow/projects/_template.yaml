@@ -42,6 +42,21 @@ project:
   url: "https://github.com/orgs/my-org/projects/1"
 
 # ---------------------------------------------------------------------------
+# Board-hygiene audit — inputs for the github-projects-manager coverage pass
+# (scripts/board-audit.sh). Optional. `coverage_repos` lists the repos whose
+# OPEN issues should ALL appear on this board; the audit flags any that are
+# missing (orphans). Only set this for boards backed by DEDICATED repos — for a
+# board that shares a repo with other boards (issues separated by label/prefix),
+# leave it unset, or a repo-level diff would false-positive. The declined/done
+# board Status strings the reconcile pass needs come from `status_mapping` below,
+# not from here.
+# ---------------------------------------------------------------------------
+# audit:
+#   coverage_repos:
+#     - my-org/my-repo
+#     - my-org/another-repo
+
+# ---------------------------------------------------------------------------
 # Cross-references — link to context (doc routing) and mandant (recipients)
 # Both optional; the standing-order task-sync uses them as defaults when
 # a STATUS.md has `context: <slug>` or `mandant: <slug>` set.

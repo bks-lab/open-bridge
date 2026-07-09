@@ -76,6 +76,11 @@ gh api graphql -f query='
      -f field="$FIELD_ID" -f value="$OPTION_ID"
 ```
 
+> **Always `-f value=$OPTION_ID`, never `-F`.** Option IDs are frequently
+> all-digits (e.g. `98236657`); `-F` coerces a digit-only value to Int and the
+> mutation fails with `Variable $value of type String! was provided invalid
+> value`. IDs containing letters happen to survive `-F` — don't rely on it.
+
 ## Update Text Field
 
 ```bash
@@ -156,7 +161,7 @@ gh api graphql -f query='
             }
             content {
               ... on Issue {
-                number title state url
+                number title state stateReason url
                 repository { name }
                 assignees(first: 5) { nodes { login } }
                 updatedAt
@@ -168,6 +173,30 @@ gh api graphql -f query='
     }
   }' -f org="$ORG" -F num=$NUM
 ```
+
+## Change Issue Close-Reason (no reopen)
+
+To re-classify an **already-closed** issue's reason (e.g. `completed` →
+`not_planned` during a declined-audit) without a noisy reopen/close cycle —
+`closeIssue` is idempotent on a closed issue and just updates `stateReason`:
+
+```bash
+ISSUE_NODE_ID=$(gh api graphql -f query='
+  query($owner:String!,$repo:String!,$num:Int!){
+    repository(owner:$owner,name:$repo){ issue(number:$num){ id } }
+  }' -f owner="$ORG" -f repo="$REPO" -F num=$N \
+  --jq '.data.repository.issue.id')
+
+gh api graphql -f query='
+  mutation($id: ID!) {
+    closeIssue(input: {issueId: $id, stateReason: NOT_PLANNED}) {
+      issue { number state stateReason }
+    }
+  }' -F id="$ISSUE_NODE_ID"
+```
+
+`stateReason` accepts `NOT_PLANNED`, `COMPLETED`, `DUPLICATE`. For an OPEN
+issue prefer `gh issue close --reason "not planned"`.
 
 ## Delete Draft Item
 
