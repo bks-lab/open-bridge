@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../docs/schemas/workspace.schema.yaml
+#
+# Workspace Definition — a named binding of member repos + config-overlay
+# subscriptions describing "what happens when": the working set a session
+# operates on. It is user-authored INTENT; the resolved reality of role:code
+# member clones is recorded separately in the generated workspaces.lock.yaml.
+#
+# Copy to workflow/workspaces/<id>.yaml on your user/* branch, or let the engine
+# scaffold it:
+#   python3 scripts/workspace.py create <id>
+#
+# Discovery is the standard glob workflow/workspaces/*.yaml (this _-prefixed
+# template is excluded). One file per workspace; the id MUST equal the basename.
+#
+# Validation:
+#   check-jsonschema --schemafile docs/schemas/workspace.schema.yaml \
+#                    workflow/workspaces/<id>.yaml
+
+schema_version: 1            # REQUIRED — contract version (const 1)
+id: demo-workspace           # REQUIRED — lowercase-kebab slug; MUST equal the filename basename
+title: Demo Workspace        # REQUIRED — human-readable label
+description: "One-line purpose of this workspace."   # optional
+
+# Working directory the workspace maps to (optional). ${var} interpolation and a
+# leading ~ are allowed (see AGENTS.md § Variable Interpolation). Default = repo
+# root. Informational in increment 1 — it carries no instance lifecycle.
+# directory: "${projects_root}/demo"
+
+# created_at / updated_at are engine-stamped on create + every mutation —
+# do not hand-set them.
+
+# Config-overlay subscriptions (optional). This list is the workspace-level
+# INDEX only — materialization is delegated to scripts/overlay.py (state in
+# overlays.lock.yaml + bridge-config.yaml upstreams[]); it is never a second
+# materializer. Add via:
+#   python3 scripts/workspace.py add-repo <id> <git-url> --role config
+overlays: []
+# overlays:
+#   - name: example-org        # REQUIRED — overlay slug (the key under overlays.lock.yaml)
+#     url: "https://example.com/example-org/overlay.git"   # optional — clone URL when subscribing
+#     ref: main                # optional (default: main)
+#     precedence: 0            # optional — higher wins a dest collision
+
+# Member repos (optional). role:code repos are cloned by workspace.py into the
+# ignored location .bridge/workspaces/<id>/<member>/ and pinned in
+# workspaces.lock.yaml; role:config repos are delegated to overlay.py and recorded
+# under overlays[] above (a config member is not retained here in increment 1).
+# Add via:
+#   python3 scripts/workspace.py add-repo <id> <git-url> --role code
+repos: []
+# repos:
+#   - url: "https://example.com/myco/service.git"   # REQUIRED — trust-guarded before any clone
+#     role: code               # REQUIRED — code | config
+#     name: service            # optional (default: last URL path segment, .git stripped)
+#     ref: main                # optional (default: the remote's default branch)
+#     # path: is engine-filled for code members — do not hand-set
+
+# Generic extension point (optional, inert in CORE). A namespaced bag an optional
+# external provider may attach to WITHOUT introducing any required field. CORE
+# never reads it; a capability-detected provider may. Keys are provider slugs.
+# x-provider:
+#   someprovider:
+#     workspace: demo

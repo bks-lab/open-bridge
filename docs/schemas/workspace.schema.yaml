@@ -1,0 +1,175 @@
+# Workspace Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates a workspace DEFINITION file: `workflow/workspaces/<id>.yaml`. A
+# workspace is a named binding of member repos and config-overlay subscriptions
+# describing "what happens when" — the working set a session operates on. It is
+# user-authored INTENT; the resolved reality of `role: code` member clones is
+# recorded separately in the generated `workspaces.lock.yaml`.
+#
+# The engine (`scripts/workspace.py`) is STANDALONE — it reads only the
+# CORE-required fields below. `x-provider` is a generic, namespaced extension
+# point an optional external provider may attach to; CORE never reads it and no
+# provider-specific field is ever required. Overlay materialization is delegated
+# to overlay.py — `overlays[]` here is a workspace-level index, not a second
+# materializer.
+#
+# Validation:
+#   check-jsonschema --schemafile docs/schemas/workspace.schema.yaml \
+#                    workflow/workspaces/<id>.yaml
+#
+# IDE support: add this line at the top of workflow/workspaces/<id>.yaml:
+#   # yaml-language-server: $schema=../../docs/schemas/workspace.schema.yaml
+#
+# Full docs: docs/workspaces.md (forthcoming — workspace guide)
+# Related: docs/schemas/workspaces-lock.schema.yaml (the generated lockfile)
+#          workflow/workspaces/_template.yaml (authoring template)
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/workspace.yaml"
+title: Workspace
+description: |
+  A workspace definition — its slug identity, human label, optional working
+  directory, member repos (role code|config), and config-overlay subscriptions.
+  User-authored intent; the resolved lock lives in workspaces.lock.yaml.
+
+type: object
+required: [schema_version, id, title]
+additionalProperties: false
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+    description: "Contract version."
+
+  id:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: |
+      Workspace slug (lowercase-kebab-case). MUST equal the filename basename
+      (`<id>.yaml`) — the engine enforces id == basename on validate.
+
+  title:
+    type: string
+    minLength: 1
+    description: "Human-readable label."
+
+  description:
+    type: string
+    description: "One-line purpose."
+
+  directory:
+    type: string
+    description: |
+      Working directory the workspace maps to. `${var}` interpolation and a
+      leading `~` are allowed (see AGENTS.md § Variable Interpolation). Default =
+      repo root. Informational in increment 1 — carries no instance lifecycle.
+
+  created_at:
+    $ref: "#/$defs/Iso8601Utc"
+    description: "Engine-stamped when the workspace is created."
+
+  updated_at:
+    $ref: "#/$defs/Iso8601Utc"
+    description: "Engine-stamped on every mutation."
+
+  overlays:
+    type: array
+    description: |
+      Config-overlay subscriptions this workspace pulls. This list is the
+      workspace-level INDEX only — materialization is delegated to overlay.py
+      (state in overlays.lock.yaml + bridge-config.yaml upstreams[]); it is never
+      a second materializer.
+    items:
+      $ref: "#/$defs/OverlayRef"
+
+  repos:
+    type: array
+    description: "Member repos (see role)."
+    items:
+      $ref: "#/$defs/RepoMember"
+
+  session_ref:
+    type: string
+    description: |
+      Opaque resume pointer — a typed, opaque handle, never a semantically shared
+      session concept. Reserved; increment 1 neither reads nor writes it.
+
+  x-provider:
+    type: object
+    additionalProperties: true
+    propertyNames:
+      pattern: "^[a-z][a-z0-9-]*$"
+    description: |
+      Generic extension point — a namespaced bag an optional external provider
+      may attach to WITHOUT introducing any required field. Keys are provider
+      slugs (lowercase-kebab). CORE never reads this; a capability-detected
+      provider may. Inert in a standalone Bridge.
+
+$defs:
+
+  OverlayRef:
+    type: object
+    required: [name]
+    additionalProperties: false
+    description: "A config-overlay subscription — index entry only; overlay.py materializes it."
+    properties:
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Overlay slug — the key under overlays.lock.yaml."
+      url:
+        type: string
+        format: uri
+        description: "Clone URL used when subscribing."
+      ref:
+        type: string
+        description: "Git ref to track (default: main)."
+      precedence:
+        type: integer
+        minimum: 0
+        description: "Layering order passed to overlay.py — higher wins a dest collision."
+
+  RepoMember:
+    type: object
+    required: [url, role]
+    additionalProperties: false
+    description: "A member repo of the workspace."
+    properties:
+      url:
+        type: string
+        format: uri
+        description: "Clone URL (trust-guarded by the engine before any clone)."
+      role:
+        enum: [code, config]
+        description: |
+          code   — cloned by workspace.py into the ignored member location.
+          config — normalized/delegated to overlay.py and recorded under
+                   overlays[]; a config member is NOT retained in repos[] in
+                   increment 1 (the enum value is reserved for the shared format
+                   and forward compat).
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: |
+          Member slug. Default: last URL path segment, `.git` stripped,
+          lowercased.
+      ref:
+        type: string
+        description: "Git ref to clone (default: the remote's default branch)."
+      path:
+        type: string
+        description: "Engine-filled clone path for `code` members — not user-authored."
+
+  Iso8601Utc:
+    type: string
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    description: "ISO-8601 timestamp in UTC (trailing Z, no offset)."
+
+# Notes (advisory):
+# - One file per workspace at workflow/workspaces/<id>.yaml (discovery skips
+#   _*.yaml); the definition template is workflow/workspaces/_template.yaml.
+# - repos[] and overlays[] default to empty.
+# - x-provider is inert in CORE — no required provider field, ever.
+# - The generated companion is workspaces.lock.yaml (see the lock schema).
