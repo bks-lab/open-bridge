@@ -105,6 +105,18 @@ properties:
     additionalProperties:
       enum: [new, ready, in_progress, review, done, blocked, removed]
 
+  audit:
+    type: object
+    additionalProperties: true
+    description: "Board-hygiene audit inputs for github-projects-manager (scripts/board-audit.sh)"
+    properties:
+      coverage_repos:
+        type: array
+        description: "Repos whose OPEN issues should all appear on this board (orphan check). Only for boards backed by dedicated repos — omit for label/prefix-scoped shared repos."
+        items:
+          type: string
+          pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+
   governance:
     type: object
     additionalProperties: true
