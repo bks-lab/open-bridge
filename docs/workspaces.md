@@ -6,9 +6,11 @@ related:
   - docs/org-overlays.md
   - docs/multi-instance.md
   - docs/structure.md
+  - docs/workspace-acceptance-test.md
   - docs/schemas/workspace.schema.yaml
   - docs/schemas/workspaces-lock.schema.yaml
   - docs/schemas/workspaces-registry.schema.yaml
+  - skills/workspace/SKILL.md
   - scripts/workspace_registry.py
   - scripts/workspace.py
 ---
@@ -38,6 +40,88 @@ scripts/workspace.py                 ← the workspace engine (this layer)
    └── role: config  ─▶ subprocess → scripts/overlay.py   (UNCHANGED, delegated)
                          materializes tracked copies, owns overlays.lock.yaml
 ```
+
+## Quickstart
+
+A workspace goes from empty to a bound working set in a handful of commands. The
+mutating verbs (`create` / `subscribe` / `unsubscribe`) require a `user/*` branch
+(see [Branch gate](#branch-gate)); the read-only verbs (`list` / `status` /
+`validate`) run on any branch. The [`/workspace` skill](../skills/workspace/SKILL.md)
+wraps every verb below — it is the ergonomic front-end to this raw engine.
+
+```bash
+# 1. create the container → writes workflow/workspaces/bigcorp.yaml
+python3 scripts/workspace.py create bigcorp --title "BigCorp engagement"
+
+# 2. subscribe a code member → clones into .bridge/workspaces/bigcorp/<member>/
+#    (ignored) and pins {url, ref, resolved_sha, path} in workspaces.lock.yaml
+python3 scripts/workspace.py subscribe bigcorp https://github.com/bigcorp/service.git
+
+# 3. status → per-clone drift (clean / ahead / missing / unpinned) vs the pinned
+#    resolved_sha; "ahead" is any HEAD≠pinned-SHA divergence, "unpinned" = clone
+#    present but no lock entry
+python3 scripts/workspace.py status bigcorp
+
+# 4. subscribe a config overlay → delegated to scripts/overlay.py as a subprocess;
+#    the workspace records only the overlay NAME (overlay.py owns overlays.lock.yaml)
+python3 scripts/workspace.py subscribe bigcorp https://github.com/bigcorp/bridge-config.git --role config
+
+# 5. list → read-only table: ID  TITLE  #CODE  #OVERLAY  DIR
+python3 scripts/workspace.py list
+
+# 6. unsubscribe the code member → drops its lock entry, refreshes the exclude
+#    block, deletes the clone last (metadata before rmtree)
+python3 scripts/workspace.py unsubscribe bigcorp service
+```
+
+The member slug in step 6 (`service`) is the last URL path segment with `.git`
+stripped and lowercased — the same slug the clone landed under in step 2.
+
+## Use cases
+
+Concrete shapes the binding container is built for. Each is honest about where the
+model stops.
+
+1. **Client / engagement bundle.** One workspace per client: the client's repos as
+   `role: code` members plus the org's shared config overlay as a `role: config`
+   member. Re-opening the engagement means the definition already knows the working
+   set — no rediscovery. *Caveat:* the `role: config` overlay is materialized by the
+   repo-wide overlay engine ([`overlay.py`](../scripts/overlay.py)), so its effect is
+   **per-repo, not isolated per workspace** — a workspace groups a subscription, it
+   does not sandbox config.
+
+2. **Multi-repo feature work.** A change that spans several services: subscribe each
+   repo into one workspace, work across the clones, and `status` reports per-clone
+   drift (`clean` / `ahead` / `missing` / `unpinned`) against each pinned
+   `resolved_sha` — `ahead` is the label for any HEAD≠pinned-SHA divergence
+   (behind and diverged included), `unpinned` is a clone with no lock entry. The
+   workspace is the shared frame; the members stay ordinary git clones.
+
+3. **Safe evaluation of third-party code.** `role: code` clones land under the
+   gitignored `.bridge/` tree behind a per-workspace `.git/info/exclude` block, so
+   even on a public fork a careless `git add -A` cannot stage — let alone publish —
+   the foreign code. Only trust-guarded URL schemes are accepted (§ public-fork
+   safety).
+
+4. **One machine, many tools.** The shared identity registry
+   (`~/.workspaces/workspaces.json`, v2, multi-writer) lets any conformant tool on
+   the box see the same project identities; open-bridge is a full co-**writer**, not
+   only a reader. *Caveat:* the registry is a best-effort mirror behind an *advisory*
+   lock — the repo-local definition + lock stay the source of record, and a co-writer
+   that ignores the lock can transiently clobber a row (§ [Known
+   limitations](#known-limitations)); the next local mutation re-converges it.
+
+5. **Rebuild a working set on a new machine.** A workspace definition is one small
+   YAML file, so the committed definition already names every member. But
+   `subscribe` is idempotent: with the definition present it finds the existing
+   member entry and returns "already a member — no change" *without cloning*, so it
+   does **not** re-materialize the missing clones on its own. `status` correctly
+   reports each absent member as `missing`; to actually restore a clone, `unsubscribe`
+   the member and `subscribe` it again (a future `materialize`/`sync` verb will make
+   this one step). Note that even a fresh clone lands on the ref's current tip
+   (`git clone --branch <ref>`), not the locked `resolved_sha`. *Caveat:*
+   `role: config` members re-materialize through the overlay engine, which is
+   per-repo — the overlay-delegation caveat from case 1 applies again.
 
 ## Two halves: shared identity + repo-local materialization (Option 3)
 
@@ -245,13 +329,16 @@ binds *what happens when* — repos + overlays for a unit of work. It gets its o
 
 ## The workspace command surface
 
-> **Increment status.** What is documented here is the **engine + model**:
-> `scripts/workspace.py` and the two schemas. The ergonomic **`/workspace`
-> slash-command skill** that will wrap this engine — the way the `bridge-overlay`
-> skill wraps `overlay.py` — is a **later increment** and does not exist yet.
-> Likewise the `bridge-overlay` → `/workspace` rename, an `/overlay` alias, and the
-> `ecosystem.yaml workspaces:` cleanup are out of scope for now. Until the skill
-> lands, drive the engine directly via `scripts/workspace.py`.
+> **Increment status.** The ergonomic **`/workspace` slash-command skill** has
+> landed ([`skills/workspace/SKILL.md`](../skills/workspace/SKILL.md),
+> `scope: core`) — the way the `bridge-overlay` skill wraps `overlay.py`. It is the
+> **front-end**; the **engine + model** (`scripts/workspace.py` and the two schemas)
+> stays the **contract**, and you can always drive it directly. Still open: the
+> `bridge-overlay` → `/workspace` rename, an `/overlay` alias on `/workspace` (the
+> skill only *cross-references* `/overlay`, it does not claim it as a trigger), and
+> the `ecosystem.yaml workspaces:` cleanup — a third, older sense of "workspace"
+> ("which repos belong together") still lives at `ecosystem.example.yaml`,
+> unreconciled with the new `workflow/workspaces/` container.
 
 The engine CLI:
 
@@ -513,10 +600,15 @@ they are explicit and easy to revisit, **not** hard invariants:
    Bridge repo; for a non-Bridge workspace the `extensions["open-bridge"]` slice is
    simply empty.
 
-> **Engine, not a skill.** This is the registry *engine* — the reader/writer and
-> its protocol. There is no `/workspace` slash-command skill wrapping it yet (the
-> same status as the repo-local engine above); drive it via
-> `scripts/workspace_registry.py` or the library API until a skill lands.
+> **Engine with no direct skill surface.** This is the registry *engine* — the
+> reader/writer and its protocol. No skill exposes its raw verbs directly; instead
+> it is written-through automatically by the repo-local engine's mutating verbs
+> (`create` / `subscribe` / `unsubscribe`) — which fire equally on a direct
+> `python3 scripts/workspace.py` run and via the [`/workspace`
+> skill](../skills/workspace/SKILL.md) that fronts them (see [Automatic
+> write-through](#automatic-write-through-from-the-repo-local-engine) above). Registry-only operations that have no repo-local trigger (e.g.
+> `archive_workspace`, a direct `find_by_path`) still run via
+> `scripts/workspace_registry.py` or the library API.
 
 ## Schema reference
 
@@ -535,6 +627,15 @@ they are explicit and easy to revisit, **not** hard invariants:
 The definition template ships at `workflow/workspaces/_template.yaml`; read it and
 the matching schema before authoring a workspace by hand (per
 [file-creation](../rules/file-creation.md)).
+
+## Verification
+
+The end-to-end runbook that exercises every verb, both guards (branch gate + trust
+guard), the public-fork exclude block, and the shared-registry write-through on a
+throwaway Bridge is
+[`docs/workspace-acceptance-test.md`](workspace-acceptance-test.md) — a
+zero-prior-knowledge walk that proves the guarantees on this page against the live
+engine.
 
 ## Related
 
