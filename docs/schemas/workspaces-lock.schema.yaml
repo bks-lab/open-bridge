@@ -1,0 +1,114 @@
+# Workspaces Lock Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates `workspaces.lock.yaml`, a GENERATED root file (scope: user) that
+# records the resolved reality of each workspace's `role: code` member clones —
+# every member pinned to the immutable git SHA that was HEAD at clone/update, plus
+# its on-disk clone path. It is the drift detector for workspaces: `status` diffs
+# the live clones against this lock. In a public fork the lock is gitignored (it
+# names local member clone paths).
+#
+# No duplication of config-overlay state: config overlays stay owned by
+# overlays.lock.yaml; this lock references them BY NAME ONLY — never re-pinned.
+#
+# Validation:
+#   check-jsonschema --schemafile docs/schemas/workspaces-lock.schema.yaml \
+#                    workspaces.lock.yaml
+#
+# IDE support: add this line at the top of workspaces.lock.yaml:
+#   # yaml-language-server: $schema=./docs/schemas/workspaces-lock.schema.yaml
+#
+# Full docs: docs/workspaces.md — the workspace guide
+# Related: docs/schemas/workspace.schema.yaml (the source definition)
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/workspaces-lock.yaml"
+title: Workspaces Lock
+description: |
+  Generated lockfile recording every workspace's resolved `role: code` members —
+  each member's requested ref, immutable resolved SHA, and clone path — plus a
+  by-name back-reference to the config overlays it subscribes to. Author-
+  generated, never hand-edited.
+
+type: object
+required: [schema_version, workspaces]
+additionalProperties: false
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+
+  workspaces:
+    type: object
+    description: "Locked workspaces keyed by workspace id (the definition's `id` slug)."
+    propertyNames:
+      pattern: "^[a-z][a-z0-9-]*$"
+    additionalProperties:
+      $ref: "#/$defs/WorkspaceLock"
+
+$defs:
+
+  WorkspaceLock:
+    type: object
+    required: [updated_at, repos, overlays]
+    additionalProperties: false
+    properties:
+      updated_at:
+        $ref: "#/$defs/Iso8601Utc"
+        description: "When this workspace's lock entry was last written (ISO-8601 UTC)."
+      repos:
+        type: array
+        description: "Resolved `role: code` members only (may be empty)."
+        items:
+          $ref: "#/$defs/RepoLock"
+      overlays:
+        type: array
+        description: |
+          Back-reference to the workspace's config overlays, by name only. Each
+          name keys an entry in overlays.lock.yaml — NOT re-pinned here.
+        items:
+          type: string
+          pattern: "^[a-z][a-z0-9-]*$"
+
+  RepoLock:
+    type: object
+    required: [name, url, ref, resolved_sha, path]
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: "Member slug."
+      url:
+        type: string
+        format: uri
+        description: "Clone URL of the member repo."
+      ref:
+        type: string
+        minLength: 1
+        description: "Requested git ref (branch / tag) before resolution."
+      resolved_sha:
+        $ref: "#/$defs/Sha40"
+        description: "Full git commit SHA — HEAD at clone/update (immutable pin)."
+      path:
+        type: string
+        minLength: 1
+        description: "Clone path relative to repo root (under .bridge/workspaces/<id>/)."
+
+  Sha40:
+    type: string
+    pattern: "^[0-9a-f]{40}$"
+    description: "Full lowercase hex git commit SHA (40 chars)."
+
+  Iso8601Utc:
+    type: string
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    description: "ISO-8601 timestamp in UTC (trailing Z, no offset)."
+
+# Notes (advisory):
+# - GENERATED — never hand-edit; scripts/workspace.py rewrites it.
+# - scope: user — gitignored in public forks (names local member clone paths).
+# - Only `role: code` members are pinned here; config overlays live in
+#   overlays.lock.yaml and are referenced by name only.
+# - resolved_sha is the immutable pin `status` verifies against the live clone.

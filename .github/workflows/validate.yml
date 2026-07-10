@@ -76,6 +76,32 @@ jobs:
       - name: Run OKF exporter test suite
         run: bash scripts/tests/test-okf-export.sh
 
+  workspace-tests:
+    name: Workspace Engine + Registry + Skill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Configure git identity for test fixture repos
+        run: |
+          git config --global user.email "ci@open-bridge.test"
+          git config --global user.name "open-bridge CI"
+
+      - name: Run workspace engine test suite
+        if: hashFiles('scripts/tests/test-workspace.sh') != ''
+        run: bash scripts/tests/test-workspace.sh
+
+      - name: Run workspace registry test suite
+        if: hashFiles('scripts/tests/test-workspace-registry.sh') != ''
+        run: bash scripts/tests/test-workspace-registry.sh
+
+      - name: Run workspace skill conformance test suite
+        if: hashFiles('scripts/tests/test-workspace-skill.sh') != ''
+        run: bash scripts/tests/test-workspace-skill.sh
+
   content-leak:
     name: Content Leak Check
     runs-on: ubuntu-latest
