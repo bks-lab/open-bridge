@@ -22,9 +22,9 @@
 #    6  add-repo idempotent             (re-run → already-a-member, lock byte-identical)
 #    7  remove-repo (code)              (clone gone, exclude block gone, lock+def pruned)
 #    8  refuse off user branch          (create/add-repo refused on a non-user/* branch)
-#    9  STANDALONE / no-k2a             (all verbs run; provider-name seam degrades exit 3)
+#    9  STANDALONE / no co-writer       (all verbs run; provider-name seam degrades exit 3)
 #   10  config delegation               (--role config → overlay.py writes overlays.lock.yaml)
-#   11  no-k2a-reference grep           (workspace.py source contains no k2a/reinvent)
+#   11  no co-writer-name grep          (workspace.py source names no specific co-writer)
 #   12  trust guard                     (ext:: / git:// / http:// schemes + leading-dash refused)
 #   13  optional hardening              (status read-only off-branch; x-provider bag accepted)
 #   14  exclude block is the REAL guard (isolation: strip /.bridge/ .gitignore mask → info/exclude alone must ignore)
@@ -468,7 +468,7 @@ assert_absent "no clone written for the refused add-repo" "$CORE/.bridge/workspa
 
 # ───────────────────────────────────────────────────────────────────
 echo
-echo "── 9. STANDALONE — every verb runs with no k2a; name-seam degrades ─"
+echo "── 9. STANDALONE — every verb runs with no co-writer; name-seam degrades ─"
 CON9="$(mkcon)"
 DEF9="$CON9/workflow/workspaces/demo-workspace.yaml"
 run_workspace "$CON9" create demo-workspace ;        assert_rc "standalone: create" 0
@@ -514,15 +514,15 @@ assert_absent "overlay cache dropped by overlay.py remove" "$CON10/.bridge/overl
 
 # ───────────────────────────────────────────────────────────────────
 echo
-echo "── 11. no-k2a-reference grep (source-level standalone) ─────────"
+echo "── 11. no co-writer-name grep (source-level standalone) ────────"
 if [ -f "$WORKSPACE" ]; then
-  if grep -iqE 'k2a|reinvent' "$WORKSPACE"; then
-    fail "scripts/workspace.py references k2a/reinvent (not standalone)" "$(grep -inE 'k2a|reinvent' "$WORKSPACE")"
+  if grep -iqE 'cowriter' "$WORKSPACE"; then
+    fail "scripts/workspace.py names a specific co-writer tool (not standalone)" "$(grep -inE 'cowriter' "$WORKSPACE")"
   else
-    pass "scripts/workspace.py contains no k2a/reinvent reference"
+    pass "scripts/workspace.py names no specific co-writer tool"
   fi
 else
-  fail "scripts/workspace.py absent — cannot assert it is k2a-free"
+  fail "scripts/workspace.py absent — cannot assert it is tool-neutral"
 fi
 
 # ───────────────────────────────────────────────────────────────────

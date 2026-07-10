@@ -5,7 +5,7 @@
 # `~/.workspaces/workspaces.json`), format `version: 2`. The format's normative
 # owner is an external design authored outside this repo — this file is a
 # local, machine-readable companion of the field set the KNOWN writers (this
-# repo's `scripts/workspace_registry.py`, and reinvent-lab's `k2a`) actually
+# repo's `scripts/workspace_registry.py`, and other conformant co-writers) actually
 # emit, kept here for `check-jsonschema` validation and IDE support. It does
 # not define the format; it conforms to it and may lag a change made upstream.
 #
@@ -130,7 +130,7 @@ $defs:
         additionalProperties: true
         description: |
           Namespaced per-tool extension bags, keyed by tool slug (e.g.
-          `"open-bridge"`, `"k2a"`). A writer touches ONLY its own key; every
+          `"open-bridge"`, `"cowriter"`). A writer touches ONLY its own key; every
           other key must round-trip byte-for-byte. This repo's slice
           (`extensions["open-bridge"]`) carries at least `id` (the
           instance-qualified `<hash>:<slug>` mirror key) plus `overlays` and

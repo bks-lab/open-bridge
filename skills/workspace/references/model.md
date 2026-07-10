@@ -72,7 +72,7 @@ conformant tool modifies it under one documented protocol:
 The invariants that make this safe — whole-file read inside the lock,
 preserve-unknown-fields-and-foreign-slices, guarded (never ambiguous) adopt,
 fail-closed anomaly handling, version max-monotonic — are locked by
-`scripts/tests/test-workspace-registry.sh` (including a k2a-conformance guard
+`scripts/tests/test-workspace-registry.sh` (including a co-writer-conformance guard
 that every emitted row meets a co-writer's required-field contract, and
 mutation-checks that give each safety assert teeth). The lock itself is
 **advisory** — it only coordinates writers that take it; see
@@ -92,10 +92,10 @@ The workspace engine has **zero dependency on any external launcher or tool**:
   the shared registry is simply where identity is *offered* for any tool that
   wants to read it. The interop is a file contract, not a runtime coupling.
 
-The reference co-writer of this file today is reinvent-lab's `k2a`, whose design
-doc specifies the tool-neutral `~/.workspaces/` layout this writer conforms to;
-it is an *example* of a conformant tool, not a requirement — the contract
-stands on its own. This repo additionally ships a descriptive (not normative)
+The `~/.workspaces/` layout this writer conforms to comes from an external,
+tool-neutral design (for example, a TUI knowledge tool that co-writes the same
+registry); that co-writer is an *example* of a conformant tool, not a
+requirement — the contract stands on its own. This repo additionally ships a descriptive (not normative)
 companion schema —
 [`docs/schemas/workspaces-registry.schema.yaml`](../../../docs/schemas/workspaces-registry.schema.yaml)
 — documenting the field set the known writers actually emit; the format's own

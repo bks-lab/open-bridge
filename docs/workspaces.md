@@ -56,8 +56,8 @@ A workspace has **two separable halves**, and open-bridge implements both:
   it is the engine documented in the rest of this page
   ([`scripts/workspace.py`](../scripts/workspace.py)).
 
-The shared registry is **multi-writer** by design — other tools (a knowledge tool
-such as k2a, a cmux importer, an editor or agent hook, and this Bridge) all conform
+The shared registry is **multi-writer** by design — other tools (a TUI knowledge
+tool, a cmux importer, an editor or agent hook, and this Bridge) all conform
 to one documented protocol and write the *same* file — so the identity writer is
 held to strict multi-writer discipline (see
 [The shared identity registry](#the-shared-identity-registry-workspaces) below).
@@ -65,10 +65,11 @@ This follows the reconcile decision in
 `work/tasks/workspace-unification/deliverables/RECONCILE-ANALYSIS.md` (Option 3):
 adopt the shared identity registry, keep materialization repo-local.
 
-## Standalone-first — zero k2a required
+## Standalone-first — zero co-writer required
 
-The workspace engine is **standalone**. It runs with **no k2a present** — no
-import of k2a, no shelling out to a `k2a` binary, no k2a path assumption. Every
+The workspace engine is **standalone**. It runs with **no co-writer present** — no
+import of another tool, no shelling out to any co-writer binary, no external path
+assumption. Every
 verb (`create`, `list`, `validate`, `status`, `subscribe`, `unsubscribe`) works
 end-to-end on a bare Bridge that has never heard of any external tool.
 
@@ -78,7 +79,7 @@ CORE never reads) and the `subscribe` name-resolution seam (which prints a
 graceful "provider not available" and exits when no provider is installed). Both
 are described under [The optional external-provider seam](#the-optional-external-provider-seam)
 and neither does anything on a standalone Bridge. A future knowledge/workspace
-tool (for example, k2a) **may** attach through them later; nothing here waits on
+tool **may** attach through them later; nothing here waits on
 it, and nothing here breaks without it.
 
 ## The model — overlays[] + repos[] + a session pointer
@@ -313,8 +314,8 @@ nothing on a standalone Bridge.
 1. **`x-provider` (schema).** A namespaced bag on the workspace definition
    (`propertyNames` are provider slugs). An external provider may stash its own
    data there; CORE never reads it, and unknown keys never fail validation. No
-   k2a-specific field is ever a *required* CORE field — the required core stays
-   generic.
+   co-writer-specific field is ever a *required* CORE field — the required core
+   stays generic.
 
 2. **The `subscribe` name seam.** The second positional of `subscribe` (alias
    `add-repo`) is normally a git URL. If instead it is a bare slug
@@ -326,12 +327,12 @@ nothing on a standalone Bridge.
 
    ```
    '<x>' is not a git URL. Resolving a workspace/provider name to repos needs an
-   external provider (e.g. k2a) that is not available in this standalone Bridge.
-   Pass an explicit git URL, or install the provider.
+   external provider that is not available in this standalone Bridge.
+   Pass an explicit git URL, or install a provider.
    ```
 
 The intent, non-normatively: a knowledge/workspace tool that maintains its own
-workspace registry (k2a being the concrete example) **could**, in a later
+workspace registry (a TUI knowledge tool being the concrete example) **could**, in a later
 increment, register as that provider and resolve a workspace name to the repos it
 knows about — because both sides read the same open, versioned workspace schema.
 That is a documented *seam*, capability-detected and graceful when absent — never

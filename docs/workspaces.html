@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<!-- ============================================================================
+     BKS open-bridge — workspaces.html  (feature page)
+     Built on the shared shell used by index.html / concepts.html.
+     Self-contained single file, GitHub-Pages-ready, fully offline, native UTF-8.
+     Tool-neutral: no product names, no external assets. English-only content.
+     ============================================================================ -->
+<html lang="en" data-active-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BKS open-bridge — Workspaces</title>
+<meta name="description" content="Workspaces in BKS open-bridge — a named binding of member repos and config overlays, split into a shared machine-global identity registry and a repo-local materialization engine, with a standalone-by-design command surface and multi-writer safety.">
+<!-- Social / Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="BKS open-bridge — Workspaces">
+<meta property="og:description" content="A workspace is a named binding of member repos and config overlays — shared identity registry plus repo-local materialization.">
+<meta property="og:url" content="https://bks-lab.github.io/open-bridge/workspaces.html">
+<meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="BKS open-bridge — Workspaces">
+<meta name="twitter:description" content="A workspace is a named binding of member repos and config overlays.">
+
+<!-- Anti-FOUC pre-paint: theme set BEFORE the stylesheet paints. -->
+<script>
+(function(){
+  var r = document.documentElement;
+  try{
+    var t = localStorage.getItem("ob-theme");
+    if(t === "dark" || (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)){
+      r.classList.add("dark");
+    }
+  }catch(e){}
+})();
+</script>
+
+<style>
+/* ============================================================
+   BKS open-bridge shared shell — single file, fully offline.
+   Colour / type / space tokens lifted from DESIGN.md (Editorial
+   Minimalism). No external fonts, no CDN, no network calls.
+   ============================================================ */
+
+:root{
+  --ink:#111827; --muted:#6B7280;
+  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
+  --on-primary:#FFFFFF; --on-surface:#374151;
+  --line:#E5E7EB; --line-subtle:#F3F4F6;
+  --accent-from:#667EEA; --accent-to:#764BA2;
+  --accent:#6366F1; --accent-secondary:#8B5CF6;
+  --ok:#10B981; --info:#3B82F6;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+
+  --accent-text:#4F46E5;
+  --accent-soft:#EEF2FF;
+  --ok-text:#047857;
+  --info-text:#1D4ED8;
+  --attention-text:#7C3AED;
+  --code-bg:#F9FAFB;
+
+  --primary:var(--ink); --secondary:var(--muted);
+  --border:var(--line); --border-subtle:var(--line-subtle);
+  --on-surface-muted:var(--muted);
+  --success:var(--ok); --attention:var(--accent-secondary);
+  --mono:var(--font-mono);
+
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+
+  --section-y:96px;
+  --container:80rem; --hero-w:72rem; --prose-w:48rem;
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
+}
+
+html.dark{
+  --ink:#F9FAFB; --muted:#9CA3AF;
+  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
+  --on-surface:#D1D5DB;
+  --line:#374151; --line-subtle:#1F2937;
+  --accent-from:#A78BFA; --accent-to:#818CF8;
+  --accent:#818CF8;
+  --accent-text:#A78BFA;
+  --accent-soft:#312E81;
+  --ok-text:#34D399;
+  --info-text:#93C5FD;
+  --attention-text:#C4B5FD;
+  --code-bg:#0B1220;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-sans);
+  background:var(--surface); color:var(--on-surface);
+  font-size:16px; line-height:1.6; font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:3px}
+
+.container{max-width:var(--container);margin:0 auto;padding-inline:24px}
+.prose{max-width:var(--prose-w);margin-inline:auto}
+
+h1,h2,h3,h4{color:var(--primary);letter-spacing:-0.02em}
+.display{font-size:clamp(38px,5.4vw,64px);font-weight:300;line-height:1.06;letter-spacing:-0.02em}
+.h1{font-size:clamp(30px,4.4vw,46px);font-weight:300;line-height:1.12}
+.h2{font-size:clamp(26px,3.6vw,34px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
+.h3{font-size:24px;font-weight:500;line-height:1.3;letter-spacing:-0.01em}
+.h4{font-size:20px;font-weight:500;line-height:1.4}
+.body-xl{font-size:20px;font-weight:300;line-height:1.6}
+.eyebrow{font-size:13px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
+.muted{color:var(--on-surface-muted)}
+a{color:var(--accent-text)}
+
+.text-gradient{
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+  font-weight:400;
+}
+
+/* ---- Header ---- */
+header.nav{
+  position:sticky;top:0;z-index:50;height:auto;min-height:64px;
+  display:flex;align-items:center;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap;text-decoration:none}
+.wordmark .text-gradient{font-weight:400}
+.nav-spacer{flex:1}
+.nav-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.site-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.site-nav a{
+  font-size:14px;font-weight:500;line-height:1.2;text-decoration:none;
+  color:var(--secondary);padding:6px 12px;border-radius:var(--r-full);
+  transition:color .18s ease,background .18s ease;white-space:nowrap;
+}
+.site-nav a:hover{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active,
+.site-nav a[aria-current="page"]{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active{position:relative}
+.site-nav a.active::after{
+  content:"";position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+}
+@media (max-width:560px){ .site-nav a{padding:6px 9px;font-size:13px} }
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:400;line-height:1.2;
+  padding:5px 11px;border-radius:var(--r-full);
+  background:var(--surface-muted);color:var(--on-surface);
+  border:1px solid var(--border);white-space:nowrap;text-decoration:none;
+}
+a.chip{color:var(--on-surface)}
+a.chip:hover{color:var(--primary)}
+
+.icon-btn{
+  width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-full);background:var(--surface);
+  cursor:pointer;color:var(--secondary);padding:0;
+}
+.icon-btn:hover{color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.sun{display:none}
+html.dark .sun{display:block}
+html.dark .moon{display:none}
+
+/* ---- Buttons ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:16px;font-weight:500;line-height:1.25;
+  padding:14px 28px;border-radius:var(--r-md);border:1px solid transparent;
+  transition:transform .2s ease,background .2s ease,border-color .2s ease;
+}
+.btn svg{width:18px;height:18px}
+.btn-primary{background:var(--primary);color:var(--surface)}
+html.dark .btn-primary{background:var(--accent);color:#0B1220}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-secondary{background:var(--surface);color:var(--on-surface);border-color:var(--border)}
+.btn-secondary:hover{background:var(--surface-subtle)}
+.btn .arrow{transition:transform .2s ease}
+.btn:hover .arrow{transform:translateX(3px)}
+
+section{padding-block:var(--section-y)}
+.alt{background:var(--surface-subtle)}
+.sec-head{max-width:var(--prose-w);margin:0 auto 56px;text-align:center}
+.sec-head .h1{margin-top:14px}
+.sec-head p{margin-top:18px;font-size:18px;font-weight:300}
+
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:32px;box-shadow:var(--shadow-soft);
+}
+
+/* ---- Footer ---- */
+footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;max-width:var(--container);margin:0 auto;padding-inline:24px}
+.foot-grid h4{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:var(--secondary);font-weight:600;margin-bottom:16px}
+.foot-grid a{color:var(--on-surface);text-decoration:none;font-size:14.5px;display:block;margin-bottom:9px}
+.foot-grid a:hover{color:var(--primary)}
+.foot-blurb{font-size:14px;color:var(--on-surface-muted);line-height:1.65}
+.foot-blurb .wordmark{font-size:20px;display:block;margin-bottom:14px}
+.license-table{margin-top:18px;font-size:13px;border-collapse:collapse;width:100%}
+.license-table td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);color:var(--on-surface);vertical-align:top}
+.license-table td a{display:inline}
+.foot-bottom{max-width:var(--container);margin:40px auto 0;padding:28px 24px 0;border-top:1px solid var(--border);
+  display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;font-size:13px;color:var(--secondary)}
+
+.reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (max-width:860px){ .foot-grid{grid-template-columns:1fr} .foot-grid>*{min-width:0} }
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .reveal{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+}
+@media print{
+  html.dark{
+    --ink:#111827;--muted:#6B7280;--surface:#FFFFFF;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;
+    --on-surface:#374151;--line:#E5E7EB;--accent-from:#667EEA;--accent-to:#764BA2;--accent:#6366F1;
+    --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
+  }
+  *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  header.nav,.icon-btn{display:none!important}
+  .reveal{opacity:1!important;transform:none!important}
+  section{padding-block:32px}
+}
+</style>
+
+<!-- ============ page-specific styles (workspaces.html) ============ -->
+<style>
+:target{scroll-margin-top:84px}
+[id]{scroll-margin-top:84px}
+
+code, .mono{
+  font-family:var(--mono);font-size:0.86em;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:1px 6px;color:var(--on-surface);
+}
+.prose p code{white-space:nowrap}
+
+.page-hero{padding-block:64px 40px}
+.page-hero .eyebrow{margin-bottom:14px}
+.page-hero p.lede{margin-top:18px;font-size:18px;font-weight:300;color:var(--on-surface)}
+
+.lead-def{
+  margin-top:40px;max-width:var(--prose-w);margin-inline:auto;
+  border:1px solid var(--border);border-left:3px solid var(--accent-text);
+  border-radius:var(--r-lg);background:var(--surface-subtle);
+  padding:30px 34px;box-shadow:var(--shadow-soft);
+}
+.lead-def .k{font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--accent-text)}
+.lead-def .def{margin-top:12px;font-size:22px;font-weight:300;line-height:1.45;color:var(--primary)}
+.lead-def .more{margin-top:16px;font-size:15px}
+.lead-def .more a{font-weight:500;text-decoration:none}
+.lead-def .more a:hover{text-decoration:underline}
+
+.grp{max-width:var(--prose-w);margin:0 auto 8px;padding-top:8px}
+.grp .eyebrow{color:var(--accent-text)}
+.grp .h2{margin-top:8px}
+
+.block{max-width:var(--prose-w);margin:0 auto 28px}
+.block h3.h3{font-size:24px;font-weight:600;line-height:1.25;color:var(--primary);margin-bottom:10px}
+.block p{font-size:16px;line-height:1.7;color:var(--on-surface);margin-bottom:14px}
+
+/* split cards for the identity / materialization halves */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:var(--prose-w);margin:0 auto 8px}
+.split .card{padding:26px 28px}
+.split .card h4{font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--accent-text);margin-bottom:10px}
+.split .card p{font-size:15px;line-height:1.65;color:var(--on-surface);margin-bottom:0}
+.split .card .tag{display:inline-block;margin-bottom:12px;font-size:12px;font-weight:600;letter-spacing:0.03em;
+  padding:4px 10px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface-subtle);color:var(--secondary)}
+@media (max-width:640px){ .split{grid-template-columns:1fr} }
+
+/* verb table */
+.verbs{max-width:var(--prose-w);margin:0 auto;overflow-x:auto}
+.verbs table{border-collapse:collapse;width:100%;font-size:15px}
+.verbs th,.verbs td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+.verbs th{font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:var(--secondary);font-weight:600}
+.verbs td.v{white-space:nowrap}
+.verbs td.v code{background:var(--accent-soft);border-color:transparent;color:var(--accent-text);font-weight:600}
+
+/* callout */
+.note{
+  max-width:var(--prose-w);margin:0 auto 28px;
+  border:1px solid var(--border);border-left:3px solid var(--info);
+  border-radius:var(--r-lg);background:var(--surface);
+  padding:22px 26px;box-shadow:var(--shadow-soft);
+}
+.note .k{font-size:12px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--info-text);margin-bottom:8px}
+.note p{font-size:15px;line-height:1.65;color:var(--on-surface);margin:0}
+
+/* pointer chips */
+.pointers{max-width:var(--prose-w);margin:0 auto;display:flex;flex-wrap:wrap;gap:10px}
+.pointers a{
+  text-decoration:none;color:var(--accent-text);
+  padding:8px 14px;border-radius:var(--r-full);
+  border:1px solid var(--border);background:var(--surface-subtle);
+  font-size:14px;font-weight:500;
+}
+.pointers a:hover{background:var(--accent-soft)}
+
+@media (max-width:560px){ .lead-def{padding:24px 22px} .split .card{padding:22px 20px} }
+</style>
+</head>
+<body>
+
+<!-- ======================= STICKY HEADER (shared) ======================= -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="index.html">Home</a>
+      <a href="demo.html">Demo</a>
+      <a href="use-cases.html">Use Cases</a>
+      <a href="concepts.html">Concepts</a>
+      <a class="active" aria-current="page" href="workspaces.html">Workspaces</a>
+      <a href="explore.html">Explore</a>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="nav-chips">
+      <a class="chip" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="chip" href="index.html#license" aria-label="MIT license">MIT</a>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================ PAGE CONTENT ============================ -->
+<main id="top">
+
+  <!-- ---- intro + lead definition ---- -->
+  <section class="page-hero">
+    <div class="container">
+      <div class="prose">
+        <p class="eyebrow">Feature</p>
+        <h1 class="h1">Workspaces</h1>
+        <p class="lede">A workspace is how a bridge binds together the pieces it needs to work on one thing — the config overlays it subscribes to and the member repos it clones into its working set — under one name. It sits <em>above</em> the overlay mechanism, adds a second membership dimension (code repos), and mirrors a small, tool-neutral identity into a shared registry so any conformant tool can answer "which project is this directory in?"</p>
+      </div>
+
+      <div class="lead-def">
+        <div class="k">What is a workspace?</div>
+        <p class="def">A <strong>named binding of member repos + config overlays</strong>. Each workspace is one file — <code>workflow/workspaces/&lt;id&gt;.yaml</code> — read and mutated by a standalone engine, with a generated lock recording the resolved reality of its code-member clones.</p>
+        <p class="more"><a href="workspaces.md">Read the full workspaces guide →</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- the identity / materialization split ---- -->
+  <section class="alt" style="padding-block:56px 72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow">The core split</p>
+        <h2 class="h2">Identity vs. materialization</h2>
+      </div>
+      <div class="block reveal">
+        <p>A workspace has two separable halves. <strong>Identity</strong> is <em>which</em> project this is — its name, the directories it roots at, and its git remotes. A set of projects is a fact about the <em>machine</em>, not about one repo or one tool, so identity is <strong>shared</strong> and lives in a tool-neutral registry outside any single tool. <strong>Materialization</strong> is <em>how</em> one instance realises the workspace locally — the code clones, the lock, and the exclude guard. Those are implementation details of a single instance, so that half stays <strong>repo-local</strong>.</p>
+      </div>
+      <div class="split reveal">
+        <div class="card">
+          <span class="tag">machine-global · shared</span>
+          <h4>Shared identity registry</h4>
+          <p>A single JSON file at <code>$WORKSPACES_DIR/workspaces.json</code> (else <code>~/.workspaces/workspaces.json</code>), schema <code>version: 2</code>. It records name, directories, and git remotes so several conformant co-writers agree on project identity. This bridge is a first-class <em>writer</em>, not just a reader — it registers a workspace's identity itself, keyed by an instance-qualified id so two instances that share a slug never clobber each other.</p>
+        </div>
+        <div class="card">
+          <span class="tag">repo-local · per-instance</span>
+          <h4>Repo-local materialization</h4>
+          <p>A generated <code>workspaces.lock.yaml</code> pins each <code>role: code</code> member to its resolved commit. The clones live under an ignored <code>.bridge/workspaces/&lt;id&gt;/</code> tree, and a marked block in the local, untracked <code>.git/info/exclude</code> keeps them out of git — so even a public fork can never <code>git add -A</code>-publish foreign code. The tracked <code>.gitignore</code> is never touched.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- the verbs ---- -->
+  <section style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow">Command surface</p>
+        <h2 class="h2">The verbs</h2>
+      </div>
+      <div class="block reveal">
+        <p>Drive the engine directly with six verbs. The mutating verbs (<code>create</code>, <code>subscribe</code>, <code>unsubscribe</code>) refuse to run unless the current branch is <code>user/*</code>, so a CORE branch never carries instance state; the read-only verbs run anywhere.</p>
+      </div>
+      <div class="verbs reveal">
+        <table>
+          <thead><tr><th>Verb</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td class="v"><code>create</code></td><td>Scaffold a new <code>workflow/workspaces/&lt;id&gt;.yaml</code> from the template — id, title, timestamps, empty overlays and repos. Refuses an invalid slug or an existing file.</td></tr>
+            <tr><td class="v"><code>subscribe</code></td><td>Add a member. A <code>role: code</code> member is cloned into the ignored <code>.bridge/</code> tree and pinned in the lock; a <code>role: config</code> member is normalized and delegated to the overlay engine. Idempotent on the same url+ref.</td></tr>
+            <tr><td class="v"><code>unsubscribe</code></td><td>Remove a code member (delete the clone, drop the lock entry, refresh the exclude block) or a config overlay (delegate the removal) — and shrink the shared-registry mirror.</td></tr>
+            <tr><td class="v"><code>list</code></td><td>Read-only table of workspaces and their code / overlay counts.</td></tr>
+            <tr><td class="v"><code>status</code></td><td>Read-only drift report: for each code member whether the clone is present and matches the lock (<code>clean</code> / <code>ahead</code> / <code>missing</code>); overlays listed by name.</td></tr>
+            <tr><td class="v"><code>validate</code></td><td>Validate one or all definitions against the schema, preferring an external validator when available with an in-engine fallback otherwise.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- standalone by design ---- -->
+  <section class="alt" style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow">No dependency</p>
+        <h2 class="h2">Standalone by design</h2>
+      </div>
+      <div class="block reveal">
+        <p>The workspace engine is standalone. Every verb works end-to-end on a bare bridge that has never heard of any external tool — no import, no shelling out to a foreign binary, no path assumption. The only provider hooks in the whole design are two inert seams: an extension bag on the schema that CORE never reads, and a name-resolution seam on <code>subscribe</code>.</p>
+      </div>
+      <div class="note reveal">
+        <div class="k">The provider seam degrades gracefully</div>
+        <p>If <code>subscribe</code> is given a bare name instead of a git URL, resolving that name to a set of repos would need an optional external provider. On a standalone bridge none is present, so the engine prints a clear message and exits <code>3</code> — performing no import and no provider path lookup. A future knowledge/workspace tool <em>may</em> attach through the seam later, because both sides read the same open, versioned schema; nothing here waits on it, and nothing breaks without it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- multi-writer safety ---- -->
+  <section style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow">Correctness</p>
+        <h2 class="h2">Multi-writer safety</h2>
+      </div>
+      <div class="block reveal">
+        <p>Because other conformant tools write the <em>same</em> <code>workspaces.json</code>, every mutation is safety-critical, so the writer follows one protocol: take an <strong>advisory lock</strong>, read, modify in memory, and <strong>atomically replace</strong> the file (temp + rename). It <strong>preserves unknown fields</strong> — unrecognized top-level and per-workspace keys round-trip untouched, and it only ever edits the shared identity fields plus its own extension slice, never another tool's. And it is <strong>fail-closed</strong>: an unparseable file, or a file newer than it understands, refuses the write rather than guessing — the on-disk bytes are left exactly as found. Only a genuine older file rotates, loudly, to a timestamped backup before a fresh registry is started. The advisory lock coordinates cooperating writers; the repo-local definition and lock stay authoritative, so a transiently-wrong shared mirror re-converges on the next local mutation.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- pointers ---- -->
+  <section class="alt" style="padding-block:64px 88px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow">Go deeper</p>
+        <h2 class="h2">Read next</h2>
+      </div>
+      <div class="pointers reveal">
+        <a href="workspaces.md">Workspaces guide (docs/workspaces.md)</a>
+        <a href="workspace-acceptance-test.md">Acceptance test playbook</a>
+        <a href="schemas/workspace.schema.yaml">Definition schema</a>
+        <a href="schemas/workspaces-lock.schema.yaml">Lock schema</a>
+        <a href="schemas/workspaces-registry.schema.yaml">Registry schema</a>
+      </div>
+      <div class="prose" style="margin-top:44px;text-align:center">
+        <a class="btn btn-primary" href="concepts.html">Read the concept guide <span class="arrow">→</span></a>
+        <a class="btn btn-secondary" href="index.html#get-started" style="margin-left:10px">Try it in 2 minutes <span class="arrow">→</span></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+<!-- ========================== END PAGE CONTENT ============================== -->
+
+<!-- ======================= FOOTER (shared) ======================= -->
+<footer id="license">
+  <div class="foot-grid">
+    <div class="foot-blurb">
+      <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+      <span>Built at BKS-Lab — a small team — and used daily to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <table class="license-table">
+        <tr><td>Code &amp; content</td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
+        <tr><td>Brand</td><td>Trademark policy</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
+      </table>
+      <p class="muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. Licenses cover copyright, not brands. Contributions require a DCO sign-off (<code>git commit -s</code>).</p>
+    </div>
+
+    <div>
+      <h4>Explore</h4>
+      <a href="index.html">Home</a>
+      <a href="concepts.html">Concepts in depth</a>
+      <a href="workspaces.html">Workspaces</a>
+      <a href="use-cases.html">Use cases &amp; solutions</a>
+      <a href="explore.html">Explore the concepts</a>
+    </div>
+
+    <div>
+      <h4>Links</h4>
+      <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/README.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs/workspaces.md" target="_blank" rel="noopener">Workspaces guide</a>
+    </div>
+  </div>
+
+  <div class="foot-bottom">
+    <span>Public · MIT · no waitlist · newly released</span>
+    <a class="btn btn-secondary" style="padding:10px 20px;font-size:14px" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+      Read the code on GitHub <span class="arrow">→</span>
+    </a>
+  </div>
+</footer>
+
+<!-- ======================= Shared page controller ======================= -->
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+
+  function applyTheme(mode){
+    if(mode === "dark"){ root.classList.add("dark"); }
+    else { root.classList.remove("dark"); }
+  }
+  function toggleTheme(){
+    var next = root.classList.contains("dark") ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("ob-theme", next); } catch(e){}
+  }
+  var themeBtn = document.getElementById("theme-toggle");
+  if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
+
+  document.addEventListener("keydown", function(ev){
+    if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
+    if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
+    if(ev.key.toLowerCase() === "t"){ toggleTheme(); }
+  });
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); });
+  }
+})();
+</script>
+</body>
+</html>

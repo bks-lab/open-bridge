@@ -14,7 +14,7 @@
 #   -  de-dup on create by identity — by git_remotes (scp≡https) AND by path
 #   -  preserve-unknown — an unknown top-level key + an unknown per-workspace key
 #      survive an upsert of a DIFFERENT workspace (only version + workspaces touched)
-#   -  foreign-extension preservation — another tool's extensions["k2a"] slice
+#   -  foreign-extension preservation — another tool's extensions["cowriter"] slice
 #      survives an upsert of the SAME identity; only our extensions["open-bridge"]
 #      and the shared-identity fields change
 #   -  atomic replace — no `.tmp` left behind; the file is always parseable
@@ -25,7 +25,7 @@
 #   -  path matching (§D) — symlink canonicalization, macOS Dropbox alias, and
 #      longest-match-wins for nested directories
 #   -  archive — soft-delete flips archived + bumps updated_at
-#   -  standalone — the module source contains no k2a/reinvent reference
+#   -  standalone — the module source names no specific co-writer tool
 #   -  CLI — version-guard exits non-zero, read still exits 0
 #   -  guarded structural adopt (publish, §C.3 rule 3) — a peer tool's row with
 #      NO open-bridge slice is ADOPTED (merge semantics, foreign fields preserved,
@@ -122,16 +122,16 @@ fi
 S_UPSERT="$TMP/s_upsert.py";        printf '%s' "$HDR" > "$S_UPSERT"
 cat >> "$S_UPSERT" <<'PY'
 reg = m.Registry()
-ws = reg.upsert_workspace("k2a",
-        directories=["/tmp/wsr/k2a"],
-        git_remotes=["https://github.com/acme/k2a.git"],
+ws = reg.upsert_workspace("cowriter",
+        directories=["/tmp/wsr/cowriter"],
+        git_remotes=["https://github.com/acme/cowriter.git"],
         open_bridge_ext={"overlays": ["o"], "repos": ["r"]})
 d = reg.read_registry()
 w = d["workspaces"][0]
 ok = (d["version"] == 2 and len(d["workspaces"]) == 1
-      and w["name"] == "k2a" and w["id"] == "ws_0001" and w["archived"] is False
-      and w["directories"][0]["path"] == os.path.realpath("/tmp/wsr/k2a")
-      and "https://github.com/acme/k2a.git" in w["git_remotes"]
+      and w["name"] == "cowriter" and w["id"] == "ws_0001" and w["archived"] is False
+      and w["directories"][0]["path"] == os.path.realpath("/tmp/wsr/cowriter")
+      and "https://github.com/acme/cowriter.git" in w["git_remotes"]
       and w["extensions"]["open-bridge"] == {"overlays": ["o"], "repos": ["r"]}
       and bool(w["created_at"]) and bool(w["updated_at"]))
 print("PASS-UPSERT" if ok else "FAIL-UPSERT", w)
@@ -188,14 +188,14 @@ reg = m.Registry()
 seed = {"version": 2, "workspaces": [{
     "id": "ws_0003", "name": "proj", "directories": [],
     "git_remotes": ["https://github.com/acme/proj.git"],
-    "extensions": {"k2a": {"state": {"panes": 2}, "flags": ["--a"]}}}]}
+    "extensions": {"cowriter": {"state": {"panes": 2}, "flags": ["--a"]}}}]}
 os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
 reg.upsert_workspace("proj", git_remotes=["https://github.com/acme/proj.git"],
                      open_bridge_ext={"overlays": ["o1"]})
 after = json.load(open(reg.path))
 w = after["workspaces"][0]
 ok = (len(after["workspaces"]) == 1                                       # de-dup held
-      and w["extensions"]["k2a"] == {"state": {"panes": 2}, "flags": ["--a"]}  # foreign slice intact
+      and w["extensions"]["cowriter"] == {"state": {"panes": 2}, "flags": ["--a"]}  # foreign slice intact
       and w["extensions"]["open-bridge"] == {"overlays": ["o1"]})         # our slice written
 print("PASS-FOREIGN-EXT" if ok else f"FAIL-FOREIGN-EXT ext={w.get('extensions')}")
 PY
@@ -323,35 +323,35 @@ reg = m.Registry()
 seed = {"version": 2, "workspaces": [{
     "id": "ws_0005", "name": "x", "directories": [], "git_remotes": [],
     "unknown_ws": {"keep": 1},
-    "extensions": {"k2a": {"state": {"p": 1}},
+    "extensions": {"cowriter": {"state": {"p": 1}},
                    "open-bridge": {"id": "mine", "overlays": []}}}]}
 os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
 reg.publish_workspace("mine", "Renamed", directories=["/tmp/wsr/m"], git_remotes=[],
                       open_bridge_ext={"overlays": ["o"], "repos": []})
 after = json.load(open(reg.path)); w = after["workspaces"][0]
 ok = (len(after["workspaces"]) == 1                       # matched our id, no new row
-      and w["extensions"]["k2a"] == {"state": {"p": 1}}   # foreign slice preserved
+      and w["extensions"]["cowriter"] == {"state": {"p": 1}}   # foreign slice preserved
       and w.get("unknown_ws") == {"keep": 1}              # unknown per-ws key preserved
       and w["name"] == "Renamed"                          # our identity replace applied
       and w["extensions"]["open-bridge"]["overlays"] == ["o"])
 print("PASS-PUBLISH-FOREIGN" if ok else f"FAIL-PUBLISH-FOREIGN ext={w.get('extensions')} unk={w.get('unknown_ws')}")
 PY
 
-# k2a-CONFORMANCE — every row WE write must satisfy k2a's required-field
-# contract so k2a can parse the shared file at all. Verified against k2a `dev`
-# workspaces.rs: the Workspace struct requires ONLY top-level string `id` +
-# `name`; every other field is #[serde(default)] (state/session_ns/… all fill
-# from defaults). A row we emit that lacks id or name would fail k2a's parse for
-# the WHOLE file. Rows we author must ALSO omit k2a-private fields (state,
-# session_ns) — those are k2a's to fill. A pre-seeded k2a-style row (carrying
-# `state`) must survive untouched alongside ours. This pins our output to the
-# PUBLISHED neutral schema, NOT to k2a-the-tool.
+# CO-WRITER CONFORMANCE — every row WE write must satisfy a conformant co-writer's
+# required-field contract so another tool can parse the shared file at all. Per the
+# external tool-neutral design: the workspace struct requires ONLY top-level string
+# `id` + `name`; every other field defaults (state/session_ns/… all fill from
+# defaults). A row we emit that lacks id or name would fail a co-writer's parse for
+# the WHOLE file. Rows we author must ALSO omit co-writer-private fields (state,
+# session_ns) — those are a co-writer's to fill. A pre-seeded co-writer-style row
+# (carrying `state`) must survive untouched alongside ours. This pins our output to
+# the PUBLISHED neutral schema, NOT to any one tool.
 S_CONFORM="$TMP/s_conform.py"; printf '%s' "$HDR" > "$S_CONFORM"
 cat >> "$S_CONFORM" <<'PY'
 reg = m.Registry()
 seed = {"version": 2, "workspaces": [{
-    "id": "ws_0003", "name": "k2a-owned",
-    "directories": [{"path": "/tmp/wsr/k2a", "aliases": []}],
+    "id": "ws_0003", "name": "cowriter-owned",
+    "directories": [{"path": "/tmp/wsr/cowriter", "aliases": []}],
     "git_remotes": [], "state": {"panes": []}}]}
 os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
 reg.upsert_workspace("up", directories=["/tmp/wsr/up"],
@@ -361,13 +361,13 @@ reg.publish_workspace("pub-id", "Published", directories=["/tmp/wsr/pub"],
                       git_remotes=[], open_bridge_ext={"overlays": ["o"], "repos": []})
 rows = reg.read_registry()["workspaces"]
 req = all(isinstance(w.get("id"), str) and w["id"]
-          and isinstance(w.get("name"), str) and w["name"] for w in rows)   # k2a's 2 required fields
+          and isinstance(w.get("name"), str) and w["name"] for w in rows)   # cowriter's 2 required fields
 dirs = all(isinstance(d.get("path"), str) and d["path"]
            for w in rows for d in w.get("directories", []))                 # WorkspaceDirectory.path
 ours = [w for w in rows if "open-bridge" in w.get("extensions", {})]
-noprivate = all("state" not in w and "session_ns" not in w for w in ours)   # leave k2a-private to defaults
+noprivate = all("state" not in w and "session_ns" not in w for w in ours)   # leave cowriter-private to defaults
 foreign = [w for w in rows if w["id"] == "ws_0003"][0]
-foreign_ok = foreign.get("state") == {"panes": []}                          # k2a row untouched
+foreign_ok = foreign.get("state") == {"panes": []}                          # cowriter row untouched
 ok = req and dirs and noprivate and foreign_ok and len(ours) == 2
 print("PASS-CONFORM" if ok else f"FAIL-CONFORM req={req} dirs={dirs} noprivate={noprivate} foreign={foreign_ok} nours={len(ours)}")
 PY
@@ -381,30 +381,30 @@ S_ADOPT_REMOTE="$TMP/s_adopt_remote.py"; printf '%s' "$HDR" > "$S_ADOPT_REMOTE"
 cat >> "$S_ADOPT_REMOTE" <<'PY'
 reg = m.Registry()
 seed = {"version": 2, "workspaces": [{
-    "id": "ws_0007", "name": "k2a-native", "name_generated": False,
-    "directories": [{"path": "/tmp/wsr/k2a", "aliases": []}],
-    "git_remotes": ["git@github.com:acme/k2a.git"],   # scp form
+    "id": "ws_0007", "name": "cowriter-native", "name_generated": False,
+    "directories": [{"path": "/tmp/wsr/cowriter", "aliases": []}],
+    "git_remotes": ["git@github.com:acme/cowriter.git"],   # scp form
     "state": {"panes": 3}, "session_ns": "abc",
     "resource_refs": [{"kind": "doc", "id": "d1"}],
-    "extensions": {"k2a": {"flags": ["--x"]}},
+    "extensions": {"cowriter": {"flags": ["--x"]}},
     "weird": {"keep": 1}}]}
 os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
-reg.publish_workspace("abc123def456:k2a", "OB Name",
-                      directories=["/tmp/wsr/k2a"],
-                      git_remotes=["https://github.com/acme/k2a.git",   # SAME repo (deduped)
+reg.publish_workspace("abc123def456:cowriter", "OB Name",
+                      directories=["/tmp/wsr/cowriter"],
+                      git_remotes=["https://github.com/acme/cowriter.git",   # SAME repo (deduped)
                                    "https://github.com/acme/extra.git"],  # NEW (merged in)
                       open_bridge_ext={"overlays": ["o1"], "repos": []})
 after = json.load(open(reg.path)); w = after["workspaces"][0]
 ok = (len(after["workspaces"]) == 1                                       # adopted, no new row
       and w["id"] == "ws_0007"                                           # SAME row
-      and w["name"] == "k2a-native"                                      # name kept (not generated)
-      and w["state"] == {"panes": 3} and w["session_ns"] == "abc"        # k2a-private preserved
+      and w["name"] == "cowriter-native"                                      # name kept (not generated)
+      and w["state"] == {"panes": 3} and w["session_ns"] == "abc"        # cowriter-private preserved
       and w["resource_refs"] == [{"kind": "doc", "id": "d1"}]            # resource_refs preserved
-      and w["extensions"]["k2a"] == {"flags": ["--x"]}                   # foreign ext preserved
+      and w["extensions"]["cowriter"] == {"flags": ["--x"]}                   # foreign ext preserved
       and w.get("weird") == {"keep": 1}                                  # unknown key preserved
-      and w["extensions"]["open-bridge"]["id"] == "abc123def456:k2a"     # our slice parked
+      and w["extensions"]["open-bridge"]["id"] == "abc123def456:cowriter"     # our slice parked
       and w["extensions"]["open-bridge"]["overlays"] == ["o1"]
-      and w["git_remotes"] == ["git@github.com:acme/k2a.git",            # MERGE: kept + deduped + added
+      and w["git_remotes"] == ["git@github.com:acme/cowriter.git",            # MERGE: kept + deduped + added
                                "https://github.com/acme/extra.git"]
       and len(w["directories"]) == 1)
 print("PASS-ADOPT-REMOTE" if ok else f"FAIL-ADOPT-REMOTE w={w}")
@@ -417,7 +417,7 @@ reg = m.Registry()
 seed = {"version": 2, "workspaces": [{
     "id": "ws_0004", "name": "native", "name_generated": False,
     "directories": [{"path": "/tmp/wsr/shared", "aliases": []}],
-    "git_remotes": [], "extensions": {"k2a": {"s": 1}}}]}
+    "git_remotes": [], "extensions": {"cowriter": {"s": 1}}}]}
 os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
 reg.publish_workspace("h:shared", "OB",
                       directories=["/tmp/wsr/shared/", "/tmp/wsr/shared/code"],  # trailing-slash ≡ same
@@ -426,7 +426,7 @@ after = json.load(open(reg.path)); w = after["workspaces"][0]
 paths = [d["path"] for d in w["directories"]]
 ok = (len(after["workspaces"]) == 1 and w["id"] == "ws_0004"
       and w["name"] == "native"                              # name kept
-      and w["extensions"]["k2a"] == {"s": 1}                 # foreign ext preserved
+      and w["extensions"]["cowriter"] == {"s": 1}                 # foreign ext preserved
       and w["extensions"]["open-bridge"]["id"] == "h:shared"
       and len(w["directories"]) == 2                          # merged, not replaced
       and "/tmp/wsr/shared" in paths                          # existing entry preserved as-is
@@ -440,11 +440,11 @@ cat >> "$S_ADOPT_NAME" <<'PY'
 reg = m.Registry()
 seed = {"version": 2, "workspaces": [
     {"id": "ws_0001", "name": "", "name_generated": False,
-     "directories": [], "git_remotes": ["https://h/x/empty.git"], "extensions": {"k2a": {}}},
+     "directories": [], "git_remotes": ["https://h/x/empty.git"], "extensions": {"cowriter": {}}},
     {"id": "ws_0002", "name": "auto", "name_generated": True,
-     "directories": [], "git_remotes": ["https://h/x/gen.git"], "extensions": {"k2a": {}}},
+     "directories": [], "git_remotes": ["https://h/x/gen.git"], "extensions": {"cowriter": {}}},
     {"id": "ws_0003", "name": "curated", "name_generated": False,
-     "directories": [], "git_remotes": ["https://h/x/keep.git"], "extensions": {"k2a": {}}}]}
+     "directories": [], "git_remotes": ["https://h/x/keep.git"], "extensions": {"cowriter": {}}}]}
 os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
 reg.publish_workspace("h:empty", "FromEmpty", git_remotes=["https://h/x/empty.git"], open_bridge_ext={"overlays": []})
 reg.publish_workspace("h:gen", "FromGen", git_remotes=["https://h/x/gen.git"], open_bridge_ext={"overlays": []})
@@ -466,8 +466,8 @@ S_ADOPT_AMBIG="$TMP/s_adopt_ambig.py"; printf '%s' "$HDR" > "$S_ADOPT_AMBIG"
 cat >> "$S_ADOPT_AMBIG" <<'PY'
 reg = m.Registry()
 seed = {"version": 2, "workspaces": [
-    {"id": "ws_0001", "name": "A", "directories": [], "git_remotes": ["https://h/x/one.git"], "extensions": {"k2a": {}}},
-    {"id": "ws_0002", "name": "B", "directories": [], "git_remotes": ["https://h/x/two.git"], "extensions": {"k2a": {}}}]}
+    {"id": "ws_0001", "name": "A", "directories": [], "git_remotes": ["https://h/x/one.git"], "extensions": {"cowriter": {}}},
+    {"id": "ws_0002", "name": "B", "directories": [], "git_remotes": ["https://h/x/two.git"], "extensions": {"cowriter": {}}}]}
 os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
 reg.publish_workspace("h:both", "Both", directories=[],
                       git_remotes=["https://h/x/one.git", "https://h/x/two.git"],  # matches BOTH
@@ -508,52 +508,52 @@ PY
 S_ADOPT_REPUBLISH="$TMP/s_adopt_republish.py"; printf '%s' "$HDR" > "$S_ADOPT_REPUBLISH"
 cat >> "$S_ADOPT_REPUBLISH" <<'PY'
 reg = m.Registry()
-# A peer tool (k2a) row — curated name, a peer-only extra dir + remote, private
+# A peer tool (cowriter) row — curated name, a peer-only extra dir + remote, private
 # state/session, a foreign extension slice: the exact shape create→subscribe hits.
 seed = {"version": 2, "workspaces": [{
-    "id": "ws_0011", "name": "k2a-native", "name_generated": False,
-    "directories": [{"path": "/tmp/wsr/k2a", "aliases": []},
-                    {"path": "/tmp/wsr/k2a-only-extra", "aliases": []}],
-    "git_remotes": ["git@github.com:acme/k2a.git",                 # shared identity (scp form)
-                    "https://github.com/acme/k2a-only.git"],        # peer-only extra remote
+    "id": "ws_0011", "name": "cowriter-native", "name_generated": False,
+    "directories": [{"path": "/tmp/wsr/cowriter", "aliases": []},
+                    {"path": "/tmp/wsr/cowriter-only-extra", "aliases": []}],
+    "git_remotes": ["git@github.com:acme/cowriter.git",                 # shared identity (scp form)
+                    "https://github.com/acme/cowriter-only.git"],        # peer-only extra remote
     "state": {"panes": 4}, "session_ns": "s9",
     "resource_refs": [{"kind": "doc", "id": "d1"}],
-    "extensions": {"k2a": {"flags": ["--z"]}}}]}
+    "extensions": {"cowriter": {"flags": ["--z"]}}}]}
 os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
 REF = "abc123abc123:demo"
 # publish #1 = the `create` publish → structural ADOPT (shared remote), our clone
 # dir + slice parked onto the peer row (peer curation kept).
 reg.publish_workspace(REF, "demo", directories=["/tmp/wsr/ours-clone"],
-                      git_remotes=["https://github.com/acme/k2a.git"],  # ≡ the scp remote
+                      git_remotes=["https://github.com/acme/cowriter.git"],  # ≡ the scp remote
                       open_bridge_ext={"overlays": [], "repos": []})
 # publish #2 = the `subscribe` publish that NATURALLY follows create — id-match.
 # THIS is the regression: on an adopted row it must MERGE, keeping the name guard.
 reg.publish_workspace(REF, "demo", directories=["/tmp/wsr/ours-clone"],
-                      git_remotes=["https://github.com/acme/k2a.git"],
+                      git_remotes=["https://github.com/acme/cowriter.git"],
                       open_bridge_ext={"overlays": ["o"], "repos": []})
 w = json.load(open(reg.path))["workspaces"]; rows = w; w = rows[0]
 paths = [d["path"] for d in w["directories"]]
 merged = (len(rows) == 1                                            # still ONE row
           and w["id"] == "ws_0011"                                 # adopted row, not re-minted
-          and w["name"] == "k2a-native"                            # peer name KEPT (not 'demo')
-          and "/tmp/wsr/k2a-only-extra" in paths                   # peer-only dir survived #2 (as-seeded)
+          and w["name"] == "cowriter-native"                            # peer name KEPT (not 'demo')
+          and "/tmp/wsr/cowriter-only-extra" in paths                   # peer-only dir survived #2 (as-seeded)
           and os.path.realpath("/tmp/wsr/ours-clone") in paths     # our clone present (canonicalized)
-          and "https://github.com/acme/k2a-only.git" in w["git_remotes"]  # peer-only remote survived
-          and w["state"] == {"panes": 4} and w["session_ns"] == "s9"      # k2a-private preserved
+          and "https://github.com/acme/cowriter-only.git" in w["git_remotes"]  # peer-only remote survived
+          and w["state"] == {"panes": 4} and w["session_ns"] == "s9"      # cowriter-private preserved
           and w["resource_refs"] == [{"kind": "doc", "id": "d1"}]
-          and w["extensions"]["k2a"] == {"flags": ["--z"]}         # foreign ext preserved
+          and w["extensions"]["cowriter"] == {"flags": ["--z"]}         # foreign ext preserved
           and w["extensions"]["open-bridge"]["id"] == REF
           and w["extensions"]["open-bridge"]["overlays"] == ["o"]) # our slice refreshed
 # publish #3 drops OUR clone dir → only OUR contribution shrinks; peer fields stay.
 reg.publish_workspace(REF, "demo", directories=[],
-                      git_remotes=["https://github.com/acme/k2a.git"],
+                      git_remotes=["https://github.com/acme/cowriter.git"],
                       open_bridge_ext={"overlays": ["o"], "repos": []})
 w3 = json.load(open(reg.path))["workspaces"][0]
 p3 = [d["path"] for d in w3["directories"]]
 shrink = (os.path.realpath("/tmp/wsr/ours-clone") not in p3        # our clone pruned (shrink)
-          and "/tmp/wsr/k2a-only-extra" in p3                      # peer dir untouched (as-seeded)
-          and "/tmp/wsr/k2a" in p3                                 # peer dir untouched (as-seeded)
-          and "https://github.com/acme/k2a-only.git" in w3["git_remotes"])  # peer remote untouched
+          and "/tmp/wsr/cowriter-only-extra" in p3                      # peer dir untouched (as-seeded)
+          and "/tmp/wsr/cowriter" in p3                                 # peer dir untouched (as-seeded)
+          and "https://github.com/acme/cowriter-only.git" in w3["git_remotes"])  # peer remote untouched
 ok = merged and shrink
 print("PASS-ADOPT-REPUBLISH" if ok else f"FAIL-ADOPT-REPUBLISH merged={merged} shrink={shrink} w={w} w3={w3}")
 PY
@@ -783,7 +783,7 @@ echo
 echo "── 4. foreign extension slice preserved (only our slice changes) ─"
 run_scen "$S_FOREIGN" "$(wsdir)"
 assert_notrace "foreign-ext scenario did not crash"
-assert_out "another tool's extensions[k2a] survives our upsert; our slice written" "PASS-FOREIGN-EXT"
+assert_out "another tool's extensions[cowriter] survives our upsert; our slice written" "PASS-FOREIGN-EXT"
 
 # ───────────────────────────────────────────────────────────────────
 echo
@@ -821,15 +821,15 @@ assert_out "archive flips archived:true on the workspace" "PASS-ARCHIVE"
 
 # ───────────────────────────────────────────────────────────────────
 echo
-echo "── 10. standalone — no k2a/reinvent reference in the module ────"
+echo "── 10. standalone — no named co-writer tool in the module ──────"
 if [ -f "$REGISTRY" ]; then
-  if grep -iqE 'k2a|reinvent' "$REGISTRY"; then
-    fail "scripts/workspace_registry.py references k2a/reinvent (not standalone)" "$(grep -inE 'k2a|reinvent' "$REGISTRY")"
+  if grep -iqE 'cowriter' "$REGISTRY"; then
+    fail "scripts/workspace_registry.py names a specific co-writer tool (not standalone)" "$(grep -inE 'cowriter' "$REGISTRY")"
   else
-    pass "scripts/workspace_registry.py contains no k2a/reinvent reference"
+    pass "scripts/workspace_registry.py names no specific co-writer tool"
   fi
 else
-  fail "scripts/workspace_registry.py absent — cannot assert it is k2a-free"
+  fail "scripts/workspace_registry.py absent — cannot assert it is tool-neutral"
 fi
 
 # ───────────────────────────────────────────────────────────────────
@@ -917,11 +917,11 @@ assert_noout "broken publish foreign-ext engine FAILS the foreign-slice assert (
 
 # ───────────────────────────────────────────────────────────────────
 echo
-echo "── 15. k2a-conformance — every row we write meets k2a's contract ─"
+echo "── 15. cowriter-conformance — every row we write meets cowriter's contract ─"
 run_scen "$S_CONFORM" "$(wsdir)"
 assert_notrace "conformance scenario did not crash"
-assert_out "our rows carry top-level str id+name, dirs as [{path}], omit k2a-private state/session_ns; foreign k2a row untouched" "PASS-CONFORM"
-# teeth: a writer that emits a non-string id → k2a would reject the whole file
+assert_out "our rows carry top-level str id+name, dirs as [{path}], omit cowriter-private state/session_ns; foreign cowriter row untouched" "PASS-CONFORM"
+# teeth: a writer that emits a non-string id → cowriter would reject the whole file
 MUT="$TMP/mut_conform_id.py"
 mutate "$MUT" '"id": _next_id(workspaces),' '"id": 12345,'
 run_scen "$S_CONFORM" "$(wsdir)" "$MUT"
