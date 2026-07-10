@@ -383,6 +383,37 @@ the live registry is a fresh `version= 2` with the new row.
 > "understands at most 2"), while `REG read` still exits `0`. A newer file is
 > read-only, never clobbered.
 
+### 5e — a missing `version` key refuses the write (fail-closed, no rotation)
+
+A file that parses but omits `version` is not a legacy v1 file — it is
+unversioned and therefore untrustworthy, so the write is refused rather than
+rotated (rotation is reserved for the genuine v1→v2 cutover in 5d).
+
+```bash
+export WD=$(mktemp -d)
+printf '{"workspaces":[]}' > "$WD/workspaces.json"     # no version key
+REG upsert "NoVer" --dir "$WD/proj" ; echo "exit=$?"
+ls "$WD"    # no .bak — the file was neither rotated nor overwritten
+```
+
+**Expected:** exit `1`, the file byte-unchanged, **no** `.bak` created:
+
+```
+workspace-registry: registry …/workspaces.json has a missing or non-numeric 'version' — inspect or remove it; refusing to guess.
+```
+
+### 5f — a non-numeric `version` refuses the write
+
+```bash
+export WD=$(mktemp -d)
+printf '{"version":"abc","workspaces":[]}' > "$WD/workspaces.json"
+REG upsert "BadVer" --dir "$WD/proj" ; echo "exit=$?"
+```
+
+**Expected:** exit `1`, same fail-closed message as 5e, file untouched. (Contrast
+with 5c: `"2"` is a *numeric* string and is coerced to integer `2`; `"abc"` is
+not numeric and is refused.)
+
 ---
 
 ## Step 6 — trust-guard spot checks
