@@ -1,0 +1,180 @@
+# Workspaces Registry Schema — JSON Schema Draft 2020-12 in YAML
+#
+# DESCRIPTIVE, NOT NORMATIVE. This schema documents the SHARED, machine-global,
+# multi-writer registry file `$WORKSPACES_DIR/workspaces.json` (else
+# `~/.workspaces/workspaces.json`), format `version: 2`. The format's normative
+# owner is an external design authored outside this repo — this file is a
+# local, machine-readable companion of the field set the KNOWN writers (this
+# repo's `scripts/workspace_registry.py`, and reinvent-lab's `k2a`) actually
+# emit, kept here for `check-jsonschema` validation and IDE support. It does
+# not define the format; it conforms to it and may lag a change made upstream.
+#
+# `additionalProperties: true` THROUGHOUT (top level, each workspace row,
+# each directory entry, `extensions{}`) — preserve-unknown-fields is a hard
+# protocol invariant of the shared registry (any writer's future field, or
+# another tool's `extensions[<tool>]` slice, must round-trip untouched). This
+# schema constrains the fields it knows about; it never rejects a document for
+# carrying a field it doesn't.
+#
+# Full docs: docs/workspaces.md § "The shared identity registry (~/.workspaces/)"
+# Related: docs/schemas/workspace.schema.yaml (this repo's own DEFINITION
+#          schema — a different file, `workflow/workspaces/<id>.yaml`)
+#          scripts/workspace_registry.py (the reader/writer this schema describes)
+#
+# Validation (against a real registry file):
+#   check-jsonschema --schemafile docs/schemas/workspaces-registry.schema.yaml \
+#                    ~/.workspaces/workspaces.json
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/workspaces-registry.yaml"
+title: Workspaces Registry (descriptive)
+description: |
+  The shared, multi-writer `workspaces.json` registry (v2) — one row per
+  project identity known to any conformant tool on the machine. Descriptive
+  companion schema; the normative format owner is external (see header).
+
+type: object
+required: [version, workspaces]
+additionalProperties: true
+
+properties:
+
+  version:
+    type: integer
+    const: 2
+    description: |
+      Schema version of this file. A conformant writer emits `2` (int);
+      readers may accept the coercible forms `"2"` (string) and `2.0`
+      (integral float) but always re-emit `2`.
+
+  workspaces:
+    type: array
+    description: "One row per known project identity."
+    items:
+      $ref: "#/$defs/WorkspaceRow"
+
+$defs:
+
+  WorkspaceRow:
+    type: object
+    required: [id, name]
+    additionalProperties: true
+    description: |
+      One project identity. Fields beyond `id`/`name` are populated by
+      whichever writer created or last touched the row — a row written by
+      this repo carries every field below except `session_ns`, `state`, and
+      `active_chat_session_id` (reserved for other writers); a row written by
+      a different conformant tool may carry a different subset, plus its own
+      `extensions[<tool>]` slice.
+    properties:
+      id:
+        type: string
+        description: "Registry-assigned identity, e.g. `ws_0001` (this repo's writer)."
+      name:
+        type: string
+        description: "Display name. Some writers accept `title` as a write-time alias."
+      short:
+        type: string
+        description: "Optional short label/slug for compact display."
+      description:
+        type: string
+        description: "One-line purpose."
+      name_generated:
+        type: boolean
+        description: |
+          True if `name` was auto-generated rather than user-chosen — a
+          guarded structural adopt may overwrite an auto-generated name but
+          never a user-chosen one (see docs/workspaces.md § guarded structural
+          adopt).
+      color:
+        type: string
+        description: "Optional display color (writer-defined form, e.g. `#rrggbb`)."
+      pinned:
+        type: boolean
+        description: "User-pinned for priority display."
+      archived:
+        type: boolean
+        description: "Soft-deleted — excluded from default listings, kept for history."
+      directories:
+        type: array
+        description: |
+          Filesystem roots this identity maps to. Position 0 is the PRIMARY
+          directory when a writer publishes one (this repo: a workspace's own
+          `directory:`, when set); further entries are member/child roots
+          (this repo labels `role: code` clones `"repo"`).
+        items:
+          $ref: "#/$defs/DirectoryEntry"
+      session_ns:
+        type: string
+        description: "RESERVED — a session-namespace field some writers use; this repo neither reads nor writes it."
+      git_remotes:
+        type: array
+        items:
+          type: string
+        description: "Git remote URLs identifying this project (any transport form)."
+      resource_refs:
+        type: array
+        description: "Opaque cross-tool resource references — writer-defined shape."
+      recent_chat_session_ids:
+        type: array
+        items:
+          type: string
+        description: "Recent session/conversation ids associated with this workspace."
+      active_chat_session_id:
+        type: string
+        description: "RESERVED — the currently active session id, if a writer tracks one."
+      state:
+        description: "RESERVED — writer-defined session/UI state; this repo neither reads nor writes it."
+      extensions:
+        type: object
+        additionalProperties: true
+        description: |
+          Namespaced per-tool extension bags, keyed by tool slug (e.g.
+          `"open-bridge"`, `"k2a"`). A writer touches ONLY its own key; every
+          other key must round-trip byte-for-byte. This repo's slice
+          (`extensions["open-bridge"]`) carries at least `id` (the
+          instance-qualified `<hash>:<slug>` mirror key) plus `overlays` and
+          `repos`.
+      created_at:
+        $ref: "#/$defs/Iso8601Utc"
+        description: "When the row was first created."
+      updated_at:
+        $ref: "#/$defs/Iso8601Utc"
+        description: "When the row was last mutated by any writer."
+
+  DirectoryEntry:
+    type: object
+    required: [path]
+    additionalProperties: true
+    properties:
+      path:
+        type: string
+        description: "Canonicalized filesystem path (symlinks resolved, `~` expanded)."
+      aliases:
+        type: array
+        items:
+          type: string
+        description: |
+          Alternate spellings of the same canonical path (e.g. the macOS
+          File-Provider `~/Dropbox` ↔ `~/Library/CloudStorage/Dropbox` pair) so
+          cheap string-prefix consumers match without canonicalizing.
+      label:
+        type: string
+        description: "Optional role label for this entry (this repo uses `\"repo\"` for a role:code member clone; the primary entry is unlabelled)."
+      added_at:
+        $ref: "#/$defs/Iso8601Utc"
+        description: "When this directory entry was added."
+
+  Iso8601Utc:
+    type: string
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    description: "ISO-8601 timestamp in UTC (trailing Z, no offset)."
+
+# Notes (advisory):
+# - additionalProperties: true throughout — preserve-unknown is a protocol
+#   invariant, not a schema gap. Do not tighten this file to `false` without
+#   re-checking every known co-writer's actual field set first.
+# - This file is regenerated by hand, not by introspecting a live writer;
+#   after a change to scripts/workspace_registry.py's emitted field set,
+#   re-validate a real ~/.workspaces/workspaces.json (or a throwaway one from
+#   the test suite) against this schema and update it if it drifted.

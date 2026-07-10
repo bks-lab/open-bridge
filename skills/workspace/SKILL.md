@@ -52,7 +52,7 @@ overlay via `workspace subscribe … --role config` calls that same engine
 **NOT** for:
 - Managing an org overlay subscription on its own (manifest, sync, diff, authoring) → **`/overlay`** (`bridge-overlay`)
 - Pushing YOUR changes upstream → `/promote`, `/bridge-sync`
-- A knowledge-base index over a folder → `k2a-cli` (unrelated to this "workspace")
+- A knowledge-base index over a folder → a provider skill, if your instance ships one (unrelated to this "workspace")
 
 ## Command surface (the real engine CLI)
 
@@ -129,7 +129,8 @@ too new (at the registry CLI only; swallowed to a warning here).
   named workspace*; for standalone overlay management (sync, diff, authoring) use
   `/overlay` directly.
 - **Any conformant co-writer** (e.g. a launcher or file manager that reads
-  `~/.workspaces/` per its published `SCHEMA.md`) shares the identity: it sees
-  this workspace's row, and its own data lives untouched in its own
-  `extensions[<tool>]` slice. `/workspace` never imports or requires such a tool
-  — the interop is a file contract, not a dependency.
+  `~/.workspaces/` — see the descriptive
+  [`docs/schemas/workspaces-registry.schema.yaml`](../../docs/schemas/workspaces-registry.schema.yaml))
+  shares the identity: it sees this workspace's row, and its own data lives
+  untouched in its own `extensions[<tool>]` slice. `/workspace` never imports
+  or requires such a tool — the interop is a file contract, not a dependency.

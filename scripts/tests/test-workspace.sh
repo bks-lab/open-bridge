@@ -33,6 +33,12 @@
 #   17  multi-member exclude rebuild    (remove one of two members; the survivor's path stays excluded)
 #   18  per-workspace lock prune        (removing a member from ws A leaves ws B's lock entry intact)
 #   19  canonical subscribe/unsubscribe (canonical verbs work; add-repo/remove-repo retained as aliases; gate + config delegation hold)
+#   20  shared-registry write-through   (create/subscribe/unsubscribe publish one instance-qualified mirror row; unsubscribe shrinks it)
+#   21  directory publish (S4)          (own `directory:` → directories[0] PRIMARY+canonical; find-path resolves; ${var} skipped; no-dir → no entry)
+#   22  instance qualification (S1)     (two instances, one slug, one registry → two distinct <hash>:slug rows, no clobber)
+#   23  lock hardening (S5)             (a missing sibling clone is omitted from the lock with a warning; sub/unsub of OTHER members still succeed)
+#   24  mutation ordering (S5)          (failed clone leaves definition/lock/exclude untouched; a successful subscribe arms the exclude block)
+#   25  real ~/.workspaces/ untouched   (snapshot byte-identical before/after the whole run)
 #  + case  2 splits FAIL per-file (missing-title AND role:bogus each fail alone)
 #  + case 10 adds config-overlay remove-repo (overlay.py delegation + def overlays[] prune)
 #  + case 12 adds git:// + http:// scheme refusals
@@ -266,6 +272,28 @@ except Exception:
     print("NO")
 PY
 }
+lock_names() {        # <lockfile> <ws-id> → space-separated member names ("" if none)
+python3 - "$1" "$2" <<'PY' 2>/dev/null
+import sys, yaml
+try:
+    d = yaml.safe_load(open(sys.argv[1])) or {}
+    r = ((d.get("workspaces") or {}).get(sys.argv[2]) or {}).get("repos") or []
+    print(" ".join(x.get("name", "") for x in r))
+except Exception:
+    print("")
+PY
+}
+def_member_names() {  # <deffile> → space-separated repos[] names ("" if none)
+python3 - "$1" <<'PY' 2>/dev/null
+import sys, yaml
+try:
+    r = (yaml.safe_load(open(sys.argv[1])) or {}).get("repos") or []
+    print(" ".join(m.get("name", "") for m in r if isinstance(m, dict)))
+except Exception:
+    print("")
+PY
+}
+realpath_of() { python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$1"; }
 overlays_lock_has() { # <overlays.lock.yaml> <name> → YES|NO  (the private instance ships a
                       # tracked overlays.lock.yaml, so mere existence proves nothing — a fresh
                       # entry for <name> is what proves overlay.py actually delegated.)
@@ -748,7 +776,14 @@ assert_file "shared registry written on the create publish" "$WSREG/workspaces.j
 assert_eq "registry envelope is version 2" "$(reg_version "$WSREG")" "2"
 assert_eq "ONE entry after create" "$(reg_count "$WSREG")" "1"
 assert_eq "name mapped from title (title→name)" "$(reg_get "$WSREG" 'w["name"]')" "Demo Workspace"
-assert_eq "our open-bridge id == the workspace slug" "$(reg_get "$WSREG" 'w["extensions"]["open-bridge"]["id"]')" "demo-workspace"
+# The mirror id is INSTANCE-QUALIFIED (<hash(repo root)>:<slug>) so two Bridge
+# instances sharing a slug never collide — see § 22. It still ENDS in the slug.
+QID20="$(reg_get "$WSREG" 'w["extensions"]["open-bridge"]["id"]')"
+if printf '%s' "$QID20" | grep -qE '^[0-9a-f]{12}:demo-workspace$'; then
+  pass "open-bridge id is instance-qualified <hash>:<slug>"
+else fail "open-bridge id not instance-qualified: $QID20"; fi
+# create carried NO --dir → no PRIMARY directory entry (only future code clones)
+assert_eq "no --dir at create → zero directories published" "$(reg_get "$WSREG" 'len(w["directories"])')" "0"
 # subscribe code → still ONE entry (de-dup by our id), directories + git_remotes published
 run_workspace "$CONP" subscribe demo-workspace "file://$CODEFIXP" --role code
 assert_rc "subscribe code (write-through)" 0
@@ -777,7 +812,122 @@ assert_eq "overlays survive the code unsubscribe" "$(reg_get "$WSREG" '"example-
 
 # ───────────────────────────────────────────────────────────────────
 echo
-echo "── 21. real ~/.workspaces/ untouched across the entire suite ───"
+echo "── 21. directory publish (PRIMARY dir; var-skip; no-dir) ───────"
+# S4: the workspace's own `directory:` is published as directories[0] — the
+# PRIMARY, unlabelled entry — canonicalized. find-path on it resolves the row.
+CONDIR="$(mkcon)"
+WSREGD="${CONDIR}.wsreg"
+WSDIR="$(mktemp -d "$TMP/wsdir.XXXXXX")"
+run_workspace "$CONDIR" create dir-ws --dir "$WSDIR" --title "Dir WS"
+assert_rc "create --dir (directory publish)" 0
+assert_eq "ONE entry after create --dir" "$(reg_count "$WSREGD")" "1"
+assert_eq "directories[0].path == canonicalized --dir" "$(reg_get "$WSREGD" 'w["directories"][0]["path"]')" "$(realpath_of "$WSDIR")"
+assert_eq "PRIMARY directory carries NO label (position = primary)" "$(reg_get "$WSREGD" 'w["directories"][0].get("label")')" "None"
+# find-path on the published dir resolves back to the row (via the registry CLI)
+OUT="$(WORKSPACES_DIR="$WSREGD" python3 "$ROOT/scripts/workspace_registry.py" find-path "$WSDIR" 2>&1)"; RC=$?
+assert_rc "find-path on the published --dir resolves (exit 0)" 0
+assert_notrace "find-path did not crash"
+# a directory holding an uninterpolated ${var} → publish SKIPS it (no bogus path)
+CONVAR="$(mkcon)"
+WSREGV="${CONVAR}.wsreg"
+run_workspace "$CONVAR" create var-ws --dir '${projects_root}/foo' --title "Var WS"
+assert_rc "create --dir with an uninterpolated variable still succeeds" 0
+assert_out "publish notes the uninterpolated variable" "uninterpolated"
+assert_eq "ONE entry minted for the var-dir workspace" "$(reg_count "$WSREGV")" "1"
+assert_eq "no bogus \${var} path landed in the registry" "$(reg_get "$WSREGV" 'len(w["directories"])')" "0"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 22. instance qualification (two instances, one slug, one registry) ─"
+# design-P1: two SEPARATE consumer repos (both on user/*) with the SAME slug and
+# the SAME --dir, publishing into ONE shared registry, must NOT clobber each
+# other — the instance-qualified id + the exclude-ours adopt rule keep them apart.
+SHREG="$TMP/shared.wsreg"
+SHDIR="$(mktemp -d "$TMP/shdir.XXXXXX")"
+CONA="$(mkcon)"; CONB="$(mkcon)"
+OUT="$(yes y | WORKSPACES_DIR="$SHREG" python3 "$WORKSPACE" --repo-root "$CONA" create demo --dir "$SHDIR" 2>&1)"; RC=$?
+assert_rc "instance A publishes 'demo'" 0
+OUT="$(yes y | WORKSPACES_DIR="$SHREG" python3 "$WORKSPACE" --repo-root "$CONB" create demo --dir "$SHDIR" 2>&1)"; RC=$?
+assert_rc "instance B publishes 'demo' into the SAME registry" 0
+assert_eq "TWO distinct rows (neither instance clobbered the other)" "$(reg_count "$SHREG")" "2"
+DISTINCT="$(python3 - "$SHREG" <<'PY' 2>/dev/null
+import json, os, sys
+ws = json.load(open(os.path.join(sys.argv[1], "workspaces.json")))["workspaces"]
+ids = [w["extensions"]["open-bridge"]["id"] for w in ws]
+print("DISTINCT" if len(set(ids)) == 2 and all(i.endswith(":demo") for i in ids) else "SAME")
+PY
+)"
+assert_eq "the two rows carry distinct <hash>:demo ids" "$DISTINCT" "DISTINCT"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 23. lock hardening — a missing sibling clone never blocks a verb ─"
+# S5: `.bridge/` is gitignored, so on a fresh checkout committed members have no
+# clone. A missing clone must be OMITTED from the lock (with a warning), never
+# crash — so subscribe of a NEW member and unsubscribe of ANOTHER both still work.
+THIRDP="$(mktemp -d "$TMP/codefix3.XXXXXX")/demo-util"   # basename → slug demo-util
+mkdir -p "$THIRDP"; printf 'print("util")\n' > "$THIRDP/main.py"
+git_init_commit "$THIRDP" "code-fixture3 init"
+CONH="$(mkcon)"
+DEFH="$CONH/workflow/workspaces/demo-workspace.yaml"
+LOCKH="$CONH/workspaces.lock.yaml"
+run_workspace "$CONH" create demo-workspace ; assert_rc "create (lock-hardening case)" 0
+run_workspace "$CONH" add-repo demo-workspace "file://$CODEFIX"  --role code ; assert_rc "add demo-code"  0
+run_workspace "$CONH" add-repo demo-workspace "file://$CODEFIX2" --role code ; assert_rc "add demo-lib"   0
+# simulate a fresh checkout: delete demo-code's clone (definition entry stays)
+rm -rf "$CONH/.bridge/workspaces/demo-workspace/demo-code"
+# subscribe a NEW member — must succeed despite the missing sibling clone
+run_workspace "$CONH" add-repo demo-workspace "file://$THIRDP" --role code
+assert_rc "subscribe a NEW member succeeds with a missing sibling clone" 0
+assert_out "the missing clone is reported (not a crash)" "clone missing"
+assert_notrace "subscribe with a missing sibling did not crash"
+NAMESH="$(lock_names "$LOCKH" demo-workspace)"
+if printf '%s' "$NAMESH" | grep -qw demo-lib && printf '%s' "$NAMESH" | grep -qw demo-util \
+   && ! printf '%s' "$NAMESH" | grep -qw demo-code; then
+  pass "lock omits the missing member, keeps the present ones ($NAMESH)"
+else fail "lock member set wrong: $NAMESH"; fi
+DNAMESH="$(def_member_names "$DEFH")"
+if printf '%s' "$DNAMESH" | grep -qw demo-code; then
+  pass "the missing member's DEFINITION entry is untouched"
+else fail "the missing member was dropped from the definition: $DNAMESH"; fi
+# unsubscribe ANOTHER (present) member — must also succeed despite the missing clone
+run_workspace "$CONH" remove-repo demo-workspace demo-lib
+assert_rc "unsubscribe ANOTHER member succeeds with a missing sibling clone" 0
+assert_out "unsubscribe still reports the missing clone" "clone missing"
+assert_notrace "unsubscribe with a missing sibling did not crash"
+NAMESH2="$(lock_names "$LOCKH" demo-workspace)"
+if printf '%s' "$NAMESH2" | grep -qw demo-util && ! printf '%s' "$NAMESH2" | grep -qw demo-lib \
+   && ! printf '%s' "$NAMESH2" | grep -qw demo-code; then
+  pass "unsubscribe pruned demo-lib; missing demo-code still omitted ($NAMESH2)"
+else fail "lock member set wrong after unsubscribe: $NAMESH2"; fi
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 24. mutation ordering (no partial write on a failed clone) ──"
+# S5 ordering: clone → exclude → write-definition → rebuild-lock. A clone that
+# FAILS (well-formed file:// URL at a nonexistent repo) must leave the definition,
+# the lock and the exclude block completely untouched — no partial member.
+CONF="$(mkcon)"
+DEFF="$CONF/workflow/workspaces/demo-workspace.yaml"
+EXCLF="$CONF/.git/info/exclude"
+run_workspace "$CONF" create demo-workspace ; assert_rc "create (ordering case)" 0
+cp "$DEFF" "$TMP/deff.before"
+run_workspace "$CONF" add-repo demo-workspace "file://$TMP/does-not-exist-repo" --role code
+assert_rc_nonzero "add-repo with an unclonable URL fails"
+assert_notrace "the failed clone is a clean error, not a crash"
+assert_eq "definition has NO member after a failed clone (no partial write)" "$(def_repos_count "$DEFF")" "0"
+if cmp -s "$DEFF" "$TMP/deff.before"; then pass "failed clone wrote nothing to the definition"; else fail "failed clone mutated the definition"; fi
+assert_absent "no lock written after a failed clone" "$CONF/workspaces.lock.yaml"
+assert_nogrep "no exclude block after a failed clone" "$EXCLF" "workspace:demo-workspace"
+# and the mirror image: a SUCCESSFUL subscribe writes the member path into the
+# exclude block (the guard is armed as part of the ordered write path).
+run_workspace "$CONF" add-repo demo-workspace "file://$CODEFIX" --role code
+assert_rc "subscribe succeeds after the earlier failure" 0
+assert_grep "successful subscribe added the member path to the exclude block" "$EXCLF" "/.bridge/workspaces/demo-workspace/demo-code/"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 25. real ~/.workspaces/ untouched across the entire suite ───"
 REAL_AFTER="$(real_snapshot)"
 assert_eq "the real ~/.workspaces/ snapshot is byte-identical before/after" "$REAL_BEFORE" "$REAL_AFTER"
 if [ ! -e "$REAL_WS" ]; then

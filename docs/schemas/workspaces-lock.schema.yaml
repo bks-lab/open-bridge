@@ -17,7 +17,7 @@
 # IDE support: add this line at the top of workspaces.lock.yaml:
 #   # yaml-language-server: $schema=./docs/schemas/workspaces-lock.schema.yaml
 #
-# Full docs: docs/workspaces.md (forthcoming — workspace guide)
+# Full docs: docs/workspaces.md — the workspace guide
 # Related: docs/schemas/workspace.schema.yaml (the source definition)
 
 $schema: "https://json-schema.org/draft/2020-12/schema"

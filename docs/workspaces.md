@@ -1,13 +1,14 @@
 ---
 summary: "Workspaces — two halves: a machine-global SHARED identity registry (~/.workspaces/workspaces.json, v2, multi-writer, written by the standalone workspace_registry.py) and a repo-local materialization engine (workspace.py) that binds config overlays[] + member repos[] with a lock, public-fork-safe code checkout, and delegation to the overlay engine."
 type: guide
-last_updated: 2026-07-08
+last_updated: 2026-07-10
 related:
   - docs/org-overlays.md
   - docs/multi-instance.md
   - docs/structure.md
   - docs/schemas/workspace.schema.yaml
   - docs/schemas/workspaces-lock.schema.yaml
+  - docs/schemas/workspaces-registry.schema.yaml
   - scripts/workspace_registry.py
   - scripts/workspace.py
 ---
@@ -349,20 +350,35 @@ workspace's identity itself, without waiting on any other tool.
 
 `$WORKSPACES_DIR` if set, else `~/.workspaces/` — one predictable, cross-OS path,
 deliberately no XDG special-casing. The directory is created on first write. The
-registry's `SCHEMA.md` (published beside the file so any tool can conform) is
-authored by the registry's schema owner; this writer conforms to that format and
-does not overwrite it.
+registry format's normative owner remains the external design that specifies
+`workspaces.json` v2 (this writer conforms to it and does not redefine it). This
+repo additionally ships a **descriptive** companion —
+[`docs/schemas/workspaces-registry.schema.yaml`](schemas/workspaces-registry.schema.yaml)
+— a machine-readable JSON Schema of the field set the known writers actually
+emit, kept here for local `check-jsonschema` validation and IDE support. It
+documents the format; it does not own it.
 
-### Multi-writer protocol (safety-critical)
+### Multi-writer protocol (safety-critical, but advisory)
 
 Because other tools write the **same** `workspaces.json`, a bug that drops a field
-corrupts *their* registry, not just ours. Every mutation follows one protocol,
-exactly:
+corrupts *their* registry, not just ours. Every mutation this writer makes follows
+one protocol:
 
 > take the advisory lock (`<dir>/.lock`, `flock`) → read → modify in memory →
 > **atomic replace** (`workspaces.json.tmp` + `os.replace`) → release the lock.
 
-with these invariants — all test-locked in
+**The lock is advisory, not mandatory — it protects cooperating writers only.**
+`flock` coordinates writers that take it; it cannot stop a co-writer that
+bypasses the lock, or that holds a long-lived in-memory copy of the registry (a
+TUI that reads once at startup and later blind-saves that stale state, for
+example), from clobbering a mutation this writer just made. When that happens
+the shared mirror is transiently wrong — but it is a **best-effort mirror, not
+the source of record**: the repo-local definition/lock stay authoritative, and
+the next local `create` / `subscribe` / `unsubscribe` re-publishes and
+re-converges the row. See [Known limitations](#known-limitations) below for the
+concrete co-writer gap this covers.
+
+Invariants this writer holds itself to on every mutation — asserted by
 [`scripts/tests/test-workspace-registry.sh`](../scripts/tests/test-workspace-registry.sh),
 whose mutation-checks break the engine to prove each assert has teeth:
 
@@ -371,17 +387,56 @@ whose mutation-checks break the engine to prove each assert has teeth:
 - **Never touch another tool's slice** — a writer edits only the shared identity
   fields plus its own `extensions["open-bridge"]`; every other
   `extensions["<tool>"]` slice is left byte-for-byte.
-- **`version` is max-monotonic** — this writer understands at most `version: 2`
-  and always writes `2`; a file whose on-disk version is higher may be **read** but
-  is **refused for write** (a clean non-zero error, never a clobber).
-- **De-dup on create by identity** — a shared normalized `git_remotes` entry or a
-  shared canonical directory path attributes to the existing workspace instead of
-  appending a duplicate (§ Path identity below).
-- **Never lose data** — an unreadable or older-versioned file is rotated to
-  `workspaces.json.bak` before a fresh `version: 2` registry is started.
+- **`version` is max-monotonic, and coerced.** An on-disk `version` of `2`,
+  `"2"`, or `2.0` all read as `2`; a coerced version higher than `2` may be
+  **read** but is **refused for write** (a clean non-zero error, never a
+  clobber). Writes always emit `version: 2` (int).
+- **De-dup on create by identity, on BOTH create paths.** `upsert_workspace`
+  de-dups on a shared normalized `git_remotes` entry or a shared canonical
+  directory path (§ Path identity below). `publish_workspace` additionally
+  performs a **guarded structural adopt**: with no id match, exactly one
+  structural candidate — excluding any row that already carries an
+  `extensions["open-bridge"]` slice (that is another instance's or another
+  writer's own mirror, never adopted into) — is adopted with MERGE semantics.
+  This is the protocol's de-dup rule, not a convenience shortcut; zero or ≥2
+  candidates still mint a fresh row (see [Known limitations](#known-limitations)).
+- **Fail closed on anomalies — never a silent reset.** An unparseable file or a
+  missing/non-numeric `version` **refuses the write** (`RegistryError`); the
+  on-disk bytes are left exactly as found, nothing is rotated or guessed. Only
+  a genuine older file (coerced `version <= 1`, the documented v1→v2 cutover)
+  is rotated — to a **timestamped** `workspaces.json.bak.<UTC yyyymmddThhmmssZ>`
+  (never a single reused slot, so a second rotation can never destroy an
+  earlier evacuation), with a loud stderr notice (backup path + evacuated row
+  count) — before a fresh `version: 2` registry is started. This is
+  deliberately **stricter** than the upstream design doc's default of
+  rotating on any unreadable file: silently discarding a co-writer's live rows
+  on a survivable parse hiccup is worse than refusing the write and asking a
+  human to look, so that is what this writer does.
 
 Reads (`read_registry`, `list_workspaces`, `find_by_path`) are lockless — the
 atomic replace guarantees a reader always sees a whole file, never a torn one.
+
+### Known limitations
+
+- **Convergence is attempted, not guaranteed.** A publish converges onto a peer
+  tool's pre-existing row only when there is a directory or git-remote match
+  (the guarded structural adopt above) *and* that candidate is unambiguous.
+  Two cases still mint a second row instead of converging: (a) **≥2 structural
+  candidates** — the adopt is deliberately conservative and refuses to guess
+  which one is "the" project; (b) **the only structural match already carries a
+  foreign `extensions["open-bridge"]` slice** — treated as another instance's
+  or another writer's own mirror, never adopted into. Both need a cross-tool
+  reconciler (not yet built) to merge by hand or by policy.
+- **Convergence needs something to match on.** A workspace with neither a
+  `directory:` nor any `role: code` member publishes no `directories[]` and no
+  `git_remotes[]` — there is nothing for a structural match to key on, so it
+  can only ever mint its own row (or find itself by id on a later publish); it
+  can neither adopt nor be adopted into a peer tool's row.
+- **The lock is advisory** (see above) — a co-writer that saves from a stale
+  in-memory copy while holding no lock can still clobber a mirror row between
+  two of our publishes. The next local mutation re-publishes and repairs it,
+  but the window is real, not theoretical — a long-running TUI is the concrete
+  case today.
 
 ### Path identity + matching
 
@@ -398,7 +453,7 @@ string-prefix consumers match without canonicalizing.
 | Call | What |
 |---|---|
 | `upsert_workspace(name, directories=[…], git_remotes=[…], open_bridge_ext={…})` | Create-or-update by **structural** identity (shared path / git remote), MERGING — the generic cross-tool converge path. |
-| `publish_workspace(ref, name, directories=[…], git_remotes=[…], open_bridge_ext={…})` | The **owning mirror**: create-or-update by a stable open-bridge id (`ref`, parked in `extensions["open-bridge"]["id"]`), REPLACING the mirrored identity so a removal shrinks it. Used by the engine write-through. |
+| `publish_workspace(ref, name, directories=[…], git_remotes=[…], open_bridge_ext={…})` | The **owning mirror**: (1) an id match on a prior publish (`ref`, parked in `extensions["open-bridge"]["id"]`) REPLACES the mirrored identity so a removal shrinks it; (2) else exactly one structural (path/remote) candidate with no foreign `open-bridge` slice is ADOPTED with MERGE semantics (§ guarded structural adopt above); (3) else a fresh row is minted. Used by the engine write-through. |
 | `read_registry()` / `list_workspaces()` | Read the whole registry / the workspace rows. |
 | `find_by_path(p)` | Longest-match workspace for a path, else `None`. |
 | `archive_workspace(id)` | Soft-delete (`archived: true`). |
@@ -408,14 +463,21 @@ string-prefix consumers match without canonicalizing.
 The repo-local engine ([`scripts/workspace.py`](../scripts/workspace.py)) **publishes
 identity automatically**: after a `create` / `subscribe` / `unsubscribe` succeeds, it
 mirrors the workspace into the shared registry via `publish_workspace` — `title` → `name`,
-each `role: code` member's clone directory (label `repo`) + its origin remote, and the
-overlays/repos under `extensions["open-bridge"]`, keyed by the workspace slug as the stable
-id. Successive publishes converge on **one** entry, and an `unsubscribe` shrinks the mirror.
-This is **additive**: the repo-local definition, lock, and materialization stay the source of
-record, and a shared-registry hiccup (a version-guarded newer file, an unreadable registry)
-**warns but never fails** the local command — local materialization is already done. The
-publish target resolves the usual way (`$WORKSPACES_DIR` else `~/.workspaces/`), so an
-instance's tests must pin `$WORKSPACES_DIR` to a temp dir (both suites do).
+the workspace's own `directory:` (interpolated + canonicalized) as the PRIMARY, unlabelled
+`directories[0]` entry when set, each `role: code` member's clone directory after it (label
+`repo`) + its origin remote, and the overlays/repos under `extensions["open-bridge"]`. The
+mirror is keyed by an **instance-qualified** id — `sha256(realpath(repo root))[:12]:<slug>`
+— so two Bridge instances that happen to share a workspace slug (see
+[Multi-instance](multi-instance.md)) never clobber each other's row. Successive publishes from
+the same instance converge on **one**
+entry by that id, and an `unsubscribe` shrinks the mirror. This is **additive**: the
+repo-local definition, lock, and materialization stay the source of record, and a
+shared-registry hiccup (a version-guarded newer file, a fail-closed anomaly) **warns but never
+fails** the local command — local materialization is already done. The publish target
+resolves the usual way (`$WORKSPACES_DIR` else `~/.workspaces/`), so an instance's tests must
+pin `$WORKSPACES_DIR` to a temp dir (both suites do). A workspace with no `directory:` and no
+`role: code` members publishes an empty `directories[]` — see
+[Known limitations](#known-limitations).
 
 ### How our model maps onto the shared schema
 
@@ -426,7 +488,8 @@ boundary** — it does not rename load-bearing fields:
 |---|---|---|
 | `title` | `name` | mapped on write (the shared schema keeps a `title` read-alias) |
 | `schema_version` | `version` | same envelope pattern |
-| code members (`repos[] role: code`) | `directories[]` + `git_remotes[]` | shared identity |
+| `directory` | `directories[0]` (unlabelled, PRIMARY) | published when set; omitted (no fallback) when unset |
+| code members (`repos[] role: code`) | `directories[]` (label `repo`) + `git_remotes[]` | shared identity |
 | config overlays (`overlays[]`) + repo config | `extensions["open-bridge"]` | our namespaced slice |
 | materialization (`.bridge/` clones, `workspaces.lock.yaml`, exclude block) | — | stays repo-local; the registry only *references* identity |
 
@@ -463,6 +526,10 @@ they are explicit and easy to revisit, **not** hard invariants:
 - [`docs/schemas/workspaces-lock.schema.yaml`](schemas/workspaces-lock.schema.yaml)
   — the generated **lock** (`scope: user`) recording resolved `role: code` member
   clones and the by-name back-reference to `overlays.lock.yaml`.
+- [`docs/schemas/workspaces-registry.schema.yaml`](schemas/workspaces-registry.schema.yaml)
+  — a **descriptive** (not normative) JSON Schema for the shared
+  `~/.workspaces/workspaces.json` registry file, § [The shared identity
+  registry](#the-shared-identity-registry-workspaces) above.
 
 The definition template ships at `workflow/workspaces/_template.yaml`; read it and
 the matching schema before authoring a workspace by hand (per

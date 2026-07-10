@@ -20,7 +20,7 @@
 # IDE support: add this line at the top of workflow/workspaces/<id>.yaml:
 #   # yaml-language-server: $schema=../../docs/schemas/workspace.schema.yaml
 #
-# Full docs: docs/workspaces.md (forthcoming — workspace guide)
+# Full docs: docs/workspaces.md — the workspace guide
 # Related: docs/schemas/workspaces-lock.schema.yaml (the generated lockfile)
 #          workflow/workspaces/_template.yaml (authoring template)
 
@@ -121,15 +121,23 @@ $defs:
         description: "Overlay slug — the key under overlays.lock.yaml."
       url:
         type: string
-        format: uri
-        description: "Clone URL used when subscribing."
+        description: |
+          Clone URL used when subscribing. RESERVED; NOT read by the engine in
+          increment 1 — the engine records only `{name}` when it indexes a
+          newly-materialized overlay (workspace.py's own `subscribe --role
+          config` call), so a hand-authored `url` here is not consulted. Kept
+          for a future increment / hand-authored bootstrap intent.
       ref:
         type: string
-        description: "Git ref to track (default: main)."
+        description: |
+          Git ref to track (default: main). RESERVED; NOT read by the engine in
+          increment 1 — same status as `url` above; only `name` is read.
       precedence:
         type: integer
         minimum: 0
-        description: "Layering order passed to overlay.py — higher wins a dest collision."
+        description: |
+          Layering order for overlay.py. RESERVED; NOT read by the engine in
+          increment 1 — same status as `url` above; only `name` is read.
 
   RepoMember:
     type: object
@@ -139,8 +147,12 @@ $defs:
     properties:
       url:
         type: string
-        format: uri
-        description: "Clone URL (trust-guarded by the engine before any clone)."
+        description: |
+          Clone URL (trust-guarded by the engine before any clone). Accepted
+          forms: `https://…`, `ssh://user@host/…`, the scp shorthand
+          `user@host:path`, and `file://…` (local fixtures/tests only) — no
+          `format: uri` constraint here because the scp form is not a valid
+          URI and would be wrongly rejected by a strict `uri` validator.
       role:
         enum: [code, config]
         description: |

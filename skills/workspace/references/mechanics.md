@@ -17,8 +17,9 @@ succeeds (post-success side-effect; `list`/`validate`/`status` never publish).
    `id`, `title` (= `--title` or the id), optional `description`/`directory`,
    `created_at`/`updated_at`, empty `overlays: []` + `repos: []`.
 3. Atomic-write `workflow/workspaces/<name>.yaml` (the source of record).
-4. Post-hook: publish a thin identity row (no members yet → empty
-   `directories`/`git_remotes`).
+4. Post-hook: publish a thin identity row — `directories[0]` = the given
+   `--dir` (canonicalized) when one was passed, else no code members yet →
+   empty `directories`/`git_remotes`.
 
 Refusals (bad branch / bad slug / already exists) → exit 1, nothing written.
 
@@ -35,12 +36,16 @@ Default role is `code`. This clones a member repo into the workspace.
    same slug + different url/ref → error ("remove it first"), exit 1.
 5. Clone into `.bridge/workspaces/<name>/<member>/`
    (`git clone --recurse-submodules [--branch R]`), record resolved HEAD SHA.
-6. Append `{url, role: code, name, ref, path}` to the definition's `repos[]`;
-   rebuild `workspaces.lock.yaml[<name>]` from ALL live code clones (full rewrite,
-   not append); refresh the `.git/info/exclude` marked block with every code
-   member path.
-7. Post-hook: re-publish the grown identity (`directories[]` = clone abs paths
-   labelled `repo`, `git_remotes[]` = each clone's `origin`).
+6. Ordering matters here (exclude armed BEFORE the tracked definition records the
+   clone, closing the crash window where a public fork could `git add -A`-publish
+   freshly cloned foreign code): refresh the `.git/info/exclude` marked block with
+   every code member path (including the new one) FIRST; then append
+   `{url, role: code, name, ref, path}` to the definition's `repos[]` and write it;
+   THEN rebuild `workspaces.lock.yaml[<name>]` from ALL live code clones (full
+   rewrite, not append).
+7. Post-hook: re-publish the grown identity (`directories[0]` = the workspace's
+   own `directory:` when set, followed by each clone's abs path labelled
+   `repo`; `git_remotes[]` = each clone's `origin`).
 
 ## `subscribe <name> <git-url> --role config [--precedence N]`
 
@@ -70,10 +75,13 @@ parsing overlay.py's stdout — one `add` may surface zero, one, or several name
 Code-first dispatch: if `<member>` is a code member → remove code; else if it is
 an indexed overlay name → remove config; else error (exit 1).
 
-- **Code member:** rmtree the clone, filter it out of `repos[]`, rebuild
-  `workspaces.lock.yaml[<name>]` from the survivors, and either rebuild the
-  exclude block with the remaining code paths OR drop the whole marked block when
-  no code members remain (preserving any unrelated exclude lines).
+- **Code member:** metadata FIRST, clone deletion LAST — filter the member out of
+  `repos[]` and write the definition, rebuild `workspaces.lock.yaml[<name>]` from
+  the survivors, rebuild the exclude block with the remaining code paths (or drop
+  the whole marked block when no code members remain, preserving any unrelated
+  exclude lines) — only then `rmtree` the clone. If the rmtree is interrupted, the
+  definition/lock/exclude are already consistent (member already gone); a stray
+  clone directory is inert (unreferenced, still excluded).
 - **Config overlay:** delegate `overlay.py remove <name>` (it hash-verifies and
   deletes clean managed files, drops the `@import` + lock entry + its own exclude
   block), then filter the name out of the definition's `overlays[]`.

@@ -30,7 +30,8 @@ When the publish hook mirrors a workspace's identity:
 | repo-local (definition) | shared registry (v2 row) |
 |---|---|
 | `title` | `name` |
-| `role:code` member path (→ absolute) | `directories[] {path, label:"repo"}` |
+| `directory` (interpolated + canonicalized) | `directories[0]` — unlabelled, PRIMARY; omitted (no fallback) if unset |
+| `role:code` member path (→ absolute) | `directories[] {path, label:"repo"}`, appended after the primary |
 | clone's `origin` remote (else member `url`) | `git_remotes[]` |
 | `overlays[]` names + `repos[]` slices | `extensions["open-bridge"] = {overlays, repos, id}` |
 | `.bridge/` clones, lockfiles, exclude block | — (never leaves the repo) |
@@ -49,22 +50,34 @@ conformant tool modifies it under one documented protocol:
    directory (blocks until the other writer releases).
 2. Read the WHOLE file (every row, every foreign `extensions[<tool>]` slice,
    every unknown key retained in memory).
-3. Version-guard: refuse to write a file whose `version` is newer than supported
-   (never downgrade-clobber); rotate a corrupt/older file to `.bak` before
-   starting fresh.
-4. Modify ONLY your own row's own fields (this writer matches strictly by
-   `extensions["open-bridge"]["id"]`, so it can never resolve onto another
-   tool's row).
+3. Fail closed on anomalies: refuse to write a file whose `version` is newer
+   than supported, unparseable, or missing/non-numeric (a clean error, bytes
+   left untouched, nothing guessed). ONLY a genuine older file (the documented
+   v1→v2 cutover) is rotated — to a TIMESTAMPED `.bak` (never a reused slot),
+   with a loud stderr notice — before starting fresh.
+4. Modify ONLY the fields this writer owns: its own row's shared-identity
+   fields plus its own `extensions["open-bridge"]` slice. This writer's
+   `publish_workspace` resolves the row to touch by an exact id match first
+   (`extensions["open-bridge"]["id"]`); with no id match it may instead
+   structurally ADOPT — with MERGE semantics, never a foreign field touched —
+   exactly one unclaimed peer-tool row that shares a directory or git remote
+   (see [Known limitations](../../../docs/workspaces.md#known-limitations));
+   it never resolves onto a row that already carries someone's
+   `extensions["open-bridge"]` slice.
 5. Atomic replace: write `…json.tmp` → `flush` → `fsync` → `os.replace` (a rename
    on the same filesystem); a failure before the rename leaves the live file
    untouched (no torn write).
 6. Release the lock.
 
 The invariants that make this safe — whole-file read inside the lock,
-preserve-unknown-fields-and-foreign-slices, disjoint match keys, version
-max-monotonic — are locked by `scripts/tests/test-workspace-registry.sh`
-(including a k2a-conformance guard that every emitted row meets a co-writer's
-required-field contract, and mutation-checks that give each safety assert teeth).
+preserve-unknown-fields-and-foreign-slices, guarded (never ambiguous) adopt,
+fail-closed anomaly handling, version max-monotonic — are locked by
+`scripts/tests/test-workspace-registry.sh` (including a k2a-conformance guard
+that every emitted row meets a co-writer's required-field contract, and
+mutation-checks that give each safety assert teeth). The lock itself is
+**advisory** — it only coordinates writers that take it; see
+[Known limitations](../../../docs/workspaces.md#known-limitations) for what
+that means for a co-writer that doesn't.
 
 ## Standalone guarantee
 
@@ -79,7 +92,11 @@ The workspace engine has **zero dependency on any external launcher or tool**:
   the shared registry is simply where identity is *offered* for any tool that
   wants to read it. The interop is a file contract, not a runtime coupling.
 
-The reference co-writer of this file today is reinvent-lab's `k2a` (which
-published the tool-neutral `~/.workspaces/` layout and `SCHEMA.md`); it is an
-*example* of a conformant tool, not a requirement — the contract stands on its
-own.
+The reference co-writer of this file today is reinvent-lab's `k2a`, whose design
+doc specifies the tool-neutral `~/.workspaces/` layout this writer conforms to;
+it is an *example* of a conformant tool, not a requirement — the contract
+stands on its own. This repo additionally ships a descriptive (not normative)
+companion schema —
+[`docs/schemas/workspaces-registry.schema.yaml`](../../../docs/schemas/workspaces-registry.schema.yaml)
+— documenting the field set the known writers actually emit; the format's own
+normative definition remains external.

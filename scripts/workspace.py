@@ -411,6 +411,15 @@ def rebuild_workspace_lock(consumer: Consumer, ws_id: str, definition: dict) -> 
         if not (isinstance(m, dict) and m.get("role") == "code"):
             continue
         clone_abs = os.path.join(consumer.root, m["path"])
+        if not os.path.isdir(clone_abs):
+            # `.bridge/` is gitignored, so a committed definition on a fresh
+            # checkout has NO clone yet — the normal state on machine B. Omit the
+            # member from the lock (never crash) so add/remove of OTHER members
+            # still works; the definition entry is left intact.
+            sys.stderr.write(
+                f"workspace: member '{m.get('name')}' clone missing at "
+                f"{clone_abs} — omitted from lock; re-subscribe to materialize.\n")
+            continue
         sha = run_git(["-C", clone_abs, "rev-parse", "HEAD"]).stdout.strip()
         repos.append({
             "name": m["name"],
@@ -484,11 +493,14 @@ def _publish_identity(consumer: Consumer, ws_id: str) -> None:
 
     ADDITIVE: the repo-local definition + materialization stay the source of
     record; this publishes a namespaced mirror — name (our `title` mapped to the
-    shared `name`), the role:code members' clone directories (label "repo"), their
-    git remotes, and our `extensions["open-bridge"]` slice (overlays + repos) —
-    into $WORKSPACES_DIR/workspaces.json (else ~/.workspaces/), keyed by a stable
-    open-bridge id so successive publishes converge on one entry and a removal
-    shrinks the mirror.
+    shared `name`), the workspace's own `directory:` as the PRIMARY (unlabelled,
+    position-0) directory, the role:code members' clone directories after it
+    (label "repo"), their git remotes, and our `extensions["open-bridge"]` slice
+    (overlays + repos) — into $WORKSPACES_DIR/workspaces.json (else
+    ~/.workspaces/), keyed by an INSTANCE-QUALIFIED open-bridge id
+    (`<hash(repo root)>:<slug>`) so successive publishes from THIS instance
+    converge on one entry (a removal shrinks the mirror) while a second Bridge
+    instance sharing the slug never clobbers this one.
 
     A shared-registry hiccup — a version-guarded newer file, an unreadable
     registry, an import failure — NEVER fails the local command: it warns and
@@ -511,6 +523,21 @@ def _publish_identity(consumer: Consumer, ws_id: str) -> None:
         if not isinstance(definition, dict):
             return
         directories = []
+        d = definition.get("directory")
+        if isinstance(d, str) and d:
+            if "${" in d:
+                # An uninterpolated ${var} means the working dir is not yet
+                # resolvable — publish NO bogus path (position 0 stays reserved
+                # for a real primary directory once the variable is set).
+                sys.stderr.write(
+                    f"workspace: skipping directory publish for '{ws_id}' — "
+                    f"'{d}' still holds an uninterpolated ${{...}} variable.\n")
+            else:
+                p = os.path.expanduser(d)
+                if not os.path.isabs(p):
+                    p = os.path.join(consumer.root, p)
+                # PRIMARY entry — no label; position 0 marks it the working dir.
+                directories.append({"path": os.path.realpath(p)})
         git_remotes = []
         repos_ext = []
         for m in definition.get("repos") or []:
@@ -531,9 +558,15 @@ def _publish_identity(consumer: Consumer, ws_id: str) -> None:
             "repos": repos_ext,
         }
         title = definition.get("title") or ws_id
+        # Instance-qualify the mirror id so two Bridge instances that share a
+        # workspace slug (AGENTS.md § Multiple Instances) never clobber each
+        # other's row: <first-12-hex of sha256(realpath repo root)>:<slug>.
+        ref = (hashlib.sha256(
+            os.path.realpath(consumer.root).encode()).hexdigest()[:12]
+            + ":" + ws_id)
         registry = workspace_registry.Registry()
         registry.publish_workspace(
-            ws_id, str(title),
+            ref, str(title),
             directories=directories,
             git_remotes=git_remotes,
             open_bridge_ext=open_bridge_ext,
@@ -745,6 +778,13 @@ def _add_code(consumer: Consumer, args, url: str) -> int:
     sha = run_git(["-C", clone_abs, "rev-parse", "HEAD"]).stdout.strip()
     ref = args.ref or default_branch(clone_abs)
 
+    # Ordering (S5): clone → exclude (incl. the NEW member path) → write the
+    # definition → rebuild the lock. Arming the exclude block BEFORE the clone is
+    # recorded in the tracked definition closes the crash window where a public
+    # fork could `git add -A`-publish freshly cloned foreign code.
+    consumer.ensure_git_exclude_block(
+        ws_id, code_member_paths(definition) + [clone_rel])
+
     definition.setdefault("repos", [])
     definition["repos"].append({
         "url": url,
@@ -757,7 +797,6 @@ def _add_code(consumer: Consumer, args, url: str) -> int:
     consumer.write_definition(ws_id, definition)
 
     rebuild_workspace_lock(consumer, ws_id, definition)
-    consumer.ensure_git_exclude_block(ws_id, code_member_paths(definition))
 
     print(f"added code member '{member}' @ {sha} → {clone_rel}")
     return 0
@@ -804,9 +843,11 @@ def cmd_add_repo(consumer: Consumer, args) -> int:
 def _remove_code(consumer: Consumer, ws_id: str, definition: dict, member: str) -> int:
     clone_rel = f"{MEMBER_BASE}/{ws_id}/{member}"
     clone_abs = os.path.join(consumer.root, clone_rel)
-    if os.path.isdir(clone_abs):
-        shutil.rmtree(clone_abs, ignore_errors=True)
 
+    # Ordering (S5): update the metadata FIRST (definition + lock + exclude),
+    # then rmtree the clone LAST. If the delete is interrupted, the definition /
+    # lock / exclude are already consistent (member gone); a stray clone dir is
+    # inert (already excluded and no longer referenced).
     definition["repos"] = [
         m for m in (definition.get("repos") or [])
         if not (isinstance(m, dict) and m.get("role") == "code"
@@ -821,6 +862,9 @@ def _remove_code(consumer: Consumer, ws_id: str, definition: dict, member: str) 
         consumer.ensure_git_exclude_block(ws_id, remaining)
     else:
         consumer.drop_git_exclude_block(ws_id)
+
+    if os.path.isdir(clone_abs):
+        shutil.rmtree(clone_abs, ignore_errors=True)
 
     print(f"removed code member '{member}' from workspace '{ws_id}'")
     return 0

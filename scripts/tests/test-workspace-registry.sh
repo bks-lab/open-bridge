@@ -27,10 +27,22 @@
 #   -  archive — soft-delete flips archived + bumps updated_at
 #   -  standalone — the module source contains no k2a/reinvent reference
 #   -  CLI — version-guard exits non-zero, read still exits 0
-#   -  MUTATION-CHECKS on the four safety-critical asserts (preserve-unknown,
-#      foreign-ext, de-dup, version-guard): break a COPY of the engine, confirm the
-#      corresponding assert now FAILS (has teeth), discard the copy (original never
-#      touched).
+#   -  guarded structural adopt (publish, §C.3 rule 3) — a peer tool's row with
+#      NO open-bridge slice is ADOPTED (merge semantics, foreign fields preserved,
+#      name kept unless empty/auto-generated) on a shared remote OR path; two
+#      ambiguous candidates or a foreign open-bridge id → mint instead
+#   -  fail-closed anomaly path — a corrupt file / missing-version REFUSES the
+#      write (bytes untouched, no .bak); version "2"/2.0 coerce and proceed; a
+#      genuine v1 file rotates LOUDLY to a TIMESTAMPED .bak (a second rotation
+#      never clobbers the first)
+#   -  TEETH — a real concurrency case (12 parallel writers, all rows + unique ids
+#      survive) with a no-flock mutant that must LOSE updates; a real atomicity
+#      case (a concurrent reader parses every snapshot during rapid writes) with a
+#      non-atomic-write mutant that must produce a torn read
+#   -  MUTATION-CHECKS on the safety-critical asserts (preserve-unknown,
+#      foreign-ext, de-dup, version-guard, publish, adopt, flock, atomic-replace):
+#      break a COPY of the engine, confirm the corresponding assert now FAILS (has
+#      teeth), discard the copy (original never touched).
 #
 # NOTE ON `set`: like test-overlay.sh this uses `set -u` ONLY. Each command's
 # non-zero exit is captured into $RC and the run continues; the final
@@ -360,6 +372,387 @@ ok = req and dirs and noprivate and foreign_ok and len(ours) == 2
 print("PASS-CONFORM" if ok else f"FAIL-CONFORM req={req} dirs={dirs} noprivate={noprivate} foreign={foreign_ok} nours={len(ours)}")
 PY
 
+# publish → guarded structural ADOPT (§C.3 rule 3): a peer tool's row that carries
+# NO open-bridge slice is ADOPTED with MERGE semantics when EXACTLY one row shares
+# our identity — foreign fields survive, the name is kept unless empty/generated.
+
+# 16a. adopt by shared normalized remote (scp≡https); merge unions remotes.
+S_ADOPT_REMOTE="$TMP/s_adopt_remote.py"; printf '%s' "$HDR" > "$S_ADOPT_REMOTE"
+cat >> "$S_ADOPT_REMOTE" <<'PY'
+reg = m.Registry()
+seed = {"version": 2, "workspaces": [{
+    "id": "ws_0007", "name": "k2a-native", "name_generated": False,
+    "directories": [{"path": "/tmp/wsr/k2a", "aliases": []}],
+    "git_remotes": ["git@github.com:acme/k2a.git"],   # scp form
+    "state": {"panes": 3}, "session_ns": "abc",
+    "resource_refs": [{"kind": "doc", "id": "d1"}],
+    "extensions": {"k2a": {"flags": ["--x"]}},
+    "weird": {"keep": 1}}]}
+os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
+reg.publish_workspace("abc123def456:k2a", "OB Name",
+                      directories=["/tmp/wsr/k2a"],
+                      git_remotes=["https://github.com/acme/k2a.git",   # SAME repo (deduped)
+                                   "https://github.com/acme/extra.git"],  # NEW (merged in)
+                      open_bridge_ext={"overlays": ["o1"], "repos": []})
+after = json.load(open(reg.path)); w = after["workspaces"][0]
+ok = (len(after["workspaces"]) == 1                                       # adopted, no new row
+      and w["id"] == "ws_0007"                                           # SAME row
+      and w["name"] == "k2a-native"                                      # name kept (not generated)
+      and w["state"] == {"panes": 3} and w["session_ns"] == "abc"        # k2a-private preserved
+      and w["resource_refs"] == [{"kind": "doc", "id": "d1"}]            # resource_refs preserved
+      and w["extensions"]["k2a"] == {"flags": ["--x"]}                   # foreign ext preserved
+      and w.get("weird") == {"keep": 1}                                  # unknown key preserved
+      and w["extensions"]["open-bridge"]["id"] == "abc123def456:k2a"     # our slice parked
+      and w["extensions"]["open-bridge"]["overlays"] == ["o1"]
+      and w["git_remotes"] == ["git@github.com:acme/k2a.git",            # MERGE: kept + deduped + added
+                               "https://github.com/acme/extra.git"]
+      and len(w["directories"]) == 1)
+print("PASS-ADOPT-REMOTE" if ok else f"FAIL-ADOPT-REMOTE w={w}")
+PY
+
+# 16b. adopt by shared canonical directory; merge unions directories.
+S_ADOPT_PATH="$TMP/s_adopt_path.py"; printf '%s' "$HDR" > "$S_ADOPT_PATH"
+cat >> "$S_ADOPT_PATH" <<'PY'
+reg = m.Registry()
+seed = {"version": 2, "workspaces": [{
+    "id": "ws_0004", "name": "native", "name_generated": False,
+    "directories": [{"path": "/tmp/wsr/shared", "aliases": []}],
+    "git_remotes": [], "extensions": {"k2a": {"s": 1}}}]}
+os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
+reg.publish_workspace("h:shared", "OB",
+                      directories=["/tmp/wsr/shared/", "/tmp/wsr/shared/code"],  # trailing-slash ≡ same
+                      git_remotes=[], open_bridge_ext={"overlays": [], "repos": []})
+after = json.load(open(reg.path)); w = after["workspaces"][0]
+paths = [d["path"] for d in w["directories"]]
+ok = (len(after["workspaces"]) == 1 and w["id"] == "ws_0004"
+      and w["name"] == "native"                              # name kept
+      and w["extensions"]["k2a"] == {"s": 1}                 # foreign ext preserved
+      and w["extensions"]["open-bridge"]["id"] == "h:shared"
+      and len(w["directories"]) == 2                          # merged, not replaced
+      and "/tmp/wsr/shared" in paths                          # existing entry preserved as-is
+      and os.path.realpath("/tmp/wsr/shared/code") in paths)  # new dir merged in (canonical)
+print("PASS-ADOPT-PATH" if ok else f"FAIL-ADOPT-PATH w={w}")
+PY
+
+# 16c. name overwrite rules — empty OR name_generated → overwrite; curated → keep.
+S_ADOPT_NAME="$TMP/s_adopt_name.py"; printf '%s' "$HDR" > "$S_ADOPT_NAME"
+cat >> "$S_ADOPT_NAME" <<'PY'
+reg = m.Registry()
+seed = {"version": 2, "workspaces": [
+    {"id": "ws_0001", "name": "", "name_generated": False,
+     "directories": [], "git_remotes": ["https://h/x/empty.git"], "extensions": {"k2a": {}}},
+    {"id": "ws_0002", "name": "auto", "name_generated": True,
+     "directories": [], "git_remotes": ["https://h/x/gen.git"], "extensions": {"k2a": {}}},
+    {"id": "ws_0003", "name": "curated", "name_generated": False,
+     "directories": [], "git_remotes": ["https://h/x/keep.git"], "extensions": {"k2a": {}}}]}
+os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
+reg.publish_workspace("h:empty", "FromEmpty", git_remotes=["https://h/x/empty.git"], open_bridge_ext={"overlays": []})
+reg.publish_workspace("h:gen", "FromGen", git_remotes=["https://h/x/gen.git"], open_bridge_ext={"overlays": []})
+reg.publish_workspace("h:keep", "ShouldNotApply", git_remotes=["https://h/x/keep.git"], open_bridge_ext={"overlays": []})
+rows = {w["id"]: w for w in json.load(open(reg.path))["workspaces"]}
+ok = (len(rows) == 3                                          # all adopted, none minted
+      and rows["ws_0001"]["name"] == "FromEmpty"             # empty name → overwritten
+      and rows["ws_0002"]["name"] == "FromGen"               # name_generated → overwritten
+      and rows["ws_0003"]["name"] == "curated"               # curated name → preserved
+      and rows["ws_0001"]["extensions"]["open-bridge"]["id"] == "h:empty"
+      and rows["ws_0003"]["extensions"]["open-bridge"]["id"] == "h:keep")
+print("PASS-ADOPT-NAME" if ok else "FAIL-ADOPT-NAME n1=%r n2=%r n3=%r count=%d" % (
+      rows.get("ws_0001", {}).get("name"), rows.get("ws_0002", {}).get("name"),
+      rows.get("ws_0003", {}).get("name"), len(rows)))
+PY
+
+# 16d. two ambiguous structural candidates → mint (adopt NEITHER).
+S_ADOPT_AMBIG="$TMP/s_adopt_ambig.py"; printf '%s' "$HDR" > "$S_ADOPT_AMBIG"
+cat >> "$S_ADOPT_AMBIG" <<'PY'
+reg = m.Registry()
+seed = {"version": 2, "workspaces": [
+    {"id": "ws_0001", "name": "A", "directories": [], "git_remotes": ["https://h/x/one.git"], "extensions": {"k2a": {}}},
+    {"id": "ws_0002", "name": "B", "directories": [], "git_remotes": ["https://h/x/two.git"], "extensions": {"k2a": {}}}]}
+os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
+reg.publish_workspace("h:both", "Both", directories=[],
+                      git_remotes=["https://h/x/one.git", "https://h/x/two.git"],  # matches BOTH
+                      open_bridge_ext={"overlays": []})
+after = json.load(open(reg.path))
+minted = [w for w in after["workspaces"] if w.get("extensions", {}).get("open-bridge", {}).get("id") == "h:both"]
+ok = (len(after["workspaces"]) == 3                                              # ambiguous → new row minted
+      and after["workspaces"][0]["name"] == "A" and "open-bridge" not in after["workspaces"][0]["extensions"]
+      and after["workspaces"][1]["name"] == "B" and "open-bridge" not in after["workspaces"][1]["extensions"]
+      and len(minted) == 1)
+print("PASS-ADOPT-AMBIG" if ok else f"FAIL-ADOPT-AMBIG n={len(after['workspaces'])} minted={len(minted)}")
+PY
+
+# 16e. a structurally-matching row carrying a FOREIGN open-bridge id → never adopt → mint.
+S_ADOPT_FOREIGNID="$TMP/s_adopt_foreignid.py"; printf '%s' "$HDR" > "$S_ADOPT_FOREIGNID"
+cat >> "$S_ADOPT_FOREIGNID" <<'PY'
+reg = m.Registry()
+seed = {"version": 2, "workspaces": [{
+    "id": "ws_0006", "name": "theirs", "directories": [],
+    "git_remotes": ["https://h/x/shared.git"],
+    "extensions": {"open-bridge": {"id": "other-instance:foo", "overlays": []}}}]}
+os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
+reg.publish_workspace("me:foo", "Mine", directories=[],
+                      git_remotes=["https://h/x/shared.git"],   # SAME remote as the foreign-id row
+                      open_bridge_ext={"overlays": ["o"]})
+after = json.load(open(reg.path))
+ok = (len(after["workspaces"]) == 2                                                       # NOT adopted → minted
+      and after["workspaces"][0]["extensions"]["open-bridge"]["id"] == "other-instance:foo"  # untouched
+      and after["workspaces"][0]["name"] == "theirs"
+      and after["workspaces"][1]["extensions"]["open-bridge"]["id"] == "me:foo")
+print("PASS-ADOPT-FOREIGNID" if ok else f"FAIL-ADOPT-FOREIGNID n={len(after['workspaces'])}")
+PY
+
+# 16f. adopt-then-republish (the create→subscribe flow): after a structural ADOPT
+# parks our id on a peer row, the NATURALLY-following id-match publish must MERGE
+# (not wholesale-REPLACE) — the peer's curated name + peer-only dirs/remotes + its
+# private/foreign fields survive, and only OUR own contributed subset can shrink.
+S_ADOPT_REPUBLISH="$TMP/s_adopt_republish.py"; printf '%s' "$HDR" > "$S_ADOPT_REPUBLISH"
+cat >> "$S_ADOPT_REPUBLISH" <<'PY'
+reg = m.Registry()
+# A peer tool (k2a) row — curated name, a peer-only extra dir + remote, private
+# state/session, a foreign extension slice: the exact shape create→subscribe hits.
+seed = {"version": 2, "workspaces": [{
+    "id": "ws_0011", "name": "k2a-native", "name_generated": False,
+    "directories": [{"path": "/tmp/wsr/k2a", "aliases": []},
+                    {"path": "/tmp/wsr/k2a-only-extra", "aliases": []}],
+    "git_remotes": ["git@github.com:acme/k2a.git",                 # shared identity (scp form)
+                    "https://github.com/acme/k2a-only.git"],        # peer-only extra remote
+    "state": {"panes": 4}, "session_ns": "s9",
+    "resource_refs": [{"kind": "doc", "id": "d1"}],
+    "extensions": {"k2a": {"flags": ["--z"]}}}]}
+os.makedirs(reg.dir, exist_ok=True); json.dump(seed, open(reg.path, "w"))
+REF = "abc123abc123:demo"
+# publish #1 = the `create` publish → structural ADOPT (shared remote), our clone
+# dir + slice parked onto the peer row (peer curation kept).
+reg.publish_workspace(REF, "demo", directories=["/tmp/wsr/ours-clone"],
+                      git_remotes=["https://github.com/acme/k2a.git"],  # ≡ the scp remote
+                      open_bridge_ext={"overlays": [], "repos": []})
+# publish #2 = the `subscribe` publish that NATURALLY follows create — id-match.
+# THIS is the regression: on an adopted row it must MERGE, keeping the name guard.
+reg.publish_workspace(REF, "demo", directories=["/tmp/wsr/ours-clone"],
+                      git_remotes=["https://github.com/acme/k2a.git"],
+                      open_bridge_ext={"overlays": ["o"], "repos": []})
+w = json.load(open(reg.path))["workspaces"]; rows = w; w = rows[0]
+paths = [d["path"] for d in w["directories"]]
+merged = (len(rows) == 1                                            # still ONE row
+          and w["id"] == "ws_0011"                                 # adopted row, not re-minted
+          and w["name"] == "k2a-native"                            # peer name KEPT (not 'demo')
+          and "/tmp/wsr/k2a-only-extra" in paths                   # peer-only dir survived #2 (as-seeded)
+          and os.path.realpath("/tmp/wsr/ours-clone") in paths     # our clone present (canonicalized)
+          and "https://github.com/acme/k2a-only.git" in w["git_remotes"]  # peer-only remote survived
+          and w["state"] == {"panes": 4} and w["session_ns"] == "s9"      # k2a-private preserved
+          and w["resource_refs"] == [{"kind": "doc", "id": "d1"}]
+          and w["extensions"]["k2a"] == {"flags": ["--z"]}         # foreign ext preserved
+          and w["extensions"]["open-bridge"]["id"] == REF
+          and w["extensions"]["open-bridge"]["overlays"] == ["o"]) # our slice refreshed
+# publish #3 drops OUR clone dir → only OUR contribution shrinks; peer fields stay.
+reg.publish_workspace(REF, "demo", directories=[],
+                      git_remotes=["https://github.com/acme/k2a.git"],
+                      open_bridge_ext={"overlays": ["o"], "repos": []})
+w3 = json.load(open(reg.path))["workspaces"][0]
+p3 = [d["path"] for d in w3["directories"]]
+shrink = (os.path.realpath("/tmp/wsr/ours-clone") not in p3        # our clone pruned (shrink)
+          and "/tmp/wsr/k2a-only-extra" in p3                      # peer dir untouched (as-seeded)
+          and "/tmp/wsr/k2a" in p3                                 # peer dir untouched (as-seeded)
+          and "https://github.com/acme/k2a-only.git" in w3["git_remotes"])  # peer remote untouched
+ok = merged and shrink
+print("PASS-ADOPT-REPUBLISH" if ok else f"FAIL-ADOPT-REPUBLISH merged={merged} shrink={shrink} w={w} w3={w3}")
+PY
+
+# fail-closed anomaly path (S3): corrupt / missing-version REFUSE the write untouched;
+# "2"/2.0 coerce; a genuine v1 file rotates LOUDLY to a timestamped .bak.
+
+S_CORRUPT="$TMP/s_corrupt.py"; printf '%s' "$HDR" > "$S_CORRUPT"
+cat >> "$S_CORRUPT" <<'PY'
+reg = m.Registry()
+os.makedirs(reg.dir, exist_ok=True)
+open(reg.path, "wb").write(b'{ this is not valid json ')
+before = open(reg.path, "rb").read()
+refused = False; msg = ""
+try:
+    reg.upsert_workspace("x", directories=["/tmp/wsr/x"])
+except m.RegistryError as e:
+    refused = True; msg = str(e)
+except Exception as e:
+    msg = "WRONG:" + repr(e)
+after = open(reg.path, "rb").read()
+baks = [f for f in os.listdir(reg.dir) if ".bak" in f]
+ok = refused and after == before and not baks and "refusing to guess" in msg
+print("PASS-CORRUPT" if ok else f"FAIL-CORRUPT refused={refused} same={after == before} baks={baks} msg={msg!r}")
+PY
+
+S_VER_STR="$TMP/s_ver_str.py"; printf '%s' "$HDR" > "$S_VER_STR"
+cat >> "$S_VER_STR" <<'PY'
+reg = m.Registry()
+os.makedirs(reg.dir, exist_ok=True)
+open(reg.path, "w").write('{"version": "2", "workspaces": []}')   # string version
+reg.upsert_workspace("x", directories=["/tmp/wsr/x"])
+d = json.load(open(reg.path))
+baks = [f for f in os.listdir(reg.dir) if ".bak" in f]
+ok = (d["version"] == 2 and isinstance(d["version"], int)         # re-emitted as int 2
+      and len(d["workspaces"]) == 1 and not baks)                 # proceeded, NOT rotated
+print("PASS-VER-STR" if ok else f"FAIL-VER-STR d={d} baks={baks}")
+PY
+
+S_VER_FLOAT="$TMP/s_ver_float.py"; printf '%s' "$HDR" > "$S_VER_FLOAT"
+cat >> "$S_VER_FLOAT" <<'PY'
+reg = m.Registry()
+os.makedirs(reg.dir, exist_ok=True)
+open(reg.path, "w").write('{"version": 2.0, "workspaces": []}')   # float version
+reg.upsert_workspace("x", directories=["/tmp/wsr/x"])
+d = json.load(open(reg.path))
+baks = [f for f in os.listdir(reg.dir) if ".bak" in f]
+ok = (d["version"] == 2 and isinstance(d["version"], int)
+      and len(d["workspaces"]) == 1 and not baks)
+print("PASS-VER-FLOAT" if ok else f"FAIL-VER-FLOAT d={d} baks={baks}")
+PY
+
+S_VER_MISSING="$TMP/s_ver_missing.py"; printf '%s' "$HDR" > "$S_VER_MISSING"
+cat >> "$S_VER_MISSING" <<'PY'
+reg = m.Registry()
+os.makedirs(reg.dir, exist_ok=True)
+open(reg.path, "w").write('{"workspaces": [{"id": "ws_0001", "name": "keep"}]}')  # no version
+before = open(reg.path, "rb").read()
+refused = False; msg = ""
+try:
+    reg.upsert_workspace("x", directories=["/tmp/wsr/x"])
+except m.RegistryError as e:
+    refused = True; msg = str(e)
+except Exception as e:
+    msg = "WRONG:" + repr(e)
+after = open(reg.path, "rb").read()
+baks = [f for f in os.listdir(reg.dir) if ".bak" in f]
+ok = refused and after == before and not baks
+print("PASS-VER-MISSING" if ok else f"FAIL-VER-MISSING refused={refused} same={after == before} baks={baks} msg={msg!r}")
+PY
+
+S_VER_ONE="$TMP/s_ver_one.py"; printf '%s' "$HDR" > "$S_VER_ONE"
+cat >> "$S_VER_ONE" <<'PY'
+import io, contextlib, re as _re
+reg = m.Registry()
+os.makedirs(reg.dir, exist_ok=True)
+json.dump({"version": 1, "workspaces": [{"id": "ws_0001", "name": "legacy-a"},
+                                        {"id": "ws_0002", "name": "legacy-b"}]}, open(reg.path, "w"))
+err = io.StringIO()
+with contextlib.redirect_stderr(err):
+    reg.upsert_workspace("fresh", directories=["/tmp/wsr/fresh"])
+stderr = err.getvalue()
+d = json.load(open(reg.path))
+baks = [f for f in os.listdir(reg.dir) if f.startswith("workspaces.json.bak.")]
+pat = _re.compile(r"^workspaces\.json\.bak\.\d{8}T\d{6}Z(\.\d+)?$")
+bak_ok = len(baks) == 1 and pat.match(baks[0]) is not None
+old = json.load(open(os.path.join(reg.dir, baks[0]))) if bak_ok else {}
+loud = bool(baks) and baks[0] in stderr and "2 workspace row(s) evacuated" in stderr   # bak path + row count LOUD
+fresh_v2 = d.get("version") == 2 and len(d.get("workspaces", [])) == 1 and d["workspaces"][0]["name"] == "fresh"
+old_ok = old.get("version") == 1 and len(old.get("workspaces", [])) == 2               # bak holds the OLD bytes
+ok = bak_ok and loud and fresh_v2 and old_ok
+print("PASS-VER-ONE" if ok else f"FAIL-VER-ONE baks={baks} bak_ok={bak_ok} loud={loud} fresh_v2={fresh_v2} old_ok={old_ok} stderr={stderr!r}")
+PY
+
+S_VER_ONE_TWICE="$TMP/s_ver_one_twice.py"; printf '%s' "$HDR" > "$S_VER_ONE_TWICE"
+cat >> "$S_VER_ONE_TWICE" <<'PY'
+import io, contextlib
+reg = m.Registry()
+os.makedirs(reg.dir, exist_ok=True)
+json.dump({"version": 1, "workspaces": [{"id": "ws_0001", "name": "first-legacy"}]}, open(reg.path, "w"))
+with contextlib.redirect_stderr(io.StringIO()):
+    reg.upsert_workspace("a", directories=["/tmp/wsr/a"])
+json.dump({"version": 1, "workspaces": [{"id": "ws_0009", "name": "second-legacy"}]}, open(reg.path, "w"))
+with contextlib.redirect_stderr(io.StringIO()):
+    reg.upsert_workspace("b", directories=["/tmp/wsr/b"])
+baks = sorted(f for f in os.listdir(reg.dir) if f.startswith("workspaces.json.bak."))
+names = []
+for b in baks:
+    try:
+        names.append(json.load(open(os.path.join(reg.dir, b)))["workspaces"][0]["name"])
+    except Exception:
+        names.append(None)
+distinct = len(baks) == 2 and len(set(baks)) == 2                 # two DISTINCT bak files
+ok = distinct and "first-legacy" in names and "second-legacy" in names  # neither rotation clobbered the other
+print("PASS-VER-ONE-TWICE" if ok else f"FAIL-VER-ONE-TWICE baks={baks} names={names} distinct={distinct}")
+PY
+
+# TEETH — a REAL concurrency case: 12 writers upsert DISTINCT workspaces into one
+# registry, all released together by a barrier so their read-modify-write windows
+# overlap. Under flock all 12 rows + strictly-unique ids survive (deterministic —
+# flock queues them); the no-flock mutant (§19) must lose updates. `fcntl.flock`
+# is per-open-description, so it excludes across threads too (each _Lock opens its
+# own fd). Fat rows widen the write window so the unlocked race reliably collides.
+S_CONCURRENCY="$TMP/s_concurrency.py"; printf '%s' "$HDR" > "$S_CONCURRENCY"
+cat >> "$S_CONCURRENCY" <<'PY'
+import threading
+os.makedirs(os.environ["WORKSPACES_DIR"], exist_ok=True)
+N = 12
+pad = "y" * 20000                       # fat rows → a wider RMW window for the unlocked race
+barrier = threading.Barrier(N)
+errors = []
+def worker(i):
+    try:
+        barrier.wait()                  # all writers enter the RMW together
+        m.Registry().upsert_workspace(
+            f"ws{i}", git_remotes=[f"https://h/x/repo{i}.git"],
+            directories=[f"/tmp/wsr/conc/{i}"], description=pad)
+    except Exception as e:              # a mutant may raise under the race; that is a loss too
+        errors.append(repr(e))
+ths = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+for t in ths:
+    t.start()
+for t in ths:
+    t.join()
+rows = m.Registry().read_registry()["workspaces"]
+ids = [w.get("id") for w in rows]
+ok = (not errors) and len(rows) == N and len(set(ids)) == N and all(ids)  # no lost update, ids unique
+print("PASS-CONCURRENCY" if ok else f"FAIL-CONCURRENCY rows={len(rows)} uniq={len(set(ids))} err={errors[:2]}")
+PY
+
+# The concurrent reader worker (§20). Engine-agnostic: it only json-parses the
+# raw registry file in a tight loop, counting any snapshot that fails to parse.
+# Under an atomic os.replace it must NEVER see a torn read; the truncate-write
+# mutant must produce at least one.
+S_READER="$TMP/s_reader.py"
+cat > "$S_READER" <<'PY'
+import json, os, time
+d = os.environ["WORKSPACES_DIR"]
+path = os.path.join(d, "workspaces.json")
+open(os.path.join(d, ".reader-ready"), "w").close()   # handshake: writer waits for this
+deadline = time.time() + float(os.environ.get("READER_SECONDS", "3.0"))
+reads = 0; fails = 0
+while time.time() < deadline:
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        json.loads(raw.decode("utf-8"))   # empty/partial → raises → a torn read
+        reads += 1
+    except FileNotFoundError:
+        pass                              # not created yet — not a torn read
+    except Exception:
+        fails += 1
+print(f"{reads} {fails}")
+PY
+
+S_ATOMICITY="$TMP/s_atomicity.py"; printf '%s' "$HDR" > "$S_ATOMICITY"
+cat >> "$S_ATOMICITY" <<'PY'
+import subprocess, sys, time
+reg = m.Registry()
+os.makedirs(reg.dir, exist_ok=True)
+reader = os.environ["READER_SCRIPT"]
+env = dict(os.environ); env["READER_SECONDS"] = "3.0"
+p = subprocess.Popen([sys.executable, reader], env=env,
+                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+ready = os.path.join(reg.dir, ".reader-ready")
+t0 = time.time()
+while not os.path.exists(ready) and time.time() - t0 < 5:
+    time.sleep(0.005)                     # ensure the reader is live during writes
+pad = "x" * 8000                          # fat rows → multi-chunk writes widen any torn window
+for i in range(30):
+    reg.upsert_workspace(f"ws{i}", directories=[f"/tmp/wsr/at/{i}"], description=pad)
+out, _ = p.communicate(timeout=30)
+parts = out.split()
+reads = int(parts[0]) if len(parts) == 2 else -1
+fails = int(parts[1]) if len(parts) == 2 else -1
+ok = fails == 0 and reads > 0            # every snapshot parsed; the reader did run
+print("PASS-ATOMICITY" if ok else f"FAIL-ATOMICITY reads={reads} fails={fails} out={out!r}")
+PY
+
 # ───────────────────────────────────────────────────────────────────
 echo
 echo "── 1. upsert + read-back (schema-conformant entry) ─────────────"
@@ -488,7 +881,7 @@ assert_noout "broken de-dup engine FAILS the single-row assert (teeth)" "PASS-DE
 # 12d. version-guard — a disabled version ceiling (writes over a newer file)
 MUT="$TMP/mut_version.py"
 mutate "$MUT" \
-  'if isinstance(version, int) and version > MAX_SUPPORTED_VERSION:' \
+  'if version > MAX_SUPPORTED_VERSION:' \
   'if False:'
 run_scen "$S_VERSION" "$(wsdir)" "$MUT"
 assert_noout "broken version-guard engine FAILS the refuse-write assert (teeth)" "PASS-VERSION-GUARD"
@@ -536,7 +929,109 @@ assert_noout "a non-string-id writer FAILS the conformance assert (teeth)" "PASS
 
 # ───────────────────────────────────────────────────────────────────
 echo
-echo "── 16. real ~/.workspaces/ untouched across the entire run ─────"
+echo "── 16. publish — guarded structural adopt (§C.3 rule 3) ────────"
+run_scen "$S_ADOPT_REMOTE" "$(wsdir)"
+assert_notrace "adopt-by-remote scenario did not crash"
+assert_out "shared remote → ADOPT a slice-less peer row; merge remotes, keep name+foreign fields" "PASS-ADOPT-REMOTE"
+run_scen "$S_ADOPT_PATH" "$(wsdir)"
+assert_notrace "adopt-by-path scenario did not crash"
+assert_out "shared canonical directory → ADOPT + merge directories; foreign ext preserved" "PASS-ADOPT-PATH"
+run_scen "$S_ADOPT_NAME" "$(wsdir)"
+assert_out "adopt overwrites name only when empty OR name_generated; curated name kept" "PASS-ADOPT-NAME"
+run_scen "$S_ADOPT_AMBIG" "$(wsdir)"
+assert_out "two ambiguous candidates → mint (adopt neither); both left untouched" "PASS-ADOPT-AMBIG"
+run_scen "$S_ADOPT_FOREIGNID" "$(wsdir)"
+assert_out "a candidate carrying a FOREIGN open-bridge id is never adopted → mint (instance isolation)" "PASS-ADOPT-FOREIGNID"
+run_scen "$S_ADOPT_REPUBLISH" "$(wsdir)"
+assert_notrace "adopt-then-republish scenario did not crash"
+assert_out "adopt→id-match republish MERGEs (peer name+dirs+remotes kept); only our subset shrinks" "PASS-ADOPT-REPUBLISH"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 17. MUTATION-CHECKS on guarded adopt (teeth) ────────────────"
+# 17a. no-adopt — the candidate finder returns nothing → publish mints a duplicate
+MUT="$TMP/mut_no_adopt.py"
+mutate "$MUT" 'return hits' 'return []'
+run_scen "$S_ADOPT_REMOTE" "$(wsdir)" "$MUT"
+assert_noout "an engine that never adopts FAILS the ONE-row adopt assert (teeth)" "PASS-ADOPT-REMOTE"
+# 17b. exclude-ours disabled — a foreign open-bridge row becomes adoptable (instance clobber)
+MUT="$TMP/mut_adopt_ours.py"
+mutate "$MUT" \
+  'continue  # a row already ours / another instance'"'"'s — never adopt' \
+  'pass      # a row already ours / another instance'"'"'s — never adopt'
+run_scen "$S_ADOPT_FOREIGNID" "$(wsdir)" "$MUT"
+assert_noout "an engine that adopts a foreign-id row FAILS the mint assert (teeth)" "PASS-ADOPT-FOREIGNID"
+# 17c. replace-not-merge — adopt clobbers remotes instead of unioning them
+MUT="$TMP/mut_adopt_replace.py"
+mutate "$MUT" 'self._merge_remotes(ws, remotes)' 'ws["git_remotes"] = remotes'
+run_scen "$S_ADOPT_REMOTE" "$(wsdir)" "$MUT"
+assert_noout "an engine that replaces (not merges) remotes FAILS the merge assert (teeth)" "PASS-ADOPT-REMOTE"
+# 17d. clobber-on-republish — the id-match branch treats an ADOPTED row as minted
+# (never MERGEs) → the subscribe publish reverts the peer's curation (review fix #1)
+MUT="$TMP/mut_republish_clobber.py"
+mutate "$MUT" 'if isinstance(old_mirror, dict):' 'if False and isinstance(old_mirror, dict):'
+run_scen "$S_ADOPT_REPUBLISH" "$(wsdir)" "$MUT"
+assert_noout "an engine that REPLACEs (not merges) an adopted row FAILS the republish assert (teeth)" "PASS-ADOPT-REPUBLISH"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 18. fail-closed anomaly path (corrupt / version) ────────────"
+run_scen "$S_CORRUPT" "$(wsdir)"
+assert_notrace "corrupt-file scenario did not crash"
+assert_out "a corrupt file REFUSES the write untouched, no .bak, 'refusing to guess'" "PASS-CORRUPT"
+run_scen "$S_VER_STR" "$(wsdir)"
+assert_out "version as the string \"2\" coerces → write proceeds, re-emits int 2, no rotation" "PASS-VER-STR"
+run_scen "$S_VER_FLOAT" "$(wsdir)"
+assert_out "version as the float 2.0 coerces → write proceeds, re-emits int 2, no rotation" "PASS-VER-FLOAT"
+run_scen "$S_VER_MISSING" "$(wsdir)"
+assert_out "a missing version REFUSES the write untouched, no .bak" "PASS-VER-MISSING"
+run_scen "$S_VER_ONE" "$(wsdir)"
+assert_notrace "v1-rotation scenario did not crash"
+assert_out "a genuine v1 file rotates LOUDLY to a timestamped .bak (path+row-count on stderr); fresh v2" "PASS-VER-ONE"
+run_scen "$S_VER_ONE_TWICE" "$(wsdir)"
+assert_out "a second v1-rotation writes a DISTINCT bak — the first backup is not clobbered" "PASS-VER-ONE-TWICE"
+# CLI-level fail-closed: corrupt → exit non-zero + stderr, file bytes untouched, no .bak
+CORRDIR="$(wsdir)"
+printf 'not json at all' > "$CORRDIR/workspaces.json"
+BSUM_BEFORE="$(shasum "$CORRDIR/workspaces.json" | awk '{print $1}')"
+OUT="$(WORKSPACES_DIR="$CORRDIR" python3 "$REGISTRY" upsert x --dir /tmp/wsr/x 2>&1)"; RC=$?
+assert_rc_nonzero "CLI upsert on a corrupt file exits non-zero (fail-closed)"
+assert_notrace "CLI corrupt refusal is a clean error, not a crash"
+assert_out "CLI corrupt refusal refuses to guess" "refusing to guess"
+assert_eq "the corrupt file bytes were NOT rotated/changed" \
+  "$(shasum "$CORRDIR/workspaces.json" | awk '{print $1}')" "$BSUM_BEFORE"
+if ls "$CORRDIR"/workspaces.json.bak* >/dev/null 2>&1; then
+  fail "corrupt file must NOT be rotated to a .bak (fail-closed)"
+else
+  pass "corrupt file left in place — no .bak rotation"
+fi
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 19. TEETH — flock: parallel writers keep every row ──────────"
+run_scen "$S_CONCURRENCY" "$(wsdir)"
+assert_out "12 parallel writers → all 12 rows + strictly-unique ids survive (flock holds)" "PASS-CONCURRENCY"
+# mutant: strip the exclusive flock → the SAME parallel case must lose updates
+MUT="$TMP/mut_noflock.py"
+mutate "$MUT" 'fcntl.flock(self.fd, fcntl.LOCK_EX)' 'pass'
+run_scen "$S_CONCURRENCY" "$(wsdir)" "$MUT"
+assert_noout "a no-flock engine LOSES updates under the parallel case (teeth)" "PASS-CONCURRENCY"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 20. TEETH — atomic replace: no torn read for a concurrent reader ─"
+export READER_SCRIPT="$S_READER"
+run_scen "$S_ATOMICITY" "$(wsdir)"
+assert_out "a reader parses EVERY snapshot during ~30 rapid writes (os.replace is atomic)" "PASS-ATOMICITY"
+# mutant: replace the atomic os.replace with a non-atomic truncate-in-place copy
+MUT="$TMP/mut_nonatomic.py"
+mutate "$MUT" 'os.replace(tmp, dest)' '__import__("shutil").copyfile(tmp, dest)'
+run_scen "$S_ATOMICITY" "$(wsdir)" "$MUT"
+assert_noout "a non-atomic-write engine produces a torn read (teeth)" "PASS-ATOMICITY"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 21. real ~/.workspaces/ untouched across the entire run ─────"
 REAL_AFTER="$(real_snapshot)"
 assert_eq "the real ~/.workspaces/ snapshot is byte-identical before/after" "$REAL_BEFORE" "$REAL_AFTER"
 if [ ! -e "$REAL_WS" ]; then

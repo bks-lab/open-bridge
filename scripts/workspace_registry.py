@@ -21,15 +21,24 @@ Protocol invariants enforced here:
     per-workspace keys round-trip untouched.
   * **Never touch another tool's extension slice** — a writer edits only the
     shared identity fields plus its OWN `extensions["open-bridge"]` namespace.
-  * **version is max-monotonic** — MAX_SUPPORTED_VERSION = 2; a file whose
-    on-disk `version` exceeds MAX may be READ but is REFUSED for WRITE (a clean
-    error, never a clobber). Writes emit `version: 2`.
-  * **De-dup on create by identity** (§D) — a shared git remote OR a shared
-    canonical directory path attributes to the existing workspace instead of
-    appending a duplicate row.
-  * **Never lose data** — an unreadable or older-versioned file is ROTATED to
-    `workspaces.json.bak` before a fresh registry is started, rather than
-    silently overwritten.
+  * **version is max-monotonic** — MAX_SUPPORTED_VERSION = 2; the on-disk
+    `version` is COERCED (int, the string `"2"`, and the float `2.0` all mean 2)
+    before comparison. A file whose coerced version exceeds MAX may be READ but
+    is REFUSED for WRITE (a clean error, never a clobber). Writes always emit
+    `version: 2` (int).
+  * **De-dup by identity on BOTH create paths** — `upsert_workspace` de-dups on
+    a shared git remote OR a shared canonical directory (§D); `publish_workspace`
+    additionally does a *guarded structural adopt* (§C.3 rule 3) so its owning
+    mirror CONVERGES onto a peer tool's pre-existing row for the same project
+    instead of minting a duplicate — but never onto a second such row, and never
+    onto a row that already carries an `extensions["open-bridge"]` slice (one of
+    ours / another instance's).
+  * **Fail closed on anomalies** — an unparseable file, or a missing/non-numeric
+    `version`, REFUSES the write (a clean error; the on-disk bytes are left
+    untouched, nothing is rotated or guessed). ONLY a genuine older file (coerced
+    `version <= 1`, the documented v1→v2 cutover) is rotated — to a TIMESTAMPED
+    `workspaces.json.bak.<UTC>` (never a reused slot) with a LOUD stderr notice —
+    before a fresh v2 registry is started.
 
 The identity/matching rules (§D): paths are canonicalized (symlinks resolved,
 `~` expanded) and alias-expanded (macOS File-Provider `~/Dropbox` ↔
@@ -46,7 +55,11 @@ import tempfile
 from copy import deepcopy
 from datetime import datetime, timezone
 
-try:  # POSIX advisory locking; degrades to a best-effort lock file elsewhere.
+try:
+    # POSIX advisory locking. On a platform WITHOUT fcntl (non-POSIX) the lock
+    # file is still created but NOT actually held — the whole read-modify-write
+    # then runs UNSERIALIZED there (advisory best-effort only, as docs/workspaces.md
+    # notes). Concurrent writers are a POSIX-only guarantee.
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX fallback
     fcntl = None  # type: ignore[assignment]
@@ -73,6 +86,17 @@ OUR_EXTENSION = "open-bridge"
 #: successive publishes converge on ONE row and a removal shrinks the mirror —
 #: without hijacking a structural (path/remote) match on another tool's entry.
 OUR_ID_KEY = "id"
+
+#: Bookkeeping sub-key INSIDE our own extension slice, written ONLY on a row we
+#: structurally ADOPTED from a peer tool (never on a row we minted). It records
+#: the identity forms (canonical dirs + normalized remotes) THIS instance last
+#: mirrored onto the adopted row — so a later id-match publish can MERGE the
+#: peer's curated fields (name + peer-only dirs/remotes) instead of wholesale-
+#: replacing them, while still SHRINKING the subset we ourselves contributed. Its
+#: presence is the durable "this row was adopted" marker the id-match branch
+#: reads (a foreign extension slice can NOT serve as that marker — a row we
+#: minted can grow one when a peer tool bolts its own slice onto ours).
+OUR_MIRROR_KEY = "_mirror"
 
 #: macOS File-Provider path aliases (§D.2). The legacy spelling on the left is a
 #: symlink to the canonical one on the right; both must match the same workspace.
@@ -221,6 +245,26 @@ def _next_id(workspaces: list[dict]) -> str:
     return f"ws_{mx + 1:04d}"
 
 
+def _coerce_version(version) -> int | None:
+    """Coerce a registry `version` field to int, or None if it is not numeric.
+
+    Accepts an int (kept as-is), a decimal string matching `^\\d+$` (`"2"` → 2),
+    and an integral float (`2.0` → 2) — the JSON representations that all mean
+    the same schema version. A bool, a non-integral float, a non-numeric string,
+    or a missing/other type is NON-coercible (None); the caller then fails closed
+    rather than guessing a version for it.
+    """
+    if isinstance(version, bool):
+        return None  # bool is an int subclass, but true/false is not a version
+    if isinstance(version, int):
+        return version
+    if isinstance(version, float):
+        return int(version) if version.is_integer() else None
+    if isinstance(version, str) and re.match(r"^\d+$", version):
+        return int(version)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -236,7 +280,6 @@ class Registry:
         )
         self.path = os.path.join(self.dir, REGISTRY_FILENAME)
         self.tmp_path = os.path.join(self.dir, TMP_FILENAME)
-        self.bak_path = os.path.join(self.dir, BAK_FILENAME)
         self.lock_path = os.path.join(self.dir, LOCK_FILENAME)
 
     # --- read side (lockless; atomic-replace guarantees a whole-file read) ----
@@ -261,7 +304,7 @@ class Registry:
 
         Reading is allowed for ANY version (including one newer than us); the
         version ceiling is enforced only on WRITE. A present-but-corrupt file
-        raises (a pure read never rotates — rotation is a write-side action).
+        raises fail-closed (a write would refuse it too — see `_read_for_write`).
         """
         if not os.path.exists(self.path):
             return self._empty()
@@ -270,8 +313,8 @@ class Registry:
                 return self._parse(fh.read())
         except (ValueError, UnicodeDecodeError) as exc:
             raise RegistryError(
-                f"registry {self.path} is unreadable ({exc}); refusing to "
-                f"interpret it. A write would rotate it to {BAK_FILENAME}.")
+                f"registry {self.path} is unreadable ({exc}) — inspect or "
+                f"remove it; refusing to guess.")
 
     def list_workspaces(self, include_archived: bool = True) -> list[dict]:
         rows = self.read_registry().get("workspaces") or []
@@ -319,15 +362,34 @@ class Registry:
 
     # --- write side (ONLY inside the lock) ------------------------------------
 
-    def _rotate_to_bak(self, raw: bytes) -> None:
-        """Preserve an unreadable/older file's bytes in workspaces.json.bak."""
-        self._atomic_write(self.bak_path, raw)
+    def _rotate_to_bak(self, raw: bytes) -> str:
+        """Preserve a legacy (v1) file's bytes in a TIMESTAMPED backup.
+
+        The backup is `workspaces.json.bak.<UTC yyyymmddThhmmssZ>` — never a
+        single reused slot, so a later v1→v2 rotation can NEVER clobber an
+        earlier evacuation. If two rotations fall in the same UTC second, a
+        numeric suffix keeps them distinct. Returns the backup path (for the
+        loud stderr notice).
+        """
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        base = os.path.join(self.dir, f"{BAK_FILENAME}.{stamp}")
+        dest = base
+        n = 1
+        while os.path.exists(dest):
+            dest = f"{base}.{n}"
+            n += 1
+        self._atomic_write(dest, raw)
+        return dest
 
     def _read_for_write(self) -> dict:
-        """Read the base to modify while holding the lock.
+        """Read the base to modify while holding the lock — FAIL-CLOSED.
 
-        A newer file is REFUSED (RegistryVersionError). An unreadable or older
-        file is ROTATED to `.bak` and a fresh v2 base is returned (never lost).
+        A newer file is REFUSED (RegistryVersionError). An unparseable file or a
+        missing/non-numeric `version` is REFUSED too (RegistryError) — the bytes
+        are left exactly as found, never rotated, never guessed. ONLY a genuine
+        older file (coerced `version <= 1`, the documented v1→v2 cutover) is
+        rotated to a timestamped `.bak` (with a loud stderr notice) and a fresh
+        v2 base returned.
         """
         if not os.path.exists(self.path):
             return self._empty()
@@ -336,17 +398,28 @@ class Registry:
         try:
             data = self._parse(raw)
         except (ValueError, UnicodeDecodeError):
-            self._rotate_to_bak(raw)  # corrupt → keep the bytes, start fresh
-            return self._empty()
-        version = data.get("version")
-        if isinstance(version, int) and version > MAX_SUPPORTED_VERSION:
+            raise RegistryError(
+                f"registry {self.path} is unreadable — inspect or remove it; "
+                f"refusing to guess (a write must not overwrite an unparseable "
+                f"file).")
+        version = _coerce_version(data.get("version"))
+        if version is None:
+            raise RegistryError(
+                f"registry {self.path} has a missing or non-numeric 'version' "
+                f"— inspect or remove it; refusing to guess.")
+        if version > MAX_SUPPORTED_VERSION:
             raise RegistryVersionError(
                 f"registry {self.path} is version {version}; this writer "
                 f"understands at most {MAX_SUPPORTED_VERSION}. Refusing to write "
                 f"(a newer tool's semantics must not be clobbered). Reading is "
                 f"still allowed.")
-        if not isinstance(version, int) or version < MAX_SUPPORTED_VERSION:
-            self._rotate_to_bak(raw)  # older/unknown → preserve, start fresh v2
+        if version <= 1:
+            dest = self._rotate_to_bak(raw)  # documented v1→v2 cutover only
+            n = len(data.get("workspaces") or [])
+            sys.stderr.write(
+                f"workspace-registry: rotated legacy v{version} registry to "
+                f"{dest} ({n} workspace row(s) evacuated); started a fresh v2 "
+                f"registry.\n")
             return self._empty()
         return data
 
@@ -407,6 +480,40 @@ class Registry:
             if dir_forms & ws_forms:
                 return i
         return None
+
+    @staticmethod
+    def _adopt_candidates(workspaces: list[dict], canon_dirs: list[str],
+                          norm_remotes: set[str]) -> list[int]:
+        """Indices of rows a publish could structurally ADOPT (§C.3 rule 3).
+
+        Same identity test as `_identity_index` — a shared normalized git remote
+        OR a shared alias-aware canonical directory — but scanned over ALL rows
+        and EXCLUDING any row that already carries our own `extensions`
+        namespace (that is one of ours / another instance's mirror; never
+        adopted). Returns EVERY match so the caller can tell exactly-one (adopt)
+        from zero / ambiguous (mint).
+        """
+        dir_forms: set[str] = set()
+        for cd in canon_dirs:
+            dir_forms |= _alias_variants(cd)
+        hits: list[int] = []
+        for i, ws in enumerate(workspaces):
+            exts = ws.get("extensions")
+            if isinstance(exts, dict) and OUR_EXTENSION in exts:
+                continue  # a row already ours / another instance's — never adopt
+            ws_remotes = {
+                _normalize_remote(r) for r in ws.get("git_remotes") or []
+                if isinstance(r, str) and r
+            }
+            if norm_remotes & ws_remotes:
+                hits.append(i)
+                continue
+            ws_forms: set[str] = set()
+            for e in _match_entries(ws):
+                ws_forms |= _alias_variants(e)
+            if dir_forms & ws_forms:
+                hits.append(i)
+        return hits
 
     # --- public writer API ----------------------------------------------------
 
@@ -548,16 +655,33 @@ class Registry:
                           git_remotes=None, open_bridge_ext=None) -> dict:
         """Mirror an OWNED workspace's identity into the shared registry.
 
-        Unlike `upsert_workspace` (which de-dups on shared paths/remotes and
-        MERGES), this is an owning MIRROR keyed by a stable id parked in OUR own
-        extension slice (`extensions["open-bridge"]["id"] == ref`). It finds our
-        prior entry by that id and REPLACES the mirrored identity fields (name,
-        directories, git_remotes, our extension slice) so a removal on the source
-        of record SHRINKS the mirror. It never matches a structural (path/remote)
-        entry, so it can neither hijack another tool's row nor merge two of our
-        own workspaces that happen to share a repo. Foreign extension slices,
-        unknown top-level keys, and unknown per-workspace keys are preserved. If
-        no entry carries our id yet, a fresh one is created.
+        Resolution order (protocol §C.3 rule 3 conformance):
+
+          1. our OWN prior mirror — the row whose
+             `extensions["open-bridge"]["id"]` equals `ref`. A row we MINTED is
+             REPLACEd (name, directories, git_remotes, our slice) so a removal on
+             the source of record SHRINKS the mirror. A row we ADOPTED (carrying
+             the `_mirror` marker) is instead MERGEd — the peer's curated name and
+             its peer-only dirs/remotes survive, the name guard still applies, and
+             only the subset WE previously mirrored (recorded in `_mirror`) shrinks
+             — so the adopt guard is not undone by the very next publish.
+          2. else a guarded STRUCTURAL ADOPT — among rows that do NOT already
+             carry an `extensions["open-bridge"]` slice (those are ours / another
+             instance's, never adopted), the ones sharing a normalized git remote
+             OR a canonical directory with this workspace are candidates. EXACTLY
+             ONE candidate is ADOPTED with MERGE semantics: directories + remotes
+             are unioned onto the existing row, our slice is parked, the name is
+             taken over only if the row had none or its name was auto-generated,
+             `updated_at` bumps — and NOTHING else (foreign extension slices,
+             `state`, `session_ns`, `resource_refs`, unknown keys) is touched.
+          3. else (no id match, and zero or ≥2 structural candidates) a fresh row
+             is minted.
+
+        This de-dups our publishes against a peer tool's pre-existing row for the
+        same project (convergence) without ever clobbering a second such row or a
+        row that is already one of ours (instance isolation). Foreign extension
+        slices, unknown top-level keys, and unknown per-workspace keys are
+        preserved throughout.
         """
         if not isinstance(ref, str) or not ref:
             raise RegistryError("publish_workspace needs a non-empty ref")
@@ -566,6 +690,8 @@ class Registry:
         new_dirs = [_build_directory(d) for d in (directories or [])]
         remotes = list(dict.fromkeys(
             r for r in (git_remotes or []) if isinstance(r, str) and r))
+        canon_dirs = [d["path"] for d in new_dirs]
+        norm_remotes = {_normalize_remote(r) for r in remotes}
         ext_slice: dict = deepcopy(open_bridge_ext) if isinstance(open_bridge_ext, dict) else {}
         ext_slice[OUR_ID_KEY] = ref  # our id is authoritative, never overridden
 
@@ -573,6 +699,8 @@ class Registry:
             data = self._read_for_write()
             workspaces: list[dict] = data.setdefault("workspaces", [])
             now = _now_iso()
+
+            # (1) our own prior mirror, by id — REPLACE (allowing shrink).
             idx = None
             for i, ws in enumerate(workspaces):
                 exts = ws.get("extensions")
@@ -581,35 +709,88 @@ class Registry:
                     if isinstance(slice_, dict) and slice_.get(OUR_ID_KEY) == ref:
                         idx = i
                         break
-            if idx is None:
-                ws = {
-                    "id": _next_id(workspaces),
-                    "name": name,
-                    "description": "",
-                    "name_generated": False,
-                    "pinned": False,
-                    "archived": False,
-                    "directories": new_dirs,
-                    "git_remotes": remotes,
-                    "resource_refs": [],
-                    "recent_chat_session_ids": [],
-                    "extensions": {OUR_EXTENSION: ext_slice},
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                workspaces.append(ws)
-            else:
-                # Replace the mirrored identity fields WE own (allowing shrink);
-                # leave foreign ext slices, unknown top-level + per-ws keys intact.
+            if idx is not None:
                 ws = workspaces[idx]
-                ws["name"] = name
-                ws["directories"] = new_dirs
-                ws["git_remotes"] = remotes
                 exts = ws.setdefault("extensions", {})
                 if not isinstance(exts, dict):
                     raise RegistryError("workspace 'extensions' is not a mapping")
+                old_slice = exts.get(OUR_EXTENSION)
+                old_mirror = (old_slice.get(OUR_MIRROR_KEY)
+                              if isinstance(old_slice, dict) else None)
+                if isinstance(old_mirror, dict):
+                    # This row was ADOPTED from a peer tool (§C.3 rule 3): our id
+                    # rides on a row whose name + some dirs/remotes belong to that
+                    # peer. A wholesale REPLACE here would clobber the peer's
+                    # curation one publish after the adopt guard parked us — so
+                    # MERGE our identity in, keep the name guard, and SHRINK only
+                    # the entries WE previously mirrored (recorded in `_mirror`).
+                    new_dir_forms = {d["path"] for d in new_dirs}
+                    drop_dirs = set(old_mirror.get("dirs") or []) - new_dir_forms
+                    if drop_dirs:
+                        ws["directories"] = [
+                            d for d in (ws.get("directories") or [])
+                            if not (isinstance(d, dict) and d.get("path") in drop_dirs)]
+                    self._merge_directories(ws, new_dirs)  # MERGE, never replace
+                    drop_remotes = set(old_mirror.get("remotes") or []) - norm_remotes
+                    if drop_remotes:
+                        ws["git_remotes"] = [
+                            r for r in (ws.get("git_remotes") or [])
+                            if not (isinstance(r, str)
+                                    and _normalize_remote(r) in drop_remotes)]
+                    self._merge_remotes(ws, remotes)
+                    if not ws.get("name") or ws.get("name_generated"):
+                        ws["name"] = name  # only overwrite empty/auto-generated
+                    ext_slice[OUR_MIRROR_KEY] = {"dirs": sorted(new_dir_forms),
+                                                 "remotes": sorted(norm_remotes)}
+                else:
+                    # A row WE minted (no adopt marker): full REPLACE of the
+                    # mirrored identity fields so a source removal SHRINKS us.
+                    ws["name"] = name
+                    ws["directories"] = new_dirs
+                    ws["git_remotes"] = remotes
                 exts[OUR_EXTENSION] = ext_slice
                 ws["updated_at"] = now
+                self._write(data)
+                return deepcopy(ws)
+
+            # (2) no id match → guarded structural adopt of EXACTLY one row.
+            candidates = self._adopt_candidates(workspaces, canon_dirs, norm_remotes)
+            if len(candidates) == 1:
+                ws = workspaces[candidates[0]]
+                self._merge_directories(ws, new_dirs)  # MERGE, never replace
+                self._merge_remotes(ws, remotes)
+                exts = ws.setdefault("extensions", {})
+                if not isinstance(exts, dict):
+                    raise RegistryError("workspace 'extensions' is not a mapping")
+                # Record which identity forms WE contributed onto this peer row so a
+                # LATER id-match publish MERGEs (never wholesale-replaces) the peer's
+                # fields and shrinks only our own subset. This is the adopt marker.
+                ext_slice[OUR_MIRROR_KEY] = {"dirs": sorted(set(canon_dirs)),
+                                             "remotes": sorted(norm_remotes)}
+                exts[OUR_EXTENSION] = ext_slice
+                if not ws.get("name") or ws.get("name_generated"):
+                    ws["name"] = name  # only overwrite an empty/auto-generated name
+                ws["updated_at"] = now
+                self._write(data)
+                return deepcopy(ws)
+
+            # (3) zero or ≥2 candidates → mint a fresh mirror row.
+            ws = {
+                "id": _next_id(workspaces),
+                "name": name,
+                "description": "",
+                "name_generated": False,
+                "pinned": False,
+                "archived": False,
+                "directories": new_dirs,
+                "git_remotes": remotes,
+                "resource_refs": [],
+                "recent_chat_session_ids": [],
+                "extensions": {OUR_EXTENSION: ext_slice},
+                "created_at": now,
+                "updated_at": now,
+            }
+            workspaces.append(ws)
             self._write(data)
             return deepcopy(ws)
 
