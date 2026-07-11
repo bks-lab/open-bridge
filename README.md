@@ -168,6 +168,19 @@ Always-on rules in `protocols/standing-orders/` ride into every agent dispatch's
 
 BKS open-bridge ships the pattern plus one reference sub-agent (`archivist`, for document intake); you add the rest by dropping another `.claude/agents/{name}.md` next to it — auto-discovered at session start. This is Claude Code-specific: under Copilot CLI, Codex, Gemini, or Cursor, skills run inline in the main session instead of an isolated sub-process, with no capability loss.
 
+### Workspaces (optional)
+
+Bind the repos and config overlays a single piece of work touches into one named container — a definition in `workflow/workspaces/<id>.yaml`, driven by the `/workspace` command. Repos added `--role code` are cloned in as members; overlays added `--role config` layer shared org config on top (delegated to the overlay engine).
+
+```bash
+python3 scripts/workspace.py create bigcorp                                # one named container
+python3 scripts/workspace.py subscribe bigcorp <code-repo-url>             # --role code (default)
+python3 scripts/workspace.py subscribe bigcorp <overlay-url> --role config # layer a shared overlay
+python3 scripts/workspace.py status bigcorp                                # member drift (read-only)
+```
+
+Public-fork-safe: the code clones live under a gitignored `.bridge/` with a per-workspace `.git/info/exclude` guard, so a stray `git add -A` never publishes another repo's code. A machine-global registry (`~/.workspaces/workspaces.json`, co-writable by other conformant tools on the same box) lets those tools see the same project identity while the clones and lockfile stay repo-local. Not to be confused with the roadmap's per-client workspace *separation* default (still [OPEN](ROADMAP.md)) — this is a repo/overlay binding container, not context isolation. Full model: [`docs/workspaces.md`](docs/workspaces.md) · [live page](https://bks-lab.github.io/open-bridge/workspaces.html).
+
 ### A few commands
 
 Commands are skills whose `description` declares a `/cmd` trigger. The ones you'll use first:
@@ -179,6 +192,7 @@ Commands are skills whose `description` declares a `/cmd` trigger. The ones you'
 | `/debrief` | Turn a meeting transcript into filed tasks + a protocol |
 | `/archive` | Archive the week + generate a summary |
 | `/bridge-onboard` | New-user setup or reconfiguration |
+| `/workspace` | Bind member repos + config overlays into one named container |
 
 ### System overview
 

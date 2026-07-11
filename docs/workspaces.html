@@ -3,7 +3,7 @@
      BKS open-bridge — workspaces.html  (feature page)
      Built on the shared shell used by index.html / concepts.html.
      Self-contained single file, GitHub-Pages-ready, fully offline, native UTF-8.
-     Tool-neutral: no product names, no external assets. English-only content.
+     Bilingual EN/DE (data-lang spans + L toggle), tool-neutral, no external assets.
      ============================================================================ -->
 <html lang="en" data-active-lang="en">
 <head>
@@ -23,7 +23,7 @@
 <meta name="twitter:title" content="BKS open-bridge — Workspaces">
 <meta name="twitter:description" content="A workspace is a named binding of member repos and config overlays.">
 
-<!-- Anti-FOUC pre-paint: theme set BEFORE the stylesheet paints. -->
+<!-- Anti-FOUC pre-paint: theme + language set BEFORE the stylesheet paints. -->
 <script>
 (function(){
   var r = document.documentElement;
@@ -33,6 +33,11 @@
       r.classList.add("dark");
     }
   }catch(e){}
+  try{
+    var l = localStorage.getItem("ob-lang");
+    var lang = (l === "de") ? "de" : (r.getAttribute("lang") || "en");
+    r.setAttribute("data-active-lang", lang); r.setAttribute("lang", lang);
+  }catch(e){ r.setAttribute("data-active-lang","en"); }
 })();
 </script>
 
@@ -103,6 +108,15 @@ body{
 }
 :focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:3px}
 
+/* ---- Language visibility (EN default) ---- */
+[data-lang]{display:none}
+html[data-active-lang="en"] [data-lang="en"]{display:revert}
+html[data-active-lang="de"] [data-lang="de"]{display:revert}
+/* inline variants keep inline display */
+:is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang]{display:none}
+html[data-active-lang="en"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="en"],
+html[data-active-lang="de"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="de"]{display:inline}
+
 .container{max-width:var(--container);margin:0 auto;padding-inline:24px}
 .prose{max-width:var(--prose-w);margin-inline:auto}
 
@@ -164,6 +178,15 @@ header.nav{
 }
 a.chip{color:var(--on-surface)}
 a.chip:hover{color:var(--primary)}
+
+/* ---- Language segmented toggle ---- */
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-full);overflow:hidden;background:var(--surface)}
+.seg button{
+  font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;
+  padding:5px 12px;border:none;background:transparent;color:var(--secondary);
+  transition:color .2s ease;
+}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--surface)}
 
 .icon-btn{
   width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
@@ -233,7 +256,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
     --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
   }
   *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
-  header.nav,.icon-btn{display:none!important}
+  header.nav,.icon-btn,.seg{display:none!important}
   .reveal{opacity:1!important;transform:none!important}
   section{padding-block:32px}
 }
@@ -283,6 +306,31 @@ code, .mono{
   padding:4px 10px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface-subtle);color:var(--secondary)}
 @media (max-width:640px){ .split{grid-template-columns:1fr} }
 
+/* use-case grid ("When to use it") */
+.uses{max-width:var(--container);margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.use{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-soft);
+  padding:28px 30px;display:flex;flex-direction:column;
+  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;
+}
+.use:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);
+  border-color:color-mix(in srgb,var(--accent-text) 30%,var(--border))}
+.use .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent-text);letter-spacing:0.04em;margin-bottom:8px}
+.use h3{font-size:19px;font-weight:600;line-height:1.3;color:var(--primary);margin-bottom:12px}
+.use p{font-size:15px;line-height:1.65;color:var(--on-surface);margin-bottom:0}
+.use code{font-family:var(--mono);font-size:0.85em;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:1px 6px;color:var(--on-surface);white-space:nowrap}
+.use.flagship{grid-column:1 / -1;border-left:3px solid var(--accent-text);
+  background:linear-gradient(180deg,var(--accent-soft),var(--surface) 62%)}
+.use.flagship h3{font-size:22px}
+.use .caveat{
+  margin-top:16px;padding-top:14px;border-top:1px solid var(--border-subtle);
+  font-size:13.5px;line-height:1.6;color:var(--on-surface);
+}
+.use .caveat strong{color:var(--attention-text);font-weight:600}
+@media (max-width:780px){ .uses{grid-template-columns:1fr} .use.flagship{grid-column:auto} }
+
 /* verb table */
 .verbs{max-width:var(--prose-w);margin:0 auto;overflow-x:auto}
 .verbs table{border-collapse:collapse;width:100%;font-size:15px}
@@ -290,6 +338,27 @@ code, .mono{
 .verbs th{font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:var(--secondary);font-weight:600}
 .verbs td.v{white-space:nowrap}
 .verbs td.v code{background:var(--accent-soft);border-color:transparent;color:var(--accent-text);font-weight:600}
+
+/* quickstart terminal (reuses the .code grammar from index.html) */
+.term{max-width:var(--prose-w);margin:0 auto}
+.code-label{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  font-family:var(--mono);font-size:12px;color:var(--secondary);padding:0 4px 8px;
+}
+.code{
+  font-family:var(--mono);font-size:13.5px;line-height:1.7;
+  background:var(--surface-subtle);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:20px 22px;overflow-x:auto;color:var(--on-surface);
+  white-space:pre;
+}
+html.dark .code{background:var(--code-bg)}
+.code .cmt{color:var(--secondary)}
+.code .k{color:var(--accent-text);font-weight:600}
+.code .ok{color:var(--ok-text)}
+.code .dir{color:var(--accent-secondary);font-weight:500}
+.term .after{max-width:var(--prose-w);margin:16px auto 0;font-size:14px;line-height:1.6;color:var(--secondary)}
+.term .after a{color:var(--accent-text);text-decoration:none;font-weight:500}
+.term .after a:hover{text-decoration:underline}
 
 /* callout */
 .note{
@@ -301,6 +370,16 @@ code, .mono{
 .note .k{font-size:12px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--info-text);margin-bottom:8px}
 .note p{font-size:15px;line-height:1.65;color:var(--on-surface);margin:0}
 
+/* limits list */
+.limits{max-width:var(--prose-w);margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.limit{
+  border:1px solid var(--border);border-left:3px solid var(--attention);
+  border-radius:var(--r-lg);background:var(--surface);
+  padding:20px 24px;box-shadow:var(--shadow-soft);
+}
+.limit h4{font-size:16px;font-weight:600;color:var(--primary);margin-bottom:8px}
+.limit p{font-size:15px;line-height:1.65;color:var(--on-surface);margin:0}
+
 /* pointer chips */
 .pointers{max-width:var(--prose-w);margin:0 auto;display:flex;flex-wrap:wrap;gap:10px}
 .pointers a{
@@ -310,8 +389,17 @@ code, .mono{
   font-size:14px;font-weight:500;
 }
 .pointers a:hover{background:var(--accent-soft)}
+.pointers-sub{max-width:var(--prose-w);margin:18px auto 0;display:flex;flex-wrap:wrap;align-items:center;gap:9px;
+  font-size:13px;color:var(--secondary)}
+.pointers-sub .lab{font-weight:600;color:var(--secondary);text-transform:uppercase;letter-spacing:0.05em;font-size:12px}
+.pointers-sub a{
+  text-decoration:none;color:var(--accent-text);
+  padding:5px 11px;border-radius:var(--r-full);
+  border:1px solid var(--border);background:var(--surface-subtle);font-weight:500;
+}
+.pointers-sub a:hover{background:var(--accent-soft)}
 
-@media (max-width:560px){ .lead-def{padding:24px 22px} .split .card{padding:22px 20px} }
+@media (max-width:560px){ .lead-def{padding:24px 22px} .split .card{padding:22px 20px} .use{padding:24px 22px} }
 </style>
 </head>
 <body>
@@ -321,12 +409,12 @@ code, .mono{
   <div class="nav-inner">
     <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
     <nav class="site-nav" aria-label="Site">
-      <a href="index.html">Home</a>
-      <a href="demo.html">Demo</a>
-      <a href="use-cases.html">Use Cases</a>
-      <a href="concepts.html">Concepts</a>
-      <a class="active" aria-current="page" href="workspaces.html">Workspaces</a>
-      <a href="explore.html">Explore</a>
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="demo.html"><span data-lang="en">Demo</span><span data-lang="de">Demo</span></a>
+      <a href="use-cases.html"><span data-lang="en">Use Cases</span><span data-lang="de">Anwendungsfälle</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+      <a class="active" aria-current="page" href="workspaces.html"><span data-lang="en">Workspaces</span><span data-lang="de">Workspaces</span></a>
+      <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
     </nav>
     <div class="nav-spacer"></div>
     <div class="nav-chips">
@@ -335,6 +423,10 @@ code, .mono{
         GitHub
       </a>
       <a class="chip" href="index.html#license" aria-label="MIT license">MIT</a>
+      <div class="seg" role="group" aria-label="Language / Sprache">
+        <button id="lang-en" type="button" aria-pressed="true" title="Toggle language — press L">EN</button>
+        <button id="lang-de" type="button" aria-pressed="false" title="Sprache umschalten — Taste L">DE</button>
+      </div>
       <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
         <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -350,15 +442,21 @@ code, .mono{
   <section class="page-hero">
     <div class="container">
       <div class="prose">
-        <p class="eyebrow">Feature</p>
+        <p class="eyebrow" data-lang="en">Feature</p>
+        <p class="eyebrow" data-lang="de">Feature</p>
         <h1 class="h1">Workspaces</h1>
-        <p class="lede">A workspace is how a bridge binds together the pieces it needs to work on one thing — the config overlays it subscribes to and the member repos it clones into its working set — under one name. It sits <em>above</em> the overlay mechanism, adds a second membership dimension (code repos), and mirrors a small, tool-neutral identity into a shared registry so any conformant tool can answer "which project is this directory in?"</p>
+        <p class="lede" data-lang="en">A workspace is how a bridge binds together the pieces it needs to work on one thing — the config overlays it subscribes to and the member repos it clones into its working set — under one name. It sits <em>above</em> the overlay mechanism, adds a second membership dimension (code repos), and mirrors a small, tool-neutral identity into a shared registry so any conformant tool can answer "which project is this directory in?"</p>
+        <p class="lede" data-lang="de">Ein Workspace ist die Art, wie eine Bridge die Teile bündelt, die sie für eine Sache braucht — die Config-Overlays, die sie abonniert, und die Member-Repos, die sie in ihr Arbeitsset klont — unter einem Namen. Er liegt <em>über</em> dem Overlay-Mechanismus, fügt eine zweite Mitgliedschafts-Dimension hinzu (Code-Repos) und spiegelt eine kleine, tool-neutrale Identität in eine geteilte Registry, sodass jedes konforme Tool beantworten kann: „In welchem Projekt liegt dieses Verzeichnis?"</p>
       </div>
 
       <div class="lead-def">
-        <div class="k">What is a workspace?</div>
-        <p class="def">A <strong>named binding of member repos + config overlays</strong>. Each workspace is one file — <code>workflow/workspaces/&lt;id&gt;.yaml</code> — read and mutated by a standalone engine, with a generated lock recording the resolved reality of its code-member clones.</p>
-        <p class="more"><a href="workspaces.md">Read the full workspaces guide →</a></p>
+        <div class="k" data-lang="en">What is a workspace?</div>
+        <div class="k" data-lang="de">Was ist ein Workspace?</div>
+        <p class="def" data-lang="en">A <strong>named binding of member repos + config overlays</strong>. Each workspace is one file — <code>workflow/workspaces/&lt;id&gt;.yaml</code> — read and mutated by a standalone engine, with a generated lock recording the resolved reality of its code-member clones.</p>
+        <p class="def" data-lang="de">Eine <strong>benannte Bindung von Member-Repos + Config-Overlays</strong>. Jeder Workspace ist eine Datei — <code>workflow/workspaces/&lt;id&gt;.yaml</code> — von einer eigenständigen Engine gelesen und verändert, mit einem generierten Lock, das die aufgelöste Realität seiner Code-Member-Klone festhält.</p>
+        <p class="more">
+          <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/workspaces.md" target="_blank" rel="noopener"><span data-lang="en">Read the full workspaces guide →</span><span data-lang="de">Den vollständigen Workspaces-Guide lesen →</span></a>
+        </p>
       </div>
     </div>
   </section>
@@ -367,49 +465,179 @@ code, .mono{
   <section class="alt" style="padding-block:56px 72px">
     <div class="container">
       <div class="grp reveal">
-        <p class="eyebrow">The core split</p>
-        <h2 class="h2">Identity vs. materialization</h2>
+        <p class="eyebrow" data-lang="en">The core split</p>
+        <p class="eyebrow" data-lang="de">Die zentrale Trennung</p>
+        <h2 class="h2" data-lang="en">Identity vs. materialization</h2>
+        <h2 class="h2" data-lang="de">Identität vs. Materialisierung</h2>
       </div>
       <div class="block reveal">
-        <p>A workspace has two separable halves. <strong>Identity</strong> is <em>which</em> project this is — its name, the directories it roots at, and its git remotes. A set of projects is a fact about the <em>machine</em>, not about one repo or one tool, so identity is <strong>shared</strong> and lives in a tool-neutral registry outside any single tool. <strong>Materialization</strong> is <em>how</em> one instance realises the workspace locally — the code clones, the lock, and the exclude guard. Those are implementation details of a single instance, so that half stays <strong>repo-local</strong>.</p>
+        <p data-lang="en">A workspace has two separable halves. <strong>Identity</strong> is <em>which</em> project this is — its name, the directories it roots at, and its git remotes. A set of projects is a fact about the <em>machine</em>, not about one repo or one tool, so identity is <strong>shared</strong> and lives in a tool-neutral registry outside any single tool. <strong>Materialization</strong> is <em>how</em> one instance realises the workspace locally — the code clones, the lock, and the exclude guard. Those are implementation details of a single instance, so that half stays <strong>repo-local</strong>.</p>
+        <p data-lang="de">Ein Workspace hat zwei trennbare Hälften. <strong>Identität</strong> ist, <em>welches</em> Projekt dies ist — sein Name, die Verzeichnisse, an denen er wurzelt, und seine Git-Remotes. Welche Projekte es gibt, ist eine Tatsache über die <em>Maschine</em>, nicht über ein Repo oder ein Tool — also ist Identität <strong>geteilt</strong> und lebt in einer tool-neutralen Registry außerhalb jedes einzelnen Tools. <strong>Materialisierung</strong> ist, <em>wie</em> eine Instanz den Workspace lokal umsetzt — die Code-Klone, das Lock und der Exclude-Schutz. Das sind Implementierungsdetails einer einzelnen Instanz, also bleibt diese Hälfte <strong>repo-lokal</strong>.</p>
       </div>
       <div class="split reveal">
         <div class="card">
-          <span class="tag">machine-global · shared</span>
-          <h4>Shared identity registry</h4>
-          <p>A single JSON file at <code>$WORKSPACES_DIR/workspaces.json</code> (else <code>~/.workspaces/workspaces.json</code>), schema <code>version: 2</code>. It records name, directories, and git remotes so several conformant co-writers agree on project identity. This bridge is a first-class <em>writer</em>, not just a reader — it registers a workspace's identity itself, keyed by an instance-qualified id so two instances that share a slug never clobber each other.</p>
+          <span class="tag" data-lang="en">machine-global · shared</span>
+          <span class="tag" data-lang="de">maschinenweit · geteilt</span>
+          <h4 data-lang="en">Shared identity registry</h4>
+          <h4 data-lang="de">Geteilte Identitäts-Registry</h4>
+          <p data-lang="en">A single JSON file at <code>$WORKSPACES_DIR/workspaces.json</code> (else <code>~/.workspaces/workspaces.json</code>), schema <code>version: 2</code>. It records name, directories, and git remotes so several conformant co-writers agree on project identity. This bridge is a first-class <em>writer</em>, not just a reader — it registers a workspace's identity itself, keyed by an instance-qualified id so two instances that share a slug never clobber each other.</p>
+          <p data-lang="de">Eine einzelne JSON-Datei unter <code>$WORKSPACES_DIR/workspaces.json</code> (sonst <code>~/.workspaces/workspaces.json</code>), Schema <code>version: 2</code>. Sie erfasst Name, Verzeichnisse und Git-Remotes, sodass mehrere konforme Co-Writer sich über die Projekt-Identität einig sind. Diese Bridge ist ein vollwertiger <em>Writer</em>, nicht nur ein Reader — sie registriert die Identität eines Workspaces selbst, geschlüsselt über eine instanz-qualifizierte ID, sodass zwei Instanzen mit gleichem Slug einander nie überschreiben.</p>
         </div>
         <div class="card">
-          <span class="tag">repo-local · per-instance</span>
-          <h4>Repo-local materialization</h4>
-          <p>A generated <code>workspaces.lock.yaml</code> pins each <code>role: code</code> member to its resolved commit. The clones live under an ignored <code>.bridge/workspaces/&lt;id&gt;/</code> tree, and a marked block in the local, untracked <code>.git/info/exclude</code> keeps them out of git — so even a public fork can never <code>git add -A</code>-publish foreign code. The tracked <code>.gitignore</code> is never touched.</p>
+          <span class="tag" data-lang="en">repo-local · per-instance</span>
+          <span class="tag" data-lang="de">repo-lokal · pro Instanz</span>
+          <h4 data-lang="en">Repo-local materialization</h4>
+          <h4 data-lang="de">Repo-lokale Materialisierung</h4>
+          <p data-lang="en">A generated <code>workspaces.lock.yaml</code> pins each <code>role: code</code> member to its resolved commit. The clones live under an ignored <code>.bridge/workspaces/&lt;id&gt;/</code> tree, and a marked block in the local, untracked <code>.git/info/exclude</code> keeps them out of git — so even a public fork can never <code>git add -A</code>-publish foreign code. The tracked <code>.gitignore</code> is never touched.</p>
+          <p data-lang="de">Ein generiertes <code>workspaces.lock.yaml</code> pinnt jedes <code>role: code</code>-Member auf seinen aufgelösten Commit. Die Klone liegen unter einem ignorierten <code>.bridge/workspaces/&lt;id&gt;/</code>-Baum, und ein markierter Block in der lokalen, nicht versionierten <code>.git/info/exclude</code> hält sie aus Git heraus — sodass selbst ein öffentlicher Fork fremden Code nie per <code>git add -A</code> veröffentlichen kann. Die versionierte <code>.gitignore</code> wird nie angefasst.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ---- the verbs ---- -->
+  <!-- ---- when to use it (use cases) ---- -->
   <section style="padding-block:72px">
     <div class="container">
       <div class="grp reveal">
-        <p class="eyebrow">Command surface</p>
-        <h2 class="h2">The verbs</h2>
+        <p class="eyebrow" data-lang="en">When to use it</p>
+        <p class="eyebrow" data-lang="de">Wann man es nutzt</p>
+        <h2 class="h2" data-lang="en">Five ways a workspace earns its keep</h2>
+        <h2 class="h2" data-lang="de">Fünf Situationen, in denen ein Workspace sich lohnt</h2>
       </div>
       <div class="block reveal">
-        <p>Drive the engine directly with six verbs. The mutating verbs (<code>create</code>, <code>subscribe</code>, <code>unsubscribe</code>) refuse to run unless the current branch is <code>user/*</code>, so a CORE branch never carries instance state; the read-only verbs run anywhere.</p>
+        <p data-lang="en">A workspace is worth the file whenever you keep re-assembling the same set of repos and config to work on one thing. Five concrete cases:</p>
+        <p data-lang="de">Ein Workspace ist die Datei wert, sobald du immer wieder dieselbe Menge an Repos und Config zusammensetzt, um an einer Sache zu arbeiten. Fünf konkrete Fälle:</p>
+      </div>
+      <div class="uses reveal">
+
+        <div class="use flagship">
+          <div class="n">01</div>
+          <h3 data-lang="en">Client / engagement bundle</h3>
+          <h3 data-lang="de">Kunden- / Auftragsbündel</h3>
+          <p data-lang="en">One workspace per client: the client's repos as <code>role: code</code> members plus your org config overlay as a <code>role: config</code> member. Picking the engagement back up means the definition already knows the working set — which repos, which overlay, all under one name.</p>
+          <p data-lang="de">Ein Workspace pro Kunde: die Repos des Kunden als <code>role: code</code>-Member plus dein Org-Config-Overlay als <code>role: config</code>-Member. Den Auftrag wieder aufzunehmen heißt: die Definition kennt das Arbeitsset bereits — welche Repos, welches Overlay, alles unter einem Namen.</p>
+          <p class="caveat" data-lang="en"><strong>Caveat:</strong> a <code>role: config</code> member delegates to the repo-wide overlay engine. Overlay materialization is <em>per-repo, not isolated per workspace</em> — subscribing an overlay through a workspace still writes the one instance-wide overlay state, so there is no per-workspace config sandbox.</p>
+          <p class="caveat" data-lang="de"><strong>Vorbehalt:</strong> ein <code>role: config</code>-Member delegiert an die repo-weite Overlay-Engine. Die Overlay-Materialisierung erfolgt <em>pro Repo, nicht isoliert pro Workspace</em> — ein Overlay über einen Workspace zu abonnieren schreibt weiterhin den einen instanzweiten Overlay-Zustand, es gibt also keine Config-Sandbox pro Workspace.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">02</div>
+          <h3 data-lang="en">Multi-repo feature work</h3>
+          <h3 data-lang="de">Multi-Repo-Feature-Arbeit</h3>
+          <p data-lang="en">A change that spans several services: subscribe the repos into one workspace, work across them, and let <code>status</code> show per-clone drift against the pinned <code>resolved_sha</code> — so you see at a glance which clone has moved.</p>
+          <p data-lang="de">Eine Änderung über mehrere Services hinweg: abonniere die Repos in einen Workspace, arbeite quer über sie und lass <code>status</code> die Drift pro Klon gegen den gepinnten <code>resolved_sha</code> zeigen — so siehst du auf einen Blick, welcher Klon sich bewegt hat.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">03</div>
+          <h3 data-lang="en">Safe evaluation of third-party code</h3>
+          <h3 data-lang="de">Sichere Prüfung von Fremdcode</h3>
+          <p data-lang="en">Clones land under the gitignored <code>.bridge/</code> tree, guarded by a marked block in <code>.git/info/exclude</code>. Even on a public fork, a careless <code>git add -A</code> cannot publish the foreign code — the exclude block is armed <em>before</em> the clone is recorded.</p>
+          <p data-lang="de">Klone landen unter dem gitignorierten <code>.bridge/</code>-Baum, abgesichert durch einen markierten Block in <code>.git/info/exclude</code>. Selbst auf einem öffentlichen Fork kann ein unbedachtes <code>git add -A</code> den Fremdcode nicht veröffentlichen — der Exclude-Block ist scharf, <em>bevor</em> der Klon überhaupt vermerkt wird.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">04</div>
+          <h3 data-lang="en">One machine, many tools</h3>
+          <h3 data-lang="de">Eine Maschine, viele Tools</h3>
+          <p data-lang="en">The shared identity registry (<code>~/.workspaces/workspaces.json</code>, schema <code>version: 2</code>, multi-writer) means any conformant tool on the machine sees the same project identities. This bridge is a full <em>co-writer</em>, not just a reader — it registers identity itself and leaves every other tool's slice untouched.</p>
+          <p data-lang="de">Die geteilte Identitäts-Registry (<code>~/.workspaces/workspaces.json</code>, Schema <code>version: 2</code>, Multi-Writer) sorgt dafür, dass jedes konforme Tool auf der Maschine dieselben Projekt-Identitäten sieht. Diese Bridge ist ein vollwertiger <em>Co-Writer</em>, nicht nur ein Reader — sie registriert Identität selbst und lässt den Slice jedes anderen Tools unangetastet.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">05</div>
+          <h3 data-lang="en">Rebuild a working set on a new machine</h3>
+          <h3 data-lang="de">Ein Arbeitsset auf einer neuen Maschine wiederaufbauen</h3>
+          <p data-lang="en">A workspace definition is one small YAML file, so the committed definition already names every member. But <code>subscribe</code> is idempotent: with the definition present it finds the existing entry and returns "already a member — no change" <em>without cloning</em>, so it does not restore a missing clone on its own. <code>status</code> reports each absent member as <code>missing</code>; to rebuild a clone, <code>unsubscribe</code> then <code>subscribe</code> it again (a future <code>materialize</code>/<code>sync</code> verb will fold this into one step).</p>
+          <p data-lang="de">Eine Workspace-Definition ist eine kleine YAML-Datei — die versionierte Definition benennt also bereits jeden Member. Aber <code>subscribe</code> ist idempotent: liegt die Definition vor, findet es den vorhandenen Eintrag und meldet „already a member — no change" <em>ohne zu klonen</em>, stellt einen fehlenden Klon also nicht von selbst wieder her. <code>status</code> meldet jeden fehlenden Member als <code>missing</code>; um einen Klon wiederaufzubauen, den Member per <code>unsubscribe</code> entfernen und erneut <code>subscribe</code>-n (ein künftiges <code>materialize</code>/<code>sync</code>-Verb wird das in einen Schritt fassen).</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- the verbs ---- -->
+  <section class="alt" style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Command surface</p>
+        <p class="eyebrow" data-lang="de">Befehlsoberfläche</p>
+        <h2 class="h2" data-lang="en">The verbs</h2>
+        <h2 class="h2" data-lang="de">Die Verben</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">Drive the engine directly with six verbs. The mutating verbs (<code>create</code>, <code>subscribe</code>, <code>unsubscribe</code>) refuse to run unless the current branch is <code>user/*</code>, so a CORE branch never carries instance state; the read-only verbs run anywhere.</p>
+        <p data-lang="de">Steuere die Engine direkt mit sechs Verben. Die verändernden Verben (<code>create</code>, <code>subscribe</code>, <code>unsubscribe</code>) verweigern die Ausführung, sofern der aktuelle Branch nicht <code>user/*</code> ist — so trägt ein CORE-Branch nie Instanz-Zustand; die lesenden Verben laufen überall.</p>
       </div>
       <div class="verbs reveal">
         <table>
-          <thead><tr><th>Verb</th><th>What it does</th></tr></thead>
+          <thead><tr>
+            <th><span data-lang="en">Verb</span><span data-lang="de">Verb</span></th>
+            <th><span data-lang="en">What it does</span><span data-lang="de">Was es tut</span></th>
+          </tr></thead>
           <tbody>
-            <tr><td class="v"><code>create</code></td><td>Scaffold a new <code>workflow/workspaces/&lt;id&gt;.yaml</code> from the template — id, title, timestamps, empty overlays and repos. Refuses an invalid slug or an existing file.</td></tr>
-            <tr><td class="v"><code>subscribe</code></td><td>Add a member. A <code>role: code</code> member is cloned into the ignored <code>.bridge/</code> tree and pinned in the lock; a <code>role: config</code> member is normalized and delegated to the overlay engine. Idempotent on the same url+ref.</td></tr>
-            <tr><td class="v"><code>unsubscribe</code></td><td>Remove a code member (delete the clone, drop the lock entry, refresh the exclude block) or a config overlay (delegate the removal) — and shrink the shared-registry mirror.</td></tr>
-            <tr><td class="v"><code>list</code></td><td>Read-only table of workspaces and their code / overlay counts.</td></tr>
-            <tr><td class="v"><code>status</code></td><td>Read-only drift report: for each code member whether the clone is present and matches the lock (<code>clean</code> / <code>ahead</code> / <code>missing</code>); overlays listed by name.</td></tr>
-            <tr><td class="v"><code>validate</code></td><td>Validate one or all definitions against the schema, preferring an external validator when available with an in-engine fallback otherwise.</td></tr>
+            <tr><td class="v"><code>create</code></td><td>
+              <span data-lang="en">Scaffold a new <code>workflow/workspaces/&lt;id&gt;.yaml</code> from the template — id, title, timestamps, empty overlays and repos. Refuses an invalid slug or an existing file.</span>
+              <span data-lang="de">Legt eine neue <code>workflow/workspaces/&lt;id&gt;.yaml</code> aus dem Template an — ID, Titel, Zeitstempel, leere Overlays und Repos. Verweigert einen ungültigen Slug oder eine bereits existierende Datei.</span>
+            </td></tr>
+            <tr><td class="v"><code>subscribe</code></td><td>
+              <span data-lang="en">Add a member. A <code>role: code</code> member is cloned into the ignored <code>.bridge/</code> tree and pinned in the lock; a <code>role: config</code> member is normalized and delegated to the overlay engine. Idempotent on the same url+ref.</span>
+              <span data-lang="de">Fügt ein Member hinzu. Ein <code>role: code</code>-Member wird in den ignorierten <code>.bridge/</code>-Baum geklont und im Lock gepinnt; ein <code>role: config</code>-Member wird normalisiert und an die Overlay-Engine delegiert. Idempotent bei gleicher url+ref.</span>
+            </td></tr>
+            <tr><td class="v"><code>unsubscribe</code></td><td>
+              <span data-lang="en">Remove a code member (delete the clone, drop the lock entry, refresh the exclude block) or a config overlay (delegate the removal) — and shrink the shared-registry mirror.</span>
+              <span data-lang="de">Entfernt ein Code-Member (löscht den Klon, streicht den Lock-Eintrag, baut den Exclude-Block neu) oder ein Config-Overlay (delegiert die Entfernung) — und verkleinert den Spiegel in der geteilten Registry.</span>
+            </td></tr>
+            <tr><td class="v"><code>list</code></td><td>
+              <span data-lang="en">Read-only table of workspaces and their code / overlay counts.</span>
+              <span data-lang="de">Nur-Lese-Tabelle der Workspaces mit ihren Code- / Overlay-Zählungen.</span>
+            </td></tr>
+            <tr><td class="v"><code>status</code></td><td>
+              <span data-lang="en">Read-only drift report: for each code member whether the clone is present and matches the lock (<code>clean</code> / <code>ahead</code> / <code>missing</code> / <code>unpinned</code>, where <code>ahead</code> is any HEAD≠pinned-SHA divergence); overlays listed by name.</span>
+              <span data-lang="de">Nur-Lese-Drift-Bericht: für jedes Code-Member, ob der Klon vorhanden ist und zum Lock passt (<code>clean</code> / <code>ahead</code> / <code>missing</code> / <code>unpinned</code>, wobei <code>ahead</code> jede Abweichung HEAD≠gepinnte-SHA meint); Overlays namentlich aufgeführt.</span>
+            </td></tr>
+            <tr><td class="v"><code>validate</code></td><td>
+              <span data-lang="en">Validate one or all definitions against the schema, preferring an external validator when available with an in-engine fallback otherwise.</span>
+              <span data-lang="de">Validiert eine oder alle Definitionen gegen das Schema — bevorzugt einen externen Validator, falls vorhanden, sonst mit engine-internem Fallback.</span>
+            </td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- quickstart ---- -->
+  <section style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Quickstart</p>
+        <p class="eyebrow" data-lang="de">Schnellstart</p>
+        <h2 class="h2" data-lang="en">Three verbs, start to drift-check</h2>
+        <h2 class="h2" data-lang="de">Drei Verben, von Anlegen bis Drift-Check</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">Drive the engine straight from the shell: create the definition, subscribe its members, then ask for a drift report. The mutating verbs need a <code>user/*</code> branch, and nothing here reaches the network until an actual clone.</p>
+        <p data-lang="de">Steuere die Engine direkt aus der Shell: lege die Definition an, abonniere ihre Member und fordere dann einen Drift-Bericht an. Die verändernden Verben brauchen einen <code>user/*</code>-Branch, und nichts hier geht ins Netz, bevor tatsächlich geklont wird.</p>
+      </div>
+      <div class="term reveal">
+        <div class="code-label">
+          <span data-lang="en">shell — the workspace engine</span>
+          <span data-lang="de">Shell — die Workspace-Engine</span>
+        </div>
+        <pre class="code"><span class="cmt"># 1 · create the definition (writes workflow/workspaces/client-peppol.yaml)</span>
+<span class="k">$</span> python3 scripts/workspace.py create client-peppol \
+      --title "Client Peppol rollout"
+
+<span class="cmt"># 2 · subscribe members — code repos, plus one config overlay</span>
+<span class="k">$</span> python3 scripts/workspace.py subscribe client-peppol \
+      https://example.org/outbound-service.git --role code
+<span class="k">$</span> python3 scripts/workspace.py subscribe client-peppol \
+      https://example.org/org-config.git --role config
+
+<span class="cmt"># 3 · per-clone drift against the pinned commit</span>
+<span class="k">$</span> python3 scripts/workspace.py status client-peppol</pre>
+        <p class="after" data-lang="en">The <code>--role config</code> line delegates to the shared overlay engine — overlay state stays instance-wide, never per-workspace (<a href="#limits">see Limits</a>).</p>
+        <p class="after" data-lang="de">Die <code>--role config</code>-Zeile delegiert an die geteilte Overlay-Engine — der Overlay-Zustand bleibt instanzweit, nie pro Workspace (<a href="#limits">siehe Grenzen</a>).</p>
       </div>
     </div>
   </section>
@@ -418,15 +646,20 @@ code, .mono{
   <section class="alt" style="padding-block:72px">
     <div class="container">
       <div class="grp reveal">
-        <p class="eyebrow">No dependency</p>
-        <h2 class="h2">Standalone by design</h2>
+        <p class="eyebrow" data-lang="en">No dependency</p>
+        <p class="eyebrow" data-lang="de">Keine Abhängigkeit</p>
+        <h2 class="h2" data-lang="en">Standalone by design</h2>
+        <h2 class="h2" data-lang="de">Eigenständig by Design</h2>
       </div>
       <div class="block reveal">
-        <p>The workspace engine is standalone. Every verb works end-to-end on a bare bridge that has never heard of any external tool — no import, no shelling out to a foreign binary, no path assumption. The only provider hooks in the whole design are two inert seams: an extension bag on the schema that CORE never reads, and a name-resolution seam on <code>subscribe</code>.</p>
+        <p data-lang="en">The workspace engine is standalone. Every verb works end-to-end on a bare bridge that has never heard of any external tool — no import, no shelling out to a foreign binary, no path assumption. The only provider hooks in the whole design are two inert seams: an extension bag on the schema that CORE never reads, and a name-resolution seam on <code>subscribe</code>.</p>
+        <p data-lang="de">Die Workspace-Engine ist eigenständig. Jedes Verb funktioniert Ende zu Ende auf einer nackten Bridge, die nie von einem externen Tool gehört hat — kein Import, kein Aufruf eines fremden Binaries, keine Pfad-Annahme. Die einzigen Provider-Hooks im ganzen Design sind zwei inerte Nahtstellen: eine Erweiterungs-Tasche am Schema, die CORE nie liest, und eine Namensauflösungs-Nahtstelle an <code>subscribe</code>.</p>
       </div>
       <div class="note reveal">
-        <div class="k">The provider seam degrades gracefully</div>
-        <p>If <code>subscribe</code> is given a bare name instead of a git URL, resolving that name to a set of repos would need an optional external provider. On a standalone bridge none is present, so the engine prints a clear message and exits <code>3</code> — performing no import and no provider path lookup. A future knowledge/workspace tool <em>may</em> attach through the seam later, because both sides read the same open, versioned schema; nothing here waits on it, and nothing breaks without it.</p>
+        <div class="k" data-lang="en">The provider seam degrades gracefully</div>
+        <div class="k" data-lang="de">Die Provider-Nahtstelle scheitert sanft</div>
+        <p data-lang="en">If <code>subscribe</code> is given a bare name instead of a git URL, resolving that name to a set of repos would need an optional external provider. On a standalone bridge none is present, so the engine prints a clear message and exits <code>3</code> — performing no import and no provider path lookup. A future knowledge/workspace tool <em>may</em> attach through the seam later, because both sides read the same open, versioned schema; nothing here waits on it, and nothing breaks without it.</p>
+        <p data-lang="de">Bekommt <code>subscribe</code> einen bloßen Namen statt einer Git-URL, bräuchte das Auflösen dieses Namens zu einer Menge von Repos einen optionalen externen Provider. Auf einer eigenständigen Bridge ist keiner vorhanden — also gibt die Engine eine klare Meldung aus und beendet mit <code>3</code>, ganz ohne Import und ohne Provider-Pfad-Lookup. Ein künftiges Knowledge-/Workspace-Tool <em>kann</em> später über die Nahtstelle andocken, weil beide Seiten dasselbe offene, versionierte Schema lesen; nichts hier wartet darauf, und nichts bricht ohne es.</p>
       </div>
     </div>
   </section>
@@ -435,32 +668,78 @@ code, .mono{
   <section style="padding-block:72px">
     <div class="container">
       <div class="grp reveal">
-        <p class="eyebrow">Correctness</p>
-        <h2 class="h2">Multi-writer safety</h2>
+        <p class="eyebrow" data-lang="en">Correctness</p>
+        <p class="eyebrow" data-lang="de">Korrektheit</p>
+        <h2 class="h2" data-lang="en">Multi-writer safety</h2>
+        <h2 class="h2" data-lang="de">Multi-Writer-Sicherheit</h2>
       </div>
       <div class="block reveal">
-        <p>Because other conformant tools write the <em>same</em> <code>workspaces.json</code>, every mutation is safety-critical, so the writer follows one protocol: take an <strong>advisory lock</strong>, read, modify in memory, and <strong>atomically replace</strong> the file (temp + rename). It <strong>preserves unknown fields</strong> — unrecognized top-level and per-workspace keys round-trip untouched, and it only ever edits the shared identity fields plus its own extension slice, never another tool's. And it is <strong>fail-closed</strong>: an unparseable file, or a file newer than it understands, refuses the write rather than guessing — the on-disk bytes are left exactly as found. Only a genuine older file rotates, loudly, to a timestamped backup before a fresh registry is started. The advisory lock coordinates cooperating writers; the repo-local definition and lock stay authoritative, so a transiently-wrong shared mirror re-converges on the next local mutation.</p>
+        <p data-lang="en">Because other conformant tools write the <em>same</em> <code>workspaces.json</code>, every mutation is safety-critical, so the writer follows one protocol: take an <strong>advisory lock</strong>, read, modify in memory, and <strong>atomically replace</strong> the file (temp + rename). It <strong>preserves unknown fields</strong> — unrecognized top-level and per-workspace keys round-trip untouched, and it only ever edits the shared identity fields plus its own extension slice, never another tool's. And it is <strong>fail-closed</strong>: an unparseable file, or a file newer than it understands, refuses the write rather than guessing — the on-disk bytes are left exactly as found. Only a genuine older file rotates, loudly, to a timestamped backup before a fresh registry is started. The advisory lock coordinates cooperating writers; the repo-local definition and lock stay authoritative, so a transiently-wrong shared mirror re-converges on the next local mutation.</p>
+        <p data-lang="de">Weil andere konforme Tools dieselbe <code>workspaces.json</code> schreiben, ist jede Mutation sicherheitskritisch — also folgt der Writer einem Protokoll: einen <strong>advisory Lock</strong> nehmen, lesen, im Speicher ändern und die Datei <strong>atomar ersetzen</strong> (Temp + Rename). Er <strong>bewahrt unbekannte Felder</strong> — unbekannte Top-Level- und Pro-Workspace-Schlüssel überstehen den Roundtrip unangetastet, und er editiert nur die geteilten Identitätsfelder plus seinen eigenen Erweiterungs-Slice, nie den eines anderen Tools. Und er ist <strong>fail-closed</strong>: eine unlesbare Datei oder eine Datei neuer als er versteht verweigert den Schreibvorgang, statt zu raten — die Bytes auf der Platte bleiben exakt wie vorgefunden. Nur eine echt ältere Datei rotiert, laut, in ein zeitgestempeltes Backup, bevor eine frische Registry begonnen wird. Der advisory Lock koordiniert kooperierende Writer; die repo-lokale Definition und das Lock bleiben maßgeblich, sodass ein vorübergehend falscher geteilter Spiegel bei der nächsten lokalen Mutation wieder konvergiert.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- honest limits ---- -->
+  <section class="alt" id="limits" style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Honest limits</p>
+        <p class="eyebrow" data-lang="de">Ehrliche Grenzen</p>
+        <h2 class="h2" data-lang="en">What it does not promise</h2>
+        <h2 class="h2" data-lang="de">Was es nicht verspricht</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">The feature is built carefully, and it is documented just as carefully. Three limits to know before you lean on it:</p>
+        <p data-lang="de">Das Feature ist sorgfältig gebaut — und ebenso sorgfältig dokumentiert. Drei Grenzen, die man kennen sollte, bevor man sich darauf verlässt:</p>
+      </div>
+      <div class="limits reveal">
+        <div class="limit">
+          <h4 data-lang="en">The lock is advisory</h4>
+          <h4 data-lang="de">Der Lock ist advisory</h4>
+          <p data-lang="en">It coordinates only writers that take it. A co-writer that bypasses the lock — or a long-running tool holding stale in-memory state — can still clobber a mirror row between two of our writes. The next local mutation repairs it, but the window is real, not theoretical.</p>
+          <p data-lang="de">Er koordiniert nur Writer, die ihn nehmen. Ein Co-Writer, der den Lock umgeht — oder ein langlaufendes Tool mit veraltetem In-Memory-Zustand — kann zwischen zwei unserer Schreibvorgänge eine Spiegelzeile überschreiben. Die nächste lokale Mutation repariert das, aber das Fenster ist real, nicht theoretisch.</p>
+        </div>
+        <div class="limit">
+          <h4 data-lang="en">Convergence is attempted, not guaranteed</h4>
+          <h4 data-lang="de">Konvergenz wird versucht, nicht garantiert</h4>
+          <p data-lang="en">If two rows both structurally match a workspace, the writer mints a second row rather than guessing; if the only match already carries another tool's slice, it is never adopted. Both cases need a cross-tool reconciler that is not yet built.</p>
+          <p data-lang="de">Passen zwei Zeilen strukturell zu einem Workspace, legt der Writer eine zweite Zeile an, statt zu raten; trägt die einzige Übereinstimmung bereits den Slice eines anderen Tools, wird sie nie übernommen. Beide Fälle brauchen einen tool-übergreifenden Reconciler, der noch nicht gebaut ist.</p>
+        </div>
+        <div class="limit">
+          <h4 data-lang="en">No per-workspace config isolation</h4>
+          <h4 data-lang="de">Keine Config-Isolation pro Workspace</h4>
+          <p data-lang="en">Config overlays are materialized by the single shared overlay engine into the instance-wide overlay state. A workspace only indexes overlay names — it is never a second materializer, so there is no per-workspace config namespace or sandbox.</p>
+          <p data-lang="de">Config-Overlays werden von der einen geteilten Overlay-Engine in den instanzweiten Overlay-Zustand materialisiert. Ein Workspace indexiert nur Overlay-Namen — er ist nie ein zweiter Materialisierer, es gibt also keinen Config-Namespace und keine Sandbox pro Workspace.</p>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- ---- pointers ---- -->
-  <section class="alt" style="padding-block:64px 88px">
+  <section style="padding-block:64px 88px">
     <div class="container">
       <div class="grp reveal">
-        <p class="eyebrow">Go deeper</p>
-        <h2 class="h2">Read next</h2>
+        <p class="eyebrow" data-lang="en">Go deeper</p>
+        <p class="eyebrow" data-lang="de">Tiefer einsteigen</p>
+        <h2 class="h2" data-lang="en">Read next</h2>
+        <h2 class="h2" data-lang="de">Weiterlesen</h2>
       </div>
       <div class="pointers reveal">
-        <a href="workspaces.md">Workspaces guide (docs/workspaces.md)</a>
-        <a href="workspace-acceptance-test.md">Acceptance test playbook</a>
-        <a href="schemas/workspace.schema.yaml">Definition schema</a>
-        <a href="schemas/workspaces-lock.schema.yaml">Lock schema</a>
-        <a href="schemas/workspaces-registry.schema.yaml">Registry schema</a>
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/workspaces.md" target="_blank" rel="noopener"><span data-lang="en">Workspaces guide (docs/workspaces.md)</span><span data-lang="de">Workspaces-Guide (docs/workspaces.md)</span></a>
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/workspace-acceptance-test.md" target="_blank" rel="noopener"><span data-lang="en">Acceptance-test playbook</span><span data-lang="de">Acceptance-Test-Playbook</span></a>
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/org-overlays.md" target="_blank" rel="noopener"><span data-lang="en">Org overlays</span><span data-lang="de">Org-Overlays</span></a>
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/multi-instance.md" target="_blank" rel="noopener"><span data-lang="en">Multi-instance isolation</span><span data-lang="de">Multi-Instanz-Isolation</span></a>
+      </div>
+      <div class="pointers-sub reveal">
+        <span class="lab" data-lang="en">Schemas</span><span class="lab" data-lang="de">Schemas</span>
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/schemas/workspace.schema.yaml" target="_blank" rel="noopener"><span data-lang="en">Definition</span><span data-lang="de">Definition</span></a>
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/schemas/workspaces-lock.schema.yaml" target="_blank" rel="noopener">Lock</a>
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/schemas/workspaces-registry.schema.yaml" target="_blank" rel="noopener">Registry</a>
       </div>
       <div class="prose" style="margin-top:44px;text-align:center">
-        <a class="btn btn-primary" href="concepts.html">Read the concept guide <span class="arrow">→</span></a>
-        <a class="btn btn-secondary" href="index.html#get-started" style="margin-left:10px">Try it in 2 minutes <span class="arrow">→</span></a>
+        <a class="btn btn-primary" href="concepts.html"><span data-lang="en">Read the concept guide</span><span data-lang="de">Den Konzept-Guide lesen</span> <span class="arrow">→</span></a>
+        <a class="btn btn-secondary" href="index.html#get-started" style="margin-left:10px"><span data-lang="en">Try it in 2 minutes</span><span data-lang="de">In 2 Minuten ausprobieren</span> <span class="arrow">→</span></a>
       </div>
     </div>
   </section>
@@ -473,36 +752,40 @@ code, .mono{
   <div class="foot-grid">
     <div class="foot-blurb">
       <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
-      <span>Built at BKS-Lab — a small team — and used daily to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used daily to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — einem kleinen Team — und täglich genutzt, um genau diese Firma zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
       <table class="license-table">
-        <tr><td>Code &amp; content</td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
-        <tr><td>Brand</td><td>Trademark policy</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
+        <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
+        <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
       </table>
-      <p class="muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. Licenses cover copyright, not brands. Contributions require a DCO sign-off (<code>git commit -s</code>).</p>
+      <p class="muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. <span data-lang="en">Licenses cover copyright, not brands.</span><span data-lang="de">Lizenzen decken Copyright ab, nicht Marken.</span> <span data-lang="en">Contributions require a DCO sign-off (</span><span data-lang="de">Beiträge erfordern einen DCO-Sign-off (</span><code>git commit -s</code>).</p>
     </div>
 
     <div>
-      <h4>Explore</h4>
-      <a href="index.html">Home</a>
-      <a href="concepts.html">Concepts in depth</a>
-      <a href="workspaces.html">Workspaces</a>
-      <a href="use-cases.html">Use cases &amp; solutions</a>
-      <a href="explore.html">Explore the concepts</a>
+      <h4 data-lang="en">Explore</h4>
+      <h4 data-lang="de">Erkunden</h4>
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts in depth</span><span data-lang="de">Konzepte im Detail</span></a>
+      <a href="workspaces.html"><span data-lang="en">Workspaces</span><span data-lang="de">Workspaces</span></a>
+      <a href="use-cases.html"><span data-lang="en">Use cases &amp; solutions</span><span data-lang="de">Anwendungsfälle &amp; Lösungen</span></a>
+      <a href="explore.html"><span data-lang="en">Explore the concepts</span><span data-lang="de">Konzepte erkunden</span></a>
     </div>
 
     <div>
-      <h4>Links</h4>
+      <h4 data-lang="en">Links</h4>
+      <h4 data-lang="de">Links</h4>
       <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/bks-lab/open-bridge/blob/main/README.md" target="_blank" rel="noopener">README</a>
       <a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener">docs/</a>
-      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs/workspaces.md" target="_blank" rel="noopener">Workspaces guide</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/workspaces.md" target="_blank" rel="noopener"><span data-lang="en">Workspaces guide</span><span data-lang="de">Workspaces-Guide</span></a>
     </div>
   </div>
 
   <div class="foot-bottom">
-    <span>Public · MIT · no waitlist · newly released</span>
+    <span data-lang="en">Public · MIT · no waitlist · newly released</span>
+    <span data-lang="de">Public · MIT · keine Warteliste · frisch veröffentlicht</span>
     <a class="btn btn-secondary" style="padding:10px 20px;font-size:14px" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
-      Read the code on GitHub <span class="arrow">→</span>
+      <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span> <span class="arrow">→</span>
     </a>
   </div>
 </footer>
@@ -525,11 +808,31 @@ code, .mono{
   var themeBtn = document.getElementById("theme-toggle");
   if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
 
+  function applyLang(lang){
+    root.setAttribute("data-active-lang", lang);
+    root.setAttribute("lang", lang);
+    var en = document.getElementById("lang-en");
+    var de = document.getElementById("lang-de");
+    if(en){ en.setAttribute("aria-pressed", lang === "en" ? "true" : "false"); }
+    if(de){ de.setAttribute("aria-pressed", lang === "de" ? "true" : "false"); }
+  }
+  applyLang(root.getAttribute("data-active-lang") === "de" ? "de" : "en");
+  function setLang(lang){
+    applyLang(lang);
+    try { localStorage.setItem("ob-lang", lang); } catch(e){}
+  }
+  var enBtn = document.getElementById("lang-en");
+  var deBtn = document.getElementById("lang-de");
+  if(enBtn){ enBtn.addEventListener("click", function(){ setLang("en"); }); }
+  if(deBtn){ deBtn.addEventListener("click", function(){ setLang("de"); }); }
+
   document.addEventListener("keydown", function(ev){
     if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
     var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
     if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
-    if(ev.key.toLowerCase() === "t"){ toggleTheme(); }
+    var k = ev.key.toLowerCase();
+    if(k === "t"){ toggleTheme(); }
+    if(k === "l"){ setLang(root.getAttribute("data-active-lang") === "en" ? "de" : "en"); }
   });
 
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;

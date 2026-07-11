@@ -376,6 +376,7 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
       <a href="demo.html"><span data-lang="en">Demo</span><span data-lang="de">Demo</span></a>
       <a class="active" aria-current="page" href="use-cases.html"><span data-lang="en">Use Cases</span><span data-lang="de">Anwendungsfälle</span></a>
       <a href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+      <a href="workspaces.html"><span data-lang="en">Workspaces</span><span data-lang="de">Workspaces</span></a>
       <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
     </nav>
     <div class="nav-spacer"></div>
@@ -410,8 +411,8 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
           <span data-lang="en">What teams actually do with it.</span>
           <span data-lang="de">Was Teams wirklich damit tun.</span>
         </h1>
-        <p class="lede" data-lang="en">BKS open-bridge is a framework, not a product with one fixed workflow. Below are seven concrete jobs teams run on it — each names a problem you'll recognise, what your bridge does about it, the primitives involved, and where to read more. Everything here works on plain files in git: nothing to host, and the agent never sends or merges anything without a human gate.</p>
-        <p class="lede" data-lang="de">BKS open-bridge ist ein Framework, kein Produkt mit einem festen Ablauf. Unten stehen sieben konkrete Aufgaben, die Teams damit erledigen — jede nennt ein Problem, das du wiedererkennst, was deine Bridge dagegen tut, die beteiligten Primitive und einen Link zum Weiterlesen. Alles hier läuft auf schlichten Dateien in Git: nichts zu hosten, und der Agent sendet oder merged nie etwas ohne menschliches Gate.</p>
+        <p class="lede" data-lang="en">BKS open-bridge is a framework, not a product with one fixed workflow. Below are eight concrete jobs teams run on it — each names a problem you'll recognise, what your bridge does about it, the primitives involved, and where to read more. Everything here works on plain files in git: nothing to host, and the agent never sends or merges anything without a human gate.</p>
+        <p class="lede" data-lang="de">BKS open-bridge ist ein Framework, kein Produkt mit einem festen Ablauf. Unten stehen acht konkrete Aufgaben, die Teams damit erledigen — jede nennt ein Problem, das du wiedererkennst, was deine Bridge dagegen tut, die beteiligten Primitive und einen Link zum Weiterlesen. Alles hier läuft auf schlichten Dateien in Git: nichts zu hosten, und der Agent sendet oder merged nie etwas ohne menschliches Gate.</p>
       </div>
     </div>
   </section>
@@ -625,6 +626,35 @@ footer{border-top:1px solid var(--border);padding-block:64px;background:var(--su
             </div>
           </div>
           <a class="uc-more" href="extension-model.md">
+            <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
+          </a>
+        </article>
+
+        <!-- ⑧ Multi-repo client/engagement work -->
+        <article class="uc reveal" id="workspaces">
+          <div class="uc-head"><span class="uc-num">08</span></div>
+          <h3 class="uc-title">
+            <span data-lang="en">Multi-repo client/engagement work</span>
+            <span data-lang="de">Multi-Repo-Kunden-/Engagement-Arbeit</span>
+          </h3>
+          <p class="uc-problem">
+            <span class="lab"><span data-lang="en">Problem</span><span data-lang="de">Problem</span></span>
+            <span data-lang="en">A client or engagement spans several repos plus an org config overlay — nothing names that they belong together, or tracks whether the clones have drifted.</span>
+            <span data-lang="de">Ein Kunde oder Engagement erstreckt sich über mehrere Repos plus ein Org-Config-Overlay — nichts benennt, dass sie zusammengehören, oder verfolgt, ob die Clones auseinandergelaufen sind.</span>
+          </p>
+          <p class="uc-solution">
+            <span class="lab"><span data-lang="en">What the bridge does</span><span data-lang="de">Was die Bridge tut</span></span>
+            <span data-lang="en">A workspace names the binding: the member repos plus the org config overlay it draws on. Clones live in the gitignored <code>.bridge/</code> tree, public-fork-safe by construction, and <code>status</code> shows at a glance whether any member has drifted from its pinned ref.</span>
+            <span data-lang="de">Ein Workspace benennt die Bindung: die Mitgliedsrepos plus das Org-Config-Overlay, auf das er sich stützt. Clones liegen im gitignorten <code>.bridge/</code>-Baum, konstruktionsbedingt sicher für öffentliche Forks, und <code>status</code> zeigt auf einen Blick, ob ein Mitglied vom gepinnten Ref abgewichen ist.</span>
+          </p>
+          <div class="uc-prim">
+            <span class="lab"><span data-lang="en">Primitives</span><span data-lang="de">Primitive</span></span>
+            <div class="chips">
+              <code>/workspace</code>
+              <code>workflow/workspaces</code>
+            </div>
+          </div>
+          <a class="uc-more" href="workspaces.html">
             <span data-lang="en">Learn more</span><span data-lang="de">Mehr erfahren</span><span class="arrow">→</span>
           </a>
         </article>
