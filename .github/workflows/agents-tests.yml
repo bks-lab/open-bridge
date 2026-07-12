@@ -1,0 +1,31 @@
+name: Agents Runtime Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agents/**'
+      - '.github/workflows/agents-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'agents/**'
+      - '.github/workflows/agents-tests.yml'
+  # Manual re-run on any ref.
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    name: Hermetic pytest suite (agents/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # Test deps are injected ephemerally so they stay out of the runtime
+      # dependency set — exactly as agents/README.md documents.
+      - name: Run runner regression net
+        working-directory: agents
+        run: uv run --with pytest --with pytest-asyncio pytest

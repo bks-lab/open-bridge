@@ -168,6 +168,16 @@ Always-on rules in `protocols/standing-orders/` ride into every agent dispatch's
 
 BKS open-bridge ships the pattern plus one reference sub-agent (`archivist`, for document intake); you add the rest by dropping another `.claude/agents/{name}.md` next to it — auto-discovered at session start. This is Claude Code-specific: under Copilot CLI, Codex, Gemini, or Cursor, skills run inline in the main session instead of an isolated sub-process, with no capability loss.
 
+### Bridge-Agents (agents/)
+
+Sub-agents point *inward* — they work for you inside your session and return a summary. **Bridge-Agents** point *outward*: persistent, addressable A2A (Agent2Agent) endpoints that front a persona to the world (and to peer bridges), answering questions, showing availability, and capturing requests under a human gate. The generic runtime + template live in `agents/` (CORE); each `agents/<name>/` instance is your own persona (USER, stays local). Spin one up from the template:
+
+```bash
+cp -r agents/_template agents/<name> ; cd agents && uv run python -m _runtime.server --agent <name>
+```
+
+Full model: [`agents/README.md`](agents/README.md) · [`docs/representative-agent.md`](docs/representative-agent.md).
+
 ### Workspaces (optional)
 
 Bind the repos and config overlays a single piece of work touches into one named container — a definition in `workflow/workspaces/<id>.yaml`, driven by the `/workspace` command. Repos added `--role code` are cloned in as members; overlays added `--role config` layer shared org config on top (delegated to the overlay engine).

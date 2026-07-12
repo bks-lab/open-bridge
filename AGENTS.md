@@ -108,6 +108,13 @@ architecture differs (work happens in the main context rather than an isolated o
 The older `/crew` command is retired — create sub-agents by editing `.claude/agents/*.md`
 directly.
 
+**Bridge-Agents** (`agents/`) are the *outward* counterpart to the *inward* sub-agents
+above — don't confuse them. A sub-agent is ephemeral, works for you inside your session, and
+returns a summary; a **Bridge-Agent** is a persistent, addressable A2A endpoint that fronts a
+persona to the world (and to peer bridges) under a human gate. The generic runtime + template
+ship as CORE under `agents/`; each `agents/<name>/` instance is USER. Full model:
+[`agents/README.md`](agents/README.md), [`docs/representative-agent.md`](docs/representative-agent.md).
+
 ---
 
 ## Agent Identity
