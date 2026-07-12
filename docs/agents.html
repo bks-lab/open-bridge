@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<!-- ============================================================================
+     BKS open-bridge — agents.html  (feature page)
+     Built on the shared shell used by index.html / concepts.html.
+     Self-contained single file, GitHub-Pages-ready, fully offline, native UTF-8.
+     Bilingual EN/DE (data-lang spans + L toggle), tool-neutral, no external assets.
+     ============================================================================ -->
+<html lang="en" data-active-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BKS open-bridge — Bridge-Agents</title>
+<meta name="description" content="Bridge-Agents in BKS open-bridge — a persistent, addressable A2A endpoint that fronts one persona to the outside world: it answers from public content, shows availability, and captures requests for a fixed recipient, under hard human gates. Generic runtime (CORE) plus per-persona instances (USER).">
+<!-- Social / Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="BKS open-bridge — Bridge-Agents">
+<meta property="og:description" content="A Bridge-Agent is a persistent, addressable A2A endpoint that fronts one persona to the world — under a human gate.">
+<meta property="og:url" content="https://bks-lab.github.io/open-bridge/agents.html">
+<meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="BKS open-bridge — Bridge-Agents">
+<meta name="twitter:description" content="A Bridge-Agent is a persistent, addressable A2A endpoint that fronts one persona to the world.">
+
+<!-- Anti-FOUC pre-paint: theme + language set BEFORE the stylesheet paints. -->
+<script>
+(function(){
+  var r = document.documentElement;
+  try{
+    var t = localStorage.getItem("ob-theme");
+    if(t === "dark" || (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)){
+      r.classList.add("dark");
+    }
+  }catch(e){}
+  try{
+    var l = localStorage.getItem("ob-lang");
+    var lang = (l === "de") ? "de" : (r.getAttribute("lang") || "en");
+    r.setAttribute("data-active-lang", lang); r.setAttribute("lang", lang);
+  }catch(e){ r.setAttribute("data-active-lang","en"); }
+})();
+</script>
+
+<style>
+/* ============================================================
+   BKS open-bridge shared shell — single file, fully offline.
+   Colour / type / space tokens lifted from DESIGN.md (Editorial
+   Minimalism). No external fonts, no CDN, no network calls.
+   ============================================================ */
+
+:root{
+  --ink:#111827; --muted:#6B7280;
+  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
+  --on-primary:#FFFFFF; --on-surface:#374151;
+  --line:#E5E7EB; --line-subtle:#F3F4F6;
+  --accent-from:#667EEA; --accent-to:#764BA2;
+  --accent:#6366F1; --accent-secondary:#8B5CF6;
+  --ok:#10B981; --info:#3B82F6;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+
+  --accent-text:#4F46E5;
+  --accent-soft:#EEF2FF;
+  --ok-text:#047857;
+  --info-text:#1D4ED8;
+  --attention-text:#7C3AED;
+  --code-bg:#F9FAFB;
+
+  --primary:var(--ink); --secondary:var(--muted);
+  --border:var(--line); --border-subtle:var(--line-subtle);
+  --on-surface-muted:var(--muted);
+  --success:var(--ok); --attention:var(--accent-secondary);
+  --mono:var(--font-mono);
+
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+
+  --section-y:96px;
+  --container:80rem; --hero-w:72rem; --prose-w:48rem;
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
+}
+
+html.dark{
+  --ink:#F9FAFB; --muted:#9CA3AF;
+  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
+  --on-surface:#D1D5DB;
+  --line:#374151; --line-subtle:#1F2937;
+  --accent-from:#A78BFA; --accent-to:#818CF8;
+  --accent:#818CF8;
+  --accent-text:#A78BFA;
+  --accent-soft:#312E81;
+  --ok-text:#34D399;
+  --info-text:#93C5FD;
+  --attention-text:#C4B5FD;
+  --code-bg:#0B1220;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-sans);
+  background:var(--surface); color:var(--on-surface);
+  font-size:16px; line-height:1.6; font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:3px}
+
+/* ---- Language visibility (EN default) ---- */
+[data-lang]{display:none}
+html[data-active-lang="en"] [data-lang="en"]{display:revert}
+html[data-active-lang="de"] [data-lang="de"]{display:revert}
+/* inline variants keep inline display */
+:is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang]{display:none}
+html[data-active-lang="en"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="en"],
+html[data-active-lang="de"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="de"]{display:inline}
+
+.container{max-width:var(--container);margin:0 auto;padding-inline:24px}
+.prose{max-width:var(--prose-w);margin-inline:auto}
+
+h1,h2,h3,h4{color:var(--primary);letter-spacing:-0.02em}
+.display{font-size:clamp(38px,5.4vw,64px);font-weight:300;line-height:1.06;letter-spacing:-0.02em}
+.h1{font-size:clamp(30px,4.4vw,46px);font-weight:300;line-height:1.12}
+.h2{font-size:clamp(26px,3.6vw,34px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
+.h3{font-size:24px;font-weight:500;line-height:1.3;letter-spacing:-0.01em}
+.h4{font-size:20px;font-weight:500;line-height:1.4}
+.body-xl{font-size:20px;font-weight:300;line-height:1.6}
+.eyebrow{font-size:13px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
+.muted{color:var(--on-surface-muted)}
+a{color:var(--accent-text)}
+
+.text-gradient{
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+  font-weight:400;
+}
+
+/* ---- Header ---- */
+header.nav{
+  position:sticky;top:0;z-index:50;height:auto;min-height:64px;
+  display:flex;align-items:center;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap;text-decoration:none}
+.wordmark .text-gradient{font-weight:400}
+.nav-spacer{flex:1}
+.nav-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.site-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.site-nav a{
+  font-size:14px;font-weight:500;line-height:1.2;text-decoration:none;
+  color:var(--secondary);padding:6px 12px;border-radius:var(--r-full);
+  transition:color .18s ease,background .18s ease;white-space:nowrap;
+}
+.site-nav a:hover{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active,
+.site-nav a[aria-current="page"]{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active{position:relative}
+.site-nav a.active::after{
+  content:"";position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+}
+@media (max-width:560px){ .site-nav a{padding:6px 9px;font-size:13px} }
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:400;line-height:1.2;
+  padding:5px 11px;border-radius:var(--r-full);
+  background:var(--surface-muted);color:var(--on-surface);
+  border:1px solid var(--border);white-space:nowrap;text-decoration:none;
+}
+a.chip{color:var(--on-surface)}
+a.chip:hover{color:var(--primary)}
+
+/* ---- Language segmented toggle ---- */
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-full);overflow:hidden;background:var(--surface)}
+.seg button{
+  font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;
+  padding:5px 12px;border:none;background:transparent;color:var(--secondary);
+  transition:color .2s ease;
+}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--surface)}
+
+.icon-btn{
+  width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-full);background:var(--surface);
+  cursor:pointer;color:var(--secondary);padding:0;
+}
+.icon-btn:hover{color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.sun{display:none}
+html.dark .sun{display:block}
+html.dark .moon{display:none}
+
+/* ---- Buttons ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:16px;font-weight:500;line-height:1.25;
+  padding:14px 28px;border-radius:var(--r-md);border:1px solid transparent;
+  transition:transform .2s ease,background .2s ease,border-color .2s ease;
+}
+.btn svg{width:18px;height:18px}
+.btn-primary{background:var(--primary);color:var(--surface)}
+html.dark .btn-primary{background:var(--accent);color:#0B1220}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-secondary{background:var(--surface);color:var(--on-surface);border-color:var(--border)}
+.btn-secondary:hover{background:var(--surface-subtle)}
+.btn .arrow{transition:transform .2s ease}
+.btn:hover .arrow{transform:translateX(3px)}
+
+section{padding-block:var(--section-y)}
+.alt{background:var(--surface-subtle)}
+.sec-head{max-width:var(--prose-w);margin:0 auto 56px;text-align:center}
+.sec-head .h1{margin-top:14px}
+.sec-head p{margin-top:18px;font-size:18px;font-weight:300}
+
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:32px;box-shadow:var(--shadow-soft);
+}
+
+/* ---- Footer ---- */
+footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;max-width:var(--container);margin:0 auto;padding-inline:24px}
+.foot-grid h4{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:var(--secondary);font-weight:600;margin-bottom:16px}
+.foot-grid a{color:var(--on-surface);text-decoration:none;font-size:14.5px;display:block;margin-bottom:9px}
+.foot-grid a:hover{color:var(--primary)}
+.foot-blurb{font-size:14px;color:var(--on-surface-muted);line-height:1.65}
+.foot-blurb .wordmark{font-size:20px;display:block;margin-bottom:14px}
+.license-table{margin-top:18px;font-size:13px;border-collapse:collapse;width:100%}
+.license-table td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);color:var(--on-surface);vertical-align:top}
+.license-table td a{display:inline}
+.foot-bottom{max-width:var(--container);margin:40px auto 0;padding:28px 24px 0;border-top:1px solid var(--border);
+  display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;font-size:13px;color:var(--secondary)}
+
+.reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (max-width:860px){ .foot-grid{grid-template-columns:1fr} .foot-grid>*{min-width:0} }
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .reveal{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+}
+@media print{
+  html.dark{
+    --ink:#111827;--muted:#6B7280;--surface:#FFFFFF;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;
+    --on-surface:#374151;--line:#E5E7EB;--accent-from:#667EEA;--accent-to:#764BA2;--accent:#6366F1;
+    --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
+  }
+  *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  header.nav,.icon-btn,.seg{display:none!important}
+  .reveal{opacity:1!important;transform:none!important}
+  section{padding-block:32px}
+}
+</style>
+
+<!-- ============ page-specific styles (agents.html) ============ -->
+<style>
+:target{scroll-margin-top:84px}
+[id]{scroll-margin-top:84px}
+
+code, .mono{
+  font-family:var(--mono);font-size:0.86em;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:1px 6px;color:var(--on-surface);
+}
+.prose p code{white-space:nowrap}
+
+.page-hero{padding-block:64px 40px}
+.page-hero .eyebrow{margin-bottom:14px}
+.page-hero p.lede{margin-top:18px;font-size:18px;font-weight:300;color:var(--on-surface)}
+
+.lead-def{
+  margin-top:40px;max-width:var(--prose-w);margin-inline:auto;
+  border:1px solid var(--border);border-left:3px solid var(--accent-text);
+  border-radius:var(--r-lg);background:var(--surface-subtle);
+  padding:30px 34px;box-shadow:var(--shadow-soft);
+}
+.lead-def .k{font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--accent-text)}
+.lead-def .def{margin-top:12px;font-size:22px;font-weight:300;line-height:1.45;color:var(--primary)}
+.lead-def .more{margin-top:16px;font-size:15px}
+.lead-def .more a{font-weight:500;text-decoration:none}
+.lead-def .more a:hover{text-decoration:underline}
+
+.grp{max-width:var(--prose-w);margin:0 auto 8px;padding-top:8px}
+.grp .eyebrow{color:var(--accent-text)}
+.grp .h2{margin-top:8px}
+
+.block{max-width:var(--prose-w);margin:0 auto 28px}
+.block h3.h3{font-size:24px;font-weight:600;line-height:1.25;color:var(--primary);margin-bottom:10px}
+.block p{font-size:16px;line-height:1.7;color:var(--on-surface);margin-bottom:14px}
+
+/* split cards: sub-agent vs Bridge-Agent, and outer vs inner face */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:var(--prose-w);margin:0 auto 8px}
+.split .card{padding:26px 28px}
+.split .card h4{font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--accent-text);margin-bottom:10px}
+.split .card p{font-size:15px;line-height:1.65;color:var(--on-surface);margin-bottom:0}
+.split .card .tag{display:inline-block;margin-bottom:12px;font-size:12px;font-weight:600;letter-spacing:0.03em;
+  padding:4px 10px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface-subtle);color:var(--secondary)}
+@media (max-width:640px){ .split{grid-template-columns:1fr} }
+
+/* card grid (capabilities / anatomy / safety) */
+.uses{max-width:var(--container);margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.use{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-soft);
+  padding:28px 30px;display:flex;flex-direction:column;
+  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;
+}
+.use:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);
+  border-color:color-mix(in srgb,var(--accent-text) 30%,var(--border))}
+.use .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent-text);letter-spacing:0.04em;margin-bottom:8px}
+.use h3{font-size:19px;font-weight:600;line-height:1.3;color:var(--primary);margin-bottom:12px}
+.use p{font-size:15px;line-height:1.65;color:var(--on-surface);margin-bottom:0}
+.use code{font-family:var(--mono);font-size:0.85em;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:1px 6px;color:var(--on-surface);white-space:nowrap}
+.use.flagship{grid-column:1 / -1;border-left:3px solid var(--accent-text);
+  background:linear-gradient(180deg,var(--accent-soft),var(--surface) 62%)}
+.use.flagship h3{font-size:22px}
+.use .caveat{
+  margin-top:16px;padding-top:14px;border-top:1px solid var(--border-subtle);
+  font-size:13.5px;line-height:1.6;color:var(--on-surface);
+}
+.use .caveat strong{color:var(--attention-text);font-weight:600}
+@media (max-width:780px){ .uses{grid-template-columns:1fr} .use.flagship{grid-column:auto} }
+
+/* quickstart terminal (reuses the .code grammar from index.html) */
+.term{max-width:var(--prose-w);margin:0 auto}
+.code-label{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  font-family:var(--mono);font-size:12px;color:var(--secondary);padding:0 4px 8px;
+}
+.code{
+  font-family:var(--mono);font-size:13.5px;line-height:1.7;
+  background:var(--surface-subtle);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:20px 22px;overflow-x:auto;color:var(--on-surface);
+  white-space:pre;
+}
+html.dark .code{background:var(--code-bg)}
+.code .cmt{color:var(--secondary)}
+.code .k{color:var(--accent-text);font-weight:600}
+.code .ok{color:var(--ok-text)}
+.code .dir{color:var(--accent-secondary);font-weight:500}
+.term .after{max-width:var(--prose-w);margin:16px auto 0;font-size:14px;line-height:1.6;color:var(--secondary)}
+.term .after a{color:var(--accent-text);text-decoration:none;font-weight:500}
+.term .after a:hover{text-decoration:underline}
+
+/* callout */
+.note{
+  max-width:var(--prose-w);margin:0 auto 28px;
+  border:1px solid var(--border);border-left:3px solid var(--info);
+  border-radius:var(--r-lg);background:var(--surface);
+  padding:22px 26px;box-shadow:var(--shadow-soft);
+}
+.note .k{font-size:12px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--info-text);margin-bottom:8px}
+.note p{font-size:15px;line-height:1.65;color:var(--on-surface);margin:0}
+
+/* limits list */
+.limits{max-width:var(--prose-w);margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.limit{
+  border:1px solid var(--border);border-left:3px solid var(--attention);
+  border-radius:var(--r-lg);background:var(--surface);
+  padding:20px 24px;box-shadow:var(--shadow-soft);
+}
+.limit h4{font-size:16px;font-weight:600;color:var(--primary);margin-bottom:8px}
+.limit p{font-size:15px;line-height:1.65;color:var(--on-surface);margin:0}
+
+/* pointer chips */
+.pointers{max-width:var(--prose-w);margin:0 auto;display:flex;flex-wrap:wrap;gap:10px}
+.pointers a{
+  text-decoration:none;color:var(--accent-text);
+  padding:8px 14px;border-radius:var(--r-full);
+  border:1px solid var(--border);background:var(--surface-subtle);
+  font-size:14px;font-weight:500;
+}
+.pointers a:hover{background:var(--accent-soft)}
+.pointers-sub{max-width:var(--prose-w);margin:18px auto 0;display:flex;flex-wrap:wrap;align-items:center;gap:9px;
+  font-size:13px;color:var(--secondary)}
+.pointers-sub .lab{font-weight:600;color:var(--secondary);text-transform:uppercase;letter-spacing:0.05em;font-size:12px}
+.pointers-sub a{
+  text-decoration:none;color:var(--accent-text);
+  padding:5px 11px;border-radius:var(--r-full);
+  border:1px solid var(--border);background:var(--surface-subtle);font-weight:500;
+}
+.pointers-sub a:hover{background:var(--accent-soft)}
+
+@media (max-width:560px){ .lead-def{padding:24px 22px} .split .card{padding:22px 20px} .use{padding:24px 22px} }
+</style>
+</head>
+<body>
+
+<!-- ======================= STICKY HEADER (shared) ======================= -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="demo.html"><span data-lang="en">Demo</span><span data-lang="de">Demo</span></a>
+      <a href="use-cases.html"><span data-lang="en">Use Cases</span><span data-lang="de">Anwendungsfälle</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+      <a href="workspaces.html"><span data-lang="en">Workspaces</span><span data-lang="de">Workspaces</span></a>
+      <a class="active" aria-current="page" href="agents.html"><span data-lang="en">Agents</span><span data-lang="de">Agents</span></a>
+      <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="nav-chips">
+      <a class="chip" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="chip" href="index.html#license" aria-label="MIT license">MIT</a>
+      <div class="seg" role="group" aria-label="Language / Sprache">
+        <button id="lang-en" type="button" aria-pressed="true" title="Toggle language — press L">EN</button>
+        <button id="lang-de" type="button" aria-pressed="false" title="Sprache umschalten — Taste L">DE</button>
+      </div>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================ PAGE CONTENT ============================ -->
+<main id="top">
+
+  <!-- ---- intro + lead definition ---- -->
+  <section class="page-hero">
+    <div class="container">
+      <div class="prose">
+        <p class="eyebrow" data-lang="en">Feature</p>
+        <p class="eyebrow" data-lang="de">Feature</p>
+        <h1 class="h1">Bridge-Agents</h1>
+        <p class="lede" data-lang="en">A Bridge-Agent is a persistent, addressable <strong>A2A endpoint</strong> that fronts <em>one</em> persona to the outside world. It answers questions from public content, reveals availability, and takes in requests — always under a hard human gate, never acting on its own. The engine that runs it is generic (CORE); everything that makes it <em>this</em> persona lives in a per-agent instance folder (USER).</p>
+        <p class="lede" data-lang="de">Ein Bridge-Agent ist ein persistenter, adressierbarer <strong>A2A-Endpunkt</strong>, der <em>eine</em> Persona nach außen vertritt. Er beantwortet Fragen aus öffentlichem Inhalt, zeigt Verfügbarkeit und nimmt Anfragen entgegen — stets unter einem harten menschlichen Gate, nie aus eigenem Antrieb handelnd. Die Engine, die ihn betreibt, ist generisch (CORE); alles, was ihn zu <em>dieser</em> Persona macht, lebt in einem Instanz-Ordner pro Agent (USER).</p>
+      </div>
+
+      <div class="lead-def">
+        <div class="k" data-lang="en">What is a Bridge-Agent?</div>
+        <div class="k" data-lang="de">Was ist ein Bridge-Agent?</div>
+        <p class="def" data-lang="en">A <strong>persistent, addressable A2A endpoint that fronts one persona</strong> — under a human gate. Its body is a runnable instance under <code>agents/&lt;name&gt;/</code>, its self is the persona in the system prompt, and its interface is a published <strong>AgentCard</strong>.</p>
+        <p class="def" data-lang="de">Ein <strong>persistenter, adressierbarer A2A-Endpunkt, der eine Persona vertritt</strong> — unter einem menschlichen Gate. Sein Körper ist eine lauffähige Instanz unter <code>agents/&lt;name&gt;/</code>, sein Selbst ist die Persona im System-Prompt, und seine Schnittstelle ist eine veröffentlichte <strong>AgentCard</strong>.</p>
+        <p class="more">
+          <a href="representative-agent.md" target="_blank" rel="noopener"><span data-lang="en">Read the representative-agent guide →</span><span data-lang="de">Den Representative-Agent-Guide lesen →</span></a>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- Bridge-Agent, not sub-agent ---- -->
+  <section class="alt" style="padding-block:56px 72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Two meanings of "agent"</p>
+        <p class="eyebrow" data-lang="de">Zwei Bedeutungen von „Agent"</p>
+        <h2 class="h2" data-lang="en">Bridge-Agent, not sub-agent</h2>
+        <h2 class="h2" data-lang="de">Bridge-Agent, kein Sub-Agent</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">The word "agent" names two different things. A <strong>sub-agent</strong> is ephemeral, inward-facing machinery: it runs one task inside your session and returns a summary — a function with tools, pointed <em>at</em> your work. A <strong>Bridge-Agent</strong> is a persistent, addressable <em>entity</em> that faces <em>outward</em>: its body is a runnable instance, its self is the persona in the system prompt, and its interface is a published AgentCard. This page is about the outward kind.</p>
+        <p data-lang="de">Das Wort „Agent" benennt zwei verschiedene Dinge. Ein <strong>Sub-Agent</strong> ist ephemere, nach innen gerichtete Maschinerie: er erledigt eine Aufgabe in deiner Session und liefert eine Zusammenfassung — eine Funktion mit Werkzeugen, <em>auf</em> deine Arbeit gerichtet. Ein <strong>Bridge-Agent</strong> ist eine persistente, adressierbare <em>Entität</em>, die nach <em>außen</em> blickt: sein Körper ist eine lauffähige Instanz, sein Selbst ist die Persona im System-Prompt, seine Schnittstelle eine veröffentlichte AgentCard. Diese Seite handelt vom nach außen gerichteten Typ.</p>
+      </div>
+      <div class="split reveal">
+        <div class="card">
+          <span class="tag" data-lang="en">inward · ephemeral</span>
+          <span class="tag" data-lang="de">nach innen · ephemer</span>
+          <h4 data-lang="en">Sub-agent</h4>
+          <h4 data-lang="de">Sub-Agent</h4>
+          <p data-lang="en">Lives in <code>.claude/agents/</code>. One task, one summary, then gone. It works <em>for you, in your session</em> — a tool the orchestrator dispatches and reabsorbs. It has no address, no card, and no life beyond the turn that spawned it.</p>
+          <p data-lang="de">Lebt in <code>.claude/agents/</code>. Eine Aufgabe, eine Zusammenfassung, dann verschwunden. Er arbeitet <em>für dich, in deiner Session</em> — ein Werkzeug, das der Orchestrator startet und wieder aufnimmt. Er hat keine Adresse, keine Card und kein Leben über die Turn hinaus, die ihn erzeugt hat.</p>
+        </div>
+        <div class="card">
+          <span class="tag" data-lang="en">outward · persistent</span>
+          <span class="tag" data-lang="de">nach außen · persistent</span>
+          <h4 data-lang="en">Bridge-Agent</h4>
+          <h4 data-lang="de">Bridge-Agent</h4>
+          <p data-lang="en">Lives in <code>agents/&lt;name&gt;/</code>. A long-running A2A service on a stable address. It <em>fronts a persona to the world</em>: body = the instance, self = <code>IDENTITY</code>/<code>SOUL</code> in the system prompt, interface = the AgentCard other agents and visitors discover.</p>
+          <p data-lang="de">Lebt in <code>agents/&lt;name&gt;/</code>. Ein langlaufender A2A-Dienst auf einer stabilen Adresse. Er <em>vertritt eine Persona nach außen</em>: Körper = die Instanz, Selbst = <code>IDENTITY</code>/<code>SOUL</code> im System-Prompt, Schnittstelle = die AgentCard, die andere Agenten und Besucher entdecken.</p>
+        </div>
+      </div>
+      <div class="block reveal" style="margin-top:34px">
+        <h3 class="h3" data-lang="en">Two faces, one self</h3>
+        <h3 class="h3" data-lang="de">Zwei Gesichter, ein Selbst</h3>
+        <p data-lang="en">The same machinery serves two directions over one persona. Which face you deploy sets the trust boundary — the caps and the denylist tighten or relax, but the shape stays the same.</p>
+        <p data-lang="de">Dieselbe Maschinerie bedient zwei Richtungen über eine Persona. Welches Gesicht du deployst, setzt die Vertrauensgrenze — die Caps und die Denylist ziehen an oder lockern sich, aber die Form bleibt gleich.</p>
+      </div>
+      <div class="split reveal">
+        <div class="card">
+          <span class="tag" data-lang="en">outer face · the world</span>
+          <span class="tag" data-lang="de">äußeres Gesicht · die Welt</span>
+          <h4 data-lang="en">Outer — visitors &amp; foreign agents</h4>
+          <h4 data-lang="de">Außen — Besucher &amp; fremde Agenten</h4>
+          <p data-lang="en">Anonymous visitors, foreign agents, a website widget. The <em>representative</em> face: it discloses only public, grounded facts and captures requests for a human to act on. Every request is assumed hostile.</p>
+          <p data-lang="de">Anonyme Besucher, fremde Agenten, ein Website-Widget. Das <em>repräsentierende</em> Gesicht: es gibt nur öffentliche, belegte Fakten preis und nimmt Anfragen auf, über die ein Mensch entscheidet. Jede Anfrage gilt als feindlich.</p>
+        </div>
+        <div class="card">
+          <span class="tag" data-lang="en">inner face · the mesh</span>
+          <span class="tag" data-lang="de">inneres Gesicht · das Mesh</span>
+          <h4 data-lang="en">Inner — the peer mesh</h4>
+          <h4 data-lang="de">Innen — das Peer-Mesh</h4>
+          <p data-lang="en">Your own fleet and trusted peer bridges talking agent-to-agent. Same runtime, same self, opposite direction and a very different trust boundary — the caps relax while the contract holds.</p>
+          <p data-lang="de">Deine eigene Flotte und vertraute Peer-Bridges im Agent-zu-Agent-Dialog. Dieselbe Runtime, dasselbe Selbst, entgegengesetzte Richtung und eine ganz andere Vertrauensgrenze — die Caps lockern, während der Vertrag hält.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- what it can do ---- -->
+  <section style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Capabilities</p>
+        <p class="eyebrow" data-lang="de">Fähigkeiten</p>
+        <h2 class="h2" data-lang="en">What it can do</h2>
+        <h2 class="h2" data-lang="de">Was er kann</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">A representative agent does four things — and, on the honest card, advertises only the ones this instance actually implements. It never acts on anyone's behalf.</p>
+        <p data-lang="de">Ein Representative-Agent tut vier Dinge — und wirbt auf der ehrlichen Card nur mit denen, die diese Instanz tatsächlich umsetzt. Er handelt nie im Namen von irgendjemandem.</p>
+      </div>
+      <div class="uses reveal">
+
+        <div class="use flagship">
+          <div class="n">01</div>
+          <h3 data-lang="en">Answer from public content</h3>
+          <h3 data-lang="de">Aus öffentlichem Inhalt antworten</h3>
+          <p data-lang="en">The agent answers questions about its persona grounded in the <em>public</em> content of its grounding dir — the only files it can read. It speaks in the persona's voice and stays inside the persona's disclosure boundary; it cannot reach the bridge's private tree (identity, work, memory, customer data).</p>
+          <p data-lang="de">Der Agent beantwortet Fragen zu seiner Persona, belegt aus dem <em>öffentlichen</em> Inhalt seines Grounding-Verzeichnisses — den einzigen Dateien, die er lesen kann. Er spricht in der Stimme der Persona und bleibt innerhalb ihrer Offenlegungsgrenze; den privaten Baum der Bridge (Identity, Work, Memory, Kundendaten) erreicht er nicht.</p>
+          <p class="caveat" data-lang="en"><strong>Honest card:</strong> the AgentCard advertises only skills the prompt and tools actually implement — it must never claim a capability the instance cannot deliver.</p>
+          <p class="caveat" data-lang="de"><strong>Ehrliche Card:</strong> die AgentCard wirbt nur mit Skills, die Prompt und Werkzeuge wirklich umsetzen — sie darf nie eine Fähigkeit behaupten, die die Instanz nicht liefern kann.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">02</div>
+          <h3 data-lang="en">Show availability</h3>
+          <h3 data-lang="de">Verfügbarkeit zeigen</h3>
+          <p data-lang="en">It can reveal when the persona is reachable or open to new work — a public, grounded fact, surfaced on request. Nothing is booked or confirmed here; availability is disclosed, never committed.</p>
+          <p data-lang="de">Er kann zeigen, wann die Persona erreichbar oder offen für neue Arbeit ist — ein öffentlicher, belegter Fakt, auf Anfrage sichtbar gemacht. Es wird hier nichts gebucht oder bestätigt; Verfügbarkeit wird offengelegt, nie zugesagt.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">03</div>
+          <h3 data-lang="en">Capture requests — fixed recipient</h3>
+          <h3 data-lang="de">Anfragen erfassen — fester Empfänger</h3>
+          <p data-lang="en">An intake tool captures requests for the persona <em>alone</em> — no recipient argument, so a prompt-injected visitor cannot steer the agent into messaging a third party. Intake is durable-first: it persists the request and exits 0 even if a later notification fails. <strong>No booking or reply is ever sent autonomously</strong> — every outward action goes through a human gate.</p>
+          <p data-lang="de">Ein Intake-Werkzeug erfasst Anfragen <em>ausschließlich</em> für die Persona — kein Empfänger-Argument, sodass ein prompt-injizierter Besucher den Agenten nicht dazu bringen kann, eine dritte Partei anzuschreiben. Intake ist durable-first: es speichert die Anfrage und endet mit 0, selbst wenn eine spätere Benachrichtigung scheitert. <strong>Es wird nie autonom gebucht oder geantwortet</strong> — jede Aktion nach außen läuft über ein menschliches Gate.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">04</div>
+          <h3 data-lang="en">Federate with peers (the mesh)</h3>
+          <h3 data-lang="de">Mit Peers föderieren (das Mesh)</h3>
+          <p data-lang="en">Over its inner face the same agent talks agent-to-agent with your own fleet and trusted peer bridges. Because every agent publishes a discoverable AgentCard over A2A, a peer can find it, read what it offers, and address it directly — a mesh of self-describing endpoints rather than a hardcoded integration.</p>
+          <p data-lang="de">Über sein inneres Gesicht spricht derselbe Agent Agent-zu-Agent mit deiner eigenen Flotte und vertrauten Peer-Bridges. Weil jeder Agent über A2A eine auffindbare AgentCard veröffentlicht, kann ein Peer ihn finden, lesen, was er anbietet, und ihn direkt adressieren — ein Mesh selbstbeschreibender Endpunkte statt einer fest verdrahteten Integration.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- anatomy of an instance ---- -->
+  <section class="alt" style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Instance anatomy</p>
+        <p class="eyebrow" data-lang="de">Anatomie einer Instanz</p>
+        <h2 class="h2" data-lang="en">Anatomy of an instance</h2>
+        <h2 class="h2" data-lang="de">Anatomie einer Instanz</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">Each agent is fully declarative — three parts under <code>agents/&lt;name&gt;/</code>. The runtime that reads them, <code>agents/_runtime/</code>, is generic and never contains persona-specific content.</p>
+        <p data-lang="de">Jeder Agent ist vollständig deklarativ — drei Teile unter <code>agents/&lt;name&gt;/</code>. Die Runtime, die sie liest, <code>agents/_runtime/</code>, ist generisch und enthält nie persona-spezifischen Inhalt.</p>
+      </div>
+      <div class="uses reveal">
+
+        <div class="use flagship">
+          <div class="n">agent.yaml</div>
+          <h3 data-lang="en">The card &amp; the knobs</h3>
+          <h3 data-lang="de">Die Card &amp; die Stellschrauben</h3>
+          <p data-lang="en">The card spec plus every runtime knob: the AgentCard fields (<code>name</code>, <code>description</code>, <code>version</code>, <code>provider</code>, <code>skills</code>), the network binding (<code>host</code>, <code>port</code>, <code>public_url</code>), the model and per-turn <code>timeout</code>, the <code>grounding_dir</code>, the scoped <code>allowed_tools</code>, and the public-endpoint caps (<code>max_concurrency</code>, <code>max_input_chars</code>, <code>max_turns</code>, <code>max_contexts</code>). Key fields — host, port, public URL, model, grounding dir, environment, and CORS — can be overridden by an environment variable at launch, so the same files run in dev and on the host.</p>
+          <p data-lang="de">Die Card-Spezifikation plus jede Runtime-Stellschraube: die AgentCard-Felder (<code>name</code>, <code>description</code>, <code>version</code>, <code>provider</code>, <code>skills</code>), die Netzwerk-Bindung (<code>host</code>, <code>port</code>, <code>public_url</code>), das Modell und der Pro-Turn-<code>timeout</code>, das <code>grounding_dir</code>, die skopierten <code>allowed_tools</code> und die Public-Endpoint-Caps (<code>max_concurrency</code>, <code>max_input_chars</code>, <code>max_turns</code>, <code>max_contexts</code>). Schlüsselfelder — Host, Port, Public-URL, Modell, Grounding-Dir, Environment und CORS — lassen sich beim Start per Umgebungsvariable überschreiben, sodass dieselben Dateien in Dev und auf dem Host laufen.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">system-prompt.md</div>
+          <h3 data-lang="en">The persona</h3>
+          <h3 data-lang="de">Die Persona</h3>
+          <p data-lang="en">Appended to the model's base prompt (<code>--append-system-prompt</code>), so the model keeps its capabilities and gains the persona's voice, facts, and disclosure boundary. It defines <em>who the agent is</em> and <em>what it may reveal</em>. Declared grounding files can be inlined here (<code>inline_grounding:</code>) so the agent answers from context.</p>
+          <p data-lang="de">An den Basis-Prompt des Modells angehängt (<code>--append-system-prompt</code>), sodass das Modell seine Fähigkeiten behält und Stimme, Fakten und Offenlegungsgrenze der Persona hinzugewinnt. Es definiert, <em>wer der Agent ist</em> und <em>was er preisgeben darf</em>. Deklarierte Grounding-Dateien lassen sich hier inlinen (<code>inline_grounding:</code>), sodass der Agent aus dem Kontext antwortet.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">tools/</div>
+          <h3 data-lang="en">Scoped CLIs, by absolute path</h3>
+          <h3 data-lang="de">Skopierte CLIs, per absolutem Pfad</h3>
+          <p data-lang="en">Instance-specific scoped tools, written as small argparse CLIs. The runtime never invokes them relative to the working directory — it invokes them by <strong>absolute path</strong>. A <code>${tools_dir}</code> placeholder in <code>agent.yaml</code> and the prompt is substituted for the resolved absolute path, because the agent's cwd is the grounding dir, not the instance folder.</p>
+          <p data-lang="de">Instanz-spezifische, skopierte Werkzeuge als kleine argparse-CLIs. Die Runtime ruft sie nie relativ zum Arbeitsverzeichnis auf — sondern per <strong>absolutem Pfad</strong>. Ein <code>${tools_dir}</code>-Platzhalter in <code>agent.yaml</code> und im Prompt wird durch den aufgelösten absoluten Pfad ersetzt, weil das cwd des Agenten das Grounding-Verzeichnis ist, nicht der Instanz-Ordner.</p>
+        </div>
+
+      </div>
+      <div class="note reveal" style="margin-top:34px">
+        <div class="k" data-lang="en">CORE vs. USER</div>
+        <div class="k" data-lang="de">CORE vs. USER</div>
+        <p data-lang="en">The runtime — <code>agents/_runtime/</code>, <code>_template/</code>, the tests and deps — is <strong>CORE</strong>: generic, shipped to open-bridge, never persona-specific. Each <code>agents/&lt;name&gt;/</code> instance is <strong>USER</strong>: your persona and PII, kept local. Copy <code>_template</code> to start a new one.</p>
+        <p data-lang="de">Die Runtime — <code>agents/_runtime/</code>, <code>_template/</code>, die Tests und Deps — ist <strong>CORE</strong>: generisch, zu open-bridge ausgeliefert, nie persona-spezifisch. Jede <code>agents/&lt;name&gt;/</code>-Instanz ist <strong>USER</strong>: deine Persona und PII, lokal gehalten. Kopiere <code>_template</code>, um eine neue anzulegen.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- how to use it ---- -->
+  <section style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Quickstart</p>
+        <p class="eyebrow" data-lang="de">Schnellstart</p>
+        <h2 class="h2" data-lang="en">How to use it</h2>
+        <h2 class="h2" data-lang="de">Wie man ihn nutzt</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">Copy the template, run the runtime against your instance, then probe the two discovery endpoints. Editing <code>agent.yaml</code> and <code>system-prompt.md</code> in between is what makes the agent <em>this</em> persona.</p>
+        <p data-lang="de">Kopiere das Template, starte die Runtime gegen deine Instanz und prüfe dann die beiden Discovery-Endpunkte. Das Editieren von <code>agent.yaml</code> und <code>system-prompt.md</code> dazwischen macht den Agenten zu <em>dieser</em> Persona.</p>
+      </div>
+      <div class="term reveal">
+        <div class="code-label">
+          <span data-lang="en">shell — the agent runtime</span>
+          <span data-lang="de">Shell — die Agent-Runtime</span>
+        </div>
+        <pre class="code"><span class="cmt"># 1 · copy the template to start an instance</span>
+<span class="k">$</span> cp -r agents/_template agents/<span class="dir">&lt;name&gt;</span>
+<span class="cmt">#      then edit agents/&lt;name&gt;/agent.yaml + system-prompt.md</span>
+
+<span class="cmt"># 2 · run the runtime against your instance</span>
+<span class="k">$</span> cd agents &amp;&amp; uv run python -m _runtime.server --agent <span class="dir">&lt;name&gt;</span> --port 8011
+
+<span class="cmt"># 3 · probe the AgentCard and the health endpoint</span>
+<span class="k">$</span> curl -s localhost:8011/.well-known/agent-card.json | head
+<span class="k">$</span> curl -s localhost:8011/health
+<span class="ok">{"status":"ok","agent":"&lt;name&gt;"}</span></pre>
+        <p class="after" data-lang="en">The card lists <code>supported_interfaces</code> and only the skills the instance implements; <code>/health</code> is a plain GET. Deploy behind a tunnel that maps the <code>public_url</code> host to this port (<a href="#limits">see Limits</a>).</p>
+        <p class="after" data-lang="de">Die Card führt <code>supported_interfaces</code> und nur die von der Instanz umgesetzten Skills auf; <code>/health</code> ist ein einfacher GET. Deploye hinter einem Tunnel, der den <code>public_url</code>-Host auf diesen Port abbildet (<a href="#limits">siehe Grenzen</a>).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- the runtime & protocol ---- -->
+  <section class="alt" style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Runtime &amp; protocol</p>
+        <p class="eyebrow" data-lang="de">Runtime &amp; Protokoll</p>
+        <h2 class="h2" data-lang="en">The runtime &amp; protocol</h2>
+        <h2 class="h2" data-lang="de">Die Runtime &amp; das Protokoll</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">The brain is <code>claude -p</code>; the shell around it is plain, standard, and spec-faithful — nothing exotic to run an A2A endpoint.</p>
+        <p data-lang="de">Das Gehirn ist <code>claude -p</code>; die Hülle drumherum ist schlicht, standardkonform und spec-treu — nichts Exotisches, um einen A2A-Endpunkt zu betreiben.</p>
+      </div>
+      <div class="split reveal">
+        <div class="card">
+          <span class="tag" data-lang="en">the brain</span>
+          <span class="tag" data-lang="de">das Gehirn</span>
+          <h4 data-lang="en">One subprocess per turn</h4>
+          <h4 data-lang="de">Ein Subprozess pro Turn</h4>
+          <p data-lang="en">For every turn the runner spawns a fresh <code>claude -p</code> subprocess, feeds it the assembled prompt, and reads back exactly one answer. <code>claude -p</code> is stateless, so conversation memory is kept by the executor keyed on the client's stable <code>context_id</code> and folded into each prompt as a short transcript. The persona is injected with <code>--append-system-prompt</code>; the grounding dir is the subprocess cwd.</p>
+          <p data-lang="de">Für jede Turn startet der Runner einen frischen <code>claude -p</code>-Subprozess, füttert ihn mit dem zusammengesetzten Prompt und liest genau eine Antwort zurück. <code>claude -p</code> ist zustandslos, also hält der Executor das Gesprächsgedächtnis, geschlüsselt über die stabile <code>context_id</code> des Clients, und faltet es als kurzes Transkript in jeden Prompt. Die Persona wird per <code>--append-system-prompt</code> injiziert; das Grounding-Verzeichnis ist das cwd des Subprozesses.</p>
+        </div>
+        <div class="card">
+          <span class="tag" data-lang="en">the shell</span>
+          <span class="tag" data-lang="de">die Hülle</span>
+          <h4 data-lang="en">Plain Starlette + a2a-sdk 1.x</h4>
+          <h4 data-lang="de">Schlichtes Starlette + a2a-sdk 1.x</h4>
+          <p data-lang="en">The server is a <strong>plain Starlette app</strong> — a2a-sdk 1.x has no wrapper application. It composes the SDK's JSON-RPC and agent-card routes over a <code>DefaultRequestHandler</code> and an in-memory task store, with a CORS middleware and two small correctness shims (0.3-dialect compat and restored A2A-spec error codes). It speaks <strong>A2A spec v1.0</strong>.</p>
+          <p data-lang="de">Der Server ist eine <strong>schlichte Starlette-App</strong> — a2a-sdk 1.x hat keine Wrapper-Applikation. Er setzt die JSON-RPC- und Agent-Card-Routen des SDK über einem <code>DefaultRequestHandler</code> und einem In-Memory-Task-Store zusammen, mit CORS-Middleware und zwei kleinen Korrektheits-Shims (0.3-Dialekt-Kompatibilität und wiederhergestellte A2A-Spec-Fehlercodes). Er spricht <strong>A2A-Spec v1.0</strong>.</p>
+        </div>
+      </div>
+      <div class="note reveal" style="margin-top:34px">
+        <div class="k" data-lang="en">Discovery &amp; the answer contract</div>
+        <div class="k" data-lang="de">Discovery &amp; der Antwort-Vertrag</div>
+        <p data-lang="en">The <strong>AgentCard</strong> is served at <code>/.well-known/agent-card.json</code> (with a legacy alias). In a2a-sdk 1.x the single <code>url</code> field is gone: the card advertises a list of <code>supported_interfaces[]</code>, each an interface with a public URL and a JSON-RPC transport binding. Over that, the runtime upholds one hard contract every turn — <strong>exactly one non-empty answer, delivered within <code>timeout</code></strong>: never a hang, never a blank bubble. A raised line buffer, an overall deadline, and an accumulated-text fallback hold that line; a hermetic regression net (no real <code>claude</code>, no network) locks it in CI.</p>
+        <p data-lang="de">Die <strong>AgentCard</strong> wird unter <code>/.well-known/agent-card.json</code> ausgeliefert (mit Legacy-Alias). In a2a-sdk 1.x ist das einzelne <code>url</code>-Feld weg: die Card wirbt mit einer Liste <code>supported_interfaces[]</code>, jede ein Interface mit öffentlicher URL und JSON-RPC-Transport-Bindung. Darüber hält die Runtime jede Turn einen harten Vertrag ein — <strong>genau eine nicht-leere Antwort, geliefert innerhalb von <code>timeout</code></strong>: nie ein Hänger, nie eine leere Blase. Ein erhöhter Zeilenpuffer, eine Gesamt-Deadline und ein Fallback auf den akkumulierten Text halten die Linie; ein hermetisches Regressionsnetz (kein echtes <code>claude</code>, kein Netz) sichert sie in CI.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- the safety model ---- -->
+  <section style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Safety</p>
+        <p class="eyebrow" data-lang="de">Sicherheit</p>
+        <h2 class="h2" data-lang="en">The safety model</h2>
+        <h2 class="h2" data-lang="de">Das Sicherheitsmodell</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">A public endpoint is assumed hostile on every request. Several independent layers ensure a visitor can never make the agent read private files, exfiltrate secrets, or act on anyone's behalf — defense-in-depth on top of the model's own refusal.</p>
+        <p data-lang="de">Ein öffentlicher Endpunkt gilt bei jeder Anfrage als feindlich. Mehrere unabhängige Schichten stellen sicher, dass ein Besucher den Agenten nie dazu bringen kann, private Dateien zu lesen, Geheimnisse zu exfiltrieren oder in jemandes Namen zu handeln — Defense-in-Depth über der modelleigenen Verweigerung.</p>
+      </div>
+      <div class="uses reveal">
+
+        <div class="use flagship">
+          <div class="n">01</div>
+          <h3 data-lang="en">Read-confinement: cwd = grounding_dir</h3>
+          <h3 data-lang="de">Lese-Begrenzung: cwd = grounding_dir</h3>
+          <p data-lang="en">The single most important control. The subprocess runs with its <strong>working directory set to the grounding dir</strong> — the folder of <em>public</em> content the agent may know. That cwd confines the read-only file tools (<code>Read</code>, <code>Glob</code>, <code>Grep</code>) to public content: they cannot reach the bridge's private tree. Scoped instance tools still resolve because they are invoked by absolute path, not relative to cwd.</p>
+          <p data-lang="de">Die wichtigste einzelne Kontrolle. Der Subprozess läuft mit seinem <strong>Arbeitsverzeichnis auf das Grounding-Verzeichnis gesetzt</strong> — den Ordner mit dem <em>öffentlichen</em> Inhalt, den der Agent kennen darf. Dieses cwd begrenzt die Nur-Lese-Dateiwerkzeuge (<code>Read</code>, <code>Glob</code>, <code>Grep</code>) auf öffentlichen Inhalt: den privaten Baum der Bridge erreichen sie nicht. Skopierte Instanz-Werkzeuge lösen dennoch auf, weil sie per absolutem Pfad aufgerufen werden, nicht relativ zum cwd.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">02</div>
+          <h3 data-lang="en">Scoped allowed_tools</h3>
+          <h3 data-lang="de">Skopierte allowed_tools</h3>
+          <p data-lang="en"><code>allowed_tools</code> grants read-only file access plus <strong>only</strong> the intended instance tools, each by absolute path — no generic shell, no write tool, no arbitrary send. The default is <code>Read,Glob,Grep</code>; an intake CLI is added explicitly.</p>
+          <p data-lang="de"><code>allowed_tools</code> gewährt Nur-Lese-Dateizugriff plus <strong>nur</strong> die vorgesehenen Instanz-Werkzeuge, je per absolutem Pfad — keine generische Shell, kein Write-Tool, kein beliebiges Senden. Default ist <code>Read,Glob,Grep</code>; ein Intake-CLI wird explizit ergänzt.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">03</div>
+          <h3 data-lang="en">Read-only-shell denylist (backstop)</h3>
+          <h3 data-lang="de">Read-only-Shell-Denylist (Backstop)</h3>
+          <p data-lang="en"><code>--permission-mode acceptEdits</code> keeps a headless agent from hanging, but it auto-allows any shell command the engine classifies as read-only — independent of <code>allowed_tools</code>. So the runtime ships a broad <code>--disallowedTools</code> denylist of the known file-reader, search, hashing, VCS, secret-store, and network binaries. It is a <strong>backstop, never the control</strong> — it raises the bar but can never be complete.</p>
+          <p data-lang="de"><code>--permission-mode acceptEdits</code> verhindert, dass ein Headless-Agent hängt, erlaubt aber automatisch jedes Shell-Kommando, das die Engine als read-only einstuft — unabhängig von <code>allowed_tools</code>. Also liefert die Runtime eine breite <code>--disallowedTools</code>-Denylist der bekannten Datei-Leser-, Such-, Hash-, VCS-, Secret-Store- und Netzwerk-Binaries. Sie ist ein <strong>Backstop, nie die Kontrolle</strong> — sie hebt die Latte, kann aber nie vollständig sein.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">04</div>
+          <h3 data-lang="en">Project-only settings</h3>
+          <h3 data-lang="de">Nur Projekt-Settings</h3>
+          <p data-lang="en">The runner passes <code>--setting-sources project</code>, so it loads <strong>only</strong> the project's settings — never the host user's allowlist or hooks. A host preference can therefore never silently widen this internet-facing agent.</p>
+          <p data-lang="de">Der Runner übergibt <code>--setting-sources project</code>, lädt also <strong>nur</strong> die Projekt-Settings — nie die Allowlist oder Hooks des Host-Users. Eine Host-Einstellung kann diesen ins Internet gerichteten Agenten damit nie stillschweigend erweitern.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">05</div>
+          <h3 data-lang="en">Fixed-recipient intake</h3>
+          <h3 data-lang="de">Intake mit festem Empfänger</h3>
+          <p data-lang="en">The intake tool captures requests for the persona <strong>alone</strong> — no recipient argument, so the agent cannot be steered into messaging a third party. No booking or reply is ever sent autonomously; every outward action goes through a human gate.</p>
+          <p data-lang="de">Das Intake-Werkzeug erfasst Anfragen <strong>ausschließlich</strong> für die Persona — kein Empfänger-Argument, sodass der Agent nicht zum Anschreiben Dritter verleitet werden kann. Es wird nie autonom gebucht oder geantwortet; jede Aktion nach außen läuft über ein menschliches Gate.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">06</div>
+          <h3 data-lang="en">Public-endpoint caps &amp; honest card</h3>
+          <h3 data-lang="de">Public-Endpoint-Caps &amp; ehrliche Card</h3>
+          <p data-lang="en">The executor enforces <code>max_concurrency</code>, <code>max_input_chars</code>, <code>max_turns</code>, and a bounded <code>max_contexts</code> LRU, so an ungated endpoint cannot exhaust memory or spawn unbounded subprocesses — add a per-IP edge rate-limit at your CDN. And the AgentCard stays <strong>honest</strong>: it advertises only capabilities the instance can deliver.</p>
+          <p data-lang="de">Der Executor erzwingt <code>max_concurrency</code>, <code>max_input_chars</code>, <code>max_turns</code> und ein begrenztes <code>max_contexts</code>-LRU, sodass ein ungeschützter Endpunkt weder Speicher erschöpfen noch unbegrenzt Subprozesse starten kann — ergänze ein Per-IP-Edge-Rate-Limit an deinem CDN. Und die AgentCard bleibt <strong>ehrlich</strong>: sie wirbt nur mit Fähigkeiten, die die Instanz liefern kann.</p>
+        </div>
+
+      </div>
+      <div class="note reveal" style="margin-top:34px">
+        <div class="k" data-lang="en">The named real fix: an OS sandbox</div>
+        <div class="k" data-lang="de">Der benannte echte Fix: eine OS-Sandbox</div>
+        <p data-lang="en">The layers above are defense-in-depth; the <strong>real</strong> fix for read-confinement is an OS sandbox that confines reads to the grounding dir and blocks network and secret-store access with the mechanism the host supports — a container as an unprivileged user on Linux, or a <code>sandbox-exec</code> profile / dedicated low-privilege user on the host OS. Name it as the goal; the denylist buys time until it is in place.</p>
+          <p data-lang="de">Die obigen Schichten sind Defense-in-Depth; der <strong>echte</strong> Fix für die Lese-Begrenzung ist eine OS-Sandbox, die Lesezugriffe auf das Grounding-Verzeichnis begrenzt und Netzwerk- sowie Secret-Store-Zugriff mit dem vom Host unterstützten Mechanismus blockiert — ein Container als unprivilegierter User auf Linux oder ein <code>sandbox-exec</code>-Profil / dedizierter Low-Privilege-User auf dem Host-OS. Benenne sie als Ziel; die Denylist kauft Zeit, bis sie steht.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- honest limits ---- -->
+  <section class="alt" id="limits" style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Honest limits</p>
+        <p class="eyebrow" data-lang="de">Ehrliche Grenzen</p>
+        <h2 class="h2" data-lang="en">What it does not promise</h2>
+        <h2 class="h2" data-lang="de">Was es nicht verspricht</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">The feature is built carefully, and it is documented just as carefully. Three limits to know before you lean on it:</p>
+        <p data-lang="de">Das Feature ist sorgfältig gebaut — und ebenso sorgfältig dokumentiert. Drei Grenzen, die man kennen sollte, bevor man sich darauf verlässt:</p>
+      </div>
+      <div class="limits reveal">
+        <div class="limit">
+          <h4 data-lang="en">It is not autonomous</h4>
+          <h4 data-lang="de">Er ist nicht autonom</h4>
+          <p data-lang="en">A representative agent never books, replies, or acts on anyone's behalf. It discloses public facts and captures a request for a fixed recipient — every outward action waits on a human gate. That is a deliberate boundary, not a missing feature.</p>
+          <p data-lang="de">Ein Representative-Agent bucht, antwortet oder handelt nie im Namen von jemandem. Er legt öffentliche Fakten offen und erfasst eine Anfrage für einen festen Empfänger — jede Aktion nach außen wartet auf ein menschliches Gate. Das ist eine bewusste Grenze, kein fehlendes Feature.</p>
+        </div>
+        <div class="limit">
+          <h4 data-lang="en">Read-confinement is not yet kernel-enforced</h4>
+          <h4 data-lang="de">Lese-Begrenzung ist noch nicht kernel-erzwungen</h4>
+          <p data-lang="en">The cwd, the scoped tools, and the denylist are defense-in-depth, but the denylist is a backstop that can never be complete. The real read-confinement is an OS sandbox (a container as an unprivileged user, or a <code>sandbox-exec</code> profile) — until it is in place, treat the grounding dir, not the process, as the boundary.</p>
+          <p data-lang="de">Das cwd, die skopierten Tools und die Denylist sind Defense-in-Depth, aber die Denylist ist ein Backstop, der nie vollständig sein kann. Die echte Lese-Begrenzung ist eine OS-Sandbox (ein Container als unprivilegierter User oder ein <code>sandbox-exec</code>-Profil) — bis sie steht, ist das Grounding-Verzeichnis die Grenze, nicht der Prozess.</p>
+        </div>
+        <div class="limit">
+          <h4 data-lang="en">Latency is a knob, not instant</h4>
+          <h4 data-lang="de">Latenz ist ein Stellknopf, nicht sofort</h4>
+          <p data-lang="en">A broad question that makes the model read the whole grounding and reason a full answer can take ~60–90s with a strong model. SSE keepalive holds the connection and the contract still guarantees one answer, but speed is a tuning choice — keep the grounding small, inline it into the prompt, or use a faster model.</p>
+          <p data-lang="de">Eine breite Frage, die das Modell das ganze Grounding lesen und eine volle Antwort durchdenken lässt, kann mit einem starken Modell ~60–90s dauern. SSE-Keepalive hält die Verbindung und der Vertrag garantiert weiter eine Antwort, aber Tempo ist eine Abstimmungsfrage — Grounding klein halten, in den Prompt inlinen oder ein schnelleres Modell nehmen.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- pointers ---- -->
+  <section style="padding-block:64px 88px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Go deeper</p>
+        <p class="eyebrow" data-lang="de">Tiefer einsteigen</p>
+        <h2 class="h2" data-lang="en">Read next</h2>
+        <h2 class="h2" data-lang="de">Weiterlesen</h2>
+      </div>
+      <div class="pointers reveal">
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/agents/README.md" target="_blank" rel="noopener"><span data-lang="en">Runtime overview (agents/README.md)</span><span data-lang="de">Runtime-Überblick (agents/README.md)</span></a>
+        <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/representative-agent.md" target="_blank" rel="noopener"><span data-lang="en">Representative-agent guide</span><span data-lang="de">Representative-Agent-Guide</span></a>
+        <a href="https://github.com/bks-lab/open-bridge/tree/main/agents" target="_blank" rel="noopener"><span data-lang="en">The agents/ runtime &amp; template</span><span data-lang="de">Der agents/-Runtime &amp; das Template</span></a>
+      </div>
+      <div class="pointers-sub reveal">
+        <span class="lab" data-lang="en">Issues</span><span class="lab" data-lang="de">Issues</span>
+        <a href="https://github.com/bks-lab/open-bridge/pull/93" target="_blank" rel="noopener">PR #93</a>
+        <a href="https://github.com/bks-lab/open-bridge/issues/47" target="_blank" rel="noopener">#47</a>
+        <a href="https://github.com/bks-lab/open-bridge/issues/49" target="_blank" rel="noopener">#49</a>
+      </div>
+      <div class="prose" style="margin-top:44px;text-align:center">
+        <a class="btn btn-primary" href="concepts.html"><span data-lang="en">Read the concept guide</span><span data-lang="de">Den Konzept-Guide lesen</span> <span class="arrow">→</span></a>
+        <a class="btn btn-secondary" href="index.html#get-started" style="margin-left:10px"><span data-lang="en">Try it in 2 minutes</span><span data-lang="de">In 2 Minuten ausprobieren</span> <span class="arrow">→</span></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+<!-- ========================== END PAGE CONTENT ============================== -->
+
+<!-- ======================= FOOTER (shared) ======================= -->
+<footer id="license">
+  <div class="foot-grid">
+    <div class="foot-blurb">
+      <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used daily to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — einem kleinen Team — und täglich genutzt, um genau diese Firma zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
+      <table class="license-table">
+        <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
+        <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
+      </table>
+      <p class="muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. <span data-lang="en">Licenses cover copyright, not brands.</span><span data-lang="de">Lizenzen decken Copyright ab, nicht Marken.</span> <span data-lang="en">Contributions require a DCO sign-off (</span><span data-lang="de">Beiträge erfordern einen DCO-Sign-off (</span><code>git commit -s</code>).</p>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Explore</h4>
+      <h4 data-lang="de">Erkunden</h4>
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts in depth</span><span data-lang="de">Konzepte im Detail</span></a>
+      <a href="workspaces.html"><span data-lang="en">Workspaces</span><span data-lang="de">Workspaces</span></a>
+      <a href="use-cases.html"><span data-lang="en">Use cases &amp; solutions</span><span data-lang="de">Anwendungsfälle &amp; Lösungen</span></a>
+      <a href="explore.html"><span data-lang="en">Explore the concepts</span><span data-lang="de">Konzepte erkunden</span></a>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Links</h4>
+      <h4 data-lang="de">Links</h4>
+      <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/README.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/workspaces.md" target="_blank" rel="noopener"><span data-lang="en">Workspaces guide</span><span data-lang="de">Workspaces-Guide</span></a>
+    </div>
+  </div>
+
+  <div class="foot-bottom">
+    <span data-lang="en">Public · MIT · no waitlist · newly released</span>
+    <span data-lang="de">Public · MIT · keine Warteliste · frisch veröffentlicht</span>
+    <a class="btn btn-secondary" style="padding:10px 20px;font-size:14px" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+      <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span> <span class="arrow">→</span>
+    </a>
+  </div>
+</footer>
+
+<!-- ======================= Shared page controller ======================= -->
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+
+  function applyTheme(mode){
+    if(mode === "dark"){ root.classList.add("dark"); }
+    else { root.classList.remove("dark"); }
+  }
+  function toggleTheme(){
+    var next = root.classList.contains("dark") ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("ob-theme", next); } catch(e){}
+  }
+  var themeBtn = document.getElementById("theme-toggle");
+  if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
+
+  function applyLang(lang){
+    root.setAttribute("data-active-lang", lang);
+    root.setAttribute("lang", lang);
+    var en = document.getElementById("lang-en");
+    var de = document.getElementById("lang-de");
+    if(en){ en.setAttribute("aria-pressed", lang === "en" ? "true" : "false"); }
+    if(de){ de.setAttribute("aria-pressed", lang === "de" ? "true" : "false"); }
+  }
+  applyLang(root.getAttribute("data-active-lang") === "de" ? "de" : "en");
+  function setLang(lang){
+    applyLang(lang);
+    try { localStorage.setItem("ob-lang", lang); } catch(e){}
+  }
+  var enBtn = document.getElementById("lang-en");
+  var deBtn = document.getElementById("lang-de");
+  if(enBtn){ enBtn.addEventListener("click", function(){ setLang("en"); }); }
+  if(deBtn){ deBtn.addEventListener("click", function(){ setLang("de"); }); }
+
+  document.addEventListener("keydown", function(ev){
+    if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
+    if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
+    var k = ev.key.toLowerCase();
+    if(k === "t"){ toggleTheme(); }
+    if(k === "l"){ setLang(root.getAttribute("data-active-lang") === "en" ? "de" : "en"); }
+  });
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); });
+  }
+})();
+</script>
+
+<!-- A2A chat widget — the Bridge-Agents page fronts a Bridge-Agent (dogfooding). -->
+<script defer src="assets/agent-config.js"></script>
+<script defer src="assets/agent-widget.js"></script>
+</body>
+</html>

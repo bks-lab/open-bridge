@@ -1,0 +1,4 @@
+# Instance-specific tools go here (one small argparse CLI per capability).
+# They are invoked by the agent via allowed_tools, by absolute path (${tools_dir}).
+# Keep them stdlib-only where possible; a fixed recipient and durable capture make
+# an intake tool safe to expose on a public endpoint (see agents/<name>/tools/ in an instance).
