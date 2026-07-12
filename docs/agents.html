@@ -297,7 +297,7 @@ code, .mono{
 .block h3.h3{font-size:24px;font-weight:600;line-height:1.25;color:var(--primary);margin-bottom:10px}
 .block p{font-size:16px;line-height:1.7;color:var(--on-surface);margin-bottom:14px}
 
-/* split cards for the identity / materialization halves */
+/* split cards: sub-agent vs Bridge-Agent, and outer vs inner face */
 .split{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:var(--prose-w);margin:0 auto 8px}
 .split .card{padding:26px 28px}
 .split .card h4{font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--accent-text);margin-bottom:10px}
@@ -306,7 +306,7 @@ code, .mono{
   padding:4px 10px;border-radius:var(--r-full);border:1px solid var(--border);background:var(--surface-subtle);color:var(--secondary)}
 @media (max-width:640px){ .split{grid-template-columns:1fr} }
 
-/* use-case grid ("When to use it") */
+/* card grid (capabilities / anatomy / safety) */
 .uses{max-width:var(--container);margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:22px}
 .use{
   background:var(--surface);border:1px solid var(--border);
@@ -330,14 +330,6 @@ code, .mono{
 }
 .use .caveat strong{color:var(--attention-text);font-weight:600}
 @media (max-width:780px){ .uses{grid-template-columns:1fr} .use.flagship{grid-column:auto} }
-
-/* verb table */
-.verbs{max-width:var(--prose-w);margin:0 auto;overflow-x:auto}
-.verbs table{border-collapse:collapse;width:100%;font-size:15px}
-.verbs th,.verbs td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:top}
-.verbs th{font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:var(--secondary);font-weight:600}
-.verbs td.v{white-space:nowrap}
-.verbs td.v code{background:var(--accent-soft);border-color:transparent;color:var(--accent-text);font-weight:600}
 
 /* quickstart terminal (reuses the .code grammar from index.html) */
 .term{max-width:var(--prose-w);margin:0 auto}
@@ -592,8 +584,8 @@ html.dark .code{background:var(--code-bg)}
           <div class="n">agent.yaml</div>
           <h3 data-lang="en">The card &amp; the knobs</h3>
           <h3 data-lang="de">Die Card &amp; die Stellschrauben</h3>
-          <p data-lang="en">The card spec plus every runtime knob: the AgentCard fields (<code>name</code>, <code>description</code>, <code>version</code>, <code>provider</code>, <code>skills</code>), the network binding (<code>host</code>, <code>port</code>, <code>public_url</code>), the model and per-turn <code>timeout</code>, the <code>grounding_dir</code>, the scoped <code>allowed_tools</code>, and the public-endpoint caps (<code>max_concurrency</code>, <code>max_input_chars</code>, <code>max_turns</code>, <code>max_contexts</code>). Any field can be overridden by an environment variable at launch, so the same files run in dev and on the host.</p>
-          <p data-lang="de">Die Card-Spezifikation plus jede Runtime-Stellschraube: die AgentCard-Felder (<code>name</code>, <code>description</code>, <code>version</code>, <code>provider</code>, <code>skills</code>), die Netzwerk-Bindung (<code>host</code>, <code>port</code>, <code>public_url</code>), das Modell und der Pro-Turn-<code>timeout</code>, das <code>grounding_dir</code>, die skopierten <code>allowed_tools</code> und die Public-Endpoint-Caps (<code>max_concurrency</code>, <code>max_input_chars</code>, <code>max_turns</code>, <code>max_contexts</code>). Jedes Feld lässt sich beim Start per Umgebungsvariable überschreiben, sodass dieselben Dateien in Dev und auf dem Host laufen.</p>
+          <p data-lang="en">The card spec plus every runtime knob: the AgentCard fields (<code>name</code>, <code>description</code>, <code>version</code>, <code>provider</code>, <code>skills</code>), the network binding (<code>host</code>, <code>port</code>, <code>public_url</code>), the model and per-turn <code>timeout</code>, the <code>grounding_dir</code>, the scoped <code>allowed_tools</code>, and the public-endpoint caps (<code>max_concurrency</code>, <code>max_input_chars</code>, <code>max_turns</code>, <code>max_contexts</code>). Key fields — host, port, public URL, model, grounding dir, environment, and CORS — can be overridden by an environment variable at launch, so the same files run in dev and on the host.</p>
+          <p data-lang="de">Die Card-Spezifikation plus jede Runtime-Stellschraube: die AgentCard-Felder (<code>name</code>, <code>description</code>, <code>version</code>, <code>provider</code>, <code>skills</code>), die Netzwerk-Bindung (<code>host</code>, <code>port</code>, <code>public_url</code>), das Modell und der Pro-Turn-<code>timeout</code>, das <code>grounding_dir</code>, die skopierten <code>allowed_tools</code> und die Public-Endpoint-Caps (<code>max_concurrency</code>, <code>max_input_chars</code>, <code>max_turns</code>, <code>max_contexts</code>). Schlüsselfelder — Host, Port, Public-URL, Modell, Grounding-Dir, Environment und CORS — lassen sich beim Start per Umgebungsvariable überschreiben, sodass dieselben Dateien in Dev und auf dem Host laufen.</p>
         </div>
 
         <div class="use">

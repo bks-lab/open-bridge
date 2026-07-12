@@ -117,7 +117,8 @@ JSON-RPC `InternalError`.
   legacy alias at **`/.well-known/agent.json`** for older clients. In a2a-sdk 1.x the
   single `url` field is gone; the card advertises a list of `supported_interfaces`,
   each an `AgentInterface` with the public URL and a JSON-RPC transport binding
-  (`AgentCapabilities(streaming=True, push_notifications=False)`).
+  (`protocol_binding=TransportProtocol.JSONRPC`). The card separately carries
+  `capabilities=AgentCapabilities(streaming=True, push_notifications=False)`.
 - **`message/send`** returns a single completed task; **`message/stream`** returns the
   same turn as Server-Sent Events, so a visitor sees the answer build up.
 - **`tasks/*`** (get, cancel, …) are handled by the SDK request handler.
