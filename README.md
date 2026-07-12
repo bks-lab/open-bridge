@@ -176,7 +176,7 @@ Sub-agents point *inward* — they work for you inside your session and return a
 cp -r agents/_template agents/<name> ; cd agents && uv run python -m _runtime.server --agent <name>
 ```
 
-Full model: [`agents/README.md`](agents/README.md) · [`docs/representative-agent.md`](docs/representative-agent.md).
+Full model: [`agents/README.md`](agents/README.md) · [`docs/representative-agent.md`](docs/representative-agent.md) · [live page](https://bks-lab.github.io/open-bridge/agents.html).
 
 ### Workspaces (optional)
 
