@@ -43,7 +43,8 @@ agents/
     config.py        load agents/<name>/ into one resolved AgentConfig
     server.py        Starlette app + entrypoint (build_app / main)
   _template/       CORE — copy to start a new instance
-  tests/           CORE — hermetic runner regression net (test_runner.py)
+    tools/           CORE reference: intake_notify.py (fixed-recipient scaffold)
+  tests/           CORE — hermetic runner regression net (test_runner.py, test_intake_notify.py)
   pyproject.toml   CORE — runtime deps (a2a-sdk, uvicorn, starlette, click, pyyaml)
   <name>/          USER — one instance per agent
     agent.yaml       declarative config (card spec + runtime knobs)
@@ -79,7 +80,10 @@ curl -s localhost:8011/health
 - **Scoped `allowed_tools`** — read-only plus only the intended tools; no generic
   shell, no write, no arbitrary send.
 - **Fixed-recipient intake** — an intake tool captures requests for *you* alone
-  (no recipient argument), durable-first, exit 0 even if a later push fails.
+  (fixed recipient from `AGENT_NOTIFY_TO` env only, no recipient argument),
+  durable-first, notify best-effort and never-raises, PII-free audit. CORE ships
+  the stdlib-only scaffold `_template/tools/intake_notify.py` (override its `send()`
+  seam with your transport); a testable contract locks it (`tests/test_intake_notify.py`).
 - **No autonomous outward action** — bookings/replies go through your gate.
 - **Public-endpoint caps** — concurrency, input length; add a per-IP edge
   rate-limit at your CDN.

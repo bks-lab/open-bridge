@@ -600,8 +600,8 @@ html.dark .code{background:var(--code-bg)}
           <div class="n">tools/</div>
           <h3 data-lang="en">Scoped CLIs, by absolute path</h3>
           <h3 data-lang="de">Skopierte CLIs, per absolutem Pfad</h3>
-          <p data-lang="en">Instance-specific scoped tools, written as small argparse CLIs. The runtime never invokes them relative to the working directory — it invokes them by <strong>absolute path</strong>. A <code>${tools_dir}</code> placeholder in <code>agent.yaml</code> and the prompt is substituted for the resolved absolute path, because the agent's cwd is the grounding dir, not the instance folder.</p>
-          <p data-lang="de">Instanz-spezifische, skopierte Werkzeuge als kleine argparse-CLIs. Die Runtime ruft sie nie relativ zum Arbeitsverzeichnis auf — sondern per <strong>absolutem Pfad</strong>. Ein <code>${tools_dir}</code>-Platzhalter in <code>agent.yaml</code> und im Prompt wird durch den aufgelösten absoluten Pfad ersetzt, weil das cwd des Agenten das Grounding-Verzeichnis ist, nicht der Instanz-Ordner.</p>
+          <p data-lang="en">Instance-specific scoped tools, written as small argparse CLIs. The runtime never invokes them relative to the working directory — it invokes them by <strong>absolute path</strong>. A <code>${tools_dir}</code> placeholder in <code>agent.yaml</code> and the prompt is substituted for the resolved absolute path, because the agent's cwd is the grounding dir, not the instance folder. The CORE template ships one reference tool — <code>_template/tools/intake_notify.py</code>, the fixed-recipient intake pattern (see Safety) — to copy into your instance and back with your own transport.</p>
+          <p data-lang="de">Instanz-spezifische, skopierte Werkzeuge als kleine argparse-CLIs. Die Runtime ruft sie nie relativ zum Arbeitsverzeichnis auf — sondern per <strong>absolutem Pfad</strong>. Ein <code>${tools_dir}</code>-Platzhalter in <code>agent.yaml</code> und im Prompt wird durch den aufgelösten absoluten Pfad ersetzt, weil das cwd des Agenten das Grounding-Verzeichnis ist, nicht der Instanz-Ordner. Das CORE-Template liefert ein Referenzwerkzeug — <code>_template/tools/intake_notify.py</code>, das Fixed-Recipient-Intake-Muster (siehe Sicherheit) — zum Kopieren in deine Instanz und Hinterlegen mit eigenem Transport.</p>
         </div>
 
       </div>
@@ -716,8 +716,8 @@ html.dark .code{background:var(--code-bg)}
           <div class="n">02</div>
           <h3 data-lang="en">Scoped allowed_tools</h3>
           <h3 data-lang="de">Skopierte allowed_tools</h3>
-          <p data-lang="en"><code>allowed_tools</code> grants read-only file access plus <strong>only</strong> the intended instance tools, each by absolute path — no generic shell, no write tool, no arbitrary send. The default is <code>Read,Glob,Grep</code>; an intake CLI is added explicitly.</p>
-          <p data-lang="de"><code>allowed_tools</code> gewährt Nur-Lese-Dateizugriff plus <strong>nur</strong> die vorgesehenen Instanz-Werkzeuge, je per absolutem Pfad — keine generische Shell, kein Write-Tool, kein beliebiges Senden. Default ist <code>Read,Glob,Grep</code>; ein Intake-CLI wird explizit ergänzt.</p>
+          <p data-lang="en"><code>allowed_tools</code> grants read-only file access plus <strong>only</strong> the intended instance tools, each by absolute path — no generic shell, no write tool, no arbitrary send. The default is <code>Read,Glob,Grep</code>; an intake CLI is added explicitly (copy <code>_template/tools/intake_notify.py</code>).</p>
+          <p data-lang="de"><code>allowed_tools</code> gewährt Nur-Lese-Dateizugriff plus <strong>nur</strong> die vorgesehenen Instanz-Werkzeuge, je per absolutem Pfad — keine generische Shell, kein Write-Tool, kein beliebiges Senden. Default ist <code>Read,Glob,Grep</code>; ein Intake-CLI wird explizit ergänzt (kopiere <code>_template/tools/intake_notify.py</code>).</p>
         </div>
 
         <div class="use">
@@ -740,8 +740,8 @@ html.dark .code{background:var(--code-bg)}
           <div class="n">05</div>
           <h3 data-lang="en">Fixed-recipient intake</h3>
           <h3 data-lang="de">Intake mit festem Empfänger</h3>
-          <p data-lang="en">The intake tool captures requests for the persona <strong>alone</strong> — no recipient argument, so the agent cannot be steered into messaging a third party. No booking or reply is ever sent autonomously; every outward action goes through a human gate.</p>
-          <p data-lang="de">Das Intake-Werkzeug erfasst Anfragen <strong>ausschließlich</strong> für die Persona — kein Empfänger-Argument, sodass der Agent nicht zum Anschreiben Dritter verleitet werden kann. Es wird nie autonom gebucht oder geantwortet; jede Aktion nach außen läuft über ein menschliches Gate.</p>
+          <p data-lang="en">The intake tool captures requests for the persona <strong>alone</strong> — the fixed recipient comes from operator config only (no recipient argument exists), so a prompt-injected visitor can never steer the agent into messaging a third party. Capture is durable-first; the notify is best-effort and <strong>never raises</strong>; unconfigured stays capture-only and loud; the audit log is PII-free. CORE ships this as a stdlib-only scaffold, <code>_template/tools/intake_notify.py</code>, whose <code>send()</code> seam an instance fills with its transport — locked by a testable seven-clause contract (<code>tests/test_intake_notify.py</code>). No booking or reply is ever sent autonomously; every outward action goes through a human gate.</p>
+          <p data-lang="de">Das Intake-Werkzeug erfasst Anfragen <strong>ausschließlich</strong> für die Persona — der feste Empfänger kommt nur aus der Operator-Config (ein Empfänger-Argument existiert nicht), sodass ein prompt-injizierter Besucher den Agenten nie zum Anschreiben Dritter verleiten kann. Erfassung ist durable-first; die Benachrichtigung ist best-effort und <strong>wirft nie</strong>; unkonfiguriert bleibt es capture-only und laut; das Audit-Log ist PII-frei. CORE liefert das als stdlib-only-Scaffold, <code>_template/tools/intake_notify.py</code>, dessen <code>send()</code>-Naht eine Instanz mit ihrem Transport füllt — abgesichert durch einen testbaren Sieben-Klausel-Vertrag (<code>tests/test_intake_notify.py</code>). Es wird nie autonom gebucht oder geantwortet; jede Aktion nach außen läuft über ein menschliches Gate.</p>
         </div>
 
         <div class="use">
