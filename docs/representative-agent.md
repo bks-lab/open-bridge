@@ -77,7 +77,10 @@ Each instance is fully declarative — three parts under `agents/<name>/`:
   `agents/<name>/tools` (and `${instance_dir}` for the instance root). The same
   substitution is applied inside `system-prompt.md`, so the prompt tells the agent to
   call the exact absolute path that `allowed_tools` permits — necessary because the
-  agent's working directory is the grounding dir, not the instance folder.
+  agent's working directory is the grounding dir, not the instance folder. The CORE
+  template ships one reference tool, `_template/tools/intake_notify.py`, implementing
+  the fixed-recipient intake + owner-notify pattern (§4). Copy it into your instance
+  and override its `send()` with your transport; CORE ships the pattern, never a provider.
 
 Run it and probe the card:
 
@@ -175,13 +178,40 @@ The runner passes `--setting-sources project`, so it loads **only** the project'
 settings — never the host user's `~/.claude` allowlist or hooks. A host preference can
 therefore never silently widen this internet-facing agent.
 
-### Fixed-recipient intake
+### Fixed-recipient intake — a contract for tool authors
 
-An intake tool captures requests for the persona **alone** — no recipient argument, so
-the agent cannot be steered into messaging a third party. Intake is durable-first: it
-persists the request and exits 0 even if a later push notification fails, so a request
-is never lost to a downstream hiccup. No booking or reply is ever sent autonomously;
-every outward action goes through a human gate.
+A representative agent's capability has two axes, and both are pinned per instance:
+**what it may KNOW** — its grounding dir, the only content it can read (cwd
+read-confinement above) and be told about (files inlined into `system-prompt.md`) — and
+**what it may DO** — the scoped `allowed_tools`, an outward action always behind a human
+gate. The read axis is confined by cwd; the write axis is confined by this contract.
+
+An intake/notify tool lets the agent capture a request and alert its owner without
+letting a hostile visitor redirect that alert. The CORE reference is
+`agents/_template/tools/intake_notify.py`; a hermetic CORE test
+(`agents/tests/test_intake_notify.py`) locks each clause below. **Every intake/notify
+tool an instance ships MUST satisfy them:**
+
+1. **No recipient argument.** The recipient is resolved *only* from operator config
+   (`AGENT_NOTIFY_TO` env). There is no `--to`/`--recipient` flag and no code path from
+   any CLI arg, agent instruction, or visitor-supplied field to the recipient — so a
+   prompt-injected visitor cannot redirect output. *(Enforced by absence, not validation.)*
+2. **Capture is durable and first.** The request is appended to an owner-only (`0600`)
+   local log *before* any notify attempt, and the tool exits `0` even if the capture
+   write fails (printing a fixed string, never the exception, so a record never reaches
+   stderr).
+3. **Notify is best-effort and never raises.** `notify()` returns a bool and never
+   propagates an exception; a notify failure can never crash the agent turn.
+4. **Unconfigured is loud, not silent.** With no recipient/transport configured the tool
+   stays capture-only and writes a WARN audit line naming the missing knob.
+5. **The audit log is PII-free.** One line per attempt — outcome + a curated cause only;
+   the visitor's summary/detail/fields and the recipient address never appear in it.
+6. **No autonomous outward action.** The tool captures and notifies the owner; it never
+   books, replies, or acts on a third party's behalf. Every outward action stays gated.
+7. **CORE ships the pattern, not the transport.** The `send()` seam raises by default;
+   the provider (MS Graph / SMTP / Signal / …), its secret (read from a vault at runtime,
+   never env/argv), and the owner address live only in the USER instance. An instance
+   that renders visitor text into markup must escape it before embedding.
 
 ### Public-endpoint caps
 

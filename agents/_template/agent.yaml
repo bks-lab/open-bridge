@@ -40,8 +40,13 @@ grounding_dir: "<~/path/to/public/content>"
 # Read-only file access + ONLY your scoped instance tools, by ABSOLUTE path.
 # ${tools_dir} is substituted at load to agents/<name>/tools. No generic shell.
 allowed_tools: "Read,Glob,Grep"
-# e.g. add an intake tool:
-# allowed_tools: "Read,Glob,Grep,Bash(python3 ${tools_dir}/book_request.py:*)"
+# To add fixed-recipient intake (capture a request for you + notify you), copy the
+# shipped CORE scaffold into your instance and enable it:
+#   cp agents/_template/tools/intake_notify.py agents/<name>/tools/
+#   allowed_tools: "Read,Glob,Grep,Bash(python3 ${tools_dir}/intake_notify.py:*)"
+# It captures durably and stays capture-only until you set AGENT_NOTIFY_TO (the
+# fixed recipient) and override its send() with your transport. It never sends to a
+# visitor-supplied address. See docs/representative-agent.md §4 for the contract.
 #
 # Note: `--permission-mode acceptEdits` auto-allows shell the engine classifies as
 # read-only, INDEPENDENT of this allowed_tools list. The runtime ships a broad
@@ -72,3 +77,10 @@ skills:
     tags: [qa]
     examples:
       - "<example question>"
+  # If you enable the intake scaffold above, advertise it honestly (honest-card rule):
+  # - id: intake
+  #   name: "<Intake skill name>"
+  #   description: "<Captures a request for the owner and notifies them. Sends nothing autonomously.>"
+  #   tags: [intake]
+  #   examples:
+  #     - "<I'd like to book a call>"
