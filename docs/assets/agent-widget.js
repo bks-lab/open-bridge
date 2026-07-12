@@ -1036,7 +1036,10 @@
         indicator.el.remove();
         var answer = finalContent.trim() || artifactContent.trim();
         if (answer) {
-          if (bubble) bubble.innerHTML = safeMarkdown(answer);
+          if (bubble) {
+            bubble.innerHTML = safeMarkdown(answer);
+            return { kind: 'answer', text: answer, rendered: true };
+          }
           return { kind: 'answer', text: answer };
         }
         if (bubble) { var rowEl = bubble.closest ? bubble.closest('.obw-row') : null; (rowEl || bubble).remove(); }
@@ -1094,7 +1097,7 @@
       if (cardBtn) cardBtn.disabled = b;
     }
     function renderOutcome(outcome) {
-      if (outcome.kind === 'answer') addBubble('agent', outcome.text);
+      if (outcome.kind === 'answer') { if (!outcome.rendered) addBubble('agent', outcome.text); }
       else if (outcome.kind === 'empty') addBubble('agent', t.emptyAnswer);
       else addErrorBubble(outcome.text);
     }
