@@ -1,0 +1,74 @@
+# Bridge-Agent instance template. Copy to agents/<name>/agent.yaml and edit.
+#   cp -r agents/_template agents/<name>
+#   cd agents && uv run python -m _runtime.server --agent <name>
+#
+# A Bridge-Agent fronts ONE persona to the outside world over A2A. See
+# docs/representative-agent.md for the full anatomy + safety model.
+# Scope: instances are USER (your persona/PII) — this template is CORE.
+
+name: "<Display name>"
+description: >
+  <One or two sentences: what this agent is for and what it can do.>
+version: "1.0.0"
+
+provider:
+  organization: "<You or your org>"
+  url: "<https://your-site>"
+documentation_url: "<https://your-site>"
+icon_url: "<https://your-site/favicon.ico>"
+
+# Public hostname (a tunnel maps it to this local port). Advertised in the card.
+public_url: "https://<agent-host>"
+host: "127.0.0.1"
+port: 8011
+model: "sonnet"   # a faster model (e.g. haiku) lowers latency for pure public Q&A
+# Per-turn wall-clock budget. A broad question that Reads the whole grounding and
+# reasons a full answer can take ~60-90s with sonnet; a tunnel's SSE keepalive pings
+# hold the connection open that long, and on expiry the runtime returns a text
+# "try again" (never a blank). Give it headroom — see README § Latency & the answer
+# contract for how to make it FAST (keep grounding small / inject it into the prompt).
+timeout: 90
+
+# Grounding = the PUBLIC content the agent may read. This is ALSO the agent's cwd,
+# which confines Read/Glob/Grep to public content — never the bridge's private
+# files. A public agent must never be able to read identity/, work/, or memory.
+# Latency lever: the agent Reads this per turn — a large file = a slow turn + a big
+# NDJSON line. Keep it small, or inject the public content into system-prompt.md to
+# skip the per-turn Read entirely.
+grounding_dir: "<~/path/to/public/content>"
+
+# Read-only file access + ONLY your scoped instance tools, by ABSOLUTE path.
+# ${tools_dir} is substituted at load to agents/<name>/tools. No generic shell.
+allowed_tools: "Read,Glob,Grep"
+# e.g. add an intake tool:
+# allowed_tools: "Read,Glob,Grep,Bash(python3 ${tools_dir}/book_request.py:*)"
+#
+# Note: `--permission-mode acceptEdits` auto-allows shell the engine classifies as
+# read-only, INDEPENDENT of this allowed_tools list. The runtime ships a broad
+# read/recon/egress DENYLIST (cat/sed/awk/git/security/sqlite3/curl/…) as a BACKSTOP
+# for that gap — it is not the control. The real read-confinement is cwd = grounding_dir
+# (below) plus, ideally, an OS sandbox (sandbox-exec profile / dedicated low-priv user).
+
+# Public-endpoint guardrails (an ungated endpoint WILL be hit).
+max_concurrency: 2
+max_input_chars: 4000
+max_turns: 24
+max_contexts: 500
+
+cors_origins:
+  - "https://<your-site>"
+cors_dev_origins:
+  - "http://localhost:3000"
+
+# Optional: override the runtime status strings (CORE defaults are English).
+# messages:
+#   working: "One moment…"
+#   busy: "Lots of requests right now — please try again in a few seconds."
+
+skills:
+  - id: public_qa
+    name: "<Skill name>"
+    description: "<What it answers, grounded in public content. Invents nothing.>"
+    tags: [qa]
+    examples:
+      - "<example question>"

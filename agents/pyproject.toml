@@ -1,0 +1,32 @@
+[project]
+name = "bridge-agents"
+version = "0.1.0"
+description = "Bridge-Agent runtime — generic claude -p + A2A server for persona-fronting agents"
+requires-python = ">=3.11"
+dependencies = [
+    "a2a-sdk>=1.1.0",
+    "sse-starlette>=2.0",   # a2a SSE streaming + v0.3 JSON-RPC compat
+    "uvicorn>=0.35.0",
+    "starlette>=0.37.0",
+    "click>=8.1.0",
+    "pyyaml>=6.0",
+]
+
+# Run an instance from the repo root:
+#   cd agents && uv run python -m _runtime.server --agent <name>
+# or, with agents/ on the path:
+#   uv run --project agents python -m agents._runtime.server --agent <name>
+#
+# Instance-specific tools (e.g. a calendar/booking handoff) may need extra deps;
+# declare those in the instance's own notes — the CORE runtime stays minimal.
+
+# Test deps are injected ephemerally in CI (`uv run --with pytest --with
+# pytest-asyncio …`), so they stay out of the runtime dependency set above.
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"
+# Put agents/ on sys.path so tests import the runtime as `_runtime.*` without an
+# install step (no build-system here — the runtime is run, not packaged). Keeps
+# `uv run --with pytest pytest` hermetic in CI regardless of the invocation cwd.
+pythonpath = ["."]

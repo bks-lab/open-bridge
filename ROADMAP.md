@@ -59,14 +59,17 @@ Nothing below is a commitment to a date, and "Later / exploring" means exactly t
   ([#47](https://github.com/bks-lab/open-bridge/issues/47)) — publish the
   generic runtime + template so a bridge can front an addressable agent to the
   world and to peer bridges (answer questions, show availability, capture
-  requests under a human gate). Partly live at N=1.
+  requests under a human gate). Now landed in CORE on the feature branch and in
+  review (#92); partly live at N=1.
 
 ## Later — exploring
 
 - **Bridge-Agent pattern**
   ([#49](https://github.com/bks-lab/open-bridge/issues/49)) — document and lock
   the design for persistent, identity-bearing agents with two faces: an
-  internal mesh (peer bridges) and an external representative.
+  internal mesh (peer bridges) and an external representative. The runtime it
+  builds on has landed on the feature branch / in review (#92); the pattern doc +
+  lock are still to come.
 - **Multiple bridges per org**
   ([#55](https://github.com/bks-lab/open-bridge/issues/55)) — several scoped
   instances (per team / per client) instead of one monolith.
@@ -83,8 +86,8 @@ around it. Take only what you need.
   live state (services, crew, calendar, channels). Separate repo,
   **Apache-2.0**, read-only, config-driven.
   → [`bks-lab/bridge-deck`](https://github.com/bks-lab/bridge-deck)
-- **Representative agent** — ships as the CORE `agents/` runtime + template
-  (see *Next*).
+- **Representative agent** — the CORE `agents/` runtime + template; landed on the
+  feature branch / in review (#92, see *Next*).
 
 > Honest note: these run today as a single-maintainer (N=1) setup. They're
 > built for technical early adopters, not yet for critical infrastructure.
