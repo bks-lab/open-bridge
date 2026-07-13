@@ -1,8 +1,6 @@
 # BKS open-bridge
 
-Your AI coding agent starts every session knowing your repos, your clients, and how you work. BKS open-bridge is a plain git repo of markdown and YAML the agent reads at session start — whatever model or frontend you run. No database, no SaaS, no second app to maintain.
-
-> **Status:** BKS open-bridge runs the company that builds it, daily — every feature exists because we needed it on a real workday; you're early (newly public, no external users yet), and [the ledger](#whats-proven-whats-a-bet-whats-open) says exactly what that means.
+**A plain-text git repo your coding agent reads at session start — so it already knows your repos, your clients, and what you shipped yesterday.** Claude Code, Codex, or Copilot CLI stops re-asking every morning. It's just markdown + YAML in a repo you own — no database, no SaaS, no second app. And it isn't a demo: it's how the three of us at BKS-Lab actually run the company day to day ([what's proven vs. still a bet](#whats-proven-whats-a-bet-whats-open)).
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Trademark](https://img.shields.io/badge/trademark-policy-orange.svg)](TRADEMARK.md)
@@ -25,6 +23,15 @@ cart-a11y waits on PR #214.
 [![BKS open-bridge — the /briefing dashboard, generated from plain markdown + YAML](docs/demo.gif)](https://bks-lab.github.io/open-bridge/demo.html)
 
 **▶ [See the full live session](https://bks-lab.github.io/open-bridge/demo.html)** — the clip above is the `/briefing` dashboard; the browser walkthrough adds three more real flows: the morning session-start, an incident taken from log triage to a TDD fix shipped to UAT, and first-run onboarding.
+
+**▶ Try it yourself in 2 minutes — nothing to configure:**
+
+```bash
+git clone https://github.com/bks-lab/open-bridge.git
+cd open-bridge/examples/agency && claude    # or: codex, copilot
+```
+
+Then ask it `good morning`. Everything it answers is read from the plain markdown sitting in that folder — open `work/log.md` next to it and the trick disappears ([full walkthrough](#try-it-in-2-minutes--nothing-to-configure)).
 
 ---
 
