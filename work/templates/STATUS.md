@@ -11,13 +11,18 @@
 #   mandant: → identity/mandants/<slug>.yaml   (WHO we address)
 #   sync.github.project → workflow/projects/<slug>.yaml (WHICH board)
 
-slug: <slug-matches-folder-name>
-type: refactor              # refactor | incident | customer-comm | research |
-                            # bug | feature | admin | talk | ops | infra | meeting
-status: doing               # backlog | doing | review | done
+slug: <slug>                # = the task folder name (lowercase-kebab, ^[a-z][a-z0-9-]*$).
+                            # Onboarding replaces <slug> so it matches work/tasks/<slug>/.
+type: admin                 # Valid: refactor | incident | customer-comm | research |
+                            # bug | feature | admin | talk | ops | infra | meeting.
+                            # 'admin' is a sensible default for an onboarding first task.
+status: doing               # backlog | doing | review | done — a fresh active task is 'doing'.
 priority: P2                # P0 | P1 | P2 | P3
-created: YYYY-MM-DD
-last_updated: YYYY-MM-DD
+created: YYYY-MM-DD         # Real date — fill via `date +%Y-%m-%d`; NEVER leave YYYY-MM-DD.
+last_updated: YYYY-MM-DD    # Same — `date +%Y-%m-%d`; equals `created` for a fresh task.
+
+# Why this task exists — one line, a real reason (never blank). Onboarding fills it.
+origin: "<one-line reason this task exists>"
 
 # Optional — blocked is a FLAG, not a status: a blocked task stays doing/review
 # and carries the reason here (presence = blocked).
@@ -45,7 +50,8 @@ last_updated: YYYY-MM-DD
 # explicitly so future-you knows this task was DELIBERATELY local.
 # ---------------------------------------------------------------------------
 sync:
-  bridge_only: true         # set to false when one of the blocks below is filled
+  bridge_only: true         # Local-only default — correct for an onboarding first task
+                            # (no GitHub/ADO dependency). Set false only when a block below is filled.
 
   # github:
   #   repo: my-org/my-repo

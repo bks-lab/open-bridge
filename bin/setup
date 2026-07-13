@@ -56,6 +56,9 @@ fi
 # git hooks to the tracked dir. One setting wires BOTH scripts/hooks/pre-push (blocks
 # publishing a user/* branch to a public upstream) AND scripts/hooks/pre-commit (the
 # task-sync + continuous-logging reminder), for every tool that shells out to git.
+# This `git config core.hooksPath` is THE single deterministic arming action — session
+# start (Phase 0, rules/session-start.md) runs it unconditionally, and every non-Claude
+# tool (Codex/Copilot/Gemini) is told to run `bin/setup` before its first commit.
 # A hook that isn't on core.hooksPath is present but NOT wired.
 # NOTE: do NOT `pre-commit install` — the pre-commit framework refuses when
 # core.hooksPath is set; .pre-commit-config.yaml is for CI / manual runs only.

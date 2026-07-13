@@ -47,7 +47,7 @@ org-internal overlays; whatever fork-default elsewhere).
 
 | State | Trigger | Action |
 |---|---|---|
-| **NEW USER** | **core** + no `user/*` + no `bridge-config.yaml` | Trigger `/bridge-onboard` skill |
+| **NEW USER** | **core** + no `user/*` + no `bridge-config.yaml` | Open the four-lane front door (§ NEW USER front door in `rules/session-start.md`), then route the chosen lane into `/bridge-onboard` (or, no Skill tool, read `skills/bridge-onboard/SKILL.md` → `references/workflow.md` inline) |
 | **WRONG BRANCH** | **core** + `user/{name}` exists + `bridge-config.yaml` present | Suggest `git checkout user/{name}` |
 | **ORPHAN STATE** | **core** + no `user/*` + `bridge-config.yaml` present | Offer: recreate user branch / reset config + onboard / CORE-only |
 | **BROKEN CONFIG** | **core** + `user/{name}` exists + no `bridge-config.yaml` | Suggest `git checkout user/{name}` — config likely lives there |
@@ -63,10 +63,14 @@ case this gate exists for — they don't bypass it.
 hardcoded branch name has caused a real misfire before. Resolve the default at session
 start; do not assume it.
 
-**For NEW USER:** trigger the `bridge-onboard` skill — a wizard (Quick Identity + Purpose →
-Discovery Scan (broader mode only — confined default skips it) → Smart Suggestions →
-Quick-Wins → Feature Catalog → Validate). Explain CORE/USER split, ecosystem vs cluster
-wrappers, and sub-agents as you go. Goal: running in 5 minutes. Then point at
+**For NEW USER:** Phase 0 first **arms the push-guard** (`git config core.hooksPath
+scripts/hooks`, via `bin/setup`) and classifies the origin — unconditionally, before any
+greeting. Then open the **four-lane front door** (`[1]` see it run · `[2]` describe your
+goal → tailored setup · `[3]` make it private first · `[4]` bind a workspace), which routes
+into the `bridge-onboard` wizard (Quick Identity + Purpose → Discovery Scan (broader only —
+confined default skips it) → Smart Suggestions → Quick-Wins → Feature Catalog → Validate,
+ending on a live first briefing). Explain CORE/USER split, ecosystem vs cluster wrappers,
+and sub-agents as you go. Goal: running in 5 minutes. Then point at
 [`docs/feature-tour.md`](docs/feature-tour.md).
 
 The load-bearing detail for the NEW-USER turn lives in
@@ -244,7 +248,11 @@ reimplementing the logic.
 The canonical location remains `skills/` — edit there, the symlinks follow.
 
 > **Windows:** Symlinks require Developer Mode + `git config core.symlinks true`.
-> Without that, copy `skills/` to `.agents/skills/` and `.claude/skills/` manually.
+> Easiest: run `bin\setup.ps1` — it re-links **all three** targets (`.claude`,
+> `.agents`, `.github` skills) with a junction fallback (no Developer Mode needed) **and**
+> arms the pre-push guard. If linking by hand, recreate all three as links/junctions
+> (`.claude/skills`, `.agents/skills`, `.github/skills` → `skills/`) — prefer a link over
+> a copy so edits stay in sync.
 > On a default Windows git checkout the committed `.agents/skills` + `.github/skills`
 > symlinks degrade to plain-text files, so non-Claude tools find no skills — see the
 > README (Windows section) for the fix.

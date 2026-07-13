@@ -7,6 +7,8 @@
 # The generated config stays on your user/* branch — never on the CORE branch (`main`).
 
 # ─── Identity ─────────────────────────────────────────────────────────
+# Onboarding also READS `git config user.email` and, if it is empty, OFFERS to
+# set one — a missing user.email otherwise breaks the first onboarding commit.
 identity:
   name: "your-name"          # used for user/ branch name
   org: ""                    # GitHub organization — leave empty if you don't use GitHub
@@ -24,6 +26,9 @@ identity:
 # do-everything all-rounder. `focus` is the derived ordering lever: a subset of the
 # six catalog domains the wizard infers from your statement (you can adjust it).
 # Empty statement + empty focus = today's flat, general-purpose behaviour.
+# Phase A asks ONLY for the statement — both `focus` and `user_profile` (below) are
+# DERIVED SILENTLY from it, never posed as separate questions (you can still edit
+# them here afterwards).
 # Relationship: `purpose` is the primary ordering signal; `user_profile` (below)
 # stays the orthogonal work|private tiebreak. Change anytime: /bridge-onboard --purpose.
 purpose:
@@ -210,6 +215,21 @@ promote:
     # in any direction. Add your org/customer/personal identifiers.
     strings: []
     patterns: []
+
+# ─── Push Guard ───────────────────────────────────────────────────────
+# The deterministic backstop to the promote/leak rules above: a pre-push git
+# hook (scripts/hooks/pre-push) that refuses to push USER content (a user/*
+# branch) to a PUBLIC upstream. It is ARMED by pointing git at the tracked
+# hooks with:
+#   git config core.hooksPath scripts/hooks
+# session-start Step 0 (and `bin/setup`) run this for you — no manual step, and
+# a fresh clone that never set it gets armed on first session. Full rule:
+# rules/push-guard.md.
+# This block is OPTIONAL — the guard works with no config. Uncomment only to
+# declare an escape list of git remote names that are known-private, so the
+# guard permits a user/* push to them.
+#push_guard:
+#  private_remotes: []        # e.g. [origin] once origin is your OWN private repo
 
 # ─── Remotes ──────────────────────────────────────────────────────────
 # Physical/virtual machines you administer. See infra/remotes/.

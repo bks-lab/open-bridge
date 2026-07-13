@@ -180,26 +180,27 @@ What stays manual:
 - `evidence.apps` includes `Backblaze.app`, `Arq.app`, `Carbon Copy Cloner.app`
 - `tmutil destinationinfo` returns at least one destination (run only if user opted into a backups-probe)
 
-**Advisory:**
+**Advisory:** (open scan-neutrally — this block is reached BOTH from a scan and from the
+offered-machine advisory, which has no `{tool_list}`; lead with the detected-tooling line
+ONLY when it came from a scan)
 
 ```
-Detected backup tooling:
-  {tool_list}
+{scan path → "Detected backup tooling:\n  {tool_list}" | offer path → "A dedicated machine makes a solid backup target."}
 
-Bridge can model your backup topology declaratively — sources × targets ×
-pipelines — and reconcile what should be backed up against what actually is.
+Bridge (CORE) can model your backup topology declaratively — sources × targets ×
+pipelines — a version-controlled description of what should be backed up.
 
-What this enables:
-  • /backup status — drift detection (last_run, missing mounts, stale snapshots)
-  • Topology lives in infra/backups/topology.yaml — declarative, version-controlled
+What CORE ships here:
+  • The topology data-model + template (infra/backups/) — declarative, version-controlled
   • Per-pipeline validation rules (e.g. encrypted-required sources can't use rclone-sync)
 
-What stays manual:
-  • Backup execution itself — Bridge orchestrates known tools (rclone/restic/rsync),
-    Time Machine is documented but not triggered
-  • You wire actual sources/targets — the wizard scaffolds the topology shell
+What needs a separate install:
+  • The /backup EXECUTOR (drift detection, running rclone/restic/rsync) is a
+    separately-installed skill — CORE ships the data model, not an executor. Without it,
+    the topology is documentation you can act on manually.
+  • You wire actual sources/targets — the wizard scaffolds the topology shell only.
 
-  [y] Scaffold topology.yaml with current sources pre-filled
+  [y] Scaffold topology.yaml with current sources pre-filled (data-model only)
   [m] Read infra/backups/README.md first
   [l] Later
 ```
@@ -447,6 +448,85 @@ Mention it in Phase E if not surfaced here.
 
 ---
 
+### S13 — Channels (host an always-on bot / transport on a machine)
+
+Catalog-domain tag: `infrastructure`. **Dual-triggered — offer OR scan:**
+
+**Trigger (offer):** the resource-offer advisory (Phase A step 10) fired — the user named
+a machine to dedicate — **or** the free-text names an always-on/messaging intent
+(`always-on`, `keep running`, `a bot`, `an assistant I can message`). Offer-derived, so it
+is **confined-safe** (no scan).
+**Trigger (scan, broader only):** `evidence.launchd_units` or `evidence.systemd_units`
+include a messaging/bot-shaped unit, **OR** `evidence.apps` includes a bot runtime.
+
+**Advisory:**
+
+```
+A dedicated machine is a home for always-on messaging — a bot or digest that keeps
+running as a launchd (macOS) / systemd (Linux) unit, outliving your terminal.
+
+What this enables (CORE — skills/channel):
+  • /channel status | health — see what's deployed and running
+  • Declare a transport in infra/channels/<name>.yaml (iMessage, email, Telegram, …)
+  • /channel deploy — generate + install the service unit on a chosen remote
+  • Pairs with /schedule for timed sends (see S14)
+
+What stays manual:
+  • Credentials never live in YAML — KeyVault / 1Password / Keychain URIs only
+  • You pick which remote hosts it (needs an infra/remotes/<host>.yaml — see S2)
+
+  [y] Scaffold an infra/channels/<name>.yaml shell (you fill the transport)
+  [m] Read docs/channels.md first
+  [l] Later
+```
+
+**On accept:**
+- Copy `infra/channels/_template.yaml` → `infra/channels/<name>.yaml`, pre-fill `type` and
+  the target `host` if a remote was offered/scaffolded (S2).
+- Set `channels.enabled: true` in `bridge-config.yaml`.
+- Mention deploy-reconciliation: declared `status:` is never trusted — the box's service
+  manager is (`rules/deploy-reconciliation.md`).
+
+---
+
+### S14 — Scheduled jobs (cron / launchd / systemd on a machine)
+
+Catalog-domain tag: `infrastructure`. **Dual-triggered — offer OR scan:**
+
+**Trigger (offer):** the resource-offer advisory (Phase A step 10) fired, **or** the
+free-text names a recurring-automation intent (`on a timer`, `every morning`, `nightly`,
+`scheduled`, `recurring`). Offer-derived → **confined-safe**.
+**Trigger (scan, broader only):** `evidence.crontab` non-empty, **OR** user launchd/systemd
+timer units detected.
+
+**Advisory:**
+
+```
+A dedicated machine can run things on a timer — a morning briefing, a nightly sync, a
+weekly digest — as a native launchd / systemd / cron unit, without you being there.
+
+What this enables (CORE — skills/schedule):
+  • /schedule list | create — define a job (command + cadence + output)
+  • Generates the platform-native unit (launchd plist / systemd timer / crontab line)
+  • /schedule deploy — install it on a chosen remote (needs an infra/remotes/<host>.yaml)
+
+What stays manual:
+  • You choose the command + cadence; the wizard scaffolds the definition
+  • Secrets stay in the vault, never in the job definition
+
+  [y] Scaffold a scheduled-job definition (you fill command + cadence)
+  [m] Show the schedule template first
+  [l] Later
+```
+
+**On accept:**
+- Add a job entry to the schedule registry `infra/channels/_scheduled.yaml` (created on
+  first use by `skills/schedule`), leaving `command` / `cadence` for the user with `# fill
+  me` comments.
+- Mention `/schedule deploy` targets a remote — pair with S2 (remotes) if none exists yet.
+
+---
+
 ## Known-Gotcha Overlay (curated, generic only)
 
 These heads-ups come from the curated CORE table below — a fixed,
@@ -479,7 +559,7 @@ Write each decision to `work/onboarding-state.yaml` per the schema in
 
 ## Adding a Feature Later — `/bridge-onboard --add <feature>`
 
-The same advisory blocks (S1–S12) are reused when the user invokes
+The same advisory blocks (S1–S14) are reused when the user invokes
 `--add <feature>` (e.g. `--add personas`, `--add doc-system`). The
 mode is: skip Phases A, B, D, E, F; run only the single S-block
 matching the feature; record the result in `onboarding-state.yaml`.

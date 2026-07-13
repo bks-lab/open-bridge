@@ -44,16 +44,25 @@ enabled modularly when you want it via the Phase E catalog, `--add
 <feature>`, or the feature's `enabled:` flag in `bridge-config.yaml`.
 Only **broader** unlocks the permission-gated scan in step 1.
 
-This file is the entry point; the heavy lifting lives in `references/`.
+**The entry point is the four-lane front door** in
+[`rules/session-start.md`](../../rules/session-start.md) § NEW USER front door — it
+reflects what Phase 0 detected (origin state, git name), notes the guard is already
+armed, and opens four discoverable lanes under a free-text invite: `[1]` show me around
+(demo) · `[2]` describe what I'll use it for (→ this wizard, purpose pre-filled) · `[3]`
+make it private first (protection) · `[4]` bind a workspace / org overlay. This file and
+`references/` are where lanes `[2]`/`[3]`/`[4]` land; the heavy lifting lives in
+`references/`.
 
 ## Defaults — what the wizard assumes
 
-- **Purpose pins a north-star (ordering, never gating).** Phase A captures one
-  line — what this instance is for — into `purpose.statement` (+ a derived
-  `purpose.focus`). It ORDERS the Phase C suggestions, the Phase E catalogue, and
-  the `feature-discovery` standing-order, and is echoed in the greeting + preview;
-  it **never** hides, gates, or removes a feature. Empty purpose = today's flat,
-  general-purpose behaviour. Change anytime via `--purpose`.
+- **Purpose pins a north-star (ordering, never gating).** It is captured **at the
+  front door** — the user describes what they're here to do (session-start lane `[2]`
+  or a free-text answer) and that sentence becomes `purpose.statement` verbatim; Phase A
+  does **not** re-ask. `purpose.focus` and `user_profile` are **derived silently** from
+  the statement — never posed as a visible six-domain questionnaire. Purpose ORDERS the
+  Phase C suggestions, the Phase E catalogue, and (under `broader`) the
+  `feature-discovery` standing-order; it **never** hides, gates, or removes a feature.
+  Empty purpose = today's flat, general-purpose behaviour. Change anytime via `--purpose`.
 - **GitHub is optional.** Onboarding completes end-to-end without a
   GitHub org, without `gh` CLI, and without GitHub-projects integration.
 - **Upstreams stay empty (`upstreams: []`) by default.** Upstream
@@ -102,7 +111,7 @@ origin; CORE reaches a public upstream only via `/promote`. Canonical rule:
 |---|---|
 | `/bridge-onboard` | Full wizard (Phases A–F) |
 | `/bridge-onboard --rescan` | Broaden discovery (sets `discovery.mode: broader`); re-run Phase B+C with persisted permissions; surface new evidence; skip already-accepted features |
-| `/bridge-onboard --reset` | Delete scan + state files; restart Phase B from scratch. Prompts to delete `bridge-config.yaml` for true clean-slate |
+| `/bridge-onboard --reset` | Delete scan + state files; restart from Phase A (re-runs the scope-consent gate + purpose). Prompts to delete `bridge-config.yaml` for true clean-slate |
 | `/bridge-onboard --add <feature>` | Skip A+B+D+E+F, run only the matching S-block from `smart-suggestions.md` (e.g. `--add personas`, `--add doc-system`) |
 | `/bridge-onboard --add agent-soul` | Skip everything except D4 — re-pick the soul deck and reshape SOUL.md / IDENTITY.md |
 | `/bridge-onboard --purpose` | Skip everything except the Phase-A purpose step — set/change `purpose.statement` + `purpose.focus` (re-derive `user_profile`), then re-render the Phase F preview ordering. Never gates a feature |
@@ -152,7 +161,7 @@ User wants to...
 |---|---|
 | `references/workflow.md` | Six-phase wizard execution plan (entry point for full onboarding) |
 | `references/system-discovery.md` | Phase B — what gets scanned, with which permission, what's never scanned |
-| `references/smart-suggestions.md` | Phase C — evidence → recommendation mapping (S1–S12) with full advisory text |
+| `references/smart-suggestions.md` | Phase C — evidence → recommendation mapping (S1–S14) with full advisory text |
 | `references/feature-catalog.md` | Phase E + `--features` — read-only catalogue of all Bridge features |
 | `references/discovery.md` | Legacy: repo-only ecosystem detection. Now a sub-case of `system-discovery.md` |
 | `references/preview-generator.md` | Phase F — HTML preview with Activated + Suggested-for-later sections |

@@ -26,6 +26,46 @@ repo it may be something else (e.g. `development`). Forks follow their own
 default. The same logic must work for all variants — that's why detection
 is dynamic.
 
+### Step 0 — Arm the guard, then classify (first, unconditional)
+
+**Before the branch matrix, before any greeting, run these — in every state,
+including NEW USER.** They are read-only or protective, local-only, and
+reversible, so they are **exempt from the consult-before-write reflex-pause**;
+never let them block or delay the first response.
+
+1. **Arm the deterministic push-guard.** If `scripts/hooks/pre-push` exists and
+   `git config --get core.hooksPath` is not `scripts/hooks`, arm it now:
+
+   ```bash
+   git config core.hooksPath scripts/hooks   # the one deterministic leak backstop — cross-platform primitive
+   ```
+
+   A fresh `git clone` never sets `core.hooksPath`, so a brand-new clone (the
+   NEW USER case) ships with the public-upstream backstop **disarmed**. Arming
+   here — first, unconditionally — closes that hole for **every** path,
+   including a user who declines onboarding or pushes by hand later. **Fail-soft:**
+   if the command errors, note it in one line and continue — never abort the
+   greeting. Follow up (not a prerequisite) with `./bin/setup` (POSIX) /
+   `bin\setup.ps1` (Windows), which also repairs the skills-discovery symlinks
+   and `chmod +x`es the hooks; a non-zero exit there is survivable too.
+
+2. **Classify the origin** (the onboarding protection lane reuses this). Decide
+   whether this clone can safely receive private data:
+   - `.bridge-origin` says `is_public: false` with a slug matching
+     `git remote get-url origin` → **private** (safe home).
+   - `origin` is a known public upstream (e.g. `bks-lab/open-bridge`) **or**
+     `gh repo view --json visibility` reports PUBLIC → **public** (private data
+     must NOT land here).
+   - no `origin`, or `gh` offline/absent → **unknown / local-only**.
+
+   Keep the result. The greeting and onboarding consume it and **must never
+   claim "your own private repo" unless the origin is confirmed private.**
+
+3. **Read git identity** — `git config user.name` and `git config user.email`.
+   If either is empty, the wizard later **offers** to set it (a fresh machine
+   with no `user.email` otherwise breaks the onboarding commit). Read-only here;
+   nothing is written without the user's ok.
+
 **Core-branch detection one-liner** (cascading fallbacks, live-first):
 
 ```bash
@@ -56,7 +96,7 @@ switches. Its presence does NOT depend on the current branch.
 
 | Current branch | `user/*` branch | `bridge-config.yaml` | State | Action |
 |---|---|---|---|---|
-| **core** | none | missing | **NEW USER** | **Introduce yourself as the orchestrator (using the active theme's `assistant_name`, default `Orchestrator`) and offer onboarding** — see § NEW USER greeting below. Only trigger the `/bridge-onboard` skill (`skills/bridge-onboard/`) after the user accepts. Do not answer the user's original question until onboarding is offered and accepted/declined. |
+| **core** | none | missing | **NEW USER** | **Reflect what Step 0 found, then open the four-lane front door** (see § NEW USER front door below): intro/demo · describe-purpose · protection · workspace, under a free-text invite. Route into the `/bridge-onboard` skill once the user picks a lane — or, on a tool without slash-commands, read `skills/bridge-onboard/SKILL.md` → `references/workflow.md` and run the phases inline. Do not answer the user's original question until the door is offered and a lane (or `[n]`) is chosen. |
 | **core** | exists | present | **WRONG BRANCH** | Suggest `git checkout user/{name}` (switching from the core branch). Do not load `work/` from the core branch — those files belong to the user branch. |
 | **core** | none | present | **ORPHAN STATE** | User branch was deleted but local config remains (gitignored, persisted). Offer: (a) create a fresh `user/{name}` branch from current state, (b) remove `bridge-config.yaml` and run onboarding fresh, (c) stay on the core branch for CORE-only work. |
 | **core** | exists | missing | **BROKEN CONFIG** | Rare. The user branch likely has the config. Suggest `git checkout user/{name}` to restore state. |
@@ -69,13 +109,12 @@ flow), always branch off the core branch — never off `main` or
 `development` literal: `git checkout -b user/{name}` while sitting on
 the core branch does the right thing automatically.
 
-**Push-guard arming check (all states except NEW USER).** If
-`scripts/hooks/pre-push` exists but `git config --get core.hooksPath` is not
-`scripts/hooks`, the deterministic public-upstream backstop is **disarmed** —
-warn once and offer to arm it: `git config core.hooksPath scripts/hooks` (or
-`./bin/setup`). Onboarding arms it in Phase A, but a clone made before that, or
-one set up without the wizard, can sit unarmed; until armed, only the
-behavioural layer protects a `user/*` branch from reaching a public origin. See
+**Push-guard re-check (all states, belt-and-suspenders).** Step 0 already arms
+`core.hooksPath` unconditionally in every state. If for any reason it is still
+not `scripts/hooks` (e.g. Step 0's one-liner was skipped, or `bin/setup`
+reported a symlink edge), warn once and offer `git config core.hooksPath
+scripts/hooks` / `./bin/setup`. Until armed, only the behavioural layer protects
+a `user/*` branch from reaching a public origin. See
 [`push-guard.md`](push-guard.md).
 
 ## Reporting the check
@@ -89,13 +128,16 @@ BEFORE doing anything else. Example:
 
 Do not silently redirect. The user needs to see which condition triggered.
 
-## NEW USER greeting
+## NEW USER front door
 
-When Phase 0 returns NEW USER, do **not** open with a dry explainer
-("The Bridge is an AI orchestration hub that…"). That reads like a
-README and wastes the first impression. Introduce yourself like a
-capable assistant meeting its new operator for the first time: short,
-confident, immediately useful, with a clear next-action.
+When Phase 0 returns NEW USER, run this like the **first session with an
+outstanding consultant** — not a form, not a dry explainer ("The Bridge is an
+AI orchestration hub that…"). A good advisor reads the room first, asks only
+what is load-bearing, and offers a clear way in. So: **reflect what Step 0 already
+found** (fresh public clone / private origin / local-only, the git name, the
+tool), state that the guard is already armed, then open **four discoverable lanes
+under a free-text invite** — the user picks one *or* just says what they're here
+to do. Short, confident, immediately useful, oriented around *them*.
 
 ### Your name vs. the product name
 
@@ -119,26 +161,46 @@ confident, immediately useful, with a clear next-action.
    orchestrator of this Bridge." (Not "I'm The Bridge." — The Bridge is
    the ship, you are the voice running in it.)
 2. **Place yourself inside the product** in the same breath: "…the AI
-   running in The Bridge, your command hub for…"
-3. **One vivid sentence** about what you actually do for them — not a
-   feature list, not marketing adjectives.
-4. **State the detected situation** in one line so they see you're
-   oriented. ("Looks like you're running me for the first time —
-   fresh clone, nothing wired up yet.")
-5. **Offer the 5-minute onboarding** with a few concrete things you'll set up —
-   lead with pinning down *what they'll use this Bridge for* (its one-line purpose),
-   so the setup reads as focused rather than a feature firehose.
-6. **End with a clear, binary choice.** `[y] onboard` / `[t] tell me more` / `[n] not now`.
+   running in The Bridge, your command hub for…" — then **one vivid
+   sentence** about what you actually do for them (not a feature list).
+3. **Reflect the room** in one line from Step 0, so they see you're already
+   oriented and honest about their setup: the origin state (**fresh public
+   clone** / **your own private repo `{slug}`** / **local clone, no remote**),
+   the git name, the tool — and that you've **already armed the local guard** so
+   nothing private can slip out while you talk.
+4. **Offer to set it up around *them*, not march them through a form.** Invite
+   them to pick a lane **or** just describe in a sentence what they're here to
+   do (the description becomes their purpose — no re-ask).
+5. **Present the four lanes** (adapt order to the detected origin — see variants):
+   `[1]` show me around (live demo, nothing touched) · `[2]` I know what I'll use
+   it for — I'll describe it, you tailor the setup · `[3]` make it private first
+   (only recommended-first on a public/unknown origin) · `[4]` I work across
+   several repos / a shared org config — bind a workspace. Plus `[n]` not now.
+6. **Plant the cross-tool path** in one line: "No `/commands` in your tool? Read
+   `skills/bridge-onboard/SKILL.md` → `references/workflow.md` and run the phases
+   inline." Every lane must name the exact markdown to read next.
 
 ### Rules
 
 - **Mirror the user's message language.** German in → German out. The
   template below is English — translate it on the fly, keep the structure.
-- Max ~15 lines total. Punchy. Not a README.
+- Keep it tight (~18 lines: reflect-line + four lanes + invite). Punchy, not a README.
 - No dumping all sub-agents, all standing orders, all commands — the
   onboarding itself will cover that.
 - No marketing language ("powerful", "seamless", "cutting-edge").
 - Confident and warm, not breathless or corporate.
+- **Never claim "your own private repo" unless Step 0 classified the origin as
+  private.** On a public or unknown origin, say the truth ("this clone still
+  points at the public repo — first thing, let's give your data a private home").
+  Getting this wrong is the exact leak-footgun the guard exists to catch.
+- **Never claim the guard is armed unless Step 0's arming actually succeeded.**
+  Arming is fail-soft (it may error on an odd setup). If it did *not* succeed, drop
+  the "already armed" line and say so: *"I couldn't arm the guard automatically — run
+  `./bin/setup` once; until then I'll flag before any push."* Only assert "armed" when
+  `git config --get core.hooksPath` returned `scripts/hooks`.
+- **Never nag.** On a confirmed-private origin, drop the "make it private"
+  recommendation to a single confirming line — a good advisor doesn't push a
+  problem the client doesn't have.
 - Never introduce yourself as "The Bridge" — that would be like JARVIS
   introducing itself as Stark Tower.
 - If the active theme defines a custom `assistant_name`, preserve its
@@ -146,28 +208,64 @@ confident, immediately useful, with a clear next-action.
 
 ### Template — adapt the wording, keep the structure
 
+This is the **public-origin** variant (the most common first contact — someone
+cloned the public repo). Translate on the fly (German in → German out); keep the
+reflect-then-lanes shape. The `{name}`/`{slug}` fill from Step 0.
+
 > **Hi — I'm the orchestrator of this Bridge.**
 >
-> I'm the AI running in The Bridge — your command hub for agents,
-> repos, and standing orders. I can watch your ecosystem, dispatch
-> specialists, help you ship, review PRs, draft comms, and
-> remember every session so tomorrow-you picks up where today-you
-> left off — whatever slice of that you actually need.
+> I'm the AI running inside The Bridge — your command hub for agents, repos and
+> standing orders. My job is to hold the thread of your work across sessions, so
+> tomorrow-you starts where today-you stopped.
 >
-> Looks like you're running me for the first time — fresh clone, no
-> config yet. Nothing's wired up, but that's a 5-minute fix.
+> Before I ask anything, I took a look around: this is a **fresh clone of the
+> public open-bridge**, `origin` still points at that public repo, git says
+> you're **{name}**, and we're in Claude Code. Nothing's configured yet — a
+> ~5-minute fix — and I've **already armed the local safety guard**, so nothing
+> private can slip out while we talk.
 >
-> **Want me to onboard you?** Guided and reversible. I'll:
-> 1. Pin down in one line what you'll use this Bridge for — so I lead with that instead of fire-hosing you everything
-> 2. Spin up your personal `user/{name}` branch on **your own private repo** (your data never lands on a public upstream)
-> 3. Ask whether I stay in this folder or may look around — and map only what you allow
-> 4. Pick a theme and wire up your first agents
+> I'd rather set this up around *you* than march you through a form. So — where
+> do you want to start? Pick one, or just tell me in a sentence what you're here
+> to do:
 >
-> **[y]** Let's go &nbsp; **[t]** Tell me more first &nbsp; **[n]** Not now
+> &nbsp;&nbsp;**[1]** Show me around first — a 2-minute live demo, nothing on your machine touched
+> &nbsp;&nbsp;**[2]** I know what I'll use it for — I'll describe it, you tailor the setup (~5 min)
+> &nbsp;&nbsp;**[3]** Make it private first — public clone; give my data a safe home before anything else &nbsp;← recommended first here
+> &nbsp;&nbsp;**[4]** I work across several repos / a shared org config — bind them into one workspace
+>
+> …or just say it in your own words. **[n]** Not now — just answer my question.
+>
+> *(No `/commands` in your tool? Read `skills/bridge-onboard/SKILL.md` → `references/workflow.md` and run the phases inline.)*
+
+**Origin-aware variants** (Step 0 already classified the origin — pick the
+matching one; the router **never** prints the false "your own private repo"
+claim on a public or unknown origin):
+
+- **Confirmed-private origin** (`.bridge-origin` `is_public: false` with matching
+  slug, or `gh` reports PRIVATE): the reflect-line flips to *"`origin` is already
+  your own private repo (`{slug}`) — your data has a safe home, and the guard's
+  armed."* Lane **[3]** softens to *"**[3]** Double-check my privacy setup — I'll
+  confirm the guard and the private home hold"* and **drops** the "recommended
+  first" tag (no nagging).
+- **Unknown / local-only** (no `origin`, or `gh` offline): neutral reflect-line
+  (*"local clone, no remote yet"*); lane **[3]** reads *"**[3]** Make sure my data
+  stays private / stays local"* and, if picked, resolves the ambiguity before any
+  USER write.
+
+### Lane → where it goes
+
+| Lane | Routes to |
+|---|---|
+| **[1]** show me around | `cd examples/agency` + **restart the agent** (that folder's CLAUDE.md puts the runtime into a read-only demo — a live board with a P1 incident; it is cwd-scoped, so a restart there is required, not an in-chat branch). Exit-ramp loops back to [2]/[3]. |
+| **[2]** describe-purpose | `/bridge-onboard` → collapsed Phase A: the sentence becomes `purpose.statement` verbatim, identity auto-defaults, protection pre-flight, a confirm-back screen, then seed a first task + a **live** `/briefing`. **If the sentence names a resource** — a machine/device to dedicate, or several repos — the wizard connects it to what it unlocks (Phase A step 10 offer-advisory / step 9 workspace); this is confined-safe (derived from your words, not a scan). |
+| **[3]** make it private | the origin/private-home pre-flight (`rules/push-guard.md` § Remediation) — the guard is already armed; on a public/unknown origin, re-home to a private repo first, then hand back to [2]. |
+| **[4]** workspace / org | `skills/workspace` (`workspace create` + `subscribe … --role code`) or, for a shared org config, `skills/bridge-overlay` (`/overlay add <git-url>`) — runs a trimmed Phase A first if not yet onboarded. |
+| **[n]** not now | acknowledge in one line, stay CORE-only; the guard is already armed, so leaving is safe; the door reopens next session. |
 
 Once a purpose is set (Phase A), later session greetings echo it back ("This
-Bridge is for {statement}") — but the NEW USER greeting itself asks no question;
-it only sets the expectation that the instance will stay focused, not sprawl.
+Bridge is for {statement}"). On tools without a Skill tool, "route into
+`/bridge-onboard`" means: read `skills/bridge-onboard/SKILL.md`, follow its
+decision tree to `references/workflow.md`, and run the phases inline.
 
 The same spirit — human sentence first, then the actionable choice —
 applies to the other non-NORMAL states (WRONG BRANCH, ORPHAN STATE,
