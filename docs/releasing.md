@@ -1,7 +1,7 @@
 ---
 summary: "How releases work — fully automatic, conventional-commit-driven (push to main -> version computed -> tag + GitHub release)"
 type: guide
-last_updated: 2026-06-24
+last_updated: 2026-07-13
 related:
   - ../.github/workflows/release.yml
   - ../.github/workflows/validate.yml
@@ -57,6 +57,26 @@ explicit breaking change — ordinary fixes bump the patch:
 While `major == 0`, a breaking change bumps the **minor**, not the major, so it
 never jumps to `1.0.0` by accident. From `1.0.0` on, a breaking change bumps the
 major and starts the usual compatibility guarantees.
+
+### Keep the minor digit meaningful
+
+Because `feat:` moves the minor, the type you choose is a maturity signal, not
+just a label. While in `0.x`, reserve `feat:` for **genuine product
+capabilities**. A site/marketing/visual change (a hero animation, a docs-site
+widget) is `docs:` or `chore:` — it ships no capability, so it cuts no release.
+Titling such work `feat:` inflates the version and makes the number claim more
+maturity than the project has. When unsure: does it change what the tool can
+*do*? If not, it is not a `feat:`.
+
+## Version history
+
+**2026-07-13 — re-baselined to `v0.7.0`.** During the first three public weeks the
+automatic minor digit was over-counted on small and site/marketing changes,
+reaching `v0.16.0` — a number that claimed more maturity than an early,
+no-external-users preview. The 24 early tags (`v0.2.0`–`v0.16.0`) were
+consolidated into a single honest `v0.7.0` release at the then-current `main`,
+whose notes list what is actually shipped and self-used. Versioning proceeds
+automatically from `v0.7.0` under the discipline above.
 
 ## Editing the bump rules
 

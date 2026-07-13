@@ -31,6 +31,27 @@ bridge-config.yaml:
 
 ## Commit Hygiene
 
+### Conventional commits + release impact
+
+Repos with an automatic release workflow (`.github/workflows/release.yml`, e.g.
+open-bridge) compute the next version **from the merged commit subject** — and a
+squash-merge turns the **PR title** into that subject. The branch name never
+enters into it. So two disciplines, every commit:
+
+1. **Pick the type from the actual change class, not by habit:** `feat:` = a new
+   capability · `fix:` = a behaviour/bug change · `docs:` = docs/text only ·
+   `chore:`/`ci:`/`refactor:`/`test:`/`style:`/`build:` = supporting change. The
+   type drives the release — `feat:` → minor, `fix:` → patch, everything else →
+   **no release** (full mapping: [`docs/releasing.md`](../docs/releasing.md)).
+2. **Name the branch to match the type** — `docs/…`, `fix/…`, `feat/…`. It has no
+   effect on the release, but an incoherent prefix (a `feat/` branch carrying a
+   `docs:` change) forces the merger to double-check what will ship.
+
+Keep the minor digit meaningful: while in `0.x`, reserve `feat:` (→ minor) for
+genuine product capabilities. Site/marketing/visual tweaks are `docs:`/`chore:`
+(no release), **not** `feat:` — otherwise the version number runs ahead of real
+maturity.
+
 ### CORE/USER Separation
 
 Before committing, verify paths match the branch:
