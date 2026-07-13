@@ -40,4 +40,4 @@ instead of a bespoke `_MOC.md` / `index.md` convention.
 ## Operations
 
 - Promoting CORE changes from user branch — [`rules/operations.md`](../rules/operations.md) (path allowlist/routing) + [`rules/promote-safety.md`](../rules/promote-safety.md) (content scan).
-- [`releasing.md`](releasing.md) — maintainer runbook for cutting a release (CHANGELOG bump, tag, validation + GitHub release).
+- [`releasing.md`](releasing.md) — how automatic releases work (a conventional-commit PR title → tag + GitHub release; browsable on the [changelog page](https://bks-lab.github.io/open-bridge/changelog.html)).
