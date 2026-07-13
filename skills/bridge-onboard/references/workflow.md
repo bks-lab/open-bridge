@@ -188,6 +188,7 @@ upstream repos are not public yet.
                  local-only → "staying local, never pushed"}
      Setup      branch user/{name} · work-system on · theme {auto} · first task seeded
      {Workspace  bind {n} repos into one project}   ← only if the multi-repo/org signal fired
+     {Machine    {name} can host: fleet · always-on bots · scheduled jobs · a Bridge-Agent}   ← only if a machine/device signal fired
 
      [go]  [adjust]  [d] show me the demo first
    ```
@@ -206,6 +207,34 @@ upstream repos are not public yet.
    `skills/bridge-overlay` (`/overlay add <git-url>`); `[l]` → record a deferred
    suggestion in `work/onboarding-state.yaml`; never hold the 5-minute path hostage.
    No signal → this beat never fires.
+
+10. **Resource-offer advisory — connect a named machine to what it can host.** This is the
+    OFFER-AWARENESS beat: a good consultant, handed a resource, connects it to what it can
+    become. Fire it when the purpose statement or the free-text answer names a compute
+    resource — `mac mini`, `spare machine/box`, `a server`, `home server`, `NAS`, or an
+    intent like `put it to work` / `dedicate` / `always-on` / `keeps running`. **It is
+    CONFINED-SAFE: derived from the user's own words, not a scan, so it fires on the default
+    confined path too** — nothing on the machine is read, nothing on disk is touched. Surface
+    the CORE machine-capability set with the real `--add` verbs — offer, never force:
+    > You mentioned a machine you'd dedicate — nice. On a box like that I can (all CORE, all
+    > opt-in):
+    >   • **Run your fleet** — health, Wake-on-LAN, SSH, service inventory · `--add remotes`
+    >   • **Host always-on bots/channels** — an assistant that keeps running as a launchd/
+    >     systemd unit · `--add channels`
+    >   • **Run scheduled jobs** — briefings, digests, syncs on a timer · `--add schedule`
+    >   • **Host a persistent, addressable Bridge-Agent** — an A2A endpoint that fronts a
+    >     persona so people or peer bridges can reach it · see `agents/` + `docs/representative-agent.md`
+    >   • **Use it as a backup target** — model it in the backup topology (`infra/backups`;
+    >     the executor is a separately-installed skill)
+    >
+    >   `[pick some]`  `[all]`  `[l] later`
+    - **HONESTY BOUND — offer only what THIS repo ships as CORE.** The Bridge-Agent is the
+      CORE *single-agent* A2A primitive (`agents/_runtime`, `a2a-sdk`); do **not** advertise a
+      multi-agent agent *framework* as CORE. Backup is topology-data-model-only in CORE (the
+      `/backup` executor is a separately-installed skill — say so). Do **not** offer
+      `bridge-deck` (separate repo, not shipped here).
+    - `[l] later` records a deferred suggestion in `work/onboarding-state.yaml`. **No
+      machine/device signal → this beat never fires** — it is offer-triggered, never a nag.
 
 **Output of Phase A:**
 - `bridge-config.yaml` skeleton (identity block populated, all features off,

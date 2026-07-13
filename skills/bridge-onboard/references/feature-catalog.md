@@ -148,12 +148,21 @@ skills.
 
 **Activate:** `/bridge-onboard --add remotes`
 
+### Scheduled Jobs
+**What:** Recurring jobs as native `launchd` (macOS) / `systemd` timers / `cron` units — a morning briefing, a nightly sync, a weekly digest — defined in `infra/channels/_scheduled.yaml` and deployable to a remote. CORE skill (`skills/schedule`).
+
+**When you need it:** You have a machine (see *Remotes*) and want something to run on a timer without you being there. Pairs with *Channels* for timed outbound.
+
+**Scan evidence:** {if a machine was offered/scanned → "the {name} you mentioned can run these"; else → omit}
+
+**Activate:** `/bridge-onboard --add schedule`
+
 ### Backups
-**What:** Topology of sources × targets × pipelines in `infra/backups/topology.yaml`. Tools: rclone, restic, rsync, time-machine (documented only). Drift detection: declared schedule vs actual last_run.
+**What:** A declarative topology of sources × targets × pipelines. **In open-bridge CORE this is the data-model + template only** (`infra/backups/`) — a version-controlled description of what should be backed up. The `/backup` **executor** (drift detection, running rclone/restic/rsync) is a **separately-installed skill** — "CORE ships the data model, not an executor". Time Machine is documented, never triggered.
 
-**When you need it:** You run multiple backup destinations (NAS + external + cloud) and want a single source-of-truth + drift detection. Especially valuable if you've already lost something once.
+**When you need it:** You run multiple backup destinations (NAS + external + cloud) and want a single source-of-truth. A dedicated machine can be a backup target. Especially valuable if you've already lost something once.
 
-**Activate:** `/bridge-onboard --add backups`
+**Activate:** `/bridge-onboard --add backups` (scaffolds the topology; install the executor skill separately to run it).
 
 ### M365 / Exchange Admin (example of an org-overlay skill)
 **What:** Shared-mailbox provisioning, delegate permissions, Exchange Online cmdlets via `pwsh`. Specifically for admins of a Microsoft 365 tenant. Not shipped with open-bridge — this is an example of a skill an org overlay can bring along.
@@ -206,6 +215,15 @@ skills.
 **When you need it:** A task keeps flooding your context (incident log triage, multi-file analysis, batch web fetches), or you want several independent jobs to run in parallel without interleaving their output.
 
 **Activate:** Drop a `.claude/agents/<name>.md` with frontmatter (`name`, `description`, `tools`, `model`) — auto-discovered at session start, no registration. Dispatch via the `Task` tool with `subagent_type: <name>`.
+
+### Bridge-Agent (persistent, addressable A2A endpoint)
+**What:** The *outward* counterpart to sub-agents. A persistent, addressable agent that fronts a persona over the **A2A protocol** — a long-running endpoint people (or peer bridges) can reach to ask about you or hand you a request. The CORE scaffold ships in `agents/` (`agents/_runtime`, `agents/_template`, `a2a-sdk` dependency); see `docs/representative-agent.md`. This is the single richest thing a **dedicated machine** can host (see *Remotes* / *Scheduled Jobs* / *Channels* — it wants a box that's always on).
+
+**Not to be confused with:** sub-agents (ephemeral, inward, in-session isolation workers — the opposite shape), and with any *multi-agent agent framework* — those live in downstream org/personal ecosystems and are **not** open-bridge CORE. What CORE ships is the **single-agent** A2A primitive.
+
+**When you need it:** You want an always-on agent that others can message / that keeps running and represents you, rather than a worker that runs once and returns a summary.
+
+**Activate:** Start from `agents/_template` per `docs/representative-agent.md`; host it on a machine you offered (`--add remotes` for the box, `--add channels`/`--add schedule` for its transports and timers).
 
 ---
 
@@ -305,6 +323,20 @@ Nothing is locked in. Everything is opt-out via bridge-config.yaml.
 
 This is the philosophical closer: Bridge is on your side, not nagging — and it tells the
 truth about what confined mode does and doesn't do.
+
+**Offer-derived carve-out (confined-safe).** Confined turns off *scanning*, not *listening*.
+If the user NAMED a resource in their purpose or free-text — a machine, a device — the
+resource-offer advisory (`workflow.md` Phase A step 10) still fires under confined, because
+it is derived from their words, not a scan. In that case, do not open with bare "nothing is
+scanned"; lead with what the named resource can host:
+
+```
+You named a machine — here's what it can host (CORE, all opt-in):
+  • fleet ops · /bridge-onboard --add remotes
+  • always-on bots/channels · /bridge-onboard --add channels
+  • scheduled jobs · /bridge-onboard --add schedule
+  • a persistent, addressable Bridge-Agent (A2A) · see agents/ + docs/representative-agent.md
+```
 
 ## State Coupling
 
