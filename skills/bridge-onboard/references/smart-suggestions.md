@@ -180,11 +180,12 @@ What stays manual:
 - `evidence.apps` includes `Backblaze.app`, `Arq.app`, `Carbon Copy Cloner.app`
 - `tmutil destinationinfo` returns at least one destination (run only if user opted into a backups-probe)
 
-**Advisory:**
+**Advisory:** (open scan-neutrally — this block is reached BOTH from a scan and from the
+offered-machine advisory, which has no `{tool_list}`; lead with the detected-tooling line
+ONLY when it came from a scan)
 
 ```
-Detected backup tooling:
-  {tool_list}
+{scan path → "Detected backup tooling:\n  {tool_list}" | offer path → "A dedicated machine makes a solid backup target."}
 
 Bridge (CORE) can model your backup topology declaratively — sources × targets ×
 pipelines — a version-controlled description of what should be backed up.
