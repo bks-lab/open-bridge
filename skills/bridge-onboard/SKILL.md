@@ -44,16 +44,25 @@ enabled modularly when you want it via the Phase E catalog, `--add
 <feature>`, or the feature's `enabled:` flag in `bridge-config.yaml`.
 Only **broader** unlocks the permission-gated scan in step 1.
 
-This file is the entry point; the heavy lifting lives in `references/`.
+**The entry point is the four-lane front door** in
+[`rules/session-start.md`](../../rules/session-start.md) § NEW USER front door — it
+reflects what Phase 0 detected (origin state, git name), notes the guard is already
+armed, and opens four discoverable lanes under a free-text invite: `[1]` show me around
+(demo) · `[2]` describe what I'll use it for (→ this wizard, purpose pre-filled) · `[3]`
+make it private first (protection) · `[4]` bind a workspace / org overlay. This file and
+`references/` are where lanes `[2]`/`[3]`/`[4]` land; the heavy lifting lives in
+`references/`.
 
 ## Defaults — what the wizard assumes
 
-- **Purpose pins a north-star (ordering, never gating).** Phase A captures one
-  line — what this instance is for — into `purpose.statement` (+ a derived
-  `purpose.focus`). It ORDERS the Phase C suggestions, the Phase E catalogue, and
-  the `feature-discovery` standing-order, and is echoed in the greeting + preview;
-  it **never** hides, gates, or removes a feature. Empty purpose = today's flat,
-  general-purpose behaviour. Change anytime via `--purpose`.
+- **Purpose pins a north-star (ordering, never gating).** It is captured **at the
+  front door** — the user describes what they're here to do (session-start lane `[2]`
+  or a free-text answer) and that sentence becomes `purpose.statement` verbatim; Phase A
+  does **not** re-ask. `purpose.focus` and `user_profile` are **derived silently** from
+  the statement — never posed as a visible six-domain questionnaire. Purpose ORDERS the
+  Phase C suggestions, the Phase E catalogue, and (under `broader`) the
+  `feature-discovery` standing-order; it **never** hides, gates, or removes a feature.
+  Empty purpose = today's flat, general-purpose behaviour. Change anytime via `--purpose`.
 - **GitHub is optional.** Onboarding completes end-to-end without a
   GitHub org, without `gh` CLI, and without GitHub-projects integration.
 - **Upstreams stay empty (`upstreams: []`) by default.** Upstream

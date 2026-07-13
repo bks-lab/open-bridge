@@ -101,7 +101,19 @@ open-bridge as a read-only `upstream`:
 git remote rename origin upstream            # public open-bridge becomes read-only
 gh repo create <you>/my-bridge --private --source=. --remote=origin --push
 git fetch upstream && git merge upstream/main   # pull CORE updates anytime
+
+# Then record the new origin as private, so the first user/* push classifies
+# PRIVATE even offline (gh absent/unauthenticated) instead of fail-closing:
+printf 'repo: <you>/my-bridge\nis_public: false\n' > .bridge-origin
 ```
+
+**Write `.bridge-origin` (`is_public: false`) ONLY after the origin is confirmed
+private** — never for a still-public origin. The marker vouches only for its matching
+`repo:` slug; the public upstream still BLOCKs. Without it, a re-homed clone whose slug no
+longer matches the CORE-shipped marker falls through to `gh repo view`, and offline/
+unauthenticated that resolves **unknown → fail-closed**, refusing a legitimate first push
+to the user's own brand-new private repo. Onboarding writes this marker automatically as
+part of the re-home (see `skills/bridge-onboard/references/workflow.md` Phase A step 6).
 
 Just evaluating? Keep `user/*` local and never push.
 

@@ -205,12 +205,15 @@ ORDER-only banding as the Phase E catalogue, nothing hidden. Empty `purpose.focu
 </div>
 ```
 
-End the {{SUGGESTED_LATER}} section with the trust-building closer. When
-`purpose.statement` is set, reference it so the section reads as "kept back, not
-withheld"; otherwise use the neutral form:
+End the {{SUGGESTED_LATER}} section with the trust-building closer. It branches on TWO
+axes — whether `purpose.statement` is set, and `discovery.mode`. **Only under `broader`
+does `feature-discovery` run its evidence heuristics**, so the confined variants must NOT
+promise weekly evidence-based surfacing — under confined the heuristics never run, so
+that would be a false promise. Confined still resurfaces *deferred* features and honours
+`--add`; say that instead.
 
 ```html
-<!-- purpose set: -->
+<!-- purpose set · broader: -->
 <div class="trust-closer">
   These stay one step back so this Bridge stays pointed at
   <strong>{{PURPOSE}}</strong> — none of them is hidden or gated. Bridge surfaces
@@ -220,11 +223,29 @@ withheld"; otherwise use the neutral form:
   <code>bridge-config.yaml.feature_discovery.enabled</code>.
 </div>
 
-<!-- purpose empty (general-purpose): -->
+<!-- purpose set · confined (default): -->
+<div class="trust-closer">
+  These stay one step back so this Bridge stays pointed at
+  <strong>{{PURPOSE}}</strong> — none is hidden or gated. In confined mode I don't
+  scan for new evidence, so you drive activation: <code>/bridge-onboard --features</code>
+  to browse, <code>--add &lt;name&gt;</code> to turn one on. (I still resurface anything
+  you deferred, and honour <code>--add</code>.) Broaden any time with
+  <code>/bridge-onboard --rescan</code>.
+</div>
+
+<!-- purpose empty · broader: -->
 <div class="trust-closer">
   Bridge surfaces features proactively. <strong>feature-discovery</strong>
   checks weekly for new evidence and proposes ONE at most per briefing.
   Disable any time via <code>bridge-config.yaml.feature_discovery.enabled</code>.
+</div>
+
+<!-- purpose empty · confined (default): -->
+<div class="trust-closer">
+  In confined mode I don't scan for new evidence — you drive activation:
+  <code>/bridge-onboard --features</code> to browse, <code>--add &lt;name&gt;</code> to
+  turn one on. (I still resurface anything you deferred.) Broaden any time with
+  <code>/bridge-onboard --rescan</code>.
 </div>
 ```
 

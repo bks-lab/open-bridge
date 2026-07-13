@@ -27,9 +27,12 @@ sense to activate. Used in two contexts:
   never print "not detected" / "no signal".
 - **One-line re-entry path.** Every entry ends with the exact command
   to activate.
-- **Bridge will surface itself.** End with the trust-builder: "I'll
-  notice when one of these becomes relevant and bring it up — you don't
-  need to memorise this list."
+- **Bridge will surface itself — but only truthfully.** Under `broader`, end with
+  the trust-builder: "I'll notice when one of these becomes relevant and bring it up —
+  you don't need to memorise this list." Under **confined** (the default), the evidence
+  heuristics don't run, so DON'T claim you'll notice — say: "You drive this — nothing is
+  scanned; `--features` to browse, `--add` to turn one on." (See the gated closer at the
+  end of this file.)
 
 ## Grouping
 
@@ -265,7 +268,10 @@ skills.
 
 ## Trust-Building Closer
 
-End the catalogue (both in Phase E and `--features`) with:
+End the catalogue (both in Phase E and `--features`) with the closer — **gated on
+`discovery.mode`**, because the weekly evidence heuristic only runs under `broader`.
+
+**Broader:**
 
 ```
 You don't need to memorise this. Bridge surfaces relevant features
@@ -282,7 +288,23 @@ proactively:
 Nothing is locked in. Everything is opt-out via bridge-config.yaml.
 ```
 
-This is the philosophical closer: Bridge is on your side, not nagging.
+**Confined (default) — do NOT promise the weekly evidence check; the heuristic never
+runs under confined. Say what actually happens:**
+
+```
+You don't need to memorise this. You drive activation — nothing is scanned:
+
+  • /bridge-onboard --features walks this catalogue interactively.
+  • /bridge-onboard --add <feature> turns a single feature on, with setup help.
+  • Ask me to do something I don't have configured, and I'll explain how to enable it.
+  • I still resurface anything you deferred. Want evidence-based suggestions?
+    /bridge-onboard --rescan broadens (per-item permission, always).
+
+Nothing is locked in. Everything is opt-out via bridge-config.yaml.
+```
+
+This is the philosophical closer: Bridge is on your side, not nagging — and it tells the
+truth about what confined mode does and doesn't do.
 
 ## State Coupling
 

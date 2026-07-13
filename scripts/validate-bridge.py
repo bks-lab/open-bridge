@@ -21,9 +21,10 @@ Setup:
   # or via uv: uv tool install check-jsonschema
 
 Exit codes:
-  0 — all instances valid
+  0 — all instances valid (or check-jsonschema absent → schema surfaces
+      advisory-skipped; missing the optional tool alone never fails)
   1 — at least one validation error
-  2 — setup error (missing dep, schema not found, etc.)
+  2 — setup error (unknown --surface, etc.)
 
 Usage:
   scripts/validate-bridge.py                  # validate everything
@@ -278,17 +279,22 @@ def main() -> int:
     if json_surfaces:
         validator = shutil.which("check-jsonschema")
         if not validator:
+            # check-jsonschema is strongly recommended but optional — a fresh
+            # clone without it must NOT hard-fail onboarding's final step.
+            # Emit an advisory (yellow) warning, skip the JSON-Schema surfaces,
+            # and continue: the run's exit code reflects real validation only.
             sys.stderr.write(
-                "ERROR: check-jsonschema not found in PATH.\n"
-                "  Install: pipx install check-jsonschema\n"
+                "\033[33mWARN: check-jsonschema not found in PATH — "
+                "schema validation skipped.\033[0m\n"
+                "  Install to enable it: pipx install check-jsonschema\n"
                 "  (or: uv tool install check-jsonschema)\n"
             )
-            return 2
-        for s in json_surfaces:
-            print(f"\n[{s['name']}]")
-            p, f = validate_surface(s, validator=validator)
-            total_pass += p
-            total_fail += f
+        else:
+            for s in json_surfaces:
+                print(f"\n[{s['name']}]")
+                p, f = validate_surface(s, validator=validator)
+                total_pass += p
+                total_fail += f
 
     for s in md_surfaces:
         print(f"\n[{s['name']} — scope frontmatter]")
