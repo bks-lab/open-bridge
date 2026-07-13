@@ -29,8 +29,11 @@ feat:/fix: PR merged to main  ->  release.yml computes next version
 ```
 
 The README release badge reads the latest release live, so it updates on its
-own. The "what changed" lives on the **GitHub Releases page** (there is no
-hand-maintained CHANGELOG file).
+own. The "what changed" lives on the
+**[GitHub Releases page](https://github.com/bks-lab/open-bridge/releases)** —
+auto-generated on each merge — and is browsable on the site's
+**[changelog page](https://bks-lab.github.io/open-bridge/changelog.html)** (a
+live view of the Releases API). There is no hand-maintained `CHANGELOG.md`.
 
 ## What you do
 
@@ -71,12 +74,14 @@ maturity than the project has. When unsure: does it change what the tool can
 ## Version history
 
 **2026-07-13 — re-baselined to `v0.7.0`.** During the first three public weeks the
-automatic minor digit was over-counted on small and site/marketing changes,
-reaching `v0.16.0` — a number that claimed more maturity than an early,
-no-external-users preview. The 24 early tags (`v0.2.0`–`v0.16.0`) were
-consolidated into a single honest `v0.7.0` release at the then-current `main`,
-whose notes list what is actually shipped and self-used. Versioning proceeds
-automatically from `v0.7.0` under the discipline above.
+automatic minor digit over-counted on small and site/marketing changes, reaching
+`v0.16.0` — a number that claimed more maturity than a dogfooded, no-external-users
+beta. The inflated tags above `v0.7` were removed and the line re-based; the
+milestone releases `v0.2.0`–`v0.7.0` remain with their real ship dates, and
+`v0.7.0` is the current **public beta**. (GitHub stamps the *published* date of a
+re-created release as the day it was re-created; the real ship date lives on each
+tag and on the site's [changelog page](https://bks-lab.github.io/open-bridge/changelog.html).)
+Versioning proceeds automatically from `v0.7.0` under the discipline above.
 
 ## Editing the bump rules
 

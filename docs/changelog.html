@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<!-- ============================================================================
+     BKS open-bridge — concepts.html  (deep-dive reference)
+     Built from the shared shell /tmp/ob-shell.html (NAV_ACTIVE = concepts).
+     Self-contained single file, GitHub-Pages-ready, fully offline, native UTF-8.
+     ============================================================================ -->
+<html lang="en" data-active-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BKS open-bridge — Changelog</title>
+<meta name="description" content="The BKS open-bridge changelog — every release, generated automatically on each merge to main, pulled live from GitHub Releases.">
+<!-- Social / Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="BKS open-bridge — Changelog">
+<meta property="og:description" content="The BKS open-bridge changelog — every release, generated automatically on each merge to main, pulled live from GitHub Releases.">
+<meta property="og:url" content="https://bks-lab.github.io/open-bridge/changelog.html">
+<meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="BKS open-bridge — Changelog">
+<meta name="twitter:description" content="The BKS open-bridge changelog — every release, generated automatically on each merge to main, pulled live from GitHub Releases.">
+
+<!-- Anti-FOUC pre-paint: theme + language set BEFORE the stylesheet paints. -->
+<script>
+(function(){
+  var r = document.documentElement;
+  try{
+    var t = localStorage.getItem("ob-theme");
+    if(t === "dark" || (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)){
+      r.classList.add("dark");
+    }
+  }catch(e){}
+  try{
+    var l = localStorage.getItem("ob-lang");
+    var lang = (l === "de") ? "de" : (r.getAttribute("lang") || "en");
+    r.setAttribute("data-active-lang", lang); r.setAttribute("lang", lang);
+  }catch(e){ r.setAttribute("data-active-lang","en"); }
+})();
+</script>
+
+<style>
+/* ============================================================
+   BKS open-bridge shared shell — single file, fully offline.
+   Colour / type / space tokens lifted from DESIGN.md (Editorial
+   Minimalism) via landing/tokens.css. AA-correct text tokens
+   (--accent-text, --code-bg, --ok-text …) layered on top — these
+   are NOT in tokens.css and must be preserved.
+   No external fonts, no CDN, no network calls.
+   ============================================================ */
+
+:root{
+  /* ---- tokens.css (generated from DESIGN.md) ---- */
+  --ink:#111827; --muted:#6B7280;
+  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
+  --on-primary:#FFFFFF; --on-surface:#374151;
+  --line:#E5E7EB; --line-subtle:#F3F4F6;
+  --accent-from:#667EEA; --accent-to:#764BA2;
+  --accent:#6366F1; --accent-secondary:#8B5CF6;
+  --ok:#10B981; --info:#3B82F6;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+
+  /* ---- AA-correct text tokens (added on top of tokens.css) ---- */
+  --accent-text:#4F46E5;        /* links + the one accent word, AA on white */
+  --accent-soft:#EEF2FF;
+  --ok-text:#047857;            /* status text, AA */
+  --info-text:#1D4ED8;
+  --attention-text:#7C3AED;
+  --code-bg:#F9FAFB;
+
+  /* legacy aliases the markup uses */
+  --primary:var(--ink); --secondary:var(--muted);
+  --border:var(--line); --border-subtle:var(--line-subtle);
+  --on-surface-muted:var(--muted);
+  --success:var(--ok); --attention:var(--accent-secondary);
+  --feature-indigo-from:#4F46E5; --feature-indigo-to:#9333EA;
+  --mono:var(--font-mono);
+
+  /* shadows — whisper quiet */
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+
+  --section-y:96px;
+  --container:80rem; --hero-w:72rem; --prose-w:48rem;
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
+}
+
+html.dark{
+  --ink:#F9FAFB; --muted:#9CA3AF;
+  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
+  --on-surface:#D1D5DB;
+  --line:#374151; --line-subtle:#1F2937;
+  --accent-from:#A78BFA; --accent-to:#818CF8;
+  --accent:#818CF8;
+  --accent-text:#A78BFA;        /* AA on dark surfaces */
+  --accent-soft:#312E81;
+  --ok-text:#34D399;
+  --info-text:#93C5FD;
+  --attention-text:#C4B5FD;
+  --code-bg:#0B1220;
+  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
+  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-sans);
+  background:var(--surface); color:var(--on-surface);
+  font-size:16px; line-height:1.6; font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:3px}
+
+/* ---- Language visibility (EN default) ---- */
+[data-lang]{display:none}
+html[data-active-lang="en"] [data-lang="en"]{display:revert}
+html[data-active-lang="de"] [data-lang="de"]{display:revert}
+/* inline variants keep inline display */
+:is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang]{display:none}
+html[data-active-lang="en"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="en"],
+html[data-active-lang="de"] :is(span,code,strong,em,a,b,i,small,kbd,mark,tspan)[data-lang="de"]{display:inline}
+
+.container{max-width:var(--container);margin:0 auto;padding-inline:24px}
+.prose{max-width:var(--prose-w);margin-inline:auto}
+
+/* ---- Typography ---- */
+h1,h2,h3,h4{color:var(--primary);letter-spacing:-0.02em}
+.display{font-size:clamp(38px,5.4vw,64px);font-weight:300;line-height:1.06;letter-spacing:-0.02em}
+.h1{font-size:clamp(30px,4.4vw,46px);font-weight:300;line-height:1.12}
+.h2{font-size:clamp(26px,3.6vw,34px);font-weight:300;line-height:1.15;letter-spacing:-0.01em}
+.h3{font-size:24px;font-weight:500;line-height:1.3;letter-spacing:-0.01em}
+.h4{font-size:20px;font-weight:500;line-height:1.4}
+.body-xl{font-size:20px;font-weight:300;line-height:1.6}
+.eyebrow{font-size:13px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary)}
+.muted{color:var(--on-surface-muted)}
+a{color:var(--accent-text)}
+
+.text-gradient{
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+  font-weight:400;
+}
+
+/* ---- Toggles & header ---- */
+header.nav{
+  position:sticky;top:0;z-index:50;height:auto;min-height:64px;
+  display:flex;align-items:center;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav-inner{width:100%;max-width:var(--container);margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.wordmark{font-size:20px;font-weight:300;letter-spacing:-0.01em;color:var(--primary);white-space:nowrap;text-decoration:none}
+.wordmark .text-gradient{font-weight:400}
+.nav-spacer{flex:1}
+.nav-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---- Site nav (Home / Explore / Concepts) — shell addition ---- */
+.site-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.site-nav a{
+  font-size:14px;font-weight:500;line-height:1.2;text-decoration:none;
+  color:var(--secondary);padding:6px 12px;border-radius:var(--r-full);
+  transition:color .18s ease,background .18s ease;white-space:nowrap;
+}
+.site-nav a:hover{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active,
+.site-nav a[aria-current="page"]{color:var(--primary);background:var(--surface-muted)}
+.site-nav a.active{position:relative}
+.site-nav a.active::after{
+  content:"";position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+  background:linear-gradient(120deg,var(--accent-from),var(--accent-to));
+}
+@media (max-width:560px){
+  .site-nav a{padding:6px 9px;font-size:13px}
+}
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:400;line-height:1.2;
+  padding:5px 11px;border-radius:var(--r-full);
+  background:var(--surface-muted);color:var(--on-surface);
+  border:1px solid var(--border);white-space:nowrap;text-decoration:none;
+}
+a.chip{color:var(--on-surface)}
+a.chip:hover{color:var(--primary)}
+
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-full);overflow:hidden;background:var(--surface)}
+.seg button{
+  font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;
+  padding:5px 12px;border:none;background:transparent;color:var(--secondary);
+  transition:color .2s ease;
+}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--surface)}
+
+.icon-btn{
+  width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-full);background:var(--surface);
+  cursor:pointer;color:var(--secondary);padding:0;
+}
+.icon-btn:hover{color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.sun{display:none}
+html.dark .sun{display:block}
+html.dark .moon{display:none}
+
+/* ---- Buttons ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:16px;font-weight:500;line-height:1.25;
+  padding:14px 28px;border-radius:var(--r-md);border:1px solid transparent;
+  transition:transform .2s ease,background .2s ease,border-color .2s ease;
+}
+.btn svg{width:18px;height:18px}
+.btn-primary{background:var(--primary);color:var(--surface)}
+html.dark .btn-primary{background:var(--accent);color:#0B1220}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-secondary{background:var(--surface);color:var(--on-surface);border-color:var(--border)}
+.btn-secondary:hover{background:var(--surface-subtle)}
+.btn .arrow{transition:transform .2s ease}
+.btn:hover .arrow{transform:translateX(3px)}
+
+/* ---- Sections ---- */
+section{padding-block:var(--section-y)}
+.alt{background:var(--surface-subtle)}
+.sec-head{max-width:var(--prose-w);margin:0 auto 56px;text-align:center}
+.sec-head .h1{margin-top:14px}
+.sec-head p{margin-top:18px;font-size:18px;font-weight:300}
+
+/* ---- Generic cards ---- */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:32px;box-shadow:var(--shadow-soft);
+}
+
+/* ---- Footer ---- */
+footer{border-top:1px solid var(--border);padding-block:64px;background:var(--surface-subtle)}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;max-width:var(--container);margin:0 auto;padding-inline:24px}
+.foot-grid h4{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:var(--secondary);font-weight:600;margin-bottom:16px}
+.foot-grid a{color:var(--on-surface);text-decoration:none;font-size:14.5px;display:block;margin-bottom:9px}
+.foot-grid a:hover{color:var(--primary)}
+.foot-blurb{font-size:14px;color:var(--on-surface-muted);line-height:1.65}
+.foot-blurb .wordmark{font-size:20px;display:block;margin-bottom:14px}
+.license-table{margin-top:18px;font-size:13px;border-collapse:collapse;width:100%}
+.license-table td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);color:var(--on-surface);vertical-align:top}
+.license-table td a{display:inline}
+.foot-bottom{max-width:var(--container);margin:40px auto 0;padding:28px 24px 0;border-top:1px solid var(--border);
+  display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;font-size:13px;color:var(--secondary)}
+.roadmap{list-style:none;display:flex;flex-direction:column;gap:9px}
+.roadmap li{font-size:14px;color:var(--on-surface);display:flex;gap:9px}
+.roadmap li .ph{font-family:var(--mono);font-size:12px;color:var(--accent-text);flex:none}
+
+/* ---- Reveal on scroll ---- */
+.reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (max-width:860px){
+  .foot-grid{grid-template-columns:1fr}
+  .foot-grid>*{min-width:0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .reveal{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+}
+@media print{
+  html.dark{
+    --ink:#111827;--muted:#6B7280;--surface:#FFFFFF;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;
+    --on-surface:#374151;--line:#E5E7EB;--accent-from:#667EEA;--accent-to:#764BA2;--accent:#6366F1;
+    --accent-text:#4F46E5;--ok-text:#047857;--info-text:#1D4ED8;--attention-text:#7C3AED;--code-bg:#F9FAFB;
+  }
+  *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  header.nav,.icon-btn,.seg,.copy-btn{display:none!important}
+  .reveal{opacity:1!important;transform:none!important}
+  section{padding-block:32px}
+}
+</style>
+
+<!-- ============ page-specific styles (changelog.html) ============ -->
+<style>
+/* offset the anchor target so the sticky header never hides a heading */
+:target{scroll-margin-top:84px}
+[id]{scroll-margin-top:84px}
+
+/* ---- intro / hero of the page ---- */
+.page-hero{padding-block:64px 40px}
+.page-hero .eyebrow{margin-bottom:14px}
+.page-hero p.lede{margin-top:18px;font-size:18px;font-weight:300;color:var(--on-surface)}
+.page-hero p.lede code{
+  font-family:var(--mono);font-size:0.86em;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:1px 6px;color:var(--on-surface);
+}
+.page-hero .src{margin-top:22px;font-size:15px}
+.page-hero .src a{font-weight:500;text-decoration:none;color:var(--accent-text)}
+.page-hero .src a:hover{text-decoration:underline}
+
+/* ---- changelog list ---- */
+.cl-root{max-width:var(--prose-w);margin:0 auto;display:flex;flex-direction:column;gap:24px}
+
+/* ---- a single release card ---- */
+.cl-card{
+  border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);box-shadow:var(--shadow-soft);
+  padding:30px 34px;
+}
+.cl-top{
+  display:flex;align-items:baseline;gap:10px 18px;flex-wrap:wrap;
+  padding-bottom:16px;margin-bottom:18px;border-bottom:1px solid var(--border-subtle);
+}
+.cl-name{font-size:23px;font-weight:600;line-height:1.25;color:var(--primary);letter-spacing:-0.01em}
+.cl-date{
+  font-family:var(--mono);font-size:12.5px;color:var(--secondary);
+  margin-left:auto;white-space:nowrap;
+}
+@media (max-width:560px){ .cl-date{margin-left:0} }
+
+/* ---- rendered release-note markdown ---- */
+.cl-body{font-size:16px;line-height:1.7;color:var(--on-surface)}
+.cl-body>*:first-child{margin-top:0}
+.cl-body>*:last-child{margin-bottom:0}
+.cl-body p{margin:0 0 14px}
+.cl-body h3.cl-mdh{font-size:19px;font-weight:600;color:var(--primary);margin:24px 0 10px;letter-spacing:-0.01em}
+.cl-body h4.cl-mdh{font-size:16.5px;font-weight:600;color:var(--primary);margin:20px 0 8px}
+.cl-body h5.cl-mdh{font-size:15px;font-weight:600;color:var(--primary);margin:18px 0 8px}
+.cl-body ul{margin:0 0 14px;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.cl-body li{line-height:1.6}
+.cl-body a{color:var(--accent-text);text-decoration:none}
+.cl-body a:hover{text-decoration:underline}
+.cl-body code{
+  font-family:var(--mono);font-size:0.86em;background:var(--code-bg);
+  border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:1px 6px;color:var(--on-surface);
+}
+.cl-body strong{font-weight:600;color:var(--primary)}
+.cl-empty-body{color:var(--secondary);font-style:italic}
+
+/* ---- loading / empty / error states ---- */
+.cl-state{
+  max-width:var(--prose-w);margin:0 auto;text-align:center;
+  border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface-subtle);padding:40px 32px;color:var(--on-surface);box-shadow:var(--shadow-soft);
+}
+.cl-state p{font-size:16px;line-height:1.6}
+.cl-state .cl-state-link{margin-top:14px}
+.cl-state a{color:var(--accent-text);font-weight:500;text-decoration:none}
+.cl-state a:hover{text-decoration:underline}
+
+/* ---- loading skeleton ---- */
+.cl-loading-note{text-align:center;font-size:15px;color:var(--secondary);margin-bottom:4px}
+.cl-skel{
+  border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);box-shadow:var(--shadow-soft);padding:30px 34px;
+}
+.cl-skel .bar{height:14px;border-radius:var(--r-full);background:var(--surface-muted);animation:cl-pulse 1.4s ease-in-out infinite}
+.cl-skel .bar.t{width:42%;height:20px;margin-bottom:22px}
+.cl-skel .bar.a{width:100%;margin-bottom:11px}
+.cl-skel .bar.b{width:94%;margin-bottom:11px}
+.cl-skel .bar.c{width:66%}
+@keyframes cl-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){ .cl-skel .bar{animation:none} }
+
+@media (max-width:560px){ .cl-card,.cl-skel{padding:24px 22px} }
+</style>
+</head>
+<body>
+
+<!-- ======================= STICKY HEADER (shared) ======================= -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="demo.html"><span data-lang="en">Demo</span><span data-lang="de">Demo</span></a>
+      <a href="use-cases.html"><span data-lang="en">Use Cases</span><span data-lang="de">Anwendungsfälle</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+      <a href="workspaces.html"><span data-lang="en">Workspaces</span><span data-lang="de">Workspaces</span></a>
+      <a href="agents.html"><span data-lang="en">Agents</span><span data-lang="de">Agents</span></a>
+      <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
+      <a class="active" aria-current="page" href="changelog.html"><span data-lang="en">Changelog</span><span data-lang="de">Changelog</span></a>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="nav-chips">
+      <a class="chip" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="chip" href="index.html#license" aria-label="MIT license">MIT</a>
+      <div class="seg" role="group" aria-label="Language / Sprache">
+        <button id="lang-en" type="button" aria-pressed="true" title="Toggle language — press L">EN</button>
+        <button id="lang-de" type="button" aria-pressed="false" title="Sprache umschalten — Taste L">DE</button>
+      </div>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme (T)" title="Toggle theme — press T">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================ PAGE CONTENT ============================ -->
+<main id="top">
+
+  <!-- ---- intro ---- -->
+  <section class="page-hero">
+    <div class="container">
+      <div class="prose">
+        <p class="eyebrow" data-lang="en">Changelog</p>
+        <p class="eyebrow" data-lang="de">Changelog</p>
+        <h1 class="h1">
+          <span data-lang="en">Changelog</span>
+          <span data-lang="de">Changelog</span>
+        </h1>
+        <p class="lede" data-lang="en">Every release, generated automatically on each merge to <code>main</code>.</p>
+        <p class="lede" data-lang="de">Jedes Release, automatisch bei jedem Merge auf <code>main</code> erzeugt.</p>
+        <p class="src">
+          <a href="https://github.com/bks-lab/open-bridge/releases" target="_blank" rel="noopener">
+            <span data-lang="en">Canonical source: GitHub Releases →</span>
+            <span data-lang="de">Kanonische Quelle: GitHub Releases →</span>
+          </a>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- the live release list (populated from the GitHub Releases API) ---- -->
+  <section class="alt" style="padding-block:48px 96px">
+    <div class="container">
+      <div class="cl-root" id="cl-root" aria-live="polite">
+        <div class="cl-loading" aria-busy="true">
+          <p class="cl-loading-note">
+            <span data-lang="en">Loading releases…</span>
+            <span data-lang="de">Releases werden geladen…</span>
+          </p>
+          <div class="cl-skel"><div class="bar t"></div><div class="bar a"></div><div class="bar b"></div><div class="bar c"></div></div>
+          <div class="cl-skel"><div class="bar t"></div><div class="bar a"></div><div class="bar b"></div><div class="bar c"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+<!-- ========================== END PAGE CONTENT ============================== -->
+
+<!-- ======================= FOOTER (shared) ======================= -->
+<footer id="license">
+  <div class="foot-grid">
+    <div class="foot-blurb">
+      <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+      <span data-lang="en">Built at BKS-Lab — a small team — and used daily to run it. Present tense, no hero arc: this is method and substrate.</span>
+      <span data-lang="de">Gebaut bei BKS-Lab — einem kleinen Team — und täglich genutzt, um genau diese Firma zu betreiben. Präsens, kein Heldenbogen: das ist Methode und Substrat.</span>
+      <table class="license-table">
+        <tr><td><span data-lang="en">Code &amp; content</span><span data-lang="de">Code &amp; Inhalt</span></td><td>MIT</td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a></td></tr>
+        <tr><td><span data-lang="en">Brand</span><span data-lang="de">Marke</span></td><td><span data-lang="en">Trademark policy</span><span data-lang="de">Markenrichtlinie</span></td><td><a href="https://github.com/bks-lab/open-bridge/blob/main/TRADEMARK.md" target="_blank" rel="noopener">TRADEMARK.md</a></td></tr>
+      </table>
+      <p class="cap muted" style="margin-top:14px;font-size:12.5px">© 2026 BKS-Lab and Contributors. <span data-lang="en">Licenses cover copyright, not brands.</span><span data-lang="de">Lizenzen decken Copyright ab, nicht Marken.</span> <span data-lang="en">Contributions require a DCO sign-off (</span><span data-lang="de">Beiträge erfordern einen DCO-Sign-off (</span><code>git commit -s</code>).</p>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Explore</h4>
+      <h4 data-lang="de">Erkunden</h4>
+      <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
+      <a href="explore.html"><span data-lang="en">Explore the concepts</span><span data-lang="de">Konzepte erkunden</span></a>
+      <a href="use-cases.html"><span data-lang="en">Use cases &amp; solutions</span><span data-lang="de">Anwendungsfälle &amp; Lösungen</span></a>
+      <a href="concepts.html"><span data-lang="en">Concepts in depth</span><span data-lang="de">Konzepte im Detail</span></a>
+      <a href="demo.html"><span data-lang="en">Live session demo</span><span data-lang="de">Live-Session-Demo</span></a>
+    </div>
+
+    <div>
+      <h4 data-lang="en">Links</h4>
+      <h4 data-lang="de">Links</h4>
+      <a href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/README.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/examples/agency" target="_blank" rel="noopener"><span data-lang="en">Example workspace</span><span data-lang="de">Beispiel-Workspace</span></a>
+      <a href="https://github.com/bks-lab/open-bridge/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+    </div>
+  </div>
+
+  <div class="foot-bottom">
+    <span data-lang="en">Public · MIT · no waitlist · newly released</span>
+    <span data-lang="de">Public · MIT · keine Warteliste · frisch veröffentlicht</span>
+    <a class="btn btn-secondary" style="padding:10px 20px;font-size:14px" href="https://github.com/bks-lab/open-bridge" target="_blank" rel="noopener">
+      <span data-lang="en">Read the code on GitHub</span><span data-lang="de">Lies den Code auf GitHub</span>
+      <span class="arrow">→</span>
+    </a>
+  </div>
+</footer>
+
+<!-- ======================= Shared page controller ======================= -->
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+
+  function applyTheme(mode){
+    if(mode === "dark"){ root.classList.add("dark"); }
+    else { root.classList.remove("dark"); }
+  }
+  function toggleTheme(){
+    var next = root.classList.contains("dark") ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("ob-theme", next); } catch(e){}
+  }
+  var themeBtn = document.getElementById("theme-toggle");
+  if(themeBtn){ themeBtn.addEventListener("click", toggleTheme); }
+
+  function applyLang(lang){
+    root.setAttribute("data-active-lang", lang);
+    root.setAttribute("lang", lang);
+    var en = document.getElementById("lang-en");
+    var de = document.getElementById("lang-de");
+    if(en){ en.setAttribute("aria-pressed", lang === "en" ? "true" : "false"); }
+    if(de){ de.setAttribute("aria-pressed", lang === "de" ? "true" : "false"); }
+  }
+  applyLang(root.getAttribute("data-active-lang") === "de" ? "de" : "en");
+  function setLang(lang){
+    applyLang(lang);
+    try { localStorage.setItem("ob-lang", lang); } catch(e){}
+  }
+  var enBtn = document.getElementById("lang-en");
+  var deBtn = document.getElementById("lang-de");
+  if(enBtn){ enBtn.addEventListener("click", function(){ setLang("en"); }); }
+  if(deBtn){ deBtn.addEventListener("click", function(){ setLang("de"); }); }
+
+  document.addEventListener("keydown", function(ev){
+    if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toUpperCase() : "";
+    if(tag === "INPUT" || tag === "TEXTAREA" || (ev.target && ev.target.isContentEditable)) return;
+    var k = ev.key.toLowerCase();
+    if(k === "t"){ toggleTheme(); }
+    if(k === "l"){ setLang(root.getAttribute("data-active-lang") === "en" ? "de" : "en"); }
+  });
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); });
+  }
+})();
+</script>
+
+<!-- ======================= page-specific: live changelog from GitHub Releases ======================= -->
+<script>
+(function(){
+  "use strict";
+
+  var API = "https://api.github.com/repos/bks-lab/open-bridge/releases?per_page=100";
+  var RELEASES_URL = "https://github.com/bks-lab/open-bridge/releases";
+
+  // ---- safe text: escape HTML-significant characters FIRST ----
+  function esc(s){
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  // ---- inline markdown, applied to ALREADY-ESCAPED text ----
+  // supports `code`, **bold**, [text](http/https url). Code first so ** inside
+  // a code span stays literal; links validated to http(s) with no quote chars.
+  function inline(s){
+    s = s.replace(/`([^`]+)`/g, function(_m, code){ return "<code>" + code + "</code>"; });
+    s = s.replace(/\*\*([^*]+)\*\*/g, function(_m, b){ return "<strong>" + b + "</strong>"; });
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function(m, text, url){
+      if(/^https?:\/\//i.test(url) && url.indexOf('"') === -1 && url.indexOf("'") === -1){
+        return '<a href="' + url + '" target="_blank" rel="noopener">' + text + "</a>";
+      }
+      return m; // leave the escaped literal in place
+    });
+    return s;
+  }
+
+  // ---- block markdown: #/##/### headings, "- " lists, blank-line paragraphs ----
+  function renderMarkdown(md){
+    var text = esc(md).replace(/\r\n?/g, "\n");
+    var lines = text.split("\n");
+    var out = [];
+    var para = [];
+    function flushPara(){
+      if(para.length){ out.push("<p>" + inline(para.join(" ")) + "</p>"); para = []; }
+    }
+    var i = 0;
+    while(i < lines.length){
+      var line = lines[i];
+      if(/^\s*$/.test(line)){ flushPara(); i++; continue; }
+      var h = /^(#{1,3})\s+(.+)$/.exec(line);
+      if(h){
+        flushPara();
+        var lvl = h[1].length + 2; // # -> h3, ## -> h4, ### -> h5
+        out.push("<h" + lvl + ' class="cl-mdh">' + inline(h[2]) + "</h" + lvl + ">");
+        i++; continue;
+      }
+      if(/^\s*-\s+/.test(line)){
+        flushPara();
+        var items = [];
+        while(i < lines.length && /^\s*-\s+/.test(lines[i])){
+          items.push("<li>" + inline(lines[i].replace(/^\s*-\s+/, "")) + "</li>");
+          i++;
+        }
+        out.push("<ul>" + items.join("") + "</ul>");
+        continue;
+      }
+      para.push(line.replace(/^\s+/, "").replace(/\s+$/, ""));
+      i++;
+    }
+    flushPara();
+    return out.join("\n");
+  }
+
+  // ---- date: render BOTH locales, let the site's data-lang CSS pick the active one ----
+  function formatDate(iso){
+    var d = new Date(iso);
+    if(isNaN(d.getTime())) return "";
+    var opts = { year: "numeric", month: "long", day: "numeric" };
+    var en = d.toLocaleDateString("en-US", opts);
+    var de = d.toLocaleDateString("de-DE", opts);
+    return '<time class="cl-date" datetime="' + esc(iso) + '">'
+      + '<span data-lang="en">' + esc(en) + "</span>"
+      + '<span data-lang="de">' + esc(de) + "</span></time>";
+  }
+
+  function card(rel){
+    var name = rel.name || rel.tag_name || "Release";
+    var iso = rel.created_at || rel.published_at || "";  // tag date = real ship date (published_at is the re-publish time)
+    var body = (rel.body && rel.body.trim())
+      ? renderMarkdown(rel.body)
+      : '<p class="cl-empty-body"><span data-lang="en">No release notes.</span><span data-lang="de">Keine Release-Notes.</span></p>';
+    return '<article class="cl-card reveal">'
+      + '<header class="cl-top">'
+      + '<h2 class="cl-name">' + esc(name) + "</h2>"
+      + (iso ? formatDate(iso) : "")
+      + "</header>"
+      + '<div class="cl-body">' + body + "</div>"
+      + "</article>";
+  }
+
+  function stateBox(en, de, withLink){
+    var link = withLink
+      ? '<p class="cl-state-link"><a href="' + RELEASES_URL + '" target="_blank" rel="noopener">'
+        + '<span data-lang="en">View releases on GitHub →</span>'
+        + '<span data-lang="de">Releases auf GitHub ansehen →</span></a></p>'
+      : "";
+    return '<div class="cl-state"><p><span data-lang="en">' + en + "</span>"
+      + '<span data-lang="de">' + de + "</span></p>" + link + "</div>";
+  }
+
+  function reveal(container){
+    var els = Array.prototype.slice.call(container.querySelectorAll(".reveal"));
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function showAll(){ els.forEach(function(el){ el.classList.add("in"); }); }
+    if("IntersectionObserver" in window && !reduce){
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); } });
+      }, { threshold: 0, rootMargin: "0px 0px -8% 0px" });
+      els.forEach(function(el){ io.observe(el); });
+      setTimeout(showAll, 1600);
+    } else {
+      showAll();
+    }
+  }
+
+  function init(){
+    var root = document.getElementById("cl-root");
+    if(!root) return;
+    fetch(API, { headers: { "Accept": "application/vnd.github+json" } })
+      .then(function(resp){
+        if(!resp.ok){ throw new Error("HTTP " + resp.status); }
+        return resp.json();
+      })
+      .then(function(releases){
+        if(!Array.isArray(releases) || releases.length === 0){
+          root.innerHTML = stateBox("No releases yet.", "Noch keine Releases.", true);
+          return;
+        }
+        releases.sort(function(a, b){
+          return (Date.parse(b.created_at || b.published_at || "") || 0)
+               - (Date.parse(a.created_at || a.published_at || "") || 0);
+        });
+        var html = "";
+        for(var i = 0; i < releases.length; i++){ html += card(releases[i]); }
+        root.innerHTML = html;
+        reveal(root);
+      })
+      .catch(function(){
+        root.innerHTML = stateBox(
+          "The changelog couldn't be loaded right now — GitHub may be rate-limiting anonymous requests. Please try again shortly.",
+          "Das Changelog ließ sich gerade nicht laden — GitHub limitiert evtl. anonyme Anfragen. Bitte gleich erneut versuchen.",
+          true
+        );
+      });
+  }
+
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+  <script defer src="assets/agent-config.js"></script>
+  <script defer src="assets/agent-widget.js"></script>
+</body>
+</html>
