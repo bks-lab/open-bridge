@@ -60,12 +60,16 @@ wall.
 A  Quick Identity             ~90 sec   GATHER: purpose (from the door) + name/org/root/lang + origin + scope · then the confirm-back gate ([go] executes)
 B  Discovery Scan             ~60 sec   permission-gated system scan (broader mode only; skipped if confined)
 C  Smart Suggestions         ~2-3 min   evidence → feature recommendations (skipped if confined)
-D  Quick-Wins                ~2 min    work-system (+ seed a real first task) + theme + agent soul/identity (deck-picked)
+D  Quick-Wins                ~1-2 min  applies confirm-back defaults: work-system on (never re-asked) + first task from purpose (one quick ask ONLY if no purpose was given) · theme · agent soul/identity (deck-picked)
 E  Feature Catalog          read-only   pointer to "what else Bridge can do" (full catalogue in the Phase-F preview / --features)
 F  Validate + Preview        ~45 sec   advisory schema check, HTML preview, then a LIVE /briefing --quick over the seeded task
 ```
 
-Total: ~5 minutes for the confined default (incl. a seeded first task + a live briefing), 5-8 for a tailored broader setup.
+Total: ~5 minutes for the confined default. On the fast path (a purpose given at the door)
+the **only** write-approval is the single confirm-back `[go]` — Phase D then applies the
+approved defaults without a second round of questions, landing on a seeded first task + a
+live briefing. Give no purpose (demo / "not sure yet") and D1b adds one short first-task
+question. 5-8 for a tailored broader setup.
 
 ---
 
@@ -197,10 +201,16 @@ upstream repos are not public yet.
    2. re-arm the guard (`git config core.hooksPath scripts/hooks`, belt-and-suspenders to Step 0);
    3. `git checkout -b user/{name}` from the core/default branch;
    4. write the `bridge-config.yaml` skeleton (identity, `purpose.*`, `discovery.mode`);
-   5. route: **Broader → Phase B** · **Confined → Phase D** (skip B + C);
+   5. route: **Broader → Phase B** · **Confined → Phase D** (skip B + C). On the `[go]`
+      path Phase D **never re-asks work-system** (approved right here) and **derives the
+      first task from `purpose.statement`** without asking — *with one exception:* the
+      empty-purpose path (`[1]` demo / "not sure yet"), where D1b still asks the one-line
+      first-task question because there is nothing to derive. Apart from that empty-purpose
+      ask, Phase D re-prompts only on `[adjust]→customize`;
    6. the step-9 workspace + step-10 resource advisories fire here (the branch now exists).
 
-   `[adjust]` reopens any gathered line — nothing has executed, so there is nothing to roll
+   `[adjust]` reopens any line — the gathered fields **and** the defaults shown on this
+   screen (work-system on, theme) — nothing has executed, so there is nothing to roll
    back. `[d]` drops into `examples/agency` (restart there).
 
 9. **Workspace opt-in — only when the signal fired, and only after the branch exists.**
@@ -390,7 +400,15 @@ only skip if the user is sure they want a dumb chat with no memory.
 `task-close-postmortem`, `bridge-curator`, `bridge-learn`,
 `weekly-debrief-reconciler`, everything that reads `work/tasks/`.
 
-**Pitch:**
+**Fast path — no re-ask.** When D1 is reached from the Phase-A confirm-back `[go]`
+(the normal onboarding path), the user already approved "work-system on" on that
+screen — so **apply the `[y]` default directly** and drop straight to the scaffolding
++ D1b below; do **not** re-render the prompt (that second ask was the redundant beat).
+Show the `[y]/[c]/[n]` pitch **only** when D1 is entered *without* that approval —
+`/bridge-onboard --add work`, or an `[adjust]→customize` request — or to honour a user
+who used `[adjust]` to say they want cold-start mode after all.
+
+**Pitch (shown only on the paths above):**
 ```
 The work system makes me useful tomorrow, not just today. I read
 work/log.md at session start to know what we did yesterday, and
@@ -409,19 +427,29 @@ On `[y]` or `[c]`:
 - Set `work.enabled: true` in `bridge-config.yaml`
 - **D1b — seed one real first task** so the very first `/briefing` lands on a populated
   board instead of "Board is empty. Create tasks?" (this is what makes first-session
-  value non-thin). Ask ONE line:
-  > One thing you're working on right now? I'll seed it as your first task so tomorrow's
-  > briefing has something to stand on. `[type it]` `[skip]`
-  - **A typed line** → copy `work/templates/STATUS.md` to `work/tasks/<slug>/STATUS.md`
-    and fill EVERY required field with no leftover placeholders: `slug` = the folder
-    name, `type` = a fitting enum (default `admin`), `status: doing`,
-    `created`/`last_updated` via `date +%Y-%m-%d`, `sync.bridge_only: true`, and a real
-    one-line `origin` ("Onboarding first-session intake").
-  - **`[skip]`** → seed a single tickable "Getting oriented" starter task whose Next
-    Steps are the real `/bridge-onboard --features` / `--add` / `--rescan` commands.
+  value non-thin).
+  - **When `purpose.statement` is set** (the normal `[2]`/free-text path) → **don't ask
+    again.** The user already told you what they're here to do at the door, so derive the
+    first task straight from it — no second question. `slug` from the purpose, `origin` =
+    the purpose sentence; then mention it in one line ("Seeded your first task from what
+    you told me: …") rather than prompting.
+  - **When `purpose.statement` is empty** (arrived via the demo, or said "not sure yet")
+    → there is nothing to derive from, so ask ONE line:
+    > One thing you're working on right now? I'll seed it as your first task so tomorrow's
+    > briefing has something to stand on. `[type it]` `[skip]`
+  - **Field fill (both paths)** → copy `work/templates/STATUS.md` to
+    `work/tasks/<slug>/STATUS.md` and fill EVERY required field with no leftover
+    placeholders: `slug` = the folder name, `type` = a fitting enum (default `admin`),
+    `status: doing`, `created`/`last_updated` via `date +%Y-%m-%d`, `sync.bridge_only:
+    true`, and a real one-line `origin` (the purpose sentence, or "Onboarding
+    first-session intake" on the empty-purpose path).
+  - **`[skip]`** (empty-purpose path only) → seed a single tickable "Getting oriented"
+    starter task whose Next Steps are the real `/bridge-onboard --features` / `--add`
+    / `--rescan` commands.
   - **Always** append one factual onboarding-completion row to today's day-block in
     `work/log.md`, then run `python3 scripts/gen-board.py` so `board.md` Doing shows ≥ 1.
-    Consent-free (user-typed, no scan) and `bridge_only` (no GitHub dependency).
+    Consent-free (derived from the user's own words, no scan) and `bridge_only` (no GitHub
+    dependency).
 
 On `[n]`: leave `work.enabled: false`, explicitly mention that
 `/briefing`, `/debrief`, `/archive`, and **`feature-discovery`** are
