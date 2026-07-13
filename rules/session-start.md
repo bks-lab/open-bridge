@@ -193,6 +193,11 @@ to do. Short, confident, immediately useful, oriented around *them*.
   private.** On a public or unknown origin, say the truth ("this clone still
   points at the public repo — first thing, let's give your data a private home").
   Getting this wrong is the exact leak-footgun the guard exists to catch.
+- **Never claim the guard is armed unless Step 0's arming actually succeeded.**
+  Arming is fail-soft (it may error on an odd setup). If it did *not* succeed, drop
+  the "already armed" line and say so: *"I couldn't arm the guard automatically — run
+  `./bin/setup` once; until then I'll flag before any push."* Only assert "armed" when
+  `git config --get core.hooksPath` returned `scripts/hooks`.
 - **Never nag.** On a confirmed-private origin, drop the "make it private"
   recommendation to a single confirming line — a good advisor doesn't push a
   problem the client doesn't have.

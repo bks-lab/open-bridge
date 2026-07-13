@@ -111,7 +111,7 @@ origin; CORE reaches a public upstream only via `/promote`. Canonical rule:
 |---|---|
 | `/bridge-onboard` | Full wizard (Phases A–F) |
 | `/bridge-onboard --rescan` | Broaden discovery (sets `discovery.mode: broader`); re-run Phase B+C with persisted permissions; surface new evidence; skip already-accepted features |
-| `/bridge-onboard --reset` | Delete scan + state files; restart Phase B from scratch. Prompts to delete `bridge-config.yaml` for true clean-slate |
+| `/bridge-onboard --reset` | Delete scan + state files; restart from Phase A (re-runs the scope-consent gate + purpose). Prompts to delete `bridge-config.yaml` for true clean-slate |
 | `/bridge-onboard --add <feature>` | Skip A+B+D+E+F, run only the matching S-block from `smart-suggestions.md` (e.g. `--add personas`, `--add doc-system`) |
 | `/bridge-onboard --add agent-soul` | Skip everything except D4 — re-pick the soul deck and reshape SOUL.md / IDENTITY.md |
 | `/bridge-onboard --purpose` | Skip everything except the Phase-A purpose step — set/change `purpose.statement` + `purpose.focus` (re-derive `user_profile`), then re-render the Phase F preview ordering. Never gates a feature |
@@ -161,7 +161,7 @@ User wants to...
 |---|---|
 | `references/workflow.md` | Six-phase wizard execution plan (entry point for full onboarding) |
 | `references/system-discovery.md` | Phase B — what gets scanned, with which permission, what's never scanned |
-| `references/smart-suggestions.md` | Phase C — evidence → recommendation mapping (S1–S12) with full advisory text |
+| `references/smart-suggestions.md` | Phase C — evidence → recommendation mapping (S1–S14) with full advisory text |
 | `references/feature-catalog.md` | Phase E + `--features` — read-only catalogue of all Bridge features |
 | `references/discovery.md` | Legacy: repo-only ecosystem detection. Now a sub-case of `system-discovery.md` |
 | `references/preview-generator.md` | Phase F — HTML preview with Activated + Suggested-for-later sections |

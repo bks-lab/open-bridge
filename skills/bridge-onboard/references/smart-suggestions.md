@@ -559,7 +559,7 @@ Write each decision to `work/onboarding-state.yaml` per the schema in
 
 ## Adding a Feature Later — `/bridge-onboard --add <feature>`
 
-The same advisory blocks (S1–S12) are reused when the user invokes
+The same advisory blocks (S1–S14) are reused when the user invokes
 `--add <feature>` (e.g. `--add personas`, `--add doc-system`). The
 mode is: skip Phases A, B, D, E, F; run only the single S-block
 matching the feature; record the result in `onboarding-state.yaml`.

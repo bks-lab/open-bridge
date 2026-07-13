@@ -57,21 +57,26 @@ wall.
 # Phase Map
 
 ```
-A  Quick Identity              60 sec   purpose + name + projects_root + GitHub-opt + lang + scope-consent gate
+A  Quick Identity             ~90 sec   GATHER: purpose (from the door) + name/org/root/lang + origin + scope · then the confirm-back gate ([go] executes)
 B  Discovery Scan             ~60 sec   permission-gated system scan (broader mode only; skipped if confined)
 C  Smart Suggestions         ~2-3 min   evidence → feature recommendations (skipped if confined)
-D  Quick-Wins                ~2 min    work-system + theme + 3 starter agents + agent soul/identity (deck-picked)
-E  Feature Catalog          read-only   "what else Bridge can do, when to add it"
-F  Validate + Preview        ~30 sec   schema check, HTML preview, re-entry hints
+D  Quick-Wins                ~2 min    work-system (+ seed a real first task) + theme + agent soul/identity (deck-picked)
+E  Feature Catalog          read-only   pointer to "what else Bridge can do" (full catalogue in the Phase-F preview / --features)
+F  Validate + Preview        ~45 sec   advisory schema check, HTML preview, then a LIVE /briefing --quick over the seeded task
 ```
 
-Total: 5-8 minutes for a tailored setup, ~3 minutes for "defaults only".
+Total: ~5 minutes for the confined default (incl. a seeded first task + a live briefing), 5-8 for a tailored broader setup.
 
 ---
 
 ## Phase A — Quick Identity
 
-A tight identity block — five questions (purpose included), one branch creation, and the scope-consent gate (step 7, always last).
+A tight identity block. **Steps 1–7 GATHER only — they decide, they do not write.** The
+single commit point is the **confirm-back (step 8)**: on `[go]` it executes, in order, the
+private-home re-home (if needed), the guard re-arm, the `user/{name}` branch, and every
+config write. So "nothing's written yet" at step 8 is literally true, and `[adjust]` can
+reopen any gathered field with nothing to roll back. Steps 9–10 (workspace / resource
+advisories) fire only after `[go]`, once the branch exists.
 
 1. **Name** — detect from `git config user.name`; offer it back. Becomes
    `identity.name` and the suffix of the user branch. If `git config
@@ -109,34 +114,29 @@ A tight identity block — five questions (purpose included), one branch creatio
    (`statement: ""` + `focus: []`, `user_profile: both`) reproduces today's exact
    flat, general-purpose behaviour — **zero regression**. Change anytime via
    `/bridge-onboard --purpose`.
-6. **Check the origin, then create the `user/{name}` branch.** First resolve where
-   this clone pushes: `git remote get-url origin` (and `gh repo view --json
+6. **Resolve the private home (decide now, execute on `[go]`).** Work out where this
+   clone pushes: `git remote get-url origin` (and `gh repo view --json
    visibility,nameWithOwner` if unsure). **If `origin` is a PUBLIC repo or a known
-   upstream (e.g. `bks-lab/open-bridge`) — or `.bridge-origin` says
-   `is_public: true` — STOP.** The user's data must not live on a public origin.
-   Advise the private-origin setup (GitHub *Use this template → Private*, or re-home
-   `origin` to a new private repo with open-bridge as a read-only `upstream` — the
-   two-step `git remote rename origin upstream` then `gh repo create <you>/my-bridge
-   --private --source=. --remote=origin --push`) and continue only once `origin` is
-   private — or the user explicitly chooses local-only and will never push.
+   upstream (e.g. `bks-lab/open-bridge`) — or `.bridge-origin` says `is_public: true` —
+   the user's data must not live there.** Decide the path with the user, but do **not**
+   execute it here — it runs on `[go]` at step 8:
+   - **Re-home** to a new private repo (GitHub *Use this template → Private*, or the
+     two-step `git remote rename origin upstream` then `gh repo create <you>/my-bridge
+     --private --source=. --remote=origin --push`), **or**
+   - **local-only** — the user explicitly keeps it local and never pushes.
 
-   **On a confirmed re-home to the user's own private repo, write a slug-matched
-   [`.bridge-origin`](../../../.bridge-origin)** (`repo: <new private slug>`,
+   On `[go]`, a confirmed re-home also writes a slug-matched
+   [`.bridge-origin`](../../../.bridge-origin) (`repo: <new private slug>`,
    `is_public: false`) so the first legitimate `user/*` push classifies PRIVATE even
    offline, instead of the guard fail-closing on an unverifiable remote. **Only ever
    write `is_public: false` for an origin confirmed private — never for a still-public
    origin** (that would make a leak easier, not harder).
 
-   Then create the branch from the core/default branch. Step 0 already armed the guard
-   unconditionally; re-arm here as belt-and-suspenders so the backstop is provably live
-   before the branch (and any private commit) exists:
-   ```bash
-   git config core.hooksPath scripts/hooks   # arm the pre-push guard (idempotent; Step 0 already did this)
-   git checkout -b user/{name}
-   ```
-   (where `{name}` is the slug from step 1). Your personal data lives here, CORE stays
-   clean. Confirm the new branch is checked out before writing any USER files. **Never
-   push `user/{name}` to a public origin** — CORE reaches a public upstream only via
+   The `user/{name}` branch (`git checkout -b user/{name}` from the core/default branch)
+   and a belt-and-suspenders guard re-arm (`git config core.hooksPath scripts/hooks` —
+   Step 0 already did it) are part of the `[go]` execution too, **not** run here — so no
+   `user/*` branch or private commit exists until the user confirms. **Never push
+   `user/{name}` to a public origin** — CORE reaches a public upstream only via
    `/promote`. See [`../../../rules/push-guard.md`](../../../rules/push-guard.md).
 
 **Upstream wiring — defer.** Keep `upstreams: []`. Mention in passing:
@@ -144,9 +144,9 @@ A tight identity block — five questions (purpose included), one branch creatio
 it via `/bridge-onboard --upstream`". No Variant-Wahl prompt while the
 upstream repos are not public yet.
 
-7. **Scope consent gate — the last step before any scanning.** Before Phase B
-   looks at anything beyond this folder, the user makes one explicit choice.
-   This is the consent boundary: with no explicit "yes", the Bridge never
+7. **Scope consent gate — gather the choice (the write + routing happen on `[go]`).**
+   The last thing gathered before the confirm-back: the user makes one explicit scan
+   choice. This is the consent boundary: with no explicit "yes", the Bridge never
    scans — not now, not later. Render this verbatim:
    ```
    One choice before I look at anything beyond this folder — no wrong answer:
@@ -159,14 +159,13 @@ upstream repos are not public yet.
 
      [1] Confined (default)   [2] Broader   [?] exactly what would broader look at?
    ```
-   - **`[1]` Confined (default)** — write `discovery.mode: confined` and
-     `discovery.permissions: []` to `bridge-config.yaml`, then **skip Phase B
-     and Phase C entirely → jump to Phase D**. Nothing on the machine is read.
-     The user keeps every feature; they enable what they want from the Phase E
-     catalog, via `/bridge-onboard --add <feature>`, or by flipping the
-     feature's `enabled:` flag in `bridge-config.yaml`.
-   - **`[2]` Broader** — write `discovery.mode: broader` and continue into
-     Phase B, where the existing per-source permission model applies as today.
+   - **`[1]` Confined (default)** — records the intent to write `discovery.mode:
+     confined` + `discovery.permissions: []` (written on `[go]`). Nothing on the machine
+     is ever read; **after `[go]`, Phase B and Phase C are skipped → straight to Phase D.**
+     The user keeps every feature; they enable what they want from the Phase E catalog,
+     via `/bridge-onboard --add <feature>`, or by flipping the feature's `enabled:` flag.
+   - **`[2]` Broader** — records the intent to write `discovery.mode: broader`; **after
+     `[go]`, continue into Phase B**, where the existing per-source permission model applies.
    - **`[?]`** — answer from the Phase B permission prompt
      (`system-discovery.md`): which sources, default-on vs opt-in,
      names-and-structure-only, never content/secrets — then re-show the two
@@ -192,8 +191,17 @@ upstream repos are not public yet.
 
      [go]  [adjust]  [d] show me the demo first
    ```
-   `[go]` runs the private-home gate (if origin public/unknown) → branch → writes.
-   `[adjust]` reopens any line. `[d]` drops into `examples/agency` (restart there).
+   **On `[go]`, execute in this order** (nothing above has run — steps 1–7 only gathered):
+   1. re-home to the private repo if the user chose it (+ write the slug-matched
+      `.bridge-origin`), or confirm local-only — the private-home gate;
+   2. re-arm the guard (`git config core.hooksPath scripts/hooks`, belt-and-suspenders to Step 0);
+   3. `git checkout -b user/{name}` from the core/default branch;
+   4. write the `bridge-config.yaml` skeleton (identity, `purpose.*`, `discovery.mode`);
+   5. route: **Broader → Phase B** · **Confined → Phase D** (skip B + C);
+   6. the step-9 workspace + step-10 resource advisories fire here (the branch now exists).
+
+   `[adjust]` reopens any gathered line — nothing has executed, so there is nothing to roll
+   back. `[d]` drops into `examples/agency` (restart there).
 
 9. **Workspace opt-in — only when the signal fired, and only after the branch exists.**
    The workspace / overlay verbs are `user/*`-branch-gated, so this comes AFTER
@@ -236,13 +244,13 @@ upstream repos are not public yet.
     - `[l] later` records a deferred suggestion in `work/onboarding-state.yaml`. **No
       machine/device signal → this beat never fires** — it is offer-triggered, never a nag.
 
-**Output of Phase A:**
-- `bridge-config.yaml` skeleton (identity block populated, all features off,
-  `purpose.statement` + `purpose.focus` set from step 5 — both empty if the user
-  skipped, `user_profile` derived from the statement or from `[w]/[p]/[b]`,
-  `discovery.mode` set to the user's choice — `confined` if unset)
-- `user/{name}` branch created (`git checkout -b user/{name}`) and checked out
-- On `[1]` Confined: control jumps to Phase D; on `[2]` Broader: continue to Phase B
+**Output of Phase A (all produced on `[go]`, step 8 — steps 1–7 gathered only):**
+- `bridge-config.yaml` skeleton — identity populated, all features off,
+  `purpose.statement` + silently-derived `purpose.focus`/`user_profile` (empty if the user
+  skipped), `discovery.mode` = the user's choice (`confined` if unset)
+- `user/{name}` branch created and checked out; private home resolved (re-homed to a private
+  repo, or explicit local-only)
+- Routing: `[1]` Confined → Phase D (Phase B + C skipped) · `[2]` Broader → Phase B
 
 ---
 
@@ -330,7 +338,7 @@ table in [`references/smart-suggestions.md`](smart-suggestions.md).
    `work/onboarding-state.yaml` if present (skip suggestions already
    `accepted` or `silenced`).
 
-2. **For each evidence-matching suggestion** (S1–S12 in
+2. **For each evidence-matching suggestion** (S1–S14 in
    `smart-suggestions.md`), in priority order:
    - Read the advisory text for that block
    - Substitute the variable parts with actual scan data
