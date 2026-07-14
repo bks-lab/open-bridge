@@ -363,11 +363,12 @@ a deliberate exception to the Phase 8 pointer-only rule, scoped to gold-protocol
 **2. Anchor the transcripts.**
 
 ```bash
-python skills/debrief/scripts/anchor_transcript.py \
+python skills/meeting-transcription/scripts/anchor_transcript.py \
   <home>/transcript-call.md <home>/transcript-internal.md --prefix c i
 ```
 
-This is a **mechanical bridge-side transform** — it rewrites each utterance in-place
+This is a **mechanical transform owned by the `meeting-transcription` skill** (the
+transcript producer), invoked bridge-side here — it rewrites each utterance in-place
 with a stable anchor `<a name="c-NNN"></a>` and a relative timestamp `[+MM:SS]`,
 and writes `transcript-call.index.tsv` / `transcript-internal.index.tsv`
 (columns: `anchor ⇥ rel ⇥ speaker ⇥ text`). Idempotent. The worker merge stays

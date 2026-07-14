@@ -17,9 +17,11 @@ Discovery rule (codified):
         this is a transcription context;
         emit <out_dir>/<id>.yaml with its fields flattened.
 
-Run from the bridge repo root before rsyncing to the worker. The worker host
-comes from $TRANSCRIBE_WORKER (or your bridge-config's worker.host) — there is
-no default host; the `:?` expansion below fails loud when it is unset:
+Run from the bridge repo root. In REMOTE mode the output is rsynced to the worker
+(host from $TRANSCRIBE_WORKER or infra/transcriptions/topology.yaml worker.host);
+in LOCAL mode add_context.sh copies it into the local
+~/transcribe-pipeline/contexts/ for you. Remote deploy example (the `:?` expansion
+fails loud when the host is unset):
 
     python3 skills/meeting-transcription/scripts/extract_runtime_contexts.py \\
         --src workflow/contexts \\

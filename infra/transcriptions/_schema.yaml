@@ -1,0 +1,77 @@
+# Bridge Transcription Topology Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates infra/transcriptions/topology.yaml — the single declaration of WHERE
+# and HOW the meeting-transcription pipeline runs (a remote worker reached over
+# SSH, or fully local on one machine). Like infra/backups, this is NOT a glob of
+# <id>.yaml instances: there is ONE topology.yaml. The meeting-transcription skill
+# reads it; there is no state sidecar.
+#
+# Validation:
+#   check-jsonschema --schemafile infra/transcriptions/_schema.yaml \
+#                    infra/transcriptions/topology.yaml
+#
+# IDE support: add to topology.yaml:  # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/transcription-topology.yaml"
+title: Bridge Transcription Topology
+description: |
+  Transcription topology — WHERE the pipeline runs. `mode: remote` reaches a
+  worker host over ssh+rsync; `mode: local` runs every stage on this machine with
+  plain filesystem ops (no SSH). Content/linguistic per-context settings live
+  separately in workflow/contexts/<ctx>.yaml (integrations.transcription); this
+  file is placement only.
+
+type: object
+required: [schema_version, mode]
+additionalProperties: true          # v1 permissive
+
+properties:
+
+  schema_version:
+    type: integer
+    description: "Schema version of this topology file (current: 1)."
+
+  mode:
+    enum: [local, remote]
+    description: |
+      THE topology switch. Env TRANSCRIBE_MODE overrides this key.
+      `remote`: the pipeline lives on worker.host, reached over ssh + rsync.
+      `local`:  bridge and worker are the same machine; every op is a local
+      filesystem cp/mv and the SSH reachability probe is skipped.
+
+  worker:
+    type: object
+    additionalProperties: true
+    description: |
+      Consulted only when mode == remote. A remote topology needs a host either
+      here or via the TRANSCRIBE_WORKER env; the skill fails loud when neither is
+      present (this schema stays permissive so an env-only setup still validates).
+    properties:
+      host:
+        type: string
+        description: "SSH/Tailscale alias of the worker host — see infra/remotes/ (env TRANSCRIBE_WORKER overrides)."
+      launchd_label:
+        type: string
+        description: "launchd label of the worker job, kicked after a push (default com.openbridge.transcribe-worker)."
+
+  local:
+    type: object
+    additionalProperties: true
+    description: |
+      Consulted only when mode == local. ALL keys optional — defaults are the
+      worker's own conventional dirs on this box, so a same-machine clone can
+      omit this block entirely.
+    properties:
+      transcripts_dir: {type: string, description: "Finished .md land here (default ~/Transcripts)."}
+      inbox_dir:       {type: string, description: "push drops audio here (default ~/transcribe-inbox)."}
+      library_dir:     {type: string, description: "Per-context speaker libraries (default ~/transcribe-pipeline/speaker-library)."}
+      contexts_dir:    {type: string, description: "Flat runtime context yamls the worker reads (default ~/transcribe-pipeline/contexts)."}
+      launchd_label:   {type: string, description: "Local worker job kicked after a push; omit on Linux / no launchd."}
+
+# Notes (advisory):
+# - topology.yaml is the source of truth for PLACEMENT — NEVER hardcode a worker
+#   host or launchd label in the skill; read this file.
+# - This file is USER-scope: it carries an instance hostname and never promotes
+#   upstream. Only _template.yaml / _schema.yaml / README.md ship in CORE.
+# - NEVER store credentials here — worker auth is your SSH config / keychain.

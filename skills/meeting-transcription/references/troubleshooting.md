@@ -7,7 +7,7 @@ last_updated: 2026-07-02
 # Troubleshooting
 
 Start with the log: `ssh worker-host 'tail -50 ~/Library/Logs/transcribe-worker.log'`
-(`worker-host` = your `integrations.transcription.worker.host` alias; env
+(`worker-host` = your `infra/transcriptions/topology.yaml` `worker.host` alias; env
 `TRANSCRIBE_WORKER` overrides). Each bundle leaves flags: `.FAILED` (errored,
 will retry), `.PROCESSING` (in flight or crashed mid-run), `.PROCESSED` (done).
 A stuck `.lock` dir from a crashed run blocks reprocessing — `rmdir <bundle>/.lock`.

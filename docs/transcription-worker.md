@@ -1,9 +1,10 @@
 ---
 summary: "Bring-your-own transcription worker — the contract between /debrief and any transcription pipeline, plus the no-worker manual path"
 type: guide
-last_updated: 2026-07-02
+last_updated: 2026-07-14
 related:
   - ../skills/debrief/SKILL.md
+  - ../infra/transcriptions/README.md
   - work-system.md
 ---
 
@@ -42,13 +43,39 @@ integrations:
     enabled: true
     sync_script: "skills/meeting-transcription/scripts/debrief_sync.sh"  # repo-relative; swap for your own
     default_context: main       # context for audio handed off without an explicit one
-    worker:                     # read by the reference implementation (yours may differ)
-      host: worker-host         # SSH/Tailscale alias — see infra/remotes/
-      launchd_label: com.openbridge.transcribe-worker
     contexts:
       main:                     # → workflow/contexts/main.yaml
         imports: work/imports   # where this context's finished transcripts land
 ```
+
+Placement — **where** the reference pipeline runs (a remote worker over SSH, or
+fully local on one machine) — is **not** in this block; it lives in
+[`infra/transcriptions/topology.yaml`](../infra/transcriptions/README.md). This
+block stays **registration + routing** (capability on/off, which script, which
+contexts). A custom `sync_script` may read placement however it likes.
+
+### Transport modes (reference `debrief_sync.sh`)
+
+The reference sync script picks a transport from `infra/transcriptions/topology.yaml`
+`mode` (env `TRANSCRIBE_MODE` overrides):
+
+- **`remote`** — the pipeline lives on `worker.host`; every `pull` / `push` /
+  `voiceprints` op runs over `ssh` + `rsync`. An unreachable worker exits
+  non-zero and `/debrief` degrades to Path 1.
+- **`local`** — bridge and worker are the same machine; every op is a plain
+  filesystem `cp` / `mv` and the SSH reachability probe is skipped, so a fresh
+  single-machine clone runs with **no SSH**. (Local removes SSH, not the compute
+  stack — whisper.cpp + pyannote + an Apple-Silicon GPU are still required.)
+
+`mode` governs only the reference implementation; a custom `sync_script` supplies
+its own transport.
+
+**Optional richer output tier (additive, reserved).** A worker MAY deliver its
+`.md` already anchored and emit a same-basename `<name>.index.tsv` sidecar
+(`anchor ⇥ rel ⇥ speaker ⇥ text`); `pull` fetches it when present, and a minimal
+worker that emits only the naked `.md` is unaffected (a `.index.tsv` is not in
+the Find-phase transcript glob). The reference pipeline does not emit it today —
+anchoring runs bridge-side in `/debrief` — but the contract permits it.
 
 ### The sync-script contract
 
@@ -87,7 +114,8 @@ them.
 open-bridge ships a full implementation of this contract:
 [`skills/meeting-transcription/`](../skills/meeting-transcription/SKILL.md) —
 whisper.cpp large-v3 (Metal) + pyannote diarization (MPS) on a worker host you
-provision, per-context voice libraries for speaker naming, launchd automation,
+provision **or a single local machine** (see Transport modes), per-context voice
+libraries for speaker naming, launchd automation,
 and `scripts/debrief_sync.sh` as the sync script. Point
 `integrations.transcription.sync_script` at it and follow its
 `references/deployment.md`. The contract above stays the boundary — any other

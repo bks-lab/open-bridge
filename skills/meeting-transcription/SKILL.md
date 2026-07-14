@@ -36,10 +36,10 @@ talks to it only through `scripts/debrief_sync.sh` (`pull` / `push`).
 
 ## Configuration — the yaml wiring
 
-Two config surfaces, same pattern as every other capability:
+Three config surfaces, same pattern as every other capability:
 
-**1. `bridge-config.yaml` — the integration block** (who is the worker, which
-contexts exist, what does /debrief call):
+**1. `bridge-config.yaml` — the integration block** (is the capability on, which
+script, which contexts — registration + routing):
 
 ```yaml
 integrations:
@@ -47,21 +47,36 @@ integrations:
     enabled: true
     sync_script: "skills/meeting-transcription/scripts/debrief_sync.sh"
     default_context: main        # context for audio handed off without an explicit one
-    worker:
-      host: worker-host          # SSH/Tailscale alias (see infra/remotes/) — REQUIRED
-      launchd_label: com.openbridge.transcribe-worker
     contexts:
       main:                      # → workflow/contexts/main.yaml
         imports: work/imports    # where this context's transcripts land on pull
 ```
 
-Every script resolves env first, then this block (`TRANSCRIBE_WORKER`,
-`BRIDGE_IMPORTS`, `TRANSCRIBE_CONTEXTS` override `worker.host`, imports,
-context list). There is **no default host** — an unconfigured pipeline fails
-loud with a pointer here, and `/debrief` degrades gracefully to its manual
-path (see the contract doc).
+`BRIDGE_IMPORTS` / `TRANSCRIBE_CONTEXTS` env-override the imports dir + context
+list. `/debrief` degrades gracefully to its manual path when the block is absent
+(see the contract doc).
 
-**2. `workflow/contexts/<ctx>.yaml` — per-context settings.** A context
+**2. `infra/transcriptions/topology.yaml` — placement** (WHERE the pipeline runs):
+
+```yaml
+mode: remote                   # local | remote — THE topology switch (env TRANSCRIBE_MODE overrides)
+worker:                        # consulted only when mode == remote
+  host: worker-host            # SSH/Tailscale alias — see infra/remotes/
+  launchd_label: com.openbridge.transcribe-worker
+# local:                       # consulted only when mode == local; all keys optional
+#   inbox_dir:       ~/transcribe-inbox        # defaults = the worker's own conventions
+#   transcripts_dir: ~/Transcripts
+#   library_dir:     ~/transcribe-pipeline/speaker-library
+#   contexts_dir:    ~/transcribe-pipeline/contexts
+```
+
+Resolution: `TRANSCRIBE_MODE` / `TRANSCRIBE_WORKER` env > `topology.yaml` >
+inferred (a worker host resolves ⇒ remote, else local). `remote` runs every op
+over ssh+rsync; `local` runs plain filesystem cp/mv with **no SSH** (the compute
+stack is still required). An unknown mode fails loud. Schema + guide:
+[`infra/transcriptions/README.md`](../../infra/transcriptions/README.md).
+
+**3. `workflow/contexts/<ctx>.yaml` — per-context settings.** A context
 "participates in transcription" iff it carries an `integrations.transcription:`
 block (schema: `IntegrationTranscription` in `workflow/contexts/_schema.yaml`):
 
@@ -153,7 +168,10 @@ the matching reference — they hold the detail so this file stays scannable.
 - **Summary = NOT here.** The worker does no summarizing — it delivers the
   naked transcript only. Summary + task-extraction happen in the in-session
   `/debrief`. `summarize.py` survives only as a manual headless fallback;
-  `prompts/meeting-summary-{de,en}.md` is the `/debrief` summary template.
+  `prompts/meeting-summary-{de,en}.md` is the `/debrief` summary template. The
+  mechanical `scripts/anchor_transcript.py` (per-utterance anchors + `.index.tsv`,
+  makes a transcript addressable) is owned here but invoked by `/debrief`'s gold
+  path; the interpretive `↪` evidence-linking stays in-session.
 - **Engine = hybrid (GPU).** ASR runs on **whisper.cpp** large-v3 (Metal) via
   `asr_whispercpp.py`; diarization + the 256-d embeddings run on
   **pyannote/MPS** via `diarize_assign.py` — the *same* embedding space the

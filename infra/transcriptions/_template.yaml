@@ -1,0 +1,41 @@
+---
+# yaml-language-server: $schema=./_schema.yaml
+# Transcription topology — template.
+#
+# Declares WHERE the meeting-transcription pipeline runs. Copy this file to
+# infra/transcriptions/topology.yaml and pick a mode. The meeting-transcription
+# skill reads topology.yaml; nothing runs until the skill's pipeline is deployed.
+#
+# Two axes, kept separate:
+#   - PLACEMENT (this file): mode + worker host + local paths.
+#   - CONTENT  (workflow/contexts/<ctx>.yaml -> integrations.transcription):
+#     language / library / output / notify / mic_speaker.
+#
+# Variable interpolation (from bridge-config.yaml.identity): ${home}, ...
+# A leading ~ expands to $HOME.
+schema_version: 1
+
+# THE topology switch: local | remote.  (Env TRANSCRIBE_MODE overrides.)
+#   local  — bridge and worker are the SAME machine. Every op is a local
+#            filesystem cp/mv; no SSH, no Remote Login. NOTE: local mode still
+#            needs the full COMPUTE stack installed on this box (whisper.cpp +
+#            pyannote, an Apple-Silicon GPU, venvs, HF token) — see the skill's
+#            deployment reference. `local` governs transport, not zero-setup.
+#   remote — the pipeline lives on `worker.host`, reached over ssh + rsync.
+mode: local
+
+# Consulted only when mode == remote. Uncomment + fill for a remote worker:
+# worker:
+#   host: my-worker-host              # SSH/Tailscale alias — see infra/remotes/
+#                                     # (env TRANSCRIBE_WORKER overrides this)
+#   launchd_label: com.openbridge.transcribe-worker
+
+# Consulted only when mode == local. ALL keys optional — the defaults below are
+# the worker's own conventions on this box, so a same-machine clone can delete
+# this whole block.
+# local:
+#   transcripts_dir: ~/Transcripts
+#   inbox_dir:       ~/transcribe-inbox
+#   library_dir:     ~/transcribe-pipeline/speaker-library
+#   contexts_dir:    ~/transcribe-pipeline/contexts
+#   launchd_label:   com.openbridge.transcribe-worker   # omit on Linux / no launchd

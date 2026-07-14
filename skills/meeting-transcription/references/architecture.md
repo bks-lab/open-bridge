@@ -11,11 +11,13 @@ last_updated: 2026-07-02
 | Role | Machine | Why there |
 |---|---|---|
 | **Capture** (optional) | The capture Mac (env `CAPTURE_HOST`) | Audio Hijack license + the meetings happen here. Without a dedicated capture machine, record anywhere and hand audio off via `debrief_sync.sh push`. |
-| **Worker** | The worker host (`bridge-config.yaml` → `integrations.transcription.worker.host`, env `TRANSCRIBE_WORKER` overrides; examples use `worker-host`) | Always-on Apple-silicon box; runs whisper.cpp (Metal) + pyannote (MPS). **Transcription only — no summarizing.** |
+| **Worker** | The worker host (`infra/transcriptions/topology.yaml` → `worker.host`, env `TRANSCRIBE_WORKER` overrides) **or this same machine** when `mode: local` | Apple-silicon box (or your own machine); runs whisper.cpp (Metal) + pyannote (MPS). **Transcription only — no summarizing.** |
 | **Summarizer + task-extraction** | in-session `/debrief` | Has the bridge context (name-conventions, board, open issues, contexts) that a headless worker `claude -p` lacks. Worker = mechanical transcription; interpretation lives here. |
 
-There is **no default worker host** — the SSH/Tailscale alias must be configured.
-Recordings never block the user: capture writes a file, launchd notices, the
+Placement is set in `infra/transcriptions/topology.yaml`: `mode: remote` needs a
+`worker.host` (SSH/Tailscale alias — no default); `mode: local` runs every stage
+on this machine with no SSH. Recordings never block the user: capture writes a
+file, launchd notices, the
 rest is asynchronous. If the worker is asleep, bundles wait with a `.READY` flag
 and a catch-up pass pushes them when it wakes.
 
@@ -141,8 +143,9 @@ skills/meeting-transcription/
     extract_voice_sample.py        bootstrap a library entry from an audio clip
     summarize.py                   claude -p → structured summary (manual fallback only)
     extract_runtime_contexts.py    deploy: bridge contexts → flat worker yamls
-    add_context.sh                 bridge-side bootstrap (remote mkdirs + Audio Hijack)
-    debrief_sync.sh                bridge ↔ /debrief handoff + voiceprint backup (pull, push, voiceprints)
+    add_context.sh                 bridge-side bootstrap (remote OR local mkdirs + runtime-yaml deploy)
+    debrief_sync.sh                bridge ↔ /debrief handoff (pull, push, voiceprints); remote or local transport per topology
+    anchor_transcript.py           mechanical per-utterance anchors + .index.tsv (invoked by /debrief's gold path)
 ```
 
 The `.plist` files ship with `REPLACE_ME_HOME` placeholders — the deploy step
