@@ -8,7 +8,7 @@ last_updated: 2026-07-02
 
 All paths are on the worker host under `~/transcribe-pipeline/` unless noted.
 Examples use `worker-host` as the SSH alias — yours comes from
-`bridge-config.yaml` `integrations.transcription.worker.host` (env
+`infra/transcriptions/topology.yaml` `worker.host` (env
 `TRANSCRIBE_WORKER` overrides). Run Python via the venv:
 `source ~/venvs/whisperx/bin/activate` first, or use
 `~/venvs/whisperx/bin/python`. Remember the SSH-keychain caveat for `claude -p`

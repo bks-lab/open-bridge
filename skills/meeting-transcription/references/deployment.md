@@ -57,18 +57,19 @@ an optional capture Mac records, both reach the bridge repo).
   script (`debrief_sync.sh pull`) fetches them from there.
 
 **Bridge repo** (the orchestration side — where this skill lives):
-- The worker host wired in `bridge-config.yaml` — **required, there is no
-  default host**. The alias must resolve in your `~/.ssh/config` (SSH or
-  Tailscale name); env `TRANSCRIBE_WORKER` overrides it ad hoc:
+- Placement in `infra/transcriptions/topology.yaml`. For a **remote** worker the
+  alias must resolve in your `~/.ssh/config` (SSH or Tailscale); env
+  `TRANSCRIBE_WORKER` overrides it. For a **local** single-machine install set
+  `mode: local` — no worker host, no SSH (the compute stack below still applies):
   ```yaml
-  integrations:
-    transcription:
-      enabled: true
-      sync_script: "skills/meeting-transcription/scripts/debrief_sync.sh"
-      default_context: main
-      worker:
-        host: worker-host        # SSH/Tailscale alias — REQUIRED, no default
+  # infra/transcriptions/topology.yaml
+  mode: remote                 # local | remote
+  worker:                      # remote only
+    host: worker-host          # SSH/Tailscale alias
+    launchd_label: com.openbridge.transcribe-worker
   ```
+  Registration stays in `bridge-config.yaml → integrations.transcription`
+  (enabled, sync_script, contexts, default_context).
 - A context yaml per transcription target under `workflow/contexts/<ctx>.yaml`
   carrying an `integrations.transcription` block (the source of truth; schema:
   `IntegrationTranscription` in `workflow/contexts/_schema.yaml`).
@@ -99,8 +100,10 @@ an optional capture Mac records, both reach the bridge repo).
 
 ## Provision the worker host from scratch
 
-Examples use `worker-host` — replace with your alias from `bridge-config.yaml`
-`integrations.transcription.worker.host` (env `TRANSCRIBE_WORKER` overrides).
+Examples use `worker-host` — replace with your alias from `infra/transcriptions/topology.yaml`
+`worker.host` (env `TRANSCRIBE_WORKER` overrides). **Skip this whole section for
+`mode: local`** — the pipeline runs on this machine; `add_context.sh` bootstraps
+the local dirs and deploys the runtime contexts for you (no SSH).
 
 ```bash
 # 1. Skeleton

@@ -94,6 +94,9 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `infra/backups/_state.yaml` | USER (written by skill) | Last-run state |
 | `infra/backups/volumes/` | USER | Volume inventory |
 | `infra/backups/launchd/` | USER | Scheduled-backup launchd plists |
+| `infra/transcriptions/_template.yaml` | CORE | Transcription topology template |
+| `infra/transcriptions/_schema.yaml` | CORE | Transcription topology schema |
+| `infra/transcriptions/topology.yaml` | USER | Pipeline placement (mode local/remote, worker host) |
 
 ### `workflow/` — What happens when
 
@@ -187,7 +190,7 @@ CORE paths (developed on `main`):
 - `.claude/agents/` (scope: core)
 - Templates and schemas in every wrapper folder:
   - `identity/{personas,accounts,mandants}/{_template.yaml,_schema.yaml}`
-  - `infra/{remotes,channels,backups}/{_template.yaml,_schema.yaml}`
+  - `infra/{remotes,channels,backups,transcriptions}/{_template.yaml,_schema.yaml}`
   - `workflow/{calendars,contexts,projects}/{_template.yaml,_schema.yaml}`
 - `protocols/standing-orders/*.md` (shipped always-on rules)
 - `docs/examples/` (example configs for personas, projects)
@@ -196,7 +199,7 @@ USER paths (`user/{name}` branch):
 - `bridge-config.yaml`, `bridge-deck.config.yaml`
 - `identity/{personas,accounts,mandants}/<id>.yaml` (excluding templates/schemas)
 - `infra/remotes/<name>.yaml + setup.md`, `infra/channels/<name>.yaml`,
-  `infra/backups/topology.yaml + _state.yaml`
+  `infra/backups/topology.yaml + _state.yaml`, `infra/transcriptions/topology.yaml`
 - `workflow/calendars/entries.yaml`, `workflow/contexts/<id>.yaml`,
   `workflow/projects/<slug>.yaml`
 - `protocols/standing-orders/*.md` (own always-on rules)
