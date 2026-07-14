@@ -186,8 +186,15 @@ to do. Short, confident, immediately useful, oriented around *them*.
 
 ### Rules
 
-- **Mirror the user's message language.** German in → German out. The
-  template below is English — translate it on the fly, keep the structure.
+- **Default to English; mirror only a *clear* non-English signal.** open-bridge
+  is the international OSS default, so the first greeting is English unless the
+  user's message is unmistakably in another language. An ambiguous one-word
+  greeting ("hi", "hallo", "hey", "moin", "ok", "servus") is NOT a language
+  signal — greet in English and add one line offering to switch ("Prefer another
+  language? Just say so."); never silently commit to German (or any language)
+  from it. Once the user writes a clearly non-English sentence, switch and keep
+  mirroring. The template below is English — translate it on the fly, keep the
+  structure.
 - Keep it tight (~18 lines: reflect-line + four lanes + invite). Punchy, not a README.
 - No dumping all sub-agents, all standing orders, all commands — the
   onboarding itself will cover that.
@@ -221,6 +228,14 @@ to do. Short, confident, immediately useful, oriented around *them*.
   `&mdash;`, `&larr;`) for spacing or glyphs — they render as literal text in a
   terminal. Lay the lanes out as a plain list and use native UTF-8 characters
   (—, ·, ←) directly.
+- **An uncommitted edit or a public origin never downgrades NEW USER to CORE
+  DEV MODE.** Phase 0 classifies on branch + `user/*` + config ONLY (§Decision
+  matrix). On the core branch with no `user/*` and no config, always open the
+  four-lane door — even if the working tree has uncommitted changes (including
+  to CORE files like this one) or `origin` is the public upstream. A maintainer
+  working on CORE picks `[n]` (not now, stay CORE-only); never invent a
+  "CORE-dev" lane or recommend skipping onboarding — the `[n]` lane already
+  covers that, and improvising a skip is how a genuine new user gets shut out.
 
 ### Template — adapt the wording, keep the structure
 
