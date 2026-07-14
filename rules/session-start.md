@@ -180,9 +180,12 @@ to do. Short, confident, immediately useful, oriented around *them*.
    it for — I'll describe it, you tailor the setup · `[3]` make it private first
    (only recommended-first on a public/unknown origin) · `[4]` I work across
    several repos / a shared org config — bind a workspace. Plus `[n]` not now.
-6. **Plant the cross-tool path** in one line: "No `/commands` in your tool? Read
-   `skills/bridge-onboard/SKILL.md` → `references/workflow.md` and run the phases
-   inline." Every lane must name the exact markdown to read next.
+6. **Route on lane-pick — as an action, never a printed path.** When the user
+   picks a lane, run the onboarding yourself: invoke `/bridge-onboard`, or on a
+   tool without slash-commands read `skills/bridge-onboard/SKILL.md` →
+   `references/workflow.md` and run the phases inline (see § Lane → where it
+   goes). Never surface an internal skill or file path in the greeting — the
+   user picks a number; you do the rest.
 
 ### Rules
 
@@ -265,8 +268,6 @@ reflect-then-lanes shape. The `{name}`/`{slug}` fill from Step 0.
 > - **[4]** I work across several repos / a shared org config — bind them into one workspace
 >
 > …or just say it in your own words. **[n]** Not now — just answer my question.
->
-> *(No `/commands` in your tool? Read `skills/bridge-onboard/SKILL.md` → `references/workflow.md` and run the phases inline.)*
 
 **Origin-aware variants** (Step 0 already classified the origin — pick the
 matching one; the router **never** prints the false "your own private repo"
