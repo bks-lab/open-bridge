@@ -323,6 +323,10 @@ jobs:
       - name: Org-overlay engine contract (scope routing + materialize gates)
         run: bash scripts/tests/test-overlay.sh
 
+      - name: Meeting-transcription transport modes (local/remote)
+        if: hashFiles('skills/meeting-transcription/tests/test-transport-modes.sh') != ''
+        run: bash skills/meeting-transcription/tests/test-transport-modes.sh
+
       - name: Onboarding leak simulation (scripted, model-free)
         run: |
           set -euo pipefail
