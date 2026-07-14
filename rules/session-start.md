@@ -64,7 +64,11 @@ never let them block or delay the first response.
 3. **Read git identity** — `git config user.name` and `git config user.email`.
    If either is empty, the wizard later **offers** to set it (a fresh machine
    with no `user.email` otherwise breaks the onboarding commit). Read-only here;
-   nothing is written without the user's ok.
+   nothing is written without the user's ok. **The name is the only identity the
+   greeting surfaces; the email is read solely to confirm the onboarding commit
+   won't fail — never display it.** Both values come from `git config` ONLY —
+   never from your own account context (the assistant's `userEmail`), which is a
+   different identity and has been mistaken for git's before.
 
 **Core-branch detection one-liner** (cascading fallbacks, live-first):
 
@@ -205,6 +209,18 @@ to do. Short, confident, immediately useful, oriented around *them*.
   introducing itself as Stark Tower.
 - If the active theme defines a custom `assistant_name`, preserve its
   exact capitalization in all written output.
+- **Reflect only the git *name*, never an email.** The reflect-line's
+  `{name}` comes from `git config user.name` and nothing else. Never print an
+  email in the greeting, and never substitute your own account identity — the
+  assistant's `userEmail` in your context — for the repo's git identity: that is
+  a fabricated claim about a source you didn't read (it has produced a wrong
+  `…-srv@…` service address where `git config` actually said `…@gmail.com`). If
+  `git config user.name` is empty, say so plainly ("git has no name set yet") —
+  do not fill it from anywhere else.
+- **This is terminal markdown, not HTML.** Never use HTML entities (`&nbsp;`,
+  `&mdash;`, `&larr;`) for spacing or glyphs — they render as literal text in a
+  terminal. Lay the lanes out as a plain list and use native UTF-8 characters
+  (—, ·, ←) directly.
 
 ### Template — adapt the wording, keep the structure
 
@@ -228,10 +244,10 @@ reflect-then-lanes shape. The `{name}`/`{slug}` fill from Step 0.
 > do you want to start? Pick one, or just tell me in a sentence what you're here
 > to do:
 >
-> &nbsp;&nbsp;**[1]** Show me around first — a 2-minute live demo, nothing on your machine touched
-> &nbsp;&nbsp;**[2]** I know what I'll use it for — I'll describe it, you tailor the setup (~5 min)
-> &nbsp;&nbsp;**[3]** Make it private first — public clone; give my data a safe home before anything else &nbsp;← recommended first here
-> &nbsp;&nbsp;**[4]** I work across several repos / a shared org config — bind them into one workspace
+> - **[1]** Show me around first — a 2-minute live demo, nothing on your machine touched
+> - **[2]** I know what I'll use it for — I'll describe it, you tailor the setup (~5 min)
+> - **[3]** Make it private first — public clone; give my data a safe home before anything else ← recommended first here
+> - **[4]** I work across several repos / a shared org config — bind them into one workspace
 >
 > …or just say it in your own words. **[n]** Not now — just answer my question.
 >
