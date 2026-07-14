@@ -64,7 +64,11 @@ never let them block or delay the first response.
 3. **Read git identity** — `git config user.name` and `git config user.email`.
    If either is empty, the wizard later **offers** to set it (a fresh machine
    with no `user.email` otherwise breaks the onboarding commit). Read-only here;
-   nothing is written without the user's ok.
+   nothing is written without the user's ok. **The name is the only identity the
+   greeting surfaces; the email is read solely to confirm the onboarding commit
+   won't fail — never display it.** Both values come from `git config` ONLY —
+   never from your own account context (the assistant's `userEmail`), which is a
+   different identity and has been mistaken for git's before.
 
 **Core-branch detection one-liner** (cascading fallbacks, live-first):
 
@@ -176,14 +180,24 @@ to do. Short, confident, immediately useful, oriented around *them*.
    it for — I'll describe it, you tailor the setup · `[3]` make it private first
    (only recommended-first on a public/unknown origin) · `[4]` I work across
    several repos / a shared org config — bind a workspace. Plus `[n]` not now.
-6. **Plant the cross-tool path** in one line: "No `/commands` in your tool? Read
-   `skills/bridge-onboard/SKILL.md` → `references/workflow.md` and run the phases
-   inline." Every lane must name the exact markdown to read next.
+6. **Route on lane-pick — as an action, never a printed path.** When the user
+   picks a lane, run the onboarding yourself: invoke `/bridge-onboard`, or on a
+   tool without slash-commands read `skills/bridge-onboard/SKILL.md` →
+   `references/workflow.md` and run the phases inline (see § Lane → where it
+   goes). Never surface an internal skill or file path in the greeting — the
+   user picks a number; you do the rest.
 
 ### Rules
 
-- **Mirror the user's message language.** German in → German out. The
-  template below is English — translate it on the fly, keep the structure.
+- **Default to English; mirror only a *clear* non-English signal.** open-bridge
+  is the international OSS default, so the first greeting is English unless the
+  user's message is unmistakably in another language. An ambiguous one-word
+  greeting ("hi", "hallo", "hey", "moin", "ok", "servus") is NOT a language
+  signal — greet in English and add one line offering to switch ("Prefer another
+  language? Just say so."); never silently commit to German (or any language)
+  from it. Once the user writes a clearly non-English sentence, switch and keep
+  mirroring. The template below is English — translate it on the fly, keep the
+  structure.
 - Keep it tight (~18 lines: reflect-line + four lanes + invite). Punchy, not a README.
 - No dumping all sub-agents, all standing orders, all commands — the
   onboarding itself will cover that.
@@ -205,6 +219,26 @@ to do. Short, confident, immediately useful, oriented around *them*.
   introducing itself as Stark Tower.
 - If the active theme defines a custom `assistant_name`, preserve its
   exact capitalization in all written output.
+- **Reflect only the git *name*, never an email.** The reflect-line's
+  `{name}` comes from `git config user.name` and nothing else. Never print an
+  email in the greeting, and never substitute your own account identity — the
+  assistant's `userEmail` in your context — for the repo's git identity: that is
+  a fabricated claim about a source you didn't read (it has produced a wrong
+  `…-srv@…` service address where `git config` actually said `…@gmail.com`). If
+  `git config user.name` is empty, say so plainly ("git has no name set yet") —
+  do not fill it from anywhere else.
+- **This is terminal markdown, not HTML.** Never use HTML entities (`&nbsp;`,
+  `&mdash;`, `&larr;`) for spacing or glyphs — they render as literal text in a
+  terminal. Lay the lanes out as a plain list and use native UTF-8 characters
+  (—, ·, ←) directly.
+- **An uncommitted edit or a public origin never downgrades NEW USER to CORE
+  DEV MODE.** Phase 0 classifies on branch + `user/*` + config ONLY (§Decision
+  matrix). On the core branch with no `user/*` and no config, always open the
+  four-lane door — even if the working tree has uncommitted changes (including
+  to CORE files like this one) or `origin` is the public upstream. A maintainer
+  working on CORE picks `[n]` (not now, stay CORE-only); never invent a
+  "CORE-dev" lane or recommend skipping onboarding — the `[n]` lane already
+  covers that, and improvising a skip is how a genuine new user gets shut out.
 
 ### Template — adapt the wording, keep the structure
 
@@ -228,14 +262,12 @@ reflect-then-lanes shape. The `{name}`/`{slug}` fill from Step 0.
 > do you want to start? Pick one, or just tell me in a sentence what you're here
 > to do:
 >
-> &nbsp;&nbsp;**[1]** Show me around first — a 2-minute live demo, nothing on your machine touched
-> &nbsp;&nbsp;**[2]** I know what I'll use it for — I'll describe it, you tailor the setup (~5 min)
-> &nbsp;&nbsp;**[3]** Make it private first — public clone; give my data a safe home before anything else &nbsp;← recommended first here
-> &nbsp;&nbsp;**[4]** I work across several repos / a shared org config — bind them into one workspace
+> - **[1]** Show me around first — a 2-minute live demo, nothing on your machine touched
+> - **[2]** I know what I'll use it for — I'll describe it, you tailor the setup (~5 min)
+> - **[3]** Make it private first — public clone; give my data a safe home before anything else ← recommended first here
+> - **[4]** I work across several repos / a shared org config — bind them into one workspace
 >
 > …or just say it in your own words. **[n]** Not now — just answer my question.
->
-> *(No `/commands` in your tool? Read `skills/bridge-onboard/SKILL.md` → `references/workflow.md` and run the phases inline.)*
 
 **Origin-aware variants** (Step 0 already classified the origin — pick the
 matching one; the router **never** prints the false "your own private repo"
