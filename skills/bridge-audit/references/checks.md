@@ -466,8 +466,9 @@ actively encourages the second instance).
 P0 — ~/.claude/skills/<name> → <other-repo>/skills/<name> shadows this instance's
      skills/<name> (content differs) → this instance's own copy never loads.
      Remove the user-level pointer; .claude/skills → ../skills already covers it.
-P0 — ~/.claude/skills → this repo's skills/ exposes <n> scope:org|user skills
-     machine-wide → they load into every other instance's sessions.
+P0 — ~/.claude/skills → this repo's skills/ exposes <n> instance-bound skills
+     (scope org or user) machine-wide → they load into every other instance's
+     sessions.
 P1 — ~/.claude/skills resolves into a Bridge repo (<path>) → violates AGENTS.md
      § Skills. Latent while this is the only instance; it breaks the NEXT one,
      silently. Ship standalone tools as a plugin instead.
