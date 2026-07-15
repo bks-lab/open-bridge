@@ -17,7 +17,7 @@ Single source of truth for your backup topology. Three concepts:
 > **What open-bridge ships here:** the **data model + schema** (`_template.yaml`,
 > `_schema.yaml`, and these conventions). It does **not** ship an executor. The
 > actual backups are run by a *backup skill you supply* — a topology-reader +
-> tool-dispatcher (e.g. a globally installed `~/.claude/skills/backup/`) — or by
+> tool-dispatcher, shipped in your own instance or distributed as a plugin — or by
 > an org overlay. Everywhere below, "the backup skill" means that user-supplied
 > executor. You create `topology.yaml` (your instance config) from `_template.yaml`.
 

@@ -391,6 +391,102 @@ rewiring the read).
 
 ---
 
+## Check 13 — User-level skill shadowing
+
+Claude Code loads skills from the **user level** (`~/.claude/skills/`) as well as
+the project level, and on a name collision the user level wins ("personal
+overrides project" — [skills docs](https://code.claude.com/docs/en/skills.md)).
+Every Bridge ships the same CORE skill names, so a user-level pointer at *any*
+Bridge repo silently overrides other instances' own copies. There is no setting
+to invert precedence and none to relocate the skills path, so the only fix is to
+keep colliding names out of the user level.
+
+This is the audit backstop for the rule in `AGENTS.md` § Skills and
+[`docs/skill-distribution-architecture.md`](../../../docs/skill-distribution-architecture.md)
+§ Why the user level is not a distribution channel:
+
+> `~/.claude/skills` must not point at a Bridge repo.
+
+**Why it needs an automated check:** the failure is silent by construction. A
+shadowed instance emits *plausible* output from the wrong instance's skills —
+there is no error and no symptom to search for. Nothing else in the framework
+notices, and the framework is what leads users into it (`docs/multi-instance.md`
+actively encourages the second instance).
+
+**Sources:**
+- `~/.claude/skills/` — the directory itself, and each entry inside it.
+- `skills/*/` in this repo, with `metadata.scope` per skill.
+- A path counts as "a Bridge repo" when its enclosing repo root has an
+  `AGENTS.md` **and** a `skills/` directory (`bridge-config.yaml` is a further
+  hint but is gitignored, so it must not be required).
+
+**Algorithm:**
+1. `~/.claude/skills` does not exist → **pass**, stop. That is the correct state
+   for a machine whose skills all live in instances.
+2. Resolve it — and each entry inside it — with `realpath`. The pointer may be
+   the whole directory *or* per-skill symlinks inside a real directory; handle
+   both.
+3. Classify each resolved entry:
+
+   **(a) Outbound — resolves into THIS repo.** This instance is the *shadower*:
+   its skills are served to every other instance on the machine.
+   → **P1**; escalate to **P0** for any entry whose `metadata.scope` is `org` or
+   `user` — that content is instance-bound and is now loading elsewhere.
+
+   **(b) Inbound — resolves into a DIFFERENT Bridge repo.** This instance is the
+   *victim*. For every name that also exists in this repo's `skills/`:
+   → **P0** — this instance's own skill never loads; the other instance's copy
+   runs instead. Report `diff -rq` drift per colliding name: a drifted pair means
+   this instance's own edits (including CORE fixes authored *here*) have no
+   effect *here*. Also report entries with `metadata.scope` of `org` or `user`
+   that are not this instance's → **P1**: another organization's context —
+   including its customer names in `description:` triggers — is loaded into every
+   session of this instance.
+
+   **(c) Neither — a real directory owned by no repo** → **pass**. That is what
+   the user level is *for*: skills belonging to the machine. Flag only a name
+   collision with this repo's `skills/` → **P2** (it shadows, but no instance is
+   leaking into another).
+
+4. **Path consumers** — whenever any finding above fires, also report what
+   resolves that path as a *filesystem location*, so the remediation does not
+   trade a silent capability bug for a silent automation outage:
+
+   ```bash
+   grep -rl '\.claude/skills/' ~/bin ~/Library/LaunchAgents /etc/systemd 2>/dev/null
+   ```
+
+   → **P2** per consumer — repoint it at this instance's `skills/` *before* the
+   pointer is removed. A launchd/systemd unit that can no longer resolve its
+   helper fails with an exit code, not a message anyone reads.
+
+**Finding shapes:**
+
+```
+P0 — ~/.claude/skills/<name> → <other-repo>/skills/<name> shadows this instance's
+     skills/<name> (content differs) → this instance's own copy never loads.
+     Remove the user-level pointer; .claude/skills → ../skills already covers it.
+P0 — ~/.claude/skills → this repo's skills/ exposes <n> scope:org|user skills
+     machine-wide → they load into every other instance's sessions.
+P1 — ~/.claude/skills resolves into a Bridge repo (<path>) → violates AGENTS.md
+     § Skills. Latent while this is the only instance; it breaks the NEXT one,
+     silently. Ship standalone tools as a plugin instead.
+P2 — <consumer> resolves ~/.claude/skills/<name>/... as a path → repoint at
+     <repo>/skills/<name>/... before removing the pointer.
+```
+
+**Fix mode:** none — advisory only, deliberately. The remedy touches `$HOME`
+outside the repo and may have live path consumers (step 4), so removing the
+pointer is a human decision. State in the finding that the link must be removed
+with `mv` or `rm` and **never** with a trash utility that dereferences symlinks:
+following the link would move the instance's entire tracked `skills/` tree
+instead of the pointer.
+
+**The test:** *if this machine had a second Bridge tomorrow, whose skills would
+run inside it?* If the answer is "this one's", the pointer is wrong.
+
+---
+
 ## --cross-repo mode
 
 **Prerequisites:** `bridge-config.yaml.upstreams[]` defines targets and `gh` is authenticated.

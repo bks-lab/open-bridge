@@ -191,7 +191,7 @@ JavaScript in the template renders SVG bars from them automatically.
 
 ```
 Step 1: generate HTML
-  - Read the template: ~/.claude/skills/dashboard/assets/dashboard-template.html
+  - Read the template: skills/dashboard/assets/dashboard-template.html
   - Replace placeholders with the generated data
   - Write the file: {cwd}/.dashboard-view.html
 

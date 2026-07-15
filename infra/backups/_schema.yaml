@@ -4,8 +4,8 @@
 # backed up (sources), where it goes (targets), and how the two connect
 # (pipelines). Unlike the other cluster wrappers, backups is NOT a glob of
 # <id>.yaml instances: there is ONE topology.yaml plus a sidecar _state.yaml
-# (written by the skill). The global skill ~/.claude/skills/backup/ reads
-# topology.yaml and executes; _state.yaml records what last ran when.
+# (written by the skill). A backup skill you supply reads topology.yaml and
+# executes; _state.yaml records what last ran when.
 #
 # Validation:
 #   check-jsonschema --schemafile infra/backups/_schema.yaml \

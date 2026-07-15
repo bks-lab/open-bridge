@@ -6,7 +6,7 @@
 #   targets    — where (external drive / NAS / cloud) with capabilities
 #   pipelines  — how connected (source × target × tool × schedule)
 #
-# The global skill ~/.claude/skills/backup/ reads this file and executes.
+# A backup skill you supply reads this file and executes.
 # Maintained by hand. Not written automatically by the Bridge.
 #
 # Variable interpolation (from bridge-config.yaml.identity):
