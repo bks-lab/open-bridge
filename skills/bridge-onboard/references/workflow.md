@@ -62,7 +62,7 @@ B  Discovery Scan             ~60 sec   permission-gated system scan (broader mo
 C  Smart Suggestions         ~2-3 min   evidence → feature recommendations (skipped if confined)
 D  Quick-Wins                ~1-2 min  applies confirm-back defaults: work-system on (never re-asked) + first task from purpose (one quick ask ONLY if no purpose was given) · theme · agent soul/identity (deck-picked)
 E  Feature Catalog          read-only   pointer to "what else Bridge can do" (full catalogue in the Phase-F preview / --features)
-F  Validate + Preview        ~45 sec   advisory schema check, HTML preview, then a LIVE /briefing --quick over the seeded task
+F  Validate + Preview        ~45 sec   capability check (whose skills run here), advisory schema check, HTML preview, then a LIVE /briefing --quick over the seeded task
 ```
 
 Total: ~5 minutes for the confined default. On the fast path (a purpose given at the door)
@@ -672,7 +672,56 @@ exists" pointer, not a second survey.
    - `work/onboarding-state.yaml` if Phase C ran
    - `.gitignore` includes `work/onboarding-scan.json`
 
-3. **Schema validation** — run it, but it is **advisory at onboarding, never a
+3. **Capability check — whose skills will actually run in this instance?**
+
+   One command, and onboarding is the moment it matters: this wizard is where a
+   **second** instance is born, and the second instance is where skill shadowing
+   starts. Nothing about the first instance hints at it.
+
+   ```bash
+   readlink ~/.claude/skills    # empty/absent = correct, this is the good case
+   ```
+
+   Resolve it (and any entries inside, if it is a real directory). If it lands
+   **inside a Bridge repo** — root carries `AGENTS.md` + `skills/` — report it,
+   never fix it silently:
+
+   - **Another Bridge instance** → **P0**. The instance you are setting up right
+     now will run *that* instance's skills, not its own — including this wizard.
+     Say it plainly: *"`~/.claude/skills` points at `<path>`. The user level
+     overrides the project level, so that Bridge's skills — including its
+     `scope: org` ones — will run inside this one, and this instance's own copies
+     never load. It fails silently: you'd get plausible output from the wrong
+     instance's skills."*
+   - **This repo** → **P1**. This instance is about to shadow every other Bridge
+     on the machine. Latent while it is the only one; it breaks the *next* one.
+
+   **The remedy is the user's call, not yours** — it touches `$HOME`, and scripts
+   or launchd/systemd units commonly resolve that same path as a *filesystem
+   location* (`~/.claude/skills/<name>/scripts/…`). Removing the pointer would
+   break those silently. Offer, in order:
+
+   1. `grep -rl '\.claude/skills/' ~/bin ~/Library/LaunchAgents /etc/systemd 2>/dev/null`
+      — find what resolves the path, repoint it at the instance's `skills/` first.
+   2. `mv ~/.claude/skills ~/.claude/skills.disabled-<date>` — **`mv` or `rm`,
+      never a trash utility that dereferences symlinks**: following the link would
+      move the target repo's entire tracked `skills/` tree instead of the pointer.
+   3. Nothing else to do — this repo's committed `.claude/skills → ../skills`
+      already loads its skills whenever the CWD is inside it. To get a standalone
+      tool skill into any directory, ship it as a **plugin**, not a symlink.
+
+   Deeper: `/bridge-audit --check skill-shadowing` (drift list per colliding
+   name), [`docs/multi-instance.md` § Capability
+   Isolation](../../../docs/multi-instance.md#capability-isolation).
+
+   > **Known limit — do not oversell this check.** If this wizard is *itself*
+   > being shadowed, the other instance's older copy is what runs, and it may not
+   > carry this step at all. The check that does not depend on which skill version
+   > loaded is the session-start tripwire in `rules/session-start.md` — `rules/`
+   > is read from the repo and cannot be shadowed. This step catches the case at
+   > setup time; that one catches it forever.
+
+4. **Schema validation** — run it, but it is **advisory at onboarding, never a
    red wall at "you're set up":**
    - Run `python3 scripts/validate-bridge.py`
    - The Bridge ships JSON Schema Draft 2020-12 for personas, themes,
@@ -688,7 +737,7 @@ exists" pointer, not a second survey.
    `pre-commit` framework refuses when `core.hooksPath` is set, and
    `.pre-commit-config.yaml` is for CI / manual `pre-commit run --all-files` only.
 
-4. **Commit** all generated files on `user/{name}` branch:
+5. **Commit** all generated files on `user/{name}` branch:
    ```
    chore: bridge onboarding for {name}
 
@@ -698,7 +747,7 @@ exists" pointer, not a second survey.
    Phase D: work-system={on/off}, theme={theme}, agents={role_list}
    ```
 
-5. **Generate preview** — read
+6. **Generate preview** — read
    [`references/preview-generator.md`](preview-generator.md) and write
    `work/bridge-preview.html`. The preview has two sections:
    - **Activated** — config + repos + agents + standing orders
@@ -706,9 +755,9 @@ exists" pointer, not a second survey.
      features, each with the `/bridge-onboard --add <feature>` re-entry
      command
 
-6. **Open in browser** (`open` on macOS, `xdg-open` on Linux).
+7. **Open in browser** (`open` on macOS, `xdg-open` on Linux).
 
-7. **Land the payoff — run the first `/briefing` LIVE, don't just suggest it.** If
+8. **Land the payoff — run the first `/briefing` LIVE, don't just suggest it.** If
    work-system is on and D1b seeded a task, run `/briefing --quick` inline now (local,
    network-free) so the user *sees* their own in-flight work read back — Doing ≥ 1, the
    seeded task surfaced as a goal — instead of being told to try a command that would
@@ -725,7 +774,7 @@ exists" pointer, not a second survey.
    suggest features when new evidence appears." Under **confined** (default), do NOT —
    the heuristics don't run; instead: "You drive activation with `--features` / `--add`."
 
-8. **Run `/bridge-status`** — green = ready, yellow = non-critical warnings,
+9. **Run `/bridge-status`** — green = ready, yellow = non-critical warnings,
    red = follow the error message. (Bare `/bridge` is intentionally not a trigger.)
 
 ---
