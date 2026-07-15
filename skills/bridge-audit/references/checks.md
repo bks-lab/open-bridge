@@ -391,6 +391,186 @@ rewiring the read).
 
 ---
 
+## Check 13 — User-level skill shadowing
+
+Claude Code loads skills from the **user level** (`~/.claude/skills/`) as well as
+the project level, and on a name collision the user level wins ("personal
+overrides project" — [skills docs](https://code.claude.com/docs/en/skills.md)).
+Every Bridge ships the same CORE skill names, so a user-level pointer at *any*
+Bridge repo silently overrides other instances' own copies. There is no setting
+to invert precedence and none to relocate the skills path, so the only fix is to
+keep colliding names out of the user level.
+
+This is the audit backstop for the rule in `AGENTS.md` § Skills and
+[`docs/skill-distribution-architecture.md`](../../../docs/skill-distribution-architecture.md)
+§ Why the user level is not a distribution channel:
+
+> `~/.claude/skills` must not point at a Bridge repo.
+
+**Why it needs an automated check:** the failure is silent by construction. A
+shadowed instance emits *plausible* output from the wrong instance's skills —
+there is no error and no symptom to search for. Nothing else in the framework
+notices, and the framework is what leads users into it (`docs/multi-instance.md`
+actively encourages the second instance).
+
+**Sources:**
+- `~/.claude/skills/` — the directory itself, and each entry inside it.
+- `skills/*/` in this repo, with `metadata.scope` per skill.
+- A path counts as "a Bridge repo" when its enclosing repo root has an
+  `AGENTS.md` **and** a `skills/` directory (`bridge-config.yaml` is a further
+  hint but is gitignored, so it must not be required).
+
+**Algorithm:**
+1. `~/.claude/skills` does not exist → **pass**, stop. That is the correct state
+   for a machine whose skills all live in instances.
+2. Resolve it — and each entry inside it — with `realpath`. The pointer may be
+   the whole directory *or* per-skill symlinks inside a real directory; handle
+   both.
+3. Classify each resolved entry:
+
+   **(a) Outbound — resolves into THIS repo.** This instance is the *shadower*:
+   its skills are served to every other instance on the machine.
+   → **P1**; escalate to **P0** for any entry whose `metadata.scope` is `org` or
+   `user` — that content is instance-bound and is now loading elsewhere.
+
+   **(b) Inbound — resolves into a DIFFERENT Bridge repo.** This instance is the
+   *victim*. For every name that also exists in this repo's `skills/`:
+   → **P0** — this instance's own skill never loads; the other instance's copy
+   runs instead. Report `diff -rq` drift per colliding name: a drifted pair means
+   this instance's own edits (including CORE fixes authored *here*) have no
+   effect *here*. Also report entries with `metadata.scope` of `org` or `user`
+   that are not this instance's → **P1**: another organization's context —
+   including its customer names in `description:` triggers — is loaded into every
+   session of this instance.
+
+   **(c) Neither — a real directory owned by no repo** → **pass**. That is what
+   the user level is *for*: skills belonging to the machine. Flag only a name
+   collision with this repo's `skills/` → **P2** (it shadows, but no instance is
+   leaking into another).
+
+4. **Path consumers** — whenever any finding above fires, also report what
+   resolves that path as a *filesystem location*, so the remediation does not
+   trade a silent capability bug for a silent automation outage.
+
+   **Enumerate with `find -L`, not `grep -r`.** `grep -r` does not follow
+   symlinks during its descent, and `grep -R` did not either where it was
+   measured — and scheduler units are *routinely* symlinks into a state dir
+   (e.g. `~/Library/LaunchAgents/x.plist → ~/Library/Application Support/…`).
+   On a real host the difference was **4 found vs. 13 actual**: a `grep -r`
+   inventory reported "safe to remove" while nine live units hung off the
+   pointer. Enumerate the files first, then grep the resolved paths:
+
+   ```bash
+   find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+           /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+     | xargs grep -l '\.claude/skills/' 2>/dev/null
+   ```
+
+   Include the **state dir** where a scheduler generates its real units, not
+   just the symlink farm — editing the symlink target is what survives the next
+   regeneration.
+
+   **Then gate the severity on whether each reference actually resolves.** A
+   reference to a skill that no longer exists (renamed, removed) is *dead*: it
+   was broken before the pointer is touched and stays broken after, so it is not
+   a reason to keep the pointer.
+
+   ```bash
+   # For each hit, classify every referenced path. No `eval` — expand ~ / $HOME
+   # explicitly, so paths containing spaces survive.
+   grep -oE "[^ \"']*\.claude/skills/[A-Za-z0-9_-]+" "$f" | sort -u | while read -r p; do
+     real=${p/#\~/$HOME}; real=${real/#\$HOME/$HOME}
+     [ -e "$real" ] && echo "LIVE $f -> $p" || echo "DEAD $f -> $p"
+   done
+   ```
+
+   - **LIVE** (path resolves) → **P2**: repoint at this instance's `skills/`
+     *before* the pointer is removed. A launchd/systemd unit that can no longer
+     resolve its helper fails with an exit code, not a message anyone reads.
+   - **DEAD** (dangles) → **P3**, reported as its own finding — *"dead reference
+     to a removed skill; independent of the pointer"* — and **never** as a
+     removal blocker.
+
+5. **Discovery consumers — the ones no grep can find.** A headless job that runs
+
+   ```bash
+   claude -p --setting-sources user,project --allowedTools Skill …
+   ```
+
+   from a cwd that is **not** a Bridge repo gets its skills *only* from the user
+   level. It never names `~/.claude/skills` anywhere, so steps 1–4 do not see it
+   — and removing the pointer does not break a path for it, it removes its entire
+   skill discovery. Silent, and invisible to a path-based inventory.
+
+   ```bash
+   find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+           /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+     | xargs grep -l 'setting-sources' 2>/dev/null
+   ```
+
+   For each hit, establish the **cwd it actually runs in** (a `cd` in the script,
+   `WorkingDirectory` in the unit, else the launcher's default — `~` or `/`, not
+   a repo). If that cwd is not inside a Bridge instance → **P1**, and say plainly
+   that this consumer depends on the user level *for discovery*: removing the
+   pointer is not a repoint away, it needs the job to run inside an instance
+   (`cd`/`WorkingDirectory`), or the skill shipped as a plugin.
+
+   Measured on a real scheduler host: 9 units, 7 of them wrapper-based (path
+   consumers, step 4) and 2 invoking `claude -p` directly — with the wrappers
+   themselves calling `claude -p` in turn. None of the discovery consumers
+   appeared in any `grep` for the path. **This is the case that makes "remove the
+   pointer" the wrong first move on a worker host**, and no amount of path
+   inventory reveals it.
+
+   **Why the distinction is load-bearing, not pedantry:** a false P2 here is not
+   noise, it is a deterrent aimed at the P0. The step tells the user to repoint
+   consumers *before* removing the pointer. Faced with "3 consumers, repoint
+   first", a user either hunts for a repoint target that does not exist (the
+   skill is gone — there is nothing to point at) or concludes the removal is
+   riskier than advertised and leaves the pointer in place, which leaves the P0
+   live. The argument that gives the P2 its weight — *it fails with an exit code,
+   not a message* — is exactly the argument that does not apply to a reference
+   resolving to nothing. Report `0 live consumers` when that is the truth; it is
+   the number that justifies the removal.
+
+**Finding shapes:**
+
+```
+P0 — ~/.claude/skills/<name> → <other-repo>/skills/<name> shadows this instance's
+     skills/<name> (content differs) → this instance's own copy never loads.
+     Remove the user-level pointer; .claude/skills → ../skills already covers it.
+P0 — ~/.claude/skills → this repo's skills/ exposes <n> instance-bound skills
+     (scope org or user) machine-wide → they load into every other instance's
+     sessions.
+P1 — ~/.claude/skills resolves into a Bridge repo (<path>) → violates AGENTS.md
+     § Skills. Latent while this is the only instance; it breaks the NEXT one,
+     silently. Ship standalone tools as a plugin instead.
+P2 — <consumer> resolves ~/.claude/skills/<name>/... as a path AND it resolves
+     (live) → repoint at <repo>/skills/<name>/... before removing the pointer.
+P3 — <consumer> references ~/.claude/skills/<gone>/... which does not resolve →
+     dead reference to a removed skill. Independent of the pointer, broken
+     before and after. NOT a removal blocker.
+P1 — <unit> runs `claude -p --setting-sources user,project` from <cwd> (not a
+     Bridge instance) → it gets its skills ONLY from the user level. Removing the
+     pointer takes its discovery, not just a path. Needs cd/WorkingDirectory into
+     an instance, or the skill as a plugin — a repoint does not fix it.
+```
+
+Say the live count explicitly, including when it is zero — `0 live consumers
+(3 dead references)` is what tells the user the removal is safe.
+
+**Fix mode:** none — advisory only, deliberately. The remedy touches `$HOME`
+outside the repo and may have live path consumers (step 4), so removing the
+pointer is a human decision. State in the finding that the link must be removed
+with `mv` or `rm` and **never** with a trash utility that dereferences symlinks:
+following the link would move the instance's entire tracked `skills/` tree
+instead of the pointer.
+
+**The test:** *if this machine had a second Bridge tomorrow, whose skills would
+run inside it?* If the answer is "this one's", the pointer is wrong.
+
+---
+
 ## --cross-repo mode
 
 **Prerequisites:** `bridge-config.yaml.upstreams[]` defines targets and `gh` is authenticated.

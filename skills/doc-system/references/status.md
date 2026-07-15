@@ -36,8 +36,11 @@ Shows the current state of all document queues (OneDrive). Pure monitoring view.
    silently reports `—`, so it is safe to leave in place.
 ```bash
 # Point SCRIPT at wherever your org-overlay skill installs its mail-listing
-# helper (globally installed skills typically live under ~/.claude/skills/).
-SCRIPT="$HOME/.claude/skills/<your-mail-skill>/scripts/process_mail.py"
+# helper — this instance's own skills/, or a plugin's install path. Do NOT
+# reach for it via ~/.claude/skills: that path must not point at a Bridge repo
+# (docs/skill-distribution-architecture.md § Why the user level is not a
+# distribution channel), and it is not a stable API for scripts.
+SCRIPT="skills/<your-mail-skill>/scripts/process_mail.py"
 if [ -f "$SCRIPT" ]; then
   OUT=$(python3 "$SCRIPT" --list 2>/dev/null)
   APPLE_TOTAL=$(echo "$OUT" | grep -cE "^[0-9]+\.")

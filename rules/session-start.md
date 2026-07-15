@@ -319,6 +319,32 @@ Continue with Phase 1 session load per `rules/operations.md`:
 read `work/log.md`, `work/board.md`, create day-block, load standing
 orders, check for CORE updates.
 
+### Skill-shadowing tripwire (one command, cheap)
+
+Whose skills are actually running is not something you can infer from the
+branch. Check it once per session:
+
+```bash
+readlink ~/.claude/skills    # empty/absent = correct
+```
+
+If it resolves **into any Bridge repo** (its root has `AGENTS.md` + `skills/`),
+warn once and continue — never block:
+
+> ⚠️ `~/.claude/skills` → `<path>`. The user level overrides the project level,
+> so that instance's skills run inside this one. Run `/bridge-audit --check
+> skill-shadowing` for the drift list, or remove the pointer — this repo's
+> committed `.claude/skills → ../skills` already covers it.
+
+**Why this earns a session-start slot** — the same bar the Phase 0 gate meets:
+the failure is silent by construction. A shadowed instance produces *plausible*
+output from the wrong instance's skills, so there is no symptom to search for
+and the user will never think to run the audit. A CORE fix authored here can
+have no effect here, and another organization's `scope: org` skills can be live
+in this session, with neither state visible anywhere. One `readlink` buys that.
+Full rationale: [`docs/skill-distribution-architecture.md` § Why the user level
+is not a distribution channel](../docs/skill-distribution-architecture.md#why-the-user-level-is-not-a-distribution-channel).
+
 ## Red flags — rationalizations you must NOT use
 
 | Thought | Reality |

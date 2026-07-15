@@ -247,6 +247,20 @@ reimplementing the logic.
 
 The canonical location remains `skills/` — edit there, the symlinks follow.
 
+> **Never point `~/.claude/skills` at a Bridge repo.** These three committed
+> symlinks are the *entire* discovery mechanism — an instance's skills load
+> whenever the CWD is inside it, and no user-level pointer is needed. The user
+> level overrides the project level on a name collision, and every Bridge ships
+> the same CORE skill names, so a user-level pointer at instance A silently
+> overrides instance B's own skills inside B — including CORE fixes authored in
+> B, and including A's `scope: org` skills. The failure is silent (plausible
+> output from the wrong instance's skills). Skills in an instance belong to that
+> instance; the user level is for skills that belong to the machine. To make a
+> standalone tool skill available in any directory, ship it as a **plugin**.
+> Detail: [`docs/skill-distribution-architecture.md` § Why the user level is not
+> a distribution channel](docs/skill-distribution-architecture.md#why-the-user-level-is-not-a-distribution-channel)
+> · [`docs/multi-instance.md` § Capability Isolation](docs/multi-instance.md#capability-isolation).
+
 > **Windows:** Symlinks require Developer Mode + `git config core.symlinks true`.
 > Easiest: run `bin\setup.ps1` — it re-links **all three** targets (`.claude`,
 > `.agents`, `.github` skills) with a junction fallback (no Developer Mode needed) **and**
@@ -673,8 +687,8 @@ stable as `scheduled:calendar:${id}:slot-${N}`, never absolute timestamps.
 Data model in **`infra/backups/topology.yaml`** (`sources` × `targets` × `pipelines`); state
 (last_run, restic snapshot IDs) in `infra/backups/_state.yaml`, written only by the skill.
 Topology is USER data. **Activated** simply by the file existing — no separate switch. CORE
-ships the data model, not an executor: a topology-reader-plus-tool-dispatcher skill (e.g. a
-globally installed `~/.claude/skills/backup/`) reads the topology and dispatches
+ships the data model, not an executor: a topology-reader-plus-tool-dispatcher skill (your own
+`backup` skill, or one distributed as a plugin) reads the topology and dispatches
 `rclone-sync` / `rclone-copy` / `restic-backup` / `rsync-via-ssh`.
 
 **Key rules:** `topology.yaml` is the truth — never hardcode paths (one instance of generic

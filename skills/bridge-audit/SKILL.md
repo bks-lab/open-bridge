@@ -4,12 +4,14 @@ description: >-
   Auditing skill for The Bridge repos — finds drift between docs and reality
   (license badge ↔ LICENSE file ↔ footer; README skill list ↔ skills/ dir;
   protocol counts; renamed-but-not-everywhere; broken cross-refs; missing
-  scope frontmatter; routing-SoT conflicts; common typos; cross-repo
-  skill-tree sync coverage with --cross-repo). Returns a P0/P1/P2/P3
+  scope frontmatter; routing-SoT conflicts; common typos; user-level skill
+  shadowing between instances; cross-repo skill-tree sync coverage with
+  --cross-repo). Returns a P0/P1/P2/P3
   stratified report with concrete fix proposals — the same output shape
   that a human-led drift-audit would produce.
   Trigger: "/bridge-audit", "audit", "drift check", "bridge audit",
-  "check consistency", "find drift", "is README still accurate".
+  "check consistency", "find drift", "is README still accurate",
+  "are my skills shadowed", "whose skills are running".
 metadata:
   scope: core
 ---
@@ -17,11 +19,12 @@ metadata:
 # Bridge Audit — Drift Detection
 
 `bridge-audit` is the systematic version of "let me re-read the README
-and see what doesn't match anymore". It runs 12 categorical checks
+and see what doesn't match anymore". It runs 13 categorical checks
 against the current repo state and returns a stratified report.
 Check 9 only runs with `--cross-repo` (it fetches sister-repo trunks);
-Check 10 (agent-identity health), Check 11 (gate-shaped memory), and
-Check 12 (config-driven CORE skills) always run.
+Check 10 (agent-identity health), Check 11 (gate-shaped memory),
+Check 12 (config-driven CORE skills), and Check 13 (user-level skill
+shadowing) always run.
 
 Read the referenced file ONLY when triggered.
 
@@ -30,14 +33,14 @@ Read the referenced file ONLY when triggered.
 | Argument | Effect | Default |
 |----------|--------|---------|
 | `(none)` | Full audit, all checks | — |
-| `--check <name>` | Run only one check (license / skill-tree / protocol-count / renames / xrefs / scopes / routing-sot / typos / agent-identity / memory-gate / config-driven) | all |
+| `--check <name>` | Run only one check (license / skill-tree / protocol-count / renames / xrefs / scopes / routing-sot / typos / agent-identity / memory-gate / config-driven / skill-shadowing) | all |
 | `--cross-repo` | Also clone configured upstreams and compare README/AGENTS for divergence | false |
 | `--strict-oss` | When run on an OSS variant: flag hardcoded internal vocabulary (delegates to `bridge-leak-check`) | false |
 | `--fix` | Where unambiguous, apply the suggested fix | false (advisory only) |
 | `--no-history` | Skip writing the post-run JSON to `work/_learning/audit-history/` | history written by default if `learning.enabled` |
 | `--no-recurring-scan` | Skip the trend-detection step that auto-generates proposals for recurring findings | scan runs by default |
 
-## The 12 Checks
+## The 13 Checks
 
 | # | Check | What it compares | Severity hint |
 |---|---|---|---|
@@ -53,6 +56,7 @@ Read the referenced file ONLY when triggered.
 | 10 | Agent-identity health | `identity/agent/SOUL.md` present + ≤80 lines / ≤4 KB · `IDENTITY.md` present · both carry valid frontmatter (`schema_version`/`type`/`scope`/`last_updated`) | P1 if SOUL.md missing, else P2 |
 | 11 | Gate-shaped memory without a `rules/` home | Memory files whose body uses gate language (imperative + always/never/immer/nie, or "when X → do Y" routing) but have NO corresponding rule in `rules/` (core/bks/user) — a behavioral rule trapped in the private store | P2 |
 | 12 | Config-driven CORE skills | `scope: core` skill files (`SKILL.md` + `references/`) that hardcode instance specifics — org/project IDs, tracker queries, persona names, pipeline IDs, absolute instance paths — instead of reading them from `bridge-config.yaml` / `workflow/` / `infra/` / `identity/` (CLAUDE.md § Generic CORE Skills) | P2 |
+| 13 | User-level skill shadowing | `~/.claude/skills/` (resolved) ↔ this repo's `skills/` — the user level overrides the project level, so a pointer at a Bridge repo silently serves one instance's skills to every other instance (AGENTS.md § Skills). Both directions: this instance shadowing others, and others shadowing this one (with `diff -rq` drift per colliding name). Also reports scripts that resolve the path as a filesystem location | P0 if own skills are shadowed or instance-bound skills (scope org or user) leak machine-wide, else P1 |
 
 ## Decision Tree
 

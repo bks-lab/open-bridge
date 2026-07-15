@@ -76,12 +76,23 @@ Migrate skills to `your-bridge/skills/`, create symlinks back to
 
 **Rejected because:**
 
+- **It shadows every other instance** — the user level overrides the
+  project level, so pointing `~/.claude/skills` at one Bridge's `skills/`
+  silently overrides every *other* instance's own copies of the same
+  names. This is the load-bearing reason and it does not expire; see
+  [§ Why the user level is not a distribution channel](#why-the-user-level-is-not-a-distribution-channel).
 - GitHub Issue #25367 (anthropics/claude-code): symlinked skill
   directories fail at init with `Error: Unknown skill` — validation
   doesn't resolve symlinks
 - Duplicated in issues #14836 and #764
 - Per-skill symlink workarounds fix it only partially
 - Brittle: skills break if the repo is moved
+
+> The symlink bugs are the *weaker* argument: they are upstream defects that
+> may be fixed, and in practice the link often works. The shadowing is
+> architectural — it follows from documented precedence and would survive
+> every one of those bugs being closed. Reject Option A on the shadowing,
+> not on the bug number.
 
 ### Option B — Frontmatter-only classification (interim default)
 
@@ -212,12 +223,140 @@ state).
 - ❌ Manually edit skills in the org overlay — always in the seed
 - ❌ Maintain skills in two repos in parallel
 - ❌ `~/.claude/skills/` as a hand-curated copy collection
-- ❌ Symlink `~/.claude/skills/` onto skill directories (bug #25367)
+- ❌ **Point `~/.claude/skills/` at a Bridge repo's `skills/`** (whole-directory
+  symlink) — it silently overrides every other instance's own skills; see below
+- ❌ Hardcode `~/.claude/skills/<name>/…` as a *filesystem path* in a script or
+  launchd/systemd unit — resolve the instance's `skills/` directly instead
 - ❌ Distribute CORE skills as a plugin — no value, they're Bridge-bound
 
 > Edit-the-seed and stay-generic are two faces of the same discipline: a CORE
 > skill is config-driven and edited in one place. See [`extension-model.md` §
 > Generic CORE Skills](extension-model.md).
+
+## Why the user level is not a distribution channel
+
+The tempting shortcut, when the first Bridge is the only Bridge, is to point
+the user level at it so its skills work in any directory:
+
+```bash
+ln -s ~/Developer/my-bridge/skills ~/.claude/skills   # do NOT do this
+```
+
+With one instance this is harmless and it appears to work. It becomes a trap
+the moment a **second** instance exists — which `docs/multi-instance.md`
+actively encourages for isolation between organizations.
+
+**Precedence is documented and unconditional:**
+
+> "When skills share the same name across levels, enterprise overrides personal,
+> and personal overrides project."
+> — [Claude Code skills documentation](https://code.claude.com/docs/en/skills.md)
+
+Every Bridge ships the same CORE skill *names*. So instance A's copies win
+inside instance B's sessions, and there is no lever to invert it — no
+precedence switch, no custom skills path, no env var. `skillOverrides` keys on
+the skill **name**, not a path: it can hide a name, not redirect it to a
+location. A Bridge cannot defend its own skills; the only fix is to keep
+colliding names out of the user level.
+
+The failure is **silent by construction**: the shadowed instance produces
+plausible output from the wrong instance's skills. There is no error to search
+for. Observed consequences on a real two-instance setup:
+
+- CORE fixes authored *in* the shadowed instance had no effect there.
+- Its onboarding ran the *other* instance's wizard.
+- `scope: org` skills — carrying one organization's customer names in their
+  `description:` triggers — loaded into every session of an unrelated
+  organization's instance.
+
+That last point is the sharp one. `multi-instance.md` promises isolation
+between organizations, and the **data** isolation holds perfectly throughout.
+The **capability** isolation never existed. They are two different guarantees
+and only one of them is implemented by the repo split.
+
+### The rule
+
+> `~/.claude/skills` must not point at a Bridge repo. Skills in a Bridge
+> instance belong to **that instance**; the user level is for skills that
+> belong to the **machine**.
+
+A Bridge instance needs no user-level pointer at all: the committed
+`.claude/skills → ../skills` symlink already makes its skills load whenever
+the CWD is inside it. That is the entire supported mechanism.
+
+### What to do instead
+
+| You want | Do this |
+|---|---|
+| An instance's skills, inside that instance | Nothing — `.claude/skills → ../skills` already ships |
+| A standalone tool skill in *any* directory | Distribute it as a **plugin** (Option E), not a symlink |
+| A skill that belongs to the machine, not to any instance | Keep it as a real directory under `~/.claude/skills/`, owned by no repo |
+
+The `scope:` frontmatter already tells you which is which: anything an instance
+*ships* (`core`, `org`) belongs to that instance and must not reach the user
+level. A skill no instance ships has no name to collide with.
+
+### The second job of that path
+
+Before removing an existing pointer, check what **resolves** it. The user-level
+path frequently acquires a second, undocumented role: a stable filesystem path
+that scripts hardcode.
+
+```bash
+find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+        /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+  | xargs grep -l '\.claude/skills/' 2>/dev/null
+```
+
+**Use `find -L`, not `grep -r`.** `grep -r` does not follow symlinks during its
+descent (and `grep -R` did not either, where this was measured), while scheduler
+units are routinely symlinks into a state dir. Measured on a real host: `grep -r`
+reported **4** consumers where **13** existed — an inventory that says "safe to
+remove" while nine live units hang off the pointer. Search the state dir too, not
+just the symlink farm.
+
+Discovery and path-resolution are two different consumers of one symlink.
+Removing it fixes the first and silently breaks the second — a scheduled job
+that can no longer resolve its helper fails with an exit code, not a symptom
+anyone reads. Repoint the **live** consumers at the instance's `skills/`
+directory first, then remove the link.
+
+Check each reference actually resolves before treating it as a blocker: one that
+points at a renamed or deleted skill is already broken and stays broken either
+way. Counting those as consumers turns the safety step into a deterrent against
+the fix — the user goes hunting for a repoint target that does not exist, or
+keeps the pointer. `/bridge-audit --check skill-shadowing` reports live and dead
+separately for this reason.
+
+### The consumer no grep can find
+
+There is a third kind, and it is the one that makes "just remove the pointer" the
+wrong first move on a worker host. A headless job that runs
+
+```bash
+claude -p --setting-sources user,project --allowedTools Skill …
+```
+
+from a cwd that is **not** a Bridge repo draws its skills *only* from the user
+level. It never names `~/.claude/skills` anywhere — so no path inventory finds
+it — and removing the pointer does not break a path for it: it removes the job's
+entire skill discovery, silently.
+
+```bash
+find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+        /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+  | xargs grep -l 'setting-sources' 2>/dev/null
+```
+
+A repoint cannot fix this one. The job has to run **inside** an instance (`cd` /
+`WorkingDirectory`), or the skill it needs has to reach it as a **plugin**. Which
+is the same conclusion as everywhere else in this document: the user level is not
+a distribution channel, and a scheduler that leans on it for discovery has the
+distribution problem, not a path problem.
+
+Remove the link itself with `mv` (or `rm`), never with a trash utility that
+dereferences symlinks — following the link would move the instance's entire
+tracked `skills/` tree, not the pointer.
 
 ## Migration phases
 

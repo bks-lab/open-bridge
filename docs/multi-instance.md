@@ -165,7 +165,9 @@ Every Bridge instance is a full, independent setup:
 
 ## Data Isolation
 
-The CORE/USER branch split ensures isolation:
+The CORE/USER branch split isolates **data**. It does not, by itself, isolate
+**capabilities** — that is a separate guarantee with a separate failure mode;
+see [Capability Isolation](#capability-isolation) below.
 
 - **USER paths** (bridge-config.yaml, workflow/contexts/, work/, .claude/agents/,
   infra/channels/, infra/remotes/, identity/mandants/, workflow/calendars/) live only on `user/{name}`
@@ -183,6 +185,61 @@ The CORE/USER branch split ensures isolation:
 - Command definitions, protocol templates, standing orders
 - Theme files, sub-agent definitions, onboarding wizard
 - Documentation, examples, schemas
+
+## Capability Isolation
+
+Data isolation answers *"can instance B read instance A's files?"*. Capability
+isolation answers a different question: *"whose skills actually run inside
+instance B's sessions?"* — and the branch split does not answer it, because
+skills are discovered per machine, not per branch.
+
+**The one rule that keeps them isolated:**
+
+> `~/.claude/skills` must not point at a Bridge repo. Skills in a Bridge
+> instance belong to **that instance**; the user level is for skills that
+> belong to the **machine**.
+
+Every instance already ships `.claude/skills → ../skills`, which loads its own
+skills whenever the CWD is inside it. That is sufficient and needs no help. But
+Claude Code *also* loads user-level skills from `~/.claude/skills/`, and on a
+name collision **the user level wins**:
+
+> "When skills share the same name across levels, enterprise overrides personal,
+> and personal overrides project."
+> — [Claude Code skills documentation](https://code.claude.com/docs/en/skills.md)
+
+Every Bridge ships the same CORE skill names. So if `~/.claude/skills` points at
+instance A, then inside instance B:
+
+- A's copies of `debrief`, `briefing`, `bridge-onboard`, … **override B's own**
+- CORE fixes you make *in B* have no effect *in B*
+- A's `scope: org` skills load into B — including that organization's customer
+  names in their `description:` triggers
+
+There is no setting to invert precedence, and none to point Claude Code at a
+different skills path. The only fix is to keep colliding names out of the user
+level.
+
+**How you get here:** it is a natural first-instance move — you point
+`~/.claude/skills` at your only Bridge so its skills work everywhere, which is
+harmless while there is one instance. The trap belongs to the *second* instance,
+and nothing about the first one hints at it.
+
+**The failure is silent.** A shadowed instance emits plausible output from the
+wrong instance's skills; there is no error and no symptom to search for. Check
+it explicitly:
+
+```bash
+readlink ~/.claude/skills      # must NOT resolve into a Bridge repo
+```
+
+`/bridge-audit` reports this as a **P0** (own skills do not load) plus a **P1**
+(foreign-scoped skills loaded into this context). To distribute a genuinely
+standalone tool skill to every directory, use a plugin — not a symlink. Full
+rationale, the removal procedure, and the trap that the same path is often *also*
+hardcoded by scripts:
+[`skill-distribution-architecture.md` § Why the user level is not a distribution
+channel](skill-distribution-architecture.md#why-the-user-level-is-not-a-distribution-channel).
 
 ## Trade-offs
 
