@@ -491,6 +491,37 @@ actively encourages the second instance).
      to a removed skill; independent of the pointer"* — and **never** as a
      removal blocker.
 
+5. **Discovery consumers — the ones no grep can find.** A headless job that runs
+
+   ```bash
+   claude -p --setting-sources user,project --allowedTools Skill …
+   ```
+
+   from a cwd that is **not** a Bridge repo gets its skills *only* from the user
+   level. It never names `~/.claude/skills` anywhere, so steps 1–4 do not see it
+   — and removing the pointer does not break a path for it, it removes its entire
+   skill discovery. Silent, and invisible to a path-based inventory.
+
+   ```bash
+   find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+           /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+     | xargs grep -l 'setting-sources' 2>/dev/null
+   ```
+
+   For each hit, establish the **cwd it actually runs in** (a `cd` in the script,
+   `WorkingDirectory` in the unit, else the launcher's default — `~` or `/`, not
+   a repo). If that cwd is not inside a Bridge instance → **P1**, and say plainly
+   that this consumer depends on the user level *for discovery*: removing the
+   pointer is not a repoint away, it needs the job to run inside an instance
+   (`cd`/`WorkingDirectory`), or the skill shipped as a plugin.
+
+   Measured on a real scheduler host: 9 units, 7 of them wrapper-based (path
+   consumers, step 4) and 2 invoking `claude -p` directly — with the wrappers
+   themselves calling `claude -p` in turn. None of the discovery consumers
+   appeared in any `grep` for the path. **This is the case that makes "remove the
+   pointer" the wrong first move on a worker host**, and no amount of path
+   inventory reveals it.
+
    **Why the distinction is load-bearing, not pedantry:** a false P2 here is not
    noise, it is a deterrent aimed at the P0. The step tells the user to repoint
    consumers *before* removing the pointer. Faced with "3 consumers, repoint
@@ -519,6 +550,10 @@ P2 — <consumer> resolves ~/.claude/skills/<name>/... as a path AND it resolves
 P3 — <consumer> references ~/.claude/skills/<gone>/... which does not resolve →
      dead reference to a removed skill. Independent of the pointer, broken
      before and after. NOT a removal blocker.
+P1 — <unit> runs `claude -p --setting-sources user,project` from <cwd> (not a
+     Bridge instance) → it gets its skills ONLY from the user level. Removing the
+     pointer takes its discovery, not just a path. Needs cd/WorkingDirectory into
+     an instance, or the skill as a plugin — a repoint does not fix it.
 ```
 
 Say the live count explicitly, including when it is zero — `0 live consumers

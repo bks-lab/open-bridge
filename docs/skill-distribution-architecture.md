@@ -328,6 +328,32 @@ the fix — the user goes hunting for a repoint target that does not exist, or
 keeps the pointer. `/bridge-audit --check skill-shadowing` reports live and dead
 separately for this reason.
 
+### The consumer no grep can find
+
+There is a third kind, and it is the one that makes "just remove the pointer" the
+wrong first move on a worker host. A headless job that runs
+
+```bash
+claude -p --setting-sources user,project --allowedTools Skill …
+```
+
+from a cwd that is **not** a Bridge repo draws its skills *only* from the user
+level. It never names `~/.claude/skills` anywhere — so no path inventory finds
+it — and removing the pointer does not break a path for it: it removes the job's
+entire skill discovery, silently.
+
+```bash
+find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+        /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+  | xargs grep -l 'setting-sources' 2>/dev/null
+```
+
+A repoint cannot fix this one. The job has to run **inside** an instance (`cd` /
+`WorkingDirectory`), or the skill it needs has to reach it as a **plugin**. Which
+is the same conclusion as everywhere else in this document: the user level is not
+a distribution channel, and a scheduler that leans on it for discovery has the
+distribution problem, not a path problem.
+
 Remove the link itself with `mv` (or `rm`), never with a trash utility that
 dereferences symlinks — following the link would move the instance's entire
 tracked `skills/` tree, not the pointer.
