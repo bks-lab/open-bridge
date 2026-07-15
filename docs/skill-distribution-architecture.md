@@ -303,14 +303,30 @@ path frequently acquires a second, undocumented role: a stable filesystem path
 that scripts hardcode.
 
 ```bash
-grep -rl '\.claude/skills/' ~/bin ~/Library/LaunchAgents /etc/systemd 2>/dev/null
+find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+        /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+  | xargs grep -l '\.claude/skills/' 2>/dev/null
 ```
+
+**Use `find -L`, not `grep -r`.** `grep -r` does not follow symlinks during its
+descent (and `grep -R` did not either, where this was measured), while scheduler
+units are routinely symlinks into a state dir. Measured on a real host: `grep -r`
+reported **4** consumers where **13** existed — an inventory that says "safe to
+remove" while nine live units hang off the pointer. Search the state dir too, not
+just the symlink farm.
 
 Discovery and path-resolution are two different consumers of one symlink.
 Removing it fixes the first and silently breaks the second — a scheduled job
 that can no longer resolve its helper fails with an exit code, not a symptom
-anyone reads. Repoint those consumers at the instance's `skills/` directory
-first, then remove the link.
+anyone reads. Repoint the **live** consumers at the instance's `skills/`
+directory first, then remove the link.
+
+Check each reference actually resolves before treating it as a blocker: one that
+points at a renamed or deleted skill is already broken and stays broken either
+way. Counting those as consumers turns the safety step into a deterrent against
+the fix — the user goes hunting for a repoint target that does not exist, or
+keeps the pointer. `/bridge-audit --check skill-shadowing` reports live and dead
+separately for this reason.
 
 Remove the link itself with `mv` (or `rm`), never with a trash utility that
 dereferences symlinks — following the link would move the instance's entire

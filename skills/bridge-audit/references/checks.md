@@ -450,15 +450,57 @@ actively encourages the second instance).
 
 4. **Path consumers** — whenever any finding above fires, also report what
    resolves that path as a *filesystem location*, so the remediation does not
-   trade a silent capability bug for a silent automation outage:
+   trade a silent capability bug for a silent automation outage.
+
+   **Enumerate with `find -L`, not `grep -r`.** `grep -r` does not follow
+   symlinks during its descent, and `grep -R` did not either where it was
+   measured — and scheduler units are *routinely* symlinks into a state dir
+   (e.g. `~/Library/LaunchAgents/x.plist → ~/Library/Application Support/…`).
+   On a real host the difference was **4 found vs. 13 actual**: a `grep -r`
+   inventory reported "safe to remove" while nine live units hung off the
+   pointer. Enumerate the files first, then grep the resolved paths:
 
    ```bash
-   grep -rl '\.claude/skills/' ~/bin ~/Library/LaunchAgents /etc/systemd 2>/dev/null
+   find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+           /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+     | xargs grep -l '\.claude/skills/' 2>/dev/null
    ```
 
-   → **P2** per consumer — repoint it at this instance's `skills/` *before* the
-   pointer is removed. A launchd/systemd unit that can no longer resolve its
-   helper fails with an exit code, not a message anyone reads.
+   Include the **state dir** where a scheduler generates its real units, not
+   just the symlink farm — editing the symlink target is what survives the next
+   regeneration.
+
+   **Then gate the severity on whether each reference actually resolves.** A
+   reference to a skill that no longer exists (renamed, removed) is *dead*: it
+   was broken before the pointer is touched and stays broken after, so it is not
+   a reason to keep the pointer.
+
+   ```bash
+   # For each hit, classify every referenced path. No `eval` — expand ~ / $HOME
+   # explicitly, so paths containing spaces survive.
+   grep -oE "[^ \"']*\.claude/skills/[A-Za-z0-9_-]+" "$f" | sort -u | while read -r p; do
+     real=${p/#\~/$HOME}; real=${real/#\$HOME/$HOME}
+     [ -e "$real" ] && echo "LIVE $f -> $p" || echo "DEAD $f -> $p"
+   done
+   ```
+
+   - **LIVE** (path resolves) → **P2**: repoint at this instance's `skills/`
+     *before* the pointer is removed. A launchd/systemd unit that can no longer
+     resolve its helper fails with an exit code, not a message anyone reads.
+   - **DEAD** (dangles) → **P3**, reported as its own finding — *"dead reference
+     to a removed skill; independent of the pointer"* — and **never** as a
+     removal blocker.
+
+   **Why the distinction is load-bearing, not pedantry:** a false P2 here is not
+   noise, it is a deterrent aimed at the P0. The step tells the user to repoint
+   consumers *before* removing the pointer. Faced with "3 consumers, repoint
+   first", a user either hunts for a repoint target that does not exist (the
+   skill is gone — there is nothing to point at) or concludes the removal is
+   riskier than advertised and leaves the pointer in place, which leaves the P0
+   live. The argument that gives the P2 its weight — *it fails with an exit code,
+   not a message* — is exactly the argument that does not apply to a reference
+   resolving to nothing. Report `0 live consumers` when that is the truth; it is
+   the number that justifies the removal.
 
 **Finding shapes:**
 
@@ -472,9 +514,15 @@ P0 — ~/.claude/skills → this repo's skills/ exposes <n> instance-bound skill
 P1 — ~/.claude/skills resolves into a Bridge repo (<path>) → violates AGENTS.md
      § Skills. Latent while this is the only instance; it breaks the NEXT one,
      silently. Ship standalone tools as a plugin instead.
-P2 — <consumer> resolves ~/.claude/skills/<name>/... as a path → repoint at
-     <repo>/skills/<name>/... before removing the pointer.
+P2 — <consumer> resolves ~/.claude/skills/<name>/... as a path AND it resolves
+     (live) → repoint at <repo>/skills/<name>/... before removing the pointer.
+P3 — <consumer> references ~/.claude/skills/<gone>/... which does not resolve →
+     dead reference to a removed skill. Independent of the pointer, broken
+     before and after. NOT a removal blocker.
 ```
+
+Say the live count explicitly, including when it is zero — `0 live consumers
+(3 dead references)` is what tells the user the removal is safe.
 
 **Fix mode:** none — advisory only, deliberately. The remedy touches `$HOME`
 outside the repo and may have live path consumers (step 4), so removing the

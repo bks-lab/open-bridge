@@ -701,8 +701,20 @@ exists" pointer, not a second survey.
    location* (`~/.claude/skills/<name>/scripts/…`). Removing the pointer would
    break those silently. Offer, in order:
 
-   1. `grep -rl '\.claude/skills/' ~/bin ~/Library/LaunchAgents /etc/systemd 2>/dev/null`
-      — find what resolves the path, repoint it at the instance's `skills/` first.
+   1. Find what resolves the path and repoint the **live** ones at the instance's
+      `skills/` first. Use `find -L`, **not** `grep -r` — `grep -r` skips
+      symlinked units, and scheduler plists are routinely symlinks into a state
+      dir (measured on a real host: `grep -r` found 4 of 13):
+      ```bash
+      find -L ~/bin ~/Library/LaunchAgents "$HOME/Library/Application Support" \
+              /Library/LaunchAgents /etc/systemd -type f 2>/dev/null \
+        | xargs grep -l '\.claude/skills/' 2>/dev/null
+      ```
+      Check each reference **resolves** before calling it a consumer: one pointing
+      at a renamed/removed skill is already dead and is not a reason to keep the
+      pointer. Report live and dead separately — a false "repoint first" in front
+      of a P0 sends the user hunting for a target that does not exist, or makes
+      them keep the pointer.
    2. `mv ~/.claude/skills ~/.claude/skills.disabled-<date>` — **`mv` or `rm`,
       never a trash utility that dereferences symlinks**: following the link would
       move the target repo's entire tracked `skills/` tree instead of the pointer.
