@@ -56,6 +56,11 @@ customers:
         type: function-app          # function-app | package | web | tool | docs | infra
         language: python
         depends_on: [some-package]   # other repo slugs this one builds on
+    packages:
+      some-package:
+        github: your-org/some-package
+        description: "Shared library the service builds on."   # ONE line; detail -> docs/
+        type: package
     infra:
       github_project:
         org: your-org
