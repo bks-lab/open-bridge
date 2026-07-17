@@ -146,3 +146,5 @@ work/state.json
 # scripts/okf-export.py output — exported bundles may contain USER PII (work/ STATUS.md, deliverables); never commit.
 dist/
 okf/
+
+# board-pilot e2e test marker (safe to remove)
