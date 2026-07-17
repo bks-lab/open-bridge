@@ -203,12 +203,15 @@ Every file's tier (**core** → open-bridge · **org** → your org overlay · *
    `docs/`, `themes/`, `trackers/`, `scripts/`, `protocols/standing-orders/*.md` = CORE.
 2. **`_`-prefix** (cluster-wrappers `identity/ infra/ workflow/`) —
    `_template.yaml`/`_schema.yaml` = CORE, every other instance `*.yaml` = USER.
-3. **Frontmatter — skills only.** Skills are flat under `skills/` (open Agent-Skills
+3. **Frontmatter — skills and rules.** Skills are flat under `skills/` (open Agent-Skills
    standard — discovered by Claude Code, Copilot CLI, Codex, Gemini, Cursor via the
    `.claude/skills` / `.agents/skills` / `.github/skills` symlinks → `skills/`). They can't
    be foldered, so tier lives in `metadata.scope`, hard-gated by
    `scripts/validate-skill-scope.py` (CI + pre-commit; regenerates the SKILL-SCOPE table in
-   this file).
+   this file). Rules *are* foldered (§ Rules) and still route by path, but every `rules/*.md`
+   must **also** carry a top-level `scope:` matching its folder — hard-gated by
+   `scripts/validate-bridge.py` (CI). Without it an unscoped rule silently inherits `core`
+   from its path and would leak, so the field is a required backstop, not an option.
 
 **Rules are tiered by folder:** `rules/*.md` = core · `rules/org/**` = org · `rules/user/**`
 = user. Only core `rules/*.md` ship in open-bridge; `rules/org/` + `rules/user/` are added
@@ -331,8 +334,10 @@ skills via `.agents/skills/*/SKILL.md`.
 
 ## Rules
 
-Rules are tiered by **folder** — the folder *is* the promote tier (no per-file frontmatter
-needed):
+Rules are tiered by **folder** — the folder *is* the promote tier, and every `rules/*.md`
+must **also** carry a top-level `scope:` in frontmatter matching that folder. The field is a
+required backstop rather than the router: an unscoped rule inherits `core` from its path and
+would leak, so `scripts/validate-bridge.py` fails CI on a missing or invalid one.
 
 - **`rules/`** — CORE framework rules, always-on, ship to every downstream.
 - **`rules/org/`** — org-tier rules (ship to a downstream `*-bridge` overlay only, never open-bridge).
