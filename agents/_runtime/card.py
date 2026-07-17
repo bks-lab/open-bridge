@@ -14,6 +14,7 @@ from a2a.types import (
     AgentSkill,
 )
 from a2a.utils import TransportProtocol
+from a2a.utils.constants import PROTOCOL_VERSION_CURRENT
 
 from .config import AgentConfig
 
@@ -50,6 +51,14 @@ def build_agent_card(cfg: AgentConfig) -> AgentCard:
             AgentInterface(
                 url=f"{cfg.public_url}/",
                 protocol_binding=TransportProtocol.JSONRPC,
+                # Say which A2A version this interface speaks. Not optional in practice:
+                # with it absent the SDK's v0_3-compat layer serves the whole card in the
+                # LEGACY dialect (top-level ``protocolVersion: "0.3"`` + ``preferredTransport``),
+                # so every agent built on this runtime advertised 0.3 while running a v1.0
+                # SDK. A client reading the v1.0 location then sees no version at all —
+                # which is how one upgraded peer silently dropped out of a live mesh.
+                # The server keeps enable_v0_3_compat=True, so 0.3 clients still work.
+                protocol_version=PROTOCOL_VERSION_CURRENT,
             )
         ],
         capabilities=AgentCapabilities(streaming=True, push_notifications=False),
