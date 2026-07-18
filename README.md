@@ -177,13 +177,13 @@ BKS open-bridge ships the pattern plus one reference sub-agent (`archivist`, for
 
 ### Bridge-Agents (agents/)
 
-Sub-agents point *inward* — they work for you inside your session and return a summary. **Bridge-Agents** point *outward*: persistent, addressable A2A (Agent2Agent) endpoints that front a persona to the world (and to peer bridges), answering questions, showing availability, and capturing requests under a human gate. The generic runtime + template live in `agents/` (CORE); each `agents/<name>/` instance is your own persona (USER, stays local). Spin one up from the template:
+Sub-agents point *inward* — they work for you inside your session and return a summary. **Bridge-Agents** point *outward*: persistent, addressable A2A (Agent2Agent) endpoints that front a persona to the world (and to peer bridges), answering questions, showing availability, and capturing requests under a human gate. The generic runtime + template live in `agents/` (CORE); each `agents/<name>/` instance is your own persona (USER, stays local); a thin MCP→A2A gateway (`agents/_gateway/`) makes those instances reachable from MCP-only frontends (Claude connectors, ChatGPT dev mode, Gemini). Spin one up from the template:
 
 ```bash
 cp -r agents/_template agents/<name> ; cd agents && uv run python -m _runtime.server --agent <name>
 ```
 
-Full model: [`agents/README.md`](agents/README.md) · [`docs/representative-agent.md`](docs/representative-agent.md) · [live page](https://bks-lab.github.io/open-bridge/agents.html).
+Full model: [`agents/README.md`](agents/README.md) · [`docs/representative-agent.md`](docs/representative-agent.md) · [`agents/_gateway/README.md`](agents/_gateway/README.md) · [live page](https://bks-lab.github.io/open-bridge/agents.html).
 
 ### Workspaces (optional)
 

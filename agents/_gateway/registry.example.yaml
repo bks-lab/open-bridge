@@ -1,0 +1,42 @@
+# Bridge registry template. Copy to registry.yaml and edit.
+#   cp registry.example.yaml registry.yaml
+#   uv run python -m gateway --registry registry.yaml
+#
+# One entry per A2A bridge this gateway exposes to MCP clients. The registry is
+# deliberately static YAML: the gateway is a thin, stateless translation layer,
+# so WHO is reachable is an operator decision checked into config — never
+# something a client can grow at runtime. See SPEC.md § 3 for the data model.
+
+bridges:
+    # Unique slug (^[a-z0-9][a-z0-9-]*$) — the id MCP clients pass to
+    # get_bridge_card / ask_bridge, and the key the per-bridge concurrency
+    # gate and card cache account under. Rename = a new bridge to clients.
+  - id: <bridge-slug>
+
+    # Where the AgentCard lives (conventionally .../.well-known/agent-card.json).
+    # The gateway reads BOTH card dialects — v1 supportedInterfaces and the
+    # legacy v0.3 top-level url — and picks the JSONRPC endpoint from the card,
+    # so a peer upgrading its A2A version needs no registry change here.
+    card_url: "https://<bridge-host>/.well-known/agent-card.json"
+
+    # One line shown to MCP clients in list_bridges. Write it for the CALLER:
+    # what can this bridge answer?
+    description: "<One line shown to MCP clients in list_bridges.>"
+
+    # open  = the upstream bridge needs no credential.
+    # token = the gateway authenticates upstream with Bearer <resolved
+    #         credential> on card fetch + send; requires credential_ref below.
+    # This is the gateway->bridge hop only — the MCP client's own Authorization
+    # header is NEVER forwarded upstream (two independent auth hops, always).
+    auth_mode: open
+
+    # ENV VAR NAME holding the upstream credential — NEVER the secret itself.
+    # A value that looks like a literal secret fails registry validation
+    # (^[A-Z][A-Z0-9_]*$), on purpose: secrets do not belong in YAML.
+    # credential_ref: <EXAMPLE_BRIDGE_TOKEN>
+
+    # anonymous     = listed + askable without a gateway bearer token.
+    # authenticated = hidden from anonymous list_bridges and refused with
+    #                 tier_denied (before any upstream contact) until the
+    #                 caller presents a token from the configured token list.
+    min_tier: anonymous

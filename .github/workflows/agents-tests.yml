@@ -29,3 +29,18 @@ jobs:
       - name: Run runner regression net
         working-directory: agents
         run: uv run --with pytest --with pytest-asyncio pytest
+
+  gateway-pytest:
+    name: Hermetic pytest suite (agents/_gateway/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # agents/pyproject.toml pins testpaths to agents/tests, so the gateway
+      # suite needs its own job — without it these tests silently never run.
+      - name: Run gateway suite
+        working-directory: agents/_gateway
+        run: uv run --with pytest --with pytest-asyncio --with starlette pytest
