@@ -22,10 +22,15 @@ class GatewayError(Exception):
     code: ClassVar[str] = "gateway_error"
 
     def __init__(self, message: str, *, retry_after_s: float | None = None) -> None:
-        raise NotImplementedError
+        super().__init__(message)
+        self.retry_after_s = retry_after_s
 
     def to_info(self) -> ErrorInfo:
-        raise NotImplementedError
+        return {
+            "code": self.code,
+            "message": str(self),
+            "retry_after_s": self.retry_after_s,
+        }
 
 
 class UnknownBridgeError(GatewayError):
