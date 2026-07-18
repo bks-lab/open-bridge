@@ -67,7 +67,13 @@ An overlay ships an org's `scope: org` building blocks as a flat `tree/` mirror 
 its `metadata.scope`; the sibling `scripts/`, `references/`, `assets/` carry no
 inline scope and **inherit the tier of their SKILL.md** (resolved from the overlay
 SOURCE, so a fresh `add` ships the scripts too — they are NOT refused as CORE).
-A markdown-only skill and a script-bearing skill both transfer whole.
+A markdown-only skill and a script-bearing skill both transfer whole. **Exception:**
+this only covers scripts living inside the skill's own directory
+(`skills/<name>/scripts/`). Several `scope: core` skills (e.g. `bridge-dashboard`,
+`tracker-sync`, `workspace`, this skill) instead call a shared **repo-root**
+engine (`scripts/<name>.py`) that ships with the Bridge repo itself, outside any
+skill folder — that script is not part of the skill directory and is not
+materialized by an org-overlay `add`.
 
 **Don't ship framework as org.** A skill/agent that already exists in the
 consumer's CORE (e.g. a generic `bridge-*` tool, or a `scope:core` sub-agent like
@@ -90,9 +96,10 @@ exclude it at authoring time (the publish guard + a `user-owned` count in
 | `remove <name> [--keep-files]` | Unsubscribe: hash-verify each lock-recorded file, delete **only clean** managed files (prompt on locally-modified), drop the cache + `materialize:` block + lock entry + the ecosystem `@import`. `--keep-files` ends the subscription but leaves the files in place. |
 | `list` | Subscribed overlays from `upstreams[]` (`role: org-overlay`): name, url, ref, `resolved_sha`, precedence, file-count, `last_synced`. |
 
-Engine: `scripts/overlay.py` (the deterministic implementation). The full
-17-step sync algorithm, conflict/precedence model, and 3-way base recovery
-live in `references/workflow.md`.
+Engine: `scripts/overlay.py` — a shared repo-root utility shipped with the
+Bridge repo itself, not a file inside this skill's own directory (the
+deterministic implementation). The full 17-step sync algorithm,
+conflict/precedence model, and 3-way base recovery live in `references/workflow.md`.
 
 ## HARD GATES (non-negotiable)
 

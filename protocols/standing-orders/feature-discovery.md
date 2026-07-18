@@ -6,6 +6,12 @@ applies_to: [ops]
 ---
 # Feature Discovery — Proactive Bridge-Feature Suggestions
 
+> **Template `applies_to`.** `ops` below is a placeholder sub-agent name —
+> replace it with your own `.claude/agents/*.md` sub-agent. open-bridge
+> itself ships only `archivist`, which this order does not target, so as
+> shipped it applies to no dispatched sub-agent; adapt `applies_to` (or
+> set it to `[]` for all) once you add your own.
+
 The onboarding wizard intentionally avoids quiz-style questions about
 the user's life ("do you file taxes for multiple entities?"). Instead,
 this standing-order watches for **evidence over time** that a Bridge

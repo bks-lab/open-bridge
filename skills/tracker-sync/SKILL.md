@@ -20,7 +20,9 @@ metadata:
 
 Keeps The Bridge's task state and the GitHub Project boards aligned, with a
 **persistent local snapshot** as the pivot. Three deterministic engine
-subcommands (`scripts/tracker-sync.py`) plus one gated write path.
+subcommands (`scripts/tracker-sync.py` — a shared repo-root utility shipped
+with the Bridge repo itself, not a file inside this skill's own directory)
+plus one gated write path.
 
 **Provider scope:** GitHub Projects V2 only for now — other trackers
 (e.g. ADO) are readable via `trackers/*.md` playbooks but are not

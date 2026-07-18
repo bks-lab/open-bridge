@@ -71,7 +71,9 @@ User wants to...
 Before any cherry-pick or push, a **mandatory** two-layer content-safety
 gate runs — per destination repo:
 
-1. `python3 scripts/no-scrub-leak.py {outgoing files}` — universal
+1. `python3 scripts/no-scrub-leak.py {outgoing files}` — `scripts/no-scrub-leak.py`
+   is a shared repo-root utility shipped with the Bridge repo itself, not a
+   file inside this skill's own directory. It checks universal
    classes (absolute user paths, key/token shapes) plus **your own
    roster** from `scripts/leak-patterns-internal.txt` (you maintain your
    customer/PII regexes there; the shipped scanner cannot know them).

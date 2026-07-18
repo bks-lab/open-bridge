@@ -116,8 +116,11 @@ directly.
 above — don't confuse them. A sub-agent is ephemeral, works for you inside your session, and
 returns a summary; a **Bridge-Agent** is a persistent, addressable A2A endpoint that fronts a
 persona to the world (and to peer bridges) under a human gate. The generic runtime + template
-ship as CORE under `agents/`; each `agents/<name>/` instance is USER. Full model:
-[`agents/README.md`](agents/README.md), [`docs/representative-agent.md`](docs/representative-agent.md).
+ship as CORE under `agents/`; each `agents/<name>/` instance is USER. A thin, stateless
+MCP→A2A gateway (`list_bridges`, `get_bridge_card`, `ask_bridge`) ships as CORE under
+`agents/_gateway/`. Full model: [`agents/README.md`](agents/README.md),
+[`agents/_gateway/README.md`](agents/_gateway/README.md),
+[`docs/representative-agent.md`](docs/representative-agent.md).
 
 ---
 
@@ -144,7 +147,9 @@ and adopted by agents like Nous Research's Hermes (see [ACKNOWLEDGMENTS.md](ACKN
 `protocols/standing-orders/*.md` are **always-on rules** loaded every session when task
 management is enabled (task-sync, board-task-criteria, drift-advisory, document-work, …). Each
 carries `name`, `scope`, `enforcement`, and `applies_to` frontmatter; orders with
-`scope: always` are injected into every sub-agent dispatch. `protocols/` stays **top-level**
+`scope: always` are matched against every sub-agent dispatch, then filtered by `applies_to`
+(sub-agent names, empty = all — so an order can target only specific sub-agents rather than
+every dispatch). `protocols/` stays **top-level**
 (CORE content with its own lifecycle) — `standing-orders/` ships CORE defaults;
 user-authored orders live in `standing-orders/user/`.
 
@@ -277,9 +282,9 @@ The canonical location remains `skills/` — edit there, the symlinks follow.
 | Group | Skills |
 |-------|--------|
 | **Bridge ops** (session lifecycle) | `briefing`, `archive`, `bridge-status`, `bridge-explorer`, `bridge-greeting` |
-| **Bridge maintenance** | `bridge-audit` (drift detection), `bridge-leak-check` (categorized content scan), `bridge-curator` (consolidation pass), `bridge-learn` (learning-loop proposals) |
-| **Bridge setup + sync** | `bridge-onboard`, `bridge-promote`, `bridge-sync` (sprint-level batch sync to upstreams), `bridge-contribute` (fork-based upstream PRs), `knowledge-repo-init` (pair a knowledge repo) |
-| **Communication / meetings** | `debrief` (full / `--quick` / `--all` / `--date`) |
+| **Bridge maintenance** | `bridge-audit` (drift detection), `bridge-leak-check` (categorized content scan), `bridge-curator` (consolidation pass), `bridge-learn` (learning-loop proposals), `onboard-sim` (adversarial push-guard leak simulation) |
+| **Bridge setup + sync** | `bridge-onboard`, `bridge-promote`, `bridge-sync` (sprint-level batch sync to upstreams), `bridge-contribute` (fork-based upstream PRs), `bridge-overlay` (subscribe to org overlays), `knowledge-repo-init` (pair a knowledge repo), `workspace` (bind repos + config overlays into a project container) |
+| **Communication / meetings** | `debrief` (full / `--quick` / `--all` / `--date`), `meeting-transcription` (recording → transcript pipeline feeding `/debrief`) |
 | **Messaging + scheduling** | `channel`, `schedule`, `calendar`, `mandants` |
 | **Infrastructure** | `remote` |
 | **Projects** | `dashboard`, `project-advisor`, `github-projects-manager`, `tracker-sync`, `task-close-postmortem` |
@@ -351,9 +356,24 @@ apply to your instance at session start.
 |------|------|---------|
 | `session-start.md` | core | **Phase 0 gate** — branch/config detection before ANY response at session start |
 | `operations.md` | core | Session management (Phase 1), commit hygiene, CORE/USER promote routing, work logging |
-| `promote-safety.md` | core | Content-leak prevention before cherry-pick/merge to CORE branches — scope-check for `skills/` and `.claude/agents/` |
+| `ci-discipline.md` | core | Verify CI green after every push unprompted; diagnose a red run from its log, not the workflow YAML |
 | `contribute-advisor.md` | core | Suggest upstream contributions when CORE-eligible files are created |
+| `deploy-reconciliation.md` | core | Declared `status:` fields are never trusted — probe the actual remote before any "running/deployed" claim |
+| `discovery.md` | core | Config-type resolution helper — the Default-to-Folder discovery glob over the cluster wrappers |
+| `file-creation.md` | core | Pre-write checklist — anchor on the matching template + schema + a peer example before creating any new YAML/MD |
+| `git-hygiene.md` | core | Git mechanics gates — DCO sign-off, atomic stage+commit, the `skills/` symlink path |
+| `knowledge-growth.md` | core | Meta-rule — where new knowledge belongs (CLAUDE.md vs `rules/` vs `docs/` vs standing-order vs memory) |
+| `language-policy.md` | core | CORE content is authored in English; runtime/output language is a separate per-fork axis |
+| `learning-autonomy.md` | core | The four layers the Bridge can change about itself, and the human gate at each one |
+| `multi-agent-review.md` | core | Three-phase parallel-agent review engine for strategic/high-stakes written communication |
+| `multi-instance-isolation.md` | core | Inbound isolation between Bridge instances — never pull another instance's content in |
+| `org-overlays.md` | core | Fail-closed contract for materializing an org overlay's `scope:org` content into a consumer Bridge |
+| `promote-safety.md` | core | Content-leak prevention before cherry-pick/merge to CORE branches — scope-check for `skills/` and `.claude/agents/` |
+| `push-guard.md` | core | Push-boundary gate blocking `user/*` branches and USER content from reaching a public upstream |
 | `skill-routing.md` | core | Discipline for picking skills over ad-hoc prompts |
+| `task-management-workflow.md` | core | Detailed workflow for task management — reflex pause, plan/build classification, similarity, cluster detection |
+| `theme.md` | core | Theme system — resolution order, built-in themes, custom theme authoring |
+| `visual-output.md` | core | Cross-skill gates for generated visual deliverables — light/dark toggle, source attribution on every figure |
 
 Only the `core` rules above ship in open-bridge. The `rules/org/` and `rules/user/` folders
 do **not** ship in CORE OSS — a downstream `*-bridge` overlay adds its own org-tier rules

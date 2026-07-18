@@ -135,7 +135,7 @@ Suggested fixes (3 auto-fixable):
 
 ## Integration with Bridge
 
-- **bridge-fleet** owns this — channels and remotes are infrastructure, docs health is infrastructure
+- **remote** (infra/remotes/) and **channel** (infra/channels/) own their respective config docs; docs-health checks quality across all of them
 - **briefing** Stream C calls docs-health in summary mode (1-line output)
 - **archive** weekly checkpoint can include quality trend
 - Works on any repo with markdown files, not just the wiki

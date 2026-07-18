@@ -52,7 +52,9 @@ User wants to...
 No PR is created until the two-layer gate passes for the exact outgoing
 file set:
 
-1. `python3 scripts/no-scrub-leak.py {files}` — universal classes
+1. `python3 scripts/no-scrub-leak.py {files}` — `scripts/no-scrub-leak.py`
+   is a shared repo-root utility shipped with the Bridge repo itself, not a
+   file inside this skill's own directory. It checks universal classes
    (absolute user paths, key/token shapes, merge-conflict markers) plus
    **your own roster** from `scripts/leak-patterns-internal.txt`
    (local-only, never shipped — you maintain your customer/PII regexes

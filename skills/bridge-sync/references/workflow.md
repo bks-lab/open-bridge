@@ -418,7 +418,7 @@ gh pr create --repo <your-org>/<your-bridge> \
   --head {your-username}:sync-{date}-{time} \
   --title "Bridge sync ${SINCE}..HEAD ($(echo $ALL_COMMITS | wc -w) commits)" \
   --body "$(cat <<'EOF'
-End-of-sprint batch sync from {your-username}/the-bridge.
+End-of-sprint batch sync from <your-username>/your-bridge.
 
 ## Commits ($(echo $ALL_COMMITS | wc -w))
 {list of commits with scope tags}
@@ -435,7 +435,7 @@ gh pr create --repo bks-lab/open-bridge \
   --head {your-username}:sync-{date}-{time} \
   --title "Bridge sync ${SINCE}..HEAD ($(echo $CORE_COMMITS | wc -w) commits)" \
   --body "$(cat <<'EOF'
-End-of-sprint batch sync from {your-username}/the-bridge.
+End-of-sprint batch sync from <your-username>/your-bridge.
 
 Only scope:core commits included; user-specific changes are in
 <your-org>/<your-bridge> in the matching sync branch.
@@ -558,3 +558,8 @@ If Step 6 safety scan fails:
 If Step 8 PR creation fails (rate limits, network):
 - Branches are already pushed — just retry `gh pr create` manually
 - Or rerun `/bridge-sync` — it detects existing branches and skips Step 5+7
+
+If `gh pr merge` fails AFTER Step 8 with a stale-ancestor error (squash-merge
+of a prior PR against the same base broke the new PR's ancestry — not a
+conflict a human resolution in the GitHub UI can fix): see
+[`pr-recovery-patterns.md`](pr-recovery-patterns.md) Pattern 1.

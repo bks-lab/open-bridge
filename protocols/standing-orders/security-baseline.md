@@ -6,6 +6,12 @@ applies_to: [builder, guard]
 ---
 # Security Baseline
 
+> **Template `applies_to`.** `builder` and `guard` below are placeholder
+> sub-agent names — replace them with your own `.claude/agents/*.md`
+> sub-agents. open-bridge itself ships only `archivist`, which this order
+> does not target, so as shipped it applies to no dispatched sub-agent;
+> adapt `applies_to` (or set it to `[]` for all) once you add your own.
+
 ## Rules
 
 - NEVER commit secrets, tokens, API keys, or credentials to git

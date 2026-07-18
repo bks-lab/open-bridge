@@ -42,7 +42,7 @@ the per-repo blocklist.
 | Argument | Effect | Default |
 |---|---|---|
 | `(none)` | Scan current repo with the matching blocklist (auto-detected from `.git/config` origin) | — |
-| `--repo <name>` | Force which blocklist to apply (`open-bridge` / `org-overlay` / `the-bridge` / `fallback`) | auto |
+| `--repo <name>` | Force which blocklist to apply (`open-bridge` / `org-overlay` / `your-bridge` / `fallback`) | auto |
 | `--strict-oss` | Also flag internal-vocabulary hardcoding (uses `vocabulary_renames` from `bridge-audit/data/renames.yaml`) | false |
 | `--report-only` | Only show categorized report; don't suggest fixes | false |
 | `--target-dir <path>` | Scan a different working tree (e.g. `/tmp/cloned-upstream`) | `.` |
