@@ -89,6 +89,21 @@ _DISALLOWED_TOOLS = ",".join(
 )
 
 
+def _build_env(context_id: str | None) -> dict[str, str] | None:
+    """Build the subprocess env, adding ``AGENT_CONTEXT_ID`` when ``context_id`` is set.
+
+    Instance tools (argparse CLIs invoked via Bash, or anything reading its inherited
+    env) have no other way to learn which A2A session is calling them — e.g. an
+    intake/concern-notification tool wants the real session id instead of "unknown".
+    Returns ``None`` (→ the subprocess inherits the parent's env unchanged, asyncio's
+    default) when there is no context_id, so we never export an empty-string
+    placeholder that a consumer could mistake for a real id.
+    """
+    if not context_id:
+        return None
+    return {**os.environ, "AGENT_CONTEXT_ID": context_id}
+
+
 class SubprocessClaudeRunner:
     """Run ``claude -p <prompt> --output-format json ...`` and return the answer."""
 
@@ -153,8 +168,12 @@ class SubprocessClaudeRunner:
         ]
         return cmd
 
-    async def __call__(self, prompt: str) -> str:
-        """Invoke claude -p and return the assistant's answer text."""
+    async def __call__(self, prompt: str, *, context_id: str | None = None) -> str:
+        """Invoke claude -p and return the assistant's answer text.
+
+        ``context_id`` (the A2A session id), when present, is exported into the
+        subprocess env as ``AGENT_CONTEXT_ID`` — see ``_build_env`` for why.
+        """
         cmd = self._build_cmd(prompt, stream=False)
         logger.debug("claude_runner: spawning %s", " ".join(cmd[:6]))
 
@@ -166,6 +185,7 @@ class SubprocessClaudeRunner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 limit=_STREAM_LIMIT,
+                env=_build_env(context_id),
             )
         except OSError:
             logger.exception("claude_runner: spawn failed (buffered)")
@@ -200,12 +220,15 @@ class SubprocessClaudeRunner:
             logger.warning("claude_runner: stdout was not JSON, using raw")
             return raw
 
-    async def stream(self, prompt: str) -> AsyncIterator[dict]:
+    async def stream(self, prompt: str, *, context_id: str | None = None) -> AsyncIterator[dict]:
         """Run with ``--output-format stream-json --verbose`` and yield events.
 
         Yields ``{"kind":"step", "tool":..., "label":...}`` per tool_use block and
         exactly one ``{"kind":"answer", "text":...}`` from the terminal result
         event (or synthesised from accumulated assistant text if none arrives).
+
+        ``context_id`` (the A2A session id), when present, is exported into the
+        subprocess env as ``AGENT_CONTEXT_ID`` — see ``_build_env`` for why.
         """
         cmd = self._build_cmd(prompt, stream=True)
         logger.debug("claude_runner: streaming %s", " ".join(cmd[:6]))
@@ -218,6 +241,7 @@ class SubprocessClaudeRunner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 limit=_STREAM_LIMIT,
+                env=_build_env(context_id),
             )
         except OSError:
             logger.exception("claude_runner: spawn failed (stream)")
