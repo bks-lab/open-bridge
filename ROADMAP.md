@@ -16,9 +16,11 @@ Nothing below is a commitment to a date, and "Later / exploring" means exactly t
   Code, GitHub Copilot, Codex, Gemini and Cursor via standard discovery paths.
 - **Structured work-system** — a generated board + an append-only work log, with
   a closed status model.
-- **Guided onboarding** — a wizard that takes a fresh clone to a running
-  instance; hardened first-run (push-guard, scope consent, goal clarity)
-  ([#51](https://github.com/bks-lab/open-bridge/issues/51)).
+- **Guided onboarding** — a four-lane front door (see it run, describe your
+  goal, go private first, or bind a workspace) that takes a fresh clone to a
+  running instance; hardened first-run (push-guard, scope consent, goal
+  clarity) ([#51](https://github.com/bks-lab/open-bridge/issues/51),
+  [#46](https://github.com/bks-lab/open-bridge/issues/46)).
 - **Organization overlays** — subscribe to an organization's config by git URL
   and provision it onto a vanilla open-bridge, no fork
   ([#48](https://github.com/bks-lab/open-bridge/issues/48), `docs/org-overlays.md`).
@@ -34,14 +36,21 @@ Nothing below is a commitment to a date, and "Later / exploring" means exactly t
   and the `git fetch upstream && git merge upstream/main` update path keep you
   current without a public fork
   ([#52](https://github.com/bks-lab/open-bridge/issues/52), `rules/push-guard.md`).
+- **Representative agent (Bridge-Agent) runtime** — a persistent, addressable
+  A2A endpoint that fronts a persona to the world and to peer bridges under
+  human gates; generic runtime + template in `agents/`, guide in
+  `docs/representative-agent.md`
+  ([#49](https://github.com/bks-lab/open-bridge/issues/49),
+  [#126](https://github.com/bks-lab/open-bridge/pull/126)).
+- **MCP→A2A gateway** — a thin, stateless gateway (`agents/_gateway/`) that
+  lets MCP-only frontends (Claude connectors, ChatGPT developer mode, Gemini)
+  talk to a bridge's A2A agent; anonymous access is standard, a bearer token
+  unlocks more
+  ([#125](https://github.com/bks-lab/open-bridge/pull/125); further work
+  tracked in [#124](https://github.com/bks-lab/open-bridge/issues/124)).
 
 ## Now — building
 
-- **Workspace separation by default**
-  ([#43](https://github.com/bks-lab/open-bridge/issues/43)) — work separated per
-  context so nothing bleeds between engagements, with a simple rule: *"if you
-  can't place it into your known world-models, ask."* The
-  hard-silo-vs-soft-folder default is still being worked out.
 - **Data-model guardrails — which data lives where**
   ([#53](https://github.com/bks-lab/open-bridge/issues/53)) — make the
   CORE/org/user data boundaries explicit and enforceable, so instances stay
@@ -52,27 +61,9 @@ Nothing below is a commitment to a date, and "Later / exploring" means exactly t
 - **More worked examples**
   ([#45](https://github.com/bks-lab/open-bridge/issues/45)) — additional
   end-to-end example setups beyond `examples/agency`.
-- **Faster, safer onboarding**
-  ([#46](https://github.com/bks-lab/open-bridge/issues/46)) — make the first
-  five minutes faster and harder to get wrong.
-- **Representative agent (A2A)**
-  ([#47](https://github.com/bks-lab/open-bridge/issues/47)) — publish the
-  generic runtime + template so a bridge can front an addressable agent to the
-  world and to peer bridges (answer questions, show availability, capture
-  requests under a human gate). Now landed in CORE on the feature branch and in
-  review (#92); partly live at N=1.
 
 ## Later — exploring
 
-- **Bridge-Agent pattern**
-  ([#49](https://github.com/bks-lab/open-bridge/issues/49)) — document and lock
-  the design for persistent, identity-bearing agents with two faces: an
-  internal mesh (peer bridges) and an external representative. The runtime it
-  builds on has landed on the feature branch / in review (#92); the pattern doc +
-  lock are still to come.
-- **Multiple bridges per org**
-  ([#55](https://github.com/bks-lab/open-bridge/issues/55)) — several scoped
-  instances (per team / per client) instead of one monolith.
 - **Deployment & structured-feedback story**
   ([#56](https://github.com/bks-lab/open-bridge/issues/56)) — a repeatable way
   to roll an instance out to someone else and learn from how it behaves.
@@ -86,8 +77,8 @@ around it. Take only what you need.
   live state (services, crew, calendar, channels). Separate repo,
   **Apache-2.0**, read-only, config-driven.
   → [`bks-lab/bridge-deck`](https://github.com/bks-lab/bridge-deck)
-- **Representative agent** — the CORE `agents/` runtime + template; landed on the
-  feature branch / in review (#92, see *Next*).
+- **Representative agent** — the CORE `agents/` runtime + template, plus the
+  MCP→A2A gateway that fronts it to MCP-only clients; see *Shipped*.
 
 > Honest note: these run today as a single-maintainer (N=1) setup. They're
 > built for technical early adopters, not yet for critical infrastructure.

@@ -63,7 +63,9 @@ User wants to...
 ├── Dry-run / preview routing            → references/workflow.md (stop after Step 4)
 ├── Sync only one repo                   → references/workflow.md § --repo override
 ├── Configure scrub patterns             → rules/promote-safety.md per-repo blocklists
-└── Tag the sync point                   → references/workflow.md § sync-tag
+├── Tag the sync point                   → references/workflow.md § sync-tag
+└── PR merge fails after squash-merge    → references/pr-recovery-patterns.md
+    (stale-ancestor / non-fast-forward)
 ```
 
 ## Safety

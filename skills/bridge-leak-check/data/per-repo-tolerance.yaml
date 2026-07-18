@@ -11,8 +11,8 @@
 
 repos:
 
-  - name: the-bridge
-    match: ["<your-username>/the-bridge", "the-bridge"]
+  - name: your-bridge
+    match: ["<your-username>/your-bridge", "your-bridge"]
     role: saat-private
     description: |
       Personal saat-repo. Tracks personas, mandants, work logs
@@ -151,8 +151,8 @@ categories:
         - "bks-lab/open-bridge"
       org-overlay:
         - "<your-org>/<your-bridge>"   # ← replace with your overlay repo slug
-      the-bridge:
-        - "<your-username>/the-bridge"
+      your-bridge:
+        - "<your-username>/your-bridge"
 
   oss-sister-repo:
     description: "Cross-link to a related OSS repo in the same family"

@@ -124,3 +124,52 @@ agents widens exposure — put an edge rate-limit in front of a public
 deployment, keep `min_tier: authenticated` on anything you don't want
 anonymous traffic to reach, and prefer per-bridge upstream credentials over
 open agents where the content warrants it.
+
+## Deploy
+
+Host the gateway on a remote (launchd/systemd), behind a tunnel that maps a
+public hostname to the local port — then set `allowed_hosts` (§ Behind a
+tunnel above) or every request 421s. A generic systemd unit:
+
+```ini
+[Unit]
+Description=bridge-gateway (MCP->A2A)
+
+[Service]
+WorkingDirectory=/path/to/agents/_gateway
+ExecStart=/path/to/uv run python -m gateway --registry registry.yaml --port 8900
+Environment=GATEWAY_AUTH_TOKENS=<token>
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+or the launchd equivalent (`ProgramArguments` running the same `uv run`
+command, `KeepAlive` true). `registry.yaml` and an optional `gateway.yaml`
+live next to the unit's `WorkingDirectory` — keep both out of git (they may
+carry internal `card_url`s) alongside the `.env`-style file backing
+`GATEWAY_AUTH_TOKENS` and any `credential_ref` targets.
+
+The gateway is stateless MCP-only — there is no separate `/health` endpoint
+(one path, `/mcp`, per TRN-1). Probe liveness with a minimal JSON-RPC
+`initialize` call instead:
+
+```bash
+curl -s http://127.0.0.1:8900/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize",
+       "params":{"protocolVersion":"2025-06-18","capabilities":{},
+                 "clientInfo":{"name":"probe","version":"0"}}}'
+```
+
+A `200` with a `serverInfo` payload means the process is up; a bare `curl -o
+/dev/null -w '%{http_code}'` GET against `/mcp` also distinguishes "listening
+but rejects a malformed request" (`406`) from "port is down" (connection
+refused) when a full JSON-RPC probe is overkill.
+
+Track the deploy as an `infra/channels/<name>.yaml` entry (`type: bridge` or
+`api`, per that schema) + the remote's service list — the declared `status:`
+is never trusted, the service manager is
+([`rules/deploy-reconciliation.md`](../../rules/deploy-reconciliation.md)).

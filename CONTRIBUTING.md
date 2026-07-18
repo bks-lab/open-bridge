@@ -2,11 +2,12 @@
 
 Sub-agents, standing orders, themes, bug fixes — all welcome.
 
-> **Project status — early public preview (0.2.x).** open-bridge is open
-> source and free to use and fork today. The contribution workflow is still
-> being built: pull requests are reviewed and merged **manually** for now, so
-> external PRs may take time and larger changes are best discussed in an
-> issue first. Bug reports, ideas, and questions are very welcome.
+> **Project status.** open-bridge is open source and free to use and fork
+> today — see the [releases page](https://github.com/bks-lab/open-bridge/releases)
+> for the current version. The contribution workflow is still being built:
+> pull requests are reviewed and merged **manually** for now, so external PRs
+> may take time and larger changes are best discussed in an issue first. Bug
+> reports, ideas, and questions are very welcome.
 
 ---
 

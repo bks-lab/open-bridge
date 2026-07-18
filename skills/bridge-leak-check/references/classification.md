@@ -10,12 +10,12 @@ design. The model lives in [`data/per-repo-tolerance.yaml`](../data/per-repo-tol
 
 | Repo | Role | Tolerates | Blocks |
 |---|---|---|---|
-| `<your-username>/the-bridge` | saat-private | personal-pii, customer-names, org-branding, internal-vocabulary | (nothing — by design) |
+| `<your-username>/your-bridge` | saat-private | personal-pii, customer-names, org-branding, internal-vocabulary | (nothing — by design) |
 | `<your-org>/<your-bridge>` (org overlay) | org-internal | customer-names, org-branding, internal-vocabulary | personal-pii |
 | `bks-lab/open-bridge` | oss-public | oss-self-reference, oss-sister-repo, schema-id-urls | personal-pii, customer-names, org-branding, internal-vocabulary |
 | (unknown origin) | unknown | (strictest = open-bridge) | (everything) |
 
-**Why this matters:** running `bridge-leak-check` on `<your-username>/the-bridge` should
+**Why this matters:** running `bridge-leak-check` on `<your-username>/your-bridge` should
 return ZERO findings — the seed repo is allowed to track persona files, <bks-lab>
 configs, and customer engagement skills because that IS its job. Running the
 same command on `open-bridge` returns findings for any of those things because
@@ -60,7 +60,7 @@ A hit is self-reference when:
 - The matched string is the **canonical name of THIS repo** (auto-detected from origin)
   - In `open-bridge`: `bks-lab/open-bridge`, `bks-lab.github.io/open-bridge`
   - In your org overlay (`org-overlay`): `<your-org>/<your-bridge>`
-  - In `the-bridge`: `<your-username>/the-bridge`, `<your-username>/the-bridge` (legacy)
+  - In `your-bridge`: `<your-username>/your-bridge`
 - The match is a **schema `$id` URL** pointing at this repo's published schema location
   - Pattern: `\$id:\s*"https://[^"]*<repo-domain>[^"]*"`
 - The match is in a **frontmatter `name:` field** (skill name = directory name = legitimate)
@@ -75,10 +75,9 @@ exceptions_self_reference:
     strings:
       - "<your-org>/<your-bridge>"   # ← replace with your overlay repo slug
       - "bks-lab/open-bridge"   # your org overlay legitimately references its OSS upstream
-  the-bridge:
+  your-bridge:
     strings:
-      - "<your-username>/the-bridge"
-      - "<your-username>/the-bridge"    # legacy transfer reference
+      - "<your-username>/your-bridge"
       - "bks-lab/open-bridge"
       - "<your-org>/<your-bridge>"   # ← replace with your overlay repo slug
 ```
@@ -102,7 +101,7 @@ These are scoped per-repo: a `<your-org>/<your-bridge>` mention in `open-bridge`
 
 ### 3. Leak — personal PII (always)
 
-Personal PII is always a leak, regardless of which repo it appears in (only the seed repo `the-bridge` legitimately tracks PII per the per-repo `.gitignore` policy, but even there it shouldn't appear in CORE files).
+Personal PII is always a leak, regardless of which repo it appears in (only the seed repo `your-bridge` legitimately tracks PII per the per-repo `.gitignore` policy, but even there it shouldn't appear in CORE files).
 
 Detected via the `always_leak` block in `bridge-config.yaml`:
 
@@ -129,7 +128,7 @@ Reads `skills/bridge-audit/data/renames.yaml` § `vocabulary_renames` for the li
 
 Each finding suggests the canonical replacement from the rename entry.
 
-**Why this is a separate category:** these are legitimate inside org-internal repos (your org overlay, the-bridge) but should not appear in OSS skill docs. A blocklist alone can't tell the difference — it needs the context of "this skill is shipped to OSS users".
+**Why this is a separate category:** these are legitimate inside org-internal repos (your org overlay, your-bridge) but should not appear in OSS skill docs. A blocklist alone can't tell the difference — it needs the context of "this skill is shipped to OSS users".
 
 ## Standard exceptions per file type
 

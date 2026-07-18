@@ -1,0 +1,40 @@
+# Workspace Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Validates `workflow/workspaces/<id>.yaml` files. A workspace is a named
+# binding of member repos + config-overlay subscriptions describing "what
+# happens when" — the working set a session operates on. Full model:
+# docs/workspaces.md.
+#
+# CANONICAL SOURCE, delegated by $ref below: docs/schemas/workspace.schema.yaml.
+# That file is the one scripts/workspace.py's `SCHEMA` constant points at, the
+# one workflow/workspaces/_template.yaml's own `yaml-language-server` hint
+# already references, and the one docs/workspaces.md cross-links throughout.
+# Per "cross-references over duplication" (rules/file-creation.md), this file
+# does not fork a second copy of the schema body — that would only drift out
+# of sync with the engine's actual validation path. It exists so the
+# workflow/workspaces/ folder still follows the same Default-to-Folder
+# convention every other cluster-wrapper type uses (`_template.yaml` +
+# `_schema.yaml` colocated — AGENTS.md § Layout — Cluster-Wrappers), so
+# tooling and humans that expect a local `./_schema.yaml` next to the
+# template find one here.
+#
+# NOTE: deliberately no `$id` on this document — a root `$id` would rebase
+# the relative `$ref` below onto that URI instead of this file's own location
+# on disk, breaking local resolution (verified against check-jsonschema
+# 0.37.4). Leave `$id` unset here; the referenced schema carries its own.
+#
+# Validation (equivalent to validating directly against
+# docs/schemas/workspace.schema.yaml):
+#   check-jsonschema --schemafile workflow/workspaces/_schema.yaml \
+#                    workflow/workspaces/<id>.yaml
+#
+# IDE support: workflow/workspaces/_template.yaml points its
+# `yaml-language-server` hint straight at docs/schemas/workspace.schema.yaml
+# already — this file is the colocated companion for editors/tooling that
+# look for `./_schema.yaml` inside the wrapper folder itself.
+#
+# Full docs: docs/workspaces.md
+# Canonical schema: docs/schemas/workspace.schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$ref: "../../docs/schemas/workspace.schema.yaml"

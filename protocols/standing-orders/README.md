@@ -17,7 +17,7 @@ Each standing order is a markdown file with YAML frontmatter:
 ---
 name: order-name
 scope: always                 # always | per-repo | per-context
-enforcement: advisory         # advisory | blocking
+enforcement: advisory         # advisory | blocking | hook-warned
 applies_to: []                # sub-agent names (empty = all agents)
 ---
 ```
@@ -36,6 +36,7 @@ applies_to: []                # sub-agent names (empty = all agents)
 |-------|---------|
 | `advisory` | Claude follows the rule |
 | `blocking` | Claude actively warns when it detects a violation |
+| `hook-warned` | A tracked repo git hook (`scripts/hooks/pre-commit`) prints a warning to stderr when it detects a violation — but always exits 0, so the commit itself is never blocked. Tool-agnostic (fires for any tool that shells out to `git commit`); compliance is a nudge, not hard-enforced |
 
 ## Creating Standing Orders
 
@@ -47,9 +48,9 @@ Copy `_template.md`, fill in frontmatter and rules. Place in this directory.
 |-------|-------------|---------|
 | board-task-criteria | advisory | When a log entry should escalate to a Board task (A/B/C class model) |
 | code-standards | advisory | Code quality guidelines |
-| document-work | blocking | Log all significant actions to work/log.md |
+| document-work | hook-warned | Log all significant actions to work/log.md |
 | drift-advisory | advisory | Surface drift between declared state and live reality |
 | feature-discovery | advisory | Proactively suggest relevant Bridge features |
 | security-baseline | advisory | Security practices |
-| task-sync | blocking | Route task changes across project/context/mandant; enforce dual-doku |
+| task-sync | hook-warned | Route task changes across project/context/mandant; enforce dual-doku |
 | work-board-reconciliation | advisory | Keep task folders and STATUS.md / board coherent |

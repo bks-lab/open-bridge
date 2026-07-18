@@ -31,9 +31,10 @@ and config overlays you work on as one unit. It has two disjoint halves:
   resolved-SHA lockfile, the fork-safety exclude block — is **repo-local** and
   never leaves the repo.
 
-The engine is `scripts/workspace.py` (standalone, stdlib-only). This skill is the
-`/workspace` surface over it. **Run the referenced file ONLY when the decision
-tree sends you there.**
+The engine is `scripts/workspace.py` (standalone, stdlib-only) — a shared
+repo-root utility shipped with the Bridge repo itself, not a file inside this
+skill's own directory. This skill is the `/workspace` surface over it. **Run
+the referenced file ONLY when the decision tree sends you there.**
 
 `/workspace` is the **umbrella**; for the deep *org-overlay* subscription flow
 (manifest validation, per-file plan, 3-way merge, sync/diff) it delegates to and

@@ -16,7 +16,7 @@
 repos:
 
   - name: seed
-    match: ["your-fork/the-bridge", "the-bridge"]
+    match: ["your-fork/your-bridge", "your-bridge"]
     role: saat-private
     description: |
       Personal seed repo. Tracks personas, mandants, work logs INTENTIONALLY —
@@ -131,7 +131,7 @@ categories:
       org-overlay:
         - "<your-org>/<your-bridge>"   # ← replace with your overlay repo slug
       seed:
-        - "your-fork/the-bridge"
+        - "your-fork/your-bridge"
 
   oss-sister-repo:
     description: "Cross-link to a related OSS repo in the same family"

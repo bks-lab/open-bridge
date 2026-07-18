@@ -4,7 +4,7 @@
 
 # Claude Code specifics
 
-The canonical, tool-agnostic operating manual for this repo is the **~650-line
+The canonical, tool-agnostic operating manual for this repo is the **~800-line
 [`AGENTS.md`](AGENTS.md)**
 (Linux-Foundation convention, read natively by Codex/Cursor/Copilot/Gemini). It is inlined
 above via `@AGENTS.md`, so the full manual — session-start gate, rules, task management, agents,

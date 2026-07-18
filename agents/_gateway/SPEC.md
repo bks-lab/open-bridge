@@ -722,6 +722,17 @@ contextId roundtrip:
 - no `context_id` sent → request has no `contextId`; reply ctx returned (CONV-1)
 - `context_id="c-7"` → request carries it verbatim; echoed reply returned (CONV-2)
 
+### `tests/test_config.py` → CFG-1
+
+- no YAML, no ENV → pinned `GatewayConfig` defaults
+- YAML overrides every default; partial YAML leaves the rest at default
+- ENV overrides both YAML and defaults, one case per `GATEWAY_*` name from the § 3
+  table with the correct type
+- non-numeric `GATEWAY_PORT` / `GATEWAY_ASK_TIMEOUT_S`, and a non-numeric numeric
+  field inside the YAML file, each raise `ValueError` (negative)
+- `allowed_hosts`: empty by default, YAML list parses, `GATEWAY_ALLOWED_HOSTS` CSV
+  overrides the YAML list (§ 3 table)
+
 ### `tests/test_server_tools.py` → TIER-4/5, ERR-1..4, CONC-1/2, CARD-6 (via `GatewayService`, no MCP plumbing)
 
 - `list_bridges` anonymous vs authenticated filtering; result envelope `ok=true`
@@ -854,6 +865,7 @@ agents/_gateway/
     ├── test_registry.py
     ├── test_tiers.py
     ├── test_a2a_client.py
+    ├── test_config.py
     ├── test_server_tools.py
     └── test_integration_mcp.py
 ```

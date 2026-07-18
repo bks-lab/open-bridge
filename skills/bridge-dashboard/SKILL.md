@@ -16,7 +16,7 @@ metadata:
 
 ## What it does
 
-A Python generator (`scripts/bridge-dashboard.py`, stdlib + PyYAML only) aggregates the entire Bridge state **in parallel** and renders a self-contained HTML:
+A Python generator — `scripts/bridge-dashboard.py`, a shared repo-root utility shipped with the Bridge repo itself (not inside this skill's own directory), stdlib + PyYAML only — aggregates the entire Bridge state **in parallel** and renders a self-contained HTML:
 
 | Tile | Source | Parallel probe |
 |------|--------|----------------|

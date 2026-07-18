@@ -1,7 +1,7 @@
 ---
 summary: "Directory structure: where everything lives, what format, what it does — the cluster-wrapper layout in prose (mirrors AGENTS.md)."
 type: reference
-last_updated: 2026-06-21
+last_updated: 2026-07-18
 related:
   - AGENTS.md
   - docs/extension-model.md
@@ -47,7 +47,7 @@ DESIGN.md               CORE     Design system manifest
 
 identity/   infra/   workflow/   ← Cluster wrappers (see below)
 .claude/    skills/    rules/    themes/    trackers/    docs/    scripts/    bin/
-protocols/   work/    imports/    examples/
+protocols/   work/    imports/    examples/   agents/
 ```
 
 ## Cluster wrappers — Default-to-folder
@@ -127,6 +127,7 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `imports/` | USER (scratch) | Generic drop-zone for external files (ephemeral, `/imports/*` gitignored except `.gitkeep`). The work-system-specific inbox is `work/imports/`. |
 | `examples/` | CORE | Complete reference instance `agency/` (full clone-and-read sample) + `bridge-deck.config.yaml.template`. |
 | `docs/examples/` | CORE | Per-type example snippets (`personas/`, `projects/`, `knowledge-repo/`) — distinct from the full instance under top-level `examples/`. |
+| `agents/` | **Tiered by path** | Bridge-Agents — persistent, addressable A2A endpoints that front a persona to the outside world (the *outward* counterpart to the *inward* sub-agents below). `_runtime/` (engine), `_template/` (instance scaffold), `_gateway/` (MCP→A2A gateway), `tests/` = CORE; `agents/<name>/` (one instance per persona) = USER. Full guide: [`agents/README.md`](../agents/README.md), [`docs/representative-agent.md`](representative-agent.md). |
 | `.claude/agents/` | CORE (with scope) | Native sub-agents |
 | `.claude/skills/` | CORE (symlink → `../skills/`) | Discovery symlink so Claude Code finds skills (slash-command triggers live in each skill's `description`; there is no separate commands directory) |
 | `.claude/hooks/` | CORE | Optional hook scripts |

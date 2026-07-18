@@ -1,7 +1,7 @@
 ---
 summary: "How to stand up a representative agent — a persistent, addressable A2A endpoint that fronts one persona to the outside world, safely, on any bridge."
 type: doc
-last_updated: 2026-07-12
+last_updated: 2026-07-18
 related:
   - ../agents/README.md
 ---
@@ -213,6 +213,13 @@ tool an instance ships MUST satisfy them:**
    never env/argv), and the owner address live only in the USER instance. An instance
    that renders visitor text into markup must escape it before embedding.
 
+**Optional session attribution.** The runner also exports `AGENT_CONTEXT_ID` into the
+tool's inherited subprocess env whenever the turn arrives through the A2A executor
+(§3), which substitutes `default` when the request carries no context id — a tool MAY
+read it to attribute a captured request to the session that made it instead of logging
+"unknown". It falls back to unset, never an empty placeholder, for a direct invocation
+outside the A2A executor, so a tool must treat its absence as normal, not an error.
+
 ### Public-endpoint caps
 
 An ungated endpoint will be hit. The executor enforces `max_concurrency` (shed load
@@ -284,3 +291,17 @@ endpoint is, where it lives, how to reach it) and in the hosting remote's servic
 list. Per the deploy-reconciliation rule, **the declared `status:` is never trusted** —
 verify the live service manager and probe `/health` and the AgentCard endpoint. A
 config that says "running" proves nothing; the service manager and a live request do.
+
+## 7. Reaching MCP-only clients
+
+Everything above makes the agent addressable over **A2A** — but a growing share of
+the frontends people actually talk to (Claude connectors, ChatGPT developer mode,
+Gemini's tool clients) speak **MCP**, not A2A, and an A2A-only deployment is simply
+invisible to them: nothing to add as a connector, nothing to list as a tool. The CORE
+gateway under [`agents/_gateway/`](../agents/_gateway/README.md) closes that gap — a
+thin, stateless MCP→A2A translation layer that exposes `list_bridges` /
+`get_bridge_card` / `ask_bridge` over MCP and forwards each ask to the target agent's
+A2A endpoint unchanged. It adds reach, not privilege: the gateway is just another
+client in front of your agent and bypasses none of the guardrails in §4. Stand up the
+representative agent first for A2A reachability; add the gateway on top when you also
+want it discoverable from MCP-only surfaces.

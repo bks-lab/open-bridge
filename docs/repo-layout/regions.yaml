@@ -1,6 +1,6 @@
 schema_version: 2
 description: "Curated region descriptions for repo-layout brain visualizations. C-prime layout (cluster-wrappers + default-to-folder rule)."
-last_updated: 2026-05-02
+last_updated: 2026-07-18
 notes:
   - "Schema v2 (C-prime): cluster-wrappers identity/, infra/, workflow/ + default-to-folder rule."
   - "Primary view: docs/repo-layout/c-prime.html (editorial cluster/top-level map). Brain-metaphor variants v1-v4 show the same C-prime data and carry a banner at the top pointing to c-prime.html as the primary view."
@@ -164,6 +164,29 @@ regions:
     related:
       - "protocols/standing-orders/"
     put_here: "New focused worker for a recurring sub-task pattern."
+
+  - id: bridge_agents_core
+    path: "agents/"
+    owner: core
+    display_name: "Bridge-Agents"
+    oneliner: "Persistent, addressable A2A endpoints that front a persona to the world"
+    what: |
+      The *outward* counterpart to the inward `.claude/agents/` sub-agents above:
+      persistent agents reachable over the A2A protocol (JSON-RPC + SSE) that
+      answer about one identity, reveal availability, and take in requests —
+      always under hard human gates. `_runtime/` (the generic claude -p + A2A
+      server engine), `_template/` (instance scaffold), `_gateway/` (thin
+      MCP→A2A gateway), and `tests/` are CORE; each `agents/<name>/` instance
+      (agent.yaml, system-prompt.md, tools/) is USER — one persona per instance.
+    examples:
+      - "agents/_runtime/server.py — Starlette app + entrypoint"
+      - "agents/_gateway/ — list_bridges / get_bridge_card / ask_bridge"
+      - "agents/<name>/agent.yaml (USER instance)"
+    related:
+      - "docs/representative-agent.md"
+      - "agents/README.md"
+      - ".claude/agents/"
+    put_here: "New generic runtime capability (CORE) or a new persona-fronting instance (USER)."
 
   - id: examples_core
     path: "examples/"
@@ -383,6 +406,24 @@ regions:
       - "skills/doc-system/"
     put_here: "Schema extension in the context format."
 
+  - id: workflow_template_workspace_core
+    path: "workflow/workspaces/_template.yaml"
+    owner: core
+    display_name: "Workspace Template"
+    oneliner: "Template for workspace definitions (flat type)"
+    what: |
+      Boilerplate for `workspaces/<id>.yaml` files. Schema for `role: code`
+      member repos, `role: config` overlay subscriptions, and an optional
+      working directory. User-authored intent only — materialization
+      (clones, lockfile) is delegated to `scripts/workspace.py` +
+      `scripts/workspace_registry.py`.
+    examples: []
+    related:
+      - "workflow/workspaces/<id>.yaml"
+      - "docs/workspaces.md"
+      - "skills/workspace/"
+    put_here: "Schema extension in the workspace format."
+
   # =========================================================================
   # USER — instance-specific data, lives on user/<name>
   # =========================================================================
@@ -591,6 +632,28 @@ regions:
       - "skills/project-advisor/"
       - "docs/examples/projects/"
     put_here: "New project config at the first concrete GitHub/ADO project."
+
+  - id: workflow_workspace_user
+    path: "workflow/workspaces/<id>.yaml"
+    owner: user
+    display_name: "Workspace Definitions"
+    oneliner: "Named binding of member repos + config overlays (flat)"
+    what: |
+      One YAML per workspace: the working set a session operates on. Binds
+      `role: code` member repos (cloned under gitignored `.bridge/`) and
+      `role: config` overlay subscriptions (delegated to the `/overlay`
+      engine) under a shared, machine-global identity in
+      `~/.workspaces/workspaces.json`. Resolved reality (clone paths, commit
+      pins) lives in the generated `workspaces.lock.yaml`, kept separate from
+      this authored-intent file.
+    examples:
+      - "(none yet — created via `workspace create <id>`)"
+    related:
+      - "workflow/workspaces/_template.yaml"
+      - "docs/workspaces.md"
+      - "docs/org-overlays.md"
+      - "skills/workspace/"
+    put_here: "New workspace — a new named binding of repos + overlays."
 
   - id: protocols_user
     path: "protocols/"
