@@ -54,7 +54,12 @@ tokens_env: GATEWAY_AUTH_TOKENS
 # correct for local use, fatal behind a tunnel (public hostname in the Host
 # header -> HTTP 421 on every request; SPEC § 7 footnote). List exact
 # host[:port] values or "host:*" port wildcards; protection stays enabled.
+# A non-empty list REPLACES the auto-allowlist entirely — include your
+# loopback host:port too, or local health probes against the running
+# service 421 the moment the tunnel hostname is configured.
 # allowed_hosts:
 #   - <gw.your-domain.example>
 #   - "<gw.your-domain.example>:443"
+#   - "127.0.0.1:8900"
+#   - "localhost:8900"
 allowed_hosts: []

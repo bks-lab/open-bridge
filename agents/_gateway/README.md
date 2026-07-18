@@ -74,11 +74,14 @@ loopback host: a public tunnel hostname in the `Host` header is answered with
 HTTP 421. Set the allowlist when deploying behind a tunnel:
 
 ```bash
-export GATEWAY_ALLOWED_HOSTS="gateway.example.com"
+export GATEWAY_ALLOWED_HOSTS="gateway.example.com,127.0.0.1:8900,localhost:8900"
 ```
 
-Protection stays ON — the listed hosts replace the SDK's localhost-only
-auto-allowlist.
+Protection stays ON — the listed hosts **replace** the SDK's localhost-only
+auto-allowlist. That replacement cuts both ways: list your loopback
+`host:port` too, or local health probes against the running service start
+421ing the moment you configure the tunnel hostname (found live on first
+deploy).
 
 ## Robustness contract
 
