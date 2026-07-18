@@ -1,0 +1,60 @@
+# Gateway config template (optional file). Copy to gateway.yaml and edit.
+#   cp gateway.example.yaml gateway.yaml
+#   uv run python -m gateway --config gateway.yaml
+#
+# Resolution order: built-in defaults <- this YAML <- GATEWAY_* env vars.
+# ENV always wins so a deployment can override a checked-in file without
+# editing it; the CLI flags (--config/--registry/--host/--port) beat both.
+# Every key below shows its built-in default — the whole file is optional,
+# delete anything you do not change. Secrets NEVER live here: the client
+# token list and upstream credentials arrive exclusively via env-var
+# indirection (SPEC CFG-2).
+
+# Path to the bridge registry (ENV: GATEWAY_REGISTRY).
+registry: registry.yaml
+
+# Bind address (ENV: GATEWAY_HOST / GATEWAY_PORT). Keep 127.0.0.1 and put a
+# tunnel or reverse proxy in front for public exposure — and then also set
+# allowed_hosts below, or the SDK's DNS-rebinding protection 421s every
+# request carrying the public hostname.
+host: 127.0.0.1
+port: 8900
+
+# Budget per upstream send (ENV: GATEWAY_ASK_TIMEOUT_S). MUST stay below the
+# MCP client's tool-call/turn timeout (typically 60 s) — the gateway has to
+# fail first so the client sees a typed "timeout" error, not a dead call.
+ask_timeout_s: 55.0
+
+# Budget per AgentCard fetch (ENV: GATEWAY_CARD_TIMEOUT_S).
+card_timeout_s: 10.0
+
+# In-process card cache TTL in seconds, per bridge id; 0 disables
+# (ENV: GATEWAY_CARD_CACHE_TTL_S). Caching spares one upstream GET per ask;
+# disable it while iterating on a bridge's card.
+card_cache_ttl_s: 300.0
+
+# Concurrent ask_bridge calls per bridge (ENV: GATEWAY_PER_BRIDGE_CONCURRENCY).
+# Over the limit fails FAST with a "busy" error instead of queueing — a queued
+# MCP client would silently burn its own timeout while waiting.
+per_bridge_concurrency: 2
+
+# Retry hint in seconds carried by "busy" errors (ENV: GATEWAY_BUSY_RETRY_AFTER_S).
+busy_retry_after_s: 10.0
+
+# NAME of the env var holding the comma-separated client bearer-token list
+# (ENV override for the name itself: GATEWAY_TOKENS_ENV). Indirection keeps
+# token material out of YAML entirely. With the list unset/empty the gateway
+# is anonymous-only — any token presented then fails loudly with
+# "unauthorized", never a silent anonymous downgrade.
+tokens_env: GATEWAY_AUTH_TOKENS
+
+# Host-header allowlist for DNS-rebinding protection
+# (ENV: GATEWAY_ALLOWED_HOSTS, comma-separated). Empty = SDK default, which
+# auto-allowlists ONLY localhost Host headers when binding a localhost host —
+# correct for local use, fatal behind a tunnel (public hostname in the Host
+# header -> HTTP 421 on every request; SPEC § 7 footnote). List exact
+# host[:port] values or "host:*" port wildcards; protection stays enabled.
+# allowed_hosts:
+#   - <gw.your-domain.example>
+#   - "<gw.your-domain.example>:443"
+allowed_hosts: []

@@ -158,3 +158,38 @@ def test_load_config_non_numeric_yaml_numeric_field_raises_value_error(
 
     with pytest.raises(ValueError):
         load_config(path, env={})
+
+
+# ---------------------------------------------------------------------------
+# allowed_hosts — SPEC § 3 (Host-header allowlist for tunnel deployments)
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_allowed_hosts_defaults_empty_and_parses_yaml_list(
+    tmp_path: Path,
+) -> None:
+    # Default empty = keep the SDK's own DNS-rebinding behavior untouched.
+    assert load_config(None, env={}).allowed_hosts == ()
+
+    path = _write_yaml(
+        tmp_path,
+        """
+allowed_hosts:
+  - gw.example.com
+  - "gw.example.com:8900"
+""",
+    )
+
+    config = load_config(path, env={})
+
+    assert config.allowed_hosts == ("gw.example.com", "gw.example.com:8900")
+
+
+def test_load_config_allowed_hosts_env_csv_overrides_yaml(tmp_path: Path) -> None:
+    path = _write_yaml(tmp_path, "allowed_hosts: [yaml.example.com]\n")
+    env = {"GATEWAY_ALLOWED_HOSTS": " env-a.example.com , env-b.example.com:443 ,"}
+
+    config = load_config(path, env=env)
+
+    # ENV wins over YAML; entries trimmed, empties dropped (CSV form).
+    assert config.allowed_hosts == ("env-a.example.com", "env-b.example.com:443")

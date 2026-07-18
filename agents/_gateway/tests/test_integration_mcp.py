@@ -5,9 +5,14 @@ Wiring (verified hands-on against mcp==1.28.1):
 
 - ``build_server(...).streamable_http_app()`` returns the Starlette ASGI app.
 - The app MUST run inside the session manager's lifespan —
-  ``async with server.session_manager.run():`` — otherwise every request dies
+  ``server.session_manager.run()`` — otherwise every request dies
   with ``RuntimeError: Task group is not initialized. Make sure to use run().``
-  (``httpx.ASGITransport`` never runs a lifespan itself.)
+  (``httpx.ASGITransport`` never runs a lifespan itself.) The ``gateway``
+  fixture owns that lifespan in a dedicated background task: pytest-asyncio
+  (1.x) executes fixture setup and teardown in DIFFERENT asyncio tasks, and
+  the anyio cancel scope inside ``run()`` must enter and exit in the SAME
+  task — a plain ``async with`` across the fixture ``yield`` can therefore
+  never complete teardown under the SPEC § 7 pinned test command.
 - FastMCP auto-enables DNS-rebinding protection for host 127.0.0.1 with
   ``allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*"]`` — the wildcard
   patterns require an explicit port in the Host header, so the in-process
@@ -24,6 +29,7 @@ values only, never real secrets.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import httpx
@@ -46,15 +52,35 @@ ASK_RESULT_KEYS = {"ok", "bridge", "conversation", "text", "error"}
 
 @pytest.fixture
 async def gateway(monkeypatch, make_http):
-    """A running in-process gateway app + its FakeA2A upstream."""
+    """A running in-process gateway app + its FakeA2A upstream.
+
+    The session-manager lifespan is owned by a dedicated background task (see
+    module docstring): its anyio cancel scope then enters AND exits in that
+    one task, which pytest-asyncio's split setup/teardown tasks cannot offer.
+    Semantics are identical to ``async with server.session_manager.run():``.
+    """
     monkeypatch.setenv("GATEWAY_AUTH_TOKENS", GOOD_TOKEN)
     fake = FakeA2A()
     server = build_server(
         GatewayConfig(), two_tier_registry(), http=make_http(fake)
     )
     app = server.streamable_http_app()
-    async with server.session_manager.run():
+
+    started = asyncio.Event()
+    stop = asyncio.Event()
+
+    async def lifespan_owner() -> None:
+        async with server.session_manager.run():
+            started.set()
+            await stop.wait()
+
+    owner = asyncio.create_task(lifespan_owner())
+    await started.wait()
+    try:
         yield app, fake
+    finally:
+        stop.set()
+        await owner
 
 
 @asynccontextmanager
@@ -231,3 +257,65 @@ async def test_multi_turn_ask_reuses_the_same_context_id_on_the_wire(gateway):
     # CONV-2: the follow-up carries the returned conversation verbatim, so the
     # fake saw the very same contextId again on the wire.
     assert rpc_messages[1]["contextId"] == conversation
+
+
+# ---------------------------------------------------------------------------
+# allowed_hosts — Host allowlist behind a tunnel (SPEC § 3 + § 7 421 footnote)
+# ---------------------------------------------------------------------------
+
+
+async def test_allowed_hosts_config_serves_under_public_tunnel_hostname(
+    monkeypatch, make_http
+):
+    """With ``allowed_hosts=["gw.test"]`` the app answers under
+    ``http://gw.test`` — exactly the request shape a tunnel produces (public
+    hostname in the Host header, gateway bound to 127.0.0.1) that the SDK's
+    localhost auto-protection would otherwise reject with HTTP 421.
+
+    Self-contained wiring (own lifespan task + client factory) so the shared
+    ``gateway`` fixture / ``mcp_session`` helper stay untouched.
+    """
+    monkeypatch.setenv("GATEWAY_AUTH_TOKENS", GOOD_TOKEN)
+    fake = FakeA2A()
+    server = build_server(
+        GatewayConfig(allowed_hosts=("gw.test",)),
+        two_tier_registry(),
+        http=make_http(fake),
+    )
+    app = server.streamable_http_app()
+    tunnel_base = "http://gw.test"
+
+    def factory(headers=None, timeout=None, auth=None) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url=tunnel_base,
+            headers=headers,
+            timeout=timeout,
+            auth=auth,
+        )
+
+    started = asyncio.Event()
+    stop = asyncio.Event()
+
+    async def lifespan_owner() -> None:
+        async with server.session_manager.run():
+            started.set()
+            await stop.wait()
+
+    owner = asyncio.create_task(lifespan_owner())
+    await started.wait()
+    try:
+        async with streamablehttp_client(
+            f"{tunnel_base}/mcp", httpx_client_factory=factory
+        ) as (read_stream, write_stream, _get_session_id):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.call_tool("list_bridges", {})
+    finally:
+        stop.set()
+        await owner
+
+    payload = result.structuredContent
+    assert payload is not None
+    assert payload["ok"] is True
+    assert [b["id"] for b in payload["bridges"]] == ["open-fake"]

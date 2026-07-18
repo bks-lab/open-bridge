@@ -141,6 +141,7 @@ ENV always wins. Keys and defaults:
 | `per_bridge_concurrency` | `GATEWAY_PER_BRIDGE_CONCURRENCY` | `2` | Concurrent `ask_bridge` calls per bridge |
 | `busy_retry_after_s` | `GATEWAY_BUSY_RETRY_AFTER_S` | `10.0` | Retry hint carried by `busy` errors |
 | `tokens_env` | `GATEWAY_TOKENS_ENV` | `GATEWAY_AUTH_TOKENS` | NAME of the env var holding the comma-separated client bearer-token list |
+| `allowed_hosts` | `GATEWAY_ALLOWED_HOSTS` (comma-separated; YAML: list) | *(empty)* | Host-header allowlist for the SDK's DNS-rebinding protection. Empty keeps the SDK default (localhost-only auto-allowlist when binding a localhost host). Set to the public hostname(s) — exact `host[:port]` values or `host:*` port wildcards — when serving behind a tunnel; see the § 7 footnote on the 421 trap |
 
 ---
 
@@ -471,6 +472,7 @@ class GatewayConfig:
     per_bridge_concurrency: int = 2
     busy_retry_after_s: float = 10.0
     tokens_env: str = "GATEWAY_AUTH_TOKENS"
+    allowed_hosts: tuple[str, ...] = ()   # § 3 table; empty = SDK default
 
 def load_config(
     path: Path | None = None, env: Mapping[str, str] | None = None,
@@ -751,6 +753,17 @@ httpx_client_factory=lambda **kw: httpx.AsyncClient(
 - session with a bad token → every tool returns `ok=false, unauthorized` (TIER-3 e2e)
 - multi-turn: ask → take `conversation` → second ask with it → FakeA2A saw the same
   `contextId` on the wire both times (CONV-1/2 e2e)
+- `allowed_hosts=["gw.test"]` → a session against `http://gw.test` initializes and
+  calls tools (§ 3 `allowed_hosts` end-to-end; see footnote)
+
+> **Footnote — the 421 trap.** `mcp` 1.28.1 auto-enables DNS-rebinding protection
+> whenever `host` is `127.0.0.1`/`localhost`/`::1`, allowlisting ONLY localhost Host
+> headers. Behind a tunnel the public hostname arrives in the Host header, so every
+> request dies with HTTP 421 although the server is "up". A non-empty `allowed_hosts`
+> (§ 3) is passed to FastMCP as `TransportSecuritySettings(
+> enable_dns_rebinding_protection=True, allowed_hosts=...)` — the allowlist is
+> replaced, the protection itself stays on. Empty config passes `None` and keeps the
+> SDK default untouched.
 
 ### Commands (upstream idiom: uv, ephemeral test deps)
 
