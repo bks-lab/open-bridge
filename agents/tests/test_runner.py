@@ -137,8 +137,10 @@ def _runner(timeout: float = 30.0) -> SubprocessClaudeRunner:
     )
 
 
-async def _collect(runner: SubprocessClaudeRunner, prompt: str = "hi") -> list[dict]:
-    return [evt async for evt in runner.stream(prompt)]
+async def _collect(
+    runner: SubprocessClaudeRunner, prompt: str = "hi", *, context_id: str | None = None
+) -> list[dict]:
+    return [evt async for evt in runner.stream(prompt, context_id=context_id)]
 
 
 def _answers(events: list[dict]) -> list[dict]:
@@ -283,6 +285,45 @@ async def test_partial_message_deltas_stream_incrementally(monkeypatch):
     # the terminal result stays the single authoritative answer
     answers = _answers(events)
     assert len(answers) == 1 and answers[0]["text"] == final
+
+
+# ---------------------------------------------------------------------------
+# AGENT_CONTEXT_ID: the A2A context_id exported into the subprocess env, so
+# instance tools (argparse CLIs, inherited env) can identify the session that
+# is calling them (e.g. intake/concern notifications carrying a real session
+# id instead of "unknown").
+# ---------------------------------------------------------------------------
+
+async def test_context_id_is_exported_into_subprocess_env(monkeypatch):
+    captured: dict = {}
+
+    async def fake_exec(*args, env=None, limit=None, **kwargs):
+        captured["env"] = env
+        stdout = _streamreader([_line(_result("ok"))], limit=limit)
+        return _FakeProc(stdout)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    await _collect(_runner(), context_id="ctx-abc-123")
+
+    env = captured["env"]
+    assert env is not None, "context_id was supplied — env must be set"
+    assert env.get("AGENT_CONTEXT_ID") == "ctx-abc-123"
+
+
+async def test_no_context_id_means_no_agent_context_id_in_env(monkeypatch):
+    """No empty-string placeholder either — the key must be absent entirely."""
+    captured: dict = {}
+
+    async def fake_exec(*args, env=None, limit=None, **kwargs):
+        captured["env"] = env
+        stdout = _streamreader([_line(_result("ok"))], limit=limit)
+        return _FakeProc(stdout)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    await _collect(_runner(), context_id=None)
+
+    env = captured["env"]
+    assert env is None or "AGENT_CONTEXT_ID" not in env
 
 
 async def test_tool_argument_deltas_do_not_stream_as_text(monkeypatch):

@@ -177,7 +177,7 @@ class ClaudeAgentExecutor(AgentExecutor):
         answer_artifact_id = str(uuid.uuid4())
         try:
             if hasattr(self._runner, "stream"):
-                async for evt in self._runner.stream(prompt):
+                async for evt in self._runner.stream(prompt, context_id=cid):
                     kind = evt.get("kind")
                     if kind == "step":
                         await updater.update_status(
@@ -196,7 +196,7 @@ class ClaudeAgentExecutor(AgentExecutor):
                     elif kind == "answer":
                         answer = evt.get("text", "")
             else:
-                answer = await self._runner(prompt)
+                answer = await self._runner(prompt, context_id=cid)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 — surface a clean failure to the client
