@@ -1,9 +1,11 @@
 """Starlette-based A2A server for a Bridge-Agent (a2a-sdk 1.x).
 
 a2a-sdk 1.x has no ``A2AStarletteApplication`` wrapper; we compose the JSON-RPC +
-agent-card routes into a plain Starlette app. ``enable_v0_3_compat=True`` keeps
-0.3-dialect widgets working; the card is served at the modern
-``/.well-known/agent-card.json`` and the legacy ``/.well-known/agent.json``.
+agent-card routes into a plain Starlette app. Two separate things, easy to conflate:
+``enable_v0_3_compat=True`` covers the JSON-RPC **wire** (0.3 method names), never the
+card. The **card** is served at the modern ``/.well-known/agent-card.json`` and at the
+legacy ``/.well-known/agent.json`` — the latter a path alias for clients that only know
+the old URL, serving the identical v1.0 bytes, not the 0.3 discovery dialect.
 
 Generic: ``build_app(cfg)`` wires runner → executor → routes for any instance.
 """
