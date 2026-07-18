@@ -1,10 +1,11 @@
 ---
 summary: "Bridge-Agents — persistent, addressable agents that front a persona to the outside world over A2A. Runtime (CORE) + instances (USER)."
 type: readme
-last_updated: 2026-06-06
+last_updated: 2026-07-18
 related:
   - ../docs/representative-agent.md
   - ../identity/agent/README.md
+  - _gateway/README.md
 ---
 
 # agents/ — Bridge-Agents
@@ -44,6 +45,7 @@ agents/
     server.py        Starlette app + entrypoint (build_app / main)
   _template/       CORE — copy to start a new instance
     tools/           CORE reference: intake_notify.py (fixed-recipient scaffold)
+  _gateway/        CORE — thin, stateless MCP→A2A gateway (list_bridges, get_bridge_card, ask_bridge)
   tests/           CORE — hermetic runner regression net (test_runner.py, test_intake_notify.py)
   pyproject.toml   CORE — runtime deps (a2a-sdk, uvicorn, starlette, click, pyyaml)
   <name>/          USER — one instance per agent
@@ -52,9 +54,10 @@ agents/
     tools/           instance-specific scoped tools (argparse CLIs)
 ```
 
-**Scope:** `_runtime/`, `_template/`, `tests/`, `pyproject.toml`, this README =
-**CORE** (ship to open-bridge). Each `agents/<name>/` instance = **USER** (your
-persona / PII — stays local). The runtime never contains organization-specific content.
+**Scope:** `_runtime/`, `_template/`, `_gateway/`, `tests/`, `pyproject.toml`, this
+README = **CORE** (ship to open-bridge). Each `agents/<name>/` instance = **USER**
+(your persona / PII — stays local). The runtime never contains
+organization-specific content. `_gateway/` details: [`agents/_gateway/README.md`](_gateway/README.md).
 
 ## Create an instance
 

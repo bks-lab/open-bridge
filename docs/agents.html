@@ -690,6 +690,75 @@ html.dark .code{background:var(--code-bg)}
     </div>
   </section>
 
+  <!-- ---- MCP→A2A gateway ---- -->
+  <section id="gateway" style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">MCP → A2A</p>
+        <p class="eyebrow" data-lang="de">MCP → A2A</p>
+        <h2 class="h2" data-lang="en">The MCP→A2A gateway</h2>
+        <h2 class="h2" data-lang="de">Der MCP→A2A-Gateway</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">Bridge-Agents speak A2A, but most people sit behind an <strong>MCP-only</strong> frontend — Claude connectors, ChatGPT developer mode, Gemini, any MCP client. <code>agents/_gateway/</code> is a thin, stateless translation layer that makes your A2A bridges reachable from those frontends through three tools and one registry — no model, no reasoning, no persistent state inside the gateway itself.</p>
+        <p data-lang="de">Bridge-Agents sprechen A2A, aber die meisten Menschen sitzen hinter einem <strong>reinen MCP</strong>-Frontend — Claude-Connectors, ChatGPT-Entwicklermodus, Gemini, jeder MCP-Client. <code>agents/_gateway/</code> ist eine schlanke, zustandslose Übersetzungsschicht, die deine A2A-Bridges über drei Werkzeuge und eine Registry aus diesen Frontends erreichbar macht — kein Modell, kein Reasoning, kein persistenter Zustand im Gateway selbst.</p>
+      </div>
+      <div class="uses reveal">
+
+        <div class="use flagship">
+          <div class="n">list_bridges · get_bridge_card · ask_bridge</div>
+          <h3 data-lang="en">Three tools, one registry</h3>
+          <h3 data-lang="de">Drei Werkzeuge, eine Registry</h3>
+          <p data-lang="en"><code>list_bridges</code> returns the registry entries visible at the caller's access tier. <code>get_bridge_card(bridge)</code> fetches and normalizes that bridge's AgentCard — it reads both card dialects, so v1 and legacy cards resolve the same way. <code>ask_bridge(bridge, message, conversation?)</code> sends one A2A ask; passing back the same <code>conversation</code> id continues the thread, stateless on the gateway's side — it is threaded through to the target agent's own A2A <code>contextId</code>.</p>
+          <p data-lang="de"><code>list_bridges</code> liefert die Registry-Einträge, die für den Access-Tier des Aufrufers sichtbar sind. <code>get_bridge_card(bridge)</code> holt und normalisiert die AgentCard dieser Bridge — sie liest beide Card-Dialekte, sodass v1- und Legacy-Cards gleich aufgelöst werden. <code>ask_bridge(bridge, message, conversation?)</code> schickt eine A2A-Anfrage; dieselbe <code>conversation</code>-ID zurückgeben setzt den Thread fort, zustandslos auf Gateway-Seite — sie wird an die eigene A2A-<code>contextId</code> des Zielagenten durchgereicht.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">anonymous</div>
+          <h3 data-lang="en">Standard tier — no header</h3>
+          <h3 data-lang="de">Standard-Tier — kein Header</h3>
+          <p data-lang="en">With no <code>Authorization</code> header, a caller sees and asks only bridges the registry marks <code>min_tier: anonymous</code>, and cards come back as normalized summaries.</p>
+          <p data-lang="de">Ohne <code>Authorization</code>-Header sieht und fragt ein Aufrufer nur Bridges, die die Registry als <code>min_tier: anonymous</code> markiert, und Cards kommen als normalisierte Zusammenfassungen zurück.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">authenticated</div>
+          <h3 data-lang="en">Elevated tier — bearer token</h3>
+          <h3 data-lang="de">Erweitertes Tier — Bearer-Token</h3>
+          <p data-lang="en">An <code>Authorization: Bearer &lt;token&gt;</code> header matching the configured token list unlocks every registered bridge, including <code>min_tier: authenticated</code> ones, and <code>get_bridge_card</code> additionally returns the full raw card. An <em>invalid</em> token is a hard <code>unauthorized</code> error — never a silent downgrade to anonymous. The client's token is never forwarded upstream; a bridge that needs its own credentials declares them separately in the registry.</p>
+          <p data-lang="de">Ein <code>Authorization: Bearer &lt;token&gt;</code>-Header, der zur konfigurierten Token-Liste passt, schaltet jede registrierte Bridge frei, auch <code>min_tier: authenticated</code>-Bridges, und <code>get_bridge_card</code> liefert zusätzlich die vollständige Rohkarte. Ein <em>ungültiges</em> Token ist ein harter <code>unauthorized</code>-Fehler — nie ein stiller Downgrade auf anonym. Das Token des Clients wird nie upstream weitergereicht; eine Bridge, die eigene Credentials braucht, deklariert sie separat in der Registry.</p>
+        </div>
+
+      </div>
+
+      <div class="term reveal" style="margin-top:34px">
+        <div class="code-label">
+          <span data-lang="en">shell — run the gateway</span>
+          <span data-lang="de">Shell — den Gateway starten</span>
+        </div>
+        <pre class="code"><span class="cmt"># 1 · declare which bridges the gateway may reach</span>
+<span class="k">$</span> cd agents/_gateway &amp;&amp; cp registry.example.yaml registry.yaml
+<span class="cmt">#      then edit registry.yaml — card URL + min_tier per bridge</span>
+
+<span class="cmt"># 2 · run it (optional: a bearer token enables the elevated tier)</span>
+<span class="k">$</span> <span class="k">export</span> GATEWAY_AUTH_TOKENS=<span class="dir">"some-random-token"</span>
+<span class="k">$</span> uv run python -m gateway --registry registry.yaml --port 8900
+
+<span class="cmt"># 3 · point any MCP client at it (Streamable HTTP)</span>
+<span class="k">$</span> claude mcp add --transport http bridge-gateway http://127.0.0.1:8900/mcp</pre>
+        <p class="after" data-lang="en">Behind a public tunnel, the MCP SDK's DNS-rebinding protection answers a tunnel hostname with HTTP 421 unless you allowlist it: <code>GATEWAY_ALLOWED_HOSTS="&lt;your-gateway-host&gt;,127.0.0.1:8900,localhost:8900"</code> — list the loopback host:port too, or local health probes start 421ing the moment the tunnel hostname is configured.</p>
+        <p class="after" data-lang="de">Hinter einem öffentlichen Tunnel beantwortet der DNS-Rebinding-Schutz des MCP-SDK einen Tunnel-Hostnamen mit HTTP 421, sofern er nicht auf der Allowlist steht: <code>GATEWAY_ALLOWED_HOSTS="&lt;dein-gateway-host&gt;,127.0.0.1:8900,localhost:8900"</code> — auch den Loopback-<code>host:port</code> aufführen, sonst 421en lokale Health-Probes, sobald der Tunnel-Hostname konfiguriert ist.</p>
+      </div>
+
+      <div class="note reveal" style="margin-top:34px">
+        <div class="k" data-lang="en">Security posture</div>
+        <div class="k" data-lang="de">Sicherheitshaltung</div>
+        <p data-lang="en">The gateway adds reach, not privilege — it is a client like any other in front of the target agent and bypasses none of the agent's own guardrails (grounding confinement, scoped tools, human-gated intake; see the safety model below). A per-bridge concurrency gate, a timeout budget under the client's own tool-call timeout, and typed error envelopes (<code>unknown_bridge</code>, <code>tier_denied</code>, <code>unauthorized</code>, <code>busy</code>, <code>timeout</code>, <code>unreachable</code>, <code>upstream_error</code>) keep a stuck or hostile upstream from silently hanging the client. Put an edge rate-limit in front of a public deployment, and keep <code>min_tier: authenticated</code> on anything you don't want anonymous traffic to reach.</p>
+        <p data-lang="de">Der Gateway erweitert die Reichweite, nicht die Rechte — er ist ein Client wie jeder andere vor dem Zielagenten und umgeht keine der eigenen Leitplanken des Agenten (Grounding-Begrenzung, skopierte Werkzeuge, menschlich gegatetes Intake; siehe das Sicherheitsmodell unten). Ein Per-Bridge-Concurrency-Gate, ein Timeout-Budget unter dem eigenen Tool-Call-Timeout des Clients und typisierte Fehler-Umschläge (<code>unknown_bridge</code>, <code>tier_denied</code>, <code>unauthorized</code>, <code>busy</code>, <code>timeout</code>, <code>unreachable</code>, <code>upstream_error</code>) verhindern, dass ein hängendes oder feindliches Upstream den Client still hängen lässt. Setze ein Edge-Rate-Limit vor ein öffentliches Deployment und halte <code>min_tier: authenticated</code> auf allem, das du nicht anonymem Traffic aussetzen willst.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ---- the safety model ---- -->
   <section style="padding-block:72px">
     <div class="container">
@@ -812,12 +881,15 @@ html.dark .code{background:var(--code-bg)}
         <a href="https://github.com/bks-lab/open-bridge/blob/main/agents/README.md" target="_blank" rel="noopener"><span data-lang="en">Runtime overview (agents/README.md)</span><span data-lang="de">Runtime-Überblick (agents/README.md)</span></a>
         <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/representative-agent.md" target="_blank" rel="noopener"><span data-lang="en">Representative-agent guide</span><span data-lang="de">Representative-Agent-Guide</span></a>
         <a href="https://github.com/bks-lab/open-bridge/tree/main/agents" target="_blank" rel="noopener"><span data-lang="en">The agents/ runtime &amp; template</span><span data-lang="de">Der agents/-Runtime &amp; das Template</span></a>
+        <a href="https://github.com/bks-lab/open-bridge/tree/main/agents/_gateway" target="_blank" rel="noopener"><span data-lang="en">MCP→A2A gateway (agents/_gateway/README.md)</span><span data-lang="de">MCP→A2A-Gateway (agents/_gateway/README.md)</span></a>
       </div>
       <div class="pointers-sub reveal">
         <span class="lab" data-lang="en">Issues</span><span class="lab" data-lang="de">Issues</span>
         <a href="https://github.com/bks-lab/open-bridge/pull/93" target="_blank" rel="noopener">PR #93</a>
         <a href="https://github.com/bks-lab/open-bridge/issues/47" target="_blank" rel="noopener">#47</a>
         <a href="https://github.com/bks-lab/open-bridge/issues/49" target="_blank" rel="noopener">#49</a>
+        <a href="https://github.com/bks-lab/open-bridge/issues/124" target="_blank" rel="noopener">#124</a>
+        <a href="https://github.com/bks-lab/open-bridge/pull/125" target="_blank" rel="noopener">PR #125</a>
       </div>
       <div class="prose" style="margin-top:44px;text-align:center">
         <a class="btn btn-primary" href="concepts.html"><span data-lang="en">Read the concept guide</span><span data-lang="de">Den Konzept-Guide lesen</span> <span class="arrow">→</span></a>
