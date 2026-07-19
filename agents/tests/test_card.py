@@ -4,7 +4,8 @@ Locks the wire-level shape A2A spec v1.0 requires, so a refactor or an SDK bump
 can't silently regress it: transport lives in ``supported_interfaces[]`` (the
 v1.0 mechanism that replaced a single top-level ``url``), each binding JSON-RPC,
 and the card is served at the canonical ``/.well-known/agent-card.json`` (the
-legacy ``/.well-known/agent.json`` alias is kept for v0.3 clients).
+legacy ``/.well-known/agent.json`` alias is a PATH alias for clients that only know
+the old URL — it serves the same v1.0 bytes, not the 0.3 dialect).
 
 No network, no ``claude`` subprocess: build the card, serve it, and inspect the routes.
 
@@ -78,15 +79,43 @@ def test_served_card_is_not_the_v0_3_dialect():
     assert card.get("protocolVersion") != "0.3", "served card fell back to the 0.3 dialect"
 
 
-def test_legacy_card_path_still_serves_for_v0_3_clients():
-    """Advertising v1.0 must not evict 0.3 clients — the alias and the compat layer stay."""
+def test_legacy_card_path_is_a_path_alias_not_a_dialect_alias():
+    """Both well-known paths serve the same v1.0 bytes.
+
+    ``server.py`` hands the *same* card object to both ``create_agent_card_routes``
+    calls and the SDK's serialisation is pure, so the two payloads are identical by
+    construction. Asserted rather than assumed, because the docstring above and the
+    docs both used to read as if the legacy path served a different, older card.
+    """
     client = TestClient(build_app(_cfg()))
-    assert client.get(LEGACY_AGENT_CARD_PATH).status_code == 200
+    modern = client.get(WELL_KNOWN)
+    legacy = client.get(LEGACY_AGENT_CARD_PATH)
+    assert modern.status_code == 200
+    assert legacy.status_code == 200
+    assert legacy.json() == modern.json()
+
+
+def test_legacy_card_path_does_not_serve_the_v0_3_discovery_dialect():
+    """The alias serves the old URL, never the old card shape.
+
+    ``agent_card_to_dict`` always tries ``to_compat_agent_card`` and merges the legacy
+    keys in where absent — but that conversion keeps only interfaces whose version is
+    empty or ``0.3 <= v < 1.0``. Ours says ``1.0``, so the conversion raises
+    ``VersionNotSupportedError``, the merge contributes nothing, and no top-level
+    ``url``/``protocolVersion`` reaches the wire. A 0.3 client that resolves the
+    endpoint from a top-level ``url`` therefore finds nothing here; what it does get is
+    the JSON-RPC wire compat (``enable_v0_3_compat=True``), which is a different thing.
+    Pinned because an SDK bump could start emitting the merge silently.
+    """
+    client = TestClient(build_app(_cfg()))
+    card = client.get(LEGACY_AGENT_CARD_PATH).json()
+    assert "url" not in card
+    assert card.get("protocolVersion") is None
 
 
 def test_card_served_at_canonical_well_known_path():
     app = build_app(_cfg())
     paths = {getattr(r, "path", None) for r in app.routes}
     assert WELL_KNOWN in paths                 # v1.0 canonical discovery path
-    assert LEGACY_AGENT_CARD_PATH in paths     # legacy alias for v0.3 clients
+    assert LEGACY_AGENT_CARD_PATH in paths     # legacy path alias, same v1.0 bytes
     assert "/health" in paths

@@ -1,7 +1,7 @@
 ---
 summary: "How to stand up a representative agent — a persistent, addressable A2A endpoint that fronts one persona to the outside world, safely, on any bridge."
 type: doc
-last_updated: 2026-07-18
+last_updated: 2026-07-19
 related:
   - ../agents/README.md
 ---
@@ -110,7 +110,8 @@ a2a-sdk 1.x has no such wrapper. `build_app(cfg)` composes the SDK's JSON-RPC ro
 and agent-card routes into a Starlette app, wired to a `DefaultRequestHandler` over
 an `InMemoryTaskStore`, with the `ClaudeAgentExecutor` as the agent executor. A CORS
 middleware restricts origins to the configured list. Two small correctness shims live
-here: `enable_v0_3_compat=True` keeps 0.3-dialect clients working, and a route wrapper
+here: `enable_v0_3_compat=True` keeps the 0.3-dialect JSON-RPC **wire** working (method
+names on the RPC endpoint — it does not affect the card), and a route wrapper
 restores the A2A-spec error codes that a2a-sdk 1.x otherwise flattens to the generic
 JSON-RPC `InternalError`. That includes the version mismatch a 0.3 method name paired
 with a 1.x `A2A-Version` header produces, which is additionally given the same typed
@@ -119,7 +120,10 @@ with a 1.x `A2A-Version` header produces, which is additionally given the same t
 ### Discovery and endpoints
 
 - **AgentCard** is served at the modern **`/.well-known/agent-card.json`**, with a
-  legacy alias at **`/.well-known/agent.json`** for older clients. In a2a-sdk 1.x the
+  legacy **path** alias at **`/.well-known/agent.json`** for clients that only know the
+  old URL. The alias serves the same v1.0 card, byte for byte — a client that needs the
+  0.3 *discovery* dialect (a top-level `url` field) is not served by it, on either path;
+  0.3 compat here is on the wire, not in discovery. In a2a-sdk 1.x the
   single `url` field is gone; the card advertises a list of `supported_interfaces`,
   each an `AgentInterface` with the public URL and a JSON-RPC transport binding
   (`protocol_binding=TransportProtocol.JSONRPC`). The card separately carries
