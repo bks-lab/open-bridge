@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 import click
 import uvicorn
@@ -25,6 +26,8 @@ from a2a.server.routes.agent_card_routes import create_agent_card_routes
 from a2a.server.routes.jsonrpc_routes import create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.utils import DEFAULT_RPC_URL
+from a2a.utils.error_handlers import build_error_details
+from a2a.utils.errors import JSON_RPC_ERROR_CODE_MAP, VersionNotSupportedError
 
 from .card import build_agent_card
 from .config import AgentConfig, load_agent_config
@@ -36,7 +39,9 @@ logger = logging.getLogger(__name__)
 LEGACY_AGENT_CARD_PATH = "/.well-known/agent.json"
 
 # a2a-sdk 1.x serialises every A2AError as the generic JSON-RPC InternalError
-# (-32603), dropping the A2A-specific code the spec defines. Map them back.
+# (-32603), dropping the A2A-specific code the spec defines. The v0.3 compat
+# adapter does it via a broad `except Exception` (jsonrpc_adapter.py:141-145).
+# Map them back off the only thing that survives: the message.
 _A2A_ERROR_CODE_BY_MESSAGE = {
     "Task not found": -32001,
     "Task cannot be canceled": -32002,
@@ -45,13 +50,28 @@ _A2A_ERROR_CODE_BY_MESSAGE = {
     "Incompatible content types": -32005,
 }
 
+# The version error needs a prefix rule rather than a table entry: its message
+# interpolates both the client-supplied and the expected version
+# (version_validator.py:106,123), so only this leading fragment is invariant.
+# Anchored, and stopping at the opening quote, so a genuine internal error can
+# never be relabelled as a version mismatch.
+_VERSION_ERROR_RE = re.compile(r"^A2A version '[^']*' is not supported by this handler\.")
+
 
 def _restore_a2a_error_code(payload: dict) -> bool:
     err = payload.get("error") if isinstance(payload, dict) else None
     if isinstance(err, dict) and err.get("code") == -32603:
-        code = _A2A_ERROR_CODE_BY_MESSAGE.get(err.get("message"))
+        message = err.get("message")
+        code = _A2A_ERROR_CODE_BY_MESSAGE.get(message)
         if code is not None:
             err["code"] = code
+            return True
+        if isinstance(message, str) and _VERSION_ERROR_RE.match(message):
+            # Both the code and the typed details come from the SDK's own
+            # tables, so this shim cannot drift from the v1 path the way the
+            # exact-match table above drifted from the version message.
+            err["code"] = JSON_RPC_ERROR_CODE_MAP[VersionNotSupportedError]
+            err["data"] = build_error_details(VersionNotSupportedError(message=message))
             return True
     return False
 

@@ -112,7 +112,9 @@ an `InMemoryTaskStore`, with the `ClaudeAgentExecutor` as the agent executor. A 
 middleware restricts origins to the configured list. Two small correctness shims live
 here: `enable_v0_3_compat=True` keeps 0.3-dialect clients working, and a route wrapper
 restores the A2A-spec error codes that a2a-sdk 1.x otherwise flattens to the generic
-JSON-RPC `InternalError`.
+JSON-RPC `InternalError`. That includes the version mismatch a 0.3 method name paired
+with a 1.x `A2A-Version` header produces, which is additionally given the same typed
+`data` details the v1 path emits, so both dialects report the error identically.
 
 ### Discovery and endpoints
 
