@@ -452,12 +452,12 @@ html.dark .stage{
             <canvas id="brain" aria-hidden="true"></canvas>
             <button type="button" class="brain-spin" id="brain-spin" aria-pressed="true">Pause</button>
             <p class="brain-foot">
-              <span data-lang="en"><b>794 files ship. 27 are yours.</b> Each bright dot is one tracked file; the faint field is the body, not data. Drag to turn it.</span>
-              <span data-lang="de"><b>794 Dateien kommen mit, 27 sind deine.</b> Jeder helle Punkt ist eine versionierte Datei, das schwache Feld ist der Körper, keine Daten. Zum Drehen ziehen.</span>
+              <span data-lang="en"><b>796 files ship. 27 are yours.</b> Each bright dot is one tracked file; the faint field is the body, not data. Drag to turn it.</span>
+              <span data-lang="de"><b>796 Dateien kommen mit, 27 sind deine.</b> Jeder helle Punkt ist eine versionierte Datei, das schwache Feld ist der Körper, keine Daten. Zum Drehen ziehen.</span>
             </p>
             <p class="brain-sr">
-              <span data-lang="en">Two halves of one bridge, side by side. The left half is CORE, everything open-bridge ships: 794 tracked files, one dot each, grouped by top level folder, with skills at 345 files and scripts at 113 the largest by far. The right half is USER, one instance of your own, here the shipped example in examples/agency: 27 files, one dot each. Six folder names appear in both halves and are joined across the middle: the repository root, identity, infra, workflow, protocols and work. On the CORE side each holds a template and a schema. On the USER side each holds files you name yourself, for example infra/channels/email.yaml. Use the folder list in the panel beside the figure to read each pair.</span>
-              <span data-lang="de">Zwei Hälften einer Bridge, nebeneinander. Die linke Hälfte ist CORE, alles was open-bridge mitliefert: 794 versionierte Dateien, je Datei ein Punkt, nach Ordner der obersten Ebene gruppiert, mit skills bei 345 Dateien und scripts bei 113 als mit Abstand größten. Die rechte Hälfte ist USER, eine eigene Instanz, hier das mitgelieferte Beispiel in examples/agency: 27 Dateien, je Datei ein Punkt. Sechs Ordnernamen kommen in beiden Hälften vor und sind über die Mitte verbunden: die Repo-Wurzel, identity, infra, workflow, protocols und work. Auf der CORE-Seite hält jeder eine Vorlage und ein Schema. Auf der USER-Seite hält jeder Dateien, die du selbst benennst, etwa infra/channels/email.yaml. Die Ordnerliste im Panel neben der Grafik führt jedes Paar auf.</span>
+              <span data-lang="en">Two halves of one bridge, side by side. The left half is CORE, everything open-bridge ships: 796 tracked files, one dot each, grouped by top level folder, with skills at 345 files and scripts at 115 the largest by far. The right half is USER, one instance of your own, here the shipped example in examples/agency: 27 files, one dot each. Six folder names appear in both halves and are joined across the middle: the repository root, identity, infra, workflow, protocols and work. On the CORE side each holds a template and a schema. On the USER side each holds files you name yourself, for example infra/channels/email.yaml. Use the folder list in the panel beside the figure to read each pair.</span>
+              <span data-lang="de">Zwei Hälften einer Bridge, nebeneinander. Die linke Hälfte ist CORE, alles was open-bridge mitliefert: 796 versionierte Dateien, je Datei ein Punkt, nach Ordner der obersten Ebene gruppiert, mit skills bei 345 Dateien und scripts bei 115 als mit Abstand größten. Die rechte Hälfte ist USER, eine eigene Instanz, hier das mitgelieferte Beispiel in examples/agency: 27 Dateien, je Datei ein Punkt. Sechs Ordnernamen kommen in beiden Hälften vor und sind über die Mitte verbunden: die Repo-Wurzel, identity, infra, workflow, protocols und work. Auf der CORE-Seite hält jeder eine Vorlage und ein Schema. Auf der USER-Seite hält jeder Dateien, die du selbst benennst, etwa infra/channels/email.yaml. Die Ordnerliste im Panel neben der Grafik führt jedes Paar auf.</span>
             </p>
           </div>
         </div>
@@ -1185,10 +1185,10 @@ html.dark .stage{
       ex:["skills/bridge-onboard/SKILL.md","skills/briefing/SKILL.md","skills/debrief/SKILL.md","skills/github-projects-manager/SKILL.md","skills/remote/SKILL.md","skills/workload/SKILL.md"],
       d_en:"345 files. The largest thing open-bridge ships, and the one you extend most: each skill is a SKILL.md plus the reference files it loads only when triggered.",
       d_de:"345 Dateien. Das Größte, was open-bridge mitliefert, und das, was du am meisten erweiterst: jeder Skill ist eine SKILL.md plus die Referenzdateien, die er nur bei Bedarf lädt." },
-    { id:"scripts",  n:"scripts/",  c:113, x:-0.46, y:0.26, z:-0.12, key:1,
+    { id:"scripts",  n:"scripts/",  c:115, x:-0.46, y:0.26, z:-0.12, key:1,
       ex:["scripts/validate-bridge.py","scripts/gen-board.py","scripts/measure-context.py","scripts/check-figure-counts.py","scripts/categorize-commits.py"],
-      d_en:"113 files. The validators and generators. They are what makes a claim in this repo checkable rather than asserted.",
-      d_de:"113 Dateien. Die Prüfer und Generatoren. Sie sind der Grund, warum eine Behauptung in diesem Repo nachprüfbar ist statt behauptet." },
+      d_en:"115 files. The validators and generators. They are what makes a claim in this repo checkable rather than asserted.",
+      d_de:"115 Dateien. Die Prüfer und Generatoren. Sie sind der Grund, warum eine Behauptung in diesem Repo nachprüfbar ist statt behauptet." },
     { id:"docs",     n:"docs/",     c:69,  x:-0.66, y:-0.18, z:0.14, key:1,
       ex:["docs/structure.md","docs/extension-model.md","docs/commands.md","docs/workloads.md","docs/memory.md"],
       d_en:"69 files. The guides for humans, plus this site.",
@@ -1553,7 +1553,7 @@ html.dark .stage{
     // the two headers, in the bottom corners, clear of the view tabs above
     var hy = H - fs*2 - 54;
     ctx.textAlign="left"; ctx.fillStyle=CORECOL; ctx.fillText("main (CORE)", 14, hy);
-    ctx.fillStyle=DIM; ctx.fillText(L()==="de" ? "794 Dateien, alle mitgeliefert" : "794 files, all shipped", 14, hy+fs+4);
+    ctx.fillStyle=DIM; ctx.fillText(L()==="de" ? "796 Dateien, alle mitgeliefert" : "796 files, all shipped", 14, hy+fs+4);
     ctx.textAlign="right"; ctx.fillStyle=USERCOL; ctx.fillText("user/<you>", W-14, hy);
     ctx.fillStyle=DIM; ctx.fillText(L()==="de" ? "27 Dateien, alle deine" : "27 files, all yours", W-14, hy+fs+4);
 

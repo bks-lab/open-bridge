@@ -385,6 +385,13 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     # classification would have upstream CI call a file that never shipped.
     "scripts/tests/test-push-guard-commit-set.sh",
     "scripts/tests/test_edges.py",
+    # Registered with the guarded auto-merge (upstream-autoupdate.sh + its
+    # installer). Same reason as scripts/upstream-monitor.sh above, which is
+    # the reporting half of the same pair: the allowlist is deliberate, so a
+    # new script that genuinely belongs to CORE has to say so here or the
+    # next change to it silently fails to promote.
+    "scripts/install-upstream-autoupdate.sh",
+    "scripts/upstream-autoupdate.sh",
 })
 
 
