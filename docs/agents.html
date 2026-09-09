@@ -542,6 +542,51 @@ html.dark .code{background:var(--code-bg)}
     </div>
   </section>
 
+  <!-- ---- live instances ---- -->
+  <section style="padding-block:72px">
+    <div class="container">
+      <div class="grp reveal">
+        <p class="eyebrow" data-lang="en">Live instances</p>
+        <p class="eyebrow" data-lang="de">Live-Instanzen</p>
+        <h2 class="h2" data-lang="en">They answer on the open internet</h2>
+        <h2 class="h2" data-lang="de">Sie antworten im offenen Netz</h2>
+      </div>
+      <div class="block reveal">
+        <p data-lang="en">The runtime above is not a diagram. Instances of it answer on the open internet, each grounded in its own public content, each read-only, each behind the same human gate. The card is the contract: fetch one and you see exactly what that instance claims to do, and nothing it cannot.</p>
+        <p data-lang="de">Die Runtime oben ist kein Schaubild. Instanzen davon antworten im offenen Netz, jede in ihrem eigenen öffentlichen Inhalt verankert, jede nur lesend, jede hinter demselben menschlichen Gate. Die Card ist der Vertrag: hol eine, und du siehst genau, was diese Instanz zu können behauptet, und nichts, was sie nicht kann.</p>
+      </div>
+      <div class="uses reveal">
+
+        <div class="use flagship">
+          <div class="n">01</div>
+          <h3 data-lang="en">This project's own agent</h3>
+          <h3 data-lang="de">Der Agent dieses Projekts</h3>
+          <p data-lang="en"><code>openbridge.bks-lab.com</code> answers questions about open-bridge itself, grounded exclusively in this repo's public documentation. It is the reference instance of the runtime described above: the page you are reading and the agent answering it are the same project.</p>
+          <p data-lang="de"><code>openbridge.bks-lab.com</code> beantwortet Fragen zu open-bridge selbst, ausschließlich belegt aus der öffentlichen Dokumentation dieses Repos. Es ist die Referenz-Instanz der oben beschriebenen Runtime: die Seite, die du liest, und der Agent, der antwortet, sind dasselbe Projekt.</p>
+        </div>
+
+        <div class="use">
+          <div class="n">02</div>
+          <h3 data-lang="en">A company agent</h3>
+          <h3 data-lang="de">Ein Firmen-Agent</h3>
+          <p data-lang="en"><code>ai.bks-lab.com</code> fronts BKS-Lab, the company that maintains this repo. Same runtime, different grounding dir and persona: it answers about the company's work and captures a request for a fixed recipient, never for a third party a visitor names.</p>
+          <p data-lang="de"><code>ai.bks-lab.com</code> vertritt BKS-Lab, die Firma, die dieses Repo pflegt. Gleiche Runtime, anderes Grounding-Verzeichnis, andere Persona: er antwortet zur Arbeit der Firma und nimmt eine Anfrage für einen festen Empfänger auf, nie für eine dritte Partei, die ein Besucher nennt.</p>
+        </div>
+
+      </div>
+      <div class="pointers reveal">
+        <a href="https://openbridge.bks-lab.com/.well-known/agent-card.json" target="_blank" rel="noopener"><span data-lang="en">open-bridge agent card</span><span data-lang="de">open-bridge Agent-Card</span></a>
+        <a href="https://ai.bks-lab.com/.well-known/agent-card.json" target="_blank" rel="noopener"><span data-lang="en">BKS-Lab agent card</span><span data-lang="de">BKS-Lab Agent-Card</span></a>
+      </div>
+      <div class="note reveal" style="margin-top:34px">
+        <div class="k" data-lang="en">The mesh is not a diagram either</div>
+        <div class="k" data-lang="de">Auch das Mesh ist kein Schaubild</div>
+        <p data-lang="en">These agents consult each other as peers, read-only, over standard A2A: the project agent carries a <code>bks_consult</code> skill, the company agent an <code>openbridge_consult</code> skill, and a third peer fronting a person sits on the same mesh. A peer's answer is relayed as the peer's and never claimed as the agent's own, and no peer call can drive a write: an unauthenticated public endpoint must not become a lever on its neighbour.</p>
+        <p data-lang="de">Diese Agenten befragen sich gegenseitig als Peers, nur lesend, über Standard-A2A: der Projekt-Agent trägt eine <code>bks_consult</code>-Fähigkeit, der Firmen-Agent eine <code>openbridge_consult</code>-Fähigkeit, und ein dritter Peer, der eine Person vertritt, hängt am selben Mesh. Die Antwort eines Peers wird als dessen Antwort weitergereicht und nie als eigene ausgegeben, und kein Peer-Aufruf kann einen Schreibvorgang auslösen: ein unauthentifizierter öffentlicher Endpunkt darf kein Hebel auf seinen Nachbarn werden.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ---- MCP→A2A gateway ---- -->
   <section id="gateway" style="padding-block:72px">
     <div class="container">
