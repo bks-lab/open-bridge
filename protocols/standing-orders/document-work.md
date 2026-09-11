@@ -46,7 +46,16 @@ NOT add a year there). The legacy time-only variant `| HH:MM | ... |` is
 
 - STATUS.md is the SoT; `board.md` is **regenerated** from the task dirs
   (`scripts/gen-board.py`) — never hand-edited on a task switch.
-- Proactively suggest task creation when >30 min on a topic without a tracked task
+- **Proactively suggest task creation.** At the end of any turn where work
+  landed, when that work continues past this session OR an external recipient
+  is involved, and no directory in `work/tasks/` or `work/streams/` already
+  covers it, offer exactly ONE line: ``Task `<slug>`? [y/n]``. Never create it
+  unasked, and drop it for the rest of the session once declined. Every input
+  here is observable in the turn itself (did work land, does a task exist,
+  does it cross a session or a party boundary), which the retired ">30 min on
+  a topic" wording was not: the executing agent has no clock on the
+  conversation, so that rule could never fire. Criteria:
+  `protocols/standing-orders/board-task-criteria.md`.
 
 ## Violations
 
@@ -54,3 +63,5 @@ NOT add a year there). The legacy time-only variant `| HH:MM | ... |` is
 - Using placeholder timestamps (xx:xx) or the retired time-only row format
   `| HH:MM | ... |` (rows must carry the full `YYYY-MM-DD HH:MM`)
 - Hand-editing `board.md` instead of updating STATUS.md and regenerating
+- Work landed that meets the Class A test (cross-session pickup or external
+  recipient) and no task was offered
