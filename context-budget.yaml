@@ -117,12 +117,22 @@ items:
       wonders where the context went.
 
   # -------------------------------------------------------- standing orders --
-  # Only the orders that are actually always-on, i.e. `load: eager`. The six
+  # Only the orders that are actually always-on, i.e. `load: eager`. The five
   # carrying `load: on-trigger` are fetched by their vocabulary and left this
   # list when the contract landed; `measure-context.py` still names them under
   # the table, so a deferred body is never mistaken for one that vanished.
-  # The two below stayed eager on purpose: each bites when nobody says its
+  # The three below stayed eager on purpose: each bites when nobody says its
   # vocabulary, which is the only criterion that keeps an order eager.
+  protocols/standing-orders/board-task-criteria.md:
+    max_bytes: 7000
+    note: >-
+      RETURNED to eager. It shipped deferred in d3b8e036 behind the triggers
+      "new task", "create a task", "STATUS.md". Those words are only spoken
+      once somebody has already decided there is a task, and the order exists
+      to answer that question when nobody has. So it loaded in every case
+      except the one it was written for. The body is the decision tree behind
+      `document-work.md`'s offer, which is eager and cannot ask a question
+      whose criteria are absent.
   protocols/standing-orders/document-work.md:
     max_bytes: 3000
   protocols/standing-orders/security-baseline.md:

@@ -3,9 +3,7 @@ name: board-task-criteria
 scope: always
 enforcement: advisory
 applies_to: []
-load: on-trigger
-triggers: ["new task", "create a task", "board", "STATUS.md", "escalate", "is this a task"]
-summary: "When a log entry escalates into a board task with its own STATUS.md, and when it stays a log line."
+load: eager   # answers "is this a task?" when nobody has said the word. Its own vocabulary ("new task", "create a task") is only spoken once the question has already been asked, so deferring it means it never loads in the case it exists for.
 ---
 # Board-Task Criteria — When does work become a Board task?
 
@@ -146,4 +144,4 @@ the general Review table. The sub-tree's `<id>/STATUS.md` is the SoT.
 - `protocols/standing-orders/document-work.md` — log.md triggers
 - `protocols/standing-orders/work-board-reconciliation.md` — folder ↔ board invariants
 - `work/templates/_schema.status.yaml` — STATUS.md schema
-- `CLAUDE.md § Task Management` — proactive task-suggestion triggers
+- `AGENTS.md § Task Management` — proactive task-suggestion triggers
