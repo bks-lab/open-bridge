@@ -330,6 +330,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test-gen-board.sh",
     "scripts/tests/test-validate-bridge-rule-map.sh",
     "scripts/tests/test_extract_frontmatter.py",
+    "scripts/tests/test_figure_counts.py",
     "scripts/tests/test_gen_board.py",
     "scripts/tests/test_scope_router.py",
     "scripts/tests/test_validate_bridge_rule_map.py",
