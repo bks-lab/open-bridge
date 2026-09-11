@@ -54,10 +54,22 @@ write_status() {
   { printf -- '---\nslug: x\nstatus: %s\n---\n\n' "$st"; printf '%s\n' "$body"; } > "$d/$rel"
 }
 
-# run_gate <dir> -> exit code of the hook (0 allow, 2 block)
-run_gate() { ( cd "$1" && CLAUDE_PROJECT_DIR="$1" bash "$HOOK" >/dev/null 2>&1; echo $? ); }
+# run_gate <dir> -> "<exit>:<gate>" where gate is 1, 2 or "-".
+# The exit code ALONE cannot tell the two gates apart, and that is not
+# theoretical: a portability defect once made Gate 1 fire on every turn, so the
+# Gate 2 "must fire" rows went green while Gate 2 never spoke. An assertion
+# that is satisfied by the wrong gate proves nothing about the right one.
+run_gate() {
+  local out code
+  out=$( cd "$1" && CLAUDE_PROJECT_DIR="$1" bash "$HOOK" 2>&1 >/dev/null ); code=$?
+  case "$out" in
+    *"claims the TASK is finished"*) echo "$code:2" ;;
+    *"work-log drift"*)              echo "$code:1" ;;
+    *)                               echo "$code:-" ;;
+  esac
+}
 
-check() { # check <label> <expected> <actual>
+check() { # check <label> <expected "exit:gate"> <actual>
   if [ "$2" = "$3" ]; then PASS=$((PASS+1)); printf '  ok    %s\n' "$1"
   else FAIL=$((FAIL+1)); printf '  FAIL  %s (expected %s, got %s)\n' "$1" "$2" "$3"; fi
 }
@@ -67,20 +79,20 @@ d=$(make_fixture)
 write_status "$d" work/tasks/a/STATUS.md doing "## Status
 
 Status: done"
-check "a status line claims done while status: doing" 2 "$(run_gate "$d")"
+check "a status line claims done while status: doing" "2:2" "$(run_gate "$d")"
 
 d=$(make_fixture)
 write_status "$d" work/tasks/a/STATUS.md doing "## Done
 
 Nothing left open."
-check "a heading that is nothing but the claim" 2 "$(run_gate "$d")"
+check "a heading that is nothing but the claim" "2:2" "$(run_gate "$d")"
 
 echo "Gate 2 - must NOT fire:"
 d=$(make_fixture)
 write_status "$d" work/tasks/a/STATUS.md review "## Why review and not doing
 
 The analysis is finished and handed over. What is missing is not my work."
-check "status: review carrying completion language (review IS finished-in-review)" 0 "$(run_gate "$d")"
+check "status: review carrying completion language (review IS finished-in-review)" "0:-" "$(run_gate "$d")"
 
 d=$(make_fixture)
 write_status "$d" work/tasks/a/STATUS.md doing "## State 10.09 (weekly): nothing has gone out yet
@@ -91,32 +103,32 @@ The letters are finished and helped.
 
 - second item
       -> done, see section 2. The sender side stands."
-check "sub-results and deliverables under status: doing" 0 "$(run_gate "$d")"
+check "sub-results and deliverables under status: doing" "0:-" "$(run_gate "$d")"
 
 d=$(make_fixture)
 write_status "$d" work/tasks/a/STATUS.md done "All done."
-check "status: done" 0 "$(run_gate "$d")"
+check "status: done" "0:-" "$(run_gate "$d")"
 
 d=$(make_fixture)
 mkdir -p "$d/work/tasks/a"
 printf -- '---\nslug: x\nstatus: doing\nblocked_by: "waiting on the customer"\n---\n\nStatus: done\n' > "$d/work/tasks/a/STATUS.md"
-check "blocked_by is set" 0 "$(run_gate "$d")"
+check "blocked_by is set" "0:-" "$(run_gate "$d")"
 
 d=$(make_fixture)
 write_status "$d" work/streams/a/STATUS.md doing "Status: done"
-check "a stream (long-runner, never reaches done)" 0 "$(run_gate "$d")"
+check "a stream (long-runner, never reaches done)" "0:-" "$(run_gate "$d")"
 
 d=$(make_fixture)
 mkdir -p "$d/work/tasks/new"
 printf -- '---\nslug: x\nstatus: doing\n---\n\nStatus: done\n' > "$d/work/tasks/new/STATUS.md"
-check "an untracked new task (porcelain folds the directory)" 2 "$(run_gate "$d")"
+check "an untracked new task (porcelain folds the directory)" "2:2" "$(run_gate "$d")"
 
 echo
 echo "Gate 1 - must still fire:"
 d=$(make_fixture)
 printf 'x\n' > "$d/note.md"
 touch -t 202601010000 "$d/work/log.md"   # old, but unchanged
-check "a changed file with no log row today" 2 "$(run_gate "$d")"
+check "a changed file with no log row today" "2:1" "$(run_gate "$d")"
 
 echo
 echo "$PASS passed, $FAIL failed"

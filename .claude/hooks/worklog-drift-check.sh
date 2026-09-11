@@ -127,8 +127,18 @@ fi
 # touched today, we trust it. This is a nudge hook, not a security check;
 # `touch work/log.md` would game it, but that's not the threat model.
 today=$(date '+%Y-%m-%d')
-log_date=$(stat -f '%Sm' -t '%Y-%m-%d' work/log.md 2>/dev/null \
-           || date -d "@$(stat -c %Y work/log.md)" '+%Y-%m-%d' 2>/dev/null \
+# GNU first, BSD second, and both probed with a flag the OTHER one rejects.
+# The previous order asked BSD first with `stat -f`, which on GNU coreutils is
+# `--file-system` and EXITS 0 with filesystem info: the `||` fallback never
+# ran, log_date became that text, never matched today, and Gate 1 fired on
+# every turn. A fallback chain whose first link succeeds wrongly has no second
+# link. `stat -c` and `date -d` fail cleanly on macOS, `stat -f %m` and
+# `date -r` fail cleanly on GNU, so each pair is unambiguous.
+log_epoch=$(stat -c %Y work/log.md 2>/dev/null \
+            || stat -f %m work/log.md 2>/dev/null \
+            || echo 0)
+log_date=$(date -d "@$log_epoch" '+%Y-%m-%d' 2>/dev/null \
+           || date -r "$log_epoch" '+%Y-%m-%d' 2>/dev/null \
            || echo "")
 [ "$log_date" = "$today" ] && exit 0
 
