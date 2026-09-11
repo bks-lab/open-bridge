@@ -21,6 +21,7 @@ only worth its friction if clearing it is one command, so --write exists.
 from __future__ import annotations
 
 import collections
+import importlib.util
 import re
 import subprocess
 import sys
@@ -36,6 +37,68 @@ USER_PREFIX = "examples/agency/"
 # and a .claude/ label on the USER half would read as "this only works with
 # Claude" on a page whose whole claim is that it does not.
 USER_FOLD = {".claude/": "./"}
+
+
+# The promote router (scripts/categorize-commits.py) is the one place that knows
+# a file's tier. Reuse it rather than growing a second answer here that drifts
+# from it. Loaded by path because the filename carries a hyphen.
+_ROUTER_SPEC = importlib.util.spec_from_file_location(
+    "categorize_commits", REPO / "scripts" / "categorize-commits.py"
+)
+if not (_ROUTER_SPEC and _ROUTER_SPEC.loader):
+    sys.exit("check-figure-counts: cannot load scripts/categorize-commits.py")
+_router = importlib.util.module_from_spec(_ROUTER_SPEC)
+_ROUTER_SPEC.loader.exec_module(_router)
+
+# Files that SHIP but must never be PROMOTED, which is why the router calls them
+# `user` and why `classify_file() == "core"` alone is the wrong census.
+#
+# The router answers "may this travel upward", the figure asks "does a fresh
+# clone get it". Both are right and they disagree on exactly two families:
+#
+#   * `.gitignore` / `.bridge-origin` are per-tier INVERTED — they exist on both
+#     sides and copying either way is a bug (promoting ours would disarm the
+#     push guard downstream), yet a clone plainly gets them.
+#   * `work/templates/` and the `work/_learning/` scaffolding are CORE content
+#     living inside a folder whose TIER is USER. A clone gets the templates; an
+#     instance's filled-in copies must never travel.
+#
+# Inside `_learning/`, the three directories below are where an instance's own
+# content accumulates. Their `.gitkeep` ships (it is what creates the directory),
+# everything else in them is that operator's.
+SHIPPED_NOT_PROMOTABLE = frozenset({".gitignore", ".bridge-origin"})
+SHIPPED_SCAFFOLD = ("work/templates/",)
+
+# `work/_learning/` mixes both in one tree: the scaffolding ships, the captured
+# findings are the operator's. Split them by the repo's own naming convention
+# rather than by a list that rots the day upstream adds a file — `_`-prefixed is
+# reserved, README.md documents, `.gitkeep` is what creates the directory. The
+# one irregular is `audit-trail.md`, which ships as an empty ledger and fills up
+# per instance.
+LEARNING_ROOT = "work/_learning/"
+LEARNING_SHIPPED = frozenset({"README.md", ".gitkeep", "audit-trail.md"})
+
+
+def is_core_file(path: str) -> bool:
+    """True when a fresh clone of the default branch gets this file.
+
+    The census used to be `not path.startswith("examples/")`, which is true on
+    the default branch and false on every `user/*` branch — where an instance
+    tracks its own work/ content. `validate.yml` runs on `user/**` by design, so
+    that census could never pass on the branches it was pointed at, and `--write`
+    would have answered by baking one operator's task list into a page that
+    ships to open-bridge.
+    """
+    if path.startswith("examples/"):
+        return False
+    if path in SHIPPED_NOT_PROMOTABLE:
+        return True
+    if path.startswith(SHIPPED_SCAFFOLD):
+        return True
+    if path.startswith(LEARNING_ROOT):
+        name = path.rsplit("/", 1)[-1]
+        return name in LEARNING_SHIPPED or name.startswith("_")
+    return _router.classify_file(path) == "core"
 
 
 def tracked() -> list[str]:
@@ -133,7 +196,7 @@ def rewrite(src: str, real_core: dict, real_user: dict, core_total: int, user_to
 def main() -> int:
     write = "--write" in sys.argv
     files = tracked()
-    core_files = [f for f in files if not f.startswith("examples/")]
+    core_files = [f for f in files if is_core_file(f)]
     user_files = [f[len(USER_PREFIX):] for f in files if f.startswith(USER_PREFIX)]
 
     core_real = counted(core_files)
