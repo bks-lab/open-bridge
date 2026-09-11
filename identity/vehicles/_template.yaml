@@ -1,0 +1,91 @@
+# yaml-language-server: $schema=./_schema.yaml
+# Vehicle Template — CORE
+#
+# A vehicle the user owns or leases, together with the tax classification that
+# decides which persona bears it — and, more importantly, POINTERS to
+# everything the vehicle generates.
+#
+# Why vehicles live here (identity/vehicles/, not infra/ or workflow/):
+#   - A vehicle is an owned asset attached to a tax entity. "Who am I" includes
+#     "what do I own and which persona carries it" — the same identity-cluster
+#     semantic as personas (self), accounts (cloud identities) and contracts
+#     (obligations).
+#   - It is not infra: infra answers "where does what run, how do I reach it".
+#     The wallbox IS infra (infra/remotes/) — the car is not.
+#
+# === What this file is for ===
+#
+# It is an ENTRY POINT, not a warehouse. A vehicle scatters its traces across
+# personas, contracts, remotes, tasks and the document archive. Do not copy
+# those contents here — name their location in `refs:` and `archive:` so the
+# next reader finds them in one hop instead of remembering five paths.
+#
+# Copy this template as `vehicles/<plate-slug>.yaml` on your user/* branch
+# (e.g. `ab-cd-1234.yaml`). Filename = simple slug WITHOUT type-prefix.
+#
+# === Companion docs ===
+#
+# `<id>.README.md` next to the YAML for:
+#   - Purchase / lease decision history
+#   - Cost-allocation reasoning when a vehicle is mixed-use
+#   - Service history worth remembering
+#
+# === Schema reference ===
+#
+# Required: schema_version, id, plate, persona, classification
+# See _schema.yaml for the full property list.
+
+schema_version: 1
+scope: personal                      # NEVER core — plate, VIN and tax data are PII
+id: ab-cd-1234                       # filename slug, conventionally the plate
+
+plate: "AB CD 1234 E"
+# Every spelling a counterparty actually uses. Document routing matches on
+# these — a missing variant fails silently, so add one whenever you meet it.
+plate_variants: ["AB-CD 1234", "ABCD1234E", "AB CD1234"]
+
+vin: "WVWZZZ000Z000000"
+make_model: "Example Motors Model X"
+drivetrain: bev                      # bev | phev | hybrid | petrol | diesel | other
+
+persona: example-persona             # slug in identity/personas/ — bears the tax consequences
+classification: business             # business | private | mixed
+
+first_registration: 2025-01-01
+acquired: 2025-01-01
+
+# Customer number at the manufacturer / charging provider. Needed because
+# charging invoices are typically a PULL channel: they sit in the provider's
+# account portal and never arrive by mail.
+supplier_customer_no: "0000000000"
+
+# ----------------------------------------------------------------------------
+# Tax — the facts that recur yearly and are easy to misremember.
+# ----------------------------------------------------------------------------
+tax:
+  vehicle_tax: "exempt until 2035 (statutory EV exemption) — no recurring receipt expected"
+  logbook_required: true
+  private_share_method: logbook      # logbook | flat-rate | none
+
+# ----------------------------------------------------------------------------
+# refs — repo-relative pointers. This is the anti-scatter mechanism.
+# ----------------------------------------------------------------------------
+refs:
+  telemetry: work/streams/example-vehicle-telemetry/
+  receipts:  work/streams/example-tax-filing/vehicle-receipts.md
+  logbook:   work/tasks/example-logbook-2026/
+  device:    infra/remotes/example-wallbox.yaml
+  energy:    identity/contracts/example-provider-electricity.yaml
+
+# ----------------------------------------------------------------------------
+# archive — paths in the document archive, outside the repo.
+# Relative to the document root configured in bridge-config.yaml.
+# ----------------------------------------------------------------------------
+archive:
+  vehicle:      "2_AREAS/Example.Persona/Vehicle/"
+  registration: "2_AREAS/Example.Persona/Vehicle-Registration/"
+  insurance:    "2_AREAS/Insurance/Vehicle/"
+
+notes: |
+  Anything load-bearing that has no field yet. Keep it short — if a note
+  recurs across vehicles, it wants to become a field in _schema.yaml.

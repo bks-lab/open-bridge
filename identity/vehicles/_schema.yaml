@@ -1,0 +1,143 @@
+# Vehicle Schema — JSON Schema Draft 2020-12 in YAML
+#
+# Defines the structure for vehicles/<id>.yaml — a vehicle the user owns or
+# leases, with the tax classification that decides which persona bears it and
+# the pointers to everything else the vehicle generates (telemetry, receipts,
+# logbook, insurance, charging contract).
+#
+# A "vehicle" here is anything with:
+#   - A registration plate and a persona that owns the tax consequences
+#   - A stream of recurring documents (fuel/charging, service, insurance, tax)
+#   - Optionally a logbook obligation (Fahrtenbuch) when classified business
+#
+# The point of this type is NOT to duplicate those documents — it is to be the
+# ONE entry point that names where each of them lives. A vehicle scatters its
+# traces across personas, contracts, remotes, tasks and the document archive;
+# without a registry the owner has to remember all of them.
+#
+# Companion: _template.yaml (working example for humans to copy).
+#
+# Validation:
+#   check-jsonschema --schemafile identity/vehicles/_schema.yaml \
+#                    identity/vehicles/*.yaml
+#
+# IDE support: add this hint to the top of an instance file:
+#   # yaml-language-server: $schema=./_schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bks-lab.github.io/open-bridge/schemas/vehicle.yaml"
+title: Vehicle
+description: |
+  A vehicle the user owns or leases. Carries identification, tax
+  classification, the owning persona, and reference pointers to the
+  telemetry, receipts, logbook and contracts it generates.
+
+type: object
+required: [schema_version, id, plate, persona, classification]
+additionalProperties: true   # v1 permissive — tighten after first cleanup sweep
+
+properties:
+
+  schema_version:
+    type: integer
+    const: 1
+    description: "Schema version, currently 1"
+
+  scope:
+    type: string
+    enum: [core, org, personal, user]
+    description: |
+      Promote tier. Instances carry PII (plate, VIN, tax data) and must
+      never be 'core'. Use 'personal' to route into a personal overlay,
+      'user' to keep the file strictly local.
+
+  id:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9-]*$"
+    description: "Unique vehicle slug, lowercase-kebab-case — conventionally the plate (e.g. 'ab-cd-1234')"
+
+  plate:
+    type: string
+    description: "Registration plate as printed, including spacing (e.g. 'AB CD 1234 E')"
+
+  plate_variants:
+    type: array
+    items: { type: string }
+    description: |
+      Every spelling a counterparty actually uses — hyphenated, unspaced,
+      with and without an EV suffix. Document routing matches on these, and a
+      missing variant is a silent miss, not an error.
+
+  vin:
+    type: string
+    description: "Vehicle identification number"
+
+  persona:
+    type: string
+    description: "Slug of the owning persona in identity/personas/ — decides which tax entity bears the vehicle"
+
+  classification:
+    type: string
+    enum: [business, private, mixed]
+    description: "Tax classification. 'business' normally implies a logbook obligation."
+
+  make_model:
+    type: string
+    description: "Manufacturer and model"
+
+  drivetrain:
+    type: string
+    enum: [bev, phev, hybrid, petrol, diesel, other]
+    description: "Drivetrain — decides which tax exemptions and subsidies apply"
+
+  first_registration:
+    type: string
+    format: date
+    description: "Date of first registration (ISO 8601)"
+
+  acquired:
+    type: string
+    format: date
+    description: "Date the user took possession"
+
+  supplier_customer_no:
+    type: string
+    description: "Customer number at the manufacturer or charging provider — needed to retrieve invoices from their portal"
+
+  tax:
+    type: object
+    description: "Tax-relevant facts that recur every year and are easy to misremember"
+    additionalProperties: true
+    properties:
+      vehicle_tax:
+        type: string
+        description: "Status of annual vehicle tax, including any exemption and its legal basis and end date"
+      logbook_required:
+        type: boolean
+        description: "Whether a logbook (Fahrtenbuch) must be kept"
+      private_share_method:
+        type: string
+        description: "How the private share is determined (logbook, flat-rate, none)"
+
+  refs:
+    type: object
+    description: |
+      Pointers into the Bridge — repo-relative paths. This is the anti-scatter
+      mechanism: every place the vehicle already lives gets named here once,
+      instead of being rediscovered each time.
+    additionalProperties: true
+    properties:
+      telemetry:   { type: string, description: "Stream or task holding charge/telemetry snapshots" }
+      receipts:    { type: string, description: "Receipt register — which documents exist and how they arrive" }
+      logbook:     { type: string, description: "Task or stream carrying the logbook" }
+      device:      { type: string, description: "infra/remotes/ entry for an associated device (wallbox, tracker)" }
+      energy:      { type: string, description: "identity/contracts/ entry for the electricity or fuel contract" }
+
+  archive:
+    type: object
+    description: "Paths in the document archive (outside the repo). Relative to the configured document root."
+    additionalProperties: true
+
+  notes:
+    type: string
+    description: "Free text — anything load-bearing that has no field yet"
