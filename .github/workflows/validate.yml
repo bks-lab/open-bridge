@@ -200,6 +200,14 @@ jobs:
       - name: The pre-commit always-on gate keeps its contract
         run: sh scripts/tests/test-precommit-guards.sh
 
+      # The Stop hook is the other half of that enforcement, and the half that
+      # can fail in BOTH directions: too loose and drift ships, too eager and
+      # every turn blocks until somebody switches it off with `.bridge-nolog`,
+      # which is what happened on the instance this was found on, for 57 days.
+      # Both directions are asserted, the two live false positives included.
+      - name: The Stop hook bites the right files and only those
+        run: bash scripts/tests/test-worklog-drift-check.sh
+
       # The gate itself, on the live tree. Bytes are exact and offline, so this
       # needs no key and no network; token counts ride along as an estimate and
       # never fail the build. A new always-on file that nobody declared fails

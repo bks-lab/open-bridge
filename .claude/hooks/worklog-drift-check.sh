@@ -50,7 +50,12 @@ esac
 # fires even when log.md was already touched today. A `touch` can game it; not
 # the threat model — this is a nudge, like Gate 1.
 # ---------------------------------------------------------------------------
-status_files=$(git status --porcelain 2>/dev/null \
+# -uall: without it `git status --porcelain` collapses an untracked DIRECTORY
+# to one line ("?? work/tasks/") and never names the file inside, so a brand
+# new task's STATUS.md was invisible to this gate until its directory was
+# tracked. Gate 1 below keeps the default listing on purpose: it asks whether
+# work happened, and one line for a new folder answers that just as well.
+status_files=$(git status --porcelain -uall 2>/dev/null \
                | awk '{print $2}' \
                | grep -E '(^|/)STATUS\.md$' || true)
 for sf in $status_files; do
@@ -68,6 +73,12 @@ for sf in $status_files; do
               | sed -E 's/^status:[[:space:]]*"?([A-Za-z_-]+)"?.*/\1/')
   [ -z "$fm_status" ] && continue       # no status field → not in scope
   [ "$fm_status" = "done" ] && continue # already done → no mismatch
+  # `review` means finished and awaiting a human's confirmation (AGENTS.md:
+  # never set an item straight to Done). A review body that says the work is
+  # finished is therefore CORRECT, not drift. Live proof of the false positive:
+  # a task carrying a section headed "why review and not doing" — the gate
+  # fired on a file that explains its own status.
+  [ "$fm_status" = "review" ] && continue
 
   # Blocked task (non-empty blocked_by:) → legitimately carries close/done language
   # in its body while status stays doing/review; the flag IS the "not yet done"
@@ -77,12 +88,21 @@ for sf in $status_files; do
 
   # Body (drop the leading YAML frontmatter block) asserts completion?
   body=$(awk 'BEGIN{fm=0} /^---[[:space:]]*$/{fm++; next} fm>=2' "$sf" 2>/dev/null)
-  if echo "$body" | grep -qiE 'done|✅|erledigt|abgeschlossen|fertig'; then
+  # A whole-task claim only. The earlier form matched those words ANYWHERE in
+  # the body, and completion words describe sub-objects constantly: "the
+  # letters are finished", "→ done, see section 2", a ✅ in a checklist. Both
+  # live hits were of that kind, one of them under a heading that read "noch
+  # nichts raus" (nothing has gone out yet). A word-level match cannot tell a
+  # finished DELIVERABLE from a finished TASK, so it asks for the two shapes an
+  # author only writes about the task itself: a status line, or a heading that
+  # is nothing but the claim. ✅ is deliberately absent — it is a checklist mark.
+  CLAIM='^[[:space:]]*(#{1,6}[[:space:]]*)?(status|ergebnis|outcome)[[:space:]]*:[[:space:]]*(done|erledigt|abgeschlossen|fertig)|^[[:space:]]*#{1,6}[[:space:]]*(abgeschlossen|erledigt|done|fertig)[[:space:]]*$'
+  if echo "$body" | grep -qiE "$CLAIM"; then
     cat >&2 <<EOF
 Bridge STATUS.md drift detected.
 
-$sf asserts done (body text says done/✅/erledigt/abgeschlossen/fertig)
-but frontmatter status: $fm_status.
+$sf claims the TASK is finished (a status line, or a heading that is
+nothing but the claim) while its frontmatter says status: $fm_status.
 
 Set status: done (after the review hop the human confirms), or remove the
 completion claim from the body. Blocked? keep doing/review + add blocked_by:.
@@ -107,8 +127,18 @@ fi
 # touched today, we trust it. This is a nudge hook, not a security check;
 # `touch work/log.md` would game it, but that's not the threat model.
 today=$(date '+%Y-%m-%d')
-log_date=$(stat -f '%Sm' -t '%Y-%m-%d' work/log.md 2>/dev/null \
-           || date -d "@$(stat -c %Y work/log.md)" '+%Y-%m-%d' 2>/dev/null \
+# GNU first, BSD second, and both probed with a flag the OTHER one rejects.
+# The previous order asked BSD first with `stat -f`, which on GNU coreutils is
+# `--file-system` and EXITS 0 with filesystem info: the `||` fallback never
+# ran, log_date became that text, never matched today, and Gate 1 fired on
+# every turn. A fallback chain whose first link succeeds wrongly has no second
+# link. `stat -c` and `date -d` fail cleanly on macOS, `stat -f %m` and
+# `date -r` fail cleanly on GNU, so each pair is unambiguous.
+log_epoch=$(stat -c %Y work/log.md 2>/dev/null \
+            || stat -f %m work/log.md 2>/dev/null \
+            || echo 0)
+log_date=$(date -d "@$log_epoch" '+%Y-%m-%d' 2>/dev/null \
+           || date -r "$log_epoch" '+%Y-%m-%d' 2>/dev/null \
            || echo "")
 [ "$log_date" = "$today" ] && exit 0
 

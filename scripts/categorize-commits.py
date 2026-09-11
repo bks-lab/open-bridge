@@ -350,6 +350,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test-measure-context.sh",
     "scripts/tests/test-standing-orders.sh",
     "scripts/tests/test-worklog.sh",
+    "scripts/tests/test-worklog-drift-check.sh",
     "scripts/tests/test_bridge_config.py",
     "scripts/tests/test_doc_routes.py",
     "scripts/tests/test_measure_context.py",
