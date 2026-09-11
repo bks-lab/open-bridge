@@ -73,7 +73,15 @@ items:
     card:
       kind: index
       keep: [org, local_root, work_system]
-      sections: [base, customers, internal, partners, workspaces]
+      # No `sections:` on purpose, and the schema doc next to the field says
+      # why: a declared name the source does not have is a finding, and CORE
+      # cannot know which sections an instance's registry has. Absent means
+      # detected. This shipped as
+      # `[base, customers, internal, partners, workspaces]` until 2026-09-11,
+      # of which `internal` and `partners` were not in ecosystem.example.yaml
+      # either, so the card was wrong against this repo's own example. It went
+      # unseen because --check skips a card whose target is absent, and
+      # ecosystem.yaml is gitignored, so it is absent in every clone here.
       label: [description, display_name, name]
 
   # ---------------------------------------------------------------- listings --

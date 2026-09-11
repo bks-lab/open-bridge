@@ -369,6 +369,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/context-index.py",
     "scripts/lib/context_index.py",
     "scripts/tests/test-context-index.sh",
+    "scripts/tests/test_context_budget_card.py",
     "scripts/tests/test_context_index.py",
     # Registered 2026-08-30 with the reachability contract. Same reason again:
     # validate.yml runs the suite, the check and its mutation battery.
