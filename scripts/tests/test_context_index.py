@@ -545,6 +545,42 @@ def test_check_runs_every_declared_card_in_the_tree(tmp_path):
     assert "custommers" in (result.stdout + result.stderr)
 
 
+def test_check_does_not_count_a_card_whose_source_is_absent(tmp_path):
+    # A declared card whose target is missing is SKIPPED: it is instance data,
+    # absent in a fresh clone, and declared-and-absent is the budget's business.
+    # The skip is right; counting it in "N declared card(s) check out" is not.
+    # That line is what a human reads to believe the guard ran, and a card
+    # nothing was read from has not checked out, it was never looked at. The
+    # count must speak only for what was actually verified, and the skipped one
+    # must be named so an absent source cannot hide behind a green line.
+    (tmp_path / "ecosystem.yaml").write_text(SOURCE, encoding="utf-8")
+    (tmp_path / "context-budget.yaml").write_text(
+        "schema_version: 1\n"
+        "items:\n"
+        "  ecosystem.yaml:\n"
+        "    card:\n"
+        "      kind: index\n"
+        "      keep: [org]\n"
+        "      sections: [base, customers]\n"
+        "  ecosystem.absent.yaml:\n"
+        "    card:\n"
+        "      kind: index\n"
+        "      sections: [invented]\n",
+        encoding="utf-8",
+    )
+    result = run_cli(tmp_path, "--check")
+    out = result.stdout + result.stderr
+
+    assert result.returncode == 0, out
+    assert "2 declared card(s) check out" not in out, (
+        "the absent card was counted as verified: " + out
+    )
+    assert "1 declared card(s) check out" in out, out
+    assert "ecosystem.absent.yaml" in out, (
+        "the skipped card is not named, so it hides behind the green line: " + out
+    )
+
+
 def test_check_is_green_on_a_healthy_tree(tmp_path):
     (tmp_path / "ecosystem.yaml").write_text(SOURCE, encoding="utf-8")
     (tmp_path / "context-budget.yaml").write_text(
