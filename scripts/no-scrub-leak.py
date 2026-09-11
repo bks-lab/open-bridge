@@ -186,6 +186,11 @@ def scan(rel_path):
         with open(abs_path, errors="ignore") as fh:
             lines = fh.readlines()
     except OSError:
+        # Deliberately lenient HERE, and guarded in main(). The repo-wide sweep
+        # derives its list from `git ls-files`, where a file deleted in the
+        # worktree but not yet staged is an ordinary transient state. Paths
+        # named on the command line are asserted by the caller and get the
+        # opposite treatment: see _unreadable() below.
         return
     for class_id, pattern, allowed, match_filter in CHECKS:
         if rel_path in allowed:
@@ -197,18 +202,67 @@ def scan(rel_path):
                     break  # one report per line per class
 
 
+# Exit codes are a contract: scripts/overlay.py already branches on 1 versus
+# "anything else", treating the latter as a blocked write. An unreadable path is
+# a gate failure, not a leak, so it needs its own code rather than borrowing 1.
+EXIT_CLEAN = 0
+EXIT_LEAK = 1
+EXIT_UNREADABLE = 2
+
+
+def _unreadable(rel_path):
+    """Why this path cannot be scanned, or None when it can.
+
+    Only ever applied to paths the CALLER named. A gate that reports clean about
+    a file it never opened is worse than no gate, because the caller stops
+    looking. On 2026-09-11 four paths reached this scanner as one nonsense
+    string (an unquoted variable under zsh, which does not word-split) and the
+    run reported `clean (1 file(s) scanned)` having read nothing.
+    """
+    abs_path = os.path.join(REPO_ROOT, rel_path)
+    if os.path.isdir(abs_path):
+        return "is a directory, not a file"
+    if not os.path.exists(abs_path):
+        return "does not exist"
+    try:
+        with open(abs_path, errors="ignore"):
+            pass
+    except OSError as exc:
+        return exc.strerror or "cannot be opened"
+    return None
+
+
 def main(argv):
     if argv:
         # Pre-commit mode: paths come in relative to the repo root (or cwd).
         targets = [
             os.path.relpath(os.path.abspath(p), REPO_ROOT) for p in argv
         ]
+        unreadable = [(p, why) for p in targets if (why := _unreadable(p))]
+        if unreadable:
+            sys.stderr.write(
+                "no-scrub-leak: refusing to report on paths it could not read.\n"
+                "Nothing was scanned for these, so nothing can be said about them:\n"
+            )
+            for rel_path, why in unreadable:
+                sys.stderr.write(f"  {rel_path}: {why}\n")
+            sys.stderr.write(
+                "\nIf this came from a shell variable, quote it: zsh does not "
+                "word-split unquoted expansions, so several paths arrive as one.\n"
+            )
+            return EXIT_UNREADABLE
     else:
         targets = repo_files()
 
     hits = []
     counts = {}
+    scanned = 0
+    skipped_binary = 0
     for rel_path in targets:
+        if os.path.splitext(rel_path)[1].lower() in BINARY_EXTENSIONS:
+            skipped_binary += 1
+            continue
+        scanned += 1
         for class_id, lineno, line in scan(rel_path):
             hits.append(f"[{class_id}] {rel_path}:{lineno}: {line.strip()}")
             counts[class_id] = counts.get(class_id, 0) + 1
@@ -222,9 +276,12 @@ def main(argv):
             "(governance file) — extend the per-class allowlist in "
             "scripts/no-scrub-leak.py\n"
         )
-        return 1
-    print("no-scrub-leak: clean " f"({len(targets)} file(s) scanned)")
-    return 0
+        return EXIT_LEAK
+    # Report what was actually READ. Counting handed-over paths instead is how a
+    # binary, or a path that did not resolve, used to pass as "scanned".
+    note = f", {skipped_binary} binary skipped" if skipped_binary else ""
+    print(f"no-scrub-leak: clean ({scanned} file(s) scanned{note})")
+    return EXIT_CLEAN
 
 
 if __name__ == "__main__":
