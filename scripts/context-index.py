@@ -52,11 +52,17 @@ def _check(ci, root: Path, only: str | None) -> int:
         cards = {only: cards.get(only)}
 
     findings: list[str] = []
+    skipped: list[str] = []
     for rel, card in cards.items():
         target = root / rel
         if not target.is_file():
             # Instance data, absent in a fresh clone. Declared-and-absent is
-            # the budget's business, not this guard's.
+            # the budget's business, not this guard's, so the skip stays. What
+            # does not stay is counting it: a card nothing was read from has
+            # not checked out, it was never looked at. It is named below
+            # instead, because a skip folded into the green line is how an
+            # absent source hides from the guard that exists to look at it.
+            skipped.append(rel)
             continue
         text = target.read_text(encoding="utf-8")
         for finding in (
@@ -72,7 +78,12 @@ def _check(ci, root: Path, only: str | None) -> int:
     if findings:
         print(f"context-index: {len(findings)} finding(s)", file=sys.stderr)
         return 1
-    print(f"context-index: {len(cards)} declared card(s) check out")
+    print(f"context-index: {len(cards) - len(skipped)} declared card(s) check out")
+    if skipped:
+        print(
+            f"context-index: {len(skipped)} card(s) NOT checked, source absent: "
+            + ", ".join(sorted(skipped))
+        )
     return 0
 
 
