@@ -45,7 +45,7 @@ items:
     note: The entry file. Thin by design; it routes, it does not explain.
 
   AGENTS.md:
-    max_bytes: 33000
+    max_bytes: 33100
     note: >-
       The operating manual, and still the largest single always-on item. It
       routes; it does not restate. Every load-bearing pointer in it is a
@@ -57,6 +57,13 @@ items:
       families that existed in the tree and were named in nothing a session
       loads, so the list is now load-bearing rather than decorative, and CI
       fails when it falls behind the tree.
+      RAISED from 33000 on 2026-09-11 by 100 bytes, which is what the
+      `identity/vehicles/` row costs. The family shipped its `_template.yaml`
+      and `_schema.yaml` while `AGENTS.md` named no route to it, so
+      `check-reachability.py` failed: the index is the only always-on place a
+      family can be named. 32 bytes of headroom before, 32 after, on purpose.
+      The next family row needs its own argument in its own diff, which is
+      what the tightness is for.
 
   ecosystem.yaml:
     optional: true

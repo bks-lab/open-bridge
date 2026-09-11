@@ -188,6 +188,7 @@ one hop both ways, `--fix` rewrites a reference whose task merely moved KIND).
 | `identity/mandants/` | who RECEIVES an outgoing message |
 | `identity/accounts/` | a cloud tenant, subscription or vault reference |
 | `identity/contracts/` | a customer contract: term, rate, notice |
+| `identity/vehicles/` | a vehicle the user owns or leases: plate, VIN, the persona that bears it |
 | `identity/agent/` | this orchestrator's own name, role and voice |
 | `infra/remotes/` | a machine: ssh, wake, services, "which PC" |
 | `infra/channels/` | an outbound transport: mail, chat, bot, digest |
