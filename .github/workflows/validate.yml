@@ -120,6 +120,9 @@ jobs:
       - name: Run work-log slice test suite
         run: bash scripts/tests/test-worklog.sh
 
+      - name: Run Codex Bridge adapter contract
+        run: python3 -m unittest discover -s scripts/tests -p 'test_codex*.py'
+
       - name: Run context-index test suite
         run: bash scripts/tests/test-context-index.sh
 

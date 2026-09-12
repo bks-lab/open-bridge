@@ -443,3 +443,10 @@ Contributions are accepted under the MIT License and require a [Developer Certif
 ## Acknowledgments
 
 BKS open-bridge draws on a large body of public work — agent-orchestration patterns, the propose-then-confirm posture, the identity/voice split, config-as-data conventions. A non-exhaustive list of named inspirations, plus the inspiration-is-not-endorsement note, lives in [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+
+## Open Bridge Codex
+
+For the Codex CLI edition, start with [Open Bridge Codex](CODEX.md):
+`./bin/open-bridge-codex` launches Codex with Bridge completion checks.
+No Claude installation is required. The shared skills and private-instance
+model stay the same; existing client entry points remain available.

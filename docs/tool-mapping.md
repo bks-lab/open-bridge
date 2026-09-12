@@ -38,4 +38,6 @@ changes what happens rather than what it is called.
 
 Prefer `rg` and `rg --files` for search, `apply_patch` for edits, and
 `AGENTS.md` as the repo-level instruction file. Codex reads the same universal
-skills through `.agents/skills/*/SKILL.md`.
+skills through `.agents/skills/*/SKILL.md`. See [Codex integration](codex.md)
+for session checkpoints, shared completion checks and delegation. Claude
+settings/hooks are not portable merely because skill files are shared.

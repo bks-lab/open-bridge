@@ -20,7 +20,8 @@ Sub-agents, standing orders, themes, bug fixes — all welcome.
    Windows, or a git without symlink support) run `./bin/setup` (Windows:
    `powershell -File bin\setup.ps1`) to recreate them — without them your
    agent won't find the skills.
-3. **Run `/bridge-onboard`** in Claude Code — the wizard creates your
+3. **Run onboarding** with `./bin/open-bridge-codex` (Codex CLI) or
+   `/bridge-onboard` in Claude Code — the wizard creates your
    `user/your-name` branch and sets up ecosystem and preferences
 4. **Test commands:** `/briefing` (daily status), `/bridge-status` (dashboard),
    `/debrief` (transcript processing), `/archive` (weekly archive)
