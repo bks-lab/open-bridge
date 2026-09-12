@@ -339,8 +339,14 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     # in CI, so a non-core classification would have upstream CI call files that
     # never shipped. test_paths_a_core_ci_workflow_runs_are_core caught exactly
     # that, before the first human read the diff.
-    "scripts/vibe-bridge.py",
+    # Codex CLI edition: generic runtime and regression contracts.
+    "scripts/codex-bridge.py",
+    "scripts/lib/cli_bridge.py",
+    "scripts/lib/cli_launcher.py",
     "scripts/worklog-drift-check.sh",
+    "scripts/tests/test_codex_bridge.py",
+    "scripts/tests/test_codex_launcher.py",
+    "scripts/vibe-bridge.py",
     "scripts/tests/test_vibe_bridge.py",
     "scripts/tests/test_vibe_launcher.py",
     "scripts/bridge-config.py",

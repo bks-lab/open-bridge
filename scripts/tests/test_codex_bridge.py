@@ -7,13 +7,13 @@ import shutil
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'vibe-bridge.py'
-spec = importlib.util.spec_from_file_location('vibe_bridge', SCRIPT)
+SCRIPT = Path(__file__).resolve().parents[1] / 'codex-bridge.py'
+spec = importlib.util.spec_from_file_location('codex_bridge', SCRIPT)
 bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
 
 
-class VibeBridgeTest(unittest.TestCase):
+class CodexBridgeTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -91,7 +91,7 @@ class VibeBridgeTest(unittest.TestCase):
                 self.assertFalse(bridge.needs_log(after, after))
                 result = subprocess.run([*args, 'finish'], capture_output=True)
                 self.assertEqual(result.returncode, 2, result.stderr)
-                self.assertTrue((self.root / f'.bridge/vibe-sessions/invalid-{state}.json').exists())
+                self.assertTrue((self.root / f'.bridge/codex-sessions/invalid-{state}.json').exists())
 
     def test_missing_log_at_baseline_requires_real_log_for_new_work(self):
         log = self.root / 'work/log.md'
@@ -109,7 +109,7 @@ class VibeBridgeTest(unittest.TestCase):
         (self.root / 'work/log.md').unlink()
         result = subprocess.run([*args, 'finish'], capture_output=True)
         self.assertEqual(result.returncode, 2)
-        self.assertTrue((self.root / '.bridge/vibe-sessions/deleted-log.json').exists())
+        self.assertTrue((self.root / '.bridge/codex-sessions/deleted-log.json').exists())
 
     def test_missing_status_checker_preserves_checkpoint(self):
         (self.root / 'scripts/worklog-drift-check.sh').unlink()
@@ -118,7 +118,7 @@ class VibeBridgeTest(unittest.TestCase):
         result = subprocess.run([*args, 'finish'], capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b'Shared status-drift checker is missing', result.stderr)
-        self.assertTrue((self.root / '.bridge/vibe-sessions/missing-hook.json').exists())
+        self.assertTrue((self.root / '.bridge/codex-sessions/missing-hook.json').exists())
 
     def test_symlink_does_not_read_target(self):
         (self.root / 'link').symlink_to('/nonexistent/private-target')
@@ -179,7 +179,7 @@ class VibeBridgeTest(unittest.TestCase):
             (self.root / '.bridge').symlink_to(target)
             result = subprocess.run(['python3', str(SCRIPT), 'start', '--root', str(self.root), '--session-id', 'test'], capture_output=True)
             self.assertNotEqual(result.returncode, 0)
-            self.assertFalse((Path(target) / 'vibe-sessions').exists())
+            self.assertFalse((Path(target) / 'codex-sessions').exists())
 
     def test_start_finish_workflow(self):
         import shutil
@@ -194,7 +194,7 @@ class VibeBridgeTest(unittest.TestCase):
         self.assertEqual(command('finish').returncode, 2)
         (self.root / 'work/log.md').write_text('new substantive row')
         self.assertEqual(command('finish').returncode, 0)
-        self.assertFalse((self.root / '.bridge/vibe-sessions/turn.json').exists())
+        self.assertFalse((self.root / '.bridge/codex-sessions/turn.json').exists())
 
     def test_checkpoint_reuse_and_missing_finish_fail(self):
         def command(action):
@@ -202,7 +202,7 @@ class VibeBridgeTest(unittest.TestCase):
         self.assertNotEqual(command('finish').returncode, 0)
         # No context scripts in fixture: start fails AFTER preserving checkpoint.
         command('start')
-        self.assertTrue((self.root / '.bridge/vibe-sessions/test.json').is_file())
+        self.assertTrue((self.root / '.bridge/codex-sessions/test.json').is_file())
         self.assertNotEqual(command('start').returncode, 0)
 
 

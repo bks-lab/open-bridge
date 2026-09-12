@@ -1,5 +1,5 @@
 ---
-summary: Vibe session entry, explicit completion checks and portable delegation.
+summary: Codex session entry, explicit completion checks and portable delegation.
 type: guide
 last_updated: 2026-09-12
 related:
@@ -8,18 +8,18 @@ related:
   - ../rules/session-start.md
 ---
 
-# Vibe integration
+# Codex integration
 
 Bridge uses the same configuration, task state and skills across clients.
-Vibe discovers `.agents/skills` (a symlink to `../skills`). Do not copy skills
+Codex discovers `.agents/skills` (a symlink to `../skills`). Do not copy skills
 into a second user-level installation or assume `.claude/settings.json` is a
-Vibe configuration file.
+Codex configuration file.
 
 ## Session and work-unit contract
 
 1. Follow Phase 0 in `rules/session-start.md`, including live default-branch
    detection and push-guard setup. The adapter never switches branches.
-2. Before a work unit, run `python3 scripts/vibe-bridge.py start --session-id ID`.
+2. Before a work unit, run `python3 scripts/codex-bridge.py start --session-id ID`.
    Choose a unique ID per turn/work unit. It preserves a dirty-worktree baseline,
    prints the session config and ecosystem index. On enabled user branches it
    also prints the recent log, board and standing-order index. Continue Phase 1: read identity and eager order bodies, not just their index.
@@ -27,7 +27,7 @@ Vibe configuration file.
    verify live source/repository state before a consequential recommendation or edit.
    An inventory is navigation, not proof of current runtime health or active use.
 4. Before concluding, log substantive work and run
-   `python3 scripts/vibe-bridge.py finish --session-id ID`.
+   `python3 scripts/codex-bridge.py finish --session-id ID`.
    When the work system was enabled at start, a change since the baseline
    without a changed, nonempty regular log exits 2. A preexisting dirty
    log no longer masks later work. On enabled user branches the command also executes the existing shared
@@ -35,18 +35,18 @@ Vibe configuration file.
 5. A failed finish retains its checkpoint. Fix the finding and repeat finish;
    never reset the baseline to suppress a finding.
 
-These are agent-invoked commands, **not automatic Vibe lifecycle hooks**. They
+These are agent-invoked commands, **not automatic Codex lifecycle hooks**. They
 are not a sandbox or a proof that every sentence was logged. Git-ignored files,
 other repositories and external actions are outside the snapshot; log those
 explicitly. Existing work-system enablement and Phase 1 routing still apply.
-Checkpoint files stay under `.bridge/vibe-sessions/`, outside version control.
+Checkpoint files stay under `.bridge/codex-sessions/`, outside version control.
 
 ## Delegation
 
 AGENTS.md requests delegation for useful, bounded independent work. If the host
 provides subagents, pass the selected role's instructions, relevant standing
 orders, source paths, allowed scope and expected evidence. Do not assume that
-`.claude/agents/*.md` registers Vibe agents. No additional model or account
+`.claude/agents/*.md` registers Codex agents. No additional model or account
 configuration is required by this adapter. If the host cannot delegate, execute
 inline and bound tool output. Delegation is not helpful for a single short edit.
 
@@ -61,8 +61,8 @@ fresh-client behavioral tests; one cannot establish the other.
 ## Verification
 
 ```bash
-python3 scripts/vibe-bridge.py doctor
-python3 -m unittest discover -s scripts/tests -p 'test_vibe_bridge.py'
+python3 scripts/codex-bridge.py doctor
+python3 -m unittest discover -s scripts/tests -p 'test_codex_bridge.py'
 ```
 
 Doctor checks the skill entry point and, when a repository catalogue exists,
@@ -71,21 +71,20 @@ without a catalogue do not need an inventory. Tests cover dirty baselines,
 committed changes, deletion, untracked filenames, symlinks, missing routing and
 checkpoint reuse. They do not simulate a model obeying instructions.
 
-Client reference: [Mistral Vibe source and CLI documentation](https://github.com/mistralai/mistral-vibe).
-The installed Vibe 2.25.0 harness supports AGENTS.md and .agents/skills.
-Vibe agent configuration is TOML; existing Claude role files are not native Vibe agents.
+Client references: [skills](https://learn.chatgpt.com/docs/build-skills) and
+[subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
 
-## Vibe CLI edition
+## Codex CLI edition
 
-[Open Bridge Vibe](../VIBE.md) provides `bin/open-bridge-vibe` for interactive
+[Open Bridge Codex](../CODEX.md) provides `bin/open-bridge-codex` for interactive
 and noninteractive use. The launcher adds a process-boundary checkpoint and
 exit check. Per-turn checks still follow the explicit agent contract above.
-The shared checker lives in `scripts/worklog-drift-check.sh`; Vibe does not
+The shared checker lives in `scripts/worklog-drift-check.sh`; Codex does not
 load `.claude/settings.json` or require the Claude compatibility wrapper.
 
 ## Shared implementation and output
 
-`scripts/vibe-bridge.py` selects Vibe session names for the shared
+`scripts/codex-bridge.py` selects Codex session names for the shared
 `scripts/lib/cli_bridge.py` engine. The launcher delegates common process handling
 to `scripts/lib/cli_launcher.py`. No second client executable is used.
 Launcher diagnostics use stderr; stdout is reserved for the child CLI's output.

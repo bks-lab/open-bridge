@@ -86,7 +86,7 @@ agents. Built-in: `professional` (default, en) and `professional-de`; set via
 
 Two different things share the word, and confusing them is the usual mistake.
 
-**Sub-agents** (`.claude/agents/*.md`) are *inward*: ephemeral, spawned inside
+**Sub-agents** (role specifications in `.claude/agents/*.md`) are *inward*: ephemeral, spawned inside
 your session, they exist so heavy or parallel work (log dumps, file trees, API
 results) never fills the main context, and they return a structured summary. Add
 one by dropping in another `{name}.md`; no registration. On platforms without a
@@ -290,13 +290,13 @@ key and read it.
 
 ## Tool Mapping
 
-Mistral Vibe: follow [docs/vibe.md](docs/vibe.md). After Phase 0, run
-`python3 scripts/vibe-bridge.py start --session-id ID`; finish the same ID before
-concluding a work unit. These are explicit checks, not automatic model hooks.
-Use [Open Bridge Vibe](VIBE.md) for a Vibe-only CLI launcher with exit checks.
-Delegate useful bounded independent work when the host supports it; pass role
-instructions and applicable standing orders explicitly. Otherwise work inline.
-
+Codex: follow [docs/codex.md](docs/codex.md); Mistral Vibe: [docs/vibe.md](docs/vibe.md).
+After Phase 0, run `python3 scripts/<client>-bridge.py start --session-id ID`
+(`client` is `codex` or `vibe`), then `finish` with that ID before concluding.
+These are explicit checks, not model hooks. [CODEX.md](CODEX.md) and
+[VIBE.md](VIBE.md) describe the dedicated launchers.
+Delegate useful bounded independent work when supported; pass selected role
+instructions and applicable standing orders explicitly. Keep shared edits sequential.
 
 Tool names differ per platform (Read/Write/Edit/Bash/Grep/Glob/Agent here;
 `apply_patch` and shell reads on Codex; `read_file`/`write_file` on Copilot and

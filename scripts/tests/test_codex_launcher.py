@@ -1,4 +1,4 @@
-"""Vibe-only launcher integration: no Claude files, fake CLI boundary."""
+"""Codex-only launcher integration: no Claude files, fake CLI boundary."""
 import json
 import os
 from pathlib import Path
@@ -20,7 +20,7 @@ class LauncherTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / 'bridge with spaces'
         self.root.mkdir()
-        for name in ('bin/open-bridge-vibe', 'scripts/vibe-bridge.py', 'scripts/worklog-drift-check.sh', 'scripts/lib/__init__.py', 'scripts/lib/cli_launcher.py', 'scripts/lib/cli_bridge.py'):
+        for name in ('bin/open-bridge-codex', 'scripts/codex-bridge.py', 'scripts/worklog-drift-check.sh', 'scripts/lib/__init__.py', 'scripts/lib/cli_launcher.py', 'scripts/lib/cli_bridge.py'):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, path)
@@ -37,8 +37,8 @@ class LauncherTest(unittest.TestCase):
         self.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture')
         fake = Path(self.temp.name) / 'tools'
         fake.mkdir()
-        vibe = fake / 'vibe'
-        vibe.write_text('''#!/usr/bin/env python3
+        codex = fake / 'codex'
+        codex.write_text('''#!/usr/bin/env python3
 import json, os, pathlib, sys, signal
 pathlib.Path(os.environ['CAPTURE']).write_text(json.dumps(sys.argv[1:]))
 if os.environ.get('EDIT'):
@@ -61,7 +61,7 @@ if os.environ.get('WAIT'):
 if os.environ.get('SIGNAL'): os.kill(os.getpid(), int(os.environ['SIGNAL']))
 sys.exit(int(os.environ.get('CLI_EXIT', '0')))
 ''')
-        vibe.chmod(0o755)
+        codex.chmod(0o755)
         self.capture = Path(self.temp.name) / 'capture.json'
         self.env = {**os.environ, 'PATH': str(fake) + os.pathsep + os.environ['PATH'], 'CAPTURE': str(self.capture)}
 
@@ -69,31 +69,27 @@ sys.exit(int(os.environ.get('CLI_EXIT', '0')))
         return subprocess.run(['git', '-C', str(self.root), *args], check=True, capture_output=True)
 
     def launch(self, *args, **env):
-        return subprocess.run([str(self.root / 'bin/open-bridge-vibe'), *args], env={**self.env, **env}, capture_output=True, text=True)
+        return subprocess.run([str(self.root / 'bin/open-bridge-codex'), *args], env={**self.env, **env}, capture_output=True, text=True)
 
     def test_interactive_and_exec_forward_arguments_without_claude(self):
         self.assertFalse((self.root / '.claude').exists())
-        self.assertFalse((self.root / 'scripts/codex-bridge.py').exists())
-        for args, expected in (
-            (['--', 'a prompt with spaces'], ['a prompt with spaces']),
-            (['--exec', 'a prompt with spaces', '--', '--max-turns', '3', '--agent', 'plan'],
-             ['-p', 'a prompt with spaces', '--max-turns', '3', '--agent', 'plan']),
-        ):
-            result = self.launch(*args)
+        for prefix in ([], ['--exec']):
+            result = self.launch(*prefix, '--', 'a prompt with spaces')
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            self.assertEqual(json.loads(self.capture.read_text()), ['--workdir', str(self.root), *expected])
+            captured = json.loads(self.capture.read_text())
+            self.assertEqual(captured, (['exec'] if prefix else []) + ['-C', str(self.root), 'a prompt with spaces'])
 
     def test_exit_checks_detect_unlogged_work_and_preserve_checkpoint(self):
         result = self.launch('--', 'work', EDIT='1')
         self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
-        self.assertEqual(len(list((self.root / '.bridge/vibe-sessions').glob('*.json'))), 1)
+        self.assertEqual(len(list((self.root / '.bridge/codex-sessions').glob('*.json'))), 1)
 
     def test_logged_work_passes_and_cli_failure_survives(self):
-        self.assertEqual(self.launch('--exec', 'work', EDIT='1', LOG='1').returncode, 0)
+        self.assertEqual(self.launch('--exec', '--', 'work', EDIT='1', LOG='1').returncode, 0)
         self.assertEqual(self.launch('--', 'fail', CLI_EXIT='7').returncode, 7)
 
     def test_cwd_override_rejected_before_launch(self):
-        for args in (['--workdir', '/tmp'], ['--workdir=/tmp'], ['--worktree'], ['--workt=test'], ['--workd', '/tmp'], ['--wor=/tmp'], ['--add-dir=/tmp'], ['--add', '/tmp'], ['--a', '/tmp']):
+        for args in (['-C', '/tmp'], ['--cd=/tmp'], ['--worktree']):
             self.assertEqual(self.launch('--', *args).returncode, 2)
         self.assertFalse(self.capture.exists())
 
@@ -102,10 +98,10 @@ sys.exit(int(os.environ.get('CLI_EXIT', '0')))
         for sig in (signal.SIGINT, signal.SIGTERM):
             result = self.launch('--', 'work', EDIT='1', SIGNAL=str(sig))
             self.assertEqual(result.returncode, 128 + sig, result.stderr)
-        self.assertTrue(list((self.root / '.bridge/vibe-sessions').glob('*.json')))
+        self.assertTrue(list((self.root / '.bridge/codex-sessions').glob('*.json')))
 
     def test_child_json_is_the_entire_stdout(self):
-        result = self.launch('--exec', 'inspect', '--', '--output', 'json', JSON='1')
+        result = self.launch('--exec', '--', '--json', JSON='1')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), {'ok': True})
         self.assertEqual(result.stdout, '{"ok":true}\n')
@@ -116,7 +112,7 @@ sys.exit(int(os.environ.get('CLI_EXIT', '0')))
                 ready = Path(self.temp.name) / 'ready'
                 ready.unlink(missing_ok=True)
                 (self.root / 'sample.md').unlink(missing_ok=True)
-                process = subprocess.Popen([str(self.root / 'bin/open-bridge-vibe'), '--exec', 'work'],
+                process = subprocess.Popen([str(self.root / 'bin/open-bridge-codex'), '--exec', '--', 'work'],
                     env={**self.env, 'WAIT': '1', 'EDIT': '1', 'READY': str(ready), 'IGNORE': ignore, 'DESCENDANT': str(Path(self.temp.name) / 'descendant')},
                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 try:
@@ -148,7 +144,7 @@ sys.exit(int(os.environ.get('CLI_EXIT', '0')))
         master, slave = pty.openpty()
         ready = Path(self.temp.name) / 'tty-ready'
         readback = Path(self.temp.name) / 'tty-input'
-        process = subprocess.Popen([str(self.root / 'bin/open-bridge-vibe'), '--', 'work'],
+        process = subprocess.Popen([str(self.root / 'bin/open-bridge-codex'), '--', 'work'],
             env={**self.env, 'WAIT': '1', 'EDIT': '1', 'READY': str(ready), 'READTTY': str(readback)},
             stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         os.close(slave)
@@ -187,18 +183,6 @@ sys.exit(int(os.environ.get('CLI_EXIT', '0')))
         self.git('config', 'core.hooksPath', 'custom-hooks')
         self.assertEqual(self.launch('--', 'work').returncode, 1)
         self.assertEqual(self.git('config', '--get', 'core.hooksPath').stdout.decode().strip(), 'custom-hooks')
-        self.assertFalse(self.capture.exists())
-
-
-    def test_explicit_policy_flags_are_preserved(self):
-        result = self.launch('--exec', 'inspect', '--', '--trust', '--auto-approve', '--max-price', '0.25')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(self.capture.read_text())[2:], ['-p', 'inspect', '--trust', '--auto-approve', '--max-price', '0.25'])
-
-
-    def test_duplicate_programmatic_prompt_rejected(self):
-        for flag in ('-p', '-pextra', '--prompt', '--prom=extra'):
-            self.assertEqual(self.launch('--exec', 'inspect', '--', flag).returncode, 2)
         self.assertFalse(self.capture.exists())
 
 

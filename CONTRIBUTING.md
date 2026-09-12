@@ -20,7 +20,9 @@ Sub-agents, standing orders, themes, bug fixes — all welcome.
    Windows, or a git without symlink support) run `./bin/setup` (Windows:
    `powershell -File bin\setup.ps1`) to recreate them — without them your
    agent won't find the skills.
-3. **Run `/bridge-onboard`** in your coding agent — the wizard creates your
+3. **Run onboarding** with `./bin/open-bridge-vibe` (Mistral Vibe CLI),
+   `./bin/open-bridge-codex` (Codex CLI), or `/bridge-onboard` in your agent —
+   the wizard creates your
    `user/your-name` branch and sets up ecosystem and preferences
 4. **Test commands:** `/briefing` (daily status), `/bridge-status` (dashboard),
    `/debrief` (transcript processing), `/archive` (weekly archive)
@@ -273,3 +275,10 @@ private disclosure process in [SECURITY.md](SECURITY.md).
 See [Open Bridge Vibe](VIBE.md) for its dedicated launcher. Run its tests with
 `python3 -m unittest discover -s scripts/tests -p "test_vibe*.py"`.
 The launcher and shared checker must work without Claude Code or Codex installed.
+
+## Codex CLI
+
+See [Open Bridge Codex](CODEX.md) for its dedicated launcher. Run its tests with
+`python3 -m unittest discover -s scripts/tests -p "test_codex*.py"`.
+Changes to `scripts/lib/cli_bridge.py` or `scripts/lib/cli_launcher.py` require
+both client suites. Each launcher must work without the other client's executable.

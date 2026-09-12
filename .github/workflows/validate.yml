@@ -4,7 +4,7 @@ name: Validate YAML and Frontmatter
 # included) would otherwise get no validation at all, so the glob is here too.
 on:
   push:
-    branches: [main, 'user/**', 'feat/open-bridge-vibe']
+    branches: [main, 'user/**', 'feat/open-bridge-vibe', 'feat/open-bridge-codex']
   pull_request:
     branches: [main, 'user/**']
   # Reusable: release.yml calls this suite on tag pushes so a release
@@ -122,6 +122,9 @@ jobs:
 
       - name: Run work-log slice test suite
         run: bash scripts/tests/test-worklog.sh
+
+      - name: Run Codex Bridge adapter contract
+        run: python3 -m unittest discover -s scripts/tests -p 'test_codex*.py'
 
       - name: Run context-index test suite
         run: bash scripts/tests/test-context-index.sh
