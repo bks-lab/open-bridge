@@ -393,6 +393,17 @@ On first run the Bridge reflects what it detects — a fresh public clone, your 
 
 ---
 
+## Optional local GUI
+
+**Optional local interface:** [Local Bridge UI](docs/local-ui.md) adds a React
+workspace over a Python service. Projects and tasks remain in Markdown/YAML;
+run status survives browser reloads. Browse registered Bridges and edit existing
+files with version checks and recoverable backups. A restrained cinematic command
+deck combines project favorites, archive filters, full-text search, Markdown
+reading and change review. The interface supports English and German.
+Start with `./bin/open-bridge-ui`.
+
+
 ## Optional integrations (USER-scope, enable as needed)
 
 BKS open-bridge ships more than the four pieces in the system overview above, but none of it is needed to get value, and it stays out of the pitch on purpose. Each is a USER-scope capability you turn on when you want it; the code ships, the README just doesn't narrate it:

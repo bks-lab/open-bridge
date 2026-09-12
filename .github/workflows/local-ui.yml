@@ -1,0 +1,32 @@
+name: Local Bridge UI
+on:
+  push:
+    branches: [main, 'feat/open-bridge-gui']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-ui:
+    name: Local UI build, service and browser contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci --prefix ui
+      - name: Typecheck and build
+        run: npm run build --prefix ui
+      - name: Install service dependency and browser
+        run: |
+          pip install pyyaml
+          npm exec --prefix ui -- playwright install --with-deps chromium
+      - name: Verify service boundaries
+        run: python3 -m unittest discover -s scripts/tests -p 'test_ui_service.py'
+      - name: Verify browser workflow and accessibility
+        run: python3 scripts/tests/test_ui_browser.py

@@ -19,6 +19,9 @@ rules:
   document-start: disable
 
 ignore:
+  # Installed frontend dependencies and generated assets are not source.
+  - ui/node_modules/
+  - ui/dist/
   - work/
   - .claude/
   # Materialized clones of OTHER repos (workspace members, org overlays).

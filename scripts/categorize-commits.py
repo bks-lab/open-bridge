@@ -238,6 +238,13 @@ _SCOPE_MAP = {**_BASE_SCOPE_MAP, **_instance_scope_aliases()}
 SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/bin/gh",
     "scripts/bridge-dashboard.py",
+    "scripts/bridge-ui.py",
+    "scripts/lib/ui_service.py",
+    "scripts/lib/cli_bridge.py",
+    "scripts/lib/cli_launcher.py",
+    "scripts/tests/test_ui_service.py",
+    "scripts/tests/test_ui_browser.py",
+    "scripts/tests/test_ui_browser.mjs",
     "scripts/categorize-commits.py",
     "scripts/check-figure-counts.py",
     "scripts/check-inline-scripts.py",

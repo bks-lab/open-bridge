@@ -485,3 +485,40 @@ repos byte-identical — one source commit updates them all.
 commit (e.g. `tokens(colors): tighten accent-from`); lint with
 `npx @google/design.md lint DESIGN.md` before committing; on a spec version
 bump, update `version:`, re-lint, and diff against the previous revision.
+
+## Flight deck interface
+
+The optional local GUI uses a restrained cinematic flight-deck treatment. Instrument
+panels communicate real Bridge state; decorative charts, fake telemetry, flashing
+alerts and game-like controls are excluded. The light theme remains available.
+
+| Token | Value | Use |
+|---|---|---|
+| flight-background | `#070D17` | Deep navy canvas |
+| flight-panel | `#101C2B` | Instrument panels |
+| flight-raised | `#17273A` | Interactive surfaces |
+| flight-border | `#304459` | Structural dividers |
+| flight-text | `#EDF4FA` | Primary instrument text |
+| flight-muted | `#B0C1D0` | Readable supporting text |
+| flight-accent | `#8DD9EC` | Focus, navigation and controls |
+| flight-amber | `#F1C78B` | Secondary reference accent |
+
+Use system sans-serif for reading and system monospace for small section labels.
+Spacing follows the existing 4/8 px scale. Panels have 8–12 px corner radii and
+thin borders. Broad, static gradients imply overhead illumination. Motion is
+limited to short interaction transitions and respects reduced-motion settings.
+
+### Spatial command-console composition
+
+The cinematic redesign replaces the vertical app sidebar with a horizontal
+navigation gantry. The overview is a three-part console: a narrow systems panel,
+a central panoramic forward display and project register, and a work/activity
+panel. The physical environment is a generated, decorative image, not telemetry.
+All overlaid controls and metrics are live React elements. The project register
+uses compact rows instead of dashboard cards. At narrow widths the console
+reflows into ordinary stacked controls with the same labels and capabilities.
+
+A continuous graphite bezel and thin inset highlights separate the environment
+from touch surfaces. Use the flight-deck palette above; the viewport always uses
+flight-text over a dark scrim, including in light mode. Avoid flickering, simulated
+radar, arbitrary numbers, sound effects and decorative controls.
