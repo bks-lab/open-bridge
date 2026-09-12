@@ -20,7 +20,7 @@ Sub-agents, standing orders, themes, bug fixes — all welcome.
    Windows, or a git without symlink support) run `./bin/setup` (Windows:
    `powershell -File bin\setup.ps1`) to recreate them — without them your
    agent won't find the skills.
-3. **Run `/bridge-onboard`** in Claude Code — the wizard creates your
+3. **Run `/bridge-onboard`** in your coding agent — the wizard creates your
    `user/your-name` branch and sets up ecosystem and preferences
 4. **Test commands:** `/briefing` (daily status), `/bridge-status` (dashboard),
    `/debrief` (transcript processing), `/archive` (weekly archive)
@@ -267,3 +267,9 @@ by our [Code of Conduct](CODE_OF_CONDUCT.md) (Contributor Covenant).
 
 Found a vulnerability? Please **do not** open a public issue — follow the
 private disclosure process in [SECURITY.md](SECURITY.md).
+
+## Mistral Vibe CLI
+
+See [Open Bridge Vibe](VIBE.md) for its dedicated launcher. Run its tests with
+`python3 -m unittest discover -s scripts/tests -p "test_vibe*.py"`.
+The launcher and shared checker must work without Claude Code or Codex installed.

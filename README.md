@@ -1,5 +1,9 @@
 # BKS open-bridge
 
+**Open Bridge Vibe:** run this workspace with Mistral Vibe CLI using
+[`bin/open-bridge-vibe`](VIBE.md). Dedicated interactive/programmatic entry,
+shared skills and completion checks; no Claude Code or Codex runtime required.
+
 **A plain-text git repo your coding agent reads at session start — so it already knows your repos, your clients, and what you shipped yesterday.** Claude Code, Codex, or Copilot CLI stops re-asking every morning. It's just markdown + YAML in a repo you own — no database, no SaaS, no second app. And it isn't a demo: it's how the three of us at BKS-Lab actually run the company day to day ([what's proven vs. still a bet](#whats-proven-whats-a-bet-whats-open)).
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

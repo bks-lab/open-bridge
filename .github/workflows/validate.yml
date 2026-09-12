@@ -99,6 +99,9 @@ jobs:
       - name: Install PyYAML + pytest
         run: pip install pyyaml pytest
 
+      - name: Run Vibe adapter and launcher tests
+        run: python3 -m unittest discover -s scripts/tests -p "test_vibe*.py"
+
       - name: Run board generator test suite
         run: bash scripts/tests/test-gen-board.sh
 

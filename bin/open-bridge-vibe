@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+"""Open Bridge Vibe: launch Vibe CLI with Bridge's process-boundary checks."""
+import argparse
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import uuid
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, add_help=True, allow_abbrev=False)
+    parser.add_argument('--check', action='store_true', help='Check this checkout without launching Vibe')
+    parser.add_argument('--exec', dest='prompt', metavar='PROMPT', help='Run Vibe programmatically with this prompt (-p)')
+    args, forwarded = parser.parse_known_args()
+    if forwarded[:1] == ['--']:
+        forwarded = forwarded[1:]
+    # Vibe uses argparse long-option abbreviation. Reject even abbreviated
+    # scope-changing options so checks cannot cover a different checkout.
+    forbidden = ('--workdir', '--worktree', '--add-dir')
+    for value in forwarded:
+        option = value.split('=', 1)[0]
+        if option.startswith('--') and len(option) > 2 and any(full.startswith(option) for full in forbidden):
+            parser.error('workdir/worktree/add-dir overrides are not supported: checks must cover the launched checkout')
+    if args.prompt is not None and any(
+        value == '-p' or value.startswith('-p') or
+        (value.startswith('--') and len(value.split('=', 1)[0]) > 2 and
+         '--prompt'.startswith(value.split('=', 1)[0])) for value in forwarded
+    ):
+        parser.error('use the --exec prompt instead of an additional Vibe -p/--prompt')
+    root = Path(__file__).resolve().parents[1]
+    adapter = root / 'scripts/vibe-bridge.py'
+    try:
+        import yaml  # noqa: F401 — shared Bridge scripts require PyYAML
+    except ImportError:
+        print('PyYAML is required. Install Bridge dependencies in your Python environment.', file=sys.stderr)
+        return 1
+    vibe = shutil.which('vibe')
+    if not vibe:
+        print('Vibe CLI is not on PATH. Install it and authenticate before launching.', file=sys.stderr)
+        return 1
+    def bridge(command, *extra):
+        return subprocess.run([sys.executable, str(adapter), command, '--root', str(root), *extra], cwd=root).returncode
+    if args.check:
+        return bridge('doctor')
+    # Keep an existing custom hook installation intact; never silently replace it.
+    hooks = subprocess.run(['git', '-C', str(root), 'config', '--get', 'core.hooksPath'], capture_output=True, text=True)
+    if hooks.returncode not in (0, 1):
+        print('Cannot read Git hook configuration.', file=sys.stderr)
+        return 1
+    if hooks.stdout.strip() not in ('', 'scripts/hooks'):
+        print('Custom core.hooksPath detected. Integrate Bridge push protection before using this launcher; existing hooks were preserved.', file=sys.stderr)
+        return 1
+    subprocess.run(['git', '-C', str(root), 'config', 'core.hooksPath', 'scripts/hooks'], check=True)
+    token = 'cli-' + uuid.uuid4().hex
+    if bridge('checkpoint', '--session-id', token):
+        return 1
+    command = [vibe, '--workdir', str(root)]
+    if args.prompt is not None:
+        command.extend(['-p', args.prompt])
+    command.extend(forwarded)
+    if args.prompt is None and not forwarded:
+        command.append('Follow AGENTS.md and docs/vibe.md. Run the Bridge session-start flow, then show the next appropriate action.')
+    code = 1
+    try:
+        code = subprocess.run(command, cwd=root).returncode
+    except KeyboardInterrupt:
+        code = 130
+    finally:
+        checked = bridge('finish', '--session-id', token)
+        if checked:
+            print(f'Bridge completion check failed; checkpoint retained: {token}', file=sys.stderr)
+    if code < 0:
+        code = 128 - code
+    return code if code else checked
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (OSError, subprocess.CalledProcessError) as error:
+        print(f'Open Bridge Vibe: {error}', file=sys.stderr)
+        sys.exit(1)

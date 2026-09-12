@@ -1,24 +1,12 @@
 # The Bridge — Agent Instructions
 
-This file is the **canonical, tool-agnostic operating manual** for this repo —
-session start flow, rules, task management, agents, standing orders, commands. It is
-for **any AI coding agent** (Claude Code, GitHub Copilot, Gemini CLI, Codex, Cursor,
-Windsurf, or any future tool). It is tool-agnostic with ONE exception — sub-agents are
-Claude Code only; every other feature works identically across tools. The filename follows
-the [AGENTS.md](https://agents.md/) convention (Linux Foundation); the content applies
-to all agents regardless of which name your tool looks for. `CLAUDE.md` and
-`GEMINI.md` are thin wrappers that point here.
+This is the canonical operating manual for every coding agent using Bridge.
+Shared workflows are tool-agnostic; client hooks and delegation require explicit
+adapters. `CLAUDE.md` and `GEMINI.md` are compatibility entry points.
 
-This repo is your **central command hub**. From here you navigate to every repo,
-project, and tool in your ecosystem. Your agents handle analysis, deployment,
-security, communication, and monitoring — in parallel.
-
-**For humans:** the [README](README.md) is the narrative + architecture overview with
-mermaid diagrams. Read it first if you're new to the project.
-
-**For you (the agent):** this file is a lean router. It holds the behavioural
-invariants and guardrails, says what each system *is* and *when it matters*, and
-points at the `rules/` and `docs/` files that carry the mechanics.
+This repo is your central command hub for projects, tools and task state.
+Read the [README](README.md) for the architecture; this file routes operational
+rules to `rules/` and `docs/`.
 
 > **Strategic status:** `bks-lab/open-bridge` (OSS, MIT) is the public CORE layer.
 > Downstream forks (org overlays, personal instances) add overlays via the `/promote`
@@ -301,6 +289,14 @@ key and read it.
 ---
 
 ## Tool Mapping
+
+Mistral Vibe: follow [docs/vibe.md](docs/vibe.md). After Phase 0, run
+`python3 scripts/vibe-bridge.py start --session-id ID`; finish the same ID before
+concluding a work unit. These are explicit checks, not automatic model hooks.
+Use [Open Bridge Vibe](VIBE.md) for a Vibe-only CLI launcher with exit checks.
+Delegate useful bounded independent work when the host supports it; pass role
+instructions and applicable standing orders explicitly. Otherwise work inline.
+
 
 Tool names differ per platform (Read/Write/Edit/Bash/Grep/Glob/Agent here;
 `apply_patch` and shell reads on Codex; `read_file`/`write_file` on Copilot and
