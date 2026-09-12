@@ -4,7 +4,7 @@ name: Validate YAML and Frontmatter
 # included) would otherwise get no validation at all, so the glob is here too.
 on:
   push:
-    branches: [main, 'user/**']
+    branches: [main, 'user/**', 'feat/open-bridge-codex']
   pull_request:
     branches: [main, 'user/**']
   # Reusable: release.yml calls this suite on tag pushes so a release

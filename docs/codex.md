@@ -29,7 +29,7 @@ Codex configuration file.
 4. Before concluding, log substantive work and run
    `python3 scripts/codex-bridge.py finish --session-id ID`.
    When the work system was enabled at start, a change since the baseline
-   without a changed log exits 2. A preexisting dirty
+   without a changed, nonempty regular log exits 2. A preexisting dirty
    log no longer masks later work. On enabled user branches the command also executes the existing shared
    status-drift check, with its older whole-worktree log heuristic disabled. A successful finish removes the checkpoint.
 5. A failed finish retains its checkpoint. Fix the finding and repeat finish;
@@ -81,3 +81,23 @@ and noninteractive use. The launcher adds a process-boundary checkpoint and
 exit check. Per-turn checks still follow the explicit agent contract above.
 The shared checker lives in `scripts/worklog-drift-check.sh`; Codex does not
 load `.claude/settings.json` or require the Claude compatibility wrapper.
+
+## Shared implementation and output
+
+`scripts/codex-bridge.py` selects Codex session names for the shared
+`scripts/lib/cli_bridge.py` engine. The launcher delegates common process handling
+to `scripts/lib/cli_launcher.py`. No second client executable is used.
+Launcher diagnostics use stderr; stdout is reserved for the child CLI's output.
+A logging failure cannot be satisfied by removing, emptying or replacing the log
+with a symlink. Regression tests exercise these cases at the public command boundary.
+
+## Cancellation
+
+SIGINT or SIGTERM sent to the launcher is forwarded to its CLI child. The launcher
+waits for that child, escalates to SIGKILL after a five-second grace period if
+necessary, and runs the completion check before returning 130 or 143. A repeated
+cancellation escalates immediately. With redirected stdin, the CLI has an owned
+process group so cancellation also reaches its descendants. Interactive terminal
+sessions retain foreground terminal access; that path manages the direct CLI child
+and does not claim isolation of every descendant. SIGKILL, machine failure and
+clients deliberately detaching into other sessions cannot guarantee cleanup.

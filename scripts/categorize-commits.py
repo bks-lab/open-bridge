@@ -341,6 +341,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     # that, before the first human read the diff.
     # Codex CLI edition: generic runtime and regression contracts.
     "scripts/codex-bridge.py",
+    "scripts/lib/cli_bridge.py",
+    "scripts/lib/cli_launcher.py",
     "scripts/worklog-drift-check.sh",
     "scripts/tests/test_codex_bridge.py",
     "scripts/tests/test_codex_launcher.py",

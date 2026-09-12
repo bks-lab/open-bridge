@@ -42,8 +42,9 @@ It does not change your model, account, approval policy or sandbox settings.
 ## What is Codex-specific?
 
 - `bin/open-bridge-codex`: interactive and noninteractive CLI entry point.
-- `scripts/codex-bridge.py`: context loading, knowledge-routing diagnosis and
-  per-work-unit checkpoints, including already-dirty worktrees.
+- `scripts/codex-bridge.py`: client entry to the shared `scripts/lib/cli_bridge.py`
+  context and checkpoint engine, including already-dirty worktrees.
+- `scripts/lib/cli_launcher.py`: shared CLI process management and output routing.
 - `docs/codex.md`: explicit skill discovery, delegation, resume and completion
   instructions. Selected role instructions are passed to Codex subagents; Claude
   role definitions are not assumed to be native Codex registrations.
@@ -59,3 +60,13 @@ and external actions still require explicit log entries.
 See [the integration guide](docs/codex.md) for the complete contract and
 [contribution guidelines](CONTRIBUTING.md) for development. The shared Open Bridge
 license and attribution apply unchanged.
+
+## Automation contracts
+
+CLI stdout remains the CLI's output, including JSON/JSONL modes. Bridge diagnostics
+and completion results go to stderr, so machine consumers can parse stdout.
+A removed, empty or non-regular work log does not satisfy required logging.
+Completion failures retain the checkpoint and return nonzero.
+
+The Codex and Vibe editions use the same shared engine. Installing or authenticating
+another coding client is unnecessary; each launcher selects only its own executable.
