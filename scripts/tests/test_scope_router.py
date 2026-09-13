@@ -260,6 +260,14 @@ def test_core_engine_scripts_still_ship():
         assert tier(path) == "core", f"{path} should stay core, got {tier(path)!r}"
 
 
+def test_the_shared_drift_check_ships_with_its_client_hooks():
+    """Claude Code, Codex and Mistral Vibe all call one script. The declarations
+    are useless downstream without it, and it is a scripts/ file, so only the
+    allowlist keeps it core."""
+    for path in ("scripts/worklog-drift-check.sh", ".codex/hooks.json", ".vibe/hooks.toml"):
+        assert tier(path) == "core", f"{path} should be core, got {tier(path)!r}"
+
+
 # ---------------------------------------------------------------------------
 # Skill directories with no SKILL.md fall through the frontmatter read straight
 # into the fail-open core default.

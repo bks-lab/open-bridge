@@ -1,0 +1,13 @@
+# Bridge work-log and STATUS.md drift check after every agent turn, shared with
+# Claude Code and Codex. See docs/tool-mapping.md.
+#
+# Vibe loads project hooks only in a trusted folder, reads this file from the
+# directory it starts in and runs the command through a shell from there. Start
+# Vibe at the repository root and the relative script path resolves.
+
+[[hooks]]
+name = "bridge-worklog-drift-check"
+type = "post_agent"
+command = "bash scripts/worklog-drift-check.sh --client vibe"
+timeout = 30.0
+description = "Send the turn back when work changed without a work/log.md row, or when a STATUS.md claims done while its status says otherwise."

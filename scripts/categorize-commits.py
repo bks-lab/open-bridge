@@ -335,6 +335,10 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_scope_router.py",
     "scripts/tests/test_validate_bridge_rule_map.py",
     "scripts/upstream-monitor.sh",
+    # The one drift check behind the Claude Code, Codex and Mistral Vibe hooks.
+    # .claude/hooks/worklog-drift-check.sh, .codex/hooks.json and
+    # .vibe/hooks.toml all point at this path, so it ships wherever they do.
+    "scripts/worklog-drift-check.sh",
     # Registered 2026-08-29 with the context budget. validate.yml runs all three
     # in CI, so a non-core classification would have upstream CI call files that
     # never shipped. test_paths_a_core_ci_workflow_runs_are_core caught exactly
