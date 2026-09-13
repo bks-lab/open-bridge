@@ -532,6 +532,10 @@ jobs:
         if: hashFiles('skills/meeting-transcription/tests/test-transport-modes.sh') != ''
         run: bash skills/meeting-transcription/tests/test-transport-modes.sh
 
+      - name: Voice-memo bundler never goes silent (blind scan, heartbeat, symlink deploy)
+        if: hashFiles('skills/meeting-transcription/tests/test-voicememo-bundler.sh') != ''
+        run: bash skills/meeting-transcription/tests/test-voicememo-bundler.sh
+
       - name: Onboarding leak simulation (scripted, model-free)
         run: |
           set -euo pipefail
