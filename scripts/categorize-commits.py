@@ -407,9 +407,10 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
 # Admission criterion, enforce it in review:
 #     git ls-tree -r open-bridge/main -- <path>   → present
 #     git diff open-bridge/main -- <path>          → EMPTY
-# All nine verified byte-identical on 2026-08-01. This is NOT a README shape
-# rule — it is a nine-element literal list that happens to contain four READMEs,
-# each individually checked. identity/voiceprints/README.md and
+# The first nine verified byte-identical on 2026-08-01; identity/vehicles/README.md
+# shipped together with its family, so it is identical from its first commit.
+# This is NOT a README shape rule — it is a literal list that happens to contain
+# five READMEs, each individually checked. identity/voiceprints/README.md and
 # infra/channels/bots/igor-zahnarzt/README.md are absent BY CONSTRUCTION.
 # Position (after PERSONAL/USER/ORG) means a careless addition here degrades to
 # a no-op instead of overriding a denylist.
@@ -419,6 +420,7 @@ VERIFIED_CORE = frozenset({
     "identity/agent/_soul-deck.yaml",
     "identity/agent/_template.IDENTITY.md",
     "identity/agent/_template.SOUL.md",
+    "identity/vehicles/README.md",
     "infra/backups/README.md",
     "infra/transcriptions/README.md",
     "workflow/contexts/_doc-system.template.yaml",
