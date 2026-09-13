@@ -45,6 +45,13 @@ in-band and adds a log entry before ending the turn. Only fires on
 `user/*` branches. Drop an empty `.bridge-nolog` file in the repo root
 for a read-only session.
 
+The file here is only the entry point, and the tracked
+`.claude/settings.json` already wires it. The check itself is
+`scripts/worklog-drift-check.sh`, which Codex CLI (`.codex/hooks.json`)
+and Mistral Vibe (`.vibe/hooks.toml`) run at the end of their turns as
+well. Per-client setup and limits:
+[`docs/tool-mapping.md`](../../docs/tool-mapping.md).
+
 Trigger files: `*.md|py|ts|tsx|js|yaml|yml|json|sh|rs|go` or writes
 anywhere under `skills/`, `protocols/`, `contexts/`, `agents/`,
 `identity/personas/`, `calendar/`, `mandants/`, `infra/remotes/`.

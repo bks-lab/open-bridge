@@ -16,7 +16,7 @@ Where everything lives, what format, what it does.
 ## Reading map — what to look at first
 
 The top-level entry count looks heavy but collapses into a few groups, and a fresh
-clone only needs the first one. (Three entries — `.agents/` `.claude/` `.github/` — are
+clone only needs the first one. (Five entries, `.agents/` `.claude/` `.codex/` `.github/` `.vibe/`, are
 standard tooling you ignore on sight; the three cluster-wrappers absorb ~13 config types
 that would otherwise be flat top-level folders, so dissolving them would make the tree
 *larger*, not smaller.)
@@ -29,8 +29,8 @@ that would otherwise be flat top-level folders, so dissolving them would make th
 3. **Behaviour** — `skills/`, `rules/`, `protocols/`, `themes/`, `trackers/`.
 4. **Documentation** — `docs/` (+ per-type config snippets in `docs/examples/`).
 5. **Your workspace (USER)** — `work/`, `imports/` (ship empty, seed your own).
-6. **Tooling & meta** (skip on first read) — `scripts/`, `bin/`, `.github/`,
-   `.claude/`, `.agents/`.
+6. **Tooling & meta** (skip on first read): `scripts/`, `bin/`, `.github/`,
+   `.claude/`, `.agents/`, `.codex/`, `.vibe/`.
 
 The detailed per-path tables below are the reference; this map is the orientation.
 
@@ -138,6 +138,8 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `.claude/agents/` | CORE (with scope) | Native sub-agents |
 | `.claude/skills/` | CORE (symlink → `../skills/`) | Discovery symlink so Claude Code finds skills (slash-command triggers live in each skill's `description`; there is no separate commands directory) |
 | `.claude/hooks/` | CORE | Optional hook scripts |
+| `.codex/hooks.json` | CORE | Codex CLI `Stop` hook: runs `scripts/worklog-drift-check.sh --client codex` ([`tool-mapping.md`](tool-mapping.md)) |
+| `.vibe/hooks.toml` | CORE | Mistral Vibe `post_agent` hook: runs `scripts/worklog-drift-check.sh --client vibe` ([`tool-mapping.md`](tool-mapping.md)) |
 
 ## Discovery — how skills find all of this
 

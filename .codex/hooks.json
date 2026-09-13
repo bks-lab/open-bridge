@@ -1,0 +1,16 @@
+{
+  "description": "Bridge work-log and STATUS.md drift check at the end of every turn, shared with Claude Code and Mistral Vibe. See docs/tool-mapping.md.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/scripts/worklog-drift-check.sh\" --client codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
