@@ -1,12 +1,5 @@
 # BKS open-bridge
 
-**Open Bridge Vibe:** run this workspace with Mistral Vibe CLI using
-[`bin/open-bridge-vibe`](VIBE.md). Dedicated interactive/programmatic entry,
-shared skills and completion checks; no Claude Code or Codex runtime required.
-
-**Open Bridge Codex:** the [Codex CLI entry point](CODEX.md) uses the same shared
-engine and starts only Codex. Both client integrations are available in this tree.
-
 **A plain-text git repo your coding agent reads at session start — so it already knows your repos, your clients, and what you shipped yesterday.** Claude Code, Codex, or Copilot CLI stops re-asking every morning. It's just markdown + YAML in a repo you own — no database, no SaaS, no second app. And it isn't a demo: it's how the three of us at BKS-Lab actually run the company day to day ([what's proven vs. still a bet](#whats-proven-whats-a-bet-whats-open)).
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -450,10 +443,3 @@ Contributions are accepted under the MIT License and require a [Developer Certif
 ## Acknowledgments
 
 BKS open-bridge draws on a large body of public work — agent-orchestration patterns, the propose-then-confirm posture, the identity/voice split, config-as-data conventions. A non-exhaustive list of named inspirations, plus the inspiration-is-not-endorsement note, lives in [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
-
-## Open Bridge Codex
-
-For the Codex CLI edition, start with [Open Bridge Codex](CODEX.md):
-`./bin/open-bridge-codex` launches Codex with Bridge completion checks.
-No Claude installation is required. The shared skills and private-instance
-model stay the same; existing client entry points remain available.

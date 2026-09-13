@@ -38,14 +38,4 @@ changes what happens rather than what it is called.
 
 Prefer `rg` and `rg --files` for search, `apply_patch` for edits, and
 `AGENTS.md` as the repo-level instruction file. Codex reads the same universal
-skills through `.agents/skills/*/SKILL.md`. See [Codex integration](codex.md)
-for session checkpoints, shared completion checks and delegation. Claude
-settings/hooks are not portable merely because skill files are shared.
-
-## Mistral Vibe CLI
-
-Vibe reads AGENTS.md and discovers the existing `.agents/skills` symlink.
-Use [the Vibe integration guide](vibe.md) and [CLI entry point](../VIBE.md).
-Its programmatic mode uses `-p`, not a Codex `exec` subcommand.
-Claude settings and role files do not register native Vibe hooks or TOML agents.
-Use native delegation only when available; otherwise execute the role inline.
+skills through `.agents/skills/*/SKILL.md`.

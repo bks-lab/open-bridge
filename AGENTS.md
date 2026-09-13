@@ -1,12 +1,24 @@
 # The Bridge — Agent Instructions
 
-This is the canonical operating manual for every coding agent using Bridge.
-Shared workflows are tool-agnostic; client hooks and delegation require explicit
-adapters. `CLAUDE.md` and `GEMINI.md` are compatibility entry points.
+This file is the **canonical, tool-agnostic operating manual** for this repo —
+session start flow, rules, task management, agents, standing orders, commands. It is
+for **any AI coding agent** (Claude Code, GitHub Copilot, Gemini CLI, Codex, Cursor,
+Windsurf, or any future tool). It is tool-agnostic with ONE exception — sub-agents are
+Claude Code only; every other feature works identically across tools. The filename follows
+the [AGENTS.md](https://agents.md/) convention (Linux Foundation); the content applies
+to all agents regardless of which name your tool looks for. `CLAUDE.md` and
+`GEMINI.md` are thin wrappers that point here.
 
-This repo is your central command hub for projects, tools and task state.
-Read the [README](README.md) for the architecture; this file routes operational
-rules to `rules/` and `docs/`.
+This repo is your **central command hub**. From here you navigate to every repo,
+project, and tool in your ecosystem. Your agents handle analysis, deployment,
+security, communication, and monitoring — in parallel.
+
+**For humans:** the [README](README.md) is the narrative + architecture overview with
+mermaid diagrams. Read it first if you're new to the project.
+
+**For you (the agent):** this file is a lean router. It holds the behavioural
+invariants and guardrails, says what each system *is* and *when it matters*, and
+points at the `rules/` and `docs/` files that carry the mechanics.
 
 > **Strategic status:** `bks-lab/open-bridge` (OSS, MIT) is the public CORE layer.
 > Downstream forks (org overlays, personal instances) add overlays via the `/promote`
@@ -86,7 +98,7 @@ agents. Built-in: `professional` (default, en) and `professional-de`; set via
 
 Two different things share the word, and confusing them is the usual mistake.
 
-**Sub-agents** (role specifications in `.claude/agents/*.md`) are *inward*: ephemeral, spawned inside
+**Sub-agents** (`.claude/agents/*.md`) are *inward*: ephemeral, spawned inside
 your session, they exist so heavy or parallel work (log dumps, file trees, API
 results) never fills the main context, and they return a structured summary. Add
 one by dropping in another `{name}.md`; no registration. On platforms without a
@@ -289,14 +301,6 @@ key and read it.
 ---
 
 ## Tool Mapping
-
-Codex: follow [docs/codex.md](docs/codex.md); Mistral Vibe: [docs/vibe.md](docs/vibe.md).
-After Phase 0, run `python3 scripts/<client>-bridge.py start --session-id ID`
-(`client` is `codex` or `vibe`), then `finish` with that ID before concluding.
-These are explicit checks, not model hooks. [CODEX.md](CODEX.md) and
-[VIBE.md](VIBE.md) describe the dedicated launchers.
-Delegate useful bounded independent work when supported; pass selected role
-instructions and applicable standing orders explicitly. Keep shared edits sequential.
 
 Tool names differ per platform (Read/Write/Edit/Bash/Grep/Glob/Agent here;
 `apply_patch` and shell reads on Codex; `read_file`/`write_file` on Copilot and
