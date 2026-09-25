@@ -106,7 +106,7 @@ printf 'repo: <you>/my-bridge\nis_public: false\n' > .bridge-origin
 ./bin/setup                 # native Windows: bin/setup.ps1
 ```
 
-Then **restart your agent session inside `my-bridge`**. The session that ran
+Then **restart your agent session inside** `my-bridge`. The session that ran
 the clone started in another folder and cannot see this repo's skills. In the
 new session the Bridge greets you by itself; if it does not, run
 `/bridge-onboard`.
@@ -127,11 +127,11 @@ On first run the Bridge reports what it detected (a fresh clone, your git name,
 your tool), arms the safety guard, and offers four ways in: see it run first,
 describe what you will use it for (and it tailors the setup), make it private
 first, or bind a workspace across repos. The detection and the greeting are
-specified in [`rules/session-start.md`](../rules/session-start.md).
+specified in `[rules/session-start.md](../rules/session-start.md)`.
 
 `/bridge-onboard` then walks the guided setup: identity and purpose, optional
 ecosystem detection, the work-system config, and your own `user/{name}` branch.
-It arms the `pre-push` guard ([`rules/push-guard.md`](../rules/push-guard.md))
+It arms the `pre-push` guard (`[rules/push-guard.md](../rules/push-guard.md)`)
 *before* creating that branch. That guard is the git-layer backstop that blocks
 publishing the branch to a public remote by accident.
 
@@ -145,14 +145,15 @@ native Windows). It arms the same guard and repairs the discovery symlinks.
 
 ## Which agent tools work
 
+- **Cursor** is tested in Agent Mode: reads `AGENTS.md`, discovers skills, and executes `/bridge-onboard` successfully.
 - **Claude Code** is tested and the most complete: slash commands, hooks and
-  sub-agents live under `.claude/`.
+sub-agents live under `.claude/`.
 - **Codex and Copilot CLI** work through `AGENTS.md` plus the skill symlinks
-  `.agents/skills` and `.github/skills`, both pointing at the one `skills/`
-  tree.
-- **Other tools that read `AGENTS.md`** (Gemini CLI, Cursor, Windsurf) get the
-  instructions, but their skill discovery is untested here. On a tool without
-  slash commands, ask for the skill by name and the agent reads its `SKILL.md`.
+`.agents/skills` and `.github/skills`, both pointing at the one `skills/`
+tree.
+- **Other tools that read** `AGENTS.md` (Gemini CLI, Cursor, Windsurf) get the
+instructions, but their skill discovery is untested here. On a tool without
+slash commands, ask for the skill by name and the agent reads its `SKILL.md`.
 
 Tool names per platform, and what a missing sub-agent API means:
 [tool-mapping.md](tool-mapping.md). On native Windows a checkout can turn the
