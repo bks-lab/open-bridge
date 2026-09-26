@@ -106,7 +106,7 @@ printf 'repo: <you>/my-bridge\nis_public: false\n' > .bridge-origin
 ./bin/setup                 # native Windows: bin/setup.ps1
 ```
 
-Then **restart your agent session inside** `my-bridge`. The session that ran
+Then **restart your agent session inside `my-bridge`**. The session that ran
 the clone started in another folder and cannot see this repo's skills. In the
 new session the Bridge greets you by itself; if it does not, run
 `/bridge-onboard`.
