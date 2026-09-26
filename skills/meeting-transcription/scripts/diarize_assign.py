@@ -124,8 +124,19 @@ def main():
 
     # Assign each ASR segment the speaker whose turn it overlaps most (segment
     # level — phrase-length segments keep this accurate; merge never used words).
-    fallback = turns[0][2] if turns else "SPEAKER_00"
+    #
+    # A segment that overlaps NO turn at all gets UNKNOWN_SPEAKER, not a guess.
+    # This used to fall back to turns[0][2], the speaker of the meeting's FIRST
+    # turn, which has nothing to do with the segment: diarization emits no turn
+    # for a stretch it heard as non-speech, and whisper.cpp does emit
+    # zero-or-near-zero-length segments there. Those lines were then printed with
+    # a real participant's name in the transcript, indistinguishable from a
+    # measured assignment. Rare (2 of 1127 on the recording that found this) and
+    # exactly the kind of rare that nobody checks. UNKNOWN_SPEAKER keeps the
+    # SPEAKER_ prefix so merge_transcripts.py lists it under unknown_speakers
+    # instead of participants.
     assigned = []
+    unmatched = 0
     for s in segments:
         st, en = float(s.get("start", 0.0)), float(s.get("end", 0.0))
         best_spk, best_ov = None, 0.0
@@ -135,8 +146,10 @@ def main():
             ov = overlap(st, en, ts, te)
             if ov > best_ov:
                 best_ov, best_spk = ov, spk
+        if best_spk is None:
+            unmatched += 1
         assigned.append({"start": st, "end": en, "text": s.get("text", ""),
-                         "speaker": best_spk or fallback})
+                         "speaker": best_spk or "SPEAKER_UNKNOWN"})
 
     # NB: do NOT coalesce consecutive same-speaker segments. merge_transcripts.py
     # interleaves the mic and teams tracks by per-segment start time; collapsing a
@@ -147,7 +160,9 @@ def main():
     Path(args.out).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     n_clusters = len({t[2] for t in turns})
     print(f"diarize_assign: {len(segments)} segments, {n_clusters} clusters, "
-          f"{len(embeddings or {})} embeddings, device={args.device}", file=sys.stderr)
+          f"{len(embeddings or {})} embeddings, device={args.device}"
+          + (f", {unmatched} segment(s) overlapped no turn -> SPEAKER_UNKNOWN"
+             if unmatched else ""), file=sys.stderr)
 
 
 if __name__ == "__main__":
