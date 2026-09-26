@@ -127,7 +127,7 @@ On first run the Bridge reports what it detected (a fresh clone, your git name,
 your tool), arms the safety guard, and offers four ways in: see it run first,
 describe what you will use it for (and it tailors the setup), make it private
 first, or bind a workspace across repos. The detection and the greeting are
-specified in `[rules/session-start.md](../rules/session-start.md)`.
+specified in [`rules/session-start.md`](../rules/session-start.md).
 
 `/bridge-onboard` then walks the guided setup: identity and purpose, optional
 ecosystem detection, the work-system config, and your own `user/{name}` branch.
