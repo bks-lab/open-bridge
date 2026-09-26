@@ -300,6 +300,15 @@ def wrap(w, ctx, inner, *, guard_dir=None, supplied=None, digest: str = "",
     else:
         redirect = ""
 
+    # A kind that does not end writes its trace only when it dies. A daemon
+    # that crashed in a loop and then ran cleanly for weeks kept "failed" as
+    # its newest line, and reconcile called a healthy service broken for twelve
+    # days. A line at START makes "running since" the newest thing it says; a
+    # later crash still writes its own `failed` after it.
+    if traced and w.placement.kind in CONTINUOUS_KINDS:
+        add("trace 0 0 started")
+        add("")
+
     if deadline:
         if group_kill:
             add("# The run needs a process group of its own, or the watchdog can")

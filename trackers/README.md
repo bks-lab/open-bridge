@@ -179,7 +179,7 @@ Rendering details (column widths, truncation, ordering) live in
   keyvault URIs if needed.
 - Trackers are **read-only** for `/briefing`. Write operations
   (creating issues, moving cards) live in dedicated skills like
-  `project-advisor`.
+  `github-projects-manager`.
 
 ## Related
 
@@ -187,4 +187,4 @@ Rendering details (column widths, truncation, ordering) live in
 - `bridge-config.yaml` — user-level `integrations.<name>` blocks enable providers
 - `ecosystem.yaml` — `github_projects:` list can be referenced by the github provider via `projects: ecosystem`
 
-- `workflow/projects/<slug>.yaml` — per-board write config consumed by `project-advisor` + `github-projects-manager`. The `state_map` block defined there feeds back into the normalized item schema above (each tracker's playbook MAY override `state_map` per-project from this registry).
+- `workflow/projects/<slug>.yaml` — per-board write config consumed by `github-projects-manager`. The `state_map` block defined there feeds back into the normalized item schema above (each tracker's playbook MAY override `state_map` per-project from this registry).

@@ -1149,7 +1149,7 @@ footer { max-width: 1400px; margin: 30px auto; padding: 20px 24px; border-top: 1
   // SKILLS
   // =====================================================================
   function skillGroup(name) {
-    if (name.startsWith("bridge-") || name === "project-advisor")
+    if (name.startsWith("bridge-"))
       return "bridge-core";
     if (/^(briefing|archive|dashboard|debrief|schedule)$/.test(name))
       return "workflow";

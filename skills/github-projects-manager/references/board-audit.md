@@ -61,10 +61,19 @@ This is the same posture as governance `done_only_by_user`.
 `projectItems.totalCount == 0`.
 
 ```bash
-gh api graphql -f query='{repository(owner:"'$ORG'",name:"'$REPO'"){
-  issues(first:100,states:OPEN){nodes{number projectItems(first:1){totalCount}}}}}' \
+gh api graphql --paginate -f query='
+  query($owner:String!,$repo:String!,$endCursor:String){
+    repository(owner:$owner,name:$repo){
+      issues(first:100,states:OPEN,after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
+        nodes{ number projectItems(first:1){ totalCount } } } } }' \
+  -f owner="$ORG" -f repo="$REPO" \
   --jq '.data.repository.issues.nodes[] | select(.projectItems.totalCount==0) | .number'
 ```
+
+`--paginate` is not decoration: a repo with more than 100 open issues answers a
+single-page query with 100 and no error, and every issue past the first page
+looks like it was never checked. Same rule as the board-side query below.
 
 **Repo-vs-board diff:** compare open issue numbers against the board's items
 for that repo. If you use `comm`, **both lists MUST be `LC_ALL=C sort`

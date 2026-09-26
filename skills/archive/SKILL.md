@@ -1,12 +1,11 @@
 ---
 name: archive
 description: >-
-  Archive EVERY closed period still in the log, in one run — collect log entries, generate one summary per period, distil
-  durable facts into the memory base (propose-then-confirm), reset log.md,
-  check upstream. Period follows work.archive_cadence (weekly | bi-weekly |
-  monthly | quarterly | yearly). Supports --force mode.
-  Trigger: "/archive", "archive", "archive week", "archive month",
-  "week archive", "week wrap-up", "archive cadence".
+  Archives every closed period still in the log: one summary per period,
+  distils durable facts into memory (propose-then-confirm), resets log.md.
+  Period follows work.archive_cadence (weekly, bi-weekly, monthly, quarterly,
+  yearly). Trigger: "/archive", "archive", "archive week", "archive month",
+  "week wrap-up".
 metadata:
   scope: core
 ---

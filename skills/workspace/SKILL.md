@@ -1,18 +1,12 @@
 ---
 name: workspace
 description: >-
-  Bind code repos AND config overlays into a named WORKSPACE — a project
-  container with a machine-global identity (shared with any conformant tool via
-  ~/.workspaces/) and repo-local materialization (clones under .bridge/, lockfiles,
-  a public-fork-safe exclude guard). `workspace create <name>` seeds the
-  definition; `subscribe … --role code` clones a member repo; `subscribe …
-  --role config` delegates a config overlay to the /overlay engine; `list` /
-  `status` / `validate` inspect; `unsubscribe` removes. Standalone — zero
-  dependency on any external launcher; the shared identity write is additive and
-  warns-never-fails. Trigger: "/workspace", "workspace", "create a workspace",
-  "add a repo to my workspace", "bind repos", "workspace status", "list
-  workspaces", "subscribe repo to workspace", "unsubscribe from workspace",
-  "workspace members", "project container".
+  Binds code repos and config overlays into a named workspace: shared
+  identity in ~/.workspaces/, repo-local clones under .bridge/ with
+  lockfiles. `workspace create` seeds it; `subscribe --role code` clones a
+  repo; `subscribe --role config` delegates to /overlay.
+  Trigger: "/workspace", "create a workspace", "add a repo to my
+  workspace", "workspace status", "list workspaces".
 metadata:
   scope: core
 ---

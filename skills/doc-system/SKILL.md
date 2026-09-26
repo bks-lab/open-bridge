@@ -1,14 +1,11 @@
 ---
 name: doc-system
 description: >-
-  Document management — inbox scan, processing, and status monitoring.
-  Scans configured import sources (e.g. PARA, Johnny Decimal, custom),
-  categorizes documents, applies routing rules from
-  workflow/contexts/doc-system.yaml plus persona destinations from
-  identity/personas/{id}.yaml. Renames, tags, files, and audits in
-  work/doc-system/log.md.
-  Trigger: "/doc-system", "doc inbox", "doc process", "doc status",
-  "process documents", "scan documents", "document queue".
+  Document inbox scan, processing, and status monitoring: categorizes
+  documents per workflow/contexts/doc-system.yaml routing rules and
+  identity/personas/{id}.yaml destinations, logs to work/doc-system/log.md.
+  Trigger: "/doc-system", "doc inbox", "doc process", "doc status", "process
+  documents", "document queue".
 metadata:
   scope: core
 ---

@@ -1,10 +1,10 @@
 ---
 name: mandants
 description: >-
-  Mandant management — recipient groups for outbound messages. List, add,
-  show mandants and add persons to groups. Types: company, household,
-  family, friends, colleagues, individual.
-  Trigger: "/mandants", "mandants", "recipients", "recipient groups",
+  Mandant management: recipient groups for outbound messages. List, add,
+  show mandants, add persons to groups (company, household, family,
+  friends, colleagues, individual).
+  Trigger: "/mandants", "recipients", "recipient groups",
   "add recipient group".
 metadata:
   scope: core

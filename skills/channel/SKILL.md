@@ -1,12 +1,10 @@
 ---
 name: channel
 description: >-
-  Channel management — messaging integrations overview, health checks,
-  deployments, start/stop services.
-  Reads infra/channels/*.yaml for channel definitions.
-  For scheduled tasks / cron jobs: use the /schedule skill instead.
-  Trigger: "/channel", "channel status", "channel health",
-  "channel deploy", "start channel", "stop channel".
+  Messaging channel management: health checks, deployments, start/stop
+  services. Reads infra/channels/*.yaml. Not for cron jobs (→ /schedule).
+  Trigger: "/channel", "channel status", "channel health", "channel deploy",
+  "start channel", "stop channel".
 metadata:
   scope: core
 ---

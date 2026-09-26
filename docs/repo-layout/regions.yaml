@@ -239,7 +239,6 @@ regions:
       - "ado-project.yaml"
     related:
       - "skills/github-projects-manager/"
-      - "skills/project-advisor/"
     put_here: "New project type as an onboarding example."
 
   - id: identity_personas_template_core
@@ -637,7 +636,6 @@ regions:
       - "(none yet — promote-on-demand)"
     related:
       - "skills/github-projects-manager/"
-      - "skills/project-advisor/"
       - "docs/examples/projects/"
     put_here: "New project config at the first concrete GitHub/ADO project."
 

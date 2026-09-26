@@ -1,19 +1,12 @@
 ---
 name: onboard-sim
 description: >-
-  Adversarial onboarding-safety simulation. Builds a leak-SAFE sandbox that
-  reproduces a fresh PUBLIC-origin open-bridge clone with the push guard armed,
-  drives a naive first-time-user session inside it (default: a cheap model such
-  as Haiku; or a model-free scripted run for CI), then DETERMINISTICALLY asserts
-  that no USER data — identity/agent, work/, client content on a user/* branch —
-  reached the would-be-public upstream. The whole sandbox upstream is a local
-  bare repo, so testing for a leak can never cause one. Use to verify the
-  public-origin push guard (rules/push-guard.md + scripts/hooks/pre-push)
-  end-to-end whenever onboarding, the hook, rules/operations.md, or session-start
-  change, and as the standing pre-promote / CI gate for that surface. Trigger:
-  "/onboard-sim", "onboard sim", "simulate onboarding", "run the onboarding
-  simulation", "leak sim", "test the push guard", "does my bridge leak",
-  "mirror-safety sim".
+  Adversarial onboarding-safety simulation: builds a leak-safe sandbox
+  reproducing a fresh public-origin clone with the push guard armed, drives
+  a naive first-user session, then asserts no USER data reached the
+  upstream (rules/push-guard.md).
+  Trigger: "/onboard-sim", "simulate onboarding", "leak sim",
+  "test the push guard", "does my bridge leak".
 allowed-tools:
   - Bash
   - Read

@@ -1,16 +1,11 @@
 ---
 name: bridge-onboard
 description: >-
-  New user onboarding and reconfiguration — discovery-driven setup with
-  permission-gated system scan, evidence-based feature suggestions, and
-  a read-only catalogue of what else Bridge can do. Six-phase wizard
-  (Identity / Discovery / Suggestions / Quick-Wins / Catalog / Validate)
-  with re-entry modes for targeted later activation. Works without
-  GitHub. Upstreams stay empty by default and wire later when
-  the OSS upstream or your own upstream is live.
-  Trigger: "/bridge-onboard", "onboard", "setup", "configure bridge",
-  "new user", "ecosystem scan", "set up bridge", "reconfigure",
-  "reconfigure bridge", "setup wizard".
+  New user onboarding and reconfiguration: discovery-driven setup with a
+  permission-gated system scan, evidence-based feature suggestions, and a
+  read-only catalogue of what else Bridge can do. Six-phase wizard, works
+  without GitHub. Trigger: "/bridge-onboard", "onboard", "setup",
+  "configure bridge", "new user", "reconfigure bridge", "setup wizard".
 metadata:
   scope: core
 ---

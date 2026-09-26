@@ -280,12 +280,31 @@ MUTATIONS = (
     Mutation(
         name="a-failed-run-reads-as-a-clean-one",
         file="engine/reconcile.py",
-        search='    if "failure" in wants and newest is not None and newest[1] not in (None, 0):',
-        replace='    if False and newest is not None and newest[1] not in (None, 0):',
+        search='    if "failure" in wants and newest is not None and newest[1] not in (None, 0) \\',
+        replace='    if False and newest is not None and newest[1] not in (None, 0) \\',
         test="tests.test_reconcile.TheTraceIsReadBackOrTheEvidenceIsDecoration"
              ".test_the_newest_line_deciding_it_failed_is_reported",
         scar="the run ended non zero and wrote it down; a report that calls that "
              "in_sync is worse than no report",
+    ),
+    Mutation(
+        name="every-transient-failure-stays-quiet",
+        file="engine/reconcile.py",
+        search="    return rc_newest in codes and verdict_newest == \"failed\" and rc_before == 0",
+        replace="    return rc_newest in codes",
+        test="tests.test_reconcile.TheTraceIsReadBackOrTheEvidenceIsDecoration"
+             ".test_a_second_failure_in_a_row_speaks",
+        scar="a retry request is quiet once; twice in a row is no longer a blip",
+    ),
+    Mutation(
+        name="a-daemon-never-says-it-started",
+        file="engine/backends/wrapper.py",
+        search='        add("trace 0 0 started")',
+        replace='        pass',
+        test="tests.test_backends.AKindWithoutADeadlineIsKeptToo"
+             ".test_a_daemon_writes_a_started_line_before_it_runs",
+        scar="a daemon that crashed once was reported broken for twelve days "
+             "because its trace only ever spoke at death",
     ),
     Mutation(
         name="an-absent-run-is-never-noticed",

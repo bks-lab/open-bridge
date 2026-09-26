@@ -3,8 +3,7 @@
 # Project Registry entry — describes ONE external project board.
 #
 # Consumed by:
-#   - skills/project-advisor/  (governance, board-health checks)
-#   - skills/github-projects-manager/  (gh CLI + GraphQL execution)
+#   - skills/github-projects-manager/  (gh CLI + GraphQL execution, governance, board-health checks)
 #   - skills/briefing/  (Stream B reads project state via trackers/<tracker>.md)
 #   - protocols/standing-orders/task-sync.md  (per-task sync resolver, Phase 3)
 #
@@ -146,12 +145,12 @@ status_mapping:
   #   blocked: { status_unchanged: true, set_flag: Flagged }
 
 # ---------------------------------------------------------------------------
-# Governance — rules that project-advisor enforces
+# Governance — rules that github-projects-manager enforces
 # ---------------------------------------------------------------------------
 governance:
   level: standard                  # strict | standard | relaxed
 
-  # Categorical rules — see skills/project-advisor/references/governance.md
+  # Categorical rules — see skills/github-projects-manager/references/governance.md
   rules:
     - done_requires_review         # must pass through review_states before done_states
     - assignee_on_in_progress      # K — must have assignee when In Progress

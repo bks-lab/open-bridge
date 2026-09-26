@@ -367,8 +367,8 @@ governance rules apply (severity levels, required approvals, state mappings).
 
 **Create:** `cp workflow/projects/_template.yaml workflow/projects/<slug>.yaml`
 
-**Used by:** `github-projects-manager` skill (writes), `project-advisor`
-skill (governance), `/dashboard` and `/briefing` (reads).
+**Used by:** `github-projects-manager` skill (writes and governance),
+`/dashboard` and `/briefing` (reads).
 
 **Workflow rule:** before ANY GitHub/ADO operation, read the matching
 `workflow/projects/<slug>.yaml` for valid field values. Don't use raw

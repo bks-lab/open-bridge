@@ -1,14 +1,10 @@
 ---
 name: knowledge-repo-init
 description: >-
-  Guided wizard for connecting or scaffolding an optional knowledge /
-  documentation repo to a Bridge instance. Walks the user through layout
-  choice, area picks, frontmatter conventions, optional dual-doku
-  contracts, Bridge wiring (ecosystem.yaml + workflow/contexts/), and
-  copies template skeletons from docs/examples/knowledge-repo/.
-  Trigger: "/knowledge-repo-init", "knowledge repo", "knowledge-repo",
-  "set up wiki", "set up docs", "scaffold wiki", "add knowledge repo",
-  "connect knowledge repo", "docs repo", "documentation repo", "wiki setup".
+  Guided wizard for connecting or scaffolding an optional knowledge/
+  documentation repo: layout choice, frontmatter conventions, Bridge wiring
+  (ecosystem.yaml + workflow/contexts/). Trigger: "/knowledge-repo-init",
+  "knowledge repo", "set up wiki", "scaffold wiki", "wiki setup".
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion
 metadata:
   scope: core

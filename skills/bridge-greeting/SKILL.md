@@ -1,14 +1,12 @@
 ---
 name: bridge-greeting
 description: >-
-  Context-aware terminal greeting (MOTD) for Bridge instances — renders a
-  per-instance logo, palette, today's filtered calendar, the instance's
-  "Doing" board and uncommitted work, resolved from which org folder the
-  terminal was opened in. Includes gen-logo.py (ANSI-Shadow logo generator
-  from a word) and the branding convention that feeds every Bridge UI.
-  Trigger: "/bridge-greeting", "terminal greeting", "motd", "startup logo",
-  "instance logo", "terminal greeting", "fastfetch logo", "branding",
-  "generate logo", "per-folder terminal", "folder logo".
+  Context-aware terminal greeting (MOTD) for Bridge instances: renders a
+  per-instance logo, palette, today's calendar and the "Doing" board,
+  resolved from which org folder the terminal opened in. Includes
+  gen-logo.py (ANSI-Shadow generator). Trigger: "/bridge-greeting",
+  "terminal greeting", "motd", "startup logo", "instance logo",
+  "fastfetch logo", "folder logo".
 metadata:
   scope: core
 ---

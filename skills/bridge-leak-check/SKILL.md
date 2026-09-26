@@ -1,15 +1,11 @@
 ---
 name: bridge-leak-check
 description: >-
-  Content-leak scanner with categorized classification. Different from a raw
-  blocklist grep: each hit is sorted into legitimate-self-reference,
-  legitimate-sister-repo, personal-PII (always leak), or internal-vocabulary
-  hardcoded (OSS-strict only). Use after a sync to verify the destination is
-  actually clean — catches pre-existing leaks the source-side scan won't see.
-  Also runs OSS-strictness vocabulary checks (e.g. "scope: bks" hardcoded
-  in OSS-shipped skill docs that should use "scope: org" placeholder).
-  Trigger: "/bridge-leak-check", "leak scan", "leak check", "OSS readiness",
-  "pre-existing leaks", "cleanliness check", "is this OSS clean".
+  Content-leak scanner for Bridge repos: classifies hits as self-reference,
+  sister-repo, personal PII, or hardcoded internal vocabulary (OSS-strict).
+  Verifies a sync destination is actually clean. Trigger: "/bridge-leak-check",
+  "leak scan", "leak check", "OSS readiness", "cleanliness check", "is this OSS
+  clean".
 metadata:
   scope: core
 ---

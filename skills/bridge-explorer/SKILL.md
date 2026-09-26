@@ -1,15 +1,10 @@
 ---
 name: bridge-explorer
 description: >-
-  Bridge visualizations — ecosystem (repos, workspaces, skills, infra), repo
-  layout (CORE/USER split, 4 brain-metaphor variants v1–v4), and constellation
-  (5-layer information network with hub-out routing). Single-file HTML,
-  dark/light, opens in browser. Descriptions sourced from
-  docs/repo-layout/regions.yaml.
-  Trigger: "/bridge-explorer", "explorer",
-  "show ecosystem", "repos overview", "repo layout", "core/user split",
-  "where do files live", "repo structure", "network diagram", "constellation",
-  "information flow", "how is everything linked".
+  Bridge visualizations: ecosystem map (repos, workspaces, skills, infra), repo
+  layout (CORE/USER split), and constellation (information flow). Trigger:
+  "/bridge-explorer", "explorer", "show ecosystem", "repo layout", "where do
+  files live", "constellation".
 metadata:
   scope: core
 ---

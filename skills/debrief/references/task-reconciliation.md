@@ -29,6 +29,11 @@ three fragmented new ones.
 - Info-only items ("Internship starts in 1 week", "vendor audit proof ok")
   belong in the **protocol**, not in issues.
 - Calendar blocks (`/calendar add …`) are not issues.
+- A status promise without an action ("we'll keep an eye on it") is not an
+  issue either; it goes into the protocol.
+- Open a **new** issue only when the topic has a life of its own: it will be
+  worked on, tracked and closed independently of the existing ones. Anything
+  else is a comment on the parent.
 
 If the user ever says "too much", obey immediately — issues are cheap to
 add later, expensive to clean up.

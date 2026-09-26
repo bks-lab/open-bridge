@@ -79,14 +79,18 @@ def twin_of(program: str, root: Path) -> str:
     """A file of the same name inside the repository, or empty.
 
     First hit in sorted order, so two candidates give the same answer on every
-    run rather than whichever the filesystem happened to hand over first. The
-    repository's own git directory is not a source.
+    run rather than whichever the filesystem happened to hand over first. No
+    hidden folder is a source: not the git directory, and not `.claude/worktrees/`
+    or `.bridge/`, which hold working copies. On 2026-09-26 a leftover agent
+    worktree sorted before `infra/`, its older copy became the twin, and a
+    program identical to the kept source was reported as drifted.
     """
     name = Path(str(program or "")).name
     if not name:
         return ""
     for found in sorted(Path(root).rglob(name)):
-        if ".git" in found.parts or not found.is_file():
+        rel_parts = found.relative_to(root).parts
+        if any(part.startswith(".") for part in rel_parts[:-1]) or not found.is_file():
             continue
         return str(found.relative_to(root))
     return ""

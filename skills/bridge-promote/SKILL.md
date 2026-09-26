@@ -1,16 +1,10 @@
 ---
 name: bridge-promote
 description: >-
-  Promote CORE changes from your user branch to upstream (Scope-Routing
-  per scope: core → OSS upstream, org → your org overlay, user → local).
-  Analyzes commits, categorizes by CORE/USER/ORG path+frontmatter rules,
-  runs mandatory content-safety checks per repo (leak scanner + blocklist,
-  refuses on PII/customer hits), and creates fork-based PRs to upstream
-  repos — no upstream push access needed. For file-level community
-  contributions with adaptation, use the bridge-contribute skill
-  (/contribute) instead.
-  Trigger: "/bridge-promote", "promote", "cherry-pick", "push to upstream",
-  "promote to upstream", "promote commits".
+  Promote CORE changes from your user branch to upstream by scope (core to OSS
+  upstream, org to org overlay). Runs mandatory content-safety checks, opens
+  fork-based PRs. For file-level contributions use bridge-contribute. Trigger:
+  "/bridge-promote", "promote", "cherry-pick", "push to upstream".
 metadata:
   scope: core
 ---

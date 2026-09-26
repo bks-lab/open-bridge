@@ -178,6 +178,15 @@ muted within two weeks and then missing when it counts.
 deadline expired), `missing` (the run did not happen at all). The third is the
 important one: an absent run is the failure nobody sees.
 
+`transient_exit_codes` names the codes a run uses for "failed, try again next
+tick", usually `75` (EX_TEMPFAIL, for example a fetch while the network is
+briefly gone). The first such failure right after a clean run wakes nobody; a
+second failure in a row does, and so does a first run with no clean run before
+it. Only the program's own `failed` verdict counts: an `expired` run was cut off
+by a deadline and speaks at once. Codes not listed speak at once, so name only
+the code the script really reserves for a blip and keep everything critical off
+the list. Without the field every failure speaks at once.
+
 `evidence` says how much the run can actually prove:
 
 | evidence | It claims |

@@ -1,6 +1,7 @@
 ---
 name: briefing
-description: 'Daily briefing — board, ecosystem activity, tracker sync, goals. Parallel 4-stream collection. Modes: --quick, --html. Trigger: "/briefing", "briefing", "good morning", "daily standup", "checkin", "morning briefing". (Bare "status" → bridge-status; bare "what is up" → dashboard.)'
+description: >-
+  Daily briefing across everything: board, log, ecosystem activity, tracker fan-out, calendar, goals; writes the day block and regenerates board.md. Modes --quick and --html. Trigger: "/briefing", "briefing", "good morning", "daily standup", "checkin", "morning briefing".
 metadata:
   scope: core
 ---

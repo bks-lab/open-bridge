@@ -629,6 +629,28 @@ def _newest_trace(text: str):
     return newest
 
 
+def _transient_blip(w, text: str) -> bool:
+    """True when the newest run failed with a code the declaration calls
+    transient AND the run before it was clean.
+
+    Added 2026-09-26: suppliers that end with 75 when GitHub is briefly
+    unreachable rang a phone for every blip, although the next tick went
+    through. Only the named codes, only the program's own `failed` verdict
+    (an `expired` run was cut off by a deadline, that is not a retry request),
+    and only with a clean run right before it. A second failure in a row, a
+    first run without history, and every code not named keep speaking at once.
+    """
+    response = getattr(w, "response", None)
+    codes = tuple(getattr(response, "transient_exit_codes", ()) or ()) if response else ()
+    if not codes:
+        return False
+    runs = [(when, rc, verdict) for when, rc, verdict, _ in _trace_strip({"_": text})]
+    if len(runs) < 2:
+        return False
+    (_, rc_before, _), (_, rc_newest, verdict_newest) = runs[-2], runs[-1]
+    return rc_newest in codes and verdict_newest == "failed" and rc_before == 0
+
+
 def _notify_on(w) -> tuple:
     response = getattr(w, "response", None)
     return tuple(getattr(response, "notify_on", ()) or ()) if response else ()
@@ -997,7 +1019,8 @@ def _trace_findings(w, text, stamp, now, finding, appointment=None, booted=None,
 
     newest = _newest_trace(text or "")
 
-    if "failure" in wants and newest is not None and newest[1] not in (None, 0):
+    if "failure" in wants and newest is not None and newest[1] not in (None, 0) \
+            and not _transient_blip(w, text or ""):
         # Named after the UNIT where a run has several appointments. Naming the
         # declaration leaves a reader unable to tell WHICH of two times failed,
         # and two appointments can answer two different sets of people.

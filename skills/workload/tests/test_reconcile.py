@@ -1229,6 +1229,76 @@ class TheTraceIsReadBackOrTheEvidenceIsDecoration(ReconcileBase):
             "it failed an hour ago and has run cleanly since; reporting the old "
             "failure forever is how a report becomes noise")
 
+    # -- a daemon that crashed once and runs again -------------------------
+    def test_a_started_line_after_old_failures_clears_the_failure(self):
+        lines = (self.trace_line("calendar-export", rc=2, when="2026-08-10T17:16:19Z", verdict="failed")
+                 + self.trace_line("calendar-export", rc=0, when="2026-08-23T07:05:31Z", verdict="started"))
+        states = self.states("calendar-export", {"calendar-export": lines}, now="2026-08-23T08:01:00Z")
+        self.assertNotIn(model.WorkloadState.last_run_failed, states,
+                         "it started again after the crash and has not ended since")
+
+    def test_a_failure_after_the_start_is_still_reported(self):
+        lines = (self.trace_line("calendar-export", rc=0, when="2026-08-23T07:05:31Z", verdict="started")
+                 + self.trace_line("calendar-export", rc=1, when="2026-08-23T07:30:00Z", verdict="failed"))
+        states = self.states("calendar-export", {"calendar-export": lines}, now="2026-08-23T08:01:00Z")
+        self.assertIn(model.WorkloadState.last_run_failed, states)
+
+    # -- a run that said "try again" -------------------------------------
+    # 2026-09-26: two suppliers end with 75 (EX_TEMPFAIL) when GitHub does not
+    # answer for a moment, and every one of those rang a phone although the
+    # next tick an hour later went through. A declaration may name such codes;
+    # the first one stays quiet, a second failure in a row speaks. Everything
+    # not named keeps speaking on the first run, because critical things must.
+    def states_transient(self, lines, codes=(75,)):
+        w = self.load("calendar-export")
+        w = dataclasses.replace(
+            w, response=dataclasses.replace(w.response, transient_exit_codes=tuple(codes)))
+        obs = self.observed_with({"calendar-export": "".join(lines)})
+        findings = reconcile.classify([w], obs, self.inv(), {}, now="2026-08-23T08:01:00Z")
+        return self.states_for(findings, w.id)
+
+    def test_a_first_transient_failure_after_a_clean_run_stays_quiet(self):
+        states = self.states_transient([
+            self.trace_line("calendar-export", rc=0, when="2026-08-23T07:00:00Z"),
+            self.trace_line("calendar-export", rc=75, when="2026-08-23T08:00:00Z", verdict="failed")])
+        self.assertNotIn(model.WorkloadState.last_run_failed, states,
+                         "the run said 'try again' once; the next tick decides")
+
+    def test_a_second_failure_in_a_row_speaks(self):
+        states = self.states_transient([
+            self.trace_line("calendar-export", rc=75, when="2026-08-23T07:00:00Z", verdict="failed"),
+            self.trace_line("calendar-export", rc=75, when="2026-08-23T08:00:00Z", verdict="failed")])
+        self.assertIn(model.WorkloadState.last_run_failed, states,
+                      "twice in a row is no longer a blip")
+
+    def test_a_transient_code_as_the_only_run_speaks(self):
+        states = self.states_transient([
+            self.trace_line("calendar-export", rc=75, when="2026-08-23T08:00:00Z", verdict="failed")])
+        self.assertIn(model.WorkloadState.last_run_failed, states,
+                      "with no clean run before it there is nothing to lean on")
+
+    def test_a_code_not_named_transient_speaks_at_once(self):
+        states = self.states_transient([
+            self.trace_line("calendar-export", rc=0, when="2026-08-23T07:00:00Z"),
+            self.trace_line("calendar-export", rc=65, when="2026-08-23T08:00:00Z", verdict="failed")])
+        self.assertIn(model.WorkloadState.last_run_failed, states,
+                      "65 means a human is needed; that must not wait an hour")
+
+    def test_without_the_field_every_failure_speaks_at_once(self):
+        states = self.states_transient([
+            self.trace_line("calendar-export", rc=0, when="2026-08-23T07:00:00Z"),
+            self.trace_line("calendar-export", rc=75, when="2026-08-23T08:00:00Z", verdict="failed")],
+            codes=())
+        self.assertIn(model.WorkloadState.last_run_failed, states)
+
+    def test_an_expired_run_is_never_transient(self):
+        states = self.states_transient([
+            self.trace_line("calendar-export", rc=0, when="2026-08-23T07:00:00Z"),
+            self.trace_line("calendar-export", rc=75, when="2026-08-23T08:00:00Z", verdict="expired")])
+        self.assertIn(model.WorkloadState.last_run_failed, states,
+                      "a deadline cut the run off; that is not the program asking to retry")
+
+
     # -- a run that never came --------------------------------------------
     def test_a_cadence_that_stopped_firing_is_overdue(self):
         # calendar-export declares every_sec 900, so two cadences is 1800s.
@@ -3110,6 +3180,26 @@ class TheProgramMayNotBeTheOneThatIsKept(MachineGuard):
                          [model.WorkloadState.source_drift])
         self.assertEqual(found[0].severity, model.Severity.medium)
         self.assertIn("does not reach this run", found[0].detail)
+
+    def test_a_stale_copy_in_a_hidden_folder_is_not_the_twin(self):
+        """2026-09-26: a leftover agent worktree under .claude/worktrees/ held an
+        older copy of the same script. It sorts before infra/, became the twin,
+        and a copy that matched the real source byte for byte was reported as
+        drifted. Hidden folders hold working copies, never the kept original."""
+        import hashlib
+        body = "echo kept\n"
+        root = self.repo([(".claude/worktrees/wf-1/infra/remotes/host-a/scripts/run.sh", "echo stale\n"),
+                          ("infra/remotes/host-a/scripts/run.sh", body)])
+        same = hashlib.sha256(body.encode()).hexdigest()
+        self.assertEqual(
+            self.look(root, ["/bin/bash", "/opt/elsewhere/run.sh"], {"/opt/elsewhere/run.sh": same}),
+            [], "the copy on the machine equals the kept source; nothing drifted")
+
+    def test_a_program_found_only_in_a_hidden_folder_has_no_twin(self):
+        root = self.repo([(".claude/worktrees/wf-1/scripts/only.sh", "echo x\n")])
+        found = self.look(root, ["/bin/bash", "/opt/elsewhere/only.sh"])
+        self.assertEqual([f.state for f in found], [model.WorkloadState.source_drift])
+        self.assertIn("one disk only", found[0].detail)
 
     def test_and_it_decides_nothing_about_which_side_is_right(self):
         root = self.repo([("infra/remotes/host-a/scripts/run.sh", "echo one\n")])

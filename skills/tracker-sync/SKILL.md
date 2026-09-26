@@ -1,16 +1,7 @@
 ---
 name: tracker-sync
 description: >-
-  Persistent snapshot + bidirectional reconcile between The Bridge tasks and
-  GitHub Project boards. Pulls each board into work/trackers/<provider>/<slug>.json
-  (the local mirror / dump), diffs it against work/tasks|streams/*/STATUS.md
-  sync.github bindings into a delta table (in_sync · remote_ahead · local_ahead ·
-  state_mismatch · orphan_local · orphan_remote), and pushes local→remote changes
-  through github-projects-manager — gated, never auto. GitHub is the system of
-  record, The Bridge is the cockpit (remote-authoritative). Trigger: "/tracker-sync",
-  "tracker sync", "sync my tasks", "reconcile tasks", "board reconcile",
-  "snapshot github", "which task is in which state", "github project dump",
-  "sync tasks down", "sync tasks up", "task drift", "sync status".
+  Reconciles Bridge tasks (STATUS.md) with GitHub Project boards: snapshots boards into work/trackers/ and reports drift (in_sync, remote_ahead, local_ahead, drift). Never writes to a board itself; approved changes go through github-projects-manager. Trigger: "/tracker-sync", "sync my tasks", "reconcile tasks", "board reconcile", "task drift".
 metadata:
   scope: core
   tools: [Bash, Read, Glob, Grep]

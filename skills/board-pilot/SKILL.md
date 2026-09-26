@@ -1,26 +1,11 @@
 ---
 name: board-pilot
 description: >-
-  Generic, board-driven implementation pipeline: polls a GitHub Project on a
-  schedule, ARMS an item the moment a human drags it into the configured trigger
-  column, then advances it one stage per tick — each stage a Bridge primitive
-  (skill / workflow / agent / cmd) — and STOPS at a human-gated draft PR. The
-  engine is project-agnostic; everything project-specific (which stages, which
-  handlers, the trigger column, the rework budget, the criteria each stage judges
-  against) lives in per-project `board:`/`pipeline:` blocks in
-  workflow/projects/<slug>.yaml. An engine-owned `Pipeline`
-  field is the durable program counter, kept distinct from the human-owned
-  `Status` column, so a person moving a card mid-flight can never corrupt the
-  state machine. Fail-closed engine guards: PAUSED kill-file, atomic snapshot, lock
-  liveness via kill -0, argv-safe handlers, draft PRs, byte-0 reject marker,
-  board-option preflight, a durable rework cap, blind-rework park, engine-written
-  evidence, and a human-Done halt (the token ceiling is INERT and redaction is a
-  regex denylist — both partial / by-convention, not guarantees). Human gates:
-  never auto-merge, never set Done, never push main/development/dev; board writes via
-  the gh CLI with the project scope.
-  Trigger: "/board-pilot", "board pilot", "board-driven pipeline", "auto-implement
-  from board", "pipeline runner", "arm an item from the board", "run the board
-  poller", "advance the board pipeline".
+  Board-driven implementation pipeline: polls a GitHub Project, arms an item when
+  dragged into the trigger column, advances it stage by stage to a human-gated
+  draft PR. Stages configured per project in workflow/projects/<slug>.yaml.
+  Trigger: "/board-pilot", "board pilot", "auto-implement from board", "pipeline
+  runner".
 allowed-tools:
   - Bash
   - Read
@@ -389,8 +374,8 @@ that is the good failure). In order:
 
 1. Add the `board:` + `pipeline:` blocks to the target `workflow/projects/<slug>.yaml`,
    and keep that file's own `fields:` / `state_map:` in step with the options you
-   just created — `github-projects-manager`, `project-advisor` and `tracker-sync`
-   read exactly that block, and it drifts silently.
+   just created — `github-projects-manager` and `tracker-sync` read exactly
+   that block, and it drifts silently.
 2. Schedule one `python3 -m engine.cli --project <yaml> --state-dir <dir> --once`
    per project (launchd `StartInterval` / systemd timer / cron). On macOS, load it
    into the per-user GUI domain so the stage runner can reach the login keychain —

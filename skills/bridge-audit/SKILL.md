@@ -1,17 +1,10 @@
 ---
 name: bridge-audit
 description: >-
-  Auditing skill for The Bridge repos — finds drift between docs and reality
-  (license badge ↔ LICENSE file ↔ footer; README skill list ↔ skills/ dir;
-  protocol counts; renamed-but-not-everywhere; broken cross-refs; missing
-  scope frontmatter; routing-SoT conflicts; common typos; user-level skill
-  shadowing between instances; cross-repo skill-tree sync coverage with
-  --cross-repo). Returns a P0/P1/P2/P3
-  stratified report with concrete fix proposals — the same output shape
-  that a human-led drift-audit would produce.
-  Trigger: "/bridge-audit", "audit", "drift check", "bridge audit",
-  "check consistency", "find drift", "is README still accurate",
-  "are my skills shadowed", "whose skills are running".
+  Finds drift between docs and reality in Bridge repos: license badge vs LICENSE,
+  README skill list vs skills/ dir, broken cross-refs, cross-instance skill
+  shadowing. Returns a P0-P3 report with fix proposals. Trigger: "/bridge-audit",
+  "audit", "drift check", "find drift", "are my skills shadowed".
 metadata:
   scope: core
 ---

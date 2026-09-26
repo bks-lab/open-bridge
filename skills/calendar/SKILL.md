@@ -1,13 +1,11 @@
 ---
 name: calendar
 description: >-
-  Calendar and recipient management — list, add, show, cancel, confirm
-  scheduled entries. Manages mandant recipient groups (company, household,
-  family, friends, colleagues) and workflow/calendars/entries.yaml with multi-recipient
-  support, duration estimates, and repeat patterns.
-  Trigger: "/calendar", "calendar", "scheduled messages",
-  "calendar add", "calendar list",
-  "mandants", "recipients", "recipient groups", "add recipient group".
+  Calendar and recipient management: list, add, show, cancel, confirm entries
+  in workflow/calendars/entries.yaml, plus mandant recipient groups (company,
+  household, family, friends) with multi-recipient support and repeat patterns.
+  Trigger: "/calendar", "scheduled messages", "calendar add", "mandants",
+  "recipient groups".
 metadata:
   scope: core
 ---

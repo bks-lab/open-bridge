@@ -1,20 +1,11 @@
 ---
 name: meeting-transcription
 description: >-
-  Operates and manages a context-aware meeting-transcription pipeline (2-track
-  or single-mix recording → whisper.cpp large-v3 + pyannote diarization on a
-  worker host → voice-matched speaker names → naked transcript delivered to
-  /debrief; the summary is made later by the in-session /debrief, never by the
-  worker). The reference implementation of the transcription-worker contract
-  (docs/transcription-worker.md). Use this skill WHENEVER the user wants to
-  transcribe a meeting, set up or change a transcription context/folder, add
-  or re-train a speaker voice, reprocess a recording, extend the pipeline, or
-  troubleshoot it — even if they don't name the pipeline explicitly. Triggers:
-  "transcribe a meeting", "transcription folder", "new transcription context",
-  "add a speaker", "train a voice", "voice library", "speaker recognition",
-  "speaker diarization", "who said what", "reprocess recording", "transcribe
-  pipeline", "update the whisper model". Also use it to answer "how does my
-  transcription system work" — it is the source of truth for that system.
+  Operates a context-aware meeting-transcription pipeline: recording,
+  whisper.cpp plus pyannote diarization on a worker host, voice-matched speaker
+  names, transcript handed to /debrief. Trigger: "transcribe a meeting",
+  "transcription folder", "add a speaker", "train a voice", "speaker
+  diarization", "reprocess recording", "how does my transcription system work".
 metadata:
   scope: core
 ---

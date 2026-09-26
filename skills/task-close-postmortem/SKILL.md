@@ -1,6 +1,6 @@
 ---
 name: task-close-postmortem
-description: 'Postmortem capture + bridge-improvement scan at task close. Surfaces six optional questions (time invested, estimate vs actual, what went well, what burned time, where the bridge fell short, concrete improvement proposal), writes structured frontmatter back to STATUS.md, and generates proposal files under work/_learning/proposals/ for later review via /bridge-learn. Invoked automatically by protocols/standing-orders/task-sync.md Phase 3b at task close, and directly user-invokable for ad-hoc reflection. Trigger: "task done", "document everything", "wrap up", "wrap-up", "task complete", "post-mortem", "/postmortem the last hour", "reflect on the piece just finished", "review the last block", "what did we learn from X".'
+description: 'Postmortem capture and bridge-improvement scan at task close: surfaces optional questions (time invested, what went well, what burned time, bridge gaps), writes frontmatter to STATUS.md, and generates proposals under work/_learning/proposals/ for review via /bridge-learn. Trigger: "task done", "wrap up", "post-mortem", "/postmortem the last hour", "what did we learn from X".'
 allowed-tools:
   - Read
   - Write

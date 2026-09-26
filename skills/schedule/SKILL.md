@@ -1,11 +1,10 @@
 ---
 name: schedule
 description: >-
-  Scheduled task management — list, create, deploy, disable scheduled jobs.
-  Manages infra/channels/_scheduled.yaml. Generates platform-native service
-  definitions (launchd/systemd/cron) and deploys to remotes.
-  Trigger: "/schedule", "schedule", "scheduled tasks", "cron job",
-  "schedule deploy", "schedule list".
+  Scheduled task management: list, create, deploy, disable jobs in
+  infra/channels/_scheduled.yaml. Generates launchd/systemd/cron
+  definitions and deploys to remotes.
+  Trigger: "/schedule", "scheduled tasks", "cron job", "schedule deploy".
 metadata:
   scope: core
 ---

@@ -1,21 +1,11 @@
 ---
 name: spec-kickoff
 description: >-
-  Guides you through a spec-first kickoff before building anything substantial —
-  Andrej Karpathy's three layers (spec → verifier → environment), expressed through
-  Claude Code's own primitives, not a new framework. Phase 1 interviews you down to a
-  self-contained SPEC.md with EARS requirements (you own the goal, the agent does the
-  thinking). Phase 2 builds a verification plan: maps every acceptance criterion to the
-  strongest available check (deterministic > external signal > judge), picks a gate
-  strength, and optionally adds a fresh-subagent or Codex adversarial review. Phase 3
-  wires it into the environment you already have (CLAUDE.md, skills, hooks, guardrails)
-  instead of rebuilding it. Output is ONE SPEC.md that ends in an end-to-end verification
-  step, then a handoff to the build. Use when STARTING a new build/feature/project and you
-  want to begin it right — NOT for trivial changes you can describe in one sentence.
-  Trigger phrases — EN: "spec-kickoff", "kickoff", "spec this", "spec first", "before we
-  build", "how do I start", "start a new project/feature properly", "karpathy method",
-  "spec → verify → environment". DE: "wie fange ich an", "neues projekt/feature starten",
-  "richtig anfangen", "spec bauen", "bevor wir bauen", "karpathy methode".
+  Guides a spec-first kickoff before building anything substantial: Karpathy's
+  three layers, spec, verifier, environment. Phase 1 interviews down to a
+  SPEC.md with EARS requirements, Phase 2 builds a verification plan, Phase 3
+  wires it into the existing environment. Trigger: "spec-kickoff", "kickoff",
+  "spec this", "spec first", "before we build", "karpathy method".
 metadata:
   scope: core
 ---

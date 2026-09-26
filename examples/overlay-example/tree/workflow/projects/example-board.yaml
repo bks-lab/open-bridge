@@ -78,7 +78,7 @@ status_mapping:
   blocked: { status_unchanged: true, set_flag: Blocked }
 
 # ---------------------------------------------------------------------------
-# Governance — rules that project-advisor enforces.
+# Governance — rules that github-projects-manager enforces.
 # ---------------------------------------------------------------------------
 governance:
   level: standard

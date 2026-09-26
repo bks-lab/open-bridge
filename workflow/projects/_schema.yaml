@@ -2,9 +2,9 @@
 #
 # Validates `workflow/projects/<slug>.yaml` files. Each file describes
 # ONE external project board (GitHub Projects V2, Azure DevOps Boards,
-# Linear, Jira, …). The skills project-advisor and github-projects-manager
-# read these files as their source of truth for field values, governance
-# rules, and state mappings.
+# Linear, Jira, …). The skill github-projects-manager reads these files
+# as its source of truth for field values, governance rules, and state
+# mappings.
 #
 # Validation:
 #   check-jsonschema --schemafile workflow/projects/_schema.yaml \
@@ -20,8 +20,8 @@ $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://bks-lab.github.io/open-bridge/schemas/project.yaml"
 title: Project
 description: |
-  Per-board configuration consumed by project-advisor (governance) and
-  github-projects-manager (execution). One file per external board.
+  Per-board configuration consumed by github-projects-manager (execution
+  and governance). One file per external board.
 
 type: object
 required: [schema_version, scope, identity, project, fields]
@@ -127,7 +127,7 @@ properties:
       rules:
         type: array
         items: {type: string}
-        description: "Named rules — see skills/project-advisor/references/governance.md"
+        description: "Named rules — see skills/github-projects-manager/references/governance.md"
       review_states:
         type: array
         items: {type: string}

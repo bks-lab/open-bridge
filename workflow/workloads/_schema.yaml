@@ -611,6 +611,16 @@ properties:
       notify_via:
         type: string
         description: "Channel slug under infra/channels/. One notification path, not a second one per workload."
+      transient_exit_codes:
+        type: array
+        items: {type: integer, minimum: 1, maximum: 255}
+        uniqueItems: true
+        description: |
+          Exit codes this run uses for "failed, try again next tick", usually
+          75 (EX_TEMPFAIL). The first such failure after a clean run wakes
+          nobody; a second failure in a row does, as does a first run with no
+          clean run before it. Codes not listed, timeouts and missing runs
+          speak at once. Empty or absent: every failure speaks at once.
 
   reconcile:
     type: object

@@ -1620,3 +1620,20 @@ class AMachineCanBeTheOneItIsAskedAbout(MachineGuard):
         (home / ".bridge").mkdir(parents=True, exist_ok=True)
         (home / ".bridge" / "host-identity").write_text("   \n", encoding="utf-8")
         self.assertFalse(hosts.resolve_host("host-a", self.repo(), home=home).is_local)
+
+
+class TransientExitCodes(MachineGuard):
+    """response.transient_exit_codes, added 2026-09-26."""
+
+    def test_codes_are_read(self):
+        r = model._response({"notify_on": ["failure"], "transient_exit_codes": [75]}, "x.yaml")
+        self.assertEqual(r.transient_exit_codes, (75,))
+
+    def test_default_is_empty(self):
+        self.assertEqual(model._response({}, "x.yaml").transient_exit_codes, ())
+
+    def test_zero_and_non_numbers_are_refused(self):
+        from engine.errors import DeclarationError
+        for bad in ([0], ["75"], [256], [True]):
+            with self.subTest(bad=bad), self.assertRaises(DeclarationError):
+                model._response({"transient_exit_codes": bad}, "x.yaml")

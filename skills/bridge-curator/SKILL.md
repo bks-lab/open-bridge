@@ -1,22 +1,11 @@
 ---
 name: bridge-curator
 description: >-
-  Periodic background consolidation pass over the Bridge itself. Three default phases:
-  (1) Library pass — scans skills/, protocols/, rules/, docs/ for drift
-  (sleeping skills 30d+, overlapping triggers, description-budget busters,
-  duplicates, umbrella candidates); (2) Queue pass — scans work/_learning/proposals/
-  for stale pending (30d+), conflict clusters (same target), supersedes
-  relations; (3) User-pattern pass — synthesizes 3-8 bullet observations
-  about user preferences from postmortems + audit-trail + trigger-corrections
-  of the last 30 days, writes append-only to
-  work/_learning/user-patterns.md; (4) Learnings pass, per skill on request,
-  proposes promoting matured LEARNINGS.md entries into references/ and moving
-  skill traps out of global memory. All findings land as proposals
-  (source.type=curator-suggestion) in work/_learning/proposals/ — **never
-  direct edits to Bridge files**. Trigger: "/bridge-curator", "bridge curator",
-  "curator", "curation", "weekly review", "library consolidation",
-  "consolidate skills", "what patterns do I have", "user pattern synthesis",
-  "consolidate", "skill consolidation", "umbrella skill".
+  Periodic background consolidation pass over the Bridge: scans skills/protocols/
+  rules/docs for drift, the proposal queue for staleness, and recent work for
+  user-pattern observations, writing findings as proposals under
+  work/_learning/proposals/, never direct edits. Trigger: "/bridge-curator",
+  "curator", "weekly review", "consolidate skills", "umbrella skill".
 allowed-tools:
   - Read
   - Write

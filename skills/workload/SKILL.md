@@ -1,20 +1,11 @@
 ---
 name: workload
 description: >-
-  Manages the whole life of a declared run on a machine: declare it, provision
-  it, list it, show it, reconcile the declaration against what is actually
-  there, adopt something that already exists by hand, and retire it with a
-  reason. Every declaration lives in workflow/workloads/<id>.yaml and is the
-  truth; the unit on the machine is an artifact that can be rebuilt from it at
-  any time. State is never read from a declared status field, always from the
-  live service manager. Backends: launchd (user and system), systemd, cron and a
-  dispatcher, plus manual and external for runs that are only documented. Use it
-  whenever the question is "what runs on this machine, is it still there, and
-  who owns it", or when a scheduled job, interval job, daemon, path watcher or
-  agent has to be set up, moved, checked or switched off. Trigger phrases:
-  "workload", "declare a run", "provision the job", "is the job still there",
-  "reconcile the machine", "adopt this unit", "retire the job", "what runs on
-  that host", "the report did not arrive", "move this job into the repo".
+  Manages the whole life of a declared run on a machine: declare, provision,
+  reconcile, adopt, and retire it. Declarations live in
+  workflow/workloads/<id>.yaml; state reads from the live service manager
+  (launchd, systemd, cron), never a status field. Trigger: "workload", "declare
+  a run", "is the job still there", "reconcile the machine", "retire the job".
 metadata:
   scope: core
 allowed-tools:

@@ -185,8 +185,8 @@ here to do. Short, confident, oriented around *them*.
    Invite them to pick a lane **or** just describe in a sentence what
    they're here to do (the description becomes their purpose, no re-ask).
 5. **Present the four lanes** (adapt order to the detected origin, see
-   variants): `[1]` show me around (live demo, nothing touched) · `[2]` I
-   know what I'll use it for, I'll describe it, you tailor the setup ·
+   variants): `[1]` show me around (live demo, nothing outside the demo
+   folder touched) · `[2]` I know what I'll use it for, I'll describe it, you tailor the setup ·
    `[3]` make it private first (only recommended-first on a public/unknown
    origin) · `[4]` I work across several repos / a shared org config, bind
    a workspace. Plus `[n]` not now.
@@ -268,7 +268,7 @@ the reflect-then-lanes shape. The `{name}`/`{slug}` fill from Step 0.
 > do you want to start? Pick one, or just tell me in a sentence what you're here
 > to do:
 >
-> - **[1]** Show me around first — a 2-minute live demo, nothing on your machine touched
+> - **[1]** Show me around first — a 2-minute live demo, nothing outside the demo folder touched
 > - **[2]** I know what I'll use it for — I'll describe it, you tailor the setup (~5 min)
 > - **[3]** Make it private first — public clone; give my data a safe home before anything else ← recommended first here
 > - **[4]** I work across several repos / a shared org config — bind them into one workspace
@@ -294,7 +294,7 @@ claim on a public or unknown origin):
 
 | Lane | Routes to |
 |---|---|
-| **[1]** show me around | `cd examples/agency` + **restart the agent** (that folder's CLAUDE.md puts the runtime into a read-only demo — a live board with a P1 incident; it is cwd-scoped, so a restart there is required, not an in-chat branch). One person with several hats (company, freelance, private) plus a home server? Offer `examples/portfolio` instead, same restart. Exit-ramp loops back to [2]/[3]. |
+| **[1]** show me around | `cd examples/agency` + **restart the agent** (that folder's CLAUDE.md puts the runtime into a sandbox demo whose writes stay inside that folder — a live board with a P1 incident; it is cwd-scoped, so a restart there is required, not an in-chat branch). One person with several hats (company, freelance, private) plus a home server? Offer `examples/portfolio` instead, same restart. Exit-ramp loops back to [2]/[3]. |
 | **[2]** describe-purpose | `/bridge-onboard` → collapsed Phase A: the sentence becomes `purpose.statement` verbatim, identity auto-defaults, protection pre-flight, a confirm-back screen, then seed a first task + a **live** `/briefing`. **If the sentence names a resource** — a machine/device to dedicate, or several repos — the wizard connects it to what it unlocks (Phase A step 10 offer-advisory / step 9 workspace); this is confined-safe (derived from your words, not a scan). |
 | **[3]** make it private | the origin/private-home pre-flight (`rules/push-guard.md` § Remediation) — the guard is already armed; on a public/unknown origin, re-home to a private repo first, then hand back to [2]. |
 | **[4]** workspace / org | `skills/workspace` (`workspace create` + `subscribe … --role code`) or, for a shared org config, `skills/bridge-overlay` (`/overlay add <git-url>`) — runs a trimmed Phase A first if not yet onboarded. |

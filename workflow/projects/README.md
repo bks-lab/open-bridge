@@ -1,11 +1,10 @@
 ---
-summary: "Per-board project configs consumed by project-advisor and github-projects-manager. One file per external board (GitHub, ADO, Linear, ...)."
+summary: "Per-board project configs consumed by github-projects-manager. One file per external board (GitHub, ADO, Linear, ...)."
 type: readme
 last_updated: 2026-05-11
 related:
   - _template.yaml
   - _schema.yaml
-  - ../../skills/project-advisor/SKILL.md
   - ../../skills/github-projects-manager/SKILL.md
   - ../../trackers/README.md
 ---
@@ -21,8 +20,7 @@ field values, governance rules, and state mappings.
 
 | Skill | What it reads |
 |---|---|
-| `skills/project-advisor/` | `fields`, `governance`, `state_map` — for issue-creation decisions and board-health checks |
-| `skills/github-projects-manager/` | `fields`, `conventions` — for `gh project item-edit` commands |
+| `skills/github-projects-manager/` | `fields`, `conventions`, `governance`, `state_map` — for `gh project item-edit` commands, issue-creation decisions and board-health checks |
 | `skills/briefing/` (Stream B) | `state_map` — to normalize raw status labels into the unified view |
 | `protocols/standing-orders/task-sync.md` *(Phase 3)* | `context_ref`, `mandant_ref` — for per-task sync resolution |
 
@@ -87,6 +85,5 @@ See `rules/operations.md` for the full path table.
 ## Related
 
 - `trackers/README.md` — provider playbooks for `/briefing` Stream B (read-only)
-- `skills/project-advisor/SKILL.md` — governance enforcement
-- `skills/github-projects-manager/SKILL.md` — write operations
+- `skills/github-projects-manager/SKILL.md` — write operations and governance enforcement
 - `protocols/standing-orders/task-sync.md` *(Phase 3)* — per-task sync routing

@@ -54,8 +54,9 @@ Then ask:
 
 Everything it answers is read from plain files in this folder. Open
 [`work/log.md`](work/log.md) next to it and check. [`CLAUDE.md`](CLAUDE.md)
-puts the runtime into demo mode: no onboarding, no setup. Do not push: this
-clone points at the public repo.
+puts the runtime into demo mode: no onboarding, no setup. The agent may play
+along inside this folder; `git restore examples/` puts the demo back. Do not
+push: this clone points at the public repo.
 
 ## How it differs from `examples/agency`
 

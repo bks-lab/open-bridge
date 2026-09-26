@@ -1,17 +1,10 @@
 ---
 name: bridge-contribute
 description: >-
-  Contribute features and improvements from your Bridge back to the
-  open-bridge OSS upstream (or your org overlay) as a fork-based pull
-  request. Scans your user branch for upstream-worthy files, classifies
-  them by scope, adapts org-specific content, runs the MANDATORY
-  two-layer content-safety gate (leak scanner + per-repo blocklist,
-  refuses on PII/customer hits), and opens the cross-fork PR with DCO
-  sign-off — no upstream push access needed.
-  Trigger: "/contribute", "contribute", "upstream contribution",
-  "contribute to upstream", "contribute upstream", "submit improvement",
-  "share my skill", "send this to open-bridge", "PR to upstream",
-  "PR to overlay", "give back", "submit a feature".
+  Contribute features or improvements from your Bridge to the open-bridge OSS
+  upstream (or org overlay) as a fork-based PR. Scans your user branch, classifies
+  by scope, runs the mandatory content-safety gate. Trigger: "/contribute",
+  "contribute", "share my skill", "PR to upstream", "give back".
 metadata:
   scope: core
 ---

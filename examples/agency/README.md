@@ -37,8 +37,10 @@ product.
 The workspace ships with two clients (BigCorp, StartupXYZ), a filled board,
 a daily log, and a P1 incident mid-flight. [`CLAUDE.md`](CLAUDE.md) /
 [`AGENTS.md`](AGENTS.md) in this folder put any agent runtime into demo
-mode: no onboarding, no setup. One caveat: don't push, this clone points
-at the public repo. For a real, private setup, see
+mode: no onboarding, no setup. The agent may play along inside this folder
+(append a log row, tick a box, move a task); `git restore examples/` puts
+the demo back. One caveat: don't push, this clone points at the public
+repo. For a real, private setup, see
 [`docs/install.md`](../../docs/install.md).
 
 ## Config tour

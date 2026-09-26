@@ -1,11 +1,7 @@
 ---
 name: dashboard
 description: >-
-  Project dashboard showing GitHub/ADO tasks, git activity, and deployment
-  status. Auto-detects project context from CWD, ecosystem.yaml, and
-  workflow/projects/*.yaml.
-  Trigger: "/dashboard", "/dashboard --all", "/dashboard --html",
-  "show dashboard", "show tasks", "what is up", "project status".
+  Per-project view: open GitHub board items, recent commits and deployment health for the project detected from the current directory, in the terminal or as HTML. Not the daily overview (briefing). Trigger: "/dashboard", "/dashboard --all", "/dashboard --html", "show dashboard", "show tasks", "tasks for this project".
 metadata:
   scope: core
 ---

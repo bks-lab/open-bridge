@@ -1,13 +1,10 @@
 ---
 name: bridge-dashboard
 description: >-
-  Generates the Bridge Control Center — a single-file HTML dashboard that
-  bundles Fleet (infra/remotes/), Work Board, Calendar
-  (next 24h), Channels, Git activity, optional Bridge-Deck /metrics, and
-  upstream drift into one view. Stands alone; the pixel-art Bridge-Deck
-  renderer it can complement is not yet public (coming soon).
-  Trigger: "/bridge-dashboard", "bridge dashboard", "control center",
-  "ops dashboard", "open dashboard", "show me everything at a glance".
+  Generates the Bridge Control Center: a single-file HTML dashboard bundling
+  Fleet (infra/remotes/), Work Board, Calendar, Channels and Git activity
+  into one view. Trigger: "/bridge-dashboard", "bridge dashboard",
+  "control center", "ops dashboard", "show me everything at a glance".
 metadata:
   scope: core
 ---

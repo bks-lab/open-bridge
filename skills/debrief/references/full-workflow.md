@@ -637,7 +637,7 @@ rules:
 - **process-transcription** (global skill, if installed): Handles org-specific
   participant lists, wiki directory routing, and customer-specific templates.
   When present, debrief defers meeting classification and protocol routing to it.
-- **project-advisor**: Provides governance rules and execution patterns for
-  GitHub issue creation from extracted tasks.
+- **github-projects-manager**: Provides governance rules and execution
+  patterns for GitHub issue creation from extracted tasks.
 - **Project Registry** (`workflow/projects/*.yaml`): Source of truth for field values
   when creating GitHub issues from meeting action items.

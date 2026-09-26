@@ -1,19 +1,10 @@
 ---
 name: capability-broker
 description: >-
-  Turns a capability gap into a gated acquisition. When the user needs a tool or
-  capability the Bridge can't do yet — and no existing skill, CLI, MCP, or
-  account covers it — this skill runs a false-gap guard, then OFFERS (never
-  auto-acts) to either research + provision the right tool, or scaffold a
-  dedicated skill, and captures the outcome as a learning so the gap never
-  recurs unaddressed. It is the forward / acquisition arm of the Bridge
-  learning loop (the retrospective arms are task-close-postmortem, bridge-audit,
-  bridge-curator); it composes with them and with rules/learning-autonomy.md,
-  never reinventing them. Hands skill authoring to skill-creator and bounded
-  research to deep-research. Trigger phrases: "the bridge can't do that",
-  "you can't do X yet", "there's no skill for this", "we don't have a tool for",
-  "set this up so it sticks", "build a skill for this", "is there a tool that",
-  "capability gap", "self-extend", "teach yourself to", "add this capability".
+  Turns a capability gap into a gated acquisition: when no skill, CLI, MCP, or
+  account covers a need, offers (never auto-acts) to research and provision a
+  tool, or scaffold a skill. Trigger: "the bridge can't do that", "there's no
+  skill for this", "build a skill for this", "capability gap", "self-extend".
 allowed-tools:
   - Read
   - Write

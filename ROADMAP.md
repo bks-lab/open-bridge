@@ -2,8 +2,9 @@
 
 **Honest status:** BKS open-bridge is built and used day to day by the
 BKS-Lab team on its own instances. Besides those, the team runs closed
-instances for other companies. We know of nobody outside those instances
-running it yet. This roadmap is a *direction*, not a set of dated promises.
+instances for other companies. Outside contributors have started to test it
+and add to it, but nobody outside those instances has reported using it for
+daily work yet. This roadmap is a *direction*, not a set of dated promises.
 Priorities move with what people actually need. **Every open item below links
 to its issue: react 👍 on the issues you want most**; that's the signal
 ordering gets decided by. Discuss use-cases in
@@ -18,7 +19,8 @@ This ledger lives here and nowhere else; the README and the site link to it.
 **Evidence base:** everything marked PROVEN is built into BKS open-bridge and
 used on real workdays by the BKS-Lab team, on the team's own instances and on
 the closed instances it runs for other companies. Nobody outside those
-instances has reported using it yet, so none of this is a market test.
+instances has reported using it for daily work yet, so none of this is a
+market test.
 
 **PROVEN: built and in daily use on those instances:**
 
@@ -50,12 +52,14 @@ instances has reported using it yet, so none of this is a market test.
 
 - Until people outside the team's instances use it, every statement about a
   target audience is a hypothesis.
-- Workspace separation as the default, the "if you can't place it into your
-  known world-models, ask" rule, and stripping unrelated tangents are agreed
-  in principle. Tangent stripping is hand-tested as a *separate* skill, but
-  **none of these are built into BKS open-bridge yet**, and the hard-silo
-  versus soft-folder default is unresolved. The issues that carried this
-  ([#43](https://github.com/bks-lab/open-bridge/issues/43),
+- Workspaces as containers are built: `/workspace` binds code repos and
+  config overlays into a named workspace (see Shipped). What stays open is
+  making separation the default: tasks kept apart per context, the "if you
+  can't place it into your known world-models, ask" rule, and stripping
+  unrelated tangents. Tangent stripping is hand-tested as a *separate* skill,
+  but **none of these three are built into BKS open-bridge yet**, and the
+  hard-silo versus soft-folder default is unresolved. The issues that carried
+  this ([#43](https://github.com/bks-lab/open-bridge/issues/43),
   [#91](https://github.com/bks-lab/open-bridge/issues/91)) were closed as
   duplicates without the default being built.
 - First-session value is thin: a fresh clone gives little reward until
@@ -79,6 +83,18 @@ Discussion if something you need is missing.
 
 ## Shipped
 
+- **Workspaces**
+  ([#88](https://github.com/bks-lab/open-bridge/pull/88),
+  [#89](https://github.com/bks-lab/open-bridge/pull/89)): `/workspace` binds
+  code repos and config overlays into a named project container, with a
+  machine-global identity other tools can read and member clones kept out of
+  git.
+- **First outside contributions**: a GitLab tracker playbook
+  ([#239](https://github.com/bks-lab/open-bridge/issues/239),
+  [#244](https://github.com/bks-lab/open-bridge/pull/244)) and a French locale
+  theme ([#238](https://github.com/bks-lab/open-bridge/issues/238),
+  [#261](https://github.com/bks-lab/open-bridge/pull/261)), plus a Cursor test
+  on Windows ([#241](https://github.com/bks-lab/open-bridge/issues/241)).
 - **Documentation overhaul**
   ([#234](https://github.com/bks-lab/open-bridge/pull/234),
   [#235](https://github.com/bks-lab/open-bridge/pull/235)): the README as a

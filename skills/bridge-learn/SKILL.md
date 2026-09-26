@@ -1,20 +1,11 @@
 ---
 name: bridge-learn
 description: >-
-  Review surface for Bridge Learning-Loop proposals — lists pending improvement
-  suggestions from work/_learning/proposals/, groups by severity (P0 → P3),
-  walks the user through each proposal with accept/reject/edit/defer decisions.
-  Accept applies the diff_preview (or asks the user for the patch), moves the
-  proposal file to proposals/accepted/, logs to audit-trail.md, and suggests a
-  commit message. Reject asks for a one-line reason, moves to
-  proposals/rejected/, logs. Optional trends section shows audit-history
-  recurring findings and sleeping skills (Phase 3+4 data). Auto-surfaces in
-  /briefing on Fridays when N+ pending (threshold in
-  bridge-config.yaml.learning.proposals.auto_surface_threshold).
-  Trigger: "/bridge-learn", "bridge learn",
-  "review proposals", "learn review", "what did we learn", "pending proposals",
-  "improvement queue", "review improvements", "check proposals",
-  "review improvements", "what have we learned".
+  Review surface for Bridge Learning-Loop improvement proposals: lists pending
+  suggestions by severity, walks through accept/reject/edit/defer, applies
+  accepted diffs via commit. Auto-surfaces in /briefing when proposals pile up.
+  Trigger: "/bridge-learn", "review proposals", "pending proposals",
+  "what did we learn", "improvement queue".
 allowed-tools:
   - Read
   - Write

@@ -193,4 +193,4 @@ a run produces normalized items in this shape:
 
 - `trackers/README.md` — the shared contract this file implements
 - `ecosystem.yaml` — source for `projects: ecosystem`
-- `skills/project-advisor/` — governance rules for issue creation and board health (write-side uses `github-projects-manager` skill)
+- `skills/github-projects-manager/` — write-side skill: issue creation, field updates, governance rules and board health (`references/governance.md`)

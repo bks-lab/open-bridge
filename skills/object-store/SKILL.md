@@ -1,15 +1,11 @@
 ---
 name: object-store
 description: >-
-  Resolves object://<store>/<key> to a local path or a file and never to
-  content, for what must not live in a repository: recordings, filed documents,
-  exports, deliverables carrying personal data. Owns the declarations in
-  infra/object-stores/ (a local directory or an S3 compatible service,
-  credentials by secret reference): `stores`, `stat`, `path`, `fetch --to`,
-  `put --from`. A failed read names its reason (not-reachable, not-found,
-  store-not-declared); a write never queues. Trigger: "/object-store",
-  "object store", "where does this recording go", "outside git", "minio",
-  "s3 bucket".
+  Resolves object://<store>/<key> to a local path or file, never content, for
+  what must not live in a repository: recordings, filed documents, exports
+  with personal data. Owns declarations in infra/object-stores/. Trigger:
+  "/object-store", "object store", "where does this recording go",
+  "outside git", "minio", "s3 bucket".
 metadata:
   scope: core
 allowed-tools:

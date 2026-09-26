@@ -1,19 +1,10 @@
 ---
 name: bridge-overlay
 description: >-
-  Subscribe a Bridge to an ORG OVERLAY — a git repo an organisation
-  publishes that ships its shared config (contexts, projects, mandants,
-  accounts, org skills/agents/standing-orders, an ecosystem fragment) as a
-  flat mirror tree. /overlay add <git-url> sparse-clones the overlay,
-  validates its manifest, previews a per-file plan with risk flags, and
-  materializes COPIES into your repo under a lockfile — never block-merging
-  your config, never clobbering your edits (3-way merge), never touching
-  CORE. sync/apply/status/diff/remove/list manage the subscription over
-  time. The overlay is the LOWER layer; your user files always win.
-  Trigger: "/overlay", "org overlay", "subscribe to overlay",
-  "materialize org config", "pull org overlay", "unsubscribe overlay",
-  "add org config by git url", "list overlays", "overlay status",
-  "overlay diff".
+  Subscribe a Bridge to an ORG OVERLAY: a git repo publishing shared config
+  (contexts, projects, mandants, org skills) as a flat mirror tree. Materializes
+  copies via 3-way merge; your files always win. Trigger: "/overlay", "org
+  overlay", "subscribe to overlay", "overlay status", "overlay diff".
 metadata:
   scope: core
 ---

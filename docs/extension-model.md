@@ -91,7 +91,7 @@ those are cross-cutting always-on rules, not routing.
 | **Recipient groups** (who to address) | `identity/mandants/<id>.yaml` | `persons[]` with channels per person | `/mandants`, calendar entries, message composers |
 | **Channel selection** (which transport) | `infra/channels/<name>.yaml` | `type`, `runtime.host`, credentials-ref | `channel` skill (an org overlay can add transport-specific skills such as an `email-manager`, `scope: org`) |
 | **Persona destinations** (filing paths per identity) | `identity/personas/<id>.yaml.destinations` | key→path map, variable-interpolated | referenced by name from context routing rules |
-| **Tracker / Issue dispatch** | `workflow/projects/<slug>.yaml` | field values, governance rules, state mappings | `github-projects-manager`, `project-advisor` |
+| **Tracker / Issue dispatch** | `workflow/projects/<slug>.yaml` | field values, governance rules, state mappings | `github-projects-manager` |
 | **Sub-repo / context tagging** | `skills/org-context/SKILL.md` (org overlay) | tag-table | `org-context` skill — an org-overlay addition (`scope: org`), always-active when present, not shipped in open-bridge |
 | **Cross-cutting always-on rules** *(not routing — listed here for contrast)* | `protocols/standing-orders/<name>.md` | scope: always, enforcement: advisory/blocking | session-start of every Bridge session |
 

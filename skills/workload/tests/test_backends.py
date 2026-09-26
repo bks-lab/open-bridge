@@ -1255,6 +1255,24 @@ class AKindWithoutADeadlineIsKeptToo(BackendBase):
         return as_text([f for f in a.files
                         if not str(f.path).endswith(".plist")][0].content)
 
+    def test_a_daemon_writes_a_started_line_before_it_runs(self):
+        # A daemon writes its trace only when it ends. One that crashed in a
+        # loop and then ran cleanly for weeks kept "the last run failed" as its
+        # newest line, and reconcile reported a healthy service as broken for
+        # twelve days. The start line is what makes "it is running now" the
+        # newest thing the trace says.
+        text = self.script()
+        self.assertIn("trace 0 0 started", text)
+        self.assertLess(text.index("trace 0 0 started"), text.index('> "$OUT_FILE" 2>&1'),
+                        "the start line has to come before the run, not after it")
+
+    def test_a_run_that_ends_writes_no_started_line(self):
+        # A cadence run ends every time and its end line already says how it
+        # went; a start line there would only double every entry.
+        a = self.artifact("block-style-report")
+        text = as_text([f for f in a.files if not str(f.path).endswith(".plist")][0].content)
+        self.assertNotIn("trace 0 0 started", text)
+
     def test_a_daemon_redirects_into_the_file_the_guard_prepared_for_it(self):
         text = self.script()
         self.assertIn('> "$OUT_FILE" 2>&1', text,

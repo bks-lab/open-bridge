@@ -2,13 +2,11 @@
 name: bridge-sync
 description: >-
   End-of-sprint batch-sync: pushes ALL pending scope:core + scope:org
-  commits from the local user branch to BOTH upstreams (open-bridge +
-  your org overlay) in one operation, with per-destination scrubbing and
-  parallel PR creation. Complements /promote (per-commit) and
-  /contribute (per-file) with a sprint-level workflow.
+  commits from the user branch to BOTH upstreams (open-bridge + org
+  overlay) in one operation. NOT for a single commit (use /promote) or
+  file-level adaptation (/contribute).
   Trigger: "/bridge-sync", "sync to upstreams", "push to both",
-  "batch promote", "end-of-sprint sync", "sync all pending",
-  "push everything to both repos".
+  "end-of-sprint sync", "sync all pending".
 metadata:
   scope: core
 ---

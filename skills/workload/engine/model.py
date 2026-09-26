@@ -481,6 +481,10 @@ class Response:
     recipients: tuple = ()
     notify_on: tuple = ()
     notify_via: Optional[str] = None
+    #: Exit codes the run uses for "failed, try again next tick" (75 is
+    #: EX_TEMPFAIL). The first such failure after a clean run wakes nobody; a
+    #: second failure in a row does. Codes not named here speak at once.
+    transient_exit_codes: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -736,7 +740,8 @@ def _execution(raw, source) -> Execution:
 
 
 def _response(raw, source) -> Response:
-    values = _known(raw, ("evidence", "recipients", "notify_on", "notify_via"),
+    values = _known(raw, ("evidence", "recipients", "notify_on", "notify_via",
+                          "transient_exit_codes"),
                     "response", source)
     evidence = values.get("evidence")
     if evidence is not None:
@@ -751,8 +756,14 @@ def _response(raw, source) -> Response:
         recipients.append(Recipient(mandant=str(entry.get("mandant", "")),
                                     person=entry.get("person"),
                                     only_at=_tuple(entry.get("only_at"))))
+    transient = _tuple(values.get("transient_exit_codes"))
+    for code in transient:
+        if isinstance(code, bool) or not isinstance(code, int) or not 1 <= code <= 255:
+            _fail(source, f"response.transient_exit_codes: {code!r} is not an exit code "
+                          "from 1 to 255; 0 is success and never transient")
     return Response(evidence=evidence, recipients=tuple(recipients),
-                    notify_on=notify_on, notify_via=values.get("notify_via"))
+                    notify_on=notify_on, notify_via=values.get("notify_via"),
+                    transient_exit_codes=transient)
 
 
 def load_all(root: Path, cfg) -> list:

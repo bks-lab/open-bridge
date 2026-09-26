@@ -1,17 +1,11 @@
 ---
 name: secrets
 description: >-
-  Resolves a secret reference to the program that needs it and never to the
-  conversation, puts a new value into a declared store, never through argv, and
-  finds plaintext that should have been a reference. Owns the grammar of
-  rules/secret-placement.md and the policy of infra/secret-stores/: `refs`
-  lists every reference with its file and line, `check` reports bytes and a
-  sha256 fingerprint instead of a value, `run` hands a value to a child process
-  and scrubs what comes back, `where` says where a new secret belongs, `store`
-  writes it there, `stores` lists the declarations, `audit` finds credentials
-  and personal data in the tree. No command prints a secret. Trigger:
-  "/secrets", "secret", "token", "credential", "where do I put this token",
-  "keychain", "keepass", "is there a token in the repo".
+  Resolves a secret reference to the program that needs it, never the
+  conversation, per rules/secret-placement.md and the infra/secret-stores/
+  policy. Commands: refs, check, run, where, store, stores, audit. No command
+  prints a secret. Trigger: "/secrets", "secret", "token", "credential",
+  "keychain".
 metadata:
   scope: core
 allowed-tools:
