@@ -150,7 +150,10 @@ native Windows). It arms the same guard and repairs the discovery symlinks.
 - **Codex and Copilot CLI** work through `AGENTS.md` plus the skill symlinks
   `.agents/skills` and `.github/skills`, both pointing at the one `skills/`
   tree.
-- **Other tools that read `AGENTS.md`** (Gemini CLI, Cursor, Windsurf) get the
+- **Cursor** (agent mode) was tested by a contributor on Windows: it reads
+  `AGENTS.md`, runs the first-session check on its own, finds skills when asked
+  for them by name, and runs `/bridge-onboard` through to the private-home step.
+- **Other tools that read `AGENTS.md`** (Gemini CLI, Windsurf) get the
   instructions, but their skill discovery is untested here. On a tool without
   slash commands, ask for the skill by name and the agent reads its `SKILL.md`.
 
