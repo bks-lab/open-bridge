@@ -131,7 +131,7 @@ specified in [`rules/session-start.md`](../rules/session-start.md).
 
 `/bridge-onboard` then walks the guided setup: identity and purpose, optional
 ecosystem detection, the work-system config, and your own `user/{name}` branch.
-It arms the `pre-push` guard (`[rules/push-guard.md](../rules/push-guard.md)`)
+It arms the `pre-push` guard ([`rules/push-guard.md`](../rules/push-guard.md))
 *before* creating that branch. That guard is the git-layer backstop that blocks
 publishing the branch to a public remote by accident.
 
