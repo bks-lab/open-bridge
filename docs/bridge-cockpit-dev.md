@@ -134,7 +134,10 @@ python3 scripts/bridge-cockpit.py status --json
   anything in `scripts/web/`, run `python3 scripts/build-cockpit-demo.py --write`
   and commit the copy with the change. It writes `colors.css` from `DESIGN.md`
   and an `index.html` that turns mock mode on by itself; CI runs
-  `test_bridge_cockpit_demo.py`, which fails while the copy has drifted.
+  `test_bridge_cockpit_demo.py`, which fails while the copy has drifted. In a
+  configured instance (one with `bridge-config.yaml`) `colors.css` stays as
+  open-bridge ships it: the demo shows open-bridge, so an instance's own
+  `DESIGN.md` is neither checked against it nor written into it.
 - **A second instance beside the live one**:
   `python3 scripts/bridge-cockpit.py --state-dir /tmp/bw-dev serve --port 8798`,
   its link from `python3 scripts/bridge-cockpit.py --state-dir /tmp/bw-dev url`,

@@ -8,6 +8,7 @@ DESIGN.md, and that the demo's index.html turns mock mode on by itself.
 from __future__ import annotations
 
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -81,6 +82,8 @@ def test_vendor_readme_is_not_copied(tree: Path):
 
 
 def test_colors_css_is_the_generator_output():
+    if (ROOT / "bridge-config.yaml").is_file():
+        pytest.skip("a configured instance keeps open-bridge's demo colours, its own DESIGN.md does not apply")
     committed = (ROOT / "docs" / "cockpit-demo" / "colors.css").read_text(encoding="utf-8")
     assert committed == stylesheet(ROOT)
     assert "--accent" in committed
@@ -119,3 +122,37 @@ def test_every_other_file_is_a_byte_copy():
             continue
         assert (ROOT / "scripts" / "web" / rel).read_bytes() == data, rel
         assert (out / rel).read_bytes() == data, rel
+
+
+# ---------------------------------------------------------------- a configured instance
+#
+# The demo shows open-bridge in open-bridge's colours. An instance with a DESIGN.md of its own
+# would get a different colors.css from the generator; --check must not call that drift, and
+# --write must not bake the instance's colours into a file that ships upstream.
+
+def _instance(tree: Path) -> Path:
+    (tree / "bridge-config.yaml").write_text("identity: {}\n", encoding="utf-8")
+    design = tree / "DESIGN.md"
+    text = design.read_text(encoding="utf-8")
+    # a colour of its own: every hex colour the file uses becomes another one, whatever the Bridge's palette
+    text = re.sub(r"#[0-9A-Fa-f]{6}\b", lambda m: "#123456" if m.group(0).upper() != "#123456" else "#654321", text)
+    design.write_text(text, encoding="utf-8")
+    assert stylesheet(tree) != (tree / "docs" / "cockpit-demo" / "colors.css").read_text(encoding="utf-8")
+    return tree
+
+
+def test_an_instance_with_its_own_design_is_not_drift(tree: Path):
+    assert demo.drift(_instance(tree)) == []
+    assert demo.main(["--check", "--root", str(tree)]) == 0
+
+
+def test_write_in_an_instance_keeps_the_demo_colours(tree: Path):
+    before = (tree / "docs" / "cockpit-demo" / "colors.css").read_bytes()
+    demo.write(_instance(tree))
+    assert (tree / "docs" / "cockpit-demo" / "colors.css").read_bytes() == before
+
+
+def test_an_instance_still_catches_a_changed_copied_file(tree: Path):
+    _instance(tree)
+    (tree / "scripts" / "web" / "app.js").write_text("// changed\n", encoding="utf-8")
+    assert ("app.js", "changed") in demo.drift(tree)

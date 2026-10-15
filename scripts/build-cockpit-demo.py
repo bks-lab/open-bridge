@@ -11,7 +11,11 @@ What it writes into docs/cockpit-demo/:
 - every file of scripts/web, byte for byte, except vendor/README.md (provenance notes
   for the source tree, not part of the page);
 - colors.css, generated from DESIGN.md by bridge_cockpit.design.stylesheet, the same
-  text the server sends at /colors.css (never hand-picked colours);
+  text the server sends at /colors.css (never hand-picked colours). The demo shows
+  open-bridge, so this is open-bridge's DESIGN.md: in a configured instance (it has a
+  bridge-config.yaml and often a DESIGN.md of its own) colors.css is neither checked
+  nor rewritten, or every instance would be red and --write would carry its colours
+  into a file that ships upstream;
 - index.html, the source page with three changes: a tiny inline script as the first
   thing in <head> that adds mock=1 to the address when it is missing (app.js reads it
   when the module loads, so the bare address cockpit-demo/ opens the demo with invented
@@ -61,6 +65,11 @@ def demo_index(source: str) -> str:
     return page
 
 
+def is_instance(root: Path) -> bool:
+    """A configured Bridge (it carries its own bridge-config.yaml), not open-bridge itself."""
+    return (Path(root) / "bridge-config.yaml").is_file()
+
+
 def expected(root: Path) -> dict[str, bytes]:
     """Every file the demo folder must hold, by path relative to it."""
     root = Path(root)
@@ -74,7 +83,8 @@ def expected(root: Path) -> dict[str, bytes]:
             continue
         files[rel] = path.read_bytes()
     files["index.html"] = demo_index(files["index.html"].decode("utf-8")).encode("utf-8")
-    files["colors.css"] = stylesheet(root).encode("utf-8")
+    if not is_instance(root):
+        files["colors.css"] = stylesheet(root).encode("utf-8")
     return files
 
 
@@ -95,7 +105,8 @@ def drift(root: Path) -> list[tuple[str, str]]:
             found.append((rel, "missing"))
         elif (out / rel).read_bytes() != data:
             found.append((rel, "changed"))
-    found.extend((rel, "stale") for rel in sorted(have - set(want)))
+    kept = {"colors.css"} if is_instance(root) else set()
+    found.extend((rel, "stale") for rel in sorted(have - set(want) - kept))
     return found
 
 
