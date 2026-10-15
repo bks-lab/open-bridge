@@ -557,6 +557,76 @@ html.dark .ckt-tap{color:var(--surface)}
   .ckt-bar{padding:8px 10px}
 }
 
+/* ---- What's inside: the four feature pages as cards, right before the cockpit ----
+   Each card draws its idea in a small inline SVG coloured only from tokens, so
+   it follows the theme. The motion is slow and quiet, runs only while the strip
+   is on screen (.wi-live, set by the script under the section) and not at all
+   under prefers-reduced-motion. */
+#inside{padding-bottom:72px}
+#inside + #cockpit{padding-top:40px}
+.wi-grid{display:grid;gap:20px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.wi-card{position:relative;display:flex;flex-direction:column;min-width:0;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;
+  transition:border-color .18s ease}
+.wi-card:hover{border-color:var(--accent)}
+.wi-card:focus-within{border-color:var(--accent-text)}
+.wi-vis{display:block;background:color-mix(in srgb,var(--accent-soft) 45%,var(--surface));border-bottom:1px solid var(--border)}
+html.dark .wi-vis{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
+.wi-vis svg{display:block;width:100%;height:auto}
+.wi-body{display:flex;flex-direction:column;gap:10px;flex:1;padding:20px 22px 22px}
+.wi-body h3{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:19px;font-weight:600;line-height:1.3;letter-spacing:-.01em;color:var(--primary)}
+.wi-body h3 a{color:inherit;text-decoration:none}
+.wi-body h3 a::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.wi-body h3 a:focus-visible{outline:none}
+.wi-body p{font-size:14.5px;line-height:1.6;color:var(--on-surface)}
+.wi-body .wi-more{margin-top:auto;padding-top:4px;display:flex;flex-wrap:wrap;gap:4px 16px;font-size:14px;font-weight:500;color:var(--accent-text)}
+.wi-more a{position:relative;z-index:1;color:var(--accent-text);text-decoration:none}
+.wi-more a:hover{text-decoration:underline}
+.wi-card:hover .wi-go{text-decoration:underline}
+.wi-badge{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;line-height:1;
+  color:var(--attention-text);border:1px solid currentColor;border-radius:var(--r-full);padding:3px 7px}
+
+/* drawing vocabulary, all from tokens */
+.wi-vis .w-box{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+.wi-vis .w-hi{fill:var(--surface);stroke:var(--accent-text);stroke-width:1.5}
+.wi-vis .w-soft{fill:var(--accent-soft)}
+.wi-vis .w-ink{fill:var(--accent-text)}
+.wi-vis .w-bar{fill:var(--line)}
+.wi-vis .w-mut{fill:var(--muted);opacity:.55}
+.wi-vis .w-wire{fill:none;stroke:var(--muted);stroke-opacity:.55;stroke-width:1.2;stroke-linecap:round}
+.wi-vis .w-flow{fill:none;stroke:var(--accent-text);stroke-width:1.6;stroke-linecap:round;stroke-dasharray:2 6}
+.wi-vis .w-line{fill:none;stroke:var(--accent-text);stroke-width:1.6;stroke-linecap:round}
+
+.wi-vis *{transform-box:fill-box;transform-origin:center}
+.wi-vis .a-flow{animation:wi-dash 1.8s linear infinite}
+.wi-vis .a-flow.rev{animation-direction:reverse}
+.wi-vis .a-pulse{animation:wi-pulse 2.8s ease-out infinite}
+.wi-vis .a-tick{animation:wi-tick 4s linear infinite}
+.wi-vis .a-scan{animation:wi-scan 4s linear infinite;transform-origin:left center}
+.wi-vis .a-ask{animation:wi-ask 3.6s ease-in-out infinite}
+.wi-vis .a-row{animation:wi-row 6s steps(1,end) infinite;transform-box:view-box;transform-origin:0 0}
+.wi-vis .a-blink{animation:wi-blink 2.4s ease-in-out infinite}
+.wi-vis [class*="a-"]{animation-play-state:paused}
+.wi-live .wi-vis [class*="a-"]{animation-play-state:running}
+@keyframes wi-dash{to{stroke-dashoffset:-32}}
+@keyframes wi-pulse{0%{transform:scale(1);opacity:.55}70%,100%{transform:scale(1.9);opacity:0}}
+@keyframes wi-tick{0%,8%{fill:var(--line)}12%,40%{fill:var(--accent-text)}60%,100%{fill:var(--line)}}
+@keyframes wi-scan{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes wi-ask{0%{transform:translateX(0);opacity:0}15%{opacity:1}55%,72%{transform:translateX(-34px);opacity:1}90%,100%{transform:translateX(-34px);opacity:0}}
+@keyframes wi-row{0%{transform:translateY(0)}33.333%{transform:translateY(18px)}66.666%{transform:translateY(36px)}}
+@keyframes wi-blink{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){
+  .wi-vis [class*="a-"]{animation:none!important}
+  .wi-card{transition:none}
+}
+@media (max-width:1100px){ .wi-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:640px){
+  .wi-grid{grid-template-columns:1fr;gap:16px}
+  #inside{padding-bottom:48px}
+  #inside + #cockpit{padding-top:24px}
+  .wi-body{padding:18px 18px 20px}
+}
+
 /* ---- Get-started dual path (Try | Adopt): stacks on mobile ---- */
 #get-started{scroll-margin-top:112px}
 .path-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:stretch}
@@ -754,6 +824,7 @@ html.story-static .story-list{display:flex;flex-wrap:wrap;gap:10px;justify-conte
     <a href="#install-early"><span data-lang="en">Install</span><span data-lang="de">Installieren</span></a>
     <a href="#usecases"><span data-lang="en">Use cases</span><span data-lang="de">Anwendungsfälle</span></a>
     <a href="#what-runs"><span data-lang="en">What runs</span><span data-lang="de">Was läuft</span></a>
+    <a href="#inside"><span data-lang="en">What's inside</span><span data-lang="de">Was drin ist</span></a>
     <a href="#objection"><span data-lang="en">Why not a CLAUDE.md</span><span data-lang="de">Warum nicht CLAUDE.md</span></a>
     <a href="#honesty"><span data-lang="en">Status</span><span data-lang="de">Status</span></a>
     <a href="#concept"><span data-lang="en">What it reads</span><span data-lang="de">Was es liest</span></a>
@@ -1153,6 +1224,144 @@ html.story-static .story-list{display:flex;flex-wrap:wrap;gap:10px;justify-conte
     </div>
 
     <p class="cap-more reveal"><a href="use-cases.html"><span data-lang="en">All eight jobs, with the primitives behind each →</span><span data-lang="de">Alle acht Aufgaben, mit den Primitiven dahinter →</span></a></p>
+  </div>
+</section>
+
+<section id="inside" class="alt">
+  <div class="container">
+    <div class="sec-head reveal">
+      <p class="eyebrow"><span data-lang="en">What's inside</span><span data-lang="de">Was drin ist</span></p>
+      <h2 class="h1"><span data-lang="en">Four building blocks, each with its own page.</span><span data-lang="de">Vier Bausteine, jeder mit eigener Seite.</span></h2>
+    </div>
+
+    <div class="wi-grid reveal">
+      <article class="wi-card">
+        <span class="wi-vis" aria-hidden="true">
+          <svg viewBox="0 0 240 120">
+            <path class="w-wire" d="M72 30 C88 30 84 56 98 58"/>
+            <path class="w-wire" d="M72 60 H98"/>
+            <path class="w-wire" d="M72 90 C88 90 84 64 98 62"/>
+            <path class="w-flow a-flow" d="M72 30 C88 30 84 56 98 58"/>
+            <path class="w-flow a-flow" d="M72 60 H98"/>
+            <path class="w-flow a-flow" d="M72 90 C88 90 84 64 98 62"/>
+            <path class="w-wire" d="M142 60 C156 60 154 38 168 38"/>
+            <path class="w-wire" d="M142 60 C156 60 154 82 168 82"/>
+            <path class="w-flow a-flow rev" d="M142 60 C156 60 154 38 168 38"/>
+            <path class="w-flow a-flow rev" d="M142 60 C156 60 154 82 168 82"/>
+            <g><rect class="w-box" x="18" y="20" width="54" height="20" rx="5"/><circle class="w-ink" cx="28" cy="30" r="2.6"/><rect class="w-bar" x="35" y="28" width="28" height="4" rx="2"/></g>
+            <g><rect class="w-box" x="18" y="50" width="54" height="20" rx="5"/><circle class="w-ink" cx="28" cy="60" r="2.6"/><rect class="w-bar" x="35" y="58" width="22" height="4" rx="2"/></g>
+            <g><rect class="w-box" x="18" y="80" width="54" height="20" rx="5"/><circle class="w-ink" cx="28" cy="90" r="2.6"/><rect class="w-bar" x="35" y="88" width="26" height="4" rx="2"/></g>
+            <circle class="w-soft a-pulse" cx="120" cy="60" r="20"/>
+            <rect class="w-hi" x="98" y="40" width="44" height="40" rx="9"/>
+            <rect class="w-soft" x="106" y="50" width="28" height="6" rx="3"/>
+            <rect class="w-bar" x="106" y="61" width="20" height="4" rx="2"/>
+            <rect class="w-bar" x="106" y="69" width="24" height="4" rx="2"/>
+            <g><rect class="w-box" x="172" y="31" width="50" height="18" rx="5"/><rect class="w-box" x="168" y="27" width="50" height="18" rx="5"/><rect class="w-bar" x="176" y="34" width="30" height="4" rx="2"/></g>
+            <g><rect class="w-box" x="172" y="75" width="50" height="18" rx="5"/><rect class="w-box" x="168" y="71" width="50" height="18" rx="5"/><rect class="w-bar" x="176" y="78" width="24" height="4" rx="2"/></g>
+          </svg>
+        </span>
+        <div class="wi-body">
+          <h3><a href="workspaces.html">Workspaces</a></h3>
+          <p><span data-lang="en">A workspace binds what a bridge needs for one thing, the config overlays it subscribes to and the repos it clones, under one name.</span><span data-lang="de">Ein Workspace bündelt unter einem Namen, was eine Bridge für eine Sache braucht: die Config-Overlays, die sie abonniert, und die Repos, die sie klont.</span></p>
+          <p class="wi-more"><span class="wi-go"><span data-lang="en">Read more →</span><span data-lang="de">Mehr lesen →</span></span></p>
+        </div>
+      </article>
+
+      <article class="wi-card">
+        <span class="wi-vis" aria-hidden="true">
+          <svg viewBox="0 0 240 120">
+            <path class="w-box" d="M18 22 H48 L60 34 V98 H18 Z"/>
+            <path class="w-wire" d="M48 22 V34 H60"/>
+            <rect class="w-ink" x="25" y="44" width="22" height="4" rx="2"/>
+            <rect class="w-bar" x="25" y="54" width="28" height="4" rx="2"/>
+            <rect class="w-bar" x="25" y="64" width="20" height="4" rx="2"/>
+            <rect class="w-bar" x="25" y="74" width="26" height="4" rx="2"/>
+            <path class="w-wire" d="M64 60 H86"/>
+            <path class="w-flow a-flow" d="M64 60 H86"/>
+            <rect class="w-hi" x="90" y="22" width="132" height="76" rx="9"/>
+            <circle class="w-ink a-blink" cx="104" cy="36" r="3.2"/>
+            <rect class="w-bar" x="112" y="34" width="44" height="4" rx="2"/>
+            <rect class="w-bar" x="104" y="46" width="70" height="4" rx="2"/>
+            <path class="w-wire" d="M104 78 H208"/>
+            <rect class="w-soft a-scan" x="104" y="74" width="104" height="8" rx="4"/>
+            <circle class="w-bar a-tick" cx="112" cy="78" r="3.6" style="animation-delay:0s"/>
+            <circle class="w-bar a-tick" cx="136" cy="78" r="3.6" style="animation-delay:.9s"/>
+            <circle class="w-bar a-tick" cx="160" cy="78" r="3.6" style="animation-delay:1.85s"/>
+            <circle class="w-bar a-tick" cx="184" cy="78" r="3.6" style="animation-delay:2.8s"/>
+            <circle class="w-bar a-tick" cx="204" cy="78" r="3.6" style="animation-delay:3.6s"/>
+          </svg>
+        </span>
+        <div class="wi-body">
+          <h3><a href="workloads.html">Workloads</a></h3>
+          <p><span data-lang="en">A workload is one thing that runs on a machine, written down once, in one file, with an owner.</span><span data-lang="de">Ein Workload ist eines der Dinge, die auf einer Maschine laufen, einmal aufgeschrieben, in einer Datei, mit einem Eigentümer.</span></p>
+          <p class="wi-more"><span class="wi-go"><span data-lang="en">Read more →</span><span data-lang="de">Mehr lesen →</span></span></p>
+        </div>
+      </article>
+
+      <article class="wi-card">
+        <span class="wi-vis" aria-hidden="true">
+          <svg viewBox="0 0 240 120">
+            <circle class="w-soft a-pulse" cx="62" cy="60" r="26"/>
+            <circle class="w-hi" cx="62" cy="60" r="26"/>
+            <circle class="w-ink" cx="62" cy="52" r="7"/>
+            <path class="w-ink" d="M48 74 C50 64 74 64 76 74 Z"/>
+            <path class="w-wire" d="M88 60 H120"/>
+            <rect class="w-box" x="120" y="34" width="12" height="52" rx="4"/>
+            <rect class="w-ink" x="124" y="54" width="4" height="12" rx="2"/>
+            <g class="a-ask"><circle class="w-ink" cx="172" cy="42" r="3.4"/></g>
+            <g class="a-ask" style="animation-delay:1.2s"><circle class="w-ink" cx="172" cy="60" r="3.4"/></g>
+            <g class="a-ask" style="animation-delay:2.4s"><circle class="w-ink" cx="172" cy="78" r="3.4"/></g>
+            <g><rect class="w-box" x="182" y="32" width="42" height="18" rx="9"/><rect class="w-bar" x="190" y="39" width="24" height="4" rx="2"/></g>
+            <g><rect class="w-box" x="182" y="51" width="42" height="18" rx="9"/><rect class="w-bar" x="190" y="58" width="18" height="4" rx="2"/></g>
+            <g><rect class="w-box" x="182" y="70" width="42" height="18" rx="9"/><rect class="w-bar" x="190" y="77" width="22" height="4" rx="2"/></g>
+          </svg>
+        </span>
+        <div class="wi-body">
+          <h3><a href="agents.html">Agents</a></h3>
+          <p><span data-lang="en">A Bridge-Agent is an addressable A2A endpoint that fronts one persona to the outside world, always under a hard human gate.</span><span data-lang="de">Ein Bridge-Agent ist ein adressierbarer A2A-Endpunkt, der eine Persona nach außen vertritt, stets unter einem harten menschlichen Gate.</span></p>
+          <p class="wi-more"><span class="wi-go"><span data-lang="en">Read more →</span><span data-lang="de">Mehr lesen →</span></span></p>
+        </div>
+      </article>
+
+      <article class="wi-card">
+        <span class="wi-vis" aria-hidden="true">
+          <svg viewBox="0 0 240 120">
+            <rect class="w-hi" x="16" y="14" width="208" height="94" rx="9"/>
+            <path class="w-wire" d="M16 32 H224"/>
+            <circle class="w-bar" cx="27" cy="23" r="2.6"/><circle class="w-bar" cx="36" cy="23" r="2.6"/><circle class="w-bar" cx="45" cy="23" r="2.6"/>
+            <rect class="w-box" x="58" y="18" width="120" height="10" rx="5"/>
+            <rect class="w-ink" x="26" y="40" width="20" height="4" rx="2"/>
+            <rect class="w-bar" x="54" y="40" width="20" height="4" rx="2"/>
+            <rect class="w-bar" x="82" y="40" width="20" height="4" rx="2"/>
+            <rect class="w-bar" x="110" y="40" width="20" height="4" rx="2"/>
+            <rect class="w-ink" x="26" y="47" width="20" height="1.6" rx=".8"/>
+            <circle class="w-wire" cx="58" cy="78" r="18"/>
+            <circle class="w-soft a-pulse" cx="58" cy="78" r="9"/>
+            <circle class="w-hi" cx="58" cy="78" r="9"/>
+            <circle class="w-ink" cx="74" cy="70" r="2.4"/>
+            <rect class="w-soft a-row" x="96" y="56" width="118" height="14" rx="4"/>
+            <circle class="w-ink" cx="104" cy="63" r="2.4"/><rect class="w-bar" x="111" y="61" width="60" height="4" rx="2"/>
+            <circle class="w-mut" cx="104" cy="81" r="2.4"/><rect class="w-bar" x="111" y="79" width="76" height="4" rx="2"/>
+            <circle class="w-mut" cx="104" cy="99" r="2.4"/><rect class="w-bar" x="111" y="97" width="48" height="4" rx="2"/>
+          </svg>
+        </span>
+        <div class="wi-body">
+          <h3><a href="cockpit.html">Cockpit</a> <span class="wi-badge"><span data-lang="en">Alpha</span><span data-lang="de">Alpha</span></span></h3>
+          <p><span data-lang="en">One browser tab that shows what is going on in your Bridge and lets you act on it. An early version, still being extended.</span><span data-lang="de">Ein Browser-Tab, der zeigt, was in deiner Bridge los ist, und dich direkt handeln lässt. Eine frühe Version, wird noch ausgebaut.</span></p>
+          <p class="wi-more"><span class="wi-go"><span data-lang="en">Read more →</span><span data-lang="de">Mehr lesen →</span></span><a href="#cockpit"><span data-lang="en">Try it below ↓</span><span data-lang="de">Gleich unten ausprobieren ↓</span></a></p>
+        </div>
+      </article>
+    </div>
+    <script>
+    /* the drawings move only while the strip is on screen */
+    (function(){
+      var s = document.getElementById("inside");
+      if(!s || !("IntersectionObserver" in window)) { if(s) s.classList.add("wi-live"); return; }
+      new IntersectionObserver(function(es){
+        es.forEach(function(e){ s.classList.toggle("wi-live", e.isIntersecting); });
+      }, { rootMargin:"80px 0px" }).observe(s);
+    })();
+    </script>
   </div>
 </section>
 
