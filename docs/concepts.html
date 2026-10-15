@@ -321,11 +321,16 @@ html.dark .tile .demo{background:var(--code-bg)}
       <a href="index.html"><span data-lang="en">Home</span><span data-lang="de">Start</span></a>
       <a href="demo.html"><span data-lang="en">Demo</span><span data-lang="de">Demo</span></a>
       <a href="use-cases.html"><span data-lang="en">Use Cases</span><span data-lang="de">Anwendungsfälle</span></a>
-      <a class="active" aria-current="page" href="concepts.html"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
-      <a href="workspaces.html"><span data-lang="en">Workspaces</span><span data-lang="de">Workspaces</span></a>
-      <a href="workloads.html"><span data-lang="en">Workloads</span><span data-lang="de">Workloads</span></a>
-      <a href="agents.html"><span data-lang="en">Agents</span><span data-lang="de">Agents</span></a>
-      <a href="cockpit.html"><span data-lang="en">Cockpit</span><span data-lang="de">Cockpit</span></a>
+      <a href="concepts.html" class="active" aria-current="page"><span data-lang="en">Concepts</span><span data-lang="de">Konzepte</span></a>
+      <div class="nav-group">
+        <button type="button" class="nav-group-btn" aria-expanded="false" aria-controls="nav-features"><span data-lang="en">Features</span><span data-lang="de">Funktionen</span><svg class="nav-caret" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <ul class="nav-panel" id="nav-features">
+          <li><a href="workspaces.html"><span class="np-t"><span data-lang="en">Workspaces</span><span data-lang="de">Workspaces</span></span><span class="np-d"><span data-lang="en">Repos and overlays under one name</span><span data-lang="de">Repos und Overlays unter einem Namen</span></span></a></li>
+          <li><a href="workloads.html"><span class="np-t"><span data-lang="en">Workloads</span><span data-lang="de">Workloads</span></span><span class="np-d"><span data-lang="en">One run on one machine, in one file</span><span data-lang="de">Ein Lauf auf einer Maschine, in einer Datei</span></span></a></li>
+          <li><a href="agents.html"><span class="np-t"><span data-lang="en">Agents</span><span data-lang="de">Agents</span></span><span class="np-d"><span data-lang="en">One persona as an A2A endpoint</span><span data-lang="de">Eine Persona als A2A-Endpunkt</span></span></a></li>
+          <li><a href="cockpit.html"><span class="np-t"><span data-lang="en">Cockpit</span><span data-lang="de">Cockpit</span><span class="np-badge">Alpha</span></span><span class="np-d"><span data-lang="en">The whole Bridge in one browser tab</span><span data-lang="de">Die ganze Bridge in einem Browser-Tab</span></span></a></li>
+        </ul>
+      </div>
       <a href="explore.html"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
       <a href="changelog.html"><span data-lang="en">Changelog</span><span data-lang="de">Changelog</span></a>
     </nav>

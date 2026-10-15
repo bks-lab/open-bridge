@@ -236,6 +236,47 @@ a{color:var(--accent-text)}
 @media (max-width:560px){
   .site-nav a{padding:6px 9px;font-size:13px}
 }
+
+/* ---- Features group: Workspaces, Workloads, Agents, Cockpit ----
+   One button in the row, the four pages in a panel under it. site-nav.js
+   makes it a disclosure (click, arrows, Escape, outside click) and adds
+   .nd-js; until then, or with no script at all, hover and keyboard focus
+   open the panel, so the four links are always reachable. */
+.nav-group{position:relative;display:flex;flex:0 0 auto}
+.nav-group-btn{
+  display:inline-flex;align-items:center;gap:5px;cursor:pointer;
+  font:500 14px/1.2 var(--font-sans);color:var(--secondary);background:none;border:0;
+  padding:6px 12px;border-radius:var(--r-full);white-space:nowrap;position:relative;
+  transition:color .18s ease,background .18s ease;
+}
+.nav-group-btn:hover,.nav-group-btn[aria-expanded="true"]{color:var(--primary);background:var(--surface-muted)}
+.nav-group-btn.active{color:var(--primary);background:var(--surface-muted)}
+.nav-group-btn.active::after{content:"";position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;background:var(--accent-text)}
+.nav-caret{flex:none;transition:transform .2s ease}
+.nav-group-btn[aria-expanded="true"] .nav-caret{transform:rotate(180deg)}
+.nav-panel{
+  display:none;position:absolute;z-index:60;top:calc(100% + 8px);left:0;width:300px;
+  list-style:none;margin:0;padding:6px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  box-shadow:0 1px 2px rgba(15,23,42,.06),0 18px 40px -18px rgba(15,23,42,.30);
+}
+html.dark .nav-panel{background:var(--surface-subtle);box-shadow:0 1px 2px rgba(0,0,0,.4),0 22px 50px -20px rgba(0,0,0,.8)}
+.nav-group.open .nav-panel,
+.nav-group:not(.nd-js):hover .nav-panel,
+.nav-group:not(.nd-js):focus-within .nav-panel{display:block}
+.site-nav .nav-panel a{
+  display:flex;flex-direction:column;gap:2px;white-space:normal;
+  padding:9px 12px;border-radius:var(--r-md);color:var(--on-surface);font-size:14px;
+}
+.site-nav .nav-panel a:hover,.site-nav .nav-panel a:focus-visible{background:var(--surface-muted);color:var(--primary)}
+.site-nav .nav-panel a.active{background:var(--accent-soft)}
+.site-nav .nav-panel a.active::after{content:none}
+.nav-panel .np-t{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--primary)}
+.nav-panel a.active .np-t{color:var(--accent-text)}
+.nav-panel .np-d{font-size:12.5px;font-weight:400;line-height:1.4;color:var(--muted)}
+.np-badge{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;line-height:1;
+  color:var(--attention-text);border:1px solid currentColor;border-radius:var(--r-full);padding:3px 7px}
+@media (prefers-reduced-motion:reduce){.nav-caret{transition:none}}
 /* desktop: the German labels need about 20px less so the header stays one row */
 @media (min-width:1100px){
   .site-nav a{padding:6px 10px}
@@ -310,7 +351,7 @@ section{padding-block:var(--section-y)}
 /* ---- Header shell ----
    Sticky, translucent, one hairline. Glass is allowed here and only here
    (DESIGN.md, Elevation). Inside index.html's .topbar the wrapper is the
-   sticky element, so the header itself stays static there. */
+   sticky element, so the header itself only stays relative there. */
 header.nav{
   position:sticky;top:0;z-index:50;height:auto;min-height:64px;
   display:flex;align-items:center;
@@ -318,7 +359,9 @@ header.nav{
   backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);
   border-bottom:1px solid var(--border);
 }
-.topbar header.nav{position:static}
+/* relative, not sticky: the panel of the Features group hangs from the header
+   and has to paint above the in-page nav that follows it in the same bar */
+.topbar header.nav{position:relative;z-index:2}
 .wordmark{transition:opacity .2s ease}
 .wordmark:hover{opacity:.8}
 .chip .chip-label{display:inline}
@@ -339,6 +382,20 @@ header.nav{
   }
   .site-nav::-webkit-scrollbar{display:none}
   .site-nav a{flex:0 0 auto}
+  /* The row scrolls, so a panel anchored inside it would be clipped. Here the
+     group is not a containing block: the panel hangs from the header itself,
+     full width under it, and the faded edge (a mask, which would clip it too)
+     is lifted while the panel is open. */
+  .nav-group{position:static}
+  .nav-panel{top:100%;left:16px;right:16px;width:auto;max-width:640px;margin-top:2px;
+    grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}
+  .nav-group.open .nav-panel,
+  .nav-group:not(.nd-js):hover .nav-panel,
+  .nav-group:not(.nd-js):focus-within .nav-panel{display:grid}
+  .site-nav.nd-open,.site-nav:has(.nav-group:not(.nd-js):focus-within){-webkit-mask-image:none;mask-image:none}
+}
+@media (max-width:480px){
+  .nav-panel{grid-template-columns:1fr}
 }
 
 /* ---- Page intro (every page but the landing) ----
