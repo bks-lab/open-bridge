@@ -191,7 +191,67 @@ footer.foot code{font-family:var(--font-mono)}
   .line{opacity:1!important;transform:none!important}
 }
 @media print{ header.nav,#tabs,.term-foot{display:none!important} .line{opacity:1!important;transform:none!important} #screen{min-height:auto} }
-/* pointer to the cockpit demo, under the terminal */
+/* ---- Two ways to watch: the terminal replay and the cockpit in the browser ----
+   Plain tabs over the demo area. Without script the tab row stays hidden and
+   both panels show one after the other. */
+.dm-tabs{display:flex;justify-content:safe center;gap:4px;margin:8px 0 0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.dm-tabs::-webkit-scrollbar{display:none}
+.dm-tabs[hidden]{display:none}
+.dm-tab{position:relative;display:inline-flex;align-items:center;gap:9px;flex:0 0 auto;cursor:pointer;
+  font:500 15px/1.2 var(--font-sans);color:var(--muted);background:none;border:0;
+  padding:12px 16px 14px;border-radius:var(--radius-md) var(--radius-md) 0 0;transition:color .18s ease,background .18s ease}
+.dm-tab svg{width:18px;height:18px;flex:none}
+.dm-tab:hover{color:var(--ink);background:var(--surface-subtle)}
+.dm-tab[aria-selected="true"]{color:var(--ink);font-weight:600}
+.dm-tab[aria-selected="true"]::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent-text)}
+.dm-tab[aria-selected="true"] svg{color:var(--accent-text)}
+.dm-badge{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;line-height:1;
+  color:var(--attention-text);border:1px solid currentColor;border-radius:var(--radius-full);padding:3px 7px}
+.dm-panel{scroll-margin-top:150px}
+.dm-panel:focus-visible{outline-offset:6px}
+.dm-panel[hidden]{display:none!important}
+/* the terminal's own chapter row sits right under the tabs now */
+.dm-panel #tabs{margin-top:18px}
+
+/* the browser panel: the cockpit demo, framed like on cockpit.html */
+.dm-browser{padding:22px 0 72px}
+.dm-intro{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px 28px;margin-bottom:18px}
+.dm-intro p{margin:0;max-width:44rem;font-size:15.5px;line-height:1.6;color:var(--on-surface)}
+.dm-intro p strong{color:var(--ink)}
+.dm-intro .links{display:flex;flex-wrap:wrap;gap:6px 18px}
+.dm-intro a{font-size:14.5px;font-weight:500;color:var(--accent-text);text-decoration:none;white-space:nowrap}
+.dm-intro a:hover{text-decoration:underline}
+.dm-win{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);
+  box-shadow:0 1px 2px rgba(15,23,42,.06),0 24px 60px -24px rgba(15,23,42,.28)}
+html.dark .dm-win{box-shadow:0 1px 2px rgba(0,0,0,.4),0 28px 70px -28px rgba(0,0,0,.75)}
+.dm-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface-subtle)}
+.dm-dots{display:flex;gap:6px;flex:none}
+.dm-dots i{width:10px;height:10px;border-radius:50%;background:var(--line);display:block}
+.dm-addr{flex:1;min-width:0;display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:12px;color:var(--muted);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-full);padding:4px 12px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dm-addr b{font-weight:600;color:var(--attention-text);font-family:var(--font-sans);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase}
+.dm-full{flex:none;font-size:13px;font-weight:500;text-decoration:none;color:var(--accent-text);white-space:nowrap}
+.dm-full:hover{text-decoration:underline}
+.dm-frame{display:none;width:100%;border:0;background:var(--surface);height:clamp(560px,calc(100vh - 150px),860px)}
+.dm-live .dm-frame{display:block}
+.dm-live .dm-poster{display:none}
+/* phones (and no script): a picture that opens the demo full screen, never a
+   live frame, so a swipe through the page cannot get caught inside the demo */
+.dm-poster{display:block;position:relative;height:440px;overflow:hidden;text-decoration:none;background:var(--surface-subtle)}
+.dm-poster img{display:block;width:100%;max-width:390px;height:auto;margin:0 auto}
+.dm-poster .pl-dark{display:none}
+html.dark .dm-poster .pl-dark{display:block}
+html.dark .dm-poster .pl-light{display:none}
+.dm-poster::after{content:"";position:absolute;inset:auto 0 0 0;height:160px;background:linear-gradient(to bottom,transparent,var(--surface-subtle) 78%)}
+.dm-tap{position:absolute;z-index:1;left:50%;bottom:26px;transform:translateX(-50%);white-space:nowrap;
+  display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:var(--radius-full);
+  font-size:15px;font-weight:600;color:#fff;background:var(--accent-text);box-shadow:0 8px 24px -10px rgba(15,23,42,.5)}
+html.dark .dm-tap{color:var(--surface)}
+.dm-cap{margin:14px 0 0;font-size:13.5px;line-height:1.6;color:var(--muted);max-width:80ch}
+.dm-cap strong{color:var(--ink);font-weight:600}
+
+/* pointer from the terminal to the browser tab, under the replay */
 .dh-next{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px 24px;margin:36px auto 72px;max-width:56rem;
   border:1px solid var(--border);border-left:3px solid var(--accent-text);border-radius:var(--r-lg);background:var(--surface-subtle);padding:18px 22px}
 .dh-next p{margin:0;font-size:15px;line-height:1.6;color:var(--on-surface);max-width:40rem}
@@ -199,6 +259,14 @@ footer.foot code{font-family:var(--font-mono)}
 .dh-next .links{display:flex;flex-wrap:wrap;gap:8px 18px}
 .dh-next a{font-size:14.5px;font-weight:500;color:var(--accent-text);text-decoration:none;white-space:nowrap}
 .dh-next a:hover{text-decoration:underline}
+@media (max-width:640px){
+  .dm-tab{padding:11px 12px 13px;font-size:14.5px;gap:7px}
+  .dm-poster{height:420px}
+  .dm-bar{padding:8px 10px;gap:8px}
+  .dm-dots{display:none}
+  .dm-browser{padding-bottom:56px}
+}
+@media print{ .dm-tabs,.dm-browser{display:none!important} #terminal[hidden]{display:block!important} }
 </style>
 <noscript><style>.line{opacity:1!important;transform:none!important}.caret{display:none}</style></noscript>
 </head>
@@ -232,6 +300,10 @@ footer.foot code{font-family:var(--font-mono)}
         <span class="chip-label">GitHub</span>
       </a>
       <a class="chip" href="index.html#license" aria-label="MIT license">MIT</a>
+      <div class="seg" role="group" aria-label="Language / Sprache">
+        <button id="lang-en" type="button" aria-pressed="true" title="Toggle language (press L)">EN</button>
+        <button id="lang-de" type="button" aria-pressed="false" title="Sprache umschalten (Taste L)">DE</button>
+      </div>
       <button class="icon-btn" id="themeToggle" aria-label="Theme follows your system. Click for light." title="Theme follows your system. Click for light. (T)">
         <svg class="auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 010 18z" fill="currentColor" stroke="none"/></svg>
         <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
@@ -283,6 +355,19 @@ footer.foot code{font-family:var(--font-mono)}
   </div></header>
 
   <div class="wrap">
+  <div class="dm-tabs" role="tablist" aria-label="Demo" hidden>
+    <button class="dm-tab" type="button" role="tab" id="dm-tab-terminal" aria-controls="terminal" aria-selected="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15h4.5"/></svg>
+      <span data-lang="en">In the terminal</span><span data-lang="de">Im Terminal</span>
+    </button>
+    <button class="dm-tab" type="button" role="tab" id="dm-tab-browser" aria-controls="browser" aria-selected="false" tabindex="-1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M2.5 8.5h19"/><circle cx="5.5" cy="6.25" r=".4" fill="currentColor"/><circle cx="7.5" cy="6.25" r=".4" fill="currentColor"/><path d="M6.5 12.5h5M6.5 15.5h8"/></svg>
+      <span data-lang="en">In the browser</span><span data-lang="de">Im Browser</span>
+      <span class="dm-badge">Alpha</span>
+    </button>
+  </div>
+
+  <div class="dm-panel" role="tabpanel" id="terminal" aria-labelledby="dm-tab-terminal">
   <div id="stage">
     <div id="tabs"></div>
     <div class="term" id="term">
@@ -475,28 +560,147 @@ footer.foot code{font-family:var(--font-mono)}
   <div class="dh-next" data-reveal>
     <p><span data-lang="en"><strong>This was the terminal.</strong> The same Bridge also has a page in the browser, the cockpit, and its demo runs live with invented data.</span><span data-lang="de"><strong>Das war das Terminal.</strong> Dieselbe Bridge hat auch eine Seite im Browser, das Cockpit, und seine Demo läuft live mit erfundenen Daten.</span></p>
     <div class="links">
-      <a id="dh-cockpit-demo" href="cockpit-demo/index.html"><span data-lang="en">Try the cockpit demo →</span><span data-lang="de">Cockpit-Demo ausprobieren →</span></a>
+      <a href="#browser" data-dm-show="browser"><span data-lang="en">See it in the browser →</span><span data-lang="de">Im Browser ansehen →</span></a>
       <a href="cockpit.html"><span data-lang="en">About the cockpit</span><span data-lang="de">Mehr zum Cockpit</span></a>
     </div>
-    <script>
-    /* The demo opens in the language and theme of this page, as on cockpit.html.
-       The address is built here, so no static link carries a query. */
-    (function(){
-      var a = document.getElementById("dh-cockpit-demo");
-      if(!a) return;
-      var r = document.documentElement;
-      function sync(){
-        var lang = r.getAttribute("data-active-lang") === "de" ? "de" : "en";
-        var theme = r.classList.contains("dark") ? "dark" : "light";
-        a.setAttribute("href", "cockpit-demo/index.html?mock=1&lang=" + lang + "&theme=" + theme);
-      }
-      sync();
-      if("MutationObserver" in window){
-        new MutationObserver(sync).observe(r, { attributes:true, attributeFilter:["class","data-active-lang"] });
-      }
-    })();
-    </script>
   </div>
+  </div><!-- /#terminal -->
+
+  <div class="dm-panel dm-browser" role="tabpanel" id="browser" aria-labelledby="dm-tab-browser">
+    <div class="dm-intro">
+      <p><span data-lang="en"><strong>The cockpit, an early version (alpha).</strong> The Bridge's own page in the browser: briefing, inbox and tasks, agent tabs, sessions and tokens. Below runs the real page with invented data. Click the tabs, open a row, ask the chat; the demo itself sends nothing.</span><span data-lang="de"><strong>Das Cockpit, eine frühe Version (Alpha).</strong> Die eigene Seite der Bridge im Browser: Briefing, Posteingang und Aufgaben, Agent-Tabs, Sitzungen und Tokens. Unten läuft die echte Seite mit erfundenen Daten. Klick die Tabs durch, öffne eine Zeile, frag den Chat; die Demo selbst sendet nichts.</span></p>
+      <div class="links">
+        <a class="dm-demo-link" href="cockpit-demo/index.html"><span data-lang="en">Open full screen ↗</span><span data-lang="de">Im Vollbild öffnen ↗</span></a>
+        <a href="cockpit.html"><span data-lang="en">About the cockpit →</span><span data-lang="de">Mehr zum Cockpit →</span></a>
+      </div>
+    </div>
+    <div class="dm-win">
+      <div class="dm-bar">
+        <span class="dm-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="dm-addr"><b>Demo</b><span>cockpit-demo/</span></span>
+        <a class="dm-full dm-demo-link" href="cockpit-demo/index.html"><span data-lang="en">Full screen ↗</span><span data-lang="de">Vollbild ↗</span></a>
+      </div>
+      <a class="dm-poster dm-demo-link" href="cockpit-demo/index.html">
+        <div data-lang="en">
+          <img class="pl-light" src="assets/cockpit/light-phone-today.jpg" width="780" height="1688" loading="lazy" decoding="async" alt="The cockpit demo on a phone: the Today page with the waiting agent tabs on top. Tap to open the demo full screen.">
+          <img class="pl-dark" src="assets/cockpit/dark-phone-today.jpg" width="780" height="1688" loading="lazy" decoding="async" alt="The cockpit demo on a phone in dark mode: the Today page with the waiting agent tabs on top. Tap to open the demo full screen.">
+        </div>
+        <div data-lang="de">
+          <img class="pl-light" src="assets/cockpit/de-light-phone-today.jpg" width="780" height="1688" loading="lazy" decoding="async" alt="Die Cockpit-Demo auf einem Handy: die Seite Heute mit den wartenden Agent-Tabs oben. Tippen öffnet die Demo im Vollbild.">
+          <img class="pl-dark" src="assets/cockpit/de-dark-phone-today.jpg" width="780" height="1688" loading="lazy" decoding="async" alt="Die Cockpit-Demo auf einem Handy im dunklen Design: die Seite Heute mit den wartenden Agent-Tabs oben. Tippen öffnet die Demo im Vollbild.">
+        </div>
+        <span class="dm-tap"><span data-lang="en">Tap to open the demo</span><span data-lang="de">Tippen öffnet die Demo</span> <span aria-hidden="true">↗</span></span>
+      </a>
+      <iframe class="dm-frame" id="dm-demo-frame" title="Bridge cockpit demo with invented data"></iframe>
+    </div>
+    <p class="dm-cap"><span data-lang="en"><strong>Live demo.</strong> Invented data, served from this site: the demo talks to no other host and saves nothing. The real cockpit runs on your own computer and answers only on 127.0.0.1.</span><span data-lang="de"><strong>Live-Demo.</strong> Erfundene Daten, ausgeliefert von dieser Seite: die Demo spricht mit keinem anderen Host und speichert nichts. Das echte Cockpit läuft auf deinem eigenen Rechner und antwortet nur auf 127.0.0.1.</span></p>
+  </div><!-- /#browser -->
+
+  <script>
+  /* Two tabs over the demo area. Runs right here, before first paint of what
+     follows, so the hidden panel never flashes. Without script the tab row
+     stays hidden and both panels show.
+
+     The cockpit frame gets its address only once its tab is shown, and from
+     641 px up; on a phone the poster stays and opens the demo full screen. The
+     address follows the page's theme (html.dark) and language
+     (data-active-lang), built here so no static link carries a query. The
+     first address goes into src; a later toggle replaces the frame's
+     location, which adds no history entry. While the browser tab is shown the
+     terminal replay holds, the same way it holds under the mouse. */
+  (function(){
+    var root = document.documentElement;
+    var list = document.querySelector(".dm-tabs");
+    var tabs = [].slice.call(document.querySelectorAll(".dm-tab"));
+    var panels = { terminal: document.getElementById("terminal"), browser: document.getElementById("browser") };
+    var f = document.getElementById("dm-demo-frame");
+    var win = f ? f.parentNode : null;
+    if(!list || tabs.length !== 2 || !panels.terminal || !panels.browser) return;
+    var mq = window.matchMedia ? window.matchMedia("(min-width: 641px)") : null;
+    var TITLE = { en:"Bridge cockpit demo with invented data", de:"Bridge-Cockpit-Demo mit erfundenen Daten" };
+    var cur = "", loaded = false, active = "terminal";
+    if(f){ f.addEventListener("load", function(){ loaded = true; }); }
+
+    function syncFrame(){
+      if(!f) return;
+      var lang = root.getAttribute("data-active-lang") === "de" ? "de" : "en";
+      var theme = root.classList.contains("dark") ? "dark" : "light";
+      var u = "cockpit-demo/index.html?mock=1&lang=" + lang + "&theme=" + theme;
+      f.setAttribute("title", TITLE[lang]);
+      var links = document.querySelectorAll("a.dm-demo-link");
+      for(var i = 0; i < links.length; i++){ links[i].setAttribute("href", u); }
+      var wide = !mq || mq.matches;
+      win.classList.toggle("dm-live", wide);
+      if(active !== "browser" || !wide || u === cur) return;
+      cur = u;
+      var w = null;
+      try { w = loaded ? f.contentWindow : null; if(w){ w.location.replace(new URL(u, location.href).href); } }
+      catch(e){ w = null; }
+      if(!w){ f.setAttribute("src", u); }
+    }
+
+    function holdReplay(hold){
+      var term = document.getElementById("term");
+      if(!term) return;
+      try { term.dispatchEvent(new Event(hold ? "mouseenter" : "mouseleave")); } catch(e){}
+    }
+
+    function show(name, opts){
+      opts = opts || {};
+      if(!panels[name]) name = "terminal";
+      active = name;
+      tabs.forEach(function(t){
+        var on = t.getAttribute("aria-controls") === name;
+        t.setAttribute("aria-selected", on ? "true" : "false");
+        t.setAttribute("tabindex", on ? "0" : "-1");
+        if(on && opts.focus) t.focus();
+      });
+      panels.terminal.hidden = name !== "terminal";
+      panels.browser.hidden = name !== "browser";
+      holdReplay(name === "browser");
+      syncFrame();
+      if(opts.hash && window.history && history.replaceState){
+        try { history.replaceState(null, "", "#" + name); } catch(e){}
+      }
+    }
+
+    list.hidden = false;
+    tabs.forEach(function(t, i){
+      t.addEventListener("click", function(){ show(t.getAttribute("aria-controls"), { hash:true }); });
+      t.addEventListener("keydown", function(e){
+        var j = -1;
+        if(e.key === "ArrowRight") j = (i + 1) % tabs.length;
+        else if(e.key === "ArrowLeft") j = (i - 1 + tabs.length) % tabs.length;
+        else if(e.key === "Home") j = 0;
+        else if(e.key === "End") j = tabs.length - 1;
+        if(j < 0) return;
+        e.preventDefault();
+        show(tabs[j].getAttribute("aria-controls"), { focus:true, hash:true });
+      });
+    });
+    /* a link into the other panel (the pointer under the replay, the
+       chapter cards in the hero) switches tabs first */
+    [].slice.call(document.querySelectorAll('[data-dm-show], .dh-chapters a[data-chap]')).forEach(function(a){
+      a.addEventListener("click", function(e){
+        var to = a.getAttribute("data-dm-show") || "terminal";
+        if(to === active) { if(to === "browser"){ e.preventDefault(); list.scrollIntoView({ block:"start", behavior:"smooth" }); } return; }
+        show(to, { hash: to === "browser" });
+        if(to === "browser"){ e.preventDefault(); list.scrollIntoView({ block:"start", behavior:"smooth" }); }
+      });
+    });
+    window.addEventListener("hashchange", function(){
+      var h = location.hash.slice(1);
+      if(h === "browser" || h === "terminal") show(h);
+    });
+    show(location.hash === "#browser" ? "browser" : "terminal");
+    /* the replay engine attaches its hover hold further down the page */
+    document.addEventListener("DOMContentLoaded", function(){ holdReplay(active === "browser"); });
+    if(mq){ if(mq.addEventListener){ mq.addEventListener("change", syncFrame); } else if(mq.addListener){ mq.addListener(syncFrame); } }
+    if("MutationObserver" in window){
+      new MutationObserver(syncFrame).observe(root, { attributes:true, attributeFilter:["class","data-active-lang"] });
+    }
+  })();
+  </script>
   </div>
 
 </main>
@@ -511,9 +715,9 @@ footer.foot code{font-family:var(--font-mono)}
 
 <footer class="foot">
   <span data-lang="en">Generated 2026-06-22 · <code>BKS open-bridge</code> session demo · single-file, offline, no external dependencies ·
-  <kbd>T</kbd> theme · github.com/bks-lab/open-bridge</span>
+  <kbd>T</kbd> theme · <kbd>L</kbd> language · github.com/bks-lab/open-bridge</span>
   <span data-lang="de">Erzeugt am 2026-06-22 · <code>BKS open-bridge</code> Session-Demo · eine Datei, offline, ohne externe Abhängigkeiten ·
-  <kbd>T</kbd> Design · github.com/bks-lab/open-bridge</span>
+  <kbd>T</kbd> Design · <kbd>L</kbd> Sprache · github.com/bks-lab/open-bridge</span>
 </footer>
 
 <!-- ─── Theme controller ─── -->
@@ -540,10 +744,23 @@ footer.foot code{font-family:var(--font-mono)}
   function cycle(){ var p=pref(); apply(p==='system'?'light':(p==='light'?'dark':'system')); }
   render();
   if(btn) btn.addEventListener('click',cycle);
+  /* the language switch, same key and same storage as the rest of the site */
+  var enB=document.getElementById('lang-en'), deB=document.getElementById('lang-de');
+  function applyLang(l){
+    root.setAttribute('data-active-lang',l); root.setAttribute('lang',l);
+    if(enB) enB.setAttribute('aria-pressed', l==='en'?'true':'false');
+    if(deB) deB.setAttribute('aria-pressed', l==='de'?'true':'false');
+    render();
+  }
+  function setLang(l){ applyLang(l); try{ localStorage.setItem('ob-lang',l); }catch(e){} }
+  applyLang(lang());
+  if(enB) enB.addEventListener('click',function(){ setLang('en'); });
+  if(deB) deB.addEventListener('click',function(){ setLang('de'); });
   document.addEventListener('keydown',function(e){
-    if(e.metaKey||e.ctrlKey||e.altKey) return; if(e.key!=='t'&&e.key!=='T') return;
+    if(e.metaKey||e.ctrlKey||e.altKey) return;
     var t=e.target||{}; if(t.isContentEditable||/^(input|textarea|select)$/i.test(t.tagName||'')) return;
-    cycle();
+    if(e.key==='t'||e.key==='T') cycle();
+    else if(e.key==='l'||e.key==='L') setLang(lang()==='en'?'de':'en');
   });
   try{ var mq=matchMedia('(prefers-color-scheme: dark)');
     var onSys=function(){ if(pref()==='system') apply('system'); };
