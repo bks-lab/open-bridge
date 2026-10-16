@@ -12,7 +12,7 @@ import {
   VERDICT_ORDER, centsText, confidenceDots, reviewRows, verdictCounts, verdictToken,
   agentLane, checkFlow, gaugeArc, gaugeBands, gaugePoint, gaugeSection, laneWindow, meterScale, meterText, meterView,
   canTab, chatStamp, runProgress, screenLines, TONE_FILTERS, FILTER_TONE, actionRow, pageItemActs, filterRows, groupRows, tagFacets, toneFilter, runToken, serious, statusSplit, detailText, scheduleText, dayNoteText, railShown, previewText, weekdayNames, triageKey, triageShows, verdictSegments, linkParts, probeText, newestFirst, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone,
-  sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES, jevList, workKinds, reviewHome,
+  sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES, jevList, workKinds, reviewHome, workPageOf, workViewOf, workViews,
   greetingPart, homeCatalog, homeChosen, homeContinue, homeProjects, inProject, meterPace, projectTone, tabOfTask,
   countInProject, focusPick, moveId, nextEvent, untilText, STAGE, stageDust, stageSpots, clockLeft, pulseSpeed,
   liveStage, stageTone, RETURN_STAGES, MAX_STATIONS, situation, situationText, parseVerdict, TASK_LANES, taskLane,
@@ -63,9 +63,23 @@ function pageList(s) {
   return [{ id: START_PAGE }, { id: 'briefing' }, { id: CHAT_PAGE }, { id: SESSIONS_PAGE, more: true },
     ...(s.workers?.status === 'none' ? [] : [{ id: WORKERS_PAGE, more: true }]),
     ...((s.agents?.peers ?? []).length ? [{ id: AGENTS_PAGE, more: true }] : []), ...(reviewHomeOf(s) ? [] : [{ id: CHECK_PAGE, more: true }]),
-    ...(s.jev?.enabled ? [{ id: JEV_PAGE, more: true }] : []),
-    ...(s.model?.pages ?? []).filter(p => p.group !== 'day').map(p => ({ id: p.id, more: p.group === 'more' }))]
+    ...(s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? [{ id: JEV_PAGE, more: true }] : []),
+    ...(s.model?.pages ?? []).filter(p => p.group !== 'day' && p.group !== 'work').map(p => ({ id: p.id, more: p.group === 'more' }))]
 }
+
+/** The name of the briefing's tab: the title of the work page where one folds into it, else Today */
+function briefingTitle(s) {
+  return workPageOf(s.model?.pages)?.title || T().briefing
+}
+
+/** The view the briefing's tab shows: what is due, by source or by Jev (logic.js workViewOf); on any
+ *  other tab what is due, so nothing there changes */
+export function workViewNow(s) {
+  return s.ui?.page === 'briefing' ? workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) : 'due'
+}
+
+/** Whether the main area shows a page rather than the day's three columns */
+const onPageOf = s => s.ui.page !== 'briefing' || workViewNow(s) !== 'due'
 
 /** Every page in tab bar order: the tabs in front, then those behind More. Alt 1 to Alt 9 follow this order */
 export function pageOrder(s) {
@@ -420,7 +434,7 @@ function PageBar({ s, c }) {
     <div class="pagebar-tabs" role="tablist" ref=${tabsRef}>
       ${box ? html`<${TabMarker} box=${box} />` : null}
       ${tab(START_PAGE, t.startTab, null)}
-      ${tab('briefing', t.briefing, n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}
+      ${tab('briefing', briefingTitle(s), n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}
       ${tab(SESSIONS_PAGE, t.sessionsTab, agentsActive > 0
         ? html`<span class="pbadge is-quiet"><span class="mono">${agentsActive}</span></span>` : null)}
       ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, s.workers?.data?.stats?.with_findings
@@ -430,7 +444,7 @@ function PageBar({ s, c }) {
         : (s.agents?.convs ?? []).some(x => x.turns?.[x.turns.length - 1]?.waiting) ? html`<${Dot} token="warning" />` : null) : null}
       ${reviewHomeOf(s) ? null : tab(CHECK_PAGE, t.reviewTab, s.model?.review?.running ? html`<${Spinner} />`
         : toClose > 0 ? html`<span class="pbadge"><span class="mono">${toClose}</span></span>` : null)}
-      ${s.jev?.enabled ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`) : null}
+      ${s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`) : null}
       ${pages.map(p => tab(p.id, p.title, html`<${PageBadge} badge=${p.badge} title=${badgeTitle(p)} />`))}
       ${order.filter(id => made.has(id) && !folded.has(id)).map(button)}
       ${fold ? html`<${MoreTab} items=${order.filter(id => folded.has(id) && made.has(id)).map(id => ({ id, ...made.get(id) }))}
@@ -676,6 +690,18 @@ function HiddenList({ s, c }) {
   </details>`
 }
 
+/** The views of the work tab as one row of chips: what is due, by source, by Jev */
+function WorkSwitch({ s, c }) {
+  const t = T()
+  const views = workViews(workPageOf(s.model?.pages), s.jev)
+  if (views.length < 2) return null
+  const view = workViewNow(s)
+  return html`<div class="fbar-chips work-switch" role="radiogroup" aria-label=${t.workOrder.viewLabel}>
+    ${views.map(v => html`<button type="button" role="radio" key=${v} aria-checked=${String(view === v)}
+      class=${`fchip${view === v ? ' is-on' : ''}`} onClick=${() => c.setWorkView(v)}>${t.workOrder.views[v]}</button>`)}
+  </div>`
+}
+
 function DayColumn({ s, c, byKey }) {
   const t = T()
   const m = s.model
@@ -692,6 +718,7 @@ function DayColumn({ s, c, byKey }) {
   const order = ['now', 'give', 'work', 'later']
   return html`<div class="col col-day">
     <div class="panel day-panel">
+      <${WorkSwitch} s=${s} c=${c} />
       <${SelectionBar} s=${s} c=${c} />
       <${AlarmBanner} s=${s} c=${c} />
       <div class="day-counts muted"><span class="day-asof">${t.sourceAsOf(m.collected_at)}</span></div>
@@ -2289,7 +2316,7 @@ function JevList({ page, s, c }) {
 /** The title of a page in the bar, fixed or from the profile */
 function pageTitleOf(s, id) {
   const t = T()
-  const fixed = { briefing: t.briefing, [SESSIONS_PAGE]: t.sessionsTab, [WORKERS_PAGE]: t.workersTab, [CHAT_PAGE]: t.chatTab,
+  const fixed = { briefing: briefingTitle(s), [SESSIONS_PAGE]: t.sessionsTab, [WORKERS_PAGE]: t.workersTab, [CHAT_PAGE]: t.chatTab,
     [AGENTS_PAGE]: t.agentsTab, [CHECK_PAGE]: t.reviewTab, [JEV_PAGE]: 'Jev' }
   return fixed[id] ?? (s.model?.pages ?? []).find(p => p.id === id)?.title ?? id
 }
@@ -2670,7 +2697,7 @@ function tileMaker(s, c, chosen, project, hud = false) {
     if (x.id === 'c:waiting') {
       const n = scope ? countInProject(nowRows, scope) : counts.now ?? 0
       return html`<${CountTile} key=${x.id} n=${n} label=${h.waitingNow} tone=${n ? 'warning' : null} scope=${scope}
-        before=${scope ? null : before[x.id]} title=${h.openPage(t.briefing)} onClick=${() => c.setPage('briefing')} />`
+        before=${scope ? null : before[x.id]} title=${h.openPage(briefingTitle(s))} onClick=${() => c.setPage('briefing')} />`
     }
     if (x.id === 'c:tabs') {
       const n = scope ? tabs.filter(tb => tb.waiting && !tb.is_control && inProject(tb, scope)).length : counts.waiting_tabs ?? 0
@@ -2936,7 +2963,7 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
       ${rows.slice(0, 8).map((r, i) => html`<${InspectRow} key=${r.key} tone=${r.urgency === 'now' ? 'danger' : r.urgency === 'today' ? 'warning' : 'info'}
         title=${short(r.title, i ? 90 : 140)} sub=${r.area || r.mark?.label || ''} onClick=${e => openWhole(c, r, e.currentTarget)}>${i === 0 ? acts(r) : null}<//>`)}
       ${!rows.length ? html`<p class="stage-row-sub">${h.focusEmpty}</p>` : null}
-      ${foot(h.openPage(t.briefing), () => c.setPage('briefing'))}`
+      ${foot(h.openPage(briefingTitle(s)), () => c.setPage('briefing'))}`
   } else if (x.id === 'c:returns') {
     const list = returnsOf(s)
     body = html`${head(h.returnsTitle, st.value)}
@@ -3443,6 +3470,15 @@ function PageView({ s, c }) {
   if (s.ui.page === WORKERS_PAGE) return html`<${WorkersPage} s=${s} c=${c} />`
   if (s.ui.page === CHAT_PAGE) return html`<${ChatPage} s=${s} c=${c} />`
   if (s.ui.page === AGENTS_PAGE && (s.agents?.peers ?? []).length) return html`<${AgentsPage} s=${s} c=${c} />`
+  const view = workViewNow(s)
+  const work = view === 'due' ? null : workPageOf(s.model?.pages)
+  if (view === 'jev') {
+    const JevWork = jev?.JevWork
+    // rows only the work page holds (an idea, a debrief point) stay in the picture by their key
+    const extra = (work.sections ?? []).flatMap(sec => (s.more[`${work.id}/${sec.id}`]?.items ?? sec.items ?? []).map(triageKey)).filter(Boolean)
+    return JevWork ? html`<${JevWork} s=${s} c=${c} page=${work} extra=${extra} top=${html`<${WorkSwitch} s=${s} c=${c} />`} />`
+      : html`<div class="col col-page"><${WorkSwitch} s=${s} c=${c} /><div class="panel panel-pad"><p class="muted">${jev?.failed ? t.jevNotReady.load_failed : t.loading}</p></div></div>`
+  }
   if (s.ui.page === JEV_PAGE && s.jev?.enabled) {
     const JevPage = jev?.JevPage
     return s.jev.ready && JevPage ? html`<${JevPage} s=${s} c=${c} />` : s.jev.ready ? html`<div class="col col-page"><div class="panel panel-pad"><p class="muted">${jev?.failed ? t.jevNotReady.load_failed : t.loading}</p></div></div>` : html`<div class="col col-page">
@@ -3450,7 +3486,7 @@ function PageView({ s, c }) {
       <div class="panel panel-pad"><p><${StateLine} token="warning" strong word=${t.jevNotReady[s.jev.reason] ?? s.jev.reason} /></p>
         <p class="muted small">${t.jevHowTo}</p></div></div>`
   }
-  const whole = (s.model?.pages ?? []).find(p => p.id === s.ui.page)
+  const whole = work ?? (s.model?.pages ?? []).find(p => p.id === s.ui.page)
   if (!whole) return html`<div class="col col-page"><div class="panel panel-pad"><${Empty}>${t.pageEmpty}<//></div></div>`
   // a page with inbox and task rows filters by kind; everything below sees only the chosen sections
   const kinds = workKinds(whole.sections, t.workOrder.kinds)
@@ -3470,7 +3506,7 @@ function PageView({ s, c }) {
     .map(sec => (checked && sec.kind === 'tasks' ? unseen(sec) : sec)) } : whole
   return html`<div class="col col-page">
     <header class="page-head">
-      <h2 class="detail-title">${page.title}</h2>
+      ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : html`<h2 class="detail-title">${page.title}</h2>`}
       <${PageBadge} badge=${page.badge} />
     </header>
     ${page.overview ? html`<${OverviewBoard} page=${page} s=${s} c=${c} />` : null}
@@ -3480,8 +3516,8 @@ function PageView({ s, c }) {
         .filter(sec => sec.kind === 'tasks' || sec.kind === 'inbox').flatMap(sec => s.more[`${whole.id}/${sec.id}`]?.items ?? sec.items ?? [])} />` : null}
     ${checkHere ? html`<${ReviewBody} s=${s} c=${c} inline />`
       : page.sections?.some(sec => sec.kind === 'tasks' && (sec.items ?? []).some(it => it.task)) ? html`<${ReviewStrip} s=${s} c=${c} />` : null}
-    ${page.jev && s.jev?.enabled && s.jev?.ready ? html`<${WorkOrder} page=${page} s=${s} c=${c} />` : null}
-    ${page.jev && s.jev?.enabled && s.jev?.ready && s.ui.workView === 'jev' && s.jevOrder[page.id]?.order ? html`<${JevList} page=${page} s=${s} c=${c} />`
+    ${page.jev && !work && s.jev?.enabled && s.jev?.ready ? html`<${WorkOrder} page=${page} s=${s} c=${c} />` : null}
+    ${page.jev && !work && s.jev?.enabled && s.jev?.ready && s.ui.workView === 'jev' && s.jevOrder[page.id]?.order ? html`<${JevList} page=${page} s=${s} c=${c} />`
       : (page.sections ?? []).length ? page.sections.map(sec => html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} />`)
       : html`<div class="panel panel-pad"><${Empty}>${t.pageEmpty}<//></div>`}
     ${page.overview ? html`<${UsageCard} page=${page} s=${s} c=${c} />` : null}
@@ -4490,8 +4526,8 @@ function BootPanel({ s, c }) {
 
 function MobileSwitch({ s, c }) {
   const t = T()
-  const onPage = s.ui.page !== 'briefing'
-  const page = onPage ? (s.ui.page === START_PAGE ? { title: t.startTab } : s.ui.page === CHECK_PAGE ? { title: t.reviewTab } : s.ui.page === SESSIONS_PAGE ? { title: t.sessionsTab } : s.ui.page === WORKERS_PAGE ? { title: t.workersTab } : s.ui.page === CHAT_PAGE ? { title: t.chatTab } : s.ui.page === AGENTS_PAGE ? { title: t.agentsTab } : s.ui.page === JEV_PAGE ? { title: 'Jev' } : (s.model?.pages ?? []).find(p => p.id === s.ui.page)) : null
+  const onPage = onPageOf(s)
+  const page = onPage ? (s.ui.page === START_PAGE ? { title: t.startTab } : s.ui.page === CHECK_PAGE ? { title: t.reviewTab } : s.ui.page === SESSIONS_PAGE ? { title: t.sessionsTab } : s.ui.page === WORKERS_PAGE ? { title: t.workersTab } : s.ui.page === CHAT_PAGE ? { title: t.chatTab } : s.ui.page === AGENTS_PAGE ? { title: t.agentsTab } : s.ui.page === JEV_PAGE ? { title: 'Jev' } : s.ui.page === 'briefing' ? { title: briefingTitle(s) } : (s.model?.pages ?? []).find(p => p.id === s.ui.page)) : null
   const waiting = attentionTabs(s.tabs?.tabs).length
   const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
   const items = onPage
@@ -4522,7 +4558,7 @@ export function App({ store, ctl }) {
   if (s.boot.status === 'unauthorized') return html`<${AuthPanel} />`
   if (s.boot.status !== 'ok') return html`<${BootPanel} s=${s} c=${ctl} />`
   const byKey = indexRows(s.model)
-  const onPage = s.ui.page !== 'briefing'
+  const onPage = onPageOf(s)
   const layout = s.layout
   const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
   const pane = onPage && !peek && s.ui.pane === 'detail' ? 'day' : s.ui.pane

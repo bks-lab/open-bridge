@@ -724,7 +724,15 @@ def test_a_page_can_stand_behind_more_in_the_page_bar():
     assert _page(pages, "week")["group"] == "main"
     assert bv._page_problems(view) == []
     assert bv._page_problems({"pages": [{"id": "ops", "sections": ["probes"], "group": "side"}]}) == [
-        "view.pages 1: group must be main, more or day"]
+        "view.pages 1: group must be main, more, work or day"]
+
+
+def test_a_page_of_group_work_folds_into_the_work_tab():
+    # `group: work` gives a page no tab of its own: it is the "by source" view of the work tab,
+    # beside "what is due" and "by Jev"
+    view = {"pages": [{"id": "work", "sections": ["probes"], "group": "work"}]}
+    assert _page(bv.pages(_result(), _profile(view)), "work")["group"] == "work"
+    assert bv._page_problems(view) == []
 
 
 def test_a_page_can_open_with_an_overview_of_its_sections():

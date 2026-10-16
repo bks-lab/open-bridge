@@ -18,7 +18,7 @@
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { clamp, countTo, cursorOn, flash, flowAlpha, noise1, nowSec, o3, ramp, reducedMotion, ripples, spring, track, trackAt, tracking, typed, win } from './motion.js'
-import { CORE, H, W, X0, X1, Y0, Y1, costLine, launch, liveItems, pendingTitles, place, rowJump, tokenText } from './logic.js'
+import { CORE, H, W, X0, X1, Y0, Y1, costLine, launch, liveItems, orderPlan, pendingTitles, place, rowJump, tokenText } from './logic.js'
 import { indexRows } from '../logic.js'
 import { T as dashText, language } from '../text.js'
 
@@ -34,6 +34,7 @@ const TEXT = {
   de: {
     tab: 'Jev', title: 'Jev bewertet deinen Tag', reading: n => `Jev liest ${n} Aufgaben`, rereading: 'Jev liest neu',
     sub: 'Was gerade im Dashboard steht, geht an die Jev-API: Dringlichkeit, Wirkung, Aufwand und „nur du“ je Aufgabe, dazu eine Wahl, womit du anfängst.',
+    subWork: 'Posteingang und Aufgaben gehen an die Jev-API, nur Titel, Kurzfassung, Etikett und Priorität. Privates, ausgenommene Bereiche und was ein Agent erledigt bleiben hier. Jev ordnet einmal am Tag von selbst.',
     rerun: 'Neu bewerten', replay: 'Abspielen', urgency: 'Dringlichkeit →', impact: 'Wirkung →',
     quads: { now: 'Jetzt selbst', plan: 'Einplanen', hand: 'Abgeben', drop: 'Loslassen' },
     first: t => `Jev sagt: zuerst „${t}“`, plan: 'Fahrplan', me: 'du', delegate: 'abgeben',
@@ -50,6 +51,7 @@ const TEXT = {
   en: {
     tab: 'Jev', title: 'Jev rates your day', reading: n => `Jev is reading ${n} tasks`, rereading: 'Jev is reading again',
     sub: 'What the dashboard holds right now goes to the Jev API: urgency, impact, effort and "only you" per task, plus a choice of where to start.',
+    subWork: 'Inbox and tasks go to the Jev API, only title, gist, label and priority. Private rows, skipped sections and what an agent does stay here. Jev orders once a day by itself.',
     rerun: 'Rate again', replay: 'Replay', urgency: 'Urgency →', impact: 'Impact →',
     quads: { now: 'Do it now', plan: 'Schedule', hand: 'Hand off', drop: 'Let go' },
     first: t => `Jev says: start with "${t}"`, plan: 'Plan', me: 'you', delegate: 'hand off',
@@ -83,8 +85,9 @@ const FROZEN = (() => {
 })()
 
 /** The last answer survives a change of page tab: coming back shows the picture at rest instead of
- *  playing it again, and asks the server only whether it is still current */
-let kept = null
+ *  playing it again, and asks the server only whether it is still current. One per source: the Jev
+ *  tab ('tab') and the Jev view of each work page (its id) */
+const keptBy = {}
 
 // ---------------------------------------------------------------- clock
 
@@ -276,8 +279,9 @@ function Headline({ items, data, headRef }) {
 
 // ---------------------------------------------------------------- page
 
-export function JevPage({ s, c }) {
+export function JevPage({ s, c, ask = null, extra = null, store = 'tab', top = null }) {
   const t = tx()
+  const kept = keptBy[store] ?? null
   const [st, setSt] = useState(() => ({ data: kept, reading: false, err: null }))
   const [hover, setHover] = useState(null)
   const seq = useRef(0)
@@ -285,7 +289,7 @@ export function JevPage({ s, c }) {
   // what is playing: the first answer in full ('intro'), a new answer gliding from where the tasks
   // stood ('update'), or the picture at rest ('rest', for an answer seen before)
   const play = useRef({ mode: kept ? 'rest' : 'intro', t0: nowSec(), from: new Map(), nums: null, firstChanged: false,
-    firstKey: kept ? liveItems(kept.plan, s.model).first?.key ?? null : null })
+    firstKey: kept ? liveItems(kept.plan, s.model, extra).first?.key ?? null : null })
   const dataRef = useRef(st.data)
   dataRef.current = st.data
   const motion = useRef({ pos: new Map(), emph: new Map(), bars: new Map(), flip: new Map(), tops: new Map(), read: null, nums: null })
@@ -293,7 +297,7 @@ export function JevPage({ s, c }) {
 
   const byKey = indexRows(s.model)
   const plan = st.data?.plan
-  const { items, first } = liveItems(plan, s.model)
+  const { items, first } = liveItems(plan, s.model, extra)
   const spots = new Map(items.map(it => [it.key, place(it)]))
   const selected = s.ui.pageDetail ? s.ui.selectedKey : null
   const emph = key => key === hover || key === selected
@@ -303,7 +307,7 @@ export function JevPage({ s, c }) {
   const startPlay = (data, prev) => {
     const m = motion.current
     const had = !!prev?.plan?.items?.length
-    const firstKey = liveItems(data.plan, s.model).first?.key ?? null
+    const firstKey = liveItems(data.plan, s.model, extra).first?.key ?? null
     play.current = had
       ? { mode: 'update', t0: nowSec(), from: new Map(m.pos), nums: m.nums, firstChanged: firstKey !== play.current.firstKey, firstKey }
       : { mode: 'intro', t0: nowSec(), from: new Map(), nums: null, firstChanged: true, firstKey }
@@ -317,7 +321,7 @@ export function JevPage({ s, c }) {
     const my = ++seq.current
     if (force) setSt(x => ({ ...x, reading: true, err: null }))
     const slow = force ? null : setTimeout(() => { if (live.current && my === seq.current) setSt(x => ({ ...x, reading: true })) }, 350)
-    const res = await c.jevRun(force)
+    const res = await (ask ? ask(force) : c.jevRun(force))
     clearTimeout(slow)
     if (!live.current || my !== seq.current) return   // a newer request or a page change won
     if (res.ok && res.data) {
@@ -325,8 +329,8 @@ export function JevPage({ s, c }) {
       const same = prev && prev.digest === res.data.digest && prev.at_ms === res.data.at_ms
       if (!same && !res.data.empty) startPlay(res.data, prev)
       // the same rating keeps its object (no new play) but takes the fresh note and day total
-      kept = same ? { ...prev, changed: res.data.changed, today: res.data.today, cached: res.data.cached } : res.data
-      setSt({ reading: false, err: null, data: kept })
+      keptBy[store] = same ? { ...prev, changed: res.data.changed, today: res.data.today, cached: res.data.cached } : res.data
+      setSt({ reading: false, err: null, data: keptBy[store] })
     } else {
       const msg = res.data?.error?.message || res.error?.message || ''
       setSt(x => ({ ...x, reading: false, err: msg || t.error }))
@@ -568,8 +572,8 @@ export function JevPage({ s, c }) {
   return html`<div class="col col-page jev-page">
     <header class="page-head jev-top">
       <div>
-        <h2 class="detail-title">${t.title}</h2>
-        <p class="muted small jev-sub">${t.sub}</p>
+        ${top ?? html`<h2 class="detail-title">${t.title}</h2>`}
+        <p class="muted small jev-sub">${ask ? t.subWork : t.sub}</p>
       </div>
       <div class="jev-actions">
         ${plan && items.length && !calmNow ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${replay}>${t.replay}</button>` : null}
@@ -607,4 +611,17 @@ export function JevPage({ s, c }) {
       </aside>
     </div>`}
   </div>`
+}
+
+/** The Jev view of the work tab: the same picture, fed by the order of the work page (POST /api/jev/rank
+ *  with daily), so the page's private filter applies and Jev orders once a day by itself. `extra` are the
+ *  keys of rows only the work page holds, so they stay in the picture; `top` is the tab's view switch */
+export function JevWork({ s, c, page, extra, top }) {
+  const ask = async force => {
+    const res = await c.jevWork(page.id, force)
+    if (!res.ok) return res
+    const data = orderPlan(res.data.order) ?? { ok: true, empty: true, plan: { items: [], first: null } }
+    return { ok: true, data: { ...data, today: res.data.today } }
+  }
+  return html`<${JevPage} s=${s} c=${c} ask=${ask} extra=${extra} store=${page.id} top=${top} />`
 }

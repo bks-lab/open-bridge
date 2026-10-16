@@ -168,6 +168,15 @@ and a dot when one of them has something. Alt 1 to Alt 9 follow the same
 order. A page with `group: day` has no tab: its sections stand under "What
 happened today" in the middle of the Today page.
 
+A page with `group: work` has no tab either: it folds into the Today tab, which
+then carries that page's title (Work, say) and a switch over its left column
+with three views. **Due** is the four blocks below, and the tab opens on it.
+**By source** is the work page itself, its sections as labels. **By Jev** is the
+Jev picture (the matrix and the plan) fed by the work page's order, and it
+stands only where that page has `jev:` and Jev is on. With such a page the Jev
+tab goes too: it is the By Jev view now, and an old link to it or to the work
+page opens the matching view.
+
 Only one number in the bar carries colour: Today's count of what waits for
 you, the same count as the start page's station "waits for you" and the
 headline in the middle (the approvals stand in its tooltip and in their own
@@ -501,7 +510,10 @@ Rows stay home when their section is in `skip_sections`, when their title,
 detail, task, source (who filed an inbox item) or gist holds a `private` word,
 or when the triage says they can close or an agent does them. More rows than
 one request holds go in batches of 20, at most three. The strip names how many
-were left out and why, and the tokens the order took.
+were left out and why, and the tokens the order took. A work page of `group:
+work` has no strip: its By Jev view asks with `daily`, so the first look of a
+day orders by itself and every later one that day shows the kept order, and its
+button orders anew. The same filter applies to both.
 
 A page holding inbox and task rows together also filters by kind: one chip
 per label (Inbox, Task, or a section's short title) with its count, for the

@@ -67,6 +67,25 @@ test('liveItems drops tasks that left the dashboard and moves the first on', () 
   assert.equal(logic.liveItems(null, MODEL).first, null)
 })
 
+test('orderPlan turns a work page order into the plan the matrix draws', () => {
+  const order = { at_ms: 5, first: 'task:b', usage: { input_tokens: 3, output_tokens: 4 }, sent: 2, calls: 1,
+    items: [{ key: 'task:b', rank: 1, title: 'Tidy', urgency: 1, impact: 1, priority: 0.9, confidence: 0.8, quadrant: 'now', who: 'me' },
+      { key: 'inbox:z', rank: 2, title: 'Only on the page', urgency: 0, impact: 0, priority: 0.1, quadrant: 'drop', who: 'delegate' }] }
+  const data = logic.orderPlan(order)
+  assert.equal(data.plan.first, 'task:b')
+  assert.deepEqual(data.plan.items.map(it => it.id), ['task:b', 'inbox:z'])
+  assert.equal(data.at_ms, 5)
+  assert.equal(data.digest, 'order:5')
+  assert.deepEqual(data.usage, { input_tokens: 3, output_tokens: 4 })
+  assert.equal(logic.orderPlan(null), null)
+  assert.ok(logic.orderPlan({ items: [] }).empty)
+  // a row only the work page holds (not in the briefing) stays in the picture when its key is known
+  const live = logic.liveItems(data.plan, MODEL, new Set(['inbox:z']))
+  assert.deepEqual(live.items.map(it => it.key), ['task:b', 'inbox:z'])
+  assert.equal(live.first.key, 'task:b')
+  assert.deepEqual(logic.liveItems(data.plan, MODEL).items.map(it => it.key), ['task:b'])
+})
+
 test('rowJump: a live tab first, else advise, else nothing', () => {
   const [a, b, c] = logic.modelRows(MODEL)
   assert.deepEqual(logic.rowJump(a), { verb: 'tab_jump', args: { tab_ref: 'surface:7' }, busy: 'surface:7' })

@@ -898,6 +898,22 @@ export function workLabel(section, kinds) {
 
 const level = v => (typeof v === 'number' ? Math.round(Math.max(0, Math.min(1, v)) * 3) : null)
 
+/** The page of group `work`: it has no tab of its own, it is the "by source" view of the work tab */
+export function workPageOf(pages) {
+  return (pages ?? []).find(p => p?.group === 'work') ?? null
+}
+
+/** The views of the work tab: what is due (the four blocks) always, by source where a work page exists,
+ *  by Jev where that page asks for an order and Jev is switched on and has its key */
+export function workViews(page, jev) {
+  return ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : [])]
+}
+
+/** The view the work tab shows: the remembered one where it can, else what is due */
+export function workViewOf(view, page, jev) {
+  return workViews(page, jev).includes(view) ? view : 'due'
+}
+
 /** The rows of a work page for the order of Jev: `ranked` in Jev's order, `rest` (not sent, or new since)
  *  in page order. A row standing in two sections shows once, in the first. Each entry: {it, section, label,
  *  rank, judge}, judge being Jev's levels 0 to 3 and whether only the person can do it */

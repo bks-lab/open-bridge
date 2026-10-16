@@ -301,7 +301,8 @@ def test_rank_orders_on_the_click_and_keeps_the_order(tmp_path):
 
     app = work_app(tmp_path)
     # without a click nothing goes out: the page asks for the last order only
-    assert jev.rank(app, {"page": "arbeit"}, call=call, key=lambda: "k") == {"ok": True, "page": "arbeit", "order": None}
+    plain = jev.rank(app, {"page": "arbeit"}, call=call, key=lambda: "k")
+    assert (plain["ok"], plain["page"], plain["order"], plain["today"]["ratings"]) == (True, "arbeit", None, 0)
     assert sent == []
     out = jev.rank(app, {"page": "arbeit", "force": True}, call=call, key=lambda: "k")
     order = out["order"]
@@ -316,6 +317,40 @@ def test_rank_orders_on_the_click_and_keeps_the_order(tmp_path):
     # the order stands after a restart, and a plain request answers it without a call
     again = jev.rank(work_app(tmp_path), {"page": "arbeit"}, call=call, key=lambda: "k")
     assert again["order"]["items"] == order["items"] and len(sent) == 1
+
+
+def test_rank_daily_orders_once_a_day_by_itself(tmp_path):
+    # the work page's Jev view asks with daily: the first request of a day orders, later ones of the
+    # same day answer the kept order without a call, the next day orders again; the private filter
+    # of the page applies as on the click
+    sent = []
+
+    def call(payload, key):
+        sent.append(payload)
+        return answers([{"id": t["id"]} for t in payload["state"]["tasks"]], first="t2")
+
+    day = 1_760_000_000_000
+    first = jev.rank(work_app(tmp_path, now=day), {"page": "arbeit", "daily": True}, call=call, key=lambda: "k")
+    assert len(sent) == 1 and first["order"]["sent"] == 3 and first["order"]["skipped"]["private"] == 3
+    assert first["today"]["ratings"] == 1
+    later = jev.rank(work_app(tmp_path, now=day + 3_600_000), {"page": "arbeit", "daily": True}, call=call, key=lambda: "k")
+    assert len(sent) == 1 and later["order"]["at_ms"] == first["order"]["at_ms"]
+    jev.rank(work_app(tmp_path, now=day + 86_400_000), {"page": "arbeit", "daily": True}, call=call, key=lambda: "k")
+    assert len(sent) == 2
+
+
+def test_rank_order_carries_what_the_matrix_draws(tmp_path):
+    # the matrix of the Jev view names a dot and rings it by confidence: both stay in the kept order
+    out = jev.rank(work_app(tmp_path), {"page": "arbeit", "force": True},
+                   call=lambda p, k: answers([{"id": t["id"]} for t in p["state"]["tasks"]]), key=lambda: "k")
+    item = out["order"]["items"][0]
+    assert item["title"] and item["confidence"] == 0.85 and item["quadrant"] in ("now", "plan", "hand", "drop")
+
+
+def test_rank_refuses_daily_that_is_not_a_flag():
+    with pytest.raises(jev.JevError) as e:
+        jev.rank(work_app(), {"page": "arbeit", "daily": "yes"})
+    assert e.value.code == "invalid_argument"
 
 
 def test_rank_sends_more_than_one_batch_and_merges_by_priority(monkeypatch):

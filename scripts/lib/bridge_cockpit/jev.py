@@ -470,34 +470,41 @@ def _pages_state(app) -> PagesState:
     return st
 
 
-ORDER_FIELDS = ("key", "rank", "urgency", "impact", "effort", "only_me", "first", "priority", "quadrant", "who")
+# title and confidence stay for the matrix of the Jev view (a dot is named and ringed by them); the order
+# lives only in jev-pages.json beside the state, and a title is what left the machine anyway
+ORDER_FIELDS = ("key", "rank", "title", "urgency", "impact", "effort", "only_me", "first", "priority", "confidence",
+                "quadrant", "who")
 
 
 def rank(app, body: dict, call: Callable[[dict, str], dict] | None = None,
          key: Callable[[], str] | None = None) -> dict:
-    """POST /api/jev/rank {page, force?}: the last order of a work page; with force Jev orders it anew.
-    More rows than one request holds go in batches (at most MAX_BATCHES), merged by priority; of the
-    batches' picks for where to start, the one with the highest priority leads."""
+    """POST /api/jev/rank {page, force?, daily?}: the last order of a work page; with force Jev orders it anew.
+    daily is the Jev view of the work tab: the first request of a day orders by itself, every later one
+    that day answers the kept order, as the Jev tab's run does. More rows than one request holds go in
+    batches (at most MAX_BATCHES), merged by priority; of the batches' picks for where to start, the one
+    with the highest priority leads."""
     for name in body:
-        if name not in ("page", "force"):
+        if name not in ("page", "force", "daily"):
             raise JevError(400, "invalid_argument", f"unknown field {str(name)[:40]}")
-    page_id, force = body.get("page"), body.get("force", False)
-    if not isinstance(page_id, str) or not isinstance(force, bool):
-        raise JevError(400, "invalid_argument", "page must be text and force true or false")
+    page_id, force, daily = body.get("page"), body.get("force", False), body.get("daily", False)
+    if not isinstance(page_id, str) or not isinstance(force, bool) or not isinstance(daily, bool):
+        raise JevError(400, "invalid_argument", "page must be text, force and daily true or false")
     found = _work_page(app, page_id)
     if found is None:
         raise JevError(404, "not_found", "no page with jev: under that id")
     st = _pages_state(app)
+    day = time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000))
     if not force:
         with st.lock:
-            return {"ok": True, "page": page_id, "order": st.orders.get(page_id)}
+            kept = st.orders.get(page_id)
+            if not daily or (kept and kept.get("day") == day):
+                return {"ok": True, "page": page_id, "order": kept, "today": _today_of(_state(app), day)}
     cfg, sections = found
     tri = getattr(app, "triage", None)
     rows, skipped = pick_rows(sections, (tri.state().get("items") if tri else None), cfg)
     limit = MAX_TASKS * MAX_BATCHES
     skipped["over"] = max(0, len(rows) - limit)
     rows = rows[:limit]
-    day = time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000))
     conf = getattr(app, "cfg", None)
     started = time.monotonic()
     items, picks, tokens, calls = [], [], {"input_tokens": 0, "output_tokens": 0}, 0
@@ -519,16 +526,17 @@ def rank(app, body: dict, call: Callable[[dict, str], dict] | None = None,
     if lead is not None:
         items.remove(lead)
         items.insert(0, lead)
-    order = {"at_ms": int(app.clock()), "took_ms": int((time.monotonic() - started) * 1000), "calls": calls,
+    order = {"at_ms": int(app.clock()), "day": day, "took_ms": int((time.monotonic() - started) * 1000), "calls": calls,
              "sent": len(rows), "skipped": skipped, "first": items[0]["key"] if items else None,
              "items": [{f: x.get(f) for f in ORDER_FIELDS} | {"rank": n + 1} for n, x in enumerate(items)],
              "usage": tokens, "price": None}
     with st.lock:
         st.orders[page_id] = order
         st.save()
-    if calls:
-        js = _state(app)
-        with js.lock:
+    js = _state(app)
+    with js.lock:
+        if calls:
             js.count(day, tokens)
             js.save()
-    return {"ok": True, "page": page_id, "order": order}
+        today = _today_of(js, day)
+    return {"ok": True, "page": page_id, "order": order, "today": today}

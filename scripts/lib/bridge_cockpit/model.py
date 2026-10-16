@@ -219,7 +219,7 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                 "hide_empty": x.get("hide_empty") is True,
             })
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
-                "group": p.get("group") if p.get("group") in ("more", "day") else "main", "overview": p.get("overview") is True,
+                "group": p.get("group") if p.get("group") in ("more", "work", "day") else "main", "overview": p.get("overview") is True,
                 # the order by Jev: the words stay on the server (jev.rank), the page only learns there is one
                 "jev": ({k: [as_text(x) for x in v] if isinstance(v := p["jev"].get(k), list) else []
                          for k in ("skip_sections", "private")} if isinstance(p.get("jev"), dict) else None)}

@@ -728,15 +728,17 @@ test('jev is optional: the page loads without scripts/web/jev/, no tab, no call,
   const comp = read('components.js')
   assert.doesNotMatch(comp, /^import[^\n]*jev\//m)                                  // never a static import
   assert.match(comp, /useJevPage\(!!\(s\.jev\?\.enabled && s\.jev\?\.ready\)\)/)    // loaded only when on and ready
-  assert.match(comp, /\$\{s\.jev\?\.enabled \? tab\(JEV_PAGE/)                      // the tab only when on
+  assert.match(comp, /\$\{s\.jev\?\.enabled && !workPageOf\(s\.model\?\.pages\)\?\.jev \? tab\(JEV_PAGE/)   // the tab only when on, and not folded into the work tab
   assert.doesNotMatch(read('index.html'), /jev/)
-  // the page asks /api/jev only through jevRun (the Jev page) and jevRank (the order of a work page)
+  // the page asks /api/jev only through jevRun (the Jev page), jevRank (the order of a work page) and jevWork
+  // (the Jev view of the work tab, the order of its work page)
   const app = read('app.js')
-  assert.equal((app.match(/\/api\/jev/g) ?? []).length, 2)
+  assert.equal((app.match(/\/api\/jev/g) ?? []).length, 3)
+  assert.match(app, /jevWork: async[^\n]*\n\s*const res = await api\.post\('\/api\/jev\/rank', \{ page, force: !!force, daily: !force \}\)/)
   assert.match(app, /jevRun: \([^)]*\) => api\.post\('\/api\/jev\/run'/)
   assert.match(app, /const res = await api\.post\('\/api\/jev\/rank'/)
   // the order strip stands only where Jev is on and ready, and only it calls jevRank
-  assert.match(comp, /page\.jev && s\.jev\?\.enabled && s\.jev\?\.ready \? html`<\$\{WorkOrder\}/)
+  assert.match(comp, /page\.jev && !work && s\.jev\?\.enabled && s\.jev\?\.ready \? html`<\$\{WorkOrder\}/)
   assert.equal((comp.match(/\.jevRank\(/g) ?? []).length, 2)
   for (const name of ['app.js', 'components.js', 'api.js', 'logic.js', 'mock.js']) {
     assert.doesNotMatch(read(name).replace(/jevRun: \([^)]*\) => api\.post/, ''), /\.jevRun\(/, name)
@@ -1089,6 +1091,39 @@ test('a work page in the order of Jev: ranked rows first, each with its label, t
   // the rest keeps the page order; a row standing in two sections (workplace and tasks) shows once
   assert.deepEqual(list.rest.map(r => [r.it.title, r.label]), [['A', 'Posteingang'], ['I', 'Ideen'], ['Firma', 'Bewerbungen']])
   assert.deepEqual(logic.jevList(sections, null, kinds).ranked, [])
+})
+
+test('a page of group work folds into the work tab, and with it the Jev tab', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-work-'))
+  try {
+    fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
+    const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
+    const pages = [{ id: 'work', title: 'Work', group: 'work', jev: true }, { id: 'ops' }]
+    const s = { model: { pages }, jev: { enabled: true, ready: true } }
+    // no tab for the work page and none for Jev: both are views of the one work tab
+    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'ops', '@sessions', '@workers', '@check'])
+    // without a work page the Jev tab stays where it was
+    assert.ok(comp.pageOrder({ model: { pages: [{ id: 'ops' }] }, jev: { enabled: true } }).includes('@jev'))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the work tab opens on what is due and switches to by source and by Jev', () => {
+  const work = { id: 'work', group: 'work', jev: true }
+  assert.equal(logic.workPageOf([{ id: 'ops' }, work]), work)
+  assert.equal(logic.workPageOf([{ id: 'ops' }]), null)
+  const ready = { enabled: true, ready: true }
+  assert.deepEqual(logic.workViews(work, ready), ['due', 'area', 'jev'])
+  assert.deepEqual(logic.workViews(work, { enabled: false }), ['due', 'area'])
+  assert.deepEqual(logic.workViews({ ...work, jev: false }, ready), ['due', 'area'])
+  assert.deepEqual(logic.workViews(null, ready), ['due'])
+  // a remembered view the tab cannot show falls back to what is due, the default
+  assert.equal(logic.workViewOf('jev', work, ready), 'jev')
+  assert.equal(logic.workViewOf('jev', work, { enabled: false }), 'due')
+  assert.equal(logic.workViewOf('area', null, ready), 'due')
+  assert.equal(logic.workViewOf(undefined, work, ready), 'due')
 })
 
 test('the words of the Jev order exist in both languages', () => {

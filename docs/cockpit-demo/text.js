@@ -285,6 +285,8 @@ const en = {
   workersOpen: 'Show workers',
   workOrder: {
     label: 'Order of this page',
+    viewLabel: 'View of the work tab',
+    views: { due: 'Due', area: 'By source', jev: 'By Jev' },
     byArea: 'By area',
     byJev: 'By Jev',
     run: 'Order with Jev',
@@ -1053,6 +1055,8 @@ const de = {
   workersOpen: 'Worker ansehen',
   workOrder: {
     label: 'Reihenfolge dieser Seite',
+    viewLabel: 'Ansicht des Arbeit-Reiters',
+    views: { due: 'Dran', area: 'Nach Quelle', jev: 'Nach Jev' },
     byArea: 'Nach Bereichen',
     byJev: 'Nach Jev',
     run: 'Mit Jev ordnen',

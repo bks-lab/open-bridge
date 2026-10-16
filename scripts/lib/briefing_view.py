@@ -217,7 +217,8 @@ REST_PAGE = "more"
 PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev"}
 JEV_KEYS = {"skip_sections", "private"}
 # where a page sits in a dashboard's page bar: in front, or behind a "More" menu
-PAGE_GROUPS = ("main", "more", "day")   # day: no tab, its sections stand under the day list
+PAGE_GROUPS = ("main", "more", "work", "day")   # day: no tab, its sections stand under the day list;
+# work: no tab, it is the "by source" view of the work tab (the briefing), beside "what is due" and "by Jev"
 PAGE_SECTION_KEYS = {"id", "when", "detail", "link", "empty", "alarm", "badge", "view", "hide_empty", "actionable"}
 # how a dashboard draws a section: rows in a table (default), cards, or a mosaic of every row
 PAGE_VIEWS = ("table", "tiles", "mosaic", "groups")
@@ -467,7 +468,7 @@ def _page_problems(view: dict) -> list:
         if "title" in page and not isinstance(page["title"], str):
             out.append(f"{where}: title must be text")
         if "group" in page and page["group"] not in PAGE_GROUPS:
-            out.append(f"{where}: group must be main, more or day")
+            out.append(f"{where}: group must be main, more, work or day")
         if "overview" in page and not isinstance(page["overview"], bool):
             out.append(f"{where}: overview must be true or false")
         if "jev" in page:

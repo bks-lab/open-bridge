@@ -53,12 +53,24 @@ export const launch = (i, n) => 0.75 + i * Math.min(0.08, 1.4 / Math.max(1, n))
 /** The plan items that are still on the dashboard: a task closed or dropped since Jev judged it
  *  leaves the picture at once instead of waiting for the next (paid) rating. Without a model
  *  nothing is filtered. The first task falls to the best remaining one */
-export function liveItems(plan, model) {
+export function liveItems(plan, model, extra = null) {
   const items = plan?.items ?? []
   if (!model) return { items, first: items.find(it => it.id === plan?.first) ?? items[0] ?? null }
-  const keys = new Set(modelRows(model, Infinity).map(r => r.key))
+  // extra: the keys of rows only a work page holds (an idea, a debrief point), not the briefing
+  const keys = new Set([...modelRows(model, Infinity).map(r => r.key), ...(extra ?? [])])
   const kept = items.filter(it => keys.has(it.key))
   return { items: kept, first: kept.find(it => it.id === plan.first) ?? kept[0] ?? null }
+}
+
+/** The order of a work page (jev.py rank) in the shape of a rating (jev.py run), so the Jev view of the
+ *  work tab draws the same picture as the Jev tab: an item's key is its id, the first is a key */
+export function orderPlan(order) {
+  if (!order) return null
+  const items = (order.items ?? []).map(it => ({ ...it, id: it.key }))
+  if (!items.length) return { ok: true, cached: true, empty: true, plan: { items: [], first: null } }
+  return { ok: true, empty: false, cached: true, digest: `order:${order.at_ms}`, at_ms: order.at_ms, took_ms: order.took_ms,
+    questions: items.length * 4 + (order.calls ?? 1), usage: order.usage ?? null, price: null,
+    plan: { items, first: order.first ?? items[0].key } }
 }
 
 /** What a plan row can jump to, the same choice the dashboard's own rows make: a live agent tab

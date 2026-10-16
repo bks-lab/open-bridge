@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, START_PAGE, WORKERS_PAGE, page
 import {
   CONN_GRACE_MS, DAY, addNote, attentionTabs, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
-  upsertRecord, addFeed, feedEvents,
+  upsertRecord, addFeed, feedEvents, workPageOf,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -104,7 +104,8 @@ const store = createStore({
     // a new visit opens on the start page, a reload stays where it was; the project chip chosen there is kept
     page: reloaded() ? load('bridge-cockpit.page', START_PAGE) : START_PAGE, homeProject: load('bridge-cockpit.homeProject', null), selectedKey: null,
     focusUntil: Number(load('bridge-cockpit.focusUntil', '')) || null, coreConv: null, coreBrief: false, focusKey: null, picked: [], expanded: {},
-    workView: load('bridge-cockpit.workView', 'area'),
+    // the view of the work tab (due, area, jev); a page with jev: outside it reads area and jev the same way
+    workView: load('bridge-cockpit.workTab', 'due'),
     workKind: load('bridge-cockpit.workKind', null),
     theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false,
     busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', quickModel: load('bridge-cockpit.quickModel', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
@@ -522,6 +523,14 @@ const ctl = {
     const s = store.get()
     // a page of group day has no tab: a tile or link to it opens Today, where its sections stand
     if ((s.model?.pages ?? []).some(p => p.id === id && p.group === 'day')) id = 'briefing'
+    // the work page and the Jev tab are views of the work tab where a page of group work exists
+    const work = workPageOf(s.model?.pages)
+    if (work && (id === work.id || (id === '@jev' && work.jev))) {
+      const view = id === work.id ? 'area' : 'jev'
+      save('bridge-cockpit.workTab', view)
+      setUi({ workView: view })
+      id = 'briefing'
+    }
     save('bridge-cockpit.page', id)
     // a page with the tab column beside it closes the tab drawer a folded page opened
     const drawer = s.layout === 'wide' && railShown(id) && s.ui.drawer === 'tabs' ? null : s.ui.drawer
@@ -626,7 +635,13 @@ const ctl = {
       : { order: s.jevOrder[page]?.order ?? null, error: res.error?.message ?? 'error', running: false } } }))
     if (force && res.ok && res.data.order) ctl.setWorkView('jev')
   },
-  setWorkView: v => { save('bridge-cockpit.workView', v); setUi({ workView: v }) },
+  setWorkView: v => { save('bridge-cockpit.workTab', v); setUi({ workView: v }) },
+  // the Jev view of the work tab: the first request of a day orders by itself (daily), the button orders anew
+  jevWork: async (page, force) => {
+    const res = await api.post('/api/jev/rank', { page, force: !!force, daily: !force })
+    if (res.ok) store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { order: res.data.order, error: null, running: false } } }))
+    return res
+  },
   setWorkKind: k => { save('bridge-cockpit.workKind', k); setUi({ workKind: k }) },
   // the project chip of the start page, kept for the next visit
   // the start page's tiles: shown at once, kept on the server; a refused save puts the old choice back
