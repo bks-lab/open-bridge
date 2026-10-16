@@ -175,7 +175,10 @@ with three views. **Due** is the four blocks below, and the tab opens on it.
 Jev picture (the matrix and the plan) fed by the work page's order, and it
 stands only where that page has `jev:` and Jev is on. With such a page the Jev
 tab goes too: it is the By Jev view now, and an old link to it or to the work
-page opens the matching view.
+page opens the matching view. The day moves to Start as well: dates, status,
+what is clear or needs tidying, the workplace and the pages of `group: day`
+stand there under Today, and the middle of Due keeps only the headline and a
+button to Start.
 
 Only one number in the bar carries colour: Today's count of what waits for
 you, the same count as the start page's station "waits for you" and the

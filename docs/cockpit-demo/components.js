@@ -743,13 +743,34 @@ function Overview({ s, c }) {
   const t = T()
   const m = s.model
   if (!m) return html`<div class="panel panel-pad"><${Skeleton} lines=${6} /></div>`
+  const head = html`
+    <span class="eyebrow">${t.overviewTitle}</span>
+    <h2 class="detail-title">${t.forYouNow(m.briefing_badge ?? 0)}${m.headline_rest ? ` · ${m.headline_rest}` : ''}</h2>
+    ${m.since ? html`<p class="muted">${m.since}</p>` : null}`
+  // with a work tab the day (dates, status, what happened) stands on Start; here only the headline and the way there
+  if (workPageOf(m.pages)) {
+    return html`<div class="panel panel-pad overview">${head}
+      <p class="row-in muted">${t.dayOnStart}
+        <${Btn} size="xs" variant="secondary" onClick=${() => c.setPage(START_PAGE)}>${t.dayOnStartOpen}<//></p>
+      <p class="hint muted">${t.detailEmpty}</p>
+    </div>`
+  }
+  return html`<div class="panel panel-pad overview">${head}
+    <${DayView} s=${s} c=${c} />
+    <p class="hint muted">${t.detailEmpty}</p>
+  </div>`
+}
+
+/** The day: dates, status, what is clear, what needs tidying, the workplace and the pages of group day.
+ *  In the middle of Today, or on Start where a work tab exists */
+function DayView({ s, c }) {
+  const t = T()
+  const m = s.model
+  if (!m) return html`<${Skeleton} lines=${6} />`
   const ex = m.extras ?? {}
   // the page that lists the proposed tabs, where they open one by one
   const wpPage = (m.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'workplace'))
-  return html`<div class="panel panel-pad overview">
-    <span class="eyebrow">${t.overviewTitle}</span>
-    <h2 class="detail-title">${t.forYouNow(m.briefing_badge ?? 0)}${m.headline_rest ? ` · ${m.headline_rest}` : ''}</h2>
-    ${m.since ? html`<p class="muted">${m.since}</p>` : null}
+  return html`<div class="day-view">
     <div class="ov-grid">
       <div class="ov-block">
         <h3 class="label-caps">${t.agendaTitle}</h3>
@@ -769,7 +790,6 @@ function Overview({ s, c }) {
     ${ex.workplace ? html`<div class="ov-block"><h3 class="label-caps">${t.workplaceTitle}</h3>
       <p class="row-in">${ex.workplace.replace(/\s*\S+\?$/, '')}
         ${wpPage ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.setPage(wpPage.id)}>${t.workplaceOpen}<//>` : null}</p></div>` : null}
-    <p class="hint muted">${t.detailEmpty}</p>
     ${(m.pages ?? []).filter(p => p.group === 'day').map(p => html`<section key=${p.id} class="day-more" aria-label=${p.title}>
       <h3 class="label-caps day-more-title">${p.title}</h3>
       ${(p.sections ?? []).map(sec => html`<${PageSection} key=${sec.id} page=${p} section=${sec} s=${s} c=${c} />`)}
@@ -3405,6 +3425,11 @@ function HomePage({ s, c }) {
         onClick=${() => c.setHomeProject(project === p ? null : p)}><span class=${`home-chip-dot tk-${projectTone(p)}`} aria-hidden="true"></span>${p}</button>`)}
     </div>` : null
   const backs = returnsOf(s).filter(r => inProject(byKey.get(r.key) ?? {}, project) || !project)
+  // with a work tab the day lives here: dates, status, what happened today
+  const daily = workPageOf(s.model?.pages) ? html`<section class="home-shelf home-day" aria-labelledby="home-day">
+      <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-day">${t.overviewTitle}</h2></header>
+      <div class="panel panel-pad"><${DayView} s=${s} c=${c} /></div>
+    </section>` : null
   const shelves = html`
     ${on.has('s:returns') ? html`<${HomeShelf} id="home-returns" title=${h.returnsTitle} count=${backs.filter(r => r.live !== 'done').length} empty=${h.returnsEmpty}>
       ${backs.slice(0, 8).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
@@ -3438,6 +3463,7 @@ function HomePage({ s, c }) {
       <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} edit=${edit} setEdit=${setEdit} />
       ${edit ? html`<${HomeChooser} c=${c} catalog=${catalog} chosen=${chosen} />` : null}
       ${chips}
+      ${daily}
       ${shelves}
     </div>`
   }
@@ -3457,6 +3483,7 @@ function HomePage({ s, c }) {
     ${chips}
     ${on.has('s:focus') ? html`<${HomeFocus} s=${s} c=${c} tabs=${tabs} />` : null}
     <${HomeOverview} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} />
+    ${daily}
     ${shelves}
   </div>`
 }
