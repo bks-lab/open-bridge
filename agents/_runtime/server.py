@@ -130,7 +130,7 @@ def build_app(cfg: AgentConfig) -> Starlette:
         max_input_chars=cfg.max_input_chars,
         max_contexts=cfg.max_contexts,
         messages=cfg.messages,
-        approver=CommandApprover(cfg.approval) if cfg.approval.enabled else None,
+        approver=CommandApprover(cfg.approval, binary=cfg.binary) if cfg.approval.enabled else None,
         requests=cfg.requests,
     )
     agent_card = build_agent_card(cfg)

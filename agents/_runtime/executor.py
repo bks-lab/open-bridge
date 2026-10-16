@@ -462,7 +462,7 @@ class ClaudeAgentExecutor(AgentExecutor):
         logger.info(
             "executor: approval decided",
             extra={"task_id": context.task_id, "context_id": cid, "peer": peer,
-                   "verdict": decision.verdict},
+                   "verdict": decision.verdict, "auto": decision.auto},
         )
         if decision.verdict == "approve":
             return answer
