@@ -762,39 +762,52 @@ function Overview({ s, c }) {
 }
 
 /** The day: dates, status, what is clear, what needs tidying, the workplace and the pages of group day.
- *  In the middle of Today, or on Start where a work tab exists */
-function DayView({ s, c }) {
+ *  In the middle of Today as one panel, or on Start where a work tab exists as one card per block,
+ *  where the pages of group day stand as a shelf of their own (DayPages) */
+function DayView({ s, c, cards = false }) {
   const t = T()
   const m = s.model
   if (!m) return html`<${Skeleton} lines=${6} />`
   const ex = m.extras ?? {}
   // the page that lists the proposed tabs, where they open one by one
   const wpPage = (m.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'workplace'))
+  const blocks = [
+    { id: 'agenda', title: t.agendaTitle, body: (m.agenda ?? []).length
+      ? html`<ul class="agenda">${m.agenda.map((a, i) => html`<li key=${i}><span class="mono agenda-when">${a.when}</span><span>${a.title}</span></li>`)}</ul>`
+      : html`<${Empty}>${t.empty}<//>` },
+    { id: 'status', title: t.statusTitle, body: html`<${StatusList} rows=${m.status} />` },
+    (ex.clear ?? []).length ? { id: 'clear', title: t.clearTitle,
+      body: html`<ul class="plain">${ex.clear.map((x, i) => html`<li key=${i}><${StateLine} token="success" word=${x} /></li>`)}</ul>` } : null,
+    (ex.hygiene ?? []).length ? { id: 'hygiene', title: t.hygieneTitle,
+      body: html`<ul class="plain">${ex.hygiene.map((x, i) => html`<li key=${i}><${StateLine} token="warning" word=${x} /></li>`)}</ul>` } : null,
+    ex.workplace ? { id: 'workplace', title: t.workplaceTitle,
+      body: html`<p class="row-in">${ex.workplace.replace(/\s*\S+\?$/, '')}
+        ${wpPage ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.setPage(wpPage.id)}>${t.workplaceOpen}<//>` : null}</p>` } : null,
+  ].filter(Boolean)
+  if (cards) {
+    return blocks.map(b => html`<article key=${b.id} class=${`hcard day-card day-${b.id}`}>
+      <div class="hcard-body"><h3 class="label-caps day-card-title">${b.title}</h3>${b.body}</div>
+    </article>`)
+  }
+  const [agenda, status, ...rest] = blocks
   return html`<div class="day-view">
     <div class="ov-grid">
-      <div class="ov-block">
-        <h3 class="label-caps">${t.agendaTitle}</h3>
-        ${(m.agenda ?? []).length
-          ? html`<ul class="agenda">${m.agenda.map((a, i) => html`<li key=${i}><span class="mono agenda-when">${a.when}</span><span>${a.title}</span></li>`)}</ul>`
-          : html`<${Empty}>${t.empty}<//>`}
-      </div>
-      <div class="ov-block">
-        <h3 class="label-caps">${t.statusTitle}</h3>
-        <${StatusList} rows=${m.status} />
-      </div>
+      <div class="ov-block"><h3 class="label-caps">${agenda.title}</h3>${agenda.body}</div>
+      <div class="ov-block"><h3 class="label-caps">${status.title}</h3>${status.body}</div>
     </div>
-    ${(ex.clear ?? []).length ? html`<div class="ov-block"><h3 class="label-caps">${t.clearTitle}</h3>
-      <ul class="plain">${ex.clear.map((x, i) => html`<li key=${i}><${StateLine} token="success" word=${x} /></li>`)}</ul></div>` : null}
-    ${(ex.hygiene ?? []).length ? html`<div class="ov-block"><h3 class="label-caps">${t.hygieneTitle}</h3>
-      <ul class="plain">${ex.hygiene.map((x, i) => html`<li key=${i}><${StateLine} token="warning" word=${x} /></li>`)}</ul></div>` : null}
-    ${ex.workplace ? html`<div class="ov-block"><h3 class="label-caps">${t.workplaceTitle}</h3>
-      <p class="row-in">${ex.workplace.replace(/\s*\S+\?$/, '')}
-        ${wpPage ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.setPage(wpPage.id)}>${t.workplaceOpen}<//>` : null}</p></div>` : null}
-    ${(m.pages ?? []).filter(p => p.group === 'day').map(p => html`<section key=${p.id} class="day-more" aria-label=${p.title}>
-      <h3 class="label-caps day-more-title">${p.title}</h3>
-      ${(p.sections ?? []).map(sec => html`<${PageSection} key=${sec.id} page=${p} section=${sec} s=${s} c=${c} />`)}
-    </section>`)}
+    ${rest.map(b => html`<div key=${b.id} class="ov-block"><h3 class="label-caps">${b.title}</h3>${b.body}</div>`)}
+    <${DayPages} s=${s} c=${c} />
   </div>`
+}
+
+/** The pages of group day (what happened today), one section each */
+function DayPages({ s, c, shelf = false }) {
+  return (s.model?.pages ?? []).filter(p => p.group === 'day').map(p => html`<section key=${p.id}
+    class=${shelf ? 'home-shelf day-more' : 'day-more'} aria-label=${p.title}>
+    ${shelf ? html`<header class="home-shelf-head"><h2 class="home-shelf-title">${p.title}</h2></header>`
+      : html`<h3 class="label-caps day-more-title">${p.title}</h3>`}
+    ${(p.sections ?? []).map(sec => html`<${PageSection} key=${sec.id} page=${p} section=${sec} s=${s} c=${c} />`)}
+  </section>`)
 }
 
 /** Status rows: failures and counts in view, the quiet ones (healthy, nothing to count) under one line */
@@ -3426,10 +3439,11 @@ function HomePage({ s, c }) {
     </div>` : null
   const backs = returnsOf(s).filter(r => inProject(byKey.get(r.key) ?? {}, project) || !project)
   // with a work tab the day lives here: dates, status, what happened today
-  const daily = workPageOf(s.model?.pages) ? html`<section class="home-shelf home-day" aria-labelledby="home-day">
-      <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-day">${t.overviewTitle}</h2></header>
-      <div class="panel panel-pad"><${DayView} s=${s} c=${c} /></div>
-    </section>` : null
+  const daily = workPageOf(s.model?.pages) ? html`<${HomeShelf} id="home-day" title=${h.dayTitle} empty="">
+      ${DayView({ s, c, cards: true })}
+    <//>` : null
+  // what happened today is long and read last, so it closes the page
+  const diary = daily ? html`<${DayPages} s=${s} c=${c} shelf />` : null
   const shelves = html`
     ${on.has('s:returns') ? html`<${HomeShelf} id="home-returns" title=${h.returnsTitle} count=${backs.filter(r => r.live !== 'done').length} empty=${h.returnsEmpty}>
       ${backs.slice(0, 8).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
@@ -3462,9 +3476,10 @@ function HomePage({ s, c }) {
     return html`<div class=${`col col-page home bridge-home${s.ui.focusUntil && clockLeft(s.ui.focusUntil, s.now || Date.now()) ? ' in-focus' : ''}`}>
       <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} edit=${edit} setEdit=${setEdit} />
       ${edit ? html`<${HomeChooser} c=${c} catalog=${catalog} chosen=${chosen} />` : null}
-      ${chips}
       ${daily}
+      ${chips}
       ${shelves}
+      ${diary}
     </div>`
   }
   return html`<div class="col col-page home">
@@ -3485,6 +3500,7 @@ function HomePage({ s, c }) {
     <${HomeOverview} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} />
     ${daily}
     ${shelves}
+    ${diary}
   </div>`
 }
 

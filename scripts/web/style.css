@@ -1420,6 +1420,17 @@ kbd {
 .hcard-row-main { border: 0; padding: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .hcard-row-main:hover .hcard-title { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
 
+/* the day on Start: a card per block, as tall as its content, and no lift, since a card here is to read, not to click */
+.home-shelf:has(#home-day) .home-grid { align-items: start; }
+.day-card:hover { transform: none; border-color: var(--border); box-shadow: none; }
+.day-card .hcard-body { gap: 8px; }
+.day-card-title { margin: 0; color: var(--on-surface-muted); }
+.day-card .agenda, .day-card .plain { margin: 0; }
+.day-card .row-in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.home-shelf.day-more { margin-top: 0; gap: 14px; }
+.day-card.day-status { grid-column: span 2; }
+@media (max-width: 640px) { .day-card.day-status { grid-column: auto; } }
+
 .home-starts { display: flex; flex-wrap: wrap; gap: 10px; }
 .home-start {
   display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; font: inherit; font-size: var(--text-sm); font-weight: 500;
