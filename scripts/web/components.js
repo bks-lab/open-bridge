@@ -327,7 +327,7 @@ function CommandBox({ c }) {
   </form>`
 }
 
-function Header({ s, c, merged = false }) {
+function Header({ s, c }) {
   const t = T()
   const themeIcon = s.ui.theme === 'dark' ? 'moon' : s.ui.theme === 'light' ? 'sun' : 'auto'
   const waiting = attentionTabs(s.tabs?.tabs).length
@@ -337,7 +337,7 @@ function Header({ s, c, merged = false }) {
       <div class="hdr-name"><h1 class="hdr-title">${t.cockpit}</h1>
         ${s.mock ? html`<span class="hdr-demo" title=${t.mockNote}><span class="hdr-demo-long">${t.demoBadge}</span><span class="hdr-demo-short">${t.demoBadgeShort}</span></span>` : null}</div>
     </div>
-    ${merged ? html`<${PageBar} s=${s} c=${c} />` : html`<span class="hdr-headline" aria-hidden="true"></span>`}
+    <span class="hdr-headline" aria-hidden="true"></span>
     <div class="hdr-right">
       <${LoadingIndicator} s=${s} />
       ${s.layout === 'narrow' ? null : html`<${AsOf} s=${s} />`}
@@ -402,8 +402,8 @@ function PageBar({ s, c }) {
   const [open, setOpen] = useState(false)
   const moreBox = usePopover(open, setOpen)
   // every tab stands in the bar while the bar is wide enough; only when they overflow do the pages
-  // of the `more` group fold behind a "More" menu, from the last one forward and only as many as do not fit
-  // (in the one bar of a wide screen the room is shared with the tools). A resize unfolds and measures again
+  // of the `more` group fold behind a "More" menu, from the last one forward and only as many as do not fit.
+  // A resize unfolds and measures again
   const navRef = useRef(null)
   const [foldN, setFoldN] = useState(0)
   const foldable = order.filter(id => more.has(id) && id !== s.ui.page)
@@ -4613,12 +4613,12 @@ export function App({ store, ctl }) {
   const main = onPage
     ? html`<${PageView} s=${s} c=${ctl} />${peek ? html`<${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />` : null}`
     : html`<${DayColumn} s=${s} c=${ctl} byKey=${byKey} /><${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />`
-  // on a wide screen the page tabs stand in the header itself: one bar, one row more for the page
-  const merged = layout === 'wide'
-  return html`<div class=${`shell${merged ? ' is-merged' : ''}`}>
+  // the page tabs keep their own row on every width: in the header of a wide screen they shared the room
+  // with the tools, and the widest screen showed the fewest tabs
+  return html`<div class="shell">
     <a class="skip" href="#main">${T().skip}</a>
-    <${Header} s=${s} c=${ctl} merged=${merged} />
-    ${merged ? null : html`<${PageBar} s=${s} c=${ctl} />`}
+    <${Header} s=${s} c=${ctl} />
+    <${PageBar} s=${s} c=${ctl} />
     ${layout === 'narrow' ? html`<${MobileSwitch} s=${s} c=${ctl} />` : null}
     <main id="main" class=${`main layout-${layout}${onPage ? ' on-page' : ''}${peek ? ' with-detail' : ''}${layout === 'wide' && !rail ? ' no-rail' : ''}`} data-pane=${pane}>
       ${main}

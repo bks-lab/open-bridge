@@ -1840,26 +1840,6 @@ button.feed-text:hover { text-decoration: underline; text-decoration-color: var(
 }
 
 
-/* one bar on a wide screen: the page tabs in the header, the tools as symbols, the command line opens on use */
-.shell.is-merged { --pagebar-h: 0px; }
-.is-merged .hdr { gap: 12px; }
-.is-merged .hdr .pagebar {
-  position: static; height: 100%; flex: 1 1 auto; min-width: 0; background: transparent; border: 0;
-}
-.is-merged .hdr .pagebar-tabs { padding: 0 4px; }
-.is-merged .hdr .ptab { padding: 0 10px; }
-.is-merged .hdr .hide-narrow { display: none; }
-.is-merged .hdr-right { gap: 4px; }
-.is-merged .cmd-input { width: 40px; padding-right: 6px; color: transparent; }
-.is-merged .cmd-input::placeholder { color: transparent; }
-.is-merged .cmd-input:focus { width: 190px; padding-right: 26px; color: var(--on-surface); }
-.is-merged .cmd-input:focus::placeholder { color: var(--on-surface-muted); }
-.is-merged .cmd-kbd { right: 12px; }
-.is-merged .cmd-input:focus + .cmd-kbd, .is-merged .cmd:focus-within .cmd-kbd { right: 6px; }
-/* in the one bar the relay is its dot (the word in its tooltip) and asking is its symbol */
-.is-merged .hdr-relay .state-line > span:last-child { display: none; }
-.is-merged .hdr-ask .btn-label { display: none; }
-
 /* the inner room: held down, the core charges, then the page dives into the net behind the bridge (inner.js) */
 .core-button::after {
   content: ""; position: absolute; inset: -6px; border-radius: var(--radius-full); border: 2px solid var(--accent);

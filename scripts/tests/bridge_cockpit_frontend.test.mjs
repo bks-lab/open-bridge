@@ -1615,3 +1615,14 @@ test('demo: the coloured Today number, the waits-for-you count and the Now secti
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// The page tabs keep their own row on every width (16.10.): folded into the header of a wide screen,
+// the tabs shared the room with the tools, so at 1600 px Sessions, Workers, Check and Jev stood behind
+// More, the command box shrank to a symbol and Ask lost its word, while 1100 px showed all of it.
+test('the page bar has its own row on a wide screen too, never inside the header', () => {
+  const src = read('components.js')
+  assert.doesNotMatch(src, /merged/)
+  assert.match(src, /\n    <\$\{Header\} s=\$\{s\} c=\$\{ctl\} \/>\n    <\$\{PageBar\} s=\$\{s\} c=\$\{ctl\} \/>\n/)
+  const css = read('style.css')
+  assert.doesNotMatch(css, /is-merged/)
+})
