@@ -80,9 +80,18 @@ trust: "public"
 # is asked (messenger, push, web page) lives in that command, with the instance.
 # Ready-made for a Bridge with an inbox: scripts/inbox-approve.py (the held answer
 # becomes an only-you draft in the inbox; docs/inbox.md).
+# Optional triage (auto_approve): a small model releases small answers (ping,
+# greeting, general knowledge) without asking. Peer requests, answers longer than
+# max_answer_chars and any triage failure still ask. notify: true tells the command
+# afterwards with "kind": "notice" (output ignored); leave it off unless your
+# command recognises notices (scripts/inbox-approve.py does not).
 # approval:
 #   command: ["python3", "${tools_dir}/approve.py"]
 #   timeout_sec: 3600
+#   auto_approve:
+#     model: "<small model id>"
+#     max_answer_chars: 1500
+#     notify: false
 
 # Grounding = the PUBLIC content the agent may read. This is ALSO the agent's cwd
 # for a `public` agent (see trust: above), which confines Read/Glob/Grep to public

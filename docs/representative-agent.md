@@ -1,7 +1,7 @@
 ---
 summary: "How to stand up a representative agent — a persistent, addressable A2A endpoint that fronts one persona to the outside world, safely, on any bridge."
 type: doc
-last_updated: 2026-07-19
+last_updated: 2026-10-16
 related:
   - ../agents/README.md
 ---
@@ -73,6 +73,16 @@ approver command decides: approve, edit, reject or timeout. Anything it cannot
 read fails closed. For a Bridge with an inbox, `scripts/inbox-approve.py` is the
 ready-made approver: the held answer becomes an only-you draft in the inbox until
 you approve, edit or reject it there ([`docs/inbox.md`](inbox.md)).
+
+Not every answer needs the owner. `approval.auto_approve` names a small model that
+triages each finished answer first: a ping, a greeting or general knowledge leaves
+at once, everything else is asked about as before. A peer request is never
+triaged, an answer longer than `max_answer_chars` is not either, and a triage that
+fails or answers anything unreadable asks the owner. `criteria` overrides the
+conservative default of what counts as small. With `notify: true` the approver
+command is told afterwards (`"kind": "notice"` plus `reason`, its output ignored),
+so it must recognise a notice rather than ask about it; `scripts/inbox-approve.py`
+does not, so leave `notify` off with it.
 
 ## 2. Instance anatomy
 

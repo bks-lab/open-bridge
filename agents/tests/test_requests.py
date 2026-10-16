@@ -58,7 +58,7 @@ class _FakeApprover:
     requests: list = []
     hold = 0.0
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, **_kwargs):
         pass
 
     async def __call__(self, request):

@@ -91,6 +91,9 @@ curl -s localhost:8011/health
   Owner approval (`approval:` in `agent.yaml`) holds each answer until a command
   decides; `scripts/inbox-approve.py` is the ready-made one: the held answer
   becomes an only-you draft in the inbox ([`docs/inbox.md`](../docs/inbox.md)).
+  Optional `approval.auto_approve` lets a small model release small answers
+  (ping, greeting, general knowledge) unasked; peer requests, long answers and
+  any triage failure still go to the owner.
 - **Public-endpoint caps** — concurrency, input length; add a per-IP edge
   rate-limit at your CDN.
 - **Honest card** — advertise only capabilities that are real.
