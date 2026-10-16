@@ -218,6 +218,13 @@ export function attentionTabs(tabs) {
     .sort((a, b) => (STATE_ORDER[a.state] ?? 4) - (STATE_ORDER[b.state] ?? 4) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
 }
 
+/** The two numbers of the running Claude sessions, one source for the Sessions tab and the start station:
+ *  how many sessions there are, and how many subagents and workflows run in them */
+export function sessionCounts(sessions) {
+  const list = sessions ?? []
+  return { sessions: list.length, agents: list.reduce((n, x) => n + (x.agents?.running_count ?? 0) + (x.workflows?.length ?? 0), 0) }
+}
+
 /** Seconds left of a running pass, from its remembered duration; null when unknown */
 export function etaSeconds(loading, now) {
   if (!loading?.pass || !loading.eta_ms) return null

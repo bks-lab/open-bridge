@@ -336,7 +336,7 @@ export function buildState(now = Date.now(), opts = {}) {
       agenda: empty ? [] : [{ when: hhmm(now + 70 * MIN), title: 'Team call' }, { when: hhmm(now + 250 * MIN), title: 'Review of the demo project' }],
       status: [{ title: 'Systems', count: empty ? 0 : 1, probe: true, state: 'ok' }, { title: 'Inbox', count: empty ? 0 : 6, probe: false, state: 'ok' }],
       extras: { clear: ['Services: all running'], hygiene: empty ? [] : ['2 tasks without a log row for 7 days'], workplace: empty ? null : 'Tabs: 3 suggested' },
-      counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: empty ? 0 : 2, give: empty ? 0 : 3, work: empty ? 0 : 4, later: empty ? 0 : 2, hidden: hidden.length },
+      counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: sections[0].total, give: sections[1].total, work: sections[2].total, later: sections[3].total, hidden: hidden.length },
       sections, numbers, hidden,
       approvable: empty ? [] : [rows.labels.key, rows.docs.key],
       task_rows: empty ? [] : [rows.quiet, rows.waits],
@@ -352,7 +352,8 @@ export function buildState(now = Date.now(), opts = {}) {
         { id: 'build', label: 'Build', for_types: ['feature'], roles: [{ id: 'implement', name: 'Implement', mode: 'go' }, { id: 'review', name: 'Review', mode: 'report' }] },
         { id: 'research', label: 'Research', for_types: ['research'], roles: [{ id: 'evidence', name: 'Evidence', mode: 'report' }, { id: 'counter', name: 'Counter', mode: 'report' }, { id: 'summary', name: 'Summary', mode: 'report' }] },
       ],
-      briefing_badge: empty ? 0 : 7,
+      // what the server sends: the Now section's total, the same number as counts.now
+      briefing_badge: sections[0].total,
     },
     tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], convs: [] },

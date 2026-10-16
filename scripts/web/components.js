@@ -7,7 +7,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from './vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, duration, etaSeconds, formatClock, formatDay, groupTabs, indexRows,
-  isoDate, markToken, nextFocusIndex, nextMonday, noteToken, pageWarnings, parseDate, prioToken,
+  isoDate, markToken, nextFocusIndex, nextMonday, noteToken, pageWarnings, parseDate, prioToken, sessionCounts,
   sectionRows, short, startRefusal, stateToken, toneToken,
   VERDICT_ORDER, centsText, confidenceDots, reviewRows, verdictCounts, verdictToken,
   agentLane, checkFlow, gaugeArc, gaugeBands, gaugePoint, gaugeSection, laneWindow, meterScale, meterText, meterView,
@@ -429,16 +429,17 @@ function PageBar({ s, c }) {
     <span>${x.label}</span>${x.badge}</button>` }
   const n = s.model?.briefing_badge ?? 0
   const toClose = s.model?.review?.last?.to_close ?? 0
-  const agentsActive = (s.sessions?.sessions ?? []).reduce((n, x) => n + (x.agents?.running_count ?? 0), 0)
+  // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip
+  const sess = sessionCounts(s.sessions?.sessions)
   return html`<nav class="pagebar" aria-label=${t.pagesLabel} ref=${navRef}>
     <div class="pagebar-tabs" role="tablist" ref=${tabsRef}>
       ${box ? html`<${TabMarker} box=${box} />` : null}
       ${tab(START_PAGE, t.startTab, null)}
       ${tab('briefing', briefingTitle(s), n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}
-      ${tab(SESSIONS_PAGE, t.sessionsTab, agentsActive > 0
-        ? html`<span class="pbadge is-quiet"><span class="mono">${agentsActive}</span></span>` : null)}
+      ${tab(SESSIONS_PAGE, t.sessionsTab, sess.sessions > 0
+        ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null)}
       ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, s.workers?.data?.stats?.with_findings
-        ? html`<span class="pbadge is-quiet"><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null)}
+        ? html`<span class="pbadge" title=${t.home.workersFindings(s.workers.data.stats.with_findings)}><${Dot} token="warning" /><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null)}
       ${tab(CHAT_PAGE, t.chatTab, (s.quick?.convs ?? []).some(x => x.running) ? html`<${Spinner} />` : null)}
       ${(s.agents?.peers ?? []).length ? tab(AGENTS_PAGE, t.agentsTab, (s.agents?.convs ?? []).some(x => x.running) ? html`<${Spinner} />`
         : (s.agents?.convs ?? []).some(x => x.turns?.[x.turns.length - 1]?.waiting) ? html`<${Dot} token="warning" />` : null) : null}
@@ -2813,7 +2814,7 @@ function stationOf(x, s, c, chosen, project) {
   }
   if (x.id === 'c:agents') {
     const sessions = s.sessions?.sessions ?? []
-    const n = sessions.reduce((k, y) => k + (y.agents?.running_count ?? 0) + (y.workflows?.length ?? 0), 0)
+    const n = sessionCounts(s.sessions?.sessions).agents
     // the station counts your sessions; how many subagents run in them is its small line (the other
     // Bridges, A2A, have their own tab and are not counted here)
     return { id: x.id, label: h.agentsTitle, value: String(sessions.length), sub: n ? h.agentsLine(n) : '',

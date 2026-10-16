@@ -1572,3 +1572,46 @@ test('a page item a person can act on gets the same row as an inbox item: Do it,
   assert.equal(logic.pageItemActs({ ...it, task: 't' }), false)
   assert.equal(logic.actionRow({ title: 'plain', key: 'item:a/b/c', actionable: false }, new Map()), null)
 })
+
+// One count per word (16.10.): a number that stands on a tab, a station of the start page and a page
+// headline is the same number everywhere, from one helper, so the page never contradicts itself.
+test('sessionCounts: sessions are the sessions, agents are the running subagents and workflows', () => {
+  assert.deepEqual(logic.sessionCounts(undefined), { sessions: 0, agents: 0 })
+  assert.deepEqual(logic.sessionCounts([]), { sessions: 0, agents: 0 })
+  assert.deepEqual(logic.sessionCounts([
+    { agents: { running_count: 2 }, workflows: [{ name: 'w' }] },
+    { agents: { running_count: 0 }, workflows: [] },
+    { agents: { running_count: 1 } },
+    {},
+  ]), { sessions: 4, agents: 4 })
+})
+
+test('the Sessions tab and the Sessions station show the same number from sessionCounts', () => {
+  const src = read('components.js')
+  assert.doesNotMatch(src, /agentsActive/)
+  const uses = src.match(/sessionCounts\(s\.sessions\?\.sessions\)/g) ?? []
+  assert.ok(uses.length >= 2, `sessionCounts used ${uses.length} times, expected tab and station`)
+})
+
+test('the Workers tab marks findings like a page with findings, never as a bare number beside the station count', () => {
+  const src = read('components.js')
+  // the bare grey number of findings beside "Workers" read as the count of workers (5 on Start, 2 on the tab)
+  assert.doesNotMatch(src, /pbadge is-quiet"><span class="mono">\$\{s\.workers\.data\.stats\.with_findings\}/)
+  assert.match(src, /tab\(WORKERS_PAGE[^\n]*\n[^\n]*workersFindings/)
+})
+
+test('demo: the coloured Today number, the waits-for-you count and the Now section agree', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-count-'))
+  try {
+    fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
+    const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
+    const m = mock.buildState().model
+    const now = m.sections.find(x => x.id === 'now')
+    assert.equal(m.briefing_badge, m.counts.now)
+    assert.equal(m.counts.now, now.total)
+    for (const id of ['give', 'work', 'later']) assert.equal(m.counts[id], m.sections.find(x => x.id === id).total, id)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
