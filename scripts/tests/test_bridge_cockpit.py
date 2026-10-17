@@ -3993,3 +3993,53 @@ def test_a_route_that_outlives_a_settings_change_is_not_kept(lworld):
 def test_route_refuses_bad_keys(lworld, keys):
     status, _, data = lworld.post("/api/route", {"keys": keys})
     assert status == 400 and json.loads(data)["error"]["field"] == "keys"
+
+
+# ---------------------------------------------------------------- the daily check's level, a task's own model
+
+def write_check(w: World, **answer) -> None:
+    (w.root / ".bridge").mkdir(exist_ok=True)
+    (w.root / ".bridge" / "triage.json").write_text(json.dumps(
+        {"items": {}, "last": {"items": [{"key": "task:other-task", "doer": "ai", **answer}]}}), encoding="utf-8")
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    router: haiku\n"], indirect=True)
+def test_auto_takes_the_level_of_the_daily_check_without_asking_a_judge(lworld):
+    write_check(lworld, level=3, jev=0.2)
+    lworld.runner.calls.clear()
+    status, _, data = lworld.post("/api/route", {"keys": ["task:other-task"]})
+    route = json.loads(data)["routes"]["task:other-task"]
+    assert status == 200 and (route["model"], route["routed_by"]) == ("opus", "check")
+    lworld.act("do_it", keys=["task:other-task"], model="auto")
+    assert lworld.runner.of("claude.p") == [] and writes(lworld)[-1][-2:] == ["--model", "opus"]
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    triage_jev: true\n"], indirect=True)
+def test_with_jev_switched_on_its_score_from_the_check_counts(lworld):
+    write_check(lworld, level=3, jev=0.2)
+    lworld.runner.calls.clear()
+    lworld.act("do_it", keys=["task:other-task"], model="auto")
+    assert writes(lworld)[-1][-2:] == ["--model", "haiku"]
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    effort: true\n"], indirect=True)
+def test_a_model_in_the_tasks_status_wins_over_the_check(lworld):
+    write_check(lworld, level=0)
+    task = lworld.root / "work" / "tasks" / "other-task"
+    task.mkdir(parents=True, exist_ok=True)
+    (task / "STATUS.md").write_text("---\nstatus: doing\nmodel: opus\neffort: low\n---\n\n# Other\n", encoding="utf-8")
+    lworld.runner.calls.clear()
+    lworld.act("do_it", keys=["task:other-task"], model="auto")
+    assert writes(lworld)[-1][-4:] == ["--model", "opus", "--effort", "low"]
+    assert lworld.app.launches.all()[0]["routed_by"] == "status"
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n"], indirect=True)
+def test_a_broken_status_frontmatter_falls_through_to_the_check(lworld):
+    write_check(lworld, level=0)
+    task = lworld.root / "work" / "tasks" / "other-task"
+    task.mkdir(parents=True, exist_ok=True)
+    (task / "STATUS.md").write_text("---\ncreated: 2026-13-45\nmodel: opus\n---\n", encoding="utf-8")
+    lworld.runner.calls.clear()
+    lworld.act("do_it", keys=["task:other-task"], model="auto")
+    assert writes(lworld)[-1][-2:] == ["--model", "haiku"]

@@ -12,7 +12,11 @@ without a fetched recommendation starts with the default, so a slow or hanging A
 """
 from __future__ import annotations
 
+import re
 import threading
+
+import yaml
+from pathlib import Path
 from typing import Any
 
 from .. import model_route as mr
@@ -24,6 +28,8 @@ except ImportError:            # a Bridge without the optional Jev module
     jev = None  # type: ignore[assignment]
 
 FILE = "launch.json"
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")            # actions.SLUG_RE (actions imports this module)
+FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\s*$", re.M | re.S)
 HAIKU_TIMEOUT = 60
 CACHE_MS = 10 * 60 * 1000
 SWITCHES = ("enabled", "manual", "auto", "effort")
@@ -33,6 +39,31 @@ class LaunchError(Exception):
     def __init__(self, status: int, code: str, message: str, field: str | None = None):
         super().__init__(message)
         self.status, self.code, self.message, self.field = status, code, message, field
+
+
+def read_overrides(path) -> dict:
+    """The settings page's changes; a stale or hand-edited value falls back to the config's."""
+    data = read_json(path)
+    out = {}
+    for key, value in (data.items() if isinstance(data, dict) else ()):
+        try:
+            mr.normalize({key: value})
+        except mr.SettingsError:
+            continue
+        out[key] = value
+    return out
+
+
+def file_settings(root, state_dir=None) -> dict:
+    """The settings as the cockpit sees them, for a script without the cockpit (triage.py)."""
+    from .config import JEV_MODEL_RE, launch_model_of, read_config_file
+    raw = read_config_file(root)
+    cockpit = raw.get("cockpit") if isinstance(raw.get("cockpit"), dict) else {}
+    ts = (raw.get("integrations") or {}).get("typesafe") if isinstance(raw.get("integrations"), dict) else None
+    model = ts.get("model") if isinstance(ts, dict) and isinstance(ts.get("model"), str) else None
+    base = launch_model_of(cockpit.get("launch_model"), model if model and JEV_MODEL_RE.match(model) else None)
+    folder = state_dir or (Path(root) / ".bridge" / "cockpit")
+    return mr.normalize(read_overrides(Path(folder) / FILE), base)
 
 
 class LaunchModel:
@@ -49,17 +80,7 @@ class LaunchModel:
         return dict(getattr(self.app.cfg, "launch_model", None) or mr.DEFAULTS)
 
     def overrides(self) -> dict:
-        data = read_json(self.path)
-        if not isinstance(data, dict):
-            return {}
-        out = {}
-        for key, value in data.items():
-            try:
-                mr.normalize({key: value})
-            except mr.SettingsError:
-                continue           # a stale or hand-edited value falls back to the config's
-            out[key] = value
-        return out
+        return read_overrides(self.path)
 
     def settings(self) -> dict:
         return mr.normalize(self.overrides(), self.defaults())
@@ -132,14 +153,48 @@ class LaunchModel:
         kind = row.get("task_type") or ("inbox item" if row.get("inbox_id") else "task")
         return {"title": str(row.get("title") or ""), "kind": str(kind), "priority": str(row.get("priority") or "")}
 
+    def own_pick(self, row: dict, s: dict) -> dict | None:
+        """A task's own `model:` (and `effort:`) in its STATUS.md frontmatter: set by hand, it beats every judge."""
+        slug = row.get("task")
+        path = Path(self.app.root) / "work" / "tasks" / str(slug) / "STATUS.md"
+        if not (isinstance(slug, str) and SLUG_RE.match(slug) and path.is_file()):
+            return None
+        try:
+            found = FRONTMATTER_RE.search(path.read_text(encoding="utf-8"))
+            fm = yaml.safe_load(found.group(1)) if found else None
+        except (OSError, ValueError, yaml.YAMLError):     # an impossible date is a ValueError of the loader
+            return None
+        model = fm.get("model") if isinstance(fm, dict) else None
+        if model not in mr.MODELS:
+            return None
+        effort = fm.get("effort") if fm.get("effort") in mr.EFFORTS else s["default_effort"]
+        return {"model": model, "effort": effort, "routed_by": "status", "level": None, "confidence": None,
+                "why": "model in the task's STATUS.md"}
+
+    def checked(self) -> dict:
+        """The daily check's answers by row key (triage.py writes them to .bridge/triage.json)."""
+        last = self.app.triage.last() if getattr(self.app, "triage", None) is not None else None
+        items = (last or {}).get("items")
+        return {x["key"]: x for x in items if isinstance(x, dict) and isinstance(x.get("key"), str)} \
+            if isinstance(items, list) else {}
+
     def route_rows(self, keyed: list[tuple[str, dict]], cached_only: bool = False) -> dict:
-        """{row key: route} for rows already resolved; cached per key and title for ten minutes.
-        cached_only answers from the cache and gives the rest the default, asking no judge."""
+        """{row key: route} for rows already resolved. A task's own model first, then the daily check's
+        level, then a judge's answer cached per key and title for ten minutes, then a judge.
+        cached_only gives what is left the default, asking no judge."""
+        checked = self.checked()
         with self.lock:
             s, generation = self.settings(), self.generation
             now = self.app.clock()
             out, todo = {}, []
             for key, row in keyed:
+                c = checked.get(key) or {}
+                known = self.own_pick(row, s) or (mr.from_check(c.get("level"), c.get("jev"), s)
+                                                   if c.get("doer") in ("ai", "either") else None)
+                if known:
+                    out[key] = {**known, "model": mr.capped(known["model"], s)
+                                if known["routed_by"] == "check" else known["model"]}
+                    continue
                 hit = self.cache.get(key)
                 if hit and now - hit[0] < CACHE_MS and hit[1] == str(row.get("title") or ""):
                     out[key] = hit[2]

@@ -23,6 +23,7 @@ TIMEOUT = 330
 DAILY_SEC = 24 * 3600
 CHECK_EVERY_SEC = 15 * 60
 ITEM_FIELDS = ("kind", "title", "gist", "verdict", "reason", "doer", "effort", "why", "verdict_from", "model")
+NUMBER_FIELDS = ("level", "jev")       # how complex for an AI: Haiku's level, Jev's score (launch.py picks the model)
 
 
 def _cents(usd: Any) -> float:
@@ -70,6 +71,8 @@ class Triage:
         for x in last.get("items") or []:
             if isinstance(x, dict) and isinstance(x.get("key"), str):
                 items[x["key"]] = {k: x.get(k) if isinstance(x.get(k), str) else None for k in ITEM_FIELDS}
+                items[x["key"]].update({k: x[k] if isinstance(x.get(k), (int, float)) and not isinstance(x.get(k), bool)
+                                        else None for k in NUMBER_FIELDS})
         out["items"] = items
         out["last"] = {"at": last.get("at"), "count": len(items), "cost_ct": _cents(last.get("cost_usd")),
                        "cost_known": bool(last.get("cost_known", True)), "calls": last.get("calls"),

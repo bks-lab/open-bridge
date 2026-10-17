@@ -31,6 +31,10 @@ origin: "<one-line reason this task exists>"
 # Optional: the next step and who takes it (bridge | me | a person). The briefing's
 # triage view sorts the task by it; without one it lands under housekeeping.
 # next: {what: "<next step>", who: me, due: YYYY-MM-DD, estimate_min: 30}
+# Optional: the model (haiku | sonnet | opus) and effort (low | medium | high | xhigh) an agent tab for this
+# task starts with from the cockpit; set by hand, it beats Auto (docs/bridge-cockpit.md, cockpit.launch_model).
+# model: opus
+# effort: high
 
 # Optional — set ONLY together with status: done. 'declined' = closed without
 # completion (replaces a 'cancelled' status).

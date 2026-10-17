@@ -1644,7 +1644,8 @@ export function routeText(route, t, lang) {
   if (!route) return null
   const w = t.launch
   const level = route.level == null ? '' : Number(route.level).toLocaleString(lang === 'de' ? 'de-DE' : 'en-US', { maximumFractionDigits: 2 })
-  const by = route.routed_by === 'jev' ? (level ? w.byJevLevel(level) : 'Jev') : route.routed_by === 'haiku' ? 'Haiku' : w.byDefault
+  const by = route.routed_by === 'jev' ? (level ? w.byJevLevel(level) : 'Jev') : route.routed_by === 'haiku' ? 'Haiku'
+    : route.routed_by === 'check' ? w.byCheck : route.routed_by === 'status' ? 'STATUS' : w.byDefault
   return `Auto: ${w.model[route.model] ?? route.model}${route.effort ? ` · ${w.effort[route.effort] ?? route.effort}` : ''} (${by})`
 }
 
@@ -1668,4 +1669,30 @@ export function bandsProblem(bands) {
   if (bounds.some(b => typeof b !== 'number' || !Number.isFinite(b) || b < 0 || b > 3)) return 'range'
   if (bounds.some((b, i) => i > 0 && b <= bounds[i - 1])) return 'order'
   return null
+}
+
+/** The model the daily check implies for a row the AI may do, as the server reckons it (model_route.py
+ *  from_check): Jev's score through the bands where triage_jev is on and Jev gave one, else Haiku's level
+ *  through the Haiku levels, then at most max_model. Null for a row you do, without a number, or while
+ *  launch or its Auto is off. The effort only where the effort switch is on */
+export function checkPick(tri, launch) {
+  if (!tri || !launch?.enabled || !launch.auto || (tri.doer !== 'ai' && tri.doer !== 'either')) return null
+  const st = launch.settings ?? {}
+  const jev = tri.jev
+  let pick = null
+  if (st.triage_jev && typeof jev === 'number' && Number.isFinite(jev) && jev >= 0 && jev <= 3) {
+    pick = (st.jev_bands ?? []).find(b => b.below == null || jev < b.below) ?? null
+  } else if (Number.isInteger(tri.level) && tri.level >= 0 && tri.level <= 3) {
+    pick = (st.haiku_map ?? [])[tri.level] ?? null
+  }
+  if (!pick) return null
+  const top = LAUNCH_MODELS.indexOf(st.max_model ?? 'opus')
+  const model = top >= 0 && LAUNCH_MODELS.indexOf(pick.model) > top ? LAUNCH_MODELS[top] : pick.model
+  return { model, effort: launch.effort ? pick.effort ?? null : null }
+}
+
+/** "Sonnet · high": a check's pick in the page language */
+export function checkPickText(pick, t) {
+  if (!pick) return null
+  return `${t.launch.model[pick.model] ?? pick.model}${pick.effort ? ` · ${t.launch.effort[pick.effort] ?? pick.effort}` : ''}`
 }

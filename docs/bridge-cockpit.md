@@ -629,6 +629,7 @@ own switch:
 | `default_effort` | none | the effort then; none leaves Claude Code's own default |
 | `max_model` | `opus` | the strongest model Auto may recommend; a hand pick is never capped |
 | `router` | `chain` | the judge: `chain` asks Jev when it is on and has a key, else Haiku; `jev` or `haiku` only that one |
+| `triage_jev` | `false` | the daily check also asks Jev how complex each item an AI may do is (below) |
 | `jev_model` | `jev-1.14.0` | the Jev version, else `integrations.typesafe.model` |
 | `jev_bands` | five bands | Jev's complexity score (0 to 3) to model and effort, the first band the score stays below |
 | `haiku_map` | four entries | Haiku's level (0 to 3) to model and effort |
@@ -651,8 +652,19 @@ The page **Settings** (behind More) shows every key above and changes it on
 top of the config; the change is kept in `.bridge/cockpit/launch.json`, marked
 as changed on the page, and "Reset" goes back to the config. The page never
 writes `bridge-config.yaml`. Every start records its model, effort and who
-chose it (`chosen`, `recommended`, `jev`, `haiku`, `default`) in `launches.json`, the data to
-tune the bands with later.
+chose it (`chosen`, `recommended`, `status`, `check`, `jev`, `haiku`, `default`) in
+`launches.json`, the data to tune the bands with later.
+
+**Where Auto's pick comes from, first wins.** A task's own `model:` (and
+`effort:`) in its STATUS.md frontmatter, set by hand. Then the daily check:
+triage judges every item once anyway, and for what an AI may do (`doer` ai or
+either) it also gives the `level` of the same four situations, in the same
+call, so the pick costs nothing extra and rests on the item's whole evidence,
+not its title. With `triage_jev` on (and Jev on with a key) Jev scores those
+items too and its score counts; turning it on later scores the items already
+checked without asking Haiku again. Then a judge's recommendation fetched for
+the row, then the default. The check keeps both numbers in
+`.bridge/triage.json` and never writes a task.
 
 Jev ships as CORE, as an optional integration: `scripts/lib/bridge_cockpit/jev.py`
 and `scripts/web/jev/` are on the scripts allowlist, but the page loads
@@ -747,7 +759,9 @@ task that is not done (streams never close and are left out) and every open
 inbox item: one line of what it is about (`gist`), whether it can go
 (`verdict`; for a task the task check's verdict wins where it judged), and who
 does it (`doer`: the AI with its `effort` as one to three dots, you with a
-short `why`, or "the AI prepares, you confirm"). The mechanical model tier
+short `why`, or "the AI prepares, you confirm"). For what the AI may do it
+also rates how complex it is (`level`, and `jev` with `launch_model.triage_jev`),
+which Auto turns into a model. The mechanical model tier
 answers in batches of 20; an item is asked again only when its evidence
 changed or its answer is older than `work.review.max_age_days`, so a run costs
 cents. Hard rules stand over every answer: an inbox gate `only-you`, a

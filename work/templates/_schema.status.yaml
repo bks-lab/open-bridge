@@ -68,6 +68,16 @@ properties:
         - blocked → keep status doing/review + set blocked_by (a FLAG, not a state)
         - declined → status: done + outcome: declined
 
+  model:
+    enum: [haiku, sonnet, opus]
+    description: |
+      Optional. The model an agent tab for this task starts with from the cockpit; set by hand,
+      it beats Auto's pick (docs/bridge-cockpit.md, cockpit.launch_model).
+
+  effort:
+    enum: [low, medium, high, xhigh]
+    description: "Optional, with model: the agent's effort level."
+
   blocked_by:
     type: string
     description: |

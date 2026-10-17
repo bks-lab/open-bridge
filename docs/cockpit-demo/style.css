@@ -1269,6 +1269,7 @@ kbd {
 .tri-close { color: var(--success); border-color: var(--success); }
 .tri-ai { color: var(--info); border-color: var(--info); }
 .tri-either { color: var(--on-surface-muted); border-color: var(--border-strong); }
+.tri-model { color: var(--on-surface-muted); border-style: dashed; }
 .tri-you { color: var(--warning); border-color: var(--warning); white-space: normal; }
 .tri-unclear { color: var(--on-surface-muted); border-color: var(--border); border-style: dashed; }
 .tri-why { font-weight: 400; }

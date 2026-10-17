@@ -130,7 +130,7 @@ const A = (id, primary = false, dim = false) => ({ id, primary, dim })
 // the model an agent tab starts with: what bridge-config.yaml would say, and the state block the server builds from it
 const LAUNCH_CONFIG = {
   enabled: true, manual: true, auto: true, effort: true, default_model: 'sonnet', default_effort: null, max_model: 'opus',
-  router: 'chain', jev_model: 'jev-1.14.0',
+  router: 'chain', jev_model: 'jev-1.14.0', triage_jev: false,
   jev_bands: [{ below: 0.75, model: 'haiku', effort: 'medium' }, { below: 1.3, model: 'sonnet', effort: 'medium' },
     { below: 1.9, model: 'sonnet', effort: 'high' }, { below: 2.6, model: 'opus', effort: 'high' }, { below: null, model: 'opus', effort: 'xhigh' }],
   haiku_map: [{ model: 'haiku', effort: 'medium' }, { model: 'sonnet', effort: 'medium' }, { model: 'sonnet', effort: 'high' }, { model: 'opus', effort: 'high' }],

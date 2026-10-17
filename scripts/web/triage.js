@@ -6,7 +6,7 @@
 // pieces stay in views/; this file only draws what the triage adds, from s.triage.
 
 import { html, useEffect, useRef, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { TRIAGE_FILTERS, actionRow, centsText, effortDots, triageCounts, triageKey } from './logic.js'
+import { TRIAGE_FILTERS, actionRow, centsText, checkPick, checkPickText, effortDots, triageCounts, triageKey } from './logic.js'
 import { T, language } from './text.js'
 
 const TONE = { close: 'success', ai: 'info', you: 'warning', either: 'on-surface-muted', unclear: 'on-surface-muted' }
@@ -17,6 +17,8 @@ export function TriageGist({ tri, keyRow, c, s }) {
   if (!tri) return null
   const dots = effortDots(tri.effort)
   const busy = keyRow && !!s.ui.busy[keyRow.key]
+  // the model the check implies for an item the AI may do, while Auto is on (logic.js checkPick)
+  const pick = checkPick(tri, s.launch)
   return html`<div class="tri">
     <span class="tri-gist">${tri.gist}</span>
     <span class="tri-marks">
@@ -25,6 +27,7 @@ export function TriageGist({ tri, keyRow, c, s }) {
       ${tri.doer === 'ai' || tri.doer === 'either' ? html`<span class=${`tri-mark tri-${tri.doer}`} title=${tri.why || undefined}>
         ${tri.doer === 'ai' ? t.triage.ai : t.triage.either}
         ${dots ? html`<span class="tri-dots" aria-label=${t.triage.effort[tri.effort]}>${[1, 2, 3].map(i => html`<i key=${i} class=${i <= dots ? 'on' : ''}></i>`)}</span>` : null}</span>` : null}
+      ${pick ? html`<span class="tri-mark tri-model" title=${t.launch.checkPickTitle}>${checkPickText(pick, t)}</span>` : null}
       ${tri.doer === 'you' ? html`<span class="tri-mark tri-you" title=${tri.why || undefined}>${tri.why ? `${t.triage.you}: ${tri.why}` : t.triage.you}</span>` : null}
       ${tri.doer === 'ai' && keyRow ? html`<button type="button" class="btn btn-secondary btn-xs tri-do" disabled=${busy}
         title=${t.triage.doTitle} onClick=${() => c.act('do_it', { keys: [keyRow.key] })}><span class="btn-label">${t.triage.doIt}</span></button>` : null}

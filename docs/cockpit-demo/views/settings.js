@@ -80,6 +80,8 @@ function LaunchSettings({ s, c }) {
     <fieldset class=${`set-sub${on ? '' : ' is-off'}`} disabled=${!on}>
       <${SetRow} k="manual" s=${s}><${Toggle} k="manual" s=${s} save=${save} disabled=${busy} /><//>
       <${SetRow} k="auto" s=${s}><${Toggle} k="auto" s=${s} save=${save} disabled=${busy} /><//>
+      <${SetRow} k="triage_jev" s=${s}><${Toggle} k="triage_jev" s=${s} save=${save} disabled=${busy || !st.auto} />
+        ${s.jev?.ready ? null : html`<span class="muted small">${w.triageJevNeedsJev}</span>`}<//>
       <${SetRow} k="effort" s=${s}><${Toggle} k="effort" s=${s} save=${save} disabled=${busy} /><//>
       <${SetRow} k="default_model" s=${s}>
         <${Segmented} label=${w.label.default_model} busy=${busy || !on} current=${st.default_model} values=${modelValues}

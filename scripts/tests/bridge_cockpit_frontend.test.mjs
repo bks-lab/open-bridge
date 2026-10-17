@@ -2091,3 +2091,64 @@ test('launch: an answer of /api/route that comes after the cache was cleared is 
   assert.match(route, /const res = await api\.route\(keys\)\n\s+if \(gen !== routeGen\) return/)
   assert.match(route, /put\(k => \(\{ title: titles\.get\(k\), status: 'loading' \}\)\)/)
 })
+
+// ---------------------------------------------------------------- the daily check names the model (triage)
+
+const CHECK_SETTINGS = {
+  triage_jev: false, max_model: 'opus',
+  jev_bands: [{ below: 0.75, model: 'haiku', effort: 'medium' }, { below: 1.3, model: 'sonnet', effort: 'medium' },
+    { below: 1.9, model: 'sonnet', effort: 'high' }, { below: 2.6, model: 'opus', effort: 'high' }, { below: null, model: 'opus', effort: 'xhigh' }],
+  haiku_map: [{ model: 'haiku', effort: 'medium' }, { model: 'sonnet', effort: 'medium' }, { model: 'sonnet', effort: 'high' }, { model: 'opus', effort: 'high' }],
+}
+const CHECK_LAUNCH = { enabled: true, auto: true, manual: true, effort: true, settings: CHECK_SETTINGS }
+
+test('triage: the model the check implies, as the server reckons it (model_route.from_check)', () => {
+  const pick = (tri, launch = CHECK_LAUNCH) => logic.checkPick(tri, launch)
+  // Haiku's level through the Haiku levels
+  assert.deepEqual(pick({ doer: 'ai', level: 2, jev: 0.3 }), { model: 'sonnet', effort: 'high' })
+  assert.deepEqual(pick({ doer: 'either', level: 0, jev: null }), { model: 'haiku', effort: 'medium' })
+  // with triage_jev on, Jev's score through the bands; a level stands in where Jev gave nothing
+  const jevOn = { ...CHECK_LAUNCH, settings: { ...CHECK_SETTINGS, triage_jev: true } }
+  assert.deepEqual(pick({ doer: 'ai', level: 0, jev: 2.0 }, jevOn), { model: 'opus', effort: 'high' })
+  assert.deepEqual(pick({ doer: 'ai', level: 0, jev: 2.6 }, jevOn), { model: 'opus', effort: 'xhigh' })
+  assert.deepEqual(pick({ doer: 'ai', level: 1, jev: null }, jevOn), { model: 'sonnet', effort: 'medium' })
+  assert.deepEqual(pick({ doer: 'ai', level: 1, jev: 3.5 }, jevOn), { model: 'sonnet', effort: 'medium' })
+  // capped at max_model
+  const capped = { ...jevOn, settings: { ...jevOn.settings, max_model: 'sonnet' } }
+  assert.deepEqual(pick({ doer: 'ai', level: 0, jev: 2.9 }, capped), { model: 'sonnet', effort: 'xhigh' })
+  assert.deepEqual(pick({ doer: 'ai', level: 3, jev: null }, { ...CHECK_LAUNCH, settings: { ...CHECK_SETTINGS, max_model: 'haiku' } }), { model: 'haiku', effort: 'high' })
+  // effort only where the effort switch is on
+  assert.deepEqual(pick({ doer: 'ai', level: 2 }, { ...CHECK_LAUNCH, effort: false }), { model: 'sonnet', effort: null })
+  // nothing: you do it, no number, launch or Auto off, a level out of range or not whole
+  for (const [tri, launch] of [[{ doer: 'you', level: 2 }], [{ doer: 'ai', level: null, jev: null }], [{ doer: 'ai' }],
+    [{ doer: 'ai', level: 2 }, { ...CHECK_LAUNCH, enabled: false }], [{ doer: 'ai', level: 2 }, { ...CHECK_LAUNCH, auto: false }],
+    [{ doer: 'ai', level: 2 }, null], [{ doer: 'ai', level: 4 }], [{ doer: 'ai', level: 1.5 }], [null]]) {
+    assert.equal(pick(tri, launch === undefined ? CHECK_LAUNCH : launch), null, JSON.stringify([tri, launch]))
+  }
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    assert.equal(logic.checkPickText({ model: 'sonnet', effort: 'high' }, t), lang === 'de' ? 'Sonnet · hoch' : 'Sonnet · high')
+    assert.equal(logic.checkPickText({ model: 'opus', effort: null }, t), 'Opus')
+    // the recommendation from the check and from a STATUS.md says so
+    assert.equal(logic.routeText({ ...ROUTE, routed_by: 'check', level: 2 }, t, lang), lang === 'de' ? 'Auto: Sonnet · hoch (Prüfung)' : 'Auto: Sonnet · high (check)')
+    assert.equal(logic.routeText({ ...ROUTE, routed_by: 'status', level: null }, t, lang), 'Auto: Sonnet · ' + (lang === 'de' ? 'hoch' : 'high') + ' (STATUS)')
+  }
+  // the hint stands on the triage marks of a row
+  const gist = read('triage.js').match(/export function TriageGist\([\s\S]*?\n\}/)[0]
+  assert.match(gist, /const pick = checkPick\(tri, s\.launch\)/)
+  assert.match(gist, /checkPickText\(pick, t\)/)
+})
+
+test('settings: the daily check may ask Jev too, a switch below Auto, grey while launch or Auto is off', () => {
+  const page = read('views/settings.js')
+  assert.match(page, /<\$\{SetRow\} k="auto"[\s\S]*?<\$\{SetRow\} k="triage_jev"/)
+  assert.match(page, /<\$\{Toggle\} k="triage_jev" s=\$\{s\} save=\$\{save\} disabled=\$\{busy \|\| !st\.auto\} \/>/)
+  assert.match(page, /s\.jev\?\.ready \? null : html`<span class="muted small">\$\{w\.triageJevNeedsJev\}<\/span>`/)
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    assert.ok(t.settings.label.triage_jev && t.settings.explain.triage_jev && t.settings.triageJevNeedsJev, lang)
+  }
+  assert.equal(text.TABLES.de.settings.label.triage_jev, 'Jev bei der täglichen Prüfung mitbewerten')
+  assert.equal(text.TABLES.en.settings.label.triage_jev, 'Also ask Jev in the daily check')
+  assert.deepEqual(logic.launchPatch('triage_jev', true), { triage_jev: true })
+})

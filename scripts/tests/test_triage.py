@@ -137,3 +137,100 @@ def test_the_reason_of_a_hard_rule_comes_in_the_bridges_language():
     german = triage._rules(item, got, triage.why_words({"language": {"conversation": "de"}}))
     english = triage._rules(item, got, triage.why_words({}))
     assert german["why"] == triage.WHY["de"]["outbound"] and english["why"] == triage.WHY["en"]["outbound"]
+
+
+# ---------------------------------------------------------------- the model an agent would start with
+
+LEVELED = [{**r, "level": n} for r, n in zip(ROWS, (1, 2, 3, 9))]
+
+
+def launch_settings(repo, **values):
+    d = repo / ".bridge" / "cockpit"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "launch.json").write_text(json.dumps({"enabled": True, **values}), encoding="utf-8")
+
+
+def test_the_check_rates_how_complex_the_work_is_for_what_an_ai_may_do(repo):
+    setup(repo)
+    by = {x["key"]: x for x in triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW)["items"]}
+    assert by["task:alpha"]["level"] == 1
+    assert by["inbox:20261008-0900-frage-a1b2"]["level"] is None          # the person's: no model to pick
+    assert by["inbox:20261008-0901-fund-c3d4"]["level"] is None           # out of range
+    assert "level" in triage.PROMPT and all(x.get("jev") is None for x in by.values())
+
+
+def test_jev_rates_too_when_switched_on_and_only_the_ai_items(repo):
+    setup(repo)
+    launch_settings(repo, triage_jev=True)
+    sent = []
+
+    def jev(payload):
+        sent.append(payload)
+        return {"answers": {q: {"score": 2.4, "confidence": 0.7} for q in payload["questions"]}}
+    by = {x["key"]: x for x in triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW, jev=jev)["items"]}
+    assert by["task:alpha"]["jev"] == 2.4 and by["inbox:20261008-0900-frage-a1b2"]["jev"] is None
+    (payload,) = sent
+    assert payload["model"] == "jev-1.14.0" and "Importer fertigstellen" in json.dumps(payload, ensure_ascii=False)
+
+
+def test_jev_stays_quiet_while_its_switch_is_off(repo):
+    setup(repo)
+    launch_settings(repo)
+    calls = []
+    triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW, jev=lambda p: calls.append(p) or {})
+    assert calls == []
+
+
+def test_switching_jev_on_later_rates_without_asking_haiku_again(repo):
+    setup(repo)
+    triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW)
+    launch_settings(repo, triage_jev=True)
+    fake = Fake(answers={HAIKU: answers(LEVELED)})
+    out = triage.triage(repo, run=fake, now=NOW, jev=lambda p: {"answers": {q: {"score": 0.5} for q in p["questions"]}})
+    assert fake.model_calls() == [] and {x["key"]: x for x in out["items"]}["task:alpha"]["jev"] == 0.5
+
+
+def test_a_failing_jev_leaves_the_haiku_level(repo):
+    setup(repo)
+    launch_settings(repo, triage_jev=True)
+
+    def boom(_):
+        raise OSError("down")
+    by = {x["key"]: x for x in triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW, jev=boom)["items"]}
+    assert by["task:alpha"]["level"] == 1 and by["task:alpha"]["jev"] is None
+
+
+def test_a_failing_later_jev_batch_keeps_what_the_earlier_ones_gave(repo, monkeypatch):
+    setup(repo)
+    launch_settings(repo, triage_jev=True)
+    monkeypatch.setattr(triage._model_route()[0], "MAX_ITEMS", 1)
+    calls = []
+
+    def jev(payload):
+        calls.append(payload)
+        if len(calls) > 1:
+            raise OSError("rate limited")
+        return {"answers": {q: {"score": 1.0} for q in payload["questions"]}}
+    out = triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW, jev=jev)
+    assert len(calls) >= 2 and sum(1 for x in out["items"] if x.get("jev") == 1.0) == 1
+
+
+def test_a_new_jev_version_rates_again(repo):
+    setup(repo)
+    launch_settings(repo, triage_jev=True)
+    triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW,
+                  jev=lambda p: {"answers": {q: {"score": 1.0} for q in p["questions"]}})
+    launch_settings(repo, triage_jev=True, jev_model="jev-1.15.0")
+    seen = []
+    out = triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW,
+                        jev=lambda p: seen.append(p["model"]) or {"answers": {q: {"score": 2.0} for q in p["questions"]}})
+    assert seen == ["jev-1.15.0"] and {x["key"]: x for x in out["items"]}["task:alpha"]["jev"] == 2.0
+
+
+def test_jev_waits_for_no_one_when_the_check_is_out_of_time(repo, monkeypatch):
+    setup(repo)
+    launch_settings(repo, triage_jev=True)
+    monkeypatch.setattr(triage, "JEV_MIN_LEFT_SEC", 10_000)
+    calls = []
+    out = triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW, jev=lambda p: calls.append(p) or {})
+    assert calls == [] and {x["key"]: x for x in out["items"]}["task:alpha"]["level"] == 1

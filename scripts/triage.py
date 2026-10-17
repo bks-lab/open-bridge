@@ -10,7 +10,10 @@ open inbox item, one line each:
 - `gist`: what it is about, one line;
 - `verdict`: for a task close|continue|waiting|stale|unclear (the task check's verdict wins where it
   judged the task), for an inbox item close|keep|waiting|unclear;
-- `doer`: ai|you|either, with `effort` small|medium|large for the AI and a short `why`.
+- `doer`: ai|you|either, with `effort` small|medium|large for the AI and a short `why`;
+- `level`: for what an AI may do, how complex it is (0 to 3, model_route.LEVELS), from the same call, and
+  `jev`: Jev's score of the same when cockpit.launch_model.triage_jev is on. The cockpit picks the model
+  an agent starts with from these (launch.py), so a start needs no judge of its own.
 
 The evidence is the task check's (`task.py review`: STATUS.md, log rows, GitHub states, the task's open
 inbox items) plus each inbox item's own fields. The mechanical model tier answers in batches; an item
@@ -33,9 +36,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = Path(".bridge") / "triage.json"
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2              # 2: the level for the model an agent starts with
 CHUNK = 20                     # items per model call: small batches keep a small model reliable
 BUDGET_SEC = 280               # the dashboard gives a run 300 s
+JEV_MIN_LEFT_SEC = 60          # Jev rates only while this much of the budget is left (the rest waits for the next run)
+JEV_TIMEOUT_SEC = 15           # one Jev call; it answers in well under a second
 TASK_VERDICTS = ("close", "continue", "waiting", "stale", "unclear")
 INBOX_VERDICTS = ("close", "keep", "waiting", "unclear")
 DOERS = ("ai", "you", "either")
@@ -62,11 +67,13 @@ For every item answer:
   merge, deploy, payment or credential), either when an agent can prepare it and the person only confirms.
   Anything that sends, publishes, merges, deploys, pays or creates credentials is never ai.
 - effort: for doer ai or either, small (under an hour), medium (a few hours), large (more); else null.
+- level: for doer ai or either, how complex the work is for the agent, else null:
+{levels}
 - why: a few words in {language} why that doer, e.g. "only your yes is missing", "code in the repo, tests exist".
 - reason: one sentence in {language} for the verdict, naming the evidence.
 
 Answer with a JSON array only, one object per item, using the item's key:
-[{{"key": "<key>", "gist": "...", "verdict": "...", "doer": "ai|you|either", "effort": "small|medium|large|null", "why": "...", "reason": "..."}}]
+[{{"key": "<key>", "gist": "...", "verdict": "...", "doer": "ai|you|either", "effort": "small|medium|large|null", "level": 0, "why": "...", "reason": "..."}}]
 
 Items:
 
@@ -184,12 +191,66 @@ def _clean(item: dict, raw: dict | None, model: str | None, words: dict | None =
     verdict = str(raw.get("verdict") or "").lower()
     doer = str(raw.get("doer") or "").lower()
     effort = str(raw.get("effort") or "").lower()
+    level = raw.get("level")
     got = {"gist": _clip(raw.get("gist") or item["title"], GIST_MAX),
+           "level": level if isinstance(level, int) and not isinstance(level, bool) and 0 <= level <= 3 else None,
            "verdict": verdict if verdict in verdicts else "unclear",
            "doer": doer if doer in DOERS else "either",
            "effort": effort if effort in EFFORTS and doer in ("ai", "either") else None,
            "why": _clip(raw.get("why"), 80), "reason": _clip(raw.get("reason"), 300), "model": model if raw else None}
-    return _rules(item, got, words)
+    got = _rules(item, got, words)
+    return {**got, "level": got["level"] if got["doer"] in ("ai", "either") else None, "jev": None}
+
+
+def _model_route():
+    _task()                     # task.py puts scripts/ on the path
+    from lib import model_route
+    from lib.bridge_cockpit import launch
+    return model_route, launch
+
+
+def _real_jev(root: Path):
+    """Jev as the cockpit reaches it, or None when it is off or has no key."""
+    try:
+        from lib.bridge_cockpit import jev
+        from lib.bridge_cockpit.config import load_web_config
+        cfg = load_web_config(root)
+        if not cfg.jev_enabled:
+            return None
+        key = jev.resolve_key(ref=cfg.jev_key_ref)
+        return lambda payload: jev.call_api(payload, key, timeout=JEV_TIMEOUT_SEC)
+    except Exception:      # noqa: BLE001  no Jev is no level of Jev, never a failed check
+        return None
+
+
+def _rate_with_jev(root: Path, items: list, entries: dict, jev, started: float) -> int:
+    """Jev's score for every item an AI may do that has none yet, or one of another Jev version; returns the
+    calls made. A batch runs only while the check has JEV_MIN_LEFT_SEC of its budget left, and a failing
+    batch keeps what the others gave: the Haiku level stays wherever Jev gave nothing."""
+    mr, launch = _model_route()
+    settings = launch.file_settings(root)
+    if not (settings["enabled"] and settings["triage_jev"]):
+        return 0
+    version = settings["jev_model"]
+    todo = [it for it in items if (entries.get(it["key"]) or {}).get("doer") in ("ai", "either")
+            and (entries[it["key"]].get("jev") is None or entries[it["key"]].get("jev_model") != version)]
+    judge = (jev or _real_jev(root)) if todo else None
+    calls = 0
+    for i in range(0, len(todo) if judge else 0, mr.MAX_ITEMS):
+        if BUDGET_SEC - (time.monotonic() - started) < JEV_MIN_LEFT_SEC:
+            break
+        batch = todo[i:i + mr.MAX_ITEMS]
+        asked = [{"id": f"k{n}", "title": f"{it['title']}: {entries[it['key']].get('gist') or ''}", "kind": it["kind"]}
+                 for n, it in enumerate(batch)]
+        calls += 1
+        try:
+            scores = mr.jev_scores(asked, settings, judge)
+        except Exception:      # noqa: BLE001  this batch keeps its Haiku level, the next may still answer
+            continue
+        for n, it in enumerate(batch):
+            if f"k{n}" in scores:
+                entries[it["key"]].update(jev=scores[f"k{n}"], jev_model=version)
+    return calls
 
 
 def _load_cache(root: Path) -> dict:
@@ -217,7 +278,8 @@ def _check_verdicts(root: Path) -> dict:
     return {x["slug"]: x for x in last.get("tasks") or [] if isinstance(x, dict) and x.get("slug") and not x.get("kept")}
 
 
-def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None = None, save: bool = True) -> dict:
+def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None = None, save: bool = True,
+           jev=None) -> dict:
     t = _task()
     run = run or t.default_run
     now = now or dt.datetime.now()
@@ -251,6 +313,7 @@ def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None
             break
         chunk = need[i:i + CHUNK]
         prompt = PROMPT.format(today=now.date().isoformat(), language=language, stale_days=rcfg["stale_days"],
+                               levels="\n".join(f"  {n}: {d}" for n, d in enumerate(_model_route()[0].LEVELS)),
                                items="\n\n".join(_block(x) for x in chunk))
         res = t.ask_service(root, "triage", rcfg["command"], model, prompt, run, int(min(left, 150)))
         calls += 1
@@ -269,11 +332,14 @@ def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None
                 entries[x["key"]] = {**answered[x["key"]], "hash": x["hash"], "at": now.isoformat(timespec="seconds")}
         if save:
             _save_cache(root, cache)
+    jev_calls = _rate_with_jev(root, items, entries, jev, started)
+    if jev_calls and save:
+        _save_cache(root, cache)
     checked = _check_verdicts(root)
     out = []
     for it in items:
         if it["key"] in answered:
-            got, cached = answered[it["key"]], False
+            got, cached = {**answered[it["key"]], "jev": (entries.get(it["key"]) or {}).get("jev")}, False
         elif it not in need and it["key"] in entries:
             got, cached = {k: v for k, v in entries[it["key"]].items() if k not in ("hash", "at")}, True
         else:
@@ -292,7 +358,7 @@ def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None
               "you": sum(1 for x in out if x["doer"] == "you"),
               "unclear": sum(1 for x in out if x["verdict"] == "unclear")}
     result = {"items": out, "counts": counts, "cost_usd": round(cost, 6), "cost_known": cost_known, "calls": calls,
-              "model": model, "at": now.isoformat(timespec="seconds"), "duration_sec": round(time.monotonic() - started, 1)}
+              "model": model, "jev_calls": jev_calls, "at": now.isoformat(timespec="seconds"), "duration_sec": round(time.monotonic() - started, 1)}
     if save:
         cache["last"] = result
         _save_cache(root, cache)

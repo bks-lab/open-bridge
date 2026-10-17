@@ -37,6 +37,7 @@ QUESTION = ("How complex is the work an AI coding agent has to do for `item`, ju
 
 DEFAULTS: dict[str, Any] = {
     "enabled": False, "manual": True, "auto": False, "effort": False,
+    "triage_jev": False,           # the daily check (triage.py) also asks Jev, beside the level Haiku gives
     "default_model": "sonnet", "default_effort": None, "max_model": "opus",
     "router": "chain", "jev_model": "jev-1.14.0",
     # the score of a level runs from 0 to 3; the first band whose `below` the score stays under wins
@@ -87,7 +88,7 @@ def normalize(change: Any, base: dict | None = None) -> dict:
     for key, value in change.items():
         if key not in DEFAULTS:
             raise SettingsError(str(key)[:40], "unknown setting")
-        if key in ("enabled", "manual", "auto", "effort"):
+        if key in ("enabled", "manual", "auto", "effort", "triage_jev"):
             if not isinstance(value, bool):
                 raise SettingsError(key, "must be true or false")
         elif key in ("default_model", "max_model"):
@@ -193,6 +194,31 @@ def from_jev(items: list[dict], answer: Any, settings: dict) -> dict:
                          "confidence": round(float(conf), 2) if isinstance(conf, (int, float)) else None,
                          "why": LEVELS[min(3, int(round(score)))]}
     return out
+
+
+def jev_scores(items: list[dict], settings: dict, jev: Callable[[dict], Any]) -> dict:
+    """{item id: score 0..3} from one Jev call per twenty items; an item Jev leaves open is missing."""
+    out: dict = {}
+    for i in range(0, len(items), MAX_ITEMS):
+        batch = clean_items(items[i:i + MAX_ITEMS])
+        answers = (jev(jev_request(batch, settings)) or {}).get("answers")
+        for it in batch:
+            a = answers.get(it["id"]) if isinstance(answers, dict) else None
+            score = a.get("score") if isinstance(a, dict) else None
+            if isinstance(score, (int, float)) and not isinstance(score, bool) and 0 <= score <= 3:
+                out[it["id"]] = round(float(score), 2)
+    return out
+
+
+def from_check(level: Any, jev: Any, settings: dict) -> dict | None:
+    """The pick from the daily check's answers: Jev's score when its switch is on, else Haiku's level."""
+    if settings.get("triage_jev") and isinstance(jev, (int, float)) and not isinstance(jev, bool) and 0 <= jev <= 3:
+        return {**from_score(float(jev), settings), "routed_by": "check", "level": round(float(jev), 2),
+                "confidence": None, "why": LEVELS[min(3, int(round(jev)))]}
+    if isinstance(level, int) and not isinstance(level, bool) and 0 <= level < len(LEVELS):
+        return {**from_level(level, settings), "routed_by": "check", "level": level, "confidence": None,
+                "why": LEVELS[level]}
+    return None
 
 
 def haiku_prompt(items: list[dict]) -> str:
