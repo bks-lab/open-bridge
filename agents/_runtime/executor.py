@@ -554,6 +554,15 @@ class ClaudeAgentExecutor(AgentExecutor):
             message=updater.new_agent_message([new_text_part(self._msg["access_waiting"])]),
         )
         base = {"task_id": context.task_id, "context_id": cid, "peer": peer, "topic": topic}
+        if not self._scopes.offers(peer, topic):
+            # A topic the folder never offered: no card, the owner is not paged for it.
+            logger.warning("executor: access line for a topic not on request", extra=base)
+            await updater.reject(message=updater.new_agent_message([new_text_part(self._msg["access_rejected"])]))
+            return None
+        if not self._grants.may_ask(peer):
+            logger.warning("executor: access cards for this peer capped this hour", extra=base)
+            await updater.reject(message=updater.new_agent_message([new_text_part(self._msg["access_rejected"])]))
+            return None
         decision = await self._approver({**base, "kind": "access", "question": question,
                                          "answer": draft})
         grant = decision.grant

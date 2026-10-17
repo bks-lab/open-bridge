@@ -48,6 +48,10 @@ outside the share, a crash, or silence fails closed: nothing is sent.
 
 Without a ``grant`` block the line is dropped and the draft goes through approval
 like any answer. The re-answer can never ask again.
+
+Paging limits: a card goes out only for a topic the peer's folder lists in its
+``.on_request`` file (written by the folder builder), and at most
+``grant.max_per_hour`` cards per peer and hour (in memory, reset on restart).
 """
 from __future__ import annotations
 
@@ -56,6 +60,7 @@ import contextlib
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -82,6 +87,9 @@ ACCESS_PROMPT = (
 class GrantConfig:
     command: tuple[str, ...]
     timeout_sec: float = 120.0
+    # Cards per peer and hour; beyond that an access line is a no without asking, so a
+    # peer cannot page the owner by asking again and again.
+    max_per_hour: int = 5
 
 
 @dataclass(frozen=True)
@@ -167,8 +175,11 @@ def _parse_grant(where: str, spec, tools_dir: str) -> GrantConfig | None:
     timeout = float(spec.get("timeout_sec", 120))
     if timeout <= 0:
         raise ValueError(f"{where}.grant.timeout_sec must be positive")
+    cap = int(spec.get("max_per_hour", 5))
+    if cap < 1:
+        raise ValueError(f"{where}.grant.max_per_hour must be at least 1")
     return GrantConfig(command=tuple(a.replace("${tools_dir}", tools_dir) for a in command),
-                       timeout_sec=timeout)
+                       timeout_sec=timeout, max_per_hour=cap)
 
 
 def split_access_directive(text: str) -> tuple[str, str | None]:
@@ -221,6 +232,21 @@ class Scopes:
             system_prompt=self._compose(self._prompt, folder, self._inline),
         )
 
+    def offers(self, peer: str | None, topic: str) -> bool:
+        """Whether the peer's folder lists ``topic`` as available on request.
+
+        The folder builder writes the ids to ``.on_request``; without that file every
+        well-formed id may be asked about (the grant command still decides)."""
+        if not peer or self._cfg.peers_dir is None or not TOPIC_RE.match(peer):
+            return False
+        listed = self._cfg.peers_dir / peer / ".on_request"
+        if not listed.is_file():
+            return True
+        try:
+            return topic in listed.read_text("utf-8").split()
+        except OSError:
+            return False
+
     def for_peer(self, peer: str | None) -> RunScope | None:
         """The peer's own folder, or None when there is none (fail closed)."""
         if not peer or self._cfg.peers_dir is None or not TOPIC_RE.match(peer):
@@ -236,6 +262,17 @@ class GrantCommand:
 
     def __init__(self, cfg: AccessConfig):
         self._cfg = cfg
+        self._asked: dict[str, list[float]] = {}
+
+    def may_ask(self, peer: str | None) -> bool:
+        """Count one card for ``peer``; False once the hour's budget is spent."""
+        now = time.monotonic()
+        recent = [t for t in self._asked.get(peer or "", []) if now - t < 3600]
+        if len(recent) >= self._cfg.grant.max_per_hour:
+            self._asked[peer or ""] = recent
+            return False
+        self._asked[peer or ""] = recent + [now]
+        return True
 
     async def grant(self, payload: dict) -> Path | None:
         out = await self._run({**payload, "action": "grant"}, want_output=True)
