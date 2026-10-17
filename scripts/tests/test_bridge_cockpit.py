@@ -999,7 +999,7 @@ def writes(w: World) -> list[list[str]]:
              "workplace.screen", "inbox.list"}
     # the return channel's own lines in the item's log are tested on their own (test_..._written_to_the_task_once)
     return [c for c in w.runner.calls if w.runner.key(c) not in reads
-            and not (c and str(c[-1]).startswith(("Return channel:", "Rückkanal:")))]
+            and not (c and str(c[-1]).startswith(("With AI:", "Bei der AI:")))]
 
 
 def test_do_it_splits_yes_and_launch(world):
@@ -3637,7 +3637,7 @@ def test_a_start_and_its_silent_end_are_written_to_the_task_once(world):
     world.app.collector.rebuild()
     world.app.collector.rebuild()
     notes = [c for c in world.runner.calls if "note" in c and "other-task" in c]
-    assert len(notes) == 1 and notes[0][-1].startswith("Return channel: the tab ended without a word")
+    assert len(notes) == 1 and notes[0][-1].startswith("With AI: the tab ended without a word")
 
 
 def test_short_cuts_a_title_at_a_word_not_in_the_middle_of_one():

@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the status pages, the task check, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-15
+last_updated: 2026-10-17
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -76,7 +76,7 @@ their defaults:
 | `language` | `language.conversation`, else `en` | `de` or `en` for the page's own words |
 | `full_minutes` | `10` | while a page is open, the full briefing runs again when the last one is older |
 | `voice` | `false` | the browser also speaks a tab that starts waiting for you |
-| `launch.target` | `area` | where Get it done opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
+| `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
@@ -160,7 +160,7 @@ help, and a dot for the relay. Under it sits the page bar. In front stand the
 tabs of every day: "Start" (a new visit opens on it, a reload stays where it
 was), "Today" (the briefing), "Chat", then the profile's pages with the
 default `group: main` (Work and Operations in a typical profile). Behind them
-come Sessions, Workers, Other Bridges (A2A), Check, Jev and every profile page
+come Sessions, Background jobs, Other Bridges (A2A), Tidy up, Jev and every profile page
 with `group: more`. While the bar is wide enough every tab stands in it; when
 they would overflow, that second group folds, from the last tab forward,
 behind a last tab, "More", which carries the name of the page open behind it
@@ -189,7 +189,7 @@ badge that adds up several sections names them in its tooltip. A finding on a
 status page also shows as a banner on the Today tab.
 
 The buttons speak four verbs everywhere, also in the Telegram inbox watcher:
-**Get it done** (an agent tab does it), **Advise** (an agent tab reads and
+**Let AI do it** (an agent tab does it), **Advise** (an agent tab reads and
 reports, then waits), **Ask** (a short read-only answer in the chat) and
 **Close** (done, not doing, or more). "To tab", "Message" and "View" only stand
 where a tab already runs.
@@ -243,13 +243,13 @@ core with its rings, the chosen tiles as stations on curved links, the card
 "Today" with the next step. A station's heart line beats by its state (red
 fast, green calm). A click on a station opens its inspector beside the
 bridge; a row opens whole in the wide drawer. A click on the core runs the
-modes chosen under "Core click", any combination of: scan (collect again,
-the state of the bridge itself), picture of the day (Claude, in the core's
+modes chosen under "On a click on Bridge", any combination of: reload (collect again,
+the state of the bridge itself), assessment (the AI, in the core's
 panel), focus 25 min (all but the next step steps back) and speak (the
 browser's speech recognition; which service hears it depends on the
 browser).
 
-**The picture of the day.** It is read first from the page's own data and
+**The assessment.** It is read first from the page's own data and
 laid out as a board, at once and without cost: first (what `focusPick`
 chooses), asks you, your yes, at work, answers in, no word, next date, the
 tightest quota (one running over its pace before one that is merely high),
@@ -275,7 +275,7 @@ only for a node of the graph, `/api/graph/node`). "Journey" (space) wanders
 from node to node on its own; `/` searches; the region chips hide a region;
 Esc surfaces. The graph is built once a minute at most.
 
-**The return channel.** Every start handed to a tab ("Get it done", "Advise",
+**With AI.** Every start handed to a tab ("Let AI do it", "Advise",
 "Collect context") is kept in `launches.json` (`returns.py`), a week long.
 Its stage is read from what the Bridge has, nothing is asked of the tab:
 started, working, asks you (the tab waits), answer (a filed inbox item, or a
@@ -287,10 +287,10 @@ every page (Work included), and the whole return panel (steps, the tab's last
 line or the answer, the ways on) at the top of its drawer and its detail. A
 note comes when an answer comes in.
 
-The return channel also writes to the item itself, so its own log carries it
+"With AI" also writes to the item itself, so its own log carries it
 for every other reader (the briefing, other sessions, a later look back): a
 task gets a dated line in its notes (`task.py note`), an inbox item an event
-(`inbox.py note`). One line when the start ran ("Return channel: agent
+(`inbox.py note`). One line when the start ran ("With AI: agent
 started from the cockpit (do it)"), one when a task's tab filed its answer,
 and one when the tab ended without a word. What the agent wrote itself (a
 note on, or the close of, its inbox item) and a task's close are not written
@@ -316,7 +316,7 @@ filters every shelf, and the choice is kept in the browser. The shelves:
 - **Tasks**: the task rows of the work backlog. A task whose agent tab is
   open leads straight into that tab; any other offers its actions. A click
   on the title opens the detail beside the page.
-- **Starting points**: every other page of the bar, with its badge.
+- **Quick access**: every other page of the bar, with its badge.
 
 ### Today (the briefing)
 
@@ -325,8 +325,8 @@ and names its reason; a probe (`report_ok: true`) with rows is orange; any
 other count is blue and no alarm. A zero, and a source that only comes with
 the full pass, fold under "without findings". Rows, worker schedules and the
 detail facts show kinds, gates, states and schedules in words, never the
-machine value (`finding`, `your-yes`, `every 300s`). On the Sessions, Workers
-and Check pages the agent tab column folds into the header's Tabs button, so
+machine value (`finding`, `your-yes`, `every 300s`). On the Sessions, Background jobs
+and Tidy up pages the agent tab column folds into the header's Tabs button, so
 those pages get the full width.
 
 On a wide screen the Today tab has three columns:
@@ -335,8 +335,8 @@ On a wide screen the Today tab has three columns:
   blocks of the briefing: waiting for you, to hand off, backlog, later. Each
   row has its number, a box to select it (only rows you can start), why it is
   there, its mark, priority, urgency, due date, the state of its tab, and its
-  main button. A selection gets a bar: Get it done, Advise, each in its own
-  workspace. "Approve all N" under "To hand off" asks once, with the count the
+  main button. A selection gets a bar: Let AI do it, Advise, each in its own
+  workspace. "Approve all N" under "AI can take over" asks once, with the count the
   server found, before it approves anything. Rows you hid sit at the bottom
   with "show again".
 - **center, the detail** of the row you clicked: its link, its facts, every
@@ -377,7 +377,7 @@ running session), the session's `subagents/` and `workflows/` folders under
 `ps` and matched to the tab list; the rest of the environment is dropped. A
 subagent counts as active while its transcript grew in the last two minutes.
 
-**Agent tabs.** Get it done and Advise open an agent tab per item through
+**Agent tabs.** Let AI do it and Advise open an agent tab per item through
 `workplace.py launch` and the terminal driver in the `workplace:` block of
 `bridge-config.yaml` ([`workplace.md`](workplace.md)), for cmux for example:
 
@@ -488,9 +488,9 @@ sends, Shift+Enter a new line). Escape or a click outside closes it.
 **Overview pages and tokens.** A profile page with `overview: true` opens
 with a board of tiles: one per section, with its count, its loudest row and a
 colour for the worst tone (a quota gauge shows its fullest value, a plain gauge
-its counts), plus one for the workers of the Workers tab and one for the tokens
+its counts), plus one for the background jobs of the Background jobs tab and one for the tokens
 of the week. A click on a section tile scrolls to that section, the workers
-tile opens the Workers tab. Below the sections the page shows the tokens of the
+tile opens the Background jobs tab. Below the sections the page shows the tokens of the
 last seven days: one bar per day, split into sessions, subagents and programs
 (`claude -p`, the workers), and a click on a day lists its models and
 projects. The server counts them from the Claude Code transcripts of this
@@ -498,7 +498,7 @@ machine (`~/.claude/projects`, `scripts/lib/bridge_cockpit/usage.py`, read on fr
 where the last count stopped) when the page opens: written tokens as measured,
 cache reads and writes beside them, no price. A source that wrote at least
 three times its usual day (and 50,000 tokens) is named in orange. A machine
-tile whose name runs workers says how many and leads to the Workers tab
+tile whose name runs workers says how many and leads to the Background jobs tab
 filtered to it.
 
 **A work page ordered by Jev.** A profile page with `jev:` (its task and inbox
@@ -585,17 +585,17 @@ file a CORE dashboard file loads statically is CORE itself, no CORE dashboard
 file names an instance (a person, a host, a profile id), and a bare Bridge
 without cmux, Jev or resources answers every endpoint the page needs.
 
-**Get it done on any row.** A row with neither an inbox item nor a task behind it (a
-GitHub issue, an application, a deadline from a protocol) also has Get it done: it
+**Let AI do it on any row.** A row with neither an inbox item nor a task behind it (a
+GitHub issue, an application, a deadline from a protocol) also has Let AI do it: it
 files the row to the inbox first (`inbox.py add`, free, closed by a person,
 with the source and its link as detail), starts the agent on that item, and
 takes the row out of the briefing for 30 days, since the inbox item now stands
 for it. "Ask Claude" stays beside it for a quick look.
 
 **The same on the other pages.** A row on Status, Dates, Trackers or More that is a
-finding (red or yellow) or a tracker row has Get it done, Advise and Close as well,
+finding (red or yellow) or a tracker row has Let AI do it, Advise and Close as well,
 in the table and in its detail. It is keyed `item:<page>/<section>/<row id>` (a hash of
-the title when the source gives no id). Get it done files it to the inbox under the
+the title when the source gives no id). Let AI do it files it to the inbox under the
 key `briefing:<profile>:<section>:<row id>`, the one `to_inbox` uses, so an item the
 briefing already filed for that row is reused instead of doubled (under any profile's
 name, since the cockpit's profile often extends the briefing's). After every full pass
@@ -697,7 +697,7 @@ When the focus is not in a text field:
 | `j` / `k` | next / previous row |
 | `Enter` | show the row in the center |
 | `x` | select the row |
-| `a` `v` `c` `b` `w` | Get it done, Advise, Drop, Later (tomorrow), Get it done in its own workspace |
+| `a` `v` `c` `b` `w` | Let AI do it, Advise, Drop, Later (tomorrow), Let AI do it in its own workspace |
 | `r` | reload, fresh |
 | `/` | the command box |
 | `g` then `t` | the agent tabs |
@@ -776,7 +776,7 @@ model switch starts a new one with the history. Every message picks its way
 with one of two buttons: "Ask" (Enter) is the quick read-only answer above,
 "Solve in cmux" (Cmd or Ctrl Enter) gives it to a real Claude session in a
 cmux tab, which may act. A new problem goes there at once (verb `chat_tab`:
-filed to the inbox as a decision, then started like "Get it done"); in an open chat
+filed to the inbox as a decision, then started like "Let AI do it"); in an open chat
 it takes the conversation so far, with the text in the box as the order on
 top (`quick_handoff` with `text`). Either way the tab runs on the workplace's
 agent model (Sonnet or more, never the quick model) and shows in the agent

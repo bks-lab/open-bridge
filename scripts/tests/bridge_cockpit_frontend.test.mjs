@@ -95,11 +95,38 @@ test('text tables: every row action id of the server has a label', () => {
   for (const id of ['restart', 'to_tab', 'approved', 'drop', 'follow_up', 'done', 'advise', 'do', 'ask']) {
     for (const t of Object.values(text.TABLES)) assert.ok(t.action[id], id)
   }
-  // one verb for handing work to an agent, the same on every button (14.10.)
-  assert.equal(text.TABLES.en.action.do, 'Get it done')
-  assert.equal(text.TABLES.de.action.do, 'Erledigen lassen')
+  // one verb for handing work to an agent, the same on every button (14.10.), naming the AI, not a model (17.10.)
+  assert.equal(text.TABLES.en.action.do, 'Let AI do it')
+  assert.equal(text.TABLES.de.action.do, 'AI machen lassen')
   assert.equal(text.TABLES.en.action.follow_up, 'Follow up')
-  assert.equal(text.TABLES.de.action.to_tab, 'zum Tab')
+  assert.equal(text.TABLES.de.action.to_tab, 'Zum Tab')
+})
+
+// One word per thing (17.10.): closing is "Close"/"Abhaken" everywhere, a section has one name wherever it
+// stands, and the core, the return channel, the scan and the workers speak plain words. The old words are gone.
+test('text tables: one word per thing, the retired words appear nowhere', () => {
+  const { de, en } = text.TABLES
+  assert.equal(de.action.done, 'Abhaken'); assert.equal(en.action.done, 'Close')
+  assert.equal(de.settleDone, 'Abhaken'); assert.equal(en.settleDone, 'Close')
+  assert.deepEqual(de.section, { now: 'Wartet auf dich', give: 'Kann die AI übernehmen', work: 'Aufgaben', later: 'Später' })
+  assert.deepEqual(en.section, { now: 'Waiting for you', give: 'AI can take over', work: 'Tasks', later: 'Later' })
+  // the same sections on the start board (home.sit) and in the assessment Claude reads (logic.situation)
+  for (const id of ['now', 'give', 'work', 'later']) {
+    assert.equal(de.logic.situation[id], de.section[id], id); assert.equal(en.logic.situation[id], en.section[id], id)
+  }
+  for (const id of ['now', 'give', 'later']) { assert.equal(de.home.sit[id], de.section[id], id); assert.equal(en.home.sit[id], en.section[id], id) }
+  assert.equal(de.home.returnsTitle, 'Bei der AI'); assert.equal(en.home.returnsTitle, 'With AI')
+  assert.equal(de.home.coreModes, 'Beim Klick auf Bridge'); assert.equal(en.home.coreModes, 'On a click on Bridge')
+  assert.equal(de.home.coreScan, 'Neu laden'); assert.equal(en.home.coreScan, 'Reload')
+  assert.equal(de.home.briefTitle, 'Einschätzung'); assert.equal(en.home.briefTitle, 'Assessment')
+  assert.equal(de.home.startTitle, 'Schnellzugriff'); assert.equal(en.home.startTitle, 'Quick access')
+  assert.equal(de.workersTab, 'Hintergrundjobs'); assert.equal(en.workersTab, 'Background jobs')
+  assert.equal(de.reviewTab, 'Aufräumen'); assert.equal(en.reviewTab, 'Tidy up')
+  const flat = t => leaves(t).map(([, v]) => v).join('\n')
+  for (const old of ['Erledigen lassen', 'Rückkanal', 'Kern-Klick', 'den Kern', 'Lagebild', 'Startpunkte', 'Arbeitsvorrat',
+    'Kann ich abgeben', 'Wartet auf deine Freigabe', 'zum Tab', 'Worker']) assert.ok(!flat(de).includes(old), old)
+  for (const old of ['Get it done', 'get it done', 'Return channel', 'Core click', 'the core', 'Picture of the day',
+    'Starting points', 'To hand off', 'to hand off', 'Waits for your yes', 'To the tab', 'Workers', 'worker']) assert.ok(!flat(en).includes(old), old)
 })
 
 test('text tables: an error text for every error code of the API', () => {
@@ -1456,7 +1483,7 @@ test('the picture of the day is read from the page data and the verdict keeps to
   assert.equal(sit.quota.label, 'Weekly')
   assert.ok(sit.quota.over)
   const text = logic.situationText(sit, now, 'de')
-  assert.match(text, /^Jetzt dran: P1 Answer the vendor$/m)
+  assert.match(text, /^Wartet auf dich: P1 Answer the vendor$/m)
   assert.match(text, /^Tabs, die dich fragen: ORBIT$/m)
   assert.match(text, /^Nächster Termin: Standup in 1 h 30 min$/m)
   assert.match(text, /^Engstes Kontingent: Weekly 40 %, \d+ % pro Tag, reicht nicht/m)

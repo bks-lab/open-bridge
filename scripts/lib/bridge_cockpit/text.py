@@ -65,7 +65,7 @@ EN: dict = {
     # result notes (keys after the text.ts key)
     "approved_note": "Yes given, it runs on the next pass",
     "approved_pending": "runs on the next pass: {title}",
-    "approve_failed": "Get it done failed: {err}",
+    "approve_failed": "Let AI do it failed: {err}",
     "later_back": "Later, back on {until}",
     "later_failed": "Later failed: {err}",
     "hidden_note": "hidden until {until}: {title}",
@@ -105,9 +105,9 @@ EN: dict = {
     "task_keep_failed": "Keep open failed: {err}",
     "note_added": "Note on {title}: {line}",
     "note_failed": "Note failed: {err}",
-    "btn_do": "Get it done",
+    "btn_do": "Let AI do it",
     "btn_advise": "Advise",
-    "btn_start_agent": "Get it done",
+    "btn_start_agent": "Let AI do it",
     "launch_team": "Team, role {role}",
     "launch_context": "Collect context",
     "launch_start": "{word}: starting {n} tab(s) {where} …",
@@ -195,8 +195,8 @@ EN: dict = {
         "only_me_false": "an AI agent or someone on the team can take it, {who_subject} at most looks over it",
         "q_first": "Which task from `tasks` should {who_subject} start with today?",
     },
-    "returns": {"head": "Return channel", "start": "agent started from the cockpit ({mode})",
-           "mode": {"go": "get it done", "report": "advise", "context": "collect context"},
+    "returns": {"head": "With AI", "start": "agent started from the cockpit ({mode})",
+           "mode": {"go": "let AI do it", "report": "advise", "context": "collect context"},
            "filed": "answer filed, {text} ({key})", "lost": "the tab ended without a word"},
 }
 
@@ -251,7 +251,7 @@ DE: dict = {
 
     "approved_note": "Freigegeben, es läuft beim nächsten Durchlauf",
     "approved_pending": "läuft beim nächsten Durchlauf: {title}",
-    "approve_failed": "Erledigen lassen ging nicht: {err}",
+    "approve_failed": "AI machen lassen ging nicht: {err}",
     "later_back": "Später, zurück am {until}",
     "later_failed": "Später fehlgeschlagen: {err}",
     "hidden_note": "ausgeblendet bis {until}: {title}",
@@ -291,9 +291,9 @@ DE: dict = {
     "task_keep_failed": "Offen lassen ging nicht: {err}",
     "note_added": "Notiz an {title}: {line}",
     "note_failed": "Notiz ging nicht: {err}",
-    "btn_do": "Erledigen lassen",
+    "btn_do": "AI machen lassen",
     "btn_advise": "Beraten",
-    "btn_start_agent": "Erledigen lassen",
+    "btn_start_agent": "AI machen lassen",
     "launch_team": "Team, Rolle {role}",
     "launch_context": "Kontext sammeln",
     "launch_start": "{word}: starte {n} Tab(s) {where} …",
@@ -382,8 +382,8 @@ DE: dict = {
         "only_me_false": "ein KI-Agent oder jemand aus dem Team kann es übernehmen, {who_subject} schaut höchstens drüber",
         "q_first": "Mit welcher Aufgabe aus `aufgaben` sollte {who_subject} heute als Erstes anfangen?",
     },
-    "returns": {"head": "Rückkanal", "start": "Agent gestartet aus dem Cockpit ({mode})",
-           "mode": {"go": "Erledigen lassen", "report": "Beraten", "context": "Infos sammeln"},
+    "returns": {"head": "Bei der AI", "start": "Agent gestartet aus dem Cockpit ({mode})",
+           "mode": {"go": "AI machen lassen", "report": "Beraten", "context": "Infos sammeln"},
            "filed": "Antwort abgelegt, {text} ({key})", "lost": "Tab beendet ohne Rückmeldung"},
 }
 

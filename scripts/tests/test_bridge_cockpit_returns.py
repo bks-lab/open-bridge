@@ -133,14 +133,14 @@ def test_each_stage_is_written_to_the_log_once(tmp_path):
 def test_what_goes_to_the_log_and_what_the_agent_already_wrote(tmp_path):
     # a task: its answer and a silent end go to its notes; a close is its own record
     assert returns.log_line({"item": "alpha", "stage": "result", "result": {"kind": "filed", "text": "The plan", "key": "inbox:x"}}, "de") \
-        == ("task", "alpha", "Rückkanal: Antwort abgelegt, The plan (inbox:x)")
-    assert returns.log_line({"item": "alpha", "stage": "lost", "result": None}, "de")[2].startswith("Rückkanal: Tab beendet ohne Rückmeldung")
+        == ("task", "alpha", "Bei der AI: Antwort abgelegt, The plan (inbox:x)")
+    assert returns.log_line({"item": "alpha", "stage": "lost", "result": None}, "de")[2].startswith("Bei der AI: Tab beendet ohne Rückmeldung")
     assert returns.log_line({"item": "alpha", "stage": "done", "result": None}, "de") is None
     # an inbox item: what the agent noted or closed with is already in its events
     assert returns.log_line({"item": ITEM, "stage": "result", "result": {"kind": "note", "text": "x", "key": None}}, "de") is None
-    assert returns.log_line({"item": ITEM, "stage": "lost", "result": None}, "en") == ("inbox", ITEM, "Return channel: the tab ended without a word")
-    assert returns.start_line("go", "de") == "Rückkanal: Agent gestartet aus dem Cockpit (Erledigen lassen)"
-    assert returns.start_line("report", "en") == "Return channel: agent started from the cockpit (advise)"
+    assert returns.log_line({"item": ITEM, "stage": "lost", "result": None}, "en") == ("inbox", ITEM, "With AI: the tab ended without a word")
+    assert returns.start_line("go", "de") == "Bei der AI: Agent gestartet aus dem Cockpit (AI machen lassen)"
+    assert returns.start_line("report", "en") == "With AI: agent started from the cockpit (advise)"
 
 
 def test_the_cockpits_own_notes_are_no_answer(tmp_path):
