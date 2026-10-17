@@ -1,0 +1,19 @@
+# Negative control: WebFetch with no fetch_scope beside it. Rule:
+# rights_level.allOf, WebFetch -> fetch_scope.
+schema_version: 1
+scope: core
+id: negative-rights-fetch-without-hosts
+title: Rights fetch without hosts
+purpose: "Example run whose fetch right names no host at all"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep,WebFetch"
+    read_scope: example/notes
+    reaches_humans: false

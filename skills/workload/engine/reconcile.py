@@ -629,6 +629,51 @@ def _newest_trace(text: str):
     return newest
 
 
+def _newest_run_facts(text: str):
+    """The newest trace line as (rc, verdict, duration_sec, stamp), or None.
+
+    `_newest_trace` keeps its two-field shape for every caller that only asks
+    when and how; this one carries what a message needs to say WHY.
+    """
+    from datetime import datetime
+
+    newest, facts = None, None
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if len(parts) < 3 or not parts[1].startswith("workload="):
+            continue
+        try:
+            when = datetime.strptime(parts[0], "%Y-%m-%dT%H:%M:%SZ")
+        except ValueError:
+            continue
+        values = dict(t.split("=", 1) for t in parts[1:] if "=" in t)
+
+        def number(key):
+            try:
+                return int(values.get(key, ""))
+            except ValueError:
+                return None
+        if newest is None or when >= newest:
+            newest = when
+            facts = (number("rc"), values.get("verdict", ""), number("duration_sec"), parts[0])
+    return facts
+
+
+def _with_run_facts(found, text: str):
+    """The finding with its run's facts as fields, or unchanged when it cannot carry them."""
+    import dataclasses
+
+    facts = _newest_run_facts(text)
+    if facts is None or not dataclasses.is_dataclass(found):
+        return found
+    rc, verdict, duration, stamp = facts
+    try:
+        return dataclasses.replace(found, rc=rc, verdict=verdict,
+                                   duration_sec=duration, at=stamp)
+    except TypeError:
+        return found
+
+
 def _transient_blip(w, text: str) -> bool:
     """True when the newest run failed with a code the declaration calls
     transient AND the run before it was clean.
@@ -1025,12 +1070,13 @@ def _trace_findings(w, text, stamp, now, finding, appointment=None, booted=None,
         # declaration leaves a reader unable to tell WHICH of two times failed,
         # and two appointments can answer two different sets of people.
         who = str(getattr(stamp, "state_key", "") or "") or w.id
-        out.append(finding(
+        said = finding(
             state.last_run_failed, sev.high,
             f"the last run of {who} ended with {newest[1]}, and said so in its own "
             f"trace at {newest[0].isoformat()}",
             "read the unit's log for that run before provisioning anything again",
-            source="machine"))
+            source="machine")
+        out.append(_with_run_facts(said, text or ""))
 
     if "missing" not in wants:
         return out

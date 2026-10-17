@@ -62,11 +62,12 @@ DECIDED_VALUE = model.WorkloadState.intentionally_absent.value
 #: two surfaces cannot disagree about what matters.
 _SEVERITY_ORDER = {"high": 0, "medium": 1, "info": 2}
 
-#: DESIGN.md, § Colors and § Dark mode. Copied as tokens rather than referenced,
-#: because the page has to stand alone as one file; the comment is the link back.
+#: Brand-neutral tokens, hand-maintained. This skill ships as CORE (open-bridge
+#: OSS), so it must not carry any one instance's DESIGN.md brand; the page has
+#: to stand alone as one file regardless.
 _CSS = """
-/* Tokens from the repository's DESIGN.md. Editorial minimalism: hairlines,
-   generous space, one gradient used once. Nothing is fetched. */
+/* Brand-neutral tokens. Editorial minimalism: hairlines, generous space, one
+   gradient used once. Nothing is fetched. */
 :root {
   --surface: #FFFFFF;
   --surface-subtle: #F9FAFB;
@@ -74,8 +75,8 @@ _CSS = """
   --on-surface: #111827;
   --secondary: #6B7280;
   --border: #E5E7EB;
-  --accent-from: #667EEA;
-  --accent-to: #764BA2;
+  --accent-from: #3B82F6;
+  --accent-to: #1D4ED8;
   --high: #B4232B;
   --medium: #8A5A00;
   --info: #6B7280;
@@ -100,8 +101,8 @@ _CSS = """
     --on-surface: #D1D5DB;
     --secondary: #9CA3AF;
     --border: #374151;
-    --accent-from: #A78BFA;
-    --accent-to: #818CF8;
+    --accent-from: #93C5FD;
+    --accent-to: #60A5FA;
     --high: #FCA5A5;
     --medium: #FCD34D;
     --info: #9CA3AF;
@@ -116,8 +117,8 @@ _CSS = """
   --on-surface: #D1D5DB;
   --secondary: #9CA3AF;
   --border: #374151;
-  --accent-from: #A78BFA;
-  --accent-to: #818CF8;
+  --accent-from: #93C5FD;
+  --accent-to: #60A5FA;
   --high: #FCA5A5;
   --medium: #FCD34D;
   --info: #9CA3AF;
@@ -1348,6 +1349,10 @@ class Row:
     #: there and a file from over here, and a renderer has neither.
     program: str = ""
     program_where: str = ""
+    #: What the run MAY DO, one line per level, from `model.rights_summary`.
+    #: The same derivation the terminal prints: two summaries of one block
+    #: drift, and the one that drifts is the one nobody runs.
+    rights: tuple = ()
     #: Where the guard captures what this run SAID, one path per appointment.
     #: Named and never opened: whether a file is there is a question for a
     #: terminal, and this page answers none it did not measure.
@@ -1467,6 +1472,8 @@ def rows(rep, workloads) -> tuple:
             log=_log_paths(w, getattr(rep, "state_dir", "")),
             program=program.get(w.id, ("", ""))[0],
             program_where=program.get(w.id, ("", ""))[1],
+            rights=tuple(model.rights_summary(getattr(w, "raw", None))
+                         if getattr(w, "raw", None) else ()),
             strip=tuple((getattr(rep, "history", None) or {}).get(w.id, ())),
             recipients=_recipient_groups(w),
             people=_recipient_people(w),
@@ -2952,18 +2959,9 @@ def _facets_html(rows) -> str:
     if not rows:
         return ""
     out = []
+    every = facet_counts(rows)
     for key, label in FACETS:
-        counts = {}
-        for row in rows:
-            if key == "state":
-                values = sorted({_state(f) for f in row.findings}) or [UNREPORTED]
-            elif key == "attention":
-                values = [_attention_of(row)]
-            else:
-                values = [str(getattr(row, key, "") or "")]
-            for value in values:
-                if value:
-                    counts[value] = counts.get(value, 0) + 1
+        counts = every[key]
         if len(counts) < 2:
             continue
         buttons = "".join(
@@ -3004,6 +3002,30 @@ def _facets_html(rows) -> str:
             "counts above it: nothing here is recomputed. A run's day is a "
             "column of its own row, so it goes with it.</span></div>")
 
+
+
+def facet_counts(rows) -> dict:
+    """Every facet of `FACETS` as {value: runs carrying it}, unfiltered.
+
+    The arithmetic behind the filter bar, apart from the bar. The page draws
+    only the facets with more than one value; a machine reader gets them all,
+    and both read the same counts because both call this.
+    """
+    every = {}
+    for key, _label in FACETS:
+        counts = {}
+        for row in rows:
+            if key == "state":
+                values = sorted({_state(f) for f in row.findings}) or [UNREPORTED]
+            elif key == "attention":
+                values = [_attention_of(row)]
+            else:
+                values = [str(getattr(row, key, "") or "")]
+            for value in values:
+                if value:
+                    counts[value] = counts.get(value, 0) + 1
+        every[key] = counts
+    return every
 
 #: The first view: this run's own material. A constant rather than a literal
 #: repeated in three places, because the nav, the section and the script all
@@ -3087,6 +3109,17 @@ def _panels_html(views) -> str:
     return "".join(out)
 
 
+def stat_counts(in_service, history) -> dict:
+    """The four counts at the top of the page, as numbers. See `_stats_html`."""
+    return {
+        "in_service": len(in_service),
+        "with_findings": sum(1 for row in in_service
+                             if any(_sev(f) in ("high", "medium") for f in row.findings)),
+        "not_reported": sum(1 for row in in_service if not row.findings),
+        "retired": len(history),
+    }
+
+
 def _stats_html(in_service, history) -> str:
     """Four counts, every one of them counted off the rows below.
 
@@ -3095,13 +3128,12 @@ def _stats_html(in_service, history) -> str:
     for a figure the table does not carry is how a headline and its own detail
     come to disagree.
     """
-    flagged = sum(1 for row in in_service
-                  if any(_sev(f) in ("high", "medium") for f in row.findings))
-    silent = sum(1 for row in in_service if not row.findings)
-    cells = ((len(in_service), "in service", False),
+    counts = stat_counts(in_service, history)
+    flagged = counts["with_findings"]
+    cells = ((counts["in_service"], "in service", False),
              (flagged, "carrying a finding", flagged > 0),
-             (silent, UNREPORTED, False),
-             (len(history), "retired", False))
+             (counts["not_reported"], UNREPORTED, False),
+             (counts["retired"], "retired", False))
     stats = "".join(
         f'<div class="stat{" flag" if flag else ""}"><span class="n">{n}</span>'
         f'<span class="k">{_esc(word)}</span></div>'
@@ -3376,6 +3408,11 @@ def _row_html(row: Row, asked=(), lane=None, on=None, *, section=None) -> str:
             ("program", (f'<code>{_esc(row.program)}</code>'
                          f'<span class="meta">{_esc(row.program_where)}</span>')
              if row.program else ""),
+            # Only for the runs that declare something. A "rights: none" line on
+            # fifty rows would train the eye to skip the one row that reaches a
+            # person, and that row is the reason this line exists at all.
+            ("rights", "<br>".join(_esc(line) for line in row.rights)
+             if row.rights and "not declared" not in row.rights[0] else ""),
         ) if value)
     # The band travels on the row so the script can take a section heading away
     # with its last row. Not a facet: it is what the row IS, and the reader
@@ -3417,3 +3454,136 @@ def _row_html(row: Row, asked=(), lane=None, on=None, *, section=None) -> str:
         f'<dl class="dossier">{dossier}</dl>{reasons}'
         f"{_recipients_html(row)}"
         "</td></tr></tbody>")
+
+
+#: The version of the document `data` returns. Raised only when a key changes
+#: meaning or disappears; a new key is not a new version.
+DATA_SCHEMA = 1
+
+#: What a run with no finding says in the machine readable document. The same
+#: words the page prints, because "nothing was said" is not "in sync", and a
+#: second reader must not learn the one the page refuses to say.
+NO_SEVERITY = "none"
+
+#: The facets the document carries, by the name a reader of the document uses.
+#: `persona` is what the page calls `sphere`, so the document says sphere.
+DATA_FACETS = (("attention", "attention"), ("kind", "kind"), ("persona", "sphere"),
+               ("host", "host"), ("runtime", "runtime"), ("state", "state"))
+
+
+def _system_key(systems, workload_id: str) -> str:
+    """The section key a run sits under on the system axis. See `_sections`."""
+    value = systems.get(workload_id) or ""
+    return value if value else SYSTEM_UNDECIDED
+
+
+def _worst(findings):
+    """The loudest finding, by the same order the table sorts by, or None."""
+    return min(findings, key=lambda f: _RANK.get(_sev(f), 9), default=None)
+
+
+def _day_data(lane, on) -> dict:
+    """One lane as data: the same marks `_marks_html` draws, as numbers."""
+    if lane is None:
+        return {"marks": [], "trace_pct": None, "trace_at": "", "trace_label": "",
+                "note": "", "band": "", "placed": False}
+    weekday = None if on is None else (on.weekday() + 1) % 7
+    marks = []
+    for mark in (lane.appointments or ()):
+        here = mark.fires_on(weekday)
+        marks.append({"at_pct": mark.at_pct, "label": mark.label,
+                      "shape": mark.shape if here else "elsewhen",
+                      "days": mark.days, "today": here})
+    return {"marks": marks,
+            "trace_pct": lane.trace_pct if lane.trace_shape else None,
+            "trace_at": lane.trace_at, "trace_label": lane.trace_label,
+            "trace_failed": lane.trace_shape == "trace-failed",
+            "note": lane.note, "band": lane.band,
+            "placed": _band_of(lane) != "unplaced"}
+
+
+def data(rep, workloads, *, generated_at: str, hosts=(), machine_units=()) -> dict:
+    """The page's content as one JSON-ready document, for a reader that draws
+    its own.
+
+    Built from the SAME stages `render` uses: `rows`, `lanes`, `elsewhere`,
+    `_sections`, `stat_counts` and `facet_counts`. Nothing here decides a
+    verdict, a count or a position of its own; a second derivation is how two
+    surfaces of one report come to disagree.
+
+    Recipient groups are carried and people are only counted, as on the page.
+    """
+    loads = list(workloads)
+    asked = tuple(str(h) for h in (hosts or ()) if str(h))
+    declared = rows(rep, loads)
+    other, inventory, unclaimed = elsewhere(rep, loads, machine_units)
+    zones = day_zones(loads)
+    zone = zones[0] if len(zones) == 1 else ""
+    on = _drawn_for(generated_at, zone)
+    by_lane = {lane.workload_id: lane for lane in lanes(rep, loads, on=on)}
+    systems = {w.id: getattr(w, "system", None) for w in loads}
+    in_service = [row for row in declared if not row.retired]
+    history = [row for row in declared if row.retired]
+    counts = facet_counts(in_service) if in_service else {k: {} for k, _ in FACETS}
+
+    runs = []
+    for row in declared:
+        lane = by_lane.get(row.workload_id)
+        worst = _worst(row.findings)
+        runs.append({
+            "id": row.workload_id, "title": row.title, "purpose": row.purpose,
+            "system": _system_key(systems, row.workload_id),
+            "kind": row.kind, "sphere": row.persona, "host": row.host,
+            "runtime": row.runtime, "owner": row.owner, "when": row.when,
+            "unit": row.unit, "log": row.log,
+            "program": row.program, "program_where": row.program_where,
+            "retired": row.retired,
+            "state": _state(worst) if worst is not None else UNREPORTED,
+            "severity": _sev(worst) if worst is not None else NO_SEVERITY,
+            "attention": _attention_of(row),
+            "findings": [{"state": _state(f), "severity": _sev(f),
+                          "detail": str(getattr(f, "detail", "") or ""),
+                          "hint": str(getattr(f, "hint", "") or "")}
+                         for f in row.findings],
+            "strip": [{"at": e[0] if len(e) > 0 else "",
+                       "rc": e[1] if len(e) > 1 else None,
+                       "verdict": (e[2] if len(e) > 2 else "") or "",
+                       "key": e[3] if len(e) > 3 else ""}
+                      for e in row.strip],
+            "continuous": row.kind in _CONTINUOUS_KINDS,
+            "day": _day_data(lane, on),
+            "week": list(lane.week) if lane is not None else [],
+            "month_due": list(lane.month) if lane is not None else [],
+            "ran_days": sorted(lane.ran) if lane is not None else [],
+            "recipient_groups": list(row.recipients),
+            "people": row.people,
+            "rights": list(row.rights),
+        })
+
+    decided = [f for f in inventory if _state(f) == DECIDED_VALUE]
+    drifted = [f for f in inventory if _state(f) != DECIDED_VALUE]
+    return {
+        "schema": DATA_SCHEMA,
+        "host": ",".join(asked),
+        "hosts": list(asked),
+        "generated_at": str(generated_at),
+        "zone": zone,
+        "drawn_for": on.isoformat() if on is not None else "",
+        "header": str(getattr(rep, "header", "") or ""),
+        "probed": _probed(getattr(rep, "header", "")),
+        "strip_max": reconcile_strip_max(),
+        "continuous_strip_note": CONTINUOUS_STRIP_NOTE,
+        "stats": stat_counts(in_service, history),
+        "facets": {name: dict(sorted(counts[key].items()))
+                   for key, name in DATA_FACETS},
+        "systems": [{"id": key, "title": title, "count": len(here)}
+                    for key, title, here, _scale in
+                    _sections(in_service, by_lane, systems, "system")],
+        "runs": runs,
+        "elsewhere": {
+            "inventory_stale": [getattr(f, "workload_id", "") for f in drifted],
+            "intentionally_absent": [getattr(f, "workload_id", "") for f in decided],
+            "undeclared": {"named": [getattr(f, "workload_id", "") for f in other],
+                           "counted": unclaimed},
+        },
+    }

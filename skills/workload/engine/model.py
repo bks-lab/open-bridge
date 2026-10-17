@@ -148,7 +148,7 @@ REPORTS_TO = ("inbox", "channel", "none")
 
 TOP_LEVEL_KEYS = ("schema_version", "scope", "id", "title", "purpose", "persona_ref",
                   "system", "placement", "schedule", "execution", "response",
-                  "reconcile", "retired", "learned_from", "reports_to")
+                  "reconcile", "retired", "learned_from", "rights", "reports_to")
 
 #: Kinds the Bridge both owns AND executes, so they need a deadline and evidence.
 EXECUTED_KINDS = ("recurring", "interval", "watch", "oneshot")
@@ -304,6 +304,27 @@ PERSON_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 #: at and found to stand alone, while absent is a run nobody classified. The two
 #: carry different advice, so they must not print the same.
 SYSTEM_PATTERN = re.compile(r"^(_standalone|[a-z][a-z0-9-]*)$")
+
+#: `rights`: what a run may do. Mirrored by hand from the declaration contract,
+#: because `provision.plan` asks THIS gate and never the schema: a rule that
+#: lives only in the document is a rule the layer that acts never applies.
+#: Bare `Bash` is generic shell; the bound form `Bash(python3 /path/x.py:*)`
+#: stays allowed, which is why the pattern anchors on the separators.
+RIGHTS_GENERIC_SHELL_PATTERN = re.compile(r"(^|[,\s])Bash(\(\*\))?\s*([,\s]|$)")
+RIGHTS_READ_TOOL_PATTERN = re.compile(r"(^|,)\s*(Read|Glob|Grep|WebFetch)\s*(,|$)")
+RIGHTS_WRITE_TOOL_PATTERN = re.compile(r"(^|,)\s*(Write|Edit|NotebookEdit)\s*(,|$)")
+RIGHTS_FETCH_TOOL_PATTERN = re.compile(r"(^|,)\s*WebFetch\s*(,|$)")
+#: A scope is repo relative and never climbs out: an absolute path, or one with
+#: `..` in it, is a different scope than the one a reader assumes on the line.
+RIGHTS_SCOPE_PATTERN = re.compile(r"^(?!/)(?!~)(?!.*\.\.).+$")
+#: A relative stop flag resolves against a different working directory under
+#: launchd than it did when someone wrote the file, so it never bites there.
+RIGHTS_STOP_FLAG_PATTERN = re.compile(r"^(~|/)")
+#: A bare hostname, so it maps onto the enforcing side's own domain rule. The
+#: one other legal entry is `*`, the whole web, written down rather than left
+#: out: an absent block denies, a star grants, and a diff shows which is which.
+RIGHTS_HOST_PATTERN = re.compile(
+    r"^(\*|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+)$")
 
 
 def unsafe_reason(value) -> str:
@@ -1499,7 +1520,210 @@ def validate(raw: Mapping, *, source: str) -> list:
                 add("retired.reason", "required, at least 8 characters",
                     "record why, this outlives everyone's memory")
 
+    # rights: what a run may do. Eight rules, mirrored from the contract.
+    rights = raw.get("rights")
+    if rights is not None:
+        if not isinstance(rights, Mapping):
+            add("rights", "expected a mapping with standing and optionally escalation",
+                "write the block or drop it")
+        else:
+            _validate_rights(rights, add)
+
     return found
+
+
+def _validate_rights(rights: Mapping, add) -> None:
+    """The `rights` half of the hand written gate.
+
+    Split out because it is the only block with two levels, and inlining it
+    would bury the eight rules in the middle of a function that already carries
+    thirty. Each rule names the scar it was written for.
+    """
+    reaches = False
+    holds = False
+    for level_name in ("standing", "escalation"):
+        level = rights.get(level_name)
+        if level is None:
+            if level_name == "standing":
+                add("rights.standing", "required and missing",
+                    "a rights block without a standing level declares nothing")
+            continue
+        if not isinstance(level, Mapping):
+            add(f"rights.{level_name}", "expected a mapping", "write the level or drop it")
+            continue
+
+        if "reaches_humans" not in level:
+            add(f"rights.{level_name}.reaches_humans", "required and missing",
+                "say yes or no, an unstated answer is not a no")
+        outward = level.get("reaches_humans") is True
+        reaches = reaches or outward
+
+        tools = level.get("tools")
+        if isinstance(tools, str):
+            # An unattended run on this fleet is handed --allowedTools Bash,...
+            # inside a wrapper script, so the widest possible right is also the
+            # least visible one. It is never declarable here.
+            if RIGHTS_GENERIC_SHELL_PATTERN.search(tools):
+                add(f"rights.{level_name}.tools",
+                    "carries bare Bash, which is generic shell",
+                    "name the bound form, Bash(python3 /path/x.py:*), or drop it")
+            # A granted tool with no scope is refused on every call, and in a
+            # diff it reads like a permission that works.
+            if RIGHTS_READ_TOOL_PATTERN.search(tools) and not level.get("read_scope"):
+                add(f"rights.{level_name}.read_scope", "required by the tools on this level",
+                    "name the subtree the run may read")
+            if RIGHTS_WRITE_TOOL_PATTERN.search(tools) and not level.get("write_scope"):
+                add(f"rights.{level_name}.write_scope", "required by the tools on this level",
+                    "name the file or subtree the run may write")
+            # A hand written program reaches the one host its author typed. A
+            # model reaches whatever it decides to, so the moment the next move
+            # is chosen rather than coded, an unbounded fetch right is the widest
+            # thing on the level.
+            if RIGHTS_FETCH_TOOL_PATTERN.search(tools) and not level.get("fetch_scope"):
+                add(f"rights.{level_name}.fetch_scope", "required by the tools on this level",
+                    "name the hosts the run may reach")
+
+        for key in ("read_scope", "write_scope"):
+            scope = level.get(key)
+            if scope is not None and not RIGHTS_SCOPE_PATTERN.match(str(scope)):
+                add(f"rights.{level_name}.{key}",
+                    f"{scope!r} is absolute, home-relative or climbs out of the tree",
+                    "write it repo relative, without ~ and without ..")
+
+        hosts = level.get("fetch_scope")
+        if hosts is not None and not isinstance(hosts, list):
+            add(f"rights.{level_name}.fetch_scope", "expected a list of hosts",
+                "write one bare hostname per entry")
+        for index, host in enumerate(hosts or []):
+            if not RIGHTS_HOST_PATTERN.match(str(host)):
+                add(f"rights.{level_name}.fetch_scope[{index}]",
+                    f"{host!r} is not a bare hostname or `*`",
+                    "drop the scheme and the path, the domain rule takes neither")
+        if isinstance(hosts, list) and "*" in hosts and len(hosts) > 1:
+            # A list that names hosts beside the star reads bounded to everyone
+            # who skims it and is not. A list whose first line lies about its
+            # own reach is worse than no list.
+            add(f"rights.{level_name}.fetch_scope",
+                "carries `*` beside named hosts",
+                "either name the hosts or write `*` alone, never both")
+
+        if level_name == "escalation" and not level.get("unlocked_by"):
+            # A level with no condition is the normal state under another name.
+            add("rights.escalation.unlocked_by", "required and missing",
+                "name the measured condition that opens it")
+
+        if (level.get("caps") or {}).get("hold_while_unanswered") is True:
+            holds = True
+
+        if outward:
+            # Reaching people without a list and a cap is a hole, not a right.
+            if not level.get("recipients"):
+                add(f"rights.{level_name}.recipients", "required when the level reaches people",
+                    "name who may be reached, as references")
+            if not level.get("caps"):
+                add(f"rights.{level_name}.caps", "required when the level reaches people",
+                    "name at least a total")
+
+        for index, recipient in enumerate(level.get("recipients") or []):
+            if not isinstance(recipient, Mapping):
+                add(f"rights.{level_name}.recipients[{index}]", "expected a mapping",
+                    "write mandant_ref and channel_ref")
+                continue
+            for key in ("mandant_ref", "channel_ref"):
+                value = recipient.get(key)
+                if not value:
+                    add(f"rights.{level_name}.recipients[{index}].{key}", "required and missing",
+                        "point at the entry, never inline the handle")
+                elif not MANDANT_PATTERN.match(str(value)):
+                    # A handle here is the same finding the content round made
+                    # for mandant and person: a literal nobody can resolve, and
+                    # nothing downstream checks whether it still reaches anyone.
+                    add(f"rights.{level_name}.recipients[{index}].{key}",
+                        f"{value!r} is not a slug: it must match {MANDANT_PATTERN.pattern}",
+                        "point at the entry, never inline the handle")
+
+    consent = rights.get("consent")
+    if reaches and not consent:
+        # A way out and a way IN are both part of the permission. This fleet
+        # already holds that sending is a human click; a declaration that
+        # reaches a person without naming where the yes comes from describes a
+        # run nobody agreed to.
+        add("rights.consent", "required when any level reaches people",
+            "name the flag a human touches to allow the first contact")
+
+    stop = rights.get("stop")
+    if reaches and not stop:
+        # A way out is part of the permission, not an extra: without one the
+        # person on the other end cannot withdraw what the permission rests on.
+        add("rights.stop", "required when any level reaches people",
+            "name the flag that stops it")
+    reply = rights.get("reply")
+    if holds and not reply:
+        # Measured on the prototype: the first unanswered message froze the run
+        # for good, because nothing in the loop could ever release the hold. A
+        # cap meant to prevent nagging worked as a permanent stop.
+        add("rights.reply", "required when a level holds while unanswered",
+            "name the flag a human touches to answer")
+    for block, name in ((stop, "stop"), (reply, "reply"), (consent, "consent")):
+        if not isinstance(block, Mapping):
+            continue
+        flag = block.get("flag")
+        if not flag:
+            add(f"rights.{name}.flag", "required and missing",
+                "name an absolute path or one under ~")
+        elif not RIGHTS_STOP_FLAG_PATTERN.match(str(flag)):
+            add(f"rights.{name}.flag", f"{flag!r} is relative",
+                "write it absolute or under ~, launchd resolves relative paths elsewhere")
+
+
+def rights_summary(raw) -> list:
+    """What a run MAY DO, as lines a reporting layer can print.
+
+    The whole argument for putting rights in the declaration was that the layer
+    which reports on a run can then show them, instead of them sitting in line
+    331 of a wrapper. A block nothing renders is that wrapper with a nicer
+    address.
+
+    It lives HERE and not in the command, because two readers need it: `show`
+    on the terminal and the published view in the browser. Two summaries of the
+    same block would drift, and the one that drifts is always the one nobody
+    runs.
+
+    Read only: this reports the DECLARATION. It never checks what the machine
+    actually granted, and the difference has been expensive: a run can hold a
+    sandboxed shell that no line here mentions.
+    """
+    rights = (raw or {}).get("rights")
+    if not isinstance(rights, dict):
+        return ["rights: not declared (declaration only; this skill does not enforce it)"]
+    out = []
+    for name in ("standing", "escalation"):
+        level = rights.get(name)
+        if not isinstance(level, dict):
+            continue
+        bits = [f"tools={level.get('tools') or 'none'}"]
+        for key in ("read_scope", "write_scope"):
+            if level.get(key):
+                bits.append(f"{key}={level[key]}")
+        hosts = level.get("fetch_scope")
+        if hosts:
+            bits.append("fetch=" + ("any host" if "*" in hosts else ",".join(hosts)))
+        if level.get("reaches_humans"):
+            caps = level.get("caps") or {}
+            who = ",".join(f"{r.get('mandant_ref')}/{r.get('channel_ref')}"
+                           for r in (level.get("recipients") or []))
+            bits.append(f"REACHES {who or 'nobody named'}")
+            bits.append("caps=" + (",".join(f"{k}={v}" for k, v in caps.items()) or "none"))
+        if level.get("unlocked_by"):
+            bits.append("unlocked_by=" + ",".join(
+                f"{k}={v}" for k, v in level["unlocked_by"].items()))
+        out.append(f"rights.{name}: " + " · ".join(bits))
+    for name in ("stop", "reply", "consent"):
+        block = rights.get(name)
+        if isinstance(block, dict) and block.get("flag"):
+            out.append(f"rights.{name}: {block['flag']}")
+    return out
+
 
 
 @dataclass(frozen=True)

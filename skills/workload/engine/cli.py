@@ -122,6 +122,8 @@ def cmd_show(args) -> int:
     workload, host = _one(root, cfg, args.id)
     render = _module("render")
     print(json.dumps(_row(workload), indent=2, ensure_ascii=False))
+    for line in model.rights_summary(workload.raw):
+        print(line)
     print(f"platform {host.platform}, backend support: {hosts.supports(host, workload.placement.runtime)}")
     print(f"required guarantees: "
           f"{', '.join(sorted(g.value for g in model.required_guarantees(workload))) or 'none'}")
@@ -504,8 +506,9 @@ def cmd_reconcile(args) -> int:
             rep, model.load_all(root, cfg),
             state_path=root / ".bridge" / "notify-state.json",
             now=datetime.now(timezone.utc), cfg=cfg, sender=None)
+        # with --json the report on stdout stays one JSON document; the summary goes to stderr
         print(f"notify: {said.sent} message(s) out, {said.suppressed} held back"
-              + (f" ({said.note})" if said.note else ""))
+              + (f" ({said.note})" if said.note else ""), file=sys.stderr if args.json else sys.stdout)
     # The exit code stays reconcile's own. Whether anybody was told is not a
     # statement about whether anything is broken.
     return rep.exit_code
@@ -525,6 +528,16 @@ def cmd_view(args) -> int:
     # The configuration itself is read again inside `_page`, which is where
     # the page is rendered and therefore where its furniture is resolved.
     root, _ = _bridge(args)
+    if getattr(args, "json", False):
+        # The same reconcile and the same data stages as the page, as one JSON
+        # document on stdout for a reader that draws its own. Nothing is
+        # written to disk, so the caller decides where it lands; the honest
+        # sentence goes to stderr, where it cannot corrupt the document.
+        rep, document = _page(args, as_data=True)
+        json.dump(document, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+        sys.stdout.write("\n")
+        print(rep.header, file=sys.stderr)
+        return rep.exit_code
     rep, page = _page(args)
     out = Path(args.out) if args.out else root / ".bridge" / "workloads.html"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -534,15 +547,23 @@ def cmd_view(args) -> int:
     return rep.exit_code
 
 
-def _page(args):
+def _page(args, *, as_data: bool = False):
     """Reconcile, then render. One place, so `view` and `publish` cannot drift
-    into showing different pages for the same repository."""
+    into showing different pages for the same repository.
+
+    `as_data` returns the page's content as a document instead of markup,
+    out of the same reconcile and the same workloads, so `view --json` cannot
+    drift from the page either."""
     root, cfg = _bridge(args)
     reconcile, view = _module("reconcile"), _module("view")
     rep = reconcile.run(root, cfg, hosts=args.host or None, ids=args.id or None,
                         probe=not args.no_probe, timeout_sec=args.timeout)
     workloads = [w for w in model.load_all(root, cfg)
                  if not args.id or w.id in set(args.id)]
+    if as_data:
+        return rep, view.data(rep, workloads, generated_at=args.now,
+                              hosts=tuple(args.host or ()),
+                              machine_units=view_machine_units(cfg))
     # Which machines were asked travels with the page: a declaration placed on
     # one that was not asked is silent for a knowable reason, and the page has
     # to say which rather than report an unexplained gap.
@@ -896,6 +917,10 @@ def _add_reconcile_command(sub) -> None:
                           "declarations' own `system:` field. A run that names no "
                           "system lands under a heading that says so rather than "
                           "being folded in with the ones that stand alone on purpose")
+    page.add_argument("--json", action="store_true",
+                      help="print the page's content as one JSON document on "
+                           "stdout instead of writing the HTML. Same reconcile, "
+                           "same data stages; --out is ignored")
     page.add_argument("--now", required=True,
                       help="the timestamp printed on the page. Required and not "
                            "defaulted: the renderer reads no clock, so the same "

@@ -1,0 +1,19 @@
+# Coverage case: a rights block that only researches. No stop: needed, because
+# no level reaches a person.
+schema_version: 1
+scope: core
+id: rights-research-only
+title: Rights research only
+purpose: "Example run that only researches, reaching nobody"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep,WebSearch"
+    read_scope: example/notes
+    reaches_humans: false

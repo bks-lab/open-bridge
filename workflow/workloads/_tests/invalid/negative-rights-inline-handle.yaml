@@ -1,0 +1,28 @@
+# Control: a plaintext handle in a recipient field. Recipients are references
+# into identity/mandants/ and infra/channels/, otherwise the edge checker never
+# sees them and the allowlist drifts into literals.
+schema_version: 1
+scope: core
+id: negative-rights-inline-handle
+title: Negative rights inline handle
+purpose: "Control: a handle where a reference belongs"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing: {reaches_humans: false}
+  escalation:
+    reaches_humans: true
+    unlocked_by: {no_progress_ticks: 3}
+    recipients:
+      - {mandant_ref: "person@example.com", channel_ref: example-channel}
+    caps: {total: 3}
+  stop: {flag: /var/lib/example/x.stop}
+  # Seit `consent` Pflicht ist, sobald ein Level Menschen erreicht, muss
+  # diese Kontrolle es mitfuehren: sonst faellt sie an zwei Regeln und
+  # beweist keine davon.
+  consent: {flag: /var/lib/example/x.consent}

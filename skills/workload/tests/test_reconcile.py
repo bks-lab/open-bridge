@@ -1846,6 +1846,31 @@ class BothUnitsGetTheirOwnVerdict(ReconcileBase):
                          "a unit with no history of its own was reported as "
                          "having failed, on its sibling's trace")
 
+    def test_a_failed_run_carries_its_facts_as_fields(self):
+        """2026-10-13: the alarm said "ended with 143 ... at 2026-10-13T02:59:51+00:00".
+        The reader needed "cut off by its time limit after 44 min, at 04:59". The
+        notifier can only say that if the exit code, the guard's verdict, the
+        duration and the moment travel as FIELDS, not inside an English sentence."""
+        w = self.load("twice-daily-report")
+        units = self.two_units(matching=True)
+        stamps = {
+            u.unit_ref: self.stamp(
+                w.id, unit_ref=u.unit_ref,
+                state_key=f"{w.id}.{u.unit_ref.rsplit('.', 1)[-1]}")
+            for u in units}
+        obs = self.host_obs(units=units, stamps=stamps)
+        obs = dataclasses.replace(obs, traces={
+            f"{w.id}.midday":
+                f"2026-08-24T10:33:00Z workload={w.id} rc=143 "
+                f"duration_sec=2686 verdict=expired\n"})
+        findings = reconcile.classify([w], obs, self.inv(), {})
+        failed = [f for f in findings
+                  if f.state == model.WorkloadState.last_run_failed]
+        self.assertEqual(len(failed), 1)
+        f = failed[0]
+        self.assertEqual((f.rc, f.verdict, f.duration_sec, f.at),
+                         (143, "expired", 2686, "2026-08-24T10:33:00Z"))
+
     def test_neither_unit_is_reported_as_undeclared(self):
         _, findings = self.findings()
         stray = [f for f in findings

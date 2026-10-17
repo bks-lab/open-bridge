@@ -1,0 +1,24 @@
+# Negative control: a level that reaches people and names no way for a human to
+# say yes. Rule: rights.allOf, reaches_humans -> [stop, consent].
+schema_version: 1
+scope: core
+id: negative-rights-outward-without-consent
+title: Rights outward without consent
+purpose: "Example run that reaches a person with nobody able to allow it"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep"
+    read_scope: example/notes
+    reaches_humans: true
+    recipients:
+      - {mandant_ref: example-person, channel_ref: example-channel}
+    caps: {total: 3}
+  stop:
+    flag: /var/lib/example/negative-rights-outward-without-consent.stop

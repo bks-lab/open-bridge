@@ -10,6 +10,7 @@ notify rather than on a confirmed delivery.
 
 from __future__ import annotations
 
+import dataclasses
 import unittest
 from types import SimpleNamespace
 
@@ -796,6 +797,211 @@ class AStateFileThatWasNeverThereOrIsBroken(DispatchBase):
             "a torn write resets every counter at once and the next pass "
             "re-announces everything already settled. Without a visible note "
             "that storm reads like a real multi-incident")
+
+
+# ── what the message SAYS: 2026-10-13, read on a phone ───────────────────────
+#
+# Three alarms arrived that day titled with nothing but a self-update job's
+# name, with "ended with 143, and said so in its own trace at
+# 2026-10-13T02:59:51+00:00" underneath. The run had been cut off by its own
+# time limit at 04:59 local time; nothing in the message said so. Another
+# arrived as "<job> (afternoon) and 6 more". The title named a job, never the
+# trouble.
+
+def failed(wid="twice-daily-report", appointment="midday", rc=143, verdict="expired",
+           duration_sec=2686, at="2026-10-13T02:59:51Z", hint="read the unit's log"):
+    return report_mod.Finding(
+        workload_id=wid, state=model.WorkloadState.last_run_failed,
+        severity=model.Severity.high,
+        detail=f"the last run of {wid} ended with {rc}, and said so in its own trace at {at}",
+        hint=hint, source="machine", appointment=appointment,
+        rc=rc, verdict=verdict, duration_sec=duration_sec, at=at)
+
+
+def wl(wid="tool-update", title="tool self update", tz="Europe/Berlin", hint=None):
+    return SimpleNamespace(
+        id=wid, title=title,
+        placement=SimpleNamespace(host="host-a", kind="recurring"),
+        schedule=SimpleNamespace(timezone=tz),
+        reconcile=SimpleNamespace(hint=hint))
+
+
+CUSTOM = {
+    "title_many_failed": "{n} jobs broke",
+    "weekdays": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"],
+    "after": " / {minutes}m",
+    "problems": {"timed_out": "job cut off at its limit",
+                 "failed": "job broke (code {rc})"},
+    "recovered_prefix": "Back to normal: ",
+    "recovered_todo": "Nothing to do.",
+}
+
+
+class TheTitleNamesTheTrouble(MachineGuard):
+
+    def compose(self, *entries, text=None):
+        return notify.compose(list(entries), text=notify.texts(
+            SimpleNamespace(notify_text=text)))
+
+    def test_an_unknown_placeholder_falls_back_to_the_default_text(self):
+        # A typo in a configured sentence must not take the notify pass down.
+        entries = [(failed(), wl(), "failure")]
+        with self.assertLogs("engine.notify", level="WARNING"):
+            got = self.compose(*entries, text={"title_one": "{nmae} broke"})
+        self.assertEqual(got, notify.compose(entries, text=notify.texts(None)))
+
+    def test_one_failed_run_says_what_went_wrong_in_the_title(self):
+        what, _where, _todo, _detail = self.compose(
+            (failed(appointment=""), wl(), "failure"))
+        self.assertEqual(what, "tool self update: run cut off, time limit exceeded")
+
+    def test_the_appointment_stays_in_the_title(self):
+        what, *_ = self.compose((failed(), wl(), "failure"))
+        self.assertEqual(what, "tool self update (midday): run cut off, time limit exceeded")
+
+    def test_the_moment_is_local_time_and_never_iso_utc(self):
+        _what, _where, _todo, detail = self.compose((failed(), wl(), "failure"))
+        self.assertIn("Tue 13.10. 04:59", detail)
+        self.assertNotIn("2026-10-13T", detail)
+
+    def test_the_duration_of_a_cut_off_run_is_named(self):
+        _what, _where, _todo, detail = self.compose((failed(), wl(), "failure"))
+        self.assertIn("after 44 min", detail)
+
+    def test_every_exit_code_that_has_a_meaning_gets_it(self):
+        cases = {(137, "failed"): "run killed",
+                 (75, "failed"): "network or temporary failure",
+                 (127, "failed"): "program not found",
+                 (126, "failed"): "program not executable",
+                 (1, "failed"): "run failed (exit 1)",
+                 (143, "failed"): "run cut off, time limit exceeded"}
+        for (rc, verdict), said in cases.items():
+            what, *_ = self.compose(
+                (failed(appointment="", rc=rc, verdict=verdict, duration_sec=7), wl(), "failure"))
+            self.assertEqual(what, f"tool self update: {said}", (rc, verdict))
+
+    def test_several_runs_are_counted_in_the_title_and_listed_one_per_line(self):
+        what, _where, _todo, detail = self.compose(
+            (failed(wid="a", appointment="", rc=1, verdict="failed"), wl("a", "Run A"), "failure"),
+            (failed(wid="b", appointment="", rc=1, verdict="failed"), wl("b", "Run B"), "failure"))
+        self.assertEqual(what, "2 runs failed")
+        self.assertNotIn("more", what)
+        lines = [x for x in detail.splitlines() if x.strip()]
+        self.assertTrue(any(x.startswith("Run A: run failed (exit 1)") for x in lines), lines)
+        self.assertTrue(any(x.startswith("Run B: run failed (exit 1)") for x in lines), lines)
+
+    def test_a_mix_of_verdicts_is_not_called_failed(self):
+        missing = report_mod.Finding(
+            workload_id="b", state=model.WorkloadState.overdue, severity=model.Severity.high,
+            detail="b was due", hint="h", source="machine")
+        what, *_ = self.compose(
+            (failed(wid="a", appointment=""), wl("a", "Run A"), "failure"),
+            (missing, wl("b", "Run B"), "missing"))
+        self.assertEqual(what, "2 runs need attention")
+
+    def test_the_declared_hint_beats_the_machine_sentence(self):
+        _what, _where, todo, _detail = self.compose(
+            (failed(), wl(hint="tail ~/Library/Logs/tool-update.log"), "failure"))
+        self.assertEqual(todo, "tail ~/Library/Logs/tool-update.log")
+
+    def test_without_a_declared_hint_the_finding_hint_is_kept(self):
+        _what, _where, todo, _detail = self.compose((failed(), wl(), "failure"))
+        self.assertEqual(todo, "read the unit's log")
+
+    def test_a_configured_todo_per_problem_beats_the_machine_sentence(self):
+        _what, _where, todo, _detail = self.compose(
+            (failed(rc=1, verdict="failed"), wl(), "failure"),
+            text={"todos": {"failed": "open the run's output first"}})
+        self.assertEqual(todo, "open the run's output first")
+
+    def test_the_declared_hint_still_beats_a_configured_todo(self):
+        _what, _where, todo, _detail = self.compose(
+            (failed(rc=1, verdict="failed"), wl(hint="declared"), "failure"),
+            text={"todos": {"failed": "configured"}})
+        self.assertEqual(todo, "declared")
+
+    def test_a_finding_without_run_facts_keeps_its_own_sentence(self):
+        bare = report_mod.Finding(
+            workload_id="tool-update", state=model.WorkloadState.last_run_failed,
+            severity=model.Severity.high, detail="the run ended with 9 somewhere",
+            hint="h", source="machine")
+        what, _where, _todo, detail = self.compose((bare, wl(), "failure"))
+        self.assertEqual(what, "tool self update: run failed")
+        self.assertIn("the run ended with 9 somewhere", detail)
+
+    def test_the_words_come_from_configuration(self):
+        what, _where, _todo, detail = self.compose(
+            (failed(), wl(), "failure"), text=CUSTOM)
+        self.assertEqual(what, "tool self update (midday): job cut off at its limit")
+        self.assertIn("TU 13.10. 04:59", detail)
+        self.assertIn("/ 44m", detail)
+
+    def test_configured_words_merge_over_the_defaults(self):
+        what, *_ = self.compose((failed(appointment="", rc=127, verdict="failed"), wl(), "failure"),
+                                text=CUSTOM)
+        self.assertEqual(what, "tool self update: program not found",
+                         "a problem the configuration does not name falls back to the default, "
+                         "never to an empty title")
+
+    def test_the_skill_ships_english_defaults_only(self):
+        source = (SKILL_DIR / "engine" / "notify.py").read_text(encoding="utf-8")
+        for word in CUSTOM["problems"].values():
+            self.assertNotIn(word.split(" (")[0], source,
+                             "an instance's words belong in its bridge-config.yaml")
+
+
+class TheAllClearSpeaksTheConfiguredWords(DispatchBase):
+
+    def test_the_all_clear_uses_the_configured_prefix_and_todo(self):
+        cfg = SimpleNamespace(notify_via=None, notify_text=CUSTOM)
+        notify.dispatch(self.rep(failed()), [load("twice-daily-report")], state_path=self.state,
+                        now=self.at(), cfg=cfg, sender=self.sender())
+        notify.dispatch(self.rep(), [load("twice-daily-report")], state_path=self.state,
+                        now=self.at(hour=13), cfg=cfg, sender=self.sender())
+        self.assertEqual(len(self.sent), 2)
+        self.assertEqual(self.sent[1]["what"], "Back to normal: " + self.sent[0]["what"])
+        self.assertEqual(self.sent[1]["todo"], "Nothing to do.")
+        self.assertIn("job cut off at its limit", self.sent[1]["detail"],
+                      "the all-clear names what was wrong in the same words as the alarm")
+
+
+class AProbeDisagreementWaitsForTheRunThatShouldFixIt(DispatchBase):
+    """2026-10-13 02:11: a new release of a tool appeared, the probe ("installed equals
+    newest tag") said no, and an alarm went out. The run that installs releases
+    was due at 04:15. For a run that is not supposed to be running between its
+    firings, `stopped` can only come from its probe, and a probe disagreeing
+    BEFORE the next firing is the world moving, not the run failing."""
+
+    def stopped(self):
+        return report_mod.Finding(
+            workload_id="twice-daily-report", state=model.WorkloadState.stopped,
+            severity=model.Severity.high, detail="its probe says otherwise",
+            hint="h", source="machine")
+
+    def pass_(self, now, runs=None):
+        rep = report_mod.Report(findings=[self.stopped()], header="h", runs=runs or {})
+        notify.dispatch(rep, [load("twice-daily-report")], state_path=self.state,
+                        now=now, sender=self.sender())
+
+    def test_no_alarm_while_no_run_has_happened_since_it_was_first_seen(self):
+        old = {"twice-daily-report": ("2026-08-23T04:15:00Z", 0)}
+        for hour in (12, 13, 14, 15):
+            self.pass_(self.at(hour=hour), runs=old)
+        self.assertEqual(self.sent, [])
+
+    def test_the_alarm_comes_once_a_run_after_first_sight_left_it_wrong(self):
+        self.pass_(self.at(hour=12), runs={"twice-daily-report": ("2026-08-23T04:15:00Z", 0)})
+        self.pass_(self.at(hour=13), runs={"twice-daily-report": ("2026-08-23T04:15:00Z", 0)})
+        self.pass_(self.at(hour=14), runs={"twice-daily-report": ("2026-08-24T13:30:00Z", 0)})
+        self.assertEqual(len(self.sent), 1)
+
+    def test_a_continuous_run_is_not_held_back(self):
+        w = load("watched-daemon")
+        f = dataclasses.replace(self.stopped(), workload_id=w.id)
+        for hour in (12, 13):
+            notify.dispatch(report_mod.Report(findings=[f], header="h", runs={}), [w],
+                            state_path=self.state, now=self.at(hour=hour), sender=self.sender())
+        self.assertEqual(len(self.sent), 1, "a daemon that is down is down now")
 
 
 if __name__ == "__main__":

@@ -227,8 +227,9 @@ class DestinationNotResolvable(Refused):
 
 class PageTooLarge(Refused):
     code = "page-too-large"
-    summary = ("the page does not fit into one command line, and the shell would "
-               "refuse it with an error that names neither the page nor the size")
+    summary = ("a line of the page does not fit into one command line, and the "
+               "connection would refuse it with an error that names neither the "
+               "page nor the size")
 
 
 class StepFailed(WorkloadError):

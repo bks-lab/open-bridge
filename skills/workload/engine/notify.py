@@ -28,6 +28,7 @@ keep in step.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -358,46 +359,213 @@ def _save_state(path, state) -> None:
     os.replace(tmp, path)
 
 
-def compose(entries, *, capped: bool = False):
+#: In front of the all-clear's title. Followed by the alarm's own title, verbatim: a
+#: receiver that filed the alarm under a key made of that title (the inbox does) finds it
+#: again by stripping this prefix. The default; `workloads.notify_text.recovered_prefix`
+#: replaces it, and a receiver keyed on the prefix has to know the configured one too.
+RECOVERED_PREFIX = "recovered: "
+
+#: Every word a message is made of, in English. An instance writes its own
+#: under `workloads.notify_text` in bridge-config.yaml; what it leaves out falls
+#: back to these, key by key (and `problems` entry by entry), so a half
+#: translated configuration still never produces an empty title.
+#:
+#: Added 2026-10-13, after a day of alarms titled with nothing but a job's name
+#: over "ended with 143, and said so in its own trace at 2026-10-13T02:59:51+00:00".
+#: The run had been cut off by its time limit at 04:59 local time, and nothing in
+#: the message said so.
+TEXT_DEFAULTS = {
+    "title_one": "{title}: {problem}",
+    "title_many_failed": "{n} runs failed",
+    "title_many": "{n} runs need attention",
+    "line": "{name}: {problem}{when}{after}",
+    "line_plain": "{name}: {detail}",
+    "line_todo": "\n  what to do: {todo}",
+    "when": ", {moment}",
+    "after": " after {minutes} min",
+    "moment": "{weekday} {day:02d}.{month:02d}. {hour:02d}:{minute:02d}",
+    "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "timezone": "",
+    "todo_none": "no repair is recorded for this verdict",
+    "todo_mixed": "each run below names its own repair",
+    "capped": "further findings are suppressed for the rest of today; "
+              "the full picture stays on the workloads page",
+    "recovered_prefix": RECOVERED_PREFIX,
+    "recovered_line": "{name}: was: {said}",
+    "recovered_todo": "nothing to do, it works again",
+    "unknown_host": "unknown host",
+    #: Repair sentence per problem key (see `problems`), used when the
+    #: declaration has no `reconcile.hint`. Empty: the finding's own sentence.
+    "todos": {},
+    "problems": {
+        "timed_out": "run cut off, time limit exceeded",
+        "killed": "run killed",
+        "transient": "network or temporary failure",
+        "not_found": "program not found",
+        "not_executable": "program not executable",
+        "failed": "run failed (exit {rc})",
+        "failed_no_rc": "run failed",
+        "stopped": "not running, or its check says the effect is missing",
+        "overdue": "did not run when it was due",
+        "absent": "gone from the machine",
+        "retired_but_live": "retired, yet still live on the machine",
+        "grant_orphaned": "its privacy grant points at another program",
+        "other": "{state}",
+    },
+}
+
+
+def texts(cfg) -> dict:
+    """The configured words over the defaults. Never raises on a missing block."""
+    raw = getattr(cfg, "notify_text", None) if cfg is not None else None
+    merged = dict(TEXT_DEFAULTS)
+    merged["problems"] = dict(TEXT_DEFAULTS["problems"])
+    merged["todos"] = dict(TEXT_DEFAULTS["todos"])
+    if isinstance(raw, Mapping):
+        for key, value in raw.items():
+            if key in ("problems", "todos") and isinstance(value, Mapping):
+                merged[key].update({str(k): str(v) for k, v in value.items()})
+            elif value is not None:
+                merged[str(key)] = value
+    return merged
+
+
+def _problem_key(finding) -> str:
+    """Which trouble this is, named by what the machine recorded, never guessed."""
+    state = getattr(getattr(finding, "state", None), "value", "") or ""
+    if state != "last_run_failed":
+        return state or "other"
+    rc = getattr(finding, "rc", None)
+    verdict = getattr(finding, "verdict", "") or ""
+    if verdict == "expired" or rc == 143:
+        return "timed_out"
+    if rc is None:
+        return "failed_no_rc"
+    return {137: "killed", 75: "transient", 127: "not_found",
+            126: "not_executable"}.get(rc, "failed")
+
+
+def problem(finding, text) -> str:
+    phrases = text["problems"]
+    key = _problem_key(finding)
+    phrase = phrases.get(key) or phrases.get("other", "{state}")
+    state = getattr(getattr(finding, "state", None), "value", "") or "unknown"
+    return phrase.format(rc=getattr(finding, "rc", None), state=state)
+
+
+def moment(stamp: str, tz: str, text) -> str:
+    """A trace stamp (UTC) as the reader's wall clock. "" when it cannot be read."""
+    from datetime import datetime, timezone
+    try:
+        when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    zone = None
+    if tz:
+        try:
+            from zoneinfo import ZoneInfo
+            zone = ZoneInfo(tz)
+        except Exception:                          # noqa: BLE001 - unknown zone: host time
+            zone = None
+    local = when.astimezone(zone) if zone else when.astimezone()
+    days = list(text.get("weekdays") or TEXT_DEFAULTS["weekdays"])
+    return text["moment"].format(weekday=days[local.weekday() % len(days)], day=local.day,
+                                 month=local.month, hour=local.hour, minute=local.minute)
+
+
+def _name_of(finding, workload) -> str:
+    title = str(getattr(workload, "title", "") or workload.id)
+    appointment = getattr(finding, "appointment", "") or ""
+    return f"{title} ({appointment})" if appointment else title
+
+
+def _todo_of(finding, workload, text) -> str:
+    # The DECLARATION's repair sentence first: it is written for this run, in the
+    # operator's words ("65 means a human: local changes in the clone..."). The
+    # finding's own is the machine's general advice and the fallback.
+    declared = getattr(getattr(workload, "reconcile", None), "hint", None)
+    configured = (text.get("todos") or {}).get(_problem_key(finding), "")
+    return (str(declared or "").strip() or configured
+            or str(getattr(finding, "hint", "") or "") or text["todo_none"])
+
+
+def _has_run_facts(finding) -> bool:
+    return getattr(finding, "rc", None) is not None or bool(getattr(finding, "at", ""))
+
+
+def said_of(finding, text) -> str:
+    """What the line says about the trouble, kept for the all-clear."""
+    return problem(finding, text) if _has_run_facts(finding) else str(finding.detail)
+
+
+def compose(entries, *, capped: bool = False, text=None):
+    """`_compose`, but a configured sentence that does not format never crashes.
+
+    A typo such as `{nmae}` in `workloads.notify_text` would raise KeyError and
+    take the whole notify pass down with it. It is logged and the DEFAULT words
+    are used, so the alert still goes out.
+    """
+    try:
+        return _compose(entries, capped=capped, text=text)
+    except (KeyError, IndexError, ValueError) as exc:
+        logging.getLogger(__name__).warning(
+            "notify_text does not format (%s: %s); using the default text",
+            type(exc).__name__, exc)
+        return _compose(entries, capped=capped, text=texts(None))
+
+
+def _compose(entries, *, capped: bool = False, text=None):
     """One message out of everything this pass found. Pure.
 
     Bundled rather than one message per finding: several failures in one pass
     usually share one cause, and N messages burn N of the day's places for one
     incident. Each LINE still names its own run and appointment, so bundling
     costs no detail.
+
+    The title names the TROUBLE, not only the job: one run reads "<title>:
+    <problem>", several read "<n> runs failed" with one line each. A finding
+    without run facts (a verdict that is not a trace line) keeps its own
+    sentence in its line, because nothing better is known about it.
     """
+    text = text or texts(None)
     first = entries[0]
     finding, workload, _bucket = first
-    title = str(getattr(workload, "title", "") or workload.id)
-    appointment = getattr(finding, "appointment", "") or ""
-    what = f"{title} ({appointment})" if appointment else title
-    if len(entries) > 1:
-        what = f"{what} and {len(entries) - 1} more"
+    if len(entries) == 1:
+        what = text["title_one"].format(title=_name_of(finding, workload),
+                                        problem=problem(finding, text))
+    else:
+        all_failed = all(getattr(getattr(f, "state", None), "value", "") == "last_run_failed"
+                         for f, _w, _b in entries)
+        what = text["title_many_failed" if all_failed else "title_many"].format(n=len(entries))
     host = str(getattr(getattr(workload, "placement", None), "host", "") or "")
-    where = host or "unknown host"
-    # The repair sentence is the FINDING's own. reconcile keeps a hand written
-    # one per verdict; a second copy maintained here would drift, and then the
-    # message carries last year's instructions while the report shows this
-    # year's.
-    todo = str(getattr(finding, "hint", "") or "") or "no repair is recorded for this verdict"
+    where = host or text["unknown_host"]
+    todos = [_todo_of(f, w, text) for f, w, _b in entries]
+    shared = len(set(todos)) == 1
+    todo = todos[0] if shared else text["todo_mixed"]
     lines = []
-    for one, w, bucket in entries:
-        name = getattr(one, "appointment", "") or ""
-        who = f"{w.id}.{name}" if name else str(w.id)
-        lines.append(f"[{bucket}] {who}: {one.detail}")
+    for (one, w, _bucket), own_todo in zip(entries, todos):
+        name = _name_of(one, w)
+        if _has_run_facts(one):
+            tz = getattr(getattr(w, "schedule", None), "timezone", None) or text.get("timezone") or ""
+            at = moment(one.at, tz, text) if getattr(one, "at", "") else ""
+            minutes = (getattr(one, "duration_sec", None) or 0) // 60
+            line = text["line"].format(
+                name=name, problem=problem(one, text),
+                when=text["when"].format(moment=at) if at else "",
+                after=text["after"].format(minutes=minutes) if minutes >= 1 else "")
+        else:
+            line = text["line_plain"].format(name=name, detail=one.detail)
+        if not shared:
+            line += text["line_todo"].format(todo=own_todo)
+        lines.append(line)
     if capped:
-        lines.append("further findings are suppressed for the rest of today; "
-                     "the full picture stays on the workloads page")
+        lines.append(text["capped"])
     return what, where, todo, "\n".join(lines)
 
 
-#: In front of the all-clear's title. Followed by the alarm's own title, verbatim: a
-#: receiver that filed the alarm under a key made of that title (the inbox does) finds it
-#: again by stripping this prefix.
-RECOVERED_PREFIX = "recovered: "
-
-
-def compose_recovery(entries):
+def compose_recovery(entries, text=None):
     """The all-clear for alarms that were told and have since ended. Pure.
 
     `entries` are remembered state entries of ONE delivered message (same `alarm_what`),
@@ -405,12 +573,15 @@ def compose_recovery(entries):
     Added 2026-10-07: an alarm arrived in the middle of a failure and the end of the failure
     was never announced, so the reader had to open a page to find out.
     """
+    text = text or texts(None)
     first = entries[0]
-    what = RECOVERED_PREFIX + str(first.get("alarm_what") or first.get("title") or "a run")
-    where = first.get("host") or "unknown host"
-    lines = [f"[recovered] {e.get('who') or '?'}: was: {e.get('detail') or 'n/a'}"
+    what = text["recovered_prefix"] + str(first.get("alarm_what") or first.get("title") or "a run")
+    where = first.get("host") or text["unknown_host"]
+    lines = [text["recovered_line"].format(
+                 name=e.get("name") or e.get("who") or "?",
+                 said=e.get("said") or e.get("detail") or "n/a")
              for e in entries]
-    return what, where, "nothing to do, it works again", "\n".join(lines)
+    return what, where, text["recovered_todo"], "\n".join(lines)
 
 
 def _sender_for(spec):
@@ -426,6 +597,7 @@ def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
     """One pass: route, dampen, say it once, and remember only what arrived."""
     by_id = {w.id: w for w in (workloads or ())}
     state, note = _load_state(state_path)
+    text = texts(cfg)
 
     if sender is None:
         spec = notifier_spec(cfg)
@@ -475,6 +647,10 @@ def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
             suppressed += 1
             continue
 
+        if _waits_for_a_run(finding, workload, entry, report, now):
+            suppressed += 1
+            continue
+
         mark = fingerprint(finding)
         same = entry.get("fingerprint") == mark
         if same and int(entry.get("repeats") or 0) >= max_repeats:
@@ -516,7 +692,7 @@ def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
         else:
             capped = int(state.get("delivered_today") or 0) + 1 >= cap
             what, where, todo, detail = compose(
-                [(f, w, b) for f, w, b, _k, _m in candidates], capped=capped)
+                [(f, w, b) for f, w, b, _k, _m in candidates], capped=capped, text=text)
             pass_titles.add(what)
             answer = sender(what=what, where=where, todo=todo, detail=detail)
             if getattr(answer, "delivered", False):
@@ -537,6 +713,8 @@ def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
                                           "streak": prior.get("streak", 1),
                                           "repeats": prior_repeats + 1,
                                           "who": named, "detail": _f.detail,
+                                          "name": _name_of(_f, _w),
+                                          "said": said_of(_f, text),
                                           # Every title it was ever told under: each one
                                           # may be a separate item at the receiver.
                                           "alarm_whats": sorted(set(
@@ -571,7 +749,7 @@ def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
             suppressed += 1         # the cap counts what arrived, all-clears included
             continue
         entries = [dict(state["keys"][k], alarm_what=title) for k in keys]
-        what, where, todo, detail = compose_recovery(entries)
+        what, where, todo, detail = compose_recovery(entries, text=text)
         answer = sender(what=what, where=where, todo=todo, detail=detail)
         if getattr(answer, "delivered", False):
             sent += 1
@@ -588,6 +766,44 @@ def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
 
     _save_state(state_path, state)
     return Dispatched(sent=sent, suppressed=suppressed, note=note)
+
+
+def _waits_for_a_run(finding, workload, entry, report, now) -> bool:
+    """True while a probe disagreement has not yet met the run that should fix it.
+
+    2026-10-13 02:11: a new release of a tool appeared, the probe ("installed equals
+    the newest tag") said no, and an alarm went out. The run that installs releases
+    was due at 04:15. For a run that is idle between firings `stopped` can only come from
+    its probe, and a probe disagreeing BEFORE the next firing is the world moving,
+    not the run failing.
+
+    So the first sighting is remembered, and the alarm waits until the machine's
+    own trace shows a run AFTER it. If that run never comes, `overdue` says so on
+    its own channel; if it comes and fails, `last_run_failed` does. A daemon is
+    supposed to be up now, so it never waits here.
+    """
+    from datetime import datetime, timezone
+    from engine import model
+    if getattr(finding, "state", None) is not model.WorkloadState.stopped:
+        return False
+    kind = getattr(getattr(workload, "placement", None), "kind", "")
+    if str(getattr(kind, "value", kind) or "") in model.CONTINUOUS_KINDS:
+        return False
+    since = entry.get("probe_since") or now.isoformat()
+    entry["probe_since"] = since
+    run = (getattr(report, "runs", None) or {}).get(finding.workload_id)
+    if not run or not run[0]:
+        return True
+    try:
+        ran = datetime.fromisoformat(str(run[0]).replace("Z", "+00:00"))
+        first = datetime.fromisoformat(since)
+    except ValueError:
+        return False
+    if ran.tzinfo is None:
+        ran = ran.replace(tzinfo=timezone.utc)
+    if first.tzinfo is None:
+        first = first.replace(tzinfo=timezone.utc)
+    return ran <= first
 
 
 def _unknown():

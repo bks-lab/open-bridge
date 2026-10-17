@@ -35,6 +35,16 @@ class Finding:
     #: a sentence apart, and a sentence changes for a reader while a parser
     #: reading it breaks in silence.
     appointment: str = ""
+    #: The run a `last_run_failed` is about, as the guard wrote it: exit code,
+    #: the guard's own verdict (`expired` is a deadline, not the program saying
+    #: no), seconds it ran, and its moment in UTC. Fields for the same reason
+    #: `appointment` is one: the notifier renders "cut off by its time limit
+    #: after 44 min, Tue 04:59" from them, and taking `detail` apart to get
+    #: there would break in silence the day the sentence changes.
+    rc: int | None = None
+    verdict: str = ""
+    duration_sec: int | None = None
+    at: str = ""
 
     @property
     def state_value(self) -> str:

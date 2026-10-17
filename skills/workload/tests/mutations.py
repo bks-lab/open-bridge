@@ -1616,7 +1616,7 @@ MUTATIONS = (
     Mutation(
         name="a-page-too-large-meets-the-shell-instead-of-a-refusal",
         file="engine/publish.py",
-        search="    if len(encoded) > MAX_BYTES:",
+        search="    if largest > MAX_BYTES:",
         replace="    if False:",
         test="tests.test_publish.APageTooLargeToTravelIsRefusedByName"
              ".test_a_page_that_will_not_fit_in_an_argv_is_refused_before_it_is_tried",
@@ -1871,8 +1871,8 @@ MUTATIONS = (
     Mutation(
         name="retired-declarations-are-counted-into-what-is-in-service",
         file="engine/view.py",
-        search="    in_service = [row for row in declared if not row.retired]",
-        replace="    in_service = list(declared)",
+        search="    # runs here and get the wrong number: one migrated service showed as four.\n    in_service = [row for row in declared if not row.retired]",
+        replace="    # runs here and get the wrong number: one migrated service showed as four.\n    in_service = list(declared)",
         test="tests.test_view.OnlyWhatIsInServiceIsOnTheBoard"
              ".test_a_retired_declaration_is_not_a_row",
         scar="a reader counts the rows to learn how much runs on a machine and "
@@ -2284,8 +2284,8 @@ MUTATIONS = (
         name="the-calendar-draws-only-the-first-appointment",
         file="engine/view.py",
         # Retargeted 2026-08-27: one lane is drawn by `_lane_html` now.
-        search="    for mark in (lane.appointments or ()):",
-        replace="    for mark in (lane.appointments or ())[:1]:",
+        search="    for mark in (lane.appointments or ()):\n        here = mark.fires_on(weekday)\n        shape = mark.shape",
+        replace="    for mark in (lane.appointments or ())[:1]:\n        here = mark.fires_on(weekday)\n        shape = mark.shape",
         test="tests.test_view.TwoAppointmentsAreTwoMarksOnOneLane"
              ".test_the_page_draws_a_tick_for_every_appointment",
         scar="a dropped appointment makes the lane look exactly like a run "
@@ -2314,8 +2314,8 @@ MUTATIONS = (
     Mutation(
         name="the-page-forgets-which-machines-it-asked",
         file="engine/cli.py",
-        search="                            hosts=tuple(args.host or ()),",
-        replace="                            hosts=(),",
+        search="                            hosts=tuple(args.host or ()),\n                            poll_sec=getattr",
+        replace="                            hosts=(),\n                            poll_sec=getattr",
         test="tests.test_cli.TheHostFilterReachesThePage"
              ".test_the_machines_named_on_the_command_line_reach_the_renderer",
         scar="the renderer can only explain a silence it was told the shape of; "
@@ -3122,8 +3122,8 @@ MUTATIONS = (
     Mutation(
         name="the-zone-is-taken-from-whoever-is-looking",
         file="engine/view.py",
-        search="    zone = zones[0] if len(zones) == 1 else \"\"",
-        replace="    zone = zones[0] if zones else \"\"",
+        search="    zones = day_zones(list(workloads))\n    zone = zones[0] if len(zones) == 1 else \"\"",
+        replace="    zones = day_zones(list(workloads))\n    zone = zones[0] if zones else \"\"",
         test="tests.test_view.NowComesFromTheMachinesZoneAndNeverTheReaders"
              ".test_a_page_whose_declarations_disagree_states_no_zone",
         scar="one upright line across runs keeping two zones, right for at "
@@ -3527,8 +3527,8 @@ MUTATIONS = (
     Mutation(
         name="a-decision-shares-the-drift-heading",
         file="engine/view.py",
-        search="    drifted = [f for f in inventory if _state(f) != DECIDED_VALUE]",
-        replace="    drifted = list(inventory)",
+        search="    drifted = [f for f in inventory if _state(f) != DECIDED_VALUE]\n    if drifted:\n        body.append",
+        replace="    drifted = list(inventory)\n    if drifted:\n        body.append",
         test="tests.test_view.ADecisionIsNotAChore"
              ".test_a_decided_absence_alone_still_gets_its_section",
         scar="the reader is told there is work here, and the work is deleting "

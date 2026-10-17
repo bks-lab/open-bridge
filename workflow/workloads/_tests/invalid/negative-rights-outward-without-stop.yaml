@@ -1,0 +1,25 @@
+# Control: whoever may reach a person owes them a way out. Without one the
+# recipient cannot withdraw the consent the permission rests on.
+schema_version: 1
+scope: core
+id: negative-rights-outward-without-stop
+title: Negative rights outward without stop
+purpose: "Control: outward permission with no way out"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing: {reaches_humans: false}
+  escalation:
+    reaches_humans: true
+    unlocked_by: {no_progress_ticks: 3}
+    recipients:
+      - {mandant_ref: example-person, channel_ref: example-channel}
+    caps: {total: 3}
+  # Kein `stop:` - das ist der Befund dieser Kontrolle. `consent` steht da,
+  # damit genau eine Regel uebrig bleibt, an der sie scheitert.
+  consent: {flag: /var/lib/example/x.consent}

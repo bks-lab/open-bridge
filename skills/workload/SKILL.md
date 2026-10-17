@@ -65,7 +65,7 @@ workload render     <id> [--offline --uid U --home P]
 workload provision  <id> [--dry-run] [--yes] [--force] [--accept-degraded] [--enable]
 workload adopt      <id> [--yes]        # a hand made unit: declare its placement.label_prefix
 workload reconcile  [<id>...] [--all] [--host H] [--no-probe] [--verbose] [--propose-inventory] [--json] [--notify]
-workload view       [<id>...] [--host H] [--no-probe] [--out PATH] --now STAMP [--poll-sec S] [--group-by band|system]
+workload view       [<id>...] [--host H] [--no-probe] [--out PATH] --now STAMP [--poll-sec S] [--group-by band|system] [--json]
 workload publish    [<id>...] [--host H] [--no-probe] --to HOST --dest DIR --now STAMP [--page-name NAME] [--attach PATH]... [--url URL] [--stale-after-min N] [--poll-sec S] [--group-by band|system] [--yes]
 workload retire     <id> --reason TEXT [--superseded-by ID] [--keep-artifact] [--yes] [--dry-run]
 ```
@@ -107,6 +107,14 @@ Four of those are worth spelling out, because each one used to be a `0`:
   A run naming no system is NOT folded in with the ones that stand alone on
   purpose. `_standalone` was looked at, absent was not, and only one of the two
   asks the reader for anything.
+
+- `view --json` prints the page's content as one JSON document on stdout
+  (`schema: 1`) instead of writing HTML, for a dashboard that draws its own.
+  Same reconcile, same data stages (`view.data` reads `rows`, `lanes`,
+  `elsewhere`, `_sections`, `stat_counts`, `facet_counts`), so the two
+  surfaces cannot count differently. The reconcile sentence goes to stderr. A
+  run with no finding says `not reported`, never `in_sync`, exactly as the
+  page does, and recipients are groups plus a count of people, never names.
 
 - `view` and `publish` render the same page: a 24 hour calendar first, then
   what is in service, then what is retired as a counted sentence, then the

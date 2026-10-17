@@ -35,7 +35,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from engine import errors, exec as exec_mod, model
-from engine.backends.base import RenderedFile, write_file_step, write_file_steps
+from engine.backends.base import (CHUNK_BYTES, RenderedFile, _chunks, write_file_step,
+                                  write_file_steps)
 
 #: The file that says this directory is ours. Read before every publish and
 #: rewritten on every publish, so it cannot rot into a claim about a producer
@@ -51,13 +52,18 @@ PRODUCER = "workload-view"
 PAGE_NAME = "index.html"
 
 #: The content travels inside an argv, the way every other file this skill puts
-#: on a machine does. macOS and Linux both cut off around a megabyte, and the
-#: error they raise names neither the page nor the size. Half of that, refused
-#: by name, is a better answer than E2BIG out of a shell.
+#: on a machine does, but no longer as ONE argv: `write_file_steps` splits it
+#: on line boundaries into parts of CHUNK_BYTES, one command line each. What
+#: can still reach the transport too big is a single line longer than a part,
+#: which becomes a part of its own. A multiplexed ssh session refused about
+#: 256 KiB (measured 2026-08-27), so the limit sits below that, with room for
+#: the quoting and the here-document around it.
 #:
-#: PER FILE, not per publish: the limit is one command line, and every file
-#: travels in one of its own.
-MAX_BYTES = 512 * 1024
+#: PER PART, not per file. Until 2026-09-18 this counted the whole file against
+#: 512 KiB, a limit the split had already removed: a 556143 byte page whose
+#: longest line was 13 KB was refused for four days, and /workloads/ showed
+#: numbers from 14.09. as the present.
+MAX_BYTES = 192 * 1024
 
 #: How many foreign entries a refusal lists. Enough to recognise the directory,
 #: not so many that the message becomes a listing.
@@ -428,16 +434,20 @@ def _refuse_if_too_large(subject: str, content: str) -> bytes:
     """The one size gate, reached by the page and by every attachment alike.
 
     The limit is a property of the TRANSPORT and not of the page, so it counts
-    per file: each one travels in a command line of its own.
+    per PART: the same split `write_file_steps` makes, each part in a command
+    line of its own. Only a line longer than a part can fail it.
     """
     encoded = content.encode("utf-8")
-    if len(encoded) > MAX_BYTES:
+    body = content if content.endswith("\n") else content + "\n"
+    largest = max(len(part.encode("utf-8")) for part in _chunks(body, CHUNK_BYTES))
+    if largest > MAX_BYTES:
         raise errors.PageTooLarge(
-            f"{subject} is {len(encoded)} bytes and the limit is {MAX_BYTES}. It "
-            "travels inside one command line, which the shell cuts off around a "
-            "megabyte with an error naming neither. Split it or deliver it "
-            "by another route.",
-            size=len(encoded), limit=MAX_BYTES, subject=subject)
+            f"{subject} carries a single line of about {largest} bytes and the "
+            f"limit is {MAX_BYTES}. A file travels in parts split on line "
+            "boundaries, never inside a line, and one part this large is cut "
+            "off by the connection with an error naming neither. Break the "
+            "line or deliver it by another route.",
+            size=largest, limit=MAX_BYTES, subject=subject)
     return encoded
 
 
