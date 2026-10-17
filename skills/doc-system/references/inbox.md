@@ -19,7 +19,51 @@ Like `/doc-status`: Read `bridge-config.yaml → doc_sensor.onedrive_root`, expa
 
 ### 1. Scan sources
 
-Scan all import sources (from `doc_sensor.scan_paths`).
+Scan **all** sources declared in `context.yaml` under `sources:` — not only the
+filesystem paths in `doc_sensor.scan_paths`. The config lists the local import
+folders; the context is the complete list and additionally carries scanner
+output and the flagged-mail accounts. Scanning only the config list silently
+skips whole sources.
+
+**Mail sources: a missing `[PDF]` marker does NOT mean the mail is empty.**
+`apple_mail.py --list` marks only mails with an **attachment** as `[PDF]`. Many
+invoices sit in the **mail body** instead (Apple, banks, utilities, subscription
+services). For every flagged mail without an attachment, render the body before
+deciding:
+
+```bash
+python3 .claude/skills/doc-system/scripts/apple_mail.py --render-html "<subject>"
+# → writes a PDF into the extract dir, then read it like any other document
+```
+
+Only after reading the rendered body may a mail be dismissed as
+not-a-candidate. Absence of an attachment is not an exclusion criterion.
+
+> Incident 2026-08-22: five flagged mails, two with attachments processed, three
+> dismissed on the marker alone. One of them was the monthly subscription
+> invoice with a partial business share — a matching routing rule existed and
+> never fired, because the document was never recognised as a document. The user
+> found the missing receipt, not the system. A second dismissed mail turned out
+> to carry a vehicle-related notice that also had to be filed.
+
+**Skill-fetch sources (`kind: skill_fetch`): offer, never start unasked.**
+Some documents only reach the Bridge when another skill fetches them from a
+portal (an insurer's mailbox, a tax advisor's upload area). Such a source
+declares which skill fetches, into which folder it lands, and whether a human
+has to take part (e.g. one click on a login). Handling:
+
+1. Read the age of the last fetch from the mtime of `last_run_marker:` (missing
+   file = never fetched).
+2. Age < `offer_after_days` → list the source with its age, no offer.
+   Otherwise put an **offer line** under the preview table:
+   `Portal <label>: last fetched <N> days ago. Fetch now?` plus
+   `(needs you: <what>)` when `interactive: true`.
+3. Only on the user's yes: invoke `skill:` with `command:`, then `after:` if
+   declared (e.g. its own duplicate check). For an interactive source, tell the
+   user what to do before starting, and never retry a failed login unasked.
+4. Scan `lands_in:` like a `kind: filesystem` source and add its items to the
+   same preview table. Files under `lands_in:` that are already in the archive
+   are trashed only with the usual OK.
 
 ### 2. Categorize files
 
@@ -55,20 +99,37 @@ No intermediate step — the user does not need to first choose what to analyze.
 ```
 ── Preview ({N} items) ──────────────────────────────────────────
 
-| #  | Cat | Original                        | New name                                            | Target                            | Action          |
-|----|-----|---------------------------------|-----------------------------------------------------|-----------------------------------|-----------------|
-|  1 | DOC | 359377_..._2026_01.pdf          | 2026-01-10_<Area>_<Vendor>_<Type>_<Description>.pdf | <area-path>/                      | move            |
-|  2 | DOC | Insurance 2026 <Name>.pdf       | 2026-02-04_<Area>_<Insurer>_Policy_2026.pdf         | <area-path>/                      | move            |
-|  3 | DOC | <Donation>-Receipt-2025.pdf     | 2025-12-01_<Area>_<Charity>_DonationReceipt         | <persona-dest>/                   | move ⚠          |
-|  4 | REC | Call with <Person>...mp4 (+.txt)| —                                                   | —                                 | debrief         |
-|  5 | IMG | 401CAEA1-D551-...png            | (empty background, illegible)                       | —                                 | trash           |
-|  6 | IMG | Screenshot 2026-02-17...        | (chat screenshot, project topic)                    | —                                 | keep            |
-|  7 | DIR | scan-folder-xyz/                | 2026-02-05_<Area>_<Context>_<Description>/          | <area-path>/<sub>/                | move            |
-|  8 | ??? | report.html                     | (HTML report, analyze content)                      | —                                 | keep / route    |
+| #  | Cat | Original                        | New name                                            | Target                            | Action          | To do                   |
+|----|-----|---------------------------------|-----------------------------------------------------|-----------------------------------|-----------------|-------------------------|
+|  1 | DOC | 359377_..._2026_01.pdf          | 2026-01-10_<Area>_<Vendor>_<Type>_<Description>.pdf | <area-path>/                      | move            | —                       |
+|  2 | DOC | Insurance 2026 <Name>.pdf       | 2026-02-04_<Area>_<Insurer>_Policy_2026.pdf         | <area-path>/                      | move            | pay by 2026-02-20       |
+|  3 | DOC | <Donation>-Receipt-2025.pdf     | 2025-12-01_<Area>_<Charity>_DonationReceipt         | <persona-dest>/                   | move ⚠          | —                       |
+|  4 | REC | Call with <Person>...mp4 (+.txt)| —                                                   | —                                 | debrief         | —                       |
+|  5 | IMG | 401CAEA1-D551-...png            | (empty background, illegible)                       | —                                 | trash           | —                       |
+|  6 | IMG | Screenshot 2026-02-17...        | (chat screenshot, project topic)                    | —                                 | keep            | —                       |
+|  7 | DIR | scan-folder-xyz/                | 2026-02-05_<Area>_<Context>_<Description>/          | <area-path>/<sub>/                | move            | —                       |
+|  8 | ??? | report.html                     | (HTML report, analyze content)                      | —                                 | keep / route    | —                       |
 
 ⚠ = persona routing (e.g. tax-advisor filing) — please check
 Cat: DOC=document, REC=recording, IMG=screenshot, DIR=folder, ???=other
+To do: what the document asks of the recipient, with its deadline (see below)
 ```
+
+**To do column.** While reading each document, ask one question: *does the
+sender expect the recipient to act?* Fill the column when it does, `—` when
+it does not. It does when the document
+
+- asks for a reply, data, a form or a confirmation ("please update your data by …"),
+- sets a deadline or announces a consequence if nothing happens,
+- requests a payment that is **not** collected automatically,
+- needs a signature, an appointment, an objection within a period.
+
+It does not for a plain invoice that is debited, a notice, a statement or
+advertising. Write the action in a few words plus the date (`reply by
+2026-06-20`). A deadline that has already passed stays in the column, marked
+`overdue`: the consequence may still be reversible, and a quiet filing is how
+a request goes unanswered. Not sure → fill it and let the user strike it
+(`"3 no todo"`).
 
 ### 4. User correction
 
@@ -83,10 +144,22 @@ After confirmation:
 1. Run all actions (move, trash, keep, debrief)
 2. Set tags (for move actions)
 3. **Write log** → `PROCESSING-LOG.md` (see below)
-4. Show summary:
+4. **File every To do** as an inbox item, one per document, after its move
+   (the item points at the new path). Only when task management is enabled
+   and `scripts/inbox.py` exists; otherwise list them in the summary.
+   ```bash
+   python3 scripts/inbox.py add --from doc-system --kind finding --gate only-you \
+     --closer person --key "doc-system:<new file name>" \
+     --summary "<sender>: <action>" --due <YYYY-MM-DD> \
+     --urgency <now|today|later> --detail "<new path relative to the documents root>"
+   ```
+   `--urgency now` when overdue or due within 7 days, `later` otherwise.
+   Without a date, leave out `--due`. The key makes a second run over the
+   same file file nothing new. The item closes when the user says it is done.
+5. Show summary:
 
 ```
-Done: 5 moved, 2 deleted, 1 kept, 1 → /debrief
+Done: 5 moved, 2 deleted, 1 kept, 1 → /debrief, 1 to do filed
 Log: → PROCESSING-LOG.md
 ```
 

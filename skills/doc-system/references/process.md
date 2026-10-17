@@ -58,12 +58,26 @@ For edge cases additionally read `${onedrive_root}/<areas-root>/<area>/_INFO.md`
 
 ### 1. Scan sources
 
-Import sources from `bridge-config.yaml → doc_sensor.scan_paths`:
+Scan **all** sources declared in `context.yaml` under `sources:` — not only
+the filesystem paths in `doc_sensor.scan_paths` (bridge-config.yaml). The
+context list is the complete one and additionally carries scanner output
+that lives outside `${onedrive_root}` (via a `base:` override) plus the
+flagged-mail accounts. Scanning only `doc_sensor.scan_paths` silently skips
+whole sources — see `references/inbox.md` for the incident this caused
+(a ScanSnap scan sat unprocessed because process.md read the shorter list).
+
+For each `kind: filesystem` / `kind: recordings` source, resolve the scan
+root as `base:` (if the source declares one) + `path:`, otherwise
+`${onedrive_root}` + `path:`:
 ```bash
-/usr/bin/find "${ONEDRIVE_ROOT}/${scan_path}" -type f \
+/usr/bin/find "${SOURCE_ROOT}" -type f \
   -not -name '.DS_Store' -not -name '_INFO.md' -not -name '.gitkeep' \
   2>/dev/null
 ```
+For `kind: apple_mail_flagged` / `kind: outlook_graph` sources, use the
+declared `script:` instead of `find`. For `kind: skill_fetch` sources, scan
+only `lands_in:`; fetching is offered by `/doc-inbox`, never run from here
+(`references/inbox.md`).
 
 ### 2. For every document
 
@@ -85,7 +99,10 @@ Import sources from `bridge-config.yaml → doc_sensor.scan_paths`:
 8. **Move** — `mv` to target folder
 9. **Anti-pattern check** — if rule has a `note` (warning), mark in
    the preview table as ⚠, have the user confirm
-10. **Audit** — entry in `work/doc-system/log.md` with persona + rule ID
+10. **To do check** — does the sender expect the recipient to act (reply,
+    deadline, payment not debited, signature)? Then show it as the To do and
+    file it after the move, exactly as in `inbox.md` § 3 and § 5
+11. **Audit** — entry in `work/doc-system/log.md` with persona + rule ID
 
 ### 3. Work log (two places)
 

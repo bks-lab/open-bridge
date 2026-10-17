@@ -81,6 +81,21 @@ sources:
   - { id: import_root,  label: "Inbox",        path: "0_Import" }
   - { id: import_areas, label: "Areas-Inbox",  path: "2_AREAS/Import" }
   - { id: import_audio, label: "Audio-Inbox",  path: "2_AREAS/Import_Audio", kind: recordings }
+  # kind: skill_fetch — another skill fetches documents from a portal. The
+  # fetch is OFFERED in the preview once `offer_after_days` have passed since
+  # the mtime of `last_run_marker`, never started unasked. Only `lands_in` is
+  # scanned. Details: skills/doc-system/references/inbox.md.
+  # - id: portal
+  #   label: "Insurer portal"
+  #   kind: skill_fetch
+  #   skill: <skill-name>
+  #   command: "fetch"
+  #   after: "dedupe"                     # optional follow-up command
+  #   lands_in: "0_Import/Portal"
+  #   interactive: true                   # needs the user, e.g. one login click
+  #   needs: "click Login once in the browser window"
+  #   last_run_marker: "~/.local/state/<skill>/state.json"
+  #   offer_after_days: 14
 
 # ---------------------------------------------------------------------------
 # Areas — PARA defaults. Each area can declare `subfolders` and optionally

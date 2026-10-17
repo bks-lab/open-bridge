@@ -64,7 +64,11 @@ if [ -f /tmp/graph_token.txt ]; then
 fi
 ```
 
-6. Render output
+6. For each `kind: skill_fetch` source in `context.yaml` `sources:`: days since
+   the mtime of `last_run_marker:` (`never` when the file is missing). Mark ⚠
+   when the age reaches `offer_after_days`. Never fetch from here.
+
+7. Render output
 
 ## Output format
 
@@ -82,6 +86,9 @@ fi
   Apple Mail:    {N} (M with PDF)
   Outlook:       {N}     [or "— (Auth)" when Graph token is missing]
 
+── Portals (last fetch) ────────────────────────────────────────────
+  {label}:       {N} days    [⚠ when >= offer_after_days, "never" if no marker]
+
 ── Outbox (open) ──────────────────────────────────────────────────
   {area_label_1}:  {N}
   {area_label_2}:  {N}
@@ -94,6 +101,7 @@ fi
   /doc-process --batch 10      Process 10 automatically
   "process mail attachments"   File Apple Mail receipts
   "outlook attachments"        File Outlook receipts
+  "fetch <portal>"             Run a skill_fetch source (offered by /doc-inbox)
 ```
 
 ## Rendering rules
