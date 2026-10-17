@@ -165,6 +165,26 @@ SURFACES = [
         "exclude_prefixes": ["_"],
     },
     {
+        # Declared runs. Live declarations were held against the contract
+        # by NOTHING automatic before this surface existed: the
+        # skill's own `workload validate --strict` reaches them, but only when
+        # a human types it. A declaration that drifts from the schema is not a
+        # cosmetic problem: `render` writes it onto a machine.
+        #
+        # The `_tests/` folder beside them is a directory, so the non-recursive
+        # glob never sees its deliberately invalid fixtures.
+        "name": "workload",
+        "schema": "workflow/workloads/_schema.yaml",
+        "instances": "workflow/workloads/*.yaml",
+        "exclude_prefixes": ["_"],
+    },
+    {
+        "name": "ai-service",
+        "schema": "workflow/ai-services/_schema.yaml",
+        "instances": "workflow/ai-services/*.yaml",
+        "exclude_prefixes": ["_"],
+    },
+    {
         # Generated root-config lockfile (scope: user) recording applied org
         # overlays, pinned to immutable hashes. Absent on a fresh clone → the
         # glob finds no instances and the surface is a no-op; validated when

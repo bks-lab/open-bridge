@@ -16,6 +16,7 @@
 # Env: UPSTREAM_REF (default upstream/main) · AUTOUPDATE_HOUR/MIN (default 7:00)
 #      OVERLAY_AUTOSYNC_HOUR/MIN (default 7:15)
 #      SIGNAL_ACCOUNT + SIGNAL_RECIPIENT (both → the job sends a Signal summary)
+#      AUTOUPDATE_NOTIFY_CMD (argv string, gets the summary on stdin; any notifier)
 set -euo pipefail
 REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 JOB=core; PRINT=0
@@ -23,7 +24,7 @@ for arg in "$@"; do
   case "$arg" in
     --overlays) JOB=overlays ;;
     --print)    PRINT=1 ;;
-    -h|--help)  sed -n '3,19p' "$0"; exit 0 ;;
+    -h|--help)  sed -n '3,20p' "$0"; exit 0 ;;
     *) echo "unknown argument: $arg (see --help)" >&2; exit 64 ;;
   esac
 done
@@ -43,11 +44,17 @@ fi
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 UID_="$(id -u)"
 
+xml_esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+REPO_XML=$(xml_esc "$REPO")
 sig=""
-[ -n "${SIGNAL_ACCOUNT:-}" ]   && sig="$sig    <key>SIGNAL_ACCOUNT</key><string>${SIGNAL_ACCOUNT}</string>
+[ -n "${SIGNAL_ACCOUNT:-}" ]   && sig="$sig    <key>SIGNAL_ACCOUNT</key><string>$(xml_esc "$SIGNAL_ACCOUNT")</string>
 "
-[ -n "${SIGNAL_RECIPIENT:-}" ] && sig="$sig    <key>SIGNAL_RECIPIENT</key><string>${SIGNAL_RECIPIENT}</string>
+[ -n "${SIGNAL_RECIPIENT:-}" ] && sig="$sig    <key>SIGNAL_RECIPIENT</key><string>$(xml_esc "$SIGNAL_RECIPIENT")</string>
 "
+if [ -n "${AUTOUPDATE_NOTIFY_CMD:-}" ]; then
+  sig="$sig    <key>AUTOUPDATE_NOTIFY_CMD</key><string>$(xml_esc "$AUTOUPDATE_NOTIFY_CMD")</string>
+"
+fi
 
 render_plist() { cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -55,16 +62,16 @@ render_plist() { cat <<PLIST
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key><array>
-    <string>/bin/bash</string><string>$REPO/$SCRIPT</string>
+    <string>/bin/bash</string><string>$REPO_XML/$SCRIPT</string>
   </array>
-  <key>WorkingDirectory</key><string>$REPO</string>
+  <key>WorkingDirectory</key><string>$REPO_XML</string>
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>UPSTREAM_REF</key><string>${UPSTREAM_REF:-upstream/main}</string>
 $sig  </dict>
   <key>StartCalendarInterval</key><dict><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MIN</integer></dict>
-  <key>StandardOutPath</key><string>$REPO/work/$STEM.launchd.out</string>
-  <key>StandardErrorPath</key><string>$REPO/work/$STEM.launchd.err</string>
+  <key>StandardOutPath</key><string>$REPO_XML/work/$STEM.launchd.out</string>
+  <key>StandardErrorPath</key><string>$REPO_XML/work/$STEM.launchd.err</string>
   <key>RunAtLoad</key><false/>
 </dict></plist>
 PLIST

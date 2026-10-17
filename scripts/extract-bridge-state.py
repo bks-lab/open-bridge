@@ -22,6 +22,18 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def run(cmd: list[str], cwd: Path = REPO) -> str:
+    """Every git call here carries `--no-optional-locks`, and that is the point.
+
+    This script can run every sixty seconds under a launchd state pusher. On
+    one instance that made `git commit` in this repository fail repeatedly with
+    "Unable to create '.git/index.lock': File exists", while no git process was
+    running any more and the lock file was already gone: several read-only
+    looking git commands refresh the on-disk index as a side effect and take
+    the lock to do it. Harmless between two humans, a collision every minute
+    against somebody typing. A background READER never needs that refresh.
+
+    Contract: scripts/tests/test_extract_bridge_state_locks.py
+    """
     try:
         return subprocess.run(
             cmd, cwd=cwd, check=True, capture_output=True, text=True
@@ -31,11 +43,11 @@ def run(cmd: list[str], cwd: Path = REPO) -> str:
 
 
 def ref_exists(ref: str) -> bool:
-    return bool(run(["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"]).strip())
+    return bool(run(["git", "--no-optional-locks", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"]).strip())
 
 
 def symref(ref: str) -> str:
-    return run(["git", "symbolic-ref", "--short", "--quiet", ref]).strip()
+    return run(["git", "--no-optional-locks", "symbolic-ref", "--short", "--quiet", ref]).strip()
 
 
 def resolve_refs() -> tuple[str, str]:
@@ -55,11 +67,11 @@ def resolve_refs() -> tuple[str, str]:
     """
     user_cands = [
         symref("refs/remotes/origin/HEAD"),
-        run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).strip(),
+        run(["git", "--no-optional-locks", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).strip(),
         "HEAD",
     ]
     core_cands: list[str] = []
-    for remote in run(["git", "remote"]).split():
+    for remote in run(["git", "--no-optional-locks", "remote"]).split():
         if remote == "origin":
             continue
         core_cands += [symref(f"refs/remotes/{remote}/HEAD"), f"{remote}/main",
@@ -73,7 +85,7 @@ def resolve_refs() -> tuple[str, str]:
 
 def github_slug(remote: str) -> str:
     """`owner/name` for a remote, from its URL (SSH or HTTPS). Empty if unknown."""
-    url = run(["git", "remote", "get-url", remote]).strip()
+    url = run(["git", "--no-optional-locks", "remote", "get-url", remote]).strip()
     if not url:
         return ""
     url = url.removesuffix(".git")
@@ -94,14 +106,14 @@ def ref_identity(ref: str) -> dict:
 
 
 def branch_state(core_ref: str, user_ref: str) -> dict:
-    branch = run(["git", "branch", "--show-current"]).strip()
+    branch = run(["git", "--no-optional-locks", "branch", "--show-current"]).strip()
     ahead, behind, last_core = 0, 0, ""
     if core_ref:
         counts = run(
-            ["git", "rev-list", "--left-right", "--count", f"HEAD...{core_ref}"]
+            ["git", "--no-optional-locks", "rev-list", "--left-right", "--count", f"HEAD...{core_ref}"]
         ).strip().split()
         ahead, behind = (int(counts[0]), int(counts[1])) if len(counts) == 2 else (0, 0)
-        last_core = run(["git", "log", "-1", "--format=%cI", core_ref]).strip()
+        last_core = run(["git", "--no-optional-locks", "log", "-1", "--format=%cI", core_ref]).strip()
     # core_ref/user_ref travel with the payload so a view can show WHICH refs the
     # tree came from instead of silently rendering an empty one; core/user carry the
     # resolved GitHub repo + branch so links are built from git, never hardcoded.
@@ -236,7 +248,7 @@ def recent_commits(n: int = 20) -> list[dict]:
     # it whitespace (!) — use a printable token-pair instead.
     sep = "<<<COMMIT>>>"
     fmt = f"{sep}%H|%cI|%s"
-    raw = run(["git", "log", f"-{n}", f"--format={fmt}", "--name-only"]).strip()
+    raw = run(["git", "--no-optional-locks", "log", f"-{n}", f"--format={fmt}", "--name-only"]).strip()
     if not raw:
         return []
     out: list[dict] = []
@@ -344,7 +356,7 @@ def branch_files(core_ref: str, user_ref: str) -> dict:
     for ref, key in [(core_ref, "core"), (user_ref, "user")]:
         if not ref:
             continue
-        raw = run(["git", "ls-tree", "-r", "--name-only", ref])
+        raw = run(["git", "--no-optional-locks", "ls-tree", "-r", "--name-only", ref])
         if not raw:
             continue
         files = [f for f in raw.splitlines() if any(f.startswith(p) for p in PREFIXES)]

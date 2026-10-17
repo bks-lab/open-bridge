@@ -33,7 +33,8 @@ SCRIPTS = ("upstream-autoupdate.sh", "upstream-resolve.py")
 ENV = {**os.environ, "LC_ALL": "C", "MIRROR_CORE": "0",
        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
-for k in ("SIGNAL_ACCOUNT", "SIGNAL_RECIPIENT", "GIT_DIR", "GIT_WORK_TREE"):
+for k in ("SIGNAL_ACCOUNT", "SIGNAL_RECIPIENT", "AUTOUPDATE_NOTIFY_CMD",
+          "MIRROR_REMOTE", "GIT_DIR", "GIT_WORK_TREE"):
     ENV.pop(k, None)
 
 
@@ -189,3 +190,81 @@ def test_promoted_then_deleted_upstream_takes_the_delete(w):
     p, status = w.autoupdate()
     assert "auto-updated" in status, status
     assert not (w.inst / "core.txt").exists()
+
+
+# ---------------------------------------------------------------- notifier
+def _autoupdate_env(w, **extra):
+    env = {**ENV, **extra}
+    p = subprocess.run(["bash", "scripts/upstream-autoupdate.sh"], cwd=w.inst,
+                       env=env, capture_output=True, text=True)
+    return p, (w.inst / "work" / "upstream-status.md").read_text()
+
+
+def test_generic_notifier_gets_the_message_on_stdin(w, tmp_path):
+    out = tmp_path / "notified.txt"
+    hook = tmp_path / "notify.sh"
+    hook.write_text(f'#!/bin/sh\ncat > "{out}"\n')
+    hook.chmod(0o755)
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    p, status = _autoupdate_env(w, AUTOUPDATE_NOTIFY_CMD=str(hook))
+    assert "auto-updated" in status, status
+    assert "auto-updated" in out.read_text()
+
+
+def test_a_failing_notifier_does_not_fail_the_run(w):
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    p, status = _autoupdate_env(w, AUTOUPDATE_NOTIFY_CMD="false")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "auto-updated" in status, status
+
+
+def test_notifier_argv_is_not_glob_expanded(w, tmp_path):
+    out = tmp_path / "argv.txt"
+    hook = tmp_path / "notify.sh"
+    hook.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{out}"\ncat >/dev/null\n')
+    hook.chmod(0o755)
+    (tmp_path / "a.txt").write_text("x")
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    p, status = _autoupdate_env(w, AUTOUPDATE_NOTIFY_CMD=f"{hook} {tmp_path}/*.txt")
+    assert out.read_text().strip() == f"{tmp_path}/*.txt"
+
+
+# ------------------------------------------------- mirror never hits user/*
+def _mirror(w, tmp_path, *, with_main: bool):
+    """A private mirror whose DEFAULT branch is the user branch.
+
+    Both branches sit on an ancestor of upstream/main, so a push to either would
+    be a clean fast-forward. That is the dangerous case: nothing but the name
+    check stops CORE history from landing on the user's branch.
+    """
+    m = tmp_path / "mirror.git"
+    run(tmp_path, "git", "init", "-q", "--bare", str(m))
+    run(w.inst, "git", "remote", "add", "origin", str(m))
+    run(w.inst, "git", "fetch", "-q", "upstream")
+    run(w.inst, "git", "push", "-q", "origin", "upstream/main:refs/heads/user/me")
+    if with_main:
+        run(w.inst, "git", "push", "-q", "origin", "upstream/main:refs/heads/main")
+    run(m, "git", "symbolic-ref", "HEAD", "refs/heads/user/me")
+    run(w.inst, "git", "remote", "set-head", "origin", "-a")
+    return m
+
+
+def test_mirror_falls_back_to_core_branch_when_default_is_a_user_branch(w, tmp_path):
+    m = _mirror(w, tmp_path, with_main=True)
+    user_before = run(m, "git", "rev-parse", "refs/heads/user/me").stdout.strip()
+    w.write(w.up, "other.txt", "x\ny\n"); up = w.commit(w.up, "upstream change")
+    p, status = _autoupdate_env(w, MIRROR_CORE="1")
+    assert "auto-updated" in status, status
+    assert run(m, "git", "rev-parse", "refs/heads/user/me").stdout.strip() == user_before
+    assert run(m, "git", "rev-parse", "refs/heads/main").stdout.strip() == up
+    assert "mirror: `origin/main` fast-forwarded" in status, status
+
+
+def test_mirror_is_skipped_when_only_the_user_branch_exists(w, tmp_path):
+    m = _mirror(w, tmp_path, with_main=False)
+    user_before = run(m, "git", "rev-parse", "refs/heads/user/me").stdout.strip()
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    p, status = _autoupdate_env(w, MIRROR_CORE="1")
+    assert "auto-updated" in status, status
+    assert run(m, "git", "rev-parse", "refs/heads/user/me").stdout.strip() == user_before
+    assert "mirror: skipped" in status, status

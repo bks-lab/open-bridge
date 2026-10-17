@@ -93,6 +93,19 @@ DEFAULT_MODEL = "claude-opus-5"
 # declared item must be addable in one line without breaking anyone's CI.
 FAILING = {"over", "undeclared", "missing"}
 
+# An item may declare `enforce: advisory` to be measured and reported without
+# failing the build. It exists for the one class the cap cannot honestly govern:
+# an item whose size is driven by ONGOING WORK rather than by a file somebody
+# edited. The work log is the case that produced this. It grows all week, resets
+# on `/archive`, and a red build says "you worked too much this week", which is
+# not a defect report. Everything a human authors and reviews stays hard: a
+# CORE always-on file over its cap IS a defect, and staying red is the point.
+#
+# Advisory is a claim about the ITEM, not a way to quiet a number. An item that
+# went advisory to escape a real cap has moved the problem, not solved it, so
+# the report still prints the overrun and names it.
+ADVISORY_NOTE = "advisory (measured, does not fail the build)"
+
 
 # ------------------------------------------------------------- the budget --
 
@@ -425,6 +438,7 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
             "max_bytes": (policy or {}).get("max_bytes"),
             "body_bytes": body_bytes,
             "largest": largest,
+            "advisory": (policy or {}).get("enforce") == "advisory",
         }
         if exists:
             row["bytes"] = len(text.encode("utf-8"))
@@ -576,13 +590,22 @@ def render_report(
             entries = ", ".join(f"{n} ({_cell(b)} B)" for n, b in row["largest"])
             out.append(f"- `{row['path']}` \u2014 heaviest: {entries}")
 
-    failing = [r for r in rows if r["state"] in FAILING]
+    outside = [r for r in rows if r["state"] in FAILING]
+    failing = [r for r in outside if not r["advisory"]]
+    advisory = [r for r in outside if r["advisory"]]
     out.append("")
-    if failing:
-        out.append(f"{len(failing)} item(s) outside policy:")
+    if outside:
+        out.append(f"{len(outside)} item(s) outside policy:")
         out.append("")
-        for row in failing:
-            out.append(f"- `{row['path']}` — {row['state']}")
+        for row in outside:
+            suffix = f" — {ADVISORY_NOTE}" if row["advisory"] else ""
+            out.append(f"- `{row['path']}` — {row['state']}{suffix}")
+        if advisory and not failing:
+            out.append("")
+            out.append(
+                "All of them are advisory, so the build stays green. They are "
+                "still over: read the note on each item before ignoring it."
+            )
     else:
         out.append("Every item is within policy.")
     out.append("")
@@ -713,7 +736,7 @@ def main(argv=None) -> int:
     if args.out:
         Path(args.out).write_text(report, encoding="utf-8")
 
-    return 1 if any(r["state"] in FAILING for r in rows) else 0
+    return 1 if any(r["state"] in FAILING and not r["advisory"] for r in rows) else 0
 
 
 if __name__ == "__main__":

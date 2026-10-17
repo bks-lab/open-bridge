@@ -1023,9 +1023,21 @@ echo "── 20. TEETH — atomic replace: no torn read for a concurrent reader 
 export READER_SCRIPT="$S_READER"
 run_scen "$S_ATOMICITY" "$(wsdir)"
 assert_out "a reader parses EVERY snapshot during ~30 rapid writes (os.replace is atomic)" "PASS-ATOMICITY"
-# mutant: replace the atomic os.replace with a non-atomic truncate-in-place copy
+# mutant: replace the atomic os.replace with a non-atomic truncate-in-place copy.
+#
+# The mutant must tear RELIABLY, otherwise the negative control only tests who
+# wins the race. `shutil.copyfile` did exactly that: on Linux it takes the
+# `sendfile` fast path, the window between truncate and finished write becomes
+# tiny, and the Python reader no longer hits it. The result was a flake, the
+# same SHA once red and once green.
+#
+# `copyfileobj` with `buffering=0` and 64-byte chunks makes the window
+# deterministic: `open(dest,"wb")` truncates the file to 0 at once, and every
+# chunk afterwards is its own write syscall. The target is therefore incomplete
+# for the whole duration of the copy instead of for an instant. Still a real
+# non-atomic write, just one that can be measured.
 MUT="$TMP/mut_nonatomic.py"
-mutate "$MUT" 'os.replace(tmp, dest)' '__import__("shutil").copyfile(tmp, dest)'
+mutate "$MUT" 'os.replace(tmp, dest)' '__import__("shutil").copyfileobj(open(tmp, "rb"), open(dest, "wb", buffering=0), 64)'
 run_scen "$S_ATOMICITY" "$(wsdir)" "$MUT"
 assert_noout "a non-atomic-write engine produces a torn read (teeth)" "PASS-ATOMICITY"
 

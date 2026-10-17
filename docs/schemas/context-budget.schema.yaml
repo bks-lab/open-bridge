@@ -64,6 +64,18 @@ properties:
           description: >-
             The size at which growing this file has to be argued for in a
             diff. Omit it to track an item without gating it.
+        enforce:
+          enum: [hard, advisory]
+          default: hard
+          description: >-
+            `hard` (the default) fails the build when the item is over its cap.
+            `advisory` measures and reports it identically but keeps it out of
+            the exit code. Use it only for an item whose size is driven by
+            ONGOING WORK rather than by a file somebody edited: a work-log
+            slice grows all week and resets on archive, so a red build there
+            reports activity, not a defect. Anything a human authors and
+            reviews stays `hard`, because a CORE always-on file over its cap IS
+            a defect. An advisory item still prints its overrun by name.
         optional:
           type: boolean
           description: >-

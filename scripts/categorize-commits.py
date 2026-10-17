@@ -337,9 +337,17 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     # Local-only, each VERIFIED generic against promote.content_blocklist:
     "scripts/overlay-export.py",
     "scripts/tests/test_overlay_secret_scan.py",
-    # NOT listed on purpose: test_push_guard_content_net.py names real instance
-    # paths BY DESIGN, which is what makes it a leak-regression test. It stays
-    # `user`, and it is not tracked upstream either.
+    # Contracts for the promote/export path and the commit seam, run by
+    # validate.yml. test_push_guard_content_net.py used to stay `user` because it
+    # named real instance paths; it now uses synthetic ones and ships.
+    "scripts/tests/test_categorize_commits.py",
+    "scripts/tests/test_extract_bridge_state_locks.py",
+    "scripts/tests/test_overlay_export.py",
+    "scripts/tests/test_overlay_export_exclusions.py",
+    "scripts/tests/test_overlay_export_managed_prune.py",
+    "scripts/tests/test_precommit_env_guard.py",
+    "scripts/tests/test_push_guard_content_net.py",
+    "scripts/tests/test_validators_coverage.py",
     #
     # Registered 2026-08-27, all thirteen already tracked on open-bridge main and
     # byte-identical here. They were added next to files that ARE listed, and the
