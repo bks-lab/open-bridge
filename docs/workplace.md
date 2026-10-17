@@ -1,7 +1,7 @@
 ---
 summary: "Plan the day's work as workspaces with one agent tab per task, and steer the tabs from one place, through a driver so the same Bridge works with any terminal tool or none."
 type: guide
-last_updated: 2026-10-15
+last_updated: 2026-10-17
 related:
   - ../scripts/workplace.py
   - ../scripts/task.py
@@ -239,7 +239,7 @@ one.
 
 Every agent tab, launched or opened by the plan, starts with `BRIDGE_TAB_SLUG=<slug>` in
 its environment, so a session, or any tool running in that tab, can tell it was started for
-one item rather than as a free session. `status` names the task (`slug`) or open inbox item (`item`) a tab works on.
+one item rather than as a free session. `status` names the task (`slug`) or inbox item (`item`) a tab works on, and keeps naming it once the item is closed or the task moved to `work/done/` (two month folders back), so a done tab can be told from a working one; an open item with the same label wins.
 A task tab's slug is the task slug; an inbox item's tab gets `inbox-<short id>`.
 The cockpit ([`bridge-cockpit.md`](bridge-cockpit.md)) reads `slug` and `item` from
 `status` to tie a tab to the task or inbox row it works on, and uses the same driver

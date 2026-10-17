@@ -134,6 +134,32 @@ def task_done(root: Path, slug: str) -> bool:
     return any(Path(root, "work", "done").glob(f"*/{slug}/STATUS.md"))
 
 
+EVENT_VERB_RE = re.compile(r"-(close|drop|reject|reopen)\.yaml\Z")
+
+
+def inbox_settled(root: Path, item: str) -> bool:
+    """An inbox item that is closed, dropped or rejected, and not reopened since: read from its event names"""
+    if not INBOX_ID_RE.match(item):
+        return False
+    folder = Path(root) / "work" / "inbox" / item / "events"
+    try:
+        verbs = [m.group(1) for p in sorted(folder.iterdir()) if (m := EVENT_VERB_RE.search(p.name))]
+    except OSError:
+        return False
+    return bool(verbs) and verbs[-1] != "reopen"
+
+
+def tab_settled(root: Path, tab: dict) -> str | None:
+    """Whether a tab has nothing left to do, and why: its inbox item is settled ("item") or its task moved to
+    work/done/ ("task"). Read from the Bridge, never from the tab"""
+    item, slug = tab.get("item"), tab.get("slug")
+    if isinstance(item, str) and item and inbox_settled(root, item):
+        return "item"
+    if isinstance(slug, str) and slug and task_done(root, slug):
+        return "task"
+    return None
+
+
 def _tab_for(item: str, tabs: list) -> dict | None:
     mine = [t for t in tabs if not t.get("is_control") and (t.get("slug") == item or t.get("item") == item)]
     order = {"needs-you": 0, "waiting": 1, "working": 2, "shell": 3}

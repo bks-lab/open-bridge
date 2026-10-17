@@ -61,6 +61,8 @@ export function ReturnCard({ r, s, c }) {
   const ago = duration((s.now || Date.now()) - r.at_ms)
   const tab = (s.tabs?.tabs ?? []).find(x => x.ref === r.tab?.ref) ?? null
   const row = indexRows(s.model).get(r.key)
+  // settled (its item closed, its task done) and its tab only waits: the tab can go
+  const closable = r.live === 'done' && tab && !tab.is_control && tab.state === 'waiting' && canTab(s, 'close')
   return html`<article class=${`rcard tk-${stageTone(r.live)}`}>
     <header class="rcard-head">
       <span class="rcard-mode">${h.returnMode[r.mode] ?? r.mode}</span>
@@ -73,9 +75,12 @@ export function ReturnCard({ r, s, c }) {
     ${r.result?.text ? html`<p class="rcard-answer"><span class="label-caps">${h.returnAnswer}</span> ${short(r.result.text, 280)}</p>`
       : r.tab?.last || tab?.last ? html`<p class="rcard-last mono">${short(previewText(tab?.last ?? r.tab.last), 160)}</p>` : null}
     ${r.live === 'lost' ? html`<p class="rcard-answer"><span class="label-caps">${h.returnStage.lost}</span> ${h.returnLostHint}</p>` : null}
+    ${closable ? html`<p class="small"><${StateLine} token="success" word=${h.returnSettled} /></p>` : null}
     <div class="hcard-acts">
-      ${r.result?.key ? html`<${Btn} size="xs" variant="primary" onClick=${() => c.openItem(r.result.key, null)}>${h.returnOpenAnswer}<//>` : null}
-      ${tab ? html`<${Btn} size="xs" variant=${r.result?.key ? 'secondary' : 'primary'} onClick=${() => jumpToTab(s, c, tab.ref)}>${h.toTab}<//>
+      ${closable ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[tab.ref]}
+        onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>` : null}
+      ${r.result?.key ? html`<${Btn} size="xs" variant=${closable ? 'secondary' : 'primary'} onClick=${() => c.openItem(r.result.key, null)}>${h.returnOpenAnswer}<//>` : null}
+      ${tab ? html`<${Btn} size="xs" variant=${r.result?.key || closable ? 'secondary' : 'primary'} onClick=${() => jumpToTab(s, c, tab.ref)}>${h.toTab}<//>
         <${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${h.view}<//>` : null}
       ${!tab && row && r.live === 'lost' ? html`<${RowActions} row=${row} s=${s} c=${c} />` : null}
     </div>

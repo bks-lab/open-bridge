@@ -378,17 +378,21 @@ def inbox_tab_index(root: Path) -> dict:
     except (OSError, yaml.YAMLError):
         return {}
     active = [i for i in items if i.state in mod.ACTIVE_STATES]
-    # A tab shows either the launch label or, once claude names its session, the slug.
+    settled = [i for i in items if i.state not in mod.ACTIVE_STATES]
+    # A tab shows either the launch label or, once claude names its session, the slug. A settled item
+    # keeps its tab named too, so the cockpit can tell the tab is done; an open item with the same
+    # label wins, since that is the one a new tab works on.
     index = {}
-    legacy: dict = {}
-    for i in active:
-        legacy.setdefault(_legacy_inbox_slug(i.id), []).append(i.id)
-    for short, ids in legacy.items():
-        if len(ids) == 1:   # an old name that two items share names neither
-            index[f"Inbox {short}"] = index[f"inbox-{short}"] = ids[0]
-    for i in active:
-        short = inbox_slug(i.id)
-        index[f"Inbox {short}"] = index[f"inbox-{short}"] = i.id
+    for group in (settled, active):
+        legacy: dict = {}
+        for i in group:
+            legacy.setdefault(_legacy_inbox_slug(i.id), []).append(i.id)
+        for short, ids in legacy.items():
+            if len(ids) == 1:   # an old name that two items share names neither
+                index[f"Inbox {short}"] = index[f"inbox-{short}"] = ids[0]
+        for i in group:
+            short = inbox_slug(i.id)
+            index[f"Inbox {short}"] = index[f"inbox-{short}"] = i.id
     return index
 
 
@@ -626,6 +630,23 @@ def task_rows(root: Path, cfg: dict, today: dt.date) -> list:
     return sorted(rows, key=lambda r: (rank.get(r["priority"] or "", 4), -r["score"], r["slug"]))
 
 
+DONE_MONTHS = 2    # how many month folders of work/done/ a tab of a closed task is still known by
+
+
+def done_tasks(root: Path) -> list:
+    """The tasks closed in the last DONE_MONTHS month folders of work/done/, as slug and heading"""
+    months = sorted((p for p in (root / "work" / "done").glob("*") if p.is_dir()), reverse=True)[:DONE_MONTHS]
+    out = []
+    for month in months:
+        for status in sorted(month.glob("*/STATUS.md")):
+            try:
+                text = status.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            out.append({"slug": frontmatter(text).get("slug") or status.parent.name, "heading": heading(text)})
+    return out
+
+
 def slug_index(tasks: list, cfg: dict) -> dict:
     index = {}
     for t in tasks:
@@ -677,6 +698,9 @@ def status_rows(root: Path, cfg: dict, driver) -> list | None:
         return None
     tasks = collect_tasks(root)
     index = slug_index(tasks, cfg)
+    # a tab of a task that moved to work/done/ keeps its slug, so the cockpit can tell it is done
+    for name, slug in slug_index(done_tasks(root), cfg).items():
+        index.setdefault(name, slug)
     items = inbox_tab_index(root)
     roles: dict = {}
     for t in tasks:

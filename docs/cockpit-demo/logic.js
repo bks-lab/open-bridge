@@ -832,13 +832,15 @@ export function railShown(page) {
   return RAIL.has(page)
 }
 
-/** The one next step a slim tab card offers, as action keys: answer a question, go on, close a filed
- *  tab, else go to the tab; `can(right)` says what this cockpit may do with a tab (canTab) */
-export function tabNextStep(tab, can) {
+/** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab
+ *  that filed its result or whose start is settled, else go to the tab; `can(right)` says what this cockpit
+ *  may do with a tab (canTab) */
+export function tabNextStep(tab, can, settled = false) {
   const own = !tab.is_control
+  const finished = !!tab.filed_by || settled
   if (tab.state === 'needs-you' && can('key')) return ['yes', 'no']
+  if (tab.state === 'waiting' && own && finished && can('close')) return ['close']
   if (tab.state === 'waiting' && own && !tab.filed_by) return ['go_on']
-  if (tab.state === 'waiting' && own && tab.filed_by && can('close')) return ['close']
   if (can('focus')) return ['jump']
   return can('screen') ? ['view'] : []
 }
@@ -1250,6 +1252,33 @@ export function liveStage(r, tabs, nowMs) {
   if (mine.some(t => t.state !== 'working')) return 'asks'
   if (mine.length) return 'working'
   return nowMs - r.at_ms < 180000 ? 'started' : 'lost'
+}
+
+/** The starts handed to the AI by what they want of you: done or answered and to check, a question, at
+ *  work, or gone without a word. Newest first within a group, as the server sends them */
+export function aiGroups(returns, tabs, nowMs) {
+  const g = { check: [], asks: [], working: [], lost: [] }
+  for (const r of returns ?? []) {
+    const live = liveStage(r, tabs, nowMs)
+    const to = live === 'done' || live === 'result' ? 'check' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
+    g[to].push({ ...r, live })
+  }
+  return g
+}
+
+/** The tabs whose start is settled (its inbox item closed, its task done): nothing is left for them to do */
+export function settledRefs(returns, tabs, nowMs) {
+  const open = new Set((tabs ?? []).map(t => t.ref))
+  return new Set((returns ?? []).filter(r => r.tab?.ref && open.has(r.tab.ref) && liveStage(r, tabs, nowMs) === 'done').map(r => r.tab.ref))
+}
+
+/** What the AI left for you: checks whose tab is still open, tabs settled on their own, and the questions */
+export function aiWaiting(returns, tabs, nowMs) {
+  const g = aiGroups(returns, tabs, nowMs)
+  const open = new Set((tabs ?? []).map(t => t.ref))
+  const done = new Set(g.check.filter(r => r.tab?.ref && open.has(r.tab.ref)).map(r => r.tab.ref))
+  for (const t of tabs ?? []) if (t.settled && t.state === 'waiting' && !t.is_control) done.add(t.ref)
+  return done.size + g.asks.length
 }
 
 /** The tone of a stage: an answer is good news, a question waits on you, work runs, a lost start is red */

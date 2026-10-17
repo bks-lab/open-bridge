@@ -5,7 +5,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, detailNeedsLoad, duration, formatDay, indexRows, isoDate, nextMonday, parseDate, short, startRefusal,
-  stateToken, canTab, statusSplit, tabNextStep, workPageOf,
+  stateToken, canTab, settledRefs, statusSplit, tabNextStep, workPageOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -269,6 +269,7 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
     }
   }
   const id = `msg-${tab.ref}`
+  const settled = !!tab.settled || settledRefs(s.model?.returns, s.tabs?.tabs, s.now || Date.now()).has(tab.ref)
   if (slim) {
     const step = {
       yes: () => html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>`,
@@ -278,16 +279,16 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
       jump: () => html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>`,
       view: () => html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>`,
     }
-    return tabNextStep(tab, v => canTab(s, v)).map(k => step[k]())
+    return tabNextStep(tab, v => canTab(s, v), settled).map(k => step[k]())
   }
   return html`<div class="tab-ctl">
     <div class="btn-row">
       ${tab.state === 'needs-you' && canTab(s, 'key') ? html`
         <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null}
-      ${tab.state === 'waiting' && !tab.filed_by && !tab.is_control ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
+      ${tab.state === 'waiting' && !tab.filed_by && !settled && !tab.is_control ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
         onClick=${() => c.act('tab_go_on', { tab_ref: tab.ref })}>${t.btnGoOn}<//>` : null}
-      ${tab.state === 'waiting' && tab.filed_by && canTab(s, 'close') ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
+      ${tab.state === 'waiting' && (tab.filed_by || settled) && !tab.is_control && canTab(s, 'close') ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
         onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>` : null}
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}
       ${canTab(s, 'screen') ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>` : null}

@@ -5,10 +5,13 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, formatClock, indexRows, short, stateToken, agentLane, laneWindow, runToken, serious, scheduleText,
-  dayNoteText, weekdayNames, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone,
+  dayNoteText, weekdayNames, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone, aiGroups, previewText,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Skeleton } from './day.js'
+import { TabControls } from './detail.js'
+import { ReturnCard } from './home.js'
+import { TabCard } from './tabs.js'
 import { StartControl, canStartControl } from './header.js'
 import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
 
@@ -42,6 +45,8 @@ function AgentLane({ agents, now }) {
 
 function SessionCard({ x, i = 0, s, c }) {
   const t = T()
+  // the session list names its tab slim; the tab list has the rest (last line, filed result, settled)
+  const tab = x.tab ? (s.tabs?.tabs ?? []).find(y => y.ref === x.tab.ref) ?? x.tab : null
   const [state, token] = sessionState(x)
   const title = x.tab?.name || x.name
   const jump = x.tab ? () => c.act('tab_jump', { tab_ref: x.tab.ref }) : null
@@ -79,8 +84,11 @@ function SessionCard({ x, i = 0, s, c }) {
         <span class="muted small">${t.agentFor(duration(s.now - a.since_ms))}${a.background ? ` · ${t.agentBackground}` : ''}</span>
       </li>`)}${agents.running_count > agents.running.length ? html`<li class="muted small">${t.moreAgents(agents.running_count - agents.running.length)}</li>` : null}</ul>` : null}
     ${(x.workflows ?? []).map((w, i) => html`<div class="small" key=${i}><${StateLine} token="info" word=${t.workflowLine(w.name, w.agents)} /></div>`)}
+    ${tab && previewText(tab.last) ? html`<p class="tab-last clamp2" title=${tab.last}>${previewText(tab.last)}</p>` : null}
+    ${tab?.settled ? html`<p class="small"><${StateLine} token="success" word=${t.tabSettled[tab.settled] ?? tab.settled} /></p>` : null}
     <div class="btn-row sess-foot">
-      ${jump ? html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${jump}>${t.sessionJump}<//>` : null}
+      ${tab ? html`<${TabControls} tab=${tab} s=${s} c=${c} slim />`
+        : jump ? html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${jump}>${t.sessionJump}<//>` : null}
       <${SessionTask} x=${x} s=${s} c=${c} />
     </div>
   </li>`
@@ -134,6 +142,28 @@ export function TaskSessions({ row, s, c }) {
   </div>`
 }
 
+/** What the AI was handed from the cockpit this week, by what it wants of you: done and to check (a
+ *  settled one offers to close its tab), a question, at work, gone without a word. Older tabs that no
+ *  start of the cockpit names stay below as sessions */
+function AiReturns({ s, c }) {
+  const t = T()
+  const g = aiGroups(s.model?.returns, s.tabs?.tabs, s.now || Date.now())
+  const order = ['check', 'asks', 'working', 'lost']
+  // tabs whose item or task is settled without a start of the cockpit naming them: done as well
+  const named = new Set((s.model?.returns ?? []).map(r => r.tab?.ref).filter(Boolean))
+  const loose = (s.tabs?.tabs ?? []).filter(x => x.settled && x.state === 'waiting' && !x.is_control && !named.has(x.ref))
+  const count = k => g[k].length + (k === 'check' ? loose.length : 0)
+  if (!order.some(k => count(k))) return null
+  return html`<section class="panel panel-pad psec ai-returns" aria-labelledby="ai-returns-title">
+    <header class="psec-head"><h3 class="sec-title" id="ai-returns-title">${t.home.returnsTitle}</h3></header>
+    ${order.filter(k => count(k)).map(k => html`<div class="ai-group" key=${k}>
+      <h4 class="label-caps">${t.aiGroup[k]} <span class="sec-count mono">${count(k)}</span></h4>
+      <div class="ai-cards">${g[k].map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
+        ${k === 'check' ? loose.map(x => html`<${TabCard} key=${x.ref} tab=${x} s=${s} c=${c} byKey=${indexRows(s.model)} />`) : null}</div>
+    </div>`)}
+  </section>`
+}
+
 /** Every running Claude Code session, grouped by project, this Bridge first */
 export function SessionsPage({ s, c }) {
   const t = T()
@@ -158,6 +188,7 @@ export function SessionsPage({ s, c }) {
     </dl>` : null}
     ${canStartControl(s) ? html`<p class="sess-intro"><${StateLine} token="warning" word=${t.relayReason[s.relay.reason]} /></p>` : null}
     <p class="muted small sess-intro">${t.sessionsIntro}</p>
+    <${AiReturns} s=${s} c=${c} />
     ${!list.length ? html`<div class="panel panel-pad"><${Empty}>${t.sessionsEmpty}<//></div>` : html`<div class="sess-groups">${groups.map(g => html`<section class="panel panel-pad psec" key=${`${g.here}/${g.project}`}
       style=${{ flex: `${g.items.length} 1 ${Math.min(g.items.length, 3) * 330}px` }}>
       <header class="psec-head"><h3 class="sec-title">${g.project}${g.here ? html` <span class="chip">${t.sessionHere}</span>` : null}

@@ -3793,3 +3793,58 @@ def test_a_view_kept_in_another_language_is_not_shown_after_a_restart(tmp_path):
     assert store.load_view("en") is not None and store.load_view("de") is None
     store.save_view(view)                                  # no language recorded (an older file): still shown
     assert store.load_view("de") is not None
+
+
+def test_scratch_names_a_cockpit_that_runs_on_a_copy_or_its_own_state(tmp_path):
+    from lib.bridge_cockpit.server import default_state_dir, scratch_of
+    main = tmp_path / "bridge"
+    (main / ".git").mkdir(parents=True)
+    # the Bridge itself with its own state: nothing to say
+    assert scratch_of(main, default_state_dir(main)) is None
+    # a linked worktree has a .git file: its inbox, tasks and starts are a copy that goes with it
+    copy = tmp_path / "copy"
+    copy.mkdir()
+    (copy / ".git").write_text("gitdir: /elsewhere/.git/worktrees/copy\n", encoding="utf-8")
+    assert scratch_of(copy, default_state_dir(copy)) == {"kind": "copy", "root": str(copy)}
+    # the live Bridge with a state folder of its own: the starts made here stay out of the real cockpit
+    other = tmp_path / "state"
+    assert scratch_of(main, other) == {"kind": "state", "state_dir": str(other)}
+
+
+def test_bootstrap_carries_scratch(world):
+    status, _, body = world.request("GET", "/api/bootstrap", headers=world.cookie)
+    assert status == 200 and "scratch" in json.loads(body)
+
+
+def test_tab_settled_reads_the_item_and_the_task(tmp_path):
+    from lib.bridge_cockpit.returns import tab_settled
+    item = "20261017-1238-some-item-abcd"
+    events = tmp_path / "work" / "inbox" / item / "events"
+    events.mkdir(parents=True)
+    assert tab_settled(tmp_path, {"item": item}) is None
+    (events / "20261017T104000Z-00-host-note.yaml").write_text("verb: note\n", encoding="utf-8")
+    assert tab_settled(tmp_path, {"item": item}) is None
+    (events / "20261017T105000Z-00-host-close.yaml").write_text("verb: close\n", encoding="utf-8")
+    assert tab_settled(tmp_path, {"item": item}) == "item"
+    # a reopen after the close takes it back
+    (events / "20261017T110000Z-00-host-reopen.yaml").write_text("verb: reopen\n", encoding="utf-8")
+    assert tab_settled(tmp_path, {"item": item}) is None
+    (events / "20261017T111000Z-00-host-drop.yaml").write_text("verb: drop\n", encoding="utf-8")
+    assert tab_settled(tmp_path, {"item": item}) == "item"
+    done = tmp_path / "work" / "done" / "2026-10" / "a-task"
+    done.mkdir(parents=True)
+    (done / "STATUS.md").write_text("x", encoding="utf-8")
+    assert tab_settled(tmp_path, {"slug": "a-task"}) == "task"
+    assert tab_settled(tmp_path, {"slug": "other"}) is None
+    assert tab_settled(tmp_path, {"slug": "../x", "item": "../y"}) is None
+
+
+def test_a_settled_waiting_tab_can_be_closed_and_says_so(world):
+    done = world.root / "work" / "done" / "2026-10" / "wait-task"
+    done.mkdir(parents=True)
+    (done / "STATUS.md").write_text("x", encoding="utf-8")
+    tabs = {t["ref"]: t for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+    assert tabs["surface:13"]["settled"] == "task" and tabs["surface:7"]["settled"] is None
+    world.runner.calls.clear()
+    world.act("tab_close", tab_ref="surface:13")
+    assert writes(world) == [W(world, "close", "surface:13")]

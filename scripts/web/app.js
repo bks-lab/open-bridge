@@ -82,7 +82,7 @@ function createStore(initial) {
 }
 
 const store = createStore({
-  boot: { status: 'loading', error: null, version: null, config: {} },
+  boot: { status: 'loading', error: null, version: null, config: {}, scratch: null },
   server: null, model: null, tabs: { at_ms: 0, tabs: [], error: null, control: null }, sessions: { at_ms: 0, sessions: [] },
   quick: { available: false, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], convs: [] },
   quickLive: {},
@@ -976,7 +976,7 @@ async function boot() {
   setLanguage(b.data.language)
   setControl(b.data.config?.control)
   document.documentElement.lang = language()
-  store.set(s => ({ ...s, boot: { status: 'ok', error: null, version: b.data.version, config: b.data.config ?? {} } }))
+  store.set(s => ({ ...s, boot: { status: 'ok', error: null, version: b.data.version, config: b.data.config ?? {}, scratch: b.data.scratch ?? null } }))
   if (MOCK) pushNote({ text: T().mockNote, tone: 'info' }, { toast: false })
 
   const st = await api.state()

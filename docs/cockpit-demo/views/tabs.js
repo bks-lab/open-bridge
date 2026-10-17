@@ -107,7 +107,7 @@ export function TabView({ s, c }) {
 
 /** A session tab as a card. In the agent tab column it is slim: state, name and its one next step; a
  *  click on more opens the preview and every control */
-function TabCard({ tab, s, c, byKey, slim = false }) {
+export function TabCard({ tab, s, c, byKey, slim = false }) {
   const t = T()
   const [open, setOpen] = useState(false)
   const full = !slim || open
@@ -128,6 +128,7 @@ function TabCard({ tab, s, c, byKey, slim = false }) {
       ? html`<button type="button" class="btn-link" title=${t.showTab(tab.name)} onClick=${() => c.select(rowKey)}>${tab.name}</button>`
       : html`<button type="button" class="btn-link" title=${t.btnTabView} onClick=${() => c.openTabView(tab.ref)}>${tab.name}</button>`}</h3>
     ${full && previewText(tab.last) ? html`<p class="tab-last clamp2" title=${tab.last}>${previewText(tab.last)}</p>` : null}
+    ${tab.settled ? html`<p class="small"><${StateLine} token="success" word=${t.tabSettled[tab.settled] ?? tab.settled} /></p>` : null}
     ${full && (tab.slug || tab.team || tab.role || tab.filed_by) ? html`<div class="chips">
       ${tab.slug ? html`<span class="chip"><span class="muted">${t.tabChips.task}</span> ${tab.slug}</span>` : null}
       ${tab.team ? html`<span class="chip"><span class="muted">${t.tabChips.team}</span> ${tab.team}</span>` : null}

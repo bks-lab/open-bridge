@@ -195,6 +195,11 @@ kbd {
   font-size: 10.5px; line-height: 16px; color: var(--on-surface-muted); white-space: nowrap;
 }
 .hdr-demo-short { display: none; }
+/* a cockpit on a copy of the Bridge or with a state folder of its own: what is started here does not stay */
+.hdr-scratch { border-color: var(--warning); color: var(--on-surface); font-weight: 600; }
+.ai-returns { margin-bottom: 16px; }
+.ai-group + .ai-group { margin-top: 12px; }
+.ai-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-top: 6px; }
 .hdr-headline {
   flex: 1 1 auto; min-width: 0; font-size: var(--text-sm); color: var(--on-surface);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

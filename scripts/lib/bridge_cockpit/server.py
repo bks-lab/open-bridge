@@ -548,6 +548,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/bootstrap":
             cfg = app.cfg
             self.send_json(200, {"ok": True, "csrf": app.token, "language": cfg.language, "version": VERSION,
+                                 "scratch": scratch_of(app.root, app.state_dir),
                                  "config": {"port": app.port, "relay": cfg.relay, "tabs_seconds": cfg.tabs_seconds,
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
                                             "control": cfg.control, "profile": cfg.profile}})
@@ -796,6 +797,18 @@ class WebServer(ThreadingHTTPServer):
 def default_state_dir(root: Path | str) -> Path:
     """<root>/.bridge/cockpit: the server file, the key, the log and what the page keeps."""
     return Path(root) / ".bridge" / "cockpit"
+
+
+def scratch_of(root: Path | str, state_dir: Path | str) -> dict | None:
+    """Whether this cockpit runs on something other than the Bridge itself, so the page can say so on every
+    screen: a linked worktree (its .git is a file) is a copy whose inbox, tasks and starts go when it goes,
+    and a state folder of its own keeps the starts made here out of the real cockpit."""
+    root, state_dir = Path(root), Path(state_dir)
+    if (root / ".git").is_file():
+        return {"kind": "copy", "root": str(root)}
+    if state_dir.resolve() != default_state_dir(root).resolve():
+        return {"kind": "state", "state_dir": str(state_dir)}
+    return None
 
 
 COOKIE_AGE_S = 365 * 86400

@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
+import { aiWaiting, attentionTabs, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, morePages,
@@ -106,7 +106,11 @@ export function Header({ s, c }) {
     <div class="hdr-id">
       <span class="eyebrow">${t.appName}</span>
       <div class="hdr-name"><h1 class="hdr-title">${t.cockpit}</h1>
-        ${s.mock ? html`<span class="hdr-demo" title=${t.mockNote}><span class="hdr-demo-long">${t.demoBadge}</span><span class="hdr-demo-short">${t.demoBadgeShort}</span></span>` : null}</div>
+        ${s.mock ? html`<span class="hdr-demo" title=${t.mockNote}><span class="hdr-demo-long">${t.demoBadge}</span><span class="hdr-demo-short">${t.demoBadgeShort}</span></span>` : null}
+        ${s.boot?.scratch ? html`<span class="hdr-demo hdr-scratch" role="note"
+          title=${s.boot.scratch.kind === 'copy' ? t.scratchCopy(s.boot.scratch.root) : t.scratchState(s.boot.scratch.state_dir)}>
+          <span class="hdr-demo-long">${s.boot.scratch.kind === 'copy' ? t.scratchBadge : t.stateBadge}</span>
+          <span class="hdr-demo-short">${s.boot.scratch.kind === 'copy' ? t.scratchBadgeShort : t.stateBadgeShort}</span></span>` : null}</div>
     </div>
     <span class="hdr-headline" aria-hidden="true"></span>
     <div class="hdr-right">
@@ -199,6 +203,7 @@ export function PageBar({ s, c }) {
     aria-selected=${String(s.ui.page === id)} onClick=${() => c.setPage(id)} title=${x.keyHint}>
     <span>${x.label}</span>${x.badge}</button>` }
   const n = s.model?.briefing_badge ?? 0
+  const aiLeft = aiWaiting(s.model?.returns, s.tabs?.tabs, s.now || Date.now())   // what the AI left for you (sessions page)
   const toClose = s.model?.review?.last?.to_close ?? 0
   // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip
   const sess = sessionCounts(s.sessions?.sessions)
@@ -207,7 +212,9 @@ export function PageBar({ s, c }) {
       ${box ? html`<${TabMarker} box=${box} />` : null}
       ${tab(START_PAGE, t.startTab, null)}
       ${tab('briefing', briefingTitle(s), n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}
-      ${tab(SESSIONS_PAGE, t.sessionsTab, sess.sessions > 0
+      ${tab(SESSIONS_PAGE, t.sessionsTab, aiLeft > 0
+        ? html`<span class="pbadge is-quiet" title=${t.aiWaitingTitle(aiLeft)}><span>${t.aiBadge}</span> <span class="mono">${aiLeft}</span></span>`
+        : sess.sessions > 0
         ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null)}
       ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, s.workers?.data?.stats?.with_findings
         ? html`<span class="pbadge" title=${t.home.workersFindings(s.workers.data.stats.with_findings)}><${Dot} token="warning" /><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null)}

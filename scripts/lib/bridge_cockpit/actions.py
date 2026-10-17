@@ -1219,8 +1219,9 @@ class Actions:
 
     def v_tab_close(self, ctx: Ctx, tab_ref: str) -> None:
         tab = self.tab(tab_ref)
-        if tab["state"] != "waiting" or m.filed_by(tab, self.app.collector.view) is None:
-            raise self.not_applicable("close is for waiting tabs whose result is filed", "tab_ref")
+        if tab["state"] != "waiting" or (m.filed_by(tab, self.app.collector.view) is None
+                                         and ret.tab_settled(self.app.root, tab) is None):
+            raise self.not_applicable("close is for waiting tabs whose result is filed or whose item or task is settled", "tab_ref")
         run = ctx.call("workplace.close", tab_ref, self.app.workplace("close", tab_ref), CMUX_TIMEOUT)
         if run.ok:
             ctx.note(self.tx["tab_closed"].format(name=m.short(tab["name"], 30)))

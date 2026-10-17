@@ -600,7 +600,29 @@ def test_status_rows_name_the_open_inbox_item_of_a_launched_tab(lrepo):
                            {"name": "Inbox closed-thing", "workspace": "W", "ref": "surface:2", "state": "working"}]
     rows = {r["ref"]: r for r in wp.status_rows(lrepo, {}, driver)}
     assert rows["surface:1"]["item"] == INBOX_ID
-    assert rows["surface:2"]["item"] is None
+    # a tab whose item is closed still names it, so the cockpit can tell the tab is done and offer to close it
+    assert rows["surface:2"]["item"] == "20261006-1500-closed-thing-aaaa"
+
+
+def test_status_rows_prefer_the_open_item_when_a_closed_one_has_the_same_label(lrepo):
+    closed = lrepo / "work" / "inbox" / "20261006-1500-closed-thing-aaaa"
+    twin = lrepo / "work" / "inbox" / "20261008-0900-closed-thing-bbbb"
+    twin.mkdir(parents=True)
+    (twin / "item.yaml").write_text((closed / "item.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    driver = wp.NoneDriver()
+    driver.tabs = lambda: [{"name": "Inbox closed-thing", "workspace": "W", "ref": "surface:2", "state": "working"}]
+    (row,) = wp.status_rows(lrepo, {}, driver)
+    assert row["item"] == "20261008-0900-closed-thing-bbbb"
+
+
+def test_status_rows_keep_the_slug_of_a_task_that_moved_to_done(lrepo):
+    done = lrepo / "work" / "done" / "2026-10" / "finished-task"
+    done.mkdir(parents=True)
+    (done / "STATUS.md").write_text("---\nslug: finished-task\nstatus: done\n---\n\n# Finished\n", encoding="utf-8")
+    driver = wp.NoneDriver()
+    driver.tabs = lambda: [{"name": "finished-task", "workspace": "W", "ref": "surface:3", "state": "waiting"}]
+    (row,) = wp.status_rows(lrepo, {}, driver)
+    assert row["slug"] == "finished-task"
 
 
 def test_command_driver_launch_error_line_fails_the_run(lrepo, monkeypatch):

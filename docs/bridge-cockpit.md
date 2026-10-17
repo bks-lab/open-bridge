@@ -369,6 +369,29 @@ action of the center column as buttons (the keyboard shortcuts work on the
 Today tab only); the page stays where it was, and Escape or "Close details"
 goes back to it.
 
+**With AI on the Sessions tab.** The Sessions tab leads with what the AI was
+handed, in four groups: **Done, please check** (a start whose item closed or
+whose task moved to `work/done/`, or that left an answer, plus every waiting tab
+whose own item or task is settled without a start of the cockpit naming it),
+**Needs you**, **Working** and **No word**. A settled tab says why ("Done: its
+item is closed. The tab can go.") and offers **Close tab** as its one next step,
+the same on its session card, in the agent tab column and on its return card;
+the server lets a waiting tab close when its result is filed or its item or task
+is settled, and refuses it otherwise. The Sessions tab badge reads "AI n" while
+something done or a question waits there, else the session count, grey either
+way. Each session card now carries its tab's last line and its next step instead
+of only "Go to tab". The workplace keeps a tab named after its item once the
+item is closed (and a tab named after a task once the task moved to
+`work/done/`, two month folders back), which is what lets the cockpit see that
+the tab is done.
+
+**A cockpit on a copy says so.** When the cockpit runs on a linked git worktree
+(its `.git` is a file) the header carries "Test copy, nothing here stays": what
+you start or close there lands in the copy and goes with it. With a `--state-dir`
+of its own on the live Bridge it reads "Own state, starts stay here", since the
+starts made there never reach the real cockpit's return channel. The tooltip
+names the path.
+
 **Sessions.** The Sessions tab shows every Claude Code session running on this
 machine as a card, this Bridge first, then other projects: working, ready,
 needs you or waiting (the tab's state wins), since when, its cmux tab and

@@ -1081,6 +1081,7 @@ test('a slim tab card offers one next step: answer, go on, close, else go to the
 
 test('the agent tab column shows slim cards that open to every control', () => {
   const comp = readComponents()
+  assert.match(comp.match(/function TabCard\([\s\S]*?\n\}/)[0], /tab\.settled/)
   const col = comp.match(/function TabsColumn\([\s\S]*?\n\}/)[0]
   assert.match(col, /<\$\{TabCard\}[^>]*slim/)
   const card = comp.match(/function TabCard\([\s\S]*?\n\}/)[0]
@@ -1801,4 +1802,88 @@ test('the assessment recommends to the reader, it does not claim to start anythi
   // the three line labels the verdict parser reads stay as they were
   assert.match(de, /Zuerst:[\s\S]*Dann:[\s\S]*Kann warten:/)
   assert.match(en, /First:[\s\S]*Then:[\s\S]*Can wait:/)
+})
+
+test('a tab whose start is settled (its item closed, its task done) offers to close, like a filed result', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const all = () => true
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, all, true), ['close'])
+  // settled but still working or asking: the tab is not done with you yet
+  assert.deepEqual(logic.tabNextStep({ state: 'working' }, all, true), ['jump'])
+  assert.deepEqual(logic.tabNextStep({ state: 'needs-you' }, all, true), ['yes', 'no'])
+  // without the close right it stays at going to the tab
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, k => k !== 'close', true), ['go_on'])
+})
+
+test('the starts handed to the AI fall into: done and to check, needs you, working, no word', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const now = 10 * 60000
+  const returns = [
+    { key: 'inbox:a', item: 'a', at_ms: 0, stage: 'done', tab: { ref: 'surface:1' } },
+    { key: 'inbox:b', item: 'b', at_ms: 0, stage: 'result', tab: null },
+    { key: 'task:c', item: 'c', at_ms: 0, stage: 'working', tab: { ref: 'surface:3' } },
+    { key: 'task:d', item: 'd', at_ms: 0, stage: 'working', tab: { ref: 'surface:4' } },
+    { key: 'task:e', item: 'e', at_ms: now - 1000, stage: 'started', tab: null },
+    { key: 'task:f', item: 'f', at_ms: 0, stage: 'started', tab: null },
+  ]
+  const tabs = [
+    { ref: 'surface:1', state: 'waiting' },
+    { ref: 'surface:3', state: 'needs-you' },
+    { ref: 'surface:4', state: 'working' },
+  ]
+  const g = logic.aiGroups(returns, tabs, now)
+  assert.deepEqual(g.check.map(r => r.key), ['inbox:a', 'inbox:b'])
+  assert.deepEqual(g.asks.map(r => r.key), ['task:c'])
+  assert.deepEqual(g.working.map(r => r.key), ['task:d', 'task:e'])
+  assert.deepEqual(g.lost.map(r => r.key), ['task:f'])
+  // the tab of a settled start is the one to close; a result that is not closed yet is not
+  assert.deepEqual([...logic.settledRefs(returns, tabs, now)], ['surface:1'])
+  // what waits on you there: the checks whose tab is still open, plus the questions
+  assert.equal(logic.aiWaiting(returns, tabs, now), 2)
+  assert.equal(logic.aiWaiting([], [], now), 0)
+  // a tab settled on its own (its item or task closed, no start of the cockpit) counts once as well
+  assert.equal(logic.aiWaiting(returns, [...tabs, { ref: 'surface:7', state: 'waiting', settled: 'item' },
+    { ref: 'surface:1', state: 'waiting', settled: 'item' }].filter((x, i, a) => a.findIndex(y => y.ref === x.ref) === i), now), 3)
+  assert.equal(logic.aiWaiting([], [{ ref: 'surface:8', state: 'working', settled: 'task' }], now), 0)
+})
+
+test('the sessions page leads with what the AI did and shows each tab state, last line and next step', () => {
+  const src = fs.readFileSync(path.join(WEB, 'views', 'sessions.js'), 'utf8')
+  const page = src.match(/export function SessionsPage\([\s\S]*?\n\}/)[0]
+  assert.match(page, /<\$\{AiReturns\}/)
+  const ai = src.match(/function AiReturns\([\s\S]*?\n\}/)[0]
+  assert.match(ai, /aiGroups\(/)
+  for (const g of ['check', 'asks', 'working', 'lost']) assert.match(ai, new RegExp(`'${g}'`))
+  // a tab settled on its own (no start of the cockpit names it) stands under done as well
+  assert.match(ai, /settled && /)
+  assert.match(ai, /<\$\{TabCard\}/)
+  const card = src.match(/function SessionCard\([\s\S]*?\n\}/)[0]
+  // the session list carries a slim tab; the card reads the full one (last line, settled) from the tab list
+  assert.match(card, /s\.tabs\?\.tabs/)
+  assert.match(card, /previewText\(tab\.last\)/)
+  assert.match(card, /tab\.settled/)
+  assert.match(card, /<\$\{TabControls\}[^>]*slim/)
+})
+
+test('the return card closes a settled tab, and the tab card passes settled to its next step', () => {
+  const home = fs.readFileSync(path.join(WEB, 'views', 'home.js'), 'utf8')
+  const card = home.match(/export function ReturnCard\([\s\S]*?\n\}/)[0]
+  assert.match(card, /tab_close/)
+  const detail = fs.readFileSync(path.join(WEB, 'views', 'detail.js'), 'utf8')
+  const ctl = detail.match(/export function TabControls\([\s\S]*?\n\}/)[0]
+  assert.match(ctl, /const settled = !!tab\.settled \|\| settledRefs\(/)
+  assert.match(ctl, /tabNextStep\(tab, .*, settled\)/)
+})
+
+test('a cockpit on a copy of the Bridge says so on every page', () => {
+  const header = fs.readFileSync(path.join(WEB, 'views', 'header.js'), 'utf8')
+  assert.match(header, /boot\.scratch/)
+  const t = fs.readFileSync(path.join(WEB, 'text.js'), 'utf8')
+  assert.match(t, /scratchCopy/)
+  assert.match(t, /scratchState/)
+})
+
+test('the sessions tab counts what the AI left for you', () => {
+  const src = fs.readFileSync(path.join(WEB, 'views', 'header.js'), 'utf8')
+  assert.match(src, /aiWaiting\(/)
 })
