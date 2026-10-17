@@ -50,19 +50,26 @@ CURATED_ROOT="$DEV_ROOT/${BRIDGE_MOTD_CURATED_TREE}"
 # BRIDGE_MOTD_ORG_TREES are scanned dynamically by glob.
 MONITORED_REPOS=( "${BRIDGE_MOTD_MONITORED_REPOS[@]}" )
 
-# Brand colours (True Color / 24-bit) — appearance-aware
+# Neutral-mode accent colours (True Color / 24-bit) — appearance-aware.
+# CORE stays brand-agnostic here on purpose: this is the "neutral" fallback
+# (no org/instance context resolved, see resolve_context() below), so it must
+# never carry any one org's brand — an instance's own colour comes from its
+# theme's branding: block instead (_theme_branding(), CTX_COLOR). Palette is
+# Catppuccin (Mocha for dark, Latte for light) — a well-known, brand-neutral
+# community terminal theme, not tied to any specific product or org.
 if [[ "$(defaults read -g AppleInterfaceStyle 2>/dev/null)" == "Dark" ]]; then
-  BRAND_PRIMARY='\033[38;2;102;126;234m'   # #667eea
-  BRAND_SECONDARY='\033[38;2;118;75;162m'    # #764ba2
-  BRAND_LIGHT='\033[38;2;167;139;250m'    # #a78bfa
-  BRAND_ACCENT='\033[38;2;129;140;248m'   # #818cf8
+  BRAND_PRIMARY='\033[38;2;137;180;250m'   # Catppuccin Mocha blue #89b4fa
+  BRAND_SECONDARY='\033[38;2;203;166;247m' # Catppuccin Mocha mauve #cba6f7
+  BRAND_LIGHT='\033[38;2;180;190;254m'     # Catppuccin Mocha lavender #b4befe
+  BRAND_ACCENT='\033[38;2;116;199;236m'    # Catppuccin Mocha sapphire #74c7ec
   DIM='\033[2m'
 else
-  # Darker variants for light backgrounds (Catppuccin Latte #eff1f5)
-  BRAND_PRIMARY='\033[38;2;79;96;196m'     # #4f60c4 — contrast ~5:1
-  BRAND_SECONDARY='\033[38;2;118;75;162m'    # #764ba2 — already dark enough
-  BRAND_LIGHT='\033[38;2;124;95;196m'     # #7c5fc4 — contrast ~4.5:1
-  BRAND_ACCENT='\033[38;2;90;100;210m'    # #5a64d2 — contrast ~4.5:1
+  # Catppuccin Latte's own accents — tuned by that theme for its own light
+  # background (Catppuccin Latte #eff1f5), not a darkened guess.
+  BRAND_PRIMARY='\033[38;2;30;102;245m'    # Catppuccin Latte blue #1e66f5
+  BRAND_SECONDARY='\033[38;2;136;57;239m'  # Catppuccin Latte mauve #8839ef
+  BRAND_LIGHT='\033[38;2;114;135;253m'     # Catppuccin Latte lavender #7287fd
+  BRAND_ACCENT='\033[38;2;32;159;181m'     # Catppuccin Latte sapphire #209fb5
   DIM='\033[90m'                          # palette 8 instead of dim
 fi
 BOLD='\033[1m'

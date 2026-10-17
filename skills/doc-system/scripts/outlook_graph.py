@@ -5,7 +5,11 @@ Generic — no PII. Account, tenant, client_id, token_cache come from
 workflow/contexts/doc-system.yaml sources[kind=outlook_graph] +
 identity/accounts/m365-<tenant>.yaml.
 
-Usage (env-driven, set before each call):
+Configuration resolves in this order:
+  1. environment variables (below) — always win, useful per-call overrides
+  2. the `env:` block of the sources[kind=outlook_graph] entry in
+     workflow/contexts/doc-system.yaml — the normal case, nothing to type
+
     DOC_SYSTEM_OUTLOOK_TENANT=<tenant-uuid>
     DOC_SYSTEM_OUTLOOK_CLIENT_ID=<client-uuid>
     DOC_SYSTEM_OUTLOOK_TOKEN_CACHE=/path/to/token.txt
@@ -28,6 +32,45 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+def _load_context_env() -> dict:
+    """Read the outlook_graph source's `env:` block from the doc-system context.
+
+    The script used to be env-only while its own error message told the caller
+    to "set from workflow/contexts/doc-system.yaml" — a promise nothing kept, so
+    every invocation needed the values pasted by hand and the source silently
+    stayed dark whenever they were forgotten.
+
+    Precedence is unchanged: a real environment variable always wins, this only
+    fills the gaps. Stays generic — reads config, hardcodes nothing.
+
+    Returns {} on any problem (repo root not found, no PyYAML, malformed file,
+    no such source). The caller then fails with the normal `missing env`
+    message, so this can only ever help, never mask a different error.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return {}
+    for parent in Path(__file__).resolve().parents:
+        cfg = parent / "workflow" / "contexts" / "doc-system.yaml"
+        if not cfg.is_file():
+            continue
+        try:
+            doc = yaml.safe_load(cfg.read_text()) or {}
+        except Exception:
+            return {}
+        for src in doc.get("sources") or []:
+            # First matching source wins. With several Graph tenants declared,
+            # disambiguate per call via the environment.
+            if isinstance(src, dict) and src.get("kind") == "outlook_graph":
+                return {str(k): str(v) for k, v in (src.get("env") or {}).items()}
+        return {}
+    return {}
+
+
+for _key, _value in _load_context_env().items():
+    os.environ.setdefault(_key, _value)
 
 TENANT_ID = os.environ.get("DOC_SYSTEM_OUTLOOK_TENANT")
 CLIENT_ID = os.environ.get("DOC_SYSTEM_OUTLOOK_CLIENT_ID")

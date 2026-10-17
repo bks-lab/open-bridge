@@ -33,6 +33,7 @@ searches again.
 |---|---|
 | Which fields does a new config file of a given type take? | [`rules/file-creation.md`](../rules/file-creation.md#where-templates-live-lookup-table), then that type's `_template.yaml` and `_schema.yaml` |
 | Which folder does a new kind of config go in? | [`docs/structure.md`](structure.md#cluster-wrappers--default-to-folder) |
+| Which AI CLI handles each service, and how can a worker choose one? | [`docs/ai-services.md`](ai-services.md), `workflow/ai-services/` |
 | Does this file ship to open-bridge, or stay in my instance? | [`docs/structure.md`](structure.md#core--user-split), [`docs/extension-model.md`](extension-model.md) |
 | How does a skill find every file of one config type? | [`rules/discovery.md`](../rules/discovery.md#contract) |
 | Which field values and states may I set on a tracker board? | [`workflow/projects/_template.yaml`](../workflow/projects/_template.yaml), then the instance's `workflow/projects/<slug>.yaml` |

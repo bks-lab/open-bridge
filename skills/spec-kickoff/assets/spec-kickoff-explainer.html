@@ -24,13 +24,15 @@
 </script>
 
 <style>
-/* ─── Brand tokens — generated from DESIGN.md (design-to-css.py). Do not hand-edit. ─── */
+/* ─── Brand-neutral tokens (hand-maintained, not generated from any one
+   instance's DESIGN.md — this skill ships as CORE and must not carry any
+   org's brand). ─── */
 :root{
   --ink:#111827; --muted:#6B7280;
   --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
   --on-primary:#FFFFFF; --on-surface:#374151;
   --line:#E5E7EB; --line-subtle:#F3F4F6;
-  --accent-from:#667EEA; --accent-to:#764BA2; --accent:#6366F1; --accent-secondary:#8B5CF6;
+  --accent-from:#3B82F6; --accent-to:#1D4ED8; --accent:#2563EB; --accent-secondary:#60A5FA;
   --ok:#10B981; --info:#3B82F6;
   --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
   --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
@@ -40,10 +42,10 @@
 html.dark{
   --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
   --on-surface:#D1D5DB; --line:#374151;
-  --accent-from:#A78BFA; --accent-to:#818CF8;
+  --accent-from:#93C5FD; --accent-to:#60A5FA;
 }
 :root{
-  --accent-text:#4F46E5; --accent-soft:rgba(99,102,241,.08);
+  --accent-text:#1D4ED8; --accent-soft:rgba(37,99,235,.08);
   --ok-text:#047857; --warn:#B45309; --danger:#B91C1C;
   --code-bg:#F3F4F6;
   --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
@@ -51,7 +53,7 @@ html.dark{
 }
 html.dark{
   --ink:#F3F4F6; --muted:#9CA3AF;
-  --accent-text:#A78BFA; --accent-soft:rgba(167,139,250,.14);
+  --accent-text:#93C5FD; --accent-soft:rgba(147,197,253,.14);
   --ok-text:#34D399; --warn:#FBBF24; --danger:#F87171;
   --code-bg:#0A0C12;
   --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
@@ -186,7 +188,7 @@ footer.canvas-foot code{background:none;padding:0}
 
 /* ─── Print ─── */
 @media print{
-  html.dark{--surface:#fff;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;--ink:#111827;--on-surface:#374151;--muted:#6B7280;--line:#E5E7EB;--line-subtle:#F3F4F6;--code-bg:#F3F4F6;--accent-text:#4F46E5;--accent-soft:rgba(99,102,241,.08);--ok-text:#047857;--warn:#B45309;--danger:#B91C1C;--shadow-soft:none;--shadow-hover:none;}
+  html.dark{--surface:#fff;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;--ink:#111827;--on-surface:#374151;--muted:#6B7280;--line:#E5E7EB;--line-subtle:#F3F4F6;--code-bg:#F3F4F6;--accent-text:#1D4ED8;--accent-soft:rgba(37,99,235,.08);--ok-text:#047857;--warn:#B45309;--danger:#B91C1C;--shadow-soft:none;--shadow-hover:none;}
   html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .topbar,.secnav{display:none !important}
   .reveal{opacity:1 !important;transform:none !important}

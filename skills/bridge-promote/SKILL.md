@@ -64,8 +64,10 @@ Read the referenced file ONLY when triggered.
   template ships the shared OSS upstream (`bks-lab/open-bridge`,
   `contribute: true`) by default; optionally a
   `<your-org>/<your-bridge>` overlay.
-- For PR submission: `gh` authenticated. **No push access to the
-  upstream required** — open-bridge PRs go fork-based (`gh repo fork`
+- For PR submission: `gh` authenticated. Whether a fork is needed is
+  DECIDED, not assumed: `gh api repos/<repo> --jq .permissions.push` —
+  `true` pushes the branch straight to the upstream, `false` takes the
+  fork route. **No push access to the upstream required** — open-bridge PRs go fork-based (`gh repo fork`
   once, push the branch to your fork, `gh pr create --repo
   bks-lab/open-bridge`). See the bridge-contribute skill
   (`skills/bridge-contribute/references/workflow.md` § Step 5).

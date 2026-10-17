@@ -289,22 +289,46 @@ branch. Re-applying as fresh commits is the honest model — the
 destination repo is not "missing" the source commit, it's a different
 project that wants the same content.
 
-### Step 6: Push — fork flow for open-bridge
+### Step 6: Push — ASK the API whether you need a fork
 
-External contributors have **no push access to `bks-lab/open-bridge`**,
-and `origin` (your Bridge instance) is usually not a GitHub fork of it —
-a cross-fork PR head must live in a real fork of the base repo. So:
+**Do not assume.** A maintainer of the upstream can push a branch straight to
+it, and forking anyway produces a needless cross-fork PR. A contributor without
+write access must fork. One call decides it, so make it instead of guessing:
+
+```bash
+gh api repos/bks-lab/open-bridge --jq .permissions.push    # true → push direct
+```
 
 ```bash
 # org overlay: push to a repo you can write to (often the overlay itself
 # or your fork of it — whatever `upstream`/your access allows)
 git push origin promote-org-overlay:promote-org-overlay-{date}
+```
 
-# open-bridge: one-time fork, then push the branch THERE
+**push=true — direct branch, normal PR** (the maintainer case):
+
+```bash
+git push git@github.com:bks-lab/open-bridge.git {branch}:{branch}
+```
+
+A repository ruleset may still restrict branch *creation*; an admin push
+reports `Bypassed rule violations` and succeeds. That line is not an error, but
+it does mean the ruleset was overridden — say so when reporting, rather than
+letting it pass as a clean push.
+
+**push=false — fork flow** (the contributor case):
+
+```bash
 gh repo fork bks-lab/open-bridge --clone=false
 git remote add ob-fork git@github.com:{your-username}/open-bridge.git 2>/dev/null || true
 git push ob-fork promote-open-bridge:promote-open-bridge-{date}
 ```
+
+**Use a worktree, not a branch switch.** `git stash` plus `git checkout` in the
+live tree disturbs anything else running there, and several agent sessions may
+share one working tree. `git worktree add <tmp> -b {branch} refs/remotes/open-bridge/main`
+keeps the promote isolated and leaves uncommitted work untouched; remove it with
+`git worktree remove` when the PR is open.
 
 ### Step 7: Create PRs
 
