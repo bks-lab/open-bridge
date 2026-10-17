@@ -41,7 +41,9 @@
 #
 # Env (optional): UPSTREAM_REMOTE (default upstream) · UPSTREAM_REF (default
 # upstream/main) · MIRROR_REMOTE (default origin) · MIRROR_CORE=0 disables the
-# mirror step · SIGNAL_ACCOUNT + SIGNAL_RECIPIENT (both set → Signal push).
+# mirror step · SIGNAL_ACCOUNT + SIGNAL_RECIPIENT (both set → Signal push) ·
+# AUTOUPDATE_NOTIFY_CMD (an argv string, e.g. "/path/notify.sh --quiet": run with
+# the notification text on stdin, in addition to Signal; its failure is ignored).
 set -uo pipefail
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)" || exit 1
 
@@ -53,6 +55,15 @@ notify() {  # $1 = message
   { [ -n "${SIGNAL_ACCOUNT:-}" ] && [ -n "${SIGNAL_RECIPIENT:-}" ] \
     && command -v signal-cli >/dev/null 2>&1 \
     && signal-cli -a "$SIGNAL_ACCOUNT" send -m "$1" "$SIGNAL_RECIPIENT" >/dev/null 2>&1; } || true
+  # Generic notifier: any command that reads a message on stdin (a chat bot, a
+  # mail drafter, a desktop toast). Word-split on purpose, it is an argv string.
+  # A broken notifier must never turn a finished merge into a failed run.
+  if [ -n "${AUTOUPDATE_NOTIFY_CMD:-}" ]; then
+    # Globbing off (no pathname expansion of argv words) and a 30 s alarm so a
+    # hanging notifier cannot stall the job (macOS has no timeout(1)).
+    # shellcheck disable=SC2086
+    ( set -f; printf '%s\n' "$1" | perl -e 'alarm 30; exec @ARGV' $AUTOUPDATE_NOTIFY_CMD ) >/dev/null 2>&1 || true
+  fi
 }
 report() { mkdir -p work; { echo "# Upstream Auto-Update — $(date '+%F %T')"; echo; printf '%s\n' "$@"; } > "$REPORT"; }
 is_int() { case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
@@ -76,6 +87,13 @@ is_int() { case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
 #     history is ever rewritten
 # It pushes $UPSTREAM_REF, never HEAD and never the user branch, so only CORE
 # commits travel; USER content is not in the pushed ref by construction.
+#
+# The TARGET may never be a `user/*` branch either. A private mirror whose
+# default branch is the user branch (common: the instance repo was created from
+# the user branch) would otherwise receive CORE history on top of the user's
+# branch name, and a fast-forward from an ancestor would even succeed. In that
+# case the core branch is the branch part of $UPSTREAM_REF; if the mirror has no
+# such branch the step is skipped like any other missing branch.
 mirror_core_branch() {
   [ "${MIRROR_CORE:-1}" = 0 ] && { echo "- mirror: skipped (MIRROR_CORE=0)"; return 0; }
   local remote="${MIRROR_REMOTE:-origin}" branch cur
@@ -84,7 +102,8 @@ mirror_core_branch() {
   # Target branch = the mirror's OWN default, never hardcoded; fall back to the
   # branch part of UPSTREAM_REF when the remote publishes no HEAD.
   branch=$(git symbolic-ref --quiet "refs/remotes/${remote}/HEAD" 2>/dev/null | sed "s|^refs/remotes/${remote}/||")
-  [ -n "$branch" ] || branch="${UPSTREAM_REF##*/}"
+  case "$branch" in ''|user/*) branch="${UPSTREAM_REF#*/}" ;; esac
+  case "$branch" in user/*) echo "- mirror: skipped (core branch \`$branch\` is a user branch)"; return 0 ;; esac
 
   git fetch "$remote" -q "$branch" 2>/dev/null || true
   cur=$(git rev-parse --verify --quiet "refs/remotes/${remote}/${branch}") \

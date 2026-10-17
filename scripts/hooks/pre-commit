@@ -173,10 +173,12 @@ warn "  streams: $(ls work/streams 2>/dev/null | tr '\n' ' ')"
 warn "  If it grew out of a read-only query, re-run the four-step gate (rules/task-management-workflow.md)."
 
 # (c) WIP gate — re-checked every commit, not only at session start.
+# work.max_active, 10 when it is not set, 0 = no cap and no warning (gen-board.py reads it the same way).
 max=$(grep -E '^[[:space:]]*max_active:' bridge-config.yaml 2>/dev/null | grep -oE '[0-9]+' | head -1)
-[ -n "$max" ] || max=10
+max=${max:-10}
+[ "$max" = 0 ] && max=
 active=$(grep -lE '^status:[[:space:]]*(doing|review)' work/tasks/*/STATUS.md 2>/dev/null | wc -l | tr -d ' ')
-if [ "${active:-0}" -gt "$max" ]; then
+if [ -n "$max" ] && [ "${active:-0}" -gt "$max" ]; then
   warn "⚠ WIP: $active doing+review > max_active $max — close, reprioritise, or move a long-runner to work/streams/."
 fi
 
@@ -216,6 +218,31 @@ if echo "$STAGED" | grep -Eq "$SURFACE"; then
     { [ -f scripts/check-edges.py ] && warn "⚠ EDGES: a reference between entries no longer resolves — python3 scripts/check-edges.py"; }
   [ -f scripts/standing-orders.py ] && python3 scripts/standing-orders.py --check >/dev/null 2>&1 ||
     { [ -f scripts/standing-orders.py ] && warn "⚠ ORDERS: a standing order is unreadable or defers with no trigger — python3 scripts/standing-orders.py --check"; }
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (h) WORKLOAD-declaration gate: a declared run held against its contract.
+#
+# Same insight as (f) above: no workflow runs inside an instance, so the
+# commit seam is the only automatic gate a declaration meets.
+#
+# WHY IT IS HERE AND NOT ONLY IN CI: every workflow in this repository triggers
+# on `main` only, and instance work happens on `user/*`. A declaration that
+# drifts from the schema would therefore meet no gate at all until somebody
+# typed `workload validate` by hand. Live declarations had exactly that status
+# before this gate existed.
+#
+# WARN and not block, deliberately: a broken declaration does not reach a
+# machine from here. `provision.plan` asks the hand-written gate before it
+# writes anything, and that gate refuses. This check exists to find the break
+# EARLY, at the seam a long session cannot skip, not to prevent damage.
+#
+# Costs 323 ms measured, and only when a declaration is actually staged.
+if echo "$STAGED" | grep -Eq '^workflow/workloads/[^_/]+\.yaml$' && [ -f scripts/validate-bridge.py ]; then
+  if ! python3 scripts/validate-bridge.py --check --surface workload >/dev/null 2>&1; then
+    warn "⚠ WORKLOAD: a declaration does not match workflow/workloads/_schema.yaml."
+    warn "  see →  python3 scripts/validate-bridge.py --surface workload"
+  fi
 fi
 
 warn "───────────────────────────────────────────────────────────────────"
