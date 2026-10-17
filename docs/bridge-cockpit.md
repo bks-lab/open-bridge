@@ -607,8 +607,52 @@ detail text, a file, a path, a log line or an inbox event:
   `skip_sections`, every row whose title, detail, task, source or gist holds a
   `private` word, and the rows the triage says can go or an agent does.
 
+- **Auto for the model of a start** (`cockpit.launch_model`, below) sends
+  only an item's title, kind and priority.
+
 Keep rows that must not leave the machine off the Jev tab's dashboard, or
 leave Jev off.
+
+**The model an agent starts with (off by default).** `cockpit.launch_model`
+lets a start pick Haiku, Sonnet or Opus and an effort, by hand or by a
+recommendation. Nothing changes while `enabled` is false: no choice on the
+page, no flag added to the agent's command, no judge asked. Each part has its
+own switch:
+
+| Key | Default | What |
+|---|---|---|
+| `enabled` | `false` | the master switch |
+| `manual` | `true` | pick Haiku, Sonnet or Opus by hand at every start |
+| `auto` | `false` | the choice Auto: a judge recommends a model, shown before the start, which you can override |
+| `effort` | `false` | also pick the effort (`low`, `medium`, `high`, `xhigh`); Auto recommends one too |
+| `default_model` | `sonnet` | the model when nothing is picked, Auto is off or no judge answers |
+| `default_effort` | none | the effort then; none leaves Claude Code's own default |
+| `max_model` | `opus` | the strongest model Auto may recommend; a hand pick is never capped |
+| `router` | `chain` | the judge: `chain` asks Jev when it is on and has a key, else Haiku; `jev` or `haiku` only that one |
+| `jev_model` | `jev-1.14.0` | the Jev version, else `integrations.typesafe.model` |
+| `jev_bands` | five bands | Jev's complexity score (0 to 3) to model and effort, the first band the score stays below |
+| `haiku_map` | four entries | Haiku's level (0 to 3) to model and effort |
+
+The judge answers one question per item: how complex the work is, on four
+levels described as situations (a lookup, a contained change, a change across
+files or an investigation, design or open goals). Code maps the answer to a
+model, never the judge itself (`scripts/lib/model_route.py`). A judge that
+fails or leaves an item open hands on, and the last word is the default, so a
+start never fails over its model. Jev answers in a fraction of a second, Haiku
+in several seconds: the page fetches the recommendation as soon as an item's
+start block shows (`POST /api/route`) and sends the concrete model with the
+click. The click itself never waits for a judge: Auto without a fetched
+recommendation starts with the default. With `manual` off a model the page
+sends counts as Auto's recommendation and stays under `max_model`. The effort
+"Standard" adds no flag and leaves Claude Code's own. Only an item's title, kind and priority go to the
+judge, never its detail or a path.
+
+The page **Settings** (behind More) shows every key above and changes it on
+top of the config; the change is kept in `.bridge/cockpit/launch.json`, marked
+as changed on the page, and "Reset" goes back to the config. The page never
+writes `bridge-config.yaml`. Every start records its model, effort and who
+chose it (`chosen`, `recommended`, `jev`, `haiku`, `default`) in `launches.json`, the data to
+tune the bands with later.
 
 Jev ships as CORE, as an optional integration: `scripts/lib/bridge_cockpit/jev.py`
 and `scripts/web/jev/` are on the scripts allowlist, but the page loads
@@ -916,6 +960,8 @@ Everything lives under `.bridge/cockpit/` in the Bridge root, which git ignores:
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) |
 | `state.json` | rows hidden on the page, team runs started from the page |
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives |
+| `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them |
+| `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) |
 | `relay/inbox/` | questions for a session (written by the server) |
 | `relay/done/` | what became of each (written by that session) |
 | `relay/heartbeat/` | one file per Claude Code session with the relay on |

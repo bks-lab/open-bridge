@@ -504,6 +504,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_upstream_autoupdate.py",
     "scripts/ai-run.py",
     "scripts/lib/ai_services.py",
+    "scripts/lib/model_route.py",
+    "scripts/tests/test_model_route.py",
     "scripts/tests/test_ai_services.py",
     # Registered with the cockpit (docs/bridge-cockpit.md): the
     # local server, its static page with the vendored Preact+htm bundle, and
@@ -522,6 +524,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/store.py",
     "scripts/lib/bridge_cockpit/details.py",
     "scripts/lib/bridge_cockpit/jev.py",          # optional integration, off unless integrations.typesafe.enabled
+    "scripts/lib/bridge_cockpit/launch.py",       # the model an agent starts with, off unless cockpit.launch_model.enabled
     "scripts/lib/bridge_cockpit/review.py",
     "scripts/lib/bridge_cockpit/sessions.py",
     "scripts/lib/bridge_cockpit/usage.py",
@@ -564,11 +567,13 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/detail.js",
     "scripts/web/views/header.js",
     "scripts/web/views/home.js",
+    "scripts/web/views/launch.js",
     "scripts/web/views/nav.js",
     "scripts/web/views/overlays.js",
     "scripts/web/views/pages.js",
     "scripts/web/views/parts.js",
     "scripts/web/views/sessions.js",
+    "scripts/web/views/settings.js",
     "scripts/web/views/stage.js",
     "scripts/web/views/tabs.js",
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D

@@ -19,6 +19,7 @@ import sys
 import threading
 from typing import Any
 
+from .. import model_route as mr
 from . import model as m
 from . import returns as ret
 from .collector import START_HOLD_MS
@@ -26,6 +27,7 @@ from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as A
 from .quick import CONV_RE, DEFAULT_MODEL, MODELS
 from .relay import KINDS as ASK_KINDS, RELAY_ID_RE
 from .history import item as history_item
+from .launch import LaunchError
 from .store import append_log
 
 ACTIVE_INBOX_STATES = ("open", "approved", "waiting", "deferred")
@@ -54,10 +56,10 @@ LIST_TIMEOUT = 20
 
 # verb -> {arg: (type, required)}
 SPEC: dict[str, dict[str, tuple[str, bool]]] = {
-    "do_it": {"keys": ("keys", True), "target": ("target", False)},
-    "advise": {"keys": ("keys", True)},
-    "start_agent": {"keys": ("keys", True)},
-    "collect_context": {"key": ("key", True)},
+    "do_it": {"keys": ("keys", True), "target": ("target", False), "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "advise": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "start_agent": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "later": {"key": ("key", True), "until": ("date", True)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     "unhide": {"key": ("key", True)},
@@ -67,14 +69,14 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "priority": {"key": ("key", True), "value": ("priority", True)},
     "task_close": {"keys": ("keys", True), "reason": ("close_reason", True), "text": ("text", False)},
     "settle": {"keys": ("keys", True), "outcome": ("outcome", True), "text": ("text", False)},
-    "quick_handoff": {"conv": ("conv", True), "to": ("handoff", True), "text": ("long_text", False)},
+    "quick_handoff": {"conv": ("conv", True), "to": ("handoff", True), "text": ("long_text", False), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "quick_forget": {"conv": ("conv", True)},
-    "chat_tab": {"text": ("long_text", True)},
+    "chat_tab": {"text": ("long_text", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "task_review": {"keys": ("keys", False), "escalate": ("bool", False), "fresh": ("bool", False)},
     "task_keep": {"keys": ("keys", True)},
     "note": {"key": ("key", True), "text": ("text", True)},
     "approve_all": {"keys": ("keys", True), "confirm": ("bool", False)},
-    "team_role": {"key": ("key", True), "team": ("team", True)},
+    "team_role": {"key": ("key", True), "team": ("team", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "adopt": {"key": ("key", True), "tab_ref": ("tab_ref", True)},
     "tab_yes": {"tab_ref": ("tab_ref", True)},
     "tab_no": {"tab_ref": ("tab_ref", True)},
@@ -102,7 +104,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "to_task": {"key": ("key", True), "status": ("reopen_as", False)},
     "session_link": {"session": ("session_id", True), "slug": ("slug", True)},
     "session_unlink": {"session": ("session_id", True)},
-    "session_resume": {"session": ("session_id", True)},
+    "session_resume": {"session": ("session_id", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "launch_settings": {"settings": ("launch_settings", True)},
+    "launch_settings_reset": {},
     "account_status": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                        "status": ("account_status", True)},
 }
@@ -176,6 +180,7 @@ class Ctx:
         self.extra: dict = {}          # verb specific answer fields (a conversation id)
         self.history: list[dict] = []  # what this action closed, hid or settled, each with its undo
         self.subject = ""
+        self.pick: dict = {}           # the model and effort the start of this action asks for (launch.py)
 
     def call(self, name: str, subject: str, argv: list[str], timeout: float):
         run = self.actions.app.run(argv, timeout)
@@ -342,6 +347,15 @@ class Actions:
                 out[name] = keys
             elif kind == "key":
                 out[name] = check_key(value, name)
+            elif kind in ("launch_model", "launch_effort"):
+                allowed = ("auto", *mr.MODELS) if kind == "launch_model" else ("auto", "standard", *mr.EFFORTS)
+                if value not in allowed:
+                    raise bad_arg(name, f"must be one of {', '.join(allowed)}")
+                out[name] = value
+            elif kind == "launch_settings":
+                if not isinstance(value, dict) or not value:
+                    raise bad_arg(name, "must be an object of settings")
+                out[name] = value
             elif kind == "tile_ids":
                 if not isinstance(value, list) or len(value) > 60:
                     raise bad_arg(name, "must be a list of up to 60 tile ids")
@@ -469,6 +483,7 @@ class Actions:
         ctx.subject = ",".join(clean.get("keys", [])) or clean.get("key") or clean.get("tab_ref") or clean.get("relay_id") \
             or clean.get("slug") or clean.get("id") or ""
         handler = getattr(self, f"v_{verb}")
+        ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         if verb in READ_ONLY_VERBS:
             handler(ctx, **clean)
         else:
@@ -573,6 +588,10 @@ class Actions:
             argv += ["--team", team["id"], "--role", team["role"]]
         if resume:
             argv += ["--resume", resume["sid"], *(["--cwd", resume["cwd"]] if resume.get("cwd") else [])]
+        chosen = app.launch_model.pick(rows, ctx.pick.get("model"), ctx.pick.get("effort")) \
+            if getattr(app, "launch_model", None) is not None else None
+        if chosen:
+            argv += ["--model", chosen["model"], *(["--effort", chosen["effort"]] if chosen["effort"] else [])]
         word = word or (tx["launch_team"].format(role=team["name"]) if team else tx["btn_do"] if mode == "go"
                 else tx["launch_context"] if mode == "context" else tx["btn_advise"])
         areas = list(dict.fromkeys(r.get("area") for r in rows if m.launch_item(r) in items and r.get("area")))
@@ -622,8 +641,8 @@ class Actions:
         launched = [r for r in rows if r.get("task") in started or r.get("inbox_id") in started]
         # the return channel follows every start that ran (returns.py)
         if launched and getattr(app, "launches", None) is not None:
-            app.launches.record([{"key": r["key"], "item": m.launch_item(r), "title": r.get("title"), "mode": mode}
-                                 for r in launched if r.get("key") and m.launch_item(r)])
+            app.launches.record([{"key": r["key"], "item": m.launch_item(r), "title": r.get("title"), "mode": mode,
+                                  **(chosen or {})} for r in launched if r.get("key") and m.launch_item(r)])
             # and the item's own log says so, for every other reader (returns.py)
             line = ret.start_line(mode, app.cfg.language)
             for r in launched:
@@ -852,6 +871,24 @@ class Actions:
         """The start page's choice of tiles and shelves, kept on the server so every browser shows the same"""
         self.app.store.set_home_tiles(ids, seen)
         self.app.broadcast("home", self.app.store.home())
+
+    def v_launch_settings(self, ctx: Ctx, settings: dict) -> None:
+        """The settings page's change of how an agent picks its model; kept beside the config, never in it"""
+        try:
+            self.app.launch_model.save(settings)
+        except LaunchError as error:
+            raise ActionError(error.status, error.code, error.message, error.field) from None
+        self.settings_changed(ctx)
+
+    def v_launch_settings_reset(self, ctx: Ctx) -> None:
+        """Back to what bridge-config.yaml says"""
+        self.app.launch_model.reset()
+        self.settings_changed(ctx)
+
+    def settings_changed(self, ctx: Ctx) -> None:
+        state = self.app.launch_model.state()
+        ctx.extra["launch"] = state
+        self.app.broadcast("launch", state)
 
     def v_return_forget(self, ctx: Ctx, key: str) -> None:
         """Take a start out of the return channel; the row and its tab stay as they are"""

@@ -1582,3 +1582,90 @@ export function themeOverride(search) {
   const mode = new URLSearchParams(search).get('theme')
   return mode === 'light' || mode === 'dark' ? mode : null
 }
+
+// ---------------------------------------------------------------- the model an agent tab starts with (launch)
+
+/** The verbs that start an agent: only these carry a model and an effort, and only while launch is on */
+export const START_VERBS = ['do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff']
+export const LAUNCH_MODELS = ['haiku', 'sonnet', 'opus']
+export const LAUNCH_EFFORTS = ['low', 'medium', 'high', 'xhigh']
+
+/** What the start picker offers under the server's switches (state.launch), or null while launch is off or
+ *  the server does not know it yet. Auto comes first where it is on; without manual choice it stands alone,
+ *  read only. 'standard' is no effort flag at all: the CLI's own default */
+export function launchOptions(launch) {
+  if (!launch?.enabled) return null
+  const models = launch.models?.length ? launch.models : LAUNCH_MODELS
+  const efforts = launch.efforts?.length ? launch.efforts : LAUNCH_EFFORTS
+  return {
+    models: [...(launch.auto ? ['auto'] : []), ...(launch.manual ? models : [])],
+    efforts: launch.effort ? [...(launch.auto ? ['auto'] : []), 'standard', ...efforts] : [],
+    readOnly: !launch.manual,
+  }
+}
+
+/** The model and effort chosen now: the stored pick where the switches still offer it, else Auto while Auto
+ *  is on, else the configured defaults */
+export function launchChoice(launch, ui) {
+  const opts = launchOptions(launch) ?? { models: [], efforts: [] }
+  const model = !opts.readOnly && opts.models.includes(ui?.launchModel) ? ui.launchModel
+    : launch?.auto ? 'auto' : launch?.default_model ?? 'sonnet'
+  const effort = opts.efforts.includes(ui?.launchEffort) ? ui.launchEffort
+    : launch?.auto ? 'auto' : launch?.default_effort ?? 'standard'
+  return { model, effort }
+}
+
+/** The args a start sends: the very same object while launch is off or for any other verb, so nothing
+ *  changes for a server without it. On, the choice goes along; Auto with a recommendation cached for the
+ *  one row started sends its concrete model and effort, so the server need not route again. An effort
+ *  goes along only while the effort switch is on, Standard as 'standard' */
+export function withLaunch(verb, args, launch, ui, routes) {
+  if (!launch?.enabled || !START_VERBS.includes(verb)) return args
+  const { model, effort } = launchChoice(launch, ui)
+  const keys = args?.keys ?? (args?.key ? [args.key] : [])
+  const hit = keys.length === 1 ? routes?.[keys[0]] : null
+  const rec = model === 'auto' && hit?.status === 'ok' ? hit.route : null
+  const out = { ...args, model: rec ? rec.model : model }
+  if (launch.effort) {
+    const e = effort === 'auto' && rec ? rec.effort : effort
+    if (e) out.effort = e   // 'standard' goes out as such: the server then passes no effort flag
+  }
+  return out
+}
+
+/** The rows whose recommendation is still to fetch: none yet, or one for an older title. A failed one stays
+ *  quiet (no retry loop); the server takes at most 20 keys */
+export function routesToFetch(items, cache) {
+  return (items ?? []).filter(x => x?.key && (!cache?.[x.key] || cache[x.key].title !== x.title)).map(x => x.key).slice(0, 20)
+}
+
+/** "Auto: Sonnet · high (Jev, level 1.2)": a recommendation in the page language, null without one */
+export function routeText(route, t, lang) {
+  if (!route) return null
+  const w = t.launch
+  const level = route.level == null ? '' : Number(route.level).toLocaleString(lang === 'de' ? 'de-DE' : 'en-US', { maximumFractionDigits: 2 })
+  const by = route.routed_by === 'jev' ? (level ? w.byJevLevel(level) : 'Jev') : route.routed_by === 'haiku' ? 'Haiku' : w.byDefault
+  return `Auto: ${w.model[route.model] ?? route.model}${route.effort ? ` · ${w.effort[route.effort] ?? route.effort}` : ''} (${by})`
+}
+
+/** One setting as the partial the server saves: 'standard' is no effort (null), a name without its blanks */
+export function launchPatch(key, value) {
+  if (key === 'default_effort') return { [key]: value === 'standard' ? null : value }
+  if (typeof value === 'string') return { [key]: value.trim() }
+  return { [key]: value }
+}
+
+/** A Jev model name the server accepts: jev-1.14.0 or jev-2.0 */
+export function jevModelValid(v) {
+  return /^jev-\d+\.\d+(\.\d+)?$/.test(String(v ?? '').trim())
+}
+
+/** What is wrong with the Jev bands, or null: every bound 0 to 3 and rising, the last one open ("else") */
+export function bandsProblem(bands) {
+  const list = bands ?? []
+  if (!list.length || list[list.length - 1].below != null) return 'last'
+  const bounds = list.slice(0, -1).map(b => b.below)
+  if (bounds.some(b => typeof b !== 'number' || !Number.isFinite(b) || b < 0 || b > 3)) return 'range'
+  if (bounds.some((b, i) => i > 0 && b <= bounds[i - 1])) return 'order'
+  return null
+}

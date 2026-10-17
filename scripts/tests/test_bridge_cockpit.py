@@ -3848,3 +3848,148 @@ def test_a_settled_waiting_tab_can_be_closed_and_says_so(world):
     world.runner.calls.clear()
     world.act("tab_close", tab_ref="surface:13")
     assert writes(world) == [W(world, "close", "surface:13")]
+
+
+# ---------------------------------------------------------------- the model an agent starts with (launch.py)
+
+LAUNCH_CFG = ("cockpit:\n  enabled: true\n  language: en\n  relay: true\n  launch_model:\n    enabled: true\n{more}"
+              "workplace:\n  control:\n    name: Control\n")
+
+
+@pytest.fixture
+def lworld(tmp_path, request):
+    w = World(tmp_path, config=LAUNCH_CFG.format(more=getattr(request, "param", "")))
+    yield w
+    w.close()
+
+
+def test_launch_model_is_off_by_default_and_the_start_stays_as_today(world):
+    assert world.app.state_payload()["launch"]["enabled"] is False
+    world.runner.calls.clear()
+    world.act("do_it", keys=["task:other-task"], model="opus", effort="high")
+    assert writes(world)[0] == launch_argv(world, "other-task", "go")
+
+
+def test_a_chosen_model_goes_to_the_launch_and_into_the_record(lworld):
+    lworld.runner.calls.clear()
+    lworld.act("do_it", keys=["task:other-task"], model="opus", effort="high")
+    assert writes(lworld)[0] == launch_argv(lworld, "other-task", "go", "area", "--model", "opus")   # effort is off
+    (rec,) = lworld.app.launches.all()
+    assert (rec["model"], rec.get("effort"), rec["routed_by"]) == ("opus", None, "chosen")
+
+
+@pytest.mark.parametrize("lworld", ["    effort: true\n"], indirect=True)
+def test_effort_goes_along_when_its_switch_is_on(lworld):
+    lworld.runner.calls.clear()
+    lworld.act("start_agent", keys=["task:other-task"], model="haiku", effort="xhigh")
+    assert writes(lworld)[0][-4:] == ["--model", "haiku", "--effort", "xhigh"]
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    default_model: haiku\n"], indirect=True)
+def test_auto_without_a_ready_judge_starts_with_the_default(lworld):
+    lworld.runner.calls.clear()
+    lworld.act("do_it", keys=["task:other-task"], model="auto")
+    assert writes(lworld)[0][-2:] == ["--model", "haiku"]
+    assert lworld.app.launches.all()[0]["routed_by"] == "default"
+
+
+def test_without_a_choice_the_default_model_starts(lworld):
+    lworld.runner.calls.clear()
+    lworld.act("advise", keys=["task:other-task"])
+    assert writes(lworld)[0][-2:] == ["--model", "sonnet"]
+
+
+@pytest.mark.parametrize("bad", [{"model": "gpt-5"}, {"effort": "max"}, {"model": 3}])
+def test_a_bad_model_or_effort_is_refused(lworld, bad):
+    with pytest.raises(ActionError) as err:
+        lworld.act("do_it", keys=["task:other-task"], **bad)
+    assert err.value.status == 400
+
+
+def test_settings_change_persist_and_reset(lworld):
+    res = lworld.act("launch_settings", settings={"auto": True, "max_model": "sonnet"})
+    assert res["ok"] is True
+    state = lworld.app.state_payload()["launch"]
+    assert state["auto"] is True and state["settings"]["max_model"] == "sonnet"
+    assert sorted(state["overridden"]) == ["auto", "max_model"] and state["defaults"]["auto"] is False
+    saved = json.loads((lworld.app.state_dir / "launch.json").read_text(encoding="utf-8"))
+    assert saved == {"auto": True, "max_model": "sonnet"}
+    with pytest.raises(ActionError) as err:
+        lworld.act("launch_settings", settings={"router": "everything"})
+    assert err.value.status == 400 and err.value.field == "router"
+    lworld.act("launch_settings_reset")
+    assert lworld.app.state_payload()["launch"]["auto"] is False
+
+
+def test_the_master_switch_can_be_turned_on_from_the_settings_page(world):
+    world.act("launch_settings", settings={"enabled": True})
+    world.runner.calls.clear()
+    world.act("do_it", keys=["task:other-task"], model="opus")
+    assert writes(world)[0][-2:] == ["--model", "opus"]
+
+
+def test_route_answers_only_when_auto_is_on(world):
+    status, _, data = world.post("/api/route", {"keys": ["task:other-task"]})
+    assert status == 404 and json.loads(data)["error"]["code"] == "launch_off"
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    router: haiku\n"], indirect=True)
+def test_route_asks_haiku_with_title_kind_and_priority_only(lworld):
+    lworld.runner.handlers["claude.p"] = lambda argv: ok(json.dumps(
+        {"result": '[{"id": "k0", "level": 3, "why": "big"}]'}))
+    status, _, data = lworld.post("/api/route", {"keys": ["task:other-task"]})
+    body = json.loads(data)
+    assert status == 200 and body["routes"]["task:other-task"]["model"] == "opus"
+    assert body["routes"]["task:other-task"]["routed_by"] == "haiku"
+    (argv,) = lworld.runner.of("claude.p")
+    assert "--tools" in argv and "Ship the demo" not in argv[-1]
+    status, _, _ = lworld.post("/api/route", {"keys": ["task:other-task"], "nope": 1})
+    assert status == 400
+
+
+@pytest.mark.parametrize("lworld", ["    manual: false\n    auto: true\n    max_model: sonnet\n"], indirect=True)
+def test_without_manual_a_sent_model_is_a_recommendation_and_stays_under_the_cap(lworld):
+    lworld.runner.calls.clear()
+    lworld.act("do_it", keys=["task:other-task"], model="opus")
+    assert writes(lworld)[0][-2:] == ["--model", "sonnet"]
+    assert lworld.app.launches.all()[0]["routed_by"] == "recommended"
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    effort: true\n    default_effort: high\n"], indirect=True)
+def test_standard_effort_sends_no_flag_and_a_missing_effort_takes_the_default(lworld):
+    lworld.runner.calls.clear()
+    lworld.act("do_it", keys=["task:other-task"], model="sonnet", effort="standard")
+    lworld.app.collector.release(["other-task"])                                 # a start holds its item a while
+    lworld.act("advise", keys=["task:other-task"], model="sonnet")
+    standard, missing = [c for c in writes(lworld) if "launch" in c]
+    assert standard[-2:] == ["--model", "sonnet"] and missing[-4:] == ["--model", "sonnet", "--effort", "high"]
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    router: haiku\n"], indirect=True)
+def test_a_click_never_waits_for_a_judge_it_takes_a_fetched_recommendation_or_the_default(lworld):
+    lworld.runner.handlers["claude.p"] = lambda argv: ok(json.dumps({"result": '[{"id": "k0", "level": 3}]'}))
+    lworld.runner.calls.clear()
+    lworld.act("do_it", keys=["task:other-task"], model="auto")
+    assert lworld.runner.of("claude.p") == [] and writes(lworld)[-1][-2:] == ["--model", "sonnet"]
+    lworld.post("/api/route", {"keys": ["task:other-task"]})                      # the page fetched it before
+    lworld.app.collector.release(["other-task"])
+    lworld.act("do_it", keys=["task:other-task"], model="auto")
+    assert [c for c in writes(lworld) if "launch" in c][-1][-2:] == ["--model", "opus"]
+    assert lworld.app.launches.all()[0]["routed_by"] == "haiku"
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    router: haiku\n"], indirect=True)
+def test_a_route_that_outlives_a_settings_change_is_not_kept(lworld):
+    def judge(argv):
+        lworld.app.launch_model.save({"max_model": "sonnet"})                    # saved while the judge thinks
+        return ok(json.dumps({"result": '[{"id": "k0", "level": 3}]'}))
+    lworld.runner.handlers["claude.p"] = judge
+    lworld.post("/api/route", {"keys": ["task:other-task"]})
+    assert lworld.app.launch_model.cache == {}
+
+
+@pytest.mark.parametrize("lworld", ["    auto: true\n    router: haiku\n"], indirect=True)
+@pytest.mark.parametrize("keys", [[1], [["x"]], ["task:other-task", "task:other-task"], ["no key"]])
+def test_route_refuses_bad_keys(lworld, keys):
+    status, _, data = lworld.post("/api/route", {"keys": keys})
+    assert status == 400 and json.loads(data)["error"]["field"] == "keys"

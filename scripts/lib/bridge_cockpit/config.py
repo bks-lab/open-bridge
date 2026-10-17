@@ -7,13 +7,15 @@ Resolution rules: docs/bridge-cockpit.md, the cockpit: block.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import re
 
 import yaml
+
+from .. import model_route as mr
 
 DEFAULT_PORT = 8797
 OPEN_IN = ("auto", "cmux", "system", "none")
@@ -63,6 +65,9 @@ class WebConfig:
     snapshot_minutes: float = 60
     # the triage sorts every task and inbox item once a day by itself (a model call): only when asked for
     triage_daily: bool = False
+    # the model an agent starts with (cockpit.launch_model, model_route.DEFAULTS): off unless switched on;
+    # the settings page may change it on top (launch.py), this is what the config says
+    launch_model: dict = field(default_factory=lambda: dict(mr.DEFAULTS))
 
 
 def _dict(value: Any) -> dict:
@@ -105,6 +110,17 @@ def read_config_file(root: Path) -> dict:
     except (OSError, yaml.YAMLError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def launch_model_of(value: Any, jev_model: str | None = None) -> dict:
+    """cockpit.launch_model on top of the defaults, key by key: a bad value keeps the default of its key."""
+    out = mr.normalize({"jev_model": jev_model}) if jev_model else dict(mr.DEFAULTS)
+    for key, v in _dict(value).items():
+        try:
+            out = mr.normalize({key: v}, out)
+        except mr.SettingsError:
+            continue
+    return out
 
 
 def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
@@ -160,6 +176,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     ref = ts.get("key_ref")
     jev_key_ref = ref if isinstance(ref, str) and KEYCHAIN_REF_RE.match(ref) else None
     jev_model = ts.get("model") if isinstance(ts.get("model"), str) and JEV_MODEL_RE.match(ts["model"]) else None
+    launch_model = launch_model_of(w.get("launch_model"), jev_model)
 
     def text_or_none(v: Any, cap: int) -> str | None:
         return v.strip()[:cap] if isinstance(v, str) and v.strip() else None
@@ -169,5 +186,5 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                      voice=voice, target=target, control=control, jev_enabled=ts.get("enabled") is True,
                      jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
                      jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
-                     jev_model=jev_model,
+                     jev_model=jev_model, launch_model=launch_model,
                      snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True)

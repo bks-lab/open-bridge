@@ -10,6 +10,7 @@ import {
 import { flash, flowAlpha, flowPoints, nowSec } from '../motion.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
+import { LaunchPick } from './launch.js'
 import { Btn, CountNum, Dot, Empty, PrioChip, StateLine, useClock, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- task check
@@ -215,6 +216,7 @@ export function ReviewBody({ s, c, inline = false }) {
         ${t.bulkCloser(picked.length, t.reviewCost(centsText(rv.last?.escalate_ct, lang), rv.last?.escalate_ct != null))}<//>
       <${Btn} size="xs" variant="secondary" onClick=${() => c.act('advise', { keys: picked })}>${t.bulkStart(picked.length)}<//>
       <button type="button" class="btn-link" onClick=${() => c.setReview({ rvPicked: [] })}>${t.bulkClear}</button>
+      <${LaunchPick} s=${s} c=${c} items=${picked.map(k => ({ key: k, title: indexRows(s.model).get(k)?.title ?? '' }))} />
     </div>` : null}
     <section class="panel panel-pad psec">
       ${!rv.last ? html`<${Empty}>${t.rvNoRun}<//>` : !rows.length ? html`<${Empty}>${t.rvEmpty}<//>` : html`<div class="table-wrap" tabindex="0" role="region" aria-label=${t.reviewTitle}>

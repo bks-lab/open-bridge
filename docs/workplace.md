@@ -161,13 +161,23 @@ opens them through the driver; `status`, `send` and `adopt` steer them afterward
 ## Launching chosen items
 
 `workplace.py launch --items A,B [--mode report|go|context] [--target tab|workspace|area|auto]
-[--team T --role R] [--here <ref>] [--yes] [--json]` opens one new agent tab (or one
+[--team T --role R] [--here <ref>] [--model haiku|sonnet|opus] [--effort low|medium|high|xhigh]
+[--yes] [--json]` opens one new agent tab (or one
 new workspace) per item the person picked. An item is
 an active task slug (a directory in `work/tasks/` or `work/streams/`) or an open
 inbox item id; an unknown or closed item is an error line, the others still launch,
 and the exit code is 1. Without `--yes` it is a dry run that prints, per item, its label,
 where the tab would go (`-> this workspace`, `-> new workspace`, `-> <workspace> (area)`)
 and the command. Labels are unique within one launch.
+
+`--model` and `--effort` go to the agent as `claude --model <id> --effort <level>`.
+An agent template may place them itself with `{model}` and `{effort}`; an empty slot
+goes with its flag, so `claude --model {model} -n {slug} {prompt}` starts without
+`--model` when none is asked. A template without the slot gets the flag appended,
+but only when its program is `claude`, and never beside a `--model` or `--effort`
+the template fixes itself: the template wins, and the entry says so in `pick_note`.
+Without both flags the command is exactly the template's. The cockpit sets them
+from `cockpit.launch_model` (docs/bridge-cockpit.md).
 
 Each tab starts the configured `agent.new` command on an ASCII prompt, by `--mode`:
 

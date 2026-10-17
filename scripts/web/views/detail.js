@@ -11,6 +11,7 @@ import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
 import { RowActions, SettleMenu, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
+import { LaunchPick } from './launch.js'
 import { START_PAGE } from './nav.js'
 import { PageSection } from './pages.js'
 import { Btn, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine } from './parts.js'
@@ -228,8 +229,10 @@ function ActionsBlock({ row, s, c }) {
     </div>
     ${row.task && !row.inbox_id ? html`<${ReviewBlock} row=${row} s=${s} c=${c} />` : null}
     ${row.task && !row.inbox_id ? html`<${TaskSessions} row=${row} s=${s} c=${c} />` : null}
+    ${launch && !startable ? html`<${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: row.title }]} />` : null}
     ${startable ? html`<div class="sub-block">
       <h4 class="sub-title">${t.startTitle}</h4>
+      <${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: row.title }]} />
       <div class="btn-row">
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('do_it', { keys: [row.key], target: 'workspace' })}>${t.btnDoOwnWs}<//>
         <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('do_it', { keys: [row.key], target: 'tab' })}>${t.where.tab}<//>

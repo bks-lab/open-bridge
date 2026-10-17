@@ -127,6 +127,40 @@ function row(over) {
 
 const A = (id, primary = false, dim = false) => ({ id, primary, dim })
 
+// the model an agent tab starts with: what bridge-config.yaml would say, and the state block the server builds from it
+const LAUNCH_CONFIG = {
+  enabled: true, manual: true, auto: true, effort: true, default_model: 'sonnet', default_effort: null, max_model: 'opus',
+  router: 'chain', jev_model: 'jev-1.14.0',
+  jev_bands: [{ below: 0.75, model: 'haiku', effort: 'medium' }, { below: 1.3, model: 'sonnet', effort: 'medium' },
+    { below: 1.9, model: 'sonnet', effort: 'high' }, { below: 2.6, model: 'opus', effort: 'high' }, { below: null, model: 'opus', effort: 'xhigh' }],
+  haiku_map: [{ model: 'haiku', effort: 'medium' }, { model: 'sonnet', effort: 'medium' }, { model: 'sonnet', effort: 'high' }, { model: 'opus', effort: 'high' }],
+}
+
+function launchState(settings, jevOn) {
+  const st = JSON.parse(JSON.stringify(settings))
+  return {
+    enabled: st.enabled, manual: st.manual, auto: st.auto, effort: st.effort,
+    models: ['haiku', 'sonnet', 'opus'], efforts: ['low', 'medium', 'high', 'xhigh'],
+    default_model: st.default_model, default_effort: st.default_effort,
+    router: !st.enabled || !st.auto ? 'off' : st.router === 'chain' ? (jevOn ? 'jev' : 'haiku') : st.router,
+    settings: st, defaults: JSON.parse(JSON.stringify(LAUNCH_CONFIG)),
+    overridden: Object.keys(LAUNCH_CONFIG).filter(k => JSON.stringify(st[k]) !== JSON.stringify(LAUNCH_CONFIG[k])),
+  }
+}
+
+/** An invented recommendation for a row: a level from its key, the bands or the Haiku levels turn it into a model */
+function mockRoute(key, launch) {
+  const st = launch.settings
+  const n = [...String(key)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 997, 7)
+  if (launch.router === 'jev') {
+    const level = Math.round((n % 30)) / 10
+    const band = st.jev_bands.find(b => b.below == null || level < b.below)
+    return { model: band.model, effort: band.effort, routed_by: 'jev', level, confidence: 0.7, why: 'Example rating from the demo, nothing was asked' }
+  }
+  const pick = st.haiku_map[n % 4]
+  return { model: pick.model, effort: pick.effort, routed_by: 'haiku', level: n % 4, confidence: null, why: 'Example level from the demo, nothing was asked' }
+}
+
 function isoIn(days, now) {
   const d = new Date(now + days * 86400000)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -358,6 +392,7 @@ export function buildState(now = Date.now(), opts = {}) {
     tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], convs: [] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
+    launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
       { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
@@ -561,6 +596,11 @@ export function createMockTransport(opts = {}) {
           answer: 'Example answer from the mock: nothing was sent to a real session.\nThe real answer shows here as plain text.' }), 2600)
         return { status: 202, ok: true, data: { ok: true, record }, error: null }
       }
+      if (path === '/api/route') {
+        if (state.launch.router === 'off') return fail(409, 'launch_off', 'model choice or Auto is off')
+        const keys = (body?.keys ?? []).slice(0, 20)
+        return ok({ ok: true, routes: Object.fromEntries(keys.map(k => [k, mockRoute(k, state.launch)])) })
+      }
       if (path === '/api/jev/run' && !jev) return fail(404, 'jev_off', 'Jev is off')
       if (path === '/api/jev/run') {
         // the Jev tab: invented judgments from jev/logic.js, the real API is never asked
@@ -580,6 +620,12 @@ export function createMockTransport(opts = {}) {
           removeRows(keys)
         }
         if (verb === 'snapshot_list') result.note = 'Mock: 3 snapshots, latest 09:00'
+        if (verb === 'launch_settings' || verb === 'launch_settings_reset') {
+          const next = verb === 'launch_settings' ? { ...state.launch.settings, ...(args.settings ?? {}) } : LAUNCH_CONFIG
+          state.launch = launchState(next, !!createMockJev)
+          result.note = verb === 'launch_settings' ? 'Mock: setting saved' : 'Mock: settings from the config again'
+          setTimeout(() => emit('state', state), 80)
+        }
         if (verb === 'task_review') {
           // a check that runs for six seconds, then the same result again with a new time
           const publish = review => { seq += 1; state.model = { ...state.model, seq, review }; emit('view', state.model) }

@@ -71,6 +71,9 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+from lib.ai_services import CLAUDE_MODELS    # noqa: E402  the one list of model aliases
 ACTIVE = ("doing", "review")
 PRIORITY_BONUS = {"P0": 3, "P1": 2, "P2": 1}
 ROW_CAP = 10            # a slug named in every log row must not drown the rest
@@ -83,6 +86,8 @@ DEFAULT_LIMITS = {"max_workspaces": 4, "max_tabs": 3, "stale_days": 10, "activit
 # Every agent tab carries its slug in this variable, so the session can tell it was opened for one item.
 TAB_ENV = "BRIDGE_TAB_SLUG"
 DEFAULT_AGENT = {"new": "claude -n {slug} {prompt}", "resume": "claude --resume {session}"}
+# What a launch may ask of the agent besides its prompt: claude --model and --effort.
+EFFORTS = ("low", "medium", "high", "xhigh")
 TASK_READ_PROMPT = (
     "You are the tab for the task {slug}. Get a short overview: read {status_path}, the rows about "
     "{slug} in work/log.md (grep) and its recent commits (git log --oneline -5 -- {task_dir}), and the "
@@ -268,15 +273,48 @@ def _score(task: dict, mention: dict | None, today: dt.date) -> tuple:
     return rows + recency + PRIORITY_BONUS.get(task.get("priority") or "", 0), age
 
 
+def agent_run(template: str, model: str | None = None, effort: str | None = None, **fields: str) -> tuple[str, dict]:
+    """The agent's command from its template, with the model and effort of this launch.
+
+    A template may hold {model} and {effort}; an empty one goes with its flag. Without the slot the
+    flag is appended, but only to a claude command, and never beside a flag the template fixes
+    itself (the template wins). Returns the command and what was applied: {model, effort, pick_note}."""
+    values = {"model": CLAUDE_MODELS.get(model, model) if model else None, "effort": effort}
+    words = shlex.split(template.split("{")[0]) or [""]
+    applied: dict = {}
+    tail, notes = [], []
+    for name, value in values.items():
+        slot = "{" + name + "}"
+        if slot in template:
+            if value is None:
+                template = re.sub(rf"\s*--{name}[ =]\{{{name}\}}", "", template).replace(slot, "")
+            applied[name] = value
+        elif value is None:
+            continue
+        elif re.search(rf"(^|\s)--{name}([ =]|$)", template):
+            applied[name] = None
+            notes.append(f"{name} fixed by the agent template")
+        elif Path(words[0]).name != "claude":
+            applied[name] = None
+            notes.append(f"{name} not applied: the agent is not claude")
+        else:
+            tail.append(f"--{name} {shlex.quote(value)}")
+            applied[name] = value
+    run = template.format(**fields, **{k: shlex.quote(v) for k, v in values.items() if v})
+    if notes:
+        applied["pick_note"] = "; ".join(notes)
+    return " ".join([run, *tail]), applied
+
+
 def tab_command(tab: dict, root: Path, cwd: str, cfg: dict) -> str:
     agent = {**DEFAULT_AGENT, **(cfg.get("agent") or {})}
     if tab["action"] == "resume":
-        run = agent["resume"].format(session=shlex.quote(tab["session_id"]), slug=shlex.quote(tab["slug"]))
+        run, _ = agent_run(agent["resume"], session=shlex.quote(tab["session_id"]), slug=shlex.quote(tab["slug"]))
     else:
         status_path = tab.get("status_path") or ""
         prompt = NEW_TAB_PROMPT.format(slug=tab["slug"], status_path=status_path,
                                        task_dir=str(Path(status_path).parent))
-        run = agent["new"].format(slug=shlex.quote(tab["slug"]), prompt=shlex.quote(prompt))
+        run, _ = agent_run(agent["new"], slug=shlex.quote(tab["slug"]), prompt=shlex.quote(prompt))
     return f"cd -- {shlex.quote(cwd)} && export {TAB_ENV}={shlex.quote(tab['slug'])} && {run}"
 
 
@@ -413,11 +451,13 @@ SESSION_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 
 
 def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None = None,
-                 role: str | None = None, resume: str | None = None, resume_cwd: str | None = None) -> list:
+                 role: str | None = None, resume: str | None = None, resume_cwd: str | None = None,
+                 model: str | None = None, effort: str | None = None) -> list:
     """One entry per requested item: label + command, or an error. Labels are unique.
     With team and role: the tab of that role of the team on each task (inbox items have no team).
     With resume (a Claude session id): the tab goes on in that session of the task, in the folder it ran in
-    (resume_cwd; a session only resumes from its own project folder), with agent.resume as the command."""
+    (resume_cwd; a session only resumes from its own project folder), with agent.resume as the command.
+    model (an alias or id) and effort go to the agent as agent_run says; without them the command is today's."""
     if resume is not None and not SESSION_RE.fullmatch(resume):
         return [{"item": ",".join(items), "kind": "unknown", "error": f"not a session id: {resume!r}"}]
     the_team = next((t for t in teams(cfg) if t["id"] == team), None) if team else None
@@ -472,10 +512,12 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
         used.add(label)
         extra = {"team": the_team["id"], "role": the_role["id"]} if the_team and the_role else {}
         if resume:
-            run = agent["resume"].format(session=shlex.quote(resume), slug=shlex.quote(slug))
+            run, picked = agent_run(agent["resume"], model, effort, session=shlex.quote(resume), slug=shlex.quote(slug))
             extra["resume"] = resume
         else:
-            run = agent["new"].format(slug=shlex.quote(slug), prompt=shlex.quote(prompt))
+            run, picked = agent_run(agent["new"], model, effort, slug=shlex.quote(slug), prompt=shlex.quote(prompt))
+        if model or effort:
+            extra.update(picked)
         cwd = resume_cwd if resume and resume_cwd else str(root)
         out.append({"item": name, "kind": kind, "label": label, "slug": slug, "workspace": area["name"],
                     "aliases": list(area.get("aliases") or []), **extra,
@@ -983,6 +1025,8 @@ def main(argv=None) -> int:
     ln.add_argument("--role", help="the role of --team to open")
     ln.add_argument("--resume", metavar="SESSION", help="go on in this Claude session of the one named task")
     ln.add_argument("--cwd", help="with --resume: the folder the session ran in")
+    ln.add_argument("--model", choices=tuple(CLAUDE_MODELS), help="the model the agent starts with")
+    ln.add_argument("--effort", choices=EFFORTS, help="the agent's effort level")
     ln.add_argument("--again", action="store_true",
                     help="open a tab even when an agent tab for the item is open already")
     sub.add_parser("teams", help="the team recipes: ordered role tabs on one task").add_argument(
@@ -1082,7 +1126,7 @@ def main(argv=None) -> int:
             print("--resume goes on in one session of one task, without a team", file=sys.stderr)
             return 2
         entries = build_launch(args.root, cfg, args.items.split(","), args.mode or "report", args.team, args.role,
-                               resume=args.resume, resume_cwd=args.cwd)
+                               resume=args.resume, resume_cwd=args.cwd, model=args.model, effort=args.effort)
         if args.resume:
             args.again = True     # going on in an ended session is asked for, even beside an open tab
         good = [e for e in entries if "command" in e]

@@ -435,7 +435,7 @@ REVIEW_CACHE = Path(".bridge") / "task-review.json"
 VERDICTS = ("close", "continue", "waiting", "stale", "unclear")
 CONFIDENCES = ("high", "medium", "low")
 # Aliases resolve to full ids: the CLI alias `haiku` meant an older model than the one asked for.
-MODEL_IDS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
+MODEL_IDS = ai.CLAUDE_MODELS
 # bridge-config.yaml `models:` tier keys, the instance's names first, then the template's.
 TIER_KEYS = {"mechanical": ("mechanical", "routine"), "directed": ("directed", "analysis")}
 TIER_DEFAULT = {"mechanical": MODEL_IDS["haiku"], "directed": MODEL_IDS["sonnet"]}

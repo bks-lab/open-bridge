@@ -11,6 +11,7 @@ import { T, language } from '../text.js'
 import { CheckButton } from './check.js'
 import { AlarmBanner } from './header.js'
 import { PinStar, ReturnChip } from './home.js'
+import { LaunchPick } from './launch.js'
 import { workViewNow } from './nav.js'
 import { usePopover } from './pages.js'
 import { Btn, Chip, Dot, Empty, MarkChip, PrioChip, StateLine, VerdictChip } from './parts.js'
@@ -199,6 +200,7 @@ function SelectionBar({ s, c }) {
       <${SettleMenu} rows=${keys.map(k => indexRows(s.model).get(k)).filter(Boolean)} s=${s} c=${c} />
       <${Btn} size="xs" variant="ghost" onClick=${c.clearPicks}>${t.btnClear}<//>
     </span>
+    <${LaunchPick} s=${s} c=${c} items=${keys.map(k => ({ key: k, title: indexRows(s.model).get(k)?.title ?? '' }))} />
   </div>`
 }
 

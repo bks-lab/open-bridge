@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, START_PAGE, WORKERS_PAGE, page
 import {
   CONN_GRACE_MS, DAY, addNote, attentionTabs, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
-  upsertRecord, addFeed, feedEvents, workPageOf,
+  upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -97,7 +97,9 @@ const store = createStore({
   feed: loadFeed(),   // the live feed of the start page: what happened while the page was open (logic.js feedEvents)   // the start page's choice, what it offered, the pinned rows (server, state.json)
   loading: { pass: null }, relay: { enabled: false, online: false, reason: null, session: null, records: [] },
   cmux: { ok: true, error: null },
-  driver: { caps: null },   // null: not known yet, every button shows; a list: only what the terminal driver serves
+  driver: { caps: null },
+  launch: null,        // the model an agent tab starts with (state.launch); null: an older server, the choice stays hidden
+  launchRoutes: {},    // per row key the recommendation of Auto: { title, status: loading|ok|error, route }   // null: not known yet, every button shows; a list: only what the terminal driver serves
   notes: [], toasts: [], conn: 'connecting', connMs: Date.now(), now: Date.now(), mock: MOCK,
   layout: 'wide',
   ui: {
@@ -108,7 +110,8 @@ const store = createStore({
     workView: load('bridge-cockpit.workTab', 'due'),
     workKind: load('bridge-cockpit.workKind', null),
     theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false,
-    busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', quickModel: load('bridge-cockpit.quickModel', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
+    busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', quickModel: load('bridge-cockpit.quickModel', null),
+    launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
   details: { inbox: {}, task: {} },
   more: {},
@@ -204,6 +207,7 @@ function applyState(payload) {
     cmux: payload.cmux ?? s.cmux,
     driver: payload.driver ?? s.driver,
     home: payload.home ?? s.home,
+    launch: payload.launch ?? s.launch,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
   fixPage()
@@ -299,6 +303,10 @@ const handlers = {
       answeredNote(record.preview, 'claude')
     }
   },
+  // the model choice changed (a save here or in another browser): the new block, the old recommendations go
+  launch(l) {
+    clearRoutes(l)
+  },
   // the start page's choice of tiles, made in this or another browser
   home(h) {
     store.set(s => ({ ...s, home: h ?? s.home }))
@@ -360,7 +368,9 @@ function busyKey(verb, args) {
 
 async function act(verb, args = {}) {
   return withBusy(busyKey(verb, args), verb, async () => {
-    const res = await api.action(verb, args)
+    // a start carries the chosen model and effort, only while launch is on (logic.js withLaunch)
+    const st = store.get()
+    const res = await api.action(verb, withLaunch(verb, args, st.launch, st.ui, st.launchRoutes))
     if (!res.ok) {
       failNote(res)
       return null
@@ -459,6 +469,23 @@ async function loadDetail(kind, id) {
 
 function today() {
   return Date.now()
+}
+
+/** The launch block after a save: from the answer where it carries one, else read from the state; the
+ *  cached recommendations go, since the switches or bands behind them may have changed */
+async function freshLaunch(r) {
+  const launch = r.launch ?? (await api.state()).data?.launch
+  clearRoutes(launch)
+}
+
+// the generation of the recommendation cache: every clear counts it up, so an answer to a request sent
+// before the clear is dropped instead of bringing back a recommendation made under the old settings
+let routeGen = 0
+
+/** A new launch block (or the old one where none came) and an empty recommendation cache */
+function clearRoutes(launch) {
+  routeGen += 1
+  store.set(s => ({ ...s, launch: launch ?? s.launch, launchRoutes: {} }))
 }
 
 const ctl = {
@@ -690,6 +717,33 @@ const ctl = {
     return !!r
   },
   setQuickModel: m => { save('bridge-cockpit.quickModel', m); setUi({ quickModel: m }) },
+  // the model and effort an agent tab starts with: one choice for every start block, kept in this browser
+  setLaunchModel: m => { save('bridge-cockpit.launchModel', m); setUi({ launchModel: m }) },
+  setLaunchEffort: e => { save('bridge-cockpit.launchEffort', e); setUi({ launchEffort: e }) },
+  // the recommendation of Auto for the rows in view: once per key, again when a title changed; a failure stays quiet
+  launchRoute: async items => {
+    const keys = routesToFetch(items, store.get().launchRoutes)
+    if (!keys.length) return
+    const titles = new Map(items.map(x => [x.key, x.title]))
+    const put = fn => store.set(s => ({ ...s, launchRoutes: { ...s.launchRoutes, ...Object.fromEntries(keys.map(k => [k, fn(k)])) } }))
+    const gen = routeGen
+    put(k => ({ title: titles.get(k), status: 'loading' }))
+    const res = await api.route(keys)
+    if (gen !== routeGen) return   // the cache was cleared meanwhile: this answer belongs to the old settings
+    const routes = res.ok ? res.data?.routes ?? {} : {}
+    put(k => (routes[k] ? { title: titles.get(k), status: 'ok', route: routes[k] } : { title: titles.get(k), status: 'error' }))
+  },
+  // the settings page: a change saves at once, only what changed; the state then carries the new values
+  saveLaunch: async settings => {
+    const r = await act('launch_settings', { settings })
+    if (r) await freshLaunch(r)
+    return r
+  },
+  resetLaunch: async () => {
+    const r = await act('launch_settings_reset', {})
+    if (r) await freshLaunch(r)
+    return r
+  },
   askControl,
   setAskFallback: fb => setUi({ askFallback: fb }),
   closeTabView: () => setUi({ tabView: null }),

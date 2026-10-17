@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import agents
+from ..model_route import haiku_argv_ok
 from .quick import argv_ok, resolve_claude
 from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
 
@@ -89,6 +90,9 @@ class Runner:
             if argv_ok(argv, self.claude, {*CLAUDE_MODELS.values(), chat_model}):
                 return
         if codex_argv_ok(argv, self.codex):
+            return
+        # the judge of how complex an item is: Haiku without tools, settings or session (model_route.py)
+        if haiku_argv_ok(argv, self.claude):
             return
         # the Sessions page reads one variable of a Claude process's environment (sessions.py)
         if len(argv) == 6 and argv[:5] == ["/bin/ps", "eww", "-o", "command=", "-p"] and argv[5].isdigit():

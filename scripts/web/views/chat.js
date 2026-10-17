@@ -6,6 +6,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import { short, centsText, chatStamp } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
+import { LaunchPick } from './launch.js'
 import { ASK_MAX } from './nav.js'
 import { useFocusOnOpen } from './overlays.js'
 import { Btn, Dot, StateLine, useClock } from './parts.js'
@@ -100,6 +101,7 @@ function ChatFoot({ s, c, conv, autofocus }) {
     <${SendBox} id="quick-input" label=${t.askLabel} value=${text} setValue=${setText} onSend=${send} max=${ASK_MAX} autofocus=${autofocus}
       placeholder=${conv ? t.quickReply : t.quickPlaceholder} busy=${!!s.ui.busy['ask:free']} disabled=${!!conv?.running} sendLabel=${t.chatAsk}
       alt=${{ label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: conv ? answered : !!text.trim() }} />
+    <${LaunchPick} s=${s} c=${c} />
     <p class="muted small chat-hint">${t.chatSolveHint}</p>
   </footer>`
 }

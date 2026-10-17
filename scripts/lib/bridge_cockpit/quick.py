@@ -27,7 +27,7 @@ from typing import Any
 from .. import ai_services as ai
 from .text import TABLES
 
-MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
+MODELS = dict(ai.CLAUDE_MODELS)
 DEFAULT_MODEL = "haiku"
 TOOLS = "Read,Grep,Glob"
 QUICK_TIMEOUT = 180

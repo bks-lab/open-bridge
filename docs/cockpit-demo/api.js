@@ -6,7 +6,7 @@
 // the caller can treat 202 and 409 (relay offline) as answers. A network failure gives
 // status 0 and error code "network".
 
-const EVENTS = ['hello', 'state', 'view', 'tabs', 'loading', 'note', 'relay', 'relay_state', 'alert', 'sessions', 'quick', 'quick_live', 'agents', 'triage', 'home']
+const EVENTS = ['hello', 'state', 'view', 'tabs', 'loading', 'note', 'relay', 'relay_state', 'alert', 'sessions', 'quick', 'quick_live', 'agents', 'triage', 'home', 'launch']
 
 function failure(status, code, message) {
   return { status, ok: false, data: null, error: { code, message, field: null } }
@@ -119,6 +119,8 @@ export function createApi(transport = httpTransport()) {
     state: () => transport.get('/api/state'),
     action: (verb, args) => transport.post('/api/action', { verb, args: args ?? {} }, csrf),
     ask: (kind, args, extra) => transport.post('/api/ask', { kind, args: args ?? {}, ...(extra ?? {}) }, csrf),
+    // the recommended model for each row an agent may start with (launch, Auto); at most 20 keys
+    route: keys => transport.post('/api/route', { keys }, csrf),
     reload: fresh => transport.post('/api/reload', { fresh: !!fresh }, csrf),
     inbox: id => transport.get(`/api/inbox?id=${encodeURIComponent(id)}`),
     task: slug => transport.get(`/api/task?slug=${encodeURIComponent(slug)}`),

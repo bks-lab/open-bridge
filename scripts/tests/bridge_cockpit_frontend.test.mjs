@@ -787,7 +787,7 @@ test('jev is optional: the page loads without scripts/web/jev/, no tab, no call,
     const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
     const pages = { model: { pages: [{ id: 'x' }] } }
     // the daily tabs first, then what stands behind More (Sessions, Workers, Agents, Check, Jev, pages with group more)
-    assert.deepEqual(comp.pageOrder({ ...pages, jev: { enabled: false } }), ['@start', 'briefing', '@chat', 'x', '@sessions', '@workers', '@check'])
+    assert.deepEqual(comp.pageOrder({ ...pages, jev: { enabled: false } }), ['@start', 'briefing', '@chat', 'x', '@sessions', '@workers', '@check', '@settings'])
     assert.ok(!comp.pageOrder({ ...pages }).includes('@jev'))                       // no jev state at all: off
     assert.ok(comp.pageOrder({ ...pages, jev: { enabled: true, ready: false } }).includes('@jev'))
     // the demo mode runs without the Jev files too, and shows Jev as off
@@ -954,8 +954,8 @@ test('the page bar keeps the daily tabs in front and the rest behind More, in th
     fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
     const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
     const s = { model: { pages: [{ id: 'inbox' }, { id: 'llm', group: 'more' }, { id: 'tasks', group: 'main' }, { id: 'today', group: 'day' }] } }
-    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'inbox', 'tasks', '@sessions', '@workers', '@check', 'llm'])
-    assert.deepEqual([...comp.morePages(s)], ['@sessions', '@workers', '@check', 'llm'])
+    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'inbox', 'tasks', '@sessions', '@workers', '@check', 'llm', '@settings'])
+    assert.deepEqual([...comp.morePages(s)], ['@sessions', '@workers', '@check', 'llm', '@settings'])
     // a page of group day has no tab: its sections stand under the day list of Today
     assert.ok(!comp.pageOrder(s).includes('today'))
   } finally {
@@ -1198,7 +1198,7 @@ test('a page of group work folds into the work tab, and with it the Jev tab', as
     const pages = [{ id: 'work', title: 'Work', group: 'work', jev: true }, { id: 'ops' }]
     const s = { model: { pages }, jev: { enabled: true, ready: true } }
     // no tab for the work page and none for Jev: both are views of the one work tab
-    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'ops', '@sessions', '@workers', '@check'])
+    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'ops', '@sessions', '@workers', '@check', '@settings'])
     // without a work page the Jev tab stays where it was
     assert.ok(comp.pageOrder({ model: { pages: [{ id: 'ops' }] }, jev: { enabled: true } }).includes('@jev'))
   } finally {
@@ -1886,4 +1886,208 @@ test('a cockpit on a copy of the Bridge says so on every page', () => {
 test('the sessions tab counts what the AI left for you', () => {
   const src = fs.readFileSync(path.join(WEB, 'views', 'header.js'), 'utf8')
   assert.match(src, /aiWaiting\(/)
+})
+
+// ---------------------------------------------------------------- the model an agent tab starts with (launch)
+
+const LAUNCH = {
+  enabled: true, manual: true, auto: true, effort: true, models: ['haiku', 'sonnet', 'opus'], efforts: ['low', 'medium', 'high', 'xhigh'],
+  default_model: 'sonnet', default_effort: null, router: 'jev',
+}
+const ROUTE = { model: 'sonnet', effort: 'high', routed_by: 'jev', level: 1.2, confidence: 0.8, why: 'a change in two files' }
+
+test('launch: the start picker offers per switch, nothing while off or on an older server', () => {
+  assert.equal(logic.launchOptions(undefined), null)
+  assert.equal(logic.launchOptions(null), null)
+  assert.equal(logic.launchOptions({ ...LAUNCH, enabled: false }), null)
+  assert.deepEqual(logic.launchOptions(LAUNCH), { models: ['auto', 'haiku', 'sonnet', 'opus'], efforts: ['auto', 'standard', 'low', 'medium', 'high', 'xhigh'], readOnly: false })
+  // without Auto: the models only, the effort without its own Auto
+  assert.deepEqual(logic.launchOptions({ ...LAUNCH, auto: false }), { models: ['haiku', 'sonnet', 'opus'], efforts: ['standard', 'low', 'medium', 'high', 'xhigh'], readOnly: false })
+  // without manual choice: Auto stands alone and read only
+  assert.deepEqual(logic.launchOptions({ ...LAUNCH, manual: false, effort: false }), { models: ['auto'], efforts: [], readOnly: true })
+  assert.deepEqual(logic.launchOptions({ ...LAUNCH, manual: false, auto: false, effort: false }), { models: [], efforts: [], readOnly: true })
+  // the choice: Auto while Auto is on, else the default model; a stored choice the switches no longer offer falls back
+  assert.deepEqual(logic.launchChoice(LAUNCH, {}), { model: 'auto', effort: 'auto' })
+  assert.deepEqual(logic.launchChoice({ ...LAUNCH, auto: false }, {}), { model: 'sonnet', effort: 'standard' })
+  assert.deepEqual(logic.launchChoice({ ...LAUNCH, auto: false, default_effort: 'high' }, {}), { model: 'sonnet', effort: 'high' })
+  assert.deepEqual(logic.launchChoice(LAUNCH, { launchModel: 'opus', launchEffort: 'low' }), { model: 'opus', effort: 'low' })
+  assert.deepEqual(logic.launchChoice({ ...LAUNCH, manual: false }, { launchModel: 'opus' }), { model: 'auto', effort: 'auto' })
+  assert.deepEqual(logic.launchChoice({ ...LAUNCH, auto: false }, { launchModel: 'auto', launchEffort: 'auto' }), { model: 'sonnet', effort: 'standard' })
+})
+
+test('launch: start args stay exactly as before while off; on, the choice goes along, Auto as its cached recommendation', () => {
+  const args = { keys: ['task:a'], target: 'tab' }
+  // off, missing or not a start verb: the very same object, nothing added
+  for (const launch of [undefined, null, { ...LAUNCH, enabled: false }]) {
+    for (const verb of logic.START_VERBS) assert.equal(logic.withLaunch(verb, args, launch, { launchModel: 'opus' }, {}), args, verb)
+  }
+  assert.equal(logic.withLaunch('drop', { key: 'task:a' }, LAUNCH, {}, {}).model, undefined)
+  assert.deepEqual(logic.START_VERBS, ['do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff'])
+  // Auto without a recommendation: the server decides
+  assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, {}, {}), { ...args, model: 'auto', effort: 'auto' })
+  // Auto with one cached: its concrete model and effort, so the server need not route again
+  const routes = { 'task:a': { title: 'A', status: 'ok', route: ROUTE } }
+  assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, {}, routes), { ...args, model: 'sonnet', effort: 'high' })
+  assert.deepEqual(logic.withLaunch('collect_context', { key: 'task:a' }, LAUNCH, {}, routes), { key: 'task:a', model: 'sonnet', effort: 'high' })
+  // still loading or failed: auto
+  assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, {}, { 'task:a': { title: 'A', status: 'loading' } }), { ...args, model: 'auto', effort: 'auto' })
+  assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, {}, { 'task:a': { title: 'A', status: 'error' } }), { ...args, model: 'auto', effort: 'auto' })
+  // several rows at once: one model for all is no recommendation, the server routes each
+  assert.deepEqual(logic.withLaunch('advise', { keys: ['task:a', 'task:b'] }, LAUNCH, {}, routes), { keys: ['task:a', 'task:b'], model: 'auto', effort: 'auto' })
+  // a manual pick, Standard effort sent as such (the server drops the flag), the effort switch off sends none
+  assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, { launchModel: 'opus', launchEffort: 'standard' }, routes), { ...args, model: 'opus', effort: 'standard' })
+  assert.deepEqual(logic.withLaunch('chat_tab', { text: 'x' }, { ...LAUNCH, effort: false }, { launchModel: 'haiku' }, {}), { text: 'x', model: 'haiku' })
+  assert.deepEqual(logic.withLaunch('session_resume', { session: 's1' }, { ...LAUNCH, effort: false }, {}, {}), { session: 's1', model: 'auto' })
+  // a manual model with effort Auto: the recommendation's effort belongs to its model, so the server decides
+  assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, { launchModel: 'haiku' }, routes), { ...args, model: 'haiku', effort: 'auto' })
+  // Auto read only (manual off) still sends Auto
+  assert.deepEqual(logic.withLaunch('do_it', args, { ...LAUNCH, manual: false, effort: false }, { launchModel: 'opus' }, {}), { ...args, model: 'auto' })
+  // the controller sends every action through withLaunch, with the routes it cached
+  const act = read('app.js').match(/async function act\(verb, args = \{\}\) \{[\s\S]*?\n\}/)[0]
+  assert.match(act, /api\.action\(verb, withLaunch\(verb, args, st\.launch, st\.ui, st\.launchRoutes\)\)/)
+})
+
+test('launch: the recommendation reads short in both languages, its reason as the tooltip', () => {
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    assert.equal(logic.routeText(ROUTE, t, lang), lang === 'de' ? 'Auto: Sonnet · hoch (Jev, Stufe 1,2)' : 'Auto: Sonnet · high (Jev, level 1.2)')
+    assert.equal(logic.routeText({ ...ROUTE, routed_by: 'haiku', level: 2 }, t, lang), lang === 'de' ? 'Auto: Sonnet · hoch (Haiku)' : 'Auto: Sonnet · high (Haiku)')
+    assert.equal(logic.routeText({ model: 'opus', effort: null, routed_by: 'default', level: null }, t, lang), lang === 'de' ? 'Auto: Opus (Standard)' : 'Auto: Opus (default)')
+    assert.equal(logic.routeText(null, t, lang), null)
+  }
+})
+
+test('launch: the route cache fetches once per key and again when the title changed, at most 20 at a time', () => {
+  const items = [{ key: 'a', title: 'A' }, { key: 'b', title: 'B' }, { key: 'c', title: 'C' }]
+  const cache = { a: { title: 'A', status: 'ok', route: ROUTE }, b: { title: 'old B', status: 'ok', route: ROUTE }, c: { title: 'C', status: 'error' } }
+  assert.deepEqual(logic.routesToFetch(items, cache), ['b'])                      // a error stays quiet, no retry loop
+  assert.deepEqual(logic.routesToFetch(items, {}), ['a', 'b', 'c'])
+  assert.equal(logic.routesToFetch(Array.from({ length: 30 }, (_, i) => ({ key: `k${i}`, title: 'x' })), {}).length, 20)
+  // the api posts the keys to /api/route with the token
+  const calls = []
+  const a = api.createApi({ get: async () => ({}), post: async (p, b, csrf) => { calls.push([p, b, csrf]); return { ok: true } }, events: () => ({}) })
+  a.setCsrf('tok')
+  a.route(['task:a'])
+  assert.deepEqual(calls, [['/api/route', { keys: ['task:a'] }, 'tok']])
+  const app = read('app.js')
+  assert.match(app, /launchRoute: async items => \{/)
+  assert.match(app, /routesToFetch\(items, store\.get\(\)\.launchRoutes\)/)
+})
+
+test('launch: the picker stands in every start block and only there through one shared component', () => {
+  const comp = readComponents()
+  const pick = read('views/launch.js')
+  assert.match(pick, /export function LaunchPick\(\{ s, c, items = \[\] \}\)/)
+  assert.match(pick, /const opts = launchOptions\(s\.launch\)/)
+  assert.match(pick, /if \(!opts\) return null/)
+  // one central choice, kept in this browser
+  const app = read('app.js')
+  assert.match(app, /launchModel: load\('bridge-cockpit\.launchModel', null\)/)
+  assert.match(app, /launchEffort: load\('bridge-cockpit\.launchEffort', null\)/)
+  assert.match(app, /setLaunchModel: m => \{ save\('bridge-cockpit\.launchModel', m\); setUi\(\{ launchModel: m \}\) \}/)
+  assert.match(app, /launch: payload\.launch \?\? s\.launch/)
+  // the detail's start block, the item drawer, the chat foot, both bulk bars
+  for (const name of ['ActionsBlock', 'ItemDrawer', 'ChatFoot', 'SelectionBar']) {
+    const body = comp.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))[0]
+    assert.match(body, /<\$\{LaunchPick\}/, name)
+  }
+  assert.match(read('views/check.js'), /<\$\{LaunchPick\} s=\$\{s\} c=\$\{c\} items=/)
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    for (const m of ['auto', 'haiku', 'sonnet', 'opus']) assert.ok(t.launch.model[m], `${lang} ${m}`)
+    for (const e of ['auto', 'standard', 'low', 'medium', 'high', 'xhigh']) assert.ok(t.launch.effort[e], `${lang} ${e}`)
+  }
+})
+
+test('settings: a page of its own behind More, always there, with the launch group and room for more', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-settings-'))
+  try {
+    fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
+    const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
+    assert.ok(comp.pageOrder({}).includes('@settings'))
+    assert.ok(comp.morePages({}).has('@settings'))
+    assert.equal(comp.pageOrder({ model: { pages: [{ id: 'z', group: 'more' }] } }).at(-1), '@settings')
+    // the demo: the page works without a server, a save changes the settings, a reset puts the config back
+    const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
+    assert.equal(mock.buildState().launch.enabled, true)
+    const tr = mock.createMockTransport({ lang: 'en' })
+    let r = await tr.post('/api/action', { verb: 'launch_settings', args: { settings: { auto: false } } })
+    assert.equal(r.ok, true)
+    let st = (await tr.get('/api/state')).data
+    assert.equal(st.launch.settings.auto, false)
+    assert.equal(st.launch.auto, false)
+    assert.deepEqual(st.launch.overridden, ['auto'])
+    r = await tr.post('/api/route', { keys: ['task:demo'] })
+    assert.equal(r.ok, false)
+    assert.equal(r.error.code, 'launch_off')
+    await tr.post('/api/action', { verb: 'launch_settings_reset', args: {} })
+    st = (await tr.get('/api/state')).data
+    assert.equal(st.launch.settings.auto, true)
+    assert.deepEqual(st.launch.overridden, [])
+    r = await tr.post('/api/route', { keys: ['task:demo'] })
+    assert.equal(r.ok, true)
+    assert.ok(['haiku', 'sonnet', 'opus'].includes(r.data.routes['task:demo'].model))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+  const page = read('views/settings.js')
+  assert.match(page, /export function SettingsPage\(\{ s, c \}\)/)
+  assert.match(page, /const GROUPS = \[LaunchSettings\]/)                              // the list later groups join
+  assert.match(page, /<fieldset class=\$\{`set-sub\$\{on \? '' : ' is-off'\}`\} disabled=\$\{!on\}>/)   // the sub switches grey while off
+  assert.match(page, /c\.resetLaunch\(\)/)
+  assert.match(page, /overridden/)
+  assert.match(read('components.js'), /s\.ui\.page === SETTINGS_PAGE\) return html`<\$\{SettingsPage\}/)
+  const app = read('app.js')
+  assert.match(app, /saveLaunch: async settings => \{\n\s+const r = await act\('launch_settings', \{ settings \}\)/)
+  assert.match(app, /resetLaunch: async \(\) => \{\n\s+const r = await act\('launch_settings_reset', \{\}\)/)
+})
+
+test('settings: a change sends only what changed; Standard is no effort; the Jev name and bands are checked', () => {
+  assert.deepEqual(logic.launchPatch('auto', false), { auto: false })
+  assert.deepEqual(logic.launchPatch('default_effort', 'standard'), { default_effort: null })
+  assert.deepEqual(logic.launchPatch('default_effort', 'high'), { default_effort: 'high' })
+  assert.deepEqual(logic.launchPatch('jev_model', ' jev-1.14.0 '), { jev_model: 'jev-1.14.0' })
+  for (const ok of ['jev-1.14.0', 'jev-2.0', 'jev-10.3.12']) assert.equal(logic.jevModelValid(ok), true, ok)
+  for (const bad of ['jev', 'jev-1', 'Jev-1.2', 'jev-1.2.3.4', 'jev-1.x', '']) assert.equal(logic.jevModelValid(bad), false, bad)
+  const bands = [{ below: 0.75, model: 'haiku', effort: 'medium' }, { below: 1.3, model: 'sonnet', effort: 'medium' }, { below: null, model: 'opus', effort: 'xhigh' }]
+  assert.equal(logic.bandsProblem(bands), null)
+  assert.equal(logic.bandsProblem([{ below: 1.3, model: 'sonnet' }, { below: 0.75, model: 'haiku' }, { below: null, model: 'opus' }]), 'order')
+  assert.equal(logic.bandsProblem([{ below: 3.5, model: 'sonnet' }, { below: null, model: 'opus' }]), 'range')
+  assert.equal(logic.bandsProblem([{ below: Number.NaN, model: 'sonnet' }, { below: null, model: 'opus' }]), 'range')
+  assert.equal(logic.bandsProblem([{ below: 1, model: 'sonnet' }, { below: 2, model: 'opus' }]), 'last')
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    for (const k of ['title', 'launchTitle', 'reset', 'changed', 'jevModelBad', 'save']) assert.ok(t.settings[k], `${lang} ${k}`)
+    for (const k of ['order', 'range', 'last']) assert.ok(t.settings.bandsBad[k], `${lang} ${k}`)
+    for (const k of ['enabled', 'manual', 'auto', 'effort', 'default_model', 'default_effort', 'max_model', 'router', 'jev_model', 'jev_bands', 'haiku_map']) {
+      assert.ok(t.settings.label[k], `${lang} label ${k}`)
+      assert.ok(t.settings.explain[k], `${lang} explain ${k}`)
+    }
+  }
+})
+
+test('launch: Standard effort goes out explicitly; a missing effort only while the effort switch is off', () => {
+  const args = { keys: ['task:a'] }
+  const routes = { 'task:a': { title: 'A', status: 'ok', route: ROUTE } }
+  assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, { launchModel: 'sonnet', launchEffort: 'standard' }, {}), { ...args, model: 'sonnet', effort: 'standard' })
+  assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, { launchEffort: 'standard' }, routes), { ...args, model: 'sonnet', effort: 'standard' })
+  assert.deepEqual(logic.withLaunch('do_it', args, { ...LAUNCH, auto: false }, {}, {}), { ...args, model: 'sonnet', effort: 'standard' })
+  assert.equal('effort' in logic.withLaunch('do_it', args, { ...LAUNCH, effort: false }, { launchEffort: 'standard' }, {}), false)
+})
+
+test('launch: a launch event replaces the block and clears the recommendations', () => {
+  assert.match(read('api.js'), /const EVENTS = \[[^\]]*'launch'/)
+  const app = read('app.js')
+  assert.match(app, /\n  launch\(l\) \{\n\s+clearRoutes\(l\)\n\s+\},/)
+  assert.match(app, /function clearRoutes\(launch\) \{\n\s+routeGen \+= 1\n\s+store\.set\(s => \(\{ \.\.\.s, launch: launch \?\? s\.launch, launchRoutes: \{\} \}\)\)/)
+  assert.match(app, /async function freshLaunch\(r\) \{[\s\S]*?clearRoutes\(launch\)/)
+})
+
+test('launch: an answer of /api/route that comes after the cache was cleared is dropped', () => {
+  const route = read('app.js').match(/launchRoute: async items => \{[\s\S]*?\n  \},/)[0]
+  // the generation is taken before the request and compared after it; nothing is written for an old one
+  assert.ok(route.indexOf('const gen = routeGen') < route.indexOf('await api.route(keys)'))
+  assert.match(route, /const res = await api\.route\(keys\)\n\s+if \(gen !== routeGen\) return/)
+  assert.match(route, /put\(k => \(\{ title: titles\.get\(k\), status: 'loading' \}\)\)/)
 })

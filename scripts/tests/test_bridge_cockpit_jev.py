@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from bridge_cockpit import jev  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.bridge_cockpit import jev  # noqa: E402
 
 MODEL = {"sections": [{"rows": [
     {"key": "a", "title": "Customer waits for invoices", "priority": "P0", "why": ["customer asks"], "tab": {"ref": "x"}},

@@ -19,7 +19,7 @@ import { DetailColumn } from './views/detail.js'
 import { Header, PageBadge, PageBar } from './views/header.js'
 import { HomePage, jumpToTab, useHomeTitle } from './views/home.js'
 import {
-  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, START_PAGE, WORKERS_PAGE, onPageOf, reviewHomeOf,
+  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, onPageOf, reviewHomeOf,
   workViewNow,
 } from './views/nav.js'
 import {
@@ -29,10 +29,11 @@ import {
 import { JevList, KindBar, OverviewBoard, PageSection, UsageCard, WorkOrder } from './views/pages.js'
 import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
+import { SettingsPage } from './views/settings.js'
 import { TabView, TabsColumn } from './views/tabs.js'
 export { useHomeTitle } from './views/home.js'
 export {
-  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, START_PAGE, WORKERS_PAGE, morePages, pageOrder,
+  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, morePages, pageOrder,
   workViewNow,
 } from './views/nav.js'
 
@@ -61,6 +62,7 @@ function PageView({ s, c }) {
   if (s.ui.page === SESSIONS_PAGE) return html`<${SessionsPage} s=${s} c=${c} />`
   if (s.ui.page === WORKERS_PAGE) return html`<${WorkersPage} s=${s} c=${c} />`
   if (s.ui.page === CHAT_PAGE) return html`<${ChatPage} s=${s} c=${c} />`
+  if (s.ui.page === SETTINGS_PAGE) return html`<${SettingsPage} s=${s} c=${c} />`
   if (s.ui.page === AGENTS_PAGE && (s.agents?.peers ?? []).length) return html`<${AgentsPage} s=${s} c=${c} />`
   const view = workViewNow(s)
   const work = view === 'due' ? null : workPageOf(s.model?.pages)

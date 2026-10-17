@@ -156,6 +156,7 @@ work:
 #   teams: {}                # add or replace team recipes: {id: {label, for_types: [...], roles: [{id, name, mode, brief}]}}
 #   router: {command: "..."} # launch --target auto: reads the prompt on stdin, prints JSON (a small model)
 #   agent: {new: "claude -n {slug} {prompt}", resume: "claude --resume {session}"}
+#   # {model} and {effort} place the flags of a launch's model and effort; without them they are appended to claude
 
 # ─── Briefing: default profile + advise thresholds ────────────────────
 # What a briefing SHOWS lives in workflow/briefings/<id>.yaml, one file per
@@ -190,6 +191,15 @@ work:
 #   launch:
 #     target: area         # area = the workspace of the item's area (workplace.workspaces) | tab = here | workspace = one each
 #                          # | auto = a small model picks the area or a workspace of its own (workplace.router)
+#   launch_model:          # the model an agent tab starts with (docs/bridge-cockpit.md); all off by default
+#     enabled: false       # master switch; off = the start runs as without this block
+#     manual: true         # pick haiku | sonnet | opus at every start
+#     auto: false          # a judge (Jev, else Haiku) recommends model and effort before the start
+#     effort: false        # also pick the effort: low | medium | high | xhigh
+#     default_model: sonnet
+#     max_model: opus      # the strongest model Auto may recommend
+#     router: chain        # chain = Jev when on, else Haiku | jev | haiku
+#   # The settings page (Settings, behind More) changes these on top, kept in .bridge/cockpit/launch.json.
 #   # These five fall back to briefing.claude_code_ui (the briefing-ui mod's block) when this block leaves them out.
 
 

@@ -41,6 +41,7 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}\Z")
 STAMP_RE = re.compile(r"^(\d{8}T\d{6}Z)")
 ANSWER_VERBS = ("note", "close", "executed", "failed")
 MODES = ("go", "report", "context")
+PICK_FIELDS = ("model", "effort", "routed_by")
 
 
 class Launches:
@@ -61,7 +62,7 @@ class Launches:
         atomic_write_json(self.path, {"v": 1, "launches": self._items})
 
     def record(self, entries: list) -> None:
-        """Keep the starts that ran: [{key, item, title, mode}], newest first"""
+        """Keep the starts that ran: [{key, item, title, mode, model?, effort?, routed_by?}], newest first"""
         now = self.clock()
         with self.lock:
             for e in entries:
@@ -69,7 +70,9 @@ class Launches:
                     continue
                 self._items = [x for x in self._items if x["key"] != e["key"]]
                 self._items.insert(0, {"key": e["key"], "item": e["item"], "title": str(e.get("title") or e["item"])[:200],
-                                       "mode": e.get("mode") if e.get("mode") in MODES else "go", "at_ms": now})
+                                       "mode": e.get("mode") if e.get("mode") in MODES else "go", "at_ms": now,
+                                       # what the agent started with, when the cockpit chose it (launch.py)
+                                       **{k: e[k] for k in PICK_FIELDS if isinstance(e.get(k), str)}})
             self._items = [x for x in self._items if now - float(x.get("at_ms") or 0) < KEEP_MS][:KEEP_MAX]
             self._save()
 

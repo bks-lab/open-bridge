@@ -16,6 +16,7 @@ import { ReturnPanel } from './home.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, onPageOf,
 } from './nav.js'
+import { LaunchPick } from './launch.js'
 import { MeterBar, RowSteps, StatusMenu } from './pages.js'
 import { Btn, Dot, Empty, Icon, Spinner, StateLine } from './parts.js'
 import { TaskSessions } from './sessions.js'
@@ -233,6 +234,9 @@ export function ItemDrawer({ s, c, byKey }) {
   const asks = it.ask && cur.page && cur.section && it.index != null
   // the row's own buttons may already start it (or jump to its tab): then no second "Get it done" beside them
   const ownStarts = (own?.actions ?? []).some(a => ['do', 'restart', 'to_tab'].includes(a.id))
+  // the row a start here would hand on, for the model picker under the buttons
+  const startKey = ownStarts ? key : slug && s.details.task[slug]?.data?.kind !== 'done' ? `task:${slug}`
+    : isInbox && data?.item?.state !== 'approved' ? key : null
   return html`<div class="overlay" onClick=${e => { if (e.target === e.currentTarget) c.closeItem() }}>
     <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="idrawer-title" ref=${ref}>
       <header class="idrawer-head">
@@ -254,6 +258,7 @@ export function ItemDrawer({ s, c, byKey }) {
         ${slug ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openInner(`task:${slug}`)}>${t.item.inNet}<//>` : null}
         ${own && !isInbox ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { c.closeItem(); c.peek(key) }}>${t.item.more}<//>` : null}
       </div>
+      ${startKey ? html`<${LaunchPick} s=${s} c=${c} items=${[{ key: startKey, title: own?.title ?? it.title ?? title }]} />` : null}
       <div class="idrawer-body">
         <${ReturnPanel} s=${s} c=${c} keys=${[key, slug ? `task:${slug}` : null]} />
         ${slug ? html`<section class="idrawer-sec"><${TaskSessions} row=${{ task: slug, key: `task:${slug}` }} s=${s} c=${c} /></section>` : null}

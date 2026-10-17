@@ -877,3 +877,61 @@ def test_a_resume_reopens_one_task_session_in_its_own_folder(lrepo):
                             f"claude --resume {sid} --model sonnet")
     (bad,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go", resume="not-a-session")
     assert "error" in bad
+
+
+# ---------------------------------------------------------------- model and effort of a launch
+
+def test_launch_without_a_model_keeps_the_command_of_today(lrepo):
+    (e,) = wp.build_launch(lrepo, {}, ["payments-incident"], "report")
+    assert "--model" not in e["command"] and "--effort" not in e["command"]
+    assert "model" not in e and "effort" not in e
+
+
+def test_launch_model_and_effort_are_appended_to_a_claude_template(lrepo):
+    (e,) = wp.build_launch(lrepo, {}, ["payments-incident"], "go", model="opus", effort="high")
+    assert e["command"].endswith("--model claude-opus-5-5 --effort high")
+    assert (e["model"], e["effort"]) == ("claude-opus-5-5", "high")
+
+
+def test_launch_fills_model_and_effort_slots_and_drops_an_empty_slot_with_its_flag(lrepo):
+    cfg = {"agent": {"new": "claude --model {model} --effort {effort} -n {slug} {prompt}",
+                     "resume": "claude --resume {session} --model {model}"}}
+    (e,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go", model="haiku")
+    assert "claude --model claude-haiku-5-5 -n payments-incident" in e["command"]
+    assert "{effort}" not in e["command"] and "--effort" not in e["command"]
+    (bare,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go")
+    assert "--model" not in bare["command"] and "{" not in bare["command"].split("&&")[-1].split("'")[0]
+    sid = "0b8a3c1e-1111-4222-8333-944455556666"
+    (r,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go", resume=sid, model="sonnet")
+    assert r["command"].endswith(f"claude --resume {sid} --model claude-sonnet-5-5")
+
+
+def test_a_model_fixed_in_the_template_wins_and_says_so(lrepo):
+    cfg = {"agent": {"new": "claude --model sonnet -n {slug} {prompt}"}}
+    (e,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go", model="opus", effort="low")
+    assert "claude-opus-5-5" not in e["command"] and e["command"].endswith("--effort low")
+    assert e["model"] is None and "agent template" in e["pick_note"]
+
+
+def test_another_agent_than_claude_gets_no_claude_flags(lrepo):
+    cfg = {"agent": {"new": "codex {prompt}"}}
+    (e,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go", model="opus", effort="high")
+    assert "--model" not in e["command"] and "--effort" not in e["command"]
+    assert e["model"] is None and e["effort"] is None and "not claude" in e["pick_note"]
+
+
+def test_the_open_plan_fills_an_empty_model_slot(repo):
+    cfg = {**CFG, "agent": {"new": "claude --model {model} -n {slug} {prompt}"}}
+    tab = {"action": "new", "slug": "payments-incident", "status_path": "work/tasks/payments-incident/STATUS.md"}
+    run = wp.tab_command(tab, repo, str(repo), cfg)
+    assert "{model}" not in run and "--model" not in run
+
+
+def test_launch_cli_takes_model_and_effort_and_refuses_others(lrepo, capsys):
+    assert wp.main(["--root", str(lrepo), "launch", "--items", "payments-incident", "--model", "sonnet",
+                    "--effort", "xhigh", "--json"]) == 0
+    (item,) = json.loads(capsys.readouterr().out)["items"]
+    assert (item["model"], item["effort"]) == ("claude-sonnet-5-5", "xhigh")
+    for bad in (["--model", "gpt-5"], ["--effort", "max"]):
+        with pytest.raises(SystemExit):
+            wp.main(["--root", str(lrepo), "launch", "--items", "payments-incident", *bad])

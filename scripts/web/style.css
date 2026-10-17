@@ -1996,3 +1996,24 @@ button.sit-field:focus-visible { outline: 2px solid var(--accent); outline-offse
 .input-sm { min-height: 28px; padding: 2px 8px; font-size: var(--text-sm); max-width: 100%; }
 .task-sessions li { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
 .task-session-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* the model an agent tab starts with (views/launch.js) and the settings page (views/settings.js) */
+.launch-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; }
+.selbar .launch-pick, .review-bulk .launch-pick { margin-top: 0; flex-basis: 100%; }
+.idrawer .launch-pick { margin: 0; padding: 6px 20px 10px; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
+.launch-rec { cursor: help; }
+.settings-page .set-group { display: grid; gap: 10px; max-width: 820px; }
+.set-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.set-sub { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 10px; }
+.set-sub.is-off { opacity: 0.5; }
+.set-row { display: grid; gap: 4px; padding: 8px 0; border-top: 1px solid var(--border); }
+.set-head { display: flex; align-items: center; gap: 8px; }
+.set-label { font-weight: 600; }
+.set-explain { margin: 0; }
+.set-control { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.set-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.set-bad { color: var(--danger); }
+.set-table-wrap { display: grid; gap: 6px; overflow-x: auto; max-width: 100%; }
+.set-table { width: auto; }
+.set-table td, .set-table th { padding: 4px 8px; }
+.set-num { width: 84px; }

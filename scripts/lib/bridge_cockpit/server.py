@@ -37,6 +37,7 @@ from .actions import ActionError, Actions
 from .collector import Collector
 from .daybook import DayBook
 from .returns import Launches
+from .launch import LaunchError, LaunchModel
 from .graph import Graph
 from .config import WebConfig, load_web_config
 from .relay import Relay, default_key_dir, load_key
@@ -165,6 +166,7 @@ class App:
         self.collector = Collector(self)
         self.relay = Relay(self.state_dir, cfg, clock, self.tx, key=load_key(key_dir or default_key_dir()))
         self.actions = Actions(self)
+        self.launch_model = LaunchModel(self)         # the model an agent starts with (launch.py)
         self.watcher = Watcher(self)
         self.last_tabs_json: str | None = None
         self.inbox_cache: tuple[float, list | None] = (0.0, None)
@@ -256,7 +258,8 @@ class App:
                 "model": self.collector.model, "tabs": self.tabs_state(), "loading": self.collector.loading_state(),
                 "notes": list(self.notes), "relay": self.relay_state(), "cmux": self.cmux_state(),
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
-                "sessions": self.sessions_state(), "quick": self.quick.state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF)}
+                "sessions": self.sessions_state(), "quick": self.quick.state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
+                "launch": self.launch_model.state()}
 
     def task_open(self, slug: str) -> bool:
         return bool(slug) and (self.root / "work" / "tasks" / slug / "STATUS.md").is_file()
@@ -767,6 +770,11 @@ class Handler(BaseHTTPRequestHandler):
                     raise ActionError(400, "invalid_argument", "fresh must be true or false", "fresh")
                 app.collector.request("both", fresh=fresh)
                 self.send_json(202, {"ok": True, "loading": app.collector.loading_state()})
+            elif path == "/api/route":
+                try:
+                    self.send_json(200, app.launch_model.handle_route(body))
+                except LaunchError as error:
+                    self.send_error_json(error.code, error.message, error.field, status=error.status)
             elif path == "/api/triage/run":
                 app.triage.handle_post(self, body)
             elif path.startswith("/api/jev/") and jev is None:
