@@ -122,6 +122,79 @@ pipeline:
     # reporting on its own work while the dossier labels it machine-captured.
     require_deterministic: true
 
+  # --- Report (saying it OUTWARD, while the run is running) -----------------
+  # The board record above is durable but silent: it lands on an issue nobody is
+  # watching for the ten to thirty minutes an autonomous run takes. `report:` fans
+  # the SAME events out to a wire, from the same source, so the comment and the
+  # channel can never disagree.
+  #
+  # Omit the whole block and nothing is built, nothing is called, nothing is
+  # logged. The engine behaves exactly as it did before this key existed.
+  #
+  # A target names a transport TYPE and the NAME of an environment variable. The
+  # address never enters this file: this skill is `scope: core` and ships into the
+  # repo it drives, which can be public.
+  #
+  # ONE THING TO KNOW BEFORE YOU CONFIGURE ANY OF THIS: a webhook target sends
+  # nothing unless the CLI was given `--report-send`. Without it the sink filters,
+  # renders and prints the payload it WOULD have posted to stderr. That default is
+  # the arming gate and it is deliberate, but its absence is invisible: a fully
+  # configured, fully enabled channel is simply quiet. If a channel is silent,
+  # check the flag before you check the address.
+  # report:
+  #   targets:
+  #     # A channel: one message per event, while the run runs.
+  #     - name: channel
+  #       type: webhook            # webhook | file | python
+  #       mode: stream             # stream = per event · digest = collect and flush
+  #       enabled: true            # a listed target is ON unless this says otherwise
+  #       events: [armed, stage_start, stage, reject, park, gate]   # this target's
+  #                                # OWN filter, never the record's. `stage_start`
+  #                                # is the only event reporting a BEGINNING; without
+  #                                # it a channel goes quiet for the whole length of a
+  #                                # model stage and thinking looks like wedged.
+  #       url_env: BOARD_PILOT_CHANNEL_WEBHOOK         # a VARIABLE NAME, never a URL
+  #
+  #       # OPTIONAL second rendering: an adaptive card beside the text row, for a
+  #       # reader at a distance. Omit the block and the transport is called with
+  #       # ONE argument, exactly as before this existed, so a wire written before
+  #       # cards keeps working. The card invents nothing: every value comes from
+  #       # the same `record.row_fields` the sticky comment renders from.
+  #       card:
+  #         incident: ""           # the constant band on every card of a run
+  #         incident_env: RUN_ID   # ...or the NAME of a variable holding it, for the
+  #                                # usual case where the id is minted OUTSIDE this
+  #                                # engine. A literal would freeze the first run's
+  #                                # id into every later run's cards.
+  #         sender: "board-pilot"
+  #         labels:                # the channel's language belongs to the instance
+  #           incident: "Incident"
+  #           step: "Step {n} of {m}"   # {m} = len(stages). A literal DIGIT here is
+  #                                     # refused at load: the count has one source.
+  #           armed: "armed · none of {m}"
+  #
+  #     # A summary: one message at the end of the run, not one per stage. It
+  #     # spools to <state_dir>/report/<name>/<item>.log, because one process is
+  #     # exactly one tick and an in-memory collector loses every tick that did
+  #     # not itself reach the gate.
+  #     - name: summary
+  #       type: webhook
+  #       mode: digest
+  #       flush_on: [gate, park]   # the engine's two terminals; must be a subset
+  #                                # of `events`, or the flush would never arrive
+  #       url_env: BOARD_PILOT_SUMMARY_WEBHOOK
+  #
+  #     # A sink this engine did not write. It has no transport, no renderer and no
+  #     # card: your object is all three. The engine calls the factory once at load,
+  #     # checks the result has a callable `emit`, and carries over exactly one
+  #     # thing, the `events:` filter — so that key means the same for every type.
+  #     # Arming does not apply: a sink that owns its transport owns the send.
+  #     - name: journal
+  #       type: python
+  #       factory: "mypkg.sinks:Journal"   # "<module or file>:<attribute>"
+  #       options: { index: runs }         # handed to the factory as keywords
+  #       events: [gate, park]
+
   # --- Stages --------------------------------------------------------------
   # Ordered. Each stage advances an item by exactly ONE step per tick; the next
   # tick re-reads the board (confirmed-advance). `on_success` is the pipeline

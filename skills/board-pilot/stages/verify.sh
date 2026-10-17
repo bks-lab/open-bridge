@@ -58,6 +58,8 @@ bp_ensure_branch
 OUT_FILE="$(mktemp)"
 trap 'rm -f "$OUT_FILE"' EXIT
 
+bp_note "suite started"
+
 set +e
 bash -c "$VERIFY_CMD" > "$OUT_FILE" 2>&1
 RC=$?
@@ -94,8 +96,10 @@ if len(out) > CAP:
 with open(sys.argv[2], "w", encoding="utf-8") as f:
     json.dump({"verdict": "reject", "annotation": out}, f)
 PY
+  bp_note "suite red: $(grep -oE '[0-9]+ (failed|error)[^,]*' "$OUT_FILE" | tail -1)"
   echo "[verify] tests RED (rc=${RC}) -> reject verdict written; the stage itself ran cleanly" >&2
   exit 0
 fi
 
+bp_note "suite green: $(grep -oE '[0-9]+ passed[^,]*' "$OUT_FILE" | tail -1)"
 echo "[verify] OK: suite green for ${ITEM_ID} on ${BRANCH}"

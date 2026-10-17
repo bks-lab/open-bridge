@@ -82,7 +82,23 @@ from pathlib import Path
 from .interfaces import parse_reject
 from .scan import scrub
 
-_EVENTS = ("armed", "stage", "reject", "park", "gate")
+# THE event vocabulary. Public because it is imported, not re-typed: config.py
+# validates against this very object, and a second literal is a place for a new
+# event to arrive in one copy and never in the other.
+# `stage_start` sits between `armed` and `stage` because that is where it lands.
+# Every other event here reports a COMPLETION. Measured on the first full run,
+# 2026-09-02: between `armed` (16:49:51) and the end of the first stage (16:55:42,
+# 5m47s) NOTHING wrote a line, anywhere. In that window a running chain and a
+# wedged one are indistinguishable, which for an operator is the difference
+# between "it is working" and "it is broken".
+# The full vocabulary, which is what an `events:` list is VALIDATED against.
+EVENTS = ("armed", "stage_start", "stage", "reject", "park", "gate", "note")
+# What a target gets when it declares no list of its own. `note` is deliberately
+# NOT in it: a note is an observation, not a state change, and a ledger that grows
+# a row every time a stage mutters is no longer a ledger. An instance that wants
+# notes in a channel says so.
+DEFAULT_EVENTS = ("armed", "stage_start", "stage", "reject", "park", "gate")
+_EVENTS = EVENTS          # historical name, kept for readers of this module
 
 # A marker is a fixed MACHINE token: letters, digits and `.:_-`, nothing else. No
 # `>` (ends the tag early), no whitespace, no `=`. Everything variable rides in the
@@ -318,6 +334,166 @@ def _validate_marker(marker: str) -> None:
         )
 
 
+# === the single source: one event → its six values ==========================
+#
+# Everything that renders an engine event derives its text HERE: the sticky
+# comment on the board, and every outward reporter hanging off `Engine._emit`. Two
+# renderers with two derivations disagree the first time one of them is edited,
+# and the disagreement is invisible: both look right on their own.
+#
+# What is deliberately NOT reachable from these values:
+#   * `result.notes`, argv + stderr of a crashed subprocess, so it can reprint a
+#     secret; it goes to the launchd ledger and nowhere else;
+#   * `item.body`, written by whoever opened the issue, on a public repo;
+#   * `result.tokens`, hardcoded 0 on both real paths, so printing it would report
+#     a cost that was never measured.
+# All three sit one attribute access away from every function below. That is why
+# their absence is pinned by tests rather than left to reading discipline.
+
+
+def iso_now(now=None) -> str:
+    """ISO-8601 WITH offset, always.
+
+    There is a real TZ trap on this fleet (DE +02 vs Dubai +04). A naked wall clock
+    inherits it: the same run reads as two different afternoons depending on which
+    box rendered it, and nothing in the text says which.
+
+    `astimezone()` ONLY when the clock handed us a naive datetime — that is the
+    guarantee. Calling it unconditionally re-zones an AWARE clock to whatever the
+    worker box is set to, which is the same trap coming back in through the door
+    marked "safety net".
+    """
+    stamp = (now or (lambda: datetime.now().astimezone()))()
+    if stamp.tzinfo is None:
+        stamp = stamp.astimezone()
+    return stamp.isoformat(timespec="seconds")
+
+
+def clean_cell(text, limit: int = _CELL_MAX, scan: str = "redact") -> str:
+    """Scrub → flatten → escape → truncate. Every rendered value goes through here.
+
+    Order matters: scrub FIRST, while the spans still map onto the text the rules
+    matched. Redaction is per-span (scan.py), so a false positive costs one
+    placeholder, not the whole value.
+    """
+    out = str(text if text is not None else "")
+    if scan == "redact":
+        out, _ = scrub(out)
+    out = out.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    # `|` would silently re-column a table row; agent-authored text may contain any
+    # byte, so this is not a formatting nicety.
+    out = out.replace("|", r"\|")
+    out = " ".join(out.split())
+    if len(out) > limit:
+        out = out[: limit - 1].rstrip() + "…"
+    return out or "—"
+
+
+def kind_of(stage) -> str:
+    """`machine` = the engine read an exit code from the pipe. `agent` = a model
+    spoke. Collapsing the two is how a claim gets read as a measurement."""
+    if stage is None or not getattr(stage, "run", ""):
+        return "—"
+    return "machine" if stage.run.startswith("cmd:") else "agent"
+
+
+def outcome_text(event, item, stage, fields, status_field="Status", pipeline_field="Pipeline") -> str:
+    """The prose for one event: what the engine DID, in the engine's own words.
+
+    `fields` are the per-event extras documented on `Recorder.emit`:
+      armed:  to, status_to · stage: to, outcome, attempt, of ·
+      reject: to, round, max_rounds, note · park: reason · gate: to, status_to, pr, skipped
+    """
+    to = fields.get("to")
+    if event == "armed":
+        parts = [f"armed · {pipeline_field} ∅→{to}"]
+        status_to = fields.get("status_to")
+        if status_to:
+            parts.append(f'{status_field} "{item.status}"→"{status_to}"')
+        return " · ".join(parts)
+
+    if event == "note":
+        # The stage's own words, verbatim. Cleaning and clamping happen in
+        # `row_fields` like for every other cell — this is untrusted text.
+        return str(fields.get("note") or "")
+
+    if event == "stage_start":
+        # No outcome, no duration, no result: at this moment there is none. The
+        # row says exactly what is true — the stage was dispatched and the engine
+        # is now waiting on it.
+        return "**running** · dispatched, no result yet"
+
+    if event == "stage":
+        kind = fields.get("outcome", "pass")
+        if kind == "retry":
+            sid = getattr(stage, "id", "stage")
+            return f"retry {fields.get('attempt', '?')}/{fields.get('of', '?')} · {sid} re-runs"
+        if kind == "rewind":
+            return f"rewind → {to}"
+        return f"pass → {to}"
+
+    if event == "reject":
+        parts = [f"**reject** → {to} · round {fields.get('round', '?')}/{fields.get('max_rounds', '?')}"]
+        if fields.get("note"):
+            parts.append(f"note: {fields['note']}")
+        return " · ".join(parts)
+
+    if event == "park":
+        return f"**parked** · {fields.get('reason') or 'no reason given'}"
+
+    # gate — the engine's last act on this item, at both call sites
+    parts = ["PR already open" if fields.get("skipped") else f"pass → {to}"]
+    if fields.get("pr"):
+        parts.append(str(fields["pr"]))
+    if fields.get("status_to"):
+        parts.append(f'{status_field} → "{fields["status_to"]}"')
+    parts.append("**STOP**")
+    return " · ".join(parts)
+
+
+def row_fields(
+    event,
+    item,
+    stage=None,
+    result=None,
+    fields=None,
+    *,
+    when=None,
+    status_field="Status",
+    pipeline_field="Pipeline",
+    scan="redact",
+) -> dict:
+    """One event → the six values of `_ROW_FIELDS`, cleaned and ready to render.
+
+    Returned as a dict keyed by field name rather than a positional tuple, so a
+    renderer that wants four of the six cannot silently pick the wrong four.
+    """
+    fields = fields or {}
+    if event == "armed":
+        # No handler, no kind, no criteria: at ARM the stage is not resolved yet
+        # (the dispatch loop has not run). Borrowing the first stage's would be
+        # invention.
+        cells = ["—", "—", "—", "—"]
+    elif event == "note":
+        # `agent`, not `machine`: a note is words, and `kind` is exactly the column
+        # that separates a measured exit code from a model's opinion. No duration,
+        # because a note does not take time — an empty one reads as instant.
+        cells = [clean_cell(getattr(stage, "id", "") or "—", 40, scan), "agent", "—", "—"]
+    else:
+        cells = [
+            clean_cell(getattr(stage, "id", "") or "—", 40, scan),
+            kind_of(stage),
+            clean_cell(getattr(result, "criteria_ref", None) or "—", 80, scan),
+            _took(getattr(result, "duration_s", None)),
+        ]
+    outcome = clean_cell(
+        outcome_text(event, item, stage, fields, status_field, pipeline_field),
+        _OUTCOME_MAX,
+        scan,
+    )
+    return dict(zip(_ROW_FIELDS, [when if when is not None else iso_now(), *cells, outcome]))
+
+
 def _took(seconds) -> str:
     if seconds is None:
         return "—"
@@ -389,102 +565,39 @@ class Recorder:
         self._now = now or (lambda: datetime.now().astimezone())
 
     # -- rendering ---------------------------------------------------------
+    # Thin wrappers over the module-level source above. They stay as methods
+    # because they close over this Recorder's clock, scan mode and field names,
+    # not because the derivation lives here. It does not, and must not: an
+    # outward reporter renders the SAME event and would otherwise grow a second
+    # derivation that agrees today and diverges on the first edit.
     def _when(self) -> str:
-        """ISO-8601 WITH offset, always.
-
-        There is a real TZ trap on this fleet (DE +02 vs Dubai +04). A naked wall
-        clock inherits it: the same run reads as two different afternoons depending
-        on which box rendered the row, and nothing in the row says which.
-
-        `astimezone()` ONLY when the clock handed us a naive datetime — that is the
-        guarantee. Calling it unconditionally re-zones an AWARE clock to whatever the
-        worker box is set to, which is the same trap coming back in through the door
-        marked "safety net".
-        """
-        now = self._now()
-        if now.tzinfo is None:
-            now = now.astimezone()
-        return now.isoformat(timespec="seconds")
+        return iso_now(self._now)
 
     def _clean(self, text, limit: int = _CELL_MAX) -> str:
-        """Scrub → flatten → escape → truncate. Every cell goes through here.
-
-        Order matters: scrub FIRST, while the spans still map onto the text the
-        rules matched. Redaction is per-span (scan.py), so a false positive costs
-        one placeholder, not the whole cell.
-        """
-        out = str(text if text is not None else "")
-        if getattr(self.cfg, "scan", "redact") == "redact":
-            out, _ = scrub(out)
-        out = out.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
-        # `|` would silently re-column the row; agent-authored text may contain any
-        # byte, so this is not a formatting nicety.
-        out = out.replace("|", r"\|")
-        out = " ".join(out.split())
-        if len(out) > limit:
-            out = out[: limit - 1].rstrip() + "…"
-        return out or "—"
+        return clean_cell(text, limit, getattr(self.cfg, "scan", "redact"))
 
     @staticmethod
     def _kind(stage) -> str:
-        """`machine` = the engine read an exit code from the pipe. `agent` = a model
-        spoke. Collapsing the two is how a claim gets read as a measurement."""
-        if stage is None or not getattr(stage, "run", ""):
-            return "—"
-        return "machine" if stage.run.startswith("cmd:") else "agent"
+        return kind_of(stage)
 
     def _outcome(self, event, item, stage, fields) -> str:
-        to = fields.get("to")
-        if event == "armed":
-            parts = [f"armed · {self.pipeline_field} ∅→{to}"]
-            status_to = fields.get("status_to")
-            if status_to:
-                parts.append(f'{self.status_field} "{item.status}"→"{status_to}"')
-            return " · ".join(parts)
-
-        if event == "stage":
-            kind = fields.get("outcome", "pass")
-            if kind == "retry":
-                sid = getattr(stage, "id", "stage")
-                return f"retry {fields.get('attempt', '?')}/{fields.get('of', '?')} · {sid} re-runs"
-            if kind == "rewind":
-                return f"rewind → {to}"
-            return f"pass → {to}"
-
-        if event == "reject":
-            parts = [f"**reject** → {to} · round {fields.get('round', '?')}/{fields.get('max_rounds', '?')}"]
-            if fields.get("note"):
-                parts.append(f"note: {fields['note']}")
-            return " · ".join(parts)
-
-        if event == "park":
-            return f"**parked** · {fields.get('reason') or 'no reason given'}"
-
-        # gate — the engine's last act on this item, at both call sites
-        parts = ["PR already open" if fields.get("skipped") else f"pass → {to}"]
-        if fields.get("pr"):
-            parts.append(str(fields["pr"]))
-        if fields.get("status_to"):
-            parts.append(f'{self.status_field} → "{fields["status_to"]}"')
-        parts.append("**STOP**")
-        return " · ".join(parts)
+        return outcome_text(event, item, stage, fields, self.status_field, self.pipeline_field)
 
     def _row(self, event, item, stage, result, fields) -> str:
-        if event == "armed":
-            # No handler, no kind, no criteria: at ARM the stage is not resolved yet
-            # (tick.py:104-121 runs before the dispatch loop). Borrowing the first
-            # stage's would be invention.
-            cells = ["—", "—", "—", "—"]
-        else:
-            cells = [
-                self._clean(getattr(stage, "id", "") or "—", 40),
-                self._kind(stage),
-                self._clean(getattr(result, "criteria_ref", None) or "—", 80),
-                _took(getattr(result, "duration_s", None)),
-            ]
-        outcome = self._clean(self._outcome(event, item, stage, fields), _OUTCOME_MAX)
         return self.tmpl["row"].format_map(
-            SafeDict(zip(_ROW_FIELDS, [self._when(), *cells, outcome]))
+            SafeDict(
+                row_fields(
+                    event,
+                    item,
+                    stage,
+                    result,
+                    fields,
+                    when=self._when(),
+                    status_field=self.status_field,
+                    pipeline_field=self.pipeline_field,
+                    scan=getattr(self.cfg, "scan", "redact"),
+                )
+            )
         )
 
     def _render(self, item, rows: "list[str]") -> str:
@@ -691,5 +804,9 @@ def emit_guarded(recorder, res, event: str, item, **kwargs) -> None:
         return
     try:
         recorder.emit(event, item, **kwargs)
-    except Exception as e:  # a record write must never decide whether work advances
-        res.notes = (res.notes + f"; record {event} {item.id}: {e!r}").lstrip("; ")
+    except Exception as e:  # a report must never decide whether work advances
+        # The receiver names itself when it can. With more than one sink on the
+        # seam, "the report failed" without saying WHICH one is a ledger line that
+        # cannot be acted on. The sticky, which has no name, stays `record`.
+        who = getattr(recorder, "name", None) or "record"
+        res.notes = (res.notes + f"; {who} {event} {item.id}: {e!r}").lstrip("; ")

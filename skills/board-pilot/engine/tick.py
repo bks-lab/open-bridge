@@ -21,6 +21,7 @@ from .guards import AttemptCounter, TokenBudget, is_paused, valid_item_id
 from .interfaces import reject_comment
 from .lock import Lock
 from .record import Recorder, emit_guarded
+from .report import build_reporters
 from .scan import scrub
 
 # Last-resort cap for the rewind edge. `validate_chain` demands a positive
@@ -67,12 +68,20 @@ class TickResult:
     skipped: list = field(default_factory=list)
     parked: list = field(default_factory=list)
     rejected: list = field(default_factory=list)
+    # Items that reached the HUMAN GATE this tick — the draft PR is open and the
+    # engine has stopped on purpose. Both gate sites report here: the advancing
+    # one (in `dispatched`) and the PR-idempotency one (in `skipped`), which is
+    # exactly why neither of those two lists can stand in for this one. A caller
+    # chaining ticks needs to tell "stopped at the gate" from "still working",
+    # and the only other way to learn it is another board read.
+    gated: list = field(default_factory=list)
     paused: bool = False
     notes: str = ""
 
 
 class Engine:
-    def __init__(self, config, board, runner, state_dir, paused_file=None):
+    def __init__(self, config, board, runner, state_dir, paused_file=None, reporters=None,
+                 report_send=False):
         self.cfg = config
         self.board = board
         self.runner = runner
@@ -159,6 +168,36 @@ class Engine:
             project=getattr(config, "project", ""),
         )
 
+        # The outward sinks, built from `pipeline.report:` unless a caller injects
+        # its own. An absent block yields an empty list, and an empty list is the
+        # whole no-config story: the fan-out iterates it, calls nothing, and a
+        # project that never declared `report:` behaves exactly as it did before.
+        # Construction is cheap and offline by contract (interfaces.Reporter), the
+        # same property that lets the Recorder above be built while disabled.
+        self.reporters = (
+            list(reporters)
+            if reporters is not None
+            else build_reporters(
+                getattr(config, "report", ()) or (),
+                state_dir=self.state_dir,
+                status_field=getattr(self.board, "status_field", "Status"),
+                pipeline_field=getattr(self.board, "pipeline_field", "Pipeline"),
+                project=getattr(config, "project", ""),
+                # The card's step counter reads this and nothing else, so the count
+                # is the chain the engine actually runs. Not built here would mean
+                # the number lives in prose, which is where it went stale before.
+                chain=[s.id for s in config.stages],
+                # DISARMED unless the CALLER says otherwise, and the default is what
+                # makes the gate real: a library caller, a test and every path that
+                # is not the CLI's explicit --report-send rehearses. The flag decides
+                # one thing only, whether bytes leave; it never widens an event
+                # filter and never resolves an address here (a sink that read its
+                # secret at construction would fail engine start on a box where the
+                # variable is merely not exported yet).
+                armed=bool(report_send),
+            )
+        )
+
     def _writable_pipeline_values(self) -> list:
         """Every pipeline value the engine can WRITE — the preflight's subject.
 
@@ -193,14 +232,52 @@ class Engine:
         ]
 
     def _emit(self, event, item, res, **kwargs):
-        """The ONLY way this module records anything.
+        """The ONLY way this module reports anything, to EVERY sink.
+
+        All eight state-machine call sites land here, which is what lets an outward
+        sink see the WHOLE run (armed, park and gate are authored by the engine and
+        no stage ever observes them) without the engine learning anything about
+        channels, addresses or delivery. The sticky board comment is simply the
+        first entry in the list.
+
+        `self.recorder` is read HERE, at call time, and never frozen into a list at
+        construction: 24 tests replace `engine.recorder` after the engine is built,
+        and a frozen list would keep reporting to the original object while every
+        one of them went green against something nothing measures.
+
+        Each sink is guarded SEPARATELY. `emit_guarded` already takes its receiver
+        as a parameter, so its invariant (a report never decides whether work
+        advances) holds per sink with nothing changed about it. One shared guard
+        would let the first failure swallow every later sink in the same emit.
 
         `res` is an explicit PARAMETER, never reached out for from an enclosing
         scope: an earlier design referenced it implicitly, which raises NameError
         INSIDE the hook — i.e. it produced exactly the damage the hook exists to
         avoid (a successful advance reported as a skip, with no rollback).
         """
-        emit_guarded(self.recorder, res, event, item, **kwargs)
+        for sink in (self.recorder, *self.reporters):
+            emit_guarded(sink, res, event, item, **kwargs)
+
+    def _arm_notes(self, item, stage, res):
+        """Give the runner a note sink bound to THIS item and stage.
+
+        Notes go to the outward reporters ONLY, never to `self.recorder`. The
+        sticky comment is the ledger of state changes; a row per muttered sentence
+        stops being a ledger and eats a body cap that the run record needs.
+
+        A runner that knows nothing of notes simply never calls back, so every
+        other instance of this engine is unaffected. Setting the attribute is
+        wrapped because a runner is a PORT: an implementation may legitimately
+        refuse attributes, and a report seam must never decide whether work runs.
+        """
+        def sink(stage_, item_, text):
+            for reporter in self.reporters:
+                emit_guarded(reporter, res, "note", item_, stage=stage_, note=text)
+
+        try:
+            self.runner.on_note = sink
+        except Exception:  # noqa: BLE001 - see the docstring
+            pass
 
     def _set_human_status(self, res, item, value):
         """Write the human column, best-effort. Returns what LANDED (None if nothing).
@@ -267,7 +344,17 @@ class Engine:
     def _is_inflight(self, pipeline) -> bool:
         return bool(pipeline) and pipeline != self._terminal and not pipeline.startswith("parked")
 
-    def tick(self) -> TickResult:
+    def tick(self, arm: bool = True) -> TickResult:
+        """One tick. `arm=False` advances what is ALREADY armed, and arms nothing.
+
+        The default is the whole engine as it always was, and every scheduled run
+        keeps it. `arm=False` exists for a caller that chains several ticks inside
+        one invocation (cli's --max-stages): repeating the ARM phase there would
+        turn ONE human release into an arming sweep of every card that happens to
+        land in the trigger column while the chain runs. Arming stays what it has
+        always been — a person moves a card, and the next scheduled tick latches
+        it.
+        """
         res = TickResult()
 
         if is_paused(self.paused_file):
@@ -301,7 +388,11 @@ class Engine:
         # an item is latched the second conjunct is False for the rest of its life and
         # the status value cannot re-arm it. tests/test_arm.py drives the worst config
         # that exists — `working_status == trigger_status` — and it still does not re-arm.
-        for i in items:
+        #
+        # `items if arm else ()` rather than an `if arm:` around the block: the whole
+        # phase below stays byte-identical, so the one thing this parameter can do is
+        # skip it entirely. It cannot arm differently, only not at all.
+        for i in (items if arm else ()):
             if i.status == self.cfg.trigger_status and not i.pipeline:
                 try:
                     if not valid_item_id(i.id):
@@ -360,17 +451,23 @@ class Engine:
                     res.notes = (res.notes + f"; arm {i.id}: {e!r}").lstrip("; ")
 
         # re-read so armed pipeline values are visible
-        try:
-            items = self.board.fetch_items()
-        except Exception as e:
-            # Deliberately BROADER than the first fetch guard: a permanent
-            # failure here hits the identical call at the NEXT tick's first
-            # fetch, which raises loudly — so this site cannot wedge quietly.
-            # Swallowing keeps this tick's ARM ledger rows and the snapshot
-            # instead of losing them to a raise after work already landed.
-            res.notes = (res.notes + f"; re-fetch: {e!r}").lstrip("; ")
-            snapshot.save_atomic(self.prev_path, cur_status)
-            return res
+        # ... but only when there WAS an ARM phase. With `arm=False` nothing has
+        # written to the board since the fetch above, so a second read returns the
+        # same rows at the price of another API round trip — and a chained call
+        # makes that price N times per invocation, against the same rate-limit
+        # bucket the chain exists to stop hammering.
+        if arm:
+            try:
+                items = self.board.fetch_items()
+            except Exception as e:
+                # Deliberately BROADER than the first fetch guard: a permanent
+                # failure here hits the identical call at the NEXT tick's first
+                # fetch, which raises loudly — so this site cannot wedge quietly.
+                # Swallowing keeps this tick's ARM ledger rows and the snapshot
+                # instead of losing them to a raise after work already landed.
+                res.notes = (res.notes + f"; re-fetch: {e!r}").lstrip("; ")
+                snapshot.save_atomic(self.prev_path, cur_status)
+                return res
         inflight = [i for i in items if self._is_inflight(i.pipeline)]
 
         dispatched = 0
@@ -448,6 +545,7 @@ class Engine:
                         to=stage.on_success, status_to=self.cfg.pr_status, skipped=True,
                     )
                     res.skipped.append(i.id)
+                    res.gated.append(i.id)
                     continue
 
                 # Self-heal the human column, immediately before the work that justifies
@@ -467,6 +565,19 @@ class Engine:
                 if self.cfg.working_status and i.status != self.cfg.working_status:
                     self._set_human_status(res, i, self.cfg.working_status)
 
+                # THE HEARTBEAT, and it must land BEFORE the run. A stage is a
+                # model run and takes minutes; every other event of this engine
+                # reports a completion. If the start landed afterwards it would be
+                # indistinguishable in time from `stage` and worthless as a sign of
+                # life. `_emit` guards each sink separately, so a failing sink
+                # cannot hold up the stage.
+                self._emit("stage_start", i, res, stage=stage)
+
+                # Hand the runner a way to speak WHILE it works. A stage is a
+                # model run of several minutes and reports only on exit, so the
+                # channel would otherwise show one "dispatched" card and then
+                # nothing, which is indistinguishable from a hang.
+                self._arm_notes(i, stage, res)
                 result = self.runner.run(stage, i)
                 self.budget.add(getattr(result, "tokens", 0) or 0)
 
@@ -602,6 +713,7 @@ class Engine:
                             to=stage.on_success, status_to=self.cfg.pr_status,
                             pr=_http_line(getattr(result, "notes", "")),
                         )
+                        res.gated.append(i.id)
                     else:
                         self._emit(
                             "stage", i, res, stage=stage, result=result,

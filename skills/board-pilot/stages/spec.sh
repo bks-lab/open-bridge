@@ -31,6 +31,8 @@ bp_refuse_protected_branch
 bp_resolve_claude
 [ -r "$CRITERIA_FILE" ] || bp_die "criteria file unreadable: $CRITERIA_FILE"
 
+bp_note "criteria read: $(basename "$CRITERIA_FILE")"
+
 PLAN_DIR="$EVIDENCE_DIR/spec"
 PLAN="$PLAN_DIR/plan.md"
 mkdir -p "$PLAN_DIR"
@@ -57,6 +59,7 @@ $(bp_untrusted_block)"
 # Command substitution, not a pipe: the model's exit code stays this script's exit
 # code, and `set -e` fails the stage if it dies. A `| tee` here would hand $? to tee
 # and report a crashed planner as a clean run.
+bp_note "planner started, read only"
 PLAN_TEXT="$(bp_claude "Read,Glob,Grep" "$PROMPT")"
 printf '%s\n' "$PLAN_TEXT" > "$PLAN"
 
@@ -69,6 +72,8 @@ LINES="$(wc -l < "$PLAN")"
 
 # The backstop for "read-only" — asserted, not assumed. If this ever fires, the fence
 # above leaked a write tool and that is a finding, not a warning.
+bp_note "plan written, $((LINES)) lines"
+
 DIRTY="$(git status --porcelain)"
 [ -z "$DIRTY" ] || bp_die "spec stage modified the repo, which it must never do:
 $DIRTY"

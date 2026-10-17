@@ -84,6 +84,7 @@ $(bp_untrusted_block)"
 # The model writes into the repo here, so it holds Write/Edit — and therefore MUST NOT
 # hold Bash: acceptEdits plus a shell is a full escape hatch. It does not need a shell;
 # the verify stage runs the tests, from the engine's own pipe.
+bp_note "coder started on $BRANCH"
 bp_claude "Read,Glob,Grep,Write,Edit" "$PROMPT"
 
 git add -A
@@ -116,6 +117,8 @@ fi
 
 # Fail-closed secret scan on the staged diff, through the ONE definition in
 # engine/scan.py. A temp file rather than a pipe: no pipeline, no exit code to lose.
+bp_note "diff written, $(git diff --cached --numstat | grep -c . || true) files"
+
 DIFF_FILE="$(mktemp)"
 trap 'rm -f "$DIFF_FILE"' EXIT
 git diff --cached -U0 > "$DIFF_FILE"
@@ -132,4 +135,5 @@ fi
 git commit -s -q -m "$ITEM_TITLE" -m "board-pilot ${ITEM_ID} — ${ITEM_URL:-n/a}"
 git push -u origin "$BRANCH" --quiet
 
+bp_note "pushed to $BRANCH"
 echo "[implement] OK: pushed ${BRANCH} (round ${BOUNCES:-0})"

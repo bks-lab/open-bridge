@@ -68,8 +68,22 @@ trap 'rm -f "$RAW_FILE"' EXIT
 
 # Command substitution, not a pipe: a crashed reviewer must fail the stage, not be
 # reported as an empty verdict.
+bp_note "reviewer started, fresh session, against $(basename "$CRITERIA_FILE")"
 RAW="$(bp_claude "Read,Glob,Grep" "$PROMPT")"
 printf '%s' "$RAW" > "$RAW_FILE"
+
+# THE REVIEWER'S OWN WORDS, KEPT BEFORE THEY ARE JUDGED, and kept on BOTH paths.
+# Measured 2026-09-02: this stage ran a real model for 4m13s and then exited 1 with
+# "reviewer emitted no parseable JSON verdict". The raw lived only in $RAW_FILE,
+# which the EXIT trap deletes — so the three cases an operator must tell apart (the
+# model refused, the model wrote prose, the CLI itself errored) all looked
+# identical: rc=1 and one sentence. Writing it here, ahead of the validator, is
+# what makes the failure diagnosable at all.
+#
+# It is a CLAIM, never evidence, and the dossier labels it that way. But a claim
+# nobody can read cannot even be judged.
+mkdir -p "$EVIDENCE_DIR/review"
+cp "$RAW_FILE" "$EVIDENCE_DIR/review/reviewer-output.txt"
 
 # Validate before it becomes a verdict. No parseable verdict -> non-zero -> park:
 # a reviewer that cannot state a verdict has not reviewed, and defaulting such a run
@@ -78,18 +92,66 @@ python3 - "$RAW_FILE" "$VERDICT_FILE" <<'PY'
 import json, re, sys
 
 raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+
+
+def balanced_objects(text):
+    """Every top-level {...} span, in the order they appear.
+
+    Written as a scanner and not as a regex because the regex that stood here was
+    `\{.*\}` with DOTALL, which is GREEDY: it yields exactly ONE match, from the
+    first brace in the whole answer to the last, and finds no balanced object at
+    all. Its own comment promised "the LAST balanced object". Measured 2026-09-02:
+    two consecutive live reviews, four minutes of model time each, both thrown
+    away because the answer mentioned a brace before its verdict.
+
+    Braces inside string literals do not count, or a single `{` in an annotation
+    would unbalance everything after it. Escapes are honoured for the same reason.
+    """
+    spans, depth, start = [], 0, None
+    in_string = escaped = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    spans.append(text[start:i + 1])
+                    start = None
+    return spans
+
+
 obj = None
 try:
     obj = json.loads(raw.strip())
 except json.JSONDecodeError:
-    # A model asked for bare JSON still tends to wrap it. Take the LAST balanced
-    # object: a preamble may mention a shape, the answer comes last.
-    for m in reversed(list(re.finditer(r"\{.*\}", raw, re.S))):
+    # A model asked for bare JSON still tends to wrap it, and it may well quote
+    # the requested SHAPE before answering. Try the objects from the back: the
+    # preamble mentions a shape, the answer comes last.
+    for candidate in reversed(balanced_objects(raw)):
         try:
-            obj = json.loads(m.group(0))
-            break
+            parsed = json.loads(candidate)
         except json.JSONDecodeError:
             continue
+        if isinstance(parsed, dict) and parsed.get("verdict") in ("pass", "reject"):
+            obj = parsed
+            break
+        if obj is None and isinstance(parsed, dict):
+            # Keep the last dict seen as a fallback, so the error below can still
+            # say what the verdict WAS rather than claiming nothing was parseable.
+            obj = parsed
 if not isinstance(obj, dict):
     sys.exit("[board-pilot] FAIL: reviewer emitted no parseable JSON verdict")
 
@@ -113,4 +175,5 @@ PY
 mkdir -p "$EVIDENCE_DIR/review"
 cp "$VERDICT_FILE" "$EVIDENCE_DIR/review/verdict.json"
 
+bp_note "verdict recorded"
 echo "[review] OK: verdict recorded for ${ITEM_ID} against $(basename "$CRITERIA_FILE")"

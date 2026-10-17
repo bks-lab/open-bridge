@@ -42,14 +42,36 @@ import json
 import os
 import shlex
 import subprocess
+import threading
 import tempfile
 import time
 
+from . import notes as notes_mod
 from .interfaces import StageResult
 
 # Reviewer feedback can be arbitrarily long / hostile; cap what the prompt asks
 # the model to read so a giant note cannot blow the context or hide an injection.
 _NOTE_PROMPT_CAP = 4000
+
+# How often the follower looks for new note lines while a stage runs, and how
+# long a burst is held so that lines written close together become ONE message.
+# Both are tunable from the unit env WITHOUT a deploy: the right hold depends on
+# how talkative the stages of a given project are, and that is not knowable here.
+_NOTES_POLL_S = 2.0
+
+
+def _notes_timing():
+    """(poll, hold, cap) in seconds, env first, defaults second. Never raises."""
+    def zahl(name, vorgabe):
+        try:
+            wert = float(os.getenv(name) or vorgabe)
+        except (TypeError, ValueError):
+            return vorgabe
+        return wert if wert >= 0 else vorgabe
+
+    return (zahl("BP_NOTES_POLL_S", _NOTES_POLL_S),
+            zahl("BP_NOTES_HOLD_S", notes_mod.HOLD_S),
+            zahl("BP_NOTES_MAX_HOLD_S", notes_mod.MAX_HOLD_S))
 
 # The issue body is ENFORCED-capped, unlike _NOTE_PROMPT_CAP above (which only tells
 # the model how much to read — the note itself rides uncapped). The difference is that
@@ -142,6 +164,9 @@ class ClaudeStageRunner:
         self.evidence_dir = os.path.abspath(os.path.expanduser(evidence_dir)) if evidence_dir else None
         self.criteria_dir = self._anchor(criteria_dir) if criteria_dir else None
         self.log: "list[str]" = []  # human-readable trail (also fed when dry_run)
+        # Set by the engine before each dispatch: on_note(stage, item, text). None
+        # here means every existing caller behaves exactly as before.
+        self.on_note = None
 
     def _anchor(self, path: str) -> str:
         p = os.path.expanduser(path)
@@ -356,9 +381,22 @@ class ClaudeStageRunner:
         env["REJECTION_NOTE_FILE"] = note_file
         env["ITEM_BODY_FILE"] = body_file
         env["VERDICT_FILE"] = verdict_file
+        # The note channel. The child APPENDS one short line per thing worth
+        # saying; a follower relays each as it appears. Handed to every stage,
+        # whether or not anybody listens: a path that only exists when a listener
+        # is attached would make the stage's behaviour depend on the engine's
+        # configuration, and the stage would have to branch on it.
+        env["STAGE_NOTES"] = os.path.join(rundir, "stage_notes.txt")
+        on_lines = None
+        if self.on_note:
+            def on_lines(batch, _stage=stage, _item=item):
+                # What arrived together goes out together: the follower decides
+                # what "together" means, this only joins it into one line. A card
+                # cell collapses whitespace anyway, so a separator, not a newline.
+                self.on_note(_stage, _item, " · ".join(batch))
 
         if handler == "cmd":
-            result = self._run_cmd(payload, env, evidence_stage_dir)
+            result = self._run_cmd(payload, env, evidence_stage_dir, on_lines)
         elif handler in ("skill", "agent", "workflow"):
             prompt = self._claude_prompt(handler, payload, stage, item)
             result = self._spawn(
@@ -366,6 +404,7 @@ class ClaudeStageRunner:
                 env=env,
                 label=f"{handler}:{payload}",
                 evidence_dir=evidence_stage_dir,
+                on_line=on_lines,
             )
         else:
             return StageResult(ok=False, notes=f"unknown handler ref: {stage.run!r}")
@@ -383,14 +422,16 @@ class ClaudeStageRunner:
         return result
 
     # -- cmd: argv, shell=False, board values via env ---------------------
-    def _run_cmd(self, command: str, env: dict, evidence_dir: "str | None" = None) -> StageResult:
+    def _run_cmd(self, command: str, env: dict, evidence_dir: "str | None" = None,
+                 on_line=None) -> StageResult:
         try:
             argv = shlex.split(command)
         except ValueError as exc:
             return StageResult(ok=False, notes=f"cannot parse cmd: {exc}")
         if not argv:
             return StageResult(ok=False, notes="empty cmd")
-        return self._spawn(argv, env=env, label=f"cmd:{command}", evidence_dir=evidence_dir)
+        return self._spawn(argv, env=env, label=f"cmd:{command}",
+                           evidence_dir=evidence_dir, on_line=on_line)
 
     # -- evidence sink: only the parent can write this --------------------
     def _tee_evidence(self, stage_dir: str, proc) -> "str | None":
@@ -423,6 +464,7 @@ class ClaudeStageRunner:
         env: dict,
         label: str,
         evidence_dir: "str | None" = None,
+        on_line=None,
     ) -> StageResult:
         rendered = " ".join(shlex.quote(a) for a in argv)
         self.log.append(rendered)
@@ -432,6 +474,28 @@ class ClaudeStageRunner:
         # a DST/TZ jump on a fleet that spans +02 and +04) must not be able to
         # report a stage as instant or negative.
         started = time.monotonic()
+        # The follower runs in its own thread and never touches `proc`. Its sleep
+        # IS the stop event, so shutting it down costs milliseconds instead of one
+        # poll interval per stage.
+        halt = threading.Event()
+        follower = None
+        notes_path = env.get("STAGE_NOTES")
+        if on_line and notes_path:
+            takt, halten, deckel = _notes_timing()
+            follower = threading.Thread(
+                target=notes_mod.follow,
+                args=(notes_path, on_line, halt.is_set),
+                kwargs={"sleep": halt.wait, "poll_s": takt,
+                        "hold_s": halten, "max_hold_s": deckel},
+                daemon=True,
+            )
+            follower.start()
+
+        def done():
+            halt.set()
+            if follower is not None:
+                follower.join(timeout=5)
+
         try:
             proc = subprocess.run(
                 argv,
@@ -443,22 +507,40 @@ class ClaudeStageRunner:
                 timeout=self.timeout,
             )
         except subprocess.TimeoutExpired:
+            done()
             return StageResult(
                 ok=False,
                 notes=f"{label}: timeout after {self.timeout}s",
                 duration_s=time.monotonic() - started,
             )
         except (OSError, ValueError) as exc:
+            done()
             return StageResult(
                 ok=False,
                 notes=f"{label}: spawn failed: {exc}",
                 duration_s=time.monotonic() - started,
             )
         duration = time.monotonic() - started
+        # AFTER the duration is taken: the follower's shutdown is the engine's
+        # business, not the stage's, and must not show up as the stage being slow.
+        done()
         ok = proc.returncode == 0
         notes = (proc.stdout or "").strip()[-2000:]
         if not ok:
-            notes = f"rc={proc.returncode} {(proc.stderr or '').strip()[-2000:]}"
+            # A failing child does not have to use stderr, and the claude CLI does
+            # not: it reports an API error as ordinary OUTPUT and exits 1. Keeping
+            # stderr only is how a real diagnosis reached the board as a bare
+            # `rc=1` on 2026-09-03. stderr still WINS — stdout is a fallback, not a
+            # second channel, so a stage's progress chatter cannot crowd out the
+            # reason it already gave. Marked, so a reader knows which stream spoke.
+            err = (proc.stderr or "").strip()
+            out = (proc.stdout or "").strip()
+            if err:
+                notes = f"rc={proc.returncode} {err[-2000:]}"
+            elif out:
+                notes = f"rc={proc.returncode} [stdout] {out[-2000:]}"
+            else:
+                notes = f"rc={proc.returncode}"
         # The sink keeps BOTH streams on BOTH paths — notes above drops stderr when
         # ok and stdout when not, which is exactly why real test output cannot ride
         # result.notes.

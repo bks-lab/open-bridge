@@ -35,6 +35,29 @@ bp_die() {
 # portability (this ships to boxes that are not this one) and for tests; it is
 # operator-controlled env, never board-controlled — the engine passes the tick
 # process's own environment, and board values travel as ITEM_* data only.
+# bp_note <text...>
+#
+# One short line about what is happening RIGHT NOW. The engine hands every stage a
+# path in $STAGE_NOTES and relays each appended line to the outward channel WHILE
+# the stage still runs. Without it a stage that takes seven minutes shows one
+# "dispatched" card and then nothing, which on a screen is indistinguishable from
+# a hang.
+#
+# THREE RULES, and they are what keep this from becoming a liability:
+#
+#   1. FAIL-SOFT, always. A note is an observation. No unset path, no full disk and
+#      no read-only mount may take a stage with it, so every failure is swallowed.
+#   2. SHORT AND FACTUAL. It lands on a card. A paragraph does not render.
+#   3. A STABLE PHRASE VOCABULARY, in English, like every other engine word. The
+#      card runs each note through the same `say()` dictionary that renames
+#      `pass` or `armed`, so an instance translates "plan written" once in its
+#      project YAML instead of translating a sentence that changes every run.
+#      Numbers ride along untouched; they are the same in every language.
+bp_note() {
+  [ -n "${STAGE_NOTES:-}" ] || return 0
+  printf '%s\n' "$*" >> "$STAGE_NOTES" 2>/dev/null || true
+}
+
 bp_resolve_claude() {
   BP_CLAUDE_BIN="${BP_CLAUDE:-}"
   if [ -z "$BP_CLAUDE_BIN" ]; then
@@ -75,16 +98,87 @@ bp_resolve_claude() {
 # stage runs, never the implementer's transient reasoning.)
 #
 # Board text is NEVER passed as an instruction — callers delimit it as untrusted data.
+#
+# RETRIED, but only on a failure the provider owns. See bp_transient_api_failure.
 bp_claude() {
   local allowed="$1" prompt="$2"
   bp_resolve_claude
-  "$BP_CLAUDE_BIN" -p \
-    --permission-mode acceptEdits \
-    --disallowedTools "Bash" \
-    --allowedTools "$allowed" \
-    --setting-sources project \
-    --max-turns "${BP_MAX_TURNS:-40}" \
-    "$prompt"
+
+  local tries="${BP_CLAUDE_TRIES:-3}" attempt=1 out rc pause
+  while :; do
+    rc=0
+    # Captured, not streamed, because the DECISION to retry can only be made by
+    # reading what the process printed. Nothing is lost: the engine reads a stage
+    # at exit anyway, so there was never a live stream to give up.
+    out="$("$BP_CLAUDE_BIN" -p \
+      --permission-mode acceptEdits \
+      --disallowedTools "Bash" \
+      --allowedTools "$allowed" \
+      --setting-sources project \
+      --max-turns "${BP_MAX_TURNS:-40}" \
+      "$prompt")" || rc=$?
+
+    if [ "$rc" -eq 0 ]; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+
+    if [ "$attempt" -ge "$tries" ] || ! bp_transient_api_failure "$out"; then
+      # STDERR, and this line is the whole reason the 2026-09-03 diagnosis was
+      # lost. The caller captures stdout into a variable, `set -e` kills the
+      # script on the failing substitution, and the variable dies unwritten.
+      # stderr is the one stream that outlives that, and it is the one the
+      # engine's failure note reads.
+      printf '%s\n' "$out" >&2
+      return "$rc"
+    fi
+
+    pause="$(bp_backoff_for "$attempt")"
+    # Said out loud on BOTH channels: a stage that waits in silence is
+    # indistinguishable from a stage that hangs, and on a stage that matters.
+    bp_note "provider overloaded, attempt $((attempt + 1)) of ${tries} in ${pause}s"
+    printf 'bp_claude: transient provider failure, attempt %s of %s, waiting %ss\n' \
+      "$attempt" "$tries" "$pause" >&2
+    sleep "$pause"
+    attempt=$((attempt + 1))
+  done
+}
+
+# -- transient provider failures --------------------------------------------
+# The CLI reports a provider-side failure as ORDINARY OUTPUT and exits 1, so the
+# only way to tell "the provider was overloaded" from "the model wrote nonsense"
+# is to read what it printed.
+#
+# On 2026-09-03 an `API Error: 529 Overloaded` ended a live run on its FIRST stage
+# after the CLI had already spent 4m23s on its own internal retries. An outer
+# attempt is what survives a provider incident that outlives one invocation; the
+# CLI's internal backoff does not, because it is bounded inside that invocation.
+#
+# RECOGNISED-ONLY, deliberately. Anything this pattern does not match counts as
+# permanent: a model that refuses and a prompt that is wrong fail identically on
+# every attempt, so retrying them triples the spend and buries the defect under
+# two more copies of itself.
+BP_TRANSIENT_RE='API Error: (429|5[0-9][0-9])|Overloaded|Connection error'
+
+bp_transient_api_failure() {
+  printf '%s' "$1" | grep -qE "$BP_TRANSIENT_RE"
+}
+
+# The pause before attempt N, read from the whitespace-separated BP_CLAUDE_BACKOFF.
+# Past the end of the list the LAST value repeats, so raising BP_CLAUDE_TRIES needs
+# no second list kept in step with the first.
+#
+# The defaults climb (60, 180, 300) rather than sitting flat: a provider incident
+# that is over in a minute should cost a minute, and one that is not should not be
+# probed every minute for as long as the stage is allowed to live.
+bp_backoff_for() {
+  local want="$1" i=0 last=60 w
+  for w in ${BP_CLAUDE_BACKOFF:-60 180 300}; do
+    i=$((i + 1))
+    last="$w"
+    if [ "$i" -eq "$want" ]; then printf '%s' "$w"; return 0; fi
+  done
+  printf '%s' "$last"
 }
 
 # -- the redaction gate -----------------------------------------------------

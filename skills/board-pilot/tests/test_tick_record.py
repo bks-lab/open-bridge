@@ -89,7 +89,11 @@ def test_record_failure_never_converts_advance_to_skip(tmp_path):
 
     res = engine.tick()
 
-    assert engine.recorder.calls == 1               # the hook fired (red without hooks)
+    # TWO since 2026-09-02: a stage reports its start and its end. Both go through
+    # the same guarded seam, and BOTH must be allowed to fail without turning the
+    # advance into a skip. The number stays exact: a `>= 1` would also pass against
+    # an engine that reports only once, which is precisely what should be noticed.
+    assert engine.recorder.calls == 2               # both hooks fired (red without hooks)
     assert board.pipeline_of("A") == "verifying"    # the advance stood
     assert "A" in res.dispatched
     assert "A" not in res.skipped                   # and was reported as one

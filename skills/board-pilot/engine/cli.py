@@ -1,11 +1,30 @@
 """board-pilot `tick` CLI — the launchd entrypoint.
 
-One invocation = exactly ONE engine tick. There is NO internal sleep loop:
-the launchd timer (StartInterval, see assets/com.example.board-pilot.plist) is the
-clock, so a hung tick can never wedge the loop and `--once` is the only mode.
+DEFAULT: one invocation = exactly ONE engine tick. There is NO internal sleep
+loop; the launchd timer (StartInterval, see assets/com.example.board-pilot.plist)
+is the clock, so a hung tick can never wedge the loop.
+
+CHAINED: `--max-stages N` runs up to N ticks back to back, so an item already
+armed walks its stages in one invocation instead of waiting one timer interval
+per stage boundary. It is a second mode, not a replacement: the scheduled unit
+keeps ticking on its timer and remains the safety net when nobody triggers a
+chain by hand.
+
+Two properties make the chain safe to point at a live board, and both are
+tested (tests/test_chain_advance.py):
+
+  * it NEVER arms. `Engine.tick(arm=False)` skips the ARM phase outright, so a
+    chain advances what a human already released and sweeps up nothing that
+    lands in the trigger column while it runs. Arming stays one human act, one
+    card, latched by the next scheduled tick.
+  * it always terminates, and says why: the human gate, a park, a reject, a tick
+    that moved nothing, PAUSED, or the cap the caller named. The cap is
+    mandatory — an argument, never a default — because a loop against a board
+    API with no terminator is how a rate-limit bucket gets emptied.
 
 Usage:
     python3 -m engine.cli --project <path-to-project-yaml> --state-dir <dir> [--once] [--dry-run]
+    python3 -m engine.cli --project <...> --state-dir <...> --max-stages 6 [--tick-pause 2]
 
 Wiring:
     EngineConfig   ← engine.config.load_pipeline_from_yaml(project_yaml)
@@ -30,7 +49,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from typing import NoReturn
+
+# The pause between two chained ticks. Not zero: a chain that fails fast (a held
+# lock, a transient board error) would otherwise re-read the board as fast as the
+# process can loop, which is the exact shape that emptied the rate-limit bucket.
+_DEFAULT_TICK_PAUSE = 2.0
 
 
 def _die(msg: str, code: int = 2) -> NoReturn:
@@ -64,7 +89,87 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Pass dry_run=True to the StageRunner — plan stages, run no real handler.",
     )
+    p.add_argument(
+        "--max-stages",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Chain up to N ticks in this one invocation, advancing an ALREADY ARMED "
+            "item stage by stage. Never arms anything. Stops at the human gate, a "
+            "park, a reject, an idle tick, PAUSED, or N — whichever comes first."
+        ),
+    )
+    p.add_argument(
+        "--arm-first",
+        action="store_true",
+        help=(
+            "Let the OPENING tick of the chain arm, and no tick after it. For the "
+            "caller that has just performed the human release itself (the "
+            "confirmation page sets the trigger column, then calls this) and would "
+            "otherwise need a second, scheduled tick to latch the card. One "
+            "release stays one arming sweep. Requires --max-stages."
+        ),
+    )
+    p.add_argument(
+        "--report-send",
+        action="store_true",
+        help=(
+            "Actually POST to the addresses the `report:` webhook targets name. "
+            "Without it every webhook target REHEARSES: it filters events, renders "
+            "the row and the card, and prints the exact payload to stderr instead "
+            "of sending it. File and python targets are unaffected — neither has "
+            "an address to hold back."
+        ),
+    )
+    p.add_argument(
+        "--tick-pause",
+        type=float,
+        default=_DEFAULT_TICK_PAUSE,
+        metavar="SECONDS",
+        help=(
+            f"Pause between two chained ticks (default {_DEFAULT_TICK_PAUSE}). "
+            "Only meaningful with --max-stages."
+        ),
+    )
     return p
+
+
+def stop_reason(result, tick_no: int, max_ticks: int):
+    """Why the chain must stop after this tick — or None to keep going.
+
+    Pure: it decides on the TickResult and two integers, so every branch is
+    testable without a board. Order is load-bearing, because several of these are
+    true at once and the ledger should name the strongest one:
+
+      paused      the PAUSED kill-file appeared mid-chain. Read every tick by the
+                  engine itself, so `touch PAUSED` stops a running chain too.
+      gate        a human gate was reached — the draft PR is open and a PERSON
+                  decides next. Checked before `idle`, because the gated item is
+                  in `dispatched` and the tick therefore looks productive; and
+                  before the cap, so the last allowed tick still reports the gate.
+      parked      the item is out of the chain and needs a human.
+      rejected    rework was ordered. Halting hands the round back to a person
+                  rather than spending the next stage unattended; the scheduled
+                  unit picks the item up on its own timer.
+      idle        nothing moved. Not "finished" — a held lock or a transient board
+                  error looks identical from here, which is exactly why this is a
+                  STOP and not a retry: retrying is what the timer is for.
+      max_stages  the caller's cap. Last, so it never masks a real reason.
+    """
+    if result.paused:
+        return "paused"
+    if getattr(result, "gated", None):
+        return "gate"
+    if result.parked:
+        return "parked"
+    if result.rejected:
+        return "rejected"
+    if not result.dispatched:
+        return "idle"
+    if tick_no >= max_ticks:
+        return "max_stages"
+    return None
 
 
 def _load_raw(path: str) -> dict:
@@ -133,8 +238,50 @@ def resolve_binding(raw: dict) -> dict:
     }
 
 
+def _summary(project: str, result, dry_run: bool) -> dict:
+    """The one-line ledger entry for one tick. The KEY SET IS FROZEN.
+
+    Every launchd log reader, every `jq` one-liner and every plist in the fleet
+    parses this shape. `TickResult.gated` is deliberately NOT in it: it is a
+    control signal for the chain, and adding it here would change the default
+    invocation's output for a mode that invocation does not run.
+    """
+    return {
+        "project": project,
+        "paused": result.paused,
+        "armed": result.armed,
+        "dispatched": result.dispatched,
+        "skipped": result.skipped,
+        "parked": result.parked,
+        "rejected": result.rejected,
+        "dry_run": dry_run,
+        "notes": result.notes,
+    }
+
+
 def run(argv=None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.arm_first and args.max_stages is None:
+        # `--tick-pause` may sit unused in a plist harmlessly: it changes nothing.
+        # This one is a claim about ARMING, and a plain tick arms regardless — so
+        # accepting it here would make the flag look load-bearing while the
+        # behaviour came from somewhere else entirely.
+        _die("--arm-first is only meaningful with --max-stages — pass both or neither")
+
+    if args.max_stages is not None:
+        # The cap IS the terminator. A 0 or a negative is a typo, and quietly
+        # correcting it to 1 (or to "unbounded") would leave the operator believing
+        # in a bound that is not there.
+        if args.max_stages < 1:
+            _die(f"--max-stages must be at least 1 (got {args.max_stages})")
+        if args.once:
+            # Opposite claims about how many ticks run. Refusing beats letting one
+            # win silently: a plist that grew --max-stages without losing --once
+            # would otherwise run a mode nobody chose.
+            _die("--once and --max-stages contradict each other — pass exactly one")
+        if args.tick_pause < 0:
+            _die(f"--tick-pause must not be negative (got {args.tick_pause})")
 
     # Engine core (no third-party deps) — import errors here are bugs, let them surface.
     from .config import load_pipeline_from_yaml
@@ -217,7 +364,7 @@ def run(argv=None) -> int:
     # fetch_items failures inside tick() already get the quiet-note treatment;
     # this gives the preflights the same one WITHOUT widening what fails open.
     try:
-        engine = Engine(config, board, runner, args.state_dir)
+        engine = Engine(config, board, runner, args.state_dir, report_send=args.report_send)
     except GhCliError as e:
         if not e.is_transient():
             raise
@@ -236,20 +383,30 @@ def run(argv=None) -> int:
         print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
         return 0
 
-    result = engine.tick()
+    project = getattr(config, "project", "unknown")
 
-    summary = {
-        "project": getattr(config, "project", "unknown"),
-        "paused": result.paused,
-        "armed": result.armed,
-        "dispatched": result.dispatched,
-        "skipped": result.skipped,
-        "parked": result.parked,
-        "rejected": result.rejected,
-        "dry_run": args.dry_run,
-        "notes": result.notes,
-    }
-    print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    if args.max_stages is None:
+        result = engine.tick()
+        print(json.dumps(_summary(project, result, args.dry_run), ensure_ascii=False, sort_keys=True))
+        return 0
+
+    # --- chained mode ----------------------------------------------------
+    # One ledger line per tick, same as ever, plus `tick` and `stop`. The last
+    # line of a chain always carries a non-null `stop`, so the log says why the
+    # call ended instead of leaving the reader to infer it from a missing line.
+    for n in range(1, args.max_stages + 1):
+        # Never arms, unless the caller performed the release itself and said so
+        # — and then only on the opening tick. See Engine.tick and --arm-first.
+        result = engine.tick(arm=args.arm_first and n == 1)
+        stop = stop_reason(result, n, args.max_stages)
+        line = _summary(project, result, args.dry_run)
+        line["tick"] = n
+        line["stop"] = stop
+        print(json.dumps(line, ensure_ascii=False, sort_keys=True), flush=True)
+        if stop is not None:
+            break
+        if args.tick_pause > 0:
+            time.sleep(args.tick_pause)
     return 0
 
 

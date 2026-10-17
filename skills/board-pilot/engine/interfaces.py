@@ -134,3 +134,28 @@ class StageRunner(Protocol):
     """Stage execution port. Real impl dispatches `claude -p` / shell; Fake is scripted."""
 
     def run(self, stage: "Stage", item: "BoardItem") -> "StageResult": ...
+
+
+@runtime_checkable
+class Reporter(Protocol):
+    """Outward-report port: the shape `Engine._emit` fans one event out to.
+
+    This signature is not new. `Recorder.emit` (record.py) and the SpyRecorder the
+    tick tests drive the real engine with have carried it all along; naming it as a
+    port is what lets a SECOND sink hang off the same seam without the engine
+    learning a single thing about channels, addresses or delivery.
+
+    Two obligations, both structural rather than polite:
+
+    * **construction is cheap and offline.** The engine builds its sinks during
+      `Engine.__init__`, which is also where the board preflights run. A sink that
+      opened a connection or resolved a secret there would tie the engine's start to
+      a network resource, and the Recorder is deliberately built even when the
+      record is disabled, so this is a property the seam already has.
+    * **`emit` may raise.** It must not swallow: the caller wraps every sink in
+      `emit_guarded`, which is what keeps a failing sink from converting a
+      successful advance into a skip. A sink that hid its own failure would make
+      that guard untestable and the ledger wrong.
+    """
+
+    def emit(self, event: str, item: "BoardItem", *, stage=None, result=None, **fields) -> None: ...

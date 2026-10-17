@@ -289,3 +289,165 @@ counter still climbs.
 > gitleaks**. It catches token shapes it already knows. It is better than the
 > nothing that scans prose today, and it is not a secret scanner. Do not sell it
 > as one.
+
+## 9. The report seam: the same events, said outward
+
+The record above is durable and **silent**. It lands on an issue nobody is
+watching for the ten to thirty minutes an autonomous run takes, which is exactly
+the window in which the people watching (a demo audience, an on-call human) have
+no signal at all. `pipeline.report:` fans the same events onto a wire.
+
+**It is a fan-out at one seam, not a second reporter.** `Engine._emit` is the
+only place this engine says anything, and all nine state-machine call sites land
+there (`armed`, `stage_start`, stage `pass` / `retry` / `rewind`, `reject`,
+`park`, `gate`, and `gate` on the idempotency path). So an outward sink sees the
+**whole** run. A reporter bolted into `stages/*.sh` instead would see less than
+half of it: `armed`, `park` and `gate` are authored by the engine and no stage
+ever observes them, and `duration_s` / `criteria_ref` / `evidence_dir` are the
+parent process's observations, not the child's.
+
+**`stage_start` is the only one that reports a BEGINNING**, and it exists because
+every other event reports a completion. A model stage runs for minutes, so between
+two events the channel simply went quiet, and a run that was thinking looked
+exactly like a run that had wedged. Measured worst case before it existed: five
+minutes forty-seven of total silence. It is emitted immediately before
+`runner.run()`, so it carries the stage and no result yet.
+
+```
+                    ┌─ Recorder       → the sticky comment on the issue
+Engine._emit ──────►├─ StreamReporter → a channel, one message per event
+  (9 call sites)    ├─ DigestReporter → one summary, at gate or park
+                    └─ ExternalSink   → whatever the instance declared (type: python)
+```
+
+**The order is load-bearing and already correct.** At every one of the eight
+sites the durable board write lands *first* and the emit follows. A tick that
+dies in between loses a message, which is harmless. Move an emit *before* its
+latch and a re-tick posts it twice, and unlike the sticky, which is edited in
+place, a channel post is not an upsert and cannot be taken back.
+
+### Nothing leaves the process without an explicit flag
+
+A webhook target that is declared, enabled, correctly typed and correctly
+filtered still sends **nothing** unless the CLI was given `--report-send`.
+Without it the sink does everything except the send: it filters, it renders the
+row and the card, and it prints the exact payload it *would* have posted to
+stderr, prefixed `board-pilot: report dry-run`. Only the variable NAME appears
+there, never the address.
+
+The default is what makes the gate real. The engine builds its sinks in
+`__init__`, next to the board preflights, and knows nothing about command lines,
+so every library caller, every test and every scheduled tick that was not asked
+to send rehearses instead. Sending is something somebody asks for, once, per run,
+on the command line.
+
+> **This is the sharpest edge in the block, and it has already drawn blood.** The
+> flag was documented here and accepted by `build_reporters` before any caller
+> passed it. A target loaded, filtered, rendered and posted nothing — for weeks,
+> on every path, fully green. The dry-run line reads like a successful send to
+> anyone not looking for the word *dry-run*. **If a channel is silent, check this
+> flag before you check the address.** `test_report_arming.py` now measures it at
+> both ends, engine and CLI; a test at one end only would have been green for the
+> whole time the feature did not work.
+
+`type: file` and `type: python` are unaffected. A file target writes locally
+either way — no address, no secret, nothing to hold back — and an external sink
+owns its own transport and therefore its own decision to send.
+
+### A sink this engine did not write (`type: python`)
+
+Some instances need to report somewhere this engine has no business knowing
+about: a log index with its own schema, a chat card with its own buttons, a
+ticket system. `type: python` names a `factory: "<module or file>:<attribute>"`
+and optional `options:`. The engine resolves it at load, calls it once, checks
+the result has a callable `emit`, and wraps it in `ExternalSink`.
+
+The wrapper is not ceremony. Without it `events:` would be a key that works for a
+webhook and a file and silently does nothing for exactly one target type, which is
+the same class of bug as an ignored key. Beyond that one filter the engine knows
+nothing about the object: no transport, no renderer, no card. The instance's
+object is all three.
+
+Resolution is deliberately strict at LOAD rather than at the first emit, for the
+reason the whole block is validated at load (below): at runtime a broken sink is
+a quiet channel, and a quiet channel during a live run is indistinguishable from
+an engine that is thinking.
+
+### The card: the same row, shaped for a room
+
+A `card:` block under a target adds a second rendering beside the text row: an
+adaptive card with a coloured band, a progress bar, the same facts, and one
+button. Without the block the transport is called with **one** argument, exactly
+as before this existed, so a wire written before cards keeps working untouched.
+
+It invents nothing. Every value it prints comes from `record.row_fields`, the
+same function the sticky and the text row read, which is what keeps the board and
+the channel from disagreeing (§ One source, two renderings above — the card is a
+third rendering of that one source, not a second source).
+
+Three things about it are load-bearing:
+
+- **`labels:` carries the vocabulary.** This skill is `scope: core` and ships
+  into whatever repo it drives; the language of a channel belongs to the instance
+  that owns the channel, not to the engine.
+- **The count has ONE source and it is `len(chain)`**, the engine's own stage
+  list. `validate_report` refuses a `step` or `armed` label carrying a literal
+  digit, because a number written into prose is a second declaration of the
+  count, and the second one is the one that goes stale. This is a scar: the same
+  count once lived as three declarations in two files, one of them prose, and the
+  channel showed six while the declared source said five.
+- **`incident` is the constant band; `incident_env` names a VARIABLE holding it.**
+  The common case is that the run's id is minted outside this engine (something
+  raised an alarm, invented `LOOP-001`, and spawned the run with it in the
+  environment). A literal in the project YAML would freeze the FIRST incident into
+  every later run's cards, perfectly rendered and wrong. Order is literal, then
+  environment, then the item reference; an unset variable never degrades to the
+  variable's own name or to `None`, both of which look like a value on a
+  projector.
+
+### What keeps a sink from stopping the pipeline
+
+Nothing new. `emit_guarded` already took its receiver as a **parameter**, so its
+invariant (*a report never decides whether work advances*) held per receiver
+before a second one existed. Each sink is guarded **separately**; one shared
+`try` would let the first failure swallow every later sink in the same emit. A
+failure goes to `res.notes` (the launchd ledger) naming the sink, and never to
+the board.
+
+### One source, two renderings
+
+Every sink renders from `record.row_fields`, the same function the sticky's
+table row is built from. The comment and the channel therefore cannot contradict
+each other, and the three poisoned values stay unreachable from both:
+`result.notes` (argv + stderr, § 7), `item.body` (written by strangers on a
+public repo) and `result.tokens` (hardcoded 0, § 6).
+
+Outward text is **always** scrubbed. `record.scan: off` is a decision about the
+board comment, which sits behind a fail-closed PR gate; a wire has no backstop
+behind it, so the reporters do not read that knob.
+
+### stream vs digest: a policy of the sink, not of the engine
+
+A channel and an end-of-run summary are one event stream with two send times:
+`mode: stream` sends per event, `mode: digest` collects and sends when it itself
+sees one of its `flush_on` events. The engine calls the same `emit` at all eight
+points and knows nothing about the difference. That is the same division the
+Recorder already demonstrates, where `armed` opens a new sticky and every other event
+edits the existing one without the caller ever hearing about it.
+
+The digest spools to a **file** under `state_dir`, beside `prev.json` and
+`attempts.json`. One process is exactly one tick and launchd is the loop, so an
+in-memory collector would lose every tick that did not itself reach the gate.
+
+### Why the block is validated at load
+
+At runtime a broken target is nearly invisible: `emit_guarded` files the failure
+in the ledger and the run carries on, so a typo reads as "the channel is quiet",
+which during a live run is indistinguishable from "the automation is thinking".
+`validate_report` therefore refuses an unknown key, type, mode or event, a digest
+that can never flush, a stream carrying `flush_on`, and a target whose transport
+keys do not match its type.
+
+**`url_env` is a variable NAME and the loader enforces it.** A value containing
+`:` or `/` is rejected. This skill is `scope: core` and ships into the repo it
+drives; a webhook address in this file is a leak with a valid schema.

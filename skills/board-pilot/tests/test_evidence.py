@@ -247,3 +247,49 @@ def test_verdict_still_read_when_stage_declares_reject_edge(tmp_path):
 
     assert res.verdict == "reject"
     assert res.annotation == "add a test"
+
+
+# -- the failure NOTE, which is a different stream question ----------------
+# The tee above keeps BOTH streams for a stage that declares `evidence: true`.
+# `result.notes` is the short line that reaches the board comment and the channel
+# card, and it kept only stderr. On 2026-09-03 a stage failed with an empty stderr
+# and its whole diagnosis on stdout, so the board read `rc=1` and nothing else.
+def test_notes_fall_back_to_stdout_when_a_failing_stage_left_stderr_empty(tmp_path):
+    """A failing child does not have to use stderr, and the claude CLI does not.
+
+    The discriminator is that the message is on stdout ONLY: a note built from
+    stderr alone passes an "is it non-empty" check identically and still says
+    nothing.
+    """
+    runner = _runner(tmp_path)
+    stage = Stage(id="s", run=_py("import sys; print(\"API Error: 529 Overloaded\"); sys.exit(1)"),
+                  on_success="next")
+    item = BoardItem(id="I1", title="t", url="u", status="s", pipeline="p")
+
+    res = runner.run(stage, item)
+
+    assert res.ok is False
+    assert "529" in res.notes, (
+        f"the diagnosis was dropped because it came on stdout: {res.notes!r}")
+
+
+def test_notes_still_prefer_stderr_when_a_stage_writes_both(tmp_path):
+    """The counter-test: stdout is a FALLBACK, not a second channel.
+
+    A stage that logs progress to stdout and its error to stderr must not have the
+    error pushed out of a 2000-char note by its own chatter.
+    """
+    runner = _runner(tmp_path)
+    stage = Stage(
+        id="s",
+        run=_py("import sys; print(\"progress chatter\"); "
+                "sys.stderr.write(\"the real reason\"); sys.exit(3)"),
+        on_success="next")
+    item = BoardItem(id="I1", title="t", url="u", status="s", pipeline="p")
+
+    res = runner.run(stage, item)
+
+    assert res.ok is False
+    assert "rc=3" in res.notes and "the real reason" in res.notes
+    assert "progress chatter" not in res.notes, (
+        "stdout crowded into a note that already had the reason")

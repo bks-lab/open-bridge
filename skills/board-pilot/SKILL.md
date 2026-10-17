@@ -118,6 +118,31 @@ pipeline:
     dir: "{state_dir}/evidence/{item_id}"
     require_deterministic: true   # an agent:/skill:/workflow: stage may NEVER be an evidence source
 
+  report:                         # the outward seam — references/transparency.md § 9
+    targets:                      # omit the block entirely and NO sink is built or called
+      - name: channel             # WEBHOOK TARGETS REHEARSE unless the CLI got
+        type: webhook             #   --report-send. See the flag below; a silent
+        mode: stream              #   channel is this flag far more often than the address.
+        events: [armed, stage_start, stage, reject, park, gate]  # this target's OWN
+        url_env: BOARD_PILOT_WEBHOOK                             # filter, not record's
+        card:                     # optional SECOND rendering: an adaptive card.
+          incident: ""            #   Omit the block and the transport is called with
+          incident_env: RUN_ID    #   one argument, exactly as before it existed.
+          sender: "board-pilot"   #   incident_env: a VARIABLE NAME holding the run's id
+          labels:                 #   the channel's vocabulary — this skill is scope: core
+            step: "Step {n} of {m}"   # {m} = len(stages). A literal digit is REFUSED
+      - name: summary
+        type: webhook
+        mode: digest
+        flush_on: [gate, park]    # must be a subset of this target's `events`
+        url_env: BOARD_PILOT_WEBHOOK
+      - name: journal             # a sink this engine did not write. No transport,
+        type: python              #   no renderer, no card: your object is all three.
+        factory: "mypkg.sinks:Journal"   # "<module or file>:<attribute>", called once
+        options: { index: runs }         #   at load; the result needs a callable .emit
+        events: [gate, park]      # the ONE thing carried over, so `events:` means the
+                                  #   same for every target type
+
   stages:
     - name: spec                  # the stage ID — the attribution key in the record
       run: "cmd:bash skills/board-pilot/stages/spec.sh"
@@ -155,9 +180,11 @@ Handler refs are dispatched by the real `ClaudeStageRunner`: `skill:` /
 argv subprocess. **Board-sourced values are always passed as argv, never
 interpolated into a shell string.**
 
-Unknown keys under `record:` / `evidence:` are **rejected at load**, naming the
-offender: a knob that is silently ignored is invisible, and silently ignoring
-`require_issue` arms draft cards.
+Unknown keys under `record:` / `evidence:` / `report:` are **rejected at load**,
+naming the offender: a knob that is silently ignored is invisible, and silently
+ignoring `require_issue` arms draft cards. `report:` needs that check most of all,
+because at runtime every sink is wrapped in `emit_guarded` and a broken target
+degrades to a ledger line while the channel stays quiet.
 
 ### Two traps in the grammar
 
@@ -289,6 +316,14 @@ tests) and a real adapter (for production):
 - **`StageRunner`** — `FakeStageRunner` (scripted, records every call) ·
   `ClaudeStageRunner` (detached `claude -p` / harness / argv).
 
+A third port, `Reporter`, is where the engine says things OUTWARD. `Engine._emit`
+is the one method this module reports through, all eight state-machine call sites
+land there, and it fans each event out to the sticky-comment `Recorder` plus every
+sink declared in `report:`. Each sink is guarded separately, so a channel that is
+down can lose a message but can never stop a run. Every sink renders from the same
+`record.row_fields` the board comment does, so the two can never disagree.
+References: `references/transparency.md` § 9.
+
 `engine/tick.py` is the whole state machine; everything else is config, guards,
 or I/O. Tests inject the Fakes, so the entire process (trigger column → stages →
 draft PR → STOP) runs deterministically with zero side effects.
@@ -309,9 +344,11 @@ evidence tee, redaction, the record layer, the `verify.sh` exit-code contract
 size, bounces-gated comment read-back, per-process field-list caching, the
 transient-vs-permanent preflight split (`test_rate_limit.py`).
 
-**339 tests across 31 files, ~27 s, no network** (measured 2026-07-16 — re-run it
+**410 tests across 33 files, ~20 s, no network** (measured 2026-09-02 — re-run it
 rather than trusting this line; a stale count here is exactly the drift this
-section once carried).
+section once carried). `test_tick_report.py` + `test_report_config.py` cover the
+outward seam: no config means no sink, one message per stage, a throwing sink that
+cannot stop the run, one summary at the end, and one source behind both renderings.
 
 ## Install on a scheduler host (launchd / systemd / cron)
 
@@ -319,6 +356,67 @@ The poller is a cheap cron-style tick — run it on any always-on host. It is a
 scheduled `--once` job (~60 s interval), not a long-lived daemon: each tick is
 independent and idempotent, so a missed or overlapping run is harmless (the lock
 + durable `Pipeline` field absorb it).
+
+### Chaining stages in one call (`--max-stages N`)
+
+A scheduled tick advances one item by one stage, so a five-stage pipeline costs
+four full timer intervals of pure waiting between stages. `--max-stages N` runs
+up to N ticks back to back in ONE invocation, walking an item that is **already
+armed** through its stages without waiting on the clock:
+
+```bash
+python3 -m engine.cli --project <yaml> --state-dir <dir> --max-stages 8 [--tick-pause 2]
+```
+
+It is a second mode, not a replacement. Leave the scheduled unit exactly as it
+is: it stays the safety net for the times nobody triggers a chain by hand, and
+it remains the **only** thing that arms — unless you pass `--arm-first`.
+
+**`--arm-first` (requires `--max-stages`)** lets the OPENING tick of the chain
+arm, and no tick after it. It is for the caller that has just performed the human
+release ITSELF — a confirmation page that sets the trigger column and then invokes
+the chain — and would otherwise need a second, scheduled tick before anything
+moves. One release stays one arming sweep. Without `--max-stages` it is refused
+rather than silently ignored: on its own it would describe a mode that does not
+exist.
+
+**`--report-send`** actually POSTs to the addresses the `report:` webhook targets
+name. Without it every webhook target rehearses: it filters, renders the row and
+the card, and prints the payload to stderr instead of sending it. File and python
+targets are unaffected. This flag is easy to forget and its absence is invisible,
+so if a channel is quiet, look here first (§ 9 of `references/transparency.md`
+carries the full account of why).
+
+Four properties, each pinned by `tests/test_chain_advance.py`:
+
+- **It never arms.** The chain calls `Engine.tick(arm=False)`, which skips the
+  ARM phase outright. Arming stays one human act on one card: a card dragged
+  into the trigger column while a chain is running is not swept up by it, and
+  the next scheduled tick latches it as always.
+- **It always terminates, and the ledger says why.** One JSON line per tick as
+  ever, plus `tick` and `stop`; the last line of a chain always carries a
+  non-null `stop`: `gate` · `parked` · `rejected` · `idle` · `paused` ·
+  `max_stages`. `gate` outranks `max_stages`, so a chain that ends at the human
+  gate on its last allowed tick says so rather than inviting a pointless re-run.
+- **The cap is mandatory**, an argument and never a default. A loop against a
+  board API with no terminator is how a rate-limit bucket gets emptied. It is
+  bounded twice on purpose (the loop range and the stop reason), and both halves
+  are tested.
+- **`touch PAUSED` stops a chain already in flight**, because the engine
+  re-reads the kill file at the top of every tick. This matters more here than
+  anywhere else: a hand-run chain is the one caller that shares a state dir with
+  the scheduled unit, and PAUSED is the only handle that reaches both.
+
+Two traps when running it by hand rather than from the unit:
+
+- **`BP_VERIFY_CMD` lives in the unit env, not in the shim.** A hand-typed
+  invocation without it parks at `verify`, fail-closed by design (a stage that
+  cannot verify must never report green), but it looks like a pipeline defect.
+  Export it alongside the command.
+- **The default invocation is byte-frozen.** Without `--max-stages` the summary
+  line keeps its exact nine keys, so every existing log reader and plist in the
+  fleet still parses it. `--once` and `--max-stages` contradict each other and
+  are refused rather than silently resolved.
 
 ### Board prerequisites (do these FIRST — the engine refuses to start without them)
 

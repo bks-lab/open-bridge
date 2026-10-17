@@ -553,9 +553,12 @@ def test_unselected_event_writes_nothing():
 
 
 def test_unknown_event_raises_naming_it():
+    """Until 2026-09-02 the example here WAS `stage_start`, and then exactly that
+    became a real event. A placeholder that one day turns real makes this test
+    silently green, so it now uses a word that can never become one."""
     with pytest.raises(ValueError) as e:
-        _recorder(FakeSink()).emit("stage_start", _item(issue_number=114))
-    assert "stage_start" in str(e.value)
+        _recorder(FakeSink()).emit("kein_ereignis_dieses_motors", _item(issue_number=114))
+    assert "kein_ereignis_dieses_motors" in str(e.value)
 
 
 def test_scan_off_posts_the_text_unredacted():

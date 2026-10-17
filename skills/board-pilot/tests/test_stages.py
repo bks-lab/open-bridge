@@ -289,6 +289,13 @@ case "$1 $2" in
   "repo view") echo "main" ;;
   "pr list")   echo "" ;;
   "pr create") echo "https://github.com/example/repo/pull/118" ;;
+  # Answered GREEN so the tests around this stub keep measuring what they were
+  # written for (body over stdin, no issue comment, no GH_TOKEN, PR reuse). The
+  # checks themselves have their own three tests further down; a silent default
+  # here would make those the only place the gate is measured, which is fine, and
+  # a RED default here would make every one of these tests fail for a reason that
+  # has nothing to do with what it asserts.
+  "pr checks") echo '[{{"name":"ruff and pytest","state":"SUCCESS"}}]' ;;
 esac
 """,
     )
@@ -339,9 +346,16 @@ def test_pr_opens_draft_over_stdin_with_the_honesty_labels(env, repo, tmp_path):
     assert r.returncode == 0, r.stderr
     calls = log.read_text()
 
-    assert "--draft" in calls, "board-pilot never opens a ready PR — the merge is human"
+    assert "--draft" in calls, (
+        "board-pilot OPENS a draft: `ready` is a separate claim, made further down "
+        "only once the suite has answered. The merge itself stays human either way")
     assert "--body-file -" in calls, "the body must ride stdin, never argv"
-    body = calls.split("STDIN<<<")[-1].split(">>>")[0]
+    # The block belonging to `pr create`, not the LAST one. Since the stage also
+    # calls `pr checks` and `pr ready` afterwards, the last stdin block is empty,
+    # and taking it would silently assert every honesty label against "".
+    erzeugen = [b for b in calls.split("ARGV: ") if b.startswith("pr create")]
+    assert erzeugen, "gh pr create was never called: " + calls
+    body = erzeugen[0].split("STDIN<<<")[-1].split(">>>")[0]
     for label in (
         "[machine — git + GitHub PR-API, independent]",
         "[machine-executed, agent-authored]",
@@ -404,6 +418,7 @@ case "$1 $2" in
   "repo view") echo "main" ;;
   "pr list")   echo "https://github.com/example/repo/pull/99" ;;
   "pr create") echo "SHOULD-NOT-HAPPEN" ;;
+  "pr checks") echo '[{{"name":"ruff and pytest","state":"SUCCESS"}}]' ;;
 esac
 """,
     )
@@ -750,3 +765,400 @@ def test_no_instance_specific_content_in_a_core_skill(name):
     body = (STAGES / name).read_text()
     for leak in ("/Users/", "your-org", "alice", "homeserver", "open-bridge"):
         assert leak not in body, f"{name} hardcodes instance-specific content: {leak!r}"
+
+
+# ------------------------------------------------- the reviewer's own words
+# Measured on the first full live run, 2026-09-02: `review` ran a real model for
+# 4m13s and then exited 1 with "reviewer emitted no parseable JSON verdict". The
+# operator could not see WHAT the reviewer had said, because the raw output lives
+# in a mktemp file that the EXIT trap deletes — on the failure path too. So the
+# three cases an operator must tell apart (the model refused, the model wrote
+# prose, the CLI itself errored) all look identical: rc=1 and one sentence.
+#
+# The raw is a CLAIM, never evidence, and the dossier already labels verdicts that
+# way. But an unreadable claim cannot even be judged.
+
+def _reviewer_saying(bin_dir, text):
+    """A claude stub that answers with exactly `text`."""
+    return _stub(bin_dir, "claude-review", 'printf %s ' + repr(text).replace("'", '"') + '\n')
+
+
+def test_a_reviewer_without_a_verdict_leaves_its_words_behind(env, repo, tmp_path):
+    """The failure path keeps the raw output. This is the whole point: rc=1 plus a
+    one-line reason is not enough to decide whether to re-run, fix the prompt, or
+    look at the CLI."""
+    bins = tmp_path / "bin"
+    bins.mkdir(exist_ok=True)
+    claude = _stub(bins, "claude-noverdict",
+                   'printf "%s" "I read the diff and it looks fine to me."\n')
+
+    r = _run("review.sh", {**env, "BP_CLAUDE": str(claude)}, repo)
+
+    assert r.returncode != 0, "an unparseable verdict passed the stage"
+    kept = Path(env["EVIDENCE_DIR"]) / "review" / "reviewer-output.txt"
+    assert kept.exists(), (
+        "The reviewer's raw output was destroyed on the failure path. An operator "
+        "then cannot tell a refusal from prose from a CLI error, which is exactly "
+        "the situation this stage failed in on 2026-09-02. stderr was: " + r.stderr)
+    assert "looks fine to me" in kept.read_text(encoding="utf-8")
+
+
+def test_a_passing_reviewer_also_leaves_its_words_behind(env, repo, tmp_path):
+    """CONTROL. Without this the test above would also pass against a stage that
+    only ever writes the file when it fails — and the pass path is where the
+    dossier quotes the reviewer, so its words matter there too."""
+    bins = tmp_path / "bin"
+    bins.mkdir(exist_ok=True)
+    claude = _stub(bins, "claude-pass",
+                   'printf "%s" \'{"verdict":"pass","annotation":"meets the standard"}\'\n')
+
+    r = _run("review.sh", {**env, "BP_CLAUDE": str(claude)}, repo)
+
+    assert r.returncode == 0, r.stderr
+    kept = Path(env["EVIDENCE_DIR"]) / "review" / "reviewer-output.txt"
+    assert kept.exists(), "the pass path keeps no raw output"
+    assert "meets the standard" in kept.read_text(encoding="utf-8")
+
+
+# ------------------------------------------- the verdict inside the prose
+# Measured 2026-09-02: two consecutive live review runs, four minutes of model
+# time each, both lost to "reviewer emitted no parseable JSON verdict".
+#
+# The validator's comment promises it takes "the LAST balanced object". The regex
+# it uses is `\{.*\}` with DOTALL, which is GREEDY: it produces exactly ONE match,
+# spanning from the first `{` in the whole answer to the last `}`. It finds no
+# balanced object at all. So an answer that mentions a brace anywhere before its
+# verdict -- a criteria section, a code fragment, a JSON example -- takes the
+# whole preamble into the match and fails to parse, and a reviewer that did its
+# work correctly is reported as one that emitted nothing.
+
+def _reviewer(bin_dir, name, answer):
+    body = "cat <<'REVIEWER_ANSWER'\n" + answer + "\nREVIEWER_ANSWER\n"
+    return _stub(bin_dir, name, body)
+
+
+@pytest.mark.parametrize("name,answer", [
+    ("prose-around", 'The standard has three points {section 2}, all met.\n\n'
+                     '{"verdict": "pass", "annotation": "meets the standard"}'),
+    ("fenced", 'Here is my verdict.\n\n```json\n'
+               '{"verdict": "pass", "annotation": "meets the standard"}\n```'),
+    ("two-objects", 'Shape asked for: {"verdict": "...", "annotation": "..."}\n\n'
+                    'My answer:\n{"verdict": "pass", "annotation": "meets the standard"}'),
+    ("bare", '{"verdict": "pass", "annotation": "meets the standard"}'),
+])
+def test_a_verdict_survives_the_prose_around_it(env, repo, tmp_path, name, answer):
+    """Four shapes a model really produces. Only the last one worked before."""
+    bins = tmp_path / "bin"
+    bins.mkdir(exist_ok=True)
+    claude = _reviewer(bins, "claude-" + name, answer)
+
+    r = _run("review.sh", {**env, "BP_CLAUDE": str(claude)}, repo)
+
+    assert r.returncode == 0, (
+        "the reviewer answered in the '" + name + "' shape and the stage refused it: "
+        + r.stderr)
+    verdict = json.loads(Path(env["VERDICT_FILE"]).read_text(encoding="utf-8"))
+    assert verdict["verdict"] == "pass"
+    assert verdict["annotation"] == "meets the standard"
+
+
+def test_an_answer_with_no_verdict_at_all_is_still_refused(env, repo, tmp_path):
+    """CONTROL. Loosening the scan must not turn 'no verdict' into a pass: that
+    would let a reviewer that refused to review wave a change through to a PR."""
+    bins = tmp_path / "bin"
+    bins.mkdir(exist_ok=True)
+    claude = _reviewer(bins, "claude-none",
+                       'I looked at {this} and {that} and I have no opinion.')
+
+    r = _run("review.sh", {**env, "BP_CLAUDE": str(claude)}, repo)
+
+    assert r.returncode != 0, "an answer without any verdict was accepted"
+    assert "verdict" in (r.stderr + r.stdout).lower()
+
+
+# ------------------------------------------- a PR nobody has tested is not ready
+# The stage opened a DRAFT and stopped, which was right while nothing downstream
+# read the checks: a draft cannot be merged by accident. But the human gate that
+# follows is now a single tap, and a tap on an untested change is exactly the
+# accident the draft was protecting against. So the stage waits for the checks it
+# just triggered and only then takes the draft flag off.
+#
+# The load-bearing half is the RED path. "Ready" is a claim about evidence; making
+# it on a failing suite would put a broken change one tap from production.
+
+def _gh_checks_stub(bin_dir: Path, log: Path, *, checks: str, name="gh") -> Path:
+    """A gh stub whose `pr checks --json` answers with `checks` (a JSON array)."""
+    return _stub(
+        bin_dir, name,
+        f"""
+IN=""
+if [ ! -t 0 ]; then IN=$(cat); fi
+{{ echo "ARGV: $*"; }} >> {log}
+case "$1 $2" in
+  "repo view") echo "main" ;;
+  "pr list")   echo "" ;;
+  "pr create") echo "https://github.com/example/repo/pull/118" ;;
+  "pr checks") echo '{checks}' ;;
+esac
+""",
+    )
+
+
+_GREEN = '[{"name":"ruff and pytest","state":"SUCCESS"},{"name":"deploy","state":"SKIPPED"}]'
+_RED = '[{"name":"ruff and pytest","state":"FAILURE"}]'
+_PENDING = '[{"name":"ruff and pytest","state":"PENDING"}]'
+
+
+def test_a_green_pr_is_handed_over_ready_not_as_a_draft(env, repo, tmp_path):
+    log = tmp_path / "gh.log"
+    gh = _gh_checks_stub(tmp_path / "bin", log, checks=_GREEN)
+
+    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "20"}, repo)
+
+    assert r.returncode == 0, r.stderr
+    argv = log.read_text(encoding="utf-8")
+    assert "pr ready" in argv, (
+        "The stage left the PR as a draft although every check passed. The human "
+        "gate is one tap now, and a draft cannot be merged: the chain would stop "
+        "at a PR nobody can act on. Calls were:\n" + argv)
+
+
+def test_a_red_pr_stays_a_draft_and_fails_the_stage(env, repo, tmp_path):
+    """THE assertion of this change. Ready is a claim about evidence."""
+    log = tmp_path / "gh.log"
+    gh = _gh_checks_stub(tmp_path / "bin", log, checks=_RED)
+
+    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "20"}, repo)
+
+    assert r.returncode != 0, "a PR with a failing check was reported as a pass"
+    argv = log.read_text(encoding="utf-8")
+    assert "pr ready" not in argv, (
+        "A failing suite was marked ready for review, which puts a broken change "
+        "one tap from production. Calls were:\n" + argv)
+    assert "ruff and pytest" in (r.stderr + r.stdout), (
+        "the failing check is not named, so nobody can act on it: " + r.stderr)
+
+
+def test_checks_that_never_finish_end_the_wait_rather_than_the_stage(env, repo, tmp_path):
+    """A run that hangs must not hang the chain. The stage stops waiting, says so,
+    and leaves the draft: unknown is not green, and it is not red either."""
+    log = tmp_path / "gh.log"
+    gh = _gh_checks_stub(tmp_path / "bin", log, checks=_PENDING)
+
+    import time as _t
+    started = _t.monotonic()
+    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "6"}, repo)
+    took = _t.monotonic() - started
+
+    assert took < 40, f"the stage waited {took:.0f}s past its own 6s budget"
+    assert r.returncode != 0, "a PR whose checks never finished was reported as a pass"
+    assert "pr ready" not in log.read_text(encoding="utf-8"), (
+        "a PR with unfinished checks was marked ready")
+
+
+# ------------------------------------- a check that has not registered YET
+# Introduced by PR #17 on 2026-09-03, and caught before it ever ran. Until then
+# `on: push:` had no branch filter, so the engine's own push started a workflow
+# minutes before the PR existed: by the time `pr create` returned, `gh pr checks`
+# already had rows. #17 removed that duplicate run, which is right — it halved the
+# CI work and stopped the closing mail from listing every check twice — but it
+# moved the FIRST run to the moment the PR is opened. Between `pr create` and
+# GitHub registering the check run there is a window of a few seconds in which the
+# honest answer is "none yet".
+#
+# The loop treated NONE as a terminal state and failed the stage. That is right
+# for a repo with no workflow at all and wrong for a race, and the two are
+# indistinguishable in a single sample. So NONE is now waited out for a bounded
+# grace and only then reported, which keeps the real assertion intact: an untested
+# change is never handed over ready.
+
+def _gh_late_checks_stub(bin_dir: Path, log: Path, marker: Path, *, quiet_calls: int,
+                         then: str, name="gh") -> Path:
+    """A gh stub that answers `[]` for the first `quiet_calls`, then `then`."""
+    return _stub(
+        bin_dir, name,
+        f"""
+IN=""
+if [ ! -t 0 ]; then IN=$(cat); fi
+{{ echo "ARGV: $*"; }} >> {log}
+case "$1 $2" in
+  "repo view") echo "main" ;;
+  "pr list")   echo "" ;;
+  "pr create") echo "https://github.com/example/repo/pull/118" ;;
+  "pr checks")
+     N=0
+     [ -f {marker} ] && N=$(cat {marker})
+     N=$((N + 1)); echo "$N" > {marker}
+     if [ "$N" -le {quiet_calls} ]; then echo '[]'; else echo '{then}'; fi
+     ;;
+esac
+""",
+    )
+
+
+def test_a_check_that_registers_a_moment_late_is_waited_for(env, repo, tmp_path):
+    """THE REGRESSION #17 WOULD HAVE CAUSED. The PR is opened, GitHub has not
+    attached the run yet, and one empty sample must not condemn the change."""
+    log = tmp_path / "gh.log"
+    gh = _gh_late_checks_stub(tmp_path / "bin", log, tmp_path / "n",
+                              quiet_calls=2, then=_GREEN)
+
+    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "30",
+                       "BP_PR_CHECK_PAUSE": "1"}, repo)
+
+    assert r.returncode == 0, (
+        "the stage gave up while the check run was still being attached: "
+        + r.stderr)
+    assert "pr ready" in log.read_text(encoding="utf-8"), (
+        "a green PR stayed a draft because the first sample was empty")
+
+
+def test_a_pr_with_no_checks_at_all_still_fails(env, repo, tmp_path):
+    """THE COUNTER-TEST, and the one that must not be softened. A repo with no
+    workflow answers `[]` forever, and an untested change is not ready."""
+    log = tmp_path / "gh.log"
+    gh = _gh_checks_stub(tmp_path / "bin", log, checks="[]")
+
+    import time as _t
+    started = _t.monotonic()
+    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "6",
+                       "BP_PR_CHECK_PAUSE": "1"}, repo)
+    took = _t.monotonic() - started
+
+    assert r.returncode != 0, "a PR with no checks at all was handed over ready"
+    assert "pr ready" not in log.read_text(encoding="utf-8")
+    assert took < 40, f"the stage waited {took:.0f}s past its own 6s budget"
+
+
+# ---------------------------------------------------- transient API failure
+# 2026-09-03, live run LOOP-005: `spec` died after 4m31s with rc=1 and the board
+# said only that. The cause was `API Error: 529 Overloaded` — a provider-side
+# failure the CLI prints as ORDINARY OUTPUT before exiting 1, after ~4 minutes of
+# its own internal retries. Two consequences, both tested here: an outer attempt
+# is what survives a provider incident that outlives one CLI invocation, and the
+# provider's own sentence has to leave the stage or nobody can tell an overloaded
+# provider from a model that wrote nonsense.
+_OVERLOADED = ("API Error: 529 Overloaded. This is a server-side issue, usually "
+               "temporary — try again in a moment.")
+_REFUSAL = "I will not write a plan for this."
+_A_PLAN = "# Plan\n\n## What\n\nline three\n\nline five\n\nline seven\n"
+
+
+def _flaky_claude(bin_dir: Path, counter: Path, *, fail_times: int,
+                  message: str, then: str = _A_PLAN) -> Path:
+    """A claude that fails `fail_times` times with `message` ON STDOUT, then works.
+
+    stdout is the whole point: a stub that wrote the message to stderr would test a
+    failure mode the real CLI does not have, and would pass against code that never
+    looks at what the process printed.
+    """
+    body = (
+        'n=0\n'
+        'if [ -f "$BP_TEST_COUNTER" ]; then n="$(cat "$BP_TEST_COUNTER")"; fi\n'
+        'n=$((n + 1))\n'
+        'printf %s "$n" > "$BP_TEST_COUNTER"\n'
+        'if [ "$n" -le "$BP_TEST_FAILS" ]; then\n'
+        '  printf %s\\\\n "$BP_TEST_MESSAGE"\n'
+        '  exit 1\n'
+        'fi\n'
+        'printf %s\\\\n "$BP_TEST_THEN"\n'
+    )
+    p = _stub(bin_dir, "claude", body)
+    # Values ride in the env, not spliced into the body: a message containing a
+    # quote would otherwise rewrite the stub instead of being printed by it.
+    _flaky_claude.env = {                                    # type: ignore[attr-defined]
+        "BP_TEST_COUNTER": str(counter),
+        "BP_TEST_FAILS": str(fail_times),
+        "BP_TEST_MESSAGE": message,
+        "BP_TEST_THEN": then,
+    }
+    return p
+
+
+def _calls(counter: Path) -> int:
+    return int(counter.read_text()) if counter.exists() else 0
+
+
+def test_r1_a_transient_provider_failure_is_retried_and_the_next_attempt_lands(
+        env, repo, tmp_path):
+    """THE TEST THIS FILE GREW FOR. One 529 must not end a run.
+
+    The discriminator is the exit code AND the plan: a stage that merely survived
+    would return 0 with nothing written, and `implement` would then build on air.
+    """
+    counter = tmp_path / "n"
+    claude = _flaky_claude(tmp_path / "bin", counter, fail_times=1,
+                           message=_OVERLOADED)
+
+    r = _run("spec.sh", {**env, "BP_CLAUDE": str(claude),
+                         "BP_CLAUDE_BACKOFF": "0 0 0",
+                         **_flaky_claude.env}, repo)
+
+    assert r.returncode == 0, f"a single 529 still killed the stage: {r.stderr}"
+    assert _calls(counter) == 2, f"the stage tried {_calls(counter)}x, expected 2"
+    plan = Path(env["EVIDENCE_DIR"]) / "spec" / "plan.md"
+    assert plan.exists() and plan.read_text().strip(), "survived without a plan"
+
+
+def test_r2_a_permanent_failure_is_not_retried(env, repo, tmp_path):
+    """THE COUNTER-TEST, and the one that must not be softened.
+
+    A model that refuses, or a prompt that is wrong, fails identically on every
+    attempt. Retrying it burns the budget three times over and buries the defect
+    under two more identical failures. Only a RECOGNISED provider error retries.
+    """
+    counter = tmp_path / "n"
+    claude = _flaky_claude(tmp_path / "bin", counter, fail_times=99,
+                           message=_REFUSAL)
+
+    r = _run("spec.sh", {**env, "BP_CLAUDE": str(claude),
+                         "BP_CLAUDE_BACKOFF": "0 0 0",
+                         **_flaky_claude.env}, repo)
+
+    assert r.returncode != 0, "a refusing model was treated as a plan"
+    assert _calls(counter) == 1, (
+        f"a permanent failure was retried {_calls(counter)}x — a retry loop that "
+        "fires on anything is a budget leak, not a safety net")
+
+
+def test_r3_the_provider_sentence_leaves_the_stage_when_every_attempt_fails(
+        env, repo, tmp_path):
+    """The reason must be READABLE, or the board says `rc=1` and means nothing.
+
+    stderr specifically: the engine's failure path reads that stream, and the
+    stage's own stdout is swallowed by the command substitution that captures the
+    plan. This is the seam where the 2026-09-03 diagnosis was lost.
+    """
+    counter = tmp_path / "n"
+    claude = _flaky_claude(tmp_path / "bin", counter, fail_times=99,
+                           message=_OVERLOADED)
+
+    r = _run("spec.sh", {**env, "BP_CLAUDE": str(claude),
+                         "BP_CLAUDE_TRIES": "3", "BP_CLAUDE_BACKOFF": "0 0 0",
+                         **_flaky_claude.env}, repo)
+
+    assert r.returncode != 0
+    assert _calls(counter) == 3, (
+        f"tried {_calls(counter)}x, but BP_CLAUDE_TRIES said 3")
+    assert "529" in r.stderr, (
+        "the stage died without saying why — this is exactly the rc=1 that reached "
+        f"the board on 2026-09-03. stderr was: {r.stderr!r}")
+
+
+def test_r4_the_wait_between_attempts_is_the_declared_one(env, repo, tmp_path):
+    """The backoff is a real pause, not a comment. Measured, because a retry that
+    fires instantly is the one the CLI already did for us and adds nothing."""
+    import time as _t
+    counter = tmp_path / "n"
+    claude = _flaky_claude(tmp_path / "bin", counter, fail_times=1,
+                           message=_OVERLOADED)
+
+    started = _t.monotonic()
+    r = _run("spec.sh", {**env, "BP_CLAUDE": str(claude),
+                         "BP_CLAUDE_BACKOFF": "2 0 0",
+                         **_flaky_claude.env}, repo)
+    took = _t.monotonic() - started
+
+    assert r.returncode == 0, r.stderr
+    assert took >= 2, f"the declared 2s pause was not taken (took {took:.1f}s)"
+    assert took < 30, f"waited {took:.0f}s for a 2s backoff"
