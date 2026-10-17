@@ -221,6 +221,18 @@ def test_jev_criteria_come_from_config_and_a_bad_scale_keeps_the_default(tmp_pat
     assert req["questions"]["t1.effort"]["criteria"] == jev.TEXT["en"]["effort"]
 
 
+def test_jev_model_is_pinned_and_a_bridge_may_choose_another_version(tmp_path):
+    from lib.bridge_cockpit import jev
+    from lib.bridge_cockpit.config import load_web_config
+    assert load_web_config(tmp_path, {}).jev_model is None
+    assert jev.build_request([], "2026-10-10", model=None)["model"] == jev.MODEL
+    for bad in ("jev-latest", "jev-1.14.0; rm", "gpt-5", "", 7, "jev-"):
+        assert load_web_config(tmp_path, {"integrations": {"typesafe": {"model": bad}}}).jev_model is None, bad
+    cfg = load_web_config(tmp_path, {"integrations": {"typesafe": {"model": "jev-1.13.0"}}})
+    assert cfg.jev_model == "jev-1.13.0"
+    req = jev.build_request([{"id": "t1", "key": "k", "title": "x"}], "2026-10-10", model=cfg.jev_model)
+    assert req["model"] == "jev-1.13.0"
+
 SERVE_WITHOUT_JEV = r"""
 import http.client, json, sys, threading
 from pathlib import Path

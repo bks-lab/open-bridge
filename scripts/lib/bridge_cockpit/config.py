@@ -20,6 +20,7 @@ OPEN_IN = ("auto", "cmux", "system", "none")
 TARGETS = ("tab", "workspace", "area", "auto")
 
 
+JEV_MODEL_RE = re.compile(r"^jev-[0-9]+(\.[0-9]+){1,2}\Z")
 KEYCHAIN_REF_RE = re.compile(r"^keychain://[A-Za-z0-9._-]{1,80}/[A-Za-z0-9._@-]{1,80}\Z")
 
 
@@ -57,6 +58,7 @@ class WebConfig:
     person_name: str | None = None
     jev_person: str | None = None        # integrations.typesafe.person: a sentence about them for Jev
     jev_criteria: dict | None = None     # integrations.typesafe.criteria: {urgency|impact|effort: four levels}
+    jev_model: str | None = None         # integrations.typesafe.model: a versioned Jev id, else jev.MODEL
     # how often the cmux layout is saved while the cockpit runs, only on change (0: only on Save); was the mod's
     snapshot_minutes: float = 60
     # the triage sorts every task and inbox item once a day by itself (a model call): only when asked for
@@ -157,6 +159,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     ts = _dict(_dict(raw.get("integrations")).get("typesafe"))
     ref = ts.get("key_ref")
     jev_key_ref = ref if isinstance(ref, str) and KEYCHAIN_REF_RE.match(ref) else None
+    jev_model = ts.get("model") if isinstance(ts.get("model"), str) and JEV_MODEL_RE.match(ts["model"]) else None
 
     def text_or_none(v: Any, cap: int) -> str | None:
         return v.strip()[:cap] if isinstance(v, str) and v.strip() else None
@@ -166,4 +169,5 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                      voice=voice, target=target, control=control, jev_enabled=ts.get("enabled") is True,
                      jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
                      jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
+                     jev_model=jev_model,
                      snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True)

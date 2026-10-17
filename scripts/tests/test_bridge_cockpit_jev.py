@@ -43,7 +43,7 @@ def test_collect_dedupes_and_trims():
 def test_request_has_four_questions_per_task_and_one_choice():
     tasks = jev.collect_tasks(MODEL)
     req = jev.build_request(tasks, "2026-10-10")
-    assert req["model"] == "jev-latest"
+    assert req["model"] == jev.MODEL == "jev-1.14.0"
     assert len(req["questions"]) == 4 * len(tasks) + 1
     assert set(req["questions"]["first"]["criteria"]) == {"t1", "t2", "t3"}
     assert "`tasks[1]`" in req["questions"]["t2.urgency"]["instructions"]

@@ -33,7 +33,7 @@ from .store import atomic_write_json, read_json
 from .text import TABLES
 
 API_URL = "https://api.typesafe.ai/v1/systemone"
-MODEL = "jev-latest"
+MODEL = "jev-1.14.0"   # a versioned id, never an alias: an alias moves and the answers with it
 MAX_TASKS = 20
 TIMEOUT_S = 45
 ROW_FIELDS = ("title", "why", "priority", "urgency", "due", "area", "gate", "bucket", "section", "task_type",
@@ -85,10 +85,10 @@ def collect_tasks(model: dict | None, limit: int = MAX_TASKS) -> list[dict]:
 
 
 def build_request(tasks: list[dict], today: str, who: str | None = None, about: str | None = None,
-                  lang: str = "en", criteria: dict | None = None) -> dict:
+                  lang: str = "en", criteria: dict | None = None, model: str | None = None) -> dict:
     """The questions for Jev; `who` names the person (else a neutral word), `about` describes them,
     `criteria` ({urgency, impact, effort}: four levels each, integrations.typesafe.criteria) replaces
-    the neutral defaults below."""
+    the neutral defaults below. `model` (integrations.typesafe.model) replaces MODEL."""
     tx = {**TEXT.get(lang, TEXT["en"]), **(criteria or {})}
     names = {"who": who or tx["who"], "who_subject": who or tx["who_subject"]}
     say = lambda key, **kw: tx[key].format(**names, **kw)      # noqa: E731
@@ -105,7 +105,7 @@ def build_request(tasks: list[dict], today: str, who: str | None = None, about: 
     if tasks:
         q["first"] = {"type": "choice", "instructions": say("q_first"),
                       "criteria": {t["id"]: t.get("title", "")[:160] for t in tasks}}
-    return {"model": MODEL, "state": state, "questions": q}
+    return {"model": model or MODEL, "state": state, "questions": q}
 
 
 def _level(answer: dict | None, top: int) -> float:
@@ -319,7 +319,8 @@ def run(app, body: dict, call: Callable[[dict, str], dict] | None = None,
     day = time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000))
     cfg = getattr(app, "cfg", None)
     payload = build_request(tasks, day, who=getattr(cfg, "person_name", None), about=getattr(cfg, "jev_person", None),
-                            lang=getattr(cfg, "language", "en") or "en", criteria=getattr(cfg, "jev_criteria", None))
+                            lang=getattr(cfg, "language", "en") or "en", criteria=getattr(cfg, "jev_criteria", None),
+                            model=getattr(cfg, "jev_model", None))
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
     st = _state(app)
     with st.lock:
@@ -512,7 +513,8 @@ def rank(app, body: dict, call: Callable[[dict, str], dict] | None = None,
     for i in range(0, len(rows), MAX_TASKS):
         batch = [{"id": f"t{n + 1}", **r} for n, r in enumerate(rows[i:i + MAX_TASKS])]
         payload = build_request(batch, day, who=getattr(conf, "person_name", None), about=getattr(conf, "jev_person", None),
-                                lang=getattr(conf, "language", "en") or "en", criteria=getattr(conf, "jev_criteria", None))
+                                lang=getattr(conf, "language", "en") or "en", criteria=getattr(conf, "jev_criteria", None),
+                                model=getattr(conf, "jev_model", None))
         response = (call or call_api)(payload, secret)
         calls += 1
         plan = plan_from(batch, response)

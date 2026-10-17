@@ -218,6 +218,7 @@ integrations:
                              # judgments elsewhere appear only when this is true
     key_ref: ""              # keychain://<service>/<account>; the key itself only in the keychain
     person: ""               # one sentence about you for Jev's judgments, e.g. "Ada, leads a small team"
+    # model: jev-1.14.0      # a versioned Jev id; aliases (jev-latest) are refused because they move
     # criteria:              # own levels for Jev's scores, four each, lowest first; else neutral defaults
     #   impact: ["cosmetic", "useful for my own work", "important for the team or a customer", "business critical"]
 

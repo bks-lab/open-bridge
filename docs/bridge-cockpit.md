@@ -585,6 +585,13 @@ place that wants Jev asks the same switch. It rates by itself at most once a
 day (kept in `jev.json`), "Rate again" always; the API reports tokens, not a
 price, and the page says so.
 
+Requests name a versioned model, `jev-1.14.0` by default, never an alias such as
+`jev-latest`: an alias moves when TypeSafe ships a release, and the answers move
+with it without any change here. `integrations.typesafe.model` picks another
+version (`jev-<major>.<minor>[.<patch>]`); anything else keeps the default. A new
+answer set invalidates the day's cached rating, because the model is part of
+what `jev.json` keys on.
+
 **What leaves the machine when Jev is on.** Nothing goes out while
 `integrations.typesafe` is off. Switched on, a request to api.typesafe.ai
 carries today's date, the name from `cockpit.person_name` (else "the user"),
