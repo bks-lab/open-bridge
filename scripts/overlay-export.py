@@ -390,6 +390,43 @@ def _prune_empty_dirs(tree_root: str) -> None:
 # Export
 # ---------------------------------------------------------------------------
 
+LOCK_FILE = "overlays.lock.yaml"
+
+
+def overlay_managed_paths(repo_root: str) -> set[str]:
+    """Repo-relative paths this bridge holds because an OVERLAY put them there.
+
+    Read from `overlays.lock.yaml`, which `/overlay` writes when it materializes.
+    They are deliberately git-ignored in the consumer (a fork of a public repo is
+    itself public), so `git_ignored` — rightly — hides them from discovery. Without
+    this set the exporter would then read every mirror copy of them as an orphan
+    and delete it: the tool that BUILDS the mirror would eat the half of it that
+    came from the mirror. Measured on a live consumer/overlay pair: 35 files, among
+    them the complete references/ and templates/ of two org skills.
+
+    A missing or malformed lock yields the empty set, and the caller then behaves
+    exactly as before — never a crash, and never a silently WIDER prune.
+    """
+    path = os.path.join(repo_root, LOCK_FILE)
+    if yaml is None or not os.path.exists(path):
+        return set()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lock = yaml.safe_load(fh)
+    except (OSError, UnicodeDecodeError, Exception):  # noqa: B014 - yaml errors vary
+        return set()
+    if not isinstance(lock, dict):
+        return set()
+    managed: set[str] = set()
+    for entry in (lock.get("overlays") or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        for f in (entry.get("files") or []):
+            if isinstance(f, dict) and isinstance(f.get("dest"), str):
+                managed.add(f["dest"])
+    return managed
+
+
 def export_overlay(repo_root: str, target_overlay_dir: str, *,
                    scope: str = DEFAULT_SCOPE, dry_run: bool = False) -> dict:
     """Export every `scope`-classified live file into `<target>/tree/<path>` and
@@ -411,8 +448,18 @@ def export_overlay(repo_root: str, target_overlay_dir: str, *,
 
     relpaths = discover_scoped_files(repo_root, scope)
     relset = set(relpaths)
-    pruned = sorted(p for p in _tree_files(tree_root) if p not in relset)
-    files_entries = manifest_files_entries(relpaths, scope)
+    # Only a GENUINE orphan may be pruned: out of scope AND not carried by an
+    # overlay. See overlay_managed_paths() for why the second half is needed.
+    managed = overlay_managed_paths(repo_root)
+    existing = set(_tree_files(tree_root))
+    pruned = sorted(p for p in existing if p not in relset and p not in managed)
+    # files[] describes the MIRROR AS IT WILL BE, not merely what this run
+    # discovered: everything written now, plus everything already there that
+    # survives the prune (the overlay-managed half). Built from the discovered set
+    # alone, a managed rule silently loses its `kind: rule` entry — measured
+    # on a live pair as 6 -> 5, with one org rule dropping out.
+    mirror_after = sorted(relset | (existing - set(pruned)))
+    files_entries = manifest_files_entries(mirror_after, scope)
 
     existing_manifest = None
     if os.path.exists(manifest_path):

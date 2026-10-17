@@ -16,6 +16,7 @@
 # Env: UPSTREAM_REF (default upstream/main) · AUTOUPDATE_HOUR/MIN (default 7:00)
 #      OVERLAY_AUTOSYNC_HOUR/MIN (default 7:15)
 #      SIGNAL_ACCOUNT + SIGNAL_RECIPIENT (both → the job sends a Signal summary)
+#      AUTOUPDATE_NOTIFY_CMD (argv string, gets the summary on stdin; any notifier)
 set -euo pipefail
 REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 JOB=core; PRINT=0
@@ -23,7 +24,7 @@ for arg in "$@"; do
   case "$arg" in
     --overlays) JOB=overlays ;;
     --print)    PRINT=1 ;;
-    -h|--help)  sed -n '3,19p' "$0"; exit 0 ;;
+    -h|--help)  sed -n '3,20p' "$0"; exit 0 ;;
     *) echo "unknown argument: $arg (see --help)" >&2; exit 64 ;;
   esac
 done
@@ -48,6 +49,11 @@ sig=""
 "
 [ -n "${SIGNAL_RECIPIENT:-}" ] && sig="$sig    <key>SIGNAL_RECIPIENT</key><string>${SIGNAL_RECIPIENT}</string>
 "
+if [ -n "${AUTOUPDATE_NOTIFY_CMD:-}" ]; then
+  notify_xml=$(printf '%s' "$AUTOUPDATE_NOTIFY_CMD" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+  sig="$sig    <key>AUTOUPDATE_NOTIFY_CMD</key><string>${notify_xml}</string>
+"
+fi
 
 render_plist() { cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
