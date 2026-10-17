@@ -13,7 +13,7 @@ from lib import model_route as mr  # noqa: E402
 
 S = mr.normalize({"enabled": True, "auto": True})
 ITEMS = [{"id": "a", "title": "Fix a typo in the README", "kind": "task", "priority": "P3",
-          "detail": "private words", "path": "/Users/x/secret"},
+          "detail": "private words", "path": "work/private/secret.md"},
          {"id": "b", "title": "Redesign the storage layer", "kind": "task"}]
 
 
@@ -53,7 +53,7 @@ def test_haiku_levels_map_through_their_own_table():
 def test_only_title_kind_and_priority_leave_the_machine():
     req = mr.jev_request(ITEMS, S)
     sent = json.dumps(req) + mr.haiku_prompt(ITEMS)
-    assert "private words" not in sent and "/Users/x" not in sent
+    assert "private words" not in sent and "private/secret" not in sent
     assert req["model"] == "jev-1.14.0" and set(req["questions"]) == {"a", "b"}
     assert req["questions"]["a"]["type"] == "score" and req["questions"]["a"]["criteria"] == mr.LEVELS
     assert "`items[1]`" in req["questions"]["b"]["instructions"]
