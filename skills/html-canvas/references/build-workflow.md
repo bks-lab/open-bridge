@@ -10,7 +10,9 @@ related:
 # html-canvas — Build Workflow & Quality Bar
 
 ## Single page
-Copy `assets/shell.html`, fill the placeholders, compose `<main>` from
+Generate the shell with `scripts/design-to-css.py --shell --out page.html` (never
+copy `assets/shell.html` bare, its token region is neutral on purpose), fill the
+placeholders, compose `<main>` from
 `references/sections.md`, paste any behaviours from `interactivity.md` (+
 `animations.css` if you want motion). Render light **and** dark, **and** DE **and**
 EN before calling it done. File it under `work/tasks/<slug>/deliverables/`.
@@ -23,8 +25,8 @@ builders on a shared CSS contract → 1 adversarial review).
 
 **Phase 0 — Convention audit (one agent, blocking).** Read DESIGN.md (token SoT),
 SOUL.md (voice), and decide the per-page structure. Emit a **shared contract**
-every builder pastes verbatim: (a) the `:root` + `html.dark` token block (run
-`design-to-css.py`); (b) the base styles + theme/lang pre-paint + controllers from
+every builder pastes verbatim: (a) the `:root` + `html.dark` + print token block
+(`design-to-css.py`, or the whole shell via `--shell`); (b) the base styles + theme/lang pre-paint + controllers from
 `shell.html`; (c) the print block; (d) the CSS for the section blocks the kit uses.
 This contract is the *only* coupling between builders — it is what guarantees the
 kit looks like one set.
@@ -41,9 +43,10 @@ one message so they run concurrently.
 finding = location + concrete fix, no praise. Check against four sources:
 1. **Factual fidelity** vs the source data — list every divergence; any field with
    no source gets an explicit caveat, never silently kept (verify-before-claim).
-2. **DESIGN.md** — system-stack Inter / no Google Fonts; accent gradient only on
-   1–2 accent words + wordmark; weight-300 large headings; 1px hairlines; readable
-   token contrast in **both** light and dark.
+2. **DESIGN.md**: no Google Fonts; every hex value in the page declared in the
+   DESIGN.md front matter; type roles as DESIGN.md sets them (face, weight, size);
+   no gradient unless DESIGN.md allows one; 1px hairlines; readable token contrast
+   in **both** light and dark.
 3. **SOUL.md** — no hero-arc, no hype words, no marketing slogans; the user is
    the sender (recipients in 3rd person, never addressed directly).
 4. **HTML correctness** — balanced tags; `grid-template-columns` count matches
@@ -71,11 +74,12 @@ UTF-8). Output is then reproducible and consistent across regenerations. Model:
 **Tokens & type**
 - Pull every colour/type/spacing token from DESIGN.md (`design-to-css.py`). Never
   hand-pick a brand colour; if a token is missing, add it to DESIGN.md first.
-- "large = light": headings ≥24px ride `font-weight:300` (card titles/buttons 500).
-- Accent gradient only on 1–2 accent words + the wordmark, on a solid surface.
-  **Never** `linear-gradient(135deg,cyan,purple)` on text — that's the AI-slop tell.
-- **No Google Fonts / any third-party font CDN** — GDPR. System-stack Inter
-  (`--font-sans`) or a data-URI-inlined self-hosted woff2.
+- Headings follow the DESIGN.md typography roles: `--font-display`, `--fw-h1`,
+  `--fs-h1` and so on. The shell wires them; do not restyle headings by hand.
+- No gradient on text, fills or buttons unless DESIGN.md explicitly allows one.
+  `linear-gradient(135deg,cyan,purple)` on text is the AI-slop tell.
+- **No Google Fonts / any third-party font CDN**: GDPR. Self-hosted, a
+  data-URI-inlined woff2, or the system fallback in `--font-sans`.
 
 **Behaviour**
 - Light/dark toggle (button + T + localStorage + anti-FOUC pre-paint + OS default
@@ -84,10 +88,12 @@ UTF-8). Output is then reproducible and consistent across regenerations. Model:
 - Single-file, offline, zero external dependencies — even QR/charts from bundled or
   inline code. Footer documents source path + regenerate command + key hints.
 - `prefers-reduced-motion` cleanly kills all motion; print/PDF is first-class (hide
-  chrome, force reveals visible, force light palette regardless of theme).
+  chrome, force reveals visible, force light palette regardless of theme). A page
+  that RUNS (see `references/simulation.md`) owes both of them the **computed end
+  state**, plus a visible note saying why it arrived finished.
 
 **Colour = meaning**
-- Page chrome stays DESIGN.md neutrals + the one indigo accent. Semantic
+- Page chrome stays DESIGN.md neutrals + the brand accent. Semantic
   lens/actor colours are the only "colour carries meaning" exception and always
   ship a legend. Status reads by **shape** (`● ◐ ✗ –`), colour second.
 - De-emphasis = full-contrast text + a tag, never opacity-dimming.
@@ -100,7 +106,10 @@ UTF-8). Output is then reproducible and consistent across regenerations. Model:
   explicit caveat. Never keep an absent-from-source field silently.
 - **Language:** default to the conversation language; author DE **and** EN as
   first-class equals. Repo/OSS-shipped artifacts must be English regardless — the
-  lang toggle must never assume German is the base.
+  lang toggle must never assume German is the base. **Any string JS writes at
+  runtime breaks the pure-CSS swap** (it has no sibling to swap with), so emit
+  both siblings instead. Punctuation conventions and the user's style rules apply
+  to runtime strings exactly as they do to authored ones.
 
 **UTF-8** — native umlauts/€/—/… in all authored text; never HTML-entities or ASCII
 substitutes for content. (The `&rarr;`/`&darr;` arrow *glyphs* are a deliberate icon
@@ -113,6 +122,33 @@ choice, not text content — those are fine.)
   `aria-hidden`. Status glyphs carry `role="img"` + `aria-label`.
 - Reading length capped (body ≤70ch, lead ≤68ch); `scroll-padding-top` clears any
   sticky nav. `.vh` utility for screen-reader-only text.
+
+## Pre-delivery checklist
+
+Run this before handing over any page, on top of the quality bar above. Every
+item is checked in the rendered page, not inferred from the source.
+
+- **Touch targets:** every interactive element is at least 44x44 CSS px, with
+  enough spacing that neighbours are not hit by mistake.
+- **Contrast, both themes:** body text at least 4.5:1, secondary text and large
+  text at least 3:1, borders and interaction states distinguishable. Test light
+  and dark separately; one theme never proves the other.
+- **Focus and keyboard:** a visible focus ring on every interactive element,
+  focus order matches visual order, labels say what the control does.
+- **States:** hover and pressed feedback does not shift layout; disabled
+  controls look disabled and cannot be activated.
+- **Colour is never the only signal:** status also carries a glyph, a word or a
+  pattern.
+- **Icons:** one consistent SVG icon family, no emoji as icons, meaningful icons
+  and images carry an accessible name.
+- **Motion:** transitions stay around 150 to 300 ms, and `prefers-reduced-motion`
+  removes or shortens them without breaking layout.
+- **Layout:** check at 375 px width and in landscape; no horizontal scroll, no
+  content hidden behind sticky bars, readable line length on wide screens, one
+  spacing scale throughout.
+- **Forms (if any):** every field has a label, errors say what went wrong and how
+  to fix it.
+- **Scrims and overlays:** strong enough that foreground text stays legible.
 
 ---
 

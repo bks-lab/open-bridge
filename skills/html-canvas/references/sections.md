@@ -1,7 +1,7 @@
 ---
 summary: "Copy-paste section building blocks for html-canvas deliverables — headers, flows, data, content, chrome"
 type: reference
-last_updated: 2026-06-01
+last_updated: 2026-09-26
 related:
   - skills/html-canvas/SKILL.md
   - skills/html-canvas/assets/shell.html
@@ -15,11 +15,15 @@ and every text run is authored as `data-de`/`data-en` siblings so it switches
 language for free. CSS goes once into the shell's `<style>`; markup goes into
 `<main>`.
 
+Blocks that MOVE (stage, route, protocol feed, message thread, provenance cards)
+are not here: they belong to the running-model layer and live in
+`assets/simulation.css` with their playbook in `references/simulation.md`.
+
 **Three habits that make these blocks line up and stay honest:**
 - **Equal cells line up** — fixed first column + identical `fr` cells
   (`grid-template-columns:170px repeat(N,1fr)`) is what makes sibling rows align.
-- **Colour = meaning, never decoration** — page chrome stays neutral + the one
-  indigo accent. The semantic lens/actor triads are the *only* coloured-surface
+- **Colour = meaning, never decoration**: page chrome stays neutral + the
+  instance's brand blue from DESIGN.md. The semantic lens/actor triads are the *only* coloured-surface
   exception and **always** ship a legend (last block).
 - **Shape carries status, not colour alone** — `● ◐ ✗ –` glyphs so meaning
   survives colour-blindness and grayscale print.
@@ -34,50 +38,50 @@ language for free. CSS goes once into the shell's `<style>`; markup goes into
 ---
 
 ## <a id="doc-header"></a>Document header (eyebrow · title · lead)
-Top of any page. Light-weight title, uppercase eyebrow, lead ≤80ch.
+Top of any page. Eyebrow in the working colour, display-face title, lead ≤80ch.
 ```html
 <header>
   <div class="eyebrow"><span data-de>Strategie-Überblick</span><span data-en>Strategy overview</span></div>
-  <h1><span data-de>Ein Produkt — zwei Linsen</span><span data-en>One product — two lenses</span></h1>
+  <h1><span data-de>Ein Produkt, zwei Linsen</span><span data-en>One product, two lenses</span></h1>
   <p class="lead"><span data-de>Worum es geht …</span><span data-en>What this is about …</span></p>
 </header>
 ```
 ```css
-.eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.lead{font-size:19px;font-weight:300;color:var(--on-surface);max-width:68ch;margin-top:8px}
+.eyebrow{font-size:var(--fs-eyebrow,12px);font-weight:var(--fw-eyebrow,600);letter-spacing:var(--ls-eyebrow,.14em);text-transform:uppercase;color:var(--accent-text)}
+.lead{font-size:var(--fs-body-xl,19px);font-weight:400;line-height:var(--lh-body-xl,1.6);color:var(--muted);max-width:68ch;margin-top:8px}
 ```
 
-## <a id="hero"></a>Hero (gradient accent word + badge)
-Bigger top for landing-ish pages. The gradient touches **one** accent word only
-(DESIGN.md: more than 1–2 words + the wordmark cheapens it; cyan→purple on text
-is an AI-slop tell — keep it the brand indigo→purple).
+## <a id="hero"></a>Hero (eyebrow + display title + badge)
+Bigger top for landing-ish pages. Left-aligned, editorial. No gradient on any
+word: the brand is flat, and the display face alone carries the weight
+(DESIGN.md, Do's and Don'ts).
 ```html
 <header class="hero">
   <span class="badge">◐ <span data-de>Featured</span><span data-en>Featured</span></span>
-  <h1 class="display"><span data-de>Digitale Transformation </span><span data-en>Digital transformation, </span><span class="grad" data-de>intelligent beschleunigt</span><span class="grad" data-en>accelerated</span></h1>
+  <div class="eyebrow"><span data-de>Überblick</span><span data-en>Overview</span></div>
+  <h1 class="display"><span data-de>Digitale Transformation, intelligent beschleunigt</span><span data-en>Digital transformation, accelerated</span></h1>
   <p class="lead"><span data-de>…</span><span data-en>…</span></p>
 </header>
 ```
 ```css
 .hero{padding:48px 0}
-.display{font-size:clamp(40px,6vw,64px);font-weight:300;line-height:1.05;letter-spacing:-.02em;max-width:20ch}
-.grad{background:linear-gradient(120deg,var(--accent-from),var(--accent-to));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:400}
+.display{font-size:clamp(28px,6vw,var(--fs-display,64px));font-weight:var(--fw-display,500);line-height:var(--lh-display,1.08);letter-spacing:var(--ls-display,-.01em);max-width:20ch}
 .badge{display:inline-flex;align-items:center;gap:8px;background:var(--surface-muted);color:var(--on-surface);font-size:13px;padding:6px 14px;border-radius:var(--radius-full);margin-bottom:20px}
 ```
 
 ## <a id="section-opener"></a>Numbered section opener
-Magazine rhythm for long docs. Alternating section bg chunks content without dividers.
+Magazine rhythm for long docs. Sections separate by a hairline and space, never by
+alternating background colours (DESIGN.md, Layout).
 ```html
 <section id="kernidee"><div class="wrap narrow">
   <div class="eyebrow"><span class="sec-no">§1</span> <span data-de>Die Kernidee</span><span data-en>The core idea</span></div>
-  <h2><span data-de>Vom Prompt zum </span><span data-en>From prompt to </span><span class="grad">Asset</span></h2>
+  <h2><span data-de>Vom Prompt zum </span><span data-en>From prompt to </span>Asset</h2>
   <p class="lead" data-de>…</p><p class="lead" data-en>…</p>
 </div></section>
 ```
 ```css
-section{padding-block:72px;border-top:1px solid var(--line-subtle)}
-section:nth-of-type(even){background:var(--surface-subtle)}
-.sec-no{font-family:var(--font-mono);font-weight:700;color:var(--accent-text)}
+section{padding-block:0 72px;border-top:1px solid var(--line-subtle);padding-top:48px}
+.sec-no{font-family:var(--font-mono);font-weight:600;color:var(--accent-text)}
 ```
 
 ---
@@ -96,7 +100,7 @@ crisp, theme, and translate — and survive any later copy into a design tool).
 ```
 ```css
 .pipe{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
-.pbox{flex:1 1 0;min-width:120px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:5px}
+.pbox{flex:1 1 0;min-width:120px;background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:5px}
 .pbox-id{font-family:var(--font-mono);font-size:12px;color:var(--accent-text);font-weight:700}
 .arrow{display:flex;align-items:center;color:var(--muted);font-size:20px;flex:none}
 ```
@@ -119,7 +123,7 @@ message. Needs the optional **actor triads** (uncomment in the shell). Tech lane
 .lane.ai{background:var(--ai-bg);border-color:var(--ai-line)} .lane.ai .lane-k{color:var(--ai-ink)}
 .lane.tech{background:var(--tech-bg);border-color:var(--tech-line)} .lane.tech .lane-k{color:var(--tech-ink)}
 .lane.tech .cell{font-family:var(--font-mono);font-size:12px;color:var(--tech-ink)}
-.cell{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);padding:10px;font-size:13px}
+.cell{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-md);padding:10px;font-size:13px}
 @media(max-width:760px){.lane{grid-template-columns:1fr}}
 ```
 
@@ -136,7 +140,7 @@ Flat cards joined by real arrows; lens classes recolor (needs lens triads).
 ```
 ```css
 .ctx{display:flex;align-items:stretch;gap:14px;justify-content:center;flex-wrap:wrap}
-.box{border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px 16px;background:var(--surface);flex:1 1 0;min-width:140px}
+.box{border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px 16px;background:var(--raised);flex:1 1 0;min-width:140px}
 .box.core{background:var(--core-bg);border-color:var(--core-line);color:var(--core-ink)}
 .box.doc{background:var(--doc-bg);border-color:var(--doc-line);color:var(--doc-ink)}
 .box.sch{background:var(--sch-bg);border-color:var(--sch-line);color:var(--sch-ink)}
@@ -196,27 +200,30 @@ wire (all reduced-motion-gated). Set `--d` to the node distance in px.
 ```
 ```css
 .mflow svg{width:100%;max-width:600px;height:auto;color:var(--ink)}
-.mnode{fill:var(--surface);stroke:var(--line)} .mlabel{fill:var(--ink);font-size:13px;font-weight:500}
+.mnode{fill:var(--raised);stroke:var(--line)} .mlabel{fill:var(--ink);font-size:13px;font-weight:500}
 ```
 
 ---
 
 ## <a id="kpi-row"></a>KPI metric-card row
-Dashboard stat block. Big number rides weight 300 (DESIGN.md stat-display).
-Status colour applied inline per card. No icons/sparklines on the number (DESIGN.md).
+Dashboard stat block. Big number in the display face (DESIGN.md stat-display),
+label in caps below it. Status is a dot plus a word, never a coloured number:
+`warning` misses 4.5:1 as text. No icons/sparklines on the number (DESIGN.md).
 ```html
 <div class="metrics">
   <div class="metric"><div class="m-label"><span data-de>Risk-Level</span><span data-en>Risk level</span></div>
-    <div class="m-val" style="color:var(--warn)"><span data-de>Mittel</span><span data-en>Medium</span></div>
+    <div class="m-val"><span data-de>Mittel</span><span data-en>Medium</span></div>
+    <div class="m-sub"><span class="dot" style="background:var(--warn)"></span> <span data-de>Achtung</span><span data-en>Watch</span></div>
     <div class="m-sub"><span data-de>Datenmenge pending</span><span data-en>volume pending</span></div></div>
 </div>
 ```
 ```css
 .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
-.metric{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px 18px}
-.m-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
-.m-val{font-size:36px;font-weight:300;color:var(--ink);line-height:1;letter-spacing:-.02em}
-.m-sub{font-size:12px;color:var(--muted);margin-top:6px}
+.metric{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px 18px}
+.m-label{font-size:var(--fs-label-caps,12px);font-weight:var(--fw-label-caps,600);color:var(--muted);text-transform:uppercase;letter-spacing:var(--ls-label-caps,.1em);margin-bottom:6px}
+.m-val{font-family:var(--font-display);font-size:var(--fs-stat-display,40px);font-weight:var(--fw-stat-display,500);color:var(--heading);line-height:1}
+.m-sub{font-size:13px;color:var(--muted);margin-top:6px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle}
 ```
 For an animated count-up, add `data-count-to="83"` and wire the count-up helper (interactivity.md).
 
@@ -245,19 +252,19 @@ alone. Disqualified rows = full-contrast text + pill, **never** opacity-dimming.
 auto-fit columns, status colour on the top border (inline), count pill, dashed-empty.
 ```html
 <div class="kanban">
-  <div class="col"><header style="border-top-color:var(--warn)"><h3><span data-de>Rückmeldung</span><span data-en>Replied</span></h3><span class="count">2</span></header>
+  <div class="col"><header><h3><span data-de>Rückmeldung</span><span data-en>Replied</span></h3><span class="count">2</span></header>
     <div class="cards"><article class="kcard"><span class="badge age-y">5d</span> …</article></div></div>
 </div>
 ```
 ```css
 .kanban{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-.col{background:var(--surface-subtle);border-radius:var(--radius-md);border-top:3px solid var(--accent);overflow:hidden}
-.col>header{padding:10px 14px;background:var(--surface-muted);display:flex;justify-content:space-between;align-items:center}
-.count{background:var(--surface);padding:2px 8px;border-radius:10px;font-size:11px;color:var(--muted)}
+.col{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
+.col>header{padding:10px 14px;background:var(--surface-muted);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.count{background:var(--raised);padding:2px 8px;border-radius:var(--radius-full);font-size:11px;color:var(--muted)}
 .cards{padding:8px;display:flex;flex-direction:column;gap:8px;min-height:60px}
-.kcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);padding:10px;font-size:13px}
+.kcard{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-md);padding:10px;font-size:13px}
 .badge{font-size:11px;padding:1px 7px;border-radius:var(--radius-full);border:1px solid var(--line)}
-.age-y{color:var(--warn);border-color:var(--warn)}
+.age-y{color:var(--muted);border-color:var(--warn)} /* warning is a line colour, never small text */
 ```
 
 ## <a id="table"></a>Data table
@@ -272,8 +279,8 @@ Header is static by default. Only add `th{position:sticky;top:0}` when the table
 .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius-lg)}
 table{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
 th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
-th{background:var(--surface-muted);color:var(--ink);font-weight:600}
-tbody tr:nth-child(even){background:var(--surface-subtle)}
+th{background:var(--raised);color:var(--ink);font-weight:600;border-bottom-color:var(--line-strong)}
+tbody tr:nth-child(even){background:var(--surface-muted)}
 td.key{font-family:var(--font-mono);color:var(--accent-text)}
 ```
 
@@ -287,10 +294,10 @@ Before/after benchmark, no chart lib. Inline `width:N%` fills, delta coloured by
 ```
 ```css
 .barchart{display:grid;grid-template-columns:auto 1fr auto;gap:14px 20px;align-items:center;font-family:var(--font-mono)}
-.bar-track{height:28px;background:var(--surface-subtle);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.bar-track{height:28px;background:var(--surface-muted);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .bar-fill{height:100%;border-radius:14px;display:flex;align-items:center;padding:0 14px;color:var(--on-primary);font-size:12px;font-weight:600}
-.bar-fill.old{background:var(--muted)} .bar-fill.new{background:var(--accent)}
-.bar-d{font-weight:700;color:var(--ok-text)}
+.bar-fill.old{background:var(--muted)} .bar-fill.new{background:var(--secondary)}
+.bar-d{font-weight:600;color:var(--ok-text)}
 ```
 
 ## <a id="timeline"></a>Vertical timeline
@@ -348,7 +355,7 @@ Anti-hype framing (SOUL.md: no hero arc). "Nicht … sondern …".
 ```css
 .contrast{display:grid;grid-template-columns:1fr 1fr;gap:24px}
 @media(max-width:760px){.contrast{grid-template-columns:1fr}}
-.cc{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:24px}
+.cc{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:24px}
 .cc.no{border-left:3px solid var(--muted)} .cc.yes{border-left:3px solid var(--accent)}
 .cc .tag{font-family:var(--font-mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:600}
 .cc.no .tag{color:var(--muted)} .cc.yes .tag{color:var(--accent-text)}
@@ -360,7 +367,7 @@ Anti-hype framing (SOUL.md: no hero arc). "Nicht … sondern …".
 ```
 ```css
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
-.chip{font-size:13px;font-family:var(--font-mono);padding:6px 12px;border-radius:var(--radius-md);border:1px solid var(--line);background:var(--surface);color:var(--on-surface)}
+.chip{font-size:13px;font-family:var(--font-mono);padding:6px 12px;border-radius:var(--radius-md);border:1px solid var(--line);background:var(--raised);color:var(--on-surface)}
 .chip.new{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
 .chip.edge{background:var(--surface-muted)}
 ```
@@ -374,8 +381,8 @@ Remember SOUL.md: the user is the **sender**; recipients in 3rd person ("Recipie
 ```
 ```css
 .people{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.person{display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg)}
-.avatar{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.person{display:flex;align-items:center;gap:12px;padding:12px;background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg)}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--secondary);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px}
 .p-name{font-weight:600;color:var(--ink)} .p-role{font-size:12px;color:var(--muted)}
 ```
 
@@ -389,8 +396,8 @@ Hand-classed syntax spans mapped to status vars.
 ```css
 .term{background:var(--code-bg);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;font-family:var(--font-mono);font-size:clamp(11px,1.3vw,15px)}
 .term-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface-muted)}
-/* macOS traffic-light window controls — literal chrome colours, not brand tokens (intentional) */
-.td{width:10px;height:10px;border-radius:50%}.td.r{background:#ef4444}.td.y{background:#f59e0b}.td.g{background:#10b981}
+/* window controls in the semantic tokens: no colour outside DESIGN.md, even for chrome */
+.td{width:10px;height:10px;border-radius:50%}.td.r{background:var(--danger)}.td.y{background:var(--warn)}.td.g{background:var(--ok)}
 .term-label{color:var(--muted);font-size:12px;margin-left:4px}
 .term-body{margin:0;padding:14px 16px;color:var(--on-surface);white-space:pre-wrap}
 .term-body .pr{color:var(--accent-text)} .term-body .ok{color:var(--ok-text)}
@@ -435,7 +442,7 @@ Table-of-contents for a multi-page kit: card grid + "which page for which meetin
 ```css
 .cards-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 @media(max-width:860px){.cards-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.cards-grid{grid-template-columns:1fr}}
-.lcard{border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px;background:var(--surface);display:flex;flex-direction:column;gap:3px}
+.lcard{border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px;background:var(--raised);display:flex;flex-direction:column;gap:3px}
 .lc-t{font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--accent-text)}
 .lc-m{color:var(--ink)}
 ```
@@ -452,7 +459,7 @@ Add the scrollspy from `interactivity.md` to highlight the active section.
 </nav>
 ```
 ```css
-.secnav{position:sticky;top:0;z-index:50;display:flex;gap:18px;flex-wrap:wrap;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--line)}
+.secnav{position:sticky;top:0;z-index:50;display:flex;gap:18px;flex-wrap:wrap;padding:12px 24px;background:var(--raised);border-bottom:1px solid var(--line)}
 .secnav a{color:var(--muted);font-size:14px;text-decoration:none}
 .secnav a:hover,.secnav a.active{color:var(--accent-text)}
 @media(max-width:620px){.secnav{gap:12px;font-size:13px;overflow-x:auto}}

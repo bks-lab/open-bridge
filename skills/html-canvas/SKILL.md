@@ -1,23 +1,11 @@
 ---
 name: html-canvas
 description: >-
-  Build rich, polished SINGLE-FILE HTML deliverables — explainers, reference
-  pages, concept/architecture visualizations, use-case kits, multi-section
-  documents — with a light/dark theme toggle, a DE/EN language toggle, tasteful
-  animations, and DESIGN.md-driven tokens, all offline with zero dependencies.
-  Use whenever the user wants content turned into a good-looking HTML page or kit,
-  or says 'create an HTML page', 'visualize this as HTML', 'explainer', 'html kit',
-  'single-file html', 'html with light and dark', 'theme toggle',
-  'language toggle', 'analyze this repo as an explainer' — even if unnamed. Ships a
-  copy-paste shell, a section-block catalog, an animation layer, optional JS
-  behaviours, a DESIGN.md→CSS token generator, and a parallel-builder workflow.
-  NOT for live Bridge ops dashboards (the cockpit), repo/ecosystem maps
-  (bridge-explorer), or slide decks / styled emails / PDFs / marketing
-  landing pages (use the dedicated skills if your Bridge ships them).
+  Builds single-file HTML documents: explainers, reference pages, architecture visualizations, light/dark and DE/EN toggles, DESIGN.md tokens. Also running models: simulations with a clock. NOT marketing pages or ops dashboards (creative-design-stack), not ecosystem maps (bridge-explorer). Trigger: "create an HTML page", "explainer", "html kit", "theme toggle", "simulate this".
 metadata:
   scope: core
-  version: 1.0.0
-  last_updated: 2026-06-01
+  version: 1.1.0
+  last_updated: 2026-08-30
 ---
 
 # html-canvas
@@ -48,7 +36,8 @@ These are the point of the skill — they come baked into the shell, don't reinv
 
 ## How to build
 
-**One page:** copy `assets/shell.html` → fill the `{{placeholders}}` → compose
+**One page:** generate the shell with tokens (`design-to-css.py --shell --out page.html`,
+see Tokens below) → fill the `{{placeholders}}` → compose
 `<main>` from the blocks in `references/sections.md` → add behaviours from
 `references/interactivity.md` and motion from `assets/animations.css` if wanted.
 Render light **and** dark, DE **and** EN, then file under
@@ -60,12 +49,47 @@ builders run concurrently on it, one adversarial reviewer checks every page, the
 integrate + write an index launcher. This is how the 12-board sets get built
 consistently.
 
-**Tokens:** regenerate the CSS variable layer from the design system with
+**Tokens:** generate the CSS variable layer from the design system with
 ```bash
-python3 skills/html-canvas/scripts/design-to-css.py --out /tmp/tokens.css
+python3 skills/html-canvas/scripts/design-to-css.py --shell --out page.html
 ```
-and paste it over the shell's brand-token block. Never hand-pick a brand colour;
-if a token is missing, add it to `DESIGN.md` first, then regenerate.
+That writes a copy of the shell whose region between `design-tokens:begin` and
+`design-tokens:end` holds the instance's DESIGN.md values. The committed shell
+holds CSS system colours there and nothing else, because this skill is CORE and
+ships to instances with other brands. Everything below the region is derived
+from those tokens (`var()` and `color-mix()`), never a colour of its own. Bare CSS
+for other pages: `design-to-css.py --out tokens.css`. Never hand-pick a brand
+colour; if a token is missing, add it to `DESIGN.md` first, then regenerate.
+
+## Simulations: when the page has to RUN
+
+Some things flatten in a diagram: a queue forming, a gate sending work back, two
+agents disagreeing, a plan reaching a human at step six. Those get a **running
+model** instead: a clock, a stage, controls, a protocol. Full playbook:
+`references/simulation.md`. Never hand-build one; assemble it:
+
+```bash
+python3 skills/html-canvas/scripts/new-simulation.py --list
+python3 skills/html-canvas/scripts/new-simulation.py --archetype flow --lang de \
+    --title-de "…" --title-en "…" --out work/tasks/<slug>/deliverables/x.html
+```
+
+That splices the shell, `simulation.css`, `sim-engine.js` and one archetype into a
+single offline file, asserting every splice. Then edit only the `MODEL` block.
+
+**Two archetypes ship runnable.** `flow` (SVG stage: routes, stations with
+capacity, queues, a gate, outcomes) and `worklist` (no geometry: a plan executed
+step by step, protocol plus state strip). *console*, *dossier* and *exchange* are
+documented as deltas from those two, not as separate engines.
+
+**Four things make the difference between a running model and a lie**, all
+enforced by the engine and spelled out in the reference: the engine never authors
+user-visible text (a runtime string breaks the DE/EN swap); reduced motion and
+print get the **computed end state**, never an empty stage; criticality always
+rides colour **plus** a glyph and a word; and any page a viewer could mistake for
+a live system carries the three-column provenance block (model, stock that
+exists today, not built yet). The third column is the one that gets dropped and
+the one that matters.
 
 ## Repo / project → architecture explainer
 
@@ -93,22 +117,31 @@ architecture goes under a caveat ("unverified"), never stated as fact.
 | `assets/animations.css` | Optional motion layer, all `prefers-reduced-motion`-gated | Adding animation |
 | `references/build-workflow.md` | Parallel-builder workflow + the full quality/voice/accessibility bar | Multi-page kits, or before calling any page done |
 | `scripts/design-to-css.py` | DESIGN.md → `:root` + `html.dark` CSS custom properties | (Re)generating tokens |
+| `references/simulation.md` | Running models: archetypes, the engine API, the four honesty rules, the traps, the acceptance list | Anything that has to run rather than be read |
+| `assets/sim-engine.js` | The engine: clock with watchdog, controls, protocol feed, SVG route helpers, seeded RNG | Pasted in by the assembler; read it to extend a model |
+| `assets/simulation.css` | The visual layer for a running model, in shell tokens only | Same |
+| `assets/sim-flow.html` · `assets/sim-worklist.html` | The two runnable archetype fragments (model + markup + page CSS) | Starting a simulation, or lifting one part into another |
+| `scripts/new-simulation.py` | Assembles shell + layer + engine + archetype into one single-file page, asserting every splice | Always, when building a simulation |
 | `references/repo-analysis.md` | Repo/doc → Architecture-Spec → sections: doc-scan + offered subagent fan-out + spec→block mapping | Building an architecture explainer from a repo |
 | `scripts/repo-scan.py` | Deterministic repo inventory (languages, entry points, deps, docs) — the factual seed | Before analyzing any repo |
 
 ## Non-negotiables (full list in `references/build-workflow.md`)
 
-- **No Google Fonts / any third-party font CDN** — GDPR. System-stack Inter or a
-  data-URI-inlined woff2.
-- **DESIGN.md is the colour SoT** — tokens only, never hand-picked hex. "large =
-  light" (headings ≥24px → weight 300). Accent gradient only on 1–2 accent words +
-  the wordmark; never the cyan→purple-on-text AI-slop tell.
-- **Colour = meaning, not decoration** — neutral chrome + one indigo accent;
+- **No Google Fonts / any third-party font CDN**: GDPR. Self-hosted or a
+  data-URI-inlined woff2, else the system stack DESIGN.md names as fallback.
+- **DESIGN.md is the colour SoT**: tokens only, never hand-picked hex, and never
+  pasted by hand: `design-to-css.py --shell --out page.html` fills the shell's
+  marked token region. The shell itself carries no brand value. Type follows the
+  DESIGN.md typography roles (weights, sizes, display face vs sans); a gradient on
+  text or fill is never a default.
+- **Colour = meaning, not decoration**: neutral chrome + the brand accent;
   semantic lens/actor colours are the only exception and always ship a legend;
   status reads by shape (`● ◐ ✗ –`) first.
 - **SOUL.md voice** — no hero-arc/hype/slogans; the user is the sender (recipients
   in 3rd person); verify-before-claim (unsourced facts get an explicit caveat).
-- **Accessibility + reduced-motion + print** are part of "done", not extras.
+- **Accessibility + reduced-motion + print** are part of "done", not extras. For a
+  running model, reduced motion and print mean the **computed end state**, not a
+  stopped or empty one.
 
 > A clean flat page also happens to import reasonably into Figma — that's a side
 > benefit of good markup, **not** a mode or a constraint. See the optional note in

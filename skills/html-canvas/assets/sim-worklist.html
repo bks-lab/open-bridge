@@ -1,0 +1,238 @@
+<!--
+  html-canvas — ARCHETYPE FRAGMENT: worklist
+  ============================================================================
+  A fixed plan executed step by step. No stage, no geometry: the picture is the
+  protocol plus a state strip that changes as the plan runs. This is the cheap
+  archetype, and the right one whenever the interesting thing is the SEQUENCE of
+  decisions rather than a flow through places.
+
+  It is also the archetype that wires the single-step button, because here one
+  step is a discrete thing a viewer can ask for: stepOnce advances exactly one
+  plan entry. Space runs, S steps, R resets.
+
+      python3 skills/html-canvas/scripts/new-simulation.py \
+        --archetype worklist --title "..." --out .../x.html
+
+  Edit PLAN and TXT; everything else is machinery.
+-->
+
+<!--@style-->
+.wl-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:20px;margin-top:22px}
+@media (max-width:900px){.wl-grid{grid-template-columns:1fr}}
+.wl-card{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:18px 20px}
+.wl-card h2{font-family:var(--font-sans);font-size:15px;font-weight:600;color:var(--ink);margin:0 0 14px} /* card title: sans, the display face never runs under 28px */
+.wl-facts{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:13px;margin:0}
+.wl-facts dt{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.6px;color:var(--muted);padding-top:3px}
+.wl-facts dd{margin:0;color:var(--ink)}
+.wl-meter-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin:16px 0 6px}
+.wl-actor{display:inline-flex;align-items:center;gap:7px}
+
+<!--@markup-->
+<p class="sim-hint" data-de>Leertaste läuft und hält. S geht einen Schritt weiter. R setzt zurück.</p>
+<p class="sim-hint" data-en>Space runs and pauses. S takes one step. R resets.</p>
+
+<div class="sim-bar">
+  <button class="sim-btn sim-btn--primary" type="button" data-sim-run data-state="idle">
+    <span data-state-idle><span data-de>Lauf starten</span><span data-en>Start run</span></span>
+    <span data-state-running><span data-de>Pause</span><span data-en>Pause</span></span>
+    <span data-state-paused><span data-de>Weiter</span><span data-en>Continue</span></span>
+    <span data-state-done><span data-de>Lauf beendet</span><span data-en>Run finished</span></span>
+  </button>
+  <button class="sim-btn" type="button" data-sim-step>
+    <span data-de>Ein Schritt</span><span data-en>One step</span>
+  </button>
+  <button class="sim-btn" type="button" data-sim-end>
+    <span data-de>Bis zum Ende</span><span data-en>To the end</span>
+  </button>
+  <button class="sim-btn" type="button" data-sim-reset>
+    <span data-de>Zurücksetzen</span><span data-en>Reset</span>
+  </button>
+  <div class="sim-seg" data-sim-speed role="group" aria-label="Speed">
+    <button type="button" data-speed="0.5" aria-pressed="false">0,5x</button>
+    <button type="button" data-speed="1" aria-pressed="true">1x</button>
+    <button type="button" data-speed="2" aria-pressed="false">2x</button>
+  </div>
+  <div class="sim-clock"><span data-de>Schritt</span><span data-en>Step</span> <b id="stepNo">0 / 0</b></div>
+</div>
+
+<p class="sim-reduced-note" data-sim-reduced-note hidden>
+  <span data-de>Ihr System ist auf reduzierte Bewegung eingestellt. Der Plan wurde deshalb ohne
+    Animation bis zum Ende ausgeführt: der Zustand rechts ist der Endzustand, das Protokoll
+    darunter vollständig.</span>
+  <span data-en>Your system asks for reduced motion, so the plan was executed to its end instead
+    of animated: the state on the right is the final state and the protocol below is complete.</span>
+</p>
+
+<div class="wl-grid">
+  <section class="wl-card">
+    <h2><span data-de>Zustand</span><span data-en>State</span></h2>
+    <dl class="wl-facts">
+      <dt><span data-de>Stufe</span><span data-en>Stage</span></dt>
+      <dd id="fStage"></dd>
+      <dt><span data-de>Anläufe</span><span data-en>Attempts</span></dt>
+      <dd id="fTries">0</dd>
+      <dt><span data-de>Befunde</span><span data-en>Findings</span></dt>
+      <dd id="fFindings">0</dd>
+      <dt><span data-de>Urteil</span><span data-en>Verdict</span></dt>
+      <dd id="fVerdict"></dd>
+    </dl>
+    <div class="wl-meter-label">
+      <span><span data-de>Fortschritt</span><span data-en>Progress</span></span>
+      <span id="fPct">0 %</span>
+    </div>
+    <div class="sim-meter"><span id="fBar"></span></div>
+  </section>
+
+  <section class="wl-card">
+    <h2><span data-de>Protokoll</span><span data-en>Protocol</span></h2>
+    <ul class="sim-feed" id="feed"></ul>
+    <p class="sim-empty" id="feedEmpty">
+      <span data-de>Noch kein Schritt ausgeführt.</span>
+      <span data-en>No step taken yet.</span>
+    </p>
+  </section>
+</div>
+
+<h2 style="margin-top:40px">
+  <span data-de>Was hier Modell ist und was Bestand</span>
+  <span data-en>What here is model and what is stock</span>
+</h2>
+<div class="sim-provenance">
+  <article class="sim-prov-card" data-kind="sim">
+    <h3><span data-de>Modell</span><span data-en>Model</span></h3>
+    <p class="sim-prov-claim"><span data-de>der Ablauf selbst</span><span data-en>the sequence itself</span></p>
+    <ul><li><span data-de>Der Plan ist geschrieben, nicht gemessen. Kein Schritt ruft etwas auf.</span>
+            <span data-en>The plan is written, not measured. No step calls anything.</span></li></ul>
+  </article>
+  <article class="sim-prov-card" data-kind="real">
+    <h3><span data-de>Bestand</span><span data-en>Stock</span></h3>
+    <p class="sim-prov-claim"><span data-de>heute im Einsatz</span><span data-en>in use today</span></p>
+    <ul><li><span data-de>Hier eintragen, was es wirklich gibt, mit Pfad oder Quelle.</span>
+            <span data-en>List what genuinely exists here, with a path or a source.</span></li></ul>
+  </article>
+  <article class="sim-prov-card" data-kind="todo">
+    <h3><span data-de>Noch zu bauen</span><span data-en>Not built yet</span></h3>
+    <p class="sim-prov-claim"><span data-de>davon existiert nichts</span><span data-en>none of this exists</span></p>
+    <ul><li><span data-de>Was der Ablauf voraussetzt und heute fehlt.</span>
+            <span data-en>What the sequence assumes and does not have.</span></li></ul>
+  </article>
+</div>
+
+<!--@script-->
+/* ===================== MODEL =====================================
+   PLAN is the whole simulation. Each entry: how long it takes, who acts, what
+   the protocol says, which level it carries, and what it does to the state. */
+
+var TXT = {
+  stages: {
+    idle:     { de: 'noch nicht begonnen', en: 'not started' },
+    draft:    { de: 'Entwurf',             en: 'draft' },
+    review:   { de: 'Prüfung',             en: 'review' },
+    rework:   { de: 'Überarbeitung',       en: 'rework' },
+    gate:     { de: 'menschliches Gate',   en: 'human gate' },
+    done:     { de: 'abgeschlossen',       en: 'closed' }
+  },
+  verdict: {
+    open:     { de: 'offen',        en: 'open' },
+    rejected: { de: 'nicht gefolgt', en: 'not followed' },
+    accepted: { de: 'angenommen',   en: 'accepted' }
+  },
+  who: { a: { de: 'Entwurf', en: 'Drafting' },
+         b: { de: 'Prüfung', en: 'Review' },
+         h: { de: 'Mensch',  en: 'Person' } }
+};
+
+var PLAN = [
+  { dur: 700,  who: 'a', level: 'info', what: { de: 'Aufgabe angenommen, Umfang festgehalten.',
+      en: 'Task accepted, scope recorded.' },
+    set: function (z) { z.stage = 'draft'; z.tries = 1; } },
+  { dur: 900,  who: 'a', level: 'info', what: { de: 'Entwurf erstellt, drei Stellen berührt.',
+      en: 'Draft written, three places touched.' } },
+  { dur: 800,  who: 'b', level: 'info', what: { de: 'Entwurf zur Prüfung übernommen.',
+      en: 'Draft taken up for review.' },
+    set: function (z) { z.stage = 'review'; } },
+  { dur: 900,  who: 'b', level: 'warn', what: { de: 'Ein Befund: die Zusicherung misst nicht, was sie behauptet.',
+      en: 'One finding: the assertion does not measure what it claims.' },
+    set: function (z) { z.findings = 1; } },
+  { dur: 700,  who: 'b', level: 'crit', what: { de: 'Nicht gefolgt. Zurück an den Entwurf mit Begründung.',
+      en: 'Not followed. Sent back to drafting with a reason.' },
+    set: function (z) { z.verdict = 'rejected'; z.stage = 'rework'; } },
+  { dur: 1000, who: 'a', level: 'info', what: { de: 'Nachgebessert und die Zusicherung an der Naht gemessen.',
+      en: 'Reworked, and the assertion now measures at the seam.' },
+    set: function (z) { z.tries = 2; } },
+  { dur: 800,  who: 'a', level: 'ok',   what: { de: 'Gegenprobe: der Fehler eingebaut, die Zusicherung fällt.',
+      en: 'Counter-probe: defect reintroduced, the assertion fails.' } },
+  { dur: 900,  who: 'b', level: 'ok',   what: { de: 'Zweite Prüfung ohne Befund.',
+      en: 'Second review with no finding.' },
+    set: function (z) { z.stage = 'gate'; z.verdict = 'accepted'; z.findings = 0; } },
+  { dur: 1100, who: 'h', level: 'info', what: { de: 'Zur menschlichen Freigabe vorgelegt, nicht selbst geschlossen.',
+      en: 'Put to a person for release, not closed by itself.' } },
+  { dur: 700,  who: 'h', level: 'ok',   what: { de: 'Freigegeben und abgelegt.',
+      en: 'Released and filed.' },
+    set: function (z) { z.stage = 'done'; } }
+];
+
+/* ===================== STATE ===================================== */
+var z, idx, rest;
+var feed = new Sim.Feed(document.getElementById('feed'), { max: PLAN.length, newestFirst: false });
+var feedEmpty = document.getElementById('feedEmpty');
+
+function blank() {
+  z = { stage: 'idle', tries: 0, findings: 0, verdict: 'open' };
+  idx = 0; rest = 600;
+}
+
+function apply(entry) {
+  if (entry.set) entry.set(z);
+  feed.push({ time: (idx + 1), where: TXT.who[entry.who], what: entry.what, level: entry.level });
+  feedEmpty.hidden = true;
+}
+
+/* One discrete step. Returns true when the plan is exhausted, which is both the
+   single-step button's answer and the clock's finish condition. */
+function once() {
+  if (idx >= PLAN.length) return true;
+  var entry = PLAN[idx];
+  apply(entry);
+  idx += 1;
+  rest = entry.dur;
+  return idx >= PLAN.length;
+}
+
+function step(dt) {
+  rest -= dt;
+  var guard = 0;
+  while (rest <= 0 && idx < PLAN.length && guard < 60) {
+    var before = rest;
+    if (once()) break;
+    rest += before;          /* carry the overshoot, so speed stays honest */
+    guard += 1;
+  }
+  return idx >= PLAN.length && rest <= 0;
+}
+
+/* ===================== PAINT ===================================== */
+function render() {
+  Sim.put(document.getElementById('fStage'), TXT.stages[z.stage]);
+  Sim.put(document.getElementById('fTries'), z.tries);
+  Sim.put(document.getElementById('fFindings'), z.findings);
+  Sim.put(document.getElementById('fVerdict'), TXT.verdict[z.verdict]);
+  Sim.put(document.getElementById('stepNo'), idx + ' / ' + PLAN.length);
+  var pct = Math.round(idx / PLAN.length * 100);
+  Sim.put(document.getElementById('fPct'), pct + ' %');
+  document.getElementById('fBar').style.width = pct + '%';
+}
+
+/* ===================== RUN ======================================= */
+blank();
+var clockEngine = new Sim.Clock({
+  step: step,
+  stepOnce: once,
+  render: render,
+  reset: function () { blank(); feed.clear(); feedEmpty.hidden = false; },
+  onState: function (s) { controls.state(s); }
+});
+var controls = new Sim.Controls(clockEngine);
+controls.state('idle');
+Sim.boot(clockEngine, { note: '[data-sim-reduced-note]', autostart: 6000 });
