@@ -227,7 +227,10 @@ More it can show, each one switched in "Customise":
 - **Pinned**: rows you starred. The star sits on every card and every
   Briefing row; a tab card stars its task. Kept on the server (`pins`).
 - **Next date**: a countdown to the next calendar row that has not begun
-  (rows carry their start as `at`).
+  (rows carry their start as `at`). A click opens the event: its calendar,
+  place and people, "Join" for a meeting link, its steps as buttons ("Prepare",
+  or what the calendar section declares, [briefings.md](briefings.md) § Calendar
+  steps) and the dates that follow, each a click into its own detail.
 - **Closed this week**: tasks under `work/done/` whose `closed:` falls since
   Monday; a click lists them.
 - **Options**: a quota's use today with bars of its last days against the

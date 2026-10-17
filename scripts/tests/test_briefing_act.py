@@ -6,6 +6,7 @@ runs. `act` asks the section again and runs a step only when that row still offe
 (`restore:...`) a step returned goes straight to the command, which checks it itself."""
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import json
 import sys
@@ -70,3 +71,48 @@ def test_actions_argv_is_checked_like_argv_and_needs_whole_placeholders():
     for bad in (["python3", "s.py", "x{id}", "{action}"], ["python3", "s.py", "{id}"], "python3 s.py", []):
         problems = bf._section_types({**ok, "actions_argv": bad})
         assert problems, bad
+
+
+# A calendar row's step runs nothing here: it comes back as an agent tab to start, with the prompt the
+# section declares for it (or the built-in one for "prepare"), its placeholders filled from the event.
+
+def calendar_bridge(tmp: Path, steps) -> tuple[Path, str]:
+    day = dt.date.today() + dt.timedelta(days=1)
+    (tmp / "workflow" / "briefings").mkdir(parents=True)
+    (tmp / "cal.ics").write_text(
+        "BEGIN:VCALENDAR\nX-WR-CALNAME:Team\nBEGIN:VEVENT\nSUMMARY:Weekly\n"
+        f"DTSTART:{day:%Y%m%d}T180000\nDTEND:{day:%Y%m%d}T184500\nLOCATION:Room 2\n"
+        "ATTENDEE;CN=Ann Example:mailto:ann@example.com\nEND:VEVENT\nEND:VCALENDAR\n", encoding="utf-8")
+    (tmp / "workflow" / "briefings" / "p.yaml").write_text(json.dumps({
+        "id": "p", "title": "P", "sections": [{"kind": "calendar", "id": "cal", "provider": "ics", "path": "cal.ics",
+                                               "event_steps": steps}]}), encoding="utf-8")
+    return tmp, f"{day.isoformat()}T18:00 Weekly"
+
+
+def test_a_calendar_step_comes_back_as_a_tab_to_start_with_its_prompt(tmp_path, capsys):
+    steps = [{"id": "prepare", "label": "Prepare weekly", "match": "^Weekly$", "prompt": "/cycle prepare {date} ({calendar})"}]
+    root, row = calendar_bridge(tmp_path, steps)
+    code, out, err = run(root, "cal", row, "prepare", capsys=capsys)
+    assert code == 0, err
+    data = json.loads(out)
+    assert data["did"] == "Prepare weekly"
+    assert data["launch"]["prompt"] == f"/cycle prepare {row[:10]} (Team)"
+    assert data["launch"]["key"] == f"event:prepare:{row}"
+    assert "Weekly" in data["launch"]["summary"]
+
+
+def test_the_built_in_prepare_step_names_the_event_place_and_people(tmp_path, capsys):
+    root, row = calendar_bridge(tmp_path, [])
+    code, out, err = run(root, "cal", row, "prepare", capsys=capsys)
+    assert code == 0, err
+    prompt = json.loads(out)["launch"]["prompt"]
+    for word in ("Weekly", "Team", "Room 2", "Ann Example"):
+        assert word in prompt
+
+
+def test_a_calendar_step_the_row_does_not_offer_is_refused(tmp_path, capsys):
+    steps = [{"id": "followup", "label": "Follow up", "match": "Weekly", "phase": "after", "prompt": "x"}]
+    root, row = calendar_bridge(tmp_path, steps)
+    for action in ("followup", "other"):
+        code, out, err = run(root, "cal", row, action, capsys=capsys)
+        assert code == 2 and out == "" and err, action

@@ -386,6 +386,35 @@ $defs:
         description: |
           A program that prints a JSON list of items (normalized schema for a
           section, {title,start,end} for a calendar). Runs from the Bridge root.
+      event_steps:
+        type: array
+        maxItems: 8
+        description: |
+          calendar: the section's own steps on an event, shown as a dashboard's
+          row steps. A step fits an event whose title `match` finds (a pattern,
+          case does not matter), in `calendars` when given, and whose `phase` has
+          come: before (default, the event has not begun) or after (it is over).
+          Running one starts an agent tab on `prompt`, filed as an inbox item
+          under the event; {title} {date} {time} {start} {end} {calendar}
+          {location} {attendees} are filled in. One called `prepare` stands in
+          for the built-in step of that name. docs/briefings.md § Calendar steps.
+        items:
+          type: object
+          required: [id, label, match, prompt]
+          additionalProperties: false
+          properties:
+            id: {type: string, pattern: "^[a-z][a-z0-9_-]{0,39}$"}
+            label: {type: string, minLength: 1, maxLength: 40}
+            match: {type: string, description: "A pattern on the event's title."}
+            calendars: {type: array, items: {type: string}}
+            phase: {enum: [before, after]}
+            prompt: {type: string, minLength: 1}
+      prepare:
+        type: boolean
+        description: |
+          calendar: offer the built-in `prepare` step (an agent tab that gathers
+          what bears on the event) on every event of the reader's own that has
+          not begun. Default true; false turns it off.
       actions_argv:
         type: array
         minItems: 2

@@ -4362,7 +4362,8 @@ function InfoDrawer({ s, c }) {
   const onHost = (s.workers?.data?.runs ?? []).filter(r => !r.retired && r.host === cur.title)
   const onHostBad = onHost.filter(r => (r.findings ?? []).some(serious)).length
   // an opened event lists the ones after it too, each a click into its own detail
-  const others = sec?.kind === 'calendar'
+  const dated = sec?.kind === 'calendar'
+  const others = dated
     ? upcomingEvents(s.model, s.now || Date.now()).filter(e => !(e.it.at === cur.at && e.it.title === cur.title)).slice(0, 15)
     : []
   return html`<div class="overlay" onClick=${e => { if (e.target === e.currentTarget) close() }}>
@@ -4376,13 +4377,17 @@ function InfoDrawer({ s, c }) {
       </header>
       <div class="btn-row idrawer-actions">
         ${cur.link?.kind === 'web' ? html`<a class="btn btn-secondary btn-xs" href=${cur.link.href} target="_blank" rel="noopener noreferrer">
-          <${Icon} name="external" size=${14} /><span class="btn-label">${t.openLink}</span></a>` : null}
+          <${Icon} name="external" size=${14} /><span class="btn-label">${dated ? t.joinMeeting : t.openLink}</span></a>` : null}
         ${cur.link?.kind === 'file' ? html`<${Btn} size="xs" variant="ghost" icon="copy" title=${cur.link.path} onClick=${() => c.copy(cur.link.path)}>${t.copyPath}<//>` : null}
         ${sess ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[sess.tab.ref]} onClick=${() => c.act('tab_jump', { tab_ref: sess.tab.ref })}>${t.btnToTab}<//>
           <${Btn} size="xs" variant="secondary" onClick=${() => { close(); c.openTabView(sess.tab.ref) }}>${t.infoViewTab}<//>` : null}
         ${cur.task ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.openItem(`task:${cur.task}`, cur, { page, section })}>${t.infoOpenTask}<//>` : null}
         ${onHost.length ? html`<${Btn} size="xs" variant="secondary" onClick=${() => { close(); c.openWorkers({ host: cur.title }) }}>${t.workersOpen}<//>` : null}
-        ${cur.actions?.length && cur.row_id ? html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} />` : null}
+        ${cur.actions?.length && cur.row_id ? (dated
+          // an event's steps start an agent tab and change nothing, so each is a button of its own
+          ? cur.actions.map(a => html`<${Btn} key=${a.id} size="xs" variant="primary" busy=${!!s.ui.busy.row_action}
+              onClick=${() => c.act('row_action', { page, section, index: cur.index, action: a.id })}>${a.label}<//>`)
+          : html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} />`) : null}
         ${cur.account?.status ? html`<${StatusMenu} it=${cur} page=${page} section=${section} c=${c} />` : null}
         <${PageItemActions} it=${cur} s=${s} c=${c} after=${close} />
         ${cur.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { close(); c.ask('info', { page, section, index: cur.index }) }}>${t.btnAsk}<//>` : null}
@@ -4396,7 +4401,8 @@ function InfoDrawer({ s, c }) {
         ${others.length ? html`<section class="idrawer-sec"><h3 class="label-caps">${t.infoMoreDates}</h3>
           <ul class="agenda">${others.map(e => html`<li key=${`${e.section}:${e.it.at}:${e.it.title}`}>
             <span class="mono agenda-when">${e.it.when}</span>
-            <button type="button" class="btn-link" onClick=${() => c.openInfo(e.it, e.page, e.section)}>${e.it.title}</button></li>`)}</ul></section>` : null}
+            <button type="button" class="btn-link" onClick=${() => c.openInfo(e.it, e.page, e.section)}>${e.it.title}</button>
+            ${e.it.detail ? html`<span class="muted small">${detailText(e.it.detail, t)}</span>` : null}</li>`)}</ul></section>` : null}
         ${!cur.detail && !cur.meter && !facts.length && !(cur.lines ?? []).length ? html`<p class="muted">${t.infoNothingMore}</p>` : null}
       </div>
     </aside>

@@ -24,7 +24,7 @@ const en = {
   gate: { 'only-you': 'only you', 'your-yes': 'needs your yes', free: 'may run alone' },
   tone: { bad: 'problem', warn: 'attention', dim: 'quiet', none: 'info' },
   taskState: { backlog: 'backlog', doing: 'doing', review: 'in review', done: 'done' },
-  lineKind: { origin: 'Origin: ', next: 'Next: ', blocked: 'Waits on: ', look: 'Look again: ', step: 'Step: ', log: 'Log: ' },
+  lineKind: { origin: 'Origin: ', next: 'Next: ', blocked: 'Waits on: ', look: 'Look again: ', step: 'Step: ', log: 'Log: ', where: 'Place: ', people: 'With: ' },
   pass: { quick: 'inbox and tasks', full: 'everything, with trackers and checks', delta: 'changes' },
 
   // row action ids from the server (contract 7.6)
@@ -170,6 +170,7 @@ const en = {
   askChat: 'Ask',
   copyPath: 'copy path',
   openLink: 'open',
+  joinMeeting: 'Join',
   inboxTitle: 'Inbox item',
   runsLabel: 'runs:',
   runsNone: 'no stored action: "Let AI do it" starts an agent tab for it',
@@ -600,6 +601,7 @@ const en = {
   infoOpenTask: 'Open task',
   infoViewTab: 'View',
   infoNothingMore: 'This row carries nothing beyond its title.',
+  infoMoreDates: 'Coming dates',
   quickAsTabTitle: 'Show the chat on its own page of the cockpit and go on later',
   quickChats: 'Chats',
   quickNoChats: 'No chat yet. Your first question starts one.',
@@ -806,7 +808,7 @@ const de = {
   gate: { 'only-you': 'nur du', 'your-yes': 'braucht dein Ja', free: 'darf allein' },
   tone: { bad: 'Problem', warn: 'Achtung', dim: 'ruhig', none: 'Info' },
   taskState: { backlog: 'Backlog', doing: 'in Arbeit', review: 'im Review', done: 'erledigt' },
-  lineKind: { origin: 'Herkunft: ', next: 'Als Nächstes: ', blocked: 'Wartet auf: ', look: 'Nachsehen: ', step: 'Schritt: ', log: 'Log: ' },
+  lineKind: { origin: 'Herkunft: ', next: 'Als Nächstes: ', blocked: 'Wartet auf: ', look: 'Nachsehen: ', step: 'Schritt: ', log: 'Log: ', where: 'Ort: ', people: 'Mit: ' },
   pass: { quick: 'Posteingang und Aufgaben', full: 'alles, mit Trackern und Prüfungen', delta: 'Änderungen' },
 
   action: {
@@ -947,6 +949,7 @@ const de = {
   askChat: 'Fragen',
   copyPath: 'Pfad kopieren',
   openLink: 'öffnen',
+  joinMeeting: 'Beitreten',
   inboxTitle: 'Posteingangs-Eintrag',
   runsLabel: 'führt aus:',
   runsNone: 'keine hinterlegte Aktion: „AI machen lassen“ startet dafür einen Agenten-Tab',
@@ -1375,6 +1378,7 @@ const de = {
   infoOpenTask: 'Aufgabe öffnen',
   infoViewTab: 'Ansehen',
   infoNothingMore: 'Diese Zeile trägt nichts außer ihrem Titel.',
+  infoMoreDates: 'Weitere Termine',
   quickAsTabTitle: 'Den Chat auf einer eigenen Seite des Cockpits zeigen und später weitermachen',
   quickChats: 'Chats',
   quickNoChats: 'Noch kein Chat. Deine erste Frage beginnt einen.',

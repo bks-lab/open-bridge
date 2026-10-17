@@ -89,6 +89,14 @@ LABELS = {
     "clash_row": "{first} and {second} overlap ({when})",
     "parallel": "alongside {title}",
     "info_tag": "info",
+    "tag_calendar": "Calendar",
+    "step_prepare": "Prepare",
+    "prepare_head": "Prepare me for the appointment \u201c{title}\u201d on {when}.",
+    "prepare_place": "Place",
+    "prepare_people": "With",
+    "prepare_tail": ("Look through this Bridge for what bears on it: tasks, inbox, the work log, earlier meeting "
+                     "notes, mails and issues that name the title or the people. Then give me a short brief: what "
+                     "it is about, what is open, what I should bring or decide. Read only, send nothing."),
     "all_clear": "{title}: all clear",
     "owed": "Not in this profile, still yours to run: {streams} (briefing.py owed)",
     "overview_file": "Boards and activity: {path}",
@@ -171,6 +179,14 @@ LABELS_DE = {
     "clash_row": "{first} und {second} überschneiden sich ({when})",
     "parallel": "parallel zu {title}",
     "info_tag": "Info",
+    "tag_calendar": "Kalender",
+    "step_prepare": "Vorbereiten",
+    "prepare_head": "Bereite mich auf den Termin \u201e{title}\u201c am {when} vor.",
+    "prepare_place": "Ort",
+    "prepare_people": "Mit",
+    "prepare_tail": ("Such in dieser Bridge, was dazu gehört: Aufgaben, Posteingang, Arbeitslog, frühere Protokolle, "
+                     "Mails und Issues, die den Titel oder die Personen nennen. Gib mir dann eine kurze Vorbereitung: "
+                     "worum es geht, was offen ist, was ich mitbringen oder entscheiden sollte. Nur lesen, nichts senden."),
     "all_clear": "{title}: alles in Ordnung",
     "owed": "Nicht im Profil, noch von Hand: {streams} (briefing.py owed)",
     "overview_file": "Boards und Aktivität: {path}",
@@ -1520,7 +1536,7 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
         end = _when(item.get("end"))
         start = _when(item.get("start"))
         parts = [labels["until"].format(time=f"{end:%H:%M}") if end and start and end.date() == start.date() else "",
-                 labels["info_tag"] if item.get("info") is True else ""]
+                 _text(item.get("calendar")), labels["info_tag"] if item.get("info") is True else ""]
     elif kind == "tracker":
         project = _text(item.get("project"))
         parts = ["PR" if item.get("type") == "pr" else "", state,
@@ -1570,6 +1586,12 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
     if kind == "tasks":
         row.update(priority=_text(item.get("priority")) or None, state=_text(item.get("state")) or None,
                    lines=_task_lines(item))
+    elif kind == "calendar":
+        # where and with whom, in full when the event is opened (a tag would cut a list of people)
+        people = ", ".join(_text(p) for p in item.get("attendees") or [] if _text(p))
+        lines = [{"kind": k, "text": v} for k, v in (("where", _text(item.get("location"))), ("people", people)) if v]
+        if lines:
+            row["lines"] = lines
     elif kind == "inbox" and _text(item.get("waiting_on")):
         row.update(lines=[{"kind": "blocked", "text": _text(item["waiting_on"])},
                                         {"kind": "look", "text": _text(item.get("until"))}])
@@ -1597,9 +1619,11 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
     steps = [{"id": a["id"], "label": a["label"].strip()[:40]} for a in item.get("actions") or []
              if isinstance(item.get("actions"), list) and isinstance(a, dict) and isinstance(a.get("id"), str)
              and ACTION_ID_RE.match(a["id"]) and isinstance(a.get("label"), str) and a["label"].strip()][:8]
-    if kind == "command" and steps and isinstance(item.get("id"), str):
+    if kind in ("command", "calendar") and steps and isinstance(item.get("id"), str):
         row["actions"], row["row_id"] = steps, item["id"][:200]
-    tags = tags_of(item.get("tags"))
+    # an event's calendar: a fact when it is opened, a filter on the dates page
+    tags = tags_of({labels["tag_calendar"]: _text(item["calendar"])}) if kind == "calendar" and _text(item.get("calendar")) \
+        else tags_of(item.get("tags"))
     if tags:
         row["tags"] = tags
     account = item.get("account")

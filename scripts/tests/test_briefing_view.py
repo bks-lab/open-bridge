@@ -981,3 +981,18 @@ def test_a_shortened_title_gives_way_to_the_full_one_of_the_same_thing():
     view = bv.build(r, profile(view={"style": "triage"}))
     titles = [i["title"] for b in view["buckets"] for i in b["items"] if "Time tracking" in i["title"]]
     assert titles == ["Time tracking requirements"]
+
+
+def test_a_calendar_page_row_names_its_calendar_place_people_link_and_steps():
+    item = {"id": "2026-10-05T18:00 Weekly", "title": "Weekly", "start": "2026-10-05T18:00", "end": "2026-10-05T18:45",
+            "calendar": "Team", "location": "Room 2", "attendees": ["Ann Example", "Bob Example"],
+            "url": "https://teams.microsoft.com/l/meetup-join/x", "actions": [{"id": "prepare", "label": "Prepare"}]}
+    en = bv.labels_for("en")
+    row = bv._page_row("calendar", item, {}, NOW, en)
+    assert row["detail"] == "until 18:45 · Team"
+    assert row["tags"] == {en["tag_calendar"]: "Team"}           # a filter by calendar on the dates page
+    assert row["lines"] == [{"kind": "where", "text": "Room 2"}, {"kind": "people", "text": "Ann Example, Bob Example"}]
+    assert row["url"] == "https://teams.microsoft.com/l/meetup-join/x"
+    assert row["actions"] == [{"id": "prepare", "label": "Prepare"}] and row["row_id"] == item["id"]
+    de = bv._page_row("calendar", item, {}, NOW, bv.labels_for("de"))
+    assert de["tags"] == {"Kalender": "Team"}

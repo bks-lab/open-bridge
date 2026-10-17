@@ -1382,6 +1382,18 @@ class Actions:
         if data is None:
             return
         label = str(data.get("did") or steps[action])
+        launch = data.get("launch")
+        if isinstance(launch, dict) and all(isinstance(launch.get(k), str) and launch[k].strip()
+                                            for k in ("summary", "prompt", "key")):
+            # a step that hands back a tab (a calendar row's prepare): filed under the event's key, so a second
+            # click finds the same item, and started like Do it; the inbox item is its record, no undo
+            summary = CONTROL_RE.sub(" ", launch["summary"]).strip()[:200]
+            new_id = self.inbox_add(ctx, row, summary, CONTROL_RE.sub(" ", launch["prompt"]).strip()[:3500],
+                                    key=CONTROL_RE.sub(" ", launch["key"]).strip()[:240])
+            if new_id is not None:
+                self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": summary}], "go",
+                            self.app.cfg.target, word=label)
+            return
         undo = data.get("undo")
         ctx.history.append({"key": f"row:{section}:{row}", "title": str(it.get("title") or row)[:200], "kind": "row",
                             "did": label, "ident": row, "undone_ms": None,

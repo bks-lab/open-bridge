@@ -45,6 +45,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 import yaml
@@ -70,7 +71,7 @@ NOT_INHERITED = {"id", "title", "default", "offer_on", "extends", "_path"}
 SECTION_KEYS = {"kind", "id", "title", "max", "to_inbox", "provider", "query", "account_ref", "state_map",
                 "status", "contexts", "days", "path", "argv", "exclude_calendars", "info_calendars", "bucket",
                 "repos", "author", "all_branches", "summary", "report_ok", "covers", "kinds", "skip_kinds",
-                "deferred", "cache_minutes", "step_headings", "actions_argv"}
+                "deferred", "cache_minutes", "step_headings", "actions_argv", "event_steps", "prepare"}
 # A profile is committed and often shared: a value under one of these names is
 # a credential, and credentials only ever travel as references (account_ref).
 SECRET_NAME = re.compile(r"(token|secret|password|passwd|api[_-]?key|private[_-]?key)", re.I)
@@ -454,6 +455,43 @@ def _is_str_list(value) -> bool:
     return isinstance(value, list) and all(isinstance(v, str) for v in value)
 
 
+EVENT_STEP_KEYS = {"id", "label", "match", "calendars", "phase", "prompt"}
+EVENT_PHASES = ("before", "after")
+
+
+def _event_step_problems(steps) -> list:
+    """A calendar section's own steps: id, label, a pattern on the title, the prompt of the tab it starts."""
+    if not isinstance(steps, list):
+        return ["event_steps must be a list of steps"]
+    out = []
+    for n, step in enumerate(steps, 1):
+        where = f"event_steps[{n}]"
+        if not isinstance(step, dict):
+            out.append(f"{where} must be a mapping")
+            continue
+        unknown = sorted(set(step) - EVENT_STEP_KEYS)
+        if unknown:
+            out.append(f"{where}: unknown key(s) {', '.join(unknown)}")
+        if not (isinstance(step.get("id"), str) and ACTION_RE.match(step["id"])):
+            out.append(f"{where}: id must be lowercase letters, digits, _ and -")
+        if not (isinstance(step.get("label"), str) and 0 < len(step["label"].strip()) <= 40):
+            out.append(f"{where}: label must be text of 1 to 40 characters")
+        if not (isinstance(step.get("prompt"), str) and step["prompt"].strip()):
+            out.append(f"{where}: prompt must be text")
+        if not isinstance(step.get("match"), str):
+            out.append(f"{where}: match must be text, a pattern on the event's title")
+        else:
+            try:
+                re.compile(step["match"])
+            except re.error as exc:
+                out.append(f"{where}: match is not a pattern ({exc})")
+        if "phase" in step and step["phase"] not in EVENT_PHASES:
+            out.append(f"{where}: phase must be before or after")
+        if "calendars" in step and not _is_str_list(step["calendars"]):
+            out.append(f"{where}: calendars must be a list of calendar names")
+    return out
+
+
 def _section_types(s: dict) -> list:
     """Shapes the JSON schema promises, checked without a jsonschema dependency."""
     out = []
@@ -475,6 +513,12 @@ def _section_types(s: dict) -> list:
         elif not ({"{id}", "{action}"} <= set(aa)) or \
                 any(("{id}" in a or "{action}" in a) and a not in ("{id}", "{action}") for a in aa):
             out.append("actions_argv needs {id} and {action}, each as a whole argument of its own")
+    if ("event_steps" in s or "prepare" in s) and s.get("kind") != "calendar":
+        out.append("event_steps and prepare belong to a calendar section")
+    if "prepare" in s and not isinstance(s["prepare"], bool):
+        out.append("prepare must be true or false")
+    if "event_steps" in s:
+        out += _event_step_problems(s["event_steps"])
     for key in ("kinds", "skip_kinds"):
         unknown = sorted(set(s.get(key) or []) - set(_inbox().KINDS)) if _is_str_list(s.get(key)) else []
         if unknown:
@@ -985,41 +1029,77 @@ def sec_commits(section: dict, ctx: Context) -> list:
 
 
 # 2026-10-04 at 09:00 - 09:30 | 2026-10-04 at 23:00 - 2026-10-05 at 01:00 | 2026-10-04 - 2026-10-06 | 2026-10-04
-ICAL_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?: at (\d{1,2}:\d{2}))?"
-                       r"(?: - (?:(\d{4}-\d{2}-\d{2})(?: at )?)?(\d{1,2}:\d{2})?)?\s*\t(.+)$")
+ICAL_WHEN = re.compile(r"^(\d{4}-\d{2}-\d{2})(?: at (\d{1,2}:\d{2}))?"
+                       r"(?: - (?:(\d{4}-\d{2}-\d{2})(?: at )?)?(\d{1,2}:\d{2})?)?$")
+ICAL_PROPS = ("location", "url", "attendees", "uid", "notes")
+# the hosts whose links join a meeting; any other link in an event (a help page, a document) is not one
+MEETING_HOST = re.compile(r"(?:^|\.)(?:teams\.microsoft\.com|teams\.live\.com|zoom\.us|meet\.google\.com|"
+                          r"webex\.com|whereby\.com|meet\.jit\.si)$")
+LINK = re.compile(r"https://[^\s<>\"'()]+")
+BIDI = re.compile("[\u200e\u200f\u202a-\u202e\u2066-\u2069]")   # direction marks a calendar app leaves in names
 
 
 def _icalbuddy(section: dict, ctx: Context) -> list:
     days = int(section.get("days", 1))
-    # -nrd: absolute dates, never "today"/"tomorrow" (those cannot be parsed back)
-    base = ["icalBuddy", "-nrd", "-nc", "-b", "", "-ps", "|\t|", "-iep", "datetime,title", "-po", "datetime,title",
+    # -nrd: absolute dates, never "today"/"tomorrow" (those cannot be parsed back). -sc: the events under a
+    # line naming their calendar, so `info_calendars` needs no second call. -nnr: the notes on one line;
+    # they are read only for a meeting link and never leave this function.
+    argv = ["icalBuddy", "-nrd", "-nc", "-sc", "-uid", "-b", "", "-ss", "", "-ps", "|\t|",
+            "-iep", "datetime,title,location,url,attendees,notes,uid",
+            "-po", "datetime,title,location,url,attendees,uid,notes", "-nnr", " ",
             "-df", "%Y-%m-%d", "-tf", "%H:%M"]
-    argv = list(base)
     if section.get("exclude_calendars"):
         argv += ["-ec", ",".join(str(c) for c in section["exclude_calendars"])]
-    events = _icalbuddy_events(ctx.run(argv + [f"eventsToday+{days}"], timeout=ctx.timeout))
-    if section.get("info_calendars"):
-        # -nc leaves the calendar name out (with it, every title ends in one to strip):
-        # a second call limited to the info calendars says which events are theirs.
-        only = ["-ic", ",".join(str(c) for c in section["info_calendars"]), f"eventsToday+{days}"]
-        info = {(e["start"], e["end"], e["title"]) for e in _icalbuddy_events(ctx.run(base + only,
-                                                                                       timeout=ctx.timeout))}
-        for e in events:
-            if (e["start"], e["end"], e["title"]) in info:
-                e["info"] = True
-    return events
+    return _icalbuddy_events(ctx.run(argv + [f"eventsToday+{days}"], timeout=ctx.timeout))
 
 
 def _icalbuddy_events(out: str) -> list:
-    events = []
-    for line in out.splitlines():
-        m = ICAL_LINE.match(line.strip("\n"))
-        if not m:
+    events, calendar = [], None
+    for line in out.split("\n"):      # not splitlines: a carriage return inside the notes ends no event
+        line = line.rstrip()
+        if "\t" not in line:
+            if line.endswith(":") and not ICAL_WHEN.match(line[:-1].strip()):
+                calendar = BIDI.sub("", line[:-1]).strip() or None
             continue
-        day, start, end_day, end, title = m.groups()
+        when, title, *rest = line.split("\t")
+        m = ICAL_WHEN.match(when.strip())
+        if not m or not title.strip():
+            continue
+        props, last = {}, None
+        for part in rest:
+            name, sep, value = part.partition(": ")
+            if sep and name in ICAL_PROPS and name not in props:
+                props[name], last = value, name
+            elif last:
+                props[last] += "\t" + part          # a tab inside a value
+        day, start, end_day, end = m.groups()
         stop = f"{end_day or day}T{end:0>5}" if end else end_day
-        events.append({"title": title.strip(), "start": f"{day}T{start:0>5}" if start else day, "end": stop})
+        event = {"title": title.strip(), "start": f"{day}T{start:0>5}" if start else day, "end": stop}
+        if calendar:
+            event["calendar"] = calendar
+        people = (props.get("attendees") or "").split(", ")
+        event.update(_event_details(props.get("location"), people,
+                                    [props.get("url"), props.get("location"), props.get("notes")]))
+        events.append(event)
     return events
+
+
+def _event_details(location, people, texts) -> dict:
+    """Place, attendees and the meeting link of one event, each only when there is one."""
+    out = {}
+    place = BIDI.sub("", location or "").strip()
+    if place:
+        out["location"] = place[:160]
+    names = [BIDI.sub("", str(p)).strip() for p in people or []]
+    if any(names):
+        out["attendees"] = [n[:80] for n in names if n][:30]
+    for text in texts:
+        link = next((u for u in LINK.findall(text or "") if MEETING_HOST.search(urllib.parse.urlsplit(u).hostname or "")),
+                    None)
+        if link:
+            out["url"] = link
+            break
+    return out
 
 
 def _ics_date(value: str, params: str = ""):
@@ -1062,13 +1142,21 @@ def _ics(section: dict, ctx: Context) -> list:
         elif line == "END:VEVENT" and current is not None:
             if current.get("start") and start_day <= dt.date.fromisoformat(current["start"][:10]) <= last_day:
                 events.append({"title": current.get("title", ""), "start": current["start"],
-                               "end": current.get("end"), **({"calendar": calname} if calname else {})})
+                               "end": current.get("end"), **({"calendar": calname} if calname else {}),
+                               **_event_details(current.get("location"), current.get("people"),
+                                                [current.get("url"), current.get("location"), current.get("notes")])})
             current = None
         elif current is not None and ":" in line:
             head, value = line.split(":", 1)
             name, _, params = head.partition(";")
             if name == "SUMMARY":
                 current["title"] = value
+            elif name in ("LOCATION", "URL", "DESCRIPTION"):
+                current[{"LOCATION": "location", "URL": "url", "DESCRIPTION": "notes"}[name]] = \
+                    value.replace("\\,", ",").replace("\\;", ";").replace("\\n", " ")
+            elif name == "ATTENDEE":
+                cn = re.search(r'CN="?([^";:]+)', params)
+                current.setdefault("people", []).append(cn.group(1) if cn else re.sub(r"(?i)^mailto:", "", value))
             elif name in ("DTSTART", "DTEND"):
                 try:
                     current["start" if name == "DTSTART" else "end"] = _ics_date(value, params)
@@ -1105,10 +1193,60 @@ def _calendar_events(section: dict, ctx: Context) -> list:
     raise SourceError(f"unknown calendar provider {provider!r}")
 
 
+def _event_id(event: dict) -> str:
+    return f"{event.get('start')} {event.get('title')}"
+
+
+def _event_time(value):
+    try:
+        return dt.datetime.fromisoformat(str(value)) if value else None
+    except ValueError:
+        return None
+
+
+def event_steps(section: dict, event: dict, now: dt.datetime, words: dict) -> list:
+    """The steps one event offers, each {id, label, prompt}: the section's own `event_steps` whose pattern
+    (and calendars) fit and whose phase has come (before: not begun yet; after: over), then the built-in
+    `prepare` on an event of the reader's own, unless one of the section's own is called prepare."""
+    start = _event_time(event.get("start"))
+    end = _event_time(event.get("end")) or start
+    if start is None:
+        return []
+    phase = "after" if end <= now else "before" if start > now else None     # running: neither
+    steps = []
+    for step in section.get("event_steps") or []:
+        if not isinstance(step, dict) or step.get("phase", "before") != phase or not isinstance(step.get("match"), str):
+            continue
+        if step.get("calendars") and event.get("calendar") not in step["calendars"]:
+            continue
+        try:
+            fits = re.search(step["match"], str(event.get("title") or ""), re.I)
+        except re.error:
+            continue
+        if fits and step.get("id") not in {x["id"] for x in steps}:
+            steps.append({"id": step.get("id"), "label": str(step.get("label") or "").strip(), "prompt": step.get("prompt")})
+    if phase == "before" and section.get("prepare", True) is not False and not event.get("info") \
+            and "prepare" not in {x["id"] for x in steps}:
+        steps.append({"id": "prepare", "label": words["step_prepare"], "prompt": None})
+    return [x for x in steps if isinstance(x["id"], str) and ACTION_RE.match(x["id"]) and x["label"]][:8]
+
+
 def sec_calendar(section: dict, ctx: Context) -> list:
-    events = calendar_events(section, ctx)
-    return [{"id": f"{e.get('start')} {e.get('title')}", "title": e.get("title"), "start": e.get("start"),
-             "end": e.get("end"), "state": "new", **({"info": True} if e.get("info") else {})} for e in events]
+    words = _view().labels_for(conversation_language(ctx.cfg))
+    out = []
+    for e in calendar_events(section, ctx):
+        item = {"id": _event_id(e), "title": e.get("title"), "start": e.get("start"), "end": e.get("end"),
+                "state": "new", **({"info": True} if e.get("info") else {})}
+        for key in ("calendar", "location", "url"):
+            if isinstance(e.get(key), str) and e[key].strip():
+                item[key] = e[key].strip()
+        if _is_str_list(e.get("attendees")) and e["attendees"]:
+            item["attendees"] = e["attendees"]
+        steps = event_steps(section, e, ctx.now, words)
+        if steps:
+            item["actions"] = [{"id": x["id"], "label": x["label"]} for x in steps]
+        out.append(item)
+    return out
 
 
 def _json_list(text: str) -> list:
@@ -1656,6 +1794,8 @@ def act(root: Path, cfg: dict, profile: dict, section_ref: str, row_id: str, act
     must still offer the step. An undo token a step returned goes to the command unchecked here
     (the row may be gone by then); the command checks it. Returns (exit code, output or reason)."""
     section = next((s for s in profile.get("sections") or [] if section_id(s) == section_ref), None)
+    if section and section.get("kind") == "calendar":
+        return _act_calendar(root, cfg, section, row_id, action)
     if not section or section.get("kind") != "command" or not _is_str_list(section.get("actions_argv")):
         return 2, f"section {section_ref} has no actions"
     if not ROW_ID_RE.match(row_id or ""):
@@ -1679,6 +1819,39 @@ def act(root: Path, cfg: dict, profile: dict, section_ref: str, row_id: str, act
     if res.returncode != 0:
         return res.returncode, (res.stderr or res.stdout).strip()[-300:]
     return 0, res.stdout.strip()
+
+
+def _act_calendar(root: Path, cfg: dict, section: dict, row_id: str, action: str) -> tuple[int, str]:
+    """A calendar row's step runs nothing here: asked for again, the event hands back the tab to start
+    (summary, prompt, the inbox key that keeps a second click on the same event from filing it twice)."""
+    if not ROW_ID_RE.match(row_id or "") or not ACTION_RE.match(action or ""):
+        return 2, "not a row id or not an action"
+    ctx = Context(root, cfg=cfg)
+    try:
+        events = calendar_events(section, ctx)
+    except (SourceError, Skip) as exc:
+        return 2, f"section {section_id(section)} did not answer: {exc}"
+    event = next((e for e in events if _event_id(e) == row_id), None)
+    words = _view().labels_for(conversation_language(cfg))
+    step = next((x for x in event_steps(section, event, ctx.now, words) if x["id"] == action), None) if event else None
+    if step is None:
+        return 2, f"row {row_id} does not offer {action}"
+    start = str(event.get("start") or "")
+    when = f"{start[:10]} {start[11:16]}".strip()
+    people = ", ".join(event.get("attendees") or [])
+    if step["prompt"]:
+        values = {"title": str(event.get("title") or ""), "start": start, "date": start[:10], "time": start[11:16],
+                  "end": str(event.get("end") or ""), "calendar": str(event.get("calendar") or ""),
+                  "location": str(event.get("location") or ""), "attendees": people}
+        prompt = re.sub(r"\{([a-z]+)\}", lambda m: values.get(m.group(1), m.group(0)), step["prompt"])
+    else:
+        facts = [(words["tag_calendar"], event.get("calendar")), (words["prepare_place"], event.get("location")),
+                 (words["prepare_people"], people)]
+        prompt = "\n".join([words["prepare_head"].format(title=event.get("title"), when=when),
+                            *[f"{label}: {value}" for label, value in facts if value], words["prepare_tail"]])
+    return 0, json.dumps({"ok": True, "did": step["label"], "launch": {
+        "summary": f"{step['label']}: {event.get('title')} ({when})"[:200], "prompt": prompt[:3500],
+        "key": f"event:{action}:{row_id}"[:240]}}, ensure_ascii=False)
 
 
 def main(argv=None) -> int:

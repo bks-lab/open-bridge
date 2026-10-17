@@ -94,7 +94,7 @@ only the cockpit shows (resources, token use) and its pages, while
 | `tasks` | `work/tasks/*/STATUS.md` | `status` (default doing, review), `contexts`, `max` |
 | `activity` | `work/log.md` rows of the last days | `days` (default 7), `max` |
 | `commits` | commits per repository per day as a sparkline (`▁▃█▂`), busiest first, by local committer date (the date `--since` filters on, so a rebase or another time zone lands on the right day). Repositories without commits in the window are left out; one that cannot be read is named under housekeeping; reaching the time limit fails the section instead of hiding repositories | `days` (1 or more, default 7), `repos` (registered names or paths; default: every clone the ecosystem files register, plus this Bridge; a clone is `local_path`, else `local_root` + the repository name from `github:`, and a file without `local_root` uses the one in `ecosystem.yaml`; `${var}` from bridge-config `identity:`), `author` (`me` = each repository's git user.email), `all_branches` (every local branch) |
-| `calendar` | events in local time; also handed to `advise` for collisions. `ics` converts UTC and `TZID` times but lists a recurring event (RRULE) on its first date only: use `icalbuddy` or a `command` for recurring calendars | `provider` (auto, icalbuddy, ics, command), `days`, `path` (ics), `argv` (command), `exclude_calendars` (icalbuddy), `info_calendars` (calendar names whose events are information, not a commitment: see Calendar and all clear) |
+| `calendar` | events in local time; also handed to `advise` for collisions. `ics` converts UTC and `TZID` times but lists a recurring event (RRULE) on its first date only: use `icalbuddy` or a `command` for recurring calendars | `provider` (auto, icalbuddy, ics, command), `days`, `path` (ics), `argv` (command), `exclude_calendars` (icalbuddy), `info_calendars` (calendar names whose events are information, not a commitment: see Calendar and all clear), `event_steps` and `prepare` (see Calendar steps) |
 | `tracker` | work items from an external system | `provider`, `query`, `account_ref`, `state_map`, `max`, `to_inbox` |
 | `command` | any program printing a JSON list of items | `argv`, `max`, `to_inbox` |
 
@@ -271,10 +271,48 @@ tagged `[info]`, and an overlap with one is marked `alongside <title>` on both
 entries, but it never becomes a do row, never makes the headline say "busy",
 never blocks a slot in `plan`, and never raises an advise collision. Two
 ordinary events still clash as before, and an info event in the same chain is
-named beside them, not in the row. `icalbuddy` asks a second time, limited to
-those calendars (`-ic`); `ics` matches the file's `X-WR-CALNAME`; a `command`
-marks an event `"info": true` or names its `"calendar"`. An event that is in an
-info calendar and in an ordinary one counts as ordinary.
+named beside them, not in the row. `icalbuddy` lists the events under the
+calendar they come from (`-sc`) and matches the names; `ics` matches the file's
+`X-WR-CALNAME`; a `command` marks an event `"info": true` or names its
+`"calendar"`. An event that is in an info calendar and in an ordinary one counts
+as ordinary.
+
+**What an event carries.** Each calendar row names its `calendar`, and where the
+source has them its `location`, its `attendees` and a meeting link as `url`
+(Teams, Zoom, Google Meet, Webex, Whereby, Jitsi), found in the event's URL,
+location or notes. The notes themselves never leave the provider; only that link
+does. A `command` provider may hand the same fields through.
+
+**Calendar steps.** A calendar row offers steps a dashboard shows as buttons on
+the opened event. Each starts an agent tab: the step's prompt is filed as an
+inbox item under the event (`event:<step>:<start> <title>`, so a second click
+finds the same item) and launched like Do it. Built in is `prepare` on every
+event of the reader's own that has not begun: the tab gathers what bears on the
+event (tasks, inbox, log, earlier meeting notes, mails, issues) and writes a
+short brief, read only. A section adds its own:
+
+```yaml
+- kind: calendar
+  provider: icalbuddy
+  event_steps:
+    - id: prepare                 # stands in for the built-in prepare on these events
+      label: "Prepare the weekly"
+      match: "^Team weekly$"      # a pattern on the title, case does not matter
+      calendars: [Work]           # optional
+      prompt: "Prepare the team weekly of {date}: the open board items and last week's notes, one line each."
+    - id: followup
+      label: "Follow up"
+      match: "weekly"
+      phase: after                # before (default): not begun yet; after: over
+      prompt: "/debrief the team weekly of {date}"
+  prepare: true                   # false: no built-in prepare step
+```
+
+`{title}` `{date}` `{time}` `{start}` `{end}` `{calendar}` `{location}`
+`{attendees}` are filled in from the event. `briefing.py act <profile> <section>
+<row-id> <step>` asks the calendar again and answers only when the event still
+offers the step: `{"did": ..., "launch": {"summary", "prompt", "key"}}`, which
+the cockpit files and starts. The step itself runs nothing.
 
 **Owed streams.** A profile covers some of the playbook's streams; the rest
 are still run by the agent. `briefing.py owed [<id>]` names every stream that
@@ -357,7 +395,7 @@ columns, **when** (a date, today as its time), **title**, **detail** and a
 
 | Kind | when | detail | dimmed |
 |---|---|---|---|
-| `calendar` | start | "until HH:MM", "info" | started already |
+| `calendar` | start | "until HH:MM", the calendar, "info" | started already |
 | `tracker` | `due`, else `changed_at` | PR, state, project (when the id does not name it), priority | |
 | `command` | `due` | `raw_state` or `state` (every row is a finding: yellow, `blocked` red) | |
 | `commits` | today's commits | sparkline and branch, busiest first | none today |

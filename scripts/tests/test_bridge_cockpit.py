@@ -1490,6 +1490,23 @@ def test_a_row_step_runs_through_briefing_act_and_can_be_taken_back(world):
     assert world.runner.of("briefing.act") == []
 
 
+def test_a_row_step_that_returns_a_tab_files_it_and_starts_it(world):
+    # a calendar step ("Prepare weekly") runs nothing itself: briefing.py act hands back the prompt, the
+    # cockpit files it as a decision under the event's key and starts an agent tab on it, as Do it does
+    new_id = "20261017-1200-prepare-weekly-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.runner.handlers["briefing.act"] = act_answer(did="Prepare weekly", launch={
+        "summary": "Prepare weekly: Weekly (Wed 18:00)", "prompt": "/cycle prepare 2026-10-21",
+        "key": "event:prepare:2026-10-21T18:00 Weekly"})
+    world.runner.calls.clear()
+    world.act("row_action", page="tasks", section="apps", index=0, action="turned_down")
+    calls = writes(world)
+    add = next(c for c in calls if world.runner.key(c) == "inbox.add")
+    assert "--key=event:prepare:2026-10-21T18:00 Weekly" in add and "--detail=/cycle prepare 2026-10-21" in add
+    assert "--summary=Prepare weekly: Weekly (Wed 18:00)" in add
+    assert launch_argv(world, new_id, "go") in calls
+
+
 def test_a_row_step_the_row_does_not_offer_or_a_row_without_steps_is_refused(world):
     world.runner.calls.clear()
     for args in ({"index": 0, "action": "won"}, {"index": 1, "action": "turned_down"}, {"index": 0, "action": "Bad"}):
