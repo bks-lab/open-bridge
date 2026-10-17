@@ -564,7 +564,7 @@ const ctl = {
     requestAnimationFrame(() => window.scrollTo(0, 0))
   },
   setOpenMsg: ref => setUi({ openMsg: ref }),
-  // the tab view: one agent tab large in the middle, its terminal read every 1.5 s (components.js TabView)
+  // the tab view: one agent tab large in the middle, its terminal read every 1.5 s (views/tabs.js TabView)
   openTabView: ref => setUi({ tabView: ref, openMsg: null }),
   openClaude: () => setUi({ tabView: '@control', openMsg: null }),
   // the Workers tab: the kept worker view, read again on every visit and every new model

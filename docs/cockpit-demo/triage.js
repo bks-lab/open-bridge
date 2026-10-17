@@ -3,7 +3,7 @@
 // go (closable), and who does it (the AI, with its effort as dots, or you, with why). On top of the
 // page a strip filters by that, counts each choice, closes everything closable in two clicks and sorts
 // again on a click (scripts/triage.py, cached per item, so a run costs cents). The dashboard's own
-// pieces stay in components.js; this file only draws what the triage adds, from s.triage.
+// pieces stay in views/; this file only draws what the triage adds, from s.triage.
 
 import { html, useEffect, useRef, useState } from './vendor/htm-preact-3.1.1.module.js'
 import { TRIAGE_FILTERS, actionRow, centsText, effortDots, triageCounts, triageKey } from './logic.js'

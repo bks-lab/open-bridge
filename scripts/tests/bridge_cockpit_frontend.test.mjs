@@ -29,7 +29,11 @@ const WEB = path.join(ROOT, 'scripts', 'web')
 const VENDOR = path.join(WEB, 'vendor', 'htm-preact-3.1.1.module.js')
 const VENDOR_SHA256 = '72284e8e9079c87817145df1110f74e8a2aa040b2fc384922e18dfcb46fc1fd7'
 const VENDOR_BYTES = 13194
-const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'motion.js', 'text.js', 'theme.js', 'mock.js']
+// the components: components.js holds the root and the page router, views/ the rest, one file per area
+const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
+  ? fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).sort().map(f => `views/${f}`) : []
+const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
+const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'motion.js', 'text.js', 'theme.js', 'mock.js', ...VIEW_FILES]
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
@@ -44,6 +48,8 @@ const motion = await import(pathToFileURL(path.join(tmp, 'motion.mjs')).href)
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 
 const read = rel => fs.readFileSync(path.join(WEB, rel), 'utf8')
+/** The source of every component file as one text, for the tests that look for a pattern wherever it stands */
+const readComponents = () => COMPONENT_FILES.map(read).join('\n')
 
 function servedFiles(dir = WEB, rel = '') {
   const out = []
@@ -306,9 +312,10 @@ test('vendor bundle: pinned size and sha256, exports what the page imports', () 
   assert.equal(bytes.length, VENDOR_BYTES)
   assert.equal(createHash('sha256').update(bytes).digest('hex'), VENDOR_SHA256)
   const exported = /export\{([^}]*)\}/.exec(bytes.toString('utf8'))[1].split(',').map(x => x.trim().split(/\s+as\s+/).pop())
-  for (const file of ['app.js', 'components.js']) {
-    const m = /import \{([^}]*)\} from '\.\/vendor\/htm-preact-3\.1\.1\.module\.js'/.exec(read(file))
-    assert.ok(m, file)
+  for (const file of ['app.js', ...COMPONENT_FILES]) {
+    const m = /import \{([^}]*)\} from '(?:\.\.?\/)+vendor\/htm-preact-3\.1\.1\.module\.js'/.exec(read(file))
+    if (file === 'app.js') assert.ok(m, file)
+    if (!m) continue
     for (const name of m[1].split(',').map(x => x.trim()).filter(Boolean)) assert.ok(exported.includes(name), `${file}: ${name}`)
   }
 })
@@ -316,13 +323,16 @@ test('vendor bundle: pinned size and sha256, exports what the page imports', () 
 test('every relative import names an export that exists', () => {
   const exportsOf = file => {
     const src = read(file)
-    return new Set([...src.matchAll(/export (?:async )?(?:function|const|let|class) ([A-Za-z_$][\w$]*)/g)].map(m => m[1]))
+    return new Set([...[...src.matchAll(/export (?:async )?(?:function|const|let|class) ([A-Za-z_$][\w$]*)/g)].map(m => m[1]),
+      ...[...src.matchAll(/^export \{([^}]*)\}/gm)].flatMap(m => m[1].split(',').map(x => x.trim().split(/\s+as\s+/).pop()).filter(Boolean))])
   }
   for (const file of AUTHORED_JS) {
-    for (const m of read(file).matchAll(/import \{([^}]*)\} from '\.\/([\w-]+\.js)'/g)) {
-      const names = m[1].split(',').map(x => x.trim()).filter(Boolean)
-      const have = exportsOf(m[2])
-      for (const name of names) assert.ok(have.has(name), `${file} imports ${name} from ${m[2]}`)
+    for (const m of read(file).matchAll(/(?:import|export) \{([^}]*)\} from '(\.\.?\/[\w./-]+\.js)'/g)) {
+      const target = path.posix.join(path.posix.dirname(file), m[2])
+      if (target.startsWith('vendor/')) continue
+      const names = m[1].split(',').map(x => x.trim().split(/\s+as\s+/)[0]).filter(Boolean)
+      const have = exportsOf(target)
+      for (const name of names) assert.ok(have.has(name), `${file} imports ${name} from ${target}`)
     }
   }
 })
@@ -444,10 +454,10 @@ test('FE-1 / FE-3: warnings name a lost connection, a stale model and a failed p
   for (const cls of ['hdr-asof', 'hdr-warn', 'mobile-status', 'hdr-relay']) {
     assert.doesNotMatch(narrow, new RegExp(`\\.${cls}[^{]*\\{[^}]*display:\\s*none`), `${cls} hidden below 900 px`)
   }
-  const src = read('components.js')
+  const src = readComponents()
   assert.match(src, /pageWarnings\(/)
   // below 900 px the warnings and the relay state have their own line under the header
-  const sw = src.slice(src.indexOf('function MobileSwitch'), src.indexOf('// ---------------------------------------------------------------- root'))
+  const sw = src.match(/function MobileSwitch\([\s\S]*?\n\}/)[0]
   assert.match(sw, /<\$\{AsOf\}/)
   assert.match(sw, /<\$\{RelayBadge\}/)
 })
@@ -477,7 +487,7 @@ test('FE-4: details reload after the model moved on or an action touched them; a
   assert.equal(out.task['demo-task'].stale, true)
   assert.equal(out.inbox['b-2'].stale, undefined)
   assert.equal(logic.invalidateDetails(details, null), details)
-  assert.match(read('components.js'), /t\.retry/)
+  assert.match(readComponents(), /t\.retry/)
 })
 
 test('FE-5: fetched "more" items count only for the run they came from', () => {
@@ -494,7 +504,7 @@ test('FE-6: Tab cycles inside an open dialog, both ways', () => {
   assert.equal(logic.nextFocusIndex(3, -1, false), 0)
   assert.equal(logic.nextFocusIndex(3, -1, true), 2)
   assert.equal(logic.nextFocusIndex(0, -1, false), -1)
-  const src = read('components.js')
+  const src = readComponents()
   assert.match(src, /nextFocusIndex\(/)
   assert.match(src, /opener/)
 })
@@ -548,9 +558,9 @@ test('task check: every verdict and close reason has a word in both languages', 
 test('the check page survives a model update: fixPage keeps every page of the tab order, Alt follows it', () => {
   const body = read('app.js').match(/function fixPage\(\) \{[\s\S]*?\n\}/)[0]
   assert.match(body, /pageOrder\(s\)/)
-  const order = read('components.js').match(/function pageList\(s\) \{[\s\S]*?\n\}/)[0]
+  const order = readComponents().match(/function pageList\(s\) \{[\s\S]*?\n\}/)[0]
   for (const page of ["'briefing'", 'SESSIONS_PAGE', 'WORKERS_PAGE', 'CHAT_PAGE', 'CHECK_PAGE']) assert.ok(order.includes(page), page)
-  assert.match(read('components.js'), /export const CHECK_PAGE = '@check'/)
+  assert.match(readComponents(), /export const CHECK_PAGE = '@check'/)
   assert.match(read('app.js'), /const ids = pageOrder\(s\)/)
 })
 
@@ -705,7 +715,7 @@ test('chat: a chat of today shows its time, an older one day and time', () => {
 })
 
 test('chat: no canned prompt buttons, the answer streams in, the chat is a page of its own', () => {
-  const comp = fs.readFileSync(path.join(WEB, 'components.js'), 'utf8')
+  const comp = readComponents()
   const de = text.TABLES.de
   for (const k of ['btnSort', 'btnPlan', 'btnEvening']) assert.equal(de[k], undefined)
   assert.ok(!/c\.ask\('(overview|plan_day|evening)'/.test(comp))
@@ -725,13 +735,47 @@ test('logic: weekdayNames comes from the platform, Monday first, without a trail
   assert.equal(logic.weekdayNames('en')[0], 'Mon')
 })
 
-test('components.js calls no logic.js export it forgot to import', () => {
-  const src = read('components.js')
-  const imported = src.match(/import \{([\s\S]*?)\} from '\.\/logic\.js'/)[1].split(',').map(x => x.trim()).filter(Boolean)
-  const own = new Set([...src.matchAll(/function (\w+)/g)].map(m => m[1]))
-  const missing = Object.keys(logic).filter(n => typeof logic[n] === 'function' && !imported.includes(n) && !own.has(n)
-    && new RegExp(`[^.\\w]${n}\\(`).test(src))
-  assert.deepEqual(missing, [])
+test('no component file calls a logic.js export it forgot to import', () => {
+  for (const file of COMPONENT_FILES) {
+    const src = read(file)
+    const imported = (src.match(/import \{([^}]*)\} from '(?:\.\.?\/)+logic\.js'/)?.[1] ?? '').split(',').map(x => x.trim()).filter(Boolean)
+    const own = new Set([...src.matchAll(/function (\w+)/g)].map(m => m[1]))
+    const missing = Object.keys(logic).filter(n => typeof logic[n] === 'function' && !imported.includes(n) && !own.has(n)
+      && new RegExp(`[^.\\w]${n}\\(`).test(src))
+    assert.deepEqual(missing, [], file)
+  }
+})
+
+test('the components stand in files of a readable size: a small root, one file per area', () => {
+  assert.ok(VIEW_FILES.length >= 8, `views/: ${VIEW_FILES.length} files`)
+  assert.ok(read(COMPONENT_FILES[0]).split('\n').length <= 300, 'components.js holds only the root and the page router')
+  for (const file of VIEW_FILES) assert.ok(read(file).split('\n').length <= 800, `${file}: ${read(file).split('\n').length} lines`)
+})
+
+test('every component file imports what it uses from the other files: no name only one file knows', () => {
+  // the names every component file can reach: the top level of each, and what each imports from elsewhere
+  const DECL = /^(?:export )?(?:async )?(?:function\*? |const |let |class )([A-Za-z_$][\w$]*)/gm
+  const importsOf = src => new Set([...src.matchAll(/^import \{([\s\S]*?)\} from/gm)]
+    .flatMap(m => m[1].split(',').map(x => x.trim().split(/\s+as\s+/).pop()).filter(Boolean)))
+  const known = new Set()
+  for (const f of COMPONENT_FILES) {
+    const src = read(f)
+    for (const m of src.matchAll(DECL)) known.add(m[1])
+    for (const n of importsOf(src)) known.add(n)
+  }
+  for (const f of COMPONENT_FILES) {
+    const src = read(f)
+    // comments and re-exports name what they do not use
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/ \/\/ .*$/gm, '')
+      .replace(/^export \{[^}]*\} from '[^']+'/gm, '')
+    const own = new Set([...src.matchAll(DECL)].map(m => m[1]))
+    const reach = importsOf(src)
+    // a name the file declares itself further in (a parameter, a local const) is its own, not the other file's
+    const local = n => new RegExp(`(?:const|let|var|function)\\s+${n}\\b|(?:const|let|var)\\s*[{[][^=]*\\b${n}\\b`).test(code)
+    const missing = [...known].filter(n => !own.has(n) && !reach.has(n) && !local(n)
+      && new RegExp(`(?<![\\w$.])${n.replace(/\$/g, '\\$')}(?![\\w$])`).test(code))
+    assert.deepEqual(missing, [], f)
+  }
 })
 
 test('jev is optional: the page loads without scripts/web/jev/, no tab, no call, no import while off', async () => {
@@ -752,7 +796,7 @@ test('jev is optional: the page loads without scripts/web/jev/, no tab, no call,
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
-  const comp = read('components.js')
+  const comp = readComponents()
   assert.doesNotMatch(comp, /^import[^\n]*jev\//m)                                  // never a static import
   assert.match(comp, /useJevPage\(!!\(s\.jev\?\.enabled && s\.jev\?\.ready\)\)/)    // loaded only when on and ready
   assert.match(comp, /\$\{s\.jev\?\.enabled && !workPageOf\(s\.model\?\.pages\)\?\.jev \? tab\(JEV_PAGE/)   // the tab only when on, and not folded into the work tab
@@ -789,21 +833,21 @@ test('agents: the Agents tab only where the Bridge knows a peer, and a message o
   const app = read('app.js')
   assert.equal((app.match(/'a2a_ask'/g) ?? []).length, 1)
   assert.match(app, /agentSend: async \(peer, text, mode, conv\) => \{\n\s+const r = await act\('a2a_ask'/)
-  assert.equal((read('components.js').match(/c\.agentSend\(/g) ?? []).length, 1)
+  assert.equal((readComponents().match(/c\.agentSend\(/g) ?? []).length, 1)
 })
 
 test('agents: a conversation is removed only on a second click and the page goes back to a new chat', () => {
   const app = read('app.js')
   assert.match(app, /agentForget: async conv => \{\n\s+const r = await act\('a2a_forget', \{ conv \}\)/)
   assert.match(app, /agentForget[\s\S]{0,200}agentConv: ui\.agentConv === conv \? null/)
-  const page = read('components.js').match(/function AgentsPage\(\{ s, c \}\) \{[\s\S]*?\n\}/)[0]
+  const page = readComponents().match(/function AgentsPage\(\{ s, c \}\) \{[\s\S]*?\n\}/)[0]
   // the first click only arms the button, the second removes
   assert.match(page, /forgetArmed === conv\.id \? c\.agentForget\(conv\.id\) : setForgetArmed\(conv\.id\)/)
   assert.equal((read('text.js').match(/agentForgetSure:/g) ?? []).length, 2)
 })
 
 test('agents: a draft never travels to another agent, held answers show on the card', () => {
-  const src = read('components.js')
+  const src = readComponents()
   const page = src.match(/function AgentsPage\(\{ s, c \}\) \{[\s\S]*?\n\}/)[0]
   assert.match(page, /useEffect\(\(\) => \{[^}]*setText\(''\)[^}]*\}, \[peer\?\.id\]\)/)
   assert.match(page, /held=\$\{convs\.filter\(x => x\.peer === p\.id && !x\.running && x\.turns\.at\(-1\)\?\.waiting\)\.length\}/)
@@ -811,7 +855,7 @@ test('agents: a draft never travels to another agent, held answers show on the c
 
 test('history: a close offers undo at once and later; a task comes back open or as still to be done', () => {
   const app = read('app.js')
-  const comp = read('components.js')
+  const comp = readComponents()
   assert.match(app, /if \(r\.undo\?\.length && r\.ok\) \{\s*pushNote\(\{[^}]*action: 'undo', undo: r\.undo \}/)
   assert.match(app, /undo: async \(u, as = 'doing'\) =>/)
   // the server's own note of the same text is often first: the undo must still reach the toast
@@ -855,7 +899,7 @@ test('logic: a page item acts through the briefing row, else through one made fr
 })
 
 test('a command row with its own steps shows them as a two-click menu that acts through row_action', () => {
-  const src = read('components.js')
+  const src = readComponents()
   const steps = src.match(/function RowSteps\(\{[\s\S]*?\n\}/)[0]
   assert.match(steps, /c\.act\('row_action', \{ page, section, index: it\.index, action \}\)/)
   assert.match(src, /it\.actions\?\.length && it\.row_id \? html`<\$\{RowSteps\}/)
@@ -888,7 +932,7 @@ test('logic: how an inbox item closes, in words, and its events newest first', (
 })
 
 test('inbox and task rows open the item drawer on a click or Enter, never from a button inside the row', () => {
-  const src = read('components.js')
+  const src = readComponents()
   const row = src.match(/function InfoRow\(\{[\s\S]*?\n\}/)[0]
   assert.match(row, /c\.openItem\(/)
   assert.match(row, /rowClickOpens\(e\)/)
@@ -917,22 +961,22 @@ test('the page bar keeps the daily tabs in front and the rest behind More, in th
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
-  const comp = read('components.js')
+  const comp = readComponents()
   // a tab's tooltip names the tab and its key, never the key alone
   assert.doesNotMatch(comp, /title=\$\{i >= 0 && i < 9 \? `Alt \$\{i \+ 1\}`/)
 })
 
 test('the day column: waiting tabs stand in the left column only where no tab column stands beside it', () => {
-  const day = read('components.js').match(/function DayColumn\([\s\S]*?\n\}/)[0]
+  const day = readComponents().match(/function DayColumn\([\s\S]*?\n\}/)[0]
   assert.match(day, /s\.layout === 'wide' \? null : html`<\$\{WaitingTabs\}/)
 })
 
 test('the chat decides per message: ask (read only) or solve it in a real Claude tab in cmux', () => {
-  const foot = read('components.js').match(/function ChatFoot\([\s\S]*?\n\}/)[0]
+  const foot = readComponents().match(/function ChatFoot\([\s\S]*?\n\}/)[0]
   assert.match(foot, /c\.act\('chat_tab', \{ text: v \}\)/)                         // a new problem opens a tab at once
   // a chat goes on in a tab; an empty box adds no order (the server refused an empty text, the click came to nothing)
   assert.match(foot, /c\.act\('quick_handoff', \{ conv: conv\.id, to: 'tab', \.\.\.\(v \? \{ text: v \} : \{\}\) \}\)/)
-  const box = read('components.js').match(/function SendBox\([\s\S]*?\n\}/)[0]
+  const box = readComponents().match(/function SendBox\([\s\S]*?\n\}/)[0]
   assert.match(box, /e\.metaKey \|\| e\.ctrlKey/)                                   // Cmd or Ctrl Enter takes the second way
   for (const lang of ['en', 'de']) {
     const t = text.TABLES[lang]
@@ -941,7 +985,7 @@ test('the chat decides per message: ask (read only) or solve it in a real Claude
 })
 
 test('every card and row of a page opens its details: tables, resource tiles, gauges, grouped rows', () => {
-  const comp = read('components.js')
+  const comp = readComponents()
   const app = read('app.js')
   assert.match(app, /openInfo\(it, page, section\) \{/)
   assert.match(comp, /s\.ui\.drawer === 'info' && s\.ui\.info \? html`<\$\{InfoDrawer\}/)
@@ -1007,7 +1051,7 @@ test('the status list: a failed source is loud with its reason, a skipped one wa
 })
 
 test('the briefing headline counts what the Briefing tab counts, the header does not repeat it', () => {
-  const comp = read('components.js')
+  const comp = readComponents()
   const header = comp.match(/function Header\([\s\S]*?\n\}/)[0]
   assert.doesNotMatch(header, /m\?\.headline/)
   const ov = comp.match(/function Overview\([\s\S]*?\n\}/)[0]
@@ -1036,7 +1080,7 @@ test('a slim tab card offers one next step: answer, go on, close, else go to the
 })
 
 test('the agent tab column shows slim cards that open to every control', () => {
-  const comp = read('components.js')
+  const comp = readComponents()
   const col = comp.match(/function TabsColumn\([\s\S]*?\n\}/)[0]
   assert.match(col, /<\$\{TabCard\}[^>]*slim/)
   const card = comp.match(/function TabCard\([\s\S]*?\n\}/)[0]
@@ -1178,7 +1222,7 @@ test('the work tab opens on what is due and switches to by source and by Jev', (
 })
 
 test('with a work tab the day view stands on Start, the middle of Due only points there', () => {
-  const comp = read('components.js')
+  const comp = readComponents()
   // one component holds the day: dates, status, clear and hygiene, the workplace, the pages of group day
   const day = comp.slice(comp.indexOf('function DayView('), comp.indexOf('function StatusList('))
   assert.match(day, /m\.agenda/)
@@ -1608,7 +1652,7 @@ test('demo badge: a short text in both tables, shown in the header in mock mode 
     assert.ok(text.TABLES[lang].demoBadgeShort.length <= 6, `${lang}: fits a phone header`)
   }
   assert.notEqual(text.TABLES.en.demoBadge, text.TABLES.de.demoBadge)
-  const header = read('components.js').match(/function Header\(\{[\s\S]*?\n\}/)[0]
+  const header = readComponents().match(/function Header\(\{[\s\S]*?\n\}/)[0]
   assert.match(header, /s\.mock \? html`<span class="hdr-demo" title=\$\{t\.mockNote\}>[^`]*\$\{t\.demoBadge\}[^`]*\$\{t\.demoBadgeShort\}/)
   assert.match(read('style.css'), /\.hdr-demo \{/)
 })
@@ -1638,14 +1682,14 @@ test('sessionCounts: sessions are the sessions, agents are the running subagents
 })
 
 test('the Sessions tab and the Sessions station show the same number from sessionCounts', () => {
-  const src = read('components.js')
+  const src = readComponents()
   assert.doesNotMatch(src, /agentsActive/)
   const uses = src.match(/sessionCounts\(s\.sessions\?\.sessions\)/g) ?? []
   assert.ok(uses.length >= 2, `sessionCounts used ${uses.length} times, expected tab and station`)
 })
 
 test('the Workers tab marks findings like a page with findings, never as a bare number beside the station count', () => {
-  const src = read('components.js')
+  const src = readComponents()
   // the bare grey number of findings beside "Workers" read as the count of workers (5 on Start, 2 on the tab)
   assert.doesNotMatch(src, /pbadge is-quiet"><span class="mono">\$\{s\.workers\.data\.stats\.with_findings\}/)
   assert.match(src, /tab\(WORKERS_PAGE[^\n]*\n[^\n]*workersFindings/)
@@ -1671,7 +1715,7 @@ test('demo: the coloured Today number, the waits-for-you count and the Now secti
 // the tabs shared the room with the tools, so at 1600 px Sessions, Workers, Check and Jev stood behind
 // More, the command box shrank to a symbol and Ask lost its word, while 1100 px showed all of it.
 test('the page bar has its own row on a wide screen too, never inside the header', () => {
-  const src = read('components.js')
+  const src = readComponents()
   assert.doesNotMatch(src, /merged/)
   assert.match(src, /\n    <\$\{Header\} s=\$\{s\} c=\$\{ctl\} \/>\n    <\$\{PageBar\} s=\$\{s\} c=\$\{ctl\} \/>\n/)
   const css = read('style.css')
@@ -1682,7 +1726,7 @@ test('the page bar has its own row on a wide screen too, never inside the header
 // screen, Today as a second block beside it. Now the block shows one thing: Today, or the station looked at.
 // Today is a station of the ring itself, its click brings Today back.
 test('start: one block beside the bridge, Today is a station of the ring that brings it back', () => {
-  const src = read('components.js')
+  const src = readComponents()
   assert.doesNotMatch(src, /stage-today|has-today/)
   assert.match(src, /const tiles = shownTiles\(catalog, chosen\)\.slice\(0, MAX_STATIONS - 1\)/)
   assert.match(src, /id: '@today', label: h\.cardTitle/)
@@ -1699,7 +1743,7 @@ test('one as-of time per screen: the header says it, a section only when it was 
   assert.equal(logic.sectionStamp('10:58', '11:10'), '10:58')
   assert.equal(logic.sectionStamp('11:10', '11:10'), null)
   assert.equal(logic.sectionStamp(null, '11:10'), null)
-  const comp = read('components.js')
+  const comp = readComponents()
   assert.doesNotMatch(comp.match(/function TabsColumn\([\s\S]*?\n\}/)[0], /formatClock/)
   const sec = comp.match(/function PageSection\([\s\S]*?\n\}/)[0]
   assert.doesNotMatch(sec, /sourceAsOf/)
@@ -1712,7 +1756,7 @@ test('one as-of time per screen: the header says it, a section only when it was 
 // so, what joins a click on Bridge is chosen in the chooser. The focus span is gone (it only counted down),
 // speech moved into the question line at the top and fills the field instead of asking on its own.
 test('start: the row under the bridge runs now, no focus span, speech sits in the question line', () => {
-  const src = read('components.js')
+  const src = readComponents()
   const css = read('style.css')
   const stage = src.match(/function BridgeStage\([\s\S]*?\n\}/)[0]
   // no row under the bridge any more: Reload is in the header, the assessment sits in the card Today it replaces

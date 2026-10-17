@@ -1,0 +1,157 @@
+// SPDX-License-Identifier: MIT
+// The cockpit, small parts every view uses: icons, buttons, chips, the motion hooks.
+// The rules every component keeps stand at the head of components.js.
+
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { markToken, prioToken, short, verdictToken } from '../logic.js'
+import { nowSec, reducedMotion, settled, springTo } from '../motion.js'
+import { T } from '../text.js'
+
+// ---------------------------------------------------------------- motion (motion.js, from the explainer films)
+
+/** A number that follows its target with the film spring; a new target in mid move bends the path.
+ *  `start` makes the first render run up from there. Under reduced motion the target stands at once */
+export function useTween(target, { start, w = 9, zeta = 0.95 } = {}) {
+  const o = { w, zeta }
+  const st = useRef(null)
+  const [, tick] = useState(0)
+  const still = reducedMotion()
+  if (st.current === null) {
+    const from = start ?? target
+    st.current = { from, to: target, moves: from !== target && !still ? [[nowSec(), target]] : [] }
+    if (still) st.current.from = target
+  }
+  const m = st.current
+  if (target !== m.to) {
+    if (still) { m.from = target; m.moves = [] } else m.moves = [...m.moves, [nowSec(), target]]
+    m.to = target
+  }
+  useEffect(() => {
+    if (!m.moves.length) return undefined
+    let id = requestAnimationFrame(function step() {
+      if (settled(nowSec(), m.moves, o)) { m.from = m.to; m.moves = []; tick(n => n + 1); return }
+      tick(n => n + 1)
+      id = requestAnimationFrame(step)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [m.moves])
+  return m.moves.length ? springTo(nowSec(), m.from, m.moves, o) : m.to
+}
+
+/** Seconds on the page clock, a new render every frame while `active`; reduced motion never ticks */
+export function useClock(active) {
+  const [T, setT] = useState(nowSec)
+  useEffect(() => {
+    if (!active || reducedMotion()) return undefined
+    let id = requestAnimationFrame(function step() { setT(nowSec()); id = requestAnimationFrame(step) })
+    return () => cancelAnimationFrame(id)
+  }, [active])
+  return T
+}
+
+/** A counter for each time `value` changes and `counts(before, value)` says it counts; keyed elements replay their hit once */
+export function useHits(value, counts = () => true) {
+  const last = useRef(value)
+  const n = useRef(0)
+  if (value !== last.current) {
+    if (last.current !== undefined && counts(last.current, value)) n.current += 1
+    last.current = value
+  }
+  return n.current
+}
+
+/** A number counting to its value in tabular figures, so nothing beside it moves */
+export function CountNum({ value, start = 0, cls = '' }) {
+  const v = useTween(Number(value) || 0, { start })
+  return html`<span class=${`num ${cls}`}>${v.toFixed(0)}</span>`
+}
+
+// ---------------------------------------------------------------- small parts
+
+const ICONS = {
+  history: 'M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5M12 7v5l3 2',
+  reload: 'M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7',
+  help: 'M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5M12 18h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
+  sun: 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+  moon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z',
+  auto: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 3v18',
+  bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
+  close: 'M18 6 6 18M6 6l12 12',
+  external: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  chevronDown: 'M6 9l6 6 6-6',
+  chevronRight: 'M9 6l6 6-6 6',
+  back: 'M15 18l-6-6 6-6',
+  tabs: 'M3 5h18v14H3zM15 5v14',
+  send: 'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z',
+  spark: 'M12 3v4M12 17v4M3 12h4M17 12h4',
+  mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+}
+
+export function Icon({ name, size = 16 }) {
+  return html`<svg class="icon" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <path d=${ICONS[name]} /></svg>`
+}
+
+/** Status dot; the written word always sits beside it (state never by color alone) */
+export function Dot({ token, pulse }) {
+  return html`<span class=${`dot tk-${token}${pulse ? ' dot-pulse' : ''}`} aria-hidden="true"></span>`
+}
+
+export function Btn({ variant = 'secondary', size = 'sm', onClick, disabled, busy, title, pressed, children, label, icon, cls = '' }) {
+  return html`<button type="button" class=${`btn btn-${variant} btn-${size} ${cls}`} onClick=${onClick}
+    disabled=${disabled || busy} aria-busy=${busy ? 'true' : undefined} title=${title} aria-label=${label}
+    aria-pressed=${pressed === undefined ? undefined : String(!!pressed)}>
+    ${icon ? html`<${Icon} name=${icon} />` : null}${children ? html`<span class="btn-label">${children}</span>` : null}
+  </button>`
+}
+
+export function Chip({ token, children, title, cls = '' }) {
+  return html`<span class=${`chip ${token ? `chip-tk tk-${token}` : ''} ${cls}`} title=${title}>
+    ${token ? html`<${Dot} token=${token} />` : null}<span>${children}</span></span>`
+}
+
+export function StateLine({ token, word, strong }) {
+  return html`<span class=${`state-line${strong ? ' is-strong' : ''}`}><${Dot} token=${token} /><span>${word}</span></span>`
+}
+
+export function MarkChip({ mark }) {
+  if (!mark) return null
+  return html`<${Chip} token=${markToken(mark.color)} cls="chip-mark">${mark.label}<//>`
+}
+
+export function PrioChip({ priority }) {
+  if (!priority) return null
+  return html`<span class=${`prio tk-${prioToken(priority)}`} title=${`${T().meta.priority} ${priority}`}>${priority}</span>`
+}
+
+/** The check's verdict on a task row; nothing for "continue" or a recommendation kept open */
+export function VerdictChip({ review }) {
+  if (!review || review.kept || review.verdict === 'continue') return null
+  return html`<${Chip} token=${verdictToken(review.verdict)} title=${review.reason ?? undefined}>${T().verdictTag[review.verdict] ?? review.verdict}<//>`
+}
+
+export function Empty({ children }) {
+  return html`<p class="empty">${children}</p>`
+}
+
+export function Spinner() {
+  return html`<span class="spinner" aria-hidden="true"></span>`
+}
+
+export function LinkView({ link, c, onOpenTask }) {
+  const t = T()
+  if (!link) return null
+  if (link.kind === 'web') {
+    return html`<a class="link-out" href=${link.href} target="_blank" rel="noopener noreferrer">
+      <span class="link-text">${short(link.href, 64)}</span><${Icon} name="external" size=${14} /></a>`
+  }
+  const m = /^work\/(?:tasks|streams)\/([a-z0-9][a-z0-9-]*)\/STATUS\.md$/.exec(link.path ?? '')
+  return html`<span class="link-file">
+    ${m && onOpenTask
+      ? html`<button type="button" class="btn-link mono" onClick=${() => onOpenTask(m[1])}>${link.path}</button>`
+      : html`<code>${link.path}</code>`}
+    <${Btn} variant="ghost" size="xs" icon="copy" label=${t.copyPath} title=${t.copyPath} onClick=${() => c.copy(link.path)} />
+  </span>`
+}

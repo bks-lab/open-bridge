@@ -1,7 +1,7 @@
 ---
 summary: "Working on the cockpit: which files make up the server, the page and the mod relay, which of them are shared with the rest of the Bridge, the edit and test loop (mock mode, a second instance beside the live one), recipes for a new verb, a new model field and new text, the rules the tests hold, and what has to travel together when it moves to open-bridge."
 type: guide
-last_updated: 2026-10-15
+last_updated: 2026-10-17
 related:
   - bridge-cockpit.md
   - ai-services.md
@@ -74,7 +74,8 @@ layout now").
 | `scripts/lib/bridge_cockpit/text.py` | server texts (notes, prompts to Claude), de and en |
 | `scripts/web/index.html`, `theme.js` | page shell, light or dark before first paint |
 | `scripts/web/app.js` | store, controller (`ctl`), event stream, keyboard |
-| `scripts/web/components.js` | every component; reads the store `s`, calls the controller `c` |
+| `scripts/web/components.js` | the root (`App`) and the page router; the rules every component keeps |
+| `scripts/web/views/*.js` | the components, one file per area (header, day, detail, chat, tabs, pages, start page, stage, sessions, check, overlays, small parts, page ids); each reads the store `s`, calls the controller `c` and imports what it uses from the others |
 | `scripts/web/logic.js` | pure helpers, tested under node |
 | `scripts/web/motion.js` | springs, hits and rail points from the explainer films (`skills/explainer-video/assets/motion.js`), tested under node |
 | `scripts/web/api.js` | fetch and EventSource wrappers |
@@ -160,7 +161,7 @@ python3 scripts/bridge-cockpit.py status --json
 4. `test_bridge_cockpit.py`: a test that asserts the exact argv (`writes(world)`
    with the helpers `I`, `K`, `W`, `C`), a refusal for a wrong row, and a bad
    argument in the injection list `test_argument_injection_is_rejected_before_any_call`.
-5. `components.js`: the button, through `c.act(verb, args)`, or a controller
+5. the view under `views/`: the button, through `c.act(verb, args)`, or a controller
    method in `app.js` when it needs a confirmation (see `askTaskDone` and
    `confirmYes`).
 6. `text.js`: button text in both languages.
@@ -178,7 +179,7 @@ One at a time, and `task_keep` waits for it, since both write the same file.
 ### A new field on a row or the model
 
 `collector.py` `row_out` (per row) or `build_model` (top level), then use it in
-`components.js`. Add it to the matching `row()` in `mock.js` so mock mode keeps
+the view under `views/` that draws it. Add it to the matching `row()` in `mock.js` so mock mode keeps
 the real shape, and assert it in a model test.
 
 ### New page text
@@ -212,7 +213,7 @@ served file, no `innerHTML`, and the colour values against `DESIGN.md`.
 - Colours only from `DESIGN.md` tokens; no new library without pinning it in
   `vendor/` with its hash.
 - Motion only through `motion.js` (`useTween`, `useClock`, `useHits` in
-  `components.js`), only on `transform` and `opacity`, never a CSS transition
+  `views/parts.js`), only on `transform` and `opacity`, never a CSS transition
   on a value; under reduced motion a value stands at its target. A drawing is
   complete at rest, its moving layer only adds (`DESIGN.md`, form 3).
 - The relay only ever prompts the control session, never during a turn, never
