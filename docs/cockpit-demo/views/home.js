@@ -13,7 +13,7 @@ import { RowActions, RowMeta, SettleMenu } from './day.js'
 import { DayPages, DayView } from './detail.js'
 import { PageBadge } from './header.js'
 import {
-  AGENTS_PAGE, ASK_MAX, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle,
+  AGENTS_PAGE, ASK_MAX, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle,
   pageOrder,
 } from './nav.js'
 import { Btn, Dot, Empty, Icon, PrioChip, StateLine } from './parts.js'
@@ -25,7 +25,7 @@ import { BridgeStage, leadOf, stationOf } from './stage.js'
 export function pageTitleOf(s, id) {
   const t = T()
   const fixed = { briefing: briefingTitle(s), [SESSIONS_PAGE]: t.sessionsTab, [WORKERS_PAGE]: t.workersTab, [CHAT_PAGE]: t.chatTab,
-    [AGENTS_PAGE]: t.agentsTab, [CHECK_PAGE]: t.reviewTab, [JEV_PAGE]: 'Jev' }
+    [AGENTS_PAGE]: t.agentsTab, [CHECK_PAGE]: t.reviewTab, [JEV_PAGE]: 'Jev', [SETTINGS_PAGE]: t.settings.title }
   return fixed[id] ?? (s.model?.pages ?? []).find(p => p.id === id)?.title ?? id
 }
 
