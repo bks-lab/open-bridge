@@ -145,7 +145,7 @@ pipeline:
   #   targets:
   #     # A channel: one message per event, while the run runs.
   #     - name: channel
-  #       type: webhook            # webhook | file | python
+  #       type: webhook            # webhook | file | python | module
   #       mode: stream             # stream = per event · digest = collect and flush
   #       enabled: true            # a listed target is ON unless this says otherwise
   #       events: [armed, stage_start, stage, reject, park, gate]   # this target's

@@ -15,6 +15,8 @@
 #     length; it rides stdin via --body-file -.
 #   * NO citing its own CI. CI starts after the PR opens and this stage is the last
 #     one before the human gate, so the body links the Checks tab and says so.
+#     (Opt-in BP_PR_AWAIT_CHECKS=1 waits for those checks AFTER the PR exists and
+#     only decides draft vs ready; the body still cites nothing. See the end.)
 #
 # unset GH_TOKEN: the App installation has issues:write + organization_projects:write
 # but NO pull_requests and NO contents (verified live), so `gh pr create` cannot run
@@ -180,7 +182,8 @@ PR_URL="$("$GH" pr list --head "$BRANCH" --state open --json url --jq '.[0].url 
 if [ -n "$PR_URL" ]; then
   echo "[pr] reusing open PR: $PR_URL" >&2
 else
-  # --draft: board-pilot never opens a ready PR. --body-file - : the body rides stdin,
+  # --draft: board-pilot never opens a ready PR; only the opt-in check wait below
+  # may mark it ready, and only on green. --body-file - : the body rides stdin,
   # never argv.
   PR_URL="$("$GH" pr create --draft --head "$BRANCH" --base "$BASE" \
     --title "$ITEM_TITLE" --body-file - < "$BODY_FILE")"
@@ -188,25 +191,31 @@ else
   echo "[pr] created draft PR: $PR_URL" >&2
 fi
 
-# ---- the checks, and only then the handover ---------------------------------
-# OPENED AS A DRAFT, HANDED OVER READY, and the two are not the same claim. A
-# draft says "the machine is done writing"; ready says "and the suite agrees".
-# While nothing downstream read the checks, stopping at the draft was enough: a
-# draft cannot be merged by accident. The human gate that follows is now a single
-# tap in a chat message, and a tap on an untested change is exactly the accident
-# the draft was protecting against.
+# ---- optional: the checks, and only then the handover ------------------------
+# OFF by default. With BP_PR_AWAIT_CHECKS unset (or anything but 1) the stage ends
+# here: the PR stays a draft, exit 0, and the human reads the Checks tab. That is
+# the shipped contract, and a pipeline that never asked for more keeps it.
 #
-# So this stage waits for the run it just triggered. Three outcomes, three
-# different things to say, and only one of them takes the flag off:
+# OPT-IN (BP_PR_AWAIT_CHECKS=1, set in the unit env like BP_VERIFY_CMD) is for a
+# pipeline whose human gate downstream is a single tap, e.g. a chat button. There
+# a draft is no longer enough protection: a tap on an untested change is exactly
+# the accident the draft was guarding against. So the stage waits for the run the
+# PR triggered and says one of three things, only one of which takes the flag off:
 #
 #   every check green   -> `pr ready`, the human may act on it;
-#   any check red       -> stays a draft, stage FAILS naming the check. Marking a
-#                          failing suite ready would put a broken change one tap
-#                          from production;
+#   any check red       -> stays a draft, stage FAILS naming the check;
 #   still running at the -> stays a draft, stage FAILS saying so. Unknown is not
-#   budget                 green, and it is not red either. The chain stops rather
-#                          than hangs: the item stays at pr-ready and the next
-#                          dispatch re-runs this stage, which is idempotent.
+#   budget, or no checks   green, and no checks at all is not green either.
+#
+# A failure here leaves an OPEN DRAFT PR behind. The engine does NOT re-run this
+# stage to retry the wait: on the next dispatch tick.py finds the open PR
+# (`pr_exists`) and hands the item to the human gate without dispatching. The PR
+# then stays a draft, and the human reads its checks and marks it ready by hand.
+if [ "${BP_PR_AWAIT_CHECKS:-0}" != "1" ]; then
+  echo "$PR_URL"
+  exit 0
+fi
+
 CHECK_TIMEOUT="${BP_PR_CHECK_TIMEOUT:-600}"
 CHECK_PAUSE="${BP_PR_CHECK_PAUSE:-10}"
 # How long "no checks at all" is treated as "not attached YET" rather than as the
@@ -242,10 +251,10 @@ OK = {"SUCCESS", "SKIPPED", "NEUTRAL"}
 live = [r for r in rows if str(r.get("state", "")).upper() in LIVE]
 bad = [r for r in rows if str(r.get("state", "")).upper() not in LIVE | OK]
 if bad:
-    teile = []
+    parts = []
     for r in bad:
-        teile.append(str(r.get("name", "?")) + "=" + str(r.get("state", "?")))
-    print("RED " + "; ".join(teile))
+        parts.append(str(r.get("name", "?")) + "=" + str(r.get("state", "?")))
+    print("RED " + "; ".join(parts))
 elif live:
     print("LIVE " + str(len(live)))
 elif rows:

@@ -83,7 +83,7 @@ def test_j5_the_line_is_renamed_by_the_same_dictionary_as_every_other_word():
 
 def test_j6_the_card_carries_the_line(fake_item_fields):
     built = card.build_card(
-        "stage", incident="LOOP-004", title="t", chain=CHAIN, current="review",
+        "stage", incident="INC-004", title="t", chain=CHAIN, current="review",
         fields=fake_item_fields)
     text = repr(built)
     assert "verify" in text and "pr" in text
@@ -399,16 +399,16 @@ def test_r1_the_child_is_handed_a_path_and_what_it_writes_comes_back(tmp_path):
     from engine.claude_runner import ClaudeStageRunner
     from engine.interfaces import BoardItem, Stage
 
-    gehoert = []
-    laeufer = ClaudeStageRunner(repo=str(tmp_path), branch_template="b/{item_id}",
+    heard = []
+    runner = ClaudeStageRunner(repo=str(tmp_path), branch_template="b/{item_id}",
                                project="p")
-    laeufer.on_note = lambda stage, item, text: gehoert.append(text)
-    stufe = Stage(id="s", on_success="next",
-                  run='cmd:bash -c echo\\ hallo\\ >>\\ "$STAGE_NOTES"')
-    ergebnis = laeufer.run(stufe, BoardItem(id="A", title="t", status="Todo"))
+    runner.on_note = lambda stage, item, text: heard.append(text)
+    stage_def = Stage(id="s", on_success="next",
+                        run='cmd:bash -c echo\\ hello\\ >>\\ "$STAGE_NOTES"')
+    result = runner.run(stage_def, BoardItem(id="A", title="t", status="Todo"))
 
-    assert ergebnis.ok, "the stage itself failed: " + str(ergebnis.notes)
-    assert gehoert == ["hallo"], "what the child wrote never came back: " + repr(gehoert)
+    assert result.ok, "the stage itself failed: " + str(result.notes)
+    assert heard == ["hello"], "what the child wrote never came back: " + repr(heard)
 
 
 # === the collision the journey line walks straight into ====================
@@ -428,7 +428,7 @@ def test_j7_a_stage_name_never_leaks_into_the_outcome(fake_item_fields):
     inserted, and the word dictionary keeps its hands off the pipeline values.
     """
     built = card.build_card(
-        "stage", incident="LOOP-004", title="t", chain=CHAIN, current="review",
+        "stage", incident="INC-004", title="t", chain=CHAIN, current="review",
         fields={**fake_item_fields, "outcome": "pass → pr-ready"},
         names={"verify": "Tests", "review": "Zweitmeinung", "pr": "Pull-Request"},
         words={"pass": "passed"})

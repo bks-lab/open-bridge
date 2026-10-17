@@ -94,7 +94,7 @@ class CardConfig:
 
     incident: str = ""              # the constant band on every card of a run
     # The NAME of a variable holding that band, for the common case where the id is
-    # minted outside this engine (an alarm invents LOOP-001 and spawns the run). Same
+    # minted outside this engine (an alarm invents INC-001 and spawns the run). Same
     # split as `url_env`: config names the variable, the environment holds the value.
     # A literal `incident` wins; an unset variable falls back to the item reference,
     # never to the variable's own name and never to "None".
@@ -379,6 +379,11 @@ def validate_report(report: dict) -> tuple:
         elif factory:
             raise ValueError(f"{where}.factory: only a `type: python` or `type: module` target builds "
                              f"from a callable; this target is {kind!r} and would never read it")
+        if t.get("options") and kind not in ("python", "module"):
+            # `options` are the keywords handed to a factory. A webhook or file
+            # target has none, so the knob would be silently ignored.
+            raise ValueError(f"{where}.options: only a `type: python` or `type: module` target hands "
+                             f"options to its factory; this target is {kind!r} and would never read them")
 
         url_env, path = t.get("url_env"), t.get("path")
         if kind in ("python", "module"):
@@ -625,7 +630,7 @@ def load_pipeline_from_dict(data: dict) -> EngineConfig:
         require_issue=bool(pl.get("require_issue", False)),
         record=RecordConfig(
             enabled=bool(record.get("enabled", False)),
-            events=tuple(record.get("events") or _RECORD_EVENTS),
+            events=tuple(record.get("events") or _DEFAULT_EVENTS),
             sticky_marker=record.get("sticky_marker", "board-pilot:run"),
             templates_dir=record.get("templates_dir"),
             max_body_chars=int(record.get("max_body_chars", 60000)),

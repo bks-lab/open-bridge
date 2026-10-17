@@ -57,7 +57,7 @@ import sys
 from pathlib import Path
 
 from .card import build_card
-from .record import iso_now, row_fields
+from .record import clean_cell, iso_now, row_fields
 
 # A tick must never hang on a wire. Whatever the sink does, it does it inside this
 # many seconds or it raises, and a raise here is caught by `emit_guarded`, which
@@ -335,7 +335,11 @@ class _Base:
         return build_card(
             event,
             incident=self._incident(item),
-            title=getattr(item, "title", ""),
+            # The title is board text a human (or anyone with write access) typed,
+            # so it is scrubbed and flattened like every other rendered value,
+            # always redacted for the same reason as `_fields` above. An empty
+            # title stays empty rather than becoming clean_cell's dash.
+            title=clean_cell(title, scan="redact") if (title := getattr(item, "title", "") or "") else "",
             chain=self.chain,
             current=getattr(stage, "id", None),
             fields=row,

@@ -130,6 +130,24 @@ def test_a_file_target_needs_a_path_and_no_url_env():
         _load(_targets({"name": "f", "type": "file", "path": "x.log", "url_env": "X"}))
 
 
+
+def test_options_on_a_webhook_or_file_target_are_refused():
+    """`options` are a factory's keywords. A webhook or file target has no factory,
+    so the knob would be loaded and then never read."""
+    with pytest.raises(ValueError, match="options"):
+        _load(_targets(_webhook(options={"index": "runs"})))
+    with pytest.raises(ValueError, match="options"):
+        _load(_targets({"name": "f", "type": "file", "path": "x.log", "options": {"a": 1}}))
+
+
+def test_record_enabled_without_events_gets_the_default_list_not_the_vocabulary():
+    """An existing `record: {enabled: true}` with no `events:` must keep the rows it
+    had: DEFAULT_EVENTS, never the full vocabulary with `note` in it, which would
+    add a sticky-comment row and a gh call per stage mutter."""
+    cfg = load_pipeline_from_dict({"pipeline": {"stages": _STAGES, "record": {"enabled": True}}})
+    assert cfg.record.events == record_mod.DEFAULT_EVENTS
+    assert "note" not in cfg.record.events
+
 # === the digest/stream split ===============================================
 
 

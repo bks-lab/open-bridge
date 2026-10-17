@@ -65,7 +65,7 @@ def _fields(**over):
 
 
 def _card(**kw):
-    kw.setdefault("incident", "LOOP-001")
+    kw.setdefault("incident", "INC-001")
     kw.setdefault("title", "Scrap rate rising")
     kw.setdefault("chain", _CHAIN)
     kw.setdefault("current", "verify")

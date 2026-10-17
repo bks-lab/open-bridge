@@ -98,7 +98,7 @@ def setup_function():
 
 def test_m1_the_module_transport_receives_line_and_card(tmp_path):
     """M1: and the CARD is the point. `type: python` cannot get this."""
-    pipeline = _pipeline(_target(card={"incident": "LOOP-001", "sender": "board-pilot"}))
+    pipeline = _pipeline(_target(card={"incident": "INC-001", "sender": "board-pilot"}))
     reporters = _reporters(pipeline, state_dir=tmp_path, armed=True)
 
     for reporter in reporters:
@@ -108,7 +108,7 @@ def test_m1_the_module_transport_receives_line_and_card(tmp_path):
     text, card = Wire.made[0].seen[0]
     assert isinstance(text, str) and text
     assert card is not None, "the engine rendered no card; then this type has no purpose"
-    assert "LOOP-001" in str(card)
+    assert "INC-001" in str(card)
 
 
 def test_m2_events_filters_it_like_any_other_transport(tmp_path):

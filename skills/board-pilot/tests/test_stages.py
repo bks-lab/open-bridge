@@ -289,12 +289,8 @@ case "$1 $2" in
   "repo view") echo "main" ;;
   "pr list")   echo "" ;;
   "pr create") echo "https://github.com/example/repo/pull/118" ;;
-  # Answered GREEN so the tests around this stub keep measuring what they were
-  # written for (body over stdin, no issue comment, no GH_TOKEN, PR reuse). The
-  # checks themselves have their own three tests further down; a silent default
-  # here would make those the only place the gate is measured, which is fine, and
-  # a RED default here would make every one of these tests fail for a reason that
-  # has nothing to do with what it asserts.
+  # Answered GREEN in case a test opts into the check wait. By default the stage
+  # never asks (BP_PR_AWAIT_CHECKS off), and the opt-in has its own tests below.
   "pr checks") echo '[{{"name":"ruff and pytest","state":"SUCCESS"}}]' ;;
 esac
 """,
@@ -347,15 +343,16 @@ def test_pr_opens_draft_over_stdin_with_the_honesty_labels(env, repo, tmp_path):
     calls = log.read_text()
 
     assert "--draft" in calls, (
-        "board-pilot OPENS a draft: `ready` is a separate claim, made further down "
-        "only once the suite has answered. The merge itself stays human either way")
+        "board-pilot OPENS a draft: `ready` is a separate claim, made only by the "
+        "opt-in check wait once the suite has answered. The merge stays human")
     assert "--body-file -" in calls, "the body must ride stdin, never argv"
-    # The block belonging to `pr create`, not the LAST one. Since the stage also
-    # calls `pr checks` and `pr ready` afterwards, the last stdin block is empty,
+    # The block belonging to `pr create`, not the LAST one. With the opt-in check
+    # wait the stage also calls `pr checks` and `pr ready` afterwards, the last
+    # stdin block is then empty,
     # and taking it would silently assert every honesty label against "".
-    erzeugen = [b for b in calls.split("ARGV: ") if b.startswith("pr create")]
-    assert erzeugen, "gh pr create was never called: " + calls
-    body = erzeugen[0].split("STDIN<<<")[-1].split(">>>")[0]
+    create_blocks = [b for b in calls.split("ARGV: ") if b.startswith("pr create")]
+    assert create_blocks, "gh pr create was never called: " + calls
+    body = create_blocks[0].split("STDIN<<<")[-1].split(">>>")[0]
     for label in (
         "[machine — git + GitHub PR-API, independent]",
         "[machine-executed, agent-authored]",
@@ -405,8 +402,8 @@ def test_pr_unsets_gh_token_so_the_app_token_cannot_be_used(env, repo, tmp_path)
 
 
 def test_pr_reuses_an_open_pr_instead_of_opening_a_second(env, repo, tmp_path):
-    """Idempotency: the pr stage is re-dispatched on any tick that finds the item
-    still at pr-ready."""
+    """Idempotency: a second PR for one branch is not a recoverable state, so the
+    stage reuses an open one if it is ever dispatched again for the same branch."""
     log = tmp_path / "gh.log"
     gh = _stub(
         tmp_path / "bin",
@@ -877,14 +874,16 @@ def test_an_answer_with_no_verdict_at_all_is_still_refused(env, repo, tmp_path):
 
 
 # ------------------------------------------- a PR nobody has tested is not ready
-# The stage opened a DRAFT and stopped, which was right while nothing downstream
-# read the checks: a draft cannot be merged by accident. But the human gate that
-# follows is now a single tap, and a tap on an untested change is exactly the
-# accident the draft was protecting against. So the stage waits for the checks it
-# just triggered and only then takes the draft flag off.
+# By DEFAULT the stage opens a draft and stops: a draft cannot be merged by
+# accident, and the human reads the Checks tab. A pipeline whose human gate is a
+# single tap (a chat button) can opt in with BP_PR_AWAIT_CHECKS=1: then the stage
+# waits for the checks it just triggered and only then takes the draft flag off.
 #
-# The load-bearing half is the RED path. "Ready" is a claim about evidence; making
-# it on a failing suite would put a broken change one tap from production.
+# The load-bearing half of the opt-in is the RED path. "Ready" is a claim about
+# evidence; making it on a failing suite would put a broken change one tap from
+# production. The load-bearing half of the default is that it never waits at all.
+
+_AWAIT = {"BP_PR_AWAIT_CHECKS": "1"}
 
 def _gh_checks_stub(bin_dir: Path, log: Path, *, checks: str, name="gh") -> Path:
     """A gh stub whose `pr checks --json` answers with `checks` (a JSON array)."""
@@ -909,11 +908,37 @@ _RED = '[{"name":"ruff and pytest","state":"FAILURE"}]'
 _PENDING = '[{"name":"ruff and pytest","state":"PENDING"}]'
 
 
+@pytest.mark.parametrize("knob", [None, "0", "yes"])
+def test_by_default_the_stage_opens_a_draft_and_exits_without_waiting(env, repo, tmp_path, knob):
+    """THE DEFAULT CONTRACT. Without BP_PR_AWAIT_CHECKS=1 the stage opens the draft
+    and exits 0: no `pr checks`, no `pr ready`, even when the checks would be red.
+    Any value other than "1" is off, so a typo cannot silently arm the wait."""
+    log = tmp_path / "gh.log"
+    gh = _gh_checks_stub(tmp_path / "bin", log, checks=_RED)
+    run_env = {**env, "BP_GH": str(gh)}
+    run_env.pop("BP_PR_AWAIT_CHECKS", None)
+    if knob is not None:
+        run_env["BP_PR_AWAIT_CHECKS"] = knob
+
+    import time as _t
+    started = _t.monotonic()
+    r = _run("pr.sh", run_env, repo)
+    took = _t.monotonic() - started
+
+    assert r.returncode == 0, r.stderr
+    argv = log.read_text(encoding="utf-8")
+    assert "pr create --draft" in argv, argv
+    assert "pr checks" not in argv, "the default stage polled checks: " + argv
+    assert "pr ready" not in argv, "the default stage marked the PR ready: " + argv
+    assert "pull/118" in r.stdout
+    assert took < 30, f"the default stage took {took:.0f}s, it must not wait"
+
+
 def test_a_green_pr_is_handed_over_ready_not_as_a_draft(env, repo, tmp_path):
     log = tmp_path / "gh.log"
     gh = _gh_checks_stub(tmp_path / "bin", log, checks=_GREEN)
 
-    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "20"}, repo)
+    r = _run("pr.sh", {**env, **_AWAIT, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "20"}, repo)
 
     assert r.returncode == 0, r.stderr
     argv = log.read_text(encoding="utf-8")
@@ -928,7 +953,7 @@ def test_a_red_pr_stays_a_draft_and_fails_the_stage(env, repo, tmp_path):
     log = tmp_path / "gh.log"
     gh = _gh_checks_stub(tmp_path / "bin", log, checks=_RED)
 
-    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "20"}, repo)
+    r = _run("pr.sh", {**env, **_AWAIT, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "20"}, repo)
 
     assert r.returncode != 0, "a PR with a failing check was reported as a pass"
     argv = log.read_text(encoding="utf-8")
@@ -947,7 +972,7 @@ def test_checks_that_never_finish_end_the_wait_rather_than_the_stage(env, repo, 
 
     import time as _t
     started = _t.monotonic()
-    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "6"}, repo)
+    r = _run("pr.sh", {**env, **_AWAIT, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "6"}, repo)
     took = _t.monotonic() - started
 
     assert took < 40, f"the stage waited {took:.0f}s past its own 6s budget"
@@ -1003,7 +1028,7 @@ def test_a_check_that_registers_a_moment_late_is_waited_for(env, repo, tmp_path)
     gh = _gh_late_checks_stub(tmp_path / "bin", log, tmp_path / "n",
                               quiet_calls=2, then=_GREEN)
 
-    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "30",
+    r = _run("pr.sh", {**env, **_AWAIT, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "30",
                        "BP_PR_CHECK_PAUSE": "1"}, repo)
 
     assert r.returncode == 0, (
@@ -1021,7 +1046,7 @@ def test_a_pr_with_no_checks_at_all_still_fails(env, repo, tmp_path):
 
     import time as _t
     started = _t.monotonic()
-    r = _run("pr.sh", {**env, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "6",
+    r = _run("pr.sh", {**env, **_AWAIT, "BP_GH": str(gh), "BP_PR_CHECK_TIMEOUT": "6",
                        "BP_PR_CHECK_PAUSE": "1"}, repo)
     took = _t.monotonic() - started
 
@@ -1031,7 +1056,7 @@ def test_a_pr_with_no_checks_at_all_still_fails(env, repo, tmp_path):
 
 
 # ---------------------------------------------------- transient API failure
-# 2026-09-03, live run LOOP-005: `spec` died after 4m31s with rc=1 and the board
+# 2026-09-03, a live run: `spec` died after 4m31s with rc=1 and the board
 # said only that. The cause was `API Error: 529 Overloaded` — a provider-side
 # failure the CLI prints as ORDINARY OUTPUT before exiting 1, after ~4 minutes of
 # its own internal retries. Two consequences, both tested here: an outer attempt
@@ -1143,6 +1168,23 @@ def test_r3_the_provider_sentence_leaves_the_stage_when_every_attempt_fails(
     assert "529" in r.stderr, (
         "the stage died without saying why — this is exactly the rc=1 that reached "
         f"the board on 2026-09-03. stderr was: {r.stderr!r}")
+
+
+@pytest.mark.parametrize("tries, expected", [("1", 1), ("2", 2), ("junk", 3), ("0", 3)])
+def test_r3b_the_attempt_count_is_the_unit_env_knob(env, repo, tmp_path, tries, expected):
+    """BP_CLAUDE_TRIES sets the total attempts (1 = no retry). A value that is not
+    a positive integer falls back to the default of 3 instead of a shell error."""
+    counter = tmp_path / "n"
+    claude = _flaky_claude(tmp_path / "bin", counter, fail_times=99,
+                           message=_OVERLOADED)
+
+    r = _run("spec.sh", {**env, "BP_CLAUDE": str(claude),
+                         "BP_CLAUDE_TRIES": tries, "BP_CLAUDE_BACKOFF": "0 0 0",
+                         **_flaky_claude.env}, repo)
+
+    assert r.returncode != 0
+    assert _calls(counter) == expected, (
+        f"BP_CLAUDE_TRIES={tries!r} made {_calls(counter)} attempts, expected {expected}")
 
 
 def test_r4_the_wait_between_attempts_is_the_declared_one(env, repo, tmp_path):

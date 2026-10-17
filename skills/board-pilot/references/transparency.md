@@ -398,7 +398,7 @@ Three things about it are load-bearing:
   channel showed six while the declared source said five.
 - **`incident` is the constant band; `incident_env` names a VARIABLE holding it.**
   The common case is that the run's id is minted outside this engine (something
-  raised an alarm, invented `LOOP-001`, and spawned the run with it in the
+  raised an alarm, invented `INC-001`, and spawned the run with it in the
   environment). A literal in the project YAML would freeze the FIRST incident into
   every later run's cards, perfectly rendered and wrong. Order is literal, then
   environment, then the item reference; an unset variable never degrades to the

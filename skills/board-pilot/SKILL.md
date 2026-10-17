@@ -248,6 +248,42 @@ not this table, and not the per-project YAML — there is no `stages[].env:` key
 today). There is **no heuristic fallback**: an unset or empty `BP_VERIFY_CMD` is a
 fail-closed refusal naming the knob, never a guessed suite. See § Guards.
 
+Other operator knobs, all optional, all read from the unit env:
+
+| Var | Read by | Default | Effect |
+|---|---|---|---|
+| `BP_PR_AWAIT_CHECKS` | `pr.sh` | off | `1` = wait for the PR's checks and mark it ready on green (§ Behaviour changes) |
+| `BP_PR_CHECK_TIMEOUT` / `BP_PR_CHECK_PAUSE` / `BP_PR_CHECK_NONE_GRACE` | `pr.sh` | 600 / 10 / 90 s | only with `BP_PR_AWAIT_CHECKS=1`: total wait, poll interval, how long "no checks yet" is waited out |
+| `BP_CLAUDE_TRIES` | `_lib.sh` `bp_claude` | 3 | total model attempts on a transient provider failure; `1` = no retry |
+| `BP_CLAUDE_BACKOFF` | `_lib.sh` `bp_claude` | `60 180 300` | pauses in seconds between those attempts |
+
+## Behaviour changes
+
+What changed for an existing pipeline with this version, and how to keep the
+old behaviour:
+
+- **Model stages retry transient provider failures.** `bp_claude` (used by
+  `spec.sh`, `implement.sh`, `review.sh`) now retries a run that failed with a
+  provider-side error (`API Error: 429/5xx`, `Overloaded`, `Connection error`), 3 attempts in total with
+  60 s and 180 s pauses by default. Any other failure is not retried. A stage can
+  therefore take several minutes longer before it fails. Set
+  `BP_CLAUDE_TRIES=1` in the unit env for the old single attempt.
+- **The PR stage can wait for CI, opt-in.** Default unchanged: `pr.sh` opens a
+  draft PR and exits 0. With `BP_PR_AWAIT_CHECKS=1` it then polls `gh pr checks`
+  for up to `BP_PR_CHECK_TIMEOUT` (600 s): all green → `gh pr ready`; any red,
+  still running at the limit, or no checks at all → the PR stays a draft and the
+  stage FAILS (the item parks or retries per `on_fail`). A retry does not re-run
+  the wait: the next tick finds the open PR (`pr_exists`) and hands the item to
+  the human gate as is, so the draft stays a draft until a human marks it ready.
+  Meant for a pipeline whose human gate is a single tap, where a draft alone is
+  too little protection.
+- **`report:` is new and absent by default.** No `report:` block means no sink is
+  built or called.
+- **`record:` gains one default event.** Without `events:`, an enabled record now
+  writes `armed, stage_start, stage, reject, park, gate`: `stage_start` is new,
+  `note` is in the vocabulary but never a default. List `events:` explicitly
+  (e.g. without `stage_start`) to keep the previous rows.
+
 ## Guards
 
 Split honestly. The first table is **engine-enforced and fail-closed** — the
@@ -262,7 +298,7 @@ and *not* a guarantee. Nothing below is dressed up as more than it is.
 | **Atomic snapshot** | `snapshot.save_atomic` | The board snapshot is written temp-then-`os.replace` + `fsync`. A half-written snapshot is impossible → no mass re-arm. |
 | **Lock liveness via `kill -0`** | `lock.Lock` | A per-item lock carries pid + heartbeat. Reclaimed **only** when the holder is BOTH heartbeat-stale AND pid-dead — so a swap-starved worker is not falsely reclaimed. |
 | **argv-safe handlers** | `ClaudeStageRunner` | Board ids/titles never reach a shell as a string; strict allowlist (`valid_item_id`) parks anything that doesn't match `^[A-Za-z0-9_-]+$`. |
-| **Draft PRs only** | `pr` stage | The terminal stage opens a **draft** PR — never a ready-for-merge one. |
+| **Draft PRs by default** | `pr` stage | The terminal stage opens a **draft** PR and exits. It never opens a ready PR. Only the opt-in `BP_PR_AWAIT_CHECKS=1` (§ Behaviour changes) may mark it ready afterwards, and only when every check is green. Merge stays human either way. |
 | **Byte-0 reject marker** | `parse_reject` | The **read-back hijack**: a record that quotes a reject note being fed to the code writer as its own feedback. Anchored at byte 0, so a markdown quote (`> ` prefix) can never match. Probe + table: [`references/transparency.md`](references/transparency.md). |
 | **Options preflight** | `preflight_options` | Endless re-dispatch of the most expensive stage. Every writable `Pipeline` value **and** `working`/`park`/`pr_status` is checked against the live board at startup; a value the board lacks raises **before** any spend, instead of `KeyError`-ing inside the dispatch loop forever. |
 | **Preflight transient-vs-permanent split** | `cli.run` + `GhCliError.is_transient` | A rate-limited or 5xx `gh` call during Engine construction (the first live board reads of a tick) is the API's fault and clears on its own: caught, folded into one quiet ledger note, tick exits 0 — the scheduler's own timer IS the retry. Measured before the fix: **736 crashes in one night**, each relaunching straight back into the same rate limit. A permanent preflight failure (missing field/option, bad auth scope) stays loud and raises unchanged — a quiet skip there would hide a board that can never work behind a healthy-looking ledger. |

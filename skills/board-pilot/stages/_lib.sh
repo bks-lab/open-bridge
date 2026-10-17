@@ -104,7 +104,12 @@ bp_claude() {
   local allowed="$1" prompt="$2"
   bp_resolve_claude
 
+  # Attempts in total, from the unit env (default 3; 1 = no retry). The pauses
+  # between them come from BP_CLAUDE_BACKOFF (default "60 180 300" seconds). A
+  # value that is not a positive integer falls back to the default rather than
+  # turning `[ -ge ]` into a shell error under `set -e`.
   local tries="${BP_CLAUDE_TRIES:-3}" attempt=1 out rc pause
+  case "$tries" in ''|*[!0-9]*|0) tries=3 ;; esac
   while :; do
     rc=0
     # Captured, not streamed, because the DECISION to retry can only be made by

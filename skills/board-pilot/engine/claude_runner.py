@@ -62,16 +62,16 @@ _NOTES_POLL_S = 2.0
 
 def _notes_timing():
     """(poll, hold, cap) in seconds, env first, defaults second. Never raises."""
-    def zahl(name, vorgabe):
+    def seconds(name, default):
         try:
-            wert = float(os.getenv(name) or vorgabe)
+            value = float(os.getenv(name) or default)
         except (TypeError, ValueError):
-            return vorgabe
-        return wert if wert >= 0 else vorgabe
+            return default
+        return value if value >= 0 else default
 
-    return (zahl("BP_NOTES_POLL_S", _NOTES_POLL_S),
-            zahl("BP_NOTES_HOLD_S", notes_mod.HOLD_S),
-            zahl("BP_NOTES_MAX_HOLD_S", notes_mod.MAX_HOLD_S))
+    return (seconds("BP_NOTES_POLL_S", _NOTES_POLL_S),
+            seconds("BP_NOTES_HOLD_S", notes_mod.HOLD_S),
+            seconds("BP_NOTES_MAX_HOLD_S", notes_mod.MAX_HOLD_S))
 
 # The issue body is ENFORCED-capped, unlike _NOTE_PROMPT_CAP above (which only tells
 # the model how much to read — the note itself rides uncapped). The difference is that
@@ -481,12 +481,12 @@ class ClaudeStageRunner:
         follower = None
         notes_path = env.get("STAGE_NOTES")
         if on_line and notes_path:
-            takt, halten, deckel = _notes_timing()
+            poll_s, hold_s, max_hold_s = _notes_timing()
             follower = threading.Thread(
                 target=notes_mod.follow,
                 args=(notes_path, on_line, halt.is_set),
-                kwargs={"sleep": halt.wait, "poll_s": takt,
-                        "hold_s": halten, "max_hold_s": deckel},
+                kwargs={"sleep": halt.wait, "poll_s": poll_s,
+                        "hold_s": hold_s, "max_hold_s": max_hold_s},
                 daemon=True,
             )
             follower.start()

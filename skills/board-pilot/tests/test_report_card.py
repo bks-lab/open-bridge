@@ -118,7 +118,7 @@ def _stages(chain=_CHAIN):
 
 
 def _card_cfg(**kw):
-    kw.setdefault("incident", "LOOP-001")
+    kw.setdefault("incident", "INC-001")
     kw.setdefault("labels", dict(_LABELS))
     return CardConfig(**kw)
 
@@ -295,7 +295,7 @@ def test_t2_the_button_points_at_the_item_on_every_card(tmp_path):
 def test_t2_a_card_without_a_url_carries_no_button(tmp_path):
     """A button that opens nothing gets tapped on stage and does nothing, which is
     worse than no button."""
-    card = build_card("stage", incident="LOOP-001", title="x", chain=_CHAIN, current="spec",
+    card = build_card("stage", incident="INC-001", title="x", chain=_CHAIN, current="spec",
                       fields=dict(when="w", stage="spec", kind="machine", criteria="—",
                                   took="1s", outcome="pass → implementing"),
                       labels=_LABELS, url="")
@@ -305,7 +305,7 @@ def test_t2_a_card_without_a_url_carries_no_button(tmp_path):
 def test_t2_the_card_is_version_1_4_and_full_width(tmp_path):
     """1.5 affordances are deliberately absent: a 1.5 card can fail to render at all
     on some clients, and 1.4 is the only shape proven on this channel."""
-    card = build_card("stage", incident="LOOP-001", title="x", chain=_CHAIN, current="spec",
+    card = build_card("stage", incident="INC-001", title="x", chain=_CHAIN, current="spec",
                       fields=dict(when="w", stage="spec", kind="machine", criteria="—",
                                   took="1s", outcome="pass"),
                       labels=_LABELS, url="")
@@ -356,13 +356,13 @@ def test_t3_the_failure_names_the_sink_in_the_ledger_and_never_on_the_board(tmp_
 def test_t7_incident_env_names_a_variable_and_the_environment_holds_the_value(monkeypatch, tmp_path):
     """One run, one incident, and the incident id is minted OUTSIDE this engine.
 
-    The alarm that starts a run invents `LOOP-001`; the engine learns it from the
+    The alarm that starts a run invents `INC-001`; the engine learns it from the
     environment it was spawned in. Writing it into the project YAML would freeze the
     FIRST incident into every later run's cards, silently, because a stale band is
     still a perfectly rendered band. Same pattern as `url_env`: config names the
     variable, the environment holds the value.
     """
-    monkeypatch.setenv("DEMO_INCIDENT", "LOOP-042")
+    monkeypatch.setenv("DEMO_INCIDENT", "INC-042")
     transport = CardTransport()
     engine, board, _ = _engine(
         tmp_path,
@@ -375,13 +375,13 @@ def test_t7_incident_env_names_a_variable_and_the_environment_holds_the_value(mo
 
     assert transport.cards
     for card in transport.cards:
-        assert "Case LOOP-042" in " ".join(_texts(card))
+        assert "Case INC-042" in " ".join(_texts(card))
 
 
 def test_t7_a_literal_incident_wins_over_the_variable(tmp_path, monkeypatch):
     """Explicit beats derived, so a project that has no minting step can still say
     what its runs are called."""
-    monkeypatch.setenv("DEMO_INCIDENT", "LOOP-042")
+    monkeypatch.setenv("DEMO_INCIDENT", "INC-042")
     transport = CardTransport()
     engine, board, _ = _engine(
         tmp_path,
@@ -488,7 +488,7 @@ def test_t5_all_cards_share_the_incident_and_climb_the_chain(tmp_path):
 
     heads = [_headline(c) for c in transport.cards]
     assert len(heads) >= len(_CHAIN)
-    assert all("Case LOOP-001" in " ".join(_texts(c)) for c in transport.cards)
+    assert all("Case INC-001" in " ".join(_texts(c)) for c in transport.cards)
 
     numbered = [h for h in heads if "Phase" in h]
     steps = [int(h.split("Phase ")[1].split(" out of ")[0]) for h in numbered]
@@ -538,7 +538,7 @@ def test_t5_a_step_label_carrying_a_literal_count_is_refused_at_load():
 def test_t5_the_progress_bar_has_one_column_per_stage(tmp_path):
     """The same count, seen instead of read. From the third row of a room nobody
     reads 'Phase 3 out of 5', but a bar with three of five columns filled is legible."""
-    card = build_card("stage", incident="LOOP-001", title="x", chain=_CHAIN, current="verify",
+    card = build_card("stage", incident="INC-001", title="x", chain=_CHAIN, current="verify",
                       fields=dict(when="w", stage="verify", kind="machine", criteria="—",
                                   took="1s", outcome="pass → reviewing"),
                       labels=_LABELS, url="")
@@ -574,6 +574,26 @@ def test_t6_a_secret_in_a_stage_value_never_reaches_the_card(tmp_path):
     assert leaked not in blob
     assert "[redacted:secret]" in blob
     assert leaked not in " ".join(t for t, _ in transport.sent)
+
+
+def test_t6_the_card_title_is_scrubbed_and_flattened_like_every_other_value(tmp_path):
+    """The item title is board text, typed by anyone with write access. It reaches
+    the card headline through clean_cell: redacted, one line."""
+    leaked = "ghp_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    transport = CardTransport()
+    engine, board, _ = _engine(
+        tmp_path,
+        [BoardItem(id="A", title=f"fix login\nwith {leaked}", status="Doing",
+                   pipeline="queued", issue_number=7)],
+        reporters=[_stream(transport, card=_card_cfg(), events=("stage",))],
+    )
+
+    engine.tick()
+
+    assert transport.cards, "the sink never saw a card"
+    head = _headline(transport.cards[0])
+    assert leaked not in json.dumps(transport.cards, ensure_ascii=False)
+    assert "\n" not in head and "fix login with [redacted:secret]" in head, head
 
 
 def test_t6_the_address_never_reaches_the_card_the_row_or_the_dump(tmp_path, monkeypatch, capsys):
@@ -716,7 +736,7 @@ def test_a_configured_card_target_renders_through_the_engines_own_build(tmp_path
             ],
             "report": {"targets": [{
                 "name": "channel", "type": "file", "path": str(log),
-                "card": {"incident": "LOOP-001", "labels": _LABELS},
+                "card": {"incident": "INC-001", "labels": _LABELS},
             }]},
         }}
     )
@@ -734,5 +754,5 @@ def test_a_configured_card_target_renders_through_the_engines_own_build(tmp_path
     text = log.read_text(encoding="utf-8")
     assert "| implement |" in text                            # the row is still there
     card = json.loads([ln for ln in text.splitlines() if ln.startswith("{")][0])
-    assert "Case LOOP-001" in " ".join(_texts(card))
+    assert "Case INC-001" in " ".join(_texts(card))
     assert "Phase 2 out of 3" in _headline(card)
