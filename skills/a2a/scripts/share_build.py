@@ -81,6 +81,10 @@ _GRANT_TTL_SEC = 2 * 3600       # a one-time grant folder older than this is swe
 _MASKS = (
     (re.compile(r"\b[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE), "[reference]"),
     (re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b"), "[address]"),
+    # Bank details: an IBAN (country, check digits, 11 to 30 more, spaced or not), and a
+    # BIC only where it is named, since eight capitals alone are too often a word.
+    (re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b"), "[account]"),
+    (re.compile(r"\b(BIC|SWIFT)(:?\s*)[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b"), r"\1\2[account]"),
     (re.compile(r"\b(?:ghp|gho|ghs|github_pat|xox[abprs]|sk|pk|rk)[-_][A-Za-z0-9_-]{12,}"), "[secret]"),
     (re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.(?:ts\.net|local|lan|internal|home\.arpa)\b", re.IGNORECASE), "[address]"),
     # IPv4-mapped first (``::ffff:10.1.2.3``), then IPv4, then the rest of IPv6, so no
@@ -571,7 +575,8 @@ class _locked:
 def _write_grants(config: Path, grants: list[dict]) -> None:
     path = config.parent / "access.grants.yaml"
     tmp = path.with_suffix(".yaml.tmp")
-    header = "# Written by share_build.py grant. Delete an entry to revoke it.\n"
+    header = ("# Written by share_build.py grant. To revoke, delete an entry and run "
+              "share_build.py build;\n# the peer folder keeps the topic until then.\n")
     tmp.write_text(header + yaml.safe_dump({"grants": grants}, allow_unicode=True, sort_keys=False), "utf-8")
     tmp.replace(path)
 

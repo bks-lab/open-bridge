@@ -428,3 +428,19 @@ def test_the_next_step_heading_can_be_named(tmp_path):
     share_build.build(cfg, root=root, out=tmp_path / "share")
     text = (tmp_path / "share" / "peers" / "alice" / "topics" / "t1.md").read_text("utf-8")
     assert "Call on Monday" in text and "more" not in text
+
+
+@pytest.mark.parametrize("text,secret", [
+    ("IBAN DE89370400440532013000, done", "DE89370400440532013000"),
+    ("IBAN DE89 3704 0044 0532 0130 00, done", "3704 0044"),
+    ("account GB82WEST12345698765432", "GB82WEST12345698765432"),
+    ("BIC COBADEFFXXX and more", "COBADEFFXXX"),
+    ("BIC: DEUTDEFF, rest", "DEUTDEFF"),
+])
+def test_bank_details_are_masked(text, secret):
+    assert secret not in share_build.mask(text)
+
+
+def test_plain_uppercase_words_survive_the_bank_mask():
+    text = "SHAREPOINT and BENELUX_OUT and PASSWORD stay readable"
+    assert share_build.mask(text) == text
