@@ -108,21 +108,21 @@ def test_managed_rule_keeps_its_manifest_entry(oe, pair):
     time, but the contract would churn on every export and understate the mirror.
     """
     bridge, overlay, _ = pair
-    regel = "rules/org/example-rule.md"
-    _w(bridge / regel, "---\nscope: org\n---\n\n# rule\n")
-    _w(overlay / "tree" / regel, "---\nscope: org\n---\n\n# rule\n")
+    rule = "rules/org/example-rule.md"
+    _w(bridge / rule, "---\nscope: org\n---\n\n# rule\n")
+    _w(overlay / "tree" / rule, "---\nscope: org\n---\n\n# rule\n")
     lock = bridge / "overlays.lock.yaml"
     lock.write_text(lock.read_text(encoding="utf-8") +
-                    f"    - src: tree/{regel}\n"
-                    f"      dest: {regel}\n"
+                    f"    - src: tree/{rule}\n"
+                    f"      dest: {rule}\n"
                     "      source_sha256: cafe\n"
                     "      materialized_sha256: cafe\n", encoding="utf-8")
     (bridge / ".git" / "info" / "exclude").write_text(
-        (bridge / ".git" / "info" / "exclude").read_text(encoding="utf-8") + f"/{regel}\n",
+        (bridge / ".git" / "info" / "exclude").read_text(encoding="utf-8") + f"/{rule}\n",
         encoding="utf-8")
     plan = oe.export_overlay(str(bridge), str(overlay), scope="org", dry_run=True)
     dests = [e["dest"] for e in plan["files_entries"]]
-    assert regel in dests, f"managed rule lost its files[] entry: {dests}"
+    assert rule in dests, f"managed rule lost its files[] entry: {dests}"
 
 
 def test_dry_run_touches_nothing(oe, pair):
