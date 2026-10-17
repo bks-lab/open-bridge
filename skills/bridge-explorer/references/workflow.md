@@ -14,7 +14,7 @@ Read `ecosystem.yaml` and extract:
 - `name`: repo name (short, e.g. "outbound-operator" instead of "customer-a-network-outbound-operator")
 - `type`: function-app, package, tool, docs, web, infra
 - `lang`: python, rust, typescript, javascript, go or null
-- `color`: color by group (base=#6366f1..#c4b5fd, customer-a=#22c55e..#86efac, packages=#06b6d4..#a5f3fc, partner=#ec4899, internal=#f472b6..#fb7185, personal=#f59e0b)
+- `color`: color by group (base=#2563eb..#93c5fd, customer-a=#22c55e..#86efac, packages=#06b6d4..#a5f3fc, partner=#ec4899, internal=#f472b6..#fb7185, personal=#f59e0b)
 - `group`: base, customer-a, packages, partner, internal, personal
 - `deps`: array of dependency names (from `depends_on`), only when present
 
@@ -87,7 +87,7 @@ If cmux is not available: `open work/ecosystem-explorer.html` as fallback.
 ### 4. Set sidebar status
 
 ```bash
-cmux set-status explorer "live" --icon globe --color "#6366f1"
+cmux set-status explorer "live" --icon globe --color "#2563eb"
 ```
 
 ## Pattern for new dashboards

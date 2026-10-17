@@ -310,13 +310,13 @@ SYSTEM_PATTERN = re.compile(r"^(_standalone|[a-z][a-z0-9-]*)$")
 #: lives only in the document is a rule the layer that acts never applies.
 #: Bare `Bash` is generic shell; the bound form `Bash(python3 /path/x.py:*)`
 #: stays allowed, which is why the pattern anchors on the separators.
-RIGHTS_GENERIC_SHELL_PATTERN = re.compile(r"(^|,)\s*Bash\s*(,|$)")
+RIGHTS_GENERIC_SHELL_PATTERN = re.compile(r"(^|[,\s])Bash(\(\*\))?\s*([,\s]|$)")
 RIGHTS_READ_TOOL_PATTERN = re.compile(r"(^|,)\s*(Read|Glob|Grep|WebFetch)\s*(,|$)")
 RIGHTS_WRITE_TOOL_PATTERN = re.compile(r"(^|,)\s*(Write|Edit|NotebookEdit)\s*(,|$)")
 RIGHTS_FETCH_TOOL_PATTERN = re.compile(r"(^|,)\s*WebFetch\s*(,|$)")
 #: A scope is repo relative and never climbs out: an absolute path, or one with
 #: `..` in it, is a different scope than the one a reader assumes on the line.
-RIGHTS_SCOPE_PATTERN = re.compile(r"^(?!/)(?!.*\.\.).+$")
+RIGHTS_SCOPE_PATTERN = re.compile(r"^(?!/)(?!~)(?!.*\.\.).+$")
 #: A relative stop flag resolves against a different working directory under
 #: launchd than it did when someone wrote the file, so it never bites there.
 RIGHTS_STOP_FLAG_PATTERN = re.compile(r"^(~|/)")
@@ -1587,8 +1587,8 @@ def _validate_rights(rights: Mapping, add) -> None:
             scope = level.get(key)
             if scope is not None and not RIGHTS_SCOPE_PATTERN.match(str(scope)):
                 add(f"rights.{level_name}.{key}",
-                    f"{scope!r} is absolute or climbs out of the tree",
-                    "write it repo relative and without ..")
+                    f"{scope!r} is absolute, home-relative or climbs out of the tree",
+                    "write it repo relative, without ~ and without ..")
 
         hosts = level.get("fetch_scope")
         if hosts is not None and not isinstance(hosts, list):
@@ -1695,7 +1695,7 @@ def rights_summary(raw) -> list:
     """
     rights = (raw or {}).get("rights")
     if not isinstance(rights, dict):
-        return ["rights: not declared, so the enforcing side denies"]
+        return ["rights: not declared (declaration only; this skill does not enforce it)"]
     out = []
     for name in ("standing", "escalation"):
         level = rights.get(name)
@@ -1718,7 +1718,7 @@ def rights_summary(raw) -> list:
             bits.append("unlocked_by=" + ",".join(
                 f"{k}={v}" for k, v in level["unlocked_by"].items()))
         out.append(f"rights.{name}: " + " · ".join(bits))
-    for name in ("stop", "reply"):
+    for name in ("stop", "reply", "consent"):
         block = rights.get(name)
         if isinstance(block, dict) and block.get("flag"):
             out.append(f"rights.{name}: {block['flag']}")

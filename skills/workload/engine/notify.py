@@ -28,6 +28,7 @@ keep in step.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -500,6 +501,22 @@ def said_of(finding, text) -> str:
 
 
 def compose(entries, *, capped: bool = False, text=None):
+    """`_compose`, but a configured sentence that does not format never crashes.
+
+    A typo such as `{nmae}` in `workloads.notify_text` would raise KeyError and
+    take the whole notify pass down with it. It is logged and the DEFAULT words
+    are used, so the alert still goes out.
+    """
+    try:
+        return _compose(entries, capped=capped, text=text)
+    except (KeyError, IndexError, ValueError) as exc:
+        logging.getLogger(__name__).warning(
+            "notify_text does not format (%s: %s); using the default text",
+            type(exc).__name__, exc)
+        return _compose(entries, capped=capped, text=texts(None))
+
+
+def _compose(entries, *, capped: bool = False, text=None):
     """One message out of everything this pass found. Pure.
 
     Bundled rather than one message per finding: several failures in one pass

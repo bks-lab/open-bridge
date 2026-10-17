@@ -1589,10 +1589,10 @@ class WhatShowSaysAboutRights(MachineGuard):
         self.assertIn("model.rights_summary", inspect.getsource(view.rows),
                       "die Ansicht baut sich ihre eigene Fassung")
 
-    def test_an_absent_block_says_the_enforcing_side_denies(self):
+    def test_an_absent_block_says_it_is_declaration_only(self):
         # Nicht schweigen: die Abwesenheit ist eine Aussage, und zwar die
         # strengste, die es hier gibt.
-        self.assertEqual(["rights: not declared, so the enforcing side denies"],
+        self.assertEqual(["rights: not declared (declaration only; this skill does not enforce it)"],
                          self.lines({}))
 
     def test_a_star_reads_as_any_host_not_as_a_star(self):
@@ -1602,6 +1602,20 @@ class WhatShowSaysAboutRights(MachineGuard):
             "tools": "WebFetch", "read_scope": "a", "fetch_scope": ["*"],
             "reaches_humans": False}}}))
         self.assertIn("fetch=any host", out)
+
+    def test_bare_bash_is_found_in_every_spelling(self):
+        from engine import model as m
+        for tools in ("Bash", "Read,Bash", "Read Bash", "Bash(*)", "Read, Bash(*) ,Glob",
+                      "Read\tBash Glob"):
+            self.assertTrue(m.RIGHTS_GENERIC_SHELL_PATTERN.search(tools), tools)
+        for tools in ("Bash(python3 /p/x.py:*)", "Read,Bash(python3 /p/x.py:*)", "Read,Glob",
+                      "Read Bash(echo hi:*)"):
+            self.assertFalse(m.RIGHTS_GENERIC_SHELL_PATTERN.search(tools), tools)
+
+    def test_a_home_relative_scope_is_refused(self):
+        from engine import model as m
+        self.assertFalse(m.RIGHTS_SCOPE_PATTERN.match("~/notes"))
+        self.assertTrue(m.RIGHTS_SCOPE_PATTERN.match("notes/~x"))
 
     def test_a_level_that_reaches_people_says_who_and_how_often(self):
         out = "\n".join(self.lines({"rights": {
@@ -1618,8 +1632,10 @@ class WhatShowSaysAboutRights(MachineGuard):
     def test_the_way_out_is_printed_because_it_is_part_of_the_permission(self):
         out = "\n".join(self.lines({"rights": {
             "standing": {"tools": "Read", "read_scope": "a", "reaches_humans": False},
-            "stop": {"flag": "~/x.stop"}, "reply": {"flag": "~/x.reply"}}}))
+            "stop": {"flag": "~/x.stop"}, "reply": {"flag": "~/x.reply"},
+            "consent": {"flag": "~/x.consent"}}}))
         self.assertIn("rights.stop: ~/x.stop", out)
+        self.assertIn("rights.consent: ~/x.consent", out)
         self.assertIn("rights.reply: ~/x.reply", out)
 
 

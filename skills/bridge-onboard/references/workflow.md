@@ -404,8 +404,9 @@ only skip if the user is sure they want a dumb chat with no memory.
 - Standing orders (including `feature-discovery`) only fire when this is on
 
 **Skills that depend on it:** `/briefing`, `/debrief`, `/archive`,
-`task-close-postmortem`, `bridge-curator`, `bridge-learn`,
-`weekly-debrief-reconciler`, everything that reads `work/tasks/`.
+`task-close-postmortem`, `bridge-curator`, `bridge-learn`, and everything that
+reads `work/tasks/` — including whatever org- or personal-tier skills this
+instance adds.
 
 **Fast path — no re-ask.** When D1 is reached from the Phase-A confirm-back `[go]`
 (the normal onboarding path), the user already approved "work-system on" on that

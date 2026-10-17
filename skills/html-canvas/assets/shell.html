@@ -5,9 +5,9 @@
   deliverable gets: LIGHT/DARK (button + key T), DE/EN (button + key L), and PRINT.
   Single-file, offline, zero external dependencies, native UTF-8.
 
-  Tokens come from DESIGN.md — regenerate the brand layer with:
-    python3 skills/html-canvas/scripts/design-to-css.py --out /tmp/tokens.css
-  and paste it over the ":root from DESIGN.md" block below. NEVER hand-pick colors.
+  Tokens come from DESIGN.md. Generate a filled copy instead of copying this file:
+    python3 skills/html-canvas/scripts/design-to-css.py --shell --out page.html
+  The script owns the region between the design-tokens markers. NEVER hand-pick colors.
   Optional animation layer: paste assets/animations.css after the base styles and
   gate every motion behind prefers-reduced-motion (already done in that file).
 -->
@@ -40,62 +40,53 @@
 </script>
 
 <style>
-/* ─── Brand tokens — generated from DESIGN.md (design-to-css.py). Do not hand-edit. ─── */
+/* ─── Brand tokens. This region belongs to design-to-css.py; never paste values into it. ───
+   The committed shell is brand neutral: the fallbacks below are CSS system colours, so
+   an ungenerated copy is plain but legible. Fill the region from the instance's DESIGN.md:
+     python3 skills/html-canvas/scripts/design-to-css.py --shell --out page.html
+   (new-simulation.py does the same on its own). */
+/* design-tokens:begin */
 :root{
-  --ink:#111827; --muted:#6B7280;
-  --surface:#FFFFFF; --surface-subtle:#F9FAFB; --surface-muted:#F3F4F6;
-  --on-primary:#FFFFFF; --on-surface:#374151;
-  --line:#E5E7EB; --line-subtle:#F3F4F6;
-  --accent-from:#667EEA; --accent-to:#764BA2; --accent:#6366F1; --accent-secondary:#8B5CF6;
-  --ok:#10B981; --info:#3B82F6;
-  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
-  --font-mono:"SF Mono",Monaco,"Cascadia Code","Roboto Mono",Consolas,"Liberation Mono",monospace;
+  --primary:CanvasText; --primary-hover:CanvasText; --secondary:LinkText; --accent:LinkText;
+  --accent-subtle:Canvas; --accent-line:GrayText;
+  --surface:Canvas; --raised:Canvas; --surface-subtle:Canvas; --surface-muted:Canvas;
+  --ink:CanvasText; --on-surface:CanvasText; --muted:GrayText; --ink-faint:GrayText; --on-primary:Canvas;
+  --line:GrayText; --line-subtle:GrayText; --line-strong:CanvasText;
+  --ok:CanvasText; --warn:CanvasText; --danger:CanvasText; --info:LinkText;
+  --font-sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-display:Georgia,"Times New Roman",serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --space-xs:4px; --space-sm:8px; --space-md:16px; --space-lg:24px; --space-xl:32px; --space-2xl:48px; --space-3xl:64px;
-  --radius-sm:4px; --radius-md:8px; --radius-lg:12px; --radius-xl:16px; --radius-full:9999px;
+  --radius-sm:4px; --radius-md:6px; --radius-lg:10px; --radius-xl:14px; --radius-full:9999px;
 }
-html.dark{
-  --surface:#111827; --surface-subtle:#1F2937; --surface-muted:#374151;
-  --on-surface:#D1D5DB; --line:#374151;
-  --accent-from:#A78BFA; --accent-to:#818CF8;
-}
+/* design-tokens:end */
 
-/* ─── Skill additions (derived from DESIGN.md for AA text contrast + dark text ramp). ───
-   These complete what DESIGN.md's frontmatter doesn't yet carry. If you formalize them,
-   add dark-primary/dark-secondary + the *-text variants to DESIGN.md and regenerate. */
+/* ─── Derived roles. Every value is a reference to a token above, never a colour. ─── */
 :root{
-  --accent-text:#4F46E5;            /* accent words/links on white — AA */
-  --accent-soft:rgba(99,102,241,.08);
-  --ok-text:#047857; --warn:#B45309; --danger:#B91C1C; /* status text — AA on white */
-  --code-bg:#F3F4F6;
-  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);
-  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.08),0 10px 10px -5px rgba(0,0,0,.04);
+  color-scheme:light;
+  --heading:var(--primary);                 /* DESIGN.md: headings in primary on light */
+  --accent-text:var(--secondary);           /* links and eyebrows: the working colour */
+  --accent-soft:var(--accent-subtle);
+  --ok-text:var(--ok);
+  --code-bg:var(--surface-muted);
+  --shadow-soft:none;                       /* no resting shadow: depth is surface + line */
+  --shadow-hover:0 8px 20px -6px color-mix(in srgb,var(--primary) 10%,transparent);
 }
 html.dark{
-  --ink:#F3F4F6; --muted:#9CA3AF;          /* dark headline + caption ramp */
-  --accent-text:#A78BFA; --accent-soft:rgba(167,139,250,.14);
-  --ok-text:#34D399; --warn:#FBBF24; --danger:#F87171;
-  --code-bg:#0A0C12;
-  --shadow-soft:0 4px 6px -1px rgba(0,0,0,.2),0 2px 4px -1px rgba(0,0,0,.1);
-  --shadow-hover:0 20px 25px -5px rgba(0,0,0,.4),0 10px 10px -5px rgba(0,0,0,.2);
+  color-scheme:dark;
+  --heading:var(--ink);                     /* primary is frozen across modes, never text on dark */
 }
 
-/* ─── OPTIONAL: semantic lens / actor triads — the one sanctioned "colour = meaning"
+/* ─── OPTIONAL: semantic lens / actor triads, the one sanctioned "colour = meaning"
    exception. Uncomment when a diagram needs it, and ALWAYS ship a legend (sections.md).
+   Mixed from the tokens, so both modes follow the design system without a second block.
 :root{
-  --core-bg:#F3F4F6;--core-line:#D1D5DB;--core-ink:#374151;
-  --doc-bg:#ECFEFF;--doc-line:#0891B2;--doc-ink:#0E5E6E;
-  --sch-bg:#FEF3C7;--sch-line:#D97706;--sch-ink:#92560A;
-  --human-bg:#F3F4F6;--human-line:#9CA3AF;--human-ink:#374151;
-  --ai-bg:#EEF0FE;--ai-line:#6366F1;--ai-ink:#3730A3;
-  --tech-bg:#EFF4F9;--tech-line:#4A6FA5;--tech-ink:#2E4A73;
-}
-html.dark{
-  --core-bg:#273141;--core-line:#4B5563;--core-ink:#D1D5DB;
-  --doc-bg:#0C3540;--doc-line:#22B8CF;--doc-ink:#8BE7F2;
-  --sch-bg:#3D2E10;--sch-line:#F59E0B;--sch-ink:#FCD78A;
-  --human-bg:#273141;--human-line:#6B7280;--human-ink:#D1D5DB;
-  --ai-bg:#272A4A;--ai-line:#818CF8;--ai-ink:#C7CEFF;
-  --tech-bg:#1E2B3C;--tech-line:#6E91C0;--tech-ink:#A6C4E8;
+  --core-bg:var(--surface-muted);--core-line:var(--line-strong);--core-ink:var(--on-surface);
+  --doc-bg:color-mix(in srgb,var(--ok) 10%,var(--raised));--doc-line:var(--ok);--doc-ink:color-mix(in srgb,var(--ok) 55%,var(--ink));
+  --sch-bg:color-mix(in srgb,var(--warn) 12%,var(--raised));--sch-line:var(--warn);--sch-ink:color-mix(in srgb,var(--warn) 45%,var(--ink));
+  --human-bg:var(--raised);--human-line:var(--line-strong);--human-ink:var(--muted);
+  --ai-bg:var(--accent-subtle);--ai-line:var(--accent);--ai-ink:color-mix(in srgb,var(--secondary) 70%,var(--ink));
+  --tech-bg:color-mix(in srgb,var(--secondary) 8%,var(--raised));--tech-line:var(--secondary);--tech-ink:color-mix(in srgb,var(--secondary) 60%,var(--ink));
 }
 */
 
@@ -103,28 +94,32 @@ html.dark{
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:80px}
 body{
-  margin:0; font-family:var(--font-sans); font-size:16px; line-height:1.6;
+  margin:0; font-family:var(--font-sans); font-size:var(--fs-body-md,16px); line-height:var(--lh-body-md,1.6);
   color:var(--on-surface); background:var(--surface);
   -webkit-font-smoothing:antialiased;
-  /* soft cross-fade on theme swap — scoped to colour only (never `all`) */
-  transition:background-color .4s cubic-bezier(.16,1,.3,1),color .4s cubic-bezier(.16,1,.3,1);
+  /* theme swap fades the ground only: no colour animation on text (DESIGN.md, Motion) */
+  transition:background-color .2s ease-out;
 }
 .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
 .wrap.narrow{max-width:760px}
 
-/* "large = light" — DESIGN.md's signature: headings ≥24px ride weight 300. */
-h1,h2,.display{font-weight:300;letter-spacing:-.02em;line-height:1.12;color:var(--ink)}
-h3,h4{font-weight:500;color:var(--ink)}
-h1{font-size:clamp(34px,5vw,48px)}
-h2{font-size:clamp(26px,4vw,36px)}
-h3{font-size:22px} h4{font-size:18px}
+/* The family switch is the hierarchy: display face for h1/h2, sans from h3 down.
+   Weights and sizes come from DESIGN.md typography; the display face never runs
+   under 28px and never in a light weight. */
+h1,h2,.display{font-family:var(--font-display);font-weight:var(--fw-h1,500);color:var(--heading);
+  text-wrap:balance;hyphens:auto;overflow-wrap:break-word}
+h1{font-size:clamp(28px,5vw,var(--fs-h1,44px));line-height:var(--lh-h1,1.15);letter-spacing:var(--ls-h1,-.01em)}
+h2{font-size:clamp(28px,4vw,var(--fs-h2,32px));line-height:var(--lh-h2,1.2);font-weight:var(--fw-h2,500)}
+h3,h4{font-family:var(--font-sans);color:var(--ink)}
+h3{font-size:var(--fs-h3,20px);font-weight:var(--fw-h3,600);line-height:var(--lh-h3,1.35)}
+h4{font-size:var(--fs-h4,17px);font-weight:var(--fw-h4,600);line-height:var(--lh-h4,1.4)}
 p{max-width:70ch}
 a{color:var(--accent-text);text-decoration:none}
 a:hover{text-decoration:underline}
 code,kbd{font-family:var(--font-mono);font-size:.92em}
 code{background:var(--surface-muted);padding:1px 6px;border-radius:var(--radius-sm)}
-kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:var(--radius-sm);padding:1px 6px;background:var(--surface)}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius-sm)}
+kbd{border:1px solid var(--line);border-radius:var(--radius-sm);padding:1px 6px;background:var(--raised)}
+:focus-visible{outline:2px solid var(--secondary);outline-offset:2px;border-radius:var(--radius-sm)}
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 /* ─── DE/EN swap — pure CSS, no JS touches text nodes ─── */
@@ -144,10 +139,10 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:var(--rad
 .topbar{max-width:1100px;margin:18px auto 0;padding:0 24px;display:flex;justify-content:flex-end;gap:8px}
 .topbar button{
   font-family:var(--font-sans);font-size:12.5px;color:var(--ink);
-  border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-md);
+  border:1px solid var(--line);background:var(--raised);border-radius:var(--radius-md);
   padding:6px 11px;cursor:pointer;
 }
-.topbar button:hover{background:var(--surface-subtle)}
+.topbar button:hover{background:var(--accent-subtle)}
 
 /* ─── Footer ─── */
 footer.canvas-foot{max-width:1100px;margin:48px auto 32px;padding:16px 24px 0;border-top:1px solid var(--line-subtle);font-size:12px;color:var(--muted)}
@@ -155,12 +150,8 @@ footer.canvas-foot code{background:none;padding:0}
 
 /* ─── Print ─── */
 @media print{
-  html.dark{ /* a dark page must print clean on white — reset the FULL token set, not just surfaces */
-    --surface:#fff;--surface-subtle:#F9FAFB;--surface-muted:#F3F4F6;--ink:#111827;
-    --on-surface:#374151;--muted:#6B7280;--line:#E5E7EB;--line-subtle:#F3F4F6;
-    --code-bg:#F3F4F6;--accent-text:#4F46E5;--accent-soft:rgba(99,102,241,.08);
-    --ok-text:#047857;--warn:#B45309;--danger:#B91C1C;--shadow-soft:none;--shadow-hover:none;
-  }
+  /* the light palette on a white ground comes from the token region (design-to-css.py) */
+  html.dark{color-scheme:light}
   html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .topbar,nav{display:none !important}
   .reveal{opacity:1 !important;transform:none !important}

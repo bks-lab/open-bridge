@@ -843,6 +843,13 @@ class TheTitleNamesTheTrouble(MachineGuard):
         return notify.compose(list(entries), text=notify.texts(
             SimpleNamespace(notify_text=text)))
 
+    def test_an_unknown_placeholder_falls_back_to_the_default_text(self):
+        # A typo in a configured sentence must not take the notify pass down.
+        entries = [(failed(), wl(), "failure")]
+        with self.assertLogs("engine.notify", level="WARNING"):
+            got = self.compose(*entries, text={"title_one": "{nmae} broke"})
+        self.assertEqual(got, notify.compose(entries, text=notify.texts(None)))
+
     def test_one_failed_run_says_what_went_wrong_in_the_title(self):
         what, _where, _todo, _detail = self.compose(
             (failed(appointment=""), wl(), "failure"))

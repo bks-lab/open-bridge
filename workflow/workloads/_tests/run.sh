@@ -133,6 +133,7 @@ declare -a CASES=(
   "negative-rights-escalation-without-condition.yaml@@$.rights.escalation: 'unlocked_by' is a required property"
   "negative-rights-outward-without-caps.yaml@@$.rights.escalation: 'caps' is a required property"
   "negative-rights-outward-without-stop.yaml@@$.rights: 'stop' is a required property"
+  "negative-rights-scope-tilde.yaml@@$.rights.standing.read_scope: '~/notes' does not match"
   "negative-rights-scope-escape.yaml@@$.rights.standing.read_scope: 'example/notes/../../../' does not match"
   "negative-rights-tool-without-scope.yaml@@$.rights.standing: 'read_scope' is a required property"
   "negative-rights-relative-stop-flag.yaml@@$.rights.stop.flag: '.stop' does not match"
@@ -224,7 +225,7 @@ declare -a NEEDLES=(
   # ── rights: what a run may do. One needle per rule, and each rule
   #    carries its reason on its own line so exactly one control goes
   #    hollow when it is softened. ───────────────────────────────────
-  'rights-tools-may-be-generic-shell@@      pattern: "(^|,)\\s*Bash\\s*(,|$)"       # generic shell is never declarable@@      pattern: "(^|,)\\s*never-present-tool\\s*(,|$)"       # generic shell is never declarable@@negative-rights-generic-shell.yaml'
+  'rights-tools-may-be-generic-shell@@      pattern: "(^|[,\\s])Bash(\\(\\*\\))?\\s*([,\\s]|$)"       # generic shell is never declarable@@      pattern: "(^|,)\\s*never-present-tool\\s*(,|$)"       # generic shell is never declarable@@negative-rights-generic-shell.yaml'
   'rights-recipient-may-be-a-handle@@    pattern: "^[a-z0-9][a-z0-9-]*$"          # a reference, never a handle@@    pattern: "^.*$"          # a reference, never a handle@@negative-rights-inline-handle.yaml'
   'rights-escalation-may-lack-a-condition@@          - required: [unlocked_by]          # a level with no condition is the normal state under another name@@          - not: {required: [never-present]}          # a level with no condition is the normal state under another name@@negative-rights-escalation-without-condition.yaml'
   'rights-outward-may-lack-caps@@          required: [recipients, caps]       # reaching people without a list and a cap is a hole, not a right@@          not: {required: [never-present]}       # reaching people without a list and a cap is a hole, not a right@@negative-rights-outward-without-caps.yaml'
@@ -235,7 +236,8 @@ declare -a NEEDLES=(
   # way: that one drops consent and keeps stop, this one drops stop and
   # keeps consent, so each still empties exactly one control.
   'rights-outward-may-lack-a-way-out@@          required: [stop, consent]          # a way out and a way in are both part of the permission@@          required: [consent]          # a way out and a way in are both part of the permission@@negative-rights-outward-without-stop.yaml'
-  'rights-scope-may-climb-out@@    pattern: "^(?!/)(?!.*\\.\\.).+$"           # no absolute path, no climbing out@@    pattern: "^.*$"           # no absolute path, no climbing out@@negative-rights-scope-escape.yaml'
+  'rights-scope-may-climb-out@@    pattern: "^(?!/)(?!~)(?!.*\\.\\.).+$"           # no absolute path, no climbing out@@    pattern: "^(?!/)(?!~).+$"           # no absolute path, no climbing out@@negative-rights-scope-escape.yaml'
+  'rights-scope-may-be-home-relative@@    pattern: "^(?!/)(?!~)(?!.*\\.\\.).+$"           # no absolute path, no climbing out@@    pattern: "^(?!/)(?!.*\\.\\.).+$"           # no absolute path, no climbing out@@negative-rights-scope-tilde.yaml'
   'rights-read-tool-may-lack-a-scope@@          required: [read_scope]             # a read tool with no scope is refused on every call@@          not: {required: [never-present]}             # a read tool with no scope is refused on every call@@negative-rights-tool-without-scope.yaml'
   'rights-stop-flag-may-be-relative@@            pattern: "^(~|/)"                # absolute or ~, never relative@@            pattern: "^.*$"                # absolute or ~, never relative@@negative-rights-relative-stop-flag.yaml'
   'rights-fetch-may-reach-any-host@@          required: [fetch_scope]            # a fetching tool with no host list reaches every host@@          not: {required: [never-present]}            # a fetching tool with no host list reaches every host@@negative-rights-fetch-without-hosts.yaml'

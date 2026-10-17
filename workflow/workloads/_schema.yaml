@@ -65,7 +65,7 @@ $defs:
     # an unattended run on this fleet is handed `--allowedTools Bash,…` inside
     # a wrapper, so the widest possible right is also the least visible one.
     not:
-      pattern: "(^|,)\\s*Bash\\s*(,|$)"       # generic shell is never declarable
+      pattern: "(^|[,\\s])Bash(\\(\\*\\))?\\s*([,\\s]|$)"       # generic shell is never declarable
   rights_slug:
     type: string
     # A slug, so that neither an address nor a phone number ever fits in a
@@ -74,9 +74,9 @@ $defs:
     maxLength: 64
   rights_relpath:
     type: string
-    # Repo-relative and without `..`: an absolute path, or one that climbs out,
+    # Repo-relative, no `~` and without `..`: an absolute or home path, or one that climbs out,
     # is a different scope than the one a reader assumes here.
-    pattern: "^(?!/)(?!.*\\.\\.).+$"           # no absolute path, no climbing out
+    pattern: "^(?!/)(?!~)(?!.*\\.\\.).+$"           # no absolute path, no climbing out
   rights_level:
     type: object
     additionalProperties: false
@@ -854,8 +854,8 @@ properties:
     description: "Provenance — the incident or decision that seeded this declaration."
 
   # ── 5 of 5: WHAT IT MAY DO. Optional, and absent means nothing is declared. ──
-  # An absent block is not a permissive one: the enforcing side denies when it
-  # finds no declaration. See $defs.rights_level for the model and the scars.
+  # An absent block declares nothing; an enforcing side, where one exists, is
+  # expected to deny when it finds no declaration. This skill does not enforce it. See $defs.rights_level for the model and the scars.
   rights:
     type: object
     additionalProperties: false

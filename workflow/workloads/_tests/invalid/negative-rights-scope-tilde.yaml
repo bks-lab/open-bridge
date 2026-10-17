@@ -1,0 +1,18 @@
+# Control: a scope starting with ~ resolves against the home directory, a different scope than the one a reader
+# assumes on this line.
+schema_version: 1
+scope: core
+id: negative-rights-scope-tilde
+title: Negative rights scope tilde
+purpose: "Control: a scope under the home directory"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    read_scope: "~/notes"
+    reaches_humans: false

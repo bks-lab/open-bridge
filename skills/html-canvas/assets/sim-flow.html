@@ -1,0 +1,538 @@
+<!--
+  html-canvas — ARCHETYPE FRAGMENT: flow
+  ============================================================================
+  Tokens travel a drawn route through stations that have capacity, queue in
+  front of them, take a verdict at a gate, fan out to specialists and land in
+  one of two outcomes. One token is followed and writes the protocol.
+
+  This file is NOT a deliverable. It is a fragment in three marked parts that
+  scripts/new-simulation.py splices into assets/shell.html together with
+  simulation.css and sim-engine.js, producing one single-file page:
+
+      python3 skills/html-canvas/scripts/new-simulation.py \
+        --archetype flow --title "..." --out work/tasks/<slug>/deliverables/x.html
+
+  Then edit the MODEL block at the top of the script: geometry, ITEMS, D and
+  TXT are the whole surface you need to touch for a new domain.
+-->
+
+<!--@style-->
+main.wrap{max-width:1240px}
+.sim-panels{display:grid;grid-template-columns:1.3fr 1fr .8fr;gap:16px;margin-top:24px}
+@media (max-width:1080px){.sim-panels{grid-template-columns:1fr}}
+.sim-panel{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:18px 20px}
+.sim-panel h2{font-family:var(--font-sans);font-size:15px;font-weight:600;color:var(--ink);margin:0 0 3px} /* card title: sans, the display face never runs under 28px */
+.sim-panel__sub{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);
+  letter-spacing:.5px;text-transform:uppercase;margin:0 0 14px}
+.sim-empty{font-size:12.8px;color:var(--muted);padding:10px 0;margin:0}
+
+<!--@markup-->
+<p class="sim-hint" data-de>Leertaste startet und hält an. R setzt zurück. 1 2 3 wählen das Tempo.</p>
+<p class="sim-hint" data-en>Space runs and pauses. R resets. 1 2 3 pick the speed.</p>
+
+<div class="sim-bar">
+  <!-- One span per state, each with its own DE/EN pair: the engine sets
+       data-state and CSS picks the label, so no string is written by JS. -->
+  <button class="sim-btn sim-btn--primary" type="button" data-sim-run data-state="idle">
+    <span data-state-idle><span data-de>Lauf starten</span><span data-en>Start run</span></span>
+    <span data-state-running><span data-de>Pause</span><span data-en>Pause</span></span>
+    <span data-state-paused><span data-de>Weiter</span><span data-en>Continue</span></span>
+    <span data-state-done><span data-de>Lauf beendet</span><span data-en>Run finished</span></span>
+  </button>
+  <!-- This archetype has no discrete step, so it passes no stepOnce and the
+       engine removes this button rather than offering a dead control. -->
+  <button class="sim-btn" type="button" data-sim-step>
+    <span data-de>Ein Schritt</span><span data-en>One step</span>
+  </button>
+  <button class="sim-btn" type="button" data-sim-end>
+    <span data-de>Bis zum Ende</span><span data-en>To the end</span>
+  </button>
+  <button class="sim-btn" type="button" data-sim-reset>
+    <span data-de>Zurücksetzen</span><span data-en>Reset</span>
+  </button>
+  <div class="sim-seg" data-sim-speed role="group" aria-label="Speed">
+    <button type="button" data-speed="0.5" aria-pressed="false">0,5x</button>
+    <button type="button" data-speed="1" aria-pressed="true">1x</button>
+    <button type="button" data-speed="2" aria-pressed="false">2x</button>
+  </div>
+  <div class="sim-clock">
+    <span data-de>Modellzeit</span><span data-en>Model time</span> <b id="clock">06:14</b>
+  </div>
+</div>
+
+<p class="sim-reduced-note" data-sim-reduced-note hidden>
+  <span data-de>Ihr System ist auf reduzierte Bewegung eingestellt. Der Lauf wurde deshalb
+    ohne Animation bis zum Ende gerechnet: die Vorgänge stehen bereits in den Ergebnisfeldern,
+    das Protokoll ist vollständig.</span>
+  <span data-en>Your system asks for reduced motion, so the run was computed to its end
+    instead of animated: the items already sit in the outcome fields and the protocol below
+    is complete.</span>
+</p>
+
+<div class="sim-legend-row">
+  <span><i class="sim-swatch"></i><span data-de>in Bearbeitung</span><span data-en>in progress</span></span>
+  <span><i class="sim-swatch" data-follow="yes"></i><span data-de>verfolgter Vorgang</span><span data-en>followed item</span></span>
+  <span><i class="sim-swatch" data-level="warn"></i><span data-de>korrigiert</span><span data-en>corrected</span></span>
+  <span><i class="sim-swatch" data-level="crit"></i><span data-de>zurückgewiesen</span><span data-en>sent back</span></span>
+  <span><i class="sim-swatch" data-level="ok"></i><span data-de>entschieden</span><span data-en>decided</span></span>
+</div>
+
+<div class="sim-stage">
+  <svg id="stage" viewBox="0 0 1220 470" preserveAspectRatio="xMidYMid meet" role="img"
+       aria-label="Route from intake through a classifier and a review gate to three specialists and two outcome fields, with items travelling along it.">
+    <g id="routes"></g>
+    <g id="stations"></g>
+    <g id="tokens"></g>
+  </svg>
+</div>
+<p class="sim-caption">
+  <span data-de>Von links nach rechts: der Eingang nimmt auf, die Einordnung stuft ein, die
+    Prüfung urteilt über die Einstufung, dahinter arbeitet die zuständige Fachstelle. Die
+    gestrichelte Linie unter der Strecke ist der Rückweg eines zurückgewiesenen Vorgangs.
+    Was vor einer Station steht, ist deren Warteschlange.</span>
+  <span data-en>Left to right: intake receives, the classifier grades, the review gate judges
+    that grading, and the matching specialist works the item. The dashed line below the route
+    is the way back for an item that was sent back. Whatever stands in front of a station is
+    its queue.</span>
+</p>
+
+<div class="sim-panels">
+  <section class="sim-panel">
+    <h2><span data-de>Verfolgter Vorgang</span><span data-en>Followed item</span></h2>
+    <p class="sim-panel__sub" id="followId">A-1043</p>
+    <ul class="sim-feed" id="feed"></ul>
+    <p class="sim-empty" id="feedEmpty">
+      <span data-de>Der Verlauf wird geschrieben, sobald der Lauf läuft.</span>
+      <span data-en>The trail is written as soon as the run starts.</span>
+    </p>
+  </section>
+
+  <section class="sim-panel">
+    <h2><span data-de>Urteil der Prüfung</span><span data-en>Review verdict</span></h2>
+    <p class="sim-panel__sub"><span data-de>über die Arbeit der Einordnung</span><span data-en>on the classifier's work</span></p>
+    <div id="verdictWait">
+      <p class="sim-empty">
+        <span data-de>Die Prüfung hat über den verfolgten Vorgang noch nicht entschieden.</span>
+        <span data-en>The review gate has not yet decided on the followed item.</span>
+      </p>
+    </div>
+    <div id="verdictBody" hidden>
+      <p><span class="sim-pill" data-level="warn"><span data-de>korrigiert</span><span data-en>corrected</span></span></p>
+      <p style="font-size:13px;margin:10px 0 0">
+        <span data-de>Die Prüfung folgt der Einstufung nicht. Drei Meldungen aus demselben
+          Abschnitt sprechen gegen einen Einzelfall. Neue Einstufung, Dringlichkeit bleibt.
+          Der verworfene Vorschlag bleibt in der Akte stehen.</span>
+        <span data-en>The review gate does not follow the grading. Three reports from the same
+          section argue against a single case. New classification, urgency unchanged. The
+          discarded proposal stays on the record.</span>
+      </p>
+    </div>
+  </section>
+
+  <section class="sim-panel">
+    <h2><span data-de>Zähler dieses Laufs</span><span data-en>Counters for this run</span></h2>
+    <p class="sim-panel__sub"><span data-de>Modellwerte, kein Betriebssystem</span><span data-en>model values, not a live system</span></p>
+    <ul class="sim-counters">
+      <li><span class="sim-c-label"><span data-de>Im Eingang</span><span data-en>In intake</span></span><span class="sim-c-val" id="cIn">0</span></li>
+      <li><span class="sim-c-label"><span data-de>In Arbeit</span><span data-en>In progress</span></span><span class="sim-c-val" id="cWork">0</span></li>
+      <li class="sim-c-group"><span class="sim-c-group-head"><span data-de>Prüfung</span><span data-en>Review gate</span></span></li>
+      <li><span class="sim-c-label"><span data-de>bestätigt</span><span data-en>confirmed</span></span><span class="sim-c-val" id="cOk">0</span></li>
+      <li><span class="sim-c-label"><span data-de>korrigiert</span><span data-en>corrected</span></span><span class="sim-c-val" id="cFix">0</span></li>
+      <li><span class="sim-c-label"><span data-de>zurückgewiesen</span><span data-en>sent back</span></span><span class="sim-c-val" id="cRej">0</span></li>
+      <li class="sim-c-group"><span class="sim-c-group-head"><span data-de>Ergebnis</span><span data-en>Outcome</span></span></li>
+      <li><span class="sim-c-label"><span data-de>abgeschlossen</span><span data-en>closed</span></span><span class="sim-c-val" id="cB0">0</span></li>
+      <li><span class="sim-c-label"><span data-de>an Menschen übergeben</span><span data-en>handed to a person</span></span><span class="sim-c-val" id="cB1">0</span></li>
+    </ul>
+  </section>
+</div>
+
+<h2 style="margin-top:40px">
+  <span data-de>Was hier Modell ist und was Bestand</span>
+  <span data-en>What here is model and what is stock</span>
+</h2>
+<div class="sim-provenance">
+  <article class="sim-prov-card" data-kind="sim">
+    <h3><span data-de>Modell</span><span data-en>Model</span></h3>
+    <p class="sim-prov-claim"><span data-de>alles, was sich bewegt</span><span data-en>everything that moves</span></p>
+    <ul>
+      <li><span data-de>Vorgangsnummern, Stationen und Dauern sind gesetzte Werte, keine gemessenen.</span>
+          <span data-en>Item numbers, stations and durations are set values, not measured ones.</span></li>
+      <li><span data-de>Die Stationen laufen als Skript, nicht als Aufruf eines Dienstes.</span>
+          <span data-en>The stations run as a script, not as a call to a service.</span></li>
+    </ul>
+  </article>
+  <article class="sim-prov-card" data-kind="real">
+    <h3><span data-de>Bestand</span><span data-en>Stock</span></h3>
+    <p class="sim-prov-claim"><span data-de>heute im Einsatz</span><span data-en>in use today</span></p>
+    <ul>
+      <li><span data-de>Hier die Bauteile eintragen, die es wirklich gibt, mit Pfad oder Quelle.</span>
+          <span data-en>List the parts that genuinely exist here, each with a path or a source.</span></li>
+    </ul>
+  </article>
+  <article class="sim-prov-card" data-kind="todo">
+    <h3><span data-de>Noch zu bauen</span><span data-en>Not built yet</span></h3>
+    <p class="sim-prov-claim"><span data-de>davon existiert nichts</span><span data-en>none of this exists</span></p>
+    <ul>
+      <li><span data-de>Was der Aufbau voraussetzt und heute fehlt. Diese Spalte wegzulassen ist die
+        eigentliche Unehrlichkeit, nicht die Simulation selbst.</span>
+          <span data-en>What the setup assumes and does not have. Leaving this column out is the
+        actual dishonesty, not the simulation itself.</span></li>
+    </ul>
+  </article>
+</div>
+
+<!--@script-->
+/* ===================== MODEL =====================================
+   Everything a new domain has to touch sits between here and STAGE. */
+
+var TXT = {
+  intake:   { de: 'Eingang',    en: 'Intake' },
+  classify: { de: 'Einordnung', en: 'Classifier' },
+  review:   { de: 'Prüfung',    en: 'Review' },
+  spec:     { de: 'Fachstelle', en: 'Specialist' },
+  out:      { de: 'Ergebnis',   en: 'Outcome' },
+  free:     { de: 'frei',       en: 'idle' },
+  busy:     { de: 'in Arbeit',  en: 'working' },
+  lanes: [
+    { de: 'Anlage',   en: 'Equipment' },
+    { de: 'Netz',     en: 'Network' },
+    { de: 'Auskunft', en: 'Information' }
+  ],
+  bins: [
+    { de: 'abgeschlossen',        en: 'closed' },
+    { de: 'an Menschen übergeben', en: 'handed to a person' }
+  ],
+  step: {
+    intake:    { de: 'Meldung aufgenommen, Eingangsnummer vergeben.',
+                 en: 'Report received, intake number assigned.' },
+    classified:{ de: 'Eingestuft und mit einer Dringlichkeit versehen.',
+                 en: 'Graded and given an urgency.' },
+    corrected: { de: 'Die Prüfung folgt der Einstufung nicht und stuft neu ein.',
+                 en: 'The review gate rejects the grading and re-classifies.' },
+    handed:    { de: 'An die zuständige Fachstelle übergeben.',
+                 en: 'Handed to the matching specialist.' },
+    decided:   { de: 'Entschieden und abgelegt.',
+                 en: 'Decided and filed.' }
+  }
+};
+
+/* Durations in model milliseconds. One display second is one model minute. */
+var D = { in: 900, classify: 800, check: 900, review: 700, back: 1300, fan: 1000, spec: 1400, out: 900 };
+var APPROACH_MAX = 3;    /* items allowed to be heading for the classifier at once */
+var CLOCK_START = 6 * 60 + 14;
+
+/* verdict drives the gate, bin drives the outcome, follow picks the one item
+   whose trail is written into the protocol panel. */
+var ITEMS = [
+  { id: 'A-1042', spawn: 200,  lane: 0, verdict: 'ok',        bin: 0 },
+  { id: 'A-1043', spawn: 900,  lane: 1, verdict: 'corrected', bin: 0, follow: true },
+  { id: 'A-1044', spawn: 1500, lane: 0, verdict: 'ok',        bin: 0 },
+  { id: 'A-1045', spawn: 2100, lane: 2, verdict: 'rejected',  bin: 1 },
+  { id: 'A-1046', spawn: 2600, lane: 1, verdict: 'ok',        bin: 0 },
+  { id: 'A-1047', spawn: 3200, lane: 2, verdict: 'corrected', bin: 1 }
+];
+
+/* ===================== STAGE ===================================== */
+var MID = 230;
+var IN   = { x: 20,  y: 40,  w: 150, h: 380 };
+var CLS  = { x: 290, y: 175, w: 150, h: 110 };
+var REV  = { x: 560, y: 175, w: 150, h: 110 };
+var SPEC = { x: 830, w: 190, h: 46 };
+var BIN  = { x: 1050, w: 160, h: 132 };
+function laneY(i) { return 110 + i * 120; }
+function binY(j) { return 100 + j * 206; }   /* centre of the outcome field */
+
+var gRoutes = document.getElementById('routes');
+var gStations = document.getElementById('stations');
+var gTokens = document.getElementById('tokens');
+var routes = {};
+
+function route(key, pts, extra) {
+  routes[key] = Sim.svg('path', { 'class': 'sim-route' + (extra ? ' ' + extra : ''), d: Sim.routeD(pts, 11) }, gRoutes);
+}
+route('in', [[IN.x + IN.w, MID], [CLS.x, MID]]);
+route('check', [[CLS.x + CLS.w, MID], [REV.x, MID]]);
+route('back', [[REV.x + REV.w / 2, REV.y + REV.h], [REV.x + REV.w / 2, 440],
+               [CLS.x + CLS.w / 2, 440], [CLS.x + CLS.w / 2, CLS.y + CLS.h]], 'sim-route--return');
+var i, j;
+for (i = 0; i < 3; i++) {
+  var fx = 760 + i * 9;
+  route('fan' + i, [[REV.x + REV.w, MID], [fx, MID], [fx, laneY(i)], [SPEC.x, laneY(i)]]);
+  for (j = 0; j < 2; j++) {
+    var ox = 1024 + i * 7;
+    route('out' + i + '_' + j, [[SPEC.x + SPEC.w, laneY(i)], [ox, laneY(i)], [ox, binY(j)], [BIN.x, binY(j)]]);
+  }
+}
+
+Sim.svg('rect', { 'class': 'sim-box', x: IN.x, y: IN.y, width: IN.w, height: IN.h, rx: 12 }, gStations);
+Sim.svgText(gStations, IN.x + 14, IN.y + 26, 'sim-t-head', TXT.intake);
+var inCount = Sim.svgText(gStations, IN.x + IN.w - 14, IN.y + 66, 'sim-t-count', '0', 'end');
+
+function station(box, title, sub) {
+  var r = Sim.svg('rect', { 'class': 'sim-box sim-box--raised', x: box.x, y: box.y, width: box.w, height: box.h, rx: 12 }, gStations);
+  Sim.svgText(gStations, box.x + box.w / 2, box.y + 26, 'sim-t-title', title, 'middle');
+  Sim.svgText(gStations, box.x + box.w / 2, box.y + 44, 'sim-t-sub', sub, 'middle');
+  Sim.svg('rect', { 'class': 'sim-slot', x: box.x + box.w / 2 - 42, y: box.y + 58, width: 84, height: 30, rx: 8 }, gStations);
+  var st = Sim.svgText(gStations, box.x + box.w / 2, box.y + 100, 'sim-t-mono', TXT.free, 'middle');
+  return { rect: r, state: st, x: box.x + box.w / 2, y: box.y + 73 };
+}
+var stCls = station(CLS, TXT.classify, { de: 'stuft ein', en: 'grades it' });
+var stRev = station(REV, TXT.review, { de: 'urteilt über die Einstufung', en: 'judges the grading' });
+
+var specEls = [];
+for (i = 0; i < 3; i++) {
+  var ly = laneY(i);
+  Sim.svg('rect', { 'class': 'sim-box', x: SPEC.x, y: ly - SPEC.h / 2, width: SPEC.w, height: SPEC.h, rx: 9 }, gStations);
+  Sim.svgText(gStations, SPEC.x + 14, ly + 4, 'sim-t-title', TXT.lanes[i]);
+  Sim.svg('rect', { 'class': 'sim-slot', x: SPEC.x + SPEC.w - 60, y: ly - 14, width: 48, height: 28, rx: 7 }, gStations);
+  specEls.push({ x: SPEC.x + SPEC.w - 36, y: ly });
+}
+
+var binEls = [];
+for (j = 0; j < 2; j++) {
+  var by = binY(j) - BIN.h / 2;
+  Sim.svg('rect', { 'class': 'sim-box', x: BIN.x, y: by, width: BIN.w, height: BIN.h, rx: 11 }, gStations);
+  Sim.svgText(gStations, BIN.x + 14, by + 22, 'sim-t-mono', TXT.bins[j]);
+  binEls.push({
+    count: Sim.svgText(gStations, BIN.x + 14, by + 80, 'sim-t-count', '0'),
+    x: BIN.x + 106, y: by + 46          /* where finished items stack */
+  });
+}
+
+/* One group per item, built once and moved, never rebuilt per frame. */
+var items = ITEMS.map(function (spec) {
+  var g = Sim.svg('g', { 'class': 'sim-token' }, gTokens);
+  if (spec.follow) {
+    g.setAttribute('data-follow', 'yes');
+    Sim.svg('rect', { 'class': 'sim-token__ring', x: -38, y: -14, width: 76, height: 28, rx: 8 }, g);
+  }
+  Sim.svg('rect', { 'class': 'sim-token__bg', x: -32, y: -11, width: 64, height: 22, rx: 6 }, g);
+  var label = Sim.svg('text', { 'class': 'sim-token__id', x: 0, y: 4, 'text-anchor': 'middle' }, g);
+  label.textContent = spec.id;
+  Sim.svg('rect', { 'class': 'sim-token__track', x: -32, y: 12, width: 64, height: 3, rx: 1.5 }, g);
+  var bar = Sim.svg('rect', { 'class': 'sim-token__bar', x: -32, y: 12, width: 0, height: 3, rx: 1.5 }, g);
+  return { spec: spec, el: g, bar: bar, x: 0, y: 0, shown: false };
+});
+
+/* ===================== STATE ===================================== */
+var T, qIn, qCls, qRev, qSpec, busyCls, busyRev, busySpec, binned, tally, verdictShown;
+var feed = new Sim.Feed(document.getElementById('feed'), { max: 12 });
+var feedEmpty = document.getElementById('feedEmpty');
+var verdictWait = document.getElementById('verdictWait');
+var verdictBody = document.getElementById('verdictBody');
+
+function blank() {
+  T = 0;
+  qIn = []; qCls = []; qRev = []; qSpec = [[], [], []];
+  busyCls = null; busyRev = null; busySpec = [null, null, null];
+  binned = [[], []];
+  tally = { ok: 0, corrected: 0, rejected: 0 };
+  verdictShown = false;
+  items.forEach(function (t) {
+    t.phase = 'pre'; t.t0 = 0; t.dur = 0; t.route = null; t.mark = null;
+    t.pass = 0; t.progress = 0; t.shown = false;
+  });
+}
+
+function clock(ms) {
+  var total = CLOCK_START + Math.floor(ms / 1000);
+  var h = Math.floor(total / 60) % 24, m = total % 60;
+  return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+}
+
+function say(t, key, level) {
+  if (!t.spec.follow) return;
+  feed.push({ time: clock(T), where: key.where, what: TXT.step[key.step], level: level || 'info' });
+  feedEmpty.hidden = true;
+}
+
+/* Insets keep a travelling token clear of the lettering at both ends of a leg. */
+function inset(key) {
+  if (key === 'in') return [0, 44];
+  if (key === 'back') return [16, 16];
+  return [34, 42];
+}
+function move(t, key, dur, next) {
+  t.phase = 'move'; t.route = routes[key]; t.routeKey = key;
+  t.t0 = T; t.dur = dur; t.next = next; t.progress = 0;
+}
+function work(t, dur, next) {
+  t.phase = 'work'; t.t0 = T; t.dur = dur; t.next = next; t.route = null; t.routeKey = null;
+}
+function ready(t) { return T - t.t0 >= t.dur; }
+
+/* ===================== ONE TICK ==================================
+   Pure model work: no DOM here, so the same function serves the animated run,
+   the reduced-motion fast-forward and the print path. */
+function step(dt) {
+  T += dt;
+
+  items.forEach(function (t) {
+    if (t.phase === 'pre' && T >= t.spec.spawn) {
+      t.phase = 'q_in'; qIn.push(t);
+      say(t, { where: TXT.intake, step: 'intake' });
+    }
+  });
+
+  /* Release from intake, throttled by what is already heading for the
+     classifier. Without the throttle the whole intake leaves at once and no
+     queue ever forms, which is the one thing the picture is meant to show. */
+  if (qIn.length && (qCls.length + (busyCls ? 1 : 0)) < APPROACH_MAX) {
+    move(qIn.shift(), 'in', D.in, 'q_cls');
+  }
+
+  items.forEach(function (t) {
+    if (t.phase !== 'move' || !ready(t)) return;
+    t.phase = t.next;
+    if (t.next === 'q_cls') qCls.push(t);
+    else if (t.next === 'q_rev') qRev.push(t);
+    else if (t.next === 'q_spec') qSpec[t.spec.lane].push(t);
+    else if (t.next === 'binned') {
+      binned[t.spec.bin].push(t);
+      say(t, { where: TXT.out, step: 'decided' }, 'ok');
+    }
+  });
+
+  if (!busyCls && qCls.length) { busyCls = qCls.shift(); work(busyCls, D.classify, 'to_rev'); }
+  if (busyCls && ready(busyCls)) {
+    var c = busyCls; busyCls = null;
+    if (c.pass === 0) say(c, { where: TXT.classify, step: 'classified' });
+    move(c, 'check', D.check, 'q_rev');
+  }
+
+  if (!busyRev && qRev.length) { busyRev = qRev.shift(); work(busyRev, D.review, 'to_spec'); }
+  if (busyRev && ready(busyRev)) {
+    var r = busyRev; busyRev = null;
+    var v = r.spec.verdict;
+    if (r.pass === 0 && v === 'rejected') {
+      r.pass = 1; r.mark = 'crit'; tally.rejected++;
+      r.el.setAttribute('data-level', 'crit');
+      say(r, { where: TXT.review, step: 'corrected' }, 'crit');
+      move(r, 'back', D.back, 'q_cls');
+    } else {
+      if (v === 'corrected' && r.pass === 0) {
+        tally.corrected++; r.mark = 'warn';
+        r.el.setAttribute('data-level', 'warn');
+        say(r, { where: TXT.review, step: 'corrected' }, 'warn');
+        if (r.spec.follow) verdictShown = true;
+      } else if (v === 'ok') { tally.ok++; }
+      r.pass = 2;
+      say(r, { where: TXT.review, step: 'handed' });
+      move(r, 'fan' + r.spec.lane, D.fan, 'q_spec');
+    }
+  }
+
+  for (var i = 0; i < 3; i++) {
+    if (!busySpec[i] && qSpec[i].length) { busySpec[i] = qSpec[i].shift(); work(busySpec[i], D.spec, 'out'); }
+    if (busySpec[i] && ready(busySpec[i])) {
+      var s = busySpec[i]; busySpec[i] = null;
+      s.el.setAttribute('data-level', 'ok');
+      move(s, 'out' + i + '_' + s.spec.bin, D.out, 'binned');
+    }
+  }
+
+  return items.every(function (t) { return t.phase === 'binned'; });
+}
+
+/* ===================== PAINT ===================================== */
+function place(t, x, y) { t.x = x; t.y = y; t.shown = true; }
+
+function render() {
+  var live = {};
+
+  qIn.forEach(function (t, k) {
+    if (k < 9) place(t, IN.x + IN.w / 2, IN.y + 96 + k * 28); else t.shown = false;
+  });
+  Sim.put(inCount, qIn.length);
+
+  function queue(arr, cx, cy) {
+    arr.forEach(function (t, k) {
+      if (k < 4) place(t, cx, cy + 32 + k * 28); else t.shown = false;
+    });
+  }
+  /* Waiting items sit BESIDE the route, never on it: on it, an arriving token
+     lands exactly on the first waiting one and the queue reads as one item. */
+  queue(qCls, CLS.x - 44, MID);
+  queue(qRev, REV.x - 44, MID);
+  for (var i = 0; i < 3; i++) {
+    qSpec[i].forEach(function (t, k) {
+      if (k < 2) place(t, SPEC.x - 90 - k * 72, laneY(i)); else t.shown = false;
+    });
+  }
+
+  /* Finished items are placed too. The end state is the one a printed page and
+     a reduced-motion visitor see, and an empty stage there says the run failed.
+     This branch was missing at first and the counters alone stayed green. */
+  binned.forEach(function (arr, b) {
+    arr.forEach(function (t, k) {
+      if (k < 3) place(t, binEls[b].x, binEls[b].y + k * 28); else t.shown = false;
+    });
+  });
+
+  if (busyCls) place(busyCls, stCls.x, stCls.y);
+  if (busyRev) place(busyRev, stRev.x, stRev.y);
+  for (i = 0; i < 3; i++) if (busySpec[i]) place(busySpec[i], specEls[i].x, specEls[i].y);
+
+  items.forEach(function (t) {
+    if (t.phase === 'move' && t.route) {
+      var p = Sim.alongRoute(t.route, Sim.ease(Math.min(1, (T - t.t0) / t.dur)), inset(t.routeKey));
+      place(t, p.x, p.y);
+      live[t.routeKey] = true;
+    }
+    /* The bar fills over the step's own duration, so a step that happens to
+       move nothing still shows that it is running. */
+    /* Only a step in flight carries a bar. A finished item showing a full bar
+       adds a loud stripe that says nothing the green frame does not already. */
+    t.progress = (t.phase === 'move' || t.phase === 'work')
+      ? Math.min(1, (T - t.t0) / Math.max(1, t.dur)) : 0;
+  });
+
+  for (var k in routes) if (routes.hasOwnProperty(k)) {
+    routes[k].classList.toggle('is-live', !!live[k]);
+  }
+
+  items.forEach(function (t) {
+    Sim.show(t.el, t.shown);
+    if (!t.shown) return;
+    t.el.setAttribute('transform', 'translate(' + t.x.toFixed(1) + ',' + t.y.toFixed(1) + ')');
+    t.bar.setAttribute('width', (64 * t.progress).toFixed(1));
+  });
+
+  /* The station reports a STATE. The item in its slot already carries the id,
+     and saying it twice is not saying it more clearly. */
+  Sim.put(stCls.state, busyCls ? TXT.busy : TXT.free);
+  Sim.put(stRev.state, busyRev ? TXT.busy : TXT.free);
+  for (j = 0; j < 2; j++) Sim.put(binEls[j].count, binned[j].length);
+
+  var working = (busyCls ? 1 : 0) + (busyRev ? 1 : 0);
+  busySpec.forEach(function (x) { if (x) working++; });
+  items.forEach(function (t) { if (t.phase === 'move') working++; });
+  Sim.put(document.getElementById('cIn'), qIn.length);
+  Sim.put(document.getElementById('cWork'), working);
+  Sim.put(document.getElementById('cOk'), tally.ok);
+  Sim.put(document.getElementById('cFix'), tally.corrected);
+  Sim.put(document.getElementById('cRej'), tally.rejected);
+  Sim.put(document.getElementById('cB0'), binned[0].length);
+  Sim.put(document.getElementById('cB1'), binned[1].length);
+  Sim.put(document.getElementById('clock'), clock(T));
+
+  verdictWait.hidden = verdictShown;
+  verdictBody.hidden = !verdictShown;
+}
+
+/* ===================== RUN ======================================= */
+blank();
+var clockEngine = new Sim.Clock({
+  step: step,
+  render: render,
+  reset: function () {
+    blank();
+    feed.clear();
+    feedEmpty.hidden = false;
+    items.forEach(function (t) { t.el.removeAttribute('data-level'); });
+  },
+  onState: function (s) { controls.state(s); }
+});
+var controls = new Sim.Controls(clockEngine);
+controls.state('idle');
+Sim.boot(clockEngine, { note: '[data-sim-reduced-note]', autostart: 6000 });

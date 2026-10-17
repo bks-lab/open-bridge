@@ -159,7 +159,7 @@ Deck CSS (scroll-snap container + 16:9 print) lives with the slide entrance in
 .deck-progress{position:fixed;top:0;left:0;right:0;height:3px;z-index:60}
 .deck-progress span{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
 .deck-dots{position:fixed;right:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;z-index:60}
-.deck-dots button{width:9px;height:9px;border-radius:50%;border:1px solid var(--line);background:var(--surface);cursor:pointer}
+.deck-dots button{width:9px;height:9px;border-radius:50%;border:1px solid var(--line);background:var(--raised);cursor:pointer}
 .deck-dots button.active{background:var(--accent);border-color:var(--accent)}
 .deck-counter{position:fixed;bottom:16px;right:18px;font-family:var(--font-mono);font-size:12px;color:var(--muted);z-index:60}
 @media print{.deck{height:auto;overflow:visible;scroll-snap-type:none}.slide{min-height:auto;page-break-after:always}.deck-progress,.deck-dots,.deck-counter{display:none}}

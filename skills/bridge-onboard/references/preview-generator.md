@@ -346,7 +346,7 @@ Crew/Protocols block:
 
 - The HTML template is self-contained — no external CSS, JS, or font dependencies
 - System fonts only (Helvetica Neue, -apple-system, sans-serif)
-- Accent colors are used subtly (Indigo #6366f1, Violet #8b5cf6)
+- Accent colors are read from CSS variables (`--accent`, `--accent-soft`), never hardcoded hex, so the template carries no brand-specific color
 - The template uses CSS variables for easy theming adjustments
 - The generated file goes into `work/` (USER layer) and is gitignored
 - The "Suggested for Later" section is the **most important new piece** —
