@@ -524,6 +524,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/runner.py",
     "scripts/lib/bridge_cockpit/model.py",
     "scripts/lib/bridge_cockpit/text.py",
+    "scripts/lib/bridge_cockpit/ticker.py",
     "scripts/lib/bridge_cockpit/collector.py",
     "scripts/lib/bridge_cockpit/tabs.py",
     "scripts/lib/bridge_cockpit/actions.py",
@@ -549,6 +550,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/triage.py",
     "scripts/tests/test_triage.py",
     "scripts/tests/test_bridge_cockpit_triage.py",
+    "scripts/tests/test_bridge_cockpit_ticker.py",
     "scripts/lib/bridge_cockpit/history.py",
     "scripts/lib/bridge_cockpit/design.py",              # the colours, read from the Bridge's own DESIGN.md
     "scripts/bridge-resources.py",
@@ -583,9 +585,12 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/sessions.js",
     "scripts/web/views/settings.js",
     "scripts/web/views/stage.js",
+    "scripts/web/views/ticker.js",
+    "scripts/web/views/prose.js",
     "scripts/web/views/tabs.js",
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D
     "scripts/web/logic.js",
+    "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",
     "scripts/web/text.js",
@@ -597,6 +602,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/vendor/htm-preact-3.1.1.module.js",
     "scripts/web/vendor/README.md",
     "scripts/tests/bridge_cockpit_frontend.test.mjs",
+    "scripts/tests/bridge_cockpit_markdown.test.mjs",
     "scripts/tests/bridge_cockpit_jev.test.mjs",
     # Registered with the scheduled archive. It runs DAILY and does only the
     # mechanical half; the judgement half is recorded as owed. lib/bridge-python.sh

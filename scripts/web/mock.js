@@ -101,6 +101,20 @@ const WORDS = {
     '2026-10-08: outline written, examples collected\n2026-10-03: task opened': '2026-10-08: Gliederung geschrieben, Beispiele gesammelt\n2026-10-03: Aufgabe angelegt',
     'Task opened after the team call': 'Aufgabe nach dem Team-Call angelegt',
     'Mock: 3 snapshots, latest 09:00': 'Demo: 3 Abzüge, der neueste von 09:00',
+    // the news ticker: invented feeds and items, the editor's invented short titles
+    'Demo AI News': 'Demo-KI-Nachrichten', 'Demo Research Blog': 'Demo-Forschungsblog', 'Demo Tools Weekly': 'Demo-Werkzeuge der Woche',
+    'A new example model reads long documents twice as fast': 'Ein neues Beispielmodell liest lange Dokumente doppelt so schnell',
+    'How the demo team cut its test time in half': 'Wie das Demo-Team seine Testzeit halbiert hat',
+    'Example study: agents that ask before they act make fewer mistakes': 'Beispielstudie: Agenten, die vor dem Handeln fragen, machen weniger Fehler',
+    'Release notes of the example toolkit 3.0': 'Versionshinweise des Beispiel-Werkzeugkastens 3.0',
+    'Five patterns for small, safe automation': 'Fünf Muster für kleine, sichere Automatisierung',
+    'Agents that ask first make fewer mistakes': 'Agenten, die zuerst fragen, irren seltener',
+    'Example model reads long texts twice as fast': 'Beispielmodell liest lange Texte doppelt so schnell',
+    'Test time cut in half': 'Testzeit halbiert',
+    'Mock: ticker setting saved': 'Demo: Einstellung des Bands gespeichert',
+    'Mock: ticker settings from the config again': 'Demo: Band wieder nach Config',
+    'Mock: reading the feeds': 'Demo: Feeds werden gelesen',
+    'Mock: the editor is at work, nothing is asked for real': 'Demo: die Redaktion arbeitet, nichts wird wirklich gefragt',
   },
 }
 
@@ -145,6 +159,57 @@ function launchState(settings, jevOn) {
     router: !st.enabled || !st.auto ? 'off' : st.router === 'chain' ? (jevOn ? 'jev' : 'haiku') : st.router,
     settings: st, defaults: JSON.parse(JSON.stringify(LAUNCH_CONFIG)),
     overridden: Object.keys(LAUNCH_CONFIG).filter(k => JSON.stringify(st[k]) !== JSON.stringify(LAUNCH_CONFIG[k])),
+  }
+}
+
+// the news ticker: what bridge-config.yaml would say (cockpit.ticker), and the state block the server builds
+const TICKER_CONFIG = {
+  enabled: true, max_items: 30, per_feed: 8, refresh_minutes: 30, speed: 'normal',
+  feeds: [
+    { id: 'demo-ai', name: 'Demo AI News', url: 'https://example.org/ai/feed.xml', enabled: true },
+    { id: 'demo-research', name: 'Demo Research Blog', url: 'https://example.org/research/atom.xml', enabled: true },
+    { id: 'demo-tools', name: 'Demo Tools Weekly', url: 'https://example.org/tools/rss', enabled: true },
+  ],
+  status: { enabled: true, kinds: ['running', 'waiting', 'slow', 'failing', 'quota', 'offline', 'notes'] },
+  editor: { enabled: true, interests: '', max_picks: 12, shorten: true },
+}
+
+function tickerItemsOf(now) {
+  const it = (id, feed, source, title, ago) => ({ id, feed, source, title, short: null, url: `https://example.org/${feed}/${id}`,
+    published_ms: now - ago * MIN, fresh: false })
+  return [
+    it('a1', 'demo-ai', 'Demo AI News', 'A new example model reads long documents twice as fast', 35),
+    it('r1', 'demo-research', 'Demo Research Blog', 'Example study: agents that ask before they act make fewer mistakes', 80),
+    it('t1', 'demo-tools', 'Demo Tools Weekly', 'How the demo team cut its test time in half', 150),
+    it('a2', 'demo-ai', 'Demo AI News', 'Release notes of the example toolkit 3.0', 300),
+    it('t2', 'demo-tools', 'Demo Tools Weekly', 'Five patterns for small, safe automation', 600),
+  ]
+}
+
+/** Raised on every change of the ticker block, like the server's Ticker.rev: the page keeps the newer state */
+let tickerRev = 0
+
+/** The ticker block after a change: the patch over the current block, with the next rev */
+function tickerNext(current, patch) {
+  return { ...current, ...patch, rev: ++tickerRev }
+}
+
+/** The ticker block of the state: settings over the config, the items, how each feed stands, the last passes */
+function tickerState(settings, now, extra = {}) {
+  const st = JSON.parse(JSON.stringify(settings))
+  return {
+    rev: ++tickerRev,
+    enabled: st.enabled, settings: st, defaults: JSON.parse(JSON.stringify(TICKER_CONFIG)),
+    overridden: Object.keys(TICKER_CONFIG).filter(k => JSON.stringify(st[k]) !== JSON.stringify(TICKER_CONFIG[k])),
+    items: st.enabled ? tickerItemsOf(now) : [],
+    feeds: st.feeds.map(f => ({ id: f.id, name: f.name, ok: true, error: null, fetched_ms: now - 4 * MIN, count: 2 })),
+    fetched_ms: now - 4 * MIN, refreshing: false,
+    editor: { available: st.editor.enabled, running: null, error: null, last: null },
+    // one slow pass, so the band shows the slow item in the demo
+    perf: { passes: [{ kind: 'quick', took_ms: 8000, ok: true, at_ms: now - 30 * MIN }, { kind: 'full', took_ms: 95000, ok: true, at_ms: now - 4 * MIN }],
+      outliers: [] },
+    limits: { timeout_ms: 120000 },
+    ...extra,
   }
 }
 
@@ -393,6 +458,7 @@ export function buildState(now = Date.now(), opts = {}) {
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], convs: [] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
+    ticker: tickerState(TICKER_CONFIG, now),
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
       { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
@@ -626,6 +692,33 @@ export function createMockTransport(opts = {}) {
           result.note = verb === 'launch_settings' ? 'Mock: setting saved' : 'Mock: settings from the config again'
           setTimeout(() => emit('state', state), 80)
         }
+        if (verb === 'ticker_settings' || verb === 'ticker_settings_reset') {
+          const next = verb === 'ticker_settings' ? { ...state.ticker.settings, ...(args.settings ?? {}) } : TICKER_CONFIG
+          state.ticker = tickerState(next, now())
+          result.note = verb === 'ticker_settings' ? 'Mock: ticker setting saved' : 'Mock: ticker settings from the config again'
+          setTimeout(() => emit('state', state), 80)
+        }
+        if (verb === 'ticker_refresh') {
+          state.ticker = tickerNext(state.ticker, { refreshing: true })
+          emit('ticker', state.ticker)      // the start goes out as an event, like the server's
+          result.note = 'Mock: reading the feeds'
+          setTimeout(() => { state.ticker = tickerNext(state.ticker, { refreshing: false, fetched_ms: now() }); emit('ticker', state.ticker) }, 1500)
+        }
+        if (verb === 'ticker_edit') {
+          // invented picks and short titles after a moment; nothing is asked for real
+          const started = now()
+          state.ticker = tickerNext(state.ticker, { editor: { ...state.ticker.editor, running: { started_ms: started }, error: null } })
+          emit('ticker', state.ticker)
+          result.note = 'Mock: the editor is at work, nothing is asked for real'
+          setTimeout(() => {
+            const short = { r1: 'Agents that ask first make fewer mistakes', a1: 'Example model reads long texts twice as fast', t1: 'Test time cut in half' }
+            const items = ['r1', 'a1', 't1'].map(id => state.ticker.items.find(x => x.id === id)).filter(Boolean).map(x => ({ ...x, short: short[x.id] }))
+            state.ticker = tickerNext(state.ticker, { items, editor: { ...state.ticker.editor, running: null,
+              last: { at_ms: now(), picked: items.length, of: 5, duration_ms: now() - started, cost_usd: 0.0018 } } })
+            emit('ticker', state.ticker)
+          }, 2500)
+        }
+        if (verb.startsWith('ticker_')) result.ticker = state.ticker
         if (verb === 'task_review') {
           // a check that runs for six seconds, then the same result again with a new time
           const publish = review => { seq += 1; state.model = { ...state.model, seq, review }; emit('view', state.model) }

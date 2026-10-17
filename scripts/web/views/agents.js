@@ -7,6 +7,7 @@ import { short, chatStamp } from '../logic.js'
 import { T, language } from '../text.js'
 import { SendBox, Thinking, useStickToEnd } from './chat.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
+import { Prose } from './prose.js'
 
 // ---------------------------------------------------------------- A2A agents
 
@@ -80,7 +81,7 @@ function AgentThread({ conv, peer, c, s }) {
     const last = i === conv.turns.length - 1
     return html`<div class="qturn row-in" key=${i} style=${{ '--i': 0 }}>
       <div class="qq">${x.mode === 'task' ? html`<span class="chip agent-mode">${t.agentModes.task}</span> ` : null}${x.q}</div>
-      ${x.a && !x.waiting ? html`<div class="qa">${x.a}</div>` : null}
+      ${x.a && !x.waiting ? html`<${Prose} cls="qa" text=${x.a} />` : null}
       ${x.error ? html`<p><${StateLine} token="danger" word=${x.error === 'interrupted' ? t.quickInterrupted : t.agentFailed(x.error)} /></p>` : null}
       ${last && conv.running ? html`<div class="qdoing"><${Thinking} label=${x.waiting ? t.agentLooking : t.agentSent} /></div>` : null}
       ${last && !conv.running && x.waiting ? html`<div class="agent-held">
@@ -119,16 +120,21 @@ export function AgentsPage({ s, c }) {
   }
   const example = v => { setText(v); document.getElementById('agent-input')?.focus() }
   const showProfile = !conv || profile
+  const listHidden = !!s.ui.agentsListHidden
   return html`<div class="col col-page agentspage">
     <header class="page-head"><h2 class="detail-title">${t.agentsTab}</h2>
       <span class="muted small">${t.agentsIntro}</span></header>
-    <div class="agents-grid">
-      <nav class="agents-list" aria-label=${t.agentsTab}>
+    <div class=${`agents-grid${listHidden ? ' is-wide' : ''}`}>
+      ${listHidden ? null : html`<nav class="agents-list" id="agents-list" aria-label=${t.agentsTab}>
         ${peers.map(p => html`<${AgentCard} key=${p.id} p=${p} on=${p.id === peer?.id} c=${c} s=${s}
           held=${convs.filter(x => x.peer === p.id && !x.running && x.turns.at(-1)?.waiting).length} />`)}
-      </nav>
+      </nav>`}
       <section class="panel chat-main" aria-label=${peer?.card?.name || peer?.id}>
         <header class="agent-convs">
+          <button type="button" class="btn btn-ghost btn-xs agents-list-toggle" aria-expanded=${String(!listHidden)} aria-controls="agents-list"
+            title=${listHidden ? t.agentsListShow : t.agentsListHide} aria-label=${listHidden ? t.agentsListShow : t.agentsListHide}
+            onClick=${c.toggleAgentsList}><${Icon} name=${listHidden ? 'chevronRight' : 'back'} /></button>
+          ${listHidden && peer ? html`<span class="agent-current" title=${peer.id}>${peer.card?.name || peer.id}</span>` : null}
           <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${() => c.newAgentChat(peer.id)}>+ ${t.quickNew}</button>
           ${mine.slice(0, 8).map(x => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}
             onClick=${() => c.pickAgentConv(x.id)} title=${x.turns[0]?.q}>${x.running ? html`<${Dot} token="info" pulse /> `

@@ -1726,3 +1726,253 @@ export function checkPickText(pick, t) {
   if (!pick) return null
   return `${t.launch.model[pick.model] ?? pick.model}${pick.effort ? ` · ${t.launch.effort[pick.effort] ?? pick.effort}` : ''}`
 }
+
+// ---------------------------------------------------------------- the news ticker (views/ticker.js)
+
+/** The kinds of status the ticker can mix in, in the order the settings offer them */
+export const TICKER_KINDS = ['running', 'waiting', 'slow', 'failing', 'quota', 'offline', 'notes']
+// how long a loud note counts as news in the band
+const TICKER_NOTE_MS = 15 * 60000
+const TICKER_TONE_RANK = { bad: 0, warn: 1, info: 2, ok: 3 }
+// the result items of the resource and token probes that say a machine, a cloud or a model source is down
+const TICKER_DOWN = /^(machine:|cloud:|workers:error)|^llm:.*:error$/
+
+/** What runs, what waits, what is slow or failing, read from the start page's own store. Each item names
+ *  its kind (cat), tone, text key with its values, and where a click leads (null: nowhere). Only the
+ *  kinds in `kinds` come out */
+export function tickerStatus(s, now, kinds = TICKER_KINDS) {
+  const out = []
+  const add = (id, cat, tone, key, vars = [], target = null) => out.push({ id: `st:${id}`, cat, tone, key, vars, target })
+  const model = s?.model ?? {}
+  const tk = s?.ticker ?? {}
+  // 1 findings on a page
+  for (const a of model.alarms ?? []) add(`alarm:${a.page_id}:${a.section_title}`, 'failing', 'bad', 'alarm', [a.count, `${a.section_title} (${a.page_title})`], { kind: 'page', id: a.page_id })
+  // 2 the quotas, against their marks and their pace
+  for (const q of homeCatalog(model).filter(x => x.kind === 'quota')) {
+    const m = q.it.meter
+    const tone = m.bad != null && m.value >= m.bad ? 'bad' : (m.warn != null && m.value >= m.warn) || meterPace(m)?.over ? 'warn' : null
+    if (tone) add(q.id, 'quota', tone, 'quota', [q.label, Math.round(m.value)], { kind: 'info', it: q.it, page: q.page, section: q.section })
+  }
+  // 3 token use far over the usual
+  for (const o of tk.perf?.outliers ?? []) add(`outlier:${o.source}`, 'quota', 'warn', 'outlier', [o.source, o.factor], { kind: 'page', id: '@sessions' })
+  // 4 and 5 the briefing pass: failed, or running far longer than it should
+  const ld = s?.loading ?? {}
+  if (ld.last_error) add('load-failed', 'failing', 'bad', 'loadFailed', [short(ld.last_error.message ?? '', 60)], { kind: 'page', id: 'briefing' })
+  if (ld.pass && ld.started_ms && now - ld.started_ms > Math.max(1.5 * (ld.eta_ms || 0), 30000)) {
+    add('load-slow', 'slow', 'warn', 'loadSlow', [duration(now - ld.started_ms)])
+  }
+  // 6 the last pass, against the collect time limit
+  const pass = (tk.perf?.passes ?? []).at(-1)
+  const limit = tk.limits?.timeout_ms ?? 0
+  if (pass && limit && pass.took_ms >= 0.9 * limit) add('pass-slow', 'slow', 'bad', 'passSlow', [Math.round(pass.took_ms / 1000)], { kind: 'page', id: 'briefing' })
+  else if (pass && pass.took_ms >= 60000) add('pass-slow', 'slow', 'warn', 'passSlow', [Math.round(pass.took_ms / 1000)], { kind: 'page', id: 'briefing' })
+  // 7 a source of the briefing in error: out of time is slow, anything else failing
+  for (const x of model.status ?? []) {
+    if (x.state !== 'error') continue
+    if (/took longer|time limit/i.test(x.reason ?? '')) add(`source:${x.title}`, 'slow', 'warn', 'sourceSlow', [x.title], { kind: 'page', id: 'briefing' })
+    else add(`source:${x.title}`, 'failing', 'bad', 'sourceFailed', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })
+  }
+  // 8 to 10 the page itself
+  if (model.stale) add('stale', 'failing', 'warn', 'stale')
+  if (s?.conn === 'down') add('conn', 'offline', 'bad', 'connDown')
+  if (s?.tabs?.error) add('tabs-error', 'failing', 'bad', 'tabsError', [], { kind: 'drawer', id: 'tabs' })
+  // 11 to 13 the agent tabs; the control tab is not news
+  const tabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control)
+  for (const t of tabs) if (t.long) add(`tab-long:${t.ref}`, 'slow', 'warn', 'tabLong', [t.name], { kind: 'tab', ref: t.ref })
+  for (const t of tabs) if (t.waiting) add(`tab-waits:${t.ref}`, 'waiting', 'warn', 'tabWaits', [t.name], { kind: 'tab', ref: t.ref })
+  const working = tabs.filter(t => t.state === 'working')
+  if (working.length > 3) add('tabs-work', 'running', 'info', 'tabsWork', [working.length], { kind: 'drawer', id: 'tabs' })
+  else for (const t of working) add(`tab-works:${t.ref}`, 'running', 'info', 'tabWorks', [t.name], { kind: 'tab', ref: t.ref })
+  // 14 Claude sessions at work, their subagents and workflows
+  const sessions = s?.sessions?.sessions ?? []
+  const busy = sessions.filter(x => x.status === 'busy').length
+  const agents = sessionCounts(sessions).agents
+  if (busy + agents > 0) add('sessions', 'running', 'info', 'sessions', [busy, agents], { kind: 'page', id: '@sessions' })
+  // 15 the work handed to the AI, where it stands now
+  const stageRule = { started: ['running', 'info', 'returnWorks'], working: ['running', 'info', 'returnWorks'],
+    asks: ['waiting', 'warn', 'returnAsks'], result: ['waiting', 'ok', 'returnResult'], lost: ['failing', 'warn', 'returnLost'] }
+  for (const r of model.returns ?? []) {
+    const rule = stageRule[liveStage(r, s?.tabs?.tabs, now)]
+    // an answer opens the answer; a tab only while it is still open, else the row the start came from
+    const tabOpen = r.tab?.ref && (s?.tabs?.tabs ?? []).some(t => t.ref === r.tab.ref)
+    const target = r.result?.key ? { kind: 'item', key: r.result.key } : tabOpen ? { kind: 'tab', ref: r.tab.ref } : { kind: 'row', key: r.key }
+    if (rule) add(`return:${r.key}`, rule[0], rule[1], rule[2], [r.title], target)
+  }
+  // 16 what waits on you
+  if ((model.counts?.now ?? 0) > 0) add('waits', 'waiting', 'warn', 'waitsForYou', [model.counts.now], { kind: 'page', id: 'briefing' })
+  // 17 the task check
+  const rv = model.review ?? {}
+  if (rv.running) add('review', 'running', 'info', 'reviewRuns', [], { kind: 'review' })
+  else if (rv.error) add('review', 'failing', 'bad', 'reviewFailed', [], { kind: 'review' })
+  if (!rv.running && (rv.last?.to_close ?? 0) > 0) add('to-close', 'waiting', 'info', 'toClose', [rv.last.to_close], { kind: 'review' })
+  // 18 the daily check
+  if (s?.triage?.running) add('triage', 'running', 'info', 'triageRuns', [], { kind: 'page', id: 'briefing' })
+  else if (s?.triage?.error) add('triage', 'failing', 'bad', 'triageFailed', [], { kind: 'page', id: 'briefing' })
+  // 19 and 20 the agents of other Bridges
+  for (const p of s?.agents?.peers ?? []) {
+    if (['refused', 'failed', 'unreachable'].includes(p.reach)) add(`peer:${p.id}`, 'offline', 'warn', 'peerDown', [p.name ?? p.id], { kind: 'page', id: '@agents' })
+  }
+  for (const c of s?.agents?.convs ?? []) {
+    const last = c.turns?.at(-1)
+    const since = last?.at_ms ?? c.last_ms ?? c.started_ms ?? now
+    if (c.running && now - since > 150000) add(`conv:${c.id}`, 'slow', 'warn', 'convSlow', [c.peer], { kind: 'conv', id: c.id })
+    else if (!c.running && last?.waiting) add(`conv:${c.id}`, 'waiting', 'warn', 'convWaits', [c.peer], { kind: 'conv', id: c.id })
+  }
+  // 21 the background jobs
+  for (const run of s?.workers?.data?.runs ?? []) {
+    if (run.retired) continue
+    const lastRun = (run.strip ?? []).at(-1)
+    const tone = workerTone(run) === 'bad' || ['failed', 'expired'].includes(lastRun?.verdict) ? 'bad' : workerTone(run) === 'warn' ? 'warn' : null
+    if (tone) add(`job:${run.id}`, 'failing', tone, tone === 'bad' ? 'jobFailed' : 'jobWarn', [run.title ?? run.id], { kind: 'workers' })
+  }
+  // 22 machines, clouds and model sources that are down, from the pages of the profile
+  for (const p of model.pages ?? []) {
+    for (const sec of p.sections ?? []) {
+      for (const it of sec.items ?? []) {
+        if (it.tone === 'bad' && typeof it.id === 'string' && TICKER_DOWN.test(it.id)) {
+          add(`down:${it.id}`, 'offline', 'bad', 'offline', [it.title], { kind: 'info', it, page: p.id, section: sec.id })
+        }
+      }
+    }
+  }
+  // 23 and 24 Jev and the control session
+  if (s?.jev?.enabled && !s.jev.ready) add('jev', 'failing', 'warn', 'jevNotReady', [], { kind: 'page', id: '@jev' })
+  if (s?.relay?.enabled && !s.relay.online) add('relay', 'offline', 'warn', 'controlOffline', [], { kind: 'claude' })
+  // 25 the last loud notes of the last quarter hour; a server note replayed on load carries ms 0 and stays out
+  const loud = (s?.notes ?? []).filter(x => (x.tone === 'bad' || x.tone === 'warn') && x.ms && now - x.ms < TICKER_NOTE_MS)
+  for (const n of loud.slice(-3)) {
+    add(`note:${n.at ?? ''}:${n.text}`, 'notes', n.tone, 'note', [n.text])
+  }
+  const want = new Set(kinds ?? TICKER_KINDS)
+  return out.filter(x => want.has(x.cat))
+}
+
+/** Where a page target of the band leads: every page the controller routes itself (the tab row, a page
+ *  of group work or day, Jev wherever it lives); Today only for a name that exists nowhere */
+export function tickerPage(s, id, order = []) {
+  const known = order.includes(id) || id === '@jev' || (s?.model?.pages ?? []).some(p => p.id === id)
+  return known ? id : 'briefing'
+}
+
+/** Whether a ticker state may replace the one in the store: never an older one by rev, so an answer that
+ *  arrives after the event that ended its thread cannot bring back a spinning Refresh or a busy Editor */
+export function newerTicker(cur, next) {
+  if (!next) return false
+  if (typeof cur?.rev === 'number' && typeof next.rev === 'number') return next.rev >= cur.rev
+  return true
+}
+
+/** The words of a status item in a text table */
+export function tickerText(it, t) {
+  const v = t.ticker.status[it.key]
+  // a token source reads as the usage page names it (Subagents, not subagent)
+  const vars = it.key === 'outlier' ? [t.usageSource?.[it.vars?.[0]] ?? it.vars?.[0], ...(it.vars ?? []).slice(1)] : it.vars ?? []
+  return typeof v === 'function' ? v(...vars) : String(v ?? it.key)
+}
+
+/** The status items, loudest first (bad, warn, info, ok, then rule order). Nothing while the ticker is
+ *  off, its status is switched off or no kind is chosen */
+export function tickerStatusItems(s, now) {
+  const tk = s?.ticker
+  if (!tk?.enabled) return []
+  const st = tk.settings?.status ?? {}
+  if (st.enabled === false) return []
+  return tickerStatus(s, now, st.kinds ?? TICKER_KINDS)
+    .map((x, i) => ({ ...x, kind: 'status', i }))
+    .sort((a, b) => (TICKER_TONE_RANK[a.tone] ?? 4) - (TICKER_TONE_RANK[b.tone] ?? 4) || a.i - b.i)
+}
+
+/** The feed items in the server's order, only those with a title and a safe address. Nothing while off */
+export function tickerFeedItems(s) {
+  const tk = s?.ticker
+  if (!tk?.enabled) return []
+  return (tk.items ?? []).filter(x => x && x.title && tickerUrlValid(x.url)).map(x => ({ ...x, kind: 'feed' }))
+}
+
+/** Everything the ticker knows: the status items, then the feed items, each id once */
+export function tickerItems(s, now) {
+  const seen = new Set()
+  return [...tickerStatusItems(s, now), ...tickerFeedItems(s)].filter(x => (seen.has(x.id) ? false : seen.add(x.id)))
+}
+
+/** The tokens a feed's source label takes: secondary, accent and on-surface, no state tone (DESIGN.md: state
+ *  colours only where the data IS a state). After design.py's fallback chain each resolves to a value of its
+ *  own in both modes, also from a DESIGN.md that names only a few keys (border-strong would fall back to
+ *  secondary there). Secondary and accent may sit close in one mode, so style.css tints each chip to a
+ *  strength of its own as well. The colour groups; the source name in the chip is what tells a feed apart */
+export const TICKER_SOURCE_TOKENS = ['secondary', 'accent', 'on-surface']
+
+/** FNV-1a with a final mix, since the low bits of a plain string hash put most ids on the same token */
+function sourceHash(id) {
+  let h = 2166136261
+  for (const ch of String(id ?? '')) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) }
+  h ^= h >>> 16
+  h = Math.imul(h, 0x85ebca6b)
+  h ^= h >>> 13
+  return h >>> 0
+}
+
+/** The token of a feed's source label, the same for the same feed on every load. Given the configured
+ *  feed ids in order, the feeds take the tokens in turn: each starts at its hash and walks on past a token
+ *  an earlier feed of the same round took, so every round of three feeds shows three colours. An id
+ *  outside the order keeps its plain hash */
+export function tickerSourceToken(id, order) {
+  const n = TICKER_SOURCE_TOKENS.length
+  const list = (order ?? []).map(String)
+  const at = list.indexOf(String(id ?? ''))
+  if (at < 0) return TICKER_SOURCE_TOKENS[sourceHash(id) % n]
+  let used = new Set()
+  let slot = 0
+  for (let i = 0; i <= at; i++) {
+    if (used.size === n) used = new Set()
+    slot = sourceHash(list[i]) % n
+    while (used.has(slot)) slot = (slot + 1) % n
+    used.add(slot)
+  }
+  return TICKER_SOURCE_TOKENS[slot]
+}
+
+/** Seconds for one pass of the band: its width at the chosen speed in px/s, 20 s to 600 s */
+export function tickerDuration(widthPx, speed) {
+  const pxs = { slow: 40, normal: 70, fast: 110 }[speed] ?? 70
+  return Math.round(Math.max(20, Math.min(600, (Number(widthPx) || 0) / pxs)))
+}
+
+/** Where the band stands, in ms of its new pass, when its duration changes (new items, another speed):
+ *  the same share of the pass as before, so it neither jumps nor starts over. Unknown: from the start */
+export function tickerResume(currentMs, oldSec, newSec) {
+  if (!Number.isFinite(currentMs) || !(oldSec > 0) || !(newSec > 0)) return 0
+  const share = (currentMs % (oldSec * 1000)) / (oldSec * 1000)
+  return Math.round(share * newSec * 1000)
+}
+
+/** One ticker setting as the partial the server saves. A key inside status or editor sends that whole block
+ *  with the one value changed; text without its blanks; the feed list as a whole */
+export function tickerPatch(key, value, current = {}) {
+  const clean = v => (typeof v === 'string' ? v.trim() : v)
+  if (key === 'feeds') {
+    return { feeds: (value ?? []).map(f => ({ id: clean(f.id), name: clean(f.name), url: clean(f.url), enabled: f.enabled !== false })) }
+  }
+  const [block, sub] = key.split('.')
+  if (sub) return { [block]: { ...(current?.[block] ?? {}), [sub]: clean(value) } }
+  return { [key]: clean(value) }
+}
+
+// eslint-disable-next-line no-control-regex
+const TICKER_CTRL = /[\u0000-\u001f\u007f]/
+
+/** An http or https URL without a user name, blanks or control characters, at most 500 long */
+function tickerUrlValid(url) {
+  if (typeof url !== 'string' || !url || url.length > 500 || /\s/.test(url) || TICKER_CTRL.test(url)) return false
+  let u
+  try { u = new URL(url) } catch { return false }
+  return (u.protocol === 'http:' || u.protocol === 'https:') && !!u.hostname && !u.username && !u.password
+}
+
+/** A feed the server would take: an id like openai or tech-review, a name of 1 to 60 characters, a good URL */
+export function tickerFeedValid(feed) {
+  if (!feed || typeof feed !== 'object') return false
+  const name = typeof feed.name === 'string' ? feed.name.trim() : ''
+  return /^[a-z0-9][a-z0-9-]{0,39}$/.test(String(feed.id ?? '').trim()) && name.length >= 1 && name.length <= 60
+    && !TICKER_CTRL.test(feed.name) && tickerUrlValid(String(feed.url ?? '').trim())
+}

@@ -11,6 +11,7 @@ strongest of what was asked (full > quick > delta). Rules: contract section 3.4.
 """
 from __future__ import annotations
 
+import collections
 import datetime as dt
 import json
 import re
@@ -244,6 +245,8 @@ class Collector:
         self.running_fresh = False
         self.started_ms = 0
         self.took_ms: dict[str, int] = {}
+        # the last passes with their time and outcome, for the start page's ticker (ticker.perf)
+        self.passes: collections.deque = collections.deque(maxlen=10)
         self.last_error: dict | None = None
         self.ask_triage = False
         self.view: dict | None = None
@@ -380,7 +383,16 @@ class Collector:
             raw = self._json(run)
         ended = app.clock()
         self.took_ms[kind] = int(ended - started)
+        def record(ok: bool) -> None:
+            self.passes.append({"kind": kind, "took_ms": int(ended - started), "ok": ok, "at_ms": int(ended)})
+            ticker = getattr(app, "ticker", None)   # the ticker's status band reads the passes (ticker.perf)
+            if ticker is not None:
+                try:
+                    ticker.pass_recorded()
+                except Exception as exc:  # noqa: BLE001 (the ticker never breaks a pass)
+                    app.log_error(f"ticker pass: {exc!r}")
         if not run.ok or not isinstance(raw, dict):
+            record(False)
             why = (run.err or "").strip().splitlines()[-1:] if not run.ok else ["no JSON object"]
             message = m.short(app.scrub(why[0]) if why else f"exit {run.code}", 120)
             self.last_error = {"pass": kind, "message": message, "at": m.clock_time(ended)}
@@ -392,7 +404,9 @@ class Collector:
             message = m.short(app.scrub(str(error)), 120)
             self.last_error = {"pass": kind, "message": message, "at": m.clock_time(ended)}
             app.note(app.tx["view_unreadable"].format(err=message), "bad")
+            record(False)
             return
+        record(True)
         with self.lock:
             before = self.view
             # What this run left out stays at the state of the previous one. Add the tasks only afterwards:

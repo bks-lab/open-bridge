@@ -16,6 +16,7 @@ import re
 import yaml
 
 from .. import model_route as mr
+from . import ticker as tk
 
 DEFAULT_PORT = 8797
 OPEN_IN = ("auto", "cmux", "system", "none")
@@ -68,6 +69,9 @@ class WebConfig:
     # the model an agent starts with (cockpit.launch_model, model_route.DEFAULTS): off unless switched on;
     # the settings page may change it on top (launch.py), this is what the config says
     launch_model: dict = field(default_factory=lambda: dict(mr.DEFAULTS))
+    # the news ticker of the start page (cockpit.ticker, ticker.DEFAULTS): off unless switched on;
+    # the settings page may change it on top (ticker.py), this is what the config says
+    ticker: dict = field(default_factory=tk.defaults)
 
 
 def _dict(value: Any) -> dict:
@@ -186,5 +190,5 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                      voice=voice, target=target, control=control, jev_enabled=ts.get("enabled") is True,
                      jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
                      jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
-                     jev_model=jev_model, launch_model=launch_model,
+                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
                      snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True)

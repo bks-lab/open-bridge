@@ -13,8 +13,9 @@ import { Segmented } from './detail.js'
 import { catalogLabel } from './home.js'
 import { Drawer } from './overlays.js'
 import { Btn, Chip, Empty, Icon } from './parts.js'
+import { TickerSettings } from './ticker.js'
 
-const SECTIONS = ['start', 'look', 'launch']
+const SECTIONS = ['start', 'look', 'launch', 'ticker']
 const STATION_KINDS = ['quota', 'count', 'page']
 
 // ---------------------------------------------------------------- the parts every area uses
@@ -26,7 +27,7 @@ export function Switch({ on, onChange, label, disabled }) {
 }
 
 /** A card of one subject: its title, a line on what it is for, an optional control in its head */
-function Card({ title, intro, head, children, off }) {
+export function Card({ title, intro, head, children, off }) {
   return html`<section class=${`panel set-card${off ? ' is-off' : ''}`}>
     <header class="set-card-head">
       <div class="set-card-title"><h3 class="set-card-name">${title}</h3>${intro ? html`<p class="muted small">${intro}</p>` : null}</div>
@@ -37,7 +38,7 @@ function Card({ title, intro, head, children, off }) {
 }
 
 /** One setting: its name and what it does on the left, its control on the right (below it when `wide`) */
-function Row({ label, explain, mark, wide, children }) {
+export function Row({ label, explain, mark, wide, children }) {
   return html`<div class=${`set-row${wide ? ' is-wide' : ''}`}>
     <div class="set-text">
       <span class="set-label">${label}${mark ?? null}</span>
@@ -367,8 +368,9 @@ function HaikuTable({ map, models, efforts, busy, save }) {
 
 // ---------------------------------------------------------------- the page and the drawer
 
-const AREAS = { start: StartArea, look: LookArea, launch: LaunchArea }
-const AREA_ICONS = { start: 'home', look: 'sun', launch: 'spark' }
+// the news ticker on the start page: its own group from views/ticker.js
+const AREAS = { start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings }
+const AREA_ICONS = { start: 'home', look: 'sun', launch: 'spark', ticker: 'bell' }
 
 /** The page: the areas as a list on the left (a row of buttons on a narrow screen), the one chosen beside it */
 export function SettingsPage({ s, c }) {

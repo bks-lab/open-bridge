@@ -64,6 +64,7 @@ layout now").
 | `scripts/lib/bridge_cockpit/review.py` | the task check: `task.py review` on its own thread, the last run for the model |
 | `scripts/lib/bridge_cockpit/sessions.py` | the Sessions page: running Claude sessions, their subagents and tab |
 | `scripts/lib/bridge_cockpit/quick.py` | the chat: one short read-only `claude -p` per chat (Haiku default), streamed (`quick_live`), kept in `quick.json`, resume, cost per turn, handoff |
+| `scripts/lib/bridge_cockpit/ticker.py` | the news ticker: settings (`cockpit.ticker` plus `ticker.json`), feed fetching and parsing (RSS, RDF, Atom), the cache `ticker-cache.json`, the Haiku editor on its own thread, and `state()`, the `ticker` key of the model and the payload of the SSE event `ticker` |
 | `scripts/lib/bridge_cockpit/details.py` | read-only detail endpoints: a task's STATUS.md, an inbox item |
 | `scripts/lib/bridge_cockpit/tabs.py` | tab poller over `workplace.py status --json` |
 | `scripts/lib/bridge_cockpit/server.py` `driver_caps`, `backup_layout` | what the terminal driver serves; the cmux layout backup every `snapshot_minutes` |
@@ -76,7 +77,10 @@ layout now").
 | `scripts/web/app.js` | store, controller (`ctl`), event stream, keyboard |
 | `scripts/web/components.js` | the root (`App`) and the page router; the rules every component keeps |
 | `scripts/web/views/*.js` | the components, one file per area (header, day, detail, chat, tabs, pages, start page, stage, sessions, check, overlays, small parts, page ids); each reads the store `s`, calls the controller `c` and imports what it uses from the others |
-| `scripts/web/logic.js` | pure helpers, tested under node |
+| `scripts/web/views/ticker.js` | the news ticker: `TickerBand` on the start page and `TickerSettings`, its group on the Settings page, drawn with the page's own `Card`, `Row` and `Switch` from `views/settings.js` |
+| `scripts/web/markdown.js` | the Markdown reader for answers (Chat, Other Bridges): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
+| `scripts/web/views/prose.js` | `Prose`: draws what `markdown.js` read as elements, links in a new tab with `noopener noreferrer` |
+| `scripts/web/logic.js` | pure helpers, tested under node (the ticker's status rules are `tickerStatus` and `tickerItems`) |
 | `scripts/web/motion.js` | springs, hits and rail points from the explainer films (`skills/explainer-video/assets/motion.js`), tested under node |
 | `scripts/web/api.js` | fetch and EventSource wrappers |
 | `scripts/web/text.js` | page texts, de and en with identical keys |
@@ -176,6 +180,42 @@ A verb that takes long (minutes, a model call) does not hold the write lock:
 the model carries `review.running`, the end comes as a note and a rebuild.
 One at a time, and `task_keep` waits for it, since both write the same file.
 
+### The news ticker
+
+The server sends only what the page cannot know: the feed items, the editor's
+result and a small `perf` block (the last collect passes and the token
+outliers). Every status item is built in the page from the store it already
+holds, so a change of state shows on the band at once.
+
+- **A new status item**: a rule in `tickerStatus` in `logic.js` (source in the
+  store, condition, `cat`, `tone`, `target`), its text under `ticker.status`
+  in `text.js` in both languages, and one store fixture for it in the frontend
+  test. `cat` is one of the kinds in `ticker.STATUS_KINDS`; a new kind also goes
+  into that tuple, the template comment and the kind chips of `TickerSettings`.
+  `target.kind` must be one the page can open (`page`, `tab`, `drawer`, `info`,
+  `row`, `review`, `workers`, `conv`, `claude`), or none.
+- **A new default feed**: `DEFAULT_FEEDS` in `ticker.py` and the commented
+  list in `bridge-config.yaml.template`. Check it first with `curl -sI` (200,
+  an XML content type) and `curl -s | head` (no DOCTYPE, since the parser
+  refuses one). CORE defaults name no instance (`test_bridge_cockpit_core.py`).
+- **Events**: the ticker has one SSE event, `ticker`, in `EVENTS` in
+  `api.js`. The server sends it after a settings change, after each feed read
+  and when an edit starts and ends; the payload is the whole `state()`. The
+  verbs `ticker_settings`, `ticker_settings_reset`, `ticker_refresh` and
+  `ticker_edit` return at once with `ticker` in the answer; the slow part runs
+  on a thread and arrives as that event.
+- **The editor stays a click**: `ticker_edit` is called only from the Editor
+  button. Never from an effect, a timer, the refresh loop, `state_payload()` or
+  the server start; the frontend test checks the page side, the server test
+  that no `claude` argv runs without the verb. The prompt stays under
+  `model_route.HAIKU_PROMPT_MAX`, since a longer one is refused, not cut.
+- **Fetching**: `Ticker(app, fetch=...)` takes the fetcher, so tests never
+  touch the network. The loop reads only while a page is connected
+  (`client_count() > 0`) and the last read is older than `refresh_minutes`.
+- **Mock mode** carries the same shape (`TICKER_CONFIG`, `tickerState` in
+  `mock.js`), with `example.org` links only, a slow pass so the "slow" item
+  shows, and invented short titles after Editor.
+
 ### A new field on a row or the model
 
 `collector.py` `row_out` (per row) or `build_model` (top level), then use it in
@@ -190,16 +230,25 @@ missing in one language, an empty value, an em or en dash, or an emoji.
 ## 6. Tests
 
 ```bash
-python3 -m pytest -q scripts/tests/test_bridge_cockpit.py scripts/tests/test_task.py scripts/tests/test_task_review.py
-node --test scripts/tests/bridge_cockpit_frontend.test.mjs
+pytest -q scripts/tests/test_bridge_cockpit*.py scripts/tests/test_task.py scripts/tests/test_task_review.py
+pytest -q scripts/tests/test_bridge_cockpit_ticker.py scripts/tests/test_bridge_cockpit_core.py scripts/tests/test_bridge_cockpit_demo.py
+node --test scripts/tests/bridge_cockpit_frontend.test.mjs scripts/tests/bridge_cockpit_jev.test.mjs scripts/tests/bridge_cockpit_markdown.test.mjs
+python3 scripts/build-cockpit-demo.py --check
 npx -y -p typescript@5.6.3 -c 'node mods/cockpit-relay/tests/pure.test.mjs'
 claude plugin test mods/cockpit-relay        # engine tests, local only
 ```
 
+Use the bare `pytest` binary: on some machines `python3` has no pytest module
+while the `pytest` command runs under the interpreter that does.
+
 The server tests are hermetic: a fake Bridge in a temp folder, a fake runner
 that records every argv, the relay key in a temp folder. The frontend test also
 holds the vendor hash, no inline script in `index.html`, no external URL in a
-served file, no `innerHTML`, and the colour values against `DESIGN.md`.
+served file, no `innerHTML`, and the colour values against `DESIGN.md`. The
+ticker's source colours are checked on the palette `design.py` resolves, so
+the fallback chain counts; `BRIDGE_DESIGN_MD=/path/to/DESIGN.md` runs that
+check against another fork's `DESIGN.md`, for example the generic open-bridge
+one.
 
 ## 7. Rules the code keeps
 

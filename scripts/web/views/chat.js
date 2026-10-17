@@ -10,6 +10,7 @@ import { LaunchPick } from './launch.js'
 import { ASK_MAX } from './nav.js'
 import { useFocusOnOpen } from './overlays.js'
 import { Btn, Dot, StateLine, useClock } from './parts.js'
+import { Prose } from './prose.js'
 
 // ---------------------------------------------------------------- the chat
 
@@ -57,9 +58,9 @@ export function ChatThread({ s, conv }) {
     const open = !x.a && !x.error && i === conv.turns.length - 1 && conv.running
     return html`<div class="qturn row-in" key=${i} style=${{ '--i': 0 }}>
       <div class="qq">${x.q}</div>
-      ${x.a ? html`<div class="qa">${x.a}</div>`
+      ${x.a ? html`<${Prose} cls="qa" text=${x.a} />`
         : x.error ? html`<p><${StateLine} token="danger" word=${x.error === 'interrupted' ? t.quickInterrupted : t.quickFailed(x.error)} /></p>`
-        : open && live?.text ? html`<div class="qa is-live">${live.text}<span class="qcaret" aria-hidden="true"></span></div>` : null}
+        : open && live?.text ? html`<${Prose} cls="qa is-live" text=${live.text}><span class="qcaret" aria-hidden="true"></span><//>` : null}
       ${open ? html`<${Thinking} label=${live?.doing ? t.quickReading(live.doing)
         : live?.text ? t.quickWriting : t.quickThinking(t.quickModel[x.model_asked] ?? x.model_asked)} />` : null}
       ${x.a ? html`<div class="qmeta mono small muted">${x.model ?? x.model_asked}${x.cost_usd != null ? ` · ${costText(x.cost_usd, lang)}` : ''}</div>` : null}

@@ -6,7 +6,7 @@ import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.mo
 import {
   duration, indexRows, sessionCounts, short, stateToken, workerTone, greetingPart, homeContinue, inProject,
   meterPace, tabOfTask, countInProject, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError,
-  pulseSpeed, MAX_STATIONS, situation, situationText, parseVerdict,
+  pulseSpeed, MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems,
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
@@ -17,6 +17,7 @@ import {
 } from './home.js'
 import { AGENTS_PAGE, ASK_MAX, SESSIONS_PAGE, WORKERS_PAGE, briefingTitle } from './nav.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
+import { TickerBand, TickerStatusList } from './ticker.js'
 
 // ---------------------------------------------------------------- the bridge stage (the explainer films' picture)
 
@@ -195,7 +196,9 @@ function StageCard({ s, c, tabs, onWeigh }) {
       ${h.seeAll(nowRows.length)}<${Icon} name="chevronRight" size=${14} /></button>` : null}
     <div class="feed">
       <h3 class="label-caps feed-head"><span class="feed-live" aria-hidden="true"></span>${h.liveTitle}</h3>
+      <${TickerStatusList} s=${s} c=${c} />
       ${(s.feed ?? []).length ? html`<ol class="feed-list">${(s.feed ?? []).slice(0, 7).map(e => html`<${FeedLine} key=${`${e.kind}${e.key ?? e.ref ?? e.title}${e.at}`} e=${e} s=${s} c=${c} />`)}</ol>`
+        : tickerStatusItems(s, s.now || Date.now()).length ? html`<p class="stage-row-sub">${h.liveQuiet}</p>`
         : html`<p class="stage-row-sub">${h.liveEmpty}</p>`}
     </div>
   </section>`
@@ -566,15 +569,18 @@ export function BridgeStage({ s, c, catalog, chosen, project }) {
       </svg>
     </div>
     <div class="stage-term">
-      <span class="stage-eyebrow">${eyebrow}</span>
-      <${StagePrompt} s=${s} c=${c} greeting=${greeting} />
-      ${s.model?.headline ? html`<p class="stage-lead">${leadOf(s.model)}</p>` : null}
-      ${(s.model?.alarms ?? []).length || relayDown ? html`<div class="home-signals">
-        ${(s.model?.alarms ?? []).map(a => html`<button type="button" class="home-signal tk-danger" key=${a.page_id + a.section_title}
-          onClick=${() => c.setPage(a.page_id)}><${Dot} token="danger" /><span>${h.alarm(a.count, `${a.section_title} (${a.page_title})`)}</span></button>`)}
-        ${relayDown ? html`<button type="button" class="home-signal tk-warning" onClick=${c.openClaude}>
-          <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
-      </div>` : null}
+      <div class="stage-greet">
+        <span class="stage-eyebrow">${eyebrow}</span>
+        <${StagePrompt} s=${s} c=${c} greeting=${greeting} />
+        ${s.model?.headline ? html`<p class="stage-lead">${leadOf(s.model)}</p>` : null}
+        ${(s.model?.alarms ?? []).length || relayDown ? html`<div class="home-signals">
+          ${(s.model?.alarms ?? []).map(a => html`<button type="button" class="home-signal tk-danger" key=${a.page_id + a.section_title}
+            onClick=${() => c.setPage(a.page_id)}><${Dot} token="danger" /><span>${h.alarm(a.count, `${a.section_title} (${a.page_title})`)}</span></button>`)}
+          ${relayDown ? html`<button type="button" class="home-signal tk-warning" onClick=${c.openClaude}>
+            <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
+        </div>` : null}
+      </div>
+      <${TickerBand} s=${s} c=${c} only="news" />
       <div class="stage-tools">
         <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${h.choose}<//>
       </div>

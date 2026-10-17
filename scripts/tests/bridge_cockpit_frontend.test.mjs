@@ -16,6 +16,7 @@
 // The page's .js files are ES modules without a package.json "type"; to run on every
 // supported Node version they are copied to a temp directory as .mjs and imported there.
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -2049,10 +2050,17 @@ test('settings: a page of its own behind More, always there, with the launch gro
   }
   const page = read('views/settings.js')
   assert.match(page, /export function SettingsPage\(\{ s, c \}\)/)
-  assert.match(page, /const SECTIONS = \['start', 'look', 'launch'\]/)                   // the areas; a later one joins the list
-  assert.match(page, /const AREAS = \{ start: StartArea, look: LookArea, launch: LaunchArea \}/)
+  assert.match(page, /const SECTIONS = \['start', 'look', 'launch', 'ticker'\]/)                   // the areas; a later one joins the list
+  assert.match(page, /const AREAS = \{ start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings \}/)
+  // the ticker's group draws with the page's own parts, no copies of them
+  for (const part of ['Switch', 'Card', 'Row']) assert.match(page, new RegExp(`^export function ${part}\\(`, 'm'), part)
+  const tickerView = read('views/ticker.js')
+  assert.match(tickerView, /^import \{ Card, Row, Switch \} from '\.\/settings\.js'/m)
+  assert.doesNotMatch(tickerView, /function Ticker(Card|Row|Switch)\b/)
+  assert.doesNotMatch(tickerView, /class="set-row|class=\$\{`panel set-card|role="switch"/)
   assert.match(page, /disabled=\$\{busy \|\| \(k !== 'enabled' && !on\)/)                  // the switches below the main one grey while it is off
   assert.match(page, /\$\{st\.auto \? html`/)                                               // Auto's details only while Auto is on
+  assert.match(page, /import \{ TickerSettings \} from '\.\/ticker\.js'/)
   assert.match(page, /c\.resetLaunch\(\)/)
   assert.match(page, /overridden/)
   assert.match(read('components.js'), /s\.ui\.page === SETTINGS_PAGE\) return html`<\$\{SettingsPage\}/)
@@ -2171,6 +2179,449 @@ test('settings: the daily check may ask Jev too, a switch below Auto, grey while
   assert.deepEqual(logic.launchPatch('triage_jev', true), { triage_jev: true })
 })
 
+// ---------------------------------------------------------------- the news ticker (work/tasks/cockpit-newsticker)
+
+/** A start page store with nothing to report: every ticker rule stays quiet on it */
+function quietStore(over = {}) {
+  return {
+    model: { pages: [], alarms: [], status: [], stale: false, returns: [], counts: { now: 0 },
+      review: { running: null, error: null, last: null } },
+    tabs: { tabs: [], error: null }, sessions: { sessions: [] }, agents: { peers: [], convs: [] },
+    triage: { running: null, error: null }, loading: { pass: null, last_error: null },
+    relay: { enabled: false, online: false }, jev: { enabled: false, ready: false }, notes: [], conn: 'open',
+    workers: { status: 'idle', data: null },
+    ticker: { enabled: true, settings: { status: { enabled: true, kinds: [...logic.TICKER_KINDS] } }, items: [],
+      perf: { passes: [], outliers: [] }, limits: { timeout_ms: 120000 } },
+    ...over,
+  }
+}
+
+/** The one status item a store gives, by key */
+const statusOf = (s, key) => logic.tickerStatus(s, NOW, logic.TICKER_KINDS).filter(x => x.key === key)
+
+test('ticker: a quiet store says nothing; the kinds are the seven of the contract', () => {
+  assert.deepEqual(logic.TICKER_KINDS, ['running', 'waiting', 'slow', 'failing', 'quota', 'offline', 'notes'])
+  assert.deepEqual(logic.tickerStatus(quietStore(), NOW, logic.TICKER_KINDS), [])
+})
+
+test('ticker: each status rule names its kind, tone and where a click leads', () => {
+  const mk = over => quietStore(over)
+  const model = extra => ({ ...quietStore().model, ...extra })
+  const one = (s, key) => { const l = statusOf(s, key); assert.equal(l.length, 1, key); return l[0] }
+  const check = (s, key, cat, tone, target) => {
+    const it = one(s, key)
+    assert.equal(it.cat, cat, key); assert.equal(it.tone, tone, key)
+    if (target !== undefined) assert.deepEqual(it.target, target, key)
+    return it
+  }
+  // 1 alarms
+  check(mk({ model: model({ alarms: [{ page_id: 'systems', page_title: 'Systems', section_title: 'Checks', count: 1 }] }) }),
+    'alarm', 'failing', 'bad', { kind: 'page', id: 'systems' })
+  // 2 quota meters: bad at the bad mark, warn at the warn mark or when the pace runs over
+  const quota = (value, elapsed = 0.9) => model({ pages: [{ id: 'usage', sections: [{ id: 'quota',
+    items: [{ title: 'Week: 1 %', meter: { value, max: 100, unit: '%', elapsed, warn: 80, bad: 95, window_h: 168 } }] }] }] })
+  const qb = check(mk({ model: quota(96) }), 'quota', 'quota', 'bad')
+  assert.equal(qb.target.kind, 'info'); assert.equal(qb.target.page, 'usage'); assert.equal(qb.target.section, 'quota')
+  check(mk({ model: quota(82) }), 'quota', 'quota', 'warn')
+  check(mk({ model: quota(40, 0.2) }), 'quota', 'quota', 'warn')          // 40 % after a fifth of the window runs over
+  assert.equal(statusOf(mk({ model: quota(40, 0.6) }), 'quota').length, 0)
+  // 3 token outliers
+  check(mk({ ticker: { ...quietStore().ticker, perf: { passes: [], outliers: [{ source: 'subagent', today: 9, usual: 2, factor: 4.5 }] } } }),
+    'outlier', 'quota', 'warn', { kind: 'page', id: '@sessions' })
+  // 4 a failed pass, 5 a pass that runs far longer than its estimate
+  check(mk({ loading: { pass: null, last_error: { message: 'boom' } } }), 'loadFailed', 'failing', 'bad', { kind: 'page', id: 'briefing' })
+  check(mk({ loading: { pass: 'full', started_ms: NOW - 40000, eta_ms: 10000 } }), 'loadSlow', 'slow', 'warn', null)
+  assert.equal(statusOf(mk({ loading: { pass: 'full', started_ms: NOW - 20000, eta_ms: 10000 } }), 'loadSlow').length, 0)
+  // 6 the last pass: near the time limit bad, over a minute warn
+  const pass = took => mk({ ticker: { ...quietStore().ticker, perf: { passes: [{ kind: 'full', took_ms: 1000, ok: true }, { kind: 'full', took_ms: took, ok: true }], outliers: [] } } })
+  check(pass(110000), 'passSlow', 'slow', 'bad', { kind: 'page', id: 'briefing' })
+  check(pass(95000), 'passSlow', 'slow', 'warn')
+  assert.equal(statusOf(pass(30000), 'passSlow').length, 0)
+  // 7 a source in error: slow when it ran out of time, else failing
+  check(mk({ model: model({ status: [{ title: 'Mail', state: 'error', reason: 'took longer than 60 s' }] }) }), 'sourceSlow', 'slow', 'warn', { kind: 'page', id: 'briefing' })
+  check(mk({ model: model({ status: [{ title: 'Mail', state: 'error', reason: 'token expired' }] }) }), 'sourceFailed', 'failing', 'bad')
+  // 8 stale, 9 connection down, 10 tabs unreadable
+  check(mk({ model: model({ stale: true }) }), 'stale', 'failing', 'warn', null)
+  check(mk({ conn: 'down' }), 'connDown', 'offline', 'bad', null)
+  check(mk({ tabs: { tabs: [], error: 'no cmux' } }), 'tabsError', 'failing', 'bad', { kind: 'drawer', id: 'tabs' })
+  // 11 to 13 the agent tabs
+  const tab = (ref, state, extra = {}) => ({ ref, name: ref, state, waiting: false, long: null, is_control: false, ...extra })
+  check(mk({ tabs: { tabs: [tab('a', 'waiting', { long: 'waiting' })] } }), 'tabLong', 'slow', 'warn', { kind: 'tab', ref: 'a' })
+  check(mk({ tabs: { tabs: [tab('a', 'needs-you', { waiting: true })] } }), 'tabWaits', 'waiting', 'warn', { kind: 'tab', ref: 'a' })
+  const three = mk({ tabs: { tabs: ['a', 'b', 'c'].map(r => tab(r, 'working')) } })
+  assert.equal(statusOf(three, 'tabWorks').length, 3)
+  assert.deepEqual(statusOf(three, 'tabWorks')[0].target, { kind: 'tab', ref: 'a' })
+  const four = mk({ tabs: { tabs: ['a', 'b', 'c', 'd'].map(r => tab(r, 'working')) } })
+  assert.equal(statusOf(four, 'tabWorks').length, 0)
+  const many = check(four, 'tabsWork', 'running', 'info', { kind: 'drawer', id: 'tabs' })
+  assert.deepEqual(many.vars, [4])
+  assert.equal(statusOf(mk({ tabs: { tabs: [tab('c', 'working', { is_control: true })] } }), 'tabWorks').length, 0)   // the control tab is not news
+  // 14 sessions at work
+  const ss = check(mk({ sessions: { sessions: [{ status: 'busy', agents: { running_count: 2 }, workflows: [{}] }, { status: 'idle' }] } }),
+    'sessions', 'running', 'info', { kind: 'page', id: '@sessions' })
+  assert.deepEqual(ss.vars, [1, 3])
+  assert.equal(statusOf(mk({ sessions: { sessions: [{ status: 'idle' }] } }), 'sessions').length, 0)
+  // 15 the return channel, by live stage
+  const ret = (stage, extra = {}) => mk({ model: model({ returns: [{ key: 'task:x', title: 'X', stage, at_ms: NOW - 1000, item: 'x', ...extra }] }) })
+  check(ret('started'), 'returnWorks', 'running', 'info', { kind: 'row', key: 'task:x' })
+  check(ret('result'), 'returnResult', 'waiting', 'ok')
+  check(mk({ ...ret('started', { tab: { ref: 't1' } }), tabs: { tabs: [tab('t1', 'needs-you')] } }), 'returnAsks', 'waiting', 'warn', { kind: 'tab', ref: 't1' })
+  check(ret('started', { at_ms: NOW - 600000 }), 'returnLost', 'failing', 'warn')
+  // a tab that is gone is no target: the row opens instead; an answer that is there opens the answer
+  check(ret('started', { at_ms: NOW - 600000, tab: { ref: 'gone' } }), 'returnLost', 'failing', 'warn', { kind: 'row', key: 'task:x' })
+  check(ret('result', { tab: { ref: 'gone' }, result: { key: 'inbox:a1', text: 'done' } }), 'returnResult', 'waiting', 'ok', { kind: 'item', key: 'inbox:a1' })
+  check(mk({ ...ret('result', { tab: { ref: 't1' } }), tabs: { tabs: [tab('t1', 'waiting')] } }), 'returnResult', 'waiting', 'ok', { kind: 'tab', ref: 't1' })
+  assert.equal(logic.tickerStatus(ret('done'), NOW, logic.TICKER_KINDS).length, 0)
+  // 16 what waits on you
+  check(mk({ model: model({ counts: { now: 2 } }) }), 'waitsForYou', 'waiting', 'warn', { kind: 'page', id: 'briefing' })
+  // 17 the task check
+  const rv = review => mk({ model: model({ review }) })
+  check(rv({ running: { started_ms: NOW }, error: null, last: null }), 'reviewRuns', 'running', 'info', { kind: 'review' })
+  check(rv({ running: null, error: 'boom', last: null }), 'reviewFailed', 'failing', 'bad', { kind: 'review' })
+  check(rv({ running: null, error: null, last: { to_close: 2 } }), 'toClose', 'waiting', 'info', { kind: 'review' })
+  // 18 the daily check
+  check(mk({ triage: { running: { started_ms: NOW } } }), 'triageRuns', 'running', 'info', { kind: 'page', id: 'briefing' })
+  check(mk({ triage: { running: null, error: 'boom' } }), 'triageFailed', 'failing', 'bad')
+  // 19 and 20 the agents
+  check(mk({ agents: { peers: [{ id: 'peer-a', name: 'Peer A', reach: 'unreachable' }], convs: [] } }), 'peerDown', 'offline', 'warn', { kind: 'page', id: '@agents' })
+  assert.equal(statusOf(mk({ agents: { peers: [{ id: 'peer-a', reach: 'ok' }], convs: [] } }), 'peerDown').length, 0)
+  check(mk({ agents: { peers: [], convs: [{ id: 'c1', peer: 'peer-a', running: true, started_ms: NOW - 200000, turns: [{ q: 'x', at_ms: NOW - 200000 }] }] } }),
+    'convSlow', 'slow', 'warn', { kind: 'conv', id: 'c1' })
+  check(mk({ agents: { peers: [], convs: [{ id: 'c1', peer: 'peer-a', running: false, turns: [{ q: 'x', waiting: true }] }] } }),
+    'convWaits', 'waiting', 'warn', { kind: 'conv', id: 'c1' })
+  // 21 background jobs
+  const runs = list => mk({ workers: { status: 'ok', data: { runs: list } } })
+  check(runs([{ id: 'j', title: 'j', state: 'absent', strip: [] }]), 'jobFailed', 'failing', 'bad', { kind: 'workers' })
+  check(runs([{ id: 'j', title: 'j', state: 'in_sync', strip: [{ verdict: 'ok' }, { verdict: 'failed' }] }]), 'jobFailed', 'failing', 'bad')
+  check(runs([{ id: 'j', title: 'j', state: 'drifted', strip: [] }]), 'jobWarn', 'failing', 'warn')
+  assert.equal(statusOf(runs([{ id: 'j', title: 'j', state: 'in_sync', strip: [{ verdict: 'ok' }] }]), 'jobFailed').length, 0)
+  // 22 machines, clouds and LLM sources that are down
+  const items = list => mk({ model: model({ pages: [{ id: 'sys', sections: [{ id: 'res', items: list }] }] }) })
+  const off = check(items([{ id: 'machine:box', title: 'box', tone: 'bad' }]), 'offline', 'offline', 'bad')
+  assert.equal(off.target.kind, 'info')
+  assert.equal(statusOf(items([{ id: 'llm:openai:error', title: 'OpenAI', tone: 'bad' }]), 'offline').length, 1)
+  assert.equal(statusOf(items([{ id: 'machine:box', title: 'box', tone: 'ok' }, { id: 'other:x', title: 'x', tone: 'bad' }]), 'offline').length, 0)
+  // 23 Jev, 24 the control session, 25 notes
+  check(mk({ jev: { enabled: true, ready: false } }), 'jevNotReady', 'failing', 'warn', { kind: 'page', id: '@jev' })
+  check(mk({ relay: { enabled: true, online: false } }), 'controlOffline', 'offline', 'warn', { kind: 'claude' })
+  const fresh = NOW - 60000
+  const notes = statusOf(mk({ notes: [{ text: 'a', tone: 'bad', ms: fresh }, { text: 'b', tone: 'ok', ms: fresh }, { text: 'c', tone: 'warn', ms: fresh },
+    { text: 'd', tone: 'warn', ms: fresh }, { text: 'e', tone: 'bad', ms: fresh }] }), 'note')
+  assert.deepEqual(notes.map(n => n.vars[0]), ['c', 'd', 'e'])
+  // only recent notes are news: an old one, and a server note replayed with ms 0, stay out of the band
+  const aged = statusOf(mk({ notes: [{ text: 'old', tone: 'bad', ms: NOW - 16 * 60000 }, { text: 'replayed', tone: 'bad', ms: 0 },
+    { text: 'nomark', tone: 'warn' }, { text: 'new', tone: 'warn', ms: NOW - 14 * 60000 }] }), 'note')
+  assert.deepEqual(aged.map(n => n.vars[0]), ['new'])
+  assert.equal(notes[0].cat, 'notes'); assert.equal(notes[2].tone, 'bad'); assert.equal(notes[0].target, null)
+  // the kinds filter leaves out whole categories
+  const loud = mk({ conn: 'down', model: model({ counts: { now: 2 } }) })
+  assert.deepEqual(logic.tickerStatus(loud, NOW, ['offline']).map(x => x.key), ['connDown'])
+  assert.deepEqual(logic.tickerStatus(loud, NOW, []).map(x => x.key), [])
+  // every key has a text in both languages, and the ids are unique
+  const all = logic.tickerStatus(mk({ conn: 'down', model: model({ counts: { now: 2 }, stale: true }), notes: [{ text: 'n', tone: 'bad', ms: NOW }] }), NOW, logic.TICKER_KINDS)
+  assert.equal(all.filter(x => x.key === 'note').length, 1)
+  assert.equal(new Set(all.map(x => x.id)).size, all.length)
+  for (const lang of ['en', 'de']) {
+    for (const it of all) assert.ok(logic.tickerText(it, text.TABLES[lang]).length > 0, `${lang} ${it.key}`)
+  }
+})
+
+test('ticker: a page target opens pages the controller routes itself, Today only for a name nowhere', () => {
+  const s = quietStore({ model: { ...quietStore().model, pages: [{ id: 'work', group: 'work' }, { id: 'day1', group: 'day' }, { id: 'systems' }] } })
+  const order = ['briefing', 'systems', '@sessions']
+  assert.equal(logic.tickerPage(s, 'systems', order), 'systems')
+  assert.equal(logic.tickerPage(s, 'work', order), 'work')         // a work page: setPage opens its view of the work tab
+  assert.equal(logic.tickerPage(s, 'day1', order), 'day1')         // a day page: setPage opens Today itself
+  assert.equal(logic.tickerPage(s, '@jev', order), '@jev')         // Jev, wherever it lives
+  assert.equal(logic.tickerPage(s, '@sessions', order), '@sessions')
+  assert.equal(logic.tickerPage(s, 'gone', order), 'briefing')
+  assert.equal(logic.tickerPage({ model: null }, 'gone', []), 'briefing')
+  const tk = read('views/ticker.js')
+  assert.match(tk, /case 'page': return c\.setPage\(tickerPage\(s, target\.id, pageOrder\(s\)\)\)/)
+  assert.match(tk, /case 'item': return c\.openItem\(target\.key, null\)/)
+})
+
+test('ticker: an older ticker state never replaces a newer one; refresh and edit answers leave the store to the event', () => {
+  assert.equal(logic.newerTicker(null, { rev: 1 }), true)
+  assert.equal(logic.newerTicker({ rev: 5 }, { rev: 4 }), false)
+  assert.equal(logic.newerTicker({ rev: 5 }, { rev: 5 }), true)
+  assert.equal(logic.newerTicker({ rev: 5 }, { rev: 6 }), true)
+  assert.equal(logic.newerTicker({}, {}), true)                   // a server without rev: last one wins
+  assert.equal(logic.newerTicker({ rev: 5 }, null), false)
+  const app = read('app.js')
+  assert.match(app, /ticker\(tk\) \{\n\s+store\.set\(s => \(newerTicker\(s\.ticker, tk\) \? \{ \.\.\.s, ticker: tk \} : s\)\)/)
+  assert.match(app, /if \(newerTicker\(s\.ticker, r\?\.ticker\)\)/)
+  // the answer of a refresh or an edit may arrive after the event that ended it: its state is not stored
+  assert.match(app, /tickerRefresh: async \(\) => act\('ticker_refresh', \{\}\),/)
+  assert.match(app, /tickerEdit: async \(\) => act\('ticker_edit', \{\}\),/)
+})
+
+test('ticker: items put bad before warn before info before ok, then the feeds; empty while off', () => {
+  const feed = { id: 'f1', feed: 'demo', source: 'Demo', title: 'News', short: null, url: 'https://example.org/a', published_ms: NOW, fresh: false }
+  const s = quietStore({ conn: 'down', model: { ...quietStore().model, counts: { now: 1 }, review: { running: { started_ms: NOW }, last: { to_close: 0 } },
+    returns: [{ key: 'task:x', title: 'X', stage: 'result', at_ms: NOW }] } })
+  s.ticker = { ...s.ticker, items: [feed, { ...feed, id: 'f2', url: 'javascript:alert(1)' }, feed] }
+  const list = logic.tickerItems(s, NOW)
+  assert.deepEqual(list.map(x => x.tone ?? 'feed'), ['bad', 'warn', 'info', 'ok', 'feed'])
+  assert.equal(list.at(-1).kind, 'feed'); assert.equal(list[0].kind, 'status')
+  assert.equal(list.filter(x => x.kind === 'feed').length, 1)                       // a bad link and a twin drop out
+  assert.deepEqual(logic.tickerItems({ ...s, ticker: { ...s.ticker, enabled: false } }, NOW), [])
+  assert.deepEqual(logic.tickerItems({ ...s, ticker: null }, NOW), [])
+  const noStatus = { ...s, ticker: { ...s.ticker, settings: { status: { enabled: false, kinds: [...logic.TICKER_KINDS] } } } }
+  assert.deepEqual(logic.tickerItems(noStatus, NOW).map(x => x.kind), ['feed'])
+  const onlyWaiting = { ...s, ticker: { ...s.ticker, settings: { status: { enabled: true, kinds: ['waiting'] } } } }
+  assert.ok(logic.tickerItems(onlyWaiting, NOW).filter(x => x.kind === 'status').every(x => x.cat === 'waiting'))
+})
+
+test('ticker: status and news split; the status list keeps the band order, the news only feeds', () => {
+  const s = quietStore()
+  s.conn = 'down'
+  s.model = { ...s.model, counts: { now: 2 } }
+  const feed = { id: 'f1', feed: 'demo-ai', source: 'Demo', title: 'T', url: 'https://example.org/a' }
+  s.ticker = { ...s.ticker, items: [feed, { ...feed, id: 'f2', url: 'javascript:alert(1)' }] }
+  const all = logic.tickerItems(s, NOW)
+  assert.deepEqual(logic.tickerStatusItems(s, NOW), all.filter(x => x.kind === 'status'))
+  assert.deepEqual(logic.tickerStatusItems(s, NOW).map(x => x.tone), ['bad', 'warn'])
+  assert.deepEqual(logic.tickerFeedItems(s).map(x => x.id), ['f1'])
+  assert.ok(logic.tickerFeedItems(s).every(x => x.kind === 'feed'))
+  assert.deepEqual(logic.tickerStatusItems({ ...s, ticker: { ...s.ticker, enabled: false } }, NOW), [])
+  assert.deepEqual(logic.tickerFeedItems({ ...s, ticker: { ...s.ticker, enabled: false } }), [])
+  assert.deepEqual(logic.tickerStatusItems({ ...s, ticker: { ...s.ticker, settings: { status: { enabled: false } } } }, NOW), [])
+  assert.deepEqual(logic.tickerStatusItems({ ...s, ticker: { ...s.ticker, settings: { status: { enabled: true, kinds: [] } } } }, NOW), [])
+  assert.deepEqual(logic.tickerStatusItems({ ...s, ticker: null }, NOW), [])
+})
+
+/** The palette the server renders as /colors.css, resolved by design.py itself (fallback chain, dark set), so
+ *  the test reads a DESIGN.md exactly as the page does. BRIDGE_DESIGN_MD points it at another DESIGN.md, e.g.
+ *  the generic open-bridge one: BRIDGE_DESIGN_MD=/path/to/DESIGN.md node --test scripts/tests/<this file> */
+function serverPalette() {
+  const file = process.env.BRIDGE_DESIGN_MD || path.join(ROOT, 'DESIGN.md')
+  const code = 'import json, sys\nfrom pathlib import Path\nfrom bridge_cockpit import design\n'
+    + 'print(json.dumps(design.palette(design.front_matter(Path(sys.argv[1])))))'
+  const out = execFileSync('python3', ['-c', code, file], {
+    cwd: path.join(ROOT, 'scripts', 'lib'), encoding: 'utf8',
+    env: { ...process.env, PYTHONPATH: path.join(ROOT, 'scripts', 'lib') },
+  })
+  return JSON.parse(out)
+}
+
+test('ticker: a feed keeps its source colour, one of three non-state tokens, the same on every load', () => {
+  const ids = ['demo-ai', 'demo-research', 'demo-tools', 'openai', 'huggingface', 'tech-review', 'a', 'b']
+  for (const id of ids) {
+    assert.ok(logic.TICKER_SOURCE_TOKENS.includes(logic.tickerSourceToken(id)), id)
+    assert.equal(logic.tickerSourceToken(id), logic.tickerSourceToken(id))
+  }
+  assert.ok(logic.TICKER_SOURCE_TOKENS.includes(logic.tickerSourceToken(undefined)))
+  // the tokens look different in both modes once design.py has resolved the palette: a DESIGN.md that names
+  // few keys (the generic open-bridge one has no colorsDark and no border-strong) falls back along CHAIN,
+  // and two tokens that land on the same key would show one colour
+  const pal = serverPalette()
+  for (const mode of ['light', 'dark']) {
+    const hex = logic.TICKER_SOURCE_TOKENS.map(k => pal[mode][k]?.toUpperCase())
+    assert.ok(hex.every(Boolean), `${mode}: every token is in the palette`)
+    assert.equal(new Set(hex).size, hex.length, `${mode}: the source tokens differ (${hex.join(', ')})`)
+  }
+  // no state tone (DESIGN.md: state colours only where the data IS a state): a source never reads as ok or a warning
+  for (const k of logic.TICKER_SOURCE_TOKENS) assert.ok(!['danger', 'warning', 'success', 'info'].includes(k), k)
+  // a palette may put secondary and accent close together, so each token tints its chip to a strength of its own
+  const css = read('style.css')
+  const mix = logic.TICKER_SOURCE_TOKENS.map(k => {
+    const m = css.match(new RegExp(`\\.ticker-src\\.tk-${k} \\{ --tk: var\\(--${k}\\); --tk-mix: (\\d+)%; \\}`))
+    assert.ok(m, k)
+    return m[1]
+  })
+  assert.equal(new Set(mix).size, mix.length, 'each token its own tint strength')
+  assert.match(css, /\.ticker-src \{[^}]*color-mix\(in srgb, var\(--tk, var\(--border-strong\)\) var\(--tk-mix, 14%\), transparent\)/)
+  assert.match(read('views/ticker.js'), /ticker-src tk-\$\{tickerSourceToken\(it\.feed \?\? it\.source, order\)\}/)
+})
+
+test('ticker: the configured feeds take the source colours in turn, so the default feeds spread evenly', () => {
+  // the ids the server ships when bridge-config.yaml names no feeds
+  const py = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'ticker.py'), 'utf8')
+  const defaults = py.slice(py.indexOf('DEFAULT_FEEDS = ['), py.indexOf(']', py.indexOf('DEFAULT_FEEDS = [')))
+  const ids = [...defaults.matchAll(/"id": "([^"]+)"/g)].map(m => m[1])
+  assert.ok(ids.length >= 4, ids.join(','))
+  const n = logic.TICKER_SOURCE_TOKENS.length
+  const tokens = ids.map(id => logic.tickerSourceToken(id, ids))
+  // every round of n feeds uses every token once
+  for (let i = 0; i + n <= ids.length; i += n) assert.equal(new Set(tokens.slice(i, i + n)).size, n, tokens.join(','))
+  const counts = Object.values(tokens.reduce((a, k) => ({ ...a, [k]: (a[k] ?? 0) + 1 }), {}))
+  assert.ok(Math.max(...counts) - Math.min(...counts) <= 1, tokens.join(','))
+  // the same order gives the same colours, an id outside it keeps its plain hash
+  assert.deepEqual(ids.map(id => logic.tickerSourceToken(id, [...ids])), tokens)
+  assert.equal(logic.tickerSourceToken('elsewhere', ids), logic.tickerSourceToken('elsewhere'))
+  // the demo's three feeds take three different colours
+  const demo = ['demo-ai', 'demo-research', 'demo-tools']
+  assert.equal(new Set(demo.map(id => logic.tickerSourceToken(id, demo))).size, 3)
+  // the band passes the configured order, disabled feeds included, so switching one off moves no colour
+  assert.match(read('views/ticker.js'), /const order = \(tk\?\.settings\?\.feeds \?\? \[\]\)\.map\(f => f\.id\)/)
+})
+
+test('ticker: duration clamps, a patch sends whole sub blocks, a feed is checked like the server does', () => {
+  assert.equal(logic.tickerDuration(7000, 'normal'), 100)
+  assert.equal(logic.tickerDuration(100, 'fast'), 20)
+  assert.equal(logic.tickerDuration(1e6, 'slow'), 600)
+  assert.equal(logic.tickerDuration(4000, 'slow'), 100)
+  assert.equal(logic.tickerDuration(4000, 'unknown'), logic.tickerDuration(4000, 'normal'))
+  const cur = { enabled: true, speed: 'normal', status: { enabled: true, kinds: ['running'] }, editor: { enabled: true, interests: '', max_picks: 12, shorten: true } }
+  assert.deepEqual(logic.tickerPatch('enabled', false, cur), { enabled: false })
+  assert.deepEqual(logic.tickerPatch('speed', 'fast', cur), { speed: 'fast' })
+  assert.deepEqual(logic.tickerPatch('editor.interests', '  agents ', cur), { editor: { enabled: true, interests: 'agents', max_picks: 12, shorten: true } })
+  assert.deepEqual(logic.tickerPatch('status.kinds', ['slow'], cur), { status: { enabled: true, kinds: ['slow'] } })
+  assert.deepEqual(logic.tickerPatch('feeds', [{ id: ' a ', name: ' A ', url: ' https://example.org/f ', enabled: true }], cur),
+    { feeds: [{ id: 'a', name: 'A', url: 'https://example.org/f', enabled: true }] })
+  const ok = { id: 'demo-1', name: 'Demo', url: 'https://example.org/feed.xml', enabled: true }
+  assert.equal(logic.tickerFeedValid(ok), true)
+  assert.equal(logic.tickerFeedValid({ ...ok, url: 'http://example.org/rss' }), true)
+  for (const url of ['javascript:alert(1)', 'ftp://example.org/x', 'https://user:pw@example.org/x', 'https://user@example.org/x',
+    'file:///etc/passwd', 'https://exa mple.org/', '', 'not a url', `https://example.org/${'a'.repeat(500)}`]) {
+    assert.equal(logic.tickerFeedValid({ ...ok, url }), false, url)
+  }
+  for (const id of ['', 'Demo', '-a', 'a_b', 'a'.repeat(41)]) assert.equal(logic.tickerFeedValid({ ...ok, id }), false, id)
+  for (const name of ['', ' ', 'x'.repeat(61), 'a\u0007b']) assert.equal(logic.tickerFeedValid({ ...ok, name }), false, JSON.stringify(name))
+  assert.equal(logic.tickerFeedValid(null), false)
+})
+
+/** The source of each call of fn(...) in src, its parentheses balanced */
+function callBodies(src, fn) {
+  const out = []
+  for (const m of src.matchAll(new RegExp(`\\b${fn}\\(`, 'g'))) {
+    let depth = 0
+    let i = m.index + m[0].length - 1
+    for (; i < src.length; i += 1) {
+      if (src[i] === '(') depth += 1
+      else if (src[i] === ')') { depth -= 1; if (depth === 0) break }
+    }
+    out.push(src.slice(m.index, i + 1))
+  }
+  return out
+}
+
+test('ticker: wired into both start page layouts, the store, the events; links open safely; Haiku only on a click', () => {
+  const home = read('views/home.js')
+  assert.match(home, /import \{ TickerBand, TickerStatusList \} from '\.\/ticker\.js'/)
+  // on the stage the news run beside the greeting, inside .stage-term; nothing of the ticker under the circle
+  const stage = read('views/stage.js')
+  assert.match(stage, /import \{ TickerBand, TickerStatusList \} from '\.\/ticker\.js'/)
+  const term = stage.slice(stage.indexOf('<div class="stage-term">'), stage.indexOf('<div class="stage-body">'))
+  assert.ok(term.length > 0, 'stage-term stands before stage-body')
+  assert.match(term, /<\$\{TickerBand\} s=\$\{s\} c=\$\{c\} only="news" \/>/)
+  assert.match(term, /<div class="stage-greet">[\s\S]*?<\$\{StagePrompt\}/)
+  assert.match(term, /<div class="stage-tools">/)
+  assert.doesNotMatch(stage.slice(stage.indexOf('<div class="stage-body">')), /TickerBand/)
+  // the status stands still in the live section of the side card, above the live feed
+  assert.match(stage, /<div class="feed">\n\s+<h3 class="label-caps feed-head">[^\n]*<\/h3>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{\(s\.feed/)
+  // under status rows the live feed does not say "quiet": a short line of its own, the long one only when both are empty
+  assert.match(stage, /: tickerStatusItems\(s, s\.now \|\| Date\.now\(\)\)\.length \? html`<p class="stage-row-sub">\$\{h\.liveQuiet\}<\/p>`\n\s+: html`<p class="stage-row-sub">\$\{h\.liveEmpty\}<\/p>`/)
+  for (const lang of ['en', 'de']) {
+    const q = text.TABLES[lang].home.liveQuiet
+    assert.equal(typeof q, 'string', lang)
+    assert.ok(q.length < text.TABLES[lang].home.liveEmpty.length / 2, lang)
+    assert.doesNotMatch(q, /^(Quiet|Ruhig)/, lang)
+  }
+  // the tiles view: the news under the greeting, the status under the news
+  assert.match(home, /<\/header>\n\s+<\$\{TickerBand\} s=\$\{s\} c=\$\{c\} only="news" \/>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{chips\}/)
+  assert.doesNotMatch(home, /home bridge-home`\}>\n\s+<\$\{TickerBand\}/)
+  const tk = read('views/ticker.js')
+  assert.match(tk, /export function TickerBand\(\{ s, c, only \}\)/)
+  assert.match(tk, /export function TickerStatusList\(\{ s, c \}\)/)
+  assert.match(tk, /const STATUS_MAX = 6\b/)
+  assert.match(tk, /export function TickerSettings\(\{ s, c \}\)/)
+  for (const a of tk.matchAll(/<a [^>]*>/g)) {
+    assert.match(a[0], /target="_blank"/, a[0]); assert.match(a[0], /rel="noopener noreferrer"/, a[0])
+  }
+  assert.ok([...tk.matchAll(/<a [^>]*>/g)].length >= 1)
+  assert.doesNotMatch(tk, /window\.open|style=/)
+  assert.match(tk, /aria-hidden="true" inert/)
+  assert.match(read('api.js'), /const EVENTS = \[[^\]]*'ticker'[^\]]*\]/)
+  const app = read('app.js')
+  assert.match(app, /ticker: payload\.ticker \?\? s\.ticker/)
+  assert.match(app, /ticker: null,/)
+  assert.match(app, /ticker\(tk\) \{/)
+  for (const verb of ['ticker_settings', 'ticker_settings_reset', 'ticker_refresh', 'ticker_edit']) assert.match(app, new RegExp(`act\\('${verb}'`))
+  for (const src of [tk, app]) {
+    for (const fn of ['useEffect', 'setInterval', 'setTimeout']) {
+      for (const body of callBodies(src, fn)) assert.doesNotMatch(body, /tickerEdit|ticker_edit|\/api\/ticker/, body.slice(0, 80))
+    }
+  }
+  assert.match(tk, /onClick=\$\{\(\) => c\.tickerEdit\(\)\}/)
+  const css = read('style.css')
+  assert.match(css, /@keyframes ticker-run/)
+  assert.doesNotMatch(css, /\.stage-body > \.ticker|\.stage-body > \.stage-side/)
+  // two columns only where the stage is wide, by the home container, never the viewport
+  assert.match(css, /@container home \(min-width: \d+px\) \{[^}]*\.stage-term \{[^}]*grid-template-columns/)
+  assert.match(css, /\.stage-term > \.ticker \{[^}]*min-width: 0/)
+  assert.match(css, /\.ticker-src \{[^}]*var\(--tk/)
+  assert.match(css, /\.ticker-status-list \{/)
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.ticker-track \{[^}]*animation: none/)
+  assert.match(css, /\.ticker:hover \.ticker-track, \.ticker:focus-within \.ticker-track \{ animation-play-state: paused; \}/)
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang].ticker
+    for (const k of ['label', 'edit', 'editing', 'refresh', 'refreshing', 'fresh', 'newsLabel', 'statusLabel', 'less']) assert.ok(t[k], `${lang} ${k}`)
+    assert.match(t.more(3), /3/)
+    assert.match(t.settings.explain.enabled, lang === 'de' ? /Begrüßung/ : /greeting/)
+    for (const k of logic.TICKER_KINDS) assert.ok(t.settings.kind[k], `${lang} kind ${k}`)
+    for (const k of ['enabled', 'speed', 'max_items', 'per_feed', 'refresh_minutes', 'feeds', 'status', 'kinds', 'interests', 'max_picks', 'shorten']) {
+      assert.ok(t.settings.label[k], `${lang} label ${k}`); assert.ok(t.settings.explain[k], `${lang} explain ${k}`)
+    }
+  }
+})
+
+test('ticker: the demo saves and resets its settings, refreshes and edits with invented titles', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-ticker-'))
+  try {
+    fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
+    const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
+    const st0 = mock.buildState()
+    assert.equal(st0.ticker.enabled, true)
+    assert.ok(st0.ticker.items.length >= 3)
+    assert.ok(st0.ticker.perf.passes.some(p => p.took_ms === 95000))
+    assert.equal(typeof st0.ticker.rev, 'number')             // like the server: newerTicker compares it
+    const revs = []
+    const tr = mock.createMockTransport({ lang: 'en' })
+    const events = []
+    tr.events(new Proxy({}, { get: (_, name) => p => events.push([name, p]) }), () => {})
+    let r = await tr.post('/api/action', { verb: 'ticker_settings', args: { settings: { speed: 'fast' } } })
+    assert.equal(r.ok, true)
+    assert.equal(r.data.ticker.settings.speed, 'fast')
+    revs.push(r.data.ticker.rev)
+    let st = (await tr.get('/api/state')).data
+    assert.deepEqual(st.ticker.overridden, ['speed'])
+    await tr.post('/api/action', { verb: 'ticker_settings_reset', args: {} })
+    st = (await tr.get('/api/state')).data
+    assert.deepEqual(st.ticker.overridden, [])
+    assert.equal(st.ticker.settings.speed, 'normal')
+    revs.push(st.ticker.rev)
+    r = await tr.post('/api/action', { verb: 'ticker_refresh', args: {} })
+    assert.equal(r.data.ticker.refreshing, true)
+    revs.push(r.data.ticker.rev)
+    r = await tr.post('/api/action', { verb: 'ticker_edit', args: {} })
+    assert.ok(r.data.ticker.editor.running)
+    revs.push(r.data.ticker.rev)
+    await new Promise(res => setTimeout(res, 2800))
+    const last = events.filter(([n]) => n === 'ticker').at(-1)?.[1]
+    assert.ok(last, 'a ticker event came')
+    assert.equal(last.editor.running, null)
+    assert.ok(last.editor.last && last.editor.last.picked > 0)
+    assert.ok(last.items.some(x => x.short))
+    assert.equal(last.refreshing, false)
+    revs.push(last.rev)
+    assert.ok(revs.every((v, i) => typeof v === 'number' && (i === 0 || v > revs[i - 1])), revs.join(','))
+    // each later state passes newerTicker over the earlier one, never the other way round
+    assert.ok(logic.newerTicker({ rev: revs[0] }, { rev: revs.at(-1) }) && !logic.newerTicker({ rev: revs.at(-1) }, { rev: revs[0] }))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('ticker names a token source as the usage page does, not by its raw id', () => {
+  const it = { key: 'outlier', vars: ['worker', 6.9] }
+  assert.match(logic.tickerText(it, text.TABLES.de), /Programme \(claude -p\)/)
+  assert.match(logic.tickerText(it, text.TABLES.en), /Programs \(claude -p\)/)
+  assert.doesNotMatch(logic.tickerText({ key: 'outlier', vars: ['subagent', 2] }, text.TABLES.de), /von subagent/)
+})
+
 test('settings: Customise opens a drawer beside the start page, every choice there is explained', () => {
   assert.match(read('components.js'), /s\.ui\.drawer === 'customize' \? html`<\$\{CustomizeDrawer\}/)
   assert.match(read('views/stage.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
@@ -2184,4 +2635,16 @@ test('settings: Customise opens a drawer beside the start page, every choice the
     for (const id of ids.filter(x => x !== 'o:classic')) assert.ok(w.explainOption[id], `${lang} ${id}`)
     for (const k of ['quota', 'count', 'page']) assert.ok(w.kind[k], `${lang} ${k}`)
   }
+})
+
+test('ticker: a new duration keeps the band where it stands instead of jumping', () => {
+  // half way through a 100 s pass stays half way through a 200 s one
+  assert.equal(logic.tickerResume(50000, 100, 200), 100000)
+  // past one pass it keeps only the part of the current pass
+  assert.equal(logic.tickerResume(250000, 100, 100), 50000)
+  // nothing known yet: start from the beginning
+  assert.equal(logic.tickerResume(null, 100, 200), 0)
+  assert.equal(logic.tickerResume(1000, 0, 200), 0)
+  const tk = read('views/ticker.js')
+  assert.match(tk, /tickerResume\(/)        // the band uses it when its duration changes
 })

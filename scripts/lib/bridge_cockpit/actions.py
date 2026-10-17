@@ -28,6 +28,7 @@ from .quick import CONV_RE, DEFAULT_MODEL, MODELS
 from .relay import KINDS as ASK_KINDS, RELAY_ID_RE
 from .history import item as history_item
 from .launch import LaunchError
+from .ticker import TickerError
 from .store import append_log
 
 ACTIVE_INBOX_STATES = ("open", "approved", "waiting", "deferred")
@@ -107,6 +108,10 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "session_resume": {"session": ("session_id", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "launch_settings": {"settings": ("launch_settings", True)},
     "launch_settings_reset": {},
+    "ticker_settings": {"settings": ("ticker_settings", True)},
+    "ticker_settings_reset": {},
+    "ticker_refresh": {},
+    "ticker_edit": {},
     "account_status": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                        "status": ("account_status", True)},
 }
@@ -353,6 +358,11 @@ class Actions:
                     raise bad_arg(name, f"must be one of {', '.join(allowed)}")
                 out[name] = value
             elif kind == "launch_settings":
+                if not isinstance(value, dict) or not value:
+                    raise bad_arg(name, "must be an object of settings")
+                out[name] = value
+            elif kind == "ticker_settings":
+                # the deep check is Ticker.save's; MAX_BODY already caps the size
                 if not isinstance(value, dict) or not value:
                     raise bad_arg(name, "must be an object of settings")
                 out[name] = value
@@ -889,6 +899,43 @@ class Actions:
         state = self.app.launch_model.state()
         ctx.extra["launch"] = state
         self.app.broadcast("launch", state)
+
+    # the news ticker (ticker.py): each verb returns at once, a thread does the slow part and
+    # broadcasts the `ticker` event when it ends; none of them waits under the write lock
+
+    def v_ticker_settings(self, ctx: Ctx, settings: dict) -> None:
+        """The settings page's change of the ticker; kept beside the config, never in it"""
+        try:
+            self.app.ticker.save(settings)
+        except TickerError as error:
+            raise ActionError(error.status, error.code, error.message, error.field) from None
+        self.ticker_changed(ctx)
+
+    def v_ticker_settings_reset(self, ctx: Ctx) -> None:
+        """Back to what bridge-config.yaml says"""
+        self.app.ticker.reset()
+        self.ticker_changed(ctx)
+
+    def v_ticker_refresh(self, ctx: Ctx) -> None:
+        """Read the feeds now; a refresh already running is no error"""
+        if not self.app.ticker.request_refresh():
+            ctx.extra["already"] = True
+        self.ticker_changed(ctx)
+
+    def v_ticker_edit(self, ctx: Ctx) -> None:
+        """Let Claude Haiku pick and shorten the items: only ever on this click"""
+        try:
+            started = self.app.ticker.edit_start()
+        except TickerError as error:
+            raise ActionError(error.status, error.code, error.message, error.field) from None
+        if not started:
+            raise ActionError(409, "not_applicable", "the editor is already running")
+        self.ticker_changed(ctx)
+
+    def ticker_changed(self, ctx: Ctx) -> None:
+        state = self.app.ticker.state()
+        ctx.extra["ticker"] = state
+        self.app.broadcast("ticker", state)
 
     def v_return_forget(self, ctx: Ctx, key: str) -> None:
         """Take a start out of the return channel; the row and its tab stay as they are"""

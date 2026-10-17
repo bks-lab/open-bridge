@@ -201,6 +201,28 @@ work:
 #     max_model: opus      # the strongest model Auto may recommend
 #     router: chain        # chain = Jev when on, else Haiku | jev | haiku
 #   # The settings page (Settings, behind More) changes these on top, kept in .bridge/cockpit/launch.json.
+#   ticker:                  # the scrolling band on the start page (docs/bridge-cockpit.md); off by default
+#     enabled: false
+#     max_items: 30          # feed items shown at most (5 to 100)
+#     per_feed: 8            # newest items taken from each feed (1 to 30)
+#     refresh_minutes: 30    # feeds are read again when older, only while a page is open (5 to 1440)
+#     speed: normal          # slow | normal | fast
+#     feeds:                 # up to 20; http or https only
+#       - {id: openai, name: OpenAI News, url: "https://openai.com/news/rss.xml", enabled: true}
+#       - {id: deepmind, name: Google DeepMind, url: "https://deepmind.google/blog/rss.xml", enabled: true}
+#       - {id: google-ai, name: Google AI, url: "https://blog.google/technology/ai/rss/", enabled: true}
+#       - {id: huggingface, name: Hugging Face, url: "https://huggingface.co/blog/feed.xml", enabled: true}
+#       - {id: techreview-ai, name: MIT Technology Review AI, url: "https://www.technologyreview.com/topic/artificial-intelligence/feed", enabled: true}
+#       - {id: simonwillison, name: Simon Willison, url: "https://simonwillison.net/atom/everything/", enabled: true}
+#     status:
+#       enabled: true        # mix in what runs, waits and is slow or failing
+#       kinds: [running, waiting, slow, failing, quota, offline, notes]
+#     editor:                # Claude Haiku picks and shortens, ONLY when you press the button
+#       enabled: true
+#       interests: ""        # free text: what you want to see
+#       max_picks: 12        # 1 to 40
+#       shorten: true        # one-line titles
+#   # The settings page changes these on top, kept in .bridge/cockpit/ticker.json.
 #   # These five fall back to briefing.claude_code_ui (the briefing-ui mod's block) when this block leaves them out.
 
 

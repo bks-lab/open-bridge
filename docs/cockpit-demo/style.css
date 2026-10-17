@@ -1585,7 +1585,11 @@ kbd {
 .station-value { font-family: var(--font-mono); font-size: 18px; font-weight: 500; line-height: 1.25; color: var(--ink); }
 .station small { font-size: 12px; line-height: 1.3; color: var(--on-surface-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.stage-term { display: flex; flex-direction: column; gap: 10px; }
+/* the greeting on the left; the news band drops below it, and stands beside it once the stage is wide
+   (the @container home rule below the stage's other breakpoints) */
+.stage-term { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px 32px; align-items: start; }
+.stage-greet { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stage-term > .ticker { min-width: 0; margin: 0; }
 .stage-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--on-surface-muted); }
 .stage-prompt { display: flex; align-items: center; gap: 12px; max-width: 760px; border-bottom: 1px solid var(--border); transition: border-color var(--motion); }
 .stage-prompt:focus-within { border-bottom-color: var(--accent-line); }
@@ -1642,6 +1646,14 @@ kbd {
 
 /* the stage follows its own width, not the window's: beside an open detail it is narrower than the screen */
 .bridge-home { container-type: inline-size; container-name: home; }
+/* a wide stage has room right of the greeting (at most 760px): the news band stands there, level with the
+   greeting line, below the Customise button in the corner */
+@container home (min-width: 1100px) {
+  .stage-term { grid-template-columns: minmax(0, 760px) minmax(300px, 1fr); }
+  .stage-greet { grid-column: 1; grid-row: 1; }
+  /* level with the greeting: eyebrow (17) + gap (10) + half the prompt row (26) less half the band (19) */
+  .stage-term > .ticker { grid-column: 2; grid-row: 1; align-self: start; margin-top: 34px; }
+}
 @container home (max-width: 1040px) {
   .stage-body { grid-template-columns: minmax(0, 1fr); }
   .stage-side { order: -1; padding-top: 0; }
@@ -1997,6 +2009,60 @@ button.sit-field:focus-visible { outline: 2px solid var(--accent); outline-offse
 .set-table td, .set-table th { padding: 4px 8px; }
 .set-num { width: 84px; }
 
+/* the news ticker on the start page (views/ticker.js): two equal tracks run left, the second a copy for
+   the seamless loop; hover and keyboard focus stop it, reduced motion makes it a row that scrolls by hand */
+.ticker { display: grid; gap: var(--space-xs); margin-block: var(--space-md); }
+.ticker-viewport {
+  display: flex; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.ticker-track {
+  display: flex; flex: none; align-items: center; gap: var(--space-lg); margin: 0; padding: 6px var(--space-lg) 6px var(--space-md);
+  list-style: none; white-space: nowrap; font-size: var(--text-sm);
+  animation: ticker-run 100s linear infinite; will-change: transform;
+}
+.ticker-track > li { flex: none; }
+@keyframes ticker-run { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+.ticker:hover .ticker-track, .ticker:focus-within .ticker-track { animation-play-state: paused; }
+.ticker-slow, .ticker-normal, .ticker-fast { animation-timing-function: linear; }
+.ticker-item {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--on-surface); font: inherit; text-decoration: none; cursor: pointer;
+}
+span.ticker-item { cursor: default; }
+a.ticker-item:hover, button.ticker-item:hover { background: var(--surface-muted); }
+.ticker-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* a feed's source in a colour of its own (logic.js tickerSourceToken): a tinted chip with a stripe, the text
+   stays the surface's own colour so it reads in light and dark. Each token tints to a strength of its own,
+   since a palette may put secondary and accent close together */
+.ticker-src {
+  padding: 0 6px; border-left: 3px solid var(--tk, var(--border-strong)); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--tk, var(--border-strong)) var(--tk-mix, 14%), transparent); font-weight: 600; color: var(--on-surface);
+}
+.ticker-src.tk-secondary { --tk: var(--secondary); --tk-mix: 24%; }
+.ticker-src.tk-accent { --tk: var(--accent); --tk-mix: 10%; }
+.ticker-src.tk-on-surface { --tk: var(--on-surface); --tk-mix: 8%; }
+.ticker-new { font-size: var(--text-label); text-transform: uppercase; color: var(--accent); }
+.ticker-dot { width: 8px; height: 8px; flex: none; border-radius: var(--radius-full); background: var(--tk, var(--on-surface-muted)); }
+.ticker-status.tk-danger, .ticker-status.tk-warning { font-weight: 600; }
+.ticker-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+/* the status, standing still in the live section (and under the news band on the tiles view) */
+.ticker-status-box { margin: 0 0 8px; }
+.home > .ticker-status-box { margin: 0 0 var(--space-md); }
+.ticker-status-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.ticker-status-list .ticker-item { width: 100%; padding: 3px 4px; text-align: left; font-size: 13px; line-height: 1.35; }
+.ticker-status-list .ticker-dot { width: 7px; height: 7px; }
+.ticker-status-more { margin-top: 4px; font-size: var(--text-sm); }
+.ticker-meta { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; }
+.ticker-set-sub { margin: var(--space-sm) 0 0; }
+.ticker-interests textarea { min-width: min(420px, 100%); resize: vertical; }
+.ticker-feeds .ticker-feed-id { width: 120px; }
+.ticker-feeds .ticker-feed-url { width: min(360px, 60vw); }
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; overflow-x: auto; flex: 1 1 auto; }
+  .ticker-copy { display: none; }
+}
+
 /* the settings page: the areas on the left, the cards of the one chosen beside them */
 .settings-head { flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 4px 0; }
 .settings-layout {
@@ -2171,3 +2237,40 @@ button.sit-field:focus-visible { outline: 2px solid var(--accent); outline-offse
 @media (prefers-reduced-motion: reduce) {
   .switch, .switch-thumb, .settings-body, .settings-nav-item, .view-opt, .st-row { transition: none; animation: none; }
 }
+
+/* an answer drawn from its Markdown (views/prose.js): the blocks keep the chat's rhythm, code and
+   tables scroll inside the bubble instead of widening it */
+.qa.md { white-space: normal; min-width: 0; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md blockquote, .md .md-pre, .md .md-table { margin: 0 0 10px; }
+.md ul, .md ol { padding-left: 1.4em; }
+.md li { margin: 2px 0; }
+.md li > p { margin: 0; }
+.md li > ul, .md li > ol { margin: 2px 0 4px; }
+.md li.md-task { list-style: none; margin-left: -1.3em; display: flex; gap: 6px; align-items: baseline; }
+.md li.md-task > p { display: inline; }
+.md-h { margin: 14px 0 6px; font-weight: 600; line-height: 1.3; color: var(--ink); }
+.md-h1 { font-size: var(--text-h4); }
+.md-h2, .md-h3 { font-size: var(--text-body); }
+.md-h4, .md-h5, .md-h6 { font-size: var(--text-sm); }
+.md-code-run { font-family: var(--font-mono); font-size: 0.92em; padding: 1px 5px; border-radius: var(--radius-sm); background: var(--surface-raised); border: 1px solid var(--border); overflow-wrap: anywhere; }
+.md-pre {
+  padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface-raised); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: var(--text-code); line-height: 1.5; white-space: pre; overflow-x: auto; max-width: 100%;
+}
+.md-pre code { font: inherit; }
+.md blockquote { padding: 2px 0 2px 12px; border-left: 3px solid var(--border-strong); color: var(--on-surface-muted); }
+.md hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+.md a { color: var(--secondary); overflow-wrap: anywhere; }
+.md-table { overflow-x: auto; max-width: 100%; }
+.md-table table { border-collapse: collapse; font-size: var(--text-sm); }
+.md-table th, .md-table td { padding: 4px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.md-table th { background: var(--surface-raised); font-weight: 600; }
+.qa.is-live .qcaret { margin-left: 0; }
+
+/* the list of agents folds away: the conversation takes the whole width */
+.agents-grid.is-wide { grid-template-columns: minmax(0, 1fr); }
+.agent-convs { align-items: center; }
+.agents-list-toggle { flex: none; }
+.agent-current { font-weight: 600; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

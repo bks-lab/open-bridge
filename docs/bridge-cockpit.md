@@ -1,5 +1,5 @@
 ---
-summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the status pages, the task check, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
+summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the news ticker, the status pages, the task check, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
 last_updated: 2026-10-17
 related:
@@ -80,6 +80,7 @@ their defaults:
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
+| `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
 
 `language`, `full_minutes`, `voice`, `launch.target` and `snapshot_minutes`
 used to be set under `briefing.claude_code_ui`, the block of the retired
@@ -201,6 +202,83 @@ Playfair heading over an eyebrow, cards on hairlines). It greets by
 `cockpit.person_name`, repeats the briefing's headline, and carries a field
 that asks the chat directly. Findings of a status page and a control session
 that is not listening stand under it as signals; each opens its place.
+
+**The news ticker (off by default).** With `cockpit.ticker.enabled` the start
+page shows two kinds of items, each in its own place:
+
+- **What happens in the Bridge** stands still as a list in the live section of
+  the side card "Today", above the live events: what runs (agent tabs at work, busy
+  sessions, the task check, the triage), what waits for you (a tab that asks,
+  an answer from a start, rows waiting on you), what is slow (a collect pass
+  near its time limit, a source that took too long, a tab running long), what
+  fails (an alarm, a failed source or background job, a judge without its key),
+  quotas near or over their pace, token outliers, peers and machines that do
+  not answer, and the last warning notes. The page builds these from what it
+  already holds, so they cost nothing and change the moment the state does. A
+  click opens the place it names: the page, the tab, the row or the drawer.
+  Red comes before orange, orange before blue. Six rows show; the rest opens
+  in place behind "N more". While status rows stand there and no live event
+  came yet, the live feed says so in one short line instead of its longer
+  "quiet" text.
+- **News from feeds** run in one slim band in the free space right of the
+  greeting, centred to it, below the Customise button. On a stage narrower
+  than about 1100 pixels (the `home` container, not the window) the band
+  drops below the greeting. It carries the newest items of the RSS or Atom
+  feeds in `ticker.feeds`, newest first, each with its source as a small
+  coloured label. The colours are the `DESIGN.md` tokens secondary, accent
+  and on-surface, each tinted to a strength of its own, never a state colour;
+  they stay three different colours after the fallback chain of
+  `design.py`, also with a `DESIGN.md` that names only a few keys. The configured feeds take them in
+  turn, so every three feeds show three colours and a feed keeps its colour
+  across loads while the list stays the same. The colour groups; the source
+  name in the label is what tells feeds apart. A click opens the
+  article in a new browser tab. The defaults are six English AI news feeds.
+
+The classic view shows the news band under the greeting and the status list
+under the band.
+
+The band moves slowly and stops while the pointer or the keyboard focus is
+on it; Tab walks through its items. With reduced motion in the system it
+stands still and scrolls by hand. Text only: no images, no favicons.
+
+The server reads the feeds, never the page, and only while a page is open:
+when the last read is older than `refresh_minutes`, within a few seconds of
+opening a page after a long gap, and on the refresh button. A feed that fails
+keeps its earlier items and shows its error on the settings page.
+
+**Editor** is a button on the band. Only that click asks Claude Haiku (one
+`claude -p` with no tools, a few cents at most) to pick up to `max_picks`
+items that match `editor.interests` and, with `shorten`, to cut each title to
+one line. The band then shows the picks in that order, plus whatever arrived
+after the edit, marked new; the rest stays hidden until the next edit. Haiku
+never runs at start, on a timer or on a refresh. Changing the interests, the
+number of picks or `shorten` drops the old edit, and the band shows every item
+again until you press the button.
+
+| Key under `ticker` | Default | What it does |
+|---|---|---|
+| `enabled` | `false` | the band on the start page; off means no feed is read |
+| `max_items` | `30` | feed items shown at most (5 to 100) |
+| `per_feed` | `8` | newest items taken from each feed (1 to 30) |
+| `refresh_minutes` | `30` | read the feeds again when older, only while a page is open (5 to 1440) |
+| `speed` | `normal` | `slow`, `normal` or `fast` |
+| `feeds` | six AI news feeds | up to 20 entries of `id`, `name`, `url` (http or https) and `enabled`; a list you set replaces the defaults as a whole |
+| `status.enabled` | `true` | show the Bridge's own items in the live section |
+| `status.kinds` | all | which of `running`, `waiting`, `slow`, `failing`, `quota`, `offline`, `notes`; none chosen shows no status list |
+| `editor.enabled` | `true` | show the Editor button (needs `claude` on the server's path) |
+| `editor.interests` | empty | free text, what you want to see (up to 500 characters) |
+| `editor.max_picks` | `12` | how many items the editor keeps (1 to 40) |
+| `editor.shorten` | `true` | one-line titles from the editor |
+
+A value in `bridge-config.yaml` that is out of range keeps its default; a feed
+entry with a bad id or address is skipped, and with no valid feed left the
+defaults apply. The Settings page (below, under "The model an agent starts
+with") changes every key on top of the config.
+
+"Slow" here means what the cockpit can measure: the time a collect pass took,
+sources that ran out of time, long-running tabs and agent turns. The cockpit
+has no CPU, memory or load source; disk use comes only through `checkup` as a
+finding. A real CPU or load signal needs a probe under `workflow/checks/`.
 
 Under the hero stands the overview, a row of tiles where every tile is a
 way in. Each gauge in percent that a page carries (a quota, a limit) gets a
@@ -660,7 +738,7 @@ Auto's details show only while Auto is on, and the Jev and Haiku tables carry
 a scale from 0 to 3 that shows which model each rating gets. A change is kept
 in `.bridge/cockpit/launch.json`, marked as changed on the page, and a banner
 with "Reset" goes back to the config. The page never
-writes `bridge-config.yaml`. Every start records its model, effort and who
+writes `bridge-config.yaml`. A fourth area, News ticker, carries the news band and the live status of the start page (above): the switch, speed and amounts, the status kinds, the editor's interests, and the feed list, where rows are added, removed or switched off and saved as a whole. A feed that failed at its last read shows its error there. Those changes go to `.bridge/cockpit/ticker.json`, with their own "Reset". Every start records its model, effort and who
 chose it (`chosen`, `recommended`, `status`, `check`, `jev`, `haiku`, `default`) in
 `launches.json`, the data to tune the bands with later.
 
@@ -835,8 +913,24 @@ nothing a stranger could trigger:
   no scripts from elsewhere and no external addresses at all;
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,
   close, settle (done or not doing), urgency, priority, note, check tasks, keep open, close task, launch, adopt, send, key,
-  close tab, snapshot), every id checked again before it reaches a script, every
-  argument a separate word, texts after `--`;
+  close tab, snapshot, ticker settings, ticker refresh, ticker edit), every id
+  checked again before it reaches a script, every argument a separate word,
+  texts after `--`;
+- the news ticker reads only the feed addresses you wrote into
+  `cockpit.ticker.feeds` or saved on the settings page (an address in your
+  own network is allowed because you chose it), only over http or https, with
+  no user name in the address, at most three redirects, eight seconds and 2 MB
+  per feed. A feed that declares a DOCTYPE or an entity is refused before it is
+  parsed. The server never opens an item's link. Titles are stripped of markup
+  and control characters and shown as text; a link becomes an anchor only when
+  it is http or https, and opens with `noopener` and no referrer. Feed text
+  reaches Claude only as the one prompt of the Editor button, a read-only Haiku
+  call with no tools, and what comes back is used only as item numbers and
+  short titles;
+- a Markdown answer (Chat, Other Bridges) is read into plain objects and drawn
+  as elements, never parsed as HTML, so text in an answer cannot become markup
+  or script; a link keeps only http, https and mailto and opens with
+  `noopener` and no referrer;
 - a script runs only from the Bridge's own list (`briefing.py`, `inbox.py`,
   `workplace.py`, `task.py`, `bridge-resources.py`, `triage.py` and the cmux
   layout script), besides the read-only quick chat and the A2A shapes of
@@ -899,6 +993,14 @@ restart of the dashboard; one that was answering when it stopped says so. The
 Chat tab lists every kept chat (first question, when, model, cost) and opens
 one with its box ready; "As a tab" in the window moves the open chat there.
 
+**Markdown answers.** An answer in the Chat and an answer from another Bridge
+on the Other Bridges tab show as formatted text: headings, paragraphs, lists
+(nested, numbered, ticked), code blocks, quotes, tables, bold, italic, strike,
+inline code and links. A link becomes clickable only when it is http, https
+or mailto; any other address stays plain text. Raw HTML in an answer is never
+markup, it shows as the characters it is (`scripts/web/markdown.js`, drawn by
+`views/prose.js`).
+
 **Other Bridges** (`scripts/lib/bridge_cockpit/agents.py`). Where `infra/a2a-peers/` holds
 a peer, the Other Bridges tab lists each with what its public agent card says (name,
 skills, protocol version; fetched in the background, kept five minutes, never a
@@ -913,6 +1015,11 @@ without sending anything new. Conversations are kept in `agents.json` in the
 state dir. Without a peer there is no tab. The quick chat's system text names
 `infra/a2a-peers/` too, so it can suggest asking an agent; it sends nothing
 itself.
+
+**Folding the list of agents.** The list of agents beside a conversation
+folds away with its button, so the conversation gets the whole width; the
+button brings it back. The choice is kept in this browser only
+(`localStorage`), so another browser or computer keeps its own.
 
 The control session itself has its own window ("View" on its card, or
 "Control session" in the question window): its terminal, live, and a box that
@@ -985,6 +1092,8 @@ Everything lives under `.bridge/cockpit/` in the Bridge root, which git ignores:
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives |
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them |
 | `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) |
+| `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) |
+| `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start |
 | `relay/inbox/` | questions for a session (written by the server) |
 | `relay/done/` | what became of each (written by that session) |
 | `relay/heartbeat/` | one file per Claude Code session with the relay on |
@@ -1172,3 +1281,8 @@ to copy.
 | "Nothing waits for you" and empty tabs | the profile has no sections for it: run `python3 scripts/briefing.py collect --json` and look at `pages` |
 | a tracker tab is empty but not failing | check its `query` (`owners`, `repos`): the template's placeholders find nothing |
 | the page shows an old state | it is the last briefing of today until the fresh run ends; reload (`r`) asks every source fresh |
+| no news band on the start page | `cockpit.ticker.enabled` is not `true` (or switched off on Settings), or no feed was read so far; the first read starts within seconds of opening the page. The status list in the live section shows only while there is something to say |
+| a feed shows an error on Settings | the address does not answer with RSS or Atom within eight seconds, is larger than 2 MB, or declares a DOCTYPE; open it in the browser and check it, or switch it off. The other feeds and its own earlier items stay |
+| no Editor button on the band | `editor.enabled` is off, or the server cannot find `claude`; it also stays greyed while an edit runs |
+| the editor hides items you want | it shows only its picks and what came after; sharpen `editor.interests`, or press Editor again. Changing the interests shows every item until the next edit |
+| the ticker shows no CPU or memory warnings | the cockpit has no such source. "Slow" covers collect passes, sources, tabs and agent turns; disk only comes through `checkup` |

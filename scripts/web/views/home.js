@@ -18,6 +18,7 @@ import {
 } from './nav.js'
 import { Btn, Dot, Empty, Icon, PrioChip, StateLine } from './parts.js'
 import { BridgeStage, leadOf, stationOf } from './stage.js'
+import { TickerBand, TickerStatusList } from './ticker.js'
 
 // ---------------------------------------------------------------- the start page
 
@@ -514,6 +515,8 @@ export function HomePage({ s, c }) {
           <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
       </div>` : null}
     </header>
+    <${TickerBand} s=${s} c=${c} only="news" />
+    <${TickerStatusList} s=${s} c=${c} />
     ${chips}
     ${on.has('s:focus') ? html`<${HomeFocus} s=${s} c=${c} tabs=${tabs} />` : null}
     <${HomeOverview} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} />

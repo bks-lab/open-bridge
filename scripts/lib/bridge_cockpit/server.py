@@ -38,6 +38,7 @@ from .collector import Collector
 from .daybook import DayBook
 from .returns import Launches
 from .launch import LaunchError, LaunchModel
+from .ticker import Ticker
 from .graph import Graph
 from .config import WebConfig, load_web_config
 from .relay import Relay, default_key_dir, load_key
@@ -167,6 +168,7 @@ class App:
         self.relay = Relay(self.state_dir, cfg, clock, self.tx, key=load_key(key_dir or default_key_dir()))
         self.actions = Actions(self)
         self.launch_model = LaunchModel(self)         # the model an agent starts with (launch.py)
+        self.ticker = Ticker(self)                     # the news ticker of the start page (ticker.py)
         self.watcher = Watcher(self)
         self.last_tabs_json: str | None = None
         self.inbox_cache: tuple[float, list | None] = (0.0, None)
@@ -259,7 +261,7 @@ class App:
                 "notes": list(self.notes), "relay": self.relay_state(), "cmux": self.cmux_state(),
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
-                "launch": self.launch_model.state()}
+                "launch": self.launch_model.state(), "ticker": self.ticker.state()}
 
     def task_open(self, slug: str) -> bool:
         return bool(slug) and (self.root / "work" / "tasks" / slug / "STATUS.md").is_file()
@@ -378,7 +380,8 @@ class App:
             self.triage.start_daily()  # what each task and inbox item is, once a day by itself (cockpit.triage_daily)
         self.start_layout_backup()     # the cmux layout, every snapshot_minutes, only on change
         self.history.backfill(self.root, self.state_dir / "audit.log")   # closes from before the history
-        for target, name in ((self.collector.worker, "collect"), (self.tabs.loop, "tabs"), (self.watcher.loop, "watch")):
+        for target, name in ((self.collector.worker, "collect"), (self.tabs.loop, "tabs"), (self.watcher.loop, "watch"),
+                             (self.ticker.loop, "ticker-loop")):
             thread = threading.Thread(target=target, name=f"bridge-cockpit-{name}", daemon=True)
             thread.start()
             self.threads.append(thread)
@@ -586,6 +589,9 @@ class Handler(BaseHTTPRequestHandler):
                 data = None
             ok = isinstance(data, dict) and isinstance(data.get("runs"), list)
             self.send_json(200, {"ok": True, "view": data if ok else None})
+        elif path == "/api/ticker":
+            # the news ticker as the page gets it in the state payload and the `ticker` event (ticker.py)
+            self.send_json(200, {"ok": True, "ticker": app.ticker.state()})
         elif path == "/api/usage":
             # the tokens of the last seven days on this machine, counted from the Claude Code transcripts, read only
             self.send_json(200, {"ok": True, "usage": app.usage.view()})

@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, addNote, attentionTabs, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
-  upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch,
+  upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -99,6 +99,7 @@ const store = createStore({
   cmux: { ok: true, error: null },
   driver: { caps: null },
   launch: null,        // the model an agent tab starts with (state.launch); null: an older server, the choice stays hidden
+  ticker: null,        // the news ticker (state.ticker); null: an older server, the band and its settings stay hidden
   launchRoutes: {},    // per row key the recommendation of Auto: { title, status: loading|ok|error, route }   // null: not known yet, every button shows; a list: only what the terminal driver serves
   notes: [], toasts: [], conn: 'connecting', connMs: Date.now(), now: Date.now(), mock: MOCK,
   layout: 'wide',
@@ -111,7 +112,7 @@ const store = createStore({
     workKind: load('bridge-cockpit.workKind', null),
     theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
-    busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', quickModel: load('bridge-cockpit.quickModel', null),
+    busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden', quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
   details: { inbox: {}, task: {} },
@@ -209,6 +210,7 @@ function applyState(payload) {
     driver: payload.driver ?? s.driver,
     home: payload.home ?? s.home,
     launch: payload.launch ?? s.launch,
+    ticker: payload.ticker ?? s.ticker,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
   fixPage()
@@ -307,6 +309,10 @@ const handlers = {
   // the model choice changed (a save here or in another browser): the new block, the old recommendations go
   launch(l) {
     clearRoutes(l)
+  },
+  // the news ticker changed: new items, a refresh or an edit ended, settings saved here or in another browser
+  ticker(tk) {
+    store.set(s => (newerTicker(s.ticker, tk) ? { ...s, ticker: tk } : s))
   },
   // the start page's choice of tiles, made in this or another browser
   home(h) {
@@ -483,6 +489,16 @@ async function freshLaunch(r) {
 // before the clear is dropped instead of bringing back a recommendation made under the old settings
 let routeGen = 0
 
+/** The ticker block an answer carries, into the store unless a newer one is already there (the event of
+ *  the same change can arrive first); the answer itself goes back to the caller */
+function tickerAnswer(r) {
+  store.set(s => {
+    if (newerTicker(s.ticker, r?.ticker)) return { ...s, ticker: r.ticker }
+    return s
+  })
+  return r
+}
+
 /** A new launch block (or the old one where none came) and an empty recommendation cache */
 function clearRoutes(launch) {
   routeGen += 1
@@ -639,6 +655,12 @@ const ctl = {
     setUi({ page: AGENTS_PAGE, tabView: null, agentConv: conv, agentPeer: c?.peer ?? null })
   },
   setAgentMode: mode => setUi({ agentMode: mode }),
+  // the list of agents beside the conversation folds away for more room; kept in this browser
+  toggleAgentsList: () => {
+    const hidden = !store.get().ui.agentsListHidden
+    save('bridge-cockpit.agentsList', hidden ? 'hidden' : 'shown')
+    setUi({ agentsListHidden: hidden })
+  },
   // the task and inbox pages: filter by the triage, sort again on a click (scripts/web/triage.js)
   setTriageFilter: f => setUi({ triageFilter: f }),
   triageRun: async fresh => {
@@ -755,6 +777,14 @@ const ctl = {
     if (r) await freshLaunch(r)
     return r
   },
+  // the news ticker: settings save at once, the refresh and the editor return at once and end with a ticker event.
+  // The editor (Claude Haiku) runs only from its button: nothing else calls tickerEdit
+  saveTicker: async settings => tickerAnswer(await act('ticker_settings', { settings })),
+  resetTicker: async () => tickerAnswer(await act('ticker_settings_reset', {})),
+  // their answer carries the state of the start, and the thread's closing event can come before it: the
+  // store takes both states from the ticker events alone, in order, and the button shows busy in between
+  tickerRefresh: async () => act('ticker_refresh', {}),
+  tickerEdit: async () => act('ticker_edit', {}),
   askControl,
   setAskFallback: fb => setUi({ askFallback: fb }),
   closeTabView: () => setUi({ tabView: null }),
