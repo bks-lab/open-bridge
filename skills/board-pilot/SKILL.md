@@ -380,7 +380,7 @@ evidence tee, redaction, the record layer, the `verify.sh` exit-code contract
 size, bounces-gated comment read-back, per-process field-list caching, the
 transient-vs-permanent preflight split (`test_rate_limit.py`).
 
-**410 tests across 33 files, ~20 s, no network** (measured 2026-09-02 — re-run it
+**549 tests across 41 files, ~65 s, no network** (measured 2026-10-17 — re-run it
 rather than trusting this line; a stale count here is exactly the drift this
 section once carried). `test_tick_report.py` + `test_report_config.py` cover the
 outward seam: no config means no sink, one message per stage, a throwing sink that
