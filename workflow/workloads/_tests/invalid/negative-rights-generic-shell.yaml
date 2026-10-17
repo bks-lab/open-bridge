@@ -1,0 +1,20 @@
+# Control: bare Bash is generic shell and never declarable. The scar is a live
+# one: an unattended run on this fleet is handed --allowedTools Bash,… inside a
+# wrapper script, where no declaration can see it.
+schema_version: 1
+scope: core
+id: negative-rights-generic-shell
+title: Negative rights generic shell
+purpose: "Control: generic shell in a tools line"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Bash,Read,Glob,Grep"
+    read_scope: example/notes
+    reaches_humans: false

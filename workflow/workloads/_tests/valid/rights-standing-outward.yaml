@@ -1,0 +1,28 @@
+# Coverage case: outward on the STANDING level, so the shape is not only good
+# for one story. A daily report may reach a person on every run, and still owes
+# the same recipients, caps and way out as any other permission.
+schema_version: 1
+scope: core
+id: rights-standing-outward
+title: Rights standing outward
+purpose: "Example report that reaches one declared person on every run"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep"
+    read_scope: example/notes
+    reaches_humans: true
+    recipients:
+      - {mandant_ref: example-person, channel_ref: example-channel}
+    caps: {total: 400, per_week: 7, hours: "06:00-22:00"}
+  stop:
+    flag: /var/lib/example/rights-standing-outward.stop
+  consent:
+    flag: ~/.bridge/rights/rights-standing-outward.consent
+    ask_via: example-channel

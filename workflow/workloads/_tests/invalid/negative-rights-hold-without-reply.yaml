@@ -1,0 +1,30 @@
+# Negative control: a level that holds while unanswered, with no reply flag.
+# Rule: rights.allOf, hold_while_unanswered -> reply. The scar is measured: the
+# first unanswered message froze the prototype for good.
+schema_version: 1
+scope: core
+id: negative-rights-hold-without-reply
+title: Rights hold without reply
+purpose: "Example run that holds while unanswered and names no way to answer"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep"
+    read_scope: example/notes
+    reaches_humans: false
+  escalation:
+    reaches_humans: true
+    unlocked_by: {no_progress_ticks: 3}
+    recipients:
+      - {mandant_ref: example-person, channel_ref: example-channel}
+    caps: {total: 3, hold_while_unanswered: true}
+  stop:
+    flag: ~/.bridge/rights/negative-rights-hold-without-reply.stop
+  consent:
+    flag: ~/.bridge/rights/negative-rights-hold-without-reply.consent

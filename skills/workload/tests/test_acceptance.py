@@ -824,6 +824,30 @@ class CoreHygiene(MachineGuard):
             "placement.interpreter (version segment)": (
                 at("properties", "placement", "properties", "interpreter",
                    "not", "pattern"), model.VERSION_SEGMENT_PATTERN),
+            # The rights shapes were doubled like the rest and compared like
+            # none of them, which is the drift this test exists to catch. Added
+            # when `fetch_scope` arrived, because a host list that means one
+            # thing to the contract and another to the acting gate bounds
+            # nothing.
+            "rights (generic shell)": (
+                at("$defs", "rights_toolstring", "not", "pattern"),
+                model.RIGHTS_GENERIC_SHELL_PATTERN),
+            "rights (scope)": (
+                at("$defs", "rights_relpath", "pattern"), model.RIGHTS_SCOPE_PATTERN),
+            "rights (recipient slug)": (
+                at("$defs", "rights_slug", "pattern"), model.MANDANT_PATTERN),
+            "rights (fetch host)": (
+                at("$defs", "rights_level", "properties", "fetch_scope",
+                   "items", "pattern"), model.RIGHTS_HOST_PATTERN),
+            "rights.stop.flag": (
+                at("properties", "rights", "properties", "stop", "properties",
+                   "flag", "pattern"), model.RIGHTS_STOP_FLAG_PATTERN),
+            "rights.reply.flag": (
+                at("properties", "rights", "properties", "reply", "properties",
+                   "flag", "pattern"), model.RIGHTS_STOP_FLAG_PATTERN),
+            "rights.consent.flag": (
+                at("properties", "rights", "properties", "consent", "properties",
+                   "flag", "pattern"), model.RIGHTS_STOP_FLAG_PATTERN),
         }
         for key_path, (in_schema, in_gate) in both.items():
             with self.subTest(rule=key_path):

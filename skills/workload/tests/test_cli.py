@@ -1564,3 +1564,89 @@ class TheOffSwitchIsRealOrItIsNotDocumented(MachineGuard):
     def test_the_switch_on_is_not_a_refusal(self):
         rc, text = self.run_cli(self.repo(self.ON), "list")
         self.assertNotEqual(rc, 3, f"an enabled skill refused itself:\n{text}")
+
+
+class WhatShowSaysAboutRights(MachineGuard):
+    """`show` muss die Rechte NENNEN, sonst war der ganze Block umsonst.
+
+    Das Argument fuer den `rights:`-Block war, dass die Schicht, die ueber
+    Laeufe berichtet, ihn zeigen kann, statt dass er in Zeile 331 eines
+    Wrapper-Skripts steht. Ein Block, den nichts rendert, ist dieser Wrapper
+    mit einer schoeneren Adresse.
+    """
+
+    def lines(self, raw):
+        # Die gemeinsame Ableitung, nicht die des Kommandos: `show` im Terminal
+        # und die veroeffentlichte Ansicht im Browser lesen dieselbe Funktion.
+        from engine import model as m
+        return m.rights_summary(raw)
+
+    def test_the_view_reads_the_same_summary_as_the_terminal(self):
+        """Zwei Zusammenfassungen desselben Blocks driften, und die, die driftet,
+        ist immer die, die niemand aufruft."""
+        from engine import view
+        import inspect
+        self.assertIn("model.rights_summary", inspect.getsource(view.rows),
+                      "die Ansicht baut sich ihre eigene Fassung")
+
+    def test_an_absent_block_says_the_enforcing_side_denies(self):
+        # Nicht schweigen: die Abwesenheit ist eine Aussage, und zwar die
+        # strengste, die es hier gibt.
+        self.assertEqual(["rights: not declared, so the enforcing side denies"],
+                         self.lines({}))
+
+    def test_a_star_reads_as_any_host_not_as_a_star(self):
+        # `fetch=*` in einer Zeile voller Kommata liest sich wie ein Eintrag
+        # unter vielen. Es ist die weiteste Erlaubnis, die dieser Block kennt.
+        out = "\n".join(self.lines({"rights": {"standing": {
+            "tools": "WebFetch", "read_scope": "a", "fetch_scope": ["*"],
+            "reaches_humans": False}}}))
+        self.assertIn("fetch=any host", out)
+
+    def test_a_level_that_reaches_people_says_who_and_how_often(self):
+        out = "\n".join(self.lines({"rights": {
+            "standing": {"tools": "Read", "read_scope": "a", "reaches_humans": False},
+            "escalation": {"reaches_humans": True,
+                           "unlocked_by": {"no_progress_ticks": 3},
+                           "recipients": [{"mandant_ref": "someone",
+                                           "channel_ref": "somewhere"}],
+                           "caps": {"total": 3}}}}))
+        self.assertIn("REACHES someone/somewhere", out)
+        self.assertIn("total=3", out)
+        self.assertIn("no_progress_ticks=3", out)
+
+    def test_the_way_out_is_printed_because_it_is_part_of_the_permission(self):
+        out = "\n".join(self.lines({"rights": {
+            "standing": {"tools": "Read", "read_scope": "a", "reaches_humans": False},
+            "stop": {"flag": "~/x.stop"}, "reply": {"flag": "~/x.reply"}}}))
+        self.assertIn("rights.stop: ~/x.stop", out)
+        self.assertIn("rights.reply: ~/x.reply", out)
+
+
+class ViewJsonIsOneDocumentOnStdout(MachineGuard):
+    """`view --json` is read by a program, so stdout carries the document and
+    nothing else: the honest sentence moves to stderr, and no page is written."""
+
+    def test_stdout_parses_and_no_page_is_written(self):
+        import json
+
+        root = make_repo(self.tmpdir(), declarations=("calendar-export",))
+        out, err = io.StringIO(), io.StringIO()
+        # The machine is not the subject here, and the guard refuses ssh: the
+        # report comes from a stub, the declarations from the repository.
+        reconcile = cli._module("reconcile")
+        stub = mod("engine.report").Report(findings=[], header="0 of 1 machine(s) probed")
+        with mock.patch.object(reconcile, "run", lambda *a, **kw: stub), \
+                contextlib.redirect_stdout(out):
+            with contextlib.redirect_stderr(err):
+                cli.main(["--root", str(root), "view", "--no-probe", "--json",
+                          "--host", "host-a",
+                          "--now", "2026-08-24T12:00:00+02:00"])
+        doc = json.loads(out.getvalue())
+        self.assertEqual(doc["schema"], 1)
+        self.assertEqual(doc["host"], "host-a")
+        self.assertEqual(doc["generated_at"], "2026-08-24T12:00:00+02:00")
+        self.assertTrue(doc["runs"], "the repository's declarations are missing")
+        self.assertTrue(err.getvalue().strip(), "the reconcile sentence was dropped")
+        self.assertFalse((root / ".bridge" / "workloads.html").exists(),
+                         "--json wrote the page as well")

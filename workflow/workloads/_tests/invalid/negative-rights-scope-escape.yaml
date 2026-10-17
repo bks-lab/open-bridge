@@ -1,0 +1,18 @@
+# Control: a scope carrying .. is a different scope than the one a reader
+# assumes on this line.
+schema_version: 1
+scope: core
+id: negative-rights-scope-escape
+title: Negative rights scope escape
+purpose: "Control: a scope that climbs out of the tree"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    read_scope: example/notes/../../../
+    reaches_humans: false

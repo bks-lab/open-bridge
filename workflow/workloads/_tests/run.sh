@@ -127,8 +127,20 @@ declare -a CASES=(
   "negative-relative-command.yaml@@$.execution.command[0]: 'assistant' does not match '^/'"
   # ── A label prefix is a dotted name and nothing else. ─────────────────────
   "negative-label-prefix-malformed.yaml@@$.placement.label_prefix: '.leading.dot' does not match"
+  # ── rights: what a run may do. ────────────────────────────────────────────
+  "negative-rights-generic-shell.yaml@@$.rights.standing.tools: 'Bash,Read,Glob,Grep' should not be valid"
+  "negative-rights-inline-handle.yaml@@$.rights.escalation.recipients[0].mandant_ref: 'person@example.com' does not match"
+  "negative-rights-escalation-without-condition.yaml@@$.rights.escalation: 'unlocked_by' is a required property"
+  "negative-rights-outward-without-caps.yaml@@$.rights.escalation: 'caps' is a required property"
+  "negative-rights-outward-without-stop.yaml@@$.rights: 'stop' is a required property"
+  "negative-rights-scope-escape.yaml@@$.rights.standing.read_scope: 'example/notes/../../../' does not match"
+  "negative-rights-tool-without-scope.yaml@@$.rights.standing: 'read_scope' is a required property"
+  "negative-rights-relative-stop-flag.yaml@@$.rights.stop.flag: '.stop' does not match"
+  "negative-rights-fetch-without-hosts.yaml@@$.rights.standing: 'fetch_scope' is a required property"
+  "negative-rights-hold-without-reply.yaml@@$.rights: 'reply' is a required property"
+  "negative-rights-fetch-star-beside-hosts.yaml@@$.rights.standing.fetch_scope: ['example.com', '*'] is too long"
+  "negative-rights-outward-without-consent.yaml@@$.rights: 'consent' is a required property"
 )
-
 # ── The mutation battery. ─────────────────────────────────────────────────────
 # name @@ literal in _schema.yaml @@ softened literal @@ the ONE control that
 # must go hollow. Every needle disables exactly one enforced rule; the run
@@ -209,8 +221,28 @@ declare -a NEEDLES=(
   "grant-name-may-be-invented@@enum: [full-disk-access, calendar, contacts, reminders, photos,@@enum: [full-disk, full-disk-access, calendar, contacts, reminders, photos,@@negative-unknown-grant.yaml"
   "command-may-be-relative@@pattern: \"^/\"   # argv[0] absolute; PATH under a service manager is not a login PATH@@pattern: \"^\"   # argv[0] absolute; PATH under a service manager is not a login PATH@@negative-relative-command.yaml"
   "label-prefix-may-be-anything@@pattern: \"^[A-Za-z0-9][A-Za-z0-9_-]*(\\\\.[A-Za-z0-9][A-Za-z0-9_-]*)*$\"@@pattern: \"^.*$\"@@negative-label-prefix-malformed.yaml"
+  # ── rights: what a run may do. One needle per rule, and each rule
+  #    carries its reason on its own line so exactly one control goes
+  #    hollow when it is softened. ───────────────────────────────────
+  'rights-tools-may-be-generic-shell@@      pattern: "(^|,)\\s*Bash\\s*(,|$)"       # generic shell is never declarable@@      pattern: "(^|,)\\s*never-present-tool\\s*(,|$)"       # generic shell is never declarable@@negative-rights-generic-shell.yaml'
+  'rights-recipient-may-be-a-handle@@    pattern: "^[a-z0-9][a-z0-9-]*$"          # a reference, never a handle@@    pattern: "^.*$"          # a reference, never a handle@@negative-rights-inline-handle.yaml'
+  'rights-escalation-may-lack-a-condition@@          - required: [unlocked_by]          # a level with no condition is the normal state under another name@@          - not: {required: [never-present]}          # a level with no condition is the normal state under another name@@negative-rights-escalation-without-condition.yaml'
+  'rights-outward-may-lack-caps@@          required: [recipients, caps]       # reaching people without a list and a cap is a hole, not a right@@          not: {required: [never-present]}       # reaching people without a list and a cap is a hole, not a right@@negative-rights-outward-without-caps.yaml'
+  # CAUGHT UP 2026-09-11: `consent` joined the rule on 2026-09-10, so the
+  # line became `required: [stop, consent]` and this needle, still looking
+  # for the old `required: [stop]`, matched ZERO times. Its sibling
+  # `rights-outward-may-lack-a-consent` softens the same line the other
+  # way: that one drops consent and keeps stop, this one drops stop and
+  # keeps consent, so each still empties exactly one control.
+  'rights-outward-may-lack-a-way-out@@          required: [stop, consent]          # a way out and a way in are both part of the permission@@          required: [consent]          # a way out and a way in are both part of the permission@@negative-rights-outward-without-stop.yaml'
+  'rights-scope-may-climb-out@@    pattern: "^(?!/)(?!.*\\.\\.).+$"           # no absolute path, no climbing out@@    pattern: "^.*$"           # no absolute path, no climbing out@@negative-rights-scope-escape.yaml'
+  'rights-read-tool-may-lack-a-scope@@          required: [read_scope]             # a read tool with no scope is refused on every call@@          not: {required: [never-present]}             # a read tool with no scope is refused on every call@@negative-rights-tool-without-scope.yaml'
+  'rights-stop-flag-may-be-relative@@            pattern: "^(~|/)"                # absolute or ~, never relative@@            pattern: "^.*$"                # absolute or ~, never relative@@negative-rights-relative-stop-flag.yaml'
+  'rights-fetch-may-reach-any-host@@          required: [fetch_scope]            # a fetching tool with no host list reaches every host@@          not: {required: [never-present]}            # a fetching tool with no host list reaches every host@@negative-rights-fetch-without-hosts.yaml'
+  'rights-hold-may-lack-a-release@@          required: [reply]                  # a hold with no release is a stop wearing a friendlier word@@          not: {required: [never-present]}                  # a hold with no release is a stop wearing a friendlier word@@negative-rights-hold-without-reply.yaml'
+  'rights-star-may-stand-beside-hosts@@              maxItems: 1                    # a list that names hosts beside `*` reads bounded and is not@@              maxItems: 99                    # a list that names hosts beside `*` reads bounded and is not@@negative-rights-fetch-star-beside-hosts.yaml'
+  'rights-outward-may-lack-a-consent@@          required: [stop, consent]          # a way out and a way in are both part of the permission@@          required: [stop]          # a way out and a way in are both part of the permission@@negative-rights-outward-without-consent.yaml'
 )
-
 # ── What is NOT fully covered. Printed at the end of every run. ───────────────
 # Without this list the green above reads as completeness, and that is exactly
 # the finding that led to round 4.
@@ -230,6 +262,12 @@ Coverage, named honestly:
     paths: interpreter, working_dir, command[0]
     the program keeps its name: no version in the interpreter path, and a
       declared privacy grant needs a client path of its own
+    rights, all twelve rules: generic shell, handle instead of reference,
+      escalation without a condition, outward without caps, outward without a
+      way out, scope climbing out, read tool without a scope, relative stop
+      flag, fetch tool without a host list, hold without a release, `*`
+      standing beside named hosts, and reaching a person with no way for a
+      human to say yes
 
   Checked REPRESENTATIVELY only. One control stands for a whole class; remove
   another instance of the same class from the schema and you will NOT notice

@@ -1,0 +1,20 @@
+# Negative control: `*` next to named hosts. The list reads bounded and is not.
+# Rule: rights_level.properties.fetch_scope.allOf, contains `*` -> maxItems 1.
+schema_version: 1
+scope: core
+id: negative-rights-fetch-star-beside-hosts
+title: Rights fetch star beside hosts
+purpose: "Example run whose host list reads bounded while carrying a star"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep,WebFetch"
+    read_scope: example/notes
+    fetch_scope: [example.com, "*"]
+    reaches_humans: false

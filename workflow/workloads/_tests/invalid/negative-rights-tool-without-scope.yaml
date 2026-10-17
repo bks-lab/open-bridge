@@ -1,0 +1,18 @@
+# Control: Read without read_scope grants a tool the enforcing side refuses on
+# every call. In a diff it reads like a permission that works.
+schema_version: 1
+scope: core
+id: negative-rights-tool-without-scope
+title: Negative rights tool without scope
+purpose: "Control: a read tool with no scope to read"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep"
+    reaches_humans: false

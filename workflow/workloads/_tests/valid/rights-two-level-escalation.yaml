@@ -1,0 +1,34 @@
+# Coverage case: the shape the block exists for. Research on every run, and a
+# person reachable only once the harness has measured a standstill.
+schema_version: 1
+scope: core
+id: rights-two-level-escalation
+title: Rights two level escalation
+purpose: "Example run that may reach one declared person after a measured standstill"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep,WebSearch"
+    read_scope: example/notes
+    write_scope: example/notes/attempts.md
+    reaches_humans: false
+  escalation:
+    reaches_humans: true
+    unlocked_by: {no_progress_ticks: 3}
+    recipients:
+      - {mandant_ref: example-person, channel_ref: example-channel}
+    caps: {total: 3, per_week: 1, hours: "09:00-18:00", hold_while_unanswered: true}
+  stop:
+    flag: ~/.bridge/rights/rights-two-level-escalation.stop
+    in_band: true
+  reply:
+    flag: ~/.bridge/rights/rights-two-level-escalation.reply
+  consent:
+    flag: ~/.bridge/rights/rights-two-level-escalation.consent
+    ask_via: example-channel

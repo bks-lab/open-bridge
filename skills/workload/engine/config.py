@@ -42,6 +42,9 @@ class Config:
     #: The declared alarm path: {command: [...], detail: [...]}. See
     #: engine/notify.py; a bare string is refused there, with the shape.
     notify_via: dict | None = None
+    #: The words of a message, over engine/notify.py TEXT_DEFAULTS (English).
+    #: An instance that reads its alarms in another language writes them here.
+    notify_text: dict | None = None
     step_timeout_sec: int = 60
     probe_timeout_sec: int = 30
     ssh_connect_timeout_sec: int = 10
@@ -121,6 +124,7 @@ def load_config(root: Path) -> Config:
         dispatcher_registry=raw.get("dispatcher_registry", defaults.dispatcher_registry),
         dispatcher_guarantees=_guarantees(raw.get("dispatcher_guarantees"), str(path)),
         notify_via=raw.get("notify_via", defaults.notify_via),
+        notify_text=raw.get("notify_text", defaults.notify_text),
         step_timeout_sec=int(raw.get("step_timeout_sec", defaults.step_timeout_sec)),
         probe_timeout_sec=int(raw.get("probe_timeout_sec", defaults.probe_timeout_sec)),
         ssh_connect_timeout_sec=int(raw.get("ssh_connect_timeout_sec",

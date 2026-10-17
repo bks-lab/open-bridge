@@ -1,0 +1,26 @@
+# Control: an escalation level with no unlocked_by is not a level, it is the
+# normal state under another name.
+schema_version: 1
+scope: core
+id: negative-rights-escalation-without-condition
+title: Negative rights escalation without condition
+purpose: "Control: escalation without a measured condition"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing: {reaches_humans: false}
+  escalation:
+    reaches_humans: true
+    recipients:
+      - {mandant_ref: example-person, channel_ref: example-channel}
+    caps: {total: 3}
+  stop: {flag: /var/lib/example/x.stop}
+  # Seit `consent` Pflicht ist, sobald ein Level Menschen erreicht, muss
+  # diese Kontrolle es mitfuehren: sonst faellt sie an zwei Regeln und
+  # beweist keine davon.
+  consent: {flag: /var/lib/example/x.consent}

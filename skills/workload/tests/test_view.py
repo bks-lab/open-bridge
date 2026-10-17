@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from types import SimpleNamespace
 
 from tests.conftest import CORPUS, DERIVED, MachineGuard, mod
 
@@ -3288,3 +3289,152 @@ class TheTableIsSectionedByOneOfTwoQuestions(ViewBase):
         # ignored.
         with self.assertRaises(ValueError):
             self.page(workloads=self.stack(), group_by="whatever")
+
+
+class TheDocumentIsThePageWithoutTheMarkup(ViewBase):
+    """`view --json`: the same content for a reader that draws its own.
+
+    The risk is a second derivation. A dashboard that recounts the findings, or
+    re-places a run on the day, disagrees with this page the first time either
+    of them learns something, and a reader holding both cannot tell which one
+    is right. So these cases compare the document against the very stages the
+    page is built from, and the page against itself with the document built.
+    """
+
+    CONTRACT = ("schema", "host", "generated_at", "zone", "stats", "facets",
+                "systems", "runs", "elsewhere")
+    RUN_KEYS = ("id", "title", "purpose", "system", "kind", "sphere", "host",
+                "runtime", "owner", "when", "unit", "log", "program",
+                "program_where", "retired", "state", "severity", "findings",
+                "strip", "continuous", "day", "week", "month_due", "ran_days")
+
+    def fixture(self):
+        import dataclasses
+
+        base = self.load("calendar-export")
+        loads = [dataclasses.replace(base, id="an-agent", system="a-stack"),
+                 dataclasses.replace(base, id="a-loner", system="_standalone"),
+                 base]
+        findings = [
+            self.finding("an-agent", "overdue", "high", "no trace since 06:00",
+                         hint="look at the log"),
+            self.finding("an-agent", "in_sync", "info", "unit matches"),
+            self.finding("a-loner", "in_sync", "info", "unit matches"),
+            self.finding("old-entry", "inventory_stale", "medium", "names nothing"),
+            self.finding("kept-out", "intentionally_absent", "info", "decided"),
+            self.finding("someone.daemon", "foreign", "info", "not declared"),
+        ]
+        history = {"an-agent": [("2026-08-23T05:00:00Z", 0, "ok", "an-agent"),
+                                ("2026-08-23T06:00:00Z", 1, "failed", "an-agent")]}
+        runs = {"an-agent": ("2026-08-23T06:00:00Z", 1)}
+        rep = report_mod.Report(findings=findings, header="1 of 1 probed",
+                                history=history, runs=runs, state_dir="/state")
+        return rep, loads
+
+    def document(self, rep, loads):
+        return view.data(rep, loads, generated_at=STAMP, hosts=("host-a",))
+
+    def test_it_carries_the_contract_keys_and_is_json(self):
+        import json
+
+        rep, loads = self.fixture()
+        doc = json.loads(json.dumps(self.document(rep, loads)))
+        for key in self.CONTRACT:
+            self.assertIn(key, doc)
+        self.assertEqual(doc["schema"], 1)
+        self.assertEqual(doc["host"], "host-a")
+        self.assertEqual(set(doc["stats"]),
+                         {"in_service", "with_findings", "not_reported", "retired"})
+        for facet in ("kind", "sphere", "host", "runtime", "state"):
+            self.assertIn(facet, doc["facets"])
+        self.assertEqual(set(doc["elsewhere"]),
+                         {"inventory_stale", "intentionally_absent", "undeclared"})
+        for run in doc["runs"]:
+            for key in self.RUN_KEYS:
+                self.assertIn(key, run, f"run {run.get('id')} lacks {key}")
+            self.assertEqual(len(run["week"]), 7)
+
+    def test_a_run_says_what_its_row_and_lane_say(self):
+        rep, loads = self.fixture()
+        doc = self.document(rep, loads)
+        row = {r.workload_id: r for r in view.rows(rep, loads)}["an-agent"]
+        lane = {l.workload_id: l for l in view.lanes(rep, loads)}["an-agent"]
+        run = {r["id"]: r for r in doc["runs"]}["an-agent"]
+        for key, attr in (("title", "title"), ("purpose", "purpose"),
+                          ("kind", "kind"), ("sphere", "persona"),
+                          ("host", "host"), ("runtime", "runtime"),
+                          ("owner", "owner"), ("when", "when"),
+                          ("unit", "unit"), ("log", "log")):
+            self.assertEqual(run[key], getattr(row, attr), key)
+        self.assertEqual(run["system"], "a-stack")
+        self.assertEqual((run["state"], run["severity"]), ("overdue", "high"),
+                         "the worst finding is not the run's state")
+        self.assertEqual([f["state"] for f in run["findings"]],
+                         [view._state(f) for f in row.findings])
+        self.assertEqual(run["findings"][0]["hint"], "look at the log")
+        self.assertEqual([(s["at"], s["rc"], s["verdict"]) for s in run["strip"]],
+                         [entry[:3] for entry in row.strip])
+        self.assertEqual(run["day"]["trace_at"], lane.trace_at)
+        self.assertEqual(run["day"]["trace_pct"], lane.trace_pct)
+        self.assertEqual(run["week"], list(lane.week))
+        self.assertEqual(run["ran_days"], sorted(lane.ran))
+
+    def test_silence_is_not_reported_and_never_in_sync(self):
+        # The page refuses to read an absent finding as a healthy one, so the
+        # document must not either.
+        rep, loads = self.fixture()
+        run = {r["id"]: r for r in self.document(rep, loads)["runs"]}["calendar-export"]
+        self.assertEqual(run["state"], view.UNREPORTED)
+        self.assertEqual(run["severity"], "none")
+
+    def test_the_counts_are_the_pages_counts(self):
+        rep, loads = self.fixture()
+        doc = self.document(rep, loads)
+        html = self.page(findings=rep.findings, workloads=loads,
+                         history=rep.history, runs=rep.runs, state_dir="/state")
+        drawn = dict((k, int(n)) for n, k in re.findall(
+            r'<span class="n">(\d+)</span><span class="k">([^<]+)</span>', html))
+        self.assertEqual(drawn["in service"], doc["stats"]["in_service"])
+        self.assertEqual(drawn["carrying a finding"], doc["stats"]["with_findings"])
+        self.assertEqual(drawn[view.UNREPORTED], doc["stats"]["not_reported"])
+        self.assertEqual(drawn["retired"], doc["stats"]["retired"])
+        pills = dict(((k, v), int(n)) for k, v, n in re.findall(
+            r'data-facet="([^"]+)" data-value="([^"]+)" aria-pressed="false">'
+            r'[^<]*<span class="n">(\d+)</span>', html))
+        names = dict(view.DATA_FACETS)
+        for (key, value), n in pills.items():
+            self.assertEqual(doc["facets"][names[key]].get(value), n, (key, value))
+        self.assertEqual([s["id"] for s in doc["systems"]],
+                         ["a-stack", view.SYSTEM_ALONE, view.SYSTEM_UNDECIDED])
+
+    def test_elsewhere_is_split_the_way_the_page_splits_it(self):
+        rep, loads = self.fixture()
+        out = self.document(rep, loads)["elsewhere"]
+        self.assertEqual(out["inventory_stale"], ["old-entry"])
+        self.assertEqual(out["intentionally_absent"], ["kept-out"])
+        self.assertEqual(out["undeclared"], {"named": ["someone.daemon"], "counted": 0})
+
+    def test_people_are_counted_and_never_named(self):
+        import dataclasses
+        import json
+
+        rep, loads = self.fixture()
+        person = SimpleNamespace(mandant="household", person="a-person-slug")
+        loads[0] = dataclasses.replace(
+            loads[0], response=SimpleNamespace(recipients=(person,)))
+        text = json.dumps(self.document(rep, loads))
+        self.assertNotIn("a-person-slug", text)
+        run = json.loads(text)["runs"][0]
+        self.assertEqual(run["people"], 1)
+        self.assertEqual(run["recipient_groups"], ["household"])
+
+    def test_building_the_document_leaves_the_page_unchanged(self):
+        rep, loads = self.fixture()
+        for axis in view.GROUP_BY:
+            with self.subTest(axis=axis):
+                before = view.render(rep, loads, generated_at=STAMP,
+                                     hosts=("host-a",), group_by=axis)
+                self.document(rep, loads)
+                after = view.render(rep, loads, generated_at=STAMP,
+                                    hosts=("host-a",), group_by=axis)
+                self.assertEqual(before, after)

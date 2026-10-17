@@ -1,0 +1,22 @@
+# Coverage case: the whole web, and it is a WORD in the file. An absent block
+# denies, a star grants, and the difference is visible in a diff. What still
+# holds such a run is elsewhere: the directory it starts in, and the absence of
+# any tool that reaches a person.
+schema_version: 1
+scope: core
+id: rights-fetch-everywhere
+title: Rights fetch everywhere
+purpose: "Example run that may fetch from any host and still reaches nobody"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing:
+    tools: "Read,Glob,Grep,WebSearch,WebFetch"
+    read_scope: example/notes
+    fetch_scope: ["*"]
+    reaches_humans: false

@@ -220,7 +220,9 @@ class TheDryRunIsTheDefaultAndTouchesNothing(PublishBase):
 class APageTooLargeToTravelIsRefusedByName(PublishBase):
 
     def test_a_page_that_will_not_fit_in_an_argv_is_refused_before_it_is_tried(self):
-        huge = "<p>x</p>\n" * (publish.MAX_BYTES // 4)
+        # One line longer than a part: the only thing the split cannot carry,
+        # because it splits on line boundaries and never inside a line.
+        huge = "<p>" + "x" * (publish.MAX_BYTES + 1) + "</p>\n"
         with self.assertRaises(errors.PageTooLarge) as caught:
             publish.publish(huge, self.host, dest=DEST, runner=self.runner(listing=[]),
                             home=self.HOME, timeout_sec=30, dry_run=False)
@@ -228,6 +230,19 @@ class APageTooLargeToTravelIsRefusedByName(PublishBase):
         self.assertIn(str(publish.MAX_BYTES), said,
                       "the limit has to be in the refusal; an unexplained size "
                       "error reads as a broken tool")
+
+    def test_a_large_page_of_ordinary_lines_travels_in_parts(self):
+        # The page that stood still from 14.09. to 18.09. 2026: 556143 bytes,
+        # longest line 13 KB. It was refused against a whole-file limit that
+        # stopped being the transport's limit when writes began to travel in
+        # parts, so /workloads/ showed four-day-old numbers as the present.
+        big = "<p>x</p>\n" * (600 * 1024 // 9)
+        outcome = publish.publish(big, self.host, dest=DEST,
+                                  runner=self.runner(listing=[]), home=self.HOME,
+                                  timeout_sec=30, dry_run=True)
+        parts = [s.purpose for s in outcome.steps if "index.html, part " in s.purpose]
+        self.assertGreater(len(parts), 1,
+                           "a page over one part has to be written in several")
 
 
 if __name__ == "__main__":
@@ -474,7 +489,7 @@ class AttachmentsTravelWithThePageAndAreProvedLikeIt(PublishBase):
         self.assertIn("style.css", outcome.evidence)
 
     def test_an_oversize_attachment_is_refused_by_name_and_never_truncated(self):
-        huge = "x\n" * (publish.MAX_BYTES // 2 + 10)
+        huge = "x" * (publish.MAX_BYTES + 10) + "\n"
         runner = self.runner(listing=[])
         with self.assertRaises(errors.PageTooLarge) as caught:
             self.run_publish(runner, attachments=(self.attach(content=huge),))

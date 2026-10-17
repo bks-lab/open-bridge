@@ -1,0 +1,26 @@
+# Control: a relative stop flag resolves against a different working directory
+# under launchd than it did when it was written, so it never bites there.
+schema_version: 1
+scope: core
+id: negative-rights-relative-stop-flag
+title: Negative rights relative stop flag
+purpose: "Control: a stop flag on a relative path"
+placement: {host: example-host, kind: interval, runtime: launchd, owner: bridge}
+schedule: {every_sec: 21600, timezone: Europe/Berlin}
+execution:
+  command: ["/usr/local/bin/example-scout", "--once"]
+  working_dir: /var/lib/example
+  timeout_sec: 900
+response: {evidence: log-trace, notify_on: [failure, missing], notify_via: example-notify}
+rights:
+  standing: {reaches_humans: false}
+  escalation:
+    reaches_humans: true
+    unlocked_by: {no_progress_ticks: 3}
+    recipients:
+      - {mandant_ref: example-person, channel_ref: example-channel}
+    caps: {total: 3}
+  stop: {flag: .stop}
+  # consent ist absolut und korrekt: der Befund dieser Kontrolle ist der
+  # relative stop-Flag darueber, nichts sonst.
+  consent: {flag: /var/lib/example/x.consent}
