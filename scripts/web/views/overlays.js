@@ -71,11 +71,12 @@ export function useFocusOnOpen(open) {
   return ref
 }
 
-function Drawer({ title, onClose, children, side = 'right', id }) {
+/** A drawer at the side; `clear` leaves the page behind it unshaded, for a drawer whose changes show there */
+export function Drawer({ title, onClose, children, side = 'right', id, cls = '', clear = false }) {
   const t = T()
   const ref = useFocusOnOpen(true)
-  return html`<div class="overlay" onClick=${e => { if (e.target === e.currentTarget) onClose() }}>
-    <aside class=${`drawer drawer-${side}`} role="dialog" aria-modal="true" aria-labelledby=${`${id}-title`} ref=${ref}>
+  return html`<div class=${`overlay${clear ? ' is-clear' : ''}`} onClick=${e => { if (e.target === e.currentTarget) onClose() }}>
+    <aside class=${`drawer drawer-${side} ${cls}`} role="dialog" aria-modal="true" aria-labelledby=${`${id}-title`} ref=${ref}>
       <header class="drawer-head">
         <h2 class="sec-title" id=${`${id}-title`}>${title}</h2>
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${onClose} />
