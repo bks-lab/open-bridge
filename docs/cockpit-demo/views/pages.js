@@ -7,7 +7,7 @@ import {
   formatDay, indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
   sectionStamp, weekdayNames, triageKey, triageShows, sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES,
-  jevList, TASK_LANES, taskLane,
+  jevList, TASK_LANES, taskLane, noiseRows,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -622,6 +622,37 @@ export function UsageCard({ page, s, c }) {
         </div>
         <p class="muted small">${t.usageInput(tokenText(sum('input'), lang), tokenText(sum('cache_read'), lang), tokenText(sum('cache_write'), lang))}</p>
       </div>` : null}`}
+  </section>`
+}
+
+/** The inbox sources a person had to drop from, most clicks first, and the mute rules in force with a
+ *  button to lift each. Read when the page opens and with every new briefing, never on a timer */
+export function NoiseCard({ page, s, c }) {
+  const t = T()
+  useEffect(() => { c.loadNoise() }, [s.model?.seq ?? 0])
+  const n = s.noise ?? {}
+  const data = n.data
+  const rows = noiseRows(data)
+  const mutes = data?.mutes ?? []
+  const why = r => Object.entries(r.reasons ?? {}).map(([k, v]) => `${t.dropReasonShort[k] ?? k} ${v}`).join(', ')
+  return html`<section class="panel panel-pad psec noise" id=${`noise-${page.id}`} aria-labelledby=${`noise-${page.id}-t`}>
+    <header class="psec-head">
+      <h2 class="sec-title" id=${`noise-${page.id}-t`}>${t.noiseTitle}</h2>
+      <span class="muted small">${t.noiseWhere(data?.days ?? 30)}</span>
+    </header>
+    ${!data ? html`<p class="muted">${n.status === 'error' ? t.unreadable(n.error || '') : t.noiseLoading}</p>` : html`
+      ${rows.length ? html`<div class="table-wrap" tabindex="0" role="region" aria-label=${t.noiseTitle}>
+        <table class="tbl"><thead><tr><th scope="col">${t.noiseCol.source}</th><th scope="col" class="num">${t.noiseCol.dropped}</th>
+          <th scope="col" class="num">${t.noiseCol.share}</th><th scope="col">${t.noiseCol.why}</th></tr></thead>
+          <tbody>${rows.map(r => html`<tr key=${r.source}><td class="mono">${r.source}</td>
+            <td class="num">${t.noiseOf(r.dropped, r.filed)}</td><td class="num">${r.percent} %</td>
+            <td class="small">${why(r)}${r.muted ? html` <span class="muted">· ${t.noiseMuted(r.muted)}</span>` : null}</td></tr>`)}</tbody>
+        </table></div>` : html`<${Empty}>${t.noiseNone}<//>`}
+      ${mutes.length ? html`<h3 class="label-caps noise-sub">${t.noiseMutes}</h3>
+        <ul class="ulist">${mutes.map(m => html`<li key=${m.id}>
+          <span><span class="mono">${m.source}</span> ${t.noiseMuteWhat(m.key_prefix || m.kind || t.noiseMuteAll, m.until)}</span>
+          <${Btn} size="xs" variant="ghost" busy=${!!s.ui.busy.inbox_unmute} label=${t.noiseUnmuteLabel(m.source)}
+            onClick=${() => c.unmute(m.id)}>${t.noiseUnmute}<//></li>`)}</ul>` : null}`}
   </section>`
 }
 

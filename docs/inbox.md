@@ -1,10 +1,11 @@
 ---
 summary: "The inbox: one place per Bridge where everything that needs a person waits until it is done. Item and event layout, derived states, gates, closing probes, who writes and reads, CLI reference."
 type: guide
-last_updated: 2026-10-09
+last_updated: 2026-10-17
 related:
   - scripts/inbox.py
   - scripts/tests/test_inbox.py
+  - scripts/tests/test_inbox_mute.py
   - work-system.md
   - ../protocols/standing-orders/inbox.md
   - ../work/templates/_schema.inbox-item.yaml
@@ -173,6 +174,10 @@ python3 scripts/inbox.py list [--all] [--json] [--short]   # open items, most ur
 python3 scripts/inbox.py show <id>                         # item plus its events; an unambiguous id prefix works
 python3 scripts/inbox.py approve <id> [--when-json '{...}'] [--text "edited draft"]
 python3 scripts/inbox.py reject|close|drop <id> [--note "why"]
+python3 scripts/inbox.py drop <id> --reason once|duplicate|family|source   # family and source leave a mute rule
+python3 scripts/inbox.py mute list [--json]                 # the mute rules in force
+python3 scripts/inbox.py unmute <rule-id>                   # lift one
+python3 scripts/inbox.py stats [--days 30] [--json]         # per source: filed, dropped by a person, muted
 python3 scripts/inbox.py reopen <id> [--note "why"]           # take a close, drop or reject back
 python3 scripts/inbox.py close --key <key> [--note "why"]     # every live item filed under that key
 python3 scripts/inbox.py defer <id> --until 2026-10-08
@@ -189,6 +194,35 @@ python3 scripts/inbox.py sync [--no-push]
 attributed to. `add` takes `--due`, `--detail`, `--key`, `--urgency` (default
 `today`) and `--gate` (default `your-yes`). Items are `from` a machine and job
 (`homebox/issue-radar`), not a person.
+
+## Dropping with a reason, and muting a loud source
+
+A drop that says nothing teaches nothing. `drop --reason` records why, as
+part of the `drop` event:
+
+| Reason | Means | Leaves |
+|---|---|---|
+| `once` | not worth it this time | nothing; the key stays dropped as before |
+| `duplicate` | already known elsewhere | nothing |
+| `family` | never this kind again | a rule: the source plus the key up to its last colon (`health:crash:1a20` mutes `health:crash:`), or the source plus the kind when the key has no family |
+| `source` | this source is too loud | a rule: everything of the source for 30 days (`MUTE_SOURCE_DAYS`) |
+
+A rule is a file of its own under `work/inbox/_mutes/`, so two machines never
+write the same file and `sync` carries it to the machine that files. The `_`
+keeps the folder out of the item list. A finding that matches a rule is
+**still filed** and dropped at once by `mute`, with the rule's id on the
+event: nothing is lost, it counts in `stats`, and `reopen` brings it back. An
+item filed with `--urgency now` is never muted, so a muted source cannot
+swallow an outage. A source mute ends by itself, a family mute stays until
+`unmute` lifts it.
+
+`stats` counts, per source, the items filed in the last N days: how many a
+person dropped (with the reasons, `unknown` for a drop without one), how many
+a rule muted, how many closed or are still open. `share` is what a person had
+to drop out of what was filed, the clicks the source cost; muted items are
+counted apart, so a source that was muted and then fixed comes down again.
+The loudest source is the filer to sharpen: a stable key, a tighter rule, or
+reports that belong in a digest rather than the inbox.
 
 ## Two machines, one inbox
 

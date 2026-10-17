@@ -414,6 +414,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_generated_output_escapes.py",
     "scripts/tests/test_inbox.py",
     "scripts/tests/test_inbox_approve.py",
+    "scripts/tests/test_inbox_mute.py",
     # Registered with briefing profiles (workflow/briefings/): the engine, its
     # tracker adapters and the recorded answers they are tested against.
     "scripts/briefing.py",

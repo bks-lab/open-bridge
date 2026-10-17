@@ -111,6 +111,7 @@ const store = createStore({
   jev: { enabled: false, ready: false, reason: 'off' },
   workers: { status: 'idle', data: null, error: null },
   usage: { status: 'idle', data: null, error: null },
+  noise: { status: 'idle', data: null, error: null },   // the loud inbox sources and the mute rules (inbox.py stats)
   jevOrder: {},   // per page with `jev:`: { order, error, running }
   home: { tiles: null, seen: null, pins: [] },
   feed: loadFeed(),   // the live feed of the start page: what happened while the page was open (logic.js feedEvents)   // the start page's choice, what it offered, the pinned rows (server, state.json)
@@ -758,6 +759,16 @@ const ctl = {
     store.set(s => ({ ...s, usage: res.ok ? { status: 'ok', data: res.data.usage, error: null }
       : { status: 'error', data: s.usage.data, error: res.error?.message ?? null } }))
   },
+  // the noise of the inbox (inbox.py stats + mute list); the Betrieb page reads it when it opens and with each new briefing
+  loadNoise: async () => {
+    store.set(s => ({ ...s, noise: { ...s.noise, status: s.noise.data ? 'ok' : 'loading' } }))
+    const res = await api.get('/api/inbox/noise')
+    store.set(s => ({ ...s, noise: res.ok && res.data.noise ? { status: 'ok', data: res.data.noise, error: null }
+      : { status: 'error', data: s.noise.data, error: res.ok ? null : res.error?.message ?? null } }))
+  },
+  async unmute(id) {
+    if (await act('inbox_unmute', { id })) ctl.loadNoise()
+  },
   openAsk: conv => setUi(ui => ({ tabView: '@ask', openMsg: null, quickConv: conv === undefined ? ui.quickConv : conv })),
   // the chat as a tab of its own: the open conversation goes along, the window closes
   chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi({ page: CHAT_PAGE, tabView: null, pageDetail: false }) },
@@ -836,6 +847,10 @@ const ctl = {
     const c = store.get().ui.confirm
     setUi({ confirm: null })
     if (c?.kind === 'approve_all') await act('approve_all', { keys: c.keys, confirm: true })
+    if (c?.kind === 'drop') {
+      const r = await act('drop', { key: c.key, reason: c.reason })
+      if (r?.muted) ctl.loadNoise()
+    }
     if (c?.kind === 'task_close') {
       const text = (c.text ?? '').trim()
       const r = await act('task_close', { keys: c.keys, reason: c.reason, ...(text ? { text } : {}) })
@@ -848,6 +863,14 @@ const ctl = {
     }
   },
   cancelConfirm: () => setUi({ confirm: null }),
+  /** Ask why before dropping an inbox report; the item's source and key say what a mute would cover.
+   *  The dialog opens at once, the item fills in when it has been read */
+  async askDrop(row) {
+    if (!row?.inbox_id) return
+    setUi({ confirm: { kind: 'drop', key: row.key, title: row.title, reason: 'once', item: null } })
+    const res = await api.inbox(row.inbox_id)
+    if (res.ok) setUi(ui => ({ confirm: ui.confirm?.kind === 'drop' && ui.confirm.key === row.key ? { ...ui.confirm, item: res.data.item } : ui.confirm }))
+  },
   /** Ask why before closing; one row gets the four reasons, several also "as the check says" */
   // "runs on": a small dialog asks until when and on what; it acts through runs_on
   askRunsOn(rows) {
@@ -902,7 +925,7 @@ const ctl = {
       case 'to_tab':
         return row.tab ? act('tab_jump', { tab_ref: row.tab.ref }) : null
       case 'drop':
-        return act('drop', { key: row.key })
+        return row.inbox_id ? ctl.askDrop(row) : act('drop', { key: row.key })
       case 'done':
         return act('done', { key: row.key })
       case 'advise':

@@ -2650,3 +2650,48 @@ test('ticker: a new duration keeps the band where it stands instead of jumping',
   const tk = read('views/ticker.js')
   assert.match(tk, /tickerResume\(/)        // the band uses it when its duration changes
 })
+
+test('drop: the scope a reason mutes is the one inbox.py writes', () => {
+  const item = { from: 'mini/daily-health', key: 'mini-health:crash:1a20', kind: 'finding' }
+  assert.deepEqual(logic.muteScope(item, 'family'), { source: 'mini/daily-health', key_prefix: 'mini-health:crash:' })
+  assert.deepEqual(logic.muteScope({ ...item, key: 'plain' }, 'family'), { source: 'mini/daily-health', kind: 'finding' })
+  assert.deepEqual(logic.muteScope({ ...item, key: null }, 'family'), { source: 'mini/daily-health', kind: 'finding' })
+  assert.deepEqual(logic.muteScope({ ...item, key: 'a:b:' }, 'family'), { source: 'mini/daily-health', key_prefix: 'a:' })
+  assert.deepEqual(logic.muteScope(item, 'source'), { source: 'mini/daily-health', days: 30 })
+  assert.equal(logic.muteScope(item, 'once'), null)
+  assert.equal(logic.muteScope(item, 'duplicate'), null)
+  assert.equal(logic.muteScope({ key: 'a:b' }, 'family'), null)   // no source, nothing to say
+})
+
+test('noise: only sources a person dropped from, most clicks first, at most eight', () => {
+  const src = (source, filed, dropped, extra = {}) => ({ source, filed, dropped, muted: 0, done: 0, open: 0,
+    share: filed ? Math.round(dropped / filed * 100) / 100 : 0, reasons: {}, ...extra })
+  const noise = { days: 30, mutes: [], sources: [src('a', 4, 3), src('b', 30, 0), src('c', 2, 2), src('d', 10, 1, { muted: 4 })] }
+  const rows = logic.noiseRows(noise)
+  assert.deepEqual(rows.map(r => r.source), ['a', 'c', 'd'])
+  assert.deepEqual(rows.map(r => r.percent), [75, 100, 10])
+  const many = { days: 30, mutes: [], sources: Array.from({ length: 12 }, (_, i) => src(`s${i}`, 5, 1)) }
+  assert.equal(logic.noiseRows(many).length, 8)
+  assert.deepEqual(logic.noiseRows(null), [])
+})
+
+test('drop: an inbox row asks why, the command box and bulk drops stay one keystroke', () => {
+  const app = read('app.js')
+  const overlays = read('views/overlays.js')
+  assert.match(app, /case 'drop':\s*\n\s*return row\.inbox_id \? ctl\.askDrop\(row\) : act\('drop', \{ key: row\.key \}\)/)
+  assert.match(app, /for \(const \{ row \} of plan\.drop\) await act\('drop', \{ key: row\.key \}\)/)
+  assert.match(app, /c\?\.kind === 'drop'/)
+  assert.match(overlays, /conf\.kind === 'drop'\) return html`<\$\{DropDialog\}/)
+  assert.match(read('views/detail.js'), /c\.askDrop\(row\)/)
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    for (const r of ['once', 'duplicate', 'family', 'source']) assert.ok(t.dropReason[r], `${lang} dropReason.${r}`)
+  }
+})
+
+test('noise: the Betrieb page shows the noise card and lifts a mute through the action', () => {
+  assert.match(read('components.js'), /page\.overview \? html`<\$\{NoiseCard\} page=\$\{page\} s=\$\{s\} c=\$\{c\} \/>`/)
+  assert.match(read('views/pages.js'), /export function NoiseCard/)
+  assert.match(read('app.js'), /api\.get\('\/api\/inbox\/noise'\)/)
+  assert.match(read('app.js'), /act\('inbox_unmute', \{ id \}\)/)
+})

@@ -914,6 +914,29 @@ export function usageToday(usage) {
   return { today: days[days.length - 1].output ?? 0, usual: earlier.length ? Math.round(earlier.reduce((a, b) => a + b, 0) / earlier.length) : null }
 }
 
+// ---------------------------------------------------------------- the noise of the inbox
+
+/** How long a source mute lasts; inbox.py MUTE_SOURCE_DAYS says the same */
+export const MUTE_SOURCE_DAYS = 30
+
+/** What a drop for `reason` mutes, the rule inbox.py writes: `family` is the source plus the key up to its
+ *  last colon (or the kind when the key has no family), `source` the whole source for a while. Null for a
+ *  reason that leaves no rule, or an item without a source */
+export function muteScope(item, reason) {
+  const source = item?.from
+  if (!source || (reason !== 'family' && reason !== 'source')) return null
+  if (reason === 'source') return { source, days: MUTE_SOURCE_DAYS }
+  const key = String(item.key ?? '').replace(/:+$/, '')
+  return key.includes(':') ? { source, key_prefix: key.slice(0, key.lastIndexOf(':') + 1) } : { source, kind: item.kind }
+}
+
+/** The rows of the noise card: the sources a person dropped from, most clicks first, at most `max` */
+export function noiseRows(noise, max = 8) {
+  return (noise?.sources ?? []).filter(r => (r.dropped ?? 0) > 0)
+    .sort((a, b) => b.dropped - a.dropped || b.share - a.share || String(a.source).localeCompare(String(b.source)))
+    .slice(0, max).map(r => ({ ...r, percent: Math.round((r.share ?? 0) * 100) }))
+}
+
 // ---------------------------------------------------------------- a work page in the order of Jev
 
 /** The label a row of a work page carries: its kind's word for a section named after its kind

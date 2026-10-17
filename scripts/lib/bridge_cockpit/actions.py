@@ -47,6 +47,8 @@ TARGETS = ("tab", "workspace", "area", "auto")
 # why a task closes; `auto` (the overview's bulk close) takes it from the check: stale closes as declined
 CLOSE_REASONS = ("done", "not_doing", "superseded", "elsewhere", "auto")
 DECLINED_REASONS = frozenset({"not_doing", "superseded"})
+# why an inbox item is dropped (inbox.py DROP_REASONS); family and source leave a mute rule behind
+DROP_REASONS = ("once", "duplicate", "family", "source")
 
 SHORT_TIMEOUT = 30
 LAUNCH_TIMEOUT = 150
@@ -64,7 +66,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "later": {"key": ("key", True), "until": ("date", True)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     "unhide": {"key": ("key", True)},
-    "drop": {"key": ("key", True)},
+    "drop": {"key": ("key", True), "reason": ("drop_reason", False)},
+    "inbox_unmute": {"id": ("inbox_id", True)},
     "done": {"key": ("key", True)},
     "urgency": {"key": ("key", True), "value": ("urgency", True)},
     "priority": {"key": ("key", True), "value": ("priority", True)},
@@ -392,6 +395,10 @@ class Actions:
             elif kind == "outcome":
                 if value not in m.SETTLE_OUTCOMES:
                     raise bad_arg(name, "unknown outcome")
+                out[name] = value
+            elif kind == "drop_reason":
+                if value not in DROP_REASONS:
+                    raise bad_arg(name, "unknown reason")
                 out[name] = value
             elif kind == "close_reason":
                 if value not in CLOSE_REASONS:
@@ -968,19 +975,31 @@ class Actions:
             self.app.history.mark_undone("unhide", key)
         ctx.note(self.tx["unhidden_note"].format(title=m.short(found["row"]["title"], 60)))
 
-    def v_drop(self, ctx: Ctx, key: str) -> None:
+    def v_drop(self, ctx: Ctx, key: str, reason: str | None = None) -> None:
         row = self.entry(key)["row"]
         if not row.get("inbox_id"):
             until = (self.today() + dt.timedelta(days=7)).isoformat()
             self.hide_until(ctx, row, until)
             return
         item = self.inbox_id(row)
-        run = ctx.call("inbox.drop", item, self.inbox("drop", item, "--note", self.tx["drop_note"]), SHORT_TIMEOUT)
+        argv = self.inbox("drop", item, "--note", self.tx["drop_note"], *(["--reason", reason] if reason else []))
+        run = ctx.call("inbox.drop", item, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["drop_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
         ctx.history.append(history_item(row["key"], row["title"], "inbox", "dropped", item))
-        self.settle(ctx, row, self.tx["dropped"])
+        # inbox.py prints `muted <rule>` when the reason left a rule behind; the page offers to lift it
+        muted = next((line.split()[1] for line in run.out.splitlines() if line.startswith("muted ") and len(line.split()) == 2), None)
+        if muted:
+            ctx.extra["muted"] = muted
+        self.settle(ctx, row, self.tx["dropped_muted" if muted else "dropped"])
+
+    def v_inbox_unmute(self, ctx: Ctx, id: str) -> None:  # noqa: A002 - the API name
+        run = ctx.call("inbox.unmute", id, self.inbox("unmute", id), SHORT_TIMEOUT)
+        if run.ok:
+            ctx.note(self.tx["unmuted"])
+        else:
+            ctx.note(self.tx["unmute_failed"].format(err=m.short(run.err, 100)), bad=True)
 
     def v_done(self, ctx: Ctx, key: str) -> None:
         row = self.entry(key)["row"]

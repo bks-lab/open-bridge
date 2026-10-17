@@ -5,7 +5,7 @@
 import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
-  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents,
+  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
@@ -428,6 +428,7 @@ export function ConfirmDialog({ s, c }) {
   if (!conf) return null
   if (conf.kind === 'task_close') return html`<${CloseDialog} conf=${conf} c=${c} dialogRef=${ref} />`
   if (conf.kind === 'runs_on') return html`<${RunsOnDialog} conf=${conf} s=${s} c=${c} dialogRef=${ref} />`
+  if (conf.kind === 'drop') return html`<${DropDialog} conf=${conf} c=${c} dialogRef=${ref} />`
   return html`<div class="overlay overlay-center">
     <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" ref=${ref}>
       <h2 class="sec-title" id="confirm-title">${t.approveAsk(conf.count)}</h2>
@@ -467,6 +468,34 @@ function RunsOnDialog({ conf, s, c, dialogRef }) {
       <div class="btn-row dialog-acts">
         <button type="button" class="btn btn-secondary btn-sm" onClick=${c.cancelConfirm}><span class="btn-label">${t.approveNo}</span></button>
         <button type="button" class="btn btn-primary btn-sm" disabled=${!conf.until} onClick=${c.runsOn}><span class="btn-label">${t.runsConfirm}</span></button>
+      </div>
+    </div>
+  </div>`
+}
+
+/** Dropping a report asks why: two of the reasons leave a mute rule (inbox.py), and the dialog says what it
+ *  covers before anything is written. Enter on the preselected "not worth it" keeps a drop one keystroke away */
+function DropDialog({ conf, c, dialogRef }) {
+  const t = T()
+  const scope = muteScope(conf.item, conf.reason)
+  const what = scope?.key_prefix ? t.dropScopeKey(scope.key_prefix) : scope?.kind ? t.dropScopeKind(scope.kind) : ''
+  return html`<div class="overlay overlay-center">
+    <div class="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="confirm-title" ref=${dialogRef}>
+      <h2 class="sec-title" id="confirm-title">${t.dropAsk}</h2>
+      <ul class="close-list"><li>${short(conf.title, 90)}</li></ul>
+      <fieldset class="close-reasons">
+        <legend class="label-caps">${t.dropReasonLabel}</legend>
+        ${['once', 'duplicate', 'family', 'source'].map(r => html`<label key=${r} class="radio-line">
+          <input type="radio" name="drop-reason" value=${r} checked=${conf.reason === r} data-autofocus=${conf.reason === r ? '' : undefined}
+            onChange=${() => c.setConfirm({ reason: r })} />
+          <span>${t.dropReason[r]}</span></label>`)}
+        ${scope ? html`<p class="small">${scope.days ? t.dropScopeSource(scope.source, scope.days) : t.dropScopeFamily(scope.source, what)}</p>
+          <p class="muted small">${t.dropScopeNow}</p>` : null}
+      </fieldset>
+      <div class="btn-row dialog-acts">
+        <button type="button" class="btn btn-secondary btn-sm" onClick=${c.cancelConfirm}><span class="btn-label">${t.approveNo}</span></button>
+        <button type="button" class="btn btn-danger btn-sm" disabled=${(conf.reason === 'family' || conf.reason === 'source') && !scope}
+          onClick=${c.confirmYes}><span class="btn-label">${t.dropYes}</span></button>
       </div>
     </div>
   </div>`
