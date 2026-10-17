@@ -9,7 +9,7 @@
 
 import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
-import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, START_PAGE, WORKERS_PAGE, pageOrder } from './components.js'
+import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder } from './components.js'
 import {
   CONN_GRACE_MS, DAY, addNote, attentionTabs, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
@@ -110,6 +110,7 @@ const store = createStore({
     workView: load('bridge-cockpit.workTab', 'due'),
     workKind: load('bridge-cockpit.workKind', null),
     theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false,
+    settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
@@ -586,6 +587,16 @@ const ctl = {
     ctl.setTheme(order[(order.indexOf(store.get().ui.theme) + 1) % order.length])
   },
   setDrawer: name => setUi({ drawer: name }),
+  // the settings page at one of its areas (start, look, launch), kept for the next visit
+  setSettingsSection(id) {
+    save('bridge-cockpit.settingsSection', id)
+    setUi({ settingsSection: id })
+  },
+  openSettings(id) {
+    if (id) ctl.setSettingsSection(id)
+    ctl.setPage(SETTINGS_PAGE)
+    setUi({ drawer: null })
+  },
   setPane(pane) {
     setUi({ pane })
     requestAnimationFrame(() => window.scrollTo(0, 0))
