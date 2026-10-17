@@ -139,6 +139,18 @@ rsync -av --exclude='com.openbridge.*.plist' \
    worker-host:transcribe-pipeline/bin/
 rsync -av skills/meeting-transcription/prompts/ worker-host:transcribe-pipeline/prompts/
 ssh worker-host 'chmod +x ~/transcribe-pipeline/bin/*.{sh,py}'
+#    Alternative when the worker host has its own clone of the bridge: make bin/
+#    a directory of SYMLINKS into the clone instead of copies. Every pull then
+#    reaches the worker, and a provenance check sees repo files, not copies that
+#    drift silently. Everything instance-specific stays out of the scripts
+#    (context values: step 5; capture host: CAPTURE_HOST in the plist; HF token:
+#    keychain or ~/.config/open-bridge/hf-token). Swap atomically, so a WatchPath
+#    fire never sees a half-built directory:
+#      P=~/transcribe-pipeline; R=<clone>/skills/meeting-transcription/scripts
+#      mkdir $P/bin.new && for f in $R/*.py $R/*.sh; do ln -s "$f" $P/bin.new/; done
+#      mv $P/bin $P/bin.before-symlinks && mv $P/bin.new $P/bin
+#    A broken commit then reaches the worker too: test first against a scratch
+#    context whose `output:` nothing downstream consumes.
 
 # 5. Extract + deploy runtime contexts from the bridge SoT.
 #    Each workflow/contexts/<ctx>.yaml with an `integrations.transcription`
@@ -147,6 +159,8 @@ ssh worker-host 'chmod +x ~/transcribe-pipeline/bin/*.{sh,py}'
 python3 skills/meeting-transcription/scripts/extract_runtime_contexts.py \
    --src workflow/contexts --out /tmp/runtime-contexts
 rsync -av --delete /tmp/runtime-contexts/ worker-host:transcribe-pipeline/contexts/
+#    Drop --delete when the worker also serves contexts deployed from ANOTHER
+#    bridge: they have no source here, and --delete would remove them.
 #    `--delete` is intentional: it removes obsolete runtime yamls
 #    (e.g. a .bak left from a past edit) so worker state matches the bridge.
 
@@ -195,7 +209,8 @@ bash -n skills/meeting-transcription/scripts/<script>.sh    # or python3 -m py_c
 rsync -av skills/meeting-transcription/scripts/<script> worker-host:transcribe-pipeline/bin/
 ssh worker-host 'chmod +x ~/transcribe-pipeline/bin/<script>'
 ```
-launchd picks up the new script on the next WatchPath fire — no reload needed
+With a symlinked `bin/` (see step 4) the rsync is replaced by a pull on the
+worker's clone. launchd picks up the new script on the next WatchPath fire — no reload needed
 unless you changed the `.plist` itself (then `launchctl bootout` + `bootstrap`,
 re-applying the `REPLACE_ME_HOME` substitution).
 
