@@ -1153,17 +1153,22 @@ export function focusPick(tabs, model) {
 
 /** The next date that has not begun, from every calendar section of the pages (rows with `at`) */
 export function nextEvent(model, nowMs) {
-  let best = null
+  return upcomingEvents(model, nowMs, 1)[0] ?? null
+}
+
+/** Every coming event of the calendar sections, soonest first, at most `limit`: the list beside an opened one */
+export function upcomingEvents(model, nowMs, limit = Infinity) {
+  const out = []
   for (const p of model?.pages ?? []) {
     for (const sec of p.sections ?? []) {
       if (sec.kind !== 'calendar') continue
       for (const it of sec.items ?? []) {
         const ms = it.at ? Date.parse(it.at) : NaN
-        if (Number.isFinite(ms) && ms > nowMs && (!best || ms < best.ms)) best = { it, ms, page: p.id, section: sec.id }
+        if (Number.isFinite(ms) && ms > nowMs) out.push({ it, ms, page: p.id, section: sec.id })
       }
     }
   }
-  return best
+  return out.sort((a, b) => a.ms - b.ms).slice(0, limit)
 }
 
 /** How long until a moment, in words a countdown reads: minutes, then hours and minutes, then days and hours */

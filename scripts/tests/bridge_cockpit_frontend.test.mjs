@@ -1355,6 +1355,9 @@ test('the start page picks one next step, the next date, and counts by project',
   assert.equal(next.it.title, 'Soon')
   assert.equal(next.ms - now, 90 * 60000)
   assert.equal(logic.nextEvent({ pages: [] }, now), null)
+  // every coming event in time order, for the list beside an opened one
+  assert.deepEqual(logic.upcomingEvents({ pages }, now).map(x => x.it.title), ['Soon', 'Weekly'])
+  assert.deepEqual(logic.upcomingEvents({ pages }, now, 1).map(x => x.it.title), ['Soon'])
   assert.equal(logic.untilText(90 * 60000), '1 h 30 min')
   assert.equal(logic.untilText(25 * 60000), '25 min')
   assert.equal(logic.untilText(26 * 3600000), '1 d 2 h')
