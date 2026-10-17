@@ -59,8 +59,10 @@ notify() {  # $1 = message
   # mail drafter, a desktop toast). Word-split on purpose, it is an argv string.
   # A broken notifier must never turn a finished merge into a failed run.
   if [ -n "${AUTOUPDATE_NOTIFY_CMD:-}" ]; then
+    # Globbing off (no pathname expansion of argv words) and a 30 s alarm so a
+    # hanging notifier cannot stall the job (macOS has no timeout(1)).
     # shellcheck disable=SC2086
-    printf '%s\n' "$1" | $AUTOUPDATE_NOTIFY_CMD >/dev/null 2>&1 || true
+    ( set -f; printf '%s\n' "$1" | perl -e 'alarm 30; exec @ARGV' $AUTOUPDATE_NOTIFY_CMD ) >/dev/null 2>&1 || true
   fi
 }
 report() { mkdir -p work; { echo "# Upstream Auto-Update — $(date '+%F %T')"; echo; printf '%s\n' "$@"; } > "$REPORT"; }

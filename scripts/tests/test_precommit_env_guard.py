@@ -114,7 +114,7 @@ def test_empty_template_is_allowed():
 
 
 def test_empty_example_is_allowed():
-    proc = _run_hook({"tools/.env.example": 'DOCTOLIB_SESSION=""\nTOKEN=\n'})
+    proc = _run_hook({"tools/.env.example": 'EXAMPLE_SESSION=""\nTOKEN=\n'})
     assert proc.returncode == 0, (
         f".env.example with empty values was refused.\nstderr: {proc.stderr[-400:]}"
     )

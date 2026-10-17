@@ -108,9 +108,9 @@ def test_managed_rule_keeps_its_manifest_entry(oe, pair):
     time, but the contract would churn on every export and understate the mirror.
     """
     bridge, overlay, _ = pair
-    regel = "rules/org/wiki-principles.md"
-    _w(bridge / regel, "---\nscope: org\n---\n\n# regel\n")
-    _w(overlay / "tree" / regel, "---\nscope: org\n---\n\n# regel\n")
+    regel = "rules/org/example-rule.md"
+    _w(bridge / regel, "---\nscope: org\n---\n\n# rule\n")
+    _w(overlay / "tree" / regel, "---\nscope: org\n---\n\n# rule\n")
     lock = bridge / "overlays.lock.yaml"
     lock.write_text(lock.read_text(encoding="utf-8") +
                     f"    - src: tree/{regel}\n"

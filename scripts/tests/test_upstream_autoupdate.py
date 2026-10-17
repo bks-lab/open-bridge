@@ -218,6 +218,17 @@ def test_a_failing_notifier_does_not_fail_the_run(w):
     assert "auto-updated" in status, status
 
 
+def test_notifier_argv_is_not_glob_expanded(w, tmp_path):
+    out = tmp_path / "argv.txt"
+    hook = tmp_path / "notify.sh"
+    hook.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{out}"\ncat >/dev/null\n')
+    hook.chmod(0o755)
+    (tmp_path / "a.txt").write_text("x")
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    p, status = _autoupdate_env(w, AUTOUPDATE_NOTIFY_CMD=f"{hook} {tmp_path}/*.txt")
+    assert out.read_text().strip() == f"{tmp_path}/*.txt"
+
+
 # ------------------------------------------------- mirror never hits user/*
 def _mirror(w, tmp_path, *, with_main: bool):
     """A private mirror whose DEFAULT branch is the user branch.

@@ -221,7 +221,7 @@ if echo "$STAGED" | grep -Eq "$SURFACE"; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# (g) WORKLOAD-declaration gate: a declared run held against its contract.
+# (h) WORKLOAD-declaration gate: a declared run held against its contract.
 #
 # Same insight as (f) above: no workflow runs inside an instance, so the
 # commit seam is the only automatic gate a declaration meets.
@@ -239,7 +239,7 @@ fi
 #
 # Costs 323 ms measured, and only when a declaration is actually staged.
 if echo "$STAGED" | grep -Eq '^workflow/workloads/[^_/]+\.yaml$' && [ -f scripts/validate-bridge.py ]; then
-  if ! python3 scripts/validate-bridge.py --surface workload >/dev/null 2>&1; then
+  if ! python3 scripts/validate-bridge.py --check --surface workload >/dev/null 2>&1; then
     warn "⚠ WORKLOAD: a declaration does not match workflow/workloads/_schema.yaml."
     warn "  see →  python3 scripts/validate-bridge.py --surface workload"
   fi
