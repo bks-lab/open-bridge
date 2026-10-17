@@ -103,7 +103,7 @@ const store = createStore({
   ui: {
     // a new visit opens on the start page, a reload stays where it was; the project chip chosen there is kept
     page: reloaded() ? load('bridge-cockpit.page', START_PAGE) : START_PAGE, homeProject: load('bridge-cockpit.homeProject', null), selectedKey: null,
-    focusUntil: Number(load('bridge-cockpit.focusUntil', '')) || null, coreConv: null, coreBrief: false, focusKey: null, picked: [], expanded: {},
+    coreConv: null, coreBrief: false, focusKey: null, picked: [], expanded: {},
     // the view of the work tab (due, area, jev); a page with jev: outside it reads area and jev the same way
     workView: load('bridge-cockpit.workTab', 'due'),
     workKind: load('bridge-cockpit.workKind', null),
@@ -659,11 +659,6 @@ const ctl = {
   }),
   // whether the core's conversation is a picture of the day (its first answer is the verdict in three lines)
   setCoreBrief: on => setUi(on ? { coreBrief: true, coreConv: null } : { coreBrief: false }),
-  // a focus span on the start page (until when, or null to end it); kept for a reload of the page
-  setFocus(until) {
-    save('bridge-cockpit.focusUntil', until ? String(until) : '')
-    setUi({ focusUntil: until })
-  },
   // a row pinned to the start page or taken off; shown at once, kept on the server
   async pin(key, on) {
     const before = store.get().home

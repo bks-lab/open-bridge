@@ -1316,7 +1316,7 @@ test('the start page offers every tile to choose, and without a choice only a le
   const ids = logic.homeCatalog(model).map(x => x.id)
   assert.deepEqual(ids, ['q:quota:session-5-h', 'q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done',
     'p:dates', 'p:work', 'p:ops', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
-    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:classic', 'k:scan', 'k:brief', 'k:focus', 'k:voice'])
+    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:classic', 'k:scan', 'k:brief'])
   // a Bridge without a worker view offers no Workers station: it would lead to a tab that is not there
   assert.equal(logic.homeCatalog(model, { workers: false }).some(x => x.id === 'c:workers'), false)
   // no choice yet: the weekly quota, what waits on you, the next date, the work page, every shelf and option
@@ -1390,14 +1390,11 @@ test('the bridge stage lays its stations around the core and draws the same dust
   assert.equal(logic.stageDust(40, 7).length, 40)
 })
 
-test('a station beats faster the worse it stands, and a focus span counts down', async () => {
+test('a station beats faster the worse it stands', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const beats = ['danger', 'warning', 'info', 'success'].map(logic.pulseSpeed)
   assert.deepEqual([...beats].sort((a, b) => a - b), beats)          // red fastest, green calmest
   assert.equal(logic.pulseSpeed('muted'), null)
-  assert.equal(logic.clockLeft(1000 + 25 * 60000, 1000), '25:00')
-  assert.equal(logic.clockLeft(1000 + 61500, 1000), '1:02')
-  assert.equal(logic.clockLeft(1000, 2000), null)
 })
 
 test('the return channel takes the tab state live and keeps what the server knows of answers', async () => {
@@ -1708,4 +1705,50 @@ test('one as-of time per screen: the header says it, a section only when it was 
   assert.doesNotMatch(sec, /sourceAsOf/)
   assert.match(sec, /measuredAt/)
   assert.equal(read('text.js').match(/^  measuredAt: time =>/gm)?.length, 2)
+})
+
+// The row under the bridge (17.10.): its heading said "on a click on Bridge" while a click on a name ran it
+// at once; the pin beside each name was the only thing the heading described. Now the row runs now and says
+// so, what joins a click on Bridge is chosen in the chooser. The focus span is gone (it only counted down),
+// speech moved into the question line at the top and fills the field instead of asking on its own.
+test('start: the row under the bridge runs now, no focus span, speech sits in the question line', () => {
+  const src = read('components.js')
+  const css = read('style.css')
+  const stage = src.match(/function BridgeStage\([\s\S]*?\n\}/)[0]
+  assert.match(stage, /h\.runNow/)
+  assert.doesNotMatch(stage, /core-mode-pin|k:voice|k:focus|useVoice/)
+  assert.doesNotMatch(src + css + read('app.js'), /focusUntil|clockLeft|c\.setFocus\(|setFocus\(until|in-focus|is-clock|core-mode-pin/)
+  assert.equal(logic.clockLeft, undefined)
+  const prompt = src.match(/function StagePrompt\([\s\S]*?\n\}/)[0]
+  assert.match(prompt, /useVoice\(/)
+  assert.match(prompt, /setText\(/)
+  assert.doesNotMatch(src.match(/function CoreInspector\([\s\S]*?\n\}/)[0], /voice/)
+  for (const lang of ['de', 'en']) {
+    const h = text.TABLES[lang].home
+    for (const k of ['coreFocus', 'coreVoice', 'focusRunning', 'focusHint', 'focusEnd']) assert.equal(h[k], undefined, `${lang}.${k}`)
+    for (const k of ['denied', 'nothing', 'network', 'other']) assert.ok(h.voiceError[k], `${lang}.voiceError.${k}`)
+  }
+})
+
+test('a speech recognition error names its cause instead of going quiet', () => {
+  assert.equal(logic.speechError('not-allowed'), 'denied')
+  assert.equal(logic.speechError('service-not-allowed'), 'denied')
+  assert.equal(logic.speechError('audio-capture'), 'denied')
+  assert.equal(logic.speechError('no-speech'), 'nothing')
+  assert.equal(logic.speechError('network'), 'network')
+  assert.equal(logic.speechError('aborted'), null)     // stopped by hand: no message
+  assert.equal(logic.speechError('bad-grammar'), 'other')
+  assert.equal(logic.speechError(undefined), 'other')
+})
+
+test('the assessment recommends to the reader, it does not claim to start anything itself', () => {
+  const de = text.TABLES.de.home.briefAsk('X')
+  const en = text.TABLES.en.home.briefAsk('X')
+  assert.match(de, /womit du jetzt anfängst/)
+  assert.doesNotMatch(de, /womit ich/)
+  assert.match(en, /what you start with now/)
+  assert.doesNotMatch(en, /what I start with/)
+  // the three line labels the verdict parser reads stay as they were
+  assert.match(de, /Zuerst:[\s\S]*Dann:[\s\S]*Kann warten:/)
+  assert.match(en, /First:[\s\S]*Then:[\s\S]*Can wait:/)
 })

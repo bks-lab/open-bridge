@@ -1083,8 +1083,8 @@ export function tileSlug(text) {
 
 const HOME_SHELVES = ['focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
 const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'classic']
-const HOME_CORE = ['scan', 'brief', 'focus', 'voice']   // what a click on the bridge's core does; several combine
-const OFF_BY_DEFAULT = new Set(['o:classic', 'k:brief', 'k:focus', 'k:voice'])   // the bridge stage is the start page; the tiles of before are a choice
+const HOME_CORE = ['scan', 'brief']   // what a click on the bridge's core does; several combine
+const OFF_BY_DEFAULT = new Set(['o:classic', 'k:brief'])   // the bridge stage is the start page; the tiles of before are a choice
 
 /** Everything the start page can show, in the order it offers it: each gauge in percent of a page (a quota),
  *  the counts of the day, every page of the profile, the shelves, and the options that change how things
@@ -1230,11 +1230,14 @@ export function pulseSpeed(tone) {
   return { danger: 0.75, warning: 1.4, info: 2.6, success: 3.6 }[tone] ?? null
 }
 
-/** What is left of a focus span, as m:ss; nothing once it ran out */
-export function clockLeft(untilMs, nowMs) {
-  const left = Math.ceil((untilMs - nowMs) / 1000)
-  if (!(left > 0)) return null
-  return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
+/** What a speech recognition error says to the person: the microphone was refused, nothing was heard, the
+ *  service could not be reached, or something else. Stopped by hand says nothing */
+export function speechError(code) {
+  if (code === 'aborted') return null
+  if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(code)) return 'denied'
+  if (code === 'no-speech') return 'nothing'
+  if (code === 'network') return 'network'
+  return 'other'
 }
 
 export const RETURN_STAGES = ['started', 'working', 'asks', 'result', 'done']

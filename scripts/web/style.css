@@ -1594,6 +1594,9 @@ kbd {
 .stage-term { display: flex; flex-direction: column; gap: 10px; }
 .stage-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--on-surface-muted); }
 .stage-prompt { display: flex; align-items: center; gap: 12px; }
+.stage-prompt.is-listening .stage-input { border-bottom-color: var(--accent); }
+.stage-voice { margin: -4px 0 0 40px; }
+.stage-voice.tk-warning { color: var(--warning); }
 .stage-caret { font-family: var(--font-mono); font-size: 28px; color: var(--accent); }
 .stage-field { position: relative; flex: 1; min-width: 0; }
 .stage-input {
@@ -1682,9 +1685,7 @@ kbd {
 @keyframes core-wave { 0% { opacity: 0.7; transform: scale(1); } 100% { opacity: 0; transform: scale(2.6); } }
 .stage.is-scan .sweep { animation-duration: 1.6s; }
 .stage.is-scan .core-fill { animation: core-glow 1.2s ease-in-out infinite alternate; }
-.stage.is-listening .core-fill { animation: core-glow 0.6s ease-in-out infinite alternate; }
 @keyframes core-glow { from { fill: var(--accent-subtle); } to { fill: var(--accent-line); } }
-.core-name.is-clock { font-family: var(--font-mono); font-size: 20px; }
 
 /* a station lights up once when fresh data came in */
 .station { overflow: hidden; }
@@ -1700,14 +1701,13 @@ kbd {
 .heart-run { animation: heart-run linear infinite; }
 @keyframes heart-run { from { transform: translateX(0); } to { transform: translateX(-60px); } }
 
-/* the core's modes, switchable and combinable */
+/* what runs now, below the core */
 .core-modes { position: absolute; right: 0; top: calc(100% + 30px); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; max-width: 100%; }
 .core-modes-label { font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--on-surface-muted); margin-right: 4px; }
 .core-mode {
   padding: 3px 10px; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--surface-raised);
   color: var(--on-surface-muted); font: inherit; font-size: 12px; cursor: pointer; transition: border-color var(--motion), background-color var(--motion);
 }
-.core-mode.is-on { border-color: var(--accent); color: var(--on-surface); background: var(--accent-subtle); }
 
 /* the core's panel */
 .core-sub { margin: 14px 0 2px; }
@@ -1718,19 +1718,13 @@ kbd {
   background: var(--surface); color: var(--on-surface); font: inherit; font-size: var(--text-sm);
 }
 
-/* focus: everything but the next step steps back */
-.bridge-home.in-focus .station, .bridge-home.in-focus .link, .bridge-home.in-focus .home-shelf,
-.bridge-home.in-focus .home-chips, .bridge-home.in-focus .stage-card:not(.core-panel) .stage-row:not(.is-lead), .bridge-home.in-focus .stage-term .home-signals {
-  opacity: 0.18; transition: opacity var(--motion);
-}
-
 @container home (max-width: 700px) {
   .core-button, .core-modes { position: static; transform: none; }
   .core-button { display: none; }
   .heart { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .wave, .heart-run, .station-flash, .stage.is-scan .core-fill, .stage.is-listening .core-fill { animation: none; }
+  .wave, .heart-run, .station-flash, .stage.is-scan .core-fill { animation: none; }
 }
 
 /* the return channel: what became of each start handed to a tab */
@@ -1794,19 +1788,10 @@ kbd {
 .return-panel-head .label-caps { margin: 0; }
 .idrawer-body .return-panel, .return-panel { margin: 12px 0; }
 
-/* core modes: the name runs it now, the dot says whether a click on the core runs it too */
+/* what runs now: a click on the name runs it */
 .core-mode { display: inline-flex; align-items: center; gap: 0; padding: 0; overflow: hidden; }
-.core-mode-run { border: 0; background: none; padding: 3px 6px 3px 10px; font: inherit; font-size: 12px; color: inherit; cursor: pointer; }
+.core-mode-run { border: 0; background: none; padding: 3px 10px; font: inherit; font-size: 12px; color: inherit; cursor: pointer; }
 .core-mode-run:hover { color: var(--on-surface); text-decoration: underline; text-underline-offset: 3px; }
-.core-mode-pin {
-  width: 18px; height: 22px; border: 0; background: none; cursor: pointer; position: relative; padding: 0 8px 0 2px;
-}
-.core-mode-pin::after {
-  content: ""; position: absolute; left: 3px; top: 7px; width: 8px; height: 8px; border-radius: var(--radius-full);
-  border: 1px solid var(--border-strong); background: transparent;
-}
-.core-mode-pin[aria-pressed="true"]::after { background: var(--accent); border-color: var(--accent); }
-.core-mode.is-running { border-color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, var(--surface-raised)); color: var(--on-surface); }
 
 /* the live feed of the card "Today" */
 .feed { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }

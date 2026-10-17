@@ -14,7 +14,7 @@ import {
   canTab, chatStamp, runProgress, screenLines, TONE_FILTERS, FILTER_TONE, actionRow, pageItemActs, filterRows, groupRows, tagFacets, toneFilter, runToken, serious, statusSplit, detailText, scheduleText, dayNoteText, railShown, tabNextStep, sectionStamp, previewText, weekdayNames, triageKey, triageShows, verdictSegments, linkParts, probeText, newestFirst, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone,
   sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES, jevList, workKinds, reviewHome, workPageOf, workViewOf, workViews,
   greetingPart, homeCatalog, homeChosen, homeContinue, homeProjects, inProject, meterPace, projectTone, tabOfTask,
-  countInProject, focusPick, moveId, nextEvent, upcomingEvents, untilText, STAGE, stageDust, stageSpots, clockLeft, pulseSpeed,
+  countInProject, focusPick, moveId, nextEvent, upcomingEvents, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
   liveStage, stageTone, RETURN_STAGES, MAX_STATIONS, situation, situationText, parseVerdict, TASK_LANES, taskLane,
 } from './logic.js'
 import { flash, flowAlpha, flowPoints, nowSec, reducedMotion, settled, springTo } from './motion.js'
@@ -2691,8 +2691,7 @@ function catalogLabel(x) {
     's:focus': h.focusTitle, 's:pinned': h.pinnedTitle, 's:continue': h.continueTitle, 's:waiting': h.waitingTitle,
     's:tasks': h.tasksTitle, 's:starts': h.startTitle, 'o:today': h.optToday, 'o:preview': h.optPreview,
     'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:pulse': h.optPulse,
-    'c:agents': h.agentsTitle, 'c:returns': h.returnsTitle, 's:returns': h.returnsTitle, 'c:workers': T().workersTab, 'k:scan': h.coreScan, 'k:brief': h.briefTitle, 'k:focus': h.coreFocus,
-    'k:voice': h.coreVoice }[x.id] ?? x.id
+    'c:agents': h.agentsTitle, 'c:returns': h.returnsTitle, 's:returns': h.returnsTitle, 'c:workers': T().workersTab, 'k:scan': h.coreScan, 'k:brief': h.briefTitle }[x.id] ?? x.id
 }
 
 /** The chooser: every tile, shelf and option, a click switches one on or off; the tiles shown can move
@@ -2873,15 +2872,18 @@ function leadOf(m) {
  *  cursor waits, until you type */
 function StagePrompt({ s, c, greeting }) {
   const t = T()
+  const h = t.home
   const [text, setText] = useState('')
   const [focus, setFocus] = useState(false)
+  // speech fills the field, the person reads it and sends it as a typed question
+  const voice = useVoice(heard => setText(was => (was.trim() ? `${was.trim()} ${heard}` : heard).slice(0, ASK_MAX)))
   const busy = !!s.ui.busy['ask:free']
   const send = async e => {
     e.preventDefault()
     const v = text.trim()
     if (v && await c.ask('free', { text: v })) setText('')
   }
-  return html`<form class="stage-prompt" onSubmit=${send} role="search">
+  return html`<form class=${`stage-prompt${voice.listening ? ' is-listening' : ''}`} onSubmit=${send} role="search">
     <span class="stage-caret" aria-hidden="true">›</span>
     <span class="stage-field">
       <input type="text" class="stage-input" value=${text} onInput=${e => setText(e.currentTarget.value)}
@@ -2889,9 +2891,14 @@ function StagePrompt({ s, c, greeting }) {
       ${!text && !focus ? html`<span class="stage-ghost" aria-hidden="true">${greeting}<span class="stage-cursor"></span></span>` : null}
       ${!text && focus ? html`<span class="stage-ghost is-hint" aria-hidden="true">${t.home.askPlaceholder}</span>` : null}
     </span>
+    ${voice.available ? html`<${Btn} size="sm" variant=${voice.listening ? 'primary' : 'ghost'} pressed=${voice.listening}
+      onClick=${voice.listening ? voice.stop : voice.start} label=${voice.listening ? h.voiceStop : h.voiceStart}
+      title=${voice.listening ? h.voiceStop : h.voiceStart} icon="mic" />` : null}
     ${text.trim() ? html`<button type="submit" class="btn btn-primary btn-sm" disabled=${busy} aria-busy=${busy ? 'true' : undefined}
       aria-label=${t.askSend}><${Icon} name="send" /></button>` : null}
-  </form>`
+  </form>
+  ${voice.listening ? html`<p class="stage-voice muted small" role="status">${h.voiceListening}. ${h.voiceWhere}</p>`
+    : voice.error ? html`<p class="stage-voice small tk-warning" role="alert">${h.voiceError[voice.error]}</p>` : null}`
 }
 
 /** The card on the right of the films: today's next step first, then what waits on you */
@@ -3083,10 +3090,11 @@ function HeartLine({ tone }) {
     </g></svg>`
 }
 
-/** Speech into the bridge: the browser's own speech recognition, one sentence, then it goes to the core.
- *  Which service hears it depends on the browser */
+/** Speech into the question line: the browser's own speech recognition, one sentence, handed to onText.
+ *  Which service hears it depends on the browser. An error stays as its cause until the next start */
 function useVoice(onText) {
   const [listening, setListening] = useState(false)
+  const [error, setError] = useState(null)
   const rec = useRef(null)
   const Ctor = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
   const start = () => {
@@ -3097,14 +3105,15 @@ function useVoice(onText) {
     r.maxAlternatives = 1
     r.onresult = e => { const text = e.results?.[0]?.[0]?.transcript; if (text) onText(text) }
     r.onend = () => setListening(false)
-    r.onerror = () => setListening(false)
+    r.onerror = e => { setError(speechError(e?.error)); setListening(false) }
     rec.current = r
+    setError(null)
     setListening(true)
-    r.start()
+    try { r.start() } catch { setError('other'); setListening(false); return false }
     return true
   }
   const stop = () => { rec.current?.stop(); setListening(false) }
-  return { available: !!Ctor, listening, start, stop }
+  return { available: !!Ctor, listening, error, start, stop }
 }
 
 /** The core's own panel: how the Bridge itself stands (control session, terminal driver, last collection,
@@ -3174,7 +3183,7 @@ function Verdict({ s, conv }) {
     <span class="label-caps">${h.sit.verdict[k]}</span><span>${v[k]}</span></li>`)}</ol>`
 }
 
-function CoreInspector({ s, c, onClose, voice, onAsk, onWeigh }) {
+function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
   const t = T()
   const h = t.home
   const relay = s.relay ?? {}
@@ -3183,7 +3192,6 @@ function CoreInspector({ s, c, onClose, voice, onAsk, onWeigh }) {
   const agents = (s.sessions?.sessions ?? []).reduce((n, x) => n + (x.agents?.running_count ?? 0) + (x.workflows?.length ?? 0), 0)
   const conv = (s.quick?.convs ?? []).find(x => x.id === s.ui.coreConv) ?? null
   const live = conv ? s.quickLive?.[conv.id] : null
-  const left = s.ui.focusUntil ? clockLeft(s.ui.focusUntil, Date.now()) : null
   const [text, setText] = useState('')
   const busy = !!s.ui.busy['ask:core']
   const send = async e => {
@@ -3199,10 +3207,6 @@ function CoreInspector({ s, c, onClose, voice, onAsk, onWeigh }) {
       <h2 id="stage-card-title">Bridge</h2>
       <button type="button" class="btn-link inspect-close" onClick=${onClose} aria-label=${t.close}><${Icon} name="close" /></button>
     </header>
-    ${left ? html`<${InspectRow} tone="info" title=${h.focusRunning(left)} sub=${h.focusHint}>
-      <${Btn} size="xs" variant="ghost" onClick=${() => c.setFocus(null)}>${h.focusEnd}<//><//>` : null}
-    ${voice.listening ? html`<${InspectRow} tone="warning" title=${h.voiceListening} sub=${h.voiceWhere}>
-      <${Btn} size="xs" variant="ghost" onClick=${voice.stop}>${h.voiceStop}<//><//>` : null}
     ${brief ? html`<h3 class="label-caps core-sub">${h.briefTitle}</h3>
       <${SituationBoard} s=${s} c=${c} />
       <h3 class="label-caps core-sub">${h.sit.verdictTitle}</h3>
@@ -3232,8 +3236,6 @@ function CoreInspector({ s, c, onClose, voice, onAsk, onWeigh }) {
     <form class="core-ask" onSubmit=${send}>
       <input type="text" class="core-ask-input" value=${text} onInput=${e => setText(e.currentTarget.value)}
         placeholder=${conv ? h.briefFollow : h.askPlaceholder} aria-label=${h.askPlaceholder} maxlength=${ASK_MAX} />
-      ${voice.available ? html`<${Btn} size="xs" variant=${voice.listening ? 'primary' : 'ghost'} pressed=${voice.listening}
-        onClick=${voice.listening ? voice.stop : voice.start} label=${h.voiceStart} icon="mic" />` : null}
       <button type="submit" class="btn btn-primary btn-xs" disabled=${busy || !text.trim()} aria-label=${t.askSend}><${Icon} name="send" /></button>
     </form>
   </section>`
@@ -3262,37 +3264,25 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
   const selIdx = tiles.findIndex(x => x.id === sel)
   const on = new Set(chosen)
   const pulse = on.has('o:pulse')
-  // while a focus runs the clock ticks every second (s.now moves only every 15 s)
-  const [, tick] = useState(0)
-  useEffect(() => {
-    if (!s.ui.focusUntil) return undefined
-    const id = setInterval(() => tick(n => n + 1), 1000)
-    return () => clearInterval(id)
-  }, [s.ui.focusUntil])
-  const focusLeft = s.ui.focusUntil ? clockLeft(s.ui.focusUntil, Date.now()) : null
   const coreAsk = async (text, conv) => { setSel('@core'); return c.askQuiet(text, conv) }
-  const voice = useVoice(text => coreAsk(text))
-  // a click on the core runs every mode chosen for it; with a focus running and focus chosen it ends the focus
   // one mode now: the core's panel opens and shows what it does
   const runMode = id => {
     setSel('@core')
     setWave(n => n + 1)
     if (id === 'k:scan') c.reload()
-    if (id === 'k:focus') c.setFocus(focusLeft ? null : Date.now() + 25 * 60000)
     if (id === 'k:brief') {
       // the picture of the day: the board from the page's data at once, and Claude weighs exactly that data
       c.setCoreBrief(true)
       coreAsk(h.briefAsk(situationText(situation(s.model, tabs, Date.now()), Date.now(), lang)))
     }
-    if (id === 'k:voice') voice.start()
   }
   // a click on the core opens its panel with the picture of the day as a board (the page's data, at once, free);
-  // scan, Claude's verdict and speech join when chosen for it. A focus is never started by it: that is its own chip
+  // scan and Claude's verdict join when chosen for it in the chooser
   const runCore = () => {
     setSel('@core')
     setWave(n => n + 1)
     if (!on.has('k:brief')) c.setCoreBrief(true)
-    for (const id of ['k:scan', 'k:brief', 'k:voice']) if (on.has(id)) runMode(id)
+    for (const id of ['k:scan', 'k:brief']) if (on.has(id)) runMode(id)
   }
   // held down a moment (or with the option key) the core opens the inner room instead: the net behind the bridge
   const press = useRef(null)
@@ -3312,8 +3302,6 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
     runCore()
   }
   useEffect(() => () => { if (press.current && press.current !== 'fired') clearTimeout(press.current) }, [])
-  const ids = catalog.map(x => x.id)
-  const toggleMode = id => c.setHomeTiles(on.has(id) ? chosen.filter(x => x !== id) : [...chosen, id], ids)
   const nowMs = s.now || Date.now()
   for (const st of stations) {
     const v = Number(st.value)
@@ -3340,7 +3328,7 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
   const ticks = Array.from({ length: 72 }, (_, i) => i)
   const pctX = x => `${(x / STAGE.w * 100).toFixed(2)}%`
   const pctY = y => `${(y / STAGE.h * 100).toFixed(2)}%`
-  return html`<section class=${`stage${s.loading?.pass ? ' is-scan' : ''}${focusLeft ? ' is-focus' : ''}${voice.listening ? ' is-listening' : ''}`} aria-label=${h.stageName}>
+  return html`<section class=${`stage${s.loading?.pass ? ' is-scan' : ''}`} aria-label=${h.stageName}>
     <div class="stage-sky" aria-hidden="true">
       <svg viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid slice" class="stage-svg">
         ${DUST.map((d, i) => html`<circle key=${i} cx=${d.x.toFixed(1)} cy=${d.y.toFixed(1)} r=${d.r.toFixed(2)} class="dust" style=${{ opacity: d.o.toFixed(2) }} />`)}
@@ -3381,7 +3369,7 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
             <circle r="52" class="core-fill" />
             ${wave ? [0, 1, 2].map(k => html`<circle key=${`${wave}-${k}`} r="56" class="wave" style=${{ animationDelay: `${k * 0.35}s` }} />`) : null}
           </g>
-          <text x=${STAGE.cx} y=${STAGE.cy + 7} class=${`core-name${focusLeft ? ' is-clock' : ''}`} text-anchor="middle">${focusLeft ?? 'Bridge'}</text>
+          <text x=${STAGE.cx} y=${STAGE.cy + 7} class="core-name" text-anchor="middle">Bridge</text>
         </svg>
         ${ring.map((st, i) => html`<button type="button" key=${st.id} class=${`station tk-${st.tone ?? 'muted'}${ringSel === i ? ' is-sel' : ''}${compact ? ' is-compact' : ''}`}
           style=${{ left: pctX(spots[i].x), top: pctY(spots[i].y) }} aria-pressed=${String(ringSel === i)} title=${st.label}
@@ -3399,19 +3387,16 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
           onContextMenu=${e => e.preventDefault()} onKeyDown=${e => { if (e.key === 'Enter' && e.altKey) { e.preventDefault(); c.openInner() } }}
           title=${h.coreTitle} aria-label=${h.coreTitle}></button>
         <span class="stage-hub">${h.hubLine(tabs.filter(x => !x.is_control).length, working, s.model?.counts?.work ?? 0)}</span>
-        <div class="core-modes" role="group" aria-label=${h.coreModes}>
-          <span class="core-modes-label">${h.coreModes}</span>
-          ${['k:scan', 'k:brief', 'k:focus', 'k:voice'].filter(id => id !== 'k:voice' || voice.available).map(id => html`<span key=${id}
-            class=${`core-mode${on.has(id) ? ' is-on' : ''}${id === 'k:focus' && focusLeft ? ' is-running' : ''}`}>
+        <div class="core-modes" role="group" aria-label=${h.runNow}>
+          <span class="core-modes-label">${h.runNow}</span>
+          ${['k:scan', 'k:brief'].map(id => html`<span key=${id} class="core-mode">
             <button type="button" class="core-mode-run" title=${h.modeRun(catalogLabel({ id }))}
-              onClick=${() => runMode(id)}>${id === 'k:focus' && focusLeft ? h.focusRunning(focusLeft) : catalogLabel({ id })}</button>
-            ${id === 'k:focus' ? null : html`<button type="button" class="core-mode-pin" aria-pressed=${String(on.has(id))} title=${on.has(id) ? h.modeInCore : h.modeNotInCore}
-              aria-label=${on.has(id) ? h.modeInCore : h.modeNotInCore} onClick=${() => toggleMode(id)}></button>`}
+              onClick=${() => runMode(id)}>${catalogLabel({ id })}</button>
           </span>`)}
         </div>
       </div>
       <div class="stage-side">
-        ${sel === '@core' ? html`<${CoreInspector} s=${s} c=${c} onClose=${() => setSel(null)} voice=${voice} onAsk=${coreAsk} onWeigh=${() => runMode('k:brief')} />`
+        ${sel === '@core' ? html`<${CoreInspector} s=${s} c=${c} onClose=${() => setSel(null)} onAsk=${coreAsk} onWeigh=${() => runMode('k:brief')} />`
           : selIdx >= 0 ? html`<${StageInspector} x=${tiles[selIdx]} st=${stations[selIdx]} s=${s} c=${c} tabs=${tabs} onClose=${() => setSel(null)} />`
           : html`<${StageCard} s=${s} c=${c} tabs=${tabs} />`}
       </div>
@@ -3497,7 +3482,7 @@ function HomePage({ s, c }) {
     </section>` : null}`
   // the bridge stage of the films is the start page; the tiles of before stay a choice ("classic")
   if (!on.has('o:classic')) {
-    return html`<div class=${`col col-page home bridge-home${s.ui.focusUntil && clockLeft(s.ui.focusUntil, s.now || Date.now()) ? ' in-focus' : ''}`}>
+    return html`<div class=${`col col-page home bridge-home`}>
       <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} edit=${edit} setEdit=${setEdit} />
       ${edit ? html`<${HomeChooser} c=${c} catalog=${catalog} chosen=${chosen} />` : null}
       ${daily}
