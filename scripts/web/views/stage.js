@@ -476,7 +476,7 @@ const DUST = stageDust(70, 41)
 
 /** The stage: the core with its rings, the chosen tiles as stations on curved links with packets running
  *  in, the terminal line top left, the card on the right */
-export function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
+export function BridgeStage({ s, c, catalog, chosen, project }) {
   const t = T()
   const h = t.home
   const lang = language()
@@ -576,7 +576,7 @@ export function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
           <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
       </div>` : null}
       <div class="stage-tools">
-        <${Btn} size="xs" variant=${edit ? 'primary' : 'ghost'} pressed=${edit} onClick=${() => setEdit(!edit)}>${edit ? h.chooseDone : h.choose}<//>
+        <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${h.choose}<//>
       </div>
     </div>
     <div class="stage-body">

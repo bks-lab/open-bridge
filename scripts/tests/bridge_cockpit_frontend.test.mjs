@@ -122,7 +122,7 @@ test('text tables: one word per thing, the retired words appear nowhere', () => 
   }
   for (const id of ['now', 'give', 'later']) { assert.equal(de.home.sit[id], de.section[id], id); assert.equal(en.home.sit[id], en.section[id], id) }
   assert.equal(de.home.returnsTitle, 'Bei der AI'); assert.equal(en.home.returnsTitle, 'With AI')
-  assert.equal(de.home.coreModes, 'Beim Klick auf Bridge'); assert.equal(en.home.coreModes, 'On a click on Bridge')
+  assert.equal(de.settings.coreTitle, 'Beim Klick auf Bridge'); assert.equal(en.settings.coreTitle, 'On a click on Bridge')
   assert.equal(de.home.coreScan, 'Neu laden'); assert.equal(en.home.coreScan, 'Reload')
   assert.equal(de.home.briefTitle, 'Einschätzung'); assert.equal(en.home.briefTitle, 'Assessment')
   assert.equal(de.home.startTitle, 'Schnellzugriff'); assert.equal(en.home.startTitle, 'Quick access')
@@ -1379,6 +1379,18 @@ test('the start page offers every tile to choose, and without a choice only a le
   // moving a tile one place in the order
   assert.deepEqual(logic.moveId(['a', 'b', 'c'], 'c', -1), ['a', 'c', 'b'])
   assert.deepEqual(logic.moveId(['a', 'b', 'c'], 'a', -1), ['a', 'b', 'c'])
+  // a station moves past the next station, whatever stands between them in the list
+  const list = ['c:a', 's:x', 'c:b', 'o:y', 'c:c']
+  const among = id => id.startsWith('c:')
+  assert.deepEqual(logic.moveAmong(list, among, 'c:b', -1), ['c:b', 's:x', 'c:a', 'o:y', 'c:c'])
+  assert.deepEqual(logic.moveAmong(list, among, 'c:b', 1), ['c:a', 's:x', 'c:c', 'o:y', 'c:b'])
+  assert.deepEqual(logic.moveAmong(list, among, 'c:a', -1), list)
+  assert.deepEqual(logic.moveAmong(list, among, 's:x', 1), list)
+  // dropped on another station it takes that one's place, the ones between move by one
+  assert.deepEqual(logic.dropAmong(list, among, 'c:c', 'c:a'), ['c:c', 's:x', 'c:a', 'o:y', 'c:b'])
+  assert.deepEqual(logic.dropAmong(list, among, 'c:a', 'c:c'), ['c:b', 's:x', 'c:c', 'o:y', 'c:a'])
+  assert.deepEqual(logic.dropAmong(list, among, 'c:a', 'c:a'), list)
+  assert.deepEqual(logic.dropAmong(list, among, 'c:a', 'c:gone'), list)
 })
 
 test('the start page picks one next step, the next date, and counts by project', async () => {
@@ -2033,8 +2045,10 @@ test('settings: a page of its own behind More, always there, with the launch gro
   }
   const page = read('views/settings.js')
   assert.match(page, /export function SettingsPage\(\{ s, c \}\)/)
-  assert.match(page, /const GROUPS = \[LaunchSettings\]/)                              // the list later groups join
-  assert.match(page, /<fieldset class=\$\{`set-sub\$\{on \? '' : ' is-off'\}`\} disabled=\$\{!on\}>/)   // the sub switches grey while off
+  assert.match(page, /const SECTIONS = \['start', 'look', 'launch'\]/)                   // the areas; a later one joins the list
+  assert.match(page, /const AREAS = \{ start: StartArea, look: LookArea, launch: LaunchArea \}/)
+  assert.match(page, /disabled=\$\{busy \|\| \(k !== 'enabled' && !on\)/)                  // the switches below the main one grey while it is off
+  assert.match(page, /\$\{st\.auto \? html`/)                                               // Auto's details only while Auto is on
   assert.match(page, /c\.resetLaunch\(\)/)
   assert.match(page, /overridden/)
   assert.match(read('components.js'), /s\.ui\.page === SETTINGS_PAGE\) return html`<\$\{SettingsPage\}/)
@@ -2141,9 +2155,9 @@ test('triage: the model the check implies, as the server reckons it (model_route
 
 test('settings: the daily check may ask Jev too, a switch below Auto, grey while launch or Auto is off', () => {
   const page = read('views/settings.js')
-  assert.match(page, /<\$\{SetRow\} k="auto"[\s\S]*?<\$\{SetRow\} k="triage_jev"/)
-  assert.match(page, /<\$\{Toggle\} k="triage_jev" s=\$\{s\} save=\$\{save\} disabled=\$\{busy \|\| !st\.auto\} \/>/)
-  assert.match(page, /s\.jev\?\.ready \? null : html`<span class="muted small">\$\{w\.triageJevNeedsJev\}<\/span>`/)
+  assert.match(page, /changedMark\('auto', l\)[\s\S]*?<\$\{LRow\} k="triage_jev"/)
+  assert.match(page, /\(k === 'triage_jev' && !st\.auto\)/)
+  assert.match(page, /s\.jev\?\.ready \? null : html`<span class="muted small set-aside">\$\{w\.triageJevNeedsJev\}<\/span>`/)
   for (const lang of ['en', 'de']) {
     const t = text.TABLES[lang]
     assert.ok(t.settings.label.triage_jev && t.settings.explain.triage_jev && t.settings.triageJevNeedsJev, lang)
@@ -2151,4 +2165,19 @@ test('settings: the daily check may ask Jev too, a switch below Auto, grey while
   assert.equal(text.TABLES.de.settings.label.triage_jev, 'Jev bei der täglichen Prüfung mitbewerten')
   assert.equal(text.TABLES.en.settings.label.triage_jev, 'Also ask Jev in the daily check')
   assert.deepEqual(logic.launchPatch('triage_jev', true), { triage_jev: true })
+})
+
+test('settings: Customise opens a drawer beside the start page, every choice there is explained', () => {
+  assert.match(read('components.js'), /s\.ui\.drawer === 'customize' \? html`<\$\{CustomizeDrawer\}/)
+  assert.match(read('views/stage.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
+  assert.match(read('views/home.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
+  assert.doesNotMatch(read('views/home.js'), /HomeChooser/)
+  assert.match(read('app.js'), /openSettings\(id\) \{/)
+  const ids = logic.homeCatalog({ pages: [] }).filter(x => ['shelf', 'option', 'core'].includes(x.kind)).map(x => x.id)
+  for (const lang of ['en', 'de']) {
+    const w = text.TABLES[lang].settings
+    for (const id of ['start', 'look', 'launch']) assert.ok(w.section[id].title && w.section[id].sub, `${lang} ${id}`)
+    for (const id of ids.filter(x => x !== 'o:classic')) assert.ok(w.explainOption[id], `${lang} ${id}`)
+    for (const k of ['quota', 'count', 'page']) assert.ok(w.kind[k], `${lang} ${k}`)
+  }
 })

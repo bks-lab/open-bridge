@@ -214,11 +214,16 @@ count, its largest sections underneath (a page with findings names where
 they are). A click opens the page.
 
 What stands on the start page is your choice. "Customise" beside the
-overview lists every quota, every count, every page and the shelves below;
-a click switches one on or off. The choice lives on the server
-(`state.json`, key `home_tiles`, action `home_tiles`), so every browser shows
-the same. Until one is made the page keeps lean: the weekly quota, what
-waits on you, the page with the tasks, and every shelf.
+bridge opens a drawer that leaves the page in view, so every change shows at
+once: the view (bridge or tiles, two pictures to pick from), the stations as
+one list in their order (a switch each, a grip to drag, arrows for the
+keyboard; the bridge has room for 13, Today takes the 14th place), the
+sections below, what a click on the core does, and the small details. Every
+row says in one line what it does. "All settings" leads to the same editors
+on the settings page. The choice lives on the server (`state.json`, key
+`home_tiles`, action `home_tiles`), so every browser shows the same. Until
+one is made the page keeps lean: the weekly quota, what waits on you, the
+page with the tasks, and every shelf.
 
 More it can show, each one switched in "Customise":
 
@@ -238,9 +243,9 @@ More it can show, each one switched in "Customise":
   once through the terminal driver); numbers against yesterday; the count of
   waiting tabs in the browser tab's title; a project chip that also filters
   the numbers.
-- **Order**: the tiles shown move left or right.
+- **Order**: drag a station in the list, or move it one place up or down.
 
-**The bridge.** Unless "Classic view" is chosen, the start page draws the
+**The bridge.** Unless the tiles view is chosen, the start page draws the
 picture of the explainer films: the terminal line (it asks the chat), the
 core with its rings, the chosen tiles as stations on curved links, the card
 "Today" with the next step. A station's heart line beats by its state (red
@@ -648,9 +653,13 @@ sends counts as Auto's recommendation and stays under `max_model`. The effort
 "Standard" adds no flag and leaves Claude Code's own. Only an item's title, kind and priority go to the
 judge, never its detail or a path.
 
-The page **Settings** (behind More) shows every key above and changes it on
-top of the config; the change is kept in `.bridge/cockpit/launch.json`, marked
-as changed on the page, and "Reset" goes back to the config. The page never
+The page **Settings** (behind More) has three areas: Start page, Appearance
+and Model choice. Model choice shows every key above in three cards (the
+main switch, the choice by hand, Auto) and changes it on top of the config;
+Auto's details show only while Auto is on, and the Jev and Haiku tables carry
+a scale from 0 to 3 that shows which model each rating gets. A change is kept
+in `.bridge/cockpit/launch.json`, marked as changed on the page, and a banner
+with "Reset" goes back to the config. The page never
 writes `bridge-config.yaml`. Every start records its model, effort and who
 chose it (`chosen`, `recommended`, `status`, `check`, `jev`, `haiku`, `default`) in
 `launches.json`, the data to tune the bands with later.

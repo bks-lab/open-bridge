@@ -6,7 +6,7 @@ import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.mo
 import {
   attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, greetingPart, homeCatalog,
   homeChosen, homeContinue, homeProjects, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
-  moveId, nextEvent, untilText, liveStage, stageTone, RETURN_STAGES,
+  nextEvent, untilText, liveStage, stageTone, RETURN_STAGES,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { RowActions, RowMeta, SettleMenu } from './day.js'
@@ -345,8 +345,8 @@ function DoneTile({ s }) {
   </button>`
 }
 
-/** The name of a catalog entry in the chooser */
-function catalogLabel(x) {
+/** The name of a catalog entry, on the stage and in the settings */
+export function catalogLabel(x) {
   const h = T().home
   if (x.kind === 'quota' || x.kind === 'page') return x.label
   return { 'c:waiting': h.waitingNow, 'c:tabs': h.tabsWaiting, 'c:next': h.nextTitle, 'c:done': h.doneTitle,
@@ -354,41 +354,6 @@ function catalogLabel(x) {
     's:tasks': h.tasksTitle, 's:starts': h.startTitle, 'o:today': h.optToday, 'o:preview': h.optPreview,
     'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:pulse': h.optPulse,
     'c:agents': h.agentsTitle, 'c:returns': h.returnsTitle, 's:returns': h.returnsTitle, 'c:workers': T().workersTab, 'k:scan': h.coreScan, 'k:brief': h.briefTitle }[x.id] ?? x.id
-}
-
-/** The chooser: every tile, shelf and option, a click switches one on or off; the tiles shown can move
- *  left or right. Kept on the server with what it offered, so a new tile later comes with its default */
-function HomeChooser({ c, catalog, chosen }) {
-  const h = T().home
-  const ids = catalog.map(x => x.id)
-  const save = list => c.setHomeTiles(list, ids)
-  const toggle = id => save(chosen.includes(id) ? chosen.filter(x => x !== id) : [...chosen, id])
-  const byId = new Map(catalog.map(x => [x.id, x]))
-  const order = chosen.filter(id => ['quota', 'count', 'page'].includes(byId.get(id)?.kind))
-  const group = (title, kinds) => {
-    const list = catalog.filter(x => kinds.includes(x.kind))
-    return list.length ? html`<div class="chooser-group"><h3 class="label-caps">${title}</h3><div class="chooser-chips">
-      ${list.map(x => html`<button type="button" key=${x.id} class=${`home-chip${chosen.includes(x.id) ? ' is-on' : ''}`}
-        aria-pressed=${String(chosen.includes(x.id))} onClick=${() => toggle(x.id)}>${chosen.includes(x.id) ? '✓ ' : '+ '}${catalogLabel(x)}</button>`)}
-    </div></div>` : null
-  }
-  return html`<div class="chooser panel panel-pad">
-    <p class="muted small">${h.chooseHint}</p>
-    ${group(h.quotaTitle, ['quota'])}
-    ${group(h.countsTitle, ['count', 'page'])}
-    ${group(h.shelvesTitle, ['shelf'])}
-    ${group(h.optionsTitle, ['option'])}
-    ${group(h.coreModes, ['core'])}
-    ${order.length > 1 ? html`<div class="chooser-group"><h3 class="label-caps">${h.orderTitle}</h3><div class="chooser-chips">
-      ${order.map((id, i) => html`<span class="order-chip" key=${id}>
-        <button type="button" class="btn-link" disabled=${i === 0} aria-label=${h.moveLeft(catalogLabel(byId.get(id)))}
-          onClick=${() => save(moveId(chosen, id, -1))}><${Icon} name="back" size=${14} /></button>
-        <span>${catalogLabel(byId.get(id))}</span>
-        <button type="button" class="btn-link" disabled=${i === order.length - 1} aria-label=${h.moveRight(catalogLabel(byId.get(id)))}
-          onClick=${() => save(moveId(chosen, id, 1))}><${Icon} name="chevronRight" size=${14} /></button>
-      </span>`)}
-    </div></div>` : null}
-  </div>`
 }
 
 /** The tile of a catalog entry: a quota, a count, the next date, the week, a page. `hud` draws a quota as a ring */
@@ -440,14 +405,12 @@ export function shownTiles(catalog, chosen) {
 
 function HomeOverview({ s, c, catalog, chosen, project }) {
   const h = T().home
-  const [edit, setEdit] = useState(false)
   const shown = shownTiles(catalog, chosen)
   const tile = tileMaker(s, c, chosen, project)
   return html`<section class="home-shelf" aria-labelledby="home-overview">
     <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-overview">${h.overviewTitle}</h2>
-      <${Btn} size="xs" variant=${edit ? 'primary' : 'ghost'} pressed=${edit} onClick=${() => setEdit(!edit)}>${edit ? h.chooseDone : h.choose}<//></header>
-    ${edit ? html`<${HomeChooser} c=${c} catalog=${catalog} chosen=${chosen} />` : null}
-    ${shown.length ? html`<div class="kgrid">${shown.map(tile)}</div>` : edit ? null : html`<${Empty}>${h.chooseEmpty}<//>`}
+      <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${h.choose}<//></header>
+    ${shown.length ? html`<div class="kgrid">${shown.map(tile)}</div>` : html`<${Empty}>${h.chooseEmpty}<//>`}
   </section>`
 }
 
@@ -489,7 +452,6 @@ export function HomePage({ s, c }) {
   const pageBadge = id => (s.model?.pages ?? []).find(p => p.id === id)?.badge
   const byKey = indexRows(s.model)
   const pinned = (s.home?.pins ?? []).map(k => byKey.get(k)).filter(Boolean).filter(r => inProject(r, project))
-  const [edit, setEdit] = useState(false)
   const chips = projects.length > 1 ? html`<div class="home-chips" role="toolbar" aria-label=${h.projectsLabel}>
       <button type="button" class=${`home-chip${project ? '' : ' is-on'}`} aria-pressed=${String(!project)} onClick=${() => c.setHomeProject(null)}>${h.all}</button>
       ${projects.map(p => html`<button type="button" key=${p} class=${`home-chip${project === p ? ' is-on' : ''}`} aria-pressed=${String(project === p)}
@@ -532,8 +494,7 @@ export function HomePage({ s, c }) {
   // the bridge stage of the films is the start page; the tiles of before stay a choice ("classic")
   if (!on.has('o:classic')) {
     return html`<div class=${`col col-page home bridge-home`}>
-      <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} edit=${edit} setEdit=${setEdit} />
-      ${edit ? html`<${HomeChooser} c=${c} catalog=${catalog} chosen=${chosen} />` : null}
+      <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} />
       ${daily}
       ${chips}
       ${shelves}

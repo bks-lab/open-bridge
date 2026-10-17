@@ -1147,6 +1147,36 @@ export function moveId(list, id, step) {
   return out
 }
 
+/** The ids of a list `among` picks keep their places, and fill them in a new order */
+function refill(list, among, order) {
+  let i = 0
+  return list.map(id => (among(id) ? order[i++] : id))
+}
+
+/** An id moved one place earlier (-1) or later (+1) among the ids `among` picks, past whatever stands
+ *  between them in the list (the stations of the start page between its shelves and options) */
+export function moveAmong(list, among, id, step) {
+  const order = list.filter(among)
+  const i = order.indexOf(id)
+  const j = i + step
+  if (i < 0 || j < 0 || j >= order.length) return list
+  const next = order.slice()
+  next[i] = order[j]
+  next[j] = id
+  return refill(list, among, next)
+}
+
+/** An id dropped on another among the ids `among` picks: it takes that one's place, the ones between move by one */
+export function dropAmong(list, among, id, target) {
+  const order = list.filter(among)
+  const from = order.indexOf(id)
+  const to = order.indexOf(target)
+  if (from < 0 || to < 0 || from === to) return list
+  const next = order.filter(x => x !== id)
+  next.splice(to, 0, id)
+  return refill(list, among, next)
+}
+
 /** The one next step of the start page: a tab that asks you, else the first row waiting on you, else the
  *  first P0 or P1 task of the backlog; nothing when there is none */
 export function focusPick(tabs, model) {
