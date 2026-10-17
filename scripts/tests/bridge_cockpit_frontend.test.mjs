@@ -1690,7 +1690,7 @@ test('start: one block beside the bridge, Today is a station of the ring that br
   assert.match(src, /const spots = stageSpots\(ring\.length\)/)
   // the station Today clears the selection, the block shows Today when nothing is looked at
   assert.match(src, /st\.id === '@today' \? setSel\(null\)/)
-  assert.match(src, /: html`<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} \/>`\}\n      <\/div>\n    <\/div>/)
+  assert.match(src, /: html`<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} onWeigh=\$\{\(\) => runMode\('k:brief'\)\} \/>`\}\n      <\/div>\n    <\/div>/)
   assert.doesNotMatch(read('style.css'), /stage-today|has-today/)
 })
 
@@ -1715,8 +1715,13 @@ test('start: the row under the bridge runs now, no focus span, speech sits in th
   const src = read('components.js')
   const css = read('style.css')
   const stage = src.match(/function BridgeStage\([\s\S]*?\n\}/)[0]
-  assert.match(stage, /h\.runNow/)
-  assert.doesNotMatch(stage, /core-mode-pin|k:voice|k:focus|useVoice/)
+  // no row under the bridge any more: Reload is in the header, the assessment sits in the card Today it replaces
+  assert.doesNotMatch(stage, /core-modes|core-mode-pin|k:voice|k:focus|useVoice/)
+  assert.doesNotMatch(css, /\.core-mode/)
+  const card = src.match(/function StageCard\([\s\S]*?\n\}/)[0]
+  assert.match(card, /onWeigh/)
+  assert.match(card, /h\.weighDay/)
+  assert.match(stage, /<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} onWeigh=/)
   assert.doesNotMatch(src + css + read('app.js'), /focusUntil|clockLeft|c\.setFocus\(|setFocus\(until|in-focus|is-clock|core-mode-pin/)
   assert.equal(logic.clockLeft, undefined)
   const prompt = src.match(/function StagePrompt\([\s\S]*?\n\}/)[0]
@@ -1725,7 +1730,8 @@ test('start: the row under the bridge runs now, no focus span, speech sits in th
   assert.doesNotMatch(src.match(/function CoreInspector\([\s\S]*?\n\}/)[0], /voice/)
   for (const lang of ['de', 'en']) {
     const h = text.TABLES[lang].home
-    for (const k of ['coreFocus', 'coreVoice', 'focusRunning', 'focusHint', 'focusEnd']) assert.equal(h[k], undefined, `${lang}.${k}`)
+    for (const k of ['coreFocus', 'coreVoice', 'focusRunning', 'focusHint', 'focusEnd', 'runNow', 'modeRun']) assert.equal(h[k], undefined, `${lang}.${k}`)
+    assert.ok(h.weighDay, `${lang}.weighDay`)
     for (const k of ['denied', 'nothing', 'network', 'other']) assert.ok(h.voiceError[k], `${lang}.voiceError.${k}`)
   }
 })

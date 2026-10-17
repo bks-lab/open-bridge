@@ -2923,7 +2923,7 @@ function freshKeys(s, ms = 15 * 60000) {
   return new Set((s.feed ?? []).filter(e => e.kind === 'new' && now - e.at < ms).map(e => e.key))
 }
 
-function StageCard({ s, c, tabs }) {
+function StageCard({ s, c, tabs, onWeigh }) {
   const t = T()
   const h = t.home
   const pick = focusPick(tabs, s.model)
@@ -2948,7 +2948,9 @@ function StageCard({ s, c, tabs }) {
       <${SettleMenu} rows=${[r]} s=${s} c=${c} /><${PinStar} rowKey=${r.key} s=${s} c=${c} /></div>` : null}
   </div>`
   return html`<section class="stage-card" aria-labelledby="stage-card-title">
-    <header class="stage-card-head"><h2 id="stage-card-title">${h.cardTitle}</h2><small class="mono">${stamp}</small></header>
+    <header class="stage-card-head"><h2 id="stage-card-title">${h.cardTitle}</h2>
+      <span class="stage-card-tools"><small class="mono">${stamp}</small>
+        ${onWeigh ? html`<${Btn} size="xs" variant="ghost" cls="stage-weigh" onClick=${onWeigh} title=${h.sit.weigh} icon="spark">${h.weighDay}<//>` : null}</span></header>
     ${pick?.kind === 'tab' ? html`<div class="stage-row is-lead">
       <span class="stage-dot tk-warning dot-pulse" aria-hidden="true"></span>
       <button type="button" class="stage-row-main" onClick=${() => jumpToTab(s, c, pick.tab.ref)} title=${h.openTab(pick.tab.name)}>
@@ -3387,18 +3389,11 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
           onContextMenu=${e => e.preventDefault()} onKeyDown=${e => { if (e.key === 'Enter' && e.altKey) { e.preventDefault(); c.openInner() } }}
           title=${h.coreTitle} aria-label=${h.coreTitle}></button>
         <span class="stage-hub">${h.hubLine(tabs.filter(x => !x.is_control).length, working, s.model?.counts?.work ?? 0)}</span>
-        <div class="core-modes" role="group" aria-label=${h.runNow}>
-          <span class="core-modes-label">${h.runNow}</span>
-          ${['k:scan', 'k:brief'].map(id => html`<span key=${id} class="core-mode">
-            <button type="button" class="core-mode-run" title=${h.modeRun(catalogLabel({ id }))}
-              onClick=${() => runMode(id)}>${catalogLabel({ id })}</button>
-          </span>`)}
-        </div>
       </div>
       <div class="stage-side">
         ${sel === '@core' ? html`<${CoreInspector} s=${s} c=${c} onClose=${() => setSel(null)} onAsk=${coreAsk} onWeigh=${() => runMode('k:brief')} />`
           : selIdx >= 0 ? html`<${StageInspector} x=${tiles[selIdx]} st=${stations[selIdx]} s=${s} c=${c} tabs=${tabs} onClose=${() => setSel(null)} />`
-          : html`<${StageCard} s=${s} c=${c} tabs=${tabs} />`}
+          : html`<${StageCard} s=${s} c=${c} tabs=${tabs} onWeigh=${() => runMode('k:brief')} />`}
       </div>
     </div>
   </section>`
