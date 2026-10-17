@@ -293,15 +293,24 @@ def build_css(design: dict) -> tuple[str, list[str]]:
 # generated is plain but legible, and the core file never holds a brand value.
 BEGIN = "/* design-tokens:begin */"
 END = "/* design-tokens:end */"
+GENERATED = "/* design-tokens: generated from DESIGN.md, overrides the neutral values above */"
 
 
 def inject(shell: str, css: str) -> str:
-    """Return `shell` with the token region replaced by `css`."""
+    """Return `shell` with `css` added to its token region.
+
+    The shell's own neutral values stay first and `css` follows, so a token the
+    DESIGN.md does not define keeps its neutral value instead of going undefined:
+    a legacy manifest without warn/danger/accent-line left the run button of a
+    simulation invisible (white on white) when the region was replaced whole.
+    """
     if shell.count(BEGIN) != 1 or shell.count(END) != 1:
         raise ValueError("shell needs exactly one %s and one %s marker" % (BEGIN, END))
     head, rest = shell.split(BEGIN, 1)
-    _, tail = rest.split(END, 1)
-    return head + BEGIN + "\n" + css.rstrip("\n") + "\n" + END + tail
+    neutral, tail = rest.split(END, 1)
+    neutral = neutral.split(GENERATED, 1)[0].rstrip("\n")
+    return (head + BEGIN + neutral + "\n" + GENERATED + "\n" + css.rstrip("\n") + "\n"
+            + END + tail)
 
 
 def default_shell() -> Path:
