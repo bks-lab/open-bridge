@@ -1961,6 +1961,33 @@ export function tickerPatch(key, value, current = {}) {
 // eslint-disable-next-line no-control-regex
 const TICKER_CTRL = /[\u0000-\u001f\u007f]/
 
+/** The muted terms from the settings field: split at commas and line ends, blanks squeezed, each 1 to 40
+ *  characters, once each ignoring case, at most 30 (the server's rules) */
+export function tickerMuteTerms(text) {
+  const out = []
+  const seen = new Set()
+  for (const raw of String(text ?? '').split(/[,\n]/)) {
+    const term = raw.replace(/\s+/g, ' ').trim()
+    if (!term || term.length > 40 || TICKER_CTRL.test(term) || seen.has(term.toLowerCase())) continue
+    seen.add(term.toLowerCase())
+    out.push(term)
+    if (out.length >= 30) break
+  }
+  return out
+}
+
+/** Whether a news item came out after the viewer's last visit (since, ms): never on a first visit, never
+ *  for an item without a date */
+export function tickerIsNew(it, since) {
+  return Number.isFinite(since) && since > 0 && Number.isFinite(it?.published_ms) && it.published_ms > since
+}
+
+/** The ids of the news the viewer opened, the newest last, at most cap */
+export function tickerRemember(list, id, cap = 300) {
+  if (!id) return list ?? []
+  return [...(list ?? []).filter(x => x !== id), id].slice(-cap)
+}
+
 /** An http or https URL without a user name, blanks or control characters, at most 500 long */
 function tickerUrlValid(url) {
   if (typeof url !== 'string' || !url || url.length > 500 || /\s/.test(url) || TICKER_CTRL.test(url)) return false

@@ -28,7 +28,9 @@ FEED_A = "https://example.org/a.xml"
 FEED_B = "https://example.org/b.xml"
 FEED_C = "https://example.org/c.xml"
 
-TICKER_CFG = ("cockpit:\n  enabled: true\n  language: en\n  relay: true\n  ticker:\n    enabled: true\n{more}"
+# the fixtures' feeds carry fixed dates in early October: the age filter is off here and tested on its own
+TICKER_CFG = ("cockpit:\n  enabled: true\n  language: en\n  relay: true\n  ticker:\n    enabled: true\n"
+              "    smart: {{max_age_hours: 0}}\n{more}"
               "workplace:\n  control:\n    name: Control\n")
 FEEDS_CFG = ("    feeds:\n"
              f"      - {{id: alpha, name: Alpha, url: \"{FEED_A}\"}}\n"
@@ -611,3 +613,172 @@ def test_a_collect_pass_sends_no_ticker_event_while_the_ticker_is_off(world):
     world.app.collector.request("full")
     world.app.collector.drain()
     assert not any(name == "ticker" for name, _ in events(client))
+
+
+# ---------------------------------------------------------------- 12 selection without a model (smart)
+
+@pytest.mark.parametrize("change, field", [
+    ({"smart": {"cluster": "yes"}}, "smart.cluster"),
+    ({"smart": {"max_age_hours": -1}}, "smart.max_age_hours"),
+    ({"smart": {"max_age_hours": 721}}, "smart.max_age_hours"),
+    ({"smart": {"mute": "webinar"}}, "smart.mute"),
+    ({"smart": {"mute": [""]}}, "smart.mute"),
+    ({"smart": {"mute": ["x" * 41]}}, "smart.mute"),
+    ({"smart": {"mute": [f"t{i}" for i in range(31)]}}, "smart.mute"),
+    ({"smart": []}, "smart"),
+])
+def test_smart_settings_reject_with_the_field(change, field):
+    with pytest.raises(tk.TickerSettingsError) as caught:
+        tk.normalize(change, tk.defaults())
+    assert caught.value.field == field
+
+
+def test_smart_defaults_and_muted_terms_once_each_with_blanks_squeezed():
+    assert tk.defaults()["smart"] == {"cluster": True, "max_age_hours": 72, "mark_new": True, "mute": []}
+    out = tk.normalize({"smart": {"mute": ["  Funding   round ", "funding round", "Webinar"]}}, tk.defaults())
+    assert out["smart"]["mute"] == ["Funding round", "Webinar"] and out["smart"]["cluster"] is True
+
+
+def _it(feed: str, title: str, url: str, ms: int | None = None) -> dict:
+    return {"id": tk._item_id(feed, url), "feed": feed, "source": feed.title(), "title": title, "url": url,
+            "published_ms": ms}
+
+
+def test_one_story_from_two_feeds_becomes_one_item_naming_the_other():
+    a = [_it("alpha", "OpenAI releases GPT-6 with longer context window", "https://a.example/1", 1000)]
+    b = [_it("beta", "GPT-6 released by OpenAI: longer context window and new pricing", "https://b.example/9", 2000),
+         _it("beta", "Something else entirely about robots", "https://b.example/2", 500)]
+    items = tk.merge_items([a, b], 10, {"cluster": True})
+    assert len(items) == 2
+    story = next(i for i in items if i["feed"] == "alpha")
+    assert story["published_ms"] == 2000
+    assert story["sources"] == [{"feed": "beta", "source": "Beta", "url": "https://b.example/9"}]
+    # without clustering both stay; an exact duplicate address still joins and names its feed
+    assert len(tk.merge_items([a, b], 10, {"cluster": False})) == 3
+    dup = [_it("beta", "Different words", "https://a.example/1?utm_source=x", 10)]
+    (one,) = tk.merge_items([a, dup], 10, {"cluster": False})
+    assert one["sources"][0]["feed"] == "beta"
+
+
+def test_two_items_of_one_feed_never_join_and_few_shared_words_do_not_either():
+    same_feed = [_it("alpha", "heise-Angebot: enterJS Call for Proposals 2027", "https://a.example/1"),
+                 _it("alpha", "heise-Angebot: enterJS Call for Papers 2027", "https://a.example/2")]
+    assert len(tk.merge_items([same_feed], 10, {"cluster": True})) == 2
+    loose = [[_it("alpha", "Claude gets a new memory tool", "https://a.example/3")],
+             [_it("beta", "Gemini gets a new memory feature for teams and schools", "https://b.example/3")]]
+    assert len(tk.merge_items(loose, 10, {"cluster": True})) == 2
+
+
+def test_muted_terms_drop_items_a_word_only_as_a_whole_word():
+    items = [[_it("alpha", "AI Act enters into force", "https://a.example/1"),
+              _it("alpha", "What the CEO said about chips", "https://a.example/2"),
+              _it("alpha", "Big funding round for a startup", "https://a.example/3")]]
+    titles = [i["title"] for i in tk.merge_items(items, 10, {"mute": ["ai", "Funding Round"]})]
+    assert titles == ["What the CEO said about chips"]
+
+
+def test_items_older_than_max_age_drop_and_undated_ones_stay():
+    now = 100 * 3_600_000
+    items = [[_it("alpha", "Fresh", "https://a.example/1", now - 3_600_000),
+              _it("alpha", "Old", "https://a.example/2", now - 80 * 3_600_000),
+              _it("alpha", "Undated", "https://a.example/3")]]
+    assert [i["title"] for i in tk.merge_items(items, 10, {"max_age_hours": 72}, now)] == ["Fresh", "Undated"]
+    assert len(tk.merge_items(items, 10, {"max_age_hours": 0}, now)) == 3
+
+
+def test_changing_the_selection_rebuilds_at_once_without_reading_a_feed(tworld):
+    t = tworld.app.ticker
+    t.refresh_sync()
+    calls = len(t.fetch.calls)
+    tworld.act("ticker_settings", settings={"smart": {"mute": ["two"]}})
+    assert [i["title"] for i in t.state()["items"]] == ["B one", "A one"]
+    assert len(t.fetch.calls) == calls
+    tworld.act("ticker_settings_reset")
+    assert len(t.state()["items"]) == 3
+
+
+def test_the_editor_prompt_names_muted_terms_and_how_many_feeds_tell_a_story():
+    items = [{"id": "x1", "title": "Story", "source": "Alpha", "sources": [{"feed": "b", "source": "B", "url": "u"}]},
+             {"id": "x2", "title": "Lonely", "source": "Alpha", "sources": []}]
+    prompt, ids = tk.edit_prompt("agents", items, 5, True, ["webinar", "funding"])
+    assert ids == ["x1", "x2"]
+    assert "Never pick an item about: webinar; funding." in prompt
+    assert '"t":"Story","src":"Alpha","n":2' in prompt and '"t":"Lonely","src":"Alpha"}' in prompt
+    assert tk.edit_key({"interests": "a", "max_picks": 5, "shorten": True}, ["x"]) != \
+        tk.edit_key({"interests": "a", "max_picks": 5, "shorten": True}, [])
+
+
+# ---------------------------------------------------------------- 13 the interest profile
+
+def test_profile_keywords_rank_shared_and_named_words_first():
+    titles = ["Kafka consumer fails on Azure Functions", "Azure Functions cold start", "Claude Code skill for Kafka",
+              "write the newsletter"]
+    words = tk.profile_keywords(titles, 4).split(", ")
+    assert words[:3] == ["Kafka", "Azure", "Functions"] and len(words) == 4
+    assert "the" not in [w.lower() for w in tk.profile_keywords(titles).split(", ")]
+
+
+def test_the_profile_reads_the_titles_of_the_open_tasks(tworld):
+    tworld.app.collector.tasks = [{"slug": "a", "title": "One"}, {"slug": "b", "label": "Two"}, "bad"]
+    assert tworld.app.ticker.task_titles() == ["One", "Two"]
+
+
+def test_a_keyword_profile_comes_at_once_and_never_calls_claude(tworld):
+    tworld.app.ticker.task_titles = lambda: ["Kafka consumer on Azure", "Azure costs"]
+    r = tworld.act("ticker_profile", llm=False)
+    last = r["ticker"]["profile"]["last"]
+    assert last["llm"] is False and last["text"].startswith("Azure") and last["from"] == 2
+    assert r["ticker"]["profile"]["tasks"] == 2
+    assert tworld.runner.of("claude.p") == []
+    # a proposal is no setting
+    assert tworld.app.ticker.settings()["editor"]["interests"] == ""
+
+
+def test_a_haiku_profile_runs_on_a_thread_with_the_task_titles(tworld):
+    tworld.app.ticker.task_titles = lambda: ["Kafka consumer on Azure"]
+    answer = {"result": '"Kafka, event streaming, Azure Functions"\nextra line', "total_cost_usd": 0.0004}
+    tworld.runner.handlers["claude.p"] = lambda argv: ok(json.dumps(answer))
+    tworld.act("ticker_profile", llm=True)
+    wait_for(lambda: tworld.app.ticker.state()["profile"]["running"] is None
+             and tworld.app.ticker.state()["profile"]["last"] is not None)
+    last = tworld.app.ticker.state()["profile"]["last"]
+    assert last == {"text": "Kafka, event streaming, Azure Functions", "llm": True, "at_ms": last["at_ms"], "from": 1,
+                    "error": None, "cost_usd": 0.0004}
+    (argv,) = tworld.runner.of("claude.p")
+    assert argv == mr.haiku_argv(tworld.runner.claude, argv[12]) and "- Kafka consumer on Azure" in argv[12]
+
+
+def test_a_profile_needs_tasks_and_for_haiku_claude_and_the_editor(tworld):
+    tworld.app.ticker.task_titles = lambda: []
+    with pytest.raises(ActionError) as caught:
+        tworld.act("ticker_profile")
+    assert caught.value.code == "not_applicable"
+    tworld.app.ticker.task_titles = lambda: ["Something"]
+    tworld.act("ticker_settings", settings={"editor": {"enabled": False}})
+    with pytest.raises(ActionError):
+        tworld.act("ticker_profile", llm=True)
+    tworld.act("ticker_settings", settings={"editor": {"enabled": True}})
+    tworld.runner.claude = None
+    with pytest.raises(ActionError):
+        tworld.act("ticker_profile", llm=True)
+    tworld.runner.handlers["claude.p"] = lambda argv: fail("down")
+    assert tworld.act("ticker_profile", llm=False)["ok"]
+
+
+def test_a_busy_feed_cannot_push_out_a_quiet_one():
+    busy = [_it("busy", f"Busy story number {i}", f"https://busy.example/{i}", 10_000 - i) for i in range(8)]
+    quiet = [_it("quiet", "The quiet feed's one post", "https://quiet.example/1", 100)]
+    items = tk.merge_items([busy, quiet], 4)
+    assert [i["feed"] for i in items] == ["busy", "busy", "busy", "quiet"]
+    assert [i["published_ms"] for i in items] == [10_000, 9_999, 9_998, 100]
+
+
+def test_a_gzip_body_sent_unasked_is_unpacked_within_the_cap():
+    import gzip
+    body = rss([("Packed", "https://example.org/p", None)])
+    assert tk.ungzip(gzip.compress(body)) == body
+    assert tk.ungzip(body) == body
+    with pytest.raises(tk.FeedError, match="too_large"):
+        tk.ungzip(gzip.compress(b" " * (tk.MAX_BYTES + 10)))
+    with pytest.raises(tk.FeedError, match="bad gzip"):
+        tk.ungzip(b"\x1f\x8bnot really")

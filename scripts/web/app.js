@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, addNote, attentionTabs, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
-  upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker,
+  upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -37,6 +37,25 @@ function load(key, fallback) {
 /** Whether this load is the browser's reload of the page, not a new visit (a bookmark, a new tab) */
 function reloaded() {
   try { return window.performance?.getEntriesByType?.('navigation')?.[0]?.type === 'reload' } catch { return false }
+}
+
+/** The news ticker's marks in this browser: the ids of the news opened, and since when a news item counts
+ *  as new (the visit before this one; a reload is no new visit). A convenience, never state */
+function loadTickerRead() {
+  try {
+    const v = JSON.parse(window.localStorage.getItem('bridge-cockpit.tickerRead') ?? '[]')
+    return Array.isArray(v) ? v.filter(x => typeof x === 'string').slice(-300) : []
+  } catch {
+    return []
+  }
+}
+
+function tickerSince() {
+  const last = Number(load('bridge-cockpit.tickerVisit', 0)) || 0
+  if (reloaded()) return Number(load('bridge-cockpit.tickerSince', 0)) || 0
+  save('bridge-cockpit.tickerSince', String(last))
+  save('bridge-cockpit.tickerVisit', String(Date.now()))
+  return last
 }
 
 /** The live feed, kept in this browser so a reload does not empty it; a convenience, never state */
@@ -112,7 +131,8 @@ const store = createStore({
     workKind: load('bridge-cockpit.workKind', null),
     theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
-    busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden', quickModel: load('bridge-cockpit.quickModel', null),
+    busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
+    tickerPaused: load('bridge-cockpit.tickerPaused', '0') === '1', tickerRead: loadTickerRead(), tickerSince: tickerSince(), quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
   details: { inbox: {}, task: {} },
@@ -785,6 +805,15 @@ const ctl = {
   // store takes both states from the ticker events alone, in order, and the button shows busy in between
   tickerRefresh: async () => act('ticker_refresh', {}),
   tickerEdit: async () => act('ticker_edit', {}),
+  // the interest profile: keywords from the open tasks at once, or (llm) Haiku's line, only on its button;
+  // a proposal the settings show until the owner saves it into the interests
+  tickerProfile: async llm => tickerAnswer(await act('ticker_profile', { llm: !!llm })),
+  setTickerPaused: on => { save('bridge-cockpit.tickerPaused', on ? '1' : '0'); setUi({ tickerPaused: !!on }) },
+  tickerOpened: id => {
+    const read = tickerRemember(store.get().ui.tickerRead, id)
+    save('bridge-cockpit.tickerRead', JSON.stringify(read))
+    setUi({ tickerRead: read })
+  },
   askControl,
   setAskFallback: fb => setUi({ askFallback: fb }),
   closeTabView: () => setUi({ tabView: null }),

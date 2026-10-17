@@ -214,12 +214,17 @@ work:
 #       - {id: huggingface, name: Hugging Face, url: "https://huggingface.co/blog/feed.xml", enabled: true}
 #       - {id: techreview-ai, name: MIT Technology Review AI, url: "https://www.technologyreview.com/topic/artificial-intelligence/feed", enabled: true}
 #       - {id: simonwillison, name: Simon Willison, url: "https://simonwillison.net/atom/everything/", enabled: true}
+#     smart:                 # the selection without a model, on every read of the feeds
+#       cluster: true        # one story from several feeds becomes one item (+2 = two more tell it)
+#       max_age_hours: 72    # dated items older than this leave (0 = never; 0 to 720)
+#       mark_new: true       # mark what came out after the viewer's last visit (per browser)
+#       mute: []             # terms whose items never show (up to 30); the editor avoids them too
 #     status:
 #       enabled: true        # mix in what runs, waits and is slow or failing
 #       kinds: [running, waiting, slow, failing, quota, offline, notes]
 #     editor:                # Claude Haiku picks and shortens, ONLY when you press the button
 #       enabled: true
-#       interests: ""        # free text: what you want to see
+#       interests: ""        # free text: what you want to see; the settings page proposes it from your open tasks
 #       max_picks: 12        # 1 to 40
 #       shorten: true        # one-line titles
 #   # The settings page changes these on top, kept in .bridge/cockpit/ticker.json.

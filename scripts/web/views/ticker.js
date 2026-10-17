@@ -9,15 +9,15 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  TICKER_KINDS, indexRows, tickerDuration, tickerResume, tickerFeedItems, tickerFeedValid, tickerItems, tickerPage, tickerPatch,
-  tickerSourceToken, tickerStatusItems, tickerText,
+  TICKER_KINDS, indexRows, tickerDuration, tickerResume, tickerFeedItems, tickerFeedValid, tickerIsNew, tickerItems,
+  tickerMuteTerms, tickerPage, tickerPatch, tickerSourceToken, tickerStatusItems, tickerText,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T } from '../text.js'
 import { Segmented } from './detail.js'
 import { jumpToTab, openWhole } from './home.js'
 import { pageOrder } from './nav.js'
-import { Btn, Chip, Empty, Icon } from './parts.js'
+import { Btn, Chip, Empty } from './parts.js'
 // a cycle (settings.js draws TickerSettings): these parts are used only inside render functions
 import { Card, Row, Switch } from './settings.js'
 
@@ -57,14 +57,22 @@ function StatusItem({ it, s, c }) {
 }
 
 /** One entry of the band: a news item as a link that opens in a new tab, its source in a colour of its
- *  own (the same for the same feed on every load), or a status item */
-function TickerEntry({ it, s, c, order }) {
+ *  own (the same for the same feed on every load), or a status item. A news item marks itself new (after
+ *  the viewer's last visit, or after the editor's pick), names how many other feeds tell the same story,
+ *  and dims once opened in this browser */
+function TickerEntry({ it, s, c, order, smart }) {
   const t = T()
   if (it.kind === 'feed') {
-    return html`<li><a class=${`ticker-item ticker-feed${it.fresh ? ' ticker-fresh' : ''}`} href=${it.url} target="_blank" rel="noopener noreferrer">
+    const fresh = it.fresh || (smart?.mark_new !== false && tickerIsNew(it, s.ui.tickerSince))
+    const read = (s.ui.tickerRead ?? []).includes(it.id)
+    const also = (it.sources ?? []).map(x => x.source).filter(Boolean)
+    const title = [it.title, also.length ? t.ticker.alsoAt(also) : ''].filter(Boolean).join('\n')
+    return html`<li><a class=${`ticker-item ticker-feed${fresh ? ' ticker-fresh' : ''}${read ? ' ticker-read' : ''}`} href=${it.url}
+      target="_blank" rel="noopener noreferrer" title=${title} onClick=${() => c.tickerOpened?.(it.id)}>
       <span class=${`ticker-src tk-${tickerSourceToken(it.feed ?? it.source, order)}`}>${it.source}</span>
-      ${it.fresh ? html`<span class="ticker-new">${t.ticker.fresh}</span>` : null}
-      <span>${it.short ?? it.title}</span><${Icon} name="external" size=${12} /></a></li>`
+      ${fresh ? html`<span class="ticker-new">${t.ticker.fresh}</span>` : null}
+      <span class="ticker-title">${it.short ?? it.title}</span>
+      ${also.length ? html`<span class="ticker-also" aria-label=${t.ticker.alsoAt(also)}>+${also.length}</span>` : null}</a></li>`
   }
   return html`<li><${StatusItem} it=${it} s=${s} c=${c} /></li>`
 }
@@ -87,10 +95,12 @@ export function TickerStatusList({ s, c }) {
   </div>`
 }
 
-/** The band: the entries run from right to left in two equal tracks, the second only a copy for the
- *  seamless loop (hidden from screen readers and the keyboard). Hover and focus stop it; with reduced
- *  motion it stands still and scrolls by hand. Below it the Editor, Refresh and a short line of how it
- *  stands. With only="news" it carries the feed items alone, the status stands in TickerStatusList */
+/** The band: a small head (its name, how many are new, Pause, Editor, Refresh, how it stands) over one
+ *  line whose entries run from right to left in two equal tracks, the second only a copy for the seamless
+ *  loop (hidden from screen readers and the keyboard). The line has no box: a hairline under it like the
+ *  greeting's, its ends fade. Hover, focus and the Pause button stop it (WCAG 2.2.2: the button is the way
+ *  for touch and keyboard, kept per browser); with reduced motion it stands still and scrolls by hand.
+ *  With only="news" it carries the feed items alone, the status stands in TickerStatusList */
 export function TickerBand({ s, c, only }) {
   const t = T()
   const tk = s.ticker
@@ -122,24 +132,34 @@ export function TickerBand({ s, c, only }) {
   const editing = !!ed.running || !!s.ui.busy.ticker_edit
   const refreshing = !!tk.refreshing || !!s.ui.busy.ticker_refresh
   const failed = (tk.feeds ?? []).filter(f => f.ok === false || f.error).length
+  const smart = tk.settings?.smart
+  const paused = !!s.ui.tickerPaused
+  const fresh = items.filter(it => it.kind === 'feed' && (it.fresh || (smart?.mark_new !== false && tickerIsNew(it, s.ui.tickerSince)))).length
   // each track gets its own entries: one vnode is never mounted twice
   // the configured feeds in order, disabled ones included, so switching one off moves no colour
   const order = (tk?.settings?.feeds ?? []).map(f => f.id)
-  const entries = () => items.map(it => html`<${TickerEntry} key=${it.id} it=${it} s=${s} c=${c} order=${order} />`)
-  return html`<section class=${`ticker${news ? ' ticker-news' : ''}`} role="region" aria-label=${news ? t.ticker.newsLabel : t.ticker.label}>
-    <div class="ticker-viewport">
-      <ul class=${`ticker-track ticker-${speed}`} ref=${trackRef}>${entries()}</ul>
-      ${still ? null : html`<ul class=${`ticker-track ticker-copy ticker-${speed}`} ref=${copyRef} aria-hidden="true" inert>${entries()}</ul>`}
-    </div>
-    <div class="ticker-tools">
-      ${ed.available ? html`<${Btn} size="xs" variant="ghost" icon="spark" busy=${editing} title=${t.ticker.editTitle}
-        onClick=${() => c.tickerEdit()}>${editing ? t.ticker.editing : t.ticker.edit}<//>` : null}
-      <${Btn} size="xs" variant="ghost" icon="reload" busy=${refreshing} onClick=${() => c.tickerRefresh()}>${refreshing ? t.ticker.refreshing : t.ticker.refresh}<//>
-      <span class="muted small ticker-meta">
+  const entries = () => items.map(it => html`<${TickerEntry} key=${it.id} it=${it} s=${s} c=${c} order=${order} smart=${smart} />`)
+  return html`<section class=${`ticker${news ? ' ticker-news' : ''}${paused ? ' is-paused' : ''}`} role="region" aria-label=${news ? t.ticker.newsLabel : t.ticker.label}>
+    <div class="ticker-head">
+      <span class="ticker-eyebrow">${news ? t.ticker.newsName : t.ticker.label}</span>
+      ${fresh ? html`<span class="ticker-count">${t.ticker.freshCount(fresh)}</span>` : null}
+      <span class="ticker-tools">
+        ${still ? null : html`<${Btn} size="xs" variant="ghost" icon=${paused ? 'play' : 'pause'} pressed=${paused}
+          label=${paused ? t.ticker.play : t.ticker.pause} title=${paused ? t.ticker.play : t.ticker.pause} onClick=${() => c.setTickerPaused(!paused)} />`}
+        ${ed.available ? html`<${Btn} size="xs" variant="ghost" icon="spark" busy=${editing} label=${t.ticker.edit} title=${t.ticker.editTitle}
+          onClick=${() => c.tickerEdit()}>${editing ? t.ticker.editing : null}<//>` : null}
+        <${Btn} size="xs" variant="ghost" icon="reload" busy=${refreshing} label=${t.ticker.refresh} title=${t.ticker.refresh}
+          onClick=${() => c.tickerRefresh()}>${refreshing ? t.ticker.refreshing : null}<//>
+      </span>
+      <span class="ticker-meta">
         ${ed.last ? html`<span>${t.ticker.edited(ed.last.picked, ed.last.of)}</span>` : null}
         ${failed ? html`<span>${t.ticker.feedError(failed)}</span>` : null}
         ${ed.error ? html`<span class="set-bad">${t.ticker.editFailed(ed.error)}</span>` : null}
       </span>
+    </div>
+    <div class="ticker-viewport">
+      <ul class=${`ticker-track ticker-${speed}`} ref=${trackRef}>${entries()}</ul>
+      ${still ? null : html`<ul class=${`ticker-track ticker-copy ticker-${speed}`} ref=${copyRef} aria-hidden="true" inert>${entries()}</ul>`}
     </div>
   </section>`
 }
@@ -159,6 +179,47 @@ function InterestsField({ value, busy, save }) {
       onKeyDown=${e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go() } }}></textarea>
     <${Btn} size="xs" variant="secondary" busy=${busy} disabled=${same} onClick=${go}>${w.save}<//>
   </span>`
+}
+
+/** The muted terms as one line of text, comma separated, saved with the button or Enter */
+function MuteField({ value, busy, save }) {
+  const w = T().ticker.settings
+  const joined = (value ?? []).join(', ')
+  const [draft, setDraft] = useState(joined)
+  useEffect(() => setDraft(joined), [joined])
+  const terms = tickerMuteTerms(draft)
+  const same = terms.join('\n') === (value ?? []).join('\n')
+  const go = () => { if (!same) save(terms) }
+  return html`<span class="field-row set-field ticker-interests">
+    <input class="input input-sm" type="text" value=${draft} aria-label=${w.label.mute} placeholder=${w.mutePlaceholder}
+      onInput=${e => setDraft(e.currentTarget.value)} onKeyDown=${e => { if (e.key === 'Enter') { e.preventDefault(); go() } }} />
+    <${Btn} size="xs" variant="secondary" busy=${busy} disabled=${same} onClick=${go}>${w.save}<//>
+  </span>`
+}
+
+/** The interest profile proposed from the open tasks: as keywords (no model) or written by Haiku, each only
+ *  on its button. The proposal stands below until it is taken into the interests or a new one comes */
+function ProfileBox({ tk, s, c, busy, save }) {
+  const w = T().ticker.settings
+  const p = tk.profile ?? {}
+  const last = p.last
+  const llmOn = !!tk.editor?.available
+  const running = !!p.running || !!s.ui.busy.ticker_profile
+  const none = !(p.tasks > 0)
+  return html`<div class="ticker-profile">
+    <span class="field-row">
+      <${Btn} size="xs" variant="ghost" busy=${running} disabled=${busy || none} onClick=${() => c.tickerProfile(false)}>${w.profileWords}<//>
+      ${llmOn ? html`<${Btn} size="xs" variant="ghost" icon="spark" busy=${running} disabled=${busy || none}
+        onClick=${() => c.tickerProfile(true)}>${running ? w.profileRunning : w.profileLlm}<//>` : null}
+      <span class="muted small">${none ? w.profileNoTasks : w.profileFrom(p.tasks)}</span>
+    </span>
+    ${last?.error ? html`<span class="small set-bad">${w.profileFailed(last.error)}</span>` : null}
+    ${last?.text ? html`<div class="ticker-proposal">
+      <span class="small muted">${last.llm ? w.proposalLlm : w.proposalWords}</span>
+      <p>${last.text}</p>
+      <${Btn} size="xs" variant="secondary" disabled=${busy} onClick=${() => save(last.text)}>${w.takeProposal}<//>
+    </div>` : null}
+  </div>`
 }
 
 /** The feeds: edited here row by row, each checked like the server checks it, saved as one list */
@@ -215,6 +276,8 @@ export function TickerSettings({ s, c }) {
   const kinds = st.status?.kinds ?? TICKER_KINDS
   const statusOn = st.status?.enabled !== false
   const ed = st.editor ?? {}
+  const sm = st.smart ?? {}
+  const edOn = ed.enabled !== false
   const changed = (tk.overridden ?? []).length
   // one setting in the page's row, marked where the page changed its block against bridge-config.yaml
   const row = (k, children, { field, wide } = {}) => html`<${Row} label=${w.label[k]} explain=${w.explain[k]} wide=${wide}
@@ -243,12 +306,27 @@ export function TickerSettings({ s, c }) {
             onClick=${() => save('status.kinds', TICKER_KINDS.filter(x => (x === k ? !kinds.includes(k) : kinds.includes(x))))}>${w.kind[k]}</button>`)}
         </div>`, { field: 'status', wide: true })}
     <//>
-    <${Card} title=${w.editorTitle} off=${!on}>
-      ${row('interests', html`<${InterestsField} value=${ed.interests ?? ''} busy=${busy} save=${v => save('editor.interests', v)} />`,
-        { field: 'editor', wide: true })}
-      ${row('max_picks', html`<${Segmented} label=${w.label.max_picks} busy=${busy || !on} current=${ed.max_picks}
+    <${Card} title=${w.smartTitle} intro=${w.smartIntro} off=${!on}>
+      ${row('cluster', html`<${Switch} label=${w.label.cluster} on=${sm.cluster !== false} disabled=${busy || !on}
+        onChange=${v => save('smart.cluster', v)} />`, { field: 'smart' })}
+      ${row('max_age_hours', html`<${Segmented} label=${w.label.max_age_hours} busy=${busy || !on} current=${sm.max_age_hours ?? 0}
+        values=${[0, 24, 72, 168].map(v => [v, w.age(v)])} onPick=${v => save('smart.max_age_hours', v)} />`, { field: 'smart' })}
+      ${row('mark_new', html`<${Switch} label=${w.label.mark_new} on=${sm.mark_new !== false} disabled=${busy || !on}
+        onChange=${v => save('smart.mark_new', v)} />`, { field: 'smart' })}
+      ${row('mute', html`<${MuteField} value=${sm.mute ?? []} busy=${busy || !on} save=${v => save('smart.mute', v)} />`,
+        { field: 'smart', wide: true })}
+    <//>
+    <${Card} title=${w.interestsTitle} intro=${w.interestsIntro} off=${!on}>
+      <div class="ticker-interests-box">
+        <${InterestsField} value=${ed.interests ?? ''} busy=${busy} save=${v => save('editor.interests', v)} />
+        <${ProfileBox} tk=${tk} s=${s} c=${c} busy=${busy || !on} save=${v => save('editor.interests', v)} />
+      </div>
+    <//>
+    <${Card} title=${w.editorTitle} intro=${w.editorIntro} off=${!on || !edOn}
+      head=${html`<span class="set-head-switch"><${Switch} label=${w.label.editorOn} on=${edOn} disabled=${busy || !on} onChange=${v => save('editor.enabled', v)} /></span>`}>
+      ${row('max_picks', html`<${Segmented} label=${w.label.max_picks} busy=${busy || !on || !edOn} current=${ed.max_picks}
         values=${[5, 8, 12, 20].map(v => [v, String(v)])} onPick=${v => save('editor.max_picks', v)} />`, { field: 'editor' })}
-      ${row('shorten', html`<${Switch} label=${w.label.shorten} on=${ed.shorten !== false} disabled=${busy || !on}
+      ${row('shorten', html`<${Switch} label=${w.label.shorten} on=${ed.shorten !== false} disabled=${busy || !on || !edOn}
         onChange=${v => save('editor.shorten', v)} />`, { field: 'editor' })}
     <//>`
 }

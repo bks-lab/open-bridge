@@ -8,9 +8,15 @@ other on a thread of its own, and only while a page is open and the last read is
 refresh_minutes. The page builds the status items itself from its own store; the server sends the feed
 items, the editor's result and a small `perf` block (the collect passes and the token outliers).
 
+The selection without a model (`smart`) runs on every refresh and settings change: muted terms drop an
+item, an item older than max_age_hours drops, and one story told by several feeds becomes one item that
+names the others (`sources`). The page marks what is new since the viewer's last visit itself.
+
 The editor (Claude Haiku through the allowlisted model_route.haiku_argv) runs ONLY when someone presses
 the button: never at startup, in the refresh loop or from state(). Its pick applies while the interests,
-max_picks and shorten it was made with are still the settings. Safety notes: docs/bridge-cockpit.md.
+max_picks and shorten it was made with are still the settings. The interest profile is proposed on a
+click too, from the titles of the open tasks: as keywords without a model, or written by Haiku. It is a
+proposal the owner saves or drops, never a setting by itself. Safety notes: docs/bridge-cockpit.md.
 """
 from __future__ import annotations
 
@@ -29,6 +35,7 @@ import urllib.request
 import ipaddress
 import socket
 import xml.etree.ElementTree as ET
+import zlib
 from typing import Any, Callable
 from xml.parsers import expat
 
@@ -50,6 +57,12 @@ PROMPT_BUDGET = 7600                 # below model_route.HAIKU_PROMPT_MAX: a lon
 LOOP_STEP_S = 5
 PASSES_KEEP = 10
 MAX_FEEDS = 20
+MUTE_MAX = 30
+MUTE_TERM_MAX = 40
+CLUSTER_MIN_SHARED = 3               # two titles tell one story when they share this many words ...
+CLUSTER_MIN_OVERLAP = 0.6            # ... and that many of the shorter title's words
+PROFILE_TASKS_MAX = 60
+PROFILE_KEYWORDS = 14
 
 SPEEDS = ("slow", "normal", "fast")
 STATUS_KINDS = ("running", "waiting", "slow", "failing", "quota", "offline", "notes")
@@ -58,6 +71,16 @@ CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 CONTROL_BUT_NEWLINE_RE = re.compile(r"[\x00-\x09\x0b-\x1f\x7f]")
 TAG_RE = re.compile(r"<[^>]*>")
 SPACE_RE = re.compile(r"\s+")
+WORD_RE = re.compile(r"[\w][\w.+#-]*[\w+#]|[\w]{2,}", re.UNICODE)
+# words that say nothing about a story, in the two languages the feeds and tasks come in
+STOP_WORDS = frozenset("""
+a an and are as at be by for from has have how in into is it its new of on or our the their this to was
+what when why will with you your about after all also can more not now one over than that them they up
+use using via vs we who
+der die das den dem des ein eine einen einem einer und oder ist sind mit für fuer von zu zum zur im in
+auf aus bei nach über ueber unter wie was wer wird werden noch auch nicht neu neue neuer neues so als an
+am beim vom bis seit nur sich es er sie wir ihr man kann soll mehr jetzt heute
+""".split())
 
 DEFAULT_FEEDS = [
     {"id": "openai", "name": "OpenAI News", "url": "https://openai.com/news/rss.xml", "enabled": True},
@@ -74,9 +97,11 @@ DEFAULTS: dict[str, Any] = {
     "feeds": DEFAULT_FEEDS,
     "status": {"enabled": True, "kinds": list(STATUS_KINDS)},
     "editor": {"enabled": True, "interests": "", "max_picks": 12, "shorten": True},
+    "smart": {"cluster": True, "max_age_hours": 72, "mark_new": True, "mute": []},
 }
 KEYS = tuple(DEFAULTS)
 RANGES = {"max_items": (5, 100), "per_feed": (1, 30), "refresh_minutes": (5, 1440)}
+MAX_AGE_HOURS = 720                  # 0 keeps every item, however old
 
 
 def defaults() -> dict:
@@ -203,6 +228,35 @@ def normalize(value: Any, base: dict | None = None) -> dict:
                         raise TickerSettingsError("editor.max_picks", "a number from 1 to 40")
                     editor["max_picks"] = x
             out["editor"] = editor
+        elif key == "smart":
+            if not isinstance(v, dict):
+                raise TickerSettingsError("smart", "must be an object")
+            smart = dict(out["smart"])
+            for name, x in v.items():
+                if name in ("cluster", "mark_new"):
+                    smart[name] = _bool(x, f"smart.{name}")
+                elif name == "max_age_hours":
+                    if not _is_int(x) or not 0 <= x <= MAX_AGE_HOURS:
+                        raise TickerSettingsError("smart.max_age_hours", f"a number from 0 to {MAX_AGE_HOURS}")
+                    smart["max_age_hours"] = x
+                elif name == "mute":
+                    smart["mute"] = _mute(x)
+            out["smart"] = smart
+    return out
+
+
+def _mute(value: Any) -> list[str]:
+    """The muted terms: at most MUTE_MAX, each 1 to MUTE_TERM_MAX characters, once each ignoring case."""
+    if not isinstance(value, list) or len(value) > MUTE_MAX:
+        raise TickerSettingsError("smart.mute", f"a list of at most {MUTE_MAX} terms")
+    out, seen = [], set()
+    for x in value:
+        term = SPACE_RE.sub(" ", x).strip() if isinstance(x, str) else ""
+        if not 1 <= len(term) <= MUTE_TERM_MAX or CONTROL_RE.search(term):
+            raise TickerSettingsError("smart.mute", f"each term 1 to {MUTE_TERM_MAX} characters")
+        if term.casefold() not in seen:
+            seen.add(term.casefold())
+            out.append(term)
     return out
 
 
@@ -227,7 +281,7 @@ def lenient(value: Any, base: dict | None = None) -> dict:
                     feeds.append(feed)
             if feeds:
                 out["feeds"] = feeds
-        elif key in ("status", "editor") and isinstance(v, dict):
+        elif key in ("status", "editor", "smart") and isinstance(v, dict):
             for name, x in v.items():
                 try:
                     out = normalize({key: {name: x}}, out)
@@ -396,27 +450,86 @@ def _url_key(url: str) -> str:
                                     urllib.parse.urlencode(query), ""))
 
 
-def merge_items(groups: list[list[dict]], max_items: int) -> list[dict]:
-    """Every feed's items in feed order, one per story (same address without fragment and utm_ parameters,
-    or the same title ignoring case): the first one stays and takes the newest date. Then newest first."""
+def title_words(title: str) -> frozenset[str]:
+    """The words of a title that can tell two stories apart: lower case, no stop word, no single letter."""
+    return frozenset(w for w in (m.group(0).casefold() for m in WORD_RE.finditer(title or ""))
+                     if w not in STOP_WORDS and len(w) > 1)
+
+
+def same_story(a: frozenset[str], b: frozenset[str]) -> bool:
+    shared = len(a & b)
+    return shared >= CLUSTER_MIN_SHARED and shared >= CLUSTER_MIN_OVERLAP * min(len(a), len(b))
+
+
+def muted(title: str, terms: list[str]) -> bool:
+    """A muted term is found in the title ignoring case; a term of letters only matches whole words."""
+    low = (title or "").casefold()
+    for term in terms:
+        t = term.casefold()
+        if re.fullmatch(r"\w+", t):
+            if re.search(rf"(?<!\w){re.escape(t)}(?!\w)", low):
+                return True
+        elif t in low:
+            return True
+    return False
+
+
+def _join(hit: dict, it: dict) -> None:
+    """it tells hit's story: hit takes the newer date and names its feed once (never its own)."""
+    if it.get("published_ms") is not None and (hit.get("published_ms") is None
+                                               or it["published_ms"] > hit["published_ms"]):
+        hit["published_ms"] = it["published_ms"]
+    if it["feed"] != hit["feed"] and all(x["feed"] != it["feed"] for x in hit["sources"]):
+        hit["sources"].append({"feed": it["feed"], "source": it.get("source") or it["feed"], "url": it["url"]})
+
+
+def merge_items(groups: list[list[dict]], max_items: int, smart: dict | None = None,
+                now_ms: int | None = None) -> list[dict]:
+    """Every feed's items in feed order, one per story: the same address (without fragment and utm_
+    parameters) or the same title ignoring case always, and with smart.cluster also a title of another
+    feed sharing most of its words. The first one stays, takes the newest date and names the other feeds
+    in `sources`. Muted titles and items older than smart.max_age_hours (dated ones only) drop first.
+    When more remain than max_items, every feed takes its turn: each feed's newest, then each one's second
+    newest and so on, so a feed that writes every hour cannot push out one that writes every week. The
+    items kept stand newest first."""
+    smart = smart or {}
+    terms = list(smart.get("mute") or [])
+    hours = smart.get("max_age_hours") or 0
+    cutoff = now_ms - hours * 3_600_000 if hours and now_ms is not None else None
+    cluster = smart.get("cluster", False)
     kept: list[dict] = []
+    words: list[frozenset[str]] = []
     by_key: dict[str, dict] = {}
     for items in groups:
         for it in items:
+            if terms and muted(it["title"], terms):
+                continue
+            if cutoff is not None and it.get("published_ms") is not None and it["published_ms"] < cutoff:
+                continue
             keys = (f"u:{_url_key(it['url'])}", f"t:{it['title'].casefold()}")
             hit = next((by_key[k] for k in keys if k in by_key), None)
+            mine = title_words(it["title"]) if cluster else frozenset()
+            if hit is None and cluster:
+                hit = next((k for k, w in zip(kept, words) if k["feed"] != it["feed"] and same_story(w, mine)), None)
             if hit is not None:
-                if it.get("published_ms") is not None and (hit.get("published_ms") is None
-                                                           or it["published_ms"] > hit["published_ms"]):
-                    hit["published_ms"] = it["published_ms"]
+                _join(hit, it)
                 for k in keys:
                     by_key.setdefault(k, hit)
                 continue
-            entry = dict(it)
+            entry = {**it, "sources": []}
             kept.append(entry)
+            words.append(mine)
             for k in keys:
                 by_key[k] = entry
-    return sort_newest(kept)[:max_items]
+    if len(kept) > max_items:
+        rank: dict[str, int] = {}
+        turns = []
+        for entry in sort_newest(kept):
+            rank[entry["feed"]] = rank.get(entry["feed"], -1) + 1
+            turns.append((rank[entry["feed"]], entry))
+        # a stable sort: within one turn the newer first, as sort_newest had them
+        kept = [e for _, e in sorted(turns, key=lambda t: t[0])][:max_items]
+    return sort_newest(kept)
 
 
 # ------------------------------------------------------------------ fetching
@@ -484,6 +597,21 @@ def _read_body(response: Any, deadline: float, now: Callable[[], float] = time.m
     return b"".join(chunks)
 
 
+def ungzip(data: bytes) -> bytes:
+    """A body that is gzip although the request asked for no encoding (a server or CDN may send it anyway),
+    unpacked to at most MAX_BYTES; anything else comes back as it was."""
+    if data[:2] != b"\x1f\x8b":
+        return data
+    unpack = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    try:
+        out = unpack.decompress(data, MAX_BYTES + 1)
+    except zlib.error:
+        raise FeedError("bad gzip") from None
+    if len(out) > MAX_BYTES or unpack.unconsumed_tail:
+        raise FeedError("too_large")
+    return out
+
+
 def fetch_feed(url: str) -> bytes:
     """GET one feed: http or https only, at most MAX_REDIRECTS redirects (none into a private network
     unless the feed is there), FETCH_TIMEOUT seconds of wall clock for the whole feed, MAX_BYTES."""
@@ -494,7 +622,7 @@ def fetch_feed(url: str) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": ACCEPT})
     try:
         with opener.open(request, timeout=FETCH_TIMEOUT) as response:
-            data = _read_body(response, deadline)
+            data = ungzip(_read_body(response, deadline))
     except FeedError:
         raise
     except urllib.error.HTTPError as error:
@@ -511,24 +639,30 @@ def fetch_feed(url: str) -> bytes:
 
 # ------------------------------------------------------------------ the editor
 
-def edit_key(editor: dict) -> str:
-    raw = f"{editor['interests']}\n{editor['max_picks']}\n{editor['shorten']}"
+def edit_key(editor: dict, mute: list[str] | None = None) -> str:
+    raw = f"{editor['interests']}\n{editor['max_picks']}\n{editor['shorten']}\n{json.dumps(mute or [])}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def edit_prompt(interests: str, items: list[dict], max_picks: int, shorten: bool) -> tuple[str, list[str]]:
+def edit_prompt(interests: str, items: list[dict], max_picks: int, shorten: bool,
+                mute: list[str] | None = None) -> tuple[str, list[str]]:
     """The editor's prompt and the ids of the items it holds (in prompt order); items are added while the
-    prompt stays within PROMPT_BUDGET."""
+    prompt stays within PROMPT_BUDGET. An item several feeds tell carries their number ("n")."""
     head = (f"You are the editor of a news ticker. The reader's interests: {interests.strip() or 'general AI news'}.\n"
-            f"From the numbered items below pick at most {max_picks} the reader most wants to see, best first.\n")
+            f"From the numbered items below pick at most {max_picks} the reader most wants to see, best first.\n"
+            "An item with \"n\" is told by that many sources: a weak sign that it matters, never a reason alone.\n")
+    if mute:
+        head += "Never pick an item about: " + "; ".join(mute) + ".\n"
     if shorten:
         head += ('For each pick write "s": the title shortened to one line of at most 70 characters, '
                  "same language as the title, no quotes.\n")
     head += 'Answer ONLY a JSON array: [{"i": <number>, "s": "<short title>"}]\nItems: ['
     prompt, seen = head, []
     for it in items:
-        entry = json.dumps({"i": len(seen), "t": it["title"][:160], "src": it.get("source") or ""},
-                           ensure_ascii=False, separators=(",", ":"))
+        fields = {"i": len(seen), "t": it["title"][:160], "src": it.get("source") or ""}
+        if it.get("sources"):
+            fields["n"] = 1 + len(it["sources"])
+        entry = json.dumps(fields, ensure_ascii=False, separators=(",", ":"))
         candidate = prompt + ("," if seen else "") + entry
         if len(candidate) + 1 > PROMPT_BUDGET:
             break
@@ -539,16 +673,7 @@ def edit_prompt(interests: str, items: list[dict], max_picks: int, shorten: bool
 
 def parse_edit(stdout: str, n: int, max_picks: int, shorten: bool) -> tuple[list[tuple[int, str | None]], float | None]:
     """Haiku's answer (the claude -p envelope or the bare array) as [(index, short or None)] and the cost."""
-    text, cost = stdout or "", None
-    try:
-        envelope = json.loads(text)
-        if isinstance(envelope, dict):
-            c = envelope.get("total_cost_usd")
-            cost = float(c) if isinstance(c, (int, float)) and not isinstance(c, bool) else None
-            if isinstance(envelope.get("result"), str):
-                text = envelope["result"]
-    except ValueError:
-        pass
+    text, cost = _haiku_text(stdout)
     start, end = text.find("["), text.rfind("]")
     try:
         answer = json.loads(text[start:end + 1]) if 0 <= start < end else []
@@ -569,6 +694,63 @@ def parse_edit(stdout: str, n: int, max_picks: int, shorten: bool) -> tuple[list
     return picks, cost
 
 
+def _haiku_text(stdout: str) -> tuple[str, float | None]:
+    """The text of Haiku's answer (the claude -p envelope's result, or the bare text) and the cost."""
+    text, cost = stdout or "", None
+    try:
+        envelope = json.loads(text)
+        if isinstance(envelope, dict):
+            c = envelope.get("total_cost_usd")
+            cost = float(c) if isinstance(c, (int, float)) and not isinstance(c, bool) else None
+            if isinstance(envelope.get("result"), str):
+                text = envelope["result"]
+    except ValueError:
+        pass
+    return text, cost
+
+
+# ------------------------------------------------------------------ the interest profile
+
+def profile_keywords(titles: list[str], limit: int = PROFILE_KEYWORDS) -> str:
+    """The words the titles share most, without a model: a word in two titles beats one in one, a word
+    written with a capital or a digit (a name, a product) beats a plain one, then the first seen. Each
+    word in the case it was first written."""
+    count: dict[str, int] = {}
+    shown: dict[str, str] = {}
+    marked: set[str] = set()
+    order: list[str] = []
+    for title in titles[:PROFILE_TASKS_MAX]:
+        for w in dict.fromkeys(m.group(0) for m in WORD_RE.finditer(title or "")):
+            low = w.casefold()
+            if low in STOP_WORDS or len(low) < 3 or low.isdigit():
+                continue
+            if low not in count:
+                count[low], shown[low] = 0, w
+                order.append(low)
+            count[low] += 1
+            if w[0].isupper() or any(ch.isdigit() for ch in w):
+                marked.add(low)
+    ranked = sorted(order, key=lambda k: (-count[k], k not in marked, order.index(k)))
+    return ", ".join(shown[k] for k in ranked[:limit])
+
+
+def profile_prompt(titles: list[str], current: str) -> str:
+    """Haiku's prompt for the interest profile: the open task titles, the interests written so far."""
+    head = ("You write the interest profile for the news ticker of a person whose open work items follow.\n"
+            "Name the technologies, products, companies and topics news about which would matter to them, "
+            "most important first, as one line of comma separated terms, at most 400 characters, in the "
+            "language most titles are in. No people's names, no customer names, no explanation.\n")
+    if current.strip():
+        head += f"Their interests so far (keep what still fits): {current.strip()[:500]}\n"
+    prompt = head + "Work items:\n"
+    for title in titles[:PROFILE_TASKS_MAX]:
+        line = f"- {clean_text(title, 160)}\n"
+        if len(prompt) + len(line) > PROMPT_BUDGET:
+            break
+        prompt += line
+    return prompt
+
+
 # ------------------------------------------------------------------ the ticker
 
 class Ticker:
@@ -587,6 +769,9 @@ class Ticker:
         self.items: list[dict] = []
         self.fetched_ms = 0
         self.edit: dict | None = None
+        # the last interest profile proposed (profile_start), kept until the next proposal or a restart
+        self.profile: dict | None = None
+        self.profile_running: dict | None = None
         # raised under self.lock on every change of the state; the page keeps the newer of two states by it
         # (logic.js newerTicker), since an action's answer and the event of a later change may cross
         self.rev = 0
@@ -620,6 +805,8 @@ class Ticker:
                 raise TickerError(400, "invalid_argument", error.message, error.field) from None
             base = self.defaults()
             atomic_write_json(self.path, {k: after[k] for k in KEYS if after[k] != base[k]})
+            if after["smart"] != before["smart"]:
+                self._rebuild(after)
             self.rev += 1
         if after["enabled"] and (after["feeds"] != before["feeds"] or after["per_feed"] != before["per_feed"]
                                  or after["max_items"] != before["max_items"]
@@ -630,6 +817,7 @@ class Ticker:
     def reset(self) -> dict:
         with self.lock:
             atomic_write_json(self.path, {})
+            self._rebuild(self.settings())
             self.rev += 1
         if self.settings()["enabled"]:
             self.request_refresh()
@@ -667,6 +855,14 @@ class Ticker:
         except OSError as exc:
             self.app.log_error(f"ticker cache: {exc!r}")
 
+    def _rebuild(self, s: dict) -> None:
+        """Under self.lock: the items again from what the feeds last gave, after a change of the selection
+        (smart), so muting a term or switching clustering acts at once and fetches nothing."""
+        feeds = [f for f in s["feeds"] if f["enabled"]]
+        self.items = merge_items([self.feed_items.get(f["id"], []) for f in feeds], s["max_items"], s["smart"],
+                                 int(self.app.clock()))
+        self._save_cache()
+
     # ------------------------------------------------------------ fetching
 
     def refresh_sync(self) -> None:
@@ -697,7 +893,7 @@ class Ticker:
                     self.feed_items[fid] = items
                 self.feed_status[fid] = {"ok": error is None, "error": error, "fetched_ms": now,
                                          "count": len(items) if items is not None else len(self.feed_items.get(fid, []))}
-            self.items = merge_items([self.feed_items.get(f["id"], []) for f in feeds], s["max_items"])
+            self.items = merge_items([self.feed_items.get(f["id"], []) for f in feeds], s["max_items"], s["smart"], now)
             self.fetched_ms = now
             self._outliers = outliers if isinstance(outliers, list) else []
             self._save_cache()
@@ -759,16 +955,16 @@ class Ticker:
             self.editor_error = None
             self.rev += 1
             items = [dict(i) for i in self.items]
-        threading.Thread(target=self._edit, args=(items, s["editor"]), name="bridge-cockpit-ticker-edit",
+        threading.Thread(target=self._edit, args=(items, s["editor"], s["smart"]["mute"]), name="bridge-cockpit-ticker-edit",
                          daemon=True).start()
         self.app.broadcast("ticker", self.state())
         return True
 
-    def _edit(self, items: list[dict], editor: dict) -> None:
+    def _edit(self, items: list[dict], editor: dict, mute: list[str]) -> None:
         app = self.app
         started = app.clock()
         try:
-            prompt, prompted = edit_prompt(editor["interests"], items, editor["max_picks"], editor["shorten"])
+            prompt, prompted = edit_prompt(editor["interests"], items, editor["max_picks"], editor["shorten"], mute)
             if len(prompt) > mr.HAIKU_PROMPT_MAX:
                 raise RuntimeError("prompt too long")
             run = app.run(mr.haiku_argv(app.runner.claude, prompt), EDITOR_TIMEOUT)
@@ -782,7 +978,7 @@ class Ticker:
             # `seen` is every item there was when the edit started, also those the prompt budget left
             # out: only an item fetched after the edit counts as fresh. `of` is what the editor read.
             with self.lock:
-                self.edit = {"key": edit_key(editor), "at_ms": int(app.clock()), "order": order,
+                self.edit = {"key": edit_key(editor, mute), "at_ms": int(app.clock()), "order": order,
                              "short": {prompted[i]: s for i, s in picks}, "of": len(prompted),
                              "seen": [i["id"] for i in items],
                              "duration_ms": int(app.clock() - started), "cost_usd": cost}
@@ -797,6 +993,69 @@ class Ticker:
         finally:
             with self.lock:
                 self.editor_running = None
+                self.rev += 1
+            app.broadcast("ticker", self.state())
+
+    # ------------------------------------------------------------ the interest profile
+
+    def task_titles(self) -> list[str]:
+        collector = getattr(self.app, "collector", None)
+        tasks = list(getattr(collector, "tasks", None) or [])
+        return [t.get("title") or t.get("label") or "" for t in tasks if isinstance(t, dict)][:PROFILE_TASKS_MAX]
+
+    def profile_start(self, llm: bool) -> bool:
+        """Propose interests from the open tasks: keywords at once, or Haiku's line on a thread. False when
+        a proposal is already being written."""
+        s = self.settings()
+        titles = [t for t in self.task_titles() if t.strip()]
+        if not titles:
+            raise TickerError(409, "not_applicable", "there are no open tasks to read interests from")
+        if llm:
+            if getattr(self.app.runner, "claude", None) is None:
+                raise TickerError(409, "not_applicable", "claude is not available")
+            if not s["editor"]["enabled"]:
+                raise TickerError(409, "not_applicable", "the editor is switched off (cockpit.ticker.editor)")
+        with self.lock:
+            if self.profile_running:
+                return False
+            if not llm:
+                self.profile = {"text": profile_keywords(titles), "llm": False, "at_ms": int(self.app.clock()),
+                                "from": len(titles), "error": None, "cost_usd": None}
+                self.rev += 1
+                return True
+            self.profile_running = {"started_ms": int(self.app.clock())}
+            self.rev += 1
+        threading.Thread(target=self._profile, args=(titles, s["editor"]["interests"]),
+                         name="bridge-cockpit-ticker-profile", daemon=True).start()
+        return True
+
+    def _profile(self, titles: list[str], current: str) -> None:
+        app = self.app
+        try:
+            prompt = profile_prompt(titles, current)
+            if len(prompt) > mr.HAIKU_PROMPT_MAX:
+                raise RuntimeError("prompt too long")
+            run = app.run(mr.haiku_argv(app.runner.claude, prompt), EDITOR_TIMEOUT)
+            if not run.ok:
+                err = (run.err or "").strip().splitlines()[-1:] or [f"exit {run.code}"]
+                raise RuntimeError(app.scrub(err[0])[:200])
+            text, cost = _haiku_text(run.out)
+            first = text.strip().splitlines()[0] if text.strip() else ""
+            line = clean_text(first.strip().strip('"\'').strip(), 500)
+            if not line:
+                raise RuntimeError("no usable profile in the answer")
+            with self.lock:
+                self.profile = {"text": line, "llm": True, "at_ms": int(app.clock()), "from": len(titles),
+                                "error": None, "cost_usd": cost}
+        except Exception as exc:  # noqa: BLE001 (a failed proposal must never leave `running` set)
+            message = str(exc)[:200] or type(exc).__name__
+            with self.lock:
+                self.profile = {"text": "", "llm": True, "at_ms": int(app.clock()), "from": len(titles),
+                                "error": message, "cost_usd": None}
+            app.log_error(f"ticker profile: {exc!r}")
+        finally:
+            with self.lock:
+                self.profile_running = None
                 self.rev += 1
             app.broadcast("ticker", self.state())
 
@@ -827,7 +1086,7 @@ class Ticker:
         claude = getattr(self.app.runner, "claude", None)
         from .collector import COLLECT_TIMEOUT
         with self.lock:
-            edit = self.edit if self.edit and self.edit.get("key") == edit_key(s["editor"]) else None
+            edit = self.edit if self.edit and self.edit.get("key") == edit_key(s["editor"], s["smart"]["mute"]) else None
             if not s["enabled"]:
                 items = []
             elif edit:
@@ -851,8 +1110,11 @@ class Ticker:
             editor = {"available": claude is not None and s["editor"]["enabled"],
                       "running": dict(self.editor_running) if self.editor_running else None,
                       "error": self.editor_error, "last": last}
+            profile = {"running": dict(self.profile_running) if self.profile_running else None,
+                       "last": dict(self.profile) if self.profile else None,
+                       "tasks": len([t for t in self.task_titles() if t.strip()])}
             refreshing, fetched, rev = self.refreshing, self.fetched_ms or None, self.rev
         return {"rev": rev, "enabled": s["enabled"], "settings": s, "defaults": base,
                 "overridden": sorted(k for k in KEYS if s[k] != base[k]),
                 "items": items, "feeds": feeds, "fetched_ms": fetched, "refreshing": refreshing,
-                "editor": editor, "perf": self.perf(), "limits": {"timeout_ms": COLLECT_TIMEOUT * 1000}}
+                "editor": editor, "profile": profile, "perf": self.perf(), "limits": {"timeout_ms": COLLECT_TIMEOUT * 1000}}

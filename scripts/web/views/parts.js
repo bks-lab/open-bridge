@@ -89,6 +89,8 @@ const ICONS = {
   send: 'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z',
   spark: 'M12 3v4M12 17v4M3 12h4M17 12h4',
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  pause: 'M9 5v14M15 5v14',
+  play: 'M7 5l12 7-12 7z',
 }
 
 export function Icon({ name, size = 16 }) {

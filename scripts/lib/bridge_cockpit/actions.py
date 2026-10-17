@@ -112,6 +112,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "ticker_settings_reset": {},
     "ticker_refresh": {},
     "ticker_edit": {},
+    "ticker_profile": {"llm": ("bool", False)},
     "account_status": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                        "status": ("account_status", True)},
 }
@@ -930,6 +931,17 @@ class Actions:
             raise ActionError(error.status, error.code, error.message, error.field) from None
         if not started:
             raise ActionError(409, "not_applicable", "the editor is already running")
+        self.ticker_changed(ctx)
+
+    def v_ticker_profile(self, ctx: Ctx, llm: bool = False) -> None:
+        """Propose interests from the open tasks, as keywords or (llm) written by Claude Haiku; a proposal
+        only, the page saves it when the owner takes it"""
+        try:
+            started = self.app.ticker.profile_start(bool(llm))
+        except TickerError as error:
+            raise ActionError(error.status, error.code, error.message, error.field) from None
+        if not started:
+            raise ActionError(409, "not_applicable", "a proposal is already being written")
         self.ticker_changed(ctx)
 
     def ticker_changed(self, ctx: Ctx) -> None:

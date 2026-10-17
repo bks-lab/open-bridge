@@ -172,13 +172,15 @@ const TICKER_CONFIG = {
   ],
   status: { enabled: true, kinds: ['running', 'waiting', 'slow', 'failing', 'quota', 'offline', 'notes'] },
   editor: { enabled: true, interests: '', max_picks: 12, shorten: true },
+  smart: { cluster: true, max_age_hours: 72, mark_new: true, mute: [] },
 }
 
 function tickerItemsOf(now) {
-  const it = (id, feed, source, title, ago) => ({ id, feed, source, title, short: null, url: `https://example.org/${feed}/${id}`,
-    published_ms: now - ago * MIN, fresh: false })
+  const it = (id, feed, source, title, ago, sources = []) => ({ id, feed, source, title, short: null, url: `https://example.org/${feed}/${id}`,
+    published_ms: now - ago * MIN, fresh: false, sources })
   return [
-    it('a1', 'demo-ai', 'Demo AI News', 'A new example model reads long documents twice as fast', 35),
+    it('a1', 'demo-ai', 'Demo AI News', 'A new example model reads long documents twice as fast', 35,
+      [{ feed: 'demo-research', source: 'Demo Research Blog', url: 'https://example.org/demo-research/a1' }]),
     it('r1', 'demo-research', 'Demo Research Blog', 'Example study: agents that ask before they act make fewer mistakes', 80),
     it('t1', 'demo-tools', 'Demo Tools Weekly', 'How the demo team cut its test time in half', 150),
     it('a2', 'demo-ai', 'Demo AI News', 'Release notes of the example toolkit 3.0', 300),
@@ -205,6 +207,7 @@ function tickerState(settings, now, extra = {}) {
     feeds: st.feeds.map(f => ({ id: f.id, name: f.name, ok: true, error: null, fetched_ms: now - 4 * MIN, count: 2 })),
     fetched_ms: now - 4 * MIN, refreshing: false,
     editor: { available: st.editor.enabled, running: null, error: null, last: null },
+    profile: { running: null, last: null, tasks: 4 },
     // one slow pass, so the band shows the slow item in the demo
     perf: { passes: [{ kind: 'quick', took_ms: 8000, ok: true, at_ms: now - 30 * MIN }, { kind: 'full', took_ms: 95000, ok: true, at_ms: now - 4 * MIN }],
       outliers: [] },
@@ -717,6 +720,11 @@ export function createMockTransport(opts = {}) {
               last: { at_ms: now(), picked: items.length, of: 5, duration_ms: now() - started, cost_usd: 0.0018 } } })
             emit('ticker', state.ticker)
           }, 2500)
+        }
+        if (verb === 'ticker_profile') {
+          const text = args.llm ? 'Example agents, small automation, test speed, long documents' : 'agents, automation, tests, documents'
+          state.ticker = tickerNext(state.ticker, { profile: { ...state.ticker.profile, last: { text, llm: !!args.llm, at_ms: now(), from: 4, error: null, cost_usd: null } } })
+          emit('ticker', state.ticker)
         }
         if (verb.startsWith('ticker_')) result.ticker = state.ticker
         if (verb === 'task_review') {

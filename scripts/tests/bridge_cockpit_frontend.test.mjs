@@ -2431,7 +2431,8 @@ test('ticker: a feed keeps its source colour, one of three non-state tokens, the
     return m[1]
   })
   assert.equal(new Set(mix).size, mix.length, 'each token its own tint strength')
-  assert.match(css, /\.ticker-src \{[^}]*color-mix\(in srgb, var\(--tk, var\(--border-strong\)\) var\(--tk-mix, 14%\), transparent\)/)
+  // the colour sits in a dot before the source's name, the name itself the surface's muted text
+  assert.match(css, /\.ticker-src::before \{[^}]*background: var\(--tk, var\(--border-strong\)\)/)
   assert.match(read('views/ticker.js'), /ticker-src tk-\$\{tickerSourceToken\(it\.feed \?\? it\.source, order\)\}/)
 })
 
@@ -2551,10 +2552,11 @@ test('ticker: wired into both start page layouts, the store, the events; links o
   // two columns only where the stage is wide, by the home container, never the viewport
   assert.match(css, /@container home \(min-width: \d+px\) \{[^}]*\.stage-term \{[^}]*grid-template-columns/)
   assert.match(css, /\.stage-term > \.ticker \{[^}]*min-width: 0/)
-  assert.match(css, /\.ticker-src \{[^}]*var\(--tk/)
+  assert.match(css, /\.ticker-src::before \{[^}]*var\(--tk/)
   assert.match(css, /\.ticker-status-list \{/)
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.ticker-track \{[^}]*animation: none/)
-  assert.match(css, /\.ticker:hover \.ticker-track, \.ticker:focus-within \.ticker-track \{ animation-play-state: paused; \}/)
+  // hover, keyboard focus and the Pause button (WCAG 2.2.2) all stop the band
+  assert.match(css, /\.ticker:hover \.ticker-track, \.ticker:focus-within \.ticker-track, \.ticker\.is-paused \.ticker-track \{ animation-play-state: paused; \}/)
   for (const lang of ['en', 'de']) {
     const t = text.TABLES[lang].ticker
     for (const k of ['label', 'edit', 'editing', 'refresh', 'refreshing', 'fresh', 'newsLabel', 'statusLabel', 'less']) assert.ok(t[k], `${lang} ${k}`)

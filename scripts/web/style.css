@@ -1651,8 +1651,10 @@ kbd {
 @container home (min-width: 1100px) {
   .stage-term { grid-template-columns: minmax(0, 760px) minmax(300px, 1fr); }
   .stage-greet { grid-column: 1; grid-row: 1; }
-  /* level with the greeting: eyebrow (17) + gap (10) + half the prompt row (26) less half the band (19) */
-  .stage-term > .ticker { grid-column: 2; grid-row: 1; align-self: start; margin-top: 34px; }
+  /* level with the greeting: the band's head on the eyebrow's line (clear of Customise in the corner), its
+     line on the prompt's, both ending on one hairline */
+  .stage-term > .ticker { grid-column: 2; grid-row: 1; align-self: start; padding-right: 120px; }
+  .stage-term > .ticker .ticker-viewport { margin-right: -120px; }
 }
 @container home (max-width: 1040px) {
   .stage-body { grid-template-columns: minmax(0, 1fr); }
@@ -2009,43 +2011,68 @@ button.sit-field:focus-visible { outline: 2px solid var(--accent); outline-offse
 .set-table td, .set-table th { padding: 4px 8px; }
 .set-num { width: 84px; }
 
-/* the news ticker on the start page (views/ticker.js): two equal tracks run left, the second a copy for
-   the seamless loop; hover and keyboard focus stop it, reduced motion makes it a row that scrolls by hand */
-.ticker { display: grid; gap: var(--space-xs); margin-block: var(--space-md); }
+/* the news ticker on the start page (views/ticker.js): a head like the stage's eyebrow over one line with no
+   box, a hairline under it like the greeting's and its ends fading out. Two equal tracks run left, the second
+   a copy for the seamless loop; hover, keyboard focus and the Pause button stop it, reduced motion makes it
+   a row that scrolls by hand */
+.ticker { display: grid; gap: 10px; margin-block: var(--space-md); min-width: 0; }
+/* as tall as the stage's eyebrow, so the band's line sits on the greeting's; its small buttons overhang it */
+.ticker-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; min-height: 17px; }
+.ticker-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--on-surface-muted); }
+.ticker-count { font-size: 11px; font-weight: 600; color: var(--accent); }
+.ticker-tools { display: inline-flex; align-items: center; gap: 2px; }
+.ticker-tools .btn { min-height: 22px; margin-block: -3px; padding: 2px 5px; color: var(--on-surface-muted); }
+.ticker-tools .btn:hover { color: var(--on-surface); }
+.ticker-tools .btn .icon { width: 14px; height: 14px; }
+.ticker-meta { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--on-surface-muted); }
 .ticker-viewport {
-  display: flex; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  display: flex; overflow: hidden; min-height: 52px; align-items: center; border-bottom: 1px solid var(--border);
+  -webkit-mask-image: linear-gradient(to right, transparent, currentColor 28px, currentColor calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to right, transparent, currentColor 28px, currentColor calc(100% - 48px), transparent);
 }
 .ticker-track {
-  display: flex; flex: none; align-items: center; gap: var(--space-lg); margin: 0; padding: 6px var(--space-lg) 6px var(--space-md);
-  list-style: none; white-space: nowrap; font-size: var(--text-sm);
+  display: flex; flex: none; align-items: center; gap: 0; margin: 0; padding: 0 0 0 28px;
+  list-style: none; white-space: nowrap; font-size: 15px;
   animation: ticker-run 100s linear infinite; will-change: transform;
 }
-.ticker-track > li { flex: none; }
+.ticker-track > li { flex: none; display: flex; align-items: center; }
+/* a quiet mark between two entries, never a box around them */
+.ticker-track > li + li::before { content: ""; width: 4px; height: 4px; margin: 0 18px; border-radius: var(--radius-full); background: var(--border-strong); }
 @keyframes ticker-run { from { transform: translateX(0); } to { transform: translateX(-100%); } }
-.ticker:hover .ticker-track, .ticker:focus-within .ticker-track { animation-play-state: paused; }
+.ticker:hover .ticker-track, .ticker:focus-within .ticker-track, .ticker.is-paused .ticker-track { animation-play-state: paused; }
 .ticker-slow, .ticker-normal, .ticker-fast { animation-timing-function: linear; }
 .ticker-item {
-  display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border: 0; border-radius: var(--radius-sm);
+  display: inline-flex; align-items: baseline; gap: 8px; padding: 4px 6px; border: 0; border-radius: var(--radius-sm);
   background: none; color: var(--on-surface); font: inherit; text-decoration: none; cursor: pointer;
 }
 span.ticker-item { cursor: default; }
 a.ticker-item:hover, button.ticker-item:hover { background: var(--surface-muted); }
+a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .ticker-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* a feed's source in a colour of its own (logic.js tickerSourceToken): a tinted chip with a stripe, the text
-   stays the surface's own colour so it reads in light and dark. Each token tints to a strength of its own,
-   since a palette may put secondary and accent close together */
+.ticker-title { color: var(--on-surface); }
+/* opened in this browser: it steps back, it stays readable */
+.ticker-read .ticker-title { color: var(--on-surface-muted); }
+/* a feed's source in a colour of its own (logic.js tickerSourceToken): small capitals after a dot of the
+   colour, the text the surface's own so it reads in light and dark. Each token tints to a strength of its
+   own, since a palette may put secondary and accent close together */
 .ticker-src {
-  padding: 0 6px; border-left: 3px solid var(--tk, var(--border-strong)); border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--tk, var(--border-strong)) var(--tk-mix, 14%), transparent); font-weight: 600; color: var(--on-surface);
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--on-surface-muted);
 }
+.ticker-src::before { content: ""; width: 7px; height: 7px; flex: none; border-radius: var(--radius-full); background: var(--tk, var(--border-strong)); }
 .ticker-src.tk-secondary { --tk: var(--secondary); --tk-mix: 24%; }
 .ticker-src.tk-accent { --tk: var(--accent); --tk-mix: 10%; }
 .ticker-src.tk-on-surface { --tk: var(--on-surface); --tk-mix: 8%; }
-.ticker-new { font-size: var(--text-label); text-transform: uppercase; color: var(--accent); }
+.ticker-new {
+  align-self: center; padding: 0 6px; border-radius: var(--radius-full); font-size: 10px; font-weight: 700; line-height: 16px;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); background: var(--accent-subtle);
+}
+.ticker-also {
+  align-self: center; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-full);
+  font-size: 11px; line-height: 16px; color: var(--on-surface-muted);
+}
 .ticker-dot { width: 8px; height: 8px; flex: none; border-radius: var(--radius-full); background: var(--tk, var(--on-surface-muted)); }
 .ticker-status.tk-danger, .ticker-status.tk-warning { font-weight: 600; }
-.ticker-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 /* the status, standing still in the live section (and under the news band on the tiles view) */
 .ticker-status-box { margin: 0 0 8px; }
 .home > .ticker-status-box { margin: 0 0 var(--space-md); }
@@ -2053,9 +2080,14 @@ a.ticker-item:hover, button.ticker-item:hover { background: var(--surface-muted)
 .ticker-status-list .ticker-item { width: 100%; padding: 3px 4px; text-align: left; font-size: 13px; line-height: 1.35; }
 .ticker-status-list .ticker-dot { width: 7px; height: 7px; }
 .ticker-status-more { margin-top: 4px; font-size: var(--text-sm); }
-.ticker-meta { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; }
 .ticker-set-sub { margin: var(--space-sm) 0 0; }
-.ticker-interests textarea { min-width: min(420px, 100%); resize: vertical; }
+.ticker-interests { width: 100%; max-width: 680px; flex-wrap: nowrap; align-items: flex-start; }
+.ticker-interests textarea, .ticker-interests input { flex: 1 1 auto; min-width: 0; }
+.ticker-interests textarea { resize: vertical; }
+.ticker-interests-box { display: grid; gap: var(--space-sm); }
+.ticker-profile { display: grid; gap: 6px; }
+.ticker-proposal { display: grid; gap: 4px; justify-items: start; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); }
+.ticker-proposal p { margin: 0; }
 .ticker-feeds .ticker-feed-id { width: 120px; }
 .ticker-feeds .ticker-feed-url { width: min(360px, 60vw); }
 @media (prefers-reduced-motion: reduce) {

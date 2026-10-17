@@ -201,9 +201,21 @@ holds, so a change of state shows on the band at once.
 - **Events**: the ticker has one SSE event, `ticker`, in `EVENTS` in
   `api.js`. The server sends it after a settings change, after each feed read
   and when an edit starts and ends; the payload is the whole `state()`. The
-  verbs `ticker_settings`, `ticker_settings_reset`, `ticker_refresh` and
-  `ticker_edit` return at once with `ticker` in the answer; the slow part runs
-  on a thread and arrives as that event.
+  verbs `ticker_settings`, `ticker_settings_reset`, `ticker_refresh`,
+  `ticker_edit` and `ticker_profile` return at once with `ticker` in the
+  answer; the slow part runs on a thread and arrives as that event.
+- **The selection without a model** is `merge_items(groups, max_items, smart,
+  now_ms)`: mute, age, join (same address or title always, `same_story` on
+  `title_words` with `cluster`), then each feed's turn when over `max_items`.
+  A change of `smart` rebuilds from `feed_items` under the lock (`_rebuild`),
+  never fetches. What is new since the last visit and what was opened are the
+  page's (`ui.tickerSince`, `ui.tickerRead`, kept in `localStorage`), never the
+  server's.
+- **The interest profile** is a proposal, never a setting: `ticker_profile`
+  with `llm: false` counts words of the open task titles (`profile_keywords`,
+  at once), with `llm: true` asks Haiku on a thread (`profile_prompt`, same
+  budget as the editor). The result stands in `state()["profile"]["last"]` until
+  the next proposal; only the page's "Take" saves it into `editor.interests`.
 - **The editor stays a click**: `ticker_edit` is called only from the Editor
   button. Never from an effect, a timer, the refresh loop, `state_payload()` or
   the server start; the frontend test checks the page side, the server test

@@ -220,25 +220,47 @@ page shows two kinds of items, each in its own place:
   in place behind "N more". While status rows stand there and no live event
   came yet, the live feed says so in one short line instead of its longer
   "quiet" text.
-- **News from feeds** run in one slim band in the free space right of the
-  greeting, centred to it, below the Customise button. On a stage narrower
-  than about 1100 pixels (the `home` container, not the window) the band
-  drops below the greeting. It carries the newest items of the RSS or Atom
-  feeds in `ticker.feeds`, newest first, each with its source as a small
-  coloured label. The colours are the `DESIGN.md` tokens secondary, accent
-  and on-surface, each tinted to a strength of its own, never a state colour;
+- **News from feeds** run in one line in the free space right of the
+  greeting, level with it: a small head ("News", how many are new, Pause,
+  Editor, Refresh) on the eyebrow's line, the band itself on the prompt's,
+  with no box, a hairline under it like the greeting's and its ends fading
+  out. On a stage narrower than about 1100 pixels (the `home` container, not
+  the window) the band drops below the greeting. It carries the newest items
+  of the RSS or Atom feeds in `ticker.feeds`, newest first, each with its
+  source in small capitals after a coloured dot. The colours are the
+  `DESIGN.md` tokens secondary, accent and on-surface, never a state colour;
   they stay three different colours after the fallback chain of
   `design.py`, also with a `DESIGN.md` that names only a few keys. The configured feeds take them in
   turn, so every three feeds show three colours and a feed keeps its colour
   across loads while the list stays the same. The colour groups; the source
   name in the label is what tells feeds apart. A click opens the
-  article in a new browser tab. The defaults are six English AI news feeds.
+  article in a new browser tab; an article opened once steps back to muted
+  text in that browser. The defaults are six English AI news feeds.
+
+**The selection without a model** (`ticker.smart`) runs on every read of the
+feeds and on every change of its settings, costs nothing and sends nothing
+anywhere:
+
+- one story told by several feeds becomes one item (the same address, the same
+  title, or with `cluster` a title of another feed sharing most of its words);
+  it shows `+2` for two more feeds and names them on hover. A feed never joins
+  two of its own items;
+- items whose title holds a muted term (`mute`) never show; a term of letters
+  only matches whole words, so `AI` leaves "said" alone;
+- dated items older than `max_age_hours` leave the band, undated ones stay;
+- when more items remain than `max_items`, every feed takes its turn (each
+  one's newest, then each one's second newest), so a feed that writes every
+  hour cannot push out one that writes every week;
+- with `mark_new`, news that came out after your last visit carries a small
+  "new" mark and the head counts them. The visit is kept in the browser, and
+  a reload is no new visit.
 
 The classic view shows the news band under the greeting and the status list
 under the band.
 
 The band moves slowly and stops while the pointer or the keyboard focus is
-on it; Tab walks through its items. With reduced motion in the system it
+on it, and with its Pause button (the way for touch and keyboard, kept per
+browser); Tab walks through its items. With reduced motion in the system it
 stands still and scrolls by hand. Text only: no images, no favicons.
 
 The server reads the feeds, never the page, and only while a page is open:
@@ -251,9 +273,17 @@ keeps its earlier items and shows its error on the settings page.
 items that match `editor.interests` and, with `shorten`, to cut each title to
 one line. The band then shows the picks in that order, plus whatever arrived
 after the edit, marked new; the rest stays hidden until the next edit. Haiku
-never runs at start, on a timer or on a refresh. Changing the interests, the
-number of picks or `shorten` drops the old edit, and the band shows every item
-again until you press the button.
+never runs at start, on a timer or on a refresh. The prompt names the muted
+terms and how many feeds tell an item. Changing the interests, the number of
+picks, `shorten` or the muted terms drops the old edit, and the band shows
+every item again until you press the button.
+
+**Your interests** can be proposed on the settings page from the titles of
+your open tasks: "Keywords from my tasks" counts their words without a model
+(a word in two titles first, a name or product before a plain word), and
+"Written by Haiku" asks Haiku for one line of topics, again only on that
+click. Either is a proposal shown below the field; "Take as my interests"
+saves it, nothing else does.
 
 | Key under `ticker` | Default | What it does |
 |---|---|---|
@@ -269,6 +299,10 @@ again until you press the button.
 | `editor.interests` | empty | free text, what you want to see (up to 500 characters) |
 | `editor.max_picks` | `12` | how many items the editor keeps (1 to 40) |
 | `editor.shorten` | `true` | one-line titles from the editor |
+| `smart.cluster` | `true` | join one story from several feeds into one item |
+| `smart.max_age_hours` | `72` | dated items older than this leave the band (0 keeps all; up to 720) |
+| `smart.mark_new` | `true` | mark news that came out after the viewer's last visit |
+| `smart.mute` | empty | up to 30 terms (1 to 40 characters) whose items never show |
 
 A value in `bridge-config.yaml` that is out of range keeps its default; a feed
 entry with a bad id or address is skipped, and with no valid feed left the
@@ -913,20 +947,21 @@ nothing a stranger could trigger:
   no scripts from elsewhere and no external addresses at all;
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,
   close, settle (done or not doing), urgency, priority, note, check tasks, keep open, close task, launch, adopt, send, key,
-  close tab, snapshot, ticker settings, ticker refresh, ticker edit), every id
+  close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker profile), every id
   checked again before it reaches a script, every argument a separate word,
   texts after `--`;
 - the news ticker reads only the feed addresses you wrote into
   `cockpit.ticker.feeds` or saved on the settings page (an address in your
   own network is allowed because you chose it), only over http or https, with
   no user name in the address, at most three redirects, eight seconds and 2 MB
-  per feed. A feed that declares a DOCTYPE or an entity is refused before it is
-  parsed. The server never opens an item's link. Titles are stripped of markup
+  per feed (a gzip body sent unasked is unpacked to the same 2 MB). A feed
+  that declares a DOCTYPE or an entity is refused before it is parsed. The server never opens an item's link. Titles are stripped of markup
   and control characters and shown as text; a link becomes an anchor only when
   it is http or https, and opens with `noopener` and no referrer. Feed text
   reaches Claude only as the one prompt of the Editor button, a read-only Haiku
   call with no tools, and what comes back is used only as item numbers and
-  short titles;
+  short titles. The titles of your open tasks reach Haiku only on the button
+  "Written by Haiku", and its answer is shown as text to take or drop;
 - a Markdown answer (Chat, Other Bridges) is read into plain objects and drawn
   as elements, never parsed as HTML, so text in an answer cannot become markup
   or script; a link keeps only http, https and mailto and opens with
@@ -1284,5 +1319,7 @@ to copy.
 | no news band on the start page | `cockpit.ticker.enabled` is not `true` (or switched off on Settings), or no feed was read so far; the first read starts within seconds of opening the page. The status list in the live section shows only while there is something to say |
 | a feed shows an error on Settings | the address does not answer with RSS or Atom within eight seconds, is larger than 2 MB, or declares a DOCTYPE; open it in the browser and check it, or switch it off. The other feeds and its own earlier items stay |
 | no Editor button on the band | `editor.enabled` is off, or the server cannot find `claude`; it also stays greyed while an edit runs |
+| an item you expected is missing | a muted term matches its title, it is older than `smart.max_age_hours`, or it joined another feed's item (hover the `+N`) |
+| a feed says "not XML" | the address returns something other than a feed (an HTML page, a login); open it in the browser |
 | the editor hides items you want | it shows only its picks and what came after; sharpen `editor.interests`, or press Editor again. Changing the interests shows every item until the next edit |
 | the ticker shows no CPU or memory warnings | the cockpit has no such source. "Slow" covers collect passes, sources, tabs and agent turns; disk only comes through `checkup` |
