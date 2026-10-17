@@ -161,6 +161,9 @@ def _raise_if_error(evt: dict) -> None:
         raise ClaudeRunError(detail[:300])
 
 
+_SCOPED_WRITE_TOOLS = "Write,Edit,MultiEdit,NotebookEdit"
+
+
 class SubprocessClaudeRunner:
     """Run ``claude -p <prompt> --output-format json ...`` and return the answer."""
 
@@ -198,7 +201,8 @@ class SubprocessClaudeRunner:
         self._spawn_error_message = spawn_error_message
 
     def _build_cmd(
-        self, prompt: str, *, stream: bool, resume_session_id: str | None = None
+        self, prompt: str, *, stream: bool, resume_session_id: str | None = None,
+        scope=None,
     ) -> list[str]:
         """Assemble the ``claude -p`` argv shared by ``__call__`` and ``stream``.
 
@@ -226,15 +230,32 @@ class SubprocessClaudeRunner:
             cmd += ["--output-format", "stream-json", "--verbose", "--include-partial-messages"]
         else:
             cmd += ["--output-format", "json"]
-        cmd += ["--append-system-prompt", self._system_prompt]
-        for extra in self._extra_read_dirs:
-            cmd += ["--add-dir", extra]
+        # ``scope`` (see _runtime/access.py) replaces prompt, tool rules and cwd for one
+        # turn, so a peer's turn reads only that peer's folder.
+        system_prompt = scope.system_prompt if scope is not None else self._system_prompt
+        allowed_tools = scope.allowed_tools if scope is not None else self._allowed_tools
+        cmd += ["--append-system-prompt", system_prompt]
+        if scope is None:
+            for extra in self._extra_read_dirs:
+                cmd += ["--add-dir", extra]
         private = self._trust == "private"
+        # A scoped (per-peer) turn runs with its cwd inside the instance repo; loading
+        # project settings there would pull in the repo's CLAUDE.md chain and its tool
+        # allowlist. It loads nothing.
+        sources = "" if scope is not None else ("user,project" if private else "project")
+        denied = _PRIVATE_DISALLOWED_TOOLS if private else _DISALLOWED_TOOLS
+        mode = "acceptEdits"
+        if scope is not None:
+            # Read-only for real: acceptEdits would accept writes inside the cwd, which
+            # is the peer's own folder, and a planted index.md would steer its later
+            # turns. ``default`` denies anything not allowed in -p.
+            denied = denied + "," + _SCOPED_WRITE_TOOLS
+            mode = "default"
         cmd += [
-            "--allowedTools", self._allowed_tools,
-            "--disallowedTools", _PRIVATE_DISALLOWED_TOOLS if private else _DISALLOWED_TOOLS,
-            "--permission-mode", "acceptEdits",
-            "--setting-sources", "user,project" if private else "project",
+            "--allowedTools", allowed_tools,
+            "--disallowedTools", denied,
+            "--permission-mode", mode,
+            "--setting-sources", sources,
         ]
         if private and resume_session_id:
             cmd += ["--resume", resume_session_id]
@@ -246,6 +267,7 @@ class SubprocessClaudeRunner:
         *,
         context_id: str | None = None,
         resume_session_id: str | None = None,
+        scope=None,
     ) -> str:
         """Invoke claude -p and return the assistant's answer text.
 
@@ -253,13 +275,13 @@ class SubprocessClaudeRunner:
         subprocess env as ``AGENT_CONTEXT_ID`` — see ``_build_env`` for why.
         ``resume_session_id`` is forwarded to ``_build_cmd`` (private trust only).
         """
-        cmd = self._build_cmd(prompt, stream=False, resume_session_id=resume_session_id)
+        cmd = self._build_cmd(prompt, stream=False, resume_session_id=resume_session_id, scope=scope)
         logger.debug("claude_runner: spawning %s", _describe(cmd))
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                cwd=self._working_dir,
+                cwd=scope.working_dir if scope is not None else self._working_dir,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -308,6 +330,7 @@ class SubprocessClaudeRunner:
         *,
         context_id: str | None = None,
         resume_session_id: str | None = None,
+        scope=None,
     ) -> AsyncIterator[dict]:
         """Run with ``--output-format stream-json --verbose`` and yield events.
 
@@ -322,13 +345,13 @@ class SubprocessClaudeRunner:
         subprocess env as ``AGENT_CONTEXT_ID`` — see ``_build_env`` for why.
         ``resume_session_id`` is forwarded to ``_build_cmd`` (private trust only).
         """
-        cmd = self._build_cmd(prompt, stream=True, resume_session_id=resume_session_id)
+        cmd = self._build_cmd(prompt, stream=True, resume_session_id=resume_session_id, scope=scope)
         logger.debug("claude_runner: streaming %s", _describe(cmd))
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                cwd=self._working_dir,
+                cwd=scope.working_dir if scope is not None else self._working_dir,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,

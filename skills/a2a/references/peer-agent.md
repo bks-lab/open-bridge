@@ -112,6 +112,54 @@ skills, `owner_request` and `owner_policy`, so a caller knows before it asks.
 Callers: `a2a.sh request <peer> "<what>" --subject <area/target/action>`, then
 `a2a.sh get <peer> <task_id>` to see the decision.
 
+## 4c. What each peer may read, and topics on request (optional)
+
+Without this, every peer reads the same `grounding_dir`. With `access:`, each peer
+reads only its own folder, and the owner can keep topics "on request":
+
+```yaml
+access:
+  peers_dir: "share/peers"      # one folder per auth.peers id; the agent will not start without them
+  grant:
+    command: ["python3", "<repo>/skills/a2a/scripts/share_build.py", "grant",
+              "--config", "<instance>/access.yaml", "--root", "<repo>", "--out", "<instance>/share"]
+    timeout_sec: 120
+inline_grounding: ["index.md"]   # read from the asking peer's folder, fresh per request
+allowed_tools: "Read(/${grounding_dir}/**),Glob(/${grounding_dir}/**),Grep(/${grounding_dir}/**)"
+```
+
+The agent refuses to start unless the folder really is the boundary: `allowed_tools`
+holds only `Read`/`Glob`/`Grep` written exactly as `Tool(/${grounding_dir}/**)` (the
+extra slash makes Claude Code's absolute `//path` form), no `extra_read_dirs`, a
+folder for every peer, plain peer ids, and `grant` only together with `approval`. A
+per-peer turn loads no settings and no memory files (`--setting-sources ""`): its
+cwd lies inside the instance repo, and `project` would load the repo's CLAUDE.md
+chain into every peer's context. Conversation memory is kept per peer and context.
+
+The folders are built from an access file by `scripts/share_build.py build` (rules
+per peer: `none`, `on_request`, `status`, `details`, `files`; format in the script's
+docstring). Rebuild it whenever the sources change, for example after every pull.
+Every level masks addresses, references, home paths and token shapes, YAML keys that
+name an address, an account or a secret are dropped, and a section marked
+`<!-- share: private -->` never leaves. Check a build by reading the folder before
+the first peer does: masking is a backstop for what slipped into a source, not a
+reason to put secrets there.
+
+When an answer needs a topic listed as on request, the agent asks the owner about
+the TOPIC, not about a refusal: the approval command gets `"kind": "access"` with
+`topic` and answers `approve` plus `"grant": "once"` or `"always"`, or `reject`. A
+plain `approve` without `grant` counts as no, so an approver written before this
+existed cannot open a topic by accident. On a yes the question is answered again
+with the topic opened and sent without a second approval; afterwards the approval
+command gets a `"kind": "notice"` with the text (its answer is ignored, so an
+approver must recognise a notice instead of showing a new card for it).
+`always` is recorded in `access.grants.yaml` next to the access file; delete an
+entry to revoke it. Mechanics and failure behaviour: `agents/_runtime/access.py`.
+
+The owner's approval card should say what it releases. A card that shows only a
+finished answer reads as "may the peer have this?" while it means "may this text
+leave?"; when the text is a refusal, approving it releases the refusal.
+
 ## 5. Publish on a private network only
 
 ```bash

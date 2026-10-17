@@ -32,10 +32,11 @@ from a2a.utils import DEFAULT_RPC_URL
 from a2a.utils.error_handlers import build_error_details
 from a2a.utils.errors import JSON_RPC_ERROR_CODE_MAP, VersionNotSupportedError
 
+from .access import GrantCommand, Scopes
 from .approval import CommandApprover
 from .auth import PeerAuthBackend, on_auth_error, require_peer
 from .card import build_agent_card
-from .config import AgentConfig, load_agent_config
+from .config import AgentConfig, compose_inline_grounding, load_agent_config
 from .executor import ClaudeAgentExecutor
 from .otlp_logging import current_status as logging_status
 from .otlp_logging import setup_otlp_logging, setup_transcript_logging
@@ -132,6 +133,11 @@ def build_app(cfg: AgentConfig) -> Starlette:
         messages=cfg.messages,
         approver=CommandApprover(cfg.approval, binary=cfg.binary) if cfg.approval.enabled else None,
         requests=cfg.requests,
+        scopes=Scopes(
+            cfg.access, system_prompt=cfg.base_system_prompt, allowed_tools=cfg.allowed_tools,
+            inline_grounding=cfg.inline_grounding, compose=compose_inline_grounding,
+        ) if cfg.access.enabled else None,
+        grants=GrantCommand(cfg.access) if cfg.access.grant is not None else None,
     )
     agent_card = build_agent_card(cfg)
 

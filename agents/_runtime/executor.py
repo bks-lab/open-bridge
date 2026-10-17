@@ -33,6 +33,7 @@ from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState, UnsupportedOperationError
 
+from .access import split_access_directive
 from .otlp_logging import transcript_logger
 from .owner_requests import OwnerRequests, request_of
 from .runner import SubprocessClaudeRunner
@@ -57,6 +58,10 @@ DEFAULT_MESSAGES = {
     "awaiting_approval": "The answer is ready and waits for its owner's approval.",
     "rejected": "The owner did not release this answer.",
     "approval_timeout": "The owner did not decide in time; nothing was released.",
+    "no_folder": "This agent has nothing set up for you.",
+    "access_waiting": "This needs a topic the owner opens on request; waiting for the owner.",
+    "access_rejected": "The owner did not open this topic.",
+    "access_failed": "Opening the topic failed; nothing was sent.",
 }
 
 # Role labels folded into the prompt transcript (kept ascii/neutral).
@@ -129,8 +134,16 @@ class ClaudeAgentExecutor(AgentExecutor):
         messages: dict | None = None,
         approver=None,
         requests=None,
+        scopes=None,
+        grants=None,
     ) -> None:
         self._runner = runner
+        # Per-peer folders and access on request (see _runtime/access.py). ``scopes``
+        # builds what a turn may read; ``grants`` opens a topic once the owner said yes.
+        # Access requests need an owner to ask.
+        self._scopes = scopes
+        self._grants = grants if (grants is not None and approver is not None) else None
+        self._bg: set[asyncio.Task] = set()
         # Peer requests (see _runtime/owner_requests.py): only with an approver, since
         # the owner must be askable. They never reach the model.
         self._requests = (
@@ -243,9 +256,21 @@ class ClaudeAgentExecutor(AgentExecutor):
             )
             return
 
+        scope = None
+        if self._scopes is not None:
+            scope = self._scopes.for_peer(peer)
+            if scope is None:
+                # No folder for this peer: nothing to read, and no shared fallback.
+                logger.warning("executor: no folder for peer", extra={"task_id": task.id, "peer": peer})
+                await updater.failed(
+                    message=updater.new_agent_message([new_text_part(self._msg["no_folder"])])
+                )
+                return
+
         await self._concurrency.acquire()
         run_task = asyncio.ensure_future(
-            self._run(updater, context, user_text, runtime_context, peer=peer, slot_key=task.id)
+            self._run(updater, context, user_text, runtime_context, peer=peer, slot_key=task.id,
+                      scope=scope)
         )
         self._running[task.id] = run_task
         try:
@@ -272,17 +297,24 @@ class ClaudeAgentExecutor(AgentExecutor):
         *,
         peer: str | None = None,
         slot_key: str | None = None,
+        scope=None,
     ) -> None:
         """Run one claude -p turn while holding a concurrency slot."""
+        # A scope is only passed when there is one, so a runner without the keyword
+        # (an older instance runner, a test fake) keeps working.
+        scope_kw = {"scope": scope} if scope is not None else {}
         held = self._approver is not None
         await updater.start_work(
             message=updater.new_agent_message([new_text_part(self._msg["working"])])
         )
 
         cid = context.context_id or "default"
-        prior = self._history.get(cid, [])
-        if cid in self._history:
-            self._history.move_to_end(cid)
+        # Memory per peer AND context: the context id is the caller's choice, so two
+        # peers sending the same one must never see each other's turns.
+        hkey = f"{peer}\x1f{cid}" if peer else cid
+        prior = self._history.get(hkey, [])
+        if hkey in self._history:
+            self._history.move_to_end(hkey)
         prompt = self._build_prompt(prior, user_text, runtime_context)
         # Which ``⟦ui:…⟧`` actions this turn's caller can act on; none without a block.
         allowed_ui = self._allowed_ui_actions(runtime_context)
@@ -319,9 +351,9 @@ class ClaudeAgentExecutor(AgentExecutor):
         answer_artifact_id = str(uuid.uuid4())
         try:
             if hasattr(self._runner, "stream"):
-                resume_id = self._resume_sessions.get(cid)
+                resume_id = self._resume_sessions.get(hkey)
                 async for evt in self._runner.stream(
-                    prompt, context_id=cid, resume_session_id=resume_id
+                    prompt, context_id=cid, resume_session_id=resume_id, **scope_kw
                 ):
                     kind = evt.get("kind")
                     if kind in ("step", "delta") and held:
@@ -353,12 +385,12 @@ class ClaudeAgentExecutor(AgentExecutor):
                         # public agent) — remember for --resume on the next turn.
                         session_id = evt.get("id")
                         if session_id:
-                            self._resume_sessions[cid] = session_id
-                            self._resume_sessions.move_to_end(cid)
+                            self._resume_sessions[hkey] = session_id
+                            self._resume_sessions.move_to_end(hkey)
                     elif kind == "answer":
                         answer = evt.get("text", "")
             else:
-                answer = await self._runner(prompt, context_id=cid)
+                answer = await self._runner(prompt, context_id=cid, **scope_kw)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 — surface a clean failure to the client
@@ -391,6 +423,13 @@ class ClaudeAgentExecutor(AgentExecutor):
         # ``⟦ui:...⟧`` line back, and a page that knew only ``highlight`` got two
         # ``offer`` lines. A prompt rule alone is advisory, not enforcement.
         answer = self._strip_ui_directives(answer, allowed_ui)
+        topic = None
+        if self._scopes is not None:
+            # The access line never reaches the peer; it only means something with a
+            # grant command and an owner to ask.
+            answer, topic = split_access_directive(answer)
+            if self._grants is None:
+                topic = None
 
         duration_ms = int((time.monotonic() - started) * 1000)
         logger.info(
@@ -415,20 +454,34 @@ class ClaudeAgentExecutor(AgentExecutor):
             },
         )
 
-        if held:
+        notice = None
+        if topic is not None:
+            result = await self._await_access(
+                updater, context, cid, prompt, user_text, answer, topic,
+                peer=peer, slot_key=slot_key,
+            )
+            if result is None:
+                return
+            answer, notice = result
+        elif held:
             answer = await self._await_approval(
                 updater, context, cid, user_text, answer, peer=peer, slot_key=slot_key
             )
             if answer is None:
                 return
 
-        self._remember(cid, user_text, answer)
-        await updater.add_artifact(
-            [new_text_part(answer)], artifact_id=answer_artifact_id, name="answer"
-        )
-        await updater.complete(
-            message=updater.new_agent_message([new_text_part(answer)])
-        )
+        self._remember(hkey, user_text, answer)
+        try:
+            await updater.add_artifact(
+                [new_text_part(answer)], artifact_id=answer_artifact_id, name="answer"
+            )
+            await updater.complete(
+                message=updater.new_agent_message([new_text_part(answer)])
+            )
+        finally:
+            # Granted content may already be out; the owner hears about it either way.
+            if notice is not None:
+                self._background(notice())
 
     async def _await_approval(
         self,
@@ -473,6 +526,92 @@ class ClaudeAgentExecutor(AgentExecutor):
             message=updater.new_agent_message([new_text_part(self._msg[key])])
         )
         return None
+
+    async def _await_access(
+        self,
+        updater: TaskUpdater,
+        context: RequestContext,
+        cid: str,
+        prompt: str,
+        question: str,
+        draft: str,
+        topic: str,
+        *,
+        peer: str | None,
+        slot_key: str | None,
+    ) -> tuple[str, object] | None:
+        """Ask the owner about ``topic``; on a yes, re-answer with it opened.
+
+        Returns the text to send and a notice factory to run once the answer left
+        (or None), or None when the task was already closed. The re-answer leaves
+        without a second approval, since the owner just released the content.
+        """
+        if slot_key and slot_key not in self._slot_returned:
+            self._slot_returned.add(slot_key)
+            self._concurrency.release()
+        await updater.update_status(
+            TaskState.TASK_STATE_WORKING,
+            message=updater.new_agent_message([new_text_part(self._msg["access_waiting"])]),
+        )
+        base = {"task_id": context.task_id, "context_id": cid, "peer": peer, "topic": topic}
+        decision = await self._approver({**base, "kind": "access", "question": question,
+                                         "answer": draft})
+        grant = decision.grant
+        logger.info(
+            "executor: access decided",
+            extra={**base, "verdict": decision.verdict, "grant": grant},
+        )
+        # Only an explicit grant opens a topic (see access.py); a plain yes is a no.
+        if decision.verdict != "approve" or grant not in ("once", "always"):
+            key = "approval_timeout" if decision.verdict == "timeout" else "access_rejected"
+            await updater.reject(message=updater.new_agent_message([new_text_part(self._msg[key])]))
+            return None
+
+        payload = {**base, "scope": grant, "question": question}
+        failure = None
+        answer = ""
+        try:
+            folder = await self._grants.grant(payload)
+            if folder is None:
+                failure = self._msg["access_failed"]
+            else:
+                async with self._concurrency:
+                    answer = await self._answer_once(prompt, cid, self._scopes.for_dir(folder))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — surface a clean failure to the client
+            logger.exception("executor: re-answer with access failed", extra=base)
+            failure = self._msg["error"].format(error=exc)
+        finally:
+            # Whatever happened, including a refused folder or a cancel mid-grant, and
+            # before the peer hears the outcome.
+            await asyncio.shield(self._grants.release(payload))
+        if failure is not None:
+            await updater.failed(message=updater.new_agent_message([new_text_part(failure)]))
+            return None
+        # The re-answer cannot ask again, and has no page to direct.
+        answer, _ = split_access_directive(self._strip_ui_directives(answer))
+        notify = getattr(self._approver, "notice", None)
+        request = {**base, "kind": "notice", "scope": grant, "question": question,
+                   "answer": answer, "reason": "access granted"}
+        notice = (lambda: notify(request)) if notify else None
+        return answer, notice
+
+    def _background(self, coro) -> None:
+        """Run ``coro`` detached, keeping a reference until it is done."""
+        task = asyncio.ensure_future(coro)
+        self._bg.add(task)
+        task.add_done_callback(self._bg.discard)
+
+    async def _answer_once(self, prompt: str, cid: str, scope) -> str:
+        """One turn inside ``scope``, collected whole (nothing streams out)."""
+        if hasattr(self._runner, "stream"):
+            answer = ""
+            async for evt in self._runner.stream(prompt, context_id=cid, scope=scope):
+                if evt.get("kind") == "answer":
+                    answer = evt.get("text", "")
+            return answer
+        return await self._runner(prompt, context_id=cid, scope=scope)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Abort an in-flight turn for ``context``'s task, if one is running."""

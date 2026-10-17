@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from .access import AccessConfig, parse_access
 from .approval import ApprovalConfig, parse_approval
 from .auth import AuthConfig, parse_auth
 from .policy import RequestsConfig, parse_requests
@@ -121,6 +122,12 @@ class AgentConfig:
     auth: AuthConfig = field(default_factory=AuthConfig)
     approval: ApprovalConfig = field(default_factory=ApprovalConfig)
     requests: RequestsConfig = field(default_factory=RequestsConfig)
+    # Per-peer folders (see _runtime/access.py). With access on, ``system_prompt`` has
+    # no grounding embedded: each turn embeds ``inline_grounding`` from the asking
+    # peer's folder into ``base_system_prompt``, fresh.
+    access: AccessConfig = field(default_factory=AccessConfig)
+    base_system_prompt: str = ""
+    inline_grounding: list[str] = field(default_factory=list)
     project_root: str = field(default=str(PROJECT_ROOT))
 
 
@@ -245,14 +252,27 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
         has_approval=approval.enabled, has_auth=auth.enabled,
     )
 
+    # One folder per peer, and topics the owner opens on request (see _runtime/access.py).
+    access = parse_access(
+        instance, spec.get("access"), inst_dir=inst_dir.resolve(), tools_dir=tools_dir,
+        trust=trust, peer_ids=[p.id for p in auth.peers], allowed_tools=allowed_tools,
+        extra_read_dirs=extra_read_dirs, has_approval=approval.enabled,
+    )
+    inline_patterns = list(spec.get("inline_grounding") or [])
+    base_system_prompt = system_prompt
+    if access.enabled:
+        # No shared folder: the turn's cwd and tool paths come from the asking peer.
+        working_dir = str(access.peers_dir)
+    else:
+        allowed_tools = allowed_tools.replace("${grounding_dir}", working_dir)
+
     # Inline grounding: embed declared grounding files straight into the system
     # prompt so the agent answers from context — no Read/Grep round-trip per
     # question (the dominant source of public-widget latency). File tools stay
     # available as a fallback for ad-hoc lookups. Resolved against working_dir,
     # so the same read-confinement (grounding dir) applies.
-    system_prompt = compose_inline_grounding(
-        system_prompt, working_dir, spec.get("inline_grounding") or []
-    )
+    if not access.enabled:
+        system_prompt = compose_inline_grounding(system_prompt, working_dir, inline_patterns)
 
     cors = resolve_cors(
         spec.get("cors_origins", []),
@@ -289,5 +309,8 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
         auth=auth,
         approval=approval,
         requests=requests,
+        access=access,
+        base_system_prompt=base_system_prompt,
+        inline_grounding=inline_patterns,
         project_root=str(PROJECT_ROOT),
     )

@@ -151,3 +151,10 @@ okf/
 # headless browser. They are copies of a page with a probe script spliced in and
 # have no business in the repo; three of them rode in on a `git add -A` once.
 docs/_*.html
+
+# Per-peer share folders and owner grants of a peer agent (agents/_runtime/access.py,
+# skills/a2a/scripts/share_build.py): rendered output and runtime state, never content.
+agents/*/share/peers/
+agents/*/share/grants/
+agents/*/access.grants.yaml
+agents/*/.access.lock

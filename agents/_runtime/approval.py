@@ -28,6 +28,14 @@ the peer) and a ``rule`` that turns this decision into a standing one::
 ``rule.subject`` defaults to the request's subject. A rule that is not a mapping
 with ``effect`` allow or deny makes the whole decision unusable (fails closed).
 
+For an ACCESS request (``"kind": "access"``, see _runtime/access.py) the owner is
+asked about a topic, and ``approve`` may say for how long::
+
+    {"decision": "approve", "grant": "once"}      open it for this answer
+    {"decision": "approve", "grant": "always"}    open it from now on
+
+Any other ``grant`` value makes the decision unusable (fails closed).
+
 How the owner is asked (a messenger, a push notification, a web page) is the
 command's business and lives with the instance. Anything the runtime cannot read
 as one of those four, a crash, or silence past the deadline, fails closed: the
@@ -79,6 +87,8 @@ _TRIAGE_TIMEOUT_SEC = 90.0
 _NOTICE_TIMEOUT_SEC = 30.0
 _TRIAGE_DISALLOWED = "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,NotebookEdit"
 _TRIAGE_MAX_FIELD = 2500
+_NEVER_TRIAGED = frozenset({"request", "access", "notice"})
+_GRANTS = frozenset({"once", "always"})
 
 
 @dataclass(frozen=True)
@@ -106,6 +116,7 @@ class Decision:
     text: str = ""
     rule: dict | None = None  # a standing rule the owner set with this decision
     auto: bool = False        # released by triage, the owner was not asked
+    grant: str = ""           # access requests: once | always, "" when not given
 
 
 def parse_approval(instance: str, spec: dict | None, *, tools_dir: str) -> ApprovalConfig:
@@ -214,7 +225,7 @@ class CommandApprover:
     async def _released_unasked(self, request: dict) -> Decision | None:
         """A Decision when triage releases the answer, else None (ask the owner)."""
         auto = self._cfg.auto_approve
-        if auto is None or self._triage is None or request.get("kind") == "request":
+        if auto is None or self._triage is None or request.get("kind") in _NEVER_TRIAGED:
             return None
         if len(str(request.get("answer", ""))) > auto.max_answer_chars:
             return None
@@ -232,6 +243,10 @@ class CommandApprover:
             await self._notice({**request, "kind": "notice", "reason": reason})
         return Decision("approve", auto=True)
 
+    async def notice(self, request: dict) -> None:
+        """Tell the owner what left; the command's answer does not matter."""
+        await self._notice(request)
+
     async def _notice(self, request: dict) -> None:
         """Tell the command what left unasked; its answer does not matter."""
         payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
@@ -245,9 +260,12 @@ class CommandApprover:
             return
         try:
             await asyncio.wait_for(proc.communicate(payload), timeout=_NOTICE_TIMEOUT_SEC)
-        except asyncio.TimeoutError:
-            proc.kill()
+        except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+            if proc.returncode is None:
+                proc.kill()
             await proc.wait()
+            if isinstance(exc, asyncio.CancelledError):
+                raise
             logger.warning("approval: notice not taken in time")
 
     async def _ask(self, request: dict) -> Decision:
@@ -297,4 +315,8 @@ class CommandApprover:
                 logger.warning("approval: unusable rule %r", rule)
                 return Decision("error")
             rule = {k: str(v) for k, v in rule.items() if k in _RULE_KEYS and v is not None}
-        return Decision(verdict, text, rule)
+        grant = data.get("grant")
+        if grant is not None and grant not in _GRANTS:
+            logger.warning("approval: unusable grant %r", grant)
+            return Decision("error")
+        return Decision(verdict, text, rule, grant=grant or "")

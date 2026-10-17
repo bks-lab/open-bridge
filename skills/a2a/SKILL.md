@@ -53,6 +53,7 @@ What does the user want?
 ├── Ask another Bridge's owner to DO sth  → `a2a.sh request <peer> "..." --subject a/b/c`,
 │                                           then `get`; their rules: `a2a.sh rules <peer>`
 ├── Let peers request actions from you    → references/peer-agent.md § 4b
+├── Per-peer folders, topics on request  → references/peer-agent.md § 4c
 ├── "Is that agent set up right?"         → `a2a.sh card <peer|url>`, then `probe`
 ├── Add a peer to call                    → references/peers.md
 ├── Offer an agent to the public          → `new-agent <name> --trust public`, then
