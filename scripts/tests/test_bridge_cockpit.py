@@ -1190,6 +1190,22 @@ def test_do_it_on_a_page_item_reuses_the_inbox_item_the_briefing_already_filed(w
     assert writes(world) == [launch_argv(world, FILED_ID, "go")]
 
 
+def test_a_page_item_put_off_or_settled_no_longer_counts(world):
+    """the row leaves the table, so its count, its finding, the tab badge and the alarm go with it"""
+    def checks():
+        pg = next(p for p in world.app.collector.model["pages"] if p["id"] == "systems")
+        return pg, next(x for x in pg["sections"] if x["id"] == "checks")
+    pg, sec = checks()
+    assert (len(sec["items"]), sec["count"], sec["total"], sec["bad"], pg["badge"]["kind"]) == (1, 1, 1, 1, "bad")
+    world.act("later", key=CHECK_KEY, until=TOMORROW)
+    world.app.collector.request("both")
+    world.app.collector.drain()
+    pg, sec = checks()
+    assert (sec["items"], sec["count"], sec["total"], sec["bad"]) == ([], 0, 0, 0)
+    assert pg["badge"]["kind"] != "bad"
+    assert not [a for a in world.app.collector.model["alarms"] if a["page_id"] == "systems"]
+
+
 def test_advise_later_and_settle_work_on_a_page_item(world):
     new_id = "20261015-1201-backup-older-than-2-days-c3d4"
     world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")

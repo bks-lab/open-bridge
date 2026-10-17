@@ -11,7 +11,7 @@ import {
   sectionRows, short, startRefusal, stateToken, toneToken,
   VERDICT_ORDER, centsText, confidenceDots, reviewRows, verdictCounts, verdictToken,
   agentLane, checkFlow, gaugeArc, gaugeBands, gaugePoint, gaugeSection, laneWindow, meterScale, meterText, meterView,
-  canTab, chatStamp, runProgress, screenLines, TONE_FILTERS, FILTER_TONE, actionRow, pageItemActs, filterRows, groupRows, tagFacets, toneFilter, runToken, serious, statusSplit, detailText, scheduleText, dayNoteText, railShown, tabNextStep, previewText, weekdayNames, triageKey, triageShows, verdictSegments, linkParts, probeText, newestFirst, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone,
+  canTab, chatStamp, runProgress, screenLines, TONE_FILTERS, FILTER_TONE, actionRow, pageItemActs, filterRows, groupRows, tagFacets, toneFilter, runToken, serious, statusSplit, detailText, scheduleText, dayNoteText, railShown, tabNextStep, sectionStamp, previewText, weekdayNames, triageKey, triageShows, verdictSegments, linkParts, probeText, newestFirst, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone,
   sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES, jevList, workKinds, reviewHome, workPageOf, workViewOf, workViews,
   greetingPart, homeCatalog, homeChosen, homeContinue, homeProjects, inProject, meterPace, projectTone, tabOfTask,
   countInProject, focusPick, moveId, nextEvent, upcomingEvents, untilText, STAGE, stageDust, stageSpots, clockLeft, pulseSpeed,
@@ -1675,7 +1675,6 @@ function TabsColumn({ s, c, byKey, inDrawer }) {
       <header class="tabs-head">
         <h2 class="sec-title" id="tabs-title">${t.tabsTitle} <span class="sec-count mono">${tabs.filter(x => !x.is_control).length}</span></h2>
         <span class="muted small">${waiting ? t.waitCount(waiting) : ''}${waiting && working ? ' · ' : ''}${working ? t.workingCount(working) : ''}</span>
-        ${s.tabs?.at_ms ? html`<span class="muted small mono" title=${t.asOf}>${formatClock(s.tabs.at_ms, language())}</span>` : null}
         ${inDrawer ? html`<${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${() => c.setDrawer(null)} />` : null}
       </header>
       ${!s.cmux?.ok ? html`<p class="banner"><${StateLine} token="warning" word=${t.cmuxMissing(s.cmux?.error ?? '')} /></p>` : null}
@@ -2145,6 +2144,7 @@ function GroupsView({ items, page, section, c }) {
 function PageSection({ page, section, s, c }) {
   const byKey = indexRows(s.model)
   const t = T()
+  const stamp = sectionStamp(section.as_of, s.model?.collected_at)
   const more = section.whole ? null : s.more[`${page.id}/${section.id}`]   // whole: the caller already took every row
   // a task or inbox section follows the triage filter on top of its page
   const all = more ? more.items : (section.items ?? [])
@@ -2159,7 +2159,7 @@ function PageSection({ page, section, s, c }) {
     return html`<section class="panel psec psec-quiet" aria-labelledby=${`ps-${page.id}-${section.id}`}>
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}</h2>
       <${StateLine} token=${section.alarm ? 'success' : 'info'} word=${section.empty || t.empty} />
-      ${section.as_of ? html`<span class="muted small">${t.sourceAsOf(section.as_of)}</span>` : null}
+      ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </section>`
   }
   let body
@@ -2189,7 +2189,7 @@ function PageSection({ page, section, s, c }) {
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}
         ${section.status !== 'skipped' && section.status !== 'error' ? html`<span class="sec-count mono">${section.total ?? section.count}</span>` : null}</h2>
       ${section.bad ? html`<${StateLine} token="danger" strong word=${t.badgeFindings(section.bad)} />` : null}
-      ${section.as_of ? html`<span class="muted small">${t.sourceAsOf(section.as_of)}</span>` : null}
+      ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </header>
     ${body}
     ${left > 0 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${() => c.loadMore(page.id, section.id)}>${t.btnMore(left)}<//>` : null}

@@ -183,16 +183,20 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         secs = []
         for s in pg["sections"]:
             cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups") else ITEM_CAP    # drawn views filter every row
-            items = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"]) for i, it in enumerate(s["items"][:cap])]
-            items = [i for i in items if not (i["actionable"] and (i["key"] in settled or (hidden.get(i["key"]) or "") > today))]
-            secs.append({k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "count", "total",
-                                           "weight", "bad", "as_of")} | {"items": items, "view": s.get("view"),
-                                                                          "hide_empty": s.get("hide_empty") is True,
-                                                                          "more": max(0, len(s["items"]) - cap)})
-            if s["bad"] > 0:
+            shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"]) for i, it in enumerate(s["items"][:cap])]
+            items = [i for i in shown if not (i["actionable"] and (i["key"] in settled or (hidden.get(i["key"]) or "") > today))]
+            # a row put off or settled leaves the table, and its count and finding go with it, so the tab badge,
+            # the section head and the alarm never count a row the page does not show
+            gone = [i for i in shown if i not in items]
+            bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad"))
+            sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "weight", "as_of")}
+            secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,
+                               "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
+                               "more": max(0, len(s["items"]) - cap)})
+            if bad > 0:
                 alarms.append({"page_id": pg["id"], "page_title": pg["title"], "section_title": s["title"],
-                               "count": int(s["bad"])})
-        pages.append({"id": pg["id"], "title": pg["title"], "badge": m.page_badge(pg), "sections": secs,
+                               "count": int(bad)})
+        pages.append({"id": pg["id"], "title": pg["title"], "badge": m.page_badge({"sections": secs}), "sections": secs,
                       "group": pg.get("group", "main"), "overview": pg.get("overview") is True,
                       "jev": isinstance(pg.get("jev"), dict)})
 
