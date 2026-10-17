@@ -523,3 +523,41 @@ def test_a_scoped_turn_cannot_write():
     denied = cmd[cmd.index("--disallowedTools") + 1].split(",")
     for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         assert tool in denied
+
+
+def test_access_cards_per_peer_are_capped(make_client, tmp_path):
+    cfg = _cfg(tmp_path)
+    cfg = dataclasses.replace(cfg, access=dataclasses.replace(
+        cfg.access, grant=dataclasses.replace(cfg.access.grant, max_per_hour=2)))
+    client = make_client(cfg)
+    for i in range(3):
+        _FakeRunner.script = ["One moment.\n⟦access:bigpc⟧", "Answer."]
+        _FakeApprover.decisions = [Decision("reject")]
+        task = _ask(client, ALICE, message_id=f"m-{i}")
+    assert [r["kind"] for r in _FakeApprover.requests] == ["access", "access"]
+    assert task["status"]["state"] == "TASK_STATE_REJECTED"
+    _FakeRunner.script = ["One moment.\n⟦access:bigpc⟧", "Answer."]
+    _FakeApprover.decisions = [Decision("reject")]
+    _ask(client, BOB, message_id="m-b")
+    assert len(_FakeApprover.requests) == 3       # another peer has its own budget
+
+
+def test_parse_access_reads_max_per_hour(tmp_path):
+    inst = tmp_path / "inst"
+    (inst / "share" / "peers" / "alice").mkdir(parents=True)
+    cfg = parse_access("x", {"peers_dir": "share/peers", "grant": {"command": ["x"], "max_per_hour": 3}},
+                       inst_dir=inst, tools_dir="t", trust="peer", peer_ids=["alice"], **_OK)
+    assert cfg.grant.max_per_hour == 3
+
+
+def test_no_card_for_a_topic_the_folder_does_not_offer(make_client, tmp_path):
+    cfg = _cfg(tmp_path)
+    (cfg.access.peers_dir / "alice" / ".on_request").write_text("bigpc\n", "utf-8")
+    client = make_client(cfg)
+    _FakeRunner.script = ["One moment.\n⟦access:secret-plans⟧"]
+    task = _ask(client, ALICE)
+    assert _FakeApprover.requests == [] and task["status"]["state"] == "TASK_STATE_REJECTED"
+    _FakeRunner.script = ["One moment.\n⟦access:bigpc⟧", "Answer."]
+    _FakeApprover.decisions = [Decision("approve", grant="once")]
+    task = _ask(client, ALICE, message_id="m-2")
+    assert [r["kind"] for r in _FakeApprover.requests] == ["access"]

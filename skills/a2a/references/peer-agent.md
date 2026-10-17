@@ -139,9 +139,28 @@ chain into every peer's context. Conversation memory is kept per peer and contex
 The folders are built from an access file by `scripts/share_build.py build` (rules
 per peer: `none`, `on_request`, `status`, `details`, `files`; format in the script's
 docstring). Rebuild it whenever the sources change, for example after every pull.
-Every level masks addresses, references, home paths and token shapes, YAML keys that
-name an address, an account or a secret are dropped, and a section marked
-`<!-- share: private -->` never leaves. Check a build by reading the folder before
+Every level masks addresses, references, home paths, phone numbers, bank details, tax
+ids and token shapes; YAML keys that name an address, an account or a secret are
+dropped; a section marked `<!-- share: private -->` never leaves; symlinks are never
+followed; a topic whose frontmatter cannot be read, or whose `share:` override is
+wrong, is hidden and named on stderr instead of stopping the build.
+
+Options in the access file (format in the script's docstring):
+
+| Option | Where | Effect |
+|---|---|---|
+| `redact_terms: [..]` | per peer | drops every paragraph, list item, table row or heading section naming a term, also in text attachments and YAML items |
+| `keep_email_domains: [..]` | top level | emails of these domains stay readable (colleagues) |
+| `next_step_headings: [..]` | top level | the heading `status` carries, in the instance's language |
+| `group: ".."` | per rule | index section for the topics the rule matches |
+| `fields: [a, b.c]` | per rule | frontmatter fields shown in the topic (sensitive names never) |
+| `summary: "{a}[[, {b[c]}]]"` | per rule | index line from the frontmatter; `[[ ]]` only when all its fields are set |
+| `only:` / `exclude:` | per rule, YAML files | keep just these keys, drop list items with these values |
+
+Long topics are cut to about 25 KB, keeping the opening, the next-step section and the
+newest dated sections. Each peer folder carries `.on_request`, the ids the runtime may
+ask the owner about; a card for any other id is never sent, and `grant.max_per_hour`
+(default 5) caps the cards per peer. Check a build by reading the folder before
 the first peer does: masking is a backstop for what slipped into a source, not a
 reason to put secrets there.
 

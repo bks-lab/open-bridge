@@ -21,6 +21,11 @@ says, per peer, which topics it sees and how deep; the program renders them::
           - match: {context: [labs]}
             level: on_request        # listed by id, opened when the owner says yes
             grant_level: details
+        redact_terms: [Globex]       # paragraphs naming these never leave, at any level
+    keep_email_domains: [example.org]
+
+A rule may also carry ``group`` (index section), ``fields`` (frontmatter shown in the
+topic) and ``summary`` (index line, ``{field}`` and ``[[optional {part}]]``).
 
 Levels: ``none`` (absent everywhere), ``on_request`` (id and a one-line summary in
 the index, content only after a grant), ``status`` (headline, state, next step),
@@ -74,27 +79,72 @@ _SENSITIVE_KEY = re.compile(
     r"(^|_)(ip|ips|ipv4|ipv6|mac|macs|host|hostname|hosts|user|users|username|login|ssh|rdp|"
     r"password|passwd|secret|secrets|token|tokens|credential|credentials|key|keys|apikey|"
     r"gateway|port|ports|url|urls|uri|command|commands|env|path|paths|dir|dirs|address|"
-    r"addresses|email|mail|tenant|subscription|iban|bic|phone|mobile|tel|account|pin)($|_)"
+    r"addresses|email|mail|tenant|subscription|iban|bic|phone|mobile|tel|account|pin|"
+    r"authorization|auth|cookie|cookies|passphrase|pwd|connection_string|dsn|sas|sig|salt|"
+    r"cert|certificate|webhook|endpoint|server|servers|fqdn|domain|ssn|imei|vin|serial|"
+    r"salary)($|_)"
     r"|_ref$|^ref$",
 )
 _GRANT_TTL_SEC = 2 * 3600       # a one-time grant folder older than this is swept
+# Every quantifier is bounded: a pattern that may run to the end of a 60 KB line from
+# every start position is quadratic, and a hostile ``a-a-a-…`` took 100 s (fuzzed).
+_NOT_END = r"[^\s,;)\]>`'\"]"
 _MASKS = (
-    (re.compile(r"\b[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE), "[reference]"),
-    (re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b"), "[address]"),
-    (re.compile(r"\b(?:ghp|gho|ghs|github_pat|xox[abprs]|sk|pk|rk)[-_][A-Za-z0-9_-]{12,}"), "[secret]"),
-    (re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.(?:ts\.net|local|lan|internal|home\.arpa)\b", re.IGNORECASE), "[address]"),
+    # A markdown link keeps its text; the target (a URL, a relative path into the
+    # repo) means nothing to a peer and can name internals.
+    (re.compile(r"\[([^\]\n]{1,200})\]\([^)\s]{1,500}\)"), r"\1"),
+    (re.compile(r"\b[a-z][a-z0-9+.-]{0,30}://" + _NOT_END + r"{1,2000}", re.IGNORECASE), "[reference]"),
+    (re.compile(r"\bwww\." + _NOT_END + r"{1,2000}", re.IGNORECASE), "[reference]"),
+    (re.compile(r"\beyJ[\w-]{5,2000}\.[\w-]{5,4000}\.[\w-]{5,2000}"), "[secret]"),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[secret]"),
+    (re.compile(r"\bAIza[\w-]{30,60}"), "[secret]"),
+    (re.compile(r"\b(Bearer)\s+[\w.~+/-]{16,2000}", re.IGNORECASE), r"\1 [secret]"),
+    (re.compile(r"\b(?:ghp|gho|ghs|github_pat|xox[abprs]|sk|pk|rk)[-_][A-Za-z0-9_-]{12,400}"), "[secret]"),
+    (re.compile(r"\b(AccountKey|SharedAccessSignature|sig)=[^;&\s]{1,2000}", re.IGNORECASE), r"\1=[secret]"),
+    (re.compile(r"(?<![A-Za-z])(password|passwort|passwd|pwd|kennwort|secret|token|api[_-]?key|"
+                r"client[_-]?secret|access[_-]?token)([\"']?\s{0,20}[:=|]\s{0,20}[\"'`]?)(?!\[)[^\s\"'`|]{1,400}",
+                re.IGNORECASE), r"\1\2[secret]"),
+    (re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE), "[id]"),
+    # Bank details: an IBAN in any spacing (each group after the first carries a digit,
+    # so "ab12 test case" stays prose), and a BIC only where it is named.
+    (re.compile(r"\b[A-Za-z]{2}\d{2}(?:[ .-]?[A-Za-z0-9]{4})(?:[ .-]?(?=[A-Za-z0-9]{0,3}\d)[A-Za-z0-9]{4}){1,6}"
+                r"(?:[ .-]?[A-Za-z0-9]{1,4})?\b"), "_iban"),
+    # Labelled account numbers, also shortened ones ("IBAN AT…7000", "Konto `12264476`").
+    (re.compile(r"\b(IBAN|Konto(?:nummer|nr\.?)?|Kontonr\.?|Account(?: number)?)(:?\s{0,3}`?)"
+                r"(?!\[)[A-Za-z0-9…. -]{0,40}\d", re.IGNORECASE), r"\1\2[account]"),
+    (re.compile(r"\b(BIC|SWIFT)(:?\s{0,3})[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b"), r"\1\2[account]"),
+    (re.compile(r"\b(USt-?Id[\w.-]{0,5}|Steuer[- ]?(?:nr|nummer|id)[\w.-]{0,22}|St\.?-?Nr\.?)(\s{0,3}:?\s{0,3})"
+                r"[A-Z]{0,2}[\d /]{8,20}\d", re.IGNORECASE), r"\1\2[id]"),
+    (re.compile(r"(?<![\w.+-])[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}\b"), "[email]"),
+    (re.compile(r"(?<![\w+])\+\d{1,3}[\s\d/().-]{6,20}\d"), "[phone]"),
+    (re.compile(r"\b((?:Tel(?:efon)?|Mobil|Handy|Fax|Phone)[\w.-]{0,8})(\s{0,3}:?\s{0,3})\+?\d[\d\s/().-]{5,30}\d",
+                re.IGNORECASE), r"\1\2[phone]"),
+    # A national number without a label: area code, then a block of at least five
+    # digits. Dates and times never start with 0 followed by a space-separated block.
+    (re.compile(r"(?<![\w.:/+-])0\d{2,4}[ /-]\d{5,}(?:[ -]\d{2,6}){0,2}(?![\w.:/-])"), "[phone]"),
+    (re.compile(r"(?<![\w.-])(?:[\w-]{1,63}\.){1,10}(?:ts\.net|local|lan|internal|home\.arpa)\b", re.IGNORECASE),
+     "[address]"),
     # IPv4-mapped first (``::ffff:10.1.2.3``), then IPv4, then the rest of IPv6, so no
-    # pattern leaves octets of another behind.
+    # pattern leaves octets of another behind. "1.2.3.4.5" is a section number.
     (re.compile(r"(?<![\w:])::ffff:(?:\d{1,3}\.){3}\d{1,3}\b", re.IGNORECASE), "[address]"),
-    (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b"), "[address]"),
-    (re.compile(r"(?<![\w:])(?=[0-9a-f:]*(?:[a-f]|::))(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:/\d{1,3})?(?![\w:])(?!\.\d)",
-                re.IGNORECASE), "[address]"),
+    (re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?(?!\.?\d|\w)"), "[address]"),
+    (re.compile(r"(?<![\w:])(?:\d{1,4}:){7}\d{1,4}(?![\w:])"), "[address]"),
+    (re.compile(r"(?<![\w:])(?=[0-9a-f:]{0,45}(?:[a-f]|::))(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:/\d{1,3})?(?![\w:])(?!\.\d)",
+                re.IGNORECASE), "_ipv6"),
     (re.compile(r"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b"), "[address]"),
-    (re.compile(r"\b[A-Za-z]:\\[^\s,;)]*"), "[path]"),
-    (re.compile(r"(?<![\w.])/(?:Users|home|opt|var|etc|private|Volumes)/[^\s,;)]*"), "[path]"),
-    (re.compile(r"(?<![\w])~/[^\s,;)]*"), "[path]"),
+    (re.compile(r"\\\\[\w.$-]{1,255}\\" + _NOT_END + r"{0,2000}"), "[path]"),
+    (re.compile(r"\b[A-Za-z]:\\" + _NOT_END + r"{0,2000}"), "[path]"),
+    # A home folder may hold a space (a user name with a blank): up to the next slash.
+    (re.compile(r"(?<![\w.])/(?:Users|home)/[^/\n`'\"]{1,100}(?:/" + _NOT_END + r"{0,2000})?"), "[path]"),
+    (re.compile(r"(?<![\w.])/(?:opt|var|etc|private|Volumes|root|srv|mnt|tmp)/" + _NOT_END + r"{0,2000}"), "[path]"),
+    (re.compile(r"(?<![\w])~[\w-]{0,32}/" + _NOT_END + r"{0,2000}"), "[path]"),
 )
-_PRIVATE_MARK = re.compile(r"<!--\s*share:\s*private\s*-->", re.IGNORECASE)
+_PRIVATE_MARK = re.compile(r"<!--[^>]{0,200}?\bshare\s*:\s*private\b[^>]{0,200}?-->", re.IGNORECASE)
+_FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+_OPEN_ITEM = re.compile(r"^\s*[-*]\s+\[ \]\s+(.+)$")
+_NEXT_STEP_ANY = re.compile(r"n(ä|ae)chste[rn]? schritt|next step", re.IGNORECASE)
+_DETAILS_CAP = 25_000           # bytes of a rendered topic; older sections are cut
+_LONG = 20_000                  # the index marks a topic above this as long
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 # The heading whose section ``status`` carries; an access file may name its own
 # (``next_step_headings``) for STATUS.md files written in another language.
@@ -124,15 +174,22 @@ class Topic:
 
 
 def _split_frontmatter(text: str) -> tuple[dict, str]:
-    lines = text.splitlines()
+    """Frontmatter and body. Unreadable frontmatter marks the topic broken, which hides
+    it: a ``share: {peer: none}`` in it must not silently stop applying."""
+    lines = text.lstrip("\ufeff").splitlines()
     starts = [i for i, line in enumerate(lines) if line.strip() == "---"]
     if len(starts) >= 2 and all(not l.strip() or l.lstrip().startswith("#") for l in lines[:starts[0]]):
         try:
             meta = yaml.safe_load("\n".join(lines[starts[0] + 1:starts[1]])) or {}
-        except yaml.YAMLError:
-            meta = {}
-        return (meta if isinstance(meta, dict) else {}), "\n".join(lines[starts[1] + 1:])
-    return {}, text
+        except (yaml.YAMLError, RecursionError):
+            meta = {"__broken__": True}
+        if not isinstance(meta, dict):
+            meta = {"__broken__": True}
+        return meta, "\n".join(lines[starts[1] + 1:])
+    first = next((l for l in lines if l.strip() and not l.lstrip().startswith("#")), "")
+    if first.strip() == "---":
+        return {"__broken__": True}, "\n".join(lines)   # opened, never closed
+    return {}, "\n".join(lines)
 
 
 def _load_topic(path: Path, root: Path, topic_id: str | None = None) -> Topic | None:
@@ -164,13 +221,22 @@ def collect_topics(access: dict, root: Path) -> dict[str, Topic]:
         for rule in (peer or {}).get("rules") or []:
             for pattern in (rule.get("match") or {}).get("path") or []:
                 paths += [(p, True) for p in sorted(root.glob(pattern)) if p not in sourced]
+    real_root = root.resolve()
     for path, by_path in paths:
-        if not path.is_file():
+        if not path.is_file() or not path.resolve().is_relative_to(real_root):
+            continue                           # a rule like ../x.yaml never leaves --root
+        try:
+            topic = _load_topic(path, root)
+        except (OSError, UnicodeDecodeError, yaml.YAMLError, RecursionError, ValueError) as exc:
+            # One unreadable file hides itself; it does not stop the other topics.
+            print(f"share_build: skipping {path.relative_to(root)}: {type(exc).__name__}", file=sys.stderr)
             continue
-        topic = _load_topic(path, root)
         if topic is not None:
             topic.by_path_only = by_path
-        if topic is None or not _ID_RE.match(topic.id):
+            if topic.meta.get("__broken__"):
+                print(f"share_build: {topic.rel}: frontmatter is not valid YAML, topic hidden",
+                      file=sys.stderr)
+        if topic is None or not _ID_RE.fullmatch(topic.id):
             continue
         if topic.id in found and found[topic.id].path != path:
             print(f"share_build: topic id {topic.id!r} used twice, keeping {found[topic.id].rel}",
@@ -192,10 +258,13 @@ def validate(access: dict) -> None:
     if not isinstance(access, dict) or not isinstance(access.get("peers"), dict):
         raise ValueError("access file needs a peers: mapping")
     for pid, peer in access["peers"].items():
-        if not _ID_RE.match(str(pid)):
+        if not _ID_RE.fullmatch(str(pid)):
             raise ValueError(f"peer id {pid!r} is not a plain id")
         peer = peer or {}
         _check_level(peer.get("default", "none"), f"peers.{pid}.default")
+        terms = peer.get("redact_terms") or []
+        if not isinstance(terms, list) or not all(isinstance(t, str) and t.strip() for t in terms):
+            raise ValueError(f"peers.{pid}.redact_terms must be a list of words")
         for i, rule in enumerate(peer.get("rules") or []):
             where = f"peers.{pid}.rules[{i}]"
             _check_level(rule.get("level"), where)
@@ -237,7 +306,11 @@ def resolve(access: dict, grants: list[dict], peer_id: str, topic: Topic) -> tup
 
 
 def _base_level(access: dict, peer_id: str, topic: Topic) -> tuple[str, dict]:
+    if topic.meta.get("__broken__"):
+        return "none", {}
     override = topic.meta.get("share") if topic.kind == "status" else None
+    if override is not None and not isinstance(override, dict):
+        return "none", {}                      # an override nobody can read hides the topic
     if isinstance(override, dict) and peer_id in override:
         return _check_level(override[peer_id], f"{topic.rel} share.{peer_id}"), {}
     peer = access["peers"].get(peer_id) or {}
@@ -251,10 +324,120 @@ def _base_level(access: dict, peer_id: str, topic: Topic) -> tuple[str, dict]:
 
 # --- rendering ----------------------------------------------------------------------
 
-def mask(text: str) -> str:
+def mask(text: str, keep_domains: tuple[str, ...] = ()) -> str:
+    """Mask addresses, secrets and paths. Emails of ``keep_domains`` stay readable."""
+    kept: list[str] = []
+    if keep_domains:
+        def park(m: re.Match) -> str:
+            kept.append(m.group(0))
+            return f"\x00{len(kept) - 1}\x00"
+        domains = "|".join(re.escape(d) for d in keep_domains)
+        text = re.sub(r"(?<![\w.+-])[\w.+-]{1,64}@(?:[\w-]{1,63}\.){0,8}(?:" + domains + r")(?![\w-]|\.\w)",
+                      park, text, flags=re.IGNORECASE)
+    text = _mask_pem(text)
     for pattern, replacement in _MASKS:
-        text = pattern.sub(replacement, text)
+        if replacement == "_iban":
+            text = pattern.sub(_iban_or_keep, text)
+        elif replacement == "_ipv6":
+            text = pattern.sub(_ipv6_or_keep, text)
+        else:
+            text = pattern.sub(replacement, text)
+    for i, original in enumerate(kept):
+        text = text.replace(f"\x00{i}\x00", original)
     return text
+
+
+_IBAN_COUNTRIES = frozenset(
+    "AD AE AL AT AZ BA BE BG BH BR BY CH CR CY CZ DE DK DO EE EG ES FI FO FR GB GE GI GL GR GT HR HU "
+    "IE IL IQ IS IT JO KW KZ LB LC LI LT LU LV MC MD ME MK MR MT MU NL NO PK PL PS PT QA RO RS SA SC "
+    "SE SI SK SM ST SV TL TN TR UA VA VG XK".split())
+
+
+def _iban_or_keep(m: re.Match) -> str:
+    """An IBAN has a known country, 15 to 34 characters and mostly digits; a short
+    git SHA or a release tag shares the shape, not those properties."""
+    raw = re.sub(r"[ .-]", "", m.group(0))
+    digits = sum(c.isdigit() for c in raw)
+    if raw[:2].upper() in _IBAN_COUNTRIES and 15 <= len(raw) <= 34 and digits >= len(raw) * 0.6:
+        return "[account]"
+    return m.group(0)
+
+
+def _ipv6_or_keep(m: re.Match) -> str:
+    """At least two groups with digits, so ``x[::2]`` and ``f :: Int`` stay code."""
+    groups = [g for g in re.split(r":+", m.group(0).split("/")[0]) if g]
+    return "[address]" if len(groups) >= 2 else m.group(0)
+
+
+def _mask_pem(text: str) -> str:
+    """A key block, found with str.find (no regex scan): to its END line, or without
+    one to the next blank line."""
+    out, pos = [], 0
+    while True:
+        start = text.find("-----BEGIN ", pos)
+        if start < 0:
+            out.append(text[pos:])
+            return "".join(out)
+        end = text.find("-----END ", start)
+        if end >= 0:
+            close = text.find("-----", end + 9)
+            stop = close + 5 if close >= 0 else len(text)
+        else:
+            blank = text.find("\n\n", start)
+            stop = blank if blank >= 0 else len(text)
+        out.append(text[pos:start] + "[secret]")
+        pos = stop
+
+
+def _term_re(terms) -> re.Pattern | None:
+    if not terms:
+        return None
+    # Open at the end, so a term also catches its inflections ("Mandats", "ACMEs").
+    return re.compile(r"(?<!\w)(?:" + "|".join(re.escape(t) for t in terms) + r")", re.IGNORECASE)
+
+
+def _redact(body: str, terms) -> str:
+    """Drop what names a term: a heading's whole section, a prose paragraph, or in a
+    list or table only the item or row. A heading left with nothing under it goes too."""
+    hit = _term_re(tuple(terms or ()))
+    if hit is None or not body:
+        return body
+    kept_blocks: list[tuple[int, list[str]]] = []
+    skip_depth = None
+    for depth, lines in _blocks(body):
+        if skip_depth is not None and depth > skip_depth:
+            continue
+        skip_depth = None
+        if depth and hit.search(lines[0]):
+            skip_depth = depth
+            continue
+        head, rest = (lines[:1], lines[1:]) if depth else ([], lines)
+        paras, out = re.split(r"\n\s*\n", "\n".join(rest)), []
+        for para in paras:
+            if not hit.search(para):
+                out.append(para)
+                continue
+            plines = para.splitlines()
+            if all(re.match(r"\s*([-*+|]|\d+\.)", l) or not l.strip() for l in plines):
+                left = [l for l in plines if not hit.search(l)]
+                if any(re.match(r"\s*([-*+]|\d+\.)\s", l) or re.match(r"\s*\|.*\w", l) for l in left):
+                    out.append("\n".join(left))
+        kept_blocks.append((depth, head + ["\n\n".join(out)] if out else head))
+    # Drop headings with nothing under them, also not in their subsections.
+    result: list[str] = []
+    for i, (depth, lines) in enumerate(kept_blocks):
+        has_text = any(l.strip() for l in lines[1 if depth else 0:])
+        if depth and not has_text:
+            deeper = kept_blocks[i + 1:]
+            sub = []
+            for d2, l2 in deeper:
+                if d2 <= depth:
+                    break
+                sub.append(any(x.strip() for x in l2[1:]))
+            if not any(sub):
+                continue
+        result.extend(lines)
+    return "\n".join(result).strip()
 
 
 def _blocks(body: str) -> list[tuple[int, list[str]]]:
@@ -263,11 +446,18 @@ def _blocks(body: str) -> list[tuple[int, list[str]]]:
     A ``#`` line inside a fenced code block is not a heading.
     """
     blocks: list[tuple[int, list[str]]] = [(0, [])]
-    fenced = False
+    fence = ""                                 # the opening run, ``` or ~~~ and its length
     for line in body.splitlines():
-        if line.lstrip().startswith(("```", "~~~")):
-            fenced = not fenced
-        heading = None if fenced else _HEADING.match(line)
+        m = _FENCE.match(line)
+        if m:
+            run = m.group(1)
+            if not fence:
+                fence = run
+            elif run[0] == fence[0] and len(run) >= len(fence):
+                fence = ""
+            blocks[-1][1].append(line)
+            continue
+        heading = None if fence else _HEADING.match(line)
         if heading:
             blocks.append((len(heading.group(1)), [line]))
         else:
@@ -284,6 +474,10 @@ def _drop_private_sections(body: str) -> str:
     is ambiguous and hides both sections. Marked text before the first heading
     drops that text.
     """
+    # A comment spread over several lines counts like the one-line marker.
+    body = re.sub(r"<!--(?:(?!-->)[\s\S]){0,500}?-->",
+                  lambda m: "<!-- share: private -->"
+                  if re.search(r"share\s*:\s*private", m.group(0), re.IGNORECASE) else m.group(0), body)
     blocks = _blocks(body)
     private = [False] * len(blocks)
     for i, (_depth, lines) in enumerate(blocks):
@@ -336,6 +530,8 @@ def _only_tree(only: list[str] | None) -> dict | None:
     """``["a", "b.c"]`` → ``{"a": None, "b": {"c": None}}``; None keeps everything."""
     if only is None:
         return None
+    if isinstance(only, str):
+        only = [only]
     tree: dict = {}
     for dotted in only:
         node = tree
@@ -352,20 +548,25 @@ def _only_tree(only: list[str] | None) -> dict | None:
     return tree
 
 
-def _clean_yaml(data, keep: dict | None = None, exclude: frozenset = frozenset()):
-    """Drop sensitive keys and excluded values, mask addresses; ``keep`` limits keys."""
+def _clean_yaml(data, keep: dict | None = None, exclude: frozenset = frozenset(), terms=None):
+    """Drop sensitive keys, keys that are addresses, excluded and redacted values, and
+    mask the rest; ``keep`` limits keys; ``terms`` is a compiled redaction pattern."""
     if isinstance(data, dict):
         out = {}
         for k, v in data.items():
-            if _SENSITIVE_KEY.search(_snake(k)):
+            name = str(k)
+            if _SENSITIVE_KEY.search(_snake(k)) or mask(name) != name:
                 continue
-            if keep is not None and k not in keep:
+            if terms is not None and (terms.search(name) or (isinstance(v, str) and terms.search(v))):
                 continue
-            out[k] = _clean_yaml(v, keep.get(k) if keep is not None else None, exclude)
+            if keep is not None and name not in keep and k not in keep:
+                continue
+            sub = keep.get(name, keep.get(k)) if keep is not None else None
+            out[k] = _clean_yaml(v, sub, exclude, terms)
         return out
     if isinstance(data, list):
-        return [_clean_yaml(v, keep, exclude) for v in data
-                if not (isinstance(v, str) and v in exclude)]
+        return [_clean_yaml(v, keep, exclude, terms) for v in data
+                if not (isinstance(v, str) and (v in exclude or (terms is not None and terms.search(v))))]
     if isinstance(data, str):
         return mask(data)
     return data
@@ -373,76 +574,261 @@ def _clean_yaml(data, keep: dict | None = None, exclude: frozenset = frozenset()
 
 def _attachments(topic: Topic) -> list[Path]:
     d = topic.path.parent / "deliverables"
-    if topic.kind != "status" or not d.is_dir():
+    if topic.kind != "status" or not d.is_dir() or d.is_symlink():
         return []
-    return sorted(p for p in d.rglob("*") if p.is_file() and not p.name.startswith("."))
+    real = d.resolve()
+    # Never a symlink, never anything that resolves outside the folder: a link to a
+    # file elsewhere would carry that file's content into a peer's share.
+    found = []
+    for p in d.rglob("*"):
+        rel = p.relative_to(d)
+        if (not p.is_file() or p.is_symlink() or p.name.startswith(".")
+                or not p.resolve().is_relative_to(real)
+                or any((d / parent).is_symlink() for parent in rel.parents if parent != Path("."))):
+            continue
+        found.append(p)
+    return sorted(found)
 
 
-def render(topic: Topic, level: str, rule: dict, next_step: re.Pattern | None = None) -> str:
-    head = [f"# {topic.id}", "", f"Level: {level}", ""]
+def _cap(body: str) -> str:
+    """Cut a long body at section boundaries. Kept: the text before the first heading,
+    the next-step section, then dated sections newest first, then the rest in order,
+    as long as they fit. Kept sections stay in their original order."""
+    if len(body.encode("utf-8")) <= _DETAILS_CAP:
+        return body
+    blocks = _blocks(body)
+    sizes = [len("\n".join(lines).encode("utf-8")) + 1 for _d, lines in blocks]
+    def date_of(lines):
+        head = lines[0] if lines else ""
+        m = re.search(r"(\d{4})-(\d{2})-(\d{2})", head) or re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})?", head)
+        if not m:
+            return ""
+        if len(m.group(1)) == 4:
+            return m.group(0)
+        return f"{m.group(3) or '9999'}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    order = [0] + [i for i, (d, l) in enumerate(blocks) if d and _NEXT_STEP_ANY.search(l[0])]
+    dated = sorted((i for i, (d, l) in enumerate(blocks) if d and date_of(l)), key=lambda i: date_of(blocks[i][1]),
+                   reverse=True)
+    order += dated + list(range(len(blocks)))
+    keep, size = set(), 0
+    for i in order:
+        if i in keep:
+            continue
+        if size + sizes[i] > _DETAILS_CAP and keep:
+            continue
+        keep.add(i)
+        size += sizes[i]
+    text = "\n".join("\n".join(blocks[i][1])[:_DETAILS_CAP] for i in sorted(keep)).rstrip()
+    return text + "\n\n_(shortened: some older sections are not included)_"
+
+
+def _next_step(body: str, next_step: re.Pattern) -> str:
+    step = _section(body, next_step)
+    if step:
+        return step
+    item = next((m.group(1) for m in map(_OPEN_ITEM.match, body.splitlines()) if m), "")
+    return f"Next open item: {item}" if item else ""
+
+
+def render(topic: Topic, level: str, rule: dict, next_step: re.Pattern | None = None,
+           opts: dict | None = None) -> str:
+    opts = opts or {}
+    keep = tuple(opts.get("keep_domains") or ())
+    terms = tuple(opts.get("redact_terms") or ())
+    next_step = next_step or _next_step_re({})
+    head = [f"# {topic.id}", ""]
     if topic.kind == "status":
         meta = {k: topic.meta[k] for k in _STATUS_KEYS if k in topic.meta}
-        head += [f"- {k}: {mask(str(v))}" for k, v in meta.items()] + [""]
-        body = mask(_drop_private_sections(topic.body))
+        # Named fields from the frontmatter, never one with a sensitive name.
+        for dotted in rule.get("fields") or []:
+            value = _field(topic.meta, dotted)
+            if value is not None and not isinstance(value, (dict, list)) \
+                    and not any(_SENSITIVE_KEY.search(_snake(p)) for p in str(dotted).split(".")):
+                meta[str(dotted)] = value
+        head += [f"- {k}: {mask(_redact(str(v), terms), keep)}" for k, v in meta.items()] + [""]
+        body = mask(_redact(_drop_private_sections(topic.body), terms), keep)
         if level == "status":
-            step = _section(body, next_step or _next_step_re({}))
+            step = _next_step(body, next_step)
             return "\n".join(head + ([step] if step else [])).strip() + "\n"
-        parts = head + [body]
-        files = _attachments(topic)
+        parts = head + [_cap(body)]
+        files = _attachments(topic) if level == "files" else []
         if files:
-            parts += ["", "## Attachments", ""]
-            parts += [f"- {mask(p.relative_to(topic.path.parent).as_posix())}" for p in files]
+            parts += ["", "## Attachments" + (" (copies in this topic's folder)" if level == "files" else ""), ""]
+            parts += [f"- {mask(p.relative_to(topic.path.parent).as_posix(), keep)}" for p in files]
         return "\n".join(parts).strip() + "\n"
     if topic.kind == "yaml":
         data = topic.data
         if level == "status" and isinstance(data, dict):
             data = {k: v for k, v in data.items() if not isinstance(v, (dict, list))}
         cleaned = _clean_yaml(data, _only_tree(rule.get("only")),
-                              frozenset(str(x) for x in rule.get("exclude") or []))
+                              frozenset(str(x) for x in rule.get("exclude") or []), _term_re(terms))
         dumped = yaml.safe_dump(cleaned, allow_unicode=True, sort_keys=False).strip()
         return "\n".join(head + ["```yaml", dumped, "```"]).strip() + "\n"
-    body = _drop_private_sections(topic.body)
+    body = _redact(_drop_private_sections(topic.body), terms)
     if level == "status":
         body = body.split("\n\n")[0] if body else ""
-    return "\n".join(head + [mask(body)]).strip() + "\n"
+    return "\n".join(head + [_cap(mask(body, keep))]).strip() + "\n"
 
 
-def _summary(topic: Topic) -> str:
-    text = topic.meta.get("headline") or topic.meta.get("summary") or ""
-    return mask(" ".join(str(text).split()))[:160]
+def _first_sentence(body: str) -> str:
+    for para in re.split(r"\n\s*\n", body):
+        lines = [l.strip() for l in para.splitlines() if l.strip()
+                 and not re.match(r"^(?:[-*]\s*)?[\w äöüÄÖÜß/-]{1,30}:\s", l.strip())]
+        if not lines:
+            continue
+        line = lines[0]
+        if (line.startswith(("#", "|", "```", "<!--", "---", ">")) or _OPEN_ITEM.match(line)
+                or re.match(r"^(?:[-*]\s*)?[\w äöüÄÖÜß/-]{1,30}:\s", line)):
+            continue
+        text = " ".join(re.sub(r"^[-*]\s+", "", l) for l in lines
+                        if not re.match(r"^(?:[-*]\s*)?[\w äöüÄÖÜß/-]{1,30}:\s", l))
+        text = re.sub(r"[*_`]", "", text)
+        m = re.match(r"(.{20,}?[.!?])(\s|$)", text)
+        return m.group(1) if m else text
+    return ""
+
+
+def _from_template(template: str, meta: dict) -> str:
+    """Fill ``{key}`` and ``{key[sub]}`` from the frontmatter. No attribute access, no
+    format spec. A ``[[ … ]]`` segment appears only when all its fields have a value."""
+    def fill(part: str) -> tuple[str, bool]:
+        complete = True
+        def field(m: re.Match) -> str:
+            nonlocal complete
+            value = _field(meta, ".".join([m.group(1)] + re.findall(r"\[([\w-]+)\]", m.group(2) or "")))
+            if value in (None, "") or isinstance(value, (dict, list)):
+                complete = False
+                return ""
+            return str(value).split(" #")[0].strip()
+        text = re.sub(r"\{([A-Za-z_][\w-]*)((?:\[[\w-]+\])*)\}", field, part)
+        if re.search(r"[{}]", text):
+            return "", False                   # anything but a plain field is refused
+        return text, complete
+    out = []
+    for i, seg in enumerate(re.split(r"\[\[|\]\]", str(template))):
+        text, complete = fill(seg)
+        if i % 2 == 0 or complete:
+            out.append(text)
+    text = "".join(out)
+    return re.sub(r"\s{2,}", " ", re.sub(r"\s+([,.;)])", r"\1", text)).strip(" ,")
+
+
+def _field(meta: dict, dotted: str):
+    node = meta
+    for part in str(dotted).split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
+def _summary(topic: Topic, opts: dict | None = None, rule: dict | None = None) -> str:
+    opts = opts or {}
+    rule = rule or {}
+    text = (_from_template(rule["summary"], topic.meta) if rule.get("summary") else "") or (
+            topic.meta.get("headline") or topic.meta.get("summary") or topic.meta.get("description")
+            or (_first_sentence(_drop_private_sections(topic.body)) if topic.kind != "yaml" else ""))
+    text = mask(_redact(" ".join(str(text).split()), tuple(opts.get("redact_terms") or ())),
+                tuple(opts.get("keep_domains") or ()))
+    return text if len(text) <= 160 else text[:157].rsplit(" ", 1)[0] + " …"
+
+
+def _updated(topic: Topic) -> str:
+    """The topic's own date; never the file time, which is only the checkout time."""
+    for key in ("last_updated", "updated", "abgeschlossen", "absage_am", "gesendet", "angelegt", "created"):
+        value = topic.meta.get(key)
+        if value:
+            m = re.match(r"\d{4}-\d{2}-\d{2}", str(value))
+            if m:
+                return m.group(0)
+    return ""
+
+
+_TEXT_SUFFIXES = frozenset({".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".html", ".htm", ".xml", ".toml"})
+
+
+def _copy_attachment(src: Path, topic: Topic, dest: Path, opts: dict, hit) -> None:
+    """Text files go through masking and redaction like the topic itself; a binary file
+    is copied only when its name is clean, and its content is not inspected."""
+    rel = src.relative_to(topic.path.parent / "deliverables").as_posix()
+    if hit is not None and hit.search(rel):
+        return
+    dst = dest / mask(rel, opts["keep_domains"])
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.suffix.lower() in _TEXT_SUFFIXES:
+        try:
+            text = src.read_text("utf-8")
+        except UnicodeDecodeError:
+            return
+        dst.write_text(mask(_redact(_drop_private_sections(text), opts["redact_terms"]), opts["keep_domains"]),
+                       "utf-8")
+    else:
+        shutil.copyfile(src, dst)
 
 
 def build_peer(access: dict, grants: list[dict], topics: dict[str, Topic], peer_id: str,
                folder: Path, *, extra: dict[str, str] | None = None) -> None:
     """Write ``folder`` from scratch; ``extra`` lifts topics (id → level) for a grant."""
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    peer = access["peers"].get(peer_id) or {}
+    opts = {"keep_domains": tuple(access.get("keep_email_domains") or ()),
+            "redact_terms": tuple(peer.get("redact_terms") or ())}
     staging = Path(tempfile.mkdtemp(prefix=".build-", dir=folder.parent))
     try:
         visible, on_request = [], []
+        hit = _term_re(opts["redact_terms"])
         for topic in sorted(topics.values(), key=lambda t: t.id):
-            level, rule = resolve(access, grants, peer_id, topic)
+            try:
+                level, rule = resolve(access, grants, peer_id, topic)
+            except ValueError as exc:
+                # One bad override (a level typo in a STATUS.md) hides that topic only.
+                print(f"share_build: {topic.rel}: {exc}, topic hidden", file=sys.stderr)
+                continue
             if extra and topic.id in extra and level == "on_request":
                 level = extra[topic.id]
-            if level == "none":
+            if level == "none" or (hit is not None and hit.search(topic.id)):
                 continue
             if level == "on_request":
                 on_request.append(topic)
                 continue
             (staging / "topics").mkdir(exist_ok=True)
-            (staging / "topics" / f"{topic.id}.md").write_text(
-                render(topic, level, rule, _next_step_re(access)), "utf-8")
+            try:
+                rendered = render(topic, level, rule, _next_step_re(access), opts)
+            except (ValueError, TypeError, RecursionError) as exc:
+                print(f"share_build: {topic.rel}: cannot render ({type(exc).__name__}), topic hidden",
+                      file=sys.stderr)
+                continue
+            (staging / "topics" / f"{topic.id}.md").write_text(rendered, "utf-8")
             if level == "files":
                 for src in _attachments(topic):
-                    dst = staging / "topics" / topic.id / src.relative_to(topic.path.parent / "deliverables")
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, dst)
-            visible.append((topic, level))
-        index = ["# Index", "", "Topics you can read, each in topics/<id>.md:", ""]
-        index += [f"- {t.id} ({lvl}): {_summary(t)}" for t, lvl in visible] or ["- (none)"]
+                    _copy_attachment(src, topic, staging / "topics" / topic.id, opts, hit)
+            visible.append((topic, level, rule, len(rendered.encode("utf-8"))))
+        index = ["# Index", "",
+                 "Topics you can read, each in topics/<id>.md, newest first per group.", ""]
+        groups: dict[str, list] = {}
+        for item in visible:
+            groups.setdefault(str(item[2].get("group") or "Topics"), []).append(item)
+        if not groups:
+            index += ["- (none)"]
+        for name, items in groups.items():
+            index += [f"## {name}", ""]
+            for t, lvl, _rule, size in sorted(items, key=lambda i: (_updated(i[0]), i[0].id), reverse=True):
+                notes = [f"updated {_updated(t)}"] if _updated(t) else []
+                if lvl == "status":
+                    notes.append("status only")
+                if lvl == "files":
+                    notes.append(f"files in topics/{t.id}/")
+                if size > _LONG:
+                    notes.append("long, read the start first")
+                index.append(f"- {t.id} ({', '.join(notes)}): {_summary(t, opts, _rule)}")
+            index.append("")
         if on_request:
-            index += ["", "## Available on request", "",
+            index += ["## Available on request", "",
                       "Not in your files. The owner opens one when asked:", ""]
-            index += [f"- {t.id}: {_summary(t)}" for t in on_request]
+            index += [f"- {t.id}: {_summary(t, opts)}" for t in on_request]
         (staging / "index.md").write_text("\n".join(index) + "\n", "utf-8")
+        # The ids the runtime may ask the owner about (access.py reads this list).
+        (staging / ".on_request").write_text("".join(f"{t.id}\n" for t in on_request), "utf-8")
         # Swap, then delete: a turn running in the old folder loses it only for the
         # moment between the two renames, never for the whole rebuild.
         old = None
@@ -464,6 +850,7 @@ def _load(config: Path) -> tuple[dict, list[dict]]:
     grants = []
     if grants_path.exists():
         grants = (yaml.safe_load(grants_path.read_text("utf-8")) or {}).get("grants") or []
+        grants = [g for g in grants if isinstance(g, dict)]
     return access, grants
 
 
@@ -510,9 +897,9 @@ def grant(config: Path, *, root: Path, out: Path, request: dict) -> dict:
     action = request.get("action")
     task_id = str(request.get("task_id") or "")
     peer_id = str(request.get("peer") or "")
-    if not _TASK_RE.match(task_id):
+    if not _TASK_RE.fullmatch(task_id):
         raise ValueError(f"task id {task_id!r} is not a plain id")
-    if not _ID_RE.match(peer_id):
+    if not _ID_RE.fullmatch(peer_id):
         raise ValueError(f"peer id {peer_id!r} is not a plain id")
     folder = out / "grants" / peer_id / task_id
     if action == "release":
@@ -571,7 +958,8 @@ class _locked:
 def _write_grants(config: Path, grants: list[dict]) -> None:
     path = config.parent / "access.grants.yaml"
     tmp = path.with_suffix(".yaml.tmp")
-    header = "# Written by share_build.py grant. Delete an entry to revoke it.\n"
+    header = ("# Written by share_build.py grant. To revoke, delete an entry and run "
+              "share_build.py build;\n# the peer folder keeps the topic until then.\n")
     tmp.write_text(header + yaml.safe_dump({"grants": grants}, allow_unicode=True, sort_keys=False), "utf-8")
     tmp.replace(path)
 
@@ -590,7 +978,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         print(json.dumps(grant(args.config, root=root, out=out, request=json.loads(sys.stdin.read()))))
         return 0
-    except (ValueError, OSError, yaml.YAMLError, json.JSONDecodeError) as exc:
+    except (ValueError, OSError, yaml.YAMLError, json.JSONDecodeError, TypeError, AttributeError,
+            KeyError, RecursionError) as exc:
         print(f"share_build: {exc}", file=sys.stderr)
         return 1
 
