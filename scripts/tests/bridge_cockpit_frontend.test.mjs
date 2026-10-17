@@ -1015,10 +1015,34 @@ test('the briefing headline counts what the Briefing tab counts, the header does
   assert.match(ov, /m\.headline_rest/)
 })
 
-test('the agent tab column folds away on pages that show sessions or need the width', async () => {
+test('the agent tab column stands only where work is handed to the AI: the work tab and the chat', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
-  for (const p of ['@sessions', '@workers', '@check']) assert.equal(logic.railShown(p), false, p)
-  for (const p of ['briefing', 'inbox', 'tasks', '@chat']) assert.equal(logic.railShown(p), true, p)
+  for (const p of ['@start', '@sessions', '@workers', '@check', '@agents', 'calendar', 'github', 'ops', undefined])
+    assert.equal(logic.railShown(p), false, String(p))
+  for (const p of ['briefing', '@chat']) assert.equal(logic.railShown(p), true, p)
+})
+
+test('a slim tab card offers one next step: answer, go on, close, else go to the tab', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const all = () => true
+  assert.deepEqual(logic.tabNextStep({ state: 'needs-you' }, all), ['yes', 'no'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, all), ['go_on'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', filed_by: 'x' }, all), ['close'])
+  assert.deepEqual(logic.tabNextStep({ state: 'working' }, all), ['jump'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', is_control: true }, all), ['jump'])
+  // without the rights for a step the card falls back to viewing the screen, and with none to nothing
+  assert.deepEqual(logic.tabNextStep({ state: 'needs-you' }, k => k === 'screen'), ['view'])
+  assert.deepEqual(logic.tabNextStep({ state: 'working' }, () => false), [])
+})
+
+test('the agent tab column shows slim cards that open to every control', () => {
+  const comp = read('components.js')
+  const col = comp.match(/function TabsColumn\([\s\S]*?\n\}/)[0]
+  assert.match(col, /<\$\{TabCard\}[^>]*slim/)
+  const card = comp.match(/function TabCard\([\s\S]*?\n\}/)[0]
+  assert.match(card, /aria-expanded/)
+  const ctl = comp.match(/function TabControls\([\s\S]*?\n\}/)[0]
+  assert.match(ctl, /if \(slim\)[\s\S]*tabNextStep/)
 })
 
 test('a tab preview is plain text: no code fences, no runs of blanks', async () => {

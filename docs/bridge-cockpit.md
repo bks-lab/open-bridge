@@ -325,9 +325,10 @@ and names its reason; a probe (`report_ok: true`) with rows is orange; any
 other count is blue and no alarm. A zero, and a source that only comes with
 the full pass, fold under "without findings". Rows, worker schedules and the
 detail facts show kinds, gates, states and schedules in words, never the
-machine value (`finding`, `your-yes`, `every 300s`). On the Sessions, Background jobs
-and Tidy up pages the agent tab column folds into the header's Tabs button, so
-those pages get the full width.
+machine value (`finding`, `your-yes`, `every 300s`). The agent tab column stands
+only beside the Today tab and the Chat, where work goes to the AI and comes
+back. Every other page folds it into the header's Tabs button and gets the full
+width.
 
 On a wide screen the Today tab has three columns:
 
@@ -348,7 +349,9 @@ On a wide screen the Today tab has three columns:
   and "Go to tab". Asking Claude opens its own window (section 5).
 - **right, the agent tabs** as cards, grouped by workspace: needs you,
   waiting, working, terminal. Each card shows its state as a dot and a word,
-  how long it has been so, its last line and its buttons. The control
+  how long it has been so, its name and its one next step: Yes and No for a
+  question, Go on when it waits, Close for a filed result, else Go to tab.
+  "more" opens the card to its last line and every button. The control
   session's tab sits on top and never counts as waiting. "Save layout now"
   and "List" back up the cmux layout.
 

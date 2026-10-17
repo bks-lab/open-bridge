@@ -825,10 +825,22 @@ export function detailText(detail, t) {
   return String(detail ?? '').split(' · ').map(p => t.item?.kindName?.[p] ?? t.gate?.[p] ?? p).join(' · ')
 }
 
-// Pages that show the sessions themselves or need the full width: the agent tab column folds to its button there
-const NO_RAIL = new Set(['@start', '@sessions', '@workers', '@check'])
+// The pages where work is handed to the AI and comes back: only there the agent tab column stands beside
+// the page; everywhere else it folds to its header button and the page keeps the full width
+const RAIL = new Set(['briefing', '@chat'])
 export function railShown(page) {
-  return !NO_RAIL.has(page)
+  return RAIL.has(page)
+}
+
+/** The one next step a slim tab card offers, as action keys: answer a question, go on, close a filed
+ *  tab, else go to the tab; `can(right)` says what this cockpit may do with a tab (canTab) */
+export function tabNextStep(tab, can) {
+  const own = !tab.is_control
+  if (tab.state === 'needs-you' && can('key')) return ['yes', 'no']
+  if (tab.state === 'waiting' && own && !tab.filed_by) return ['go_on']
+  if (tab.state === 'waiting' && own && tab.filed_by && can('close')) return ['close']
+  if (can('focus')) return ['jump']
+  return can('screen') ? ['view'] : []
 }
 
 /** A tab's screen text as one plain line: no code fences, prompt marks, box rules or runs of blanks */

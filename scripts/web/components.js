@@ -11,7 +11,7 @@ import {
   sectionRows, short, startRefusal, stateToken, toneToken,
   VERDICT_ORDER, centsText, confidenceDots, reviewRows, verdictCounts, verdictToken,
   agentLane, checkFlow, gaugeArc, gaugeBands, gaugePoint, gaugeSection, laneWindow, meterScale, meterText, meterView,
-  canTab, chatStamp, runProgress, screenLines, TONE_FILTERS, FILTER_TONE, actionRow, pageItemActs, filterRows, groupRows, tagFacets, toneFilter, runToken, serious, statusSplit, detailText, scheduleText, dayNoteText, railShown, previewText, weekdayNames, triageKey, triageShows, verdictSegments, linkParts, probeText, newestFirst, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone,
+  canTab, chatStamp, runProgress, screenLines, TONE_FILTERS, FILTER_TONE, actionRow, pageItemActs, filterRows, groupRows, tagFacets, toneFilter, runToken, serious, statusSplit, detailText, scheduleText, dayNoteText, railShown, tabNextStep, previewText, weekdayNames, triageKey, triageShows, verdictSegments, linkParts, probeText, newestFirst, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone,
   sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES, jevList, workKinds, reviewHome, workPageOf, workViewOf, workViews,
   greetingPart, homeCatalog, homeChosen, homeContinue, homeProjects, inProject, meterPace, projectTone, tabOfTask,
   countInProject, focusPick, moveId, nextEvent, untilText, STAGE, stageDust, stageSpots, clockLeft, pulseSpeed,
@@ -976,7 +976,7 @@ function ActionsBlock({ row, s, c }) {
   </div>`
 }
 
-function TabControls({ tab, s, c, compact = false }) {
+function TabControls({ tab, s, c, compact = false, slim = false }) {
   const t = T()
   const busy = !!s.ui.busy[tab.ref]
   const open = s.ui.openMsg === tab.ref
@@ -991,6 +991,17 @@ function TabControls({ tab, s, c, compact = false }) {
     }
   }
   const id = `msg-${tab.ref}`
+  if (slim) {
+    const step = {
+      yes: () => html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>`,
+      no: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>`,
+      go_on: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_go_on', { tab_ref: tab.ref })}>${t.btnGoOn}<//>`,
+      close: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>`,
+      jump: () => html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>`,
+      view: () => html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>`,
+    }
+    return tabNextStep(tab, v => canTab(s, v)).map(k => step[k]())
+  }
   return html`<div class="tab-ctl">
     <div class="btn-row">
       ${tab.state === 'needs-you' && canTab(s, 'key') ? html`
@@ -1604,14 +1615,18 @@ function TabView({ s, c }) {
   </div>`
 }
 
-function TabCard({ tab, s, c, byKey }) {
+/** A session tab as a card. In the agent tab column it is slim: state, name and its one next step; a
+ *  click on more opens the preview and every control */
+function TabCard({ tab, s, c, byKey, slim = false }) {
   const t = T()
+  const [open, setOpen] = useState(false)
+  const full = !slim || open
   const rowKey = tab.slug ? `task:${tab.slug}` : null
   const hasRow = rowKey && byKey.has(rowKey)
   const age = duration(s.now - (tab.since_ms || s.now))
   const ageText = tab.long === 'waiting' ? t.waitingFor(age) : tab.long === 'running' ? t.runningFor(age) : t.sinceFor(age)
   const shell = tab.state === 'shell'
-  return html`<article class=${`tabcard st-${tab.state}${shell ? ' is-shell' : ''}${tab.is_control ? ' is-control' : ''}`}>
+  return html`<article class=${`tabcard st-${tab.state}${shell ? ' is-shell' : ''}${tab.is_control ? ' is-control' : ''}${full ? '' : ' is-slim'}`}>
     <header class="tabcard-head">
       ${tab.is_control
         ? html`<button type="button" class="btn-link" onClick=${c.openClaude}><${StateLine} token="on-surface-muted" word=${t.controlSession} /></button>`
@@ -1622,14 +1637,16 @@ function TabCard({ tab, s, c, byKey }) {
     <h3 class="tabcard-name">${hasRow
       ? html`<button type="button" class="btn-link" title=${t.showTab(tab.name)} onClick=${() => c.select(rowKey)}>${tab.name}</button>`
       : html`<button type="button" class="btn-link" title=${t.btnTabView} onClick=${() => c.openTabView(tab.ref)}>${tab.name}</button>`}</h3>
-    ${previewText(tab.last) ? html`<p class="tab-last clamp2" title=${tab.last}>${previewText(tab.last)}</p>` : null}
-    ${tab.slug || tab.team || tab.role || tab.filed_by ? html`<div class="chips">
+    ${full && previewText(tab.last) ? html`<p class="tab-last clamp2" title=${tab.last}>${previewText(tab.last)}</p>` : null}
+    ${full && (tab.slug || tab.team || tab.role || tab.filed_by) ? html`<div class="chips">
       ${tab.slug ? html`<span class="chip"><span class="muted">${t.tabChips.task}</span> ${tab.slug}</span>` : null}
       ${tab.team ? html`<span class="chip"><span class="muted">${t.tabChips.team}</span> ${tab.team}</span>` : null}
       ${tab.role ? html`<span class="chip"><span class="muted">${t.tabChips.role}</span> ${tab.role}</span>` : null}
       ${tab.filed_by ? html`<${Chip} token="success">${t.resultFiled}<//>` : null}
     </div>` : null}
-    <${TabControls} tab=${tab} s=${s} c=${c} />
+    ${full ? html`<${TabControls} tab=${tab} s=${s} c=${c} />` : html`<div class="btn-row"><${TabControls} tab=${tab} s=${s} c=${c} slim /></div>`}
+    ${slim ? html`<button type="button" class="btn-link tabcard-more" aria-expanded=${String(open)}
+      onClick=${() => setOpen(!open)}>${open ? t.cardLess : t.cardMore}</button>` : null}
   </article>`
 }
 
@@ -1663,10 +1680,10 @@ function TabsColumn({ s, c, byKey, inDrawer }) {
       </header>
       ${!s.cmux?.ok ? html`<p class="banner"><${StateLine} token="warning" word=${t.cmuxMissing(s.cmux?.error ?? '')} /></p>` : null}
       ${s.tabs?.error ? html`<p class="banner"><${StateLine} token="danger" strong word=${t.tabsStale(s.tabs.error.since, s.tabs.error.message)} /></p>` : null}
-      ${control ? html`<${TabCard} tab=${control} s=${s} c=${c} byKey=${byKey} />` : null}
+      ${control ? html`<${TabCard} tab=${control} s=${s} c=${c} byKey=${byKey} slim />` : null}
       ${groups.length ? groups.map(g => html`<section class="tabgroup" key=${g.workspace}>
         <h3 class="mono-label">${g.workspace || '·'}</h3>
-        <div class="tabgrid">${g.tabs.map(tab => html`<${TabCard} key=${tab.ref} tab=${tab} s=${s} c=${c} byKey=${byKey} />`)}</div>
+        <div class="tabgrid">${g.tabs.map(tab => html`<${TabCard} key=${tab.ref} tab=${tab} s=${s} c=${c} byKey=${byKey} slim />`)}</div>
       </section>`) : html`<${Empty}>${t.tabsEmpty}<//>`}
       <${SnapshotPanel} s=${s} c=${c} />
     </div>
