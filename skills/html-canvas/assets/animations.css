@@ -25,13 +25,13 @@
 .slide.visible{opacity:1;transform:none}
 
 /* ── Card hover lift (DESIGN.md card-at-rest → hover) — transform+shadow only ── */
-.lift{box-shadow:var(--shadow-soft);transition:transform .3s ease-out,box-shadow .3s ease-out}
+.lift{box-shadow:var(--shadow-soft);transition:transform .2s ease-out,box-shadow .2s ease-out}
 .lift:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
 
 /* ── Live / alert heartbeat — status dots + overdue badges ── */
 @keyframes hc-pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .dot-live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--info);
-  box-shadow:0 0 8px var(--info);animation:hc-pulse 2s ease-in-out infinite}
+  animation:hc-pulse 2s ease-in-out infinite} /* no glow: DESIGN.md allows no glows */
 .badge.overdue{animation:hc-pulse 2s ease-in-out infinite}
 
 /* ── Dashed SVG connector flow — put class on a <line>/<path> with stroke-dasharray ── */
@@ -63,8 +63,8 @@
 
 /* ── Logo / client marquee — duplicate the rail content for a seamless loop ── */
 @keyframes hc-ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-.ticker{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);
-  mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent)}
+.ticker{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,black 7%,black 93%,transparent);
+  mask-image:linear-gradient(90deg,transparent,black 7%,black 93%,transparent)}
 .ticker__rail{display:flex;width:max-content;animation:hc-ticker 42s linear infinite}
 .ticker:hover .ticker__rail{animation-play-state:paused}
 

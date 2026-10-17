@@ -1,0 +1,243 @@
+/* html-canvas — SIMULATION LAYER (optional). Paste after the shell's base styles.
+   The visual half of assets/sim-engine.js: control bar, stage, route, stations,
+   tokens, protocol feed, message thread, counters, provenance cards.
+
+   Every colour is a shell token, so a simulation themes light/dark and prints
+   for free and no deliverable ever hand-picks a hex. This is also why the layer
+   is separate from animations.css: that one is decoration (reveal, ticker,
+   pulse), this one is mechanism. A page can take either, both, or neither.
+
+   Criticality rides TWO channels everywhere in here: the colour, plus a glyph
+   and a word the engine writes into the row. Remove neither. */
+
+/* == Control bar ========================================================== */
+.sim-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:24px 0 10px}
+.sim-btn{
+  font-family:var(--font-sans);font-size:14px;font-weight:500;color:var(--ink);
+  background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-md);
+  padding:9px 16px;cursor:pointer;
+  transition:background-color .2s ease-out,border-color .2s ease-out,transform .2s ease-out;
+}
+.sim-btn:hover:not(:disabled){background:var(--accent-subtle);border-color:var(--secondary)}
+.sim-btn:active:not(:disabled){transform:translateY(1px)}
+.sim-btn:disabled{opacity:.55;cursor:default}
+.sim-btn--primary{background:var(--primary);border-color:var(--primary);color:var(--on-primary);padding:9px 22px}
+.sim-btn--primary:hover:not(:disabled){background:var(--primary-hover);border-color:var(--primary-hover)}
+/* One quiet cue that the page has something to start, only while it is idle. */
+.sim-btn--primary.is-idle{animation:sim-nudge 2.6s ease-in-out infinite}
+@keyframes sim-nudge{0%,92%,100%{box-shadow:0 0 0 0 var(--accent-soft)}96%{box-shadow:0 0 0 7px var(--accent-soft)}}
+
+/* Run-button labels: one span per state, each holding its own DE/EN pair, so the
+   engine never writes a string and the language toggle keeps working mid-run. */
+[data-sim-run] > [data-state-idle],
+[data-sim-run] > [data-state-running],
+[data-sim-run] > [data-state-paused],
+[data-sim-run] > [data-state-done]{display:none}
+[data-sim-run][data-state="idle"]    > [data-state-idle],
+[data-sim-run][data-state="running"] > [data-state-running],
+[data-sim-run][data-state="paused"]  > [data-state-paused],
+[data-sim-run][data-state="done"]    > [data-state-done]{display:inline}
+
+.sim-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
+.sim-seg button{
+  border:none;border-radius:0;padding:9px 13px;cursor:pointer;
+  font-family:var(--font-mono);font-size:12px;color:var(--ink);background:var(--raised);
+}
+.sim-seg button + button{border-left:1px solid var(--line)}
+.sim-seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-text)}
+.sim-clock{
+  font-family:var(--font-mono);font-size:13px;color:var(--muted);
+  padding:9px 14px;background:var(--raised);border:1px solid var(--line-subtle);
+  border-radius:var(--radius-md);font-variant-numeric:tabular-nums;
+}
+.sim-clock b{color:var(--ink);font-weight:600}
+.sim-hint{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+
+/* Shown only under prefers-reduced-motion, where the run is computed instead of
+   animated. Without it the page silently looks finished for no stated reason. */
+.sim-reduced-note{
+  margin:8px 0 0;padding:10px 14px;border-radius:var(--radius-md);
+  background:var(--accent-subtle);border:1px solid var(--accent-line);
+  font-size:13px;color:var(--on-surface);max-width:80ch;
+}
+
+/* == Stage ================================================================ */
+.sim-stage{
+  background:var(--raised);border:1px solid var(--line);
+  border-radius:var(--radius-lg);padding:8px;overflow-x:auto;
+}
+.sim-stage svg{display:block;width:100%;height:auto}
+.sim-caption{font-size:13px;color:var(--muted);margin:12px 2px 0;max-width:100ch}
+
+/* SVG has no `hidden` property and a class rule with its own display beats the
+   [hidden] attribute. Sim.show() sets this attribute instead; both rules stay. */
+[data-shown="no"]{display:none}
+[hidden]{display:none !important}
+
+/* == Route + stations (SVG) =============================================== */
+.sim-route{fill:none;stroke:var(--line);stroke-width:2}
+.sim-route--return{stroke-dasharray:7 6}
+.sim-route.is-live{stroke:var(--muted);stroke-width:2.6}
+.sim-route--return.is-live{stroke:var(--danger)}
+
+.sim-box{fill:var(--surface-subtle);stroke:var(--line);stroke-width:1.4}
+.sim-box--raised{fill:var(--surface-muted)}
+.sim-box.is-busy{stroke:var(--accent);stroke-width:1.9}
+.sim-box[data-level="warn"]{stroke:var(--warn);stroke-width:2.4}
+.sim-box[data-level="crit"]{stroke:var(--danger);stroke-width:2.4}
+.sim-slot{fill:none;stroke:var(--line);stroke-width:1.2;stroke-dasharray:4 4}
+
+.sim-t-title{fill:var(--ink);font-family:var(--font-sans);font-size:14px;font-weight:600}
+.sim-t-sub{fill:var(--muted);font-family:var(--font-sans);font-size:10.5px}
+.sim-t-mono{fill:var(--muted);font-family:var(--font-mono);font-size:9.5px;letter-spacing:.4px}
+.sim-t-head{fill:var(--accent-text);font-family:var(--font-mono);font-size:10.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase}
+.sim-t-count{fill:var(--secondary);font-family:var(--font-mono);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums} /* DESIGN.md: a large counter is mono in secondary, never primary */
+
+/* == Token (the thing that travels) ======================================= */
+.sim-token__bg{fill:var(--surface-muted);stroke:var(--muted);stroke-width:1.2;
+  transition:fill .3s ease,stroke .3s ease}
+.sim-token__id{fill:var(--ink);font-family:var(--font-mono);font-size:9.5px;font-weight:600}
+.sim-token__ring{fill:none;stroke:var(--accent);stroke-width:1.6;opacity:.55}
+.sim-token[data-level="ok"]   .sim-token__bg{stroke:var(--ok-text)}
+.sim-token[data-level="warn"] .sim-token__bg{stroke:var(--warn)}
+.sim-token[data-level="crit"] .sim-token__bg{stroke:var(--danger)}
+.sim-token[data-follow="yes"] .sim-token__bg{stroke:var(--accent);stroke-width:1.8}
+/* A token waiting on a human decision must be legible without colour: it takes a
+   dash pattern as well, because "amber" alone is not a state a reader can name. */
+.sim-token[data-waiting="yes"] .sim-token__bg{stroke-dasharray:4 3}
+/* Per-step progress. Two consecutive steps at the SAME station move nothing, so
+   travel alone cannot show that the second one is running. The bar fills over
+   each step's own duration, whether the token travels or stands still. */
+.sim-token__track{fill:var(--line)}
+.sim-token__bar{fill:var(--accent)}
+
+/* == Protocol feed ======================================================== */
+.sim-feed{list-style:none;margin:0;padding:0;max-height:340px;overflow-y:auto}
+.sim-feed__row{
+  display:grid;grid-template-columns:14px auto 1fr;gap:4px 10px;align-items:baseline;
+  padding:7px 10px;border-left:3px solid var(--line);
+  border-bottom:1px solid var(--line-subtle);font-size:12.8px;
+}
+.sim-feed__row:last-child{border-bottom:none}
+.sim-feed__glyph{font-size:10px;line-height:1.4;color:var(--muted)}
+.sim-feed__time{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.sim-feed__body{min-width:0}
+.sim-feed__where{display:block;font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--accent-text);margin-bottom:2px}
+.sim-feed__what{color:var(--on-surface)}
+.sim-feed__row[data-level="ok"]{border-left-color:var(--ok-text)}
+.sim-feed__row[data-level="ok"]   .sim-feed__glyph{color:var(--ok-text)}
+.sim-feed__row[data-level="warn"]{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent)}
+.sim-feed__row[data-level="warn"] .sim-feed__glyph{color:var(--warn)}
+.sim-feed__row[data-level="crit"]{border-left-color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,transparent)}
+.sim-feed__row[data-level="crit"] .sim-feed__glyph{color:var(--danger)}
+.sim-feed__row.is-new{animation:sim-row-in .34s ease both}
+@keyframes sim-row-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+/* == Message thread (exchange archetype) ================================== */
+.sim-thread{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.sim-msg{
+  background:var(--raised);border:1px solid var(--line);
+  border-radius:var(--radius-lg);padding:13px 15px;
+}
+.sim-msg.is-new{animation:sim-msg-in .34s ease both}
+@keyframes sim-msg-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.sim-msg__head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:8px}
+.sim-msg__who{
+  width:24px;height:24px;border-radius:var(--radius-sm);border:1px solid currentColor;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--accent-text);
+}
+.sim-msg__name{font-size:13px;font-weight:500;color:var(--ink)}
+.sim-msg__at{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-left:auto}
+.sim-msg__body{font-size:13.5px;color:var(--on-surface)}
+.sim-row.is-flash{animation:sim-flash 1.5s ease both}
+@keyframes sim-flash{0%,70%{background:var(--accent-soft)}100%{background:transparent}}
+
+/* == Counters, meters, pills ============================================== */
+.sim-counters{list-style:none;margin:0;padding:0}
+.sim-counters li{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:6px 0;border-bottom:1px solid var(--line-subtle);font-size:12.8px}
+.sim-counters li:last-child{border-bottom:none}
+.sim-counters .sim-c-label{color:var(--muted)}
+.sim-counters .sim-c-val{font-family:var(--font-mono);font-size:15px;font-weight:600;
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.sim-counters li.sim-c-group{border-bottom:none;padding-top:14px}
+.sim-c-group-head{font-family:var(--font-mono);font-size:10px;text-transform:uppercase;
+  letter-spacing:.8px;color:var(--accent-text)}
+
+.sim-meter{height:6px;border-radius:var(--radius-full);background:var(--surface-muted);overflow:hidden}
+.sim-meter > span{display:block;height:100%;background:var(--accent);width:0;transition:width .3s ease}
+
+.sim-pill{display:inline-block;font-family:var(--font-mono);font-size:10px;font-weight:700;
+  letter-spacing:.6px;padding:2px 8px;border-radius:var(--radius-full);text-transform:uppercase;
+  background:var(--accent-soft);color:var(--accent-text)}
+.sim-pill[data-level="ok"]{background:color-mix(in srgb,var(--ok-text) 12%,transparent);color:var(--ok-text)}
+.sim-pill[data-level="warn"]{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
+.sim-pill[data-level="crit"]{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
+
+/* A running indicator, opacity only, and it must never be the only sign of life:
+   a reader who cannot see it still has the clock and the feed. */
+.sim-led{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok-text);
+  animation:sim-led 2s ease-in-out infinite}
+@keyframes sim-led{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* == Legend swatches ====================================================== */
+.sim-legend-row{display:flex;flex-wrap:wrap;gap:8px 22px;margin:14px 0 18px;font-size:13px;color:var(--muted)}
+/* Direct children ONLY. `.sim-legend-row span` has specificity (0,1,1) and would
+   beat the shell's [data-en]{display:none} at (0,1,0), so every legend entry
+   would show BOTH languages at once. Any rule that sets `display` on a selector
+   which can also match a data-de/data-en node has this bug; it was measured on
+   this very file. Reach for the child combinator, or a class on the wrapper. */
+.sim-legend-row > span{display:inline-flex;align-items:center;gap:7px}
+.sim-swatch{width:15px;height:11px;border-radius:3px;border:1.5px solid var(--muted);
+  background:var(--surface-muted);flex-shrink:0}
+.sim-swatch[data-level="ok"]{border-color:var(--ok-text)}
+.sim-swatch[data-level="warn"]{border-color:var(--warn);border-style:dashed}
+.sim-swatch[data-level="crit"]{border-color:var(--danger)}
+.sim-swatch[data-follow="yes"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+
+/* == Packet flight (DOM stages) =========================================== */
+.sim-fx{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.sim-packet{
+  position:absolute;top:0;left:0;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;
+  border-radius:50%;background:var(--accent);
+  transition:transform .5s cubic-bezier(.4,0,.2,1),opacity .5s linear;
+}
+.sim-packet[data-level="warn"]{background:var(--warn)}
+.sim-packet[data-level="crit"]{background:var(--danger)}
+
+/* == Provenance ===========================================================
+   The block that separates what is simulated from what exists. Mandatory on any
+   page a viewer could mistake for a live system. Three columns, because two
+   ("real" and "fake") hide the interesting third: what is intended but absent. */
+.sim-provenance{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px}
+@media (max-width:900px){.sim-provenance{grid-template-columns:1fr}}
+.sim-prov-card{background:var(--raised);border:1px solid var(--line);
+  border-left:3px solid var(--line);border-radius:var(--radius-lg);padding:18px 20px}
+.sim-prov-card[data-kind="sim"]{border-left-color:var(--warn)}
+.sim-prov-card[data-kind="real"]{border-left-color:var(--ok-text)}
+.sim-prov-card[data-kind="todo"]{border-left-color:var(--muted)}
+.sim-prov-card h3{font-size:15px;margin:0 0 4px}
+.sim-prov-claim{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.7px;color:var(--muted);margin:0 0 10px}
+.sim-prov-card ul{margin:0;padding-left:18px;font-size:13px;color:var(--on-surface)}
+.sim-prov-card li{margin-bottom:7px}
+
+/* == Motion contract ======================================================
+   Reduced motion does not mean an empty stage. Sim.boot() computes the whole run
+   and paints the end state; these rules only strip the decoration around it. */
+@media (prefers-reduced-motion:reduce){
+  .sim-feed__row.is-new,.sim-msg.is-new,.sim-row.is-flash,
+  .sim-btn--primary.is-idle,.sim-led{animation:none !important}
+  .sim-packet,.sim-meter > span,.sim-token__bg{transition:none !important}
+}
+
+/* == Print ================================================================
+   Paper gets the finished run (Sim.boot wires beforeprint) without the controls
+   that cannot be operated on it. */
+@media print{
+  .sim-bar,.sim-fx,.sim-hint{display:none !important}
+  .sim-stage{border-color:var(--line);overflow:visible}
+  .sim-feed{max-height:none;overflow:visible}
+  .sim-msg,.sim-prov-card,.sim-feed__row{break-inside:avoid}
+}
