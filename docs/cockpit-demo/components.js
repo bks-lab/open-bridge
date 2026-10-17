@@ -3231,7 +3231,8 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
   const h = t.home
   const lang = language()
   const tabs = s.tabs?.tabs ?? []
-  const tiles = shownTiles(catalog, chosen).slice(0, MAX_STATIONS)
+  // one place of the ring is Today's own station, so the chosen tiles get one fewer
+  const tiles = shownTiles(catalog, chosen).slice(0, MAX_STATIONS - 1)
   const compact = tiles.length > 10
   const stations = tiles.map(x => stationOf(x, s, c, chosen, project))
   // the station looked at (its inspector stands beside the bridge) and the one under the pointer
@@ -3305,7 +3306,13 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
     else if (was.v !== v) seen.current.set(st.id, Date.now() - born.current < 30000 ? { v, diff: 0, at: 0 } : { v, diff: v - was.v, at: Date.now() })
   }
   const bubble = id => { const x = seen.current.get(id); return x && x.diff && nowMs - x.at < 120000 ? x.diff : 0 }
-  const spots = stageSpots(stations.length)
+  // Today is a station of the ring too: the block beside the bridge shows one thing, Today or the station
+  // looked at, and a click on Today brings it back
+  const today = { id: '@today', label: h.cardTitle, tone: 'info', sub: '',
+    value: new Date(nowMs).toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit' }) }
+  const ring = [today, ...stations]
+  const ringSel = sel === null ? 0 : selIdx >= 0 ? selIdx + 1 : -1
+  const spots = stageSpots(ring.length)
   const now = new Date(s.now || Date.now())
   const person = s.server?.person
   const greeting = `${h.greeting[greetingPart(now.getHours())]}${person ? `, ${person}` : ''}`
@@ -3336,13 +3343,13 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
         <${Btn} size="xs" variant=${edit ? 'primary' : 'ghost'} pressed=${edit} onClick=${() => setEdit(!edit)}>${edit ? h.chooseDone : h.choose}<//>
       </div>
     </div>
-    <div class=${`stage-body${sel ? ' has-today' : ''}`}>
+    <div class="stage-body">
       <div class="stage-bridge-box">
         <svg viewBox=${`0 0 ${STAGE.w} ${STAGE.h}`} class="stage-svg stage-bridge" aria-hidden="true">
-          ${spots.map((p, i) => html`<g key=${stations[i].id} class=${`link tk-${stations[i].tone ?? 'muted'}${hot === i || selIdx === i ? ' is-hot' : ''}`}>
+          ${spots.map((p, i) => html`<g key=${ring[i].id} class=${`link tk-${ring[i].tone ?? 'muted'}${hot === i || ringSel === i ? ' is-hot' : ''}`}>
             <path d=${p.path} class="link-line" id=${`link-${i}`} />
-            ${(stations[i].tone && stations[i].tone !== 'success') || hot === i || selIdx === i ? html`<circle r="2.6" class="packet">
-              <animateMotion dur=${`${(hot === i || selIdx === i ? 1.2 : 3.2 + (i % 4) * 0.7).toFixed(1)}s`} begin=${`${(i * 0.53).toFixed(2)}s`} repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear">
+            ${(ring[i].tone && ring[i].tone !== 'success' && ring[i].tone !== 'info') || hot === i || ringSel === i ? html`<circle r="2.6" class="packet">
+              <animateMotion dur=${`${(hot === i || ringSel === i ? 1.2 : 3.2 + (i % 4) * 0.7).toFixed(1)}s`} begin=${`${(i * 0.53).toFixed(2)}s`} repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear">
                 <mpath href=${`#link-${i}`} /></animateMotion></circle>` : null}
           </g>`)}
           <g class="core" transform=${`translate(${STAGE.cx} ${STAGE.cy}) scale(1 ${STAGE.squash})`}>
@@ -3359,9 +3366,9 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
           </g>
           <text x=${STAGE.cx} y=${STAGE.cy + 7} class=${`core-name${focusLeft ? ' is-clock' : ''}`} text-anchor="middle">${focusLeft ?? 'Bridge'}</text>
         </svg>
-        ${stations.map((st, i) => html`<button type="button" key=${st.id} class=${`station tk-${st.tone ?? 'muted'}${selIdx === i ? ' is-sel' : ''}${compact ? ' is-compact' : ''}`}
-          style=${{ left: pctX(spots[i].x), top: pctY(spots[i].y) }} aria-pressed=${String(selIdx === i)} title=${st.label}
-          onClick=${() => setSel(sel === st.id ? null : st.id)} onMouseEnter=${() => setHot(i)} onMouseLeave=${() => setHot(null)}
+        ${ring.map((st, i) => html`<button type="button" key=${st.id} class=${`station tk-${st.tone ?? 'muted'}${ringSel === i ? ' is-sel' : ''}${compact ? ' is-compact' : ''}`}
+          style=${{ left: pctX(spots[i].x), top: pctY(spots[i].y) }} aria-pressed=${String(ringSel === i)} title=${st.label}
+          onClick=${() => st.id === '@today' ? setSel(null) : setSel(sel === st.id ? null : st.id)} onMouseEnter=${() => setHot(i)} onMouseLeave=${() => setHot(null)}
           onFocus=${() => setHot(i)} onBlur=${() => setHot(null)}>
           <b aria-hidden="true"></b>
           ${bubble(st.id) ? html`<span class=${`station-bubble${bubble(st.id) > 0 ? ' is-up' : ' is-down'}`}>${bubble(st.id) > 0 ? '+' : ''}${bubble(st.id)}</span>` : null}
@@ -3391,7 +3398,6 @@ function BridgeStage({ s, c, catalog, chosen, project, edit, setEdit }) {
           : selIdx >= 0 ? html`<${StageInspector} x=${tiles[selIdx]} st=${stations[selIdx]} s=${s} c=${c} tabs=${tabs} onClose=${() => setSel(null)} />`
           : html`<${StageCard} s=${s} c=${c} tabs=${tabs} />`}
       </div>
-      ${sel ? html`<div class="stage-today"><${StageCard} s=${s} c=${c} tabs=${tabs} /></div>` : null}
     </div>
   </section>`
 }

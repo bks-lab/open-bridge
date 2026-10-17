@@ -1626,3 +1626,19 @@ test('the page bar has its own row on a wide screen too, never inside the header
   const css = read('style.css')
   assert.doesNotMatch(css, /is-merged/)
 })
+
+// Start keeps one block beside the bridge (17.10.): a click on a station showed its inspector and, on a wide
+// screen, Today as a second block beside it. Now the block shows one thing: Today, or the station looked at.
+// Today is a station of the ring itself, its click brings Today back.
+test('start: one block beside the bridge, Today is a station of the ring that brings it back', () => {
+  const src = read('components.js')
+  assert.doesNotMatch(src, /stage-today|has-today/)
+  assert.match(src, /const tiles = shownTiles\(catalog, chosen\)\.slice\(0, MAX_STATIONS - 1\)/)
+  assert.match(src, /id: '@today', label: h\.cardTitle/)
+  assert.match(src, /const ring = \[today, \.\.\.stations\]/)
+  assert.match(src, /const spots = stageSpots\(ring\.length\)/)
+  // the station Today clears the selection, the block shows Today when nothing is looked at
+  assert.match(src, /st\.id === '@today' \? setSel\(null\)/)
+  assert.match(src, /: html`<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} \/>`\}\n      <\/div>\n    <\/div>/)
+  assert.doesNotMatch(read('style.css'), /stage-today|has-today/)
+})
