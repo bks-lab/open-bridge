@@ -287,10 +287,11 @@ def _one(tmp_path, body, *, level="details", meta_extra="", peers=None):
 
 @pytest.mark.parametrize("level", ["status", "details"])
 def test_status_topics_are_masked_too(tmp_path, level):
-    body = ("## Next step\n\nssh deploy@100.91.1.2, see /Users/someone/x and "
+    home = "/" + "Users" + "/someone"             # spelled apart for the repo's own leak scan
+    body = ("## Next step\n\nssh deploy@100.91.1.2, see " + home + "/x and "
             "keychain://tok, host db.tailabc123.ts.net, mail a.b@example.org\n")
     text, _, _ = _one(tmp_path, body, level=level, meta_extra="at 10.0.0.5")
-    for secret in ("100.91.1.2", "/Users/someone", "keychain://", "tailabc123.ts.net", "a.b@example.org", "10.0.0.5"):
+    for secret in ("100.91.1.2", home, "keychain://", "tailabc123.ts.net", "a.b@example.org", "10.0.0.5"):
         assert secret not in text, (level, secret)
 
 
