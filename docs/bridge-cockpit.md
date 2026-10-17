@@ -1021,8 +1021,11 @@ here.
 ### Fast despite slow sources
 
 A tracker can take 20 seconds. `cache_minutes` on a section reuses its last
-good answer for that long, and the section then says how old it is ("as of
-08:46"):
+good answer for that long, and the section then says how old it is
+("measured 08:46"). It says so only when that time differs from the as-of
+time in the header, so a screen shows one time unless a source really is
+older. A row you put off or settled leaves its section's count, its finding,
+the tab badge and the alarm along with the table:
 
 ```yaml
 sections:

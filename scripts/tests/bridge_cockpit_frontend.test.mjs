@@ -1693,3 +1693,16 @@ test('start: one block beside the bridge, Today is a station of the ring that br
   assert.match(src, /: html`<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} \/>`\}\n      <\/div>\n    <\/div>/)
   assert.doesNotMatch(read('style.css'), /stage-today|has-today/)
 })
+
+test('one as-of time per screen: the header says it, a section only when it was measured at another time', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  assert.equal(logic.sectionStamp('10:58', '11:10'), '10:58')
+  assert.equal(logic.sectionStamp('11:10', '11:10'), null)
+  assert.equal(logic.sectionStamp(null, '11:10'), null)
+  const comp = read('components.js')
+  assert.doesNotMatch(comp.match(/function TabsColumn\([\s\S]*?\n\}/)[0], /formatClock/)
+  const sec = comp.match(/function PageSection\([\s\S]*?\n\}/)[0]
+  assert.doesNotMatch(sec, /sourceAsOf/)
+  assert.match(sec, /measuredAt/)
+  assert.equal(read('text.js').match(/^  measuredAt: time =>/gm)?.length, 2)
+})

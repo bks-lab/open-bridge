@@ -843,6 +843,12 @@ export function tabNextStep(tab, can) {
   return can('screen') ? ['view'] : []
 }
 
+/** The time a page section names beside its title: only when its source measured at another time than
+ *  the pass the header names, so one screen shows one as-of time unless a source really is older */
+export function sectionStamp(asOf, collectedAt) {
+  return asOf && asOf !== collectedAt ? asOf : null
+}
+
 /** A tab's screen text as one plain line: no code fences, prompt marks, box rules or runs of blanks */
 export function previewText(text) {
   return String(text ?? '').replace(/```/g, ' ').replace(/[\u2500-\u257f\u276f\u203a]+/g, ' ').replace(/\s+/g, ' ').trim()
