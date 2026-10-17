@@ -306,15 +306,23 @@ def agent_run(template: str, model: str | None = None, effort: str | None = None
     return " ".join([run, *tail]), applied
 
 
+def agent_defaults(agent: dict) -> tuple[str | None, str | None]:
+    """agent.model and agent.effort: what a launch that asks for none starts with (a bad value counts as none)."""
+    model, effort = agent.get("model"), agent.get("effort")
+    return (model if model in CLAUDE_MODELS else None), (effort if effort in EFFORTS else None)
+
+
 def tab_command(tab: dict, root: Path, cwd: str, cfg: dict) -> str:
     agent = {**DEFAULT_AGENT, **(cfg.get("agent") or {})}
+    model, effort = agent_defaults(agent)
     if tab["action"] == "resume":
-        run, _ = agent_run(agent["resume"], session=shlex.quote(tab["session_id"]), slug=shlex.quote(tab["slug"]))
+        run, _ = agent_run(agent["resume"], model, effort, session=shlex.quote(tab["session_id"]),
+                           slug=shlex.quote(tab["slug"]))
     else:
         status_path = tab.get("status_path") or ""
         prompt = NEW_TAB_PROMPT.format(slug=tab["slug"], status_path=status_path,
                                        task_dir=str(Path(status_path).parent))
-        run, _ = agent_run(agent["new"], slug=shlex.quote(tab["slug"]), prompt=shlex.quote(prompt))
+        run, _ = agent_run(agent["new"], model, effort, slug=shlex.quote(tab["slug"]), prompt=shlex.quote(prompt))
     return f"cd -- {shlex.quote(cwd)} && export {TAB_ENV}={shlex.quote(tab['slug'])} && {run}"
 
 
@@ -463,6 +471,8 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
     the_team = next((t for t in teams(cfg) if t["id"] == team), None) if team else None
     the_role = next((r for r in (the_team or {}).get("roles", []) if r["id"] == role), None)
     agent = {**DEFAULT_AGENT, **(cfg.get("agent") or {})}
+    default_model, default_effort = agent_defaults(agent)
+    model, effort = model or default_model, effort or default_effort
     out, used, seen = [], set(), set()
     for name in items:
         name = name.strip()

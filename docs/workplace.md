@@ -176,7 +176,9 @@ goes with its flag, so `claude --model {model} -n {slug} {prompt}` starts withou
 `--model` when none is asked. A template without the slot gets the flag appended,
 but only when its program is `claude`, and never beside a `--model` or `--effort`
 the template fixes itself: the template wins, and the entry says so in `pick_note`.
-Without both flags the command is exactly the template's. The cockpit sets them
+`agent.model` (`haiku`, `sonnet`, `opus`) and `agent.effort` name what a launch
+that asks for none starts with, the open plan's tabs too; without them, and
+without both flags, the command is exactly the template's. The cockpit sets them
 from `cockpit.launch_model` (docs/bridge-cockpit.md).
 
 Each tab starts the configured `agent.new` command on an ASCII prompt, by `--mode`:

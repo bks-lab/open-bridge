@@ -157,6 +157,7 @@ work:
 #   router: {command: "..."} # launch --target auto: reads the prompt on stdin, prints JSON (a small model)
 #   agent: {new: "claude -n {slug} {prompt}", resume: "claude --resume {session}"}
 #   # {model} and {effort} place the flags of a launch's model and effort; without them they are appended to claude
+#   #   agent.model / agent.effort: what a launch that asks for none starts with, e.g. model: sonnet
 
 # ─── Briefing: default profile + advise thresholds ────────────────────
 # What a briefing SHOWS lives in workflow/briefings/<id>.yaml, one file per

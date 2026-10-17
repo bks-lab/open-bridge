@@ -935,3 +935,20 @@ def test_launch_cli_takes_model_and_effort_and_refuses_others(lrepo, capsys):
     for bad in (["--model", "gpt-5"], ["--effort", "max"]):
         with pytest.raises(SystemExit):
             wp.main(["--root", str(lrepo), "launch", "--items", "payments-incident", *bad])
+
+
+def test_the_agent_block_names_the_model_and_effort_when_a_launch_asks_for_none(lrepo, repo):
+    cfg = {"agent": {"new": "claude --model {model} -n {slug} {prompt}", "model": "sonnet", "effort": "high"}}
+    (e,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go")
+    assert "claude --model claude-sonnet-5-5 -n payments-incident" in e["command"] and e["command"].endswith("--effort high")
+    (asked,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go", model="opus", effort="low")
+    assert "--model claude-opus-5-5" in asked["command"] and asked["command"].endswith("--effort low")
+    tab = {"action": "new", "slug": "payments-incident", "status_path": "work/tasks/payments-incident/STATUS.md"}
+    assert "--model claude-sonnet-5-5" in wp.tab_command(tab, repo, str(repo), {**CFG, **cfg})
+
+
+@pytest.mark.parametrize("agent", [{"model": "gpt-5"}, {"effort": "max"}, {"model": 3}])
+def test_a_bad_agent_default_is_left_out(lrepo, agent):
+    cfg = {"agent": {"new": "claude -n {slug} {prompt}", **agent}}
+    (e,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go")
+    assert "--model" not in e["command"] and "--effort" not in e["command"]
