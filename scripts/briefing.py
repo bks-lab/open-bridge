@@ -1032,6 +1032,9 @@ def sec_commits(section: dict, ctx: Context) -> list:
 ICAL_WHEN = re.compile(r"^(\d{4}-\d{2}-\d{2})(?: at (\d{1,2}:\d{2}))?"
                        r"(?: - (?:(\d{4}-\d{2}-\d{2})(?: at )?)?(\d{1,2}:\d{2})?)?$")
 ICAL_PROPS = ("location", "url", "attendees", "uid", "notes")
+# -ss: icalBuddy appends this to each calendar's heading line ("Work:@@calendar@@"), which tells a heading
+# from a line of the notes that happens to end in a colon
+ICAL_SECTION = "@@calendar@@"
 # the hosts whose links join a meeting; any other link in an event (a help page, a document) is not one
 MEETING_HOST = re.compile(r"(?:^|\.)(?:teams\.microsoft\.com|teams\.live\.com|zoom\.us|meet\.google\.com|"
                           r"webex\.com|whereby\.com|meet\.jit\.si)$")
@@ -1042,9 +1045,9 @@ BIDI = re.compile("[\u200e\u200f\u202a-\u202e\u2066-\u2069]")   # direction mark
 def _icalbuddy(section: dict, ctx: Context) -> list:
     days = int(section.get("days", 1))
     # -nrd: absolute dates, never "today"/"tomorrow" (those cannot be parsed back). -sc: the events under a
-    # line naming their calendar, so `info_calendars` needs no second call. -nnr: the notes on one line;
-    # they are read only for a meeting link and never leave this function.
-    argv = ["icalBuddy", "-nrd", "-nc", "-sc", "-uid", "-b", "", "-ss", "", "-ps", "|\t|",
+    # line naming their calendar, so `info_calendars` needs no second call. The notes are read only for a
+    # meeting link and never leave this function.
+    argv = ["icalBuddy", "-nrd", "-nc", "-sc", "-uid", "-b", "", "-ss", ICAL_SECTION, "-ps", "|\t|",
             "-iep", "datetime,title,location,url,attendees,notes,uid",
             "-po", "datetime,title,location,url,attendees,uid,notes", "-nnr", " ",
             "-df", "%Y-%m-%d", "-tf", "%H:%M"]
@@ -1054,34 +1057,53 @@ def _icalbuddy(section: dict, ctx: Context) -> list:
 
 
 def _icalbuddy_events(out: str) -> list:
-    events, calendar = [], None
-    for line in out.split("\n"):      # not splitlines: a carriage return inside the notes ends no event
+    """Events from icalBuddy's text. A line that begins with a date and a tab starts an event; the lines
+    after it until the next event or heading are the rest of that event: -nnr joins the notes' line feeds,
+    but a carriage return in them (Outlook writes those) reaches Python as a line break."""
+    events, calendar, raw = [], None, []
+
+    def flush():
+        if raw:
+            event = _icalbuddy_event(" ".join(raw), calendar)
+            if event:
+                events.append(event)
+            raw.clear()
+
+    for line in out.split("\n"):
         line = line.rstrip()
-        if "\t" not in line:
-            if line.endswith(":") and not ICAL_WHEN.match(line[:-1].strip()):
-                calendar = BIDI.sub("", line[:-1]).strip() or None
-            continue
-        when, title, *rest = line.split("\t")
-        m = ICAL_WHEN.match(when.strip())
-        if not m or not title.strip():
-            continue
-        props, last = {}, None
-        for part in rest:
-            name, sep, value = part.partition(": ")
-            if sep and name in ICAL_PROPS and name not in props:
-                props[name], last = value, name
-            elif last:
-                props[last] += "\t" + part          # a tab inside a value
-        day, start, end_day, end = m.groups()
-        stop = f"{end_day or day}T{end:0>5}" if end else end_day
-        event = {"title": title.strip(), "start": f"{day}T{start:0>5}" if start else day, "end": stop}
-        if calendar:
-            event["calendar"] = calendar
-        people = (props.get("attendees") or "").split(", ")
-        event.update(_event_details(props.get("location"), people,
-                                    [props.get("url"), props.get("location"), props.get("notes")]))
-        events.append(event)
-    return events
+        if line.endswith(":" + ICAL_SECTION):
+            flush()
+            calendar = BIDI.sub("", line[:-len(ICAL_SECTION) - 1]).strip() or None
+        elif "\t" in line and ICAL_WHEN.match(line.split("\t", 1)[0].strip()):
+            flush()
+            raw.append(line)
+        elif raw and line.strip():
+            raw.append(line.strip())
+    flush()
+    return sorted(events, key=lambda e: e["start"])     # -sc lists by calendar; a day reads by time
+
+
+def _icalbuddy_event(text: str, calendar) -> dict | None:
+    when, title, *rest = text.split("\t") + [""]
+    m = ICAL_WHEN.match(when.strip())
+    if not m or not title.strip():
+        return None
+    props, last = {}, None
+    for part in rest:
+        name, sep, value = part.partition(": ")
+        if sep and name in ICAL_PROPS and name not in props:
+            props[name], last = value, name
+        elif last and part:
+            props[last] += "\t" + part          # a tab inside a value
+    day, start, end_day, end = m.groups()
+    stop = f"{end_day or day}T{end:0>5}" if end else end_day
+    event = {"title": title.strip(), "start": f"{day}T{start:0>5}" if start else day, "end": stop}
+    if calendar:
+        event["calendar"] = calendar
+    people = (props.get("attendees") or "").split(", ")
+    event.update(_event_details(props.get("location"), people,
+                                [props.get("url"), props.get("location"), props.get("notes")]))
+    return event
 
 
 def _event_details(location, people, texts) -> dict:
