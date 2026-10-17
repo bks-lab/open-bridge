@@ -111,6 +111,21 @@ that acts on it). `add` warns about a `finding` or `question` with neither
 `closes_when` nor `closer`. It warns rather than refuses, because filers run
 unattended and a refusal would lose the finding.
 
+`bot` is also a routing promise: the item goes to a watcher that **looks first**.
+It investigates before a person hears about it and ends in one of three ways:
+nothing to do (the item closes with the cause as its note), a small fix it
+prepares itself (a person only approves the result), or a recommendation with
+options for the person. A report that already knows the answer says so when it
+files: a finding that only informs (bad data on the sender's side, a delivery that
+the retry recovered) stays in the report mail and becomes no item at all.
+
+Each step of that work runs on a model chosen by **weight, not habit**, from
+`bridge-config.yaml` `models:` (`reasoning` plans and judges, `analysis` builds
+along a given path, `routine` sorts and extracts; the cockpit's `mechanical` and
+`directed` names are read ahead of `routine` and `analysis` when set): critical
+items and plans go to the reasoning tier, findings that can wait are sorted by
+the routine tier, a fix runs on the analysis tier.
+
 An alarm path that announces both the trouble and its end should close by key: the
 all-clear carries the alarm's own title, so the receiver rebuilds the key it filed
 the alarm under and closes that item rather than filing a new one.

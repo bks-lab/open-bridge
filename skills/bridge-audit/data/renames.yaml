@@ -104,6 +104,27 @@ vocabulary_renames:
       - "skills/bridge-leak-check/"      # documents the pattern as a leak example
       - "skills/bridge-audit/data/renames.yaml"  # this registry — self-ref
 
+  - id: briefing-web-to-cockpit
+    old: "briefing-web"
+    new: "bridge-cockpit"
+    reason: "The web dashboard watches and steers the whole Bridge, not only the briefing: now the cockpit. /briefing-web is /cockpit, docs/briefing-web.md is docs/bridge-cockpit.md."
+    since: 2026-10-13
+    exceptions:
+      - "work/"                                   # history
+      - "skills/bridge-audit/data/renames.yaml"
+      - "docs/cockpit-demo/app.js"                # reads a viewer's former choices once
+
+  - id: bridge-web-to-bridge-cockpit
+    old: "bridge-web"
+    new: "bridge-cockpit"
+    reason: "scripts/bridge-web.py and scripts/lib/bridge_web/ became scripts/bridge-cockpit.py and scripts/lib/bridge_cockpit/."
+    since: 2026-10-13
+    exceptions:
+      - "work/"
+      - "skills/bridge-audit/data/renames.yaml"
+      - "scripts/web/app.js"                      # reads a viewer's former bridge-web.* choices once
+      - "docs/cockpit-demo/app.js"
+
   - id: briefing-ui-to-cockpit
     old: "briefing-ui"
     new: "cockpit-relay"

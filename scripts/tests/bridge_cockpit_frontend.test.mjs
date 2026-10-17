@@ -2020,6 +2020,10 @@ test('settings: a page of its own behind More, always there, with the launch gro
     assert.ok(comp.pageOrder({}).includes('@settings'))
     assert.ok(comp.morePages({}).has('@settings'))
     assert.equal(comp.pageOrder({ model: { pages: [{ id: 'z', group: 'more' }] } }).at(-1), '@settings')
+    // its button in the start page's quick access carries its name, never the raw id
+    const home = await import(pathToFileURL(path.join(dir, 'web', 'views', 'home.js')).href)
+    const texts = await import(pathToFileURL(path.join(dir, 'web', 'text.js')).href)
+    assert.equal(home.pageTitleOf({}, '@settings'), texts.T().settings.title)
     // the demo: the page works without a server, a save changes the settings, a reset puts the config back
     const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
     assert.equal(mock.buildState().launch.enabled, true)
