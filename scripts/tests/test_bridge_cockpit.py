@@ -1376,6 +1376,56 @@ def test_drop_inbox_and_hide_non_inbox_for_seven_days(world):
     assert writes(world) == [] and world.app.store.hidden()["ref:example/repo#12"] == "2026-10-16"
 
 
+def test_drop_with_a_reason_passes_it_and_says_what_was_muted(world):
+    world.runner.handlers["inbox.drop"] = lambda argv: ok("muted 20261017-1800-mini-daily-health-ab12\n")
+    world.runner.calls.clear()
+    res = world.act("drop", key=f"inbox:{YES_ID}", reason="family")
+    assert writes(world) == [I(world, "drop", YES_ID, "--note", "dropped in the cockpit", "--reason", "family")]
+    assert res["muted"] == "20261017-1800-mini-daily-health-ab12"
+    world.runner.calls.clear()
+    world.act("drop", key=f"inbox:{YES_ID}", reason="once")
+    assert writes(world) == [I(world, "drop", YES_ID, "--note", "dropped in the cockpit", "--reason", "once")]
+    with pytest.raises(ActionError) as err:
+        world.act("drop", key=f"inbox:{YES_ID}", reason="annoying")
+    assert err.value.status == 400
+
+
+def test_a_reason_on_a_row_that_is_no_inbox_item_still_hides_it(world):
+    world.runner.calls.clear()
+    world.act("drop", key="ref:example/repo#12", reason="source")
+    assert writes(world) == [] and world.app.store.hidden()["ref:example/repo#12"] == "2026-10-16"
+
+
+def test_unmute_lifts_a_rule_by_id(world):
+    world.runner.calls.clear()
+    world.act("inbox_unmute", id="20261017-1800-mini-daily-health-ab12")
+    assert writes(world) == [I(world, "unmute", "20261017-1800-mini-daily-health-ab12")]
+    with pytest.raises(ActionError):
+        world.act("inbox_unmute", id="../etc/passwd")
+
+
+def test_the_noise_of_the_inbox_is_served_with_the_rules(world):
+    stats = [{"source": "mini/daily-health", "filed": 4, "dropped": 3, "muted": 0, "done": 0, "open": 1,
+              "share": 0.75, "reasons": {"once": 3}}]
+    rules = [{"id": "20261017-1800-mini-daily-health-ab12", "source": "mini/daily-health",
+              "key_prefix": "mini-health:crash:", "scope": "family"}]
+    world.runner.handlers["inbox.stats"] = lambda argv: ok(stats)
+    world.runner.handlers["inbox.mute"] = lambda argv: ok(rules)
+    status, _, body = world.request("GET", "/api/inbox/noise", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True
+    assert data["noise"] == {"days": 30, "sources": stats, "mutes": rules}
+    assert world.runner.of("inbox.stats")[-1][-3:] == ["--days", "30", "--json"]
+    assert world.request("GET", "/api/inbox/noise")[0] == 401
+
+
+def test_the_noise_says_unreadable_when_the_inbox_script_fails(world):
+    world.runner.handlers["inbox.stats"] = lambda argv: fail()
+    status, _, body = world.request("GET", "/api/inbox/noise", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True and data["noise"] is None
+
+
 def test_done_only_for_only_you(world):
     world.runner.calls.clear()
     world.act("done", key=f"inbox:{ONLY_ID}")

@@ -1004,6 +1004,8 @@ kbd {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 .usage { scroll-margin-top: 12px; }
+.noise { scroll-margin-top: 12px; }
+.noise-sub { margin-top: 12px; }
 .psec { scroll-margin-top: 12px; }
 .us-session { --us: var(--secondary); }
 .us-subagent { --us: var(--series-2); }

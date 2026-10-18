@@ -66,6 +66,7 @@ MAX_BODY = 64 * 1024
 SSE_QUEUE = 100
 SSE_PING_S = 15
 INBOX_CACHE_S = 10
+NOISE_DAYS = 30         # how far back the Betrieb page counts what each inbox source filed and what was dropped
 STATIC_RE = re.compile(r"^/[A-Za-z0-9._/-]{1,200}\Z")
 # query switches the page reads itself (scripts/web/app.js, mock.js); the token exchange keeps them
 VIEW_PARAMS = ("mock", "lang", "offline", "empty", "auth")
@@ -331,6 +332,22 @@ class App:
         self.inbox_cache = (time.monotonic(), listing)
         return listing
 
+    def inbox_noise(self, days: int = NOISE_DAYS) -> dict | None:
+        """What the Betrieb page shows about the inbox: the loudest sources of the last `days` and the
+        mute rules in force. None when either read fails: half a picture would read as all quiet."""
+        out = {"days": days}
+        for name, argv in (("sources", self.actions.inbox("stats", "--days", str(days), "--json")),
+                           ("mutes", self.actions.inbox("mute", "list", "--json"))):
+            run = self.run(argv, 20)
+            try:
+                data = json.loads(run.out) if run.ok else None
+            except ValueError:
+                data = None
+            if not isinstance(data, list):
+                return None
+            out[name] = data
+        return self.scrub_tree(out)
+
     def server_json(self) -> dict:
         now = int(self.clock())
         return {"v": 1, "pid": os.getpid(), "port": self.port, "token": self.token, "started_ms": self.started_ms,
@@ -595,6 +612,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/usage":
             # the tokens of the last seven days on this machine, counted from the Claude Code transcripts, read only
             self.send_json(200, {"ok": True, "usage": app.usage.view()})
+        elif path == "/api/inbox/noise":
+            # per source what was filed and what a person dropped, and the mute rules in force (inbox.py), read only
+            self.send_json(200, {"ok": True, "noise": app.inbox_noise()})
         elif path == "/api/tab/screen":
             ref = one("ref")
             if not TAB_REF_RE.match(ref):

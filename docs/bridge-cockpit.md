@@ -647,6 +647,12 @@ three times its usual day (and 50,000 tokens) is named in orange. A machine
 tile whose name runs workers says how many and leads to the Background jobs tab
 filtered to it.
 
+**Noise in the inbox.** Below the tokens an overview page shows the inbox
+sources a person had to drop from in the last 30 days, most drops first: how
+many of how many, the share and the reasons. Under it stand the mute rules in
+force, each with Lift. Read from `inbox.py stats` and `inbox.py mute list`
+when the page opens and with each new briefing, never on a timer.
+
 **A work page ordered by Jev.** A profile page with `jev:` (its task and inbox
 sections together, say) shows a strip over its sections when Jev is on
 (`integrations.typesafe`): By area keeps the sections, By Jev puts every row in
@@ -830,6 +836,13 @@ leaves the briefing for good with its outcome while its source stays as it is:
 the issue stays open. Such a row waits under the hidden rows marked "done" or
 "not doing it", and "show again" brings it back; no date does. A stream never
 closes, so it has no Close.
+
+**Dropping asks why.** Drop on an inbox row opens a small dialog with four
+reasons: not worth it this time (preselected, so Enter keeps it one keystroke),
+a duplicate, never this kind again, this source is too loud. The last two
+leave a mute rule (`inbox.py drop --reason`, docs/inbox.md), and the dialog
+says what the rule covers before anything is written. The command box (`c`)
+and a drop of several rows drop without a reason, as before.
 
 **Undo and history.** Right after a close, drop or hide the note offers
 "Undo" for ten seconds. "History" in the header lists everything the dashboard

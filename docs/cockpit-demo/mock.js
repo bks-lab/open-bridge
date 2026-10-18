@@ -538,6 +538,7 @@ export function createMockTransport(opts = {}) {
   const now = () => Date.now()
   let state = buildState(now(), opts)
   let handlers = {}
+  const mockMutes = [{ id: '20261008-0900-board-radar-0a1b', source: 'board-radar', scope: 'family', key_prefix: 'radar:stale:' }]   // invented, for the noise card
   let seq = state.model.seq
   const jev = createMockJev ? createMockJev() : null   // the Jev tab's mock: the server's once-per-day rule, invented tokens
   const words = WORDS[opts.lang]
@@ -572,6 +573,14 @@ export function createMockTransport(opts = {}) {
       if (url.pathname === '/api/state') return ok(state)
       if (url.pathname === '/api/inbox') return ok(inboxDetail(url.searchParams.get('id'), state))
       if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug')))
+      if (url.pathname === '/api/inbox/noise') {
+        // invented sources and one invented rule, in the shape of `inbox.py stats --json` and `mute list --json`
+        const src = (source, filed, dropped, reasons, muted = 0) => ({ source, filed, dropped, muted, done: filed - dropped - muted - 1, open: 1,
+          share: Math.round(dropped / filed * 100) / 100, reasons })
+        return ok({ ok: true, noise: { days: 30,
+          sources: [src('homebox/health', 12, 5, { once: 3, family: 2 }, 2), src('board-radar', 8, 2, { duplicate: 2 }), src('mail-watcher', 20, 1, { unknown: 1 })],
+          mutes: mockMutes } })
+      }
       if (url.pathname === '/api/relay') return ok(state.relay)
       if (url.pathname === '/api/workers') {
         // invented runs in the shape of `workload view --json`; nothing here is a real machine
@@ -688,6 +697,12 @@ export function createMockTransport(opts = {}) {
           result.settled = keys
           removeRows(keys)
         }
+        if (verb === 'drop' && (args.reason === 'family' || args.reason === 'source')) {
+          result.muted = `20261010-1200-mock-${mockMutes.length}`
+          mockMutes.push({ id: result.muted, source: 'homebox/health', scope: args.reason,
+            ...(args.reason === 'source' ? { until: '2026-11-09' } : { key_prefix: 'health:crash:' }) })
+        }
+        if (verb === 'inbox_unmute') mockMutes.splice(0, mockMutes.length, ...mockMutes.filter(r => r.id !== args.id))
         if (verb === 'snapshot_list') result.note = 'Mock: 3 snapshots, latest 09:00'
         if (verb === 'launch_settings' || verb === 'launch_settings_reset') {
           const next = verb === 'launch_settings' ? { ...state.launch.settings, ...(args.settings ?? {}) } : LAUNCH_CONFIG

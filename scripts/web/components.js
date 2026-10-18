@@ -26,7 +26,7 @@ import {
   AuthPanel, BootPanel, ConfirmDialog, HelpDialog, HistoryDrawer, InfoDrawer, ItemDrawer, MobileSwitch, NotesDrawer,
   TabsDrawer, Toasts,
 } from './views/overlays.js'
-import { JevList, KindBar, OverviewBoard, PageSection, UsageCard, WorkOrder } from './views/pages.js'
+import { JevList, KindBar, NoiseCard, OverviewBoard, PageSection, UsageCard, WorkOrder } from './views/pages.js'
 import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
 import { CustomizeDrawer, SettingsPage } from './views/settings.js'
@@ -115,6 +115,7 @@ function PageView({ s, c }) {
       : (page.sections ?? []).length ? page.sections.map(sec => html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} />`)
       : html`<div class="panel panel-pad"><${Empty}>${t.pageEmpty}<//></div>`}
     ${page.overview ? html`<${UsageCard} page=${page} s=${s} c=${c} />` : null}
+    ${page.overview ? html`<${NoiseCard} page=${page} s=${s} c=${c} />` : null}
   </div>`
 }
 

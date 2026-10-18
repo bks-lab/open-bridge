@@ -37,6 +37,13 @@ yes, also a conditional yes ("merge once green") that ``run`` executes when the
 condition holds · ``only-you`` (send, publish, pay) is never executed by this
 script, whatever was recorded.
 
+MUTE. A drop may say why: ``once`` (this one, no rule), ``duplicate``, ``family`` (never
+this kind again: the source plus the key up to its last colon, or the kind when the key has no
+family) or ``source`` (the whole source, for ``MUTE_SOURCE_DAYS``). The last two leave a rule,
+one file of its own under ``work/inbox/_mutes/``. A finding that matches a rule is still filed
+and dropped at once by ``mute``: it counts in ``stats`` and a reopen brings it back. An item
+filed as ``now`` is never muted. ``stats`` shows per source how much a person dropped.
+
 REOPEN. A close by mistake is undone with a ``reopen`` event, never by deleting the
 close: the item is open again, every yes before it is void (an executed action does
 not run again without a new yes), and a later close closes it again.
@@ -74,6 +81,14 @@ CLOSERS = ("probe", "reporter", "person", "bot")
 VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "executed", "failed", "urgency", "reopen")
 TERMINAL = {"close": "done", "executed": "done", "reject": "dropped", "drop": "dropped"}
 ACTIVE_STATES = ("open", "approved", "waiting")
+#: Why a person dropped an item. `family` and `source` leave a mute rule behind.
+DROP_REASONS = ("once", "duplicate", "family", "source")
+MUTE_REASONS = ("family", "source")
+#: A source mute ends by itself: a source that was too loud for a month may have been fixed since.
+MUTE_SOURCE_DAYS = 30
+#: Rules live beside the items; the `_` keeps the folder out of `items()`.
+MUTES_DIR = "_mutes"
+MUTE_ACTOR = "mute"
 ACTION_KEYS = {"argv", "label"}
 RUN_TIMEOUT_SEC = 600
 PROBE_TIMEOUT_SEC = 30
@@ -415,7 +430,7 @@ class Inbox:
             return []
         found = []
         for path in sorted(self.root.iterdir()):
-            if not (path.is_dir() and (path / "item.yaml").is_file()):
+            if path.name.startswith("_") or not (path.is_dir() and (path / "item.yaml").is_file()):
                 continue
             try:
                 found.append(self.get(path.name))
@@ -502,6 +517,11 @@ class Inbox:
             target = (live or dropped or [None])[-1]
             if target is not None:
                 self.event(target.id, "seen", summary=summary)
+                drops = [e for e in target.events if e.verb == "drop"]
+                if (target.state == "dropped" and drops and drops[-1].by == MUTE_ACTOR
+                        and (urgency == "now" or self.muted_by(source, kind, key) is None)):
+                    # only a rule dropped it, and no rule holds any more (or it is an outage)
+                    self.event(target.id, "reopen", by=MUTE_ACTOR, text="no mute rule holds any more")
                 return target.id
         now = self.clock()
         # A random tail: two machines filing the same summary in the same minute
@@ -523,6 +543,10 @@ class Inbox:
                   f"it stays open until a person closes it")
         _dump(self.root / item_id / "item.yaml", data)
         (self.root / item_id / "events").mkdir(exist_ok=True)
+        rule = self.muted_by(source, kind, key) if urgency != "now" else None
+        if rule is not None:
+            # filed and dropped at once: the noise stays countable and a reopen brings it back
+            self.event(item_id, "drop", by=MUTE_ACTOR, reason="muted", rule=rule["id"])
         return item_id
 
     def event(self, item_id: str, verb: str, *, by: str | None = None, **data) -> None:
@@ -563,6 +587,132 @@ class Inbox:
 
     def close(self, item_id: str, note: str | None = None) -> None:
         self.event(item_id, "close", text=note)
+
+    def drop(self, item_id: str, note: str | None = None, reason: str | None = None) -> str | None:
+        """Drop an item, saying why if you know. `family` and `source` also write a mute rule
+        and return its id; every other drop returns None."""
+        if reason is not None and reason not in DROP_REASONS:
+            raise ValueError(f"reason must be one of {DROP_REASONS}")
+        item = self.get(item_id)
+        self.event(item_id, "drop", text=note, reason=reason)
+        return self.mute(item, reason) if reason in MUTE_REASONS else None
+
+    # -------------------------------------------------- mute rules
+    def mute(self, item: Item, scope: str) -> str:
+        """Write the rule a drop for `scope` asks for. `family`: the source plus the key up to its
+        last colon (`mini-health:crash:1a20` -> `mini-health:crash:`), or the kind when the key has
+        no family. `source`: everything of the source until MUTE_SOURCE_DAYS from today."""
+        if scope not in MUTE_REASONS:
+            raise ValueError(f"scope must be one of {MUTE_REASONS}")
+        now = self.clock()
+        rule = {"schema_version": SCHEMA_VERSION, "created": now.isoformat(timespec="minutes"), "by": self.actor,
+                "source": item.source, "scope": scope, "from_item": item.id,
+                "summary": str(item.summary or "")[:200]}
+        if scope == "family":
+            key = str(item.key or "")
+            if ":" in key.rstrip(":"):
+                rule["key_prefix"] = key[:key.rstrip(":").rindex(":") + 1]
+            else:
+                rule["kind"] = item.kind
+        else:
+            rule["until"] = (_local_date(now) + dt.timedelta(days=MUTE_SOURCE_DAYS)).isoformat()
+        rule_id = f"{now:%Y%m%d-%H%M}-{_slug(str(item.source), 30)}-{secrets.token_hex(2)}"
+        _dump(self.root / MUTES_DIR / f"{rule_id}.yaml", rule)
+        return rule_id
+
+    def _rule_files(self) -> list:
+        folder = self.root / MUTES_DIR
+        return sorted(folder.glob("*.yaml")) if folder.is_dir() else []
+
+    @staticmethod
+    def _rule_problem(data) -> str | None:
+        if not isinstance(data, dict) or not data.get("source"):
+            return "not a rule (needs at least a source)"
+        for name in ("key_prefix", "kind"):
+            if name in data and not (isinstance(data[name], str) and data[name]):
+                return f"{name} {data[name]!r} is not a text"
+        if data.get("until"):
+            try:
+                _parse_when(data["until"])
+            except ValueError:
+                return f"until {data['until']!r} is not a date"
+        return None
+
+    def mutes(self) -> list:
+        """The rules in force today, oldest first. An unreadable rule mutes nothing."""
+        today = _local_date(self.clock())
+        rules = []
+        for path in self._rule_files():
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except (OSError, yaml.YAMLError) as exc:
+                _warn(f"skipping mute rule {path.name} ({exc})")
+                continue
+            if self._rule_problem(data):
+                _warn(f"skipping mute rule {path.name}: {self._rule_problem(data)}")
+                continue
+            if data.get("until") and _local_date(_parse_when(data["until"])) <= today:
+                continue    # a source mute of N days ends on the Nth day
+            rules.append({**{k: v for k, v in data.items() if k != "schema_version"}, "id": path.stem})
+        return rules
+
+    def muted_by(self, source: str, kind: str, key: str | None) -> dict | None:
+        for rule in self.mutes():
+            if rule["source"] != source:
+                continue
+            if rule.get("key_prefix") and not str(key or "").startswith(rule["key_prefix"]):
+                continue
+            if rule.get("kind") and (rule["kind"] != kind or ":" in str(key or "").rstrip(":")):
+                continue    # a kind rule stands for the keys without a family, it leaves the families alone
+            return rule
+        return None
+
+    def unmute(self, rule_id: str) -> None:
+        path = self.root / MUTES_DIR / f"{rule_id}.yaml"
+        if "/" in rule_id or not path.is_file():
+            raise KeyError(f"no mute rule {rule_id!r}")
+        path.unlink()
+
+    # -------------------------------------------------- noise
+    def stats(self, days: int = 30) -> list:
+        """Per source, over the items filed in the last `days`: how many were filed, how many a
+        person dropped (with the reasons), how many a rule muted, closed or still open. `share` is
+        what a person had to drop out of what was filed: the clicks the source cost, so a source
+        that was muted and then fixed comes down again. Loudest first."""
+        since = _local_date(self.clock()) - dt.timedelta(days=days)
+        rows: dict = {}
+        for item in self.items():
+            try:
+                if _local_date(_parse_when(item.created)) < since:
+                    continue
+            except ValueError:
+                continue
+            row = rows.setdefault(item.source, {"source": item.source, "filed": 0, "dropped": 0, "muted": 0,
+                                                "done": 0, "open": 0, "reasons": {}})
+            row["filed"] += 1
+            state = item.state
+            if state == "dropped":
+                drop = next((e for e in reversed(item.events) if e.verb in ("drop", "reject")), None)
+                if drop is not None and drop.verb == "reject":
+                    row["done"] += 1         # a "no" to a question is an answer, not noise
+                    continue
+                if drop is not None and drop.by == MUTE_ACTOR:
+                    row["muted"] += 1
+                else:
+                    row["dropped"] += 1
+                    why = (drop.data.get("reason") if drop else None) or "unknown"
+                    row["reasons"][why] = row["reasons"].get(why, 0) + 1
+            elif state == "done":
+                row["done"] += 1
+            else:
+                row["open"] += 1
+        out = []
+        for row in rows.values():
+            row["share"] = round(row["dropped"] / row["filed"], 2) if row["filed"] else 0.0
+            row["reasons"] = dict(sorted(row["reasons"].items()))
+            out.append(row)
+        # the most clicks first, then the worst share: two drops of two outrank two of thirty
+        return sorted(out, key=lambda r: (-r["dropped"], -r["share"], r["source"]))
 
     def reopen(self, item_id: str, note: str | None = None) -> None:
         """Undo a close, drop, reject, defer or a yes that has not run yet: one more event, the item is open
@@ -672,7 +822,14 @@ class Inbox:
         problems = []
         if not self.root.is_dir():
             return problems
-        for item_dir in sorted(p for p in self.root.iterdir() if p.is_dir()):
+        for path in self._rule_files():
+            try:
+                problem = self._rule_problem(yaml.safe_load(path.read_text(encoding="utf-8")))
+            except (OSError, yaml.YAMLError) as exc:
+                problem = f"unreadable ({exc})"
+            if problem:
+                problems.append(f"{MUTES_DIR}/{path.name}: {problem}")
+        for item_dir in sorted(p for p in self.root.iterdir() if p.is_dir() and not p.name.startswith("_")):
             where = item_dir.name
             try:
                 data = yaml.safe_load((item_dir / "item.yaml").read_text(encoding="utf-8")) or {}
@@ -749,6 +906,10 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--note")
         if name == "close":
             sp.add_argument("--key", help="close every live item filed under this key instead of one id")
+        if name == "drop":
+            sp.add_argument("--reason", choices=DROP_REASONS,
+                            help="why: once, duplicate, family (mute this kind of the source), "
+                                 f"source (mute the source for {MUTE_SOURCE_DAYS} days)")
     ro = sub.add_parser("reopen", help="undo a close, drop, reject, defer or a yes not run yet: the item is open again")
     ro.add_argument("id")
     ro.add_argument("--note")
@@ -762,6 +923,13 @@ def build_parser() -> argparse.ArgumentParser:
     nt = sub.add_parser("note")
     nt.add_argument("id")
     nt.add_argument("text")
+    mu = sub.add_parser("mute", help="the mute rules in force")
+    mu.add_argument("what", choices=("list",))
+    mu.add_argument("--json", action="store_true")
+    sub.add_parser("unmute", help="lift a mute rule").add_argument("id")
+    st = sub.add_parser("stats", help="per source: filed, dropped by a person, muted, loudest first")
+    st.add_argument("--days", type=int, default=30)
+    st.add_argument("--json", action="store_true")
     sub.add_parser("check", help="close every item whose closes_when holds")
     rn = sub.add_parser("run", help="execute released actions (free, yes, or yes-once-condition)")
     rn.add_argument("--dry-run", action="store_true")
@@ -890,10 +1058,32 @@ def main(argv=None) -> int:
         elif args.cmd == "close" and getattr(args, "key", None):
             for item_id in box.close_by_key(args.key, note=args.note):
                 print(f"closed {item_id}")
-        elif args.cmd in ("reject", "close", "drop"):
+        elif args.cmd == "drop":
+            rule = box.drop(box.resolve(args.id), note=args.note, reason=args.reason)
+            if rule:
+                print(f"muted {rule}")
+        elif args.cmd in ("reject", "close"):
             if not args.id:
                 raise ValueError(f"{args.cmd} needs an id" + (" or --key" if args.cmd == "close" else ""))
             box.event(box.resolve(args.id), args.cmd, text=args.note)
+        elif args.cmd == "mute":
+            rules = box.mutes()
+            if args.json:
+                print(json.dumps(rules, ensure_ascii=False, indent=1, default=str))
+            else:
+                for r in rules:
+                    what = r.get("key_prefix") or r.get("kind") or "everything"
+                    print(f"{r['id']}  {r['source']}  {what}" + (f"  until {r['until']}" if r.get("until") else ""))
+        elif args.cmd == "unmute":
+            box.unmute(args.id)
+        elif args.cmd == "stats":
+            rows = box.stats(days=args.days)
+            if args.json:
+                print(json.dumps(rows, ensure_ascii=False, indent=1))
+            else:
+                for r in rows:
+                    print(f"{r['share']:>5.0%}  {r['dropped']:>3}/{r['filed']:<3} {r['source']}"
+                          + (f"  muted {r['muted']}" if r["muted"] else ""))
         elif args.cmd == "reopen":
             box.reopen(box.resolve(args.id), note=args.note)
             (args.root / "work" / "inbox.md").write_text(box.render(), encoding="utf-8")
