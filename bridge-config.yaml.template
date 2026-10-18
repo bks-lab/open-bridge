@@ -189,6 +189,8 @@ work:
 #   triage_daily: false    # true: sort every task and inbox item once a day by itself (a small model call)
 #   snapshot_minutes: 60   # save the cmux layout (only on change) while the cockpit runs; 0 = only on Save
 #   language: en           # de | en for the page's words; default language.conversation, else en
+#   chat_layout: classic   # classic | workspaces = the Chat tab as cmux shows it
+#   chat_keep_hours: 24    # an untouched quick chat leaves the list into the archive after this many hours; 0 = only the limit of 30
 #   launch:
 #     target: area         # area = the workspace of the item's area (workplace.workspaces) | tab = here | workspace = one each
 #                          # | auto = a small model picks the area or a workspace of its own (workplace.router)

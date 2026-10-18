@@ -130,8 +130,8 @@ def test_the_fallbacks_stay_as_they_were(tmp_path):
     cfg = load_web_config(tmp_path, {"cockpit": {"enabled": True, "tabs_seconds": 2, "launch": {"target": "x"},
                                                  "open_in": "browser", "launch_model": {"router": "gpt"},
                                                  "ticker": {"speed": "warp"}},
-                                     "briefing": {"claude_code_ui": {"full_minutes": 3}}})
-    assert (cfg.tabs_seconds, cfg.target, cfg.open_in, cfg.full_minutes) == (5, "area", "auto", 3)
+                                     "briefing": {"claude_code_ui": {"full_minutes": 3}}})   # retired, read no more
+    assert (cfg.tabs_seconds, cfg.target, cfg.open_in, cfg.full_minutes) == (5, "area", "auto", 10)
     assert cfg.launch_model["router"] == "chain" and cfg.ticker["speed"] == "normal"
     assert len(cfg.config_warnings) == 5
     with pytest.raises(WebConfigError, match="cockpit.port"):          # a bad port still refuses to start
