@@ -524,6 +524,7 @@ export function PageSection({ page, section, s, c }) {
       ${section.bad ? html`<${StateLine} token="danger" strong word=${t.badgeFindings(section.bad)} />` : null}
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </header>
+    ${section.stale ? html`<p class="muted small"><${StateLine} token="warning" word=${section.stale} /></p>` : null}
     ${body}
     ${left > 0 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${() => c.loadMore(page.id, section.id)}>${t.btnMore(left)}<//>` : null}
   </section>`

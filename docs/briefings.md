@@ -558,6 +558,25 @@ a full run of 26 s took 2.3 s with GitHub and the health probes cached. A
 `github-board` row gets the date its issue or PR last changed from one GraphQL
 call for all rows, since a board listing carries none.
 
+**GitHub's budget is shared.** Every program on the account draws on the same
+hourly budget (5000 GraphQL points, plus 30 searches a minute): the cockpit, the
+briefing, board pollers, agents. Three rules keep a briefing from draining it:
+
+- A burst (GitHub's secondary limit) is retried after a short wait, twice. A
+  spent budget ("API rate limit already exceeded") is not: the first such answer
+  writes `.bridge/briefing-cache/github-limit.json` with the reset that
+  `gh api rate_limit` names (a call that costs nothing; without an answer a
+  quarter of an hour, never more than 65 minutes), and until then no `gh` call
+  of any section leaves this Bridge, a reload (`--fresh`) included. Sections
+  that run side by side stop at their next call.
+- A tracker section with `cache_minutes` that cannot answer (blocked, failed,
+  timed out) shows its last kept answer of the last 12 hours instead of an
+  error, marked `stale` with the reason and, when blocked, the time it asks
+  again. Stale rows file nothing to the inbox and close nothing.
+- Ask less often: GitHub sections rarely need `cache_minutes` below 10 or 15.
+  `github-board` filters before the limit (`is:open`), which on large boards
+  cuts a listing from hundreds of cards to the open ones.
+
 `view.marks` puts a label in front of every row that names one of its words:
 
 ```yaml

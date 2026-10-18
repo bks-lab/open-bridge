@@ -98,6 +98,8 @@ LABELS = {
                      "notes, mails and issues that name the title or the people. Then give me a short brief: what "
                      "it is about, what is open, what I should bring or decide. Read only, send nothing."),
     # a GitHub row's steps (briefing.py tracker_steps): each starts an agent tab, none acts on GitHub by itself
+    "stale": "the source did not answer, last rows shown",
+    "stale_until": "GitHub limit reached, not asked until {until}, last rows shown",
     "gh_draft": "draft",
     "gh_task": "task {slug}",
     "gh_step_analyze": "Analyse",
@@ -223,6 +225,8 @@ LABELS_DE = {
     "prepare_tail": ("Such in dieser Bridge, was dazu gehört: Aufgaben, Posteingang, Arbeitslog, frühere Protokolle, "
                      "Mails und Issues, die den Titel oder die Personen nennen. Gib mir dann eine kurze Vorbereitung: "
                      "worum es geht, was offen ist, was ich mitbringen oder entscheiden sollte. Nur lesen, nichts senden."),
+    "stale": "Quelle antwortet nicht, letzter Stand",
+    "stale_until": "GitHub-Kontingent erschöpft, Abfrage erst ab {until}, letzter Stand",
     "gh_draft": "Entwurf",
     "gh_task": "Aufgabe {slug}",
     "gh_step_analyze": "Analysieren",
@@ -1774,6 +1778,9 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
             "bad": sum(1 for r in rows if r["tone"] == "bad"),
             # From the section's cache (`cache_minutes`): the time its source last answered.
             "as_of": _page_when(section["cached_at"], now, labels) if section.get("cached_at") else None,
+            # a source that could not answer: its last kept rows, and why they are old
+            **({"stale": (labels["stale_until"].format(until=section["stale"]["until"]) if section["stale"].get("until")
+                          else labels["stale"])} if isinstance(section.get("stale"), dict) else {}),
             **({"view": entry["view"]} if entry.get("view") in PAGE_VIEWS[1:] else {}),
             # nothing to say when it is empty: a dashboard leaves the section out instead of "nothing"
             **({"hide_empty": True} if entry.get("hide_empty") is True else {})}

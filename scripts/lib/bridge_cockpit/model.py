@@ -215,8 +215,9 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                 "total": int(_number(x.get("total"), len(items))),
                 "weight": _number(x.get("weight")), "bad": _number(x.get("bad")),
                 "as_of": as_text_or_null(x.get("as_of")),
-                "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups") else None,
+                "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board") else None,
                 "hide_empty": x.get("hide_empty") is True,
+                "stale": as_text_or_null(x.get("stale")),
             })
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
                 "group": p.get("group") if p.get("group") in ("more", "work", "day") else "main", "overview": p.get("overview") is True,

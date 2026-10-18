@@ -281,3 +281,92 @@ def test_row_steps_are_checked():
     for word in ("unknown key", "id must", "label must", "prompt must", "types must", "default_steps must"):
         assert word in problems
     assert "belong to a tracker" in " ".join(bf._section_types({"kind": "command", "argv": ["x"], "row_steps": []}))
+
+
+# ---------------------------------------------------------------- the shared GitHub budget
+
+LIMITED = "gh: GraphQL: API rate limit already exceeded for user ID 1."
+
+
+def limited_run(reset_in_min=20, hits=None):
+    """GitHub that is out of budget: every call fails, rate_limit names the reset (it costs nothing)."""
+    import time as _time
+    reset = int(_time.time()) + reset_in_min * 60
+
+    def run(argv, timeout=30, cwd=None):
+        if hits is not None:
+            hits.append(list(argv))
+        if argv[:3] == ["gh", "api", "rate_limit"]:
+            return json.dumps({"resources": {"graphql": {"remaining": 0, "reset": reset},
+                                             "core": {"remaining": 4000, "reset": reset + 999}}})
+        raise bf.SourceError(LIMITED)
+    return run
+
+
+def profile_with_cache():
+    return {"id": "p", "sections": [dict(SECTION, cache_minutes=5)]}
+
+
+def test_a_spent_budget_stops_every_github_section_until_the_reset(tmp_path):
+    root = bridge(tmp_path)
+    hits: list = []
+    c = bf.Context(root, now=dt.datetime.now(), run=limited_run(hits=hits))
+    sec = bf.collect(root, profile_with_cache(), c)["sections"][0]
+    assert sec["status"] == "error" and "rate limit" in sec["reason"]      # nothing kept yet to show
+    asked = [h for h in hits if h[:3] != ["gh", "api", "rate_limit"]]
+    assert len(asked) <= 3            # the first answer stops the rest: no retries, no further boards or searches
+    until = bf.github_blocked(root, dt.datetime.now())
+    assert until is not None and 19 <= (until - dt.datetime.now()).total_seconds() / 60 <= 22
+    hits.clear()
+    other = {"id": "q", "sections": [{"kind": "tracker", "id": "mine", "provider": "github", "query": {}}]}
+    c.fresh = True                                    # even a reload asks nothing while the budget is spent
+    sec = bf.collect(root, other, c)["sections"][0]
+    assert sec["status"] == "error" and "not asked until" in sec["reason"]
+    assert hits == []
+
+
+def test_the_block_never_outlives_an_hour_and_a_bit(tmp_path):
+    root = bridge(tmp_path)
+    c = bf.Context(root, now=dt.datetime.now(), run=limited_run(reset_in_min=600))
+    until = bf.block_github(root, c, LIMITED)
+    assert (until - c.now).total_seconds() / 60 <= bf.LIMIT_CAP_MIN
+    unreadable = bf.Context(root, now=dt.datetime.now(), run=lambda *a, **k: (_ for _ in ()).throw(bf.SourceError("x")))
+    until = bf.block_github(root, unreadable, LIMITED)
+    assert 15 <= (until - unreadable.now).total_seconds() / 60 <= 17       # no answer: a quarter of an hour
+
+
+def test_a_section_that_cannot_answer_shows_its_last_rows_and_closes_nothing(tmp_path):
+    root = bridge(tmp_path)
+    now = dt.datetime.now()
+    good = bf.Context(root, now=now - dt.timedelta(minutes=30), run=FakeRun(answers()))
+    kept = bf.collect(root, profile_with_cache(), good)["sections"][0]
+    assert kept["status"] == "ok" and kept["total"]
+    c = bf.Context(root, now=now, run=limited_run())
+    result = bf.collect(root, profile_with_cache(), c)
+    sec = result["sections"][0]
+    assert sec["status"] == "ok" and sec["total"] == kept["total"]
+    assert sec["stale"]["until"] and "rate limit" in sec["stale"]["reason"]
+    assert "stale, as of" in bf.render(bf._public(result))
+    view = bf._view()
+    page = view._page_section(sec, {"id": "work"}, now, view.labels_for("de"))
+    assert "Kontingent" in page["stale"] and sec["stale"]["until"] in page["stale"]
+
+
+def test_a_failure_older_than_twelve_hours_is_an_error_again(tmp_path):
+    root = bridge(tmp_path)
+    now = dt.datetime.now()
+    bf.collect(root, profile_with_cache(), bf.Context(root, now=now - dt.timedelta(hours=13), run=FakeRun(answers())))
+    sec = bf.collect(root, profile_with_cache(), bf.Context(root, now=now, run=limited_run()))["sections"][0]
+    assert sec["status"] == "error"
+
+
+def test_the_board_view_and_the_stale_note_reach_the_page():
+    model = sys.modules.get("bridge_cockpit.model")
+    if model is None:
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        from bridge_cockpit import model   # noqa: E402
+    pages = model.parse_pages({"pages": [{"id": "github", "title": "GitHub", "sections": [
+        {"id": "work", "kind": "tracker", "title": "GitHub", "status": "ok", "items": [], "view": "board",
+         "stale": "GitHub limit reached"}]}]})
+    sec = pages[0]["sections"][0]
+    assert sec["view"] == "board" and sec["stale"] == "GitHub limit reached"

@@ -1208,7 +1208,8 @@ def test_render_file_writes_the_overview_and_names_it(tmp_path, capsys):
 # not an empty quota. A short wait and one more try is the right answer to a burst.
 
 class Flaky:
-    def __init__(self, failures, message="gh: GraphQL: API rate limit already exceeded for user ID 1."):
+    # a burst: GitHub's secondary limit, which passes in seconds (the hour's spent budget does not, below)
+    def __init__(self, failures, message="gh: You have exceeded a secondary rate limit. Please wait a few minutes."):
         self.failures, self.message, self.calls = failures, message, 0
 
     def __call__(self, argv, timeout=30, cwd=None):
@@ -1243,6 +1244,23 @@ def test_gh_unknown_owner_type_is_retried_like_a_rate_limit(tmp_path):
     ctx = bf.Context(tmp_path, now=NOW, run=flaky, cfg={}, sleep=waits.append, rand=lambda: 0.0)
     assert ctx.run(["gh", "project", "item-list", "3", "--owner", "example-org"]) == "ok"
     assert waits == [bf.GH_RETRY_WAITS[0]] and flaky.calls == 2
+
+
+def test_a_spent_hourly_budget_is_not_retried_and_stops_github_until_the_reset(tmp_path):
+    """Waiting seconds does not refill an hour's budget: on 2026-10-18 every section retried twice into
+    a spent GraphQL budget, pass after pass. The first such answer blocks GitHub for every section."""
+    waits = []
+    flaky = Flaky(9, message="gh: GraphQL: API rate limit already exceeded for user ID 1.")
+    ctx = bf.Context(tmp_path, now=dt.datetime.now(), run=flaky, cfg={}, sleep=waits.append)
+    with pytest.raises(bf.SourceError, match="rate limit"):
+        ctx.run(["gh", "search", "issues"])
+    assert waits == [] and bf.github_blocked(tmp_path, dt.datetime.now()) is not None
+    calls = flaky.calls
+    with pytest.raises(bf.SourceError, match="not asked until"):
+        ctx.run(["gh", "project", "item-list", "3"])
+    assert flaky.calls == calls                    # blocked before it reached GitHub
+    other = bf.Context(tmp_path, now=dt.datetime.now(), run=Flaky(0), cfg={})
+    assert other.run(["glab", "issue", "list"]) == "ok"   # other tools are not GitHub
 
 
 def test_gh_rate_limit_gives_up_after_the_retries(tmp_path):

@@ -1307,8 +1307,11 @@ sections:
     cache_minutes: 5
 ```
 
-Reload (`r`) always asks every source fresh. A failure is never kept, and
-nothing cached crosses midnight.
+Reload (`r`) always asks every source fresh, except GitHub while its budget is
+spent: then no section asks it until the reset, and a tracker section shows
+its last rows with a line saying so ("GitHub limit reached, not asked until
+10:27"). A failure is never kept, and nothing cached crosses midnight
+(docs/briefings.md § GitHub's budget is shared).
 
 ### Words
 

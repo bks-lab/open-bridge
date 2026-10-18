@@ -204,6 +204,8 @@ def _default_secret(ref: str) -> str:
 GH_RETRY_WAITS = (5, 15)
 GH_RETRY_SPREAD = 0.5
 GH_RATE_LIMIT = re.compile(r"rate limit|secondary rate|abuse detection|unknown owner type", re.I)
+# The hour's budget is spent (not a burst): waiting seconds and asking again only spends more of nothing.
+GH_BUDGET_SPENT = re.compile(r"API rate limit (already )?exceeded|graphql_rate_limit", re.I)
 
 
 class Context:
@@ -251,12 +253,23 @@ class Context:
         return min(float(self.timeout), left)
 
     def run(self, argv, timeout=None, cwd=None) -> str:
-        waits = [w * (1 + GH_RETRY_SPREAD * self._rand()) for w in GH_RETRY_WAITS] if argv and argv[0] == "gh" else []
+        gh = bool(argv) and argv[0] == "gh"
+        free = gh and list(argv[:3]) == ["gh", "api", "rate_limit"]      # costs nothing, says when it resets
+        waits = [w * (1 + GH_RETRY_SPREAD * self._rand()) for w in GH_RETRY_WAITS] if gh else []
         while True:
+            if gh and not free:
+                # every call, not only each section: sections run side by side, and one that hit the limit
+                # stops the others at their next call
+                blocked = github_blocked(self.root, self.now)
+                if blocked is not None:
+                    raise SourceError(f"GitHub rate limit, not asked until {blocked:%H:%M}")
             limit = self.remaining()
             try:
                 return self._run(argv, timeout=min(float(timeout), limit) if timeout else limit, cwd=cwd)
             except SourceError as exc:
+                if gh and not free and GH_BUDGET_SPENT.search(str(exc)):
+                    block_github(self.root, self, str(exc))
+                    raise
                 # Only a rate-limit burst, only gh, and only when the wait still fits
                 # the section's time limit; anything else fails as before.
                 if not (waits and GH_RATE_LIMIT.search(str(exc)) and waits[0] < self.remaining() - 1):
@@ -1538,6 +1551,75 @@ def _cached(root: Path, profile: dict, section: dict, ctx: Context):
     return data["items"], data["at"]
 
 
+# GitHub's limits are one budget for every program on the account (5000 GraphQL points an hour, shared with
+# board pollers and agents). A section that hits the limit stops every GitHub section until the reset, and a
+# section that cannot answer shows its last kept answer instead of nothing (live 2026-10-18: the cockpit
+# asked on through a spent budget and every board went red).
+GITHUB_LIMIT = CACHE / "github-limit.json"
+LIMIT_WORDS = re.compile(r"rate limit|secondary rate|abuse detection", re.I)
+LIMIT_FALLBACK_MIN = 15
+LIMIT_CAP_MIN = 65
+STALE_HOURS = 12
+
+
+def _github_section(section: dict) -> bool:
+    return section.get("kind") == "tracker" and section.get("provider") in GITHUB_TRACKERS
+
+
+def github_blocked(root: Path, now: dt.datetime) -> dt.datetime | None:
+    """Until when GitHub is not to be asked (local time), or None."""
+    try:
+        until = dt.datetime.fromisoformat(json.loads((root / GITHUB_LIMIT).read_text(encoding="utf-8"))["until"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return until if now < until <= now + dt.timedelta(minutes=LIMIT_CAP_MIN) else None
+
+
+def block_github(root: Path, ctx: Context, reason: str) -> dt.datetime:
+    """Stop the GitHub sections until the spent budget resets: the reset of every exhausted resource that
+    `gh api rate_limit` names (that call costs nothing), else a quarter of an hour; never more than 65 min."""
+    now = ctx.now
+    until = None
+    try:
+        # straight to the runner: no retries and no block check for the one call that costs nothing
+        data = json.loads(ctx._run(["gh", "api", "rate_limit"], timeout=10)).get("resources") or {}
+        resets = [dt.datetime.fromtimestamp(int(r["reset"])) for r in data.values()
+                  if isinstance(r, dict) and r.get("remaining") == 0 and r.get("reset")]
+        until = max(resets) if resets else None
+    except Exception:  # noqa: BLE001 - without the answer the fallback holds
+        until = None
+    if until is None or until <= now:
+        until = now + dt.timedelta(minutes=LIMIT_FALLBACK_MIN)
+    until = min(until + dt.timedelta(minutes=1), now + dt.timedelta(minutes=LIMIT_CAP_MIN))
+    path = root / GITHUB_LIMIT
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
+        tmp.write_text(json.dumps({"until": until.isoformat(timespec="seconds"), "reason": reason[:200]}), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+    return until
+
+
+def _stale(root: Path, profile: dict, section: dict, ctx: Context):
+    """The section's last kept answer of the last 12 hours, whatever `cache_minutes` says: what a source
+    that cannot answer now still showed then. Only for a tracker, whose rows do not depend on the day."""
+    if section.get("kind") != "tracker" or not _is_positive_int(section.get("cache_minutes")):
+        return None
+    try:
+        data = json.loads(_cache_file(root, profile, section).read_text(encoding="utf-8"))
+        at = dt.datetime.fromisoformat(data["at"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if data.get("key") != _cache_key(section, ctx) or not isinstance(data.get("items"), list) or \
+            not dt.timedelta(0) <= ctx.now - at < dt.timedelta(hours=STALE_HOURS):
+        return None
+    for name, value in (data.get("extra") or {}).items():
+        section[name] = value
+    return data["items"], data["at"]
+
+
 def _keep(root: Path, profile: dict, section: dict, ctx: Context, items: list) -> None:
     """Keep a good answer for the next run; a failure is never kept (it raises before here)."""
     if not _is_positive_int(section.get("cache_minutes")):
@@ -1596,14 +1678,29 @@ def collect(root: Path, profile: dict, ctx: Context, previous: dict | None = Non
             if cached is not None:
                 items, entry["cached_at"] = cached
             else:
+                blocked = github_blocked(root, ctx.now) if _github_section(s) else None
+                if blocked is not None:
+                    raise SourceError(f"GitHub rate limit, not asked until {blocked:%H:%M}")
                 items = KINDS[s.get("kind")](s, ctx)
                 _keep(root, profile, s, ctx, items)
         except Skip as exc:
             entry.update(status="skipped", reason=str(exc))
             items = []
         except SourceError as exc:
-            entry.update(status="error", reason=ctx.redact(str(exc)))
-            items = []
+            reason = ctx.redact(str(exc))
+            until = None
+            if _github_section(s):
+                until = github_blocked(root, ctx.now)
+                if until is None and LIMIT_WORDS.search(reason):
+                    until = block_github(root, ctx, reason)
+            old = _stale(root, profile, s, ctx)
+            if old is not None:
+                # the last good answer, said to be old: the page keeps its rows, nothing is closed from it
+                items, entry["cached_at"] = old
+                entry["stale"] = {"reason": reason, **({"until": until.strftime("%H:%M")} if until else {})}
+            else:
+                entry.update(status="error", reason=reason)
+                items = []
         except Exception as exc:  # noqa: BLE001 - one section never takes the briefing down
             entry.update(status="error", reason=ctx.redact(f"{exc.__class__.__name__}: {exc}"))
             items = []
@@ -1875,11 +1972,11 @@ def file_to_inbox(box, profile: dict, result: dict) -> tuple:
     own = f"{KEY_PREFIX}{pid}:"
     for entry in result["sections"]:
         prefix = f"{own}{entry['id']}:"
-        if entry["status"] == "ok":
+        if entry["status"] == "ok" and not entry.get("stale"):
             closable.add(prefix)      # also when its rules were removed: nothing is wanted any more
             present.update(prefix + str(i["id"]) for i in entry.get("all", entry["items"]) if "id" in i)
         rules = (sections.get(entry["id"]) or {}).get("to_inbox") or []
-        if not rules:
+        if not rules or entry.get("stale"):      # old rows file nothing: what they showed may be settled since
             continue
         for item in entry.get("all", entry["items"]):
             rule = next((r for r in rules if rule_matches(r["when"], item)), None)
@@ -1959,6 +2056,8 @@ def render(result: dict) -> str:
         if s["status"] != "ok":
             out.append(f"  {s['status']}: {s.get('reason', '')}")
             continue
+        if s.get("stale"):
+            out.append(f"  stale, as of {s.get('cached_at', '')}: {s['stale'].get('reason', '')}")
         out += [_line(str(s.get("kind")), i) for i in s["items"]]
         for b in [b for b in s.get("summary") or [] if b.get("open")]:
             counts = " · ".join(f"{n} {st.replace('_', ' ')}" for st, n in b["counts"].items() if n)

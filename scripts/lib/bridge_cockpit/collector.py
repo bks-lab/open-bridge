@@ -193,6 +193,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             gone = [i for i in shown if i not in items]
             bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad"))
             sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "weight", "as_of")}
+            if s.get("stale"):
+                sec["stale"] = s["stale"]
             secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,
                                "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
                                "more": max(0, len(s["items"]) - cap)})
@@ -441,7 +443,7 @@ class Collector:
         for pg in view.get("pages", []):
             for sec in pg.get("sections", []):
                 items = sec.get("items", [])
-                if sec.get("status") != "ok" or sec.get("total", len(items)) > len(items):
+                if sec.get("status") != "ok" or sec.get("stale") or sec.get("total", len(items)) > len(items):
                     continue
                 looked.add(sec["id"])
                 present |= {f"{prefix}{sec['id']}:{it['id']}" for it in items if it.get("id")}
