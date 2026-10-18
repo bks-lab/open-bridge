@@ -1345,6 +1345,8 @@ def rename_cli(args, cfg: dict, driver) -> int:
         tab = next((t for t in tabs if t.get("ref") == args.ref), None)
         if tab is None:
             return refuse(f"no open tab with the ref {args.ref!r}")
+        if str(tab.get("name") or "").strip().casefold() in managed["tab_names"]:
+            return refuse("refused: a task, inbox or team tab keeps its name")
         want = title.casefold()
         if want in managed["tab_names"]:
             return refuse("refused: a task, inbox or team tab is known by this name")
@@ -1352,12 +1354,13 @@ def rename_cli(args, cfg: dict, driver) -> int:
             return refuse("refused: name in use")
         lines = driver.rename(args.ref, title)
     else:
-        current = next((t.get("workspace") for t in tabs if t.get("ws_ref") == args.ws_ref), None)
         listed = driver.workspaces() if "workspaces" in driver.caps() else None
-        if current is None:
-            current = next((w.get("title") for w in listed or [] if w.get("ref") == args.ws_ref), None)
-        if current is None:
+        # live is what a tab or the driver's own list names by this ref, with or without a title
+        here = [t.get("workspace") for t in tabs if t.get("ws_ref") == args.ws_ref] \
+            + [w.get("title") for w in listed or [] if w.get("ref") == args.ws_ref]
+        if not here:
             return refuse(f"no open workspace with the ref {args.ws_ref!r}")
+        current = next((n for n in here if n), "")
         configured = {_ws_fold(n) for n in managed["workspace_names"]}
         if _ws_fold(current) in configured or _ws_fold(title) in configured:
             return refuse("refused: configured workspace, rename it in workplace.workspaces")

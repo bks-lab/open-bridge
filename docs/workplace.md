@@ -29,6 +29,8 @@ python3 scripts/workplace.py tasks              # every active task: area, prior
 python3 scripts/workplace.py teams              # team recipes: ordered role tabs on one task
 python3 scripts/workplace.py send <tab> <text>  # type into one tab
 python3 scripts/workplace.py adopt <tab> <slug> # name an open tab after its task
+python3 scripts/workplace.py rename <ref> -- <title>            # name one tab of your own (its live ref only)
+python3 scripts/workplace.py rename-workspace <ws_ref> -- <title> # name one workspace (its live ref only)
 python3 scripts/workplace.py control --yes      # a new agent tab in the control workspace (workplace.control.command, default claude)
 ```
 
@@ -149,7 +151,7 @@ team role is found by its name (the status rows and the session snapshots go by
 it), and the plan finds a workspace by its configured name, alias or the control
 name (`workplace.workspaces`, `workplace.control`). So the two rename commands
 take a live ref only, never a name or a part of one, and refuse (exit 2) to give a
-tab a managed name or the name another open tab has, to rename a configured
+tab a managed name or the name another open tab has, to rename a task, inbox or team tab, to rename a configured
 workspace or give a workspace a configured name or one in use, and an empty title,
 one over 80 characters or one with a control character:
 

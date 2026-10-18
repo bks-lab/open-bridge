@@ -1133,3 +1133,18 @@ def test_cli_rename_refuses_empty_long_and_control_character_titles(repo, tmp_pa
     assert wp.main(["--root", str(repo), "rename", "surface:5", "--", title]) == 2
     assert wp.main(["--root", str(repo), "rename-workspace", "workspace:2", "--", title]) == 2
     assert _requests(log, "rename") == [] and _requests(log, "rename_workspace") == []
+
+
+def test_cli_rename_refuses_a_tab_the_workplace_knows_by_its_name(repo, tmp_path, capsys):
+    """a task, inbox or team tab keeps its name: renamed, the status rows would lose its task"""
+    log = _rename_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "rename", "surface:4", "--", "Something else"]) == 2
+    assert _requests(log, "rename") == []
+    assert "refused: a task, inbox or team tab keeps its name" in capsys.readouterr().err
+
+
+def test_cli_rename_workspace_takes_a_listed_workspace_without_a_title(repo, tmp_path):
+    """the driver lists the ref, so it is live, even without a title and without a tab in it"""
+    log = _rename_driver(repo, tmp_path, tabs=[], workspaces=[{"ref": "workspace:8"}])
+    assert wp.main(["--root", str(repo), "rename-workspace", "workspace:8", "--", "Research"]) == 0
+    assert _requests(log, "rename_workspace")[0]["workspace"] == "workspace:8"

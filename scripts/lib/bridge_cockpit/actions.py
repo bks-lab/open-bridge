@@ -1535,6 +1535,8 @@ class Actions:
         if run.code == 2:
             if "name in use" in why:
                 raise ActionError(409, "name_in_use", tx["name_in_use"], "title")
+            if "keeps its name" in why:
+                raise ActionError(409, "task_tab_name", tx["task_tab_name"], "tab_ref")
             if "configured workspace" in why or "known by this name" in why:
                 raise ActionError(409, "name_managed", tx["name_managed"], "title")
             raise ActionError(409, "not_applicable", m.short(why, 160) or tx["rename_failed"].format(err="?"), "title")
@@ -1562,10 +1564,12 @@ class Actions:
         app = self.app
         listed = app.tabs.workspace_list() or []
         tabs = app.tabs.tab_list()
-        current = next((w.get("title") for w in listed if w.get("ref") == ws_ref), None) \
-            or next((t["workspace"] for t in tabs if t.get("ws_ref") == ws_ref), None)
-        if current is None and not any(t.get("ws_ref") == ws_ref for t in tabs):
+        # live is a workspace the terminal lists or a tab names by this ref, with or without a title
+        here = [w.get("title") for w in listed if w.get("ref") == ws_ref] \
+            + [t.get("workspace") for t in tabs if t.get("ws_ref") == ws_ref]
+        if not here:
             raise ActionError(409, "stale_workspace", self.tx["stale_workspace"], "ws_ref")
+        current = next((n for n in here if n), "")
         control = app.tabs.control_tab()
         name = (app.cfg.control or "").strip().casefold()
         if (control and control.get("ws_ref") == ws_ref) or (name and str(current or "").strip().casefold() == name):

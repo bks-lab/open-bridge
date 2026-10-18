@@ -5570,3 +5570,26 @@ def test_rename_audit_line_carries_no_title(world):
     assert lines[-1].split()[1:] == ["workspace_rename", "workspace:2", "exits=0", "ok=true"]
     log = "\n".join(lines)
     assert "secret" not in log and "hidden" not in log
+
+
+def test_a_workplace_refusal_for_a_task_tab_is_task_tab_name(world):
+    """the CLI refuses a tab the workplace knows by its name; the page says the same as the cockpit's own check"""
+    with_caps(world, RENAME_CAPS)
+    world.runner.handlers["workplace.rename"] = lambda argv: fail("refused: a task, inbox or team tab keeps its name", 2)
+    with pytest.raises(ActionError) as err:
+        world.act("tab_rename", tab_ref="surface:11", title="Scratch")
+    assert (err.value.status, err.value.code) == (409, "task_tab_name")
+
+
+def test_workspace_rename_takes_a_listed_workspace_without_a_title(tmp_path):
+    """a workspace the terminal lists is live even with an empty title and no tab in it"""
+    w = rooms_world(tmp_path)
+    try:
+        with_caps(w, RENAME_CAPS)
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES + [{"ref": "workspace:7", "title": ""}])
+        w.app.tabs.poll()
+        w.runner.calls.clear()
+        w.act("workspace_rename", ws_ref="workspace:7", title="Research")
+        assert writes(w) == [W(w, "rename-workspace", "workspace:7", "--", "Research")]
+    finally:
+        w.close()
