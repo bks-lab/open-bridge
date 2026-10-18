@@ -326,3 +326,46 @@ def test_the_jev_page_table_has_the_same_keys_in_both_languages():
     en = body[body.index("  en: {"):body.index("\n}\n")]
     keys = lambda block: set(re.findall(r"(?:^|[{,])\s*(\w+):\s", block, re.M)) - {"de", "en"}   # noqa: E731
     assert keys(de) and keys(de) == keys(en)
+
+
+# ---------------------------------------------------------------- error codes (contract section 8.2)
+#
+# errorText (scripts/web/logic.js) words an error by its code and falls back to the server's
+# English message, so a new code with no entry in the errors tables of text.js ships untranslated
+# without anyone noticing. Every code the server or the demo mock sends needs both entries.
+
+ERROR_CODE_PATTERNS = (r"\w*Error\(\s*\d{3},\s*\"([a-z_]+)\"",      # ActionError, LaunchError, JevError, ...
+                       r"send_error_json\(\s*\"([a-z_]+)\"",
+                       r"\"code\":\s*\"([a-z_]+)\"")
+MOCK_ERROR_PATTERN = r"fail\(\s*\d{3},\s*'([a-z_]+)'"
+INTERNAL_CODES: set[str] = set()   # a code the page never shows; none so far
+
+
+def error_codes_in(source: str, patterns=ERROR_CODE_PATTERNS) -> set[str]:
+    return {code for pattern in patterns for code in re.findall(pattern, source)}
+
+
+def error_tables() -> dict[str, set[str]]:
+    text = (ROOT / "scripts" / "web" / "text.js").read_text(encoding="utf-8")
+    starts = [m.end() for m in re.finditer(r"^  errors: \{\n", text, re.M)]
+    assert len(starts) == 2, "text.js should hold one errors table per language"
+    tables = [set(re.findall(r"^    (\w+):", text[s:text.index("\n  },", s)], re.M)) for s in starts]
+    return dict(zip(("en", "de"), tables))
+
+
+def test_the_error_code_collector_sees_every_way_a_code_is_sent():
+    source = ('raise ActionError(409, "alpha", "x")\nraise JevError(\n    502, "beta", "y")\n'
+              'self.send_error_json("gamma", "z")\nhandler.send_json(404, {"ok": False, "error": {"code": "delta"}})\n')
+    assert error_codes_in(source) == {"alpha", "beta", "gamma", "delta"}
+    assert error_codes_in("return fail(404, 'epsilon', 'off')", (MOCK_ERROR_PATTERN,)) == {"epsilon"}
+
+
+def test_every_error_code_the_server_sends_is_worded_in_both_languages():
+    lib = ROOT / "scripts" / "lib" / "bridge_cockpit"
+    codes = set().union(*(error_codes_in(p.read_text(encoding="utf-8")) for p in sorted(lib.glob("*.py"))))
+    codes |= error_codes_in((ROOT / "scripts" / "web" / "mock.js").read_text(encoding="utf-8"), (MOCK_ERROR_PATTERN,))
+    assert {"stale_row", "unreadable", "jev_off", "relay_disabled"} <= codes   # the collector still finds them
+    tables = error_tables()
+    for lang, keys in tables.items():
+        assert codes - INTERNAL_CODES - keys == set(), f"text.js errors ({lang}) lacks these codes"
+    assert tables["en"] == tables["de"]

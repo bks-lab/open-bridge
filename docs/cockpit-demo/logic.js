@@ -541,6 +541,7 @@ export function upsertRecord(records, record) {
 export function errorText(error, table) {
   if (!error) return table.errors.unknown
   const entry = table.errors[error.code]
+  // an entry written as a function gets the whole error: its message, or the CLI it names
   const base = (typeof entry === 'function' ? entry(error) : entry) ?? error.message ?? table.errors.unknown
   return error.field ? `${base} (${table.errorField(error.field)})` : base
 }

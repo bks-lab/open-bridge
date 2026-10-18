@@ -3402,3 +3402,17 @@ test('busyKey: a row action is busy per row, other actions keep their key', () =
   assert.equal(logic.busyKey('task_close', { key: 'task:a' }), 'task:a')
   assert.equal(logic.busyKey('home_tiles', { ids: ['a'] }), 'home_tiles')
 })
+
+test('errorText appends the server detail for a code whose entry takes one', () => {
+  for (const lang of ['en', 'de']) {
+    text.setLanguage(lang)
+    const t = text.T()
+    assert.equal(typeof t.errors.unreadable, 'function', lang)
+    const got = logic.errorText({ code: 'unreadable', message: 'cmux: no such surface' }, t)
+    assert.match(got, /cmux: no such surface/, lang)
+    assert.notEqual(got, 'cmux: no such surface', lang)
+    assert.equal(typeof logic.errorText({ code: 'unreadable', message: '' }, t), 'string', lang)
+    assert.match(logic.errorText({ code: 'unreadable', message: 'x', field: 'ref' }, t), /ref/, lang)
+  }
+  text.setLanguage('en')
+})
