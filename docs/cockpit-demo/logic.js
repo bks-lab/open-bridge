@@ -244,7 +244,7 @@ export function stateToken(state) {
   return { 'needs-you': 'danger', waiting: 'warning', working: 'success' }[state] ?? 'on-surface-muted'
 }
 
-export const SECTION_ORDER = ['now', 'give', 'work', 'later']
+export const SECTION_ORDER = ['now', 'give', 'work', 'track', 'later']
 
 /** Every row of the model by key: the rows of all sections plus the hidden rows */
 export function indexRows(model) {
@@ -257,19 +257,68 @@ export function indexRows(model) {
 }
 
 /** The rows a section shows: every row when expanded, else the compact keys */
-export function sectionRows(section, expanded, byKey) {
+export function sectionRows(section, expanded, byKey, budget = 0) {
   if (!section) return []
   if (expanded) return section.rows ?? []
-  return (section.compact ?? []).map(k => byKey.get(k)).filter(Boolean)
+  const compact = (section.compact ?? []).map(k => byKey.get(k)).filter(Boolean)
+  // room left in the column: the section fills up in its own order, the compact rows always stand
+  if (budget <= compact.length) return compact
+  const keys = new Set(compact.map(r => r.key))
+  const more = (section.rows ?? []).filter(r => !keys.has(r.key)).slice(0, budget - compact.length)
+  const order = new Map((section.rows ?? []).map((r, i) => [r.key, i]))
+  return [...compact, ...more].sort((a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0))
 }
 
-/** All displayed rows in card order (now, give, work, later), for j/k navigation */
-export function displayedRows(model, expanded, byKey) {
+/** How many rows a section of the day list may show beyond its compact ones: the room the column has,
+ *  shared in section order. `heightPx` is the column's height, `rowPx` one row; the folded sections
+ *  (compact empty: board rows, later) take nothing, they stay closed until opened */
+export function rowBudgets(sections, expanded, heightPx, rowPx = 64, chromePx = 220) {
+  let left = Math.max(0, Math.floor((heightPx - chromePx) / rowPx))
+  const out = {}
+  for (const id of SECTION_ORDER) {
+    const sec = (sections ?? []).find(x => x.id === id)
+    if (!sec) continue
+    const base = expanded[id] ? (sec.rows ?? []).length : (sec.compact ?? []).length
+    left -= base
+    out[id] = 0
+    if (!expanded[id] && base > 0) {
+      const extra = Math.max(0, Math.min(left, (sec.rows ?? []).length - base))
+      out[id] = base + extra
+      left -= extra
+    }
+  }
+  return out
+}
+
+/** When a due date falls, against today: overdue (with the days since), today, tomorrow, else later
+ *  (with the days to go); null without a date. A time of day is left out, a day counts as a whole */
+export function dueWhen(due, nowMs) {
+  if (typeof due !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(due)) return null
+  const day = s => { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return Date.UTC(y, m - 1, d) }
+  const n = new Date(nowMs)
+  const today = Date.UTC(n.getFullYear(), n.getMonth(), n.getDate())
+  const days = Math.round((day(due) - today) / 86400000)
+  if (days < 0) return { kind: 'overdue', days: -days }
+  return { kind: days === 0 ? 'today' : days === 1 ? 'tomorrow' : 'later', days }
+}
+
+// the word a why line starts with when it names the due date, in every language of the page
+const DUE_WORDS = new RegExp(`^(${Object.values(TABLES).map(t => t.dueWord).filter(Boolean).join('|')})\\b`, 'i')
+
+/** The why lines without the one that names the due date again: the row shows the date itself */
+export function whyWithoutDue(why) {
+  return (why ?? []).filter(w => !DUE_WORDS.test(String(w).trim()))
+}
+
+/** All displayed rows in card order (now, give, work, track, later), for j/k navigation; `heightPx` the day
+ *  column's height, so the keys walk the same rows the column fills up to (rowBudgets) */
+export function displayedRows(model, expanded, byKey, heightPx = 0) {
   if (!model) return []
   const out = []
+  const budgets = rowBudgets(model.sections, expanded, heightPx)
   for (const id of SECTION_ORDER) {
     const s = (model.sections ?? []).find(x => x.id === id)
-    out.push(...sectionRows(s, !!expanded[id], byKey))
+    out.push(...sectionRows(s, !!expanded[id], byKey, budgets[id] ?? 0))
   }
   return out
 }

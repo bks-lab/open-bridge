@@ -571,12 +571,14 @@ def test_task_row_for_and_parse_info_lines():
     ({"bucket": "do"}, "now"),
     ({"bucket": "drop", "inbox_id": "1", "gate": "your-yes"}, "later"),
     ({"bucket": "waiting", "ref": "a/b#1"}, "later"),
+    ({"bucket": "plan", "ref": "a/b#1"}, "track"),
     ({"bucket": "resting", "task": "t"}, "later"),
     ({"bucket": "plan", "inbox_id": "1", "gate": "your-yes"}, "give"),
     ({"bucket": "plan", "inbox_id": "1", "gate": "free"}, "give"),
     ({"bucket": "plan", "inbox_id": "1", "gate": "only-you"}, "later"),
     ({"bucket": "tasks", "task": "t"}, "work"),
-    ({"bucket": "delegate", "ref": "a/b#1"}, "work"),
+    ({"bucket": "delegate", "ref": "a/b#1"}, "track"),
+    ({"bucket": "delegate", "task": "t", "ref": "a/b#1"}, "work"),
     ({"bucket": "delegate"}, "later"),
 ])
 def test_classify_table(extra, expected):
@@ -593,13 +595,14 @@ def test_layout_caps_numbering_hidden_and_settled():
     v = view(buckets=[{"id": "x", "title": "X", "rows": rows}])
     lay = m.layout(v, {"gone"}, {"hid": TOMORROW, "do5": TODAY}, TODAY, [tab("working", "alpha")])
     s = {x["id"]: x for x in lay["sections"]}
-    assert len(s["now"]["all"]) == 6 and len(s["now"]["shown"]) == 4
+    assert len(s["now"]["all"]) == 6 and len(s["now"]["shown"]) == 6   # what waits for you is never cut
     assert [r["key"] for r in s["work"]["all"]] == ["w-p1", "w-p3", "w-tab"]
     assert [r["key"] for r in s["work"]["shown"]] == ["w-p1", "w-tab"]   # P3 drops out, the one with a tab stays
     assert s["later"]["shown"] == [] and [r["key"] for r in s["later"]["all"]] == ["later1"]
     assert [r["key"] for r in lay["hidden_rows"]] == ["hid"]               # hidden while date > today
     assert lay["numbers"]["do0"] == 1 and lay["numbers"]["give1"] == 7 and lay["numbers"]["w-p1"] == 8
     assert lay["numbers"]["later1"] == 11 and "gone" not in lay["numbers"]
+    assert [x["id"] for x in lay["sections"]] == ["now", "give", "work", "track", "later"]
     assert m.layout(v, set(), {}, TODAY, [], show_all=True)["sections"][0]["shown"] == \
         m.layout(v, set(), {}, TODAY, [], show_all=True)["sections"][0]["all"]
 
@@ -807,7 +810,7 @@ def test_start_runs_quick_then_full_and_never_without_no_save(world):
 def test_model_shape(world):
     model = world.app.collector.model
     secs = {s["id"]: s for s in model["sections"]}
-    assert [s["id"] for s in model["sections"]] == ["now", "give", "work", "later"]
+    assert [s["id"] for s in model["sections"]] == ["now", "give", "work", "track", "later"]
     only = world.row(f"inbox:{ONLY_ID}")
     assert only["section"] == "now" and only["number"] == model["numbers"][f"inbox:{ONLY_ID}"]
     # an inbox row of a task finds the task's tab (register.tsx tabFor matches by task slug)
@@ -4805,3 +4808,15 @@ def test_the_evening_text_shows_the_current_last_line_without_a_rebuild(world):
     _, _, body = world.post("/api/ask", {"kind": "evening", "args": {}})
     rid = json.loads(body)["record"]["id"]
     assert "Writing the summary" in world.app.relay.records[rid]["text"]
+
+
+def test_layout_tracker_rows_stand_apart_from_the_own_tasks_and_start_folded():
+    rows = [row("task:a", ["tasks"], bucket="tasks", task="a", priority="P1"),
+            row("board1", ["boards"], bucket="plan", ref="org/repo#1", priority="P1"),
+            row("app1", ["bewerbungen"], bucket="plan", ref="2026-09/x")]
+    lay = m.layout(view(buckets=[{"id": "x", "title": "X", "rows": rows}]), set(), {}, TODAY, [])
+    s = {x["id"]: x for x in lay["sections"]}
+    assert [r["key"] for r in s["work"]["all"]] == ["task:a"]
+    assert [r["key"] for r in s["track"]["all"]] == ["board1", "app1"] and s["track"]["shown"] == []
+    assert [r["key"] for r in m.layout(view(buckets=[{"id": "x", "title": "X", "rows": rows}]), set(), {}, TODAY, [],
+                                       open_section="track")["sections"][3]["shown"]] == ["board1", "app1"]

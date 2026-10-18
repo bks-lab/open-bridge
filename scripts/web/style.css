@@ -275,12 +275,15 @@ kbd {
   height: calc(100vh - var(--header-h) - var(--pagebar-h));
   height: calc(100dvh - var(--header-h) - var(--pagebar-h));
 }
-.main.layout-wide { grid-template-columns: var(--col-left) minmax(0, 1fr) var(--col-right); }
+.main.layout-wide { grid-template-columns: minmax(var(--col-left), 1fr) minmax(0, 1fr) var(--col-right); }
+/* the work tab with no row picked: the list takes two thirds, the overview beside it one; a picked row's detail gets half */
+.main.layout-wide.no-pick:not(.on-page) { grid-template-columns: minmax(var(--col-left), 2fr) minmax(0, 1fr) var(--col-right); }
 .main.layout-wide.on-page { grid-template-columns: minmax(0, 1fr) var(--col-right); }
 .main.layout-medium { grid-template-columns: var(--col-left) minmax(0, 1fr); }
 .main.layout-medium.on-page { grid-template-columns: minmax(0, 1fr); }
 .main.layout-wide.on-page.with-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--col-right); }
 .main.layout-wide.no-rail { grid-template-columns: minmax(var(--col-left), 1fr) minmax(0, 1fr); }
+.main.layout-wide.no-rail.no-pick:not(.on-page) { grid-template-columns: minmax(var(--col-left), 2fr) minmax(0, 1fr); }
 .main.layout-wide.on-page.no-rail { grid-template-columns: minmax(0, 1fr); }
 .main.layout-wide.on-page.no-rail.with-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .main.layout-medium.on-page.with-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -356,6 +359,16 @@ kbd {
 }
 .row-pick { margin: 3px 0 0; width: 14px; height: 14px; accent-color: var(--secondary); cursor: pointer; }
 .row-pick-gap { width: 14px; }
+/* a calm list: with a pointer the box and the main button come in full only on the row in reach (hover, focus,
+   picked); while any row is picked every box stands. Touch screens keep everything as it was */
+@media (hover: hover) {
+  .day-panel:not(.is-picking) .row:not(:hover):not(:focus-within):not(.is-selected):not(.is-focused) .row-pick { opacity: 0; }
+  .row:not(:hover):not(:focus-within):not(.is-selected):not(.is-focused) .row-acts .btn-primary {
+    background: transparent; color: var(--ink); border-color: var(--border-strong);
+  }
+}
+.row-gist { display: block; margin-top: 1px; color: var(--on-surface-muted); font-size: var(--text-sm); line-height: 1.35; }
+.chip-topic { background: var(--surface-muted); color: var(--on-surface); border-color: var(--border); }
 .row-main {
   display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0; border: 0;
   background: transparent; text-align: left; cursor: pointer; color: inherit;
@@ -552,7 +565,18 @@ kbd {
 .tabcard-name .btn-link:hover { color: var(--secondary); }
 .tabcard .tab-last { margin: 0; color: var(--on-surface-muted); }
 .tabcard { position: relative; }
-.tabcard.is-slim { gap: 4px; padding: 8px 12px; }
+/* slim: two lines, the state with its age and "more" above, the name with its one next step below */
+.tabcard.is-slim {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "head head more" "name acts acts";
+  align-items: center; column-gap: 8px; row-gap: 2px; padding: 6px 10px;
+}
+.tabcard.is-slim > * { grid-column: 1 / -1; }
+.tabcard.is-slim .tabcard-head { grid-area: head; }
+.tabcard.is-slim .tabcard-name { grid-area: name; min-width: 0; }
+.tabcard.is-slim .tabcard-name .btn-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.tabcard.is-slim > .btn-row { grid-area: acts; justify-self: end; }
+.tabcard.is-slim .tabcard-more { grid-area: more; position: static; }
+.tabgrid:has(.is-slim) { gap: 6px; }
 .tabcard-more { position: absolute; right: 12px; bottom: 8px; font-size: 11.5px; color: var(--on-surface-muted); }
 .tabcard:not(.is-slim) .tabcard-more { position: static; align-self: flex-end; }
 

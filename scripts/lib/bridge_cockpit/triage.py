@@ -22,7 +22,7 @@ SCRIPT = "scripts/triage.py"
 TIMEOUT = 330
 DAILY_SEC = 24 * 3600
 CHECK_EVERY_SEC = 15 * 60
-ITEM_FIELDS = ("kind", "title", "gist", "verdict", "reason", "doer", "effort", "why", "verdict_from", "model")
+ITEM_FIELDS = ("kind", "title", "gist", "topic", "verdict", "reason", "doer", "effort", "why", "verdict_from", "model")
 NUMBER_FIELDS = ("level", "jev")       # how complex for an AI: Haiku's level, Jev's score (launch.py picks the model)
 
 

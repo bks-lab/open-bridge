@@ -738,3 +738,107 @@ def test_a_busy_feed_cannot_push_out_a_quiet_one():
     items = tk.merge_items([busy, quiet], 4)
     assert [i["feed"] for i in items] == ["busy", "busy", "busy", "quiet"]
     assert [i["published_ms"] for i in items] == [10_000, 9_999, 9_998, 100]
+
+
+# ---------------------------------------------------------------- settings changed during a refresh (#382)
+
+class GatedFetch(FakeFetch):
+    """Blocks the first read of one url until the test opens the gate."""
+
+    def __init__(self, pages: dict, gated: str):
+        super().__init__(pages)
+        self.gated, self.entered, self.gate = gated, threading.Event(), threading.Event()
+
+    def __call__(self, url: str) -> bytes:
+        if url == self.gated and not self.entered.is_set():
+            self.entered.set()
+            assert self.gate.wait(5)
+        return super().__call__(url)
+
+
+def counted_runs(t) -> list[int]:
+    runs: list[int] = []
+    real = t.refresh_sync
+
+    def run():
+        runs.append(1)
+        real()
+    t.refresh_sync = run
+    return runs
+
+
+def feeds_without_alpha_with_gamma() -> list[dict]:
+    return [{"id": "alpha", "name": "Alpha", "url": FEED_A, "enabled": False},
+            {"id": "beta", "name": "Beta", "url": FEED_B},
+            {"id": "gamma", "name": "Gamma", "url": FEED_C}]
+
+
+def test_a_feed_change_during_a_refresh_runs_one_more_and_drops_the_disabled_feed(tworld):
+    t = tworld.app.ticker
+    pages = {**standard_pages(), FEED_C: rss([("C one", "https://example.org/c/1", None)])}
+    t.fetch = GatedFetch(pages, FEED_A)
+    runs = counted_runs(t)
+    assert t.request_refresh() is True
+    assert t.fetch.entered.wait(5)
+    t.save({"feeds": feeds_without_alpha_with_gamma()})
+    t.fetch.gate.set()
+    wait_for(lambda: not t.state()["refreshing"])
+    assert len(runs) == 2
+    assert FEED_C in t.fetch.calls
+    feeds = {i["feed"] for i in t.state()["items"]}
+    assert "alpha" not in feeds and "gamma" in feeds
+    cache = json.loads((tworld.state / tk.CACHE_FILE).read_text(encoding="utf-8"))
+    assert all(i["feed"] != "alpha" for i in cache["items"])
+
+
+def test_a_save_outside_a_refresh_still_runs_exactly_one(tworld):
+    t = tworld.app.ticker
+    runs = counted_runs(t)
+    t.save({"max_items": 25})
+    wait_for(lambda: runs and not t.state()["refreshing"])
+    time.sleep(0.05)
+    assert len(runs) == 1
+
+
+def test_two_saves_during_one_refresh_run_at_most_one_more(tworld):
+    t = tworld.app.ticker
+    t.fetch = GatedFetch(standard_pages(), FEED_A)
+    runs = counted_runs(t)
+    assert t.request_refresh() is True
+    assert t.fetch.entered.wait(5)
+    t.save({"max_items": 25})
+    t.save({"max_items": 26})
+    t.fetch.gate.set()
+    wait_for(lambda: not t.state()["refreshing"])
+    time.sleep(0.05)
+    assert len(runs) == 2
+
+
+def test_the_loop_and_the_refresh_verb_queue_nothing_while_a_refresh_runs(tworld):
+    t = tworld.app.ticker
+    t.fetch = GatedFetch(standard_pages(), FEED_A)
+    runs = counted_runs(t)
+    assert t.request_refresh() is True
+    assert t.fetch.entered.wait(5)
+    assert t.request_refresh() is False
+    r = tworld.act("ticker_refresh")
+    assert r["already"] is True
+    t.fetch.gate.set()
+    wait_for(lambda: not t.state()["refreshing"])
+    time.sleep(0.05)
+    assert len(runs) == 1
+
+
+def test_a_refresh_builds_the_items_from_the_settings_at_its_end(tworld):
+    t = tworld.app.ticker
+    real = t.fetch
+
+    def fetch(url: str) -> bytes:
+        if url == FEED_A:
+            # the settings change while the feeds are read, without asking for a refresh
+            tk.atomic_write_json(t.path, {"feeds": [{"id": "alpha", "name": "Alpha", "url": FEED_A, "enabled": False},
+                                                    {"id": "beta", "name": "Beta", "url": FEED_B, "enabled": True}]})
+        return real(url)
+    t.fetch = fetch
+    t.refresh_sync()
+    assert {i["feed"] for i in t.state()["items"]} == {"beta"}

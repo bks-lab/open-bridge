@@ -682,6 +682,8 @@ const ctl = {
     setUi({ railHidden: hidden, drawer: hidden ? store.get().ui.drawer : null })
   },
   // the task and inbox pages: filter by the triage, sort again on a click (scripts/web/triage.js)
+  // the day column's height, measured by the column itself: how many rows its sections fill up to
+  setDayHeight: px => { if (store.get().ui.dayHeight !== px) setUi({ dayHeight: px }) },
   setTriageFilter: f => setUi({ triageFilter: f }),
   triageRun: async fresh => {
     const res = await api.post('/api/triage/run', { fresh: !!fresh })
@@ -1002,7 +1004,7 @@ function focusRowElement(key) {
 
 function moveFocus(step) {
   const s = store.get()
-  const rows = displayedRows(s.model, s.ui.expanded, rowIndex())
+  const rows = displayedRows(s.model, s.ui.expanded, rowIndex(), s.ui.dayHeight ?? 0)
   if (!rows.length) return
   const at = rows.findIndex(r => r.key === s.ui.focusKey)
   const next = at < 0 ? (step > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, at + step))

@@ -27,8 +27,9 @@ ATTENTION = frozenset({"needs-you", "waiting"})
 # the two ways a row leaves the briefing in two clicks: done, or not doing it
 SETTLE_OUTCOMES = ("done", "not_doing")
 BUCKET_ORDER = ["do", "plan", "delegate", "waiting", "drop", "tasks", "resting"]
-CAP = {"now": 4, "give": 4, "work": 5, "later": 0}
-SECTION_IDS = ("now", "give", "work", "later")
+# what waits for you is never cut (None); the board and tracker rows and the later ones start folded
+CAP = {"now": None, "give": 4, "work": 5, "track": 0, "later": 0}
+SECTION_IDS = ("now", "give", "work", "track", "later")
 BRIEFING_PAGE = "briefing"
 LONG_MS = 3600000
 START_GRACE = 90000
@@ -509,8 +510,11 @@ def classify(row: dict) -> str:
         return "later"
     if row.get("inbox_id"):
         return "give" if row.get("gate") in ("your-yes", "free") else "later"
-    if row.get("task") or row.get("ref"):
+    if row.get("task"):
         return "work"
+    # a board item, an application, an issue: it comes from a tracker, not from the Bridge's own tasks
+    if row.get("ref"):
+        return "track"
     return "later"
 
 
@@ -603,7 +607,7 @@ def layout(view: dict | None, done: list | set, hide: dict, today: str, tabs: li
             continue
         # Tasks compact: only P0 to P2 and what already has a tab
         pool = [r for r in rows if prio_rank(r) <= 2 or tab_for(r, tabs)] if sid == "work" else rows
-        sections.append({"id": sid, "all": rows, "shown": pool[:CAP[sid]]})
+        sections.append({"id": sid, "all": rows, "shown": pool if CAP[sid] is None else pool[:CAP[sid]]})
     numbered = [r for s in sections for r in s["all"]]
     return {"sections": sections, "hidden_rows": hidden_rows, "numbered": numbered,
             "numbers": {r["key"]: i + 1 for i, r in enumerate(numbered)}}

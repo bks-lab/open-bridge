@@ -15,7 +15,7 @@ const en = {
   skip: 'Skip to content',
   state: { 'needs-you': 'needs you', waiting: 'waiting', working: 'working', shell: 'terminal' },
   urgency: { now: 'now', today: 'today', later: 'later' },
-  section: { now: 'Waiting for you', give: 'AI can take over', work: 'Tasks', later: 'Later' },
+  section: { now: 'Waiting for you', give: 'AI can take over', work: 'Tasks', track: 'From boards and trackers', later: 'Later' },
   where: { area: 'in its area', tab: 'as a tab here', workspace: 'in its own workspace', auto: 'where it fits' },
   bucket: {
     do: 'Do', plan: 'Plan', delegate: 'Delegate', waiting: 'Waiting on others', drop: 'Later',
@@ -125,6 +125,13 @@ const en = {
   resultFiled: 'Result filed',
   resultFiledLong: 'The result is in the inbox, the tab can be closed',
   dueOn: date => `due ${date}`,
+  dueWord: 'due',
+  dueOverdue: days => (days === 1 ? 'overdue since yesterday' : `overdue for ${days} days`),
+  dueToday: 'due today',
+  dueTomorrow: 'due tomorrow',
+  topic: { decision: 'Decision', reply: 'Reply', research: 'Research', bug: 'Bug', build: 'Build', docs: 'Docs', ops: 'Ops',
+    review: 'Review', admin: 'Admin', money: 'Money', meeting: 'Meeting', application: 'Application', idea: 'Idea' },
+  topicTitle: 'What kind of work this is, read by the small model',
   numberLabel: n => `number ${n}`,
 
   // detail
@@ -1139,7 +1146,7 @@ const de = {
   skip: 'Zum Inhalt springen',
   state: { 'needs-you': 'braucht dich', waiting: 'wartet', working: 'arbeitet', shell: 'Terminal' },
   urgency: { now: 'jetzt', today: 'heute', later: 'später' },
-  section: { now: 'Wartet auf dich', give: 'Kann die AI übernehmen', work: 'Aufgaben', later: 'Später' },
+  section: { now: 'Wartet auf dich', give: 'Kann die AI übernehmen', work: 'Aufgaben', track: 'Aus Boards und Trackern', later: 'Später' },
   where: { area: 'im Bereich', tab: 'als Tab hier', workspace: 'im eigenen Workspace', auto: 'dort, wo es hinpasst' },
   bucket: {
     do: 'Tun', plan: 'Planen', delegate: 'Abgeben', waiting: 'Wartet auf andere', drop: 'Später',
@@ -1245,6 +1252,13 @@ const de = {
   resultFiled: 'Ergebnis da',
   resultFiledLong: 'Ergebnis liegt im Posteingang, der Tab kann zu',
   dueOn: date => `fällig ${date}`,
+  dueWord: 'fällig',
+  dueOverdue: days => (days === 1 ? 'seit gestern überfällig' : `seit ${days} Tagen überfällig`),
+  dueToday: 'heute fällig',
+  dueTomorrow: 'morgen fällig',
+  topic: { decision: 'Entscheidung', reply: 'Antwort', research: 'Recherche', bug: 'Fehler', build: 'Umsetzung', docs: 'Doku', ops: 'Betrieb',
+    review: 'Prüfen', admin: 'Verwaltung', money: 'Geld', meeting: 'Termin', application: 'Bewerbung', idea: 'Idee' },
+  topicTitle: 'Welche Art Arbeit das ist, gelesen vom kleinen Modell',
   numberLabel: n => `Nummer ${n}`,
 
   overviewTitle: 'Heute',

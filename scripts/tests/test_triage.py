@@ -234,3 +234,17 @@ def test_jev_waits_for_no_one_when_the_check_is_out_of_time(repo, monkeypatch):
     calls = []
     out = triage.triage(repo, run=Fake(answers={HAIKU: answers(LEVELED)}), now=NOW, jev=lambda p: calls.append(p) or {})
     assert calls == [] and {x["key"]: x for x in out["items"]}["task:alpha"]["level"] == 1
+
+
+def test_every_item_gets_a_topic_from_the_fixed_list_and_the_prompt_asks_for_more_than_the_title(repo):
+    setup(repo)
+    rows = [dict(ROWS[0], topic="build"), dict(ROWS[1], topic="Invoice!"), dict(ROWS[2], topic="decision")]
+    fake = Fake(answers={HAIKU: answers(rows)})
+    out = triage.triage(repo, run=fake, now=NOW)
+    by = {x["key"]: x for x in out["items"]}
+    assert by["task:alpha"]["topic"] == "build"
+    assert by["task:beta"]["topic"] is None                          # outside the list: no label rather than a wrong one
+    assert by["inbox:20261008-0900-frage-a1b2"]["topic"] == "decision"
+    text = fake.model_calls()[0][1]
+    assert "topic" in text and all(t in text for t in triage.TOPICS)
+    assert "never repeat the title" in text

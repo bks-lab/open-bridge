@@ -153,7 +153,7 @@ export function App({ store, ctl }) {
     <${Header} s=${s} c=${ctl} />
     <${PageBar} s=${s} c=${ctl} />
     ${layout === 'narrow' ? html`<${MobileSwitch} s=${s} c=${ctl} />` : null}
-    <main id="main" class=${`main layout-${layout}${onPage ? ' on-page' : ''}${peek ? ' with-detail' : ''}${layout === 'wide' && !rail ? ' no-rail' : ''}`} data-pane=${pane}>
+    <main id="main" class=${`main layout-${layout}${onPage ? ' on-page' : ''}${peek ? ' with-detail' : ''}${layout === 'wide' && !rail ? ' no-rail' : ''}${s.ui.selectedKey ? '' : ' no-pick'}`} data-pane=${pane}>
       ${main}
       ${showTabsCol ? html`<${TabsColumn} s=${s} c=${ctl} byKey=${byKey} />` : null}
     </main>

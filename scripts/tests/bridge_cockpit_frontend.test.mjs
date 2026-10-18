@@ -119,8 +119,8 @@ test('text tables: one word per thing, the retired words appear nowhere', () => 
   const { de, en } = text.TABLES
   assert.equal(de.action.done, 'Abhaken'); assert.equal(en.action.done, 'Close')
   assert.equal(de.settleDone, 'Abhaken'); assert.equal(en.settleDone, 'Close')
-  assert.deepEqual(de.section, { now: 'Wartet auf dich', give: 'Kann die AI übernehmen', work: 'Aufgaben', later: 'Später' })
-  assert.deepEqual(en.section, { now: 'Waiting for you', give: 'AI can take over', work: 'Tasks', later: 'Later' })
+  assert.deepEqual(de.section, { now: 'Wartet auf dich', give: 'Kann die AI übernehmen', work: 'Aufgaben', track: 'Aus Boards und Trackern', later: 'Später' })
+  assert.deepEqual(en.section, { now: 'Waiting for you', give: 'AI can take over', work: 'Tasks', track: 'From boards and trackers', later: 'Later' })
   // the same sections on the start board (home.sit) and in the assessment Claude reads (logic.situation)
   for (const id of ['now', 'give', 'work', 'later']) {
     assert.equal(de.logic.situation[id], de.section[id], id); assert.equal(en.logic.situation[id], en.section[id], id)
@@ -3082,4 +3082,17 @@ test('hidden page: visibilitychange flags the stream so the server stops polling
   } finally {
     globalThis.document = saved
   }
+})
+
+test('due dates: overdue, today, tomorrow, else the day itself', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const now = new Date(2026, 9, 18, 19, 0).getTime()
+  assert.deepEqual(logic.dueWhen('2026-10-13', now), { kind: 'overdue', days: 5 })
+  assert.deepEqual(logic.dueWhen('2026-10-17T09:00', now), { kind: 'overdue', days: 1 })
+  assert.deepEqual(logic.dueWhen('2026-10-18', now), { kind: 'today', days: 0 })
+  assert.deepEqual(logic.dueWhen('2026-10-19T15:00', now), { kind: 'tomorrow', days: 1 })
+  assert.deepEqual(logic.dueWhen('2026-10-27', now), { kind: 'later', days: 9 })
+  assert.equal(logic.dueWhen('', now), null)
+  // a why that names the due date again is left out where the row shows the date itself
+  assert.deepEqual(logic.whyWithoutDue(['due 13.10', 'only you', 'fällig 16.10 09:00', 'back on 19.10']), ['only you', 'back on 19.10'])
 })
