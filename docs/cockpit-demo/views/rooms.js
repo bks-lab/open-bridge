@@ -85,13 +85,18 @@ function WorkspaceGroup({ w, s, c, here }) {
 }
 
 /** The rooms in the order last shown while the pointer or the focus is in the sidebar: a row never moves
- *  away under the hand. Only the order holds; counts and states follow at once. A new room goes last */
-function useHeldOrder(list) {
+ *  away under the hand. Only the order holds; counts and states follow at once. A new room goes last.
+ *  A change of the sort mode is the one reorder the hand asked for (its toggle sits in the sidebar), so it
+ *  applies at once and the new order holds from there */
+function useHeldOrder(list, mode) {
   const held = useRef(false)
   const shown = useRef(null)
+  const lastMode = useRef(mode)
   const [, redraw] = useState(0)
+  const asked = lastMode.current !== mode
+  lastMode.current = mode
   let out = list
-  if (held.current && shown.current) {
+  if (held.current && shown.current && !asked) {
     const at = new Map(shown.current.map((k, i) => [k, i]))
     out = list.slice().sort((a, b) => (at.get(a.key) ?? Infinity) - (at.get(b.key) ?? Infinity))
   }
@@ -103,8 +108,8 @@ function useHeldOrder(list) {
 
 export function Sidebar({ s, c, rooms, here }) {
   const t = T()
-  const order = useHeldOrder(rooms.workspaces)
   const urgency = s.ui?.roomsSort === 'urgency'
+  const order = useHeldOrder(rooms.workspaces, urgency ? 'urgency' : 'terminal')
   return html`<nav class="panel rooms-side" aria-label=${t.rooms.side}
     onPointerEnter=${order.hold} onPointerLeave=${order.release} onFocusIn=${order.hold}
     onFocusOut=${e => { if (!e.currentTarget.contains(e.relatedTarget)) order.release() }}>

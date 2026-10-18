@@ -311,6 +311,22 @@ test('the sidebar keeps its order while the pointer is inside', async () => {
   assert.equal(titles(el)[0], 'Docs')
 })
 
+test('a click on the order toggle reorders at once, though the pointer is inside', () => {
+  const titles = el => el.$$('section.room-ws .room-ws-title').map(x => x.text())
+  const s = cockpitState(NOW)
+  const el = renderSide(s)
+  assert.match(titles(el)[0], /Control$/)                                       // the terminal's order: pinned first
+  el.$('nav').dispatch('pointerenter')
+  // the toggle sits inside the sidebar: its own click is the one change of order the hand asked for
+  renderSide({ ...s, ui: { ...s.ui, roomsSort: 'urgency' } }, el)
+  assert.equal(titles(el)[0], 'Ops')
+  // and the new order holds again while the pointer stays
+  const next = { ...s, ui: { ...s.ui, roomsSort: 'urgency' }, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t =>
+    t.ref === 'surface:7' ? { ...t, state: 'working' } : t.ref === 'surface:8' ? { ...t, state: 'needs-you' } : t) } }
+  renderSide(next, el)
+  assert.equal(titles(el)[0], 'Ops')
+})
+
 test('the sidebar order toggle flips between the terminal order and the most urgent first', () => {
   const c = recorder()
   const s = cockpitState(NOW)
