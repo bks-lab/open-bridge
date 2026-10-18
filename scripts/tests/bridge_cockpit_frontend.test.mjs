@@ -394,12 +394,13 @@ test('model views: rows by key, compact or all per section, numbers, tab groups'
     tab('y', 'working', 'A', { long: 'running' }), tab('z', 'needs-you', 'A', { waiting: true })]).map(t => t.ref), ['z', 'y'])
 })
 
-test('notes are deduplicated for a few seconds and capped', () => {
+test('notes are deduplicated while their toast is up and capped', () => {
   let notes = []
+  const up = [{ id: 1, text: 'x', tone: 'ok' }]
   notes = logic.addNote(notes, { text: 'x', tone: 'ok' }, 1000)
-  notes = logic.addNote(notes, { text: 'x', tone: 'ok' }, 2000)
+  notes = logic.addNote(notes, { text: 'x', tone: 'ok' }, 2000, up)
   assert.equal(notes.length, 1)
-  notes = logic.addNote(notes, { text: 'x', tone: 'ok' }, 20000)
+  notes = logic.addNote(notes, { text: 'x', tone: 'ok' }, 3000)
   assert.equal(notes.length, 2)
   for (let i = 0; i < 30; i++) notes = logic.addNote(notes, { text: `n${i}`, tone: 'info' }, 30000 + i)
   assert.equal(notes.length, 20)
@@ -3271,4 +3272,48 @@ test('loaders: a 409 for a triage run already on is an answer, not an error: its
   await bare.loaders.triageRun(false)
   assert.equal(bare.get().notes.length, 1)
   assert.equal(bare.get().notes[0].tone, 'bad')
+})
+
+// ---------------------------------------------------------------- notes and toasts (#390)
+
+// what pushNote in app.js does: pushNoteState decides, the toast's timer later drops it again
+const failed = { text: 'The server does not answer.', tone: 'bad', at: '12:00' }
+const dismiss = (s, id) => ({ ...s, toasts: s.toasts.filter(t => t.id !== id) })
+
+test('notes: the same error twice within a second shows one toast and one note', () => {
+  let s = { notes: [], toasts: [] }
+  const first = logic.pushNoteState(s, failed, 0, 1)
+  assert.equal(first.dup, false)
+  assert.equal(first.toast.id, 1)
+  s = first
+  const again = logic.pushNoteState(s, failed, 800, 2)
+  assert.equal(again.dup, true)
+  assert.equal(again.toast, undefined)
+  assert.equal(again.toasts.length, 1)
+  assert.equal(again.notes.length, 1)
+  // another tone is another message
+  assert.equal(logic.pushNoteState(s, { ...failed, tone: 'warn' }, 900, 2).toasts.length, 2)
+})
+
+test('notes: the same error after its toast is gone shows a new toast and a new note', () => {
+  let s = logic.pushNoteState({ notes: [], toasts: [] }, failed, 0, 1)
+  s = dismiss(s, 1)                                   // the toast's own 6 s are over
+  const retry = logic.pushNoteState(s, failed, 7000, 2)
+  assert.equal(retry.dup, false)
+  assert.equal(retry.toast.id, 2)
+  assert.deepEqual(retry.toasts.map(t => t.text), [failed.text])
+  assert.equal(retry.notes.length, 2)
+  // while a toast stays up longer, the same text stays one, however late it comes
+  const long = logic.pushNoteState({ notes: [], toasts: [] }, failed, 0, 1)
+  assert.equal(logic.pushNoteState(long, failed, 15000, 2).dup, true)
+})
+
+test('notes: without a toast the note is kept, the newest four toasts stay up', () => {
+  const quiet = logic.pushNoteState({ notes: [], toasts: [] }, failed, 0, 1, false)
+  assert.equal(quiet.notes.length, 1)
+  assert.equal(quiet.toasts.length, 0)
+  let s = { notes: [], toasts: [] }
+  for (let i = 0; i < 6; i++) s = logic.pushNoteState(s, { text: `n${i}`, tone: 'info', at: '12:00' }, i, i + 1)
+  assert.deepEqual(s.toasts.map(t => t.id), [3, 4, 5, 6])
+  assert.equal(s.notes.length, 6)
 })

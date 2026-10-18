@@ -11,7 +11,7 @@ import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder } from './components.js'
 import {
-  CONN_GRACE_MS, DAY, addNote, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
+  CONN_GRACE_MS, DAY, pushNoteState, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, letterShortcut, planBusy, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
 } from './logic.js'
@@ -154,21 +154,20 @@ function pushNote(note, { toast = true, linger = 6000 } = {}) {
   if (!note || !note.text) return
   const now = Date.now()
   store.set(s => {
-    const notes = addNote(s.notes, { at: note.at ?? clock(now), text: note.text, tone: note.tone ?? 'info' }, now)
-    if (notes === s.notes) {
-      // the same text came a moment ago (the server's note event is often first): a twin that brings an
-      // action, an undo, gives it to the toast already shown and keeps it up as long as its own would stay
+    const next = pushNoteState(s, { ...note, at: note.at ?? clock(now) }, now, toastSeq + 1, toast)
+    if (next.dup) {
+      // a toast of the same text is still up (the server's note event is often first): a twin that brings
+      // an action, an undo, gives it to that toast and keeps it up as long as its own would stay
       const twin = note.action && s.toasts.find(t => t.text === note.text && !t.action)
       if (!twin) return s
       setTimeout(() => dismissToast(twin.id), linger)
       return { ...s, toasts: s.toasts.map(t => t === twin ? { ...t, action: note.action, conv: note.conv ?? null, undo: note.undo ?? null } : t) }
     }
-    if (!toast) return { ...s, notes }
-    toastSeq += 1
-    const t = { id: toastSeq, text: note.text, tone: note.tone ?? 'info', at: note.at ?? clock(now), action: note.action ?? null, conv: note.conv ?? null,
-      undo: note.undo ?? null }
-    setTimeout(() => dismissToast(t.id), linger)
-    return { ...s, notes, toasts: [...s.toasts, t].slice(-4) }
+    if (next.toast) {
+      toastSeq = next.toast.id
+      setTimeout(() => dismissToast(next.toast.id), linger)
+    }
+    return { ...s, notes: next.notes, toasts: next.toasts }
   })
 }
 

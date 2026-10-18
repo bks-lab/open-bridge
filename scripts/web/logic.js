@@ -505,12 +505,24 @@ export function formatClock(ms, lang) {
   }
 }
 
-/** Notes keep the newest `max` entries; an entry equal in text and tone to one of the last
- * few seconds is dropped (the server broadcasts action notes that the POST also returns). */
-export function addNote(notes, note, now, max = 20, windowMs = 10000) {
-  const dup = notes.some(n => n.text === note.text && n.tone === note.tone && now - (n.ms ?? 0) < windowMs)
-  if (dup) return notes
+/** Notes keep the newest `max` entries; an entry equal in text and tone to a toast still on screen is
+ * dropped (the server broadcasts action notes that the POST also returns). Once that toast is gone the
+ * same text is news again: a retry that fails the same way shows again. */
+export function addNote(notes, note, now, toasts = [], max = 20) {
+  if (toasts.some(t => t.text === note.text && t.tone === note.tone)) return notes
   return [...notes, { ...note, ms: now }].slice(-max)
+}
+
+/** What a pushed note does to `{ notes, toasts }`: a new note and, unless `toast` is false, a toast
+ * with `id` (the newest four stay up). A note a visible toast already shows changes neither and comes
+ * back with `dup` set, so the caller can hand a twin's action to that toast. */
+export function pushNoteState({ notes, toasts }, note, now, id, toast = true) {
+  const tone = note.tone ?? 'info'
+  const next = addNote(notes, { at: note.at, text: note.text, tone }, now, toasts)
+  if (next === notes) return { notes, toasts, dup: true }
+  if (!toast) return { notes: next, toasts, dup: false }
+  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, conv: note.conv ?? null, undo: note.undo ?? null }
+  return { notes: next, toasts: [...toasts, t].slice(-4), toast: t, dup: false }
 }
 
 /** Insert or replace a relay record by id; newest first */
