@@ -896,7 +896,9 @@ says what the rule covers before anything is written. The command box (`c`)
 and a drop of several rows drop without a reason, as before.
 
 **Undo and history.** Right after a close, drop or hide the note offers
-"Undo" for ten seconds. "History" in the header lists everything the dashboard
+"Undo" for ten seconds. For a task it restores the status the task had before
+the close (backlog, doing or review, read from its STATUS.md); an entry without
+one reopens as doing. "History" in the header lists everything the dashboard
 closed, dropped, settled or hid, by day, each with its way back: a task "open
 again" (`task.py reopen`, back to doing) or "still to be done" (back to the
 backlog with a note), an inbox item "open again" (`inbox.py reopen`), any other

@@ -378,7 +378,7 @@ def new_task(root: Path, slug: str | None = None, *, headline: str | None = None
             "inbox": item.id if item else None, "warnings": warnings}
 
 
-REOPEN_STATUSES = ("doing", "backlog")
+REOPEN_STATUSES = ("doing", "backlog", "review")   # review too: an undo restores the status before the close
 
 
 def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | None = None,

@@ -393,3 +393,12 @@ def test_a_new_slug_is_the_head_of_the_summary_cut_between_words():
     slug = m._new_slug("Move the build machine carefully over to Python 3.15 (with PyYAML)")
     assert slug == "move-the-build-machine-carefully-over-to" and len(slug) <= 40
     assert m._new_slug("Größe prüfen") == "groesse-pruefen" and m._new_slug("!!!") == "task"
+
+
+def test_reopen_as_review_restores_a_task_closed_while_in_review(repo):
+    _log_with_today(repo)
+    assert run(repo, "close", "alpha").returncode == 0
+    r = run(repo, "reopen", "alpha", "--as", "review", "--json")
+    assert r.returncode == 0, r.stderr
+    assert "status: review\n" in (repo / "work/tasks/alpha/STATUS.md").read_text(encoding="utf-8")
+    assert _json.loads(r.stdout)["status"] == "review"

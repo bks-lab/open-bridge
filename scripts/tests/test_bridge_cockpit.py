@@ -4820,3 +4820,50 @@ def test_layout_tracker_rows_stand_apart_from_the_own_tasks_and_start_folded():
     assert [r["key"] for r in s["track"]["all"]] == ["board1", "app1"] and s["track"]["shown"] == []
     assert [r["key"] for r in m.layout(view(buckets=[{"id": "x", "title": "X", "rows": rows}]), set(), {}, TODAY, [],
                                        open_section="track")["sections"][3]["shown"]] == ["board1", "app1"]
+
+
+# ---------------------------------------------------------------- undo restores the status before the close (#384)
+
+def _task_with_status(world, slug: str, status: str) -> None:
+    task = world.root / "work" / "tasks" / slug
+    task.mkdir(parents=True, exist_ok=True)
+    (task / "STATUS.md").write_text(f"---\ntype: feature\nstatus: {status}\n---\n\n# {slug}\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("status", ["backlog", "doing", "review"])
+def test_undoing_a_task_close_reopens_it_with_the_status_it_had(world, status):
+    _task_with_status(world, "other-task", status)
+    res = world.act("task_close", keys=["task:other-task"], reason="done")
+    undo = res["undo"][0]["undo"]
+    assert undo == {"verb": "task_reopen", "args": {"slug": "other-task", "as": status}}
+    assert world.app.history.state()[0]["items"][0]["undo"] == undo
+    world.runner.calls.clear()
+    world.act(undo["verb"], **undo["args"])
+    assert writes(world) == [K(world, "reopen", "other-task", "--as", status, "--json")]
+    assert world.app.history.state()[0]["items"][0]["undone_ms"]
+
+
+def test_a_settled_task_keeps_its_status_for_the_undo_too(world):
+    _task_with_status(world, "other-task", "backlog")
+    res = world.act("settle", keys=["task:other-task"], outcome="not_doing")
+    assert res["undo"][0]["undo"]["args"] == {"slug": "other-task", "as": "backlog"}
+
+
+def test_a_task_without_a_readable_status_and_an_old_history_entry_undo_as_doing(world):
+    _task_with_status(world, "other-task", "done")          # not a status a reopen can restore
+    res = world.act("task_close", keys=["task:other-task"], reason="done")
+    assert res["undo"][0]["undo"]["args"] == {"slug": "other-task"}
+    world.app.history.entries[-1]["items"][0]["undo"] = {"verb": "task_reopen", "args": {"slug": "other-task"}}
+    world.runner.calls.clear()
+    world.act("task_reopen", slug="other-task")             # an entry written before the status was kept
+    assert writes(world) == [K(world, "reopen", "other-task", "--as", "doing", "--json")]
+    assert world.app.history.state()[0]["items"][0]["undone_ms"]
+
+
+def test_reopen_as_review_says_so_and_a_new_task_still_never_starts_in_review(world):
+    _task_with_status(world, "other-task", "review")
+    world.act("task_close", keys=["task:other-task"], reason="done")
+    res = world.act("task_reopen", slug="other-task", **{"as": "review"})
+    assert res["ok"] and "review" in res["note"]
+    with pytest.raises(ActionError):
+        world.act("to_task", key=f"inbox:{YES_ID}", status="review")

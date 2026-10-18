@@ -530,3 +530,18 @@ def test_a_real_pass_reaches_the_model_and_caps_come_from_the_driver(real):
     assert run.ok, run.err
     assert json.loads(run.out) == {"caps": DRIVER_CAPS}
     assert app.driver_caps(fresh=True) == DRIVER_CAPS
+
+
+def test_the_undo_of_a_task_closed_in_review_parses_with_task_py(tmp_path):
+    """#384: the undo restores the status before the close, so `--as review` must be a choice task.py has."""
+    w = World(tmp_path)
+    try:
+        task = w.root / "work" / "tasks" / "other-task"
+        task.mkdir(parents=True, exist_ok=True)
+        (task / "STATUS.md").write_text("---\nstatus: review\n---\n", encoding="utf-8")
+        undo = w.act("task_close", keys=["task:other-task"], reason="done")["undo"][0]["undo"]
+        w.act(undo["verb"], **undo["args"])
+    finally:
+        w.close()
+    reopen = [c for c in w.runner.calls if is_target(c) and w.runner.key(c) == "task.reopen"]
+    assert len(reopen) == 1 and parse(reopen[0]).as_status == "review"

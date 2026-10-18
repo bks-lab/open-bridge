@@ -645,8 +645,8 @@ const ctl = {
     if (res.ok) store.set(s => ({ ...s, history: res.data.entries ?? [] }))
   },
   openHistory: () => { setUi({ drawer: 'history' }); ctl.loadHistory() },
-  // the inverse of a close: a task back as doing, or as backlog when it only should still be done
-  undo: async (u, as = 'doing') => {
+  // the inverse of a close: a task back with the status it had (the toast), or as doing or backlog by choice
+  undo: async (u, as = u.args?.as ?? 'doing') => {
     const args = u.verb === 'task_reopen' ? { ...u.args, as, ...(as === 'backlog' ? { note: T().undoBacklogNote } : {}) } : { ...u.args }
     const r = await act(u.verb, args)
     ctl.loadHistory()

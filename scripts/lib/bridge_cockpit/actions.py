@@ -29,7 +29,8 @@ from .collector import START_HOLD_MS
 from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as AGENT_PEER_RE
 from .quick import CONV_RE, DEFAULT_MODEL, MODELS
 from .relay import KINDS as ASK_KINDS, RELAY_ID_RE
-from .history import item as history_item
+from .details import split_front
+from .history import REOPEN_AS, item as history_item
 from .launch import LaunchError
 from .ticker import TickerError
 from .store import append_log
@@ -105,7 +106,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "a2a_ask": {"peer": ("peer", True), "text": ("text", True), "conv": ("agent_conv", False), "mode": ("a2a_mode", False)},
     "a2a_poll": {"conv": ("agent_conv", True)},
     "a2a_forget": {"conv": ("agent_conv", True)},
-    "task_reopen": {"slug": ("slug", True), "as": ("reopen_as", False), "note": ("text", False)},
+    "task_reopen": {"slug": ("slug", True), "as": ("restore_as", False), "note": ("text", False)},
     "row_action": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                    "action": ("row_step", True)},
     "row_undo": {"section": ("page_id", True), "row": ("row_ref", True), "action": ("undo_token", True)},
@@ -488,6 +489,10 @@ class Actions:
             elif kind == "reopen_as":
                 if value not in ("doing", "backlog"):
                     raise bad_arg(name, "doing or backlog")
+                out[name] = value
+            elif kind == "restore_as":
+                if value not in REOPEN_AS:
+                    raise bad_arg(name, " or ".join(REOPEN_AS))
                 out[name] = value
             elif kind == "page_id":
                 if not isinstance(value, str) or not PAGE_ID_RE.match(value):
@@ -1104,6 +1109,15 @@ class Actions:
             found.append((row, entry["out"] or {}))
         return found
 
+    def task_status(self, slug: str) -> str | None:
+        """The status in an open task's STATUS.md, or None when there is none to read."""
+        try:
+            text = (self.app.root / "work" / "tasks" / slug / "STATUS.md").read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+        status = split_front(text)[0].get("status")
+        return status if isinstance(status, str) else None
+
     def v_task_close(self, ctx: Ctx, keys: list[str], reason: str, text: str | None = None) -> None:
         rows = self.task_rows(keys, closing=True)
         done = failed = 0
@@ -1114,6 +1128,7 @@ class Actions:
                 why = "not_doing" if ((out.get("review") or {}).get("verdict") == "stale") else "done"
             words = self.tx["close_reason"][why] + (f": {text}" if text else "")
             argv = self.task_cmd("close", slug, *(["--declined"] if why in DECLINED_REASONS else []), "--reason", words)
+            before = self.task_status(slug)     # read before the close moves the folder: the undo restores it
             run = ctx.call("task.close", slug, argv, SHORT_TIMEOUT)
             if not run.ok:
                 failed += 1
@@ -1122,7 +1137,7 @@ class Actions:
                 continue
             done += 1
             ctx.history.append(history_item(row["key"], row["title"], "task",
-                                            "declined" if why in DECLINED_REASONS else "done", slug))
+                                            "declined" if why in DECLINED_REASONS else "done", slug, before))
             if len(rows) == 1:
                 self.settle(ctx, row, self.tx["task_declined" if why in DECLINED_REASONS else "task_closed"])
             else:
@@ -1220,7 +1235,8 @@ class Actions:
         self.app.collector.request("both")   # the quick pass brings the row back in seconds, the full one follows
 
     def v_task_reopen(self, ctx: Ctx, slug: str, note: str | None = None, **kw) -> None:
-        """A closed task back to work/tasks/: doing, or backlog when it only should still be done."""
+        """A closed task back to work/tasks/: doing, backlog when it only should still be done, or review
+        when an undo restores a task closed while in review."""
         status = kw.get("as") or "doing"
         argv = self.task_cmd("reopen", slug, "--as", status, *(["--note", note] if note else []), "--json")
         run = ctx.call("task.reopen", slug, argv, SHORT_TIMEOUT)
@@ -1228,7 +1244,7 @@ class Actions:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
         self.reopened(ctx, "task_reopen", slug, (f"task:{slug}",),
-                      self.tx["task_reopened" if status == "doing" else "task_reopened_backlog"])
+                      self.tx[{"doing": "task_reopened", "review": "task_reopened_review"}.get(status, "task_reopened_backlog")])
 
     def v_inbox_reopen(self, ctx: Ctx, id: str, note: str | None = None) -> None:  # noqa: A002 - the API name
         run = ctx.call("inbox.reopen", id, self.inbox("reopen", id, *(["--note", note] if note else [])), SHORT_TIMEOUT)
