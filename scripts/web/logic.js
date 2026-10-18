@@ -92,10 +92,11 @@ export function startRefusal(row) {
  * Turn parsed codes into a plan, the way the mod's shortcut hook does (register.tsx):
  * rows with a live tab jump instead of a/v/w; a/w refused for only-you, waiting and
  * approved rows; all a rows together, all w rows together, all v rows together; b and c
- * per row. `rowFor(n)` returns the row numbered n or undefined.
+ * per row, c on an inbox row through the drop dialog like the Drop button (`askDrop`).
+ * `rowFor(n)` returns the row numbered n or undefined.
  */
 export function planShortcut(codes, rowFor) {
-  const plan = { missing: [], jump: [], refused: [], do: [], ws: [], advise: [], later: [], drop: [] }
+  const plan = { missing: [], jump: [], refused: [], do: [], ws: [], advise: [], later: [], drop: [], askDrop: [] }
   for (const { n, letter } of codes) {
     const row = rowFor(n)
     if (!row) {
@@ -105,12 +106,48 @@ export function planShortcut(codes, rowFor) {
     if (row.tab && row.tab.live && 'avw'.includes(letter)) plan.jump.push({ n, row })
     else if ('aw'.includes(letter) && startRefusal(row)) plan.refused.push({ n, row, reason: startRefusal(row) })
     else if (letter === 'b') plan.later.push({ n, row })
-    else if (letter === 'c') plan.drop.push({ n, row })
+    else if (letter === 'c') (row.inbox_id ? plan.askDrop : plan.drop).push({ n, row })
     else if (letter === 'v') plan.advise.push({ n, row })
     else if (letter === 'w') plan.ws.push({ n, row })
     else plan.do.push({ n, row })
   }
   return plan
+}
+
+/** The letter of a single-key row shortcut (a v c b w), or null; an auto-repeat keydown is none */
+export function letterShortcut(e) {
+  if (!e || e.repeat) return null
+  const key = e.key
+  return typeof key === 'string' && key.length === 1 && 'avcbw'.includes(key) ? key : null
+}
+
+/** The keys of a bulk action that are not busy yet: a row already in flight is skipped */
+export function freeKeys(keys, busy) {
+  return keys.filter(k => !busy?.[k])
+}
+
+/**
+ * `withBusy(key, what, fn, rows)`: mark `key` (and each row key of a bulk) busy while fn runs,
+ * and clear them however fn ends. A key or row already busy runs nothing and returns null, so a
+ * shortcut, which bypasses the disabled button, cannot send the same action twice.
+ * `getBusy()` reads the busy map, `updateBusy(f)` replaces it with f(busy).
+ */
+export function createWithBusy(getBusy, updateBusy) {
+  return async function withBusy(key, what, fn, rows = []) {
+    const keys = [...new Set([key, ...rows])]
+    const busy = getBusy() ?? {}
+    if (keys.some(k => busy[k])) return null
+    updateBusy(b => ({ ...b, ...Object.fromEntries(keys.map(k => [k, what])) }))
+    try {
+      return await fn()
+    } finally {
+      updateBusy(b => {
+        const next = { ...b }
+        for (const k of keys) delete next[k]
+        return next
+      })
+    }
+  }
 }
 
 /** Design token for a profile mark color name. Never put a profile value into CSS. */

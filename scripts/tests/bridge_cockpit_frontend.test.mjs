@@ -245,6 +245,62 @@ test('planShortcut: tab rows jump, a/w refused like the mod, letters grouped', (
   assert.deepEqual(plan.drop.map(x => x.n), [6])
 })
 
+test('letterShortcut: a v c b w act once per press, an auto-repeat keydown acts not at all', () => {
+  for (const key of ['a', 'v', 'c', 'b', 'w']) assert.equal(logic.letterShortcut({ key, repeat: false }), key)
+  assert.equal(logic.letterShortcut({ key: 'a' }), 'a')
+  assert.equal(logic.letterShortcut({ key: 'a', repeat: true }), null)   // a held key sends no second action
+  for (const key of ['x', 'j', 'Enter', 'ab', '']) assert.equal(logic.letterShortcut({ key }), null, key)
+  // the keyboard handler goes through it, so the repeat check cannot be bypassed
+  assert.match(read('app.js'), /letterShortcut\(e\)/)
+})
+
+test('createWithBusy: a key already busy runs fn once, clears however fn ends, rows of a bulk count', async () => {
+  let busy = {}
+  const withBusy = logic.createWithBusy(() => busy, f => { busy = f(busy) })
+  let runs = 0
+  let release
+  const first = withBusy('task:a', 'do_it', () => { runs += 1; return new Promise(res => { release = res }) })
+  assert.deepEqual(busy, { 'task:a': 'do_it' })
+  assert.equal(await withBusy('task:a', 'do_it', () => { runs += 1; return 'second' }), null)
+  assert.equal(runs, 1)
+  release('first')
+  assert.equal(await first, 'first')
+  assert.deepEqual(busy, {})
+  assert.equal(await withBusy('task:a', 'do_it', () => { runs += 1; return 'again' }), 'again')
+  assert.equal(runs, 2)
+  await assert.rejects(withBusy('task:a', 'do_it', () => { throw new Error('boom') }), /boom/)
+  assert.deepEqual(busy, {})
+  // a bulk marks each of its rows, so a single action on one of them waits its turn
+  let releaseBulk
+  const bulk = withBusy('task:a,task:b', 'do_it', () => new Promise(res => { releaseBulk = res }), ['task:a', 'task:b'])
+  assert.deepEqual(busy, { 'task:a,task:b': 'do_it', 'task:a': 'do_it', 'task:b': 'do_it' })
+  assert.equal(await withBusy('task:b', 'drop', () => 'ran'), null)
+  releaseBulk(true)
+  await bulk
+  assert.deepEqual(busy, {})
+})
+
+test('freeKeys: a bulk action skips rows that are already busy', () => {
+  const busy = { 'task:a': 'do_it', 'task:x,task:y': 'advise' }
+  assert.deepEqual(logic.freeKeys(['task:a', 'task:b', 'task:c'], busy), ['task:b', 'task:c'])
+  assert.deepEqual(logic.freeKeys(['task:a'], busy), [])
+  assert.deepEqual(logic.freeKeys(['task:b'], {}), ['task:b'])
+  assert.deepEqual(logic.freeKeys(['task:b'], undefined), ['task:b'])
+})
+
+test('planShortcut: c on an inbox row asks why like the Drop button, c on a task drops', () => {
+  const rows = new Map([
+    [1, { key: 'task:a', title: 'a', bucket: 'do', inbox_id: null, tab: null }],
+    [2, { key: 'inbox:x', title: 'x', bucket: 'do', inbox_id: 'x', tab: null }],
+    [3, { key: 'inbox:y', title: 'y', bucket: 'do', inbox_id: 'y', tab: null }],
+  ])
+  const plan = logic.planShortcut(logic.parseShortcut('1c 2c 3c'), n => rows.get(n))
+  assert.deepEqual(plan.drop.map(x => x.n), [1])
+  assert.deepEqual(plan.askDrop.map(x => x.n), [2, 3])
+  // the command box and the c key run the plan, and its inbox drops open the drop dialog
+  assert.match(read('app.js'), /plan\.askDrop[\s\S]{0,200}ctl\.askDrop\(/)
+})
+
 test('markToken: profile color names map to design tokens, unknown to muted', () => {
   assert.equal(logic.markToken('red'), 'danger')
   assert.equal(logic.markToken('Yellow'), 'warning')

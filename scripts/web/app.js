@@ -12,7 +12,7 @@ import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder } from './components.js'
 import {
   CONN_GRACE_MS, DAY, addNote, attentionTabs, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
-  isTypingTarget, isoDate, themeOverride, modalKeyAllowed, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
+  isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, freeKeys, letterShortcut, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -395,6 +395,13 @@ function busyKey(verb, args) {
 }
 
 async function act(verb, args = {}) {
+  // a bulk leaves out the rows already in flight, and marks each of the others busy
+  let rows = []
+  if (args.keys?.length) {
+    rows = freeKeys(args.keys, store.get().ui.busy)
+    if (!rows.length) return null
+    args = { ...args, keys: rows }
+  }
   return withBusy(busyKey(verb, args), verb, async () => {
     // a start carries the chosen model and effort, only while launch is on (logic.js withLaunch)
     const st = store.get()
@@ -416,22 +423,11 @@ async function act(verb, args = {}) {
     if (touched.length) store.set(s => ({ ...s, details: touched.reduce(invalidateDetails, s.details) }))
     if (r.settled?.length) setUi(ui => ({ picked: ui.picked.filter(k => !r.settled.includes(k)), rvPicked: ui.rvPicked.filter(k => !r.settled.includes(k)) }))
     return r
-  })
+  }, rows)
 }
 
-/** Mark `key` busy while fn runs, and clear it however fn ends */
-async function withBusy(key, what, fn) {
-  setUi(ui => ({ busy: { ...ui.busy, [key]: what } }))
-  try {
-    return await fn()
-  } finally {
-    setUi(ui => {
-      const busy = { ...ui.busy }
-      delete busy[key]
-      return { busy }
-    })
-  }
-}
+/** Mark `key` busy while fn runs, and clear it however fn ends; a key already busy runs nothing (logic.js) */
+const withBusy = createWithBusy(() => store.get().ui.busy, f => setUi(ui => ({ busy: f(ui.busy) })))
 
 /** A question to Claude: a short session of its own (Haiku unless picked), shown in the question window.
  *  A free question in the window goes on in the open conversation; anything else starts a new one */
@@ -976,6 +972,10 @@ async function runPlan(plan) {
   }
   for (const { row } of plan.later) await ctl.laterDays(row, 1)
   for (const { row } of plan.drop) await act('drop', { key: row.key })
+  // an inbox entry asks why first, like the Drop button; one dialog at a time, so the first one
+  const [ask, ...rest] = plan.askDrop
+  if (ask) await ctl.askDrop(ask.row)
+  for (const { n, row } of rest) said.push(`${label(n, row)}: ${t.scDropOne}`)
   if (plan.do.length) await act('do_it', { keys: plan.do.map(x => x.row.key) })
   if (plan.ws.length) await act('do_it', { keys: plan.ws.map(x => x.row.key), target: 'workspace' })
   if (plan.advise.length) await act('advise', { keys: plan.advise.map(x => x.row.key) })
@@ -1085,9 +1085,11 @@ function onKey(e) {
     if (focused.selectable) ctl.togglePick(focused.key)
     return
   }
-  if ('avcbw'.includes(key) && key.length === 1) {
+  if (key.length === 1 && 'avcbw'.includes(key)) {
     e.preventDefault()
-    ctl.letter(focused ?? (s.ui.selectedKey ? rowIndex().get(s.ui.selectedKey) : null), key)
+    // a held key repeats its keydown: only the first press acts
+    const letter = letterShortcut(e)
+    if (letter) ctl.letter(focused ?? (s.ui.selectedKey ? rowIndex().get(s.ui.selectedKey) : null), letter)
   }
 }
 

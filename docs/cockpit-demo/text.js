@@ -939,6 +939,7 @@ const en = {
   scApproved: 'yes already given',
   scWaiting: 'waiting for someone else, follow up from the card',
   scOnlyYou: 'only you can do this, v for Advise',
+  scDropOne: 'one drop at a time, asked about the first',
   scResult: said => `Shortcuts: ${said}`,
   noRow: 'no row selected',
 
@@ -2023,6 +2024,7 @@ const de = {
   scApproved: 'Schon freigegeben',
   scWaiting: 'wartet auf jemand anderen, Nachfassen über die Karte',
   scOnlyYou: 'nur du, v für Beraten',
+  scDropOne: 'eins nach dem anderen, gefragt wird zuerst nach dem ersten',
   scResult: said => `Kürzel: ${said}`,
   noRow: 'keine Zeile gewählt',
 
