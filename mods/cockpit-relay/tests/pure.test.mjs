@@ -318,3 +318,13 @@ test('relay: the heartbeat and the done file carry the mac of the key, null with
   assert.equal(blank.mac, relay.doneMac(SIGN_KEY, rid(1), 'answered', 2000, null))
   assert.equal(relay.doneRecord(rid(1), SESSION, 'expired', null, null, 2000, null).mac, null)
 })
+
+test('relay: the clip never ends on half a surrogate pair', () => {
+  // 19999 characters, then an emoji (two UTF-16 units) across the 20000 mark: the high half goes too
+  const cut = relay.clipAnswer('x'.repeat(19999) + '\u{1F600}' + 'tail')
+  assert.equal(cut.length, 19999)
+  assert.equal(cut.isWellFormed(), true)
+  const whole = relay.clipAnswer('x'.repeat(19998) + '\u{1F600}' + 'tail')
+  assert.equal(whole.length, 20000)
+  assert.equal(whole.endsWith('\u{1F600}'), true)
+})

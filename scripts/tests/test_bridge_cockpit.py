@@ -5470,3 +5470,25 @@ def test_a_forged_done_file_is_ignored(world):
     done.write_text(json.dumps(signed_done(world, rid, "answered", "Do the review first.", at)))
     out = relay.record_json(rec)
     assert (out["status"], out["answer"], out["answered_ms"]) == ("answered", "Do the review first.", at)
+
+
+def test_a_lone_surrogate_in_a_relay_file_never_breaks_the_state(world):
+    # JSON can carry a lone surrogate that UTF-8 cannot encode: such a file is unverifiable, not a crash
+    from lib.bridge_cockpit.relay import done_mac, heartbeat_mac
+    assert heartbeat_mac(SIGN_KEY, "session-forged09", 1000, False, "\ud800") is None
+    assert done_mac(SIGN_KEY, "20261009T080001-00000001", "answered", 2000, "x\ud83d") is None
+    now = int(world.clock())
+    hb = world.app.relay.heartbeat_dir
+    (hb / "session-control01.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-control01", "CTRL-UUID-0001", now)))
+    (hb / "session-forged09.json").write_text(
+        '{"v":1,"session":"session-forged09","surface":"\\ud800","at_ms":%d,"busy":false,"mac":"00"}' % now)
+    assert [h["session"] for h in world.app.relay.heartbeats(world.clock())] == ["session-control01"]
+    assert world.app.relay_state(with_records=False)["online"] is True
+    _, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "What is next?"}})
+    rid = json.loads(body)["record"]["id"]
+    (world.state / "relay" / "done" / f"{rid}.json").write_text(
+        '{"v":1,"id":"%s","status":"answered","answer":"x\\ud83d","at_ms":%d,"mac":"00"}' % (rid, now))
+    world.app.state_payload()
+    out = world.app.relay.record_json(world.app.relay.get(rid))
+    assert (out["status"], out["answer"]) == ("queued", None)

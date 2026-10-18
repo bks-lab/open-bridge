@@ -202,10 +202,13 @@ export function pickNext(entries: readonly RelayEntry[], doneIds: Iterable<strin
   return out
 }
 
-/** The answer as the done file carries it: cut to ANSWER_MAX characters, null when there is none */
+/** The answer as the done file carries it: cut to ANSWER_MAX characters, null when there is none.
+ * The cut never ends on a high surrogate: half a pair would sign as U+FFFD here and never verify. */
 export function clipAnswer(text: unknown): string | null {
   if (typeof text !== 'string' || !text.trim()) return null
-  return text.length > ANSWER_MAX ? text.slice(0, ANSWER_MAX) : text
+  if (text.length <= ANSWER_MAX) return text
+  const last = text.charCodeAt(ANSWER_MAX - 1)
+  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? ANSWER_MAX - 1 : ANSWER_MAX)
 }
 
 /** turn.complete's reason as a done status */

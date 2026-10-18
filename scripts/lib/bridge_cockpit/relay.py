@@ -78,22 +78,34 @@ def load_key(key_dir: Path) -> str:
     return key
 
 
-def _mac(key: str, *parts: object) -> str:
-    return hmac.new(key.encode("ascii"), "|".join(str(p) for p in parts).encode("utf-8"), hashlib.sha256).hexdigest()
+def _mac(key: str, *parts: object) -> str | None:
+    """None when the message does not encode as UTF-8 (a lone surrogate from JSON): unverifiable, never a crash."""
+    try:
+        message = "|".join(str(p) for p in parts).encode("utf-8")
+    except UnicodeEncodeError:
+        return None
+    return hmac.new(key.encode("ascii"), message, hashlib.sha256).hexdigest()
 
 
-def relay_mac(key: str, rid: str, session: str, expires_ms: int, text: str) -> str:
+def relay_mac(key: str, rid: str, session: str, expires_ms: int, text: str) -> str | None:
     """The inbox record's mac; the mod computes the same (hooks/relay.ts relayMac)."""
     return _mac(key, "inbox", rid, session, expires_ms, text)
 
 
-def heartbeat_mac(key: str, session: str, at_ms: int, busy: bool, surface: str | None) -> str:
-    """The heartbeat's mac, as the mod signs it (hooks/relay.ts heartbeatMac)."""
+def heartbeat_mac(key: str, session: str, at_ms: int, busy: bool, surface: str | None) -> str | None:
+    """The heartbeat's mac, as the mod signs it (hooks/relay.ts heartbeatMac).
+
+    in_flight and mod_version are not signed: a future reader of them would trust unsigned data.
+    """
     return _mac(key, "heartbeat", session, at_ms, 1 if busy else 0, surface or "")
 
 
-def done_mac(key: str, rid: str, status: str, at_ms: int, answer: str | None) -> str:
-    """The done file's mac, as the mod signs it (hooks/relay.ts doneMac)."""
+def done_mac(key: str, rid: str, status: str, at_ms: int, answer: str | None) -> str | None:
+    """The done file's mac, as the mod signs it (hooks/relay.ts doneMac).
+
+    session and turn_id are not signed (a future reader of them would trust unsigned data), and an
+    answer of None signs like '', so a writer may swap the two; both show no answer.
+    """
     return _mac(key, "done", rid, status, at_ms, answer or "")
 
 
@@ -101,9 +113,9 @@ def _is_int(v: object) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def _mac_ok(data: dict, want: str) -> bool:
+def _mac_ok(data: dict, want: str | None) -> bool:
     mac = data.get("mac")
-    return isinstance(mac, str) and hmac.compare_digest(mac, want)
+    return want is not None and isinstance(mac, str) and hmac.compare_digest(mac, want)
 
 
 def new_relay_id(now_ms: float) -> str:
