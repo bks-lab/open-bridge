@@ -993,6 +993,9 @@ kbd {
 }
 .qa { max-width: 92%; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 .qmeta { margin-top: -4px; }
+.qremind { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 6px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-md); }
+.qremind-text { font-weight: 600; }
 .quick-total { margin-left: auto; }
 .qcaret { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: text-bottom; background: var(--secondary); animation: blink 1s steps(2, start) infinite; }
 @keyframes blink { to { opacity: 0; } }

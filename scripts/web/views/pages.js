@@ -8,6 +8,7 @@ import {
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
   sectionStamp, weekdayNames, triageKey, triageShows, sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES,
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
+  skipFixable, skipText,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -16,7 +17,7 @@ import { PageItemActions, SettleMenu } from './day.js'
 import { Lines } from './detail.js'
 import { ReturnChip } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
-import { Btn, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
+import { Btn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
 import { DatesAgenda } from './dates.js'
 
@@ -487,7 +488,8 @@ export function PageSection({ page, section, s, c }) {
     </section>`
   }
   let body
-  if (section.status === 'skipped') body = html`<p class="muted"><${StateLine} token="info" word=${t.skippedSection} /></p>`
+  if (section.status === 'skipped') body = html`<p class=${section.left_out ? 'muted' : ''}><${StateLine} token=${section.left_out ? 'info' : 'warning'} word=${skipText(section, t)} />
+    ${skipFixable(section) ? html` <${SkipFix} s=${s} c=${c} title=${section.title} reason=${section.reason} />` : null}</p>`
   else if (section.status === 'error') body = html`<p><${StateLine} token="danger" strong word=${t.unreadable(section.reason || '')} /></p>`
   else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} />`
   else if (section.view === 'agenda' && section.kind === 'calendar') body = html`<${DatesAgenda} items=${items} page=${page} section=${section} s=${s} c=${c} />`
@@ -568,7 +570,7 @@ export function OverviewBoard({ page, s, c }) {
   for (const sec of page.sections ?? []) {
     const x = sectionTile(sec)
     if (sec.hide_empty && !x.count && x.state === 'ok') continue
-    const sub = x.state === 'error' ? t.unreadable(x.note || '') : x.state === 'skipped' ? t.skippedSection
+    const sub = x.state === 'error' ? t.unreadable(x.note || '') : x.state === 'skipped' ? skipText(sec, t)
       : x.peak ? t.overviewPeak(x.peak.title, x.peak.percent)
       : x.counts ? x.counts.map(g => `${g.title} ${Math.round(g.value)}/${Math.round(g.max)}`).join(', ')
       : x.loud ? null : (x.count ? null : sec.empty)

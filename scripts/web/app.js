@@ -11,7 +11,7 @@ import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder, quickLive } from './components.js'
 import {
-  CONN_GRACE_MS, DAY, pushNoteState, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
+  CONN_GRACE_MS, DAY, pushNoteState, actionFailNote, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
@@ -168,7 +168,7 @@ function pushNote(note, { toast = true, linger = 6000 } = {}) {
       const twin = note.action && s.toasts.find(t => t.text === note.text && !t.action)
       if (!twin) return s
       toastTimers.start(twin.id, toastLinger(twin.tone, linger))
-      return { ...s, toasts: s.toasts.map(t => t === twin ? { ...t, action: note.action, conv: note.conv ?? null, undo: note.undo ?? null } : t) }
+      return { ...s, toasts: s.toasts.map(t => t === twin ? { ...t, action: note.action, conv: note.conv ?? null, undo: note.undo ?? null, copy: note.copy ?? null } : t) }
     }
     if (next.toast) {
       toastSeq = next.toast.id
@@ -411,7 +411,8 @@ async function act(verb, args = {}) {
     if (!res.ok) {
       // a refusal after a step that wrote (a row filed and hidden, then the start refused) still offers its undo
       if (res.data?.undo?.length) pushNote({ text: errorText(res.error, T()), tone: 'bad', action: 'undo', undo: res.data.undo }, { linger: 10000 })
-      else failNote(res)
+      else if (res.status === 401) failNote(res)
+      else pushNote(actionFailNote(res, T()))
       if (res.error) refusals.set(args, res.error)
       return null
     }

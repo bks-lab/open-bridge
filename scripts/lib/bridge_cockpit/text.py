@@ -76,6 +76,9 @@ EN: dict = {
     "unmute_failed": "Could not lift the mute: {err}",
     "res_done": "Done",
     "file_failed": "Could not file it to the inbox: {err}",
+    "remind_detail": "A reminder from the cockpit chat.",
+    "remind_until": "Reminder filed, back on {until}: {title}",
+    "remind_now": "Reminder filed in the inbox: {title}",
     "not_filed": "not started, still in the list: {titles}",
     "handoff_control": "From a quick question in the dashboard, please take it from here:\n\n{text}",
     "handoff_offline": "The control session is not reachable; start it, then hand it on again.",
@@ -124,7 +127,9 @@ EN: dict = {
     "res_started": "started",
     "partly_started": "{n} started, the rest failed",
     "start_failed": "Start failed",
-    "manual_start": "Not started ({word}): no terminal is set up (workplace.driver). Start it yourself: {commands}",
+    "manual_start": "Not started ({word}): agent tabs need a connected terminal. Set workplace.driver in "
+                    "bridge-config.yaml (for cmux: skills/cmux/scripts/cmux_driver.py), or copy the command and start "
+                    "it yourself.",
     "launch_outcome": "{outcome} ({word}): {report}",
     "already_open": "{label} is already running, switched to its tab",
     "nothing_to_start": "nothing to start",
@@ -203,14 +208,27 @@ EN: dict = {
     "approve_all_done": "approved {n} of {total}",
 
     # words of the modules quick (ask Claude), jev (its questions) and returns (the return channel)
-    "quick_system": "You answer a question from this Bridge's cockpit for {who}. Answer briefly. You may only read "
-           "(files, work/board.md, work/log.md, work/tasks/), change nothing and send nothing. When it "
-           "needs work, say briefly what would have to be done; {who_subject} starts it. Resources: machines in "
-           "infra/remotes/, workers in workflow/workloads/, cloud and other accounts in identity/accounts/; what "
-           "the dashboard showed last is in .bridge/resources/*.json (machines, workloads, accounts, cloud, overview). "
-           "The A2A agents this Bridge may ask are in infra/a2a-peers/ (whose, what they may be asked). When a "
-           "question belongs to one of them, suggest asking it in the Agents tab or with "
+    "quick_system": "You answer a question from this Bridge's cockpit for {who}. Answer briefly. You yourself may only "
+           "read (files, work/board.md, work/log.md, work/tasks/), and you change and send nothing. The Bridge can "
+           "do more than you: {launch} Never say the Bridge cannot do something, not even when {who_subject} grants "
+           "permission: say that this chat only reads and where the work gets done. No list of steps to do by hand "
+           "when an agent can do them, unless {who_subject} asks for the steps. Say only what you checked, and do not "
+           "guess at tools, connectors or permissions you cannot see. Asked why something is missing or empty, first read "
+           "what the cockpit showed last, with each section's state and why it was skipped or failed: "
+           ".bridge/cockpit/view.json (view.status, view.pages[].sections[]). When {who_subject} wants to be reminded, end "
+           "the answer with one line [[remind: YYYY-MM-DD | what]] (the day it is due; today is {today}) or "
+           "[[remind: what]] for right away: the cockpit turns it into a button that files the reminder. Resources: "
+           "machines in infra/remotes/, workers in workflow/workloads/, cloud and other accounts in identity/accounts/; "
+           "what the dashboard showed last is in .bridge/resources/*.json (machines, workloads, accounts, cloud, "
+           "overview). The A2A agents this Bridge may ask are in infra/a2a-peers/ (whose, what they may be asked). "
+           "When a question belongs to one of them, suggest asking it in the Agents tab or with "
            "skills/a2a/a2a.sh ask <peer> \"...\"; you send nothing yourself.",
+    "quick_launch_on": "the button \"{do_it}\" below this chat (Cmd Enter) hands it to an agent tab, a full Claude "
+                       "session that may install, change and fix things and asks before anything leaves this machine. "
+                       "When something needs doing, say briefly what, and point to that button.",
+    "quick_launch_off": "an agent tab (\"{do_it}\") would do it as a full Claude session, but no terminal is connected "
+                        "on this machine yet: workplace.driver in bridge-config.yaml is not set (for cmux: "
+                        "skills/cmux/scripts/cmux_driver.py). Say so, and that the work can start once it is set.",
     "quick_nobody": "the user",
     "quick_nobody_subject": "the user",
     "quick_frame": {"q": "Question", "a": "Answer", "history": "So far", "new": "New question"},
@@ -306,6 +324,9 @@ DE: dict = {
     "unmute_failed": "Stummschaltung ließ sich nicht aufheben: {err}",
     "res_done": "Erledigt",
     "file_failed": "Konnte es nicht in die Inbox legen: {err}",
+    "remind_detail": "Eine Erinnerung aus dem Cockpit-Chat.",
+    "remind_until": "Erinnerung angelegt, kommt am {until} wieder: {title}",
+    "remind_now": "Erinnerung im Posteingang: {title}",
     "not_filed": "nicht gestartet, bleibt in der Liste: {titles}",
     "handoff_control": "Aus einer kurzen Frage im Dashboard, bitte übernimm:\n\n{text}",
     "handoff_offline": "Die Steuer-Sitzung ist nicht erreichbar; starte sie, dann noch einmal übergeben.",
@@ -354,7 +375,9 @@ DE: dict = {
     "res_started": "gestartet",
     "partly_started": "{n} gestartet, Rest fehlgeschlagen",
     "start_failed": "Start fehlgeschlagen",
-    "manual_start": "Nicht gestartet ({word}): kein Terminal eingerichtet (workplace.driver). Selbst starten: {commands}",
+    "manual_start": "Nicht gestartet ({word}): Agent-Tabs brauchen ein verbundenes Terminal. workplace.driver in "
+                    "bridge-config.yaml eintragen (für cmux: skills/cmux/scripts/cmux_driver.py) oder den Befehl "
+                    "kopieren und selbst starten.",
     "launch_outcome": "{outcome} ({word}): {report}",
     "already_open": "{label} läuft schon, zum Tab gewechselt",
     "nothing_to_start": "nichts zu starten",
@@ -434,14 +457,29 @@ DE: dict = {
 
     # words of the modules quick (ask Claude), jev (its questions) and returns (the return channel)
     "quick_system": "Du beantwortest eine Frage aus dem Cockpit dieser Bridge. Antworte kurz und auf "
-           "Deutsch, ohne Gedankenstriche, und duzt {who}. Du darfst nur lesen (Dateien, work/board.md, work/log.md, "
-           "work/tasks/), nichts ändern und nichts senden. Wenn es Arbeit braucht, sag knapp, was zu tun "
-           "wäre; {who_subject} startet sie selbst. Ressourcen: Maschinen in infra/remotes/, Worker in "
+           "Deutsch, ohne Gedankenstriche, und duzt {who}. Du selbst darfst nur lesen (Dateien, work/board.md, "
+           "work/log.md, work/tasks/), nichts ändern und nichts senden. Die Bridge kann mehr als du: {launch} Sag "
+           "nie, die Bridge könne etwas nicht, auch nicht, wenn {who_subject} es erlaubt: sag, dass dieser Chat nur "
+           "liest und wo die Arbeit erledigt wird. Keine Anleitung zum Selbermachen, wenn ein Agent es erledigen "
+           "kann, außer {who_subject} fragt ausdrücklich danach. Sag nur, was du geprüft hast, und rate nicht über "
+           "Werkzeuge, Connectoren oder Freigaben, die du nicht sehen kannst. Fragt jemand, warum etwas fehlt oder leer ist, "
+           "lies zuerst, was das Cockpit zuletzt gezeigt hat, mit dem Zustand jedes Abschnitts und dem Grund, warum er "
+           "übersprungen wurde oder fehlschlug: .bridge/cockpit/view.json (view.status, view.pages[].sections[]). Will {who_subject} an etwas erinnert "
+           "werden, schließ die Antwort mit einer Zeile [[remind: YYYY-MM-DD | was]] (der Tag, an dem es fällig ist, "
+           "heute ist {today}) oder [[remind: was]] für sofort: das Cockpit macht daraus einen Knopf, der die "
+           "Erinnerung anlegt. Ressourcen: Maschinen in infra/remotes/, Worker in "
            "workflow/workloads/, Cloud- und andere Konten in identity/accounts/; was das Dashboard zuletzt "
            "darüber gezeigt hat, steht in .bridge/resources/*.json (machines, workloads, accounts, cloud, overview). "
            "A2A-Agenten, die diese Bridge fragen darf, stehen in infra/a2a-peers/ (wer, was man sie fragen darf). "
            "Gehört eine Frage zu einem von ihnen, schlag vor, sie im Tab Agenten zu stellen oder mit "
            "skills/a2a/a2a.sh ask <peer> \"...\"; du selbst schickst nichts.",
+    "quick_launch_on": "Der Knopf „{do_it}“ unter diesem Chat (Cmd Enter) gibt es an einen Agent-Tab, eine volle "
+                       "Claude-Sitzung, die installieren, ändern und reparieren darf und fragt, bevor etwas diesen "
+                       "Rechner verlässt. Braucht es Arbeit, sag knapp was, und verweise auf diesen Knopf.",
+    "quick_launch_off": "Ein Agent-Tab („{do_it}“) würde es als volle Claude-Sitzung erledigen, aber auf diesem "
+                        "Rechner ist noch kein Terminal verbunden: workplace.driver in bridge-config.yaml fehlt (für "
+                        "cmux: skills/cmux/scripts/cmux_driver.py). Sag das, und dass die Arbeit starten kann, sobald "
+                        "es eingetragen ist.",
     "quick_nobody": "den Nutzer",
     "quick_nobody_subject": "der Nutzer",
     "quick_frame": {"q": "Frage", "a": "Antwort", "history": "Bisheriger Verlauf", "new": "Neue Frage"},

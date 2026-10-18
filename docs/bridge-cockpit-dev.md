@@ -45,7 +45,7 @@ and the terminal driver configured in `workplace.driver`
 (Go to tab), `key` (Yes, No, a dialog's option), `screen` (the large tab view, what a waiting tab asks), `close` (Close
 tab), `send` (a message, Go on) and `launch` (Do it, Advise me). The server asks
 `workplace.py caps --json` once and then every few minutes
-(`server.py driver_caps`), and a verb in `actions.py NEEDS_CAP` is refused with
+(`server.py driver_caps`), and a verb in `actions_base.py NEEDS_CAP` is refused with
 `driver_cannot` when the driver does not serve it. So the server calls no
 terminal directly for a tab; the cmux CLI stays only for the layout backup
 (`skills/cmux/scripts/cmux_layout.py`, every `snapshot_minutes` and on "Save
@@ -60,7 +60,9 @@ layout now").
 | `scripts/lib/bridge_cockpit/runner.py` | the one place that starts a subprocess: an allowlist of programs and exact argv shapes (the Bridge's scripts, the quick chat, the A2A calls, the codex and Haiku judges, and organize: `organize.argv_ok`, one `claude -p` without tools, settings or session, prompt at most 24000 characters), timeouts, clean env |
 | `scripts/lib/bridge_cockpit/collector.py` | collect pipeline (quick, full, delta), and `build_model`: the JSON the page gets |
 | `scripts/lib/bridge_cockpit/model.py` | pure domain functions, first ported from the retired briefing card's `logic.ts` (buckets, layout, tab matching) |
-| `scripts/lib/bridge_cockpit/actions.py` | the verb table `SPEC`, argument checks, one `v_<verb>` handler per verb |
+| `scripts/lib/bridge_cockpit/actions.py` | `Actions`: the argument checks (`validate`), `execute`, the audit line, `finish`; it re-exports every name of `actions_base.py` |
+| `scripts/lib/bridge_cockpit/actions_base.py` | the verb table `SPEC`, the patterns and word lists, `ActionError`, `Ctx` |
+| `scripts/lib/bridge_cockpit/actions_*.py` | the `v_<verb>` handlers by area, each a part of `Actions`: `launch` (the shared pieces, the start of agents), `work` (inbox items and tasks), `tabs`, `chats` (quick chats, A2A, sessions, `/api/ask`), `pages` (start and settings page, a page row's steps) |
 | `scripts/lib/bridge_cockpit/review.py` | the task check: `task.py review` on its own thread, the last run for the model |
 | `scripts/lib/bridge_cockpit/sessions.py` | the Sessions page: running Claude sessions, their subagents and tab |
 | `scripts/lib/bridge_cockpit/quick.py` | the chat: one short read-only `claude -p` per chat (Haiku default), streamed (`quick_live`), kept in `quick.json`, resume, cost per turn, handoff |
@@ -163,9 +165,12 @@ python3 scripts/bridge-cockpit.py status --json
 
 ### A new verb
 
-1. `actions.py`: an entry in `SPEC` (argument name to type and required), and a
-   `v_<verb>(self, ctx, ...)` handler. Run programs only through `ctx.call(name,
-   subject, argv, timeout)`, argv a list, free text after `--`. End with
+1. `actions_base.py`: an entry in `SPEC` (argument name to type and required), and a
+   `v_<verb>(self, ctx, ...)` handler in the `actions_*.py` of its area. A new
+   argument type also needs its check in `actions.py`: a pattern in `PATTERN_KINDS`,
+   a word list in `CHOICE_KINDS`, or a function in `SPECIAL_KINDS`. A kind in none
+   of them makes `validate()` raise `LookupError`, and a test fails on it. Run
+   programs only through `ctx.call(name, subject, argv, timeout)`, argv a list, free text after `--`. End with
    `self.settle(...)` when the row should disappear, or `ctx.delta()` when it
    only changed.
 2. `runner.py`: only if a new program is needed; add it to the allowlist.
@@ -193,7 +198,8 @@ the model carries `review.running`, the end comes as a note and a rebuild.
 One at a time, and `task_keep` waits for it, since both write the same file.
 
 Write verbs run one at a time under `write_lock` in `Actions.execute`, with
-three ways out, each in `actions.py` and covered by a test:
+three ways out, each covered by a test (`Ctx.unlocked` and `LAYOUT_VERBS` in
+`actions_base.py`, the start in `actions_launch.py`):
 
 - **A slow subprocess** runs inside `ctx.unlocked()`. A start (`launch`, so
   every verb that opens an agent tab, `target=auto` with its model call

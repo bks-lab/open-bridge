@@ -280,6 +280,7 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
             sections.append({
                 "id": as_text(x.get("id")), "kind": as_text(x.get("kind")), "title": as_text(x.get("title")),
                 "status": as_text(x.get("status")), "reason": as_text(x.get("reason")), "alarm": x.get("alarm") is True,
+                "left_out": x.get("left_out") is True,
                 "empty": as_text(x.get("empty")) or tx["empty"], "items": items, "count": len(items),
                 # total is not in the mod's InfoPage: the web keeps it for "more n"
                 "total": int(_number(x.get("total"), len(items))),
@@ -384,7 +385,9 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
     # probe: a report_ok section, whose rows are findings; state: error or skipped when the source did not run
     status = [{"title": as_text(s.get("title")), "count": _number(s.get("count")), "probe": s.get("health") is True,
                "state": s.get("status") if s.get("status") in ("error", "skipped") else "ok",
-               "reason": as_text_or_null(s.get("reason")) or None}
+               "reason": as_text_or_null(s.get("reason")) or None,
+               # left out of this pass on purpose (comes with the full one), unlike a source that cannot run here
+               "left_out": s.get("left_out") is True}
               for s in (_dict(x) for x in _list(v.get("status")))]
     headline = as_text(v.get("headline"))
     return {

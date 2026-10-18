@@ -537,6 +537,12 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/asks.py",                 # what a waiting tab asks, read off its screen
     "scripts/tests/test_bridge_cockpit_asks.py",
     "scripts/lib/bridge_cockpit/actions.py",
+    "scripts/lib/bridge_cockpit/actions_base.py",
+    "scripts/lib/bridge_cockpit/actions_launch.py",
+    "scripts/lib/bridge_cockpit/actions_work.py",
+    "scripts/lib/bridge_cockpit/actions_tabs.py",
+    "scripts/lib/bridge_cockpit/actions_chats.py",
+    "scripts/lib/bridge_cockpit/actions_pages.py",
     "scripts/lib/bridge_cockpit/relay.py",
     "scripts/lib/bridge_cockpit/watch.py",
     "scripts/lib/bridge_cockpit/store.py",
@@ -616,6 +622,10 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/mock.js",
     "scripts/web/tokens.css",
     "scripts/web/style.css",
+    "scripts/web/favicon.ico",                # the cockpit's icon, for tabs, bookmarks and favourites
+    "scripts/web/apple-touch-icon.png",
+    "scripts/web/icon-192.png",
+    "scripts/web/icon-512.png",
     "scripts/web/fonts/inter-latin-wght.woff2",          # DESIGN.md's two families, served by the cockpit itself
     "scripts/web/fonts/playfair-display-latin-500.woff2",
     "scripts/web/vendor/htm-preact-3.1.1.module.js",

@@ -197,6 +197,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             gone = [i for i in shown if i not in items]
             bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad"))
             sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "weight", "as_of")}
+            sec["left_out"] = s.get("left_out") is True    # a section asked again on its own has no such key
             for extra in ("stale", "boards", "metrics", "cal_figures"):
                 if s.get(extra):
                     sec[extra] = s[extra]

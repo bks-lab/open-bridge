@@ -88,6 +88,12 @@ class Skip(Exception):
     """A section that does not apply on this machine (e.g. no calendar tool)."""
 
 
+class LeftOut(Skip):
+    """A section this run leaves out on purpose (--only, --skip): it comes with the next full pass, unlike a
+    Skip, which stays until someone fixes the machine. The entry says which (`left_out`), so a page does not
+    promise a calendar that can never come (18.10.)."""
+
+
 class Ambiguous(Exception):
     def __init__(self, ids):
         super().__init__("several profiles and none is the default: " + ", ".join(ids))
@@ -1705,13 +1711,13 @@ def collect(root: Path, profile: dict, ctx: Context, previous: dict | None = Non
         ctx.deadline = time.monotonic() + ctx.timeout
         try:
             if only and s.get("kind") not in only:
-                raise Skip(f"left out in this run (--only {', '.join(only)})")
+                raise LeftOut(f"left out in this run (--only {', '.join(only)})")
             if s.get("kind") in skip:
                 # a quick pass leaves the slow sources out, but what they last said is on disk: shown at once,
                 # said to be refreshing, so a page does not open empty and fill half a minute later
                 kept = _stale(root, profile, s, ctx)
                 if kept is None:
-                    raise Skip(f"left out in this mode (--skip {s.get('kind')})")
+                    raise LeftOut(f"left out in this mode (--skip {s.get('kind')})")
                 items, entry["cached_at"] = kept
                 entry["stale"] = {"reason": f"left out in this mode (--skip {s.get('kind')})", "refreshing": True}
                 return sid, entry, items
@@ -1725,7 +1731,7 @@ def collect(root: Path, profile: dict, ctx: Context, previous: dict | None = Non
                 items = KINDS[s.get("kind")](s, ctx)
                 _keep(root, profile, s, ctx, items)
         except Skip as exc:
-            entry.update(status="skipped", reason=str(exc))
+            entry.update(status="skipped", reason=str(exc), **({"left_out": True} if isinstance(exc, LeftOut) else {}))
             items = []
         except SourceError as exc:
             reason = ctx.redact(str(exc))

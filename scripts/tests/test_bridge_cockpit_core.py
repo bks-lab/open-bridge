@@ -34,8 +34,8 @@ _cc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_cc)
 CORE = _cc.SCRIPTS_CORE_ALLOWLIST
 
-# text files only: the fonts the page serves itself are binary and name nothing
-DASHBOARD = sorted(p for p in CORE if not p.endswith(".woff2") and p.startswith(("scripts/web/", "scripts/lib/bridge_cockpit/")) or p in (
+# text files only: the fonts and icons the page serves itself are binary and name nothing
+DASHBOARD = sorted(p for p in CORE if not p.endswith((".woff2", ".png", ".ico")) and p.startswith(("scripts/web/", "scripts/lib/bridge_cockpit/")) or p in (
     "scripts/bridge-cockpit.py", "scripts/bridge-resources.py", "scripts/cloud-inventory.py", "scripts/lib/briefing_view.py"))
 
 JS_STATIC = re.compile(r"""^\s*(?:import|export)\b[^'"]*?\bfrom\s+['"](\.{1,2}/[^'"]+)['"]|^\s*import\s+['"](\.{1,2}/[^'"]+)['"]""", re.M)

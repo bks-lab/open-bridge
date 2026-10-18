@@ -212,6 +212,14 @@ export function Btn({ variant = 'secondary', size = 'sm', onClick, disabled, bus
   </button>`
 }
 
+/** "Let AI do it" for a briefing section that cannot run on this machine: files the reason as a decision and
+ *  starts an agent tab on it (verb chat_tab), the way the chat hands on a problem */
+export function SkipFix({ s, c, title, reason }) {
+  const t = T()
+  return html`<${Btn} size="xs" variant="secondary" busy=${!!s?.ui?.busy?.chat_tab}
+    onClick=${() => c.act('chat_tab', { text: t.skippedFixOrder(title, reason || '') })}>${t.action.do}<//>`
+}
+
 export function Chip({ token, children, title, cls = '' }) {
   return html`<span class=${`chip ${token ? `chip-tk tk-${token}` : ''} ${cls}`} title=${title}>
     ${token ? html`<${Dot} token=${token} />` : null}<span>${children}</span></span>`

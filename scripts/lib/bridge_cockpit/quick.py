@@ -61,11 +61,16 @@ SYSTEM = {code: TABLES[code]["quick_system"] for code in TABLES}   # the words l
 NOBODY = {code: TABLES[code]["quick_nobody"] for code in TABLES}   # the words live in text.py
 
 
-def system_text(lang: str, who: str | None) -> str:
-    """The system text in the dashboard's language, naming the person from cockpit.person_name."""
+def system_text(lang: str, who: str | None, can_launch: bool = True, today: str | None = None) -> str:
+    """The system text in the dashboard's language, naming the person from cockpit.person_name. It names the
+    agent tab the chat hands work to, or says no terminal can start one yet (`can_launch`): a chat that only
+    knew it may read told the person the Bridge cannot act and handed them the steps (18.10.)."""
     lang = lang if lang in SYSTEM else "en"
+    words = TABLES[lang]
+    launch = words["quick_launch_on" if can_launch else "quick_launch_off"].format(do_it=words["btn_do"])
     # without a name the person is "the user", in the grammatical case each sentence needs
-    return SYSTEM[lang].format(who=who or NOBODY[lang], who_subject=who or TABLES[lang]["quick_nobody_subject"])
+    return SYSTEM[lang].format(who=who or NOBODY[lang], who_subject=who or words["quick_nobody_subject"],
+                               launch=launch, today=today or "unknown")
 
 
 # how a conversation is written out: as history for a new session, and handed on as work
@@ -477,6 +482,15 @@ class Quick:
         lang = str(getattr(self.app.cfg, "language", "de"))[:2]
         return lang if lang in SYSTEM else "en"
 
+    def _can_launch(self) -> bool:
+        """Whether the terminal driver can start an agent tab, the same answer launch() goes by; an error while
+        asking counts as able, so a hiccup never makes the chat say the Bridge has no terminal"""
+        caps = getattr(self.app, "driver_caps", None)
+        try:
+            return caps is None or "launch" in caps()
+        except Exception:  # noqa: BLE001 - asking the driver must never cost the answer
+            return True
+
     def _history(self, c: dict) -> str:
         f = FRAME[self.lang()]
         parts = [f"{f['q']}: {t['q']}\n{f['a']}: {t['a']}" for t in c["turns"] if t.get("a")]
@@ -485,7 +499,8 @@ class Quick:
     def _run(self, conv: str, model: str, prompt: str, session: str | None,
              provider: str = "claude", actual_model: str | None = None, context: str | None = None) -> None:
         app = self.app
-        system = system_text(self.lang(), getattr(app.cfg, "person_name", None))
+        system = system_text(self.lang(), getattr(app.cfg, "person_name", None), self._can_launch(),
+                             time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000)))
         if context:
             # what the page shows, as data after the system text, fresh on every turn and kept nowhere
             system += "\n\n" + TABLES[self.lang()]["quick_situation"].format(text=app.scrub(context))

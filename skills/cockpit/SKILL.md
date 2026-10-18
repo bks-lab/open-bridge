@@ -27,6 +27,13 @@ instead of `open`.
 `--json` applies only to `open`, `start` and `status`; never append it to `url` or `stop`, which
 refuse it with a usage text (exit 2).
 
+After opening, run `python3 scripts/bridge-cockpit.py status --json` once. When `can_launch` is
+`false`, no terminal driver starts agent tabs, so every "Let AI do it" in the cockpit would fail:
+say so in one line and offer to set `workplace.driver` in `bridge-config.yaml` for the terminal this
+machine has (cmux: `skills/cmux/scripts/cmux_driver.py`, tmux: `skills/tmux/scripts/tmux_driver.py`,
+detected as in `bridge-onboard` D1d), written only on a yes, then `stop` and `open` again. `null`
+means the driver did not answer: say nothing.
+
 ## When it refuses
 
 | Exit | Meaning | Say |

@@ -93,8 +93,9 @@ function startRelay($: EngineInterface, session: string): void {
   const beat = async () => {
     try {
       const cur = await read($, flight)
-      await $.fs.write(`${RELAY_HEARTBEAT}/${session}.json`, JSON.stringify(
-        heartbeat(session, await surface($), await $.clock.now(), await read($, busy), cur?.id ?? null)))
+      // signed with relay.key, read at every beat: the server may create or renew the key at any start
+      await $.fs.write(`${RELAY_HEARTBEAT}/${session}.json`, JSON.stringify(heartbeat(session, await surface($),
+        await $.clock.now(), await read($, busy), cur?.id ?? null, await relayKey($))))
     } catch {
       // no heartbeat: the page says the relay is offline and offers the text to copy
     }
@@ -122,8 +123,9 @@ async function relayDone($: EngineInterface, session: string, id: string, status
   if (!isRelayId(id)) return
   await $.store.set(STORE_RELAY_DONE, rememberId(await $.store.get(STORE_RELAY_DONE), id))
   try {
+    // signed with relay.key: the server shows only what this session wrote
     await $.fs.write(`${RELAY_DONE}/${id}.json`,
-      JSON.stringify(doneRecord(id, session, status, turnId, answer, await $.clock.now())))
+      JSON.stringify(doneRecord(id, session, status, turnId, answer, await $.clock.now(), await relayKey($))))
   } catch {
     // the server shows the record as queued until it expires
   }
@@ -310,7 +312,8 @@ export const register: Register = on => {
       const session = await read($, relaySession)
       if (session !== null) {
         await update($, relaySession, () => null)
-        await $.fs.write(`${RELAY_HEARTBEAT}/${session}.json`, JSON.stringify(heartbeat(session, null, 0, false, null)))
+        await $.fs.write(`${RELAY_HEARTBEAT}/${session}.json`,
+          JSON.stringify(heartbeat(session, null, 0, false, null, await relayKey($))))
       }
     } catch {
       // the heartbeat goes stale after 15 s anyway

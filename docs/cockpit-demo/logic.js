@@ -579,7 +579,8 @@ export function pushNoteState({ notes, toasts }, note, now, id, toast = true) {
   const next = addNote(notes, { at: note.at, text: note.text, tone }, now, toasts)
   if (next === notes) return { notes, toasts, dup: true }
   if (!toast) return { notes: next, toasts, dup: false }
-  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, conv: note.conv ?? null, undo: note.undo ?? null }
+  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, conv: note.conv ?? null, undo: note.undo ?? null,
+    copy: note.copy ?? null }
   return { notes: next, toasts: [...toasts, t].slice(-4), toast: t, dup: false }
 }
 
@@ -587,6 +588,36 @@ export function pushNoteState({ notes, toasts }, note, now, id, toast = true) {
 export function upsertRecord(records, record) {
   const rest = (records ?? []).filter(r => r.id !== record.id)
   return [record, ...rest].sort((a, b) => (b.created_ms ?? 0) - (a.created_ms ?? 0)).slice(0, 20)
+}
+
+/** The note of a refused action. A verb that ran and failed in a step brings its own note (also sent as the `note`
+ *  event): that one stands alone, with the commands to copy when nothing could start them (`manual`). The generic
+ *  "the action failed" beside it read as a second, different answer (18.10.) */
+export function actionFailNote(res, table) {
+  const data = res?.data
+  if (data && typeof data.note === 'string' && data.note && !data.error) {
+    const manual = Array.isArray(data.manual) ? data.manual.filter(x => typeof x === 'string' && x) : []
+    return manual.length ? { text: data.note, tone: 'bad', action: 'copy', copy: manual.join('\n') } : { text: data.note, tone: 'bad' }
+  }
+  return { text: errorText(res?.error, table), tone: 'bad' }
+}
+
+/** A line of its own [[remind: YYYY-MM-DD | what]] or [[remind: what]]: the chat's way to propose a reminder */
+const REMIND_RE = /^[ \t]*\[\[remind:[ \t]*(?:(\d{4}-\d{2}-\d{2})[ \t]*\|[ \t]*)?([^\]\n|][^\]\n]{0,299}?)[ \t]*\]\][ \t]*$/gm
+
+/** An answer's reminder markers as cards, and the answer without them */
+export function chatReminders(answer) {
+  const reminders = []
+  const text = String(answer ?? '').replace(REMIND_RE, (_, date, what) => {
+    reminders.push({ date: date ?? null, text: what.trim() })
+    return ''
+  }).replace(/\n{3,}/g, '\n\n').trim()
+  return { text, reminders }
+}
+
+/** The chat_remind arguments of a card: its day when that is after today, else it goes to the inbox at once */
+export function reminderArgs(reminder, today) {
+  return reminder.date && reminder.date > today ? { text: reminder.text, until: reminder.date } : { text: reminder.text }
 }
 
 /** Text of an API error in the page language; `table` is T() */
@@ -616,6 +647,9 @@ export function connLost(conn, sinceMs, now) {
  */
 export function pageWarnings(s, t) {
   const out = []
+  // no driver serves `launch`: every "Let AI do it" fails until workplace.driver is set (18.10.); not known yet is no warning
+  const caps = s.driver?.caps
+  if (Array.isArray(caps) && !caps.includes('launch')) out.push({ token: 'warning', word: t.noDriver, title: t.noDriverTitle, kind: 'driver' })
   if (connLost(s.conn, s.connMs, s.now)) out.push({ token: 'warning', word: t.connLost })
   if (s.model?.stale) out.push({ token: 'warning', word: t.staleModel })
   const ld = s.loading ?? {}
@@ -1076,13 +1110,24 @@ export function newestFirst(events) {
   return [...(events ?? [])].sort((a, b) => String(b?.at ?? '').localeCompare(String(a?.at ?? '')))
 }
 
+/** What a skipped section or status row says: one left out of this pass comes with the full one, any other cannot
+ *  run on this machine and says why (a missing calendar tool read "comes with the full briefing", 18.10.) */
+export function skipText(x, t) {
+  return x.left_out ? t.skippedSection : t.cannotRun(x.reason || '')
+}
+
+/** A skipped section an agent tab can fix: one that cannot run here, not one left out on purpose */
+export function skipFixable(x) {
+  return (x?.status ?? x?.state) === 'skipped' && !x.left_out
+}
+
 /** The overview's status rows, each with the tone it is drawn in: a source that failed (danger, with
  *  its reason), a probe with findings (warning), any other count (info) in view, in that order; the
  *  quiet ones (nothing to count, or a source that comes with the full pass) folded away */
 export function statusSplit(rows) {
   const toned = (rows ?? []).map(x => ({
     ...x,
-    tone: x.state === 'error' ? 'danger' : x.state === 'skipped' ? 'neutral'
+    tone: x.state === 'error' ? 'danger' : x.state === 'skipped' ? (x.left_out ? 'neutral' : 'warning')
       : !(Number(x.count) > 0) ? 'success' : x.probe ? 'warning' : 'info',
   }))
   const rank = ['danger', 'warning', 'info']
@@ -1204,7 +1249,7 @@ export function sectionTile(section) {
   const items = section?.items ?? []
   const count = section?.total ?? section?.count ?? items.length
   if (section?.status === 'error') return { count, loud: 0, tone: 'danger', note: section.reason || null, peak: null, counts: null, state: 'error' }
-  if (section?.status === 'skipped') return { count, loud: 0, tone: 'neutral', note: null, peak: null, counts: null, state: 'skipped' }
+  if (section?.status === 'skipped') return { count, loud: 0, tone: section.left_out ? 'neutral' : 'warning', note: section.reason || null, peak: null, counts: null, state: 'skipped' }
   const loud = items.filter(it => it.tone === 'bad' || it.tone === 'warn')
   let peak = null
   let tone = loud.some(it => it.tone === 'bad') ? 'danger' : loud.length ? 'warning' : 'neutral'
@@ -2326,6 +2371,7 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   else if (pass && pass.took_ms >= 60000) add('pass-slow', 'slow', 'warn', 'passSlow', [Math.round(pass.took_ms / 1000)], { kind: 'page', id: 'briefing' })
   // 7 a source of the briefing in error: out of time is slow, anything else failing
   for (const x of model.status ?? []) {
+    if (skipFixable(x)) add(`source:${x.title}`, 'failing', 'warn', 'sourceCannotRun', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })
     if (x.state !== 'error') continue
     if (/took longer|time limit/i.test(x.reason ?? '')) add(`source:${x.title}`, 'slow', 'warn', 'sourceSlow', [x.title], { kind: 'page', id: 'briefing' })
     else add(`source:${x.title}`, 'failing', 'bad', 'sourceFailed', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })

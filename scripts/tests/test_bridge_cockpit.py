@@ -45,6 +45,7 @@ from lib.bridge_cockpit import VERSION  # noqa: E402
 from lib.bridge_cockpit import model as m  # noqa: E402
 from lib.bridge_cockpit import text as text_mod  # noqa: E402
 from lib.bridge_cockpit import tabs as tabs_mod  # noqa: E402
+from lib.bridge_cockpit import actions as actions_mod  # noqa: E402
 from lib.bridge_cockpit.actions import ActionError  # noqa: E402
 from lib.bridge_cockpit.config import WebConfigError, load_web_config  # noqa: E402
 from lib.bridge_cockpit.relay import Relay  # noqa: E402
@@ -477,15 +478,20 @@ def test_parse_view_duplicate_keys_order_agenda_status():
                "agenda": [{"when": "9", "title": "A"}, {"when": "", "title": "B", "info": True}],
                "headline": "3 for you today · free until 16:00",
                "status": [{"title": "S", "count": 2, "health": False}, {"title": "T", "health": True},
-                          {"title": "G", "status": "skipped", "reason": "quick pass", "health": False}]}}
+                          {"title": "G", "status": "skipped", "reason": "quick pass", "health": False, "left_out": True},
+                          {"title": "Cal", "status": "skipped", "reason": "no calendar tool", "health": False}]}}
     v = m.parse_view(raw, False, NOW)
     assert [b["id"] for b in v["buckets"]] == ["odd", "do", "waiting"]   # unknown ids sort first (indexOf -1)
     do = v["buckets"][1]["rows"]
     assert [r["key"] for r in do] == ["ref:x/y#1", "ref:x/y#1@do:1"]
     assert v["agenda"] == [{"when": "9", "title": "A"}]
-    assert v["status"] == [{"title": "S", "count": 2, "probe": False, "state": "ok", "reason": None},
-                           {"title": "T", "count": 0, "probe": True, "state": "ok", "reason": None},
-                           {"title": "G", "count": 0, "probe": False, "state": "skipped", "reason": "quick pass"}]
+    # left_out: comes with the full pass; without it the source cannot run on this machine (18.10.)
+    assert v["status"] == [{"title": "S", "count": 2, "probe": False, "state": "ok", "reason": None, "left_out": False},
+                           {"title": "T", "count": 0, "probe": True, "state": "ok", "reason": None, "left_out": False},
+                           {"title": "G", "count": 0, "probe": False, "state": "skipped", "reason": "quick pass",
+                            "left_out": True},
+                           {"title": "Cal", "count": 0, "probe": False, "state": "skipped", "reason": "no calendar tool",
+                            "left_out": False}]
     assert v["headline_rest"] == "free until 16:00"
     assert v["skipped"] == ["github"] and v["collected_at"] == "12:00" and v["full_ms"] == 0
     assert m.parse_view(raw, True, NOW)["full_ms"] == int(NOW)
@@ -1070,8 +1076,13 @@ def test_launch_without_a_terminal_driver_says_so_and_hands_over_the_command(wor
          "report": ["No driver configured (workplace.driver): start these yourself, one terminal each.",
                     f"  Other task: {command}"]})
     world.runner.calls.clear()
+    before = len(world.app.notes)
     res = world.act("do_it", keys=["task:other-task"])
-    assert "Not started" in res["note"] and command in res["note"] and "No driver configured" not in res["note"]
+    # one message, not three (18.10.): no "starting" first, the setting named, the commands to copy, not poured
+    # into the message with their quoting
+    assert "Not started" in res["note"] and "workplace.driver" in res["note"] and command not in res["note"]
+    assert res["manual"] == [f"Other task: {command}"]
+    assert not any("starting" in n["text"] for n in list(world.app.notes)[before:])
     assert "task.note" not in [s["call"] for s in res["steps"]]
     assert world.row("task:other-task")["starting"] is False
     world.runner.calls.clear()
@@ -2235,11 +2246,14 @@ def test_local_verbs_do_not_wait_for_the_write_lock(world):
 # ---------------------------------------------------------------- relay
 
 def heartbeat(w: World, session: str, surface: str | None, age_ms: float = 0, busy: bool = False) -> None:
+    """A heartbeat as the mod writes it: signed with relay.key (relay.py heartbeat_mac)."""
+    from lib.bridge_cockpit.relay import heartbeat_mac
     d = w.state / "relay" / "heartbeat"
     d.mkdir(parents=True, exist_ok=True)
+    at = int(w.clock() - age_ms)
     (d / f"{session}.json").write_text(json.dumps(
-        {"v": 1, "session": session, "surface": surface, "at_ms": w.clock() - age_ms, "busy": busy, "in_flight": None,
-         "mod_version": "0.26.0"}))
+        {"v": 1, "session": session, "surface": surface, "at_ms": at, "busy": busy, "in_flight": None,
+         "mod_version": "0.2.0", "mac": heartbeat_mac(w.app.relay.key, session, at, busy, surface)}))
 
 
 def test_relay_offline_reasons(world, tmp_path):
@@ -2315,15 +2329,13 @@ def test_relay_done_progression_expiry_stuck_and_cleanup(world):
     def status_now():
         return next(r for r in world.app.relay_state()["records"] if r["id"] == rid)
 
-    done.write_text(json.dumps({"v": 1, "id": rid, "session": "session-control01", "status": "submitted",
-                                "turn_id": None, "answer": None, "at_ms": world.clock()}))
+    done.write_text(json.dumps(signed_done(world, rid, "submitted", None, int(world.clock()))))
     assert status_now()["status"] == "submitted"
     changed, _ = relay.scan(world.app.tabs.control_tab(), True)
     assert [r["status"] for r in changed] == ["submitted"]
     world.clock.advance(31 * 60)
     assert status_now()["status"] == "stuck"
-    done.write_text(json.dumps({"v": 1, "id": rid, "session": "session-control01", "status": "answered",
-                                "turn_id": "t1", "answer": "Do the review first.", "at_ms": world.clock()}))
+    done.write_text(json.dumps(signed_done(world, rid, "answered", "Do the review first.", int(world.clock()))))
     rec = status_now()
     assert (rec["status"], rec["answer"], rec["answered_ms"]) == ("answered", "Do the review first.", int(world.clock()))
     # a queued record past its expiry shows expired
@@ -2687,6 +2699,34 @@ def test_argument_injection_is_rejected_before_any_call(world, verb, args):
     assert world.runner.calls == []
 
 
+SPEC_KINDS = sorted({kind for spec in actions_mod.SPEC.values() for kind, _ in spec.values()})
+
+
+@pytest.mark.parametrize("kind", SPEC_KINDS)
+def test_every_kind_of_spec_has_a_check_that_refuses_a_wrong_value(world, kind, monkeypatch):
+    """#403: every argument type SPEC names is one validate() checks; a value no check takes is refused."""
+    assert kind in actions_mod.ARG_KINDS
+    monkeypatch.setitem(actions_mod.SPEC, "probe", {"x": (kind, True)})
+    with pytest.raises(ActionError) as err:
+        world.app.actions.validate("probe", {"x": [{"--all": 1}]})
+    assert err.value.code == "invalid_argument" and err.value.field == "x"
+
+
+def test_a_spec_entry_with_an_unknown_kind_fails_loudly(world, monkeypatch):
+    """#403: a kind without a check is a programming error, never an argument that passes unchecked."""
+    monkeypatch.setitem(actions_mod.SPEC, "probe", {"x": ("no_such_kind", True)})
+    with pytest.raises(LookupError, match="no_such_kind"):
+        world.app.actions.validate("probe", {"x": "anything"})
+
+
+def test_targets_has_one_definition():
+    """#403: the start targets live in config.py; actions takes them from there."""
+    from lib.bridge_cockpit import config as config_mod
+    sources = sorted((ROOT / "scripts" / "lib" / "bridge_cockpit").glob("*.py"))
+    defined = [p.name for p in sources if re.search(r"^TARGETS\s*=", p.read_text(encoding="utf-8"), re.M)]
+    assert defined == ["config.py"] and actions_mod.TARGETS is config_mod.TARGETS
+
+
 def test_ids_are_checked_again_before_an_argv(world):
     # a malformed id inside the model (bad data from a script) never reaches an argv
     bad = {"title": "Bad", "inbox_id": "20261009-0900---evil", "gate": "your-yes", "has_action": True, "sources": ["inbox"]}
@@ -2848,6 +2888,20 @@ def test_cli_start_reuse_status_stop(cli_world):
     assert cli("url").returncode == 1
 
 
+def test_cli_status_says_whether_an_agent_tab_can_start(cli_world):
+    # 18.10.: a cockpit switched on without workplace.driver failed on its first "Let AI do it"; the status the
+    # cockpit skill reads after opening now says so, asked from the driver, not from the config
+    root, _, cli = cli_world
+    fixture = json.loads((root / "scripts" / "fixture.json").read_text())
+    assert json.loads(cli("status", "--json").stdout)["can_launch"] is None       # the driver did not answer
+    for caps, want in (([], False), (["tabs", "launch"], True)):
+        (root / "scripts" / "fixture.json").write_text(json.dumps({**fixture, "workplace.caps": {"caps": caps}}))
+        assert json.loads(cli("status", "--json").stdout)["can_launch"] is want
+    assert "agent tabs cannot start" not in cli("status").stdout
+    (root / "scripts" / "fixture.json").write_text(json.dumps({**fixture, "workplace.caps": {"caps": []}}))
+    assert "agent tabs cannot start" in cli("status").stdout
+
+
 def test_cli_disabled_config_and_occupied_port(cli_world, tmp_path):
     root, state, cli = cli_world
     (root / "bridge-config.yaml").write_text("cockpit:\n  enabled: false\n")
@@ -2925,7 +2979,7 @@ def test_relay_records_carry_a_mac_keyed_outside_the_bridge(world):
     assert len(key) == 64 and stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert stat.S_IMODE(world.keys.stat().st_mode) == 0o700
     assert world.root not in key_file.parents and world.state not in key_file.parents
-    message = f"{rid}|session-control01|{data['text']}".encode("utf-8")
+    message = f"inbox|{rid}|session-control01|{data['expires_ms']}|{data['text']}".encode("utf-8")
     assert data["mac"] == hmac_mod.new(key.encode("ascii"), message, hashlib.sha256).hexdigest()
     assert key not in json.dumps(world.app.state_payload())
     assert stat.S_IMODE((world.state / "relay").stat().st_mode) == 0o700
@@ -3264,9 +3318,7 @@ def test_a_session_on_the_relay_is_marked(world, tmp_path):
     now_ms = time.time() * 1000
     world.clock.now = now_ms
     world.app.sessions.base = claude_home(tmp_path, world.root, now_ms)
-    hb = world.app.relay.heartbeat_dir
-    hb.mkdir(parents=True, exist_ok=True)
-    (hb / f"{SID}.json").write_text(json.dumps({"session": SID, "surface": SURF, "at_ms": now_ms}), encoding="utf-8")
+    heartbeat(world, SID, SURF)
     world.app.tabs.poll()
     assert world.app.sessions.state()[0]["relay"] is True
 
@@ -3334,11 +3386,7 @@ def test_a_control_session_that_comes_up_between_two_polls_is_used_at_once(world
     # both Control tabs have no heartbeat: the oldest is control, the relay is offline
     assert world.app.tabs.control_ref() == "surface:3"
     assert world.app.relay_state(with_records=False)["online"] is False
-    hb = world.app.relay.heartbeat_dir
-    hb.mkdir(parents=True, exist_ok=True)
-    sid = "1eb08ea0-1a93-41c1-b1b2-9da6517499f0"
-    (hb / f"{sid}.json").write_text(json.dumps({"session": sid, "surface": "CTRL-UUID-0002",
-                                                 "at_ms": world.app.clock()}), encoding="utf-8")
+    heartbeat(world, "1eb08ea0-1a93-41c1-b1b2-9da6517499f0", "CTRL-UUID-0002")
     # no new tab poll: the next read already picks the tab that answers
     assert world.app.tabs.control_ref() == "surface:9"
     assert world.app.relay_state(with_records=False)["online"] is True
@@ -3376,6 +3424,67 @@ def test_a_quick_question_runs_haiku_read_only_without_user_settings(world):
     turn = convs[0]["turns"][0]
     assert convs[0]["id"] == conv and turn["a"] == "Seven of eleven steps are done."
     assert turn["model"] == "haiku-5-5" and turn["cost_usd"] == 0.0021
+
+
+def test_the_quick_chat_points_to_the_agent_tab_and_never_sends_the_work_back():
+    # 18.10.: the chat said "I can change nothing, not even with your permission" and handed over steps,
+    # while an agent tab on the same item installed the missing tool in two minutes
+    from lib.bridge_cockpit.quick import system_text
+    from lib.bridge_cockpit.text import TABLES
+    for lang in ("de", "en"):
+        text = system_text(lang, None)
+        assert TABLES[lang]["btn_do"] in text and "[[remind:" in text and "workplace.driver" not in text
+        off = system_text(lang, None, can_launch=False)
+        assert TABLES[lang]["btn_do"] in off and "workplace.driver" in off
+    assert "starts it" not in system_text("en", None)
+
+
+def test_the_quick_chat_reads_why_a_section_is_empty_before_it_guesses():
+    # 18.10.: asked why the calendar was empty, the chat guessed (a connector, a permission) while the skip reason
+    # stood in what the cockpit last showed; it is told where that is
+    from lib.bridge_cockpit.quick import system_text
+    for lang in ("de", "en"):
+        assert ".bridge/cockpit/view.json" in system_text(lang, None)
+
+
+def test_a_quick_question_knows_when_no_agent_tab_can_start(world):
+    world.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": []})
+    world.app.driver_caps(fresh=True)
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("No.", 0.001)
+    world.post("/api/ask", {"kind": "free", "args": {"text": "can you fix it?"}, "via": "quick"})
+    wait_quick(world)
+    argv = world.runner.of("claude.p")[0]
+    assert "workplace.driver" in argv[argv.index("--append-system-prompt") + 1]
+
+
+def test_a_reminder_from_the_chat_is_filed_and_comes_back_on_its_day(world):
+    # "remind me" had no way (18.10.): the chat answers with a marker, the page shows a card, the click files it
+    new_id = "20261009-1200-post-the-letter-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.runner.calls.clear()
+    res = world.act("chat_remind", text="Post the registered letter", until="2026-10-12")
+    calls = writes(world)
+    assert [world.runner.key(c) for c in calls] == ["inbox.add"]
+    assert "--summary=Post the registered letter" in calls[0]
+    assert world.app.store.hidden()[f"inbox:{new_id}"] == "2026-10-12"
+    assert res["ok"] and "2026-10-12" in res["note"]
+    assert not world.runner.of("workplace.launch")
+
+
+def test_a_reminder_without_a_day_waits_in_the_inbox_at_once(world):
+    new_id = "20261009-1200-call-back-c3d4"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    res = world.act("chat_remind", text="Call synMedico back")
+    assert res["ok"] and f"inbox:{new_id}" not in world.app.store.hidden()
+
+
+@pytest.mark.parametrize("args", [{"text": "x", "until": "2026-10-09"}, {"text": "x", "until": "tomorrow"},
+                                  {"text": "   "}, {}])
+def test_a_reminder_is_checked_before_any_call(world, args):
+    world.runner.calls.clear()
+    with pytest.raises(Exception):
+        world.act("chat_remind", **args)
+    assert not writes(world)
 
 
 def test_a_reply_resumes_the_session_and_costs_only_its_share(world):
@@ -3665,7 +3774,8 @@ def test_the_person_comes_from_config_and_the_chat_names_nobody_by_default(tmp_p
     assert (cfg.person_name, cfg.jev_person) == ("Ada", "Ada, leads a small team")
     bare = load_web_config(tmp_path, {})
     assert (bare.person_name, bare.jev_person) == (None, None)
-    assert "duzt Ada" in system_text("de", "Ada") and "Ada startet" in system_text("de", "Ada")
+    # the work no longer goes back to the person ("Ada startet sie selbst"): the subject case still names them
+    assert "duzt Ada" in system_text("de", "Ada") and "wenn Ada es erlaubt" in system_text("de", "Ada")
     for lang in ("de", "en"):
         text = system_text(lang, None)
         assert "Nutzer" in text or "the user" in text
@@ -4117,6 +4227,8 @@ def test_a_real_launch_without_a_driver_is_recorded_as_manual(world):
     conv = answered_conv(world)
     world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1300-what-next-a1b2\n")
     world.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": ["tabs"]})
+    # the quick answer asked the driver already (quick.py _can_launch): its cached caps are read again
+    world.app.driver_caps(fresh=True)
     world.app.tabs.poll()
     world.runner.handlers["workplace.launch"] = lambda argv: ok({"ok": True, "items": [], "report": ["cd /x && claude"]})
     world.act("quick_handoff", conv=conv, to="tab")
@@ -4407,6 +4519,40 @@ def test_this_bridges_design_md_names_every_colour_itself():
     used = {h.upper() for h in re.findall(r"#[0-9A-Fa-f]{6}", design.colors_css(fm))}
     fallbacks = {v.upper() for mode in design.STATUS_DEFAULTS.values() for v in mode.values()}
     assert used <= declared | fallbacks and used & declared
+
+
+ICONS = {"/favicon.ico": "image/x-icon", "/apple-touch-icon.png": "image/png", "/icon-192.png": "image/png",
+         "/icon-512.png": "image/png"}
+
+
+def test_the_icons_are_served_without_the_cookie(world):
+    # a bookmark or a Safari favourite fetches its picture without the session cookie
+    for path, kind in ICONS.items():
+        (world.root / "scripts" / "web" / path[1:]).write_bytes(b"icon " + path.encode())
+        status, headers, body = world.request("GET", path)
+        assert status == 200 and headers["Content-Type"] == kind and body == b"icon " + path.encode(), path
+
+
+def test_only_the_named_icons_skip_the_cookie(world):
+    (world.root / "scripts" / "web" / "other.png").write_bytes(b"png")
+    status, _, _ = world.request("GET", "/other.png")
+    assert status == 401
+    status, headers, _ = world.request("GET", "/other.png", headers=world.cookie)
+    assert status == 200 and headers["Content-Type"] == "image/png"
+
+
+def test_a_missing_icon_is_a_quiet_404(world):
+    status, _, _ = world.request("GET", "/apple-touch-icon.png")
+    assert status == 404
+
+
+def test_the_page_names_its_icons_and_ships_them():
+    page = (ROOT / "scripts" / "web" / "index.html").read_text(encoding="utf-8")
+    assert '<link rel="icon" href="favicon.ico" sizes="any">' in page
+    assert '<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">' in page
+    assert '<link rel="apple-touch-icon" href="apple-touch-icon.png">' in page
+    for path in ICONS:
+        assert (ROOT / "scripts" / "web" / path[1:]).is_file(), path
 
 
 def test_colors_css_is_served_with_the_cookie_only(world):
@@ -6716,3 +6862,113 @@ def test_organize_apply_names_a_failed_step_by_a_short_code(org, answer, code):
     (failed,) = res["failed"]
     assert failed["id"] == "tab_title:surface:11" and failed["error"] == code
     assert "\n" not in failed.get("detail", "") and len(failed.get("detail", "")) <= 160
+
+
+# ---------------------------------------------------------------- relay: every direction signed
+
+# One vector, the same in mods/cockpit-relay/tests/pure.test.mjs: the server and the mod sign alike.
+SIGN_KEY = "0123456789abcdef" * 4
+
+
+def signed_heartbeat(w: World, session: str, surface: str | None, at_ms: int, busy: bool = False,
+                     key: str | None = None) -> dict:
+    from lib.bridge_cockpit.relay import heartbeat_mac
+    return {"v": 1, "session": session, "surface": surface, "at_ms": at_ms, "busy": busy, "in_flight": None,
+            "mod_version": "0.2.0", "mac": heartbeat_mac(key or w.app.relay.key, session, at_ms, busy, surface)}
+
+
+def signed_done(w: World, rid: str, status: str, answer: str | None, at_ms: int, key: str | None = None) -> dict:
+    from lib.bridge_cockpit.relay import done_mac
+    return {"v": 1, "id": rid, "session": "session-control01", "status": status, "turn_id": "t1",
+            "answer": answer, "at_ms": at_ms, "mac": done_mac(key or w.app.relay.key, rid, status, at_ms, answer)}
+
+
+def test_relay_macs_match_the_shared_vector():
+    from lib.bridge_cockpit.relay import done_mac, heartbeat_mac, relay_mac
+    rid = "20261009T080001-00000001"
+    inbox = relay_mac(SIGN_KEY, rid, "a1b2c3d4-0000-4000-8000-00000000abcd", 601000, f"[web:{rid}] q")
+    assert inbox == "1a99abe4212ff3504daf4b7d1e93e6026486b2405cd1c4710fd06ed0b1cfb026"
+    assert heartbeat_mac(SIGN_KEY, "a1b2c3d4-0000-4000-8000-00000000abcd", 1000, True, "uuid-1") == "a2aefa70ac4a5889bb15bd1eb6466191376c72b6c922baf2756156eb6198400c"
+    assert heartbeat_mac(SIGN_KEY, "a1b2c3d4-0000-4000-8000-00000000abcd", 1000, False, None) == "93068612ce3d648c9b50e223a6e0b39441b8b3db91eb0759b36cf29914303b74"
+    assert done_mac(SIGN_KEY, rid, "answered", 2000, "the answer") == "d1b86d7d174f297313b46df531a53304ec9b506da4a4e1f37867e1d66a3be3f5"
+    assert done_mac(SIGN_KEY, rid, "submitted", 2000, None) == "23228110fb4b9037d6fc3f1f602aa735c05615670055ff2a34da26eb976fca1e"
+
+
+def test_inbox_mac_covers_the_expiry(world):
+    from lib.bridge_cockpit.relay import relay_mac
+    world.app.relay.heartbeat_dir.joinpath("session-control01.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-control01", "CTRL-UUID-0001", int(world.clock()))))
+    _, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "What is next?"}})
+    rid = json.loads(body)["record"]["id"]
+    data = json.loads((world.state / "relay" / "inbox" / f"{rid}.json").read_text())
+    key = world.app.relay.key
+    assert data["mac"] == relay_mac(key, rid, "session-control01", data["expires_ms"], data["text"])
+    assert data["mac"] != relay_mac(key, rid, "session-control01", data["expires_ms"] + 3600000, data["text"])
+
+
+def test_a_forged_heartbeat_is_never_the_target(world):
+    now = int(world.clock())
+    hb = world.app.relay.heartbeat_dir
+    # the real control session, signed, a little older
+    (hb / "session-control01.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-control01", "CTRL-UUID-0001", now - 4000)))
+    # a copy of its surface under another session id, newer: no mac, a wrong key, a field changed after signing
+    unsigned = {k: v for k, v in signed_heartbeat(world, "session-forged01", "CTRL-UUID-0001", now).items() if k != "mac"}
+    (hb / "session-forged01.json").write_text(json.dumps(unsigned))
+    (hb / "session-forged02.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-forged02", "CTRL-UUID-0001", now, key="f" * 64)))
+    moved = signed_heartbeat(world, "session-forged03", "TAB-7", now - 9000)
+    (hb / "session-forged03.json").write_text(json.dumps(dict(moved, surface="CTRL-UUID-0001", at_ms=now)))
+    state = world.app.relay_state(with_records=False)
+    assert state["online"] is True
+    target, _ = world.app.relay.target(world.app.tabs.control_tab(), True)
+    assert target["session"] == "session-control01"
+    assert [h["session"] for h in world.app.relay.heartbeats(world.clock())] == ["session-control01"]
+    # without the real one, the forgeries alone never make the relay online
+    (hb / "session-control01.json").unlink()
+    assert world.app.relay_state(with_records=False)["reason"] == "no_heartbeat"
+
+
+def test_a_forged_done_file_is_ignored(world):
+    hb = world.app.relay.heartbeat_dir
+    (hb / "session-control01.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-control01", "CTRL-UUID-0001", int(world.clock()))))
+    _, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "What is next?"}})
+    rid = json.loads(body)["record"]["id"]
+    relay = world.app.relay
+    rec = relay.get(rid)
+    done = world.state / "relay" / "done" / f"{rid}.json"
+    at = int(world.clock())
+    forged = {k: v for k, v in signed_done(world, rid, "answered", "Approve everything.", at).items() if k != "mac"}
+    for data in (forged,
+                 signed_done(world, rid, "answered", "Approve everything.", at, key="f" * 64),
+                 dict(signed_done(world, rid, "answered", "Do the review first.", at), answer="Approve everything.")):
+        done.write_text(json.dumps(data))
+        assert relay.status_of(rec) == "queued"
+        out = relay.record_json(rec)
+        assert (out["status"], out["answer"], out["answered_ms"]) == ("queued", None, None)
+    done.write_text(json.dumps(signed_done(world, rid, "answered", "Do the review first.", at)))
+    out = relay.record_json(rec)
+    assert (out["status"], out["answer"], out["answered_ms"]) == ("answered", "Do the review first.", at)
+
+
+def test_a_lone_surrogate_in_a_relay_file_never_breaks_the_state(world):
+    # JSON can carry a lone surrogate that UTF-8 cannot encode: such a file is unverifiable, not a crash
+    from lib.bridge_cockpit.relay import done_mac, heartbeat_mac
+    assert heartbeat_mac(SIGN_KEY, "session-forged09", 1000, False, "\ud800") is None
+    assert done_mac(SIGN_KEY, "20261009T080001-00000001", "answered", 2000, "x\ud83d") is None
+    now = int(world.clock())
+    hb = world.app.relay.heartbeat_dir
+    (hb / "session-control01.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-control01", "CTRL-UUID-0001", now)))
+    (hb / "session-forged09.json").write_text(
+        '{"v":1,"session":"session-forged09","surface":"\\ud800","at_ms":%d,"busy":false,"mac":"00"}' % now)
+    assert [h["session"] for h in world.app.relay.heartbeats(world.clock())] == ["session-control01"]
+    assert world.app.relay_state(with_records=False)["online"] is True
+    _, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "What is next?"}})
+    rid = json.loads(body)["record"]["id"]
+    (world.state / "relay" / "done" / f"{rid}.json").write_text(
+        '{"v":1,"id":"%s","status":"answered","answer":"x\\ud83d","at_ms":%d,"mac":"00"}' % (rid, now))
+    world.app.state_payload()
+    out = world.app.relay.record_json(world.app.relay.get(rid))
+    assert (out["status"], out["answer"]) == ("queued", None)

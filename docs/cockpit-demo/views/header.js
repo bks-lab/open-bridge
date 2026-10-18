@@ -31,7 +31,7 @@ function LoadingIndicator({ s }) {
 /** The warnings a narrow screen must show too (lost connection, stale model, failed pass): dot plus word */
 function Warnings({ s }) {
   const t = T()
-  return pageWarnings(s, t).map(w => html`<span class="hdr-warn" key=${w.word} title=${w.word}>
+  return pageWarnings(s, t).map(w => html`<span class="hdr-warn" key=${w.word} title=${w.title ?? w.word}>
     <${StateLine} token=${w.token} strong=${w.token === 'danger'} word=${w.word} /></span>`)
 }
 

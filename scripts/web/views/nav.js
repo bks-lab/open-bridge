@@ -8,7 +8,7 @@ import { T } from '../text.js'
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
 export const JEV_PAGE = '@jev'
 export const ASK_MAX = 4000
-export const TAB_MSG_MAX = 2000     // actions.py tab_send: check_text(..., 2000)
+export const TAB_MSG_MAX = 2000     // the 'text' check of SPECIAL_KINDS in actions.py (tab_send in actions_tabs.py)
 export const CHECK_PAGE = '@check'      // the task check's own page; profile pages never start with @
 export const SESSIONS_PAGE = '@sessions'
 export const WORKERS_PAGE = '@workers'

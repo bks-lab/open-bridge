@@ -122,7 +122,10 @@ In a Claude Code session in the Bridge root, type `/cockpit`. The skill
 runs `python3 scripts/bridge-cockpit.py open --json`: the server starts (or the
 running one is reused) and the page opens where `open_in` says. The note in
 the conversation names only where it opened and `http://127.0.0.1:<port>/`,
-never a link with a key or a login code.
+never a link with a key or a login code. It then reads `status --json` once:
+`can_launch: false` means no terminal driver starts agent tabs (`workplace.driver`),
+so it says so and offers to set the driver; the header of the page shows "agent
+tabs cannot start" for as long as that holds.
 
 From any terminal in the Bridge root:
 
@@ -1158,7 +1161,12 @@ nothing a stranger could trigger:
   (`~/.local/state/bridge-cockpit/`, or `$BRIDGE_COCKPIT_KEY_DIR`). The session
   submits only questions whose signature checks out, so a program that can
   merely write files into the repository (an agent tab, for example) cannot
-  hand the control session a prompt. The prompt names the page as its source
+  hand the control session a prompt. The signature covers the question's
+  expiry too, so nobody can keep it alive longer. The way back is signed
+  with the same key: the session signs its heartbeat and every answer, and
+  the server ignores a heartbeat or answer whose signature does not check
+  out, so such a program can neither pose as the control session to get
+  your questions nor answer in its name. The prompt names the page as its source
   and puts every text from the briefing (titles, references, tab names)
   between « and » as data, never as an instruction of yours.
 
@@ -1222,6 +1230,16 @@ the one you are working in, and a stray click put a whole chat there. With
 on a row without a task files it to the inbox and starts a reporting tab, and a
 question `via` control answers `relay_disabled`. An answer that arrives while
 the chat is not in view shows as a note with "View".
+
+The chat only reads, but it is told what the Bridge can do: its system text
+names the "Let AI do it" button and says to point there when something needs
+doing, never that the Bridge cannot act, and never to hand the person a list of
+steps an agent could do. When no terminal driver serves `launch`, it says so
+instead and names `workplace.driver`. Asked to remind, it ends the answer with
+a line `[[remind: YYYY-MM-DD | what]]` (or `[[remind: what]]` for now); the
+page turns that line into a card, and its button files the reminder (verb
+`chat_remind`: a free inbox item, kept out of sight until the day like
+"Later"). The model never writes it itself: the click does.
 
 The answer streams: the CLI runs with `--output-format stream-json --verbose
 --include-partial-messages`, and the new text plus the file it is reading
@@ -1547,11 +1565,13 @@ to copy.
 | `status` prints `warning:` lines, or the settings page shows a box "The config has keys the cockpit does not use as written" | the `cockpit:` block has a key the cockpit does not know (a typo such as `tab_seconds`) or a value it cannot use (`open_in: browser`); the cockpit runs with the fallback each line names. Fix the key in `bridge-config.yaml` and restart (`stop`, then `open`). Only a bad `port` stops the start |
 | the port is taken | another program uses it: set `cockpit.port`, then open again |
 | the server did not come up | read `.bridge/cockpit/server.log` |
-| relay offline: "no heartbeat" | no Claude Code session with the `cockpit-relay` mod runs here (section 1, `claude plugin list`), `cockpit.relay` is `false`, or the session started before you switched the cockpit on: start a new Claude Code session (`/reload-plugins` reads the config again only when the mod itself changed) |
+| relay offline: "no heartbeat" | no Claude Code session with the `cockpit-relay` mod runs here (section 1, `claude plugin list`), `cockpit.relay` is `false`, or the session started before you switched the cockpit on: start a new Claude Code session (`/reload-plugins` reads the config again only when the mod itself changed). A session that still runs a mod from before a pull may write heartbeats the server cannot verify (the mod signs them since version 0.2.0): run `/reload-plugins` there |
 | relay offline: "no control" or "ambiguous" | several sessions run and none is the control tab: open the control workspace (`workplace.control.name`) in your terminal, or keep one session |
 | a question stays "stuck" | the control session waits for a permission prompt or a long turn; answer it there |
 | a question is "rejected" | its signature did not check out: it was not written by this server, or `relay.key` changed since; ask again |
 | the header says "connection lost" | the server stopped or restarted; the rows shown no longer update: `python3 scripts/bridge-cockpit.py open` |
+| a section reads "cannot run on this machine: ..." | the source is missing here (a calendar without icalBuddy, for one): "Let AI do it" beside it files the reason and starts an agent tab that fixes it. "arrives with the full briefing" instead means only that this pass left it out |
+| "Let AI do it" answers "Not started: agent tabs need a connected terminal" | no driver is set in `workplace.driver`: nothing started, and the message's "Copy command" puts the commands for a terminal of your own on the clipboard |
 | a tab button answers "The terminal cannot do that for a tab" | the terminal driver does not serve that verb (`python3 scripts/workplace.py caps --json`), or no driver is set in `workplace.driver` ([`workplace.md`](workplace.md)) |
 | "Save layout now" answers "cmux is not available" | the server cannot find the cmux CLI: start it from inside cmux, or set `CMUX_BUNDLED_CLI_PATH`; without cmux there is no layout to save |
 | the tab column says "Tab state not current since …" | `workplace.py status` failed; the reason is shown |

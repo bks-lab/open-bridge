@@ -1173,12 +1173,14 @@ test('the status list: a failed source is loud with its reason, a skipped one wa
   const rows = [
     { title: 'quiet', count: 0, probe: false, state: 'ok' },
     { title: 'broken', count: 0, probe: false, state: 'error', reason: 'boom' },
-    { title: 'later', count: 0, probe: false, state: 'skipped' },
+    { title: 'later', count: 0, probe: false, state: 'skipped', left_out: true },
     { title: 'probe', count: 2, probe: true, state: 'ok' },
     { title: 'counted', count: 5, probe: false, state: 'ok' },
+    // a source that cannot run here never comes with the full pass: loud, with its reason (18.10.)
+    { title: 'no tool', count: 0, probe: false, state: 'skipped', reason: 'icalBuddy not installed' },
   ]
   const { loud, quiet } = logic.statusSplit(rows)
-  assert.deepEqual(loud.map(x => [x.title, x.tone]), [['broken', 'danger'], ['probe', 'warning'], ['counted', 'info']])
+  assert.deepEqual(loud.map(x => [x.title, x.tone]), [['broken', 'danger'], ['probe', 'warning'], ['no tool', 'warning'], ['counted', 'info']])
   assert.deepEqual(quiet.map(x => [x.title, x.tone]), [['quiet', 'success'], ['later', 'neutral']])
 })
 
@@ -3423,6 +3425,62 @@ test('notes: the same error twice within a second shows one toast and one note',
   assert.equal(again.notes.length, 1)
   // another tone is another message
   assert.equal(logic.pushNoteState(s, { ...failed, tone: 'warn' }, 900, 2).toasts.length, 2)
+})
+
+test('a section that cannot run on this machine says why and offers the fix; one left out waits for the full pass', () => {
+  const t = text.TABLES.de
+  assert.equal(logic.skipText({ state: 'skipped', left_out: true, reason: 'left out' }, t), t.skippedSection)
+  assert.equal(logic.skipText({ status: 'skipped', reason: 'no calendar tool (icalBuddy not installed)' }, t),
+    t.cannotRun('no calendar tool (icalBuddy not installed)'))
+  assert.equal(logic.skipFixable({ status: 'skipped', reason: 'x' }), true)
+  assert.equal(logic.skipFixable({ status: 'skipped', left_out: true, reason: 'x' }), false)
+  assert.equal(logic.skipFixable({ status: 'ok' }), false)
+  assert.match(t.skippedFixOrder('Termine', 'kein Kalenderwerkzeug'), /Termine/)
+  const tile = logic.sectionTile({ status: 'skipped', reason: 'no tool', items: [] })
+  assert.equal(tile.tone, 'warning')
+  assert.equal(logic.sectionTile({ status: 'skipped', left_out: true, items: [] }).tone, 'neutral')
+})
+
+test('the header warns while no terminal driver can start an agent tab', () => {
+  const t = text.TABLES.en
+  const base = { conn: 'open', connMs: 0, now: 10000, model: { stale: false }, loading: { pass: null, last_error: null } }
+  assert.deepEqual(logic.pageWarnings({ ...base, driver: { caps: null } }, t), [])           // not known yet
+  assert.deepEqual(logic.pageWarnings({ ...base, driver: { caps: ['tabs', 'launch'] } }, t), [])
+  const [w] = logic.pageWarnings({ ...base, driver: { caps: [] } }, t)
+  assert.equal(w.word, t.noDriver)
+  assert.equal(w.kind, 'driver')
+  assert.match(w.title, /workplace\.driver/)
+})
+
+test('a failed action that brings its own note shows that note, never "the action failed" beside it', () => {
+  // 18.10.: a start without a terminal driver showed "starting", the whole agent prompt, and "Die Aktion ging nicht"
+  const t = text.TABLES.de
+  const manual = { status: 200, ok: false, error: { code: 'unknown', message: '', field: null },
+    data: { ok: false, note: 'Nicht gestartet (AI machen lassen): ...', manual: ['Task: claude -n x \'go\''] } }
+  assert.deepEqual(logic.actionFailNote(manual, t),
+    { text: 'Nicht gestartet (AI machen lassen): ...', tone: 'bad', action: 'copy', copy: "Task: claude -n x 'go'" })
+  const own = { ...manual, data: { ok: false, note: 'Notiz ging nicht: x' } }
+  assert.deepEqual(logic.actionFailNote(own, t), { text: 'Notiz ging nicht: x', tone: 'bad' })
+  const refused = { status: 409, ok: false, error: { code: 'network', message: '', field: null }, data: null }
+  assert.deepEqual(logic.actionFailNote(refused, t), { text: t.errors.network, tone: 'bad' })
+  // the server's note event usually comes first: the twin hands the copy over with its action
+  const s = logic.pushNoteState({ notes: [], toasts: [] }, { text: 'n', tone: 'bad', at: '12:00', action: 'copy', copy: 'c' }, 0, 1)
+  assert.equal(s.toasts[0].copy, 'c')
+})
+
+test('chat reminders: the marker lines become cards and leave the answer', () => {
+  const answer = 'Der Brief ist noch offen.\n\n[[remind: 2026-10-20 | Einschreiben zur Post]]\n[[remind: synMedico anrufen]]'
+  assert.deepEqual(logic.chatReminders(answer), {
+    text: 'Der Brief ist noch offen.',
+    reminders: [{ date: '2026-10-20', text: 'Einschreiben zur Post' }, { date: null, text: 'synMedico anrufen' }],
+  })
+  assert.deepEqual(logic.chatReminders('Nothing to remind.'), { text: 'Nothing to remind.', reminders: [] })
+  // a marker inside a sentence is quoted, not a card
+  assert.equal(logic.chatReminders('Write `[[remind: x]]` to get one.').reminders.length, 0)
+  // what the server takes: a day after today, else right away
+  assert.deepEqual(logic.reminderArgs({ date: '2026-10-20', text: 'a' }, '2026-10-18'), { text: 'a', until: '2026-10-20' })
+  assert.deepEqual(logic.reminderArgs({ date: '2026-10-18', text: 'a' }, '2026-10-18'), { text: 'a' })
+  assert.deepEqual(logic.reminderArgs({ date: null, text: 'a' }, '2026-10-18'), { text: 'a' })
 })
 
 test('notes: the same error after its toast is gone shows a new toast and a new note', () => {
