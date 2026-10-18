@@ -514,3 +514,40 @@ def test_rank_counts_a_multi_batch_order_as_one_rating(monkeypatch, tmp_path):
                    call=lambda p, k: answers([{"id": t["id"]} for t in p["state"]["tasks"]]), key=lambda: "k")
     assert out["order"]["calls"] == 3
     assert (out["today"]["ratings"], out["today"]["input_tokens"], out["today"]["unknown"]) == (1, 3, 0)
+
+
+def test_rank_two_daily_requests_on_a_fresh_app_call_jev_once(monkeypatch, tmp_path):
+    # a restarted cockpit with two tabs: both first requests arrive before either state exists. A slow
+    # read of the state files widens the window in which each thread would build a state of its own.
+    import threading
+    import time as _time
+    read = jev.read_json
+
+    def slow_read(path):
+        _time.sleep(0.05)
+        return read(path)
+
+    monkeypatch.setattr(jev, "read_json", slow_read)
+    sent, out, start = [], {}, threading.Barrier(2)
+
+    def call(payload, key):
+        sent.append(payload)
+        out_ = answers([{"id": t["id"]} for t in payload["state"]["tasks"]])
+        out_["usage"] = {"input_tokens": 7, "output_tokens": 2}
+        return out_
+
+    app = work_app(tmp_path)
+
+    def ask(name):
+        start.wait(5)
+        out[name] = jev.rank(app, {"page": "arbeit", "daily": True}, call=call, key=lambda: "k")
+
+    threads = [threading.Thread(target=ask, args=(n,)) for n in ("a", "b")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert len(sent) == 1 and out["a"]["order"] == out["b"]["order"]
+    today = jev._state(app).today
+    assert (today["ratings"], today["input_tokens"]) == (1, 7)
+    assert jev._pages_state(app).orders["arbeit"] == out["a"]["order"]

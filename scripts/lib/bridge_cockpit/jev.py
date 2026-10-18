@@ -281,12 +281,20 @@ class JevState:
         return dict(self.today)
 
 
+# the server answers each request on its own thread: two first requests at once must share one state,
+# or each passes its own page gate and pays, and the loser's orders and day counter are lost
+_INIT_LOCK = threading.Lock()
+
+
 def _state(app) -> JevState:
     st = getattr(app, "_jev", None)
     if st is None:
-        sd = getattr(app, "state_dir", None)
-        st = JevState(Path(sd) / STORE_NAME if sd else None)
-        app._jev = st
+        with _INIT_LOCK:
+            st = getattr(app, "_jev", None)
+            if st is None:
+                sd = getattr(app, "state_dir", None)
+                st = JevState(Path(sd) / STORE_NAME if sd else None)
+                app._jev = st
     return st
 
 
@@ -489,9 +497,12 @@ class PagesState:
 def _pages_state(app) -> PagesState:
     st = getattr(app, "_jev_pages", None)
     if st is None:
-        sd = getattr(app, "state_dir", None)
-        st = PagesState(Path(sd) / PAGES_STORE if sd else None)
-        app._jev_pages = st
+        with _INIT_LOCK:
+            st = getattr(app, "_jev_pages", None)
+            if st is None:
+                sd = getattr(app, "state_dir", None)
+                st = PagesState(Path(sd) / PAGES_STORE if sd else None)
+                app._jev_pages = st
     return st
 
 
