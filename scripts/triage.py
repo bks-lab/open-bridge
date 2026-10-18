@@ -36,7 +36,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = Path(".bridge") / "triage.json"
-PROMPT_VERSION = 2              # 2: the level for the model an agent starts with
+PROMPT_VERSION = 3              # 2: the level for the model an agent starts with; 3: the topic, a gist beyond the title
 CHUNK = 20                     # items per model call: small batches keep a small model reliable
 BUDGET_SEC = 280               # the dashboard gives a run 300 s
 JEV_MIN_LEFT_SEC = 60          # Jev rates only while this much of the budget is left (the rest waits for the next run)
@@ -45,6 +45,9 @@ TASK_VERDICTS = ("close", "continue", "waiting", "stale", "unclear")
 INBOX_VERDICTS = ("close", "keep", "waiting", "unclear")
 DOERS = ("ai", "you", "either")
 EFFORTS = ("small", "medium", "large")
+# what kind of work an item is, as a label on its row; machine words, the page names them in its language
+TOPICS = ("decision", "reply", "research", "bug", "build", "docs", "ops", "review", "admin", "money", "meeting",
+          "application", "idea")
 GIST_MAX = 90
 # outbound or irreversible: never the AI's to do, whatever it answers (rules/, CLAUDE.md). The words cover
 # English and German task texts; a fork that writes in another language adds its verbs here. A safety net
@@ -57,7 +60,9 @@ PROMPT = """You sort the open work of one person so they see at a glance what ea
 closed, and whether an AI coding agent with repository and shell access could do it instead of them. Today is {today}.
 
 For every item answer:
-- gist: what it is about, one short line in {language}, at most 80 characters, no ID, no dash as punctuation.
+- gist: what it is about, one short line in {language}, at most 80 characters, no ID, no dash as punctuation. Say
+  what the title leaves out (the thing concerned, the reason, or the next step) and never repeat the title.
+- topic: what kind of work it is, one of {topics}.
 - verdict: for a task one of close (the evidence shows it is done or moot), continue, waiting (on a person or an
   event still pending), stale (no activity for {stale_days} days and nothing pending), unclear; for an inbox item
   one of close (what it reports is resolved or answered, its condition holds, or a log row says it is done), keep,
@@ -73,7 +78,7 @@ For every item answer:
 - reason: one sentence in {language} for the verdict, naming the evidence.
 
 Answer with a JSON array only, one object per item, using the item's key:
-[{{"key": "<key>", "gist": "...", "verdict": "...", "doer": "ai|you|either", "effort": "small|medium|large|null", "level": 0, "why": "...", "reason": "..."}}]
+[{{"key": "<key>", "gist": "...", "topic": "...", "verdict": "...", "doer": "ai|you|either", "effort": "small|medium|large|null", "level": 0, "why": "...", "reason": "..."}}]
 
 Items:
 
@@ -192,7 +197,9 @@ def _clean(item: dict, raw: dict | None, model: str | None, words: dict | None =
     doer = str(raw.get("doer") or "").lower()
     effort = str(raw.get("effort") or "").lower()
     level = raw.get("level")
+    topic = str(raw.get("topic") or "").lower()
     got = {"gist": _clip(raw.get("gist") or item["title"], GIST_MAX),
+           "topic": topic if topic in TOPICS else None,
            "level": level if isinstance(level, int) and not isinstance(level, bool) and 0 <= level <= 3 else None,
            "verdict": verdict if verdict in verdicts else "unclear",
            "doer": doer if doer in DOERS else "either",
@@ -313,6 +320,7 @@ def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None
             break
         chunk = need[i:i + CHUNK]
         prompt = PROMPT.format(today=now.date().isoformat(), language=language, stale_days=rcfg["stale_days"],
+                               topics=", ".join(TOPICS),
                                levels="\n".join(f"  {n}: {d}" for n, d in enumerate(_model_route()[0].LEVELS)),
                                items="\n\n".join(_block(x) for x in chunk))
         res = t.ask_service(root, "triage", rcfg["command"], model, prompt, run, int(min(left, 150)))
