@@ -563,8 +563,10 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_bytes(status, body, "application/json; charset=utf-8")
 
-    def send_error_json(self, code: str, message: str, field: str | None = None, status: int | None = None) -> None:
-        self.send_json(status or ERROR_STATUS[code], {"ok": False, "error": {"code": code, "message": message, "field": field}})
+    def send_error_json(self, code: str, message: str, field: str | None = None, status: int | None = None,
+                        extra: dict | None = None) -> None:
+        self.send_json(status or ERROR_STATUS[code],
+                       {"ok": False, "error": {"code": code, "message": message, "field": field}, **(extra or {})})
 
     def send_unauthorized(self, path: str) -> None:
         if path.startswith("/api/"):
@@ -966,7 +968,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_error_json("not_found", "unknown endpoint")
         except ActionError as error:
-            self.send_error_json(error.code, error.message, error.field, status=error.status)
+            self.send_error_json(error.code, error.message, error.field, status=error.status, extra=error.extra)
         except RunnerRefused:
             app.log_error("runner refused a program:\n" + traceback.format_exc())
             self.send_error_json("internal", "internal error")

@@ -5315,3 +5315,75 @@ def test_a_changed_static_file_gets_200_with_a_new_etag(world):
 def test_the_page_itself_stays_no_store_without_an_etag(world):
     status, headers, _ = world.request("GET", "/", headers=world.cookie)
     assert status == 200 and headers["Cache-Control"] == "no-store" and "ETag" not in headers
+
+
+# ---------------------------------------------------------------- multi-row actions: every row resolved first (#399)
+
+def test_runs_on_with_one_stale_key_writes_nothing(world):
+    """the second row went away with a refresh: the first is not put off either"""
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("runs_on", keys=[f"inbox:{YES_ID}", "ref:example/repo#99"], until=TOMORROW)
+    assert err.value.code == "stale_row" and writes(world) == []
+    assert "ref:example/repo#99" not in world.app.store.hidden() and world.app.history.state() == []
+
+
+def test_do_it_with_a_failing_third_filing_starts_the_first_two_and_names_the_third(world):
+    ids = iter(["20261010-1200-fix-the-example-issue-a1b2", "20261010-1201-answer-from-the-vendor-c3d4"])
+    world.runner.handlers["inbox.add"] = lambda argv: next((ok(x + "\n") for x in ids), fail("inbox locked"))
+    world.runner.calls.clear()
+    res = world.act("do_it", keys=["ref:example/repo#12", "ref:example/repo#7", CHECK_KEY])
+    calls = writes(world)
+    assert [world.runner.key(c) for c in calls] == ["inbox.add", "inbox.add", "inbox.add", "workplace.launch"]
+    assert calls[-1] == launch_argv(world, "20261010-1200-fix-the-example-issue-a1b2,20261010-1201-answer-from-the-vendor-c3d4", "go")
+    assert res["ok"] is False and "inbox locked" in res["note"] and "Backup older than 2 days" in res["note"]
+    assert res["settled"] == ["ref:example/repo#12", "ref:example/repo#7"]
+    assert CHECK_KEY not in world.app.store.hidden()
+
+
+def test_advise_with_a_failing_filing_still_starts_the_rows_filed_before(world):
+    ids = iter(["20261010-1200-fix-the-example-issue-a1b2"])
+    world.runner.handlers["inbox.add"] = lambda argv: next((ok(x + "\n") for x in ids), fail("inbox locked"))
+    world.runner.calls.clear()
+    res = world.act("advise", keys=["ref:example/repo#12", "ref:example/repo#7"])
+    assert writes(world)[-1] == launch_argv(world, "20261010-1200-fix-the-example-issue-a1b2", "report")
+    assert "Answer from the vendor" in res["note"]
+
+
+def test_the_hide_of_a_filed_row_is_in_the_history_and_can_be_undone(world):
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1200-fix-the-example-issue-a1b2\n")
+    world.runner.calls.clear()
+    res = world.act("do_it", keys=["ref:example/repo#12"])
+    items = [it for e in world.app.history.state() for it in e["items"]]
+    assert [(it["key"], it["kind"], it["undo"]) for it in items] == \
+        [("ref:example/repo#12", "other", {"verb": "unhide", "args": {"key": "ref:example/repo#12"}})]
+    assert res["undo"] == [{"title": "Fix the example issue", "kind": "other", "undo": items[0]["undo"]}]
+    world.act("unhide", key="ref:example/repo#12")
+    assert "ref:example/repo#12" not in world.app.store.hidden()
+
+
+def test_a_refusal_after_a_step_that_wrote_still_hands_back_undo_and_history(world, monkeypatch):
+    """the row was hidden and filed, then the start refused: the page can take the hide back"""
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1200-fix-the-example-issue-a1b2\n")
+
+    def refuse(*a, **kw):
+        raise ActionError(409, "not_applicable", "a launch item fails validation", "keys")
+    monkeypatch.setattr(world.app.actions, "launch", refuse)
+    rebuilds = []
+    rebuild = world.app.collector.rebuild
+    world.app.collector.rebuild = lambda: (rebuilds.append(1), rebuild())
+    with pytest.raises(ActionError) as err:
+        world.act("do_it", keys=["ref:example/repo#12"])
+    assert err.value.extra["undo"] == [{"title": "Fix the example issue", "kind": "other",
+                                        "undo": {"verb": "unhide", "args": {"key": "ref:example/repo#12"}}}]
+    assert err.value.extra["history"] and err.value.extra["settled"] == ["ref:example/repo#12"] and rebuilds
+    world.act("unhide", key="ref:example/repo#12")
+    status, _, body = world.post("/api/action", {"verb": "do_it", "args": {"keys": ["ref:example/repo#12"]}})
+    data = json.loads(body)
+    assert status == 409 and data["error"]["code"] == "not_applicable" and data["undo"][0]["kind"] == "other"
+
+
+def test_a_refusal_before_any_write_hands_back_nothing_more(world):
+    with pytest.raises(ActionError) as err:
+        world.act("do_it", keys=["ref:example/repo#99"])
+    assert err.value.extra == {}

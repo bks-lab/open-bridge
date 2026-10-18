@@ -399,7 +399,9 @@ async function act(verb, args = {}) {
     const st = store.get()
     const res = await api.action(verb, withLaunch(verb, p.args, st.launch, st.ui, st.launchRoutes))
     if (!res.ok) {
-      failNote(res)
+      // a refusal after a step that wrote (a row filed and hidden, then the start refused) still offers its undo
+      if (res.data?.undo?.length) pushNote({ text: errorText(res.error, T()), tone: 'bad', action: 'undo', undo: res.data.undo }, { linger: 10000 })
+      else failNote(res)
       return null
     }
     const r = res.data

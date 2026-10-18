@@ -151,6 +151,7 @@ class ActionError(Exception):
     def __init__(self, status: int, code: str, message: str, field: str | None = None):
         super().__init__(message)
         self.status, self.code, self.message, self.field = status, code, message, field
+        self.extra: dict = {}   # what a refused action had written before: settled rows, undo, history
 
 
 def bad_arg(field: str, message: str) -> ActionError:
@@ -554,10 +555,22 @@ class Actions:
                 self.recorded(ctx, handler, clean)
         return self.finish(ctx)
 
+    def refused_after(self, ctx: Ctx, error: ActionError) -> None:
+        """A refusal that follows a step that wrote: the page still gets what to take back, and the model
+        is built again, as finish() would have done"""
+        if not (ctx.history or ctx.settled):
+            return
+        error.extra = {"settled": ctx.settled, **{k: ctx.extra[k] for k in ("history", "undo") if k in ctx.extra}}
+        self.app.collector.rebuild()
+
     def recorded(self, ctx: Ctx, handler: Any, clean: dict) -> None:
         """A write: the handler, then its audit line and its history entry, whatever it raised."""
+        refused = None
         try:
             handler(ctx, **clean)
+        except ActionError as error:
+            refused = error
+            raise
         finally:
             if ctx.steps or ctx.notes or ctx.settled:
                 self.audit(ctx)
@@ -565,6 +578,8 @@ class Actions:
                 ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history)
                 ctx.extra["undo"] = [{"title": x["title"], "kind": x["kind"], "undo": x["undo"]}
                                      for x in ctx.history if x.get("undo")]
+            if refused is not None:
+                self.refused_after(ctx, refused)
 
     def audit(self, ctx: Ctx) -> None:
         exits = ",".join(str(s["exit"]) for s in ctx.steps) or "-"
@@ -779,8 +794,24 @@ class Actions:
             return None
         until = (self.today() + dt.timedelta(days=30)).isoformat()
         self.app.store.hide(row["key"], until)
+        # the row is back with "show again", from the toast or the history; the inbox item stays
+        ctx.history.append(history_item(row["key"], row["title"], "other", f"filed, hidden until {until}"))
         ctx.settled.append(row["key"])
         return {"inbox_id": new_id, "title": row["title"], "area": row.get("area")}
+
+    def file_all(self, ctx: Ctx, rows: list[dict]) -> list[dict]:
+        """Every row without an item behind it filed to the inbox, up to the first the inbox refuses: the
+        rows filed before it are hidden already and are started, that one and the rest are named and stay"""
+        filed = []
+        foreign = [r for r in rows if m.launch_item(r) is None]
+        for i, row in enumerate(foreign):
+            new = self.file_foreign(ctx, row)
+            if new is None:
+                left = ", ".join(m.short(r["title"], 40) for r in foreign[i:])
+                ctx.note(self.tx["not_filed"].format(titles=left), bad=True)
+                break
+            filed.append(new)
+        return filed
 
     def file_page_item(self, ctx: Ctx, row: dict, page: dict) -> str | None:
         """The inbox item for a page row: the one the briefing's `to_inbox` already filed under its key, else a
@@ -819,33 +850,23 @@ class Actions:
         for row in rows:
             if row.get("inbox_state") == "approved":
                 raise self.not_applicable("Do it needs an inbox item or a task that is not approved yet", "keys")
-        filed = []
-        for row in [r for r in rows if m.launch_item(r) is None]:
-            new = self.file_foreign(ctx, row)
-            if new is None:
-                return
-            filed.append(new)
-        rows = [r for r in rows if m.launch_item(r) is not None] + filed
+        rows = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
         yes = [r for r in rows if r.get("inbox_id") and r.get("gate") == "your-yes" and r.get("has_action")]
         rest = [r for r in rows if r not in yes]
         for row in yes:
             self.approve(ctx, row)
         if rest:
             self.launch(ctx, rest, "go", target or self.app.cfg.target)
-        if not yes and not rest:
+        if not yes and not rest and not ctx.failed:
             ctx.note(self.tx["nothing_to_do"])
 
     def v_advise(self, ctx: Ctx, keys: list[str]) -> None:
         rows = [e["row"] for e in self.entries(keys)]
         # a row with nothing to start on (an issue, a deadline) becomes an inbox item first, as for do_it:
         # it gets a tab of its own and never goes into a running session (14.10.)
-        startable = [r for r in rows if m.launch_item(r) is not None]
-        for row in [r for r in rows if m.launch_item(r) is None]:
-            new = self.file_foreign(ctx, row)
-            if new is None:
-                return
-            startable.append(new)
-        self.launch(ctx, startable, "report", self.app.cfg.target)
+        startable = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
+        if startable:
+            self.launch(ctx, startable, "report", self.app.cfg.target)
 
     def v_start_agent(self, ctx: Ctx, keys: list[str]) -> None:
         """An agent tab that goes at the item at once ("go"), for an inbox item as for a task: unlike
@@ -880,8 +901,13 @@ class Actions:
         it waits on (inbox.py defer --on), a task keeps doing with blocked_by and quiet_until (task.py wait),
         any other row is hidden until the day. Each can be taken back."""
         on = " ".join((on or "").split()) or None
-        for key in keys:
-            row = self.entry(key, "keys")["row"]
+        rows = [e["row"] for e in self.entries(keys)]
+        for row in rows:     # a row gone with a refresh, or one whose id fails, refuses before anything is written
+            if row.get("inbox_id"):
+                self.inbox_id(row)
+            elif row.get("task"):
+                self.slug(row)
+        for row in rows:
             title = m.short(row["title"], 60)
             if row.get("inbox_id"):
                 item = self.inbox_id(row)
