@@ -62,6 +62,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "quick_handoff": {"conv": ("conv", True), "to": ("handoff", True), "text": ("long_text", False), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "quick_forget": {"conv": ("conv", True)},
     "chat_tab": {"text": ("long_text", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "chat_remind": {"text": ("text", True), "until": ("date", False)},
     "task_review": {"keys": ("keys", False), "escalate": ("bool", False), "fresh": ("bool", False)},
     "task_keep": {"keys": ("keys", True)},
     "note": {"key": ("key", True), "text": ("text", True)},

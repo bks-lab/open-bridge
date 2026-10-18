@@ -36,6 +36,7 @@ export function Toasts({ s, c }) {
       <span class="toast-text">${x.text}</span>
       ${x.action === 'undo' && x.undo?.length ? html`<${Btn} size="xs" variant="primary"
           onClick=${() => { c.dismissToast(x.id); x.undo.forEach(u => c.undo(u.undo)) }}>${T().undoToast}<//>` : null}
+      ${x.action === 'copy' && x.copy ? html`<${Btn} size="xs" variant="primary" onClick=${() => c.copy(x.copy)}>${t.copyCommand}<//>` : null}
       ${x.action === 'agent' ? html`<${Btn} size="xs" variant="primary" onClick=${() => { c.dismissToast(x.id); c.openAgentConv(x.conv) }}>${t.btnTabView}<//>` : null}
       ${x.action === 'claude' || x.action === 'ask' ? html`<${Btn} size="xs" variant="primary"
           onClick=${() => { c.dismissToast(x.id); x.action === 'ask' ? c.openAsk(x.conv) : c.openClaude() }}>${t.btnTabView}<//>`

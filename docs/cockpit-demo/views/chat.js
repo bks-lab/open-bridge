@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, centsText, chatStamp, listedChats } from '../logic.js'
+import { short, centsText, chatStamp, chatReminders, isoDate, listedChats, reminderArgs } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { LaunchPick } from './launch.js'
@@ -85,16 +85,31 @@ export function SendBox({ id, label, value, setValue, onSend, max, placeholder, 
   </div>`
 }
 
+/** A reminder the chat proposed: one click files it (verb chat_remind), the chat itself never writes */
+function ReminderCard({ s, c, reminder }) {
+  const t = T()
+  const [filed, setFiled] = useState(false)
+  const args = reminderArgs(reminder, isoDate(s.now))
+  const file = async () => { if (await c.act('chat_remind', args)) setFiled(true) }
+  return html`<div class="qremind">
+    <span class="qremind-text">${reminder.text}</span>
+    <span class="muted small">${args.until ? t.remindOn(args.until) : t.remindNow}</span>
+    ${filed ? html`<span class="muted small">${t.remindFiled}</span>`
+      : html`<${Btn} size="xs" variant="primary" icon="plus" busy=${!!s.ui.busy.chat_remind} onClick=${file}>${t.remindAdd}<//>`}
+  </div>`
+}
+
 /** The turns of one chat; the turn being answered shows its text while it is written and what it reads */
-export function ChatThread({ s, conv }) {
+export function ChatThread({ s, c, conv }) {
   const t = T()
   const lang = language()
   const live = useQuickLive(conv?.id)
   return conv.turns.map((x, i) => {
     const open = !x.a && !x.error && i === conv.turns.length - 1 && conv.running
+    const done = x.a ? chatReminders(x.a) : null
     return html`<div class="qturn row-in" key=${i} style=${{ '--i': 0 }}>
       <div class="qq">${x.q}</div>
-      ${x.a ? html`<${Prose} cls="qa" text=${x.a} />`
+      ${done ? html`<${Prose} cls="qa" text=${done.text} />${done.reminders.map((r, k) => html`<${ReminderCard} key=${k} s=${s} c=${c} reminder=${r} />`)}`
         : x.error ? html`<p><${StateLine} token="danger" word=${x.error === 'interrupted' ? t.quickInterrupted : t.quickFailed(x.error)} /></p>`
         : open && live?.text ? html`<${Prose} cls="qa is-live" text=${live.text}><span class="qcaret" aria-hidden="true"></span><//>` : null}
       ${open ? html`<${Thinking} label=${live?.doing ? t.quickReading(live.doing)
@@ -188,7 +203,7 @@ export function QuickChat({ s, c }) {
       </nav>` : null}
       <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
         ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
-        ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} conv=${conv} />`}
+        ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
       </div>
       <${ChatFoot} key=${conv?.id ?? 'new'} s=${s} c=${c} conv=${conv} autofocus />
     </div>
@@ -229,7 +244,7 @@ export function ChatPage({ s, c }) {
       <section class="panel chat-main" aria-label=${t.askTitle}>
         <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
           ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
-          ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} conv=${conv} />`}
+          ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
         </div>
         <${ChatFoot} key=${conv?.id ?? 'new'} s=${s} c=${c} conv=${conv} autofocus=${false} />
       </section>

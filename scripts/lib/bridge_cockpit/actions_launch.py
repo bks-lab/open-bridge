@@ -94,7 +94,9 @@ class LaunchSteps:
         where = tx["where_area"].format(name=areas[0]) if target == "area" and len(areas) == 1 else tx["where"][target]
         app.collector.hold(items)
         app.collector.rebuild()
-        app.note(tx["launch_start"].format(word=word, n=len(items), where=where), "info")
+        if "launch" in app.driver_caps():
+            # without a driver nothing starts: "starting" first and "not started" after read as two answers (18.10.)
+            app.note(tx["launch_start"].format(word=word, n=len(items), where=where), "info")
         with ctx.unlocked():    # the items are held: a second start of them is refused as starting_already
             run = ctx.call("workplace.launch", ",".join(items), argv, LAUNCH_TIMEOUT)
         if run.ok and "launch" not in app.driver_caps():
@@ -105,7 +107,10 @@ class LaunchSteps:
             except (ValueError, AttributeError):
                 pass
             commands = [line for line in lines if line and not line.startswith("No driver configured")]
-            ctx.note(tx["manual_start"].format(word=word, commands=" · ".join(commands) or "?"), bad=True)
+            # the commands go to the page to copy, never into the message: a whole agent prompt with its shell
+            # quoting filled the screen (18.10.)
+            ctx.extra["manual"] = commands
+            ctx.note(tx["manual_start"].format(word=word), bad=True)
             app.collector.release(items)
             return "manual"
         report = run.err

@@ -1139,6 +1139,16 @@ on a row without a task files it to the inbox and starts a reporting tab, and a
 question `via` control answers `relay_disabled`. An answer that arrives while
 the chat is not in view shows as a note with "View".
 
+The chat only reads, but it is told what the Bridge can do: its system text
+names the "Let AI do it" button and says to point there when something needs
+doing, never that the Bridge cannot act, and never to hand the person a list of
+steps an agent could do. When no terminal driver serves `launch`, it says so
+instead and names `workplace.driver`. Asked to remind, it ends the answer with
+a line `[[remind: YYYY-MM-DD | what]]` (or `[[remind: what]]` for now); the
+page turns that line into a card, and its button files the reminder (verb
+`chat_remind`: a free inbox item, kept out of sight until the day like
+"Later"). The model never writes it itself: the click does.
+
 The answer streams: the CLI runs with `--output-format stream-json --verbose
 --include-partial-messages`, and the new text plus the file it is reading
 reach the page as the `quick_live` event, at most every 0.3 s. An event
@@ -1466,6 +1476,7 @@ to copy.
 | a question stays "stuck" | the control session waits for a permission prompt or a long turn; answer it there |
 | a question is "rejected" | its signature did not check out: it was not written by this server, or `relay.key` changed since; ask again |
 | the header says "connection lost" | the server stopped or restarted; the rows shown no longer update: `python3 scripts/bridge-cockpit.py open` |
+| "Let AI do it" answers "Not started: agent tabs need a connected terminal" | no driver is set in `workplace.driver`: nothing started, and the message's "Copy command" puts the commands for a terminal of your own on the clipboard |
 | a tab button answers "The terminal cannot do that for a tab" | the terminal driver does not serve that verb (`python3 scripts/workplace.py caps --json`), or no driver is set in `workplace.driver` ([`workplace.md`](workplace.md)) |
 | "Save layout now" answers "cmux is not available" | the server cannot find the cmux CLI: start it from inside cmux, or set `CMUX_BUNDLED_CLI_PATH`; without cmux there is no layout to save |
 | the tab column says "Tab state not current since …" | `workplace.py status` failed; the reason is shown |

@@ -3295,6 +3295,37 @@ test('notes: the same error twice within a second shows one toast and one note',
   assert.equal(logic.pushNoteState(s, { ...failed, tone: 'warn' }, 900, 2).toasts.length, 2)
 })
 
+test('a failed action that brings its own note shows that note, never "the action failed" beside it', () => {
+  // 18.10.: a start without a terminal driver showed "starting", the whole agent prompt, and "Die Aktion ging nicht"
+  const t = text.TABLES.de
+  const manual = { status: 200, ok: false, error: { code: 'unknown', message: '', field: null },
+    data: { ok: false, note: 'Nicht gestartet (AI machen lassen): ...', manual: ['Task: claude -n x \'go\''] } }
+  assert.deepEqual(logic.actionFailNote(manual, t),
+    { text: 'Nicht gestartet (AI machen lassen): ...', tone: 'bad', action: 'copy', copy: "Task: claude -n x 'go'" })
+  const own = { ...manual, data: { ok: false, note: 'Notiz ging nicht: x' } }
+  assert.deepEqual(logic.actionFailNote(own, t), { text: 'Notiz ging nicht: x', tone: 'bad' })
+  const refused = { status: 409, ok: false, error: { code: 'network', message: '', field: null }, data: null }
+  assert.deepEqual(logic.actionFailNote(refused, t), { text: t.errors.network, tone: 'bad' })
+  // the server's note event usually comes first: the twin hands the copy over with its action
+  const s = logic.pushNoteState({ notes: [], toasts: [] }, { text: 'n', tone: 'bad', at: '12:00', action: 'copy', copy: 'c' }, 0, 1)
+  assert.equal(s.toasts[0].copy, 'c')
+})
+
+test('chat reminders: the marker lines become cards and leave the answer', () => {
+  const answer = 'Der Brief ist noch offen.\n\n[[remind: 2026-10-20 | Einschreiben zur Post]]\n[[remind: synMedico anrufen]]'
+  assert.deepEqual(logic.chatReminders(answer), {
+    text: 'Der Brief ist noch offen.',
+    reminders: [{ date: '2026-10-20', text: 'Einschreiben zur Post' }, { date: null, text: 'synMedico anrufen' }],
+  })
+  assert.deepEqual(logic.chatReminders('Nothing to remind.'), { text: 'Nothing to remind.', reminders: [] })
+  // a marker inside a sentence is quoted, not a card
+  assert.equal(logic.chatReminders('Write `[[remind: x]]` to get one.').reminders.length, 0)
+  // what the server takes: a day after today, else right away
+  assert.deepEqual(logic.reminderArgs({ date: '2026-10-20', text: 'a' }, '2026-10-18'), { text: 'a', until: '2026-10-20' })
+  assert.deepEqual(logic.reminderArgs({ date: '2026-10-18', text: 'a' }, '2026-10-18'), { text: 'a' })
+  assert.deepEqual(logic.reminderArgs({ date: null, text: 'a' }, '2026-10-18'), { text: 'a' })
+})
+
 test('notes: the same error after its toast is gone shows a new toast and a new note', () => {
   let s = logic.pushNoteState({ notes: [], toasts: [] }, failed, 0, 1)
   s = dismiss(s, 1)                                   // the toast's own 6 s are over

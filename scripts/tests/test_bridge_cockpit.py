@@ -1068,8 +1068,13 @@ def test_launch_without_a_terminal_driver_says_so_and_hands_over_the_command(wor
          "report": ["No driver configured (workplace.driver): start these yourself, one terminal each.",
                     f"  Other task: {command}"]})
     world.runner.calls.clear()
+    before = len(world.app.notes)
     res = world.act("do_it", keys=["task:other-task"])
-    assert "Not started" in res["note"] and command in res["note"] and "No driver configured" not in res["note"]
+    # one message, not three (18.10.): no "starting" first, the setting named, the commands to copy, not poured
+    # into the message with their quoting
+    assert "Not started" in res["note"] and "workplace.driver" in res["note"] and command not in res["note"]
+    assert res["manual"] == [f"Other task: {command}"]
+    assert not any("starting" in n["text"] for n in list(world.app.notes)[before:])
     assert "task.note" not in [s["call"] for s in res["steps"]]
     assert world.row("task:other-task")["starting"] is False
     world.runner.calls.clear()
@@ -3376,6 +3381,59 @@ def test_a_quick_question_runs_haiku_read_only_without_user_settings(world):
     assert turn["model"] == "haiku-5-5" and turn["cost_usd"] == 0.0021
 
 
+def test_the_quick_chat_points_to_the_agent_tab_and_never_sends_the_work_back():
+    # 18.10.: the chat said "I can change nothing, not even with your permission" and handed over steps,
+    # while an agent tab on the same item installed the missing tool in two minutes
+    from lib.bridge_cockpit.quick import system_text
+    from lib.bridge_cockpit.text import TABLES
+    for lang in ("de", "en"):
+        text = system_text(lang, None)
+        assert TABLES[lang]["btn_do"] in text and "[[remind:" in text and "workplace.driver" not in text
+        off = system_text(lang, None, can_launch=False)
+        assert TABLES[lang]["btn_do"] in off and "workplace.driver" in off
+    assert "starts it" not in system_text("en", None)
+
+
+def test_a_quick_question_knows_when_no_agent_tab_can_start(world):
+    world.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": []})
+    world.app.driver_caps(fresh=True)
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("No.", 0.001)
+    world.post("/api/ask", {"kind": "free", "args": {"text": "can you fix it?"}, "via": "quick"})
+    wait_quick(world)
+    argv = world.runner.of("claude.p")[0]
+    assert "workplace.driver" in argv[argv.index("--append-system-prompt") + 1]
+
+
+def test_a_reminder_from_the_chat_is_filed_and_comes_back_on_its_day(world):
+    # "remind me" had no way (18.10.): the chat answers with a marker, the page shows a card, the click files it
+    new_id = "20261009-1200-post-the-letter-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.runner.calls.clear()
+    res = world.act("chat_remind", text="Post the registered letter", until="2026-10-12")
+    calls = writes(world)
+    assert [world.runner.key(c) for c in calls] == ["inbox.add"]
+    assert "--summary=Post the registered letter" in calls[0]
+    assert world.app.store.hidden()[f"inbox:{new_id}"] == "2026-10-12"
+    assert res["ok"] and "2026-10-12" in res["note"]
+    assert not world.runner.of("workplace.launch")
+
+
+def test_a_reminder_without_a_day_waits_in_the_inbox_at_once(world):
+    new_id = "20261009-1200-call-back-c3d4"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    res = world.act("chat_remind", text="Call synMedico back")
+    assert res["ok"] and f"inbox:{new_id}" not in world.app.store.hidden()
+
+
+@pytest.mark.parametrize("args", [{"text": "x", "until": "2026-10-09"}, {"text": "x", "until": "tomorrow"},
+                                  {"text": "   "}, {}])
+def test_a_reminder_is_checked_before_any_call(world, args):
+    world.runner.calls.clear()
+    with pytest.raises(Exception):
+        world.act("chat_remind", **args)
+    assert not writes(world)
+
+
 def test_a_reply_resumes_the_session_and_costs_only_its_share(world):
     answers = iter([claude_answer("first", 0.002), claude_answer("second", 0.005)])
     world.runner.handlers["claude.p"] = lambda argv: next(answers)
@@ -3663,7 +3721,8 @@ def test_the_person_comes_from_config_and_the_chat_names_nobody_by_default(tmp_p
     assert (cfg.person_name, cfg.jev_person) == ("Ada", "Ada, leads a small team")
     bare = load_web_config(tmp_path, {})
     assert (bare.person_name, bare.jev_person) == (None, None)
-    assert "duzt Ada" in system_text("de", "Ada") and "Ada startet" in system_text("de", "Ada")
+    # the work no longer goes back to the person ("Ada startet sie selbst"): the subject case still names them
+    assert "duzt Ada" in system_text("de", "Ada") and "wenn Ada es erlaubt" in system_text("de", "Ada")
     for lang in ("de", "en"):
         text = system_text(lang, None)
         assert "Nutzer" in text or "the user" in text

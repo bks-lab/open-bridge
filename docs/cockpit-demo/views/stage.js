@@ -445,7 +445,7 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
       <${SituationBoard} s=${s} c=${c} />
       <h3 class="label-caps core-sub">${h.sit.verdictTitle}</h3>
       <div class="core-brief">${conv ? html`<${Verdict} s=${s} conv=${conv} />
-        ${conv.turns.length > 1 ? html`<${ChatThread} s=${s} conv=${{ ...conv, turns: conv.turns.slice(1) }} />` : null}`
+        ${conv.turns.length > 1 ? html`<${ChatThread} s=${s} c=${c} conv=${{ ...conv, turns: conv.turns.slice(1) }} />` : null}`
         : busy ? html`<${Thinking} label=${h.sit.weighing} />`
         : html`<${Btn} size="xs" variant="ghost" onClick=${onWeigh}>${h.sit.weigh}<//>`}</div>
       <${Btn} size="xs" variant="ghost" onClick=${() => c.openInner()}>${h.sit.toNet}<//>` : null}
@@ -465,7 +465,7 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
     <${InspectRow} tone=${agents ? 'info' : 'muted'} title=${h.agentsLine(agents)} sub=${h.sessionsLine((s.sessions?.sessions ?? []).length)}
       onClick=${() => c.setPage(SESSIONS_PAGE)} />
     ${!brief && (conv || busy) ? html`<h3 class="label-caps core-sub">${h.askTitle}</h3>
-      <div class="core-brief">${conv ? html`<${ChatThread} s=${s} conv=${conv} />` : html`<p class="muted small">${h.briefWaiting}</p>`}
+      <div class="core-brief">${conv ? html`<${ChatThread} s=${s} c=${c} conv=${conv} />` : html`<p class="muted small">${h.briefWaiting}</p>`}
         ${live?.doing ? html`<p class="muted small">${live.doing}</p>` : null}</div>` : null}
     <form class="core-ask" onSubmit=${send}>
       <input type="text" class="core-ask-input" value=${text} onInput=${e => setText(e.currentTarget.value)}

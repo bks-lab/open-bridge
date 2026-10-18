@@ -527,7 +527,8 @@ export function pushNoteState({ notes, toasts }, note, now, id, toast = true) {
   const next = addNote(notes, { at: note.at, text: note.text, tone }, now, toasts)
   if (next === notes) return { notes, toasts, dup: true }
   if (!toast) return { notes: next, toasts, dup: false }
-  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, conv: note.conv ?? null, undo: note.undo ?? null }
+  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, conv: note.conv ?? null, undo: note.undo ?? null,
+    copy: note.copy ?? null }
   return { notes: next, toasts: [...toasts, t].slice(-4), toast: t, dup: false }
 }
 
@@ -535,6 +536,36 @@ export function pushNoteState({ notes, toasts }, note, now, id, toast = true) {
 export function upsertRecord(records, record) {
   const rest = (records ?? []).filter(r => r.id !== record.id)
   return [record, ...rest].sort((a, b) => (b.created_ms ?? 0) - (a.created_ms ?? 0)).slice(0, 20)
+}
+
+/** The note of a refused action. A verb that ran and failed in a step brings its own note (also sent as the `note`
+ *  event): that one stands alone, with the commands to copy when nothing could start them (`manual`). The generic
+ *  "the action failed" beside it read as a second, different answer (18.10.) */
+export function actionFailNote(res, table) {
+  const data = res?.data
+  if (data && typeof data.note === 'string' && data.note && !data.error) {
+    const manual = Array.isArray(data.manual) ? data.manual.filter(x => typeof x === 'string' && x) : []
+    return manual.length ? { text: data.note, tone: 'bad', action: 'copy', copy: manual.join('\n') } : { text: data.note, tone: 'bad' }
+  }
+  return { text: errorText(res?.error, table), tone: 'bad' }
+}
+
+/** A line of its own [[remind: YYYY-MM-DD | what]] or [[remind: what]]: the chat's way to propose a reminder */
+const REMIND_RE = /^[ \t]*\[\[remind:[ \t]*(?:(\d{4}-\d{2}-\d{2})[ \t]*\|[ \t]*)?([^\]\n|][^\]\n]{0,299}?)[ \t]*\]\][ \t]*$/gm
+
+/** An answer's reminder markers as cards, and the answer without them */
+export function chatReminders(answer) {
+  const reminders = []
+  const text = String(answer ?? '').replace(REMIND_RE, (_, date, what) => {
+    reminders.push({ date: date ?? null, text: what.trim() })
+    return ''
+  }).replace(/\n{3,}/g, '\n\n').trim()
+  return { text, reminders }
+}
+
+/** The chat_remind arguments of a card: its day when that is after today, else it goes to the inbox at once */
+export function reminderArgs(reminder, today) {
+  return reminder.date && reminder.date > today ? { text: reminder.text, until: reminder.date } : { text: reminder.text }
 }
 
 /** Text of an API error in the page language; `table` is T() */

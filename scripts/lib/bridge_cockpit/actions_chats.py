@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 from . import model as m
+from .history import item as history_item
 from .quick import CONV_RE
 from .relay import KINDS as ASK_KINDS
 from .actions_base import (HANDOFF_MAX, HANDOFF_ORDER_MAX, SHORT_TIMEOUT, ActionError, Ctx, bad_arg, check_key,
@@ -54,6 +55,23 @@ class ChatVerbs:
         new_id = self.inbox_add(ctx, f"chat-{uuid.uuid4().hex[:10]}", first, text.strip())
         if new_id is not None:
             self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first}], "go", self.app.cfg.target)
+
+    def v_chat_remind(self, ctx: Ctx, text: str, until: str | None = None) -> None:
+        """A reminder the chat proposed ([[remind: ...]]), filed on the person's click as a free inbox item; with a
+        day it stays out of sight until then, like "Later". The chat itself never writes (18.10.: "remind me" had
+        no way at all)."""
+        new_id = self.inbox_add(ctx, f"remind-{uuid.uuid4().hex[:10]}", text, self.tx["remind_detail"])
+        if new_id is None:
+            return
+        title = m.short(text, 60)
+        if until:
+            key = f"inbox:{new_id}"
+            self.app.store.hide(key, until)
+            ctx.history.append(history_item(key, text, "other", f"hidden until {until}"))
+            ctx.note(self.tx["remind_until"].format(until=until, title=title))
+        else:
+            ctx.note(self.tx["remind_now"].format(title=title))
+        ctx.delta()
 
     def v_a2a_ask(self, ctx: Ctx, peer: str, text: str, conv: str | None = None, mode: str | None = None) -> None:
         """A message to an A2A agent, only ever on the user's click; the answer comes as the `agents` event."""
