@@ -228,7 +228,6 @@ work:
 #       max_picks: 12        # 1 to 40
 #       shorten: true        # one-line titles
 #   # The settings page changes these on top, kept in .bridge/cockpit/ticker.json.
-#   # These five fall back to briefing.claude_code_ui (the briefing-ui mod's block) when this block leaves them out.
 
 
 # ─── Orchestrator ─────────────────────────────────────────────────────

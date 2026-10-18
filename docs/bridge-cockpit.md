@@ -84,11 +84,10 @@ their defaults:
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
 
-`language`, `full_minutes`, `voice`, `launch.target` and `snapshot_minutes`
-used to be set under `briefing.claude_code_ui`, the block of the retired
-briefing card. A config that still has them there keeps working: a key the
-`cockpit:` block leaves out is read from `briefing.claude_code_ui`. Move them
-when convenient.
+Migration note: `language`, `full_minutes`, `voice`, `launch.target` and
+`snapshot_minutes` used to be set under `briefing.claude_code_ui`, the block
+of the retired briefing card. The cockpit no longer reads that block; a key
+left there takes its default above. Move them under `cockpit:`.
 
 The page's default target is `area` (the workspace of the item's area), while
 `workplace.py launch` on its own defaults to `tab` (the calling tab's

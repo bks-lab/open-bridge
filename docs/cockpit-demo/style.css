@@ -309,7 +309,6 @@ kbd {
 .layout-wide .col-detail, .layout-medium .col-detail { overflow: hidden !important; }
 .detail-scroll { min-height: 0; }
 .layout-wide .detail-scroll, .layout-medium .detail-scroll { flex: 1 1 auto; overflow-y: auto; scrollbar-width: thin; }
-.layout-wide .askbox, .layout-medium .askbox { flex: 0 0 auto; max-height: 40%; overflow-y: auto; }
 
 /* ---------------------------------------------------------------- day column */
 
@@ -517,23 +516,7 @@ kbd {
 
 /* ---------------------------------------------------------------- ask box */
 
-.ask-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.ask-head .label-caps { margin: 0; }
-.ask-offline { margin-bottom: 8px; font-size: var(--text-sm); }
-.ask-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
-.ask-count { font-size: 11px; color: var(--on-surface-muted); }
-.ask-count.is-near { color: var(--on-surface); font-weight: 600; }
 .ask-fallback { margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
-.records { margin-top: 12px; display: flex; flex-direction: column; }
-.record { padding: 10px 0; border-top: 1px solid var(--border); }
-.record-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12.5px; }
-.record-preview { margin-top: 4px; font-size: 12.5px; color: var(--on-surface-muted); overflow-wrap: anywhere; }
-.record-answer {
-  margin-top: 8px; padding: 8px 10px; background: var(--surface-muted); border-radius: var(--radius-md);
-  max-height: 220px; overflow-y: auto;
-}
-.record-answer .label-caps { margin-bottom: 4px; }
-.record-answer .pre { font-size: var(--text-sm); color: var(--on-surface); }
 
 /* ---------------------------------------------------------------- tabs column */
 
@@ -1479,12 +1462,10 @@ kbd {
 .agent-id { margin-left: auto; flex: none; }
 .agent-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-sum { font-size: var(--text-label); color: var(--on-surface-muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.agent-skills { display: flex; flex-wrap: wrap; gap: 4px; }
-.agent-skills .chip, .agent-mode { font-size: 11px; }
+.agent-mode { font-size: 11px; }
 .agentspage .chat-main { display: flex; flex-direction: column; }
 .agentspage .chat-main > .quick-body { flex: 1 1 auto; min-height: 0; }
 .agent-convs { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid var(--border); flex: none; }
-.agent-skill-list { margin: 8px 0; padding-left: 18px; display: grid; gap: 4px; font-size: var(--text-sm); }
 .agent-modes { align-items: center; }
 @media (max-width: 760px) { .agents-grid { grid-template-columns: 1fr; } .agents-list { max-height: 260px; } }
 
@@ -1561,7 +1542,6 @@ kbd {
 .tri-model { color: var(--on-surface-muted); border-style: dashed; }
 .tri-you { color: var(--warning); border-color: var(--warning); white-space: normal; }
 .tri-unclear { color: var(--on-surface-muted); border-color: var(--border); border-style: dashed; }
-.tri-why { font-weight: 400; }
 .tri-dots { display: inline-flex; gap: 2px; }
 .tri-dots i { width: 6px; height: 6px; border-radius: var(--radius-full); background: currentColor; opacity: 0.22; }
 .tri-dots i.on { opacity: 1; }
@@ -2369,7 +2349,6 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .ticker-status-list .ticker-item { width: 100%; padding: 3px 4px; text-align: left; font-size: 13px; line-height: 1.35; }
 .ticker-status-list .ticker-dot { width: 7px; height: 7px; }
 .ticker-status-more { margin-top: 4px; font-size: var(--text-sm); }
-.ticker-set-sub { margin: var(--space-sm) 0 0; }
 .ticker-interests { width: 100%; max-width: 680px; flex-wrap: nowrap; align-items: flex-start; }
 .ticker-interests textarea, .ticker-interests input { flex: 1 1 auto; min-width: 0; }
 .ticker-interests textarea { resize: vertical; }

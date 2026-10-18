@@ -42,10 +42,8 @@ const READ_CONFIG = [
   'import json, yaml',
   "c = yaml.safe_load(open('bridge-config.yaml', encoding='utf-8')) or {}",
   'c = c if isinstance(c, dict) else {}',
-  "b = c.get('briefing') if isinstance(c.get('briefing'), dict) else {}",
-  "u = b.get('claude_code_ui') if isinstance(b.get('claude_code_ui'), dict) else {}",
   "l = c.get('language')",
-  "print(json.dumps({'cockpit': c.get('cockpit'), 'ui_language': u.get('language'),",
+  "print(json.dumps({'cockpit': c.get('cockpit'),",
   "  'language': l.get('conversation') if isinstance(l, dict) else l}, default=str))",
 ].join('\n')
 

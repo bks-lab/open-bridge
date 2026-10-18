@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Configuration of the cockpit: `cockpit:` in bridge-config.yaml.
 
-Values the block leaves out come from `briefing.claude_code_ui` (the briefing-ui mod's block),
-so one switch for language, launch target, voice and full run interval covers both.
+A key the block leaves out takes its default; the language falls back to language.conversation.
 Resolution rules: docs/bridge-cockpit.md, the cockpit: block.
 """
 from __future__ import annotations
@@ -134,10 +133,8 @@ def launch_model_of(value: Any, jev_model: str | None = None) -> dict:
 def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     root = Path(root).resolve()
     raw = read_config_file(root) if data is None else data
-    b = _dict(raw.get("briefing"))
     where = "cockpit"
     w = _dict(raw.get("cockpit"))
-    u = _dict(b.get("claude_code_ui"))
 
     if "port" in w and w.get("port") is not None:
         port = w["port"]
@@ -154,26 +151,16 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     lang_value = None
     conv = raw.get("language")
     conversation = _dict(conv).get("conversation") if isinstance(conv, dict) else conv
-    for candidate in (w.get("language"), u.get("language"), conversation):
+    for candidate in (w.get("language"), conversation):
         if isinstance(candidate, str) and candidate:
             lang_value = candidate
             break
     language = language_of(lang_value)
 
-    full = w.get("full_minutes") if _is_number(w.get("full_minutes")) else (
-        u.get("full_minutes") if _is_number(u.get("full_minutes")) else 10)
-    full_minutes = max(1, full)
-
-    snap = w.get("snapshot_minutes") if _is_number(w.get("snapshot_minutes")) else (
-        u.get("snapshot_minutes") if _is_number(u.get("snapshot_minutes")) else 60)
-    snapshot_minutes = max(0, snap)
-
-    voice = w["voice"] if isinstance(w.get("voice"), bool) else (
-        u["voice"] if isinstance(u.get("voice"), bool) else False)
-
-    wl = _dict(w.get("launch"))
-    ul = _dict(u.get("launch"))
-    target = wl.get("target") if "target" in wl else ul.get("target", "area")
+    full_minutes = max(1, w["full_minutes"]) if _is_number(w.get("full_minutes")) else 10
+    snapshot_minutes = max(0, w["snapshot_minutes"]) if _is_number(w.get("snapshot_minutes")) else 60
+    voice = w["voice"] if isinstance(w.get("voice"), bool) else False
+    target = _dict(w.get("launch")).get("target", "area")
     if target not in TARGETS:
         target = "area"
 

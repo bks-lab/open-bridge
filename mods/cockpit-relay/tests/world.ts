@@ -71,7 +71,7 @@ export function world(on: On, opts: WorldOptions = {}): World {
   mock.env(on, opts.env ?? { CMUX_SURFACE_ID: 'uuid-1' })
   const isBridge = opts.isBridge ?? true
   // the shape READ_CONFIG in hooks/register.tsx prints
-  const config = { cockpit: opts.cockpit ?? null, ui_language: null, language: opts.language ?? null }
+  const config = { cockpit: opts.cockpit ?? null, language: opts.language ?? null }
   const disk = new Map<string, string>()
   const w: World = {
     calls: [], writes: [], prompts: [], toasts: [], registered: [], clock, disk,

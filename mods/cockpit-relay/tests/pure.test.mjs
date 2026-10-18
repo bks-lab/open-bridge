@@ -8,7 +8,7 @@
 //
 // The script compiles every file under hooks/ with TypeScript to .mjs in a temp directory,
 // appends '.mjs' to relative imports, replaces the import from 'claude-code' with simple
-// stand-ins and checks the exported functions with node:test (same runner as briefing-ui).
+// stand-ins and checks the exported functions with node:test.
 import { execSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
@@ -244,9 +244,8 @@ test('config: only the cockpit block counts, and the relay only when asked for',
   assert.deepEqual(relay.parseRelayConfig([true]), { enabled: false, relay: false, language: 'en' })
 })
 
-test('config: language from the block, else claude_code_ui, else language.conversation; de... is German', () => {
+test('config: language from the block, else language.conversation; de... is German', () => {
   assert.equal(relay.parseRelayConfig({ cockpit: { language: 'de' }, language: 'en' }).language, 'de')
-  assert.equal(relay.parseRelayConfig({ cockpit: {}, ui_language: 'en', language: 'de' }).language, 'en')
   assert.equal(relay.parseRelayConfig({ cockpit: {}, language: 'de-DE' }).language, 'de')
   assert.equal(relay.parseRelayConfig({ cockpit: {}, language: 'fr' }).language, 'en')
 })
@@ -270,4 +269,9 @@ test('words: de and en have the same keys, nothing empty, no dash', () => {
       assert.equal(/[\u2013\u2014]/.test(s), false)
     }
   }
+})
+
+test('config: the retired briefing block no longer sets the language', () => {
+  assert.equal(relay.parseRelayConfig({ cockpit: {}, ui_language: 'de', language: 'en' }).language, 'en')
+  assert.equal(relay.parseRelayConfig({ cockpit: {}, ui_language: 'en', language: 'de' }).language, 'de')
 })

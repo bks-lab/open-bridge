@@ -830,7 +830,7 @@ def test_an_unregistered_mod_fails_closed(path: str):
 INSTANCE_MODS = [
     ".claude/mods/.claude-plugin/marketplace.json",
     ".claude/mods/my-usage-panel/hooks/register.tsx",
-    ".claude/mods/briefing-ui/hooks/text.ts",       # an instance's own copy, even of a shipped name
+    ".claude/mods/cockpit-relay/hooks/relay.ts",    # an instance's own copy, even of a shipped name
 ]
 
 

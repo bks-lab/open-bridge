@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 """Contract for the cockpit server (scripts/bridge-cockpit.py, scripts/lib/bridge_cockpit/).
 
-The server shows the briefing of the briefing-ui mod as a local web page. It must:
-- compute the same card as the mod (model.py is a port of mods/briefing-ui/hooks/logic.ts and
-  the decisions of register.tsx), so the cases of mods/briefing-ui/tests/pure.test.mjs hold here too;
+The server shows the briefing as a local web page. It must:
+- compute the briefing card (model.py, originally ported from the retired briefing-ui mod, whose
+  test cases live on here);
 - collect with `--no-save` only, one pass at a time, coalescing requests (full > quick > delta);
 - run only a fixed set of verbs with exact argv, ids checked again before they reach an argv,
   free text after `--`, one audit line per write without texts;
@@ -698,9 +698,8 @@ def test_only_the_cockpit_block_counts(tmp_path):
 
 
 def test_config_resolution(tmp_path):
-    cfg = load_web_config(tmp_path, {"cockpit": {"enabled": True, "tabs_seconds": 2, "launch": {"target": "x"}},
-                                     "briefing": {"claude_code_ui": {"language": "de", "full_minutes": 0, "voice": True,
-                                                                     "launch": {"target": "tab"}}},
+    cfg = load_web_config(tmp_path, {"cockpit": {"enabled": True, "tabs_seconds": 2, "launch": {"target": "x"},
+                                                 "language": "de", "full_minutes": 0, "voice": True},
                                      "workplace": {"control": {"name": "Control"}}})
     assert (cfg.enabled, cfg.port, cfg.open_in, cfg.relay, cfg.profile) == (True, 8797, "auto", False, None)   # relay only when asked
     assert (cfg.tabs_seconds, cfg.language, cfg.full_minutes, cfg.voice, cfg.target, cfg.control) == \
@@ -709,7 +708,7 @@ def test_config_resolution(tmp_path):
     # the daily triage is a model call: never without asking for it
     assert cfg.triage_daily is False and load_web_config(tmp_path, {"cockpit": {"triage_daily": True}}).triage_daily
     assert load_web_config(tmp_path, {"language": "en", "cockpit": {"enabled": "yes"}}).enabled is False
-    assert load_web_config(tmp_path, {"briefing": {"claude_code_ui": {"launch": {"target": "tab"}}}}).target == "tab"
+    assert load_web_config(tmp_path, {"cockpit": {"launch": {"target": "tab"}}}).target == "tab"
     with pytest.raises(WebConfigError):
         load_web_config(tmp_path, {"cockpit": {"port": 80}})
     with pytest.raises(WebConfigError):
@@ -3905,7 +3904,7 @@ def test_the_relay_finds_the_control_session_in_a_tmux_tab_too(world):
 def test_the_cmux_layout_is_saved_on_a_timer_as_the_mod_did(world, tmp_path):
     # the briefing-ui mod saved the cmux layout every snapshot_minutes (only on change) while a session was
     # open; the cockpit keeps that going so retiring the mod loses no backup
-    assert load_web_config(tmp_path, {"briefing": {"claude_code_ui": {"snapshot_minutes": 30}}}).snapshot_minutes == 30
+    assert load_web_config(tmp_path, {"cockpit": {"snapshot_minutes": 30}}).snapshot_minutes == 30
     assert load_web_config(tmp_path, {"cockpit": {"snapshot_minutes": 0}}).snapshot_minutes == 0
     assert load_web_config(tmp_path, {}).snapshot_minutes == 60
     world.runner.handlers["cmux_layout.snapshot"] = lambda argv: ok("unchanged")
@@ -4885,3 +4884,19 @@ def test_a_quick_question_without_its_cli_says_cli_unavailable_not_cmux(world, t
         assert (err.value.status, err.value.code) == (503, "cmux_unavailable")
     finally:
         w2.close()
+
+
+def test_the_retired_briefing_block_no_longer_changes_the_config(tmp_path):
+    # the briefing-ui mod is gone, and with it the fallback to its block: only `cockpit:` (and
+    # language.conversation for the language) counts
+    legacy = {"briefing": {"claude_code_ui": {"language": "de", "full_minutes": 3, "snapshot_minutes": 30,
+                                              "voice": True, "launch": {"target": "tab"}}}}
+    plain = load_web_config(tmp_path, {})
+    cfg = load_web_config(tmp_path, legacy)
+    assert (cfg.language, cfg.full_minutes, cfg.snapshot_minutes, cfg.voice, cfg.target) == \
+        (plain.language, plain.full_minutes, plain.snapshot_minutes, plain.voice, plain.target)
+    assert (cfg.full_minutes, cfg.snapshot_minutes, cfg.voice, cfg.target) == (10, 60, False, "area")
+    # the same values under cockpit: still apply
+    moved = load_web_config(tmp_path, {"cockpit": legacy["briefing"]["claude_code_ui"]})
+    assert (moved.language, moved.full_minutes, moved.snapshot_minutes, moved.voice, moved.target) == \
+        ("de", 3, 30, True, "tab")

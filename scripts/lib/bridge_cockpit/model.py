@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: MIT
-"""Pure domain functions of the cockpit, ported from the briefing-ui mod.
+"""Pure domain functions of the cockpit, originally ported from the retired briefing-ui mod.
 
-Source: mods/briefing-ui/hooks/logic.ts (the retired mod) (parsing the script outputs, order of the card,
-texts to Claude) and the decision logic of mods/briefing-ui/hooks/register.tsx
-(rowActions, approvable). Behaviour matches the TypeScript; names are snake_case and
+Parsing the script outputs, order of the card, texts to Claude and the decision logic
+(row_actions, approvable). Names are snake_case and
 rows are plain dicts with snake_case keys. Nothing here does I/O; the tests exercise
 it without a server. Where the web adds behaviour (an inferred team run, the long
 state as a word instead of a sentence) the docstring says so.

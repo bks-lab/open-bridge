@@ -682,7 +682,7 @@ fixed in the cockpit, for example an hour before a tab counts as long-running.
 | Tabs and their columns (`when`, `detail`, `link`, `empty`, `alarm`, `badge`) | same profile, `view.pages`, `view.page_rest` |
 | Marks in front of rows (customers, projects) | same profile, `view.marks` |
 | Wording of the briefing (headline, tab names, "today") | same profile, `view.labels` |
-| Cockpit on or off, port, profile, voice, poll interval, how old the full run may be, layout backup, launch target | `bridge-config.yaml` `cockpit:` (a key it leaves out is still read from the former `briefing.claude_code_ui`) |
+| Cockpit on or off, port, profile, voice, poll interval, how old the full run may be, layout backup, launch target | `bridge-config.yaml` `cockpit:` |
 | Language of the cockpit's own words (`de`, `en`) | `cockpit.language`, else `language.conversation`, else English |
 | Name of the control workspace: the workspace whose session steers the others and takes the cockpit's questions through the relay | `bridge-config.yaml` `workplace.control.name` ([workplace](workplace.md)) |
 

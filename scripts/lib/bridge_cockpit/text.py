@@ -2,9 +2,8 @@
 """Server-side text table of the cockpit: prompts to Claude, notes, bucket words.
 
 One table per language, identical keys, English default and fallback, the language
-chosen at run time from the config (rules/language-policy.md section 3). Values that
-exist in mods/briefing-ui/hooks/text.ts are copied verbatim from there, so the mod and
-the web say the same words. Templates use str.format with named fields; an optional
+chosen at run time from the config (rules/language-policy.md section 3). Many values were
+originally ported from the retired briefing-ui mod. Templates use str.format with named fields; an optional
 part in parentheses arrives already formatted (" (x)" or "") from model.paren.
 """
 from __future__ import annotations

@@ -103,7 +103,7 @@ test('in a plain terminal the heartbeat has surface null and the relay still wor
 test('a python3 without PyYAML is not the end: the next Python that has it reads the config', async ($, on) => {
   // python3 moved to a new version that has no PyYAML yet
   const noYaml = { exitCode: 1, stdout: '', stderr: "ModuleNotFoundError: No module named 'yaml'" }
-  const config = JSON.stringify({ cockpit: { enabled: true, relay: true }, web: null, ui_language: null, language: 'de' })
+  const config = JSON.stringify({ cockpit: { enabled: true, relay: true }, web: null, language: 'de' })
   const w = await start($, on, { pythons: { python3: noYaml, 'python3.14': { exitCode: 0, stdout: config, stderr: '' } } })
   expect(beat(w)).toMatchObject({ session: SESSION })
   expect(w.calls.filter(c => /python/.test(c[0] ?? '')).map(c => c[0])).toEqual(['python3', 'python3.14'])

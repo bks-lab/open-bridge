@@ -112,13 +112,13 @@ export function relayBlock(raw: unknown): unknown {
 
 /**
  * The relay's settings: enabled and relay each only when true (the server's rule), and the language
- * of its notes: the block's own, else briefing.claude_code_ui.language, else language.conversation.
+ * of its notes: the block's own, else language.conversation.
  */
 export function parseRelayConfig(raw: unknown): RelaySettings {
   const r = isObject(raw) ? raw : {}
   const w = relayBlock(r)
   const b = isObject(w) ? w : {}
-  const lang = [b.language, r.ui_language, r.language].find(v => typeof v === 'string' && v !== '')
+  const lang = [b.language, r.language].find(v => typeof v === 'string' && v !== '')
   return { enabled: b.enabled === true, relay: b.relay === true,
     language: typeof lang === 'string' && lang.toLowerCase().startsWith('de') ? 'de' : 'en' }
 }

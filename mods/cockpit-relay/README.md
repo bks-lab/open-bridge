@@ -19,8 +19,8 @@ What it does, and nothing else:
   and writes what became of it to `.bridge/cockpit/relay/done/<id>.json`
   (answered, aborted, error, expired, stuck, rejected).
 
-It came out of `briefing-ui`, so the cockpit keeps reaching the control session
-when the briefing card retires. Both may be installed side by side.
+It came out of the retired `briefing-ui` mod, so the cockpit kept reaching the
+control session when the briefing card went away.
 
 ## Switch
 

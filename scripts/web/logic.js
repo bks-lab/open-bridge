@@ -28,16 +28,14 @@ export function clockTime(ms) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** The next Monday after `ms` (a Monday gives the Monday a week later), as epoch ms.
- * Port of nextMonday in mods/briefing-ui/hooks/logic.ts. */
+/** The next Monday after `ms` (a Monday gives the Monday a week later), as epoch ms. */
 export function nextMonday(ms) {
   const day = new Date(ms).getDay()
   return ms + ((8 - day) % 7 || 7) * DAY
 }
 
 /** "2026-10-14", "14.10." or "14.10.2026" as YYYY-MM-DD, else null.
- * A date without a year that already passed this year means next year.
- * Port of parseDate in mods/briefing-ui/hooks/logic.ts. */
+ * A date without a year that already passed this year means next year. */
 export function parseDate(text, now) {
   const t = String(text ?? '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return isoDate(new Date(`${t}T12:00:00`).getTime()) === t ? t : null
@@ -50,7 +48,7 @@ export function parseDate(text, now) {
   return !m[3] && date < isoDate(now) ? `${year + 1}-${pad(Number(m[2]))}-${pad(Number(m[1]))}` : date
 }
 
-/** "7 min", "1:05 h". Port of duration in mods/briefing-ui/hooks/logic.ts; negative is 0. */
+/** "7 min", "1:05 h"; negative is 0. */
 export function duration(ms) {
   const min = Math.max(0, Math.floor(ms / 60000))
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)}:${pad(min % 60)} h`
@@ -1353,17 +1351,6 @@ export function homeChosen(model, saved) {
   const kept = saved.tiles.filter(id => known.has(id))
   const added = all.map(x => x.id).filter(id => !seen.has(id) && !kept.includes(id) && defaults.has(id))
   return [...kept, ...added]
-}
-
-/** An id moved one place earlier (-1) or later (+1) in a list; at an end it stays */
-export function moveId(list, id, step) {
-  const i = list.indexOf(id)
-  const j = i + step
-  if (i < 0 || j < 0 || j >= list.length) return list
-  const out = list.slice()
-  out[i] = list[j]
-  out[j] = id
-  return out
 }
 
 /** The ids of a list `among` picks keep their places, and fill them in a new order */

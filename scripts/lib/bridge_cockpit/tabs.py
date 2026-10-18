@@ -3,11 +3,10 @@
 
 The server is the only poller (never two status calls at once) and runs while at least
 one page is shown, every `tabs_seconds` (every HIDDEN_TABS_S while the only open pages sit in
-background browser tabs, so their title count stays roughly current), plus the follow-up polls the mod makes after
+background browser tabs, so their title count stays roughly current), plus follow-up polls after
 a launch (+5 s), a key or a message (+3 s), a close (+1 s) and an adopt (now). It keeps
 since when each tab is in its state (tab_seen), raises alerts for tabs that newly wait
 or wait or run for an hour, and marks the control tab, which never counts as waiting.
-The server never reads or writes .bridge/briefing-ui/tabs.json (that file is the mod's).
 With `cockpit.chat_layout: workspaces` each poll also asks `workplace.py workspaces --json` for the
 workspaces as the terminal shows them (read only); None when the driver cannot say.
 """

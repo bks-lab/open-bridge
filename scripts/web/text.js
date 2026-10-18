@@ -4,10 +4,8 @@
 // the language comes from the server at run time (/api/bootstrap), never from editing
 // this file. Keys and comments are English; only the values of `de` are German.
 //
-// Values that exist in mods/briefing-ui/hooks/text.ts are copied from there so the mod
-// and the web page say the same words. Where the mod puts a terminal glyph in front of
-// a word (reload arrow, dot, check, cross), the web value keeps the word only: the page
-// draws its own icons and status dots.
+// Many values were originally ported from the retired briefing-ui mod. The page draws its
+// own icons and status dots, so a value carries the word only, never a terminal glyph.
 
 /** The CLI an error names ("the claude CLI is not available"), or null */
 const cliName = e => /\bthe (\S+) CLI\b/.exec(String(e?.message ?? ''))?.[1] ?? null

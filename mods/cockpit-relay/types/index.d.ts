@@ -4,7 +4,7 @@ export type RelaySettings = {
   enabled: boolean
   /** cockpit.relay is not false: this session heartbeats and takes cockpit questions addressed to it */
   relay: boolean
-  /** language of the mod's notes: cockpit.language, else briefing.claude_code_ui.language, else language.conversation */
+  /** language of the mod's notes: cockpit.language, else language.conversation */
   language: 'de' | 'en'
 }
 
