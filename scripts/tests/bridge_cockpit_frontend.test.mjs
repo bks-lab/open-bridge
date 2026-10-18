@@ -2904,3 +2904,37 @@ test('rooms: the pane never jumps on its own, the header knows the rail is gone,
   assert.equal(logic.shellQuote("/u/it's here"), "'/u/it'\\''s here'")
   assert.match(rooms, /cd \$\{shellQuote\(b\.path\)\} && claude/)
 })
+
+test('hidden page: visibilitychange flags the stream so the server stops polling for it (#373)', async () => {
+  const saved = globalThis.document
+  const listeners = {}
+  globalThis.document = { visibilityState: 'visible', addEventListener: (name, fn) => { listeners[name] = fn }, removeEventListener: () => {} }
+  try {
+    const calls = []
+    let given = null
+    const a = api.createApi({
+      get: async () => ({}),
+      post: async (p, b, csrf) => { calls.push([p, b, csrf]); return { ok: true } },
+      events: handlers => { given = handlers; return { close() {} } },
+    })
+    a.setCsrf('tok')
+    const seen = []
+    a.events({ hello: p => seen.push(p) }, () => {})
+    given.hello({ version: 'x', client: 'c1' })
+    assert.equal(seen.length, 1, 'the page still gets its hello')
+    assert.deepEqual(calls, [], 'a visible page says nothing')
+    globalThis.document.visibilityState = 'hidden'
+    listeners.visibilitychange()
+    assert.deepEqual(calls.at(-1), ['/api/presence', { client: 'c1', visible: false }, 'tok'])
+    globalThis.document.visibilityState = 'visible'
+    listeners.visibilitychange()
+    assert.deepEqual(calls.at(-1), ['/api/presence', { client: 'c1', visible: true }, 'tok'])
+    // a reconnect while hidden (new client id) reports hidden at once
+    globalThis.document.visibilityState = 'hidden'
+    calls.length = 0
+    given.hello({ version: 'x', client: 'c2' })
+    assert.deepEqual(calls, [['/api/presence', { client: 'c2', visible: false }, 'tok']])
+  } finally {
+    globalThis.document = saved
+  }
+})

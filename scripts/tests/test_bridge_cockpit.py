@@ -44,6 +44,7 @@ if str(ROOT / "scripts") not in sys.path:
 from lib.bridge_cockpit import VERSION  # noqa: E402
 from lib.bridge_cockpit import model as m  # noqa: E402
 from lib.bridge_cockpit import text as text_mod  # noqa: E402
+from lib.bridge_cockpit import tabs as tabs_mod  # noqa: E402
 from lib.bridge_cockpit.actions import ActionError  # noqa: E402
 from lib.bridge_cockpit.config import WebConfigError, load_web_config  # noqa: E402
 from lib.bridge_cockpit.relay import Relay  # noqa: E402
@@ -2069,10 +2070,12 @@ def test_every_post_path_but_reload_leaves_exactly_one_audit_line_without_texts(
             ("/api/jev/rank", {"page": "work", "force": True}, "jev_rank"),
             ("/api/triage/run", {"fresh": True}, "triage"),
         ]
-        # every POST path the server knows is in the list above, so a new endpoint cannot skip its line
+        # every POST path the server knows is in the list above, so a new endpoint cannot skip its line;
+        # reload and presence change no record and send nothing on, and presence fires on every tab switch
         known = set(re.findall(r'path == "(/api/[a-z/]+)"', inspect.getsource(server.Handler.post)))
         known |= {p for p in re.findall(r'"(/api/jev/[a-z]+)"', inspect.getsource(jev.handle_post))}
-        assert known - {"/api/reload"} == {path for path, _, _ in cases}
+        assert "/api/presence" in known
+        assert known - {"/api/reload", "/api/presence"} == {path for path, _, _ in cases}
         for path, body, verb in cases:
             before = log.read_text().splitlines() if log.exists() else []
             status, _, data = w.post(path, body)
@@ -2750,6 +2753,8 @@ def test_events_stream(world):
         assert rest.startswith(b"retry: 3000\n\nevent: hello\ndata: ")
         hello = json.loads(rest.split(b"\n")[3][len(b"data: "):])
         assert hello["version"] == VERSION and hello["language"] == "en"
+        # the page names itself with this id when it tells the server it went into the background
+        assert any(c.id == hello["client"] for c in world.app.hub.clients)
         world.app.note("ping from the test", "ok")
         buf2 = b""
         while b"ping from the test" not in buf2 and time.time() < deadline:
@@ -4602,3 +4607,84 @@ def test_workspaces_are_asked_at_most_every_half_minute_with_their_real_folder(t
         assert len(w.runner.of("workplace.workspaces")) == 2
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- hidden pages (#373)
+
+class Mono:
+    """A stand-in for time.monotonic that only moves when the test says so."""
+
+    def __init__(self, start: float = 1000.0):
+        self.now = start
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def tick_tabs(app, mono: Mono, seconds: int) -> int:
+    """Lets the tab loop run one step per second for `seconds`; returns how many status calls it made."""
+    before = len(app.runner.of("workplace.status"))
+    for _ in range(seconds):
+        mono.now += 1.0
+        app.tabs.step()
+    return len(app.runner.of("workplace.status")) - before
+
+
+def test_hidden_page_makes_no_tab_poll_for_several_intervals(world):
+    mono = Mono()
+    world.app.tabs.monotonic = mono
+    world.app.tabs.last_poll = mono.now
+    client = world.app.hub.add()
+    assert world.app.hub.set_visible(client.id, False) is False
+    every = world.app.cfg.tabs_seconds
+    assert world.app.client_count() == 0 and world.app.hub.count() == 1
+    assert tick_tabs(world.app, mono, 4 * every) == 0
+    # the stretched interval keeps the title badge of a background tab roughly current
+    assert tick_tabs(world.app, mono, tabs_mod.HIDDEN_TABS_S) == 1
+
+
+def test_visible_page_polls_every_interval_and_no_page_never(world):
+    mono = Mono()
+    world.app.tabs.monotonic = mono
+    world.app.tabs.last_poll = mono.now
+    every = world.app.cfg.tabs_seconds
+    assert tick_tabs(world.app, mono, 3 * every) == 0          # nobody connected
+    world.app.hub.add()
+    assert tick_tabs(world.app, mono, 3 * every) == 3
+
+
+def test_becoming_visible_polls_at_once(world):
+    mono = Mono()
+    world.app.tabs.monotonic = mono
+    world.app.tabs.last_poll = mono.now
+    client = world.app.hub.add()
+    world.app.hub.set_visible(client.id, False)
+    status, _, data = world.post("/api/presence", {"client": client.id, "visible": True})
+    assert status == 200 and json.loads(data)["ok"] is True
+    assert world.app.client_count() == 1
+    assert tick_tabs(world.app, mono, 1) == 1
+
+
+def test_presence_endpoint_flags_a_client_and_refuses_bad_input(world):
+    client = world.app.hub.add()
+    status, _, _ = world.post("/api/presence", {"client": client.id, "visible": False})
+    assert status == 200 and world.app.client_count() == 0 and world.app.hub.count() == 1
+    assert world.post("/api/presence", {"client": "nope", "visible": False})[0] == 404
+    assert world.post("/api/presence", {"client": client.id, "visible": "no"})[0] == 400
+    assert world.post("/api/presence", {"client": client.id, "visible": True, "x": 1})[0] == 400
+    world.app.hub.remove(client)
+
+
+def test_full_pass_follows_only_visible_pages(world):
+    collector = world.app.collector
+    client = world.app.hub.add()
+    world.app.hub.set_visible(client.id, False)
+    world.clock.advance(world.app.cfg.full_minutes * 60 + 1)
+    world.runner.calls.clear()
+    collector.tick(world.app.client_count())
+    collector.drain()
+    assert world.runner.of("briefing.collect") == []
+    world.app.hub.set_visible(client.id, True)
+    collector.tick(world.app.client_count())
+    collector.drain()
+    assert len(world.runner.of("briefing.collect")) == 1

@@ -305,6 +305,16 @@ def test_refresh_writes_the_cache_and_a_new_ticker_shows_it(tworld):
 
 # ---------------------------------------------------------------- 8 loop gating
 
+def test_the_loop_skips_a_page_that_is_only_open_in_the_background(tworld):
+    t = tworld.app.ticker
+    client = tworld.app.hub.add()
+    assert t.due(tworld.clock()) is True
+    tworld.app.hub.set_visible(client.id, False)
+    assert t.due(tworld.clock()) is False
+    tworld.app.hub.set_visible(client.id, True)
+    assert t.due(tworld.clock()) is True
+
+
 def test_the_loop_fetches_only_while_a_page_is_open_and_the_data_is_old(tworld):
     t = tworld.app.ticker
     assert t.due(tworld.clock()) is False            # no page open

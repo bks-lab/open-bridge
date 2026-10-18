@@ -2,7 +2,8 @@
 """Tab poller of the cockpit: agent tabs from `workplace.py status --json`.
 
 The server is the only poller (never two status calls at once) and runs while at least
-one page is connected, every `tabs_seconds`, plus the follow-up polls the mod makes after
+one page is shown, every `tabs_seconds` (every HIDDEN_TABS_S while the only open pages sit in
+background browser tabs, so their title count stays roughly current), plus the follow-up polls the mod makes after
 a launch (+5 s), a key or a message (+3 s), a close (+1 s) and an adopt (now). It keeps
 since when each tab is in its state (tab_seen), raises alerts for tabs that newly wait
 or wait or run for an hour, and marks the control tab, which never counts as waiting.
@@ -24,6 +25,7 @@ from . import returns as ret
 STATUS_TIMEOUT = 20
 WORKSPACES_EVERY_MS = 30_000   # the workspaces change slowly and cost one cmux call each: at most every half minute
 WORKSPACES_TIMEOUT = 40
+HIDDEN_TABS_S = 60   # the poll interval while every open page is hidden
 
 
 class TabPoller:
@@ -43,6 +45,7 @@ class TabPoller:
         self.next_extra = float("inf")
         self.last_poll = 0.0
         self.stop = False
+        self.monotonic = time.monotonic   # the loop's clock; tests replace it
 
     # ------------------------------------------------------------ reads
 
@@ -118,7 +121,7 @@ class TabPoller:
             self._poll_once()
         finally:
             self.busy.release()
-            self.last_poll = time.monotonic()
+            self.last_poll = self.monotonic()
         return True
 
     def _poll_once(self) -> None:
@@ -202,26 +205,42 @@ class TabPoller:
 
     def schedule(self, delay_s: float) -> None:
         with self.cond:
-            self.next_extra = min(self.next_extra, time.monotonic() + delay_s)
+            self.next_extra = min(self.next_extra, self.monotonic() + delay_s)
             self.cond.notify_all()
+
+    def interval(self) -> float:
+        """Seconds between two periodic polls: tabs_seconds for a shown page, HIDDEN_TABS_S for hidden ones only."""
+        if self.app.client_count() > 0:
+            return self.app.cfg.tabs_seconds
+        if self.app.connected_count() > 0:
+            return max(self.app.cfg.tabs_seconds, HIDDEN_TABS_S)
+        return float("inf")
+
+    def step(self) -> float:
+        """Polls when one is due and returns 0, else returns how long the loop may wait (at most 1 s)."""
+        with self.cond:
+            now = self.monotonic()
+            wake = min(self.next_extra, self.last_poll + self.interval())
+            if wake > now:
+                return min(wake - now, 1.0)
+            self.next_extra = float("inf")
+        try:
+            self.poll()
+        except Exception:
+            import traceback
+            self.app.log_error("tab poll failed:\n" + traceback.format_exc())
+        return 0.0
 
     def loop(self) -> None:
         while True:
             with self.cond:
                 if self.stop:
                     return
-                now = time.monotonic()
-                periodic = self.last_poll + self.app.cfg.tabs_seconds if self.app.client_count() > 0 else float("inf")
-                wake = min(self.next_extra, periodic)
-                if wake > now:
-                    self.cond.wait(timeout=min(wake - now, 1.0))
-                    continue
-                self.next_extra = float("inf")
-            try:
-                self.poll()
-            except Exception:
-                import traceback
-                self.app.log_error("tab poll failed:\n" + traceback.format_exc())
+            wait = self.step()
+            if wait > 0:
+                with self.cond:
+                    if not self.stop and self.next_extra > self.monotonic():
+                        self.cond.wait(timeout=wait)
 
     def shutdown(self) -> None:
         with self.cond:

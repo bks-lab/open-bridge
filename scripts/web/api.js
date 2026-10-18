@@ -128,6 +128,20 @@ export function createApi(transport = httpTransport()) {
     page: (page, section) => transport.get(`/api/page?page=${encodeURIComponent(page)}&section=${encodeURIComponent(section)}`),
     relay: () => transport.get('/api/relay'),
     tabScreen: ref => transport.get(`/api/tab/screen?ref=${encodeURIComponent(ref)}`),
-    events: (handlers, onConn) => transport.events(handlers, onConn),
+    events: (handlers, onConn) => {
+      // A page in a background browser tab tells the server so, and the server stops polling the
+      // agent tabs, the full pass and the ticker for it; coming back asks for one poll at once.
+      let client = null
+      const doc = globalThis.document
+      const hidden = () => doc?.visibilityState === 'hidden'
+      const tell = visible => { if (client) transport.post('/api/presence', { client, visible }, csrf) }
+      doc?.addEventListener?.('visibilitychange', () => tell(!hidden()))
+      const hello = p => {
+        client = p?.client ?? null      // a new id on every reconnect
+        if (hidden()) tell(false)
+        if (handlers.hello) handlers.hello(p)
+      }
+      return transport.events({ ...handlers, hello }, onConn)
+    },
   }
 }

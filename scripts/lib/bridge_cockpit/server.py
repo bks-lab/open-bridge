@@ -106,6 +106,8 @@ class SSEClient:
     def __init__(self):
         self.queue: queue.Queue = queue.Queue(maxsize=SSE_QUEUE)
         self.closed = False
+        self.id = secrets.token_hex(8)   # sent in `hello`; the page names itself with it on /api/presence
+        self.visible = True              # a page in a background browser tab says so and stops counting
 
 
 class SSEHub:
@@ -123,9 +125,19 @@ class SSEHub:
         with self.lock:
             self.clients.discard(client)
 
-    def count(self) -> int:
+    def count(self, visible_only: bool = False) -> int:
         with self.lock:
-            return len(self.clients)
+            return sum(1 for c in self.clients if c.visible or not visible_only)
+
+    def set_visible(self, client_id: str, visible: bool) -> bool | None:
+        """Flags one page as shown or hidden; True when it just came back, None when no such page is open."""
+        with self.lock:
+            client = next((c for c in self.clients if c.id == client_id), None)
+            if client is None:
+                return None
+            back = visible and not client.visible
+            client.visible = visible
+            return back
 
     def publish(self, event: str, payload: Any) -> None:
         data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -199,6 +211,11 @@ class App:
         self.hub.publish(event, payload)
 
     def client_count(self) -> int:
+        """The pages someone can see: the tab poll, the full pass and the ticker run for these only."""
+        return self.hub.count(visible_only=True)
+
+    def connected_count(self) -> int:
+        """Every open page, a background one included (it still wants the waiting count in its title)."""
         return self.hub.count()
 
     def note(self, text: str, tone: str = "info") -> None:
@@ -392,7 +409,7 @@ class App:
     def server_json(self) -> dict:
         now = int(self.clock())
         return {"v": 1, "pid": os.getpid(), "port": self.port, "token": self.token, "started_ms": self.started_ms,
-                "root": str(self.root), "instance": self.instance, "version": VERSION, "clients": self.client_count(),
+                "root": str(self.root), "instance": self.instance, "version": VERSION, "clients": self.connected_count(),
                 "relay_online": bool(self.relay_state(with_records=False)["online"]), "updated_ms": now}
 
     def write_server_json(self) -> None:
@@ -773,7 +790,8 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self.wfile.write(b"retry: 3000\n\n")
             self.write_event("hello", json.dumps({"version": VERSION, "started_ms": app.started_ms,
-                                                  "language": app.cfg.language}, separators=(",", ":")))
+                                                  "language": app.cfg.language, "client": client.id},
+                                                 separators=(",", ":")))
             self.write_event("state", json.dumps(app.state_payload(), ensure_ascii=False, separators=(",", ":")))
             app.on_client_connect()
             idle = 0.0
@@ -860,6 +878,19 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, app.launch_model.handle_route(body))
                 except LaunchError as error:
                     self.send_error_json(error.code, error.message, error.field, status=error.status)
+            elif path == "/api/presence":
+                for name in body:
+                    if name not in ("client", "visible"):
+                        raise ActionError(400, "invalid_argument", "unknown field", str(name)[:40])
+                visible = body.get("visible")
+                if not isinstance(visible, bool):
+                    raise ActionError(400, "invalid_argument", "visible must be true or false", "visible")
+                back = app.hub.set_visible(str(body.get("client") or "")[:40], visible)
+                if back is None:
+                    raise ActionError(404, "not_found", "no such page is connected", "client")
+                if back:
+                    app.on_client_connect()   # a page that comes back sees fresh tabs at once
+                self.send_json(200, {"ok": True})
             elif path == "/api/triage/run":
                 app.triage.handle_post(self, body)
             elif path.startswith("/api/jev/") and jev is None:

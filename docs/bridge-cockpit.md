@@ -72,7 +72,7 @@ their defaults:
 | `open_in` | `auto` | `auto`: a cmux browser tab inside cmux, else your default browser; `cmux`, `system`, or `none` (print the address only) |
 | `relay` | `false` | `true`: the control session takes questions from the page as prompts; needs the `cockpit-relay` mod (below), so it stays off unless asked for |
 | `profile` | `briefing.default` | which briefing profile the page shows |
-| `tabs_seconds` | `10` | how often the agent tabs are re-read while a page is open; below 5 counts as 5 |
+| `tabs_seconds` | `10` | how often the agent tabs are re-read while a page is shown; below 5 counts as 5. A page left in a background browser tab stops the full pass and the ticker, and the tabs are re-read only once a minute until it is shown again |
 | `language` | `language.conversation`, else `en` | `de` or `en` for the page's own words |
 | `full_minutes` | `10` | while a page is open, the full briefing runs again when the last one is older |
 | `voice` | `false` | the browser also speaks a tab that starts waiting for you |
@@ -1065,7 +1065,8 @@ nothing a stranger could trigger:
   `inbox.runner` ([`inbox.md`](inbox.md));
 - the server collects with `--no-save`: the page never moves the "since last
   time" baseline of your text briefing;
-- every POST except `/api/reload` leaves one line in `.bridge/cockpit/audit.log`,
+- every POST except `/api/reload` and `/api/presence` (whether a page is
+  visible, sent on every tab switch) leaves one line in `.bridge/cockpit/audit.log`,
   never a text and never the key: a write action through `/api/action` (time,
   verb, rows, exit codes), a question through `/api/ask` (`ask`, kind, `via`,
   relay or conversation id, character count), `/api/route` (`route`, number of
