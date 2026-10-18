@@ -617,6 +617,10 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/mock.js",
     "scripts/web/tokens.css",
     "scripts/web/style.css",
+    "scripts/web/favicon.ico",                # the cockpit's icon, for tabs, bookmarks and favourites
+    "scripts/web/apple-touch-icon.png",
+    "scripts/web/icon-192.png",
+    "scripts/web/icon-512.png",
     "scripts/web/fonts/inter-latin-wght.woff2",          # DESIGN.md's two families, served by the cockpit itself
     "scripts/web/fonts/playfair-display-latin-500.woff2",
     "scripts/web/vendor/htm-preact-3.1.1.module.js",
