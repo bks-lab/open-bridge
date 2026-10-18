@@ -92,10 +92,11 @@ export function startRefusal(row) {
  * Turn parsed codes into a plan, the way the mod's shortcut hook does (register.tsx):
  * rows with a live tab jump instead of a/v/w; a/w refused for only-you, waiting and
  * approved rows; all a rows together, all w rows together, all v rows together; b and c
- * per row. `rowFor(n)` returns the row numbered n or undefined.
+ * per row, c on an inbox row through the drop dialog like the Drop button (`askDrop`).
+ * `rowFor(n)` returns the row numbered n or undefined.
  */
 export function planShortcut(codes, rowFor) {
-  const plan = { missing: [], jump: [], refused: [], do: [], ws: [], advise: [], later: [], drop: [] }
+  const plan = { missing: [], jump: [], refused: [], do: [], ws: [], advise: [], later: [], drop: [], askDrop: [] }
   for (const { n, letter } of codes) {
     const row = rowFor(n)
     if (!row) {
@@ -105,12 +106,80 @@ export function planShortcut(codes, rowFor) {
     if (row.tab && row.tab.live && 'avw'.includes(letter)) plan.jump.push({ n, row })
     else if ('aw'.includes(letter) && startRefusal(row)) plan.refused.push({ n, row, reason: startRefusal(row) })
     else if (letter === 'b') plan.later.push({ n, row })
-    else if (letter === 'c') plan.drop.push({ n, row })
+    else if (letter === 'c') (row.inbox_id ? plan.askDrop : plan.drop).push({ n, row })
     else if (letter === 'v') plan.advise.push({ n, row })
     else if (letter === 'w') plan.ws.push({ n, row })
     else plan.do.push({ n, row })
   }
   return plan
+}
+
+/** The letter of a single-key row shortcut (a v c b w), or null; an auto-repeat keydown is none */
+export function letterShortcut(e) {
+  if (!e || e.repeat) return null
+  const key = e.key
+  return typeof key === 'string' && key.length === 1 && 'avcbw'.includes(key) ? key : null
+}
+
+/** The keys of a bulk action that are not busy yet: a row already in flight is skipped */
+export function freeKeys(keys, busy) {
+  return keys.filter(k => !busy?.[k])
+}
+
+/** The busy key of an action: its row, tab or conversation, the joined keys of a bulk, else the verb */
+function busyKey(verb, args) {
+  return args?.key ?? args?.tab_ref ?? (args?.keys ? args.keys.join(',') : args?.conv ? `quick:${args.conv}` : verb)
+}
+
+// a toggle on the start page, carrying a row key but no action on the row: a quick second flip still goes
+const BUSY_TOGGLES = new Set(['pin'])
+
+/**
+ * How `act` holds an action against the busy map. `key` is busyKey of the args as asked, so the
+ * bulk buttons that check the joined list stay busy; `args` and `rows` leave out the rows already
+ * in flight, named in `skipped`; `refused` when nothing is left to send. `refuse` only for an
+ * action on rows (a key, a tab, a bulk): settings and questions are not held back.
+ */
+export function planBusy(verb, args = {}, busy = {}) {
+  const key = busyKey(verb, args)
+  const bulk = !!args.keys?.length
+  const rows = bulk ? freeKeys(args.keys, busy) : []
+  const skipped = bulk ? args.keys.filter(k => !rows.includes(k)) : []
+  const onRows = bulk || args.key != null || args.tab_ref != null
+  return {
+    key, rows, skipped,
+    args: bulk ? { ...args, keys: rows } : args,
+    refused: bulk && !rows.length,
+    refuse: onRows && !BUSY_TOGGLES.has(verb),
+  }
+}
+
+/**
+ * `withBusy(key, what, fn, { rows, refuse })`: mark `key` (and each row key of a bulk) busy while
+ * fn runs, and clear them however fn ends. With `refuse`, a key or row already busy runs nothing,
+ * calls `onRefused(keys)` and returns null, so a shortcut, which bypasses the disabled button,
+ * cannot send the same row action twice. Without it, as for settings and questions, fn always runs.
+ * `getBusy()` reads the busy map, `updateBusy(f)` replaces it with f(busy).
+ */
+export function createWithBusy(getBusy, updateBusy, onRefused = () => {}) {
+  return async function withBusy(key, what, fn, { rows = [], refuse = false } = {}) {
+    const keys = [...new Set([key, ...rows])]
+    const busy = getBusy() ?? {}
+    if (refuse && keys.some(k => busy[k])) {
+      onRefused(keys)
+      return null
+    }
+    updateBusy(b => ({ ...b, ...Object.fromEntries(keys.map(k => [k, what])) }))
+    try {
+      return await fn()
+    } finally {
+      updateBusy(b => {
+        const next = { ...b }
+        for (const k of keys) delete next[k]
+        return next
+      })
+    }
+  }
 }
 
 /** Design token for a profile mark color name. Never put a profile value into CSS. */

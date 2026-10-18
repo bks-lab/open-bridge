@@ -84,6 +84,7 @@ LABELS = {
     "st_blocked": "blocked",
     "capped": "(first {n} cards)",
     "repos_skipped": "{n} repositories not readable: {names}",
+    "untasked": "{title}: assigned to you without a task: {n}",
     "agenda_title": "Calendar",
     "clashes": "overlaps {title}",
     "clash_row": "{first} and {second} overlap ({when})",
@@ -138,10 +139,13 @@ LABELS = {
                    "(python3 scripts/tracker-sync.py diff, the tracker-sync skill). List what differs and propose the "
                    "change on each side; apply a board change only through the github-projects-manager skill and only "
                    "after a yes."),
-    "gh_do_remind": ("Draft a short, friendly reminder to the person it is assigned to: what is open, what is needed from "
-                     "them, by when if a date is known, in the language the issue is written in. Offer it as a GitHub "
-                     "comment that mentions them and, if the person prefers, as a mail or chat draft through this Bridge's "
-                     "drafting skill. Post or send nothing: show the text and wait for a yes."),
+    "gh_do_remind": ("Write a short, friendly reminder to the person it is assigned to: what is open, what is needed from "
+                     "them, by when if a date is known, in the language the issue is written in. The click on Remind "
+                     "releases exactly this one GitHub comment that mentions them: post it right away (gh issue comment, "
+                     "on a pull request gh pr comment, text from a file), without asking again. Then put the comment's "
+                     "link on the inbox item (python3 scripts/inbox.py note) and close it. Anything else, a mail or chat "
+                     "only as a draft through this Bridge's drafting skill. If posting is refused, note the text and the "
+                     "reason on the inbox item instead, so the cockpit shows it."),
     "all_clear": "{title}: all clear",
     "owed": "Not in this profile, still yours to run: {streams} (briefing.py owed)",
     "overview_file": "Boards and activity: {path}",
@@ -219,6 +223,7 @@ LABELS_DE = {
     "st_blocked": "blockiert",
     "capped": "(erste {n} Karten)",
     "repos_skipped": "{n} Repos nicht lesbar: {names}",
+    "untasked": "{title}: dir zugewiesen, ohne Aufgabe: {n}",
     "agenda_title": "Termine",
     "clashes": "überschneidet sich mit {title}",
     "clash_row": "{first} und {second} überschneiden sich ({when})",
@@ -273,10 +278,14 @@ LABELS_DE = {
                    "(python3 scripts/tracker-sync.py diff, der Skill tracker-sync). Nenne, was abweicht, und schlage die "
                    "Änderung je Seite vor; eine Board-Änderung nur über den Skill github-projects-manager und erst nach "
                    "einem Ja."),
-    "gh_do_remind": ("Entwirf eine kurze, freundliche Erinnerung an die Person, der es zugewiesen ist: was offen ist, was von "
-                     "ihr gebraucht wird, bis wann, falls ein Datum bekannt ist, in der Sprache des Issues. Biete sie als "
-                     "GitHub-Kommentar mit Erwähnung an und, wenn gewünscht, als Mail- oder Chat-Entwurf über den "
-                     "Entwurfs-Skill dieser Bridge. Poste und sende nichts: zeig den Text und warte auf ein Ja."),
+    "gh_do_remind": ("Schreib eine kurze, freundliche Erinnerung an die Person, der es zugewiesen ist: was offen ist, was "
+                     "von ihr gebraucht wird, bis wann, falls ein Datum bekannt ist, in der Sprache des Issues. Der Klick "
+                     "auf Erinnern gibt genau diesen einen GitHub-Kommentar mit Erwähnung frei: poste ihn sofort (gh issue "
+                     "comment, bei einem Pull Request gh pr comment, Text aus einer Datei), ohne noch einmal zu fragen. "
+                     "Dann den Link des Kommentars als Notiz auf das Posteingang-Item (python3 scripts/inbox.py note) und "
+                     "das Item schließen. Alles andere, Mail oder Chat nur als Entwurf über den Entwurfs-Skill dieser "
+                     "Bridge. Wird das Posten abgelehnt, schreib Text und Grund als Notiz auf das Item, damit das Cockpit "
+                     "es zeigt."),
     "all_clear": "{title}: alles in Ordnung",
     "owed": "Nicht im Profil, noch von Hand: {streams} (briefing.py owed)",
     "overview_file": "Boards und Aktivität: {path}",
@@ -873,6 +882,10 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 title = str(sid).replace("-", " ").capitalize()
             n = sum(1 for i in items_of(s) if not muted(sid, i) and i.get("state") not in ("done", "removed"))
             out["status"].append({"title": title, "count": n, "health": cfg.get("report_ok") is True})
+            # issues assigned to you that no task tracks: counted over every row, not only the capped ones
+            untracked = sum(1 for i in s.get("all") or items_of(s) if i.get("untasked") is True and not muted(sid, i))
+            if untracked:
+                out["hygiene"].append(labels["untasked"].format(title=title, n=untracked))
         if cfg.get("report_ok") is True and not any(
                 not muted(sid, i) and i.get("state") not in ("done", "removed") for i in items_of(s)):
             # Green says so: an empty source is otherwise indistinguishable from one that never ran.
@@ -1782,6 +1795,8 @@ def github_flags(item: dict, now: dt.datetime) -> list:
         flags.append("my_pr")
     if item.get("state") in ("in_progress", "review", "blocked"):
         flags.append(item["state"])
+    if item.get("untasked") is True:          # assigned to you, and no task or stream names it
+        flags.append("untasked")
     changed = _when(item.get("changed_at"))
     if changed is not None and (now - changed).days >= QUIET_DAYS:      # _when gives local, naive times
         flags.append("quiet")
@@ -1887,7 +1902,8 @@ def calendar_figures(cals: list, now: dt.datetime) -> dict:
 def github_facts(item: dict, now: dt.datetime) -> dict:
     """A GitHub row's facts as a dashboard draws them, one field each instead of a detail line: the plain
     title, repository and number, the normalized state and the board's own word for it, labels, people, the
-    pull requests that close it, the task that syncs it, when it last changed and how long it has been quiet."""
+    pull requests that close it, the task that syncs it (or that none does), when it last changed and how long it
+    has been quiet."""
     m = GH_ID_RE.match(_text(item.get("id")))
     people = [p for p in (item.get("assignees") or [item.get("assignee")]) if isinstance(p, str) and p][:3]
     linked = item.get("linked_task") if isinstance(item.get("linked_task"), dict) else {}
@@ -1901,6 +1917,7 @@ def github_facts(item: dict, now: dt.datetime) -> dict:
             "prs": [{"n": int(str(p["id"]).rsplit("#", 1)[-1]), "draft": bool(p.get("draft"))}
                     for p in item.get("prs") or [] if isinstance(p, dict) and str(p.get("id", "")).rsplit("#", 1)[-1].isdigit()][:3],
             "task": _text(linked.get("slug")) or None, "stream": bool(linked.get("stream")),
+            "untasked": item.get("untasked") is True,
             "changed": changed.isoformat(timespec="minutes") if changed else None,
             "quiet": quiet if quiet is not None and quiet >= QUIET_DAYS else None,
             "note": _text(item.get("note")) or None}
@@ -1918,6 +1935,8 @@ def github_metrics(items: list, done: object, now: dt.datetime) -> list:
            {"id": "my_pr", "n": count("my_pr"), **({"days": max(ages)} if ages else {})},
            {"id": "in_progress", "n": count("in_progress")}, {"id": "review", "n": count("review")},
            {"id": "blocked", "n": count("blocked")}, {"id": "quiet", "n": count("quiet"), "days": QUIET_DAYS}]
+    if any("untasked" in i for i in items):    # left out when the tasks could not be read: no confident 0
+        out.append({"id": "untasked", "n": count("untasked")})
     done = done if isinstance(done, dict) else {}
     for key in ("closed", "landed"):           # landed: your pull requests merged in the window
         if isinstance(done.get(key), int):

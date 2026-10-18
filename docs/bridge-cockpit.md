@@ -831,7 +831,7 @@ work) on a page with `view: board` lists one row per issue or pull request
 under its board: the board's status, the pull requests that close it, the task
 of this Bridge that syncs it. Above the rows stand its figures (open, yours,
 wanting your review, your open PRs, in progress, in review, blocked, quiet,
-closed and merged lately), a tile per board with its open cards per state as a
+yours without a task, closed and merged lately), a tile per board with its open cards per state as a
 bar and the switch Off · Mine · All, and the people the rows are with; a click
 on any of them filters the rows, a second clears it. Opening a row reads its
 issue or pull request (description, last comments, labels, boards, review and
@@ -841,7 +841,12 @@ Review the PR, Make it a task, Sync status, Remind, plus the section's own
 `row_steps`. The tab is
 filed as an inbox item under `tracker:<step>:<row id>`, and the row then names
 that item: its tab's state shows on the row and "Open tab" jumps to it, as on a
-task row. A row whose issue a task syncs opens that task's tab instead. No step
+task row. Any other item whose key ends in the row id (a daily radar's, say)
+attaches to the row the same way and never adds a row. An issue assigned to you
+that no live task or stream syncs carries a "no task" chip and counts in its
+figure, so Make it a task and Analyse are one click away, and Implement too
+when no pull request closes it. A row whose issue a
+task syncs opens that task's tab instead. No step
 writes to GitHub by itself; the prompt sends board changes through
 `github-projects-manager` and keeps merging with you.
 

@@ -15,7 +15,7 @@ export const GH_REF = /^[\w.-]+\/[\w.-]+#\d+$/
 const BOARD_STATES = ['new', 'ready', 'in_progress', 'review', 'blocked']
 const STATE_TOKEN = { new: 'on-surface-muted', ready: 'info', in_progress: 'secondary', review: 'warning', blocked: 'danger' }
 // the figures that are a reason to look: shown loud when not zero
-const LOUD = { ask_review: 'warning', blocked: 'danger', quiet: 'warning' }
+const LOUD = { ask_review: 'warning', blocked: 'danger', quiet: 'warning', untasked: 'warning' }
 
 /** A row passes the dashboard's filter: a figure (a flag the row carries) or a board (its group) */
 export function ghShows(it, filter) {
@@ -247,6 +247,7 @@ function GhRow({ it, page, section, s, c, byKey }) {
         ${(g.labels ?? []).map(l => html`<span key=${l} class="gh-label">${l}</span>`)}
         ${(g.prs ?? []).map(p => html`<span key=${p.n} class="ghl-chip">PR #${p.n}${p.draft ? ` · ${t.gh.draft}` : ''}</span>`)}
         ${g.task ? html`<span class="ghl-chip ghl-chip-task" title=${t.gh.taskChipTitle}>${g.stream ? t.gh.streamChip(g.task) : t.gh.taskChip(g.task)}</span>` : null}
+        ${g.untasked ? html`<span class="ghl-chip ghl-chip-untasked" title=${t.gh.untaskedChipTitle}>${t.gh.untaskedChip}</span>` : null}
         ${it.tab ? html`<${Chip} token=${it.tab.live ? 'success' : 'on-surface-muted'}>${t.gh.agentChip(t.state?.[it.tab.state] ?? it.tab.state)}<//>` : null}
         ${g.quiet ? html`<span class="ghl-chip ghl-chip-quiet">${t.gh.quietChip(g.quiet)}</span>` : null}
         ${g.note ? html`<span class="muted small">${g.note}</span>` : null}
