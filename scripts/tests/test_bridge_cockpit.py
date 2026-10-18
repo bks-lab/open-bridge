@@ -4235,6 +4235,40 @@ def test_this_bridges_design_md_names_every_colour_itself():
     assert used <= declared | fallbacks and used & declared
 
 
+ICONS = {"/favicon.ico": "image/x-icon", "/apple-touch-icon.png": "image/png", "/icon-192.png": "image/png",
+         "/icon-512.png": "image/png"}
+
+
+def test_the_icons_are_served_without_the_cookie(world):
+    # a bookmark or a Safari favourite fetches its picture without the session cookie
+    for path, kind in ICONS.items():
+        (world.root / "scripts" / "web" / path[1:]).write_bytes(b"icon " + path.encode())
+        status, headers, body = world.request("GET", path)
+        assert status == 200 and headers["Content-Type"] == kind and body == b"icon " + path.encode(), path
+
+
+def test_only_the_named_icons_skip_the_cookie(world):
+    (world.root / "scripts" / "web" / "other.png").write_bytes(b"png")
+    status, _, _ = world.request("GET", "/other.png")
+    assert status == 401
+    status, headers, _ = world.request("GET", "/other.png", headers=world.cookie)
+    assert status == 200 and headers["Content-Type"] == "image/png"
+
+
+def test_a_missing_icon_is_a_quiet_404(world):
+    status, _, _ = world.request("GET", "/apple-touch-icon.png")
+    assert status == 404
+
+
+def test_the_page_names_its_icons_and_ships_them():
+    page = (ROOT / "scripts" / "web" / "index.html").read_text(encoding="utf-8")
+    assert '<link rel="icon" href="favicon.ico" sizes="any">' in page
+    assert '<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">' in page
+    assert '<link rel="apple-touch-icon" href="apple-touch-icon.png">' in page
+    for path in ICONS:
+        assert (ROOT / "scripts" / "web" / path[1:]).is_file(), path
+
+
 def test_colors_css_is_served_with_the_cookie_only(world):
     status, headers, body = world.request("GET", "/colors.css", headers=world.cookie)
     assert status == 200 and headers["Content-Type"].startswith("text/css") and b"--primary:" in body

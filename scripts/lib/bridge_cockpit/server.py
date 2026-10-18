@@ -76,7 +76,10 @@ STATIC_RE = re.compile(r"^/[A-Za-z0-9._/-]{1,200}\Z")
 VIEW_PARAMS = ("mock", "lang", "offline", "empty", "auth")
 VIEW_VALUE_RE = re.compile(r"^[A-Za-z0-9]{1,8}\Z")
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml; charset=utf-8", ".woff2": "font/woff2"}
+                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml; charset=utf-8", ".woff2": "font/woff2",
+                 ".png": "image/png", ".ico": "image/x-icon"}
+# a bookmark, a Safari favourite or a home-screen tile fetches its picture without the session cookie
+PUBLIC_ICONS = frozenset({"/favicon.ico", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"})
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 SCREEN_LINES = 400          # the tab view reads this much of a tab's scrollback
@@ -651,9 +654,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             self.send_json(200, {"ok": True, "version": VERSION, "instance": app.instance})
             return
-        if path == "/favicon.ico":
-            # the browser asks on every load; no icon, and no 404 in the console for it
-            self.send_bytes(204, b"", "image/x-icon")
+        if path in PUBLIC_ICONS:
+            self.get_static(path)
             return
         if path == "/" and "code" in query:
             given = query["code"][0] if query["code"] else ""
