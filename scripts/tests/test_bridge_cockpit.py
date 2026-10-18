@@ -5232,3 +5232,53 @@ def test_a_pass_that_took_n_ms_holds_the_next_watched_delta_for_n_ms(world):
     assert watcher.check(100.0 + watch.DEBOUNCE_S + 3.0) is True
     world.app.collector.drain()
     assert len(collect_calls(world)) == 1
+
+
+# ---------------------------------------------------------------- the tab view's screen poll (#387)
+
+def test_a_tab_screen_that_did_not_change_answers_unchanged_without_text(world):
+    screens = iter(["> one\n\n⏺ first", "> one\n\n⏺ first", "> one\n\n⏺ second"])
+    world.runner.handlers["workplace.screen"] = lambda argv: ok({"text": next(screens)})
+    status, _, body = world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)
+    first = json.loads(body)
+    assert status == 200 and first["text"] == "> one\n\n⏺ first" and re.fullmatch(r"[0-9a-f]{16}", first["hash"])
+    world.clock.advance(2)
+    status, _, body = world.request("GET", f"/api/tab/screen?ref=surface:7&since={first['hash']}", headers=world.cookie)
+    same = json.loads(body)
+    assert status == 200 and same["ok"] is True and same["unchanged"] is True and "text" not in same
+    assert same["hash"] == first["hash"] and same["ref"] == "surface:7"
+    world.clock.advance(2)
+    status, _, body = world.request("GET", f"/api/tab/screen?ref=surface:7&since={first['hash']}", headers=world.cookie)
+    changed = json.loads(body)
+    assert status == 200 and changed["text"] == "> one\n\n⏺ second" and changed["hash"] != first["hash"]
+    assert "unchanged" not in changed
+    assert len(world.runner.of("workplace.screen")) == 3
+
+
+def test_a_tab_screen_since_must_be_a_hash(world):
+    world.runner.calls.clear()
+    for since in ("xyz", "a" * 65, "%20", "--json"):
+        status, _, body = world.request("GET", f"/api/tab/screen?ref=surface:7&since={since}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["code"] == "invalid_argument"
+    assert world.runner.of("workplace.screen") == []
+
+
+def test_two_reads_of_one_tab_screen_within_a_second_share_one_driver_call(world):
+    world.runner.handlers["workplace.screen"] = lambda argv: ok({"text": "> hi"})
+    world.runner.calls.clear()
+    a = json.loads(world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)[2])
+    world.clock.advance(0.5)
+    b = json.loads(world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)[2])
+    assert a["text"] == b["text"] == "> hi" and a["hash"] == b["hash"]
+    assert len(world.runner.of("workplace.screen")) == 1
+    world.clock.advance(1.5)                       # past the window the driver is asked again
+    world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)
+    assert len(world.runner.of("workplace.screen")) == 2
+
+
+def test_a_tab_screen_the_driver_could_not_read_is_not_kept(world):
+    answers = iter([fail("busy"), ok({"text": "> back"})])
+    world.runner.handlers["workplace.screen"] = lambda argv: next(answers)
+    assert world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)[0] == 502
+    status, _, body = world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)
+    assert status == 200 and json.loads(body)["text"] == "> back"

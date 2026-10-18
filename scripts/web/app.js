@@ -822,7 +822,7 @@ const ctl = {
   askControl,
   setAskFallback: fb => setUi({ askFallback: fb }),
   closeTabView: () => setUi({ tabView: null }),
-  tabScreen: ref => api.tabScreen(ref),
+  tabScreen: (ref, since) => api.tabScreen(ref, since),
   github: (ref, fresh) => api.github(ref, fresh),
   loadInbox: id => loadDetail('inbox', id),
   loadTask: slug => loadDetail('task', slug),

@@ -634,10 +634,14 @@ activity, the evidence as chips (references with state and date, blocker
 resolved, open steps, inbox items) and the reason.
 
 **A tab, large.** "View" on an agent tab's card (or a click on its name)
-opens that tab in the middle like the Claude Code CLI: its terminal, read every
-1.5 s through the terminal driver (`workplace.py screen`, read only, the last
-400 lines), what you typed
-marked, the end kept in view unless you scrolled up, and below it Yes, No, Go
+opens that tab in the middle like the Claude Code CLI: its terminal, read
+through the terminal driver (`workplace.py screen`, read only, the last 400
+lines) every 1.5 s right after a change and slower, up to every 5 s, while it
+stays the same. The page sends the hash of the screen it holds
+(`/api/tab/screen?ref=...&since=<hash>`) and the server answers `unchanged`
+without the text when nothing moved; it keeps one read per tab for a second, so
+several pages on one tab share one driver call. What you typed is
+marked, the end stays in view unless you scrolled up, and below it stand Yes, No, Go
 on as the tab's state allows and a box that sends a message to it (Enter
 sends, Shift+Enter a new line). Escape or a click outside closes it.
 
@@ -983,7 +987,7 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
 - **On the left** stand the workspaces in the terminal's order, pinned ones first. Each shows its colour, its state, its unread count and, when its folder is another Bridge's clone, that Bridge's name. Below each workspace are its tabs, most urgent first. The quick chats sit in the control workspace (`workplace.control`), the newest six and "all" for the rest.
 - **Below the workspaces** come the other Bridges on this machine that have no workspace, and the A2A agents.
 - **On the right** is what you picked:
-  - a tab's terminal, read every 1.5 s, with "Write" to open it in its window with the message box and keys;
+  - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same), with "Write" to open it in its window with the message box and keys;
   - a quick chat with its box;
   - an agent with its conversations;
   - a Bridge's folder and how to work in it.

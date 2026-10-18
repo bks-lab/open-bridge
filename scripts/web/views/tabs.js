@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, previewText, railShown } from '../logic.js'
+import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railShown, SCREEN_POLL_MS } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -14,26 +14,35 @@ import { Btn, Chip, Empty, StateLine } from './parts.js'
 
 // ---------------------------------------------------------------- agent tabs
 
-/** One agent tab large in the middle, like the Claude Code CLI: its terminal read every 1.5 s while
- *  the page is visible, the end in view unless you scrolled up, and below it the message box and the
+/** One agent tab large in the middle, like the Claude Code CLI: its terminal read while the page is
+ *  visible (useTabScreen), the end in view unless you scrolled up, and below it the message box and the
  *  buttons the tab's state allows. Read only through the terminal driver (screen); sending goes through tab_send */
-/** The terminal of one tab, read every 1.5 s while the page is visible: { screen, err } */
+/** The terminal of one tab, read while the page is visible: every 1.5 s right after a change, slower up
+ *  to every 5 s while it stays the same. The server answers unchanged to the hash held, and only a
+ *  changed screen is stored, so an idle tab neither moves its text nor renders the view again: { screen, err } */
 export function useTabScreen(c, ref) {
   const [screen, setScreen] = useState(null)
   const [err, setErr] = useState(null)
   useEffect(() => {
     let alive = true
     let timer = null
+    let held = null
+    let delay = SCREEN_POLL_MS
     setScreen(null)
     setErr(null)
     if (!ref) return undefined
     const pull = async () => {
       if (document.visibilityState === 'visible') {
-        const res = await c.tabScreen(ref)
+        const res = await c.tabScreen(ref, held?.hash)
         if (!alive) return
-        if (res.ok) { setScreen(res.data); setErr(null) } else setErr(res.error?.message || res.error?.code || '?')
+        if (res.ok) {
+          const next = screenPoll(held, res.data, delay)
+          delay = next.delay
+          if (next.screen !== held) { held = next.screen; setScreen(held) }
+          setErr(null)
+        } else setErr(res.error?.message || res.error?.code || '?')
       }
-      if (alive) timer = setTimeout(pull, 1500)
+      if (alive) timer = setTimeout(pull, delay)
     }
     pull()
     return () => { alive = false; clearTimeout(timer) }

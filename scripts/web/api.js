@@ -127,7 +127,8 @@ export function createApi(transport = httpTransport()) {
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),
     page: (page, section) => transport.get(`/api/page?page=${encodeURIComponent(page)}&section=${encodeURIComponent(section)}`),
     relay: () => transport.get('/api/relay'),
-    tabScreen: ref => transport.get(`/api/tab/screen?ref=${encodeURIComponent(ref)}`),
+    // since: the hash of the screen the page holds; the server then answers unchanged without the text
+    tabScreen: (ref, since) => transport.get(`/api/tab/screen?ref=${encodeURIComponent(ref)}${since ? `&since=${encodeURIComponent(since)}` : ''}`),
     events: (handlers, onConn) => {
       // A page in a background browser tab tells the server so, and the server stops polling the
       // agent tabs, the full pass and the ticker for it; coming back asks for one poll at once.

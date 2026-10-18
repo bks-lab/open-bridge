@@ -3495,3 +3495,58 @@ test('aria roles: every radio group and tab list takes the arrow keys, every men
       `${file}: a popover of its own instead of usePopover`)
   }
 })
+
+// ---------------------------------------------------------------- the tab view's screen poll (#387)
+
+test('screenPoll: an unchanged answer keeps the screen object and slows the poll down to its ceiling', () => {
+  const { screenPoll, SCREEN_POLL_MS, SCREEN_POLL_MAX_MS } = logic
+  const first = { ref: 'surface:7', text: '> hi', hash: 'aa11' }
+  const a = screenPoll(null, first)
+  assert.equal(a.screen, first)
+  assert.equal(a.delay, SCREEN_POLL_MS)
+  let delay = a.delay
+  const delays = []
+  for (let i = 0; i < 6; i++) {
+    const next = screenPoll(first, { ref: 'surface:7', unchanged: true, hash: 'aa11' }, delay)
+    assert.equal(next.screen, first, 'the held object stays, so the view does not render again')
+    assert.ok(next.delay >= delay, `the interval never shrinks while idle: ${next.delay} < ${delay}`)
+    delay = next.delay
+    delays.push(delay)
+  }
+  assert.ok(delays[0] > SCREEN_POLL_MS, 'the first idle answer already waits longer')
+  assert.equal(delays.at(-1), SCREEN_POLL_MAX_MS)
+  // the same text sent in full (another page asked first, a server without since) counts as unchanged too
+  assert.equal(screenPoll(first, { ...first }, delay).screen, first)
+  // a change replaces the screen and the poll is fast again
+  const changed = { ref: 'surface:7', text: '> hi\n⏺ ok', hash: 'bb22' }
+  const b = screenPoll(first, changed, SCREEN_POLL_MAX_MS)
+  assert.equal(b.screen, changed)
+  assert.equal(b.delay, SCREEN_POLL_MS)
+})
+
+test('api.tabScreen names the hash the page holds, and asks plainly without one', async () => {
+  const got = []
+  const a = api.createApi({ get: async p => { got.push(p); return { ok: true } }, post: async () => ({ ok: true }), events: () => ({}) })
+  await a.tabScreen('surface:7')
+  await a.tabScreen('surface:7', '0123abcd')
+  assert.deepEqual(got, ['/api/tab/screen?ref=surface%3A7', '/api/tab/screen?ref=surface%3A7&since=0123abcd'])
+})
+
+test('the demo answers the tab screen like the server: a hash, and unchanged without text to it', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-screen-'))
+  try {
+    fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
+    const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
+    const tr = mock.createMockTransport({ lang: 'en' })
+    const ref = encodeURIComponent((await tr.get('/api/state')).data.tabs.tabs[0].ref)
+    const full = (await tr.get(`/api/tab/screen?ref=${ref}`)).data
+    assert.ok(full.text && /^[0-9a-f]{8,}$/.test(full.hash), JSON.stringify(full))
+    const same = (await tr.get(`/api/tab/screen?ref=${ref}&since=${full.hash}`)).data
+    assert.equal(same.unchanged, true)
+    assert.equal(same.text, undefined)
+    assert.equal((await tr.get(`/api/tab/screen?ref=${ref}&since=0000`)).data.text, full.text)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})

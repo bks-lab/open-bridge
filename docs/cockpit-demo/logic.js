@@ -776,6 +776,20 @@ export function gaugeSection(items) {
   return (items ?? []).length > 0 && items.every(it => it?.meter?.max)
 }
 
+/** The tab view reads a tab's screen this often right after a change, and slows down to the ceiling
+ *  while it stays the same */
+export const SCREEN_POLL_MS = 1500
+export const SCREEN_POLL_MAX_MS = 5000
+
+/** One answer of the tab view's screen read against the screen it holds: { screen, delay }. An unchanged
+ *  screen (unchanged, or the same hash in full) keeps the held object, so the view does not render again,
+ *  and waits half as long again before the next read; a change is taken and the pace is fast again */
+export function screenPoll(prev, data, delay = SCREEN_POLL_MS) {
+  const same = !!prev && (!!data?.unchanged || (!!prev.hash && data?.hash === prev.hash))
+  if (!same) return { screen: data, delay: SCREEN_POLL_MS }
+  return { screen: prev, delay: Math.min(SCREEN_POLL_MAX_MS, Math.round(delay * 1.5)) }
+}
+
 /** A Claude Code terminal as chat lines: what you typed (❯ or >), what Claude says (⏺), tool output (⎿),
  *  the rest as it stands. Blank runs collapse to one, so the stream reads like a chat */
 export function screenLines(text) {

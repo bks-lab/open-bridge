@@ -868,7 +868,12 @@ export function createMockTransport(opts = {}) {
         const text = ['❯ ' + (tab.last || 'Go on with the task'), '', '⏺ Reading the task folder and the last log rows.',
           '  ⎿  Read work/tasks/demo-task/STATUS.md (48 lines)', '', '⏺ ' + (tab.state === 'needs-you' ? 'Allow edit of README.md?' : 'Working on the next step.'),
           '', '─'.repeat(40), '> '].join('\n')
-        return ok({ ok: true, ref: tab.ref, name: tab.name, state: tab.state, workspace: tab.workspace, text, at_ms: now() })
+        // like the server: a hash of the text, and unchanged without the text when the page names it (since)
+        let h = 0x811c9dc5
+        for (const ch of text) h = Math.imul(h ^ ch.codePointAt(0), 16777619) >>> 0
+        const hash = h.toString(16).padStart(8, '0')
+        const head = { ok: true, ref: tab.ref, name: tab.name, state: tab.state, workspace: tab.workspace, hash, at_ms: now() }
+        return ok(url.searchParams.get('since') === hash ? { ...head, unchanged: true } : { ...head, text })
       }
       if (url.pathname === '/api/history') return ok({ ok: true, entries: history })
       if (url.pathname === '/api/agents') return ok({ ok: true, ...state.agents })

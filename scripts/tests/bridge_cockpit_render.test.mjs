@@ -419,3 +419,36 @@ test('quick_live: a piece of an answer re-renders the chat thread, never the pag
   assert.equal(el.$('.thread .qa'), null)
   vendor.render(null, el)
 })
+
+// ---------------------------------------------------------------- the tab view's screen poll (#387)
+
+const { render } = await loadCockpit()
+
+test('tab view poll: an unchanged screen is not stored again and the next read comes later', async t => {
+  const { useTabScreen } = views.tabs
+  await new Promise(done => setTimeout(done, 150))   // effects the tests before left queued run on real timers first
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: NOW })
+  const saved = document.visibilityState
+  document.visibilityState = 'visible'
+  t.after(() => { document.visibilityState = saved })
+  const first = { ok: true, ref: 'surface:7', text: '> hi', hash: 'aa11' }
+  const idle = { ok: true, ref: 'surface:7', unchanged: true, hash: 'aa11' }
+  const answers = [first, idle, idle, idle, { ok: true, ref: 'surface:7', text: '> hi\n⏺ ok', hash: 'bb22' }, idle]
+  const asked = []
+  const c = { tabScreen: (ref, since) => { asked.push({ at: Date.now(), since }); return Promise.resolve({ ok: true, data: answers.shift() }) } }
+  const held = []
+  function Probe() { const { screen } = useTabScreen(c, 'surface:7'); held.push(screen); return null }
+  const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve() }
+  const root = mount(html`<${Probe} />`)
+  t.after(() => render(null, root))
+  // in steps of 50 ms, the answers settling in between, until the six reads went out
+  for (let ms = 0; asked.length < 6 && ms < 60000; ms += 50) { t.mock.timers.tick(50); await flush() }
+  await flush()
+  assert.deepEqual(asked.map(a => a.since), [undefined, 'aa11', 'aa11', 'aa11', 'aa11', 'bb22'])
+  const gaps = asked.slice(1).map((a, i) => a.at - asked[i].at)
+  assert.ok(gaps[1] > gaps[0] && gaps[2] > gaps[1], `the poll slows while idle: ${gaps}`)
+  assert.ok(gaps[4] < gaps[3], `a change brings the fast pace back: ${gaps}`)
+  // the screen objects the hook handed out: null, the first screen, then the change, nothing in between
+  const distinct = held.filter((x, i) => i === 0 || x !== held[i - 1])
+  assert.deepEqual(distinct.map(x => x?.hash ?? null), [null, 'aa11', 'bb22'])
+})
