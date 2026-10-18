@@ -139,9 +139,10 @@ never close), an unknown slug and a task already under `work/done/`. The
 briefing dashboard's Done button runs it; `task.py review` recommends which
 tasks are finished ([`bridge-cockpit.md`](bridge-cockpit.md) § 3).
 
-`python3 scripts/task.py reopen <slug> [--as doing|backlog] [--note TEXT] [--json]`
+`python3 scripts/task.py reopen <slug> [--as doing|backlog|review] [--note TEXT] [--json]`
 takes a close back: the newest `work/done/*/<slug>/` moves to `work/tasks/<slug>/`,
-`status` becomes `doing` (or `backlog`, for a task that only should still be done),
+`status` becomes `doing` (or `backlog`, for a task that only should still be done,
+or `review`, for a task closed while in review),
 `closed:` and `outcome:` go, a dated "Reopened" note joins the notes under the close
 note, the board is regenerated and one log row is written. It refuses a slug that is
 open. The dashboard's history and its undo run it.

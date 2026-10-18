@@ -968,7 +968,8 @@ test('history: a close offers undo at once and later; a task comes back open or 
   const app = read('app.js')
   const comp = readComponents()
   assert.match(app, /if \(r\.undo\?\.length && r\.ok\) \{\s*pushNote\(\{[^}]*action: 'undo', undo: r\.undo \}/)
-  assert.match(app, /undo: async \(u, as = 'doing'\) =>/)
+  // the toast restores the status the task had before the close (#384); older entries fall back to doing
+  assert.match(app, /undo: async \(u, as = u\.args\?\.as \?\? 'doing'\) =>/)
   // the server's own note of the same text is often first: the undo must still reach the toast
   assert.match(app, /const twin = note\.action && s\.toasts\.find\(t => t\.text === note\.text && !t\.action\)/)
   const buttons = comp.match(/function UndoButtons\([\s\S]*?\n\}/)[0]

@@ -26,13 +26,15 @@ from .store import atomic_write_json, read_json
 MAX_ENTRIES = 500
 KINDS = ("task", "inbox", "other")
 UNDO_VERBS = ("task_reopen", "inbox_reopen", "unhide")
+REOPEN_AS = ("doing", "backlog", "review")     # task.py REOPEN_STATUSES: what a closed task can come back as
 AUDIT_RE = re.compile(r"^(\S+) (settle|task_close|done|drop) (\S+) exits=\S+ ok=true$")
 
 
-def undo_for(kind: str, key: str, ident: str | None) -> dict | None:
-    """The inverse of closing an item of this kind: the verb and its arguments."""
+def undo_for(kind: str, key: str, ident: str | None, status: str | None = None) -> dict | None:
+    """The inverse of closing an item of this kind: the verb and its arguments. A task comes back with the
+    status it had before the close; without one (an older entry, an unreadable STATUS.md) it reopens as doing."""
     if kind == "task" and ident:
-        return {"verb": "task_reopen", "args": {"slug": ident}}
+        return {"verb": "task_reopen", "args": {"slug": ident, **({"as": status} if status in REOPEN_AS else {})}}
     if kind == "inbox" and ident:
         return {"verb": "inbox_reopen", "args": {"id": ident}}
     if kind == "other":
@@ -40,9 +42,9 @@ def undo_for(kind: str, key: str, ident: str | None) -> dict | None:
     return None
 
 
-def item(key: str, title: str, kind: str, did: str, ident: str | None = None) -> dict:
+def item(key: str, title: str, kind: str, did: str, ident: str | None = None, status: str | None = None) -> dict:
     return {"key": key, "title": str(title)[:200], "kind": kind, "did": did, "ident": ident,
-            "undo": undo_for(kind, key, ident), "undone_ms": None}
+            "undo": undo_for(kind, key, ident, status), "undone_ms": None}
 
 
 class History:
