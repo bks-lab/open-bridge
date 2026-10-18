@@ -1,7 +1,7 @@
 ---
 summary: "Working on the cockpit: which files make up the server, the page and the mod relay, which of them are shared with the rest of the Bridge, the edit and test loop (mock mode, a second instance beside the live one), recipes for a new verb, a new model field and new text, the rules the tests hold, and what has to travel together when it moves to open-bridge."
 type: guide
-last_updated: 2026-10-17
+last_updated: 2026-10-18
 related:
   - bridge-cockpit.md
   - ai-services.md
@@ -123,12 +123,13 @@ python3 scripts/bridge-cockpit.py status --json
 
 - **Page files** (`scripts/web/`): reload the browser. Static files go out with
   `Cache-Control: no-cache`, `index.html` with `no-store`.
-- **Server files** (`scripts/lib/bridge_cockpit/`): `stop`, then `open`. A restart
-  makes a new key, so an open tab shows the sign-in panel; `open` gives a fresh
-  one.
+- **Server files** (`scripts/lib/bridge_cockpit/`): `stop`, then `open`. The key
+  and the browser's cookie survive a restart, so an open tab just reloads; after
+  `new-token` it shows the sign-in panel and `open` logs it in again.
 - **Mod files**: `/reload-plugins` in the control session.
 - **Mock mode**: take the link from `python3 scripts/bridge-cockpit.py url` and add
-  `&mock=1` (the server serves even static files only with the key; the sign-in
+  `&mock=1` within a minute (the server serves even static files only with the
+  cookie; the sign-in
   redirect keeps `mock`, `lang`, `offline`, `empty` and `auth`). The page then
   renders invented data and sends no request. Add `&lang=de`,
   `&offline=1`, `&empty=1`, `&auth=0`, `&theme=light` or `&theme=dark` (forces

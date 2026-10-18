@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: MIT
 """HTTP side of the cockpit: routing, auth, static files, server-sent events.
 
-Security model (contract section 8.3): bound to 127.0.0.1 only; a token from
+Security model (contract section 8.3): bound to 127.0.0.1 only; a key from
 secrets.token_urlsafe, kept in <state>/token (mode 0600) so it outlives a restart (a new
-one with `bridge-cockpit.py new-token`), in memory and in server.json (mode 0600); the
-page gets it once through /?token=, which turns it into an HttpOnly SameSite=Strict
-cookie for a year, so the bare address works from then on in that browser. Every request must name 127.0.0.1:<port> or localhost:<port> as Host (DNS
-rebinding); every POST also carries the token in X-Bridge-Token, a matching Origin and
-a JSON body of at most 64 KB. No CORS headers, no access log, static files only from
+one with `bridge-cockpit.py new-token`), in memory and in server.json (mode 0600). The key
+itself never leaves those places: `bridge-cockpit.py url` prints a login code made from it
+(login_code, good once and for CODE_AGE_S), /?code= turns that into an HttpOnly
+SameSite=Strict cookie whose value is derived from the key and dated (good for
+COOKIE_AGE_S), so the bare address works from then on in that browser. Every request must
+name 127.0.0.1:<port> or localhost:<port> as Host (DNS rebinding); every POST also carries
+a second derived value (csrf, handed out by /api/bootstrap) in X-Bridge-Token, a matching
+Origin and a JSON body of at most 64 KB. No CORS headers, no access log, static files only from
 scripts/web/ with a fixed set of extensions.
 """
 from __future__ import annotations
@@ -89,8 +92,8 @@ ERROR_STATUS = {"unauthorized": 401, "forbidden_origin": 403, "bad_host": 403, "
                 "not_applicable": 409, "relay_offline": 409, "cmux_unavailable": 503, "driver_cannot": 503, "unreadable": 502,
                 "internal": 500}
 UNAUTHORIZED_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Bridge Cockpit</title></head>"
-                     "<body><p>Open the cockpit once with the link from <code>python3 scripts/bridge-cockpit.py url</code>; "
-                     "after that the plain address works in this browser.</p>"
+                     "<body><p>Open the cockpit once with a fresh link from <code>python3 scripts/bridge-cockpit.py url</code> "
+                     "(it works once, for a minute); after that the plain address works in this browser for a few days.</p>"
                      "</body></html>")
 
 
@@ -149,6 +152,9 @@ class App:
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.clock = clock
         self.token = token
+        self.csrf = derived(token, "csrf")      # what the page sends back in X-Bridge-Token, never the key
+        self._codes_lock = threading.Lock()
+        self._codes_used: dict[str, int] = {}   # nonce of a redeemed login code -> its second, until it expires
         self.tx = T(cfg.language, cfg.control)
         self.started_ms = int(clock())
         self.instance = instance_id(self.root)
@@ -204,6 +210,35 @@ class App:
     def cookie_name(self) -> str:
         """Cookies ignore the port: one name per port keeps two servers on 127.0.0.1 apart."""
         return f"bw_token_{self.port}"
+
+    def now_s(self) -> int:
+        return int(self.clock() // 1000)
+
+    def redeem(self, code: str) -> bool:
+        """A login code from login_code(): made with this key, at most CODE_AGE_S old, and not seen before."""
+        nonce, ts = parse_signed(self.token, "code", code, parts=3)
+        if nonce is None:
+            return False
+        now = self.now_s()
+        if not (-CLOCK_SKEW_S <= now - ts <= CODE_AGE_S):
+            return False
+        with self._codes_lock:
+            for old, at in list(self._codes_used.items()):
+                if now - at > CODE_AGE_S + CLOCK_SKEW_S:
+                    del self._codes_used[old]
+            if nonce in self._codes_used:
+                return False
+            self._codes_used[nonce] = ts
+        return True
+
+    def session_value(self, now_s: int | None = None) -> str:
+        """The cookie: its second of issue and a MAC over it with the key, so it ends after COOKIE_AGE_S."""
+        ts = self.now_s() if now_s is None else now_s
+        return f"{ts}.{mac(self.token, f'session|{ts}')}"
+
+    def session_ok(self, value: str) -> bool:
+        _, ts = parse_signed(self.token, "session", value, parts=2)
+        return ts is not None and -CLOCK_SKEW_S <= self.now_s() - ts <= COOKIE_AGE_S
 
     def scrub(self, text: str) -> str:
         return text.replace(self.token, "[token]") if self.token else text
@@ -479,17 +514,17 @@ class Handler(BaseHTTPRequestHandler):
         site = self.headers.get("Sec-Fetch-Site")
         return site is None or site in ("same-origin", "none")
 
-    def token_ok(self, value: str | None) -> bool:
-        return bool(value) and hmac.compare_digest(value.encode("utf-8"), self.app.token.encode("utf-8"))
+    def csrf_ok(self, value: str | None) -> bool:
+        return bool(value) and hmac.compare_digest(value.encode("utf-8"), self.app.csrf.encode("utf-8"))
 
     def cookie_ok(self) -> bool:
-        """Any cookie of our name holding the token. Parsed by hand: SimpleCookie drops every cookie
+        """Any cookie of our name holding a valid session value. Parsed by hand: SimpleCookie drops every cookie
         after one it cannot parse, and another app on 127.0.0.1 (any port) may have set such one."""
         name = self.app.cookie_name
         for header in self.headers.get_all("Cookie") or []:
             for part in header.split(";"):
                 key, sep, value = part.strip().partition("=")
-                if sep and key.strip() == name and self.token_ok(value.strip().strip('"')):
+                if sep and key.strip() == name and self.app.session_ok(value.strip().strip('"')):
                     return True
         return False
 
@@ -545,14 +580,14 @@ class Handler(BaseHTTPRequestHandler):
             # the browser asks on every load; no icon, and no 404 in the console for it
             self.send_bytes(204, b"", "image/x-icon")
             return
-        if path == "/" and "token" in query:
-            given = query["token"][0] if query["token"] else ""
-            if self.token_ok(given):
+        if path == "/" and "code" in query:
+            given = query["code"][0] if query["code"] else ""
+            if self.app.redeem(given):
                 # keep the page's own switches (mock mode, language) so `url` plus &mock=1 still works
                 keep = [(k, query[k][0]) for k in VIEW_PARAMS if query.get(k) and VIEW_VALUE_RE.match(query[k][0])]
                 location = "/" + (f"?{urllib.parse.urlencode(keep)}" if keep else "")
                 self.send_bytes(303, b"", "text/plain; charset=utf-8", extra={
-                    "Location": location, "Set-Cookie": f"{app.cookie_name}={app.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={COOKIE_AGE_S}"})
+                    "Location": location, "Set-Cookie": f"{app.cookie_name}={app.session_value()}; HttpOnly; SameSite=Strict; Path=/; Max-Age={COOKIE_AGE_S}"})
             else:
                 self.send_unauthorized(path)
             return
@@ -572,7 +607,7 @@ class Handler(BaseHTTPRequestHandler):
         one = lambda name: (query.get(name) or [""])[0]  # noqa: E731
         if path == "/api/bootstrap":
             cfg = app.cfg
-            self.send_json(200, {"ok": True, "csrf": app.token, "language": cfg.language, "version": VERSION,
+            self.send_json(200, {"ok": True, "csrf": app.csrf, "language": cfg.language, "version": VERSION,
                                  "scratch": scratch_of(app.root, app.state_dir),
                                  "config": {"port": app.port, "relay": cfg.relay, "tabs_seconds": cfg.tabs_seconds,
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
@@ -766,7 +801,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.precheck():
             return
         path = urllib.parse.urlsplit(self.path).path
-        if not self.cookie_ok() or not self.token_ok(self.headers.get("X-Bridge-Token")):
+        if not self.cookie_ok() or not self.csrf_ok(self.headers.get("X-Bridge-Token")):
             self.send_unauthorized("/api/")
             return
         if not self.origin_ok(self.headers.get("Origin")):
@@ -865,8 +900,38 @@ def scratch_of(root: Path | str, state_dir: Path | str) -> dict | None:
     return None
 
 
-COOKIE_AGE_S = 365 * 86400
+COOKIE_AGE_S = 3 * 86400    # a browser logs in again after a few days
+CODE_AGE_S = 60             # a login code from `url` works once, within this minute
+CLOCK_SKEW_S = 5
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,}")
+
+
+def mac(token: str, message: str) -> str:
+    return hmac.new(token.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def derived(token: str, purpose: str) -> str:
+    """A value made from the key for one purpose: it proves the key without being it."""
+    return mac(token, f"derived|{purpose}")
+
+
+def login_code(token: str, now_ms: float, nonce: str | None = None) -> str:
+    """A one-time login code `<nonce>.<second>.<mac>`: what `url` prints instead of the key."""
+    nonce = nonce or secrets.token_hex(8)
+    ts = int(now_ms // 1000)
+    return f"{nonce}.{ts}.{mac(token, f'code|{nonce}|{ts}')}"
+
+
+def parse_signed(token: str, kind: str, value: str, parts: int) -> tuple[str | None, int | None]:
+    """(nonce, second) of a code (parts 3) or session value (parts 2) whose mac checks out, else (None, None)."""
+    fields = (value or "").split(".")
+    if len(fields) != parts or not all(fields) or not fields[-2].isdigit() or len(fields[-2]) > 12:
+        return None, None
+    nonce, ts, given = (fields[0] if parts == 3 else ""), int(fields[-2]), fields[-1]
+    message = f"code|{nonce}|{ts}" if kind == "code" else f"session|{ts}"
+    if not hmac.compare_digest(given.encode("utf-8"), mac(token, message).encode("utf-8")):
+        return None, None
+    return nonce, ts
 
 
 def stable_token(state_dir: Path) -> str:
