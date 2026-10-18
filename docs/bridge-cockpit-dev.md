@@ -162,8 +162,11 @@ python3 scripts/bridge-cockpit.py status --json
 ### A new verb
 
 1. `actions_base.py`: an entry in `SPEC` (argument name to type and required), and a
-   `v_<verb>(self, ctx, ...)` handler in the `actions_*.py` of its area. Run programs only through `ctx.call(name,
-   subject, argv, timeout)`, argv a list, free text after `--`. End with
+   `v_<verb>(self, ctx, ...)` handler in the `actions_*.py` of its area. A new
+   argument type also needs its check in `actions.py`: a pattern in `PATTERN_KINDS`,
+   a word list in `CHOICE_KINDS`, or a function in `SPECIAL_KINDS`. A kind in none
+   of them makes `validate()` raise `LookupError`, and a test fails on it. Run
+   programs only through `ctx.call(name, subject, argv, timeout)`, argv a list, free text after `--`. End with
    `self.settle(...)` when the row should disappear, or `ctx.delta()` when it
    only changed.
 2. `runner.py`: only if a new program is needed; add it to the allowlist.

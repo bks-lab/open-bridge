@@ -26,7 +26,6 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 URGENCIES = ("now", "today", "later")
 PRIORITIES = ("P0", "P1", "P2", "P3")
-TARGETS = ("tab", "workspace", "area", "auto")
 # why a task closes; `auto` (the overview's bulk close) takes it from the check: stale closes as declined
 CLOSE_REASONS = ("done", "not_doing", "superseded", "elsewhere", "auto")
 DECLINED_REASONS = frozenset({"not_doing", "superseded"})

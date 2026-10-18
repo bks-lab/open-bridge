@@ -17,10 +17,11 @@ import datetime as dt
 import re
 import sys
 import threading
-from typing import Any
+from typing import Any, Callable
 
 from .. import model_route as mr
 from . import model as m
+from .config import TARGETS
 from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as AGENT_PEER_RE
 from .quick import CONV_RE
 from .relay import RELAY_ID_RE
@@ -30,13 +31,112 @@ from .store import append_log
 from .actions_base import *  # noqa: F401,F403
 from .actions_base import (ACCOUNT_STATUSES, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, DROP_REASONS, INBOX_ID_RE,
                            LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES, READ_ONLY_VERBS, ROW_REF_RE,
-                           ROW_STEP_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE, TARGETS, TEAM_RE, TILE_ID_RE,
+                           ROW_STEP_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE, TEAM_RE, TILE_ID_RE,
                            UNDO_TOKEN_RE, URGENCIES, ActionError, Ctx, bad_arg, check_date, check_key, check_text)
 from .actions_chats import ChatVerbs
 from .actions_launch import LaunchSteps
 from .actions_pages import PageVerbs
 from .actions_tabs import TabVerbs
 from .actions_work import WorkVerbs
+
+
+# The argument types of SPEC. Most are one pattern or one list of words with the message a refusal names;
+# the rest have a check of their own. validate() raises LookupError for a kind that is in none of them.
+PATTERN_KINDS: dict[str, tuple[re.Pattern, str]] = {
+    "conv": (CONV_RE, "not a conversation id"),
+    "tab_ref": (TAB_REF_RE, "not a tab ref"),
+    "peer": (AGENT_PEER_RE, "not a peer id"),
+    "agent_conv": (AGENT_CONV_RE, "not a conversation id"),
+    "slug": (SLUG_RE, "not a task slug"),
+    "session_id": (SESSION_ID_RE, "not a session id"),
+    "inbox_id": (INBOX_ID_RE, "not an inbox id"),
+    "page_id": (PAGE_ID_RE, "not a page or section id"),
+    "row_step": (ROW_STEP_RE, "not a step"),
+    "undo_token": (UNDO_TOKEN_RE, "not an undo token"),
+    "row_ref": (ROW_REF_RE, "not a row id"),
+    "relay_id": (RELAY_ID_RE, "not a relay id"),
+}
+_LAUNCH_MODELS = ("auto", *mr.MODELS)
+_LAUNCH_EFFORTS = ("auto", "standard", *mr.EFFORTS)
+CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
+    "launch_model": (_LAUNCH_MODELS, f"must be one of {', '.join(_LAUNCH_MODELS)}"),
+    "launch_effort": (_LAUNCH_EFFORTS, f"must be one of {', '.join(_LAUNCH_EFFORTS)}"),
+    "target": (TARGETS, "unknown target"),
+    "handoff": (("tab", "control"), "tab or control"),
+    "outcome": (m.SETTLE_OUTCOMES, "unknown outcome"),
+    "drop_reason": (DROP_REASONS, "unknown reason"),
+    "close_reason": (CLOSE_REASONS, "unknown reason"),
+    "urgency": (URGENCIES, "unknown urgency"),
+    "priority": (PRIORITIES, "unknown priority"),
+    "a2a_mode": (AGENT_MODES, "question or task"),
+    "reopen_as": (("doing", "backlog"), "doing or backlog"),
+    "restore_as": (REOPEN_AS, " or ".join(REOPEN_AS)),
+    "account_status": (ACCOUNT_STATUSES, "unknown status"),
+    "board_mode": (BOARD_MODES, "off, mine or all"),
+}
+
+
+def _keys(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
+    if not isinstance(value, list) or not 1 <= len(value) <= 50:
+        raise bad_arg(name, "must be a list of 1 to 50 row keys")
+    keys = [check_key(k, name) for k in value]
+    if len(set(keys)) != len(keys):
+        raise bad_arg(name, "duplicate keys")
+    return keys
+
+
+def _settings(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
+    # the deep check is the store's own (LaunchModel.save, Ticker.save); MAX_BODY already caps the size
+    if not isinstance(value, dict) or not value:
+        raise bad_arg(name, "must be an object of settings")
+    return value
+
+
+def _tile_ids(actions: "Actions", value: Any, name: str, today: dt.date) -> list:
+    if not isinstance(value, list) or len(value) > 60:
+        raise bad_arg(name, "must be a list of up to 60 tile ids")
+    if not all(isinstance(x, str) and TILE_ID_RE.match(x) for x in value):
+        raise bad_arg(name, "not a tile id")
+    if len(set(value)) != len(value):
+        raise bad_arg(name, "duplicate ids")
+    return list(value)
+
+
+def _bool(actions: "Actions", value: Any, name: str, today: dt.date) -> bool:
+    if not isinstance(value, bool):
+        raise bad_arg(name, "must be true or false")
+    return value
+
+
+def _team(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    if not isinstance(value, str) or not TEAM_RE.match(value):
+        raise bad_arg(name, "not a team id")
+    if not any(t["id"] == value for t in actions.app.collector.teams):
+        raise bad_arg(name, "unknown team")
+    return value
+
+
+def _index(actions: "Actions", value: Any, name: str, today: dt.date) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value < 10000:
+        raise bad_arg(name, "not a row index")
+    return value
+
+
+SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
+    "keys": _keys,
+    "key": lambda actions, value, name, today: check_key(value, name),
+    "launch_settings": _settings,
+    "ticker_settings": _settings,
+    "tile_ids": _tile_ids,
+    "date": lambda actions, value, name, today: check_date(value, name, today),
+    "text": lambda actions, value, name, today: check_text(value, name, 2000),
+    # what the chat box takes (ASK_MAX on the page): a chat handed to a tab is not cut
+    "long_text": lambda actions, value, name, today: check_text(value, name, 4000),
+    "bool": _bool,
+    "team": _team,
+    "index": _index,
+}
+ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
 
 
 class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
@@ -171,160 +271,27 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         out: dict[str, Any] = {}
         today = self.today()
         for name, (kind, required) in spec.items():
+            if kind not in ARG_KINDS:
+                # a programming error, never a refusal: a kind without a check would let its value through
+                raise LookupError(f"SPEC kind {kind!r} of {verb}.{name} has no check in validate()")
             # an optional text left empty is no text (the page sends its empty box along)
             if name not in args or args[name] is None or (not required and kind in ("text", "long_text") and args[name] == ""):
                 if required:
                     raise bad_arg(name, "missing")
                 continue
             value = args[name]
-            if kind == "keys":
-                if not isinstance(value, list) or not 1 <= len(value) <= 50:
-                    raise bad_arg(name, "must be a list of 1 to 50 row keys")
-                keys = [check_key(k, name) for k in value]
-                if len(set(keys)) != len(keys):
-                    raise bad_arg(name, "duplicate keys")
-                out[name] = keys
-            elif kind == "key":
-                out[name] = check_key(value, name)
-            elif kind in ("launch_model", "launch_effort"):
-                allowed = ("auto", *mr.MODELS) if kind == "launch_model" else ("auto", "standard", *mr.EFFORTS)
-                if value not in allowed:
-                    raise bad_arg(name, f"must be one of {', '.join(allowed)}")
+            if kind in PATTERN_KINDS:
+                pattern, message = PATTERN_KINDS[kind]
+                if not isinstance(value, str) or not pattern.fullmatch(value):
+                    raise bad_arg(name, message)
                 out[name] = value
-            elif kind == "launch_settings":
-                if not isinstance(value, dict) or not value:
-                    raise bad_arg(name, "must be an object of settings")
+            elif kind in CHOICE_KINDS:
+                choices, message = CHOICE_KINDS[kind]
+                if value not in choices:
+                    raise bad_arg(name, message)
                 out[name] = value
-            elif kind == "ticker_settings":
-                # the deep check is Ticker.save's; MAX_BODY already caps the size
-                if not isinstance(value, dict) or not value:
-                    raise bad_arg(name, "must be an object of settings")
-                out[name] = value
-            elif kind == "tile_ids":
-                if not isinstance(value, list) or len(value) > 60:
-                    raise bad_arg(name, "must be a list of up to 60 tile ids")
-                if not all(isinstance(x, str) and TILE_ID_RE.match(x) for x in value):
-                    raise bad_arg(name, "not a tile id")
-                if len(set(value)) != len(value):
-                    raise bad_arg(name, "duplicate ids")
-                out[name] = list(value)
-            elif kind == "target":
-                if value not in TARGETS:
-                    raise bad_arg(name, "unknown target")
-                out[name] = value
-            elif kind == "date":
-                out[name] = check_date(value, name, today)
-            elif kind == "conv":
-                if not isinstance(value, str) or not CONV_RE.match(value):
-                    raise bad_arg(name, "not a conversation id")
-                out[name] = value
-            elif kind == "handoff":
-                if value not in ("tab", "control"):
-                    raise bad_arg(name, "tab or control")
-                out[name] = value
-            elif kind == "outcome":
-                if value not in m.SETTLE_OUTCOMES:
-                    raise bad_arg(name, "unknown outcome")
-                out[name] = value
-            elif kind == "drop_reason":
-                if value not in DROP_REASONS:
-                    raise bad_arg(name, "unknown reason")
-                out[name] = value
-            elif kind == "close_reason":
-                if value not in CLOSE_REASONS:
-                    raise bad_arg(name, "unknown reason")
-                out[name] = value
-            elif kind == "urgency":
-                if value not in URGENCIES:
-                    raise bad_arg(name, "unknown urgency")
-                out[name] = value
-            elif kind == "priority":
-                if value not in PRIORITIES:
-                    raise bad_arg(name, "unknown priority")
-                out[name] = value
-            elif kind == "text":
-                out[name] = check_text(value, name, 2000)
-            elif kind == "long_text":
-                # what the chat box takes (ASK_MAX on the page): a chat handed to a tab is not cut
-                out[name] = check_text(value, name, 4000)
-            elif kind == "bool":
-                if not isinstance(value, bool):
-                    raise bad_arg(name, "must be true or false")
-                out[name] = value
-            elif kind == "team":
-                if not isinstance(value, str) or not TEAM_RE.match(value):
-                    raise bad_arg(name, "not a team id")
-                if not any(t["id"] == value for t in self.app.collector.teams):
-                    raise bad_arg(name, "unknown team")
-                out[name] = value
-            elif kind == "tab_ref":
-                if not isinstance(value, str) or not TAB_REF_RE.match(value):
-                    raise bad_arg(name, "not a tab ref")
-                out[name] = value
-            elif kind == "peer":
-                if not isinstance(value, str) or not AGENT_PEER_RE.match(value):
-                    raise bad_arg(name, "not a peer id")
-                out[name] = value
-            elif kind == "agent_conv":
-                if not isinstance(value, str) or not AGENT_CONV_RE.match(value):
-                    raise bad_arg(name, "not a conversation id")
-                out[name] = value
-            elif kind == "a2a_mode":
-                if value not in AGENT_MODES:
-                    raise bad_arg(name, "question or task")
-                out[name] = value
-            elif kind == "slug":
-                if not isinstance(value, str) or not SLUG_RE.match(value):
-                    raise bad_arg(name, "not a task slug")
-                out[name] = value
-            elif kind == "session_id":
-                if not isinstance(value, str) or not SESSION_ID_RE.fullmatch(value):
-                    raise bad_arg(name, "not a session id")
-                out[name] = value
-            elif kind == "inbox_id":
-                if not isinstance(value, str) or not INBOX_ID_RE.match(value):
-                    raise bad_arg(name, "not an inbox id")
-                out[name] = value
-            elif kind == "reopen_as":
-                if value not in ("doing", "backlog"):
-                    raise bad_arg(name, "doing or backlog")
-                out[name] = value
-            elif kind == "restore_as":
-                if value not in REOPEN_AS:
-                    raise bad_arg(name, " or ".join(REOPEN_AS))
-                out[name] = value
-            elif kind == "page_id":
-                if not isinstance(value, str) or not PAGE_ID_RE.match(value):
-                    raise bad_arg(name, "not a page or section id")
-                out[name] = value
-            elif kind == "index":
-                if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value < 10000:
-                    raise bad_arg(name, "not a row index")
-                out[name] = value
-            elif kind == "account_status":
-                if value not in ACCOUNT_STATUSES:
-                    raise bad_arg(name, "unknown status")
-                out[name] = value
-            elif kind == "board_mode":
-                if value not in BOARD_MODES:
-                    raise bad_arg(name, "off, mine or all")
-                out[name] = value
-            elif kind == "row_step":
-                if not isinstance(value, str) or not ROW_STEP_RE.match(value):
-                    raise bad_arg(name, "not a step")
-                out[name] = value
-            elif kind == "undo_token":
-                if not isinstance(value, str) or not UNDO_TOKEN_RE.match(value):
-                    raise bad_arg(name, "not an undo token")
-                out[name] = value
-            elif kind == "row_ref":
-                if not isinstance(value, str) or not ROW_REF_RE.match(value):
-                    raise bad_arg(name, "not a row id")
-                out[name] = value
-            elif kind == "relay_id":
-                if not isinstance(value, str) or not RELAY_ID_RE.match(value):
-                    raise bad_arg(name, "not a relay id")
-                out[name] = value
+            else:
+                out[name] = SPECIAL_KINDS[kind](self, value, name, today)
         return out
 
     # ------------------------------------------------------------ entry point

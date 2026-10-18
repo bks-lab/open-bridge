@@ -45,6 +45,7 @@ from lib.bridge_cockpit import VERSION  # noqa: E402
 from lib.bridge_cockpit import model as m  # noqa: E402
 from lib.bridge_cockpit import text as text_mod  # noqa: E402
 from lib.bridge_cockpit import tabs as tabs_mod  # noqa: E402
+from lib.bridge_cockpit import actions as actions_mod  # noqa: E402
 from lib.bridge_cockpit.actions import ActionError  # noqa: E402
 from lib.bridge_cockpit.config import WebConfigError, load_web_config  # noqa: E402
 from lib.bridge_cockpit.relay import Relay  # noqa: E402
@@ -2683,6 +2684,34 @@ def test_argument_injection_is_rejected_before_any_call(world, verb, args):
     status, _, body = world.post("/api/action", {"verb": verb, "args": args})
     assert status in (400, 409), body
     assert world.runner.calls == []
+
+
+SPEC_KINDS = sorted({kind for spec in actions_mod.SPEC.values() for kind, _ in spec.values()})
+
+
+@pytest.mark.parametrize("kind", SPEC_KINDS)
+def test_every_kind_of_spec_has_a_check_that_refuses_a_wrong_value(world, kind, monkeypatch):
+    """#403: every argument type SPEC names is one validate() checks; a value no check takes is refused."""
+    assert kind in actions_mod.ARG_KINDS
+    monkeypatch.setitem(actions_mod.SPEC, "probe", {"x": (kind, True)})
+    with pytest.raises(ActionError) as err:
+        world.app.actions.validate("probe", {"x": [{"--all": 1}]})
+    assert err.value.code == "invalid_argument" and err.value.field == "x"
+
+
+def test_a_spec_entry_with_an_unknown_kind_fails_loudly(world, monkeypatch):
+    """#403: a kind without a check is a programming error, never an argument that passes unchecked."""
+    monkeypatch.setitem(actions_mod.SPEC, "probe", {"x": ("no_such_kind", True)})
+    with pytest.raises(LookupError, match="no_such_kind"):
+        world.app.actions.validate("probe", {"x": "anything"})
+
+
+def test_targets_has_one_definition():
+    """#403: the start targets live in config.py; actions takes them from there."""
+    from lib.bridge_cockpit import config as config_mod
+    sources = sorted((ROOT / "scripts" / "lib" / "bridge_cockpit").glob("*.py"))
+    defined = [p.name for p in sources if re.search(r"^TARGETS\s*=", p.read_text(encoding="utf-8"), re.M)]
+    assert defined == ["config.py"] and actions_mod.TARGETS is config_mod.TARGETS
 
 
 def test_ids_are_checked_again_before_an_argv(world):
