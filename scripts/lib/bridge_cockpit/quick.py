@@ -203,6 +203,11 @@ class Quick:
                 last = c["turns"][-1]
                 if isinstance(last, dict) and last.get("a") is None and not last.get("error"):
                     last["error"] = "interrupted"
+            handed = c.get("handed")
+            if isinstance(handed, dict) and handed.get("status") == "starting":
+                # the server stopped in the middle of handing it on: nothing will end that claim now, so it
+                # reads as failed and the chat can be handed on again
+                handed["status"] = "failed"
             self.convs[c["id"]] = c
 
     def save(self) -> None:

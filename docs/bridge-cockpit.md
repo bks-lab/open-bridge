@@ -1196,7 +1196,8 @@ shows it as a status line in place of the route chip. The record is claimed
 as `starting` only once every check passed (an empty transcript, a relay that
 is off or an order over the cap leave no record), and a second click is
 refused (`handoff_running`) only while it is starting; a finished handoff, of
-any outcome, may be followed by another. To a tab, the launch outcome is
+any outcome, may be followed by another. A claim still `starting` when the server
+stopped reads as `failed` after the restart, so it never blocks the chat. To a tab, the launch outcome is
 recorded as it came: "Arrived in tab <name>" once a tab carries the new inbox
 item (with "Open the tab" where the driver can focus), "Started, its tab is
 opening" before that, "Already running in its tab" (`running`, `busy`), "Could

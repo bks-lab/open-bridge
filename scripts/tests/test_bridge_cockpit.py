@@ -4032,6 +4032,27 @@ def test_a_handoff_click_while_one_is_starting_is_refused_before_any_launch(worl
     assert handed_of(world, conv)["status"] == "starting"
 
 
+def test_a_handoff_left_starting_by_a_stopped_server_reads_as_failed_and_can_be_tried_again(tmp_path):
+    # only the try/finally of a running server ends a claim; a server stopped mid launch must not leave the
+    # chat refusing every later handoff with handoff_running
+    w = World(tmp_path)
+    try:
+        conv = answered_conv(w)
+        w.app.quick.claim_handoff(conv, "tab", w.app.clock())
+    finally:
+        w.close()
+    w2 = World(tmp_path / "again")
+    try:
+        w2.app.quick.path = tmp_path / "state" / "quick.json"
+        w2.app.quick.convs.clear()
+        w2.app.quick.load()
+        assert handed_of(w2, conv)["status"] == "failed"
+        w2.app.quick.claim_handoff(conv, "tab", w2.app.clock())
+        assert handed_of(w2, conv)["status"] == "starting"
+    finally:
+        w2.close()
+
+
 def test_a_refused_handoff_leaves_no_handed_record(tmp_path):
     w = World(tmp_path, config=RELAY_OFF)
     try:
