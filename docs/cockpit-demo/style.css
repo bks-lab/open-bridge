@@ -1015,8 +1015,10 @@ kbd {
 .rooms-side > .room-item { padding-left: 12px; }
 .room-group { margin: 12px 10px 4px; }
 /* the workspaces heading with the order toggle (terminal order or the most urgent first) */
-.room-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 4px 4px 10px; }
-.room-group-head > .room-group { margin: 0; }
+/* it needs about 374 px and the sidebar gives 268 to 326: the label takes its own line when the buttons do
+   not fit beside it, and the buttons wrap, never cut */
+.room-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 12px 4px 4px 10px; }
+.room-group-head > .room-group { margin: 0; flex: 1 1 auto; }
 /* what runs in a tab or a workspace: subagents and workflows, each with its icon */
 .room-load { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-label); font-weight: 400;
   color: var(--on-surface-muted); }

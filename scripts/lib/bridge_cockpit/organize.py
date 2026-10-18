@@ -202,6 +202,12 @@ def gather(app: Any, listed: list[dict] | None = None) -> dict:
                          "ask": _text(ask.get("text"), ASK_MAX, scrub) if ask else None})
         base_tab[ref] = {"title": str(t.get("name") or ""), "workspace": t["ws_ref"], "bound": bound,
                          "state": t.get("state"), "state_source": t.get("state_source")}
+    # within the prompt limit: shorter lines first, then fewer tabs; what is left out is no item either
+    spaces, out_tabs = fit(spaces, out_tabs)
+    kept_ws = {w["ref"] for w in spaces}
+    kept_tabs = {t["ref"] for t in out_tabs}
+    base_ws = {r: v for r, v in base_ws.items() if r in kept_ws}
+    base_tab = {r: v for r, v in base_tab.items() if r in kept_tabs}
     # every name in use, also outside the scope: a new name must not take one of them
     used_tabs = {str(t.get("name") or "").strip().casefold(): t.get("ref") for t in tabs if t.get("name")}
     used_ws = {fold(w.get("title")): w.get("ref") for w in listed if w.get("title")}
@@ -214,11 +220,49 @@ def gather(app: Any, listed: list[dict] | None = None) -> dict:
             "base": {"ws": base_ws, "tab": base_tab, "used_tabs": used_tabs, "used_ws": used_ws, "count": live}}
 
 
+def serialize(spaces: list[dict], tabs: list[dict]) -> str:
+    """The data block of the prompt"""
+    return json.dumps({"workspaces": spaces, "tabs": tabs}, ensure_ascii=False, separators=(",", ":"))
+
+
+# the data block's room in the prompt: PROMPT_MAX less the longest label line above it
+DATA_MAX = PROMPT_MAX - max(len(t["organize_data"]) for t in TABLES.values()) - 1
+SHORT_LAST = 30
+SHORT_ASK = 60
+
+
+def fit(spaces: list[dict], tabs: list[dict], budget: int = DATA_MAX) -> tuple[list[dict], list[dict]]:
+    """The snapshot within `budget` characters of JSON (the runner refuses a longer prompt). A tab's last
+    line and question are shortened first, then left out, then tabs are left out from the end, and only
+    when the workspaces alone are too long, workspaces (with their tabs). The count caps alone do not
+    keep the size: 80 tabs with ordinary titles and full lines are past it."""
+    if len(serialize(spaces, tabs)) <= budget:
+        return spaces, tabs
+    for last, ask in ((SHORT_LAST, SHORT_ASK), (0, 0)):
+        tabs = [dict(t, last=(t.get("last") or "")[:last], ask=(t["ask"][:ask] or None) if t.get("ask") else None)
+                for t in tabs]
+        if len(serialize(spaces, tabs)) <= budget:
+            return spaces, tabs
+    while spaces and len(serialize(spaces, [])) > budget:
+        spaces = spaces[:-1]
+    refs = {w["ref"] for w in spaces}
+    room = budget - len(serialize(spaces, []))
+    kept: list[dict] = []
+    for t in tabs:
+        if t.get("workspace") not in refs:
+            continue
+        size = len(serialize([], [t])) - len(serialize([], [])) + (1 if kept else 0)
+        if size > room:
+            break
+        kept.append(t)
+        room -= size
+    return spaces, kept
+
+
 def prompt(snapshot: dict, lang: str) -> tuple[str, str]:
     """(system text, prompt): the instruction, and the snapshot as JSON labelled as data"""
     tx = TABLES["de" if isinstance(lang, str) and lang.lower().startswith("de") else "en"]
-    data = json.dumps({"workspaces": snapshot["workspaces"], "tabs": snapshot["tabs"]}, ensure_ascii=False,
-                      separators=(",", ":"))
+    data = serialize(snapshot["workspaces"], snapshot["tabs"])
     return tx["organize_system"], f"{tx['organize_data']}\n{data}"
 
 
@@ -354,6 +398,27 @@ def items(answer: dict, snapshot: dict, caps, managed: dict, scrub=lambda s: s) 
                     count[src] = count.get(src, 0) - 1
                     count[dest] = count.get(dest, 0) + 1
     return out
+
+
+# what a workplace command or a driver answered when a step failed, as a short code the page translates
+# (text.js organize.errors); the raw words stay in `detail`, never as the shown text
+FAILURES = (
+    ("name in use", "name_in_use"),
+    ("keeps its name", "managed"),
+    ("known by this name", "managed"),
+    ("configured workspace", "managed"),
+    ("no open tab", "gone"),
+    ("no open workspace", "gone"),
+    ("last tab", "last_tab"),
+    ("last window", "last_tab"),
+    ("in that workspace already", "changed"),
+    ("cannot", "driver_cannot"),
+)
+
+
+def failure_code(text: str) -> str:
+    low = (text or "").casefold()
+    return next((code for words, code in FAILURES if words in low), "driver_failed")
 
 
 def managed_names(root: Path) -> dict:

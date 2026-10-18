@@ -57,7 +57,7 @@ layout now").
 |---|---|
 | `scripts/bridge-cockpit.py` | CLI: serve, start, open, url, status, stop, autostart (macOS login item), new-token |
 | `scripts/lib/bridge_cockpit/config.py` | reads `cockpit` (formerly `briefing.web`) from `bridge-config.yaml`; a key it leaves out takes its default |
-| `scripts/lib/bridge_cockpit/runner.py` | the one place that starts a subprocess: program allowlist, timeouts, clean env |
+| `scripts/lib/bridge_cockpit/runner.py` | the one place that starts a subprocess: an allowlist of programs and exact argv shapes (the Bridge's scripts, the quick chat, the A2A calls, the codex and Haiku judges, and organize: `organize.argv_ok`, one `claude -p` without tools, settings or session, prompt at most 24000 characters), timeouts, clean env |
 | `scripts/lib/bridge_cockpit/collector.py` | collect pipeline (quick, full, delta), and `build_model`: the JSON the page gets |
 | `scripts/lib/bridge_cockpit/model.py` | pure domain functions, first ported from the retired briefing card's `logic.ts` (buckets, layout, tab matching) |
 | `scripts/lib/bridge_cockpit/actions.py` | the verb table `SPEC`, argument checks, one `v_<verb>` handler per verb |
@@ -68,7 +68,8 @@ layout now").
 | `scripts/lib/bridge_cockpit/net.py` | the one outbound fetcher, `fetch`, for feeds (ticker) and agent cards (agents): a scheme allowlist that also holds for redirects, no redirect into a private network unless the configured address is there, a size cap and a wall-clock deadline per caller |
 | `scripts/lib/bridge_cockpit/details.py` | read-only detail endpoints: a task's STATUS.md, an inbox item |
 | `scripts/lib/bridge_cockpit/tabs.py` | tab poller over `workplace.py status --json`, and the questions of the waiting tabs (`_refresh_asks`) |
-| `scripts/lib/bridge_cockpit/asks.py` | pure: what a waiting tab asks, read off its screen (`question_of`: text, options, hash, yes or no, draft) |
+| `scripts/lib/bridge_cockpit/asks.py` | pure: what a waiting tab asks, read off its screen (`question_of`: text, options, hash, yes or no, draft; `draft_of`: only whether something is typed in the prompt) |
+| `scripts/lib/bridge_cockpit/organize.py` | Organize with AI: `gather` (this Bridge's workspaces and tabs, scrubbed, `fit` within the prompt limit), `prompt`, `argv` and `argv_ok` (the one `claude -p` shape the runner lets through for it), `parse`, `items` (the checks that drop what is not safe to offer), `failure_code`, `Proposals` (in memory, 15 minutes) |
 | `scripts/lib/bridge_cockpit/server.py` `driver_caps`, `backup_layout` | what the terminal driver serves; the cmux layout backup every `snapshot_minutes` |
 | `scripts/lib/bridge_cockpit/watch.py` | stat-only watcher of `work/` and the relay folder |
 | `scripts/lib/bridge_cockpit/relay.py` | relay records, HMAC signing, heartbeat reading |
@@ -81,6 +82,7 @@ layout now").
 | `scripts/web/views/*.js` | the components, one file per area (header, day, detail, chat, tabs, pages, start page, stage, sessions, check, overlays, small parts, page ids); each reads the store `s`, calls the controller `c` and imports what it uses from the others |
 | `scripts/web/views/ticker.js` | the news ticker: `TickerBand` on the start page and `TickerSettings`, its group on the Settings page, drawn with the page's own `Card`, `Row` and `Switch` from `views/settings.js` |
 | `scripts/web/markdown.js` | the Markdown reader for answers (Chat, Other Bridges): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
+| `scripts/web/views/organize.js` | `OrganizeView`: the proposal grouped by workspace, nothing ticked, the ticks, Apply, and the applied, skipped and failed items in words |
 | `scripts/web/views/reply.js` | `AskLine` and `TabReply`: a waiting tab's question and the answers to it (`logic.js replyOptions`), in the sidebar, the tab pane and the tab window |
 | `scripts/web/views/prose.js` | `Prose`: draws what `markdown.js` read as elements, links in a new tab with `noopener noreferrer` |
 | `scripts/web/logic.js` | pure helpers, tested under node (the ticker's status rules are `tickerStatus` and `tickerItems`) |

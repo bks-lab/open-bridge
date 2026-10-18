@@ -512,12 +512,14 @@ export function buildState(now = Date.now(), opts = {}) {
   ]
 
   // what the waiting tabs ask, as the tab poll reads it off their screens (asks.py): a dialog with three
-  // options, a yes or no question, a summary with a draft typed in the tab; every other tab asks nothing
+  // options, a yes or no question, a summary with a draft typed in the tab; every other tab asks nothing.
+  // Only tabs the poll reads carry one: needs-you, and waiting ones that are not filed (model.is_waiting),
+  // so the filed report-draft has none
   const asks = {
     'surface:7': { text: 'Edit file RELEASE_NOTES.md\nDo you want to make this edit?', hash: '7a1f0c3e9b2d4a68', yes_no: true, draft: false,
       options: [{ n: 1, label: 'Yes' }, { n: 2, label: 'Yes, allow all edits during this session' }, { n: 3, label: 'No, and tell Claude what to do differently' }] },
     'surface:12': { text: 'I found three sources.\nShould I summarise them in team.md?', hash: 'c4e8b1d27f3a9056', yes_no: true, draft: false, options: [] },
-    'surface:10': { text: 'Draft written to the inbox as a result.', hash: '5d0b7e2a8c1f4936', yes_no: false, draft: true, options: [] },
+    'surface:13': { text: 'Changelog entry written for the release.', hash: '5d0b7e2a8c1f4936', yes_no: false, draft: true, options: [] },
   }
   const tabs = empty ? [] : [
     { ref: 'surface:3', ws_ref: 'workspace:1', name: 'Control', workspace: 'Control', state: 'waiting', last: '', slug: null, item: null,
@@ -531,6 +533,9 @@ export function buildState(now = Date.now(), opts = {}) {
     { ref: 'surface:12', ws_ref: 'workspace:3', name: 'demo-task research', workspace: 'Demo', state: 'waiting',
       last: 'I found three sources. Should I summarise them in team.md?', slug: 'demo-task', item: null, team: 'research', role: 'evidence',
       live: true, waiting: true, is_control: false, filed_by: null, since_ms: now - 11 * MIN, long: null },
+    { ref: 'surface:13', ws_ref: 'workspace:2', name: 'changelog', workspace: 'Ops', state: 'waiting',
+      last: 'Changelog entry written for the release.', slug: null, item: null, team: null, role: null, live: true, waiting: true,
+      is_control: false, filed_by: null, since_ms: now - 8 * MIN, long: null },
     { ref: 'surface:8', ws_ref: 'workspace:4', name: 'docs-refresh', workspace: 'Docs', state: 'working', last: 'Running the link check (12 of 40 pages)',
       slug: 'docs-refresh', item: null, team: null, role: null, live: true, waiting: false, is_control: false, filed_by: null,
       since_ms: now - 26 * MIN, long: null },
@@ -816,7 +821,7 @@ export function handedConvs(now) {
 /** A chat asked on a briefing row: it carries the row and its inbox item, and leaves once that item is closed */
 function aboutConv(now) {
   const at = now - 18 * MIN
-  return { id: 'qr000000001', kind: 'row', started_ms: at, session: null, total_usd: 0.001, running: false, last_ms: at + MIN,
+  return { id: 'qa000000001', kind: 'row', started_ms: at, session: null, total_usd: 0.001, running: false, last_ms: at + MIN,
     about: { kind: 'row', key: 'inbox:20261009-0910-tidy-labels-c3d4', inbox: '20261009-0910-tidy-labels-c3d4' },
     turns: [{ q: 'What is behind: Tidy the issue labels on the demo board', a: 'Twelve labels overlap; the item asks to merge them into five.',
       model_asked: 'haiku', model: 'haiku-5-5', cost_usd: 0.001, at_ms: at, error: null }] }

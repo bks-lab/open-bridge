@@ -425,3 +425,16 @@ def test_agent_state_and_session_from_a_live_pane(tm, screen, state):
         time.sleep(0.1)
     assert tab["state"] == state
     assert tm.call({"verb": "sessions"})["sessions"] == {"agent": "1b4e28ba-2fa1-11d2-883f-0016d3cca427"}
+
+
+@needs_tmux
+def test_a_title_that_starts_with_a_dash_names_a_tab_and_a_workspace(tm):
+    """tmux reads a leading '-' as its flags: the free text goes after `--`"""
+    one = tm.by_name("one")["ref"]
+    report = tm.call({"verb": "rename", "tab": one, "title": "-scratch"})["report"]
+    assert report and not report[0].startswith("ERROR")
+    assert tm.by_name("-scratch")["ref"] == one
+    sid = tm.by_name("-scratch")["ws_ref"]
+    report = tm.call({"verb": "rename_workspace", "workspace": sid, "title": "-notes"})["report"]
+    assert report and not report[0].startswith("ERROR")
+    assert {t["workspace"] for t in tm.tabs()} == {"-notes"}

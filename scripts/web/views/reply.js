@@ -6,7 +6,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { errorText, previewText, replyOptions, replySend, short } from '../logic.js'
+import { answerMark, errorText, previewText, replyOptions, replySend, short } from '../logic.js'
 import { T } from '../text.js'
 import { TAB_MSG_MAX } from './nav.js'
 import { Btn } from './parts.js'
@@ -45,8 +45,11 @@ export function TabReply({ tab, s, c, compact = false, bare = false }) {
     setNote(null)
     const r = await c.reply(verb, args)
     if (r?.refused) { setNote(errorText(r.error, t)); return false }
-    if (r && verb !== 'tab_jump') c.markAnswered?.(tab.ref, { hash: tab.ask?.hash ?? null, q })
-    return !!r
+    // only what reached the tab counts: a key or a send the driver failed, or a dialog gone (ok: false),
+    // leaves the row as it was and keeps what was typed
+    if (!r?.ok) { if (r?.note) setNote(r.note); return false }
+    if (verb !== 'tab_jump') c.markAnswered?.(tab.ref, answerMark(tab, q, Date.now()))
+    return true
   }
   const send = async () => {
     const v = text.trim()

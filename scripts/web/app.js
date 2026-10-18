@@ -702,7 +702,8 @@ const ctl = {
     setUi({ railHidden: hidden, drawer: hidden ? store.get().ui.drawer : null })
   },
   // an answer that went out to a tab from the page: its row says so until the tab moved on (views/reply.js)
-  markAnswered: (ref, { hash, q }) => setUi(ui => ({ answered: { ...pruneAnswered(ui.answered, Date.now()), [ref]: { hash, q, ms: Date.now() } } })),
+  // the mark carries the occurrence of the question (logic.js answerMark), so the same words asked again are not hidden
+  markAnswered: (ref, mark) => setUi(ui => ({ answered: { ...pruneAnswered(ui.answered, Date.now()), [ref]: { ...mark, ms: mark?.ms ?? Date.now() } } })),
   // a name of its own for a tab or a workspace: the field stands in its sidebar row until saved or cancelled
   startRename: (kind, id) => setUi({ renaming: { kind, id } }),
   stopRename: () => setUi({ renaming: null }),

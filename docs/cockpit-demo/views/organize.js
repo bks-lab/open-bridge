@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Organize with AI: what one question to the model proposes for the workspaces and tabs of this Bridge
 // (actions.py organize_propose), grouped by workspace, nothing ticked. Only the ticked items are applied
-// (organize_apply); after that the applied, skipped and failed ones are listed. The scope, the checks and
+// (organize_apply); after that the applied, skipped and failed ones are listed, each reason in words. The scope, the checks and
 // the safe order live on the server (organize.py); this view only shows and ticks.
 // The rules every component keeps stand at the head of components.js.
 
@@ -24,12 +24,12 @@ function ItemRow({ it, on, c }) {
   const from = shown(t, it, 'from')
   return html`<li class="org-item">
     <label class="org-line">
-      <input type="checkbox" checked=${on} aria-label=${t.organize.tickItem(kind, it.subject)}
-        onChange=${() => c.organizeToggle(it.id)} />
+      <input type="checkbox" checked=${on} onChange=${() => c.organizeToggle(it.id)} />
       <span class="org-kind label-caps">${kind}</span>
       <span class="org-subject">${it.kind === 'tab_title' || it.kind === 'tab_move' ? it.subject : ''}</span>
       ${from ? html`<s class="org-from muted">${from}</s>` : null}
       <span class="org-arrow" aria-hidden="true">${' > '}</span>
+      <span class="sr-only">${t.organize.becomes}</span>
       <span class="org-to">${shown(t, it, 'to')}</span>
     </label>
     ${it.why ? html`<p class="org-why muted small">${it.why}</p>` : null}
@@ -57,7 +57,9 @@ function Result({ result, byId }) {
   const t = T()
   const what = id => { const it = byId.get(id); return it ? `${t.organize.kinds[it.kind] ?? it.kind}: ${it.subject}` : id }
   const why = x => t.organize.why[x.why] ?? x.why
-  const error = x => t.organize.errors[x.error] ?? x.error
+  // a short code from the server (actions.py organize_apply), always worded; what the terminal said, if
+  // anything, only as the tooltip
+  const error = x => t.organize.errors[x.error] ?? t.organize.errors.driver_failed
   const allChanged = result.skipped.every(x => x.why === 'changed')
   return html`<div class="org-result" role="status">
     <p class="small"><strong>${t.organize.applied(result.applied.length)}</strong></p>
@@ -65,7 +67,7 @@ function Result({ result, byId }) {
     ${result.skipped.length ? html`<p class="small">${(allChanged ? t.organize.skipped : t.organize.skippedAny)(result.skipped.length)}</p>
       <ul class="org-list small muted">${result.skipped.map(x => html`<li key=${x.id}>${what(x.id)} (${why(x)})</li>`)}</ul>` : null}
     ${result.failed.length ? html`<p class="small">${t.organize.failed(result.failed.length)}</p>
-      <ul class="org-list small">${result.failed.map(x => html`<li key=${x.id}>${what(x.id)}: ${error(x)}</li>`)}</ul>` : null}
+      <ul class="org-list small">${result.failed.map(x => html`<li key=${x.id} title=${x.detail || undefined}>${what(x.id)}: ${error(x)}</li>`)}</ul>` : null}
   </div>`
 }
 

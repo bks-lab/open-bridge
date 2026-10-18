@@ -1417,10 +1417,29 @@ export const organizeTicks = {
 /** The tab states a reply may name as `expect` (actions.py TAB_STATES) */
 const REPLY_STATES = new Set(['needs-you', 'waiting', 'working'])
 
+/** A tab name the server's check takes (actions.py `tab_name`): 1 to 120 characters, no control
+ *  characters. A title of only a status glyph reads as '', a long one is past it: such a reply goes
+ *  without the name rather than being refused every time */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/
+const nameOk = name => typeof name === 'string' && name.length >= 1 && name.length <= 120 && !CONTROL_CHARS.test(name)
+
 /** What every reply to `tab` carries beyond its own args: the question it answers (seen, when one was
  *  read) and the tab's name, so the server sends nothing once the tab moved on (actions.py guard_fresh) */
 function replyGuard(tab) {
-  return { ...(tab.ask?.hash ? { seen: tab.ask.hash } : {}), name: tab.name }
+  return { ...(tab.ask?.hash ? { seen: tab.ask.hash } : {}), ...(nameOk(tab.name) ? { name: tab.name } : {}) }
+}
+
+/** What ui.answered keeps of an answer sent to `tab`: the question (hash) and the occurrence of it (the
+ *  tab's state and since when it is in that state), so the same words asked again later are a new question */
+export function answerMark(tab, q, now) {
+  return { hash: tab?.ask?.hash ?? null, q, ms: now, since: tab?.since_ms ?? null, state: tab?.state ?? null }
+}
+
+/** Whether `mark` (answerMark) answered the question `tab` shows now: the same hash, the same state, the
+ *  same since. A tab that worked and asks again has a new since and gets its buttons back */
+export function isAnswered(mark, tab) {
+  return !!(mark?.hash && tab?.ask?.hash === mark.hash && mark.state === tab.state && mark.since === (tab.since_ms ?? null))
 }
 
 /** A typed answer to `tab`: tab_send with the state the tab is in now, the question and the name */

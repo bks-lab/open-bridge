@@ -1501,11 +1501,11 @@ class Actions:
         """A reply reaches only the tab and the question it was given for. The tabs are polled again (no
         question is read there), then the tab must still be there, carry the name and the state the page
         named, and, with `seen`, its screen read now must ask the question of that hash (never the one
-        kept by the poll). A draft typed in the tab refuses a reply that types text. Nothing is sent on
-        any refusal. Returns the tab as it is now and the question read now (None without `seen`)."""
+        kept by the poll). A draft typed in the tab refuses a reply that types text, with or without
+        `seen` (read fresh wherever the driver serves screens). Nothing is sent on any refusal. Returns the tab as it is now and the question read now (None without `seen`)."""
         self.app.tabs.poll(asks=False)
         t = self.app.tabs.find(ref)
-        moved = ActionError(409, "tab_moved", self.tx["tab_moved"], "tab_ref")
+        moved = ActionError(409, "tab_moved", self.tx["tab_moved"], None)
         if not t or (name is not None and t["name"] != name) or (expect is not None and t["state"] != expect):
             raise moved
         fresh = None
@@ -1515,7 +1515,13 @@ class Actions:
             if fresh is None or fresh["hash"] != seen:
                 raise moved
             if sends_text and fresh["draft"]:
-                raise ActionError(409, "tab_draft", self.tx["tab_draft"], "tab_ref")
+                raise ActionError(409, "tab_draft", self.tx["tab_draft"], None)
+        elif sends_text and "screen" in self.app.driver_caps():
+            # no question to compare (a filed tab has none read): its prompt is still read for a draft,
+            # since typed words would be appended to it. An unreadable screen refuses nothing here.
+            text, _digest, _err = self.app.tab_screen(ref, fresh=True)
+            if text is not None and ak.draft_of(text):
+                raise ActionError(409, "tab_draft", self.tx["tab_draft"], None)
         return t, fresh
 
     def press(self, ctx: Ctx, tab_ref: str, key: str, said: str, seen: str | None = None, name: str | None = None,
@@ -1530,7 +1536,8 @@ class Actions:
             self.app.tabs.poll(asks=False)
             now_tab, fresh = self.app.tabs.find(tab_ref), None
         if not now_tab or now_tab["state"] != "needs-you":
-            ctx.note(self.tx["not_asking"].format(name=m.short(tab["name"], 30)))
+            # nothing was pressed: not ok, so the page does not mark the question answered
+            ctx.note(self.tx["not_asking"].format(name=m.short(tab["name"], 30)), bad=True)
             return
         if option is not None:
             picked = next((o for o in (fresh or {}).get("options") or [] if o["n"] == option), None)
@@ -1575,7 +1582,7 @@ class Actions:
         if seen is not None or expect is not None or name is not None:
             tab, _ = self.guard_fresh(ctx, tab_ref, expect, seen, name, True)
             if not m.is_live(tab):
-                raise ActionError(409, "tab_moved", self.tx["tab_moved"], "tab_ref")
+                raise ActionError(409, "tab_moved", self.tx["tab_moved"], None)
             # a dialog takes its options (tab_option), never typed words: a digit typed there would pick
             # an option past the option's own guard
             if tab["state"] == "needs-you":
@@ -1608,13 +1615,18 @@ class Actions:
         tx = self.tx
         why = ((run.err or run.out) or "").strip()
         if run.code == 2:
-            if "name in use" in why:
-                raise ActionError(409, "name_in_use", tx["name_in_use"], "title")
-            if "keeps its name" in why:
-                raise ActionError(409, "task_tab_name", tx["task_tab_name"], "tab_ref")
-            if "configured workspace" in why or "known by this name" in why:
-                raise ActionError(409, "name_managed", tx["name_managed"], "title")
-            raise ActionError(409, "not_applicable", m.short(why, 160) or tx["rename_failed"].format(err="?"), "title")
+            # each reason its own code (the page words it); none names a form field
+            for words, code, key in (("name in use", "name_in_use", "name_in_use"),
+                                     ("keeps its name", "task_tab_name", "task_tab_name"),
+                                     ("configured workspace", "name_managed", "name_managed"),
+                                     ("known by this name", "name_managed", "name_managed"),
+                                     ("no open tab", "stale_tab", "stale_tab"),
+                                     ("no open workspace", "stale_workspace", "stale_workspace"),
+                                     ("a title has", "title_invalid", "title_invalid"),
+                                     ("control characters", "title_invalid", "title_invalid")):
+                if words in why:
+                    raise ActionError(409, code, tx[key], None)
+            raise ActionError(409, "rename_refused", tx["rename_refused"].format(err=m.short(why, 160) or "?"), None)
         if run.ok:
             ctx.note(tx["renamed"])
         else:
@@ -1626,11 +1638,11 @@ class Actions:
         is the control, and a tab whose state only its title glyph tells would lose it with a name of its own."""
         tab = self.tab(tab_ref)
         if tab_ref == self.app.tabs.control_ref():
-            raise ActionError(409, "control_tab", self.tx["control_name"], "tab_ref")
+            raise ActionError(409, "control_tab", self.tx["control_name"], None)
         if tab.get("slug") or tab.get("item") or tab.get("team"):
-            raise ActionError(409, "task_tab_name", self.tx["task_tab_name"], "tab_ref")
+            raise ActionError(409, "task_tab_name", self.tx["task_tab_name"], None)
         if tab.get("state_source") == "glyph" and tab.get("state") != "shell":
-            raise ActionError(409, "rename_loses_state", self.tx["rename_loses_state"], "tab_ref")
+            raise ActionError(409, "rename_loses_state", self.tx["rename_loses_state"], None)
         run = ctx.call("workplace.rename", tab_ref, self.app.workplace("rename", tab_ref, "--", title), SHORT_TIMEOUT)
         self.renamed(ctx, run)
 
@@ -1643,12 +1655,12 @@ class Actions:
         here = [w.get("title") for w in listed if w.get("ref") == ws_ref] \
             + [t.get("workspace") for t in tabs if t.get("ws_ref") == ws_ref]
         if not here:
-            raise ActionError(409, "stale_workspace", self.tx["stale_workspace"], "ws_ref")
+            raise ActionError(409, "stale_workspace", self.tx["stale_workspace"], None)
         current = next((n for n in here if n), "")
         control = app.tabs.control_tab()
         name = (app.cfg.control or "").strip().casefold()
         if (control and control.get("ws_ref") == ws_ref) or (name and str(current or "").strip().casefold() == name):
-            raise ActionError(409, "control_tab", self.tx["control_name"], "ws_ref")
+            raise ActionError(409, "control_tab", self.tx["control_name"], None)
         run = ctx.call("workplace.rename-workspace", ws_ref,
                        app.workplace("rename-workspace", ws_ref, "--", title), SHORT_TIMEOUT)
         if run.ok:
@@ -1677,8 +1689,11 @@ class Actions:
             if not snap["workspaces"]:
                 raise ActionError(409, "organize_nothing", tx["organize_nothing"])
             system, text = og.prompt(snap, app.cfg.language)
-            run = ctx.call("claude.organize", "", og.argv(app.runner.claude, chosen.model, system, text),
-                           og.ORGANIZE_TIMEOUT)
+            argv = og.argv(app.runner.claude, chosen.model, system, text)
+            if not og.argv_ok(argv, app.runner.claude):
+                # gather keeps the data within the limit; the runner would refuse anything past it as a 500
+                raise ActionError(409, "organize_too_big", tx["organize_too_big"])
+            run = ctx.call("claude.organize", "", argv, og.ORGANIZE_TIMEOUT)
             if not run.ok:
                 raise ActionError(502, "organize_unreadable", tx["organize_unreadable"])
             answer = og.parse(run.out)
@@ -1729,6 +1744,15 @@ class Actions:
             if t.get("ws_ref"):
                 count[t["ws_ref"]] = count.get(t["ws_ref"], 0) + 1
 
+        control_ref = app.tabs.control_ref()
+
+        def task_tab(it: dict) -> bool:
+            """a tab adopted for a task, an inbox item or a team since the proposal (or the control tab): its
+            name finds it and the plan moves it back, so organize changes neither"""
+            tab = tabs.get(it["ref"])
+            return bool(it["kind"] in ("tab_title", "tab_move") and tab
+                        and (tab.get("slug") or tab.get("item") or tab.get("team") or it["ref"] == control_ref))
+
         def live(it: dict):
             tab, ws = tabs.get(it["ref"]), spaces.get(it["ref"])
             if it["kind"] == "tab_title":
@@ -1747,6 +1771,9 @@ class Actions:
         for it in todo:
             if time.monotonic() - started > og.APPLY_BUDGET_S:
                 failed.append({"id": it["id"], "error": "timeout"})
+                continue
+            if task_tab(it):
+                skipped.append({"id": it["id"], "why": "task_tab"})
                 continue
             if live(it) != it["from"]:
                 skipped.append({"id": it["id"], "why": "changed"})
@@ -1774,8 +1801,8 @@ class Actions:
                     count[it["from"]] = count.get(it["from"], 0) - 1
                     count[to] = count.get(to, 0) + 1
             else:
-                why = app.scrub(((run.err or run.out) or "").strip())
-                failed.append({"id": it["id"], "error": m.short(why, 160) or f"exit {run.code}"})
+                why = app.scrub(re.sub(r"\s+", " ", (run.err or run.out) or "").strip())
+                failed.append({"id": it["id"], "error": og.failure_code(why), "detail": m.short(why, 160)})
         ctx.extra.update({"applied": applied, "skipped": skipped, "failed": failed})
         ctx.audit_extra = {"applied": len(applied), "skipped": len(skipped), "failed": len(failed)}
         ctx.note(tx["organize_applied"].format(applied=len(applied), skipped=len(skipped), failed=len(failed)),

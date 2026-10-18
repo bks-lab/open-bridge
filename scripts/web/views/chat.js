@@ -124,15 +124,17 @@ export function ChatFoot({ s, c, conv, autofocus }) {
   const t = T()
   const lang = language()
   const [text, setTextRaw] = useState('')
-  const [flip, setFlip] = useState(false)
-  const setText = v => { setTextRaw(v); if (!v.trim()) setFlip(false) }
+  // the route picked by hand on the chip ('quick' or 'tab'), held until the field is empty: never a flip of
+  // the guess, which typing on may turn around (a trailing question mark) and so invert the choice
+  const [pinned, setPinned] = useState(null)
+  const setText = v => { setTextRaw(v); if (!v.trim()) setPinned(null) }
   const model = s.ui.quickModel ?? s.quick?.default ?? 'haiku'
   const last = conv?.turns?.[conv.turns.length - 1]
   const total = conv ? conv.turns.reduce((n, x) => n + (x.cost_usd ?? 0), 0) : 0
   const costKnown = !conv || conv.turns.every(x => !x.a || x.cost_usd != null)
   const asked = last?.model_asked
   const guess = routeOf(text)
-  const route = flip ? { ...guess, to: guess.to === 'tab' ? 'quick' : 'tab', by: 'flipped' } : guess
+  const route = pinned ? { ...guess, to: pinned, by: 'flipped' } : guess
   // where the last handoff went: the chat's own record, or for a new problem the page's record of its start
   const handed = conv ? conv.handed ?? null : (s.ui.sent ?? []).at(-1) ?? null
   const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs)
@@ -172,7 +174,7 @@ export function ChatFoot({ s, c, conv, autofocus }) {
       alt=${{ label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
     ${text.trim() ? html`<p class="route-line small"><button type="button" class=${`chip route-chip is-${route.to}`} title=${t.route.flip}
         aria-label=${`${route.to === 'tab' ? t.route.toTab : t.route.toQuick}. ${t.route.flip}`} data-route=${route.to}
-        onClick=${() => setFlip(f => !f)}>${route.to === 'tab' ? t.route.toTab : t.route.toQuick}</button></p>`
+        onClick=${() => setPinned(route.to === 'tab' ? 'quick' : 'tab')}>${route.to === 'tab' ? t.route.toTab : t.route.toQuick}</button></p>`
       : status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
     <${LaunchPick} s=${s} c=${c} />
     <p class="muted small chat-hint">${t.chatSolveHint}</p>

@@ -986,12 +986,12 @@ whose command returned an undo token is in the history and in the toast with
 
 With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the terminal you work in.
 
-- **On top of the left side**, "Waiting for you" lists the tabs that wait for you or need you, the most urgent first (the control tab never), each with its workspace, its question and the answers, see [Answering a tab from here](#answering-a-tab-from-here).
+- **On top of the left side**, "Waiting for you" lists the tabs that wait for you or need you, the most urgent first (the control tab never), each with its workspace, its question and the answers, see [Answering a tab from here](#answering-a-tab-from-here). A tab that has been in one state unusually long (`long`: working for an hour, or a filed result waiting a long time) stands there too, without a question and without answer buttons, so it is not forgotten. While the pointer or the focus is in the group its rows keep their order, and a tab that starts asking is added at the end; the sorted order comes back when the pointer leaves, so a click never lands on a row that was pushed under it.
 - **Below it** stand the workspaces in the terminal's order, pinned ones first. Each shows its colour, its state, its unread count and, when its folder is another Bridge's clone, that Bridge's name. Below each workspace are its tabs, most urgent first. The quick chats sit in the control workspace (`workplace.control`), the newest six and "all" for the rest.
 - **Below the workspaces** come the other Bridges on this machine that have no workspace, and the A2A agents.
 - **On the right** is what you picked:
   - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same), with "Write" to open it in its window with the message box and keys;
-  - a quick chat with its box. The box is one input: a chip under it says where Enter goes, "Asks here, read only" or "Starts an agent tab". The guess reads the first words: a trailing `?` or a question word (what, how, which, ... / was, wie, welche, ...) asks, an order word (fix, create, set up, ... / mach, erstelle, leg an, ...) starts a tab, anything unclear asks. A leading `?` or `!` decides it and is dropped from the text. A click on the chip switches it until the box is empty again. Cmd or Ctrl Enter starts a tab at once, whatever the chip says. Once the chat is handed on, the chip gives way to a status line (see [5. Asking Claude](#5-asking-claude-the-relay)). There is no countdown and no timer;
+  - a quick chat with its box. The box is one input: a chip under it says where Enter goes, "Asks here, read only" or "Starts an agent tab". The guess reads the first words: a trailing `?` or a question word (what, how, which, ... / was, wie, welche, ...) asks, an order word (fix, create, set up, ... / mach, erstelle, leg an, ...) starts a tab, anything unclear asks. A leading `?` or `!` decides it and is dropped from the text. A click on the chip picks the other route and holds it until the box is empty again, however the guess changes while you type on. Cmd or Ctrl Enter starts a tab at once, whatever the chip says. Once the chat is handed on, the chip gives way to a status line (see [5. Asking Claude](#5-asking-claude-the-relay)). There is no countdown and no timer;
   - an agent with its conversations;
   - a Bridge's folder and how to work in it.
 
@@ -1116,13 +1116,16 @@ nothing a stranger could trigger:
   section 5; whatever the page does to an agent tab goes through
   `workplace.py` and its terminal driver;
 - an answer to a tab reaches only the question you saw. It carries the hash
-  of that question, the tab's name and the state it was in. Before anything is
+  of that question, the tab's name (unless that name is empty or longer than
+  120 characters, which the check does not take) and the state it was in. Before anything is
   sent the server polls the tabs again, refuses when the tab is gone, has
   another name (its ref was given to another tab after a terminal restart) or
   is in another state, then reads the tab's screen fresh (never the poll's
   copy) and refuses when the question there has another hash. A text answer is
   also refused when something is already typed in the tab's prompt, so your
-  words never land on half a sentence, and never goes into a dialog, which
+  words never land on half a sentence; that screen read happens for every text
+  answer the page sends when the driver serves `screen`, also to a tab with no
+  question read (a filed one). A text answer never goes into a dialog, which
   takes only its options (a typed digit would pick one past that check). A
   refusal sends nothing and says so
   ("The tab moved on before the answer, nothing was sent.");
@@ -1131,7 +1134,8 @@ nothing a stranger could trigger:
   reads the workspaces again; an item whose value is no longer the one it was
   proposed from is skipped, never forced. Moves go first and the tabs of a
   workspace are counted again before each, so the last tab of a workspace never
-  leaves it. Each item goes through its own `workplace.py` command (live refs
+  leaves it. A tab that has meanwhile become a task, inbox or team tab is
+  skipped too, neither renamed nor moved. Each item goes through its own `workplace.py` command (live refs
   only, the driver's verb checked again), outside the write lock so other
   actions are not held up, within two minutes for the whole apply. One apply
   runs at a time; a second one meanwhile is refused. Nothing is closed;

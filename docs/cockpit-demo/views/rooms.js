@@ -8,7 +8,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, isAnswered, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -157,12 +157,13 @@ function useLeaving(list, atMs) {
 }
 
 /** One tab that waits for you: its name and workspace (a click shows it on the right), its question,
- *  and the answers; a row that left, or was answered here and still shows that question, is greyed
- *  with what happened instead of buttons */
+ *  and the answers; a row that left, or was answered here and still shows that very question (the same
+ *  words in the same stretch of its state, logic.js isAnswered), is greyed with what happened instead of
+ *  buttons. The same question asked again after the tab worked gets its buttons back */
 function AskRow({ tab, left, s, c }) {
   const t = T()
   const answered = s.ui?.answered?.[tab.ref] ?? null
-  const done = left || (answered && answered.hash && answered.hash === tab.ask?.hash)
+  const done = left || isAnswered(answered, tab)
   return html`<div class=${`reply-row${done ? ' is-left' : ''}`}>
     <button type="button" class="reply-head" onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
       <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
@@ -175,12 +176,18 @@ function AskRow({ tab, left, s, c }) {
   </div>`
 }
 
-/** "Waiting for you" on top of the sidebar: the tabs that want attention (logic.js attentionTabs) */
+/** "Waiting for you" on top of the sidebar: the tabs that want attention (logic.js attentionTabs). While
+ *  the pointer or the focus is in it, its rows keep the order last shown and a tab that starts asking goes
+ *  last: sorted, a new dialog would push every row down by its height, and a click meant for one row's
+ *  answer would land on another tab's option. The sorted order comes back when the pointer leaves */
 function WaitingGroup({ s, c }) {
   const t = T()
-  const rows = useLeaving(attentionTabs(s.tabs?.tabs), s.tabs?.at_ms ?? 0)
+  const order = useHeldOrder(attentionTabs(s.tabs?.tabs), 'urgency', tab => tab.ref)
+  const rows = useLeaving(order.list, s.tabs?.at_ms ?? 0)
   if (!rows.length) return null
-  return html`<section class="reply-group" aria-label=${t.reply.asks}>
+  return html`<section class="reply-group" aria-label=${t.reply.asks}
+    onPointerEnter=${order.hold} onPointerLeave=${order.release} onFocusIn=${order.hold}
+    onFocusOut=${e => { if (!e.currentTarget.contains(e.relatedTarget)) order.release() }}>
     <h3 class="label-caps room-group">${t.reply.asks}</h3>
     ${rows.map(({ tab, left }) => html`<${AskRow} key=${tab.ref} tab=${tab} left=${left} s=${s} c=${c} />`)}
   </section>`
@@ -190,7 +197,7 @@ function WaitingGroup({ s, c }) {
  *  away under the hand. Only the order holds; counts and states follow at once. A new room goes last.
  *  A change of the sort mode is the one reorder the hand asked for (its toggle sits in the sidebar), so it
  *  applies at once and the new order holds from there */
-function useHeldOrder(list, mode) {
+function useHeldOrder(list, mode, keyOf = w => w.key) {
   const held = useRef(false)
   const shown = useRef(null)
   const lastMode = useRef(mode)
@@ -200,9 +207,9 @@ function useHeldOrder(list, mode) {
   let out = list
   if (held.current && shown.current && !asked) {
     const at = new Map(shown.current.map((k, i) => [k, i]))
-    out = list.slice().sort((a, b) => (at.get(a.key) ?? Infinity) - (at.get(b.key) ?? Infinity))
+    out = list.slice().sort((a, b) => (at.get(keyOf(a)) ?? Infinity) - (at.get(keyOf(b)) ?? Infinity))
   }
-  shown.current = out.map(w => w.key)
+  shown.current = out.map(keyOf)
   const hold = () => { held.current = true }
   const release = () => { if (held.current) { held.current = false; redraw(n => n + 1) } }
   return { list: out, hold, release }

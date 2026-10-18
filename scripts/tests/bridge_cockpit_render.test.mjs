@@ -353,7 +353,7 @@ test('the sidebar shows Waiting for you with the question and option buttons', (
   const group = el.$('.reply-group')
   assert.equal(group.$('h3').text(), en.reply.asks)
   // the most urgent first, the control tab never; the group stands above the workspaces
-  assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research'])
+  assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research', 'changelog'])
   const side = el.$('nav')
   assert.ok(side.childNodes.indexOf(group) < side.childNodes.indexOf(el.$('section.room-ws')))
   const alpha = replyRow(el, 'alpha-release')
@@ -378,10 +378,12 @@ test('the sidebar shows Waiting for you with the question and option buttons', (
   research.$('.reply-head').click()
   assert.deepEqual(c.calls.at(-1), ['pickRoom', { kind: 'tab', id: 'surface:12' }])
   assert.equal(tabRow(el, 'demo-task research').getAttribute('title'), tabOf(s, 'surface:12').ask.text)
-  // a filed result offers no go on, and a typed draft in the tab is named
+  // a filed result offers no go on and carries no question (the poll reads none for a filed tab)
   const report = replyRow(el, 'report-draft')
   assert.equal(report.button(en.reply.goOn), null)
-  assert.match(report.text(), new RegExp(en.reply.draft))
+  assert.doesNotMatch(report.text(), new RegExp(en.reply.draft))
+  // a typed draft in a tab that waits is named
+  assert.match(replyRow(el, 'changelog').text(), new RegExp(en.reply.draft))
 })
 
 test('a tab_moved answer keeps the draft and shows the note', async () => {
@@ -417,7 +419,7 @@ test('a row that left stays greyed for one poll', () => {
     tabs: s.tabs.tabs.map(t => t.ref === 'surface:12' ? { ...t, state: 'working', waiting: false, ask: null } : t) } }
   renderSide(moved, el)
   // still where it stood, greyed, with nothing left to press on it
-  assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research'])
+  assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research', 'changelog'])
   const row = replyRow(el, 'demo-task research')
   assert.ok(row.hasClass('is-left'))
   assert.match(row.text(), new RegExp(en.reply.movedOn))
@@ -428,7 +430,7 @@ test('a row that left stays greyed for one poll', () => {
   // the next poll: gone
   renderSide({ ...moved, tabs: { ...moved.tabs, at_ms: moved.tabs.at_ms + 3000 } }, el)
   assert.equal(replyRow(el, 'demo-task research'), null)
-  assert.equal(replyRows(el).length, 2)
+  assert.equal(replyRows(el).length, 3)
 })
 
 test('TabView renders the shared TabReply', async () => {
@@ -829,10 +831,12 @@ test('the organize view shows the scope, from and to with a checkbox per item an
   assert.ok(none.text().includes(en.organize.none))
   // after apply: the counts and the lists
   const result = { applied: ['ws_title:workspace:4'], skipped: [{ id: 'tab_title:surface:9', why: 'changed' }],
-    failed: [{ id: 'ws_color:workspace:2', error: 'cmux refused' }] }
+    failed: [{ id: 'ws_color:workspace:2', error: 'driver_failed', detail: 'cmux refused' }] }
   const done = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal, ticks: {}, result })} c=${recorder()} />`)
   for (const line of [en.organize.applied(1), en.organize.skipped(1), en.organize.failed(1)]) assert.ok(done.text().includes(line), line)
-  assert.ok(done.text().includes('cmux refused'))
+  // what the terminal said stays out of the text, at most in a tooltip
+  assert.ok(done.text().includes(en.organize.errors.driver_failed))
+  assert.ok(!done.text().includes('cmux refused'))
 })
 
 test('the organize result says in words why an item failed or was skipped, never a code', () => {
@@ -1032,4 +1036,118 @@ test('the agents section no longer lists an expired conversation', () => {
   // 0 keeps every one
   const all = mount(html`<${AgentsPage} s=${{ ...s, agents: { ...agents, keep_hours: 0 } }} c=${recorder()} />`)
   assert.ok(all.$$('.agent-convs .quick-conv').some(b => b.text().includes('A question from last week')))
+})
+
+
+// ---------------------------------------------------------------- review findings
+
+test('the demo state carries only question states the server emits and ids it accepts', () => {
+  const s = cockpitState(NOW)
+  for (const t of s.tabs.tabs) {
+    if (t.filed_by || t.is_control || !['waiting', 'needs-you'].includes(t.state)) assert.equal(t.ask, null, t.ref)
+  }
+  assert.ok(s.tabs.tabs.some(t => t.ask?.draft && !t.filed_by && t.waiting), 'a draft on a tab the poll reads')
+  for (const conv of s.quick.convs) assert.match(conv.id, /^q[0-9a-f]{10}$/, conv.id)
+})
+
+test('the organize result words every failure code, the terminal\'s own text only as a tooltip', () => {
+  const proposal = { id: 'o0123456789', at_ms: NOW, scope: 3, items: ORG_ITEMS }
+  for (const code of ['name_in_use', 'managed', 'gone', 'last_tab', 'changed', 'driver_failed']) {
+    for (const t of Object.values(text.TABLES)) assert.equal(typeof t.organize.errors[code], 'string', code)
+    const result = { applied: [], skipped: [], failed: [{ id: 'ws_color:workspace:2', error: code, detail: "no open tab with the ref 'surface:7'" }] }
+    const el = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal, ticks: {}, result })} c=${recorder()} />`)
+    const li = el.$$('.org-list li').at(-1)
+    assert.ok(li.text().endsWith(`: ${en.organize.errors[code]}`), code)
+    assert.ok(!el.text().includes('surface:7'), code)
+    assert.equal(li.getAttribute('title'), "no open tab with the ref 'surface:7'")
+  }
+  // an unknown code still reads as words
+  const odd = { applied: [], skipped: [{ id: 'tab_title:surface:9', why: 'task_tab' }], failed: [{ id: 'ws_color:workspace:2', error: 'exit 1' }] }
+  const el = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal, ticks: {}, result: odd })} c=${recorder()} />`)
+  assert.ok(el.text().includes(en.organize.errors.driver_failed) && !el.text().includes('exit 1'))
+  assert.ok(el.text().includes(en.organize.why.task_tab))
+})
+
+test('an organize item checkbox is named by its row: the kind, what it was and what it becomes', () => {
+  const proposal = { id: 'o0123456789', at_ms: NOW, scope: 3, items: ORG_ITEMS }
+  const el = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal, ticks: {} })} c=${recorder()} />`)
+  const row = el.$$('.org-item').find(r => r.text().includes('Release notes'))
+  const box = row.$('input[type="checkbox"]')
+  assert.equal(box.getAttribute('aria-label'), null, 'an aria-label would hide the from and to')
+  const name = box.parentNode.textContent
+  for (const part of [en.organize.kinds.tab_title, 'release', 'Release notes']) assert.ok(name.includes(part), part)
+})
+
+test('Waiting for you holds its order while the pointer is in it; a new row goes last until it leaves', async () => {
+  const s = cockpitState(NOW)
+  const el = renderSide(s)
+  const names = () => replyRows(el).map(r => r.$('.reply-name').text())
+  const before = names()
+  el.$('.reply-group').dispatch('pointerenter')
+  // docs-refresh starts asking: sorted, it would stand on top, right where the pointer is
+  const asks = { text: 'Run the link check again?', hash: 'a'.repeat(16), yes_no: true, draft: false,
+    options: [{ n: 1, label: 'Yes' }, { n: 2, label: 'No' }] }
+  const next = { ...s, tabs: { ...s.tabs, at_ms: s.tabs.at_ms + 3000, tabs: s.tabs.tabs.map(t => t.ref === 'surface:8'
+    ? { ...t, state: 'needs-you', waiting: true, ask: asks, since_ms: NOW } : t) } }
+  renderSide(next, el)
+  assert.deepEqual(names(), [...before, 'docs-refresh'])
+  el.$('.reply-group').dispatch('pointerleave')
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(names()[0], 'alpha-release')
+  assert.equal(names()[1], 'docs-refresh')
+})
+
+test('an answered row comes back with its buttons when the same question is asked again', () => {
+  const s = cockpitState(NOW)
+  const tab = tabOf(s, 'surface:12')
+  const mark = loadedRooms.logic.answerMark(tab, 'Yes', NOW)
+  const el = renderSide({ ...s, ui: { ...s.ui, answered: { 'surface:12': mark } } })
+  const row = replyRow(el, 'demo-task research')
+  assert.ok(row.hasClass('is-left') && row.button(en.reply.yes) === null)
+  assert.match(row.text(), new RegExp(en.reply.answered('Yes')))
+  // the agent worked and asks the identical question again: a new state since, the same hash
+  const again = { ...s, tabs: { ...s.tabs, at_ms: s.tabs.at_ms + 3000, tabs: s.tabs.tabs.map(t => t.ref === 'surface:12'
+    ? { ...t, since_ms: NOW - 1000 } : t) }, ui: { ...s.ui, answered: { 'surface:12': mark } } }
+  const back = replyRow(renderSide(again), 'demo-task research')
+  assert.ok(!back.hasClass('is-left'))
+  assert.ok(back.button(en.reply.yes))
+})
+
+test('an answer the tab did not take is not marked answered and keeps what was typed', async () => {
+  const s = cockpitState(NOW)
+  const tab = tabOf(s, 'surface:12')
+  const calls = []
+  const c = new Proxy({}, { get: (_, p) => p === 'reply' ? (...a) => { calls.push(['reply', ...a]); return Promise.resolve({ ok: false, note: 'send failed' }) }
+    : p === 'then' ? undefined : (...a) => { calls.push([p, ...a]) } })
+  const el = mount(html`<${TabReply} tab=${tab} s=${s} c=${c} />`)
+  el.button(en.reply.yes).click()
+  await tick()
+  const box = el.$('textarea')
+  box.value = 'all three please'
+  box.dispatch('input')
+  await tick()
+  el.button(en.reply.send).click()
+  await tick()
+  assert.ok(!calls.some(x => x[0] === 'markAnswered'), 'nothing went out, nothing is marked')
+  assert.equal(el.$('textarea').value, 'all three please')
+})
+
+test('the route chip keeps the route picked by hand while the guess changes under typing', async () => {
+  const { el, c } = renderFoot()
+  typeInto(el.$('#quick-input'), 'Schreib mir')
+  await settle()
+  const guess = el.$('.route-chip').text()
+  el.$('.route-chip').click()
+  await settle()
+  const picked = el.$('.route-chip').text()
+  assert.notEqual(picked, guess)
+  // typing on turns the guess around (a trailing question mark): the picked route stays
+  typeInto(el.$('#quick-input'), 'Schreib mir eine kurze Zusammenfassung, geht das?')
+  await settle()
+  assert.equal(el.$('.route-chip').text(), picked)
+  keydown(el.$('#quick-input'), 'Enter')
+  await settle()
+  const sent = acts(c)
+  assert.equal(sent.length, 1)
+  assert.equal(picked === en.route.toQuick ? sent[0][0] : sent[0][1], picked === en.route.toQuick ? 'ask' : 'chat_tab')
 })

@@ -437,7 +437,7 @@ def open_plan(req: dict) -> list[str]:
         why = ("it is the last tab there, moving it would close that workspace" if src in counts
                else "its workspace is unknown, so it is not moved")
         report.append(f"  kept {label} in {src or 'its workspace'}: {why}")
-        tmux("rename-window", "-t", ref, label)
+        tmux("rename-window", "-t", ref, "--", label)
 
     ctl = plan.get("control") or {"name": "Control"}
     ctl_session = resolve_session([ctl.get("name"), *(ctl.get("aliases") or [])], existing)
@@ -469,7 +469,7 @@ def open_plan(req: dict) -> list[str]:
                         report.append(f"  ERROR tab {label}: {ref} is not open")
                         continue
                     if w["session"] in names or w["session"] == target:
-                        tmux("rename-window", "-t", ref, label)
+                        tmux("rename-window", "-t", ref, "--", label)
                         continue
                     if not target:
                         if not can_move(w["session"]):
@@ -488,7 +488,7 @@ def open_plan(req: dict) -> list[str]:
                         continue
                     move_window(ref, target)
                     counts[target] = counts.get(target, 0) + 1
-                    tmux("rename-window", "-t", ref, label)
+                    tmux("rename-window", "-t", ref, "--", label)
                     report.append(f"  moved {label}: {w['session']} -> {target}")
                     continue
                 if not t.get("command"):
@@ -519,7 +519,7 @@ def open_plan(req: dict) -> list[str]:
                 if can_move(w["session"]):
                     move_window(here, ctl_session)
                     report.append(f"  moved {ctl['name']}: this tab -> {ctl_session}")
-                    tmux("rename-window", "-t", here, ctl["name"])
+                    tmux("rename-window", "-t", here, "--", ctl["name"])
                 else:
                     keep(here, ctl["name"], w["session"])
             except DriverError as exc:
@@ -627,7 +627,8 @@ def send(req: dict) -> list[str]:
 
 def rename(req: dict) -> list[str]:
     ref = check_ref(req["tab"])
-    tmux("rename-window", "-t", ref, str(req["title"]))
+    # `--` ends tmux's flags: a title that starts with '-' is a title, not an option
+    tmux("rename-window", "-t", ref, "--", str(req["title"]))
     return [f"{ref} is now named {req['title']!r}"]
 
 
@@ -642,7 +643,7 @@ def rename_workspace(req: dict) -> list[str]:
     name = session_name(title)
     if any(sid != ref and session_name(n).casefold() == name.casefold() for sid, n in session_ids().items()):
         raise DriverError(f"the name {name!r} is in use by another session")
-    tmux("rename-session", "-t", ref, name)
+    tmux("rename-session", "-t", ref, "--", name)
     return [f"{ref} is now named {name!r}"]
 
 

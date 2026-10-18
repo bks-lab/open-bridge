@@ -389,7 +389,8 @@ def test_tab_send_with_expect_repolls_and_sends_when_unchanged(world):
     world.runner.calls.clear()
     world.act("tab_send", tab_ref="surface:13", text="go", expect="waiting")
     assert world.runner.of("workplace.status")
-    assert world.runner.of("workplace.screen") == []          # no seen, no screen read
+    # no seen: no question is compared, the one screen read only looks for a draft in the prompt
+    assert len(world.runner.of("workplace.screen")) == 1
     assert writes(world) == [W(world, "send", "surface:13", "--", "go")]
     world.runner.handlers["workplace.status"] = lambda argv: ok(
         [dict(t, state="working") if t["ref"] == "surface:13" else t for t in STATUS])
@@ -471,3 +472,51 @@ def test_a_typed_answer_never_goes_into_a_dialog(world):
             world.act("tab_send", tab_ref="surface:7", text="2", **extra)
         assert (err.value.status, err.value.code) == (409, "not_applicable")
     assert writes(world) == []
+
+
+def test_a_typed_answer_to_a_filed_tab_is_refused_when_a_draft_is_typed(world):
+    """a filed waiting tab carries no question (the poll reads none for it), so the page sends no `seen`; the
+    draft check reads its screen all the same before typed words go in"""
+    by_ref = {"surface:8": DRAFTED}
+    screens(world, by_ref)
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("tab_send", tab_ref="surface:8", text="add the docs", expect="waiting", name="filed-task")
+    assert (err.value.status, err.value.code) == (409, "tab_draft")
+    assert world.runner.of("workplace.send") == []
+    by_ref["surface:8"] = BOXED_DRAFT
+    with pytest.raises(ActionError) as err:
+        world.act("tab_send", tab_ref="surface:8", text="add the docs", name="filed-task")
+    assert err.value.code == "tab_draft" and world.runner.of("workplace.send") == []
+    # nothing typed there: it goes out
+    by_ref["surface:8"] = SUMMARY
+    world.act("tab_send", tab_ref="surface:8", text="add the docs", expect="waiting", name="filed-task")
+    assert writes(world) == [W(world, "send", "surface:8", "--", "add the docs")]
+
+
+def test_without_the_screen_cap_a_typed_answer_reads_no_screen(world):
+    read = screens(world, {"surface:8": DRAFTED})
+    world.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": ["tabs", "sessions", "send", "key"]})
+    world.app.driver_caps(fresh=True)
+    world.act("tab_send", tab_ref="surface:8", text="add the docs", name="filed-task")
+    assert read == [] and writes(world) == [W(world, "send", "surface:8", "--", "add the docs")]
+
+
+def test_reply_refusals_name_no_form_field(world):
+    """the page shows the field of a refusal beside its text; these refusals are about the tab, not a field"""
+    asked(world, {"surface:13": DRAFTED})
+    seen = ask_of(world, "surface:13")["hash"]
+    with pytest.raises(ActionError) as err:
+        world.act("tab_send", tab_ref="surface:13", text="go", seen=seen)
+    assert (err.value.code, err.value.field) == ("tab_draft", None)
+    with pytest.raises(ActionError) as err:
+        world.act("tab_send", tab_ref="surface:13", text="go", name="another tab")
+    assert (err.value.code, err.value.field) == ("tab_moved", None)
+
+
+def test_a_press_on_a_tab_that_stopped_asking_is_not_ok(world):
+    """nothing was pressed, so the page must not mark the question answered"""
+    world.runner.handlers["workplace.status"] = lambda argv: ok(
+        [dict(t, state="working") if t["ref"] == "surface:7" else t for t in STATUS])
+    res = world.act("tab_yes", tab_ref="surface:7")
+    assert writes(world) == [] and not res["ok"]

@@ -5704,7 +5704,7 @@ def test_tab_rename_refuses_a_task_tab_and_the_control_tab_by_ref(world):
                       ("surface:3", "control_tab")):
         with pytest.raises(ActionError) as err:
             world.act("tab_rename", tab_ref=ref, title="Mine now")
-        assert (err.value.status, err.value.code) == (409, code), ref
+        assert (err.value.status, err.value.code, err.value.field) == (409, code, None), ref
     with pytest.raises(ActionError) as err:
         world.act("tab_rename", tab_ref="surface:404", title="Mine now")
     assert err.value.code == "stale_tab"
@@ -5791,19 +5791,22 @@ def test_a_driver_refusal_reaches_the_note_from_stdout(world):
     world.runner.handlers["workplace.rename"] = lambda argv: RunResult(False, 1, "ERROR cmux refused the title", "", 1)
     res = world.act("tab_rename", tab_ref="surface:11", title="Scratch")
     assert not res["ok"] and "cmux refused the title" in res["note"]
-    # a refusal of the workplace (exit 2) is the action's refusal: a name in use, a managed name, anything else
+    # a refusal of the workplace (exit 2) is the action's refusal, each reason with a code of its own and no
+    # field: none of them is about a form field the page could point at
     for err_text, code in (("refused: name in use", "name_in_use"),
                            ("refused: configured workspace, rename it in workplace.workspaces", "name_managed"),
                            ("refused: a task, inbox or team tab is known by this name", "name_managed"),
-                           ("no open tab with the ref 'surface:11'", "not_applicable")):
+                           ("no open tab with the ref 'surface:11'", "stale_tab"),
+                           ("no open workspace with the ref 'workspace:2'", "stale_workspace"),
+                           ("refused: a title has 1 to 80 characters", "title_invalid"),
+                           ("refused: control characters in the title", "title_invalid"),
+                           ("something nobody expected", "rename_refused")):
         world.runner.handlers["workplace.rename"] = lambda argv, e=err_text: fail(e, 2)
         world.runner.handlers["workplace.rename-workspace"] = lambda argv, e=err_text: fail(e, 2)
         for verb, args in (("tab_rename", {"tab_ref": "surface:11"}), ("workspace_rename", {"ws_ref": "workspace:2"})):
             with pytest.raises(ActionError) as err:
                 world.act(verb, title="Scratch", **args)
-            assert (err.value.status, err.value.code, err.value.field) == (409, code, "title"), (verb, err_text)
-            if code == "not_applicable":
-                assert err_text in err.value.message
+            assert (err.value.status, err.value.code, err.value.field) == (409, code, None), (verb, err_text)
 
 
 @pytest.mark.parametrize("title", ["", "   ", "x" * 81, "two\nlines", "tab\there", "bell\x07", "nul\x00", 7, None, ["a"]])
@@ -6142,7 +6145,7 @@ def test_organize_apply_reports_a_failed_step_and_goes_on(org):
     org.runner.handlers["workplace.rename"] = lambda argv: fail("refused: name in use", 2)
     res = org.act("organize_apply", proposal=prop["id"], items=["tab_title:surface:11", "ws_title:workspace:6"])
     assert res["applied"] == ["ws_title:workspace:6"]
-    assert res["failed"] == [{"id": "tab_title:surface:11", "error": "refused: name in use"}]
+    assert res["failed"] == [{"id": "tab_title:surface:11", "error": "name_in_use", "detail": "refused: name in use"}]
     assert not res["ok"]
 
 
@@ -6626,3 +6629,90 @@ def test_a2a_expiry_the_archive_refuses_keeps_them_and_backs_off(world, monkeypa
 
 def test_a2a_state_carries_keep_hours(world):
     assert world.app.agents.state()["keep_hours"] == 24
+
+
+# --- review findings: organize at its declared caps, task tabs at apply, readable failures ---
+
+def test_organize_keeps_the_prompt_within_its_limit_at_the_declared_caps(org):
+    """30 workspaces and 80 tabs with ordinary titles, full last lines and questions: the snapshot is cut to
+    the prompt limit (last lines and questions shortened first, then tabs left out), never refused as a 500"""
+    from lib.bridge_cockpit import organize
+    root = str(org.root)
+    org.org["workspaces"] = [org.org["workspaces"][0]] + [
+        {"ref": f"workspace:{100 + i}", "title": f"Workspace number {i:02d} of the demo", "cwd": f"{root}/sub"}
+        for i in range(30)]
+    org.org["tabs"] = [org.org["tabs"][0]] + [
+        {"name": f"A tab with a rather ordinary title {i:03d}", "workspace": f"Workspace number {i % 30:02d} of the demo",
+         "ref": f"surface:{200 + i}", "ws_ref": f"workspace:{100 + i % 30}", "state": "waiting", "id": f"TAB-{200 + i}",
+         "last": ("the agent wrote a long last line about the build and the docs " * 3)[:90]}
+        for i in range(80)]
+    org.app.tabs.poll()
+    by_ref = {}
+    for t in org.app.tabs.tab_list():
+        by_ref[t["ref"]] = t
+    # every waiting tab carries a long question as well
+    org.app.tabs.asks = {ref: ((t["state"], t.get("last"), 0), {"text": "Should I go on with the next step? " * 8,
+                                                                "options": [], "hash": "0" * 16, "yes_no": True,
+                                                                "draft": False}, org.clock.now * 1000)
+                         for ref, t in by_ref.items()}
+    org.runner.calls.clear()
+    res = org.act("organize_propose")
+    (argv,) = org.runner.of("claude.p")
+    assert len(argv[-1]) <= organize.PROMPT_MAX
+    data = org_data(org)
+    assert len(data["workspaces"]) == 30
+    assert data["tabs"], "tabs stay in, shortened"
+    assert res["proposal"]["scope"] == 30
+    # a tab the snapshot left out is no item either: apply compares only what the model saw
+    seen = {t["ref"] for t in data["tabs"]}
+    missing = [f"surface:{200 + i}" for i in range(80) if f"surface:{200 + i}" not in seen]
+    if missing:
+        org.model = {"workspaces": [], "tabs": [{"ref": missing[0], "title": "Renamed", "why": "x"}]}
+        assert org.act("organize_propose")["proposal"]["items"] == []
+
+
+def test_organize_fit_shortens_lines_before_it_leaves_tabs_out():
+    from lib.bridge_cockpit import organize
+    spaces = [{"ref": f"workspace:{i}", "title": "W", "color_name": None, "description": None, "pinned": False,
+               "cwd": "a/b"} for i in range(3)]
+    tabs = [{"ref": f"surface:{i}", "title": "T", "workspace": "workspace:0", "state": "waiting", "slug": None,
+             "task_bound": False, "last": "x" * 90, "ask": "y" * 200} for i in range(10)]
+    small = organize.fit(spaces, tabs, 100000)
+    assert small == (spaces, tabs)
+    budget = len(organize.serialize(spaces, [dict(t, last="x" * 30, ask="y" * 60) for t in tabs])) + 5
+    kept_spaces, kept_tabs = organize.fit(spaces, tabs, budget)
+    assert len(kept_tabs) == 10 and all(len(t["last"]) < 90 for t in kept_tabs)
+    assert len(organize.serialize(kept_spaces, kept_tabs)) <= budget
+    tight = organize.fit(spaces, tabs, len(organize.serialize(spaces, [])) + 200)
+    assert 0 < len(tight[1]) < 10 and len(organize.serialize(*tight)) <= len(organize.serialize(spaces, [])) + 200
+
+
+def test_organize_apply_skips_a_tab_that_became_a_task_tab_since_the_proposal(org):
+    """adopted for a task in the meantime: its name finds it and the plan moves it back, so neither its
+    name nor its place is changed, even when the value compared is still the one proposed from"""
+    prop = full_proposal(org)
+    org.org["tabs"] = [dict(t, slug="adopted-task") if t["ref"] in ("surface:11", "surface:14") else t
+                       for t in org.org["tabs"]]
+    res = org.act("organize_apply", proposal=prop["id"], items=["tab_title:surface:11", "tab_move:surface:14"])
+    assert sorted((x["id"], x["why"]) for x in res["skipped"]) == [("tab_move:surface:14", "task_tab"),
+                                                                     ("tab_title:surface:11", "task_tab")]
+    assert org_writes(org) == []
+
+
+@pytest.mark.parametrize("answer, code", [
+    (fail("refused: name in use", 2), "name_in_use"),
+    (fail("refused: a task, inbox or team tab keeps its name", 2), "managed"),
+    (fail("refused: configured workspace, rename it in workplace.workspaces", 2), "managed"),
+    (fail("no open tab with the ref 'surface:11'", 2), "gone"),
+    (RunResult(False, 1, "ERROR surface:11 is the last tab of workspace:2, moving it would close that workspace", "", 1),
+     "last_tab"),
+    (fail("", 1), "driver_failed"),
+    (fail("something nobody expected", 1), "driver_failed"),
+])
+def test_organize_apply_names_a_failed_step_by_a_short_code(org, answer, code):
+    prop = full_proposal(org)
+    org.runner.handlers["workplace.rename"] = lambda argv: answer
+    res = org.act("organize_apply", proposal=prop["id"], items=["tab_title:surface:11"])
+    (failed,) = res["failed"]
+    assert failed["id"] == "tab_title:surface:11" and failed["error"] == code
+    assert "\n" not in failed.get("detail", "") and len(failed.get("detail", "")) <= 160

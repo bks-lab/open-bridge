@@ -3764,6 +3764,33 @@ test('replies carry expect, the ask hash and the tab name', () => {
   assert.deepEqual(logic.replyOptions(askTab({ ask: null }), allCaps, en).buttons[1].args, { tab_ref: 'surface:7', name: 'alpha' })
 })
 
+test('a reply names the tab only by a name the server can take: 1 to 120 characters, no control characters', () => {
+  const en = text.TABLES.en
+  const waiting = askTab({ state: 'waiting', ask: { text: 'Go on?', hash: ASK_HASH, yes_no: true, draft: false, options: [] } })
+  // a title of only a status glyph reads as '', a long one is past the validator: neither may refuse every answer
+  for (const name of ['', 'x'.repeat(121), 'bell\u0007tab', null, undefined]) {
+    const args = logic.replySend({ ...waiting, name }, 'go').args
+    assert.ok(!('name' in args), JSON.stringify(name))
+    assert.equal(args.seen, ASK_HASH)
+    const [yes] = logic.replyOptions({ ...waiting, name }, allCaps, en).buttons
+    assert.ok(!('name' in yes.args))
+  }
+  assert.equal(logic.replySend({ ...waiting, name: 'x'.repeat(120) }, 'go').args.name, 'x'.repeat(120))
+})
+
+test('an answer marks only the occurrence of the question it went to', () => {
+  const tab = askTab({ state: 'waiting', since_ms: 5000, ask: { text: 'Run npm test?', hash: ASK_HASH, yes_no: true, draft: false, options: [] } })
+  const mark = logic.answerMark(tab, 'Yes', 9000)
+  assert.deepEqual(mark, { hash: ASK_HASH, q: 'Yes', ms: 9000, since: 5000, state: 'waiting' })
+  assert.equal(logic.isAnswered(mark, tab), true)
+  // the same words asked again later: the tab went to work and came back, its state started anew
+  assert.equal(logic.isAnswered(mark, { ...tab, since_ms: 12000 }), false)
+  assert.equal(logic.isAnswered(mark, { ...tab, state: 'needs-you' }), false)
+  assert.equal(logic.isAnswered(mark, { ...tab, ask: { ...tab.ask, hash: 'f'.repeat(16) } }), false)
+  assert.equal(logic.isAnswered(null, tab), false)
+  assert.equal(logic.isAnswered({ ...mark, hash: null }, { ...tab, ask: null }), false)
+})
+
 test('pruneAnswered forgets an answer after two minutes and keeps the object when nothing goes', () => {
   const answered = { 'surface:7': { hash: ASK_HASH, q: 'Yes', ms: 1000 }, 'surface:9': { hash: null, q: 'x', ms: 100000 } }
   assert.equal(logic.pruneAnswered(answered, 100000), answered)
@@ -3999,4 +4026,14 @@ test('app.ask sends the situation for free questions only, not for the core', ()
   assert.match(ctx, /Build/)
   assert.match(ctx, /1 session busy, 2 subagents, 0 workflows/)
   assert.equal(logic.askContext({ model: null, tabs: { tabs: [] }, sessions: { sessions: [] }, now: 0 }, 'en').includes('0 sessions busy'), true)
+})
+
+// The workspaces heading row (label, the order toggle, Organize with AI) needs about 374 px; the sidebar
+// gives it 268 to 326, so without wrapping the last button was cut to two letters at every width.
+test('the workspaces heading row wraps its buttons instead of cutting them off', () => {
+  const css = read('style.css')
+  const rule = css.match(/\.room-group-head \{([^}]*)\}/)
+  assert.ok(rule, 'no .room-group-head rule')
+  assert.match(rule[1], /flex-wrap: wrap/)
+  assert.doesNotMatch(rule[1], /justify-content: space-between/)
 })

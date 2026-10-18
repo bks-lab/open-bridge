@@ -150,3 +150,16 @@ def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | No
     material = state + words + "".join(f"\n{o['n']}. {o['label']}" for o in options)
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
     return {"text": words, "options": options, "hash": digest, "yes_no": yes_no, "draft": draft}
+
+
+def draft_of(text: str) -> bool:
+    """Whether the prompt box at the bottom of this screen holds typed text: words sent now would be
+    appended to it. Also for a tab without a readable question (a filed one, a screen with no words)."""
+    raw = [line.rstrip() for line in str(text or "").splitlines()]
+    clean = [_clean(line) for line in raw]
+    last_said = max((i for i, line in enumerate(clean) if line.startswith("⏺")), default=-1)
+    box = _prompt_box(raw, clean, last_said)
+    if box is None:
+        return False
+    typed = PROMPT.match(clean[box]).group(1)
+    return bool(typed and typed.strip())
