@@ -213,6 +213,10 @@ const en = {
 
   // tabs
   tabsTitle: 'Agent tabs',
+  tabsHide: 'Hide',
+  tabsHideTitle: 'Fold the agent tabs away; the Tabs button in the header brings them back',
+  tabsPin: 'Pin beside',
+  tabsPinTitle: 'Show the agent tabs as a column beside the page again',
   tabsEmpty: 'No agent tabs open.',
   controlSession: '{ws} session',
   tabLong: 'long',
@@ -1327,6 +1331,10 @@ const de = {
   },
 
   tabsTitle: 'Agenten-Tabs',
+  tabsHide: 'Ausblenden',
+  tabsHideTitle: 'Agenten-Tabs wegklappen; der Knopf Tabs oben holt sie zurück',
+  tabsPin: 'Anheften',
+  tabsPinTitle: 'Agenten-Tabs wieder als Spalte neben der Seite zeigen',
   tabsEmpty: 'Keine Agenten-Tabs offen.',
   controlSession: 'Steuer-Sitzung ({ws})',
   tabLong: 'lange',

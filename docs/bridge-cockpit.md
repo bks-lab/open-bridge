@@ -452,7 +452,9 @@ detail facts show kinds, gates, states and schedules in words, never the
 machine value (`finding`, `your-yes`, `every 300s`). The agent tab column stands
 only beside the Today tab and the Chat, where work goes to the AI and comes
 back. Every other page folds it into the header's Tabs button and gets the full
-width.
+width. "Hide" in the column's head folds it there on the Today tab and the Chat
+too, and the list of the day takes half of the room it left; "Pin beside" in the
+Tabs drawer brings it back. The choice is kept in this browser.
 
 On a wide screen the Today tab has three columns:
 

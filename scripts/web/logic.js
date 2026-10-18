@@ -968,8 +968,8 @@ export function detailText(detail, t) {
 // the page; everywhere else it folds to its header button and the page keeps the full width
 // The chat as cmux (chat layout workspaces) holds the tabs itself, so it needs no column beside it
 const RAIL = new Set(['briefing', '@chat'])
-export function railShown(page, chatLayout = 'classic') {
-  return RAIL.has(page) && !(page === '@chat' && chatLayout === 'workspaces')
+export function railShown(page, chatLayout = 'classic', hidden = false) {
+  return !hidden && RAIL.has(page) && !(page === '@chat' && chatLayout === 'workspaces')
 }
 
 /** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab

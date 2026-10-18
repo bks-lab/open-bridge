@@ -140,7 +140,7 @@ export function App({ store, ctl }) {
   const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
   const pane = onPage && !peek && s.ui.pane === 'detail' ? 'day' : s.ui.pane
   // a wide page that shows sessions itself or needs the width folds the tab column to its header button
-  const rail = layout === 'wide' && railShown(s.ui.page, s.rooms?.layout)
+  const rail = layout === 'wide' && railShown(s.ui.page, s.rooms?.layout, s.ui.railHidden)
   const tabsDrawer = layout === 'medium' || (layout === 'wide' && !rail)
   const showTabsCol = rail || (layout === 'narrow' && pane === 'tabs')
   const main = onPage

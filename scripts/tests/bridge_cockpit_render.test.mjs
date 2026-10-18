@@ -241,3 +241,32 @@ test('header: a cockpit with only its own state names that, and a normal one sho
   assert.equal(demo.$('.hdr-scratch'), null)
   assert.equal(demo.$('.hdr-demo .hdr-demo-long').text(), en.demoBadge)
 })
+
+// ---------------------------------------------------------------- the agent tab column folds away
+
+const { TabsColumn } = views.tabs
+
+test('tab column: beside the work it offers to hide itself, in the drawer to pin it back', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const col = mount(html`<${TabsColumn} s=${s} c=${c} byKey=${new Map()} />`)
+  assert.equal(col.button(en.tabsPin), null)
+  col.button(en.tabsHide).click()
+  assert.deepEqual(c.calls, [['toggleRail']])
+  // hidden, the drawer behind the header button brings it back beside the page
+  const hidden = cockpitState(NOW, { ui: { railHidden: true, drawer: 'tabs' } })
+  const d = recorder()
+  const drawer = mount(html`<${TabsColumn} s=${hidden} c=${d} byKey=${new Map()} inDrawer />`)
+  assert.equal(drawer.button(en.tabsHide), null)
+  drawer.button(en.tabsPin).click()
+  assert.deepEqual(d.calls, [['toggleRail']])
+  // a page that never has the column (Status, Sessions) offers no pin in its drawer
+  const other = cockpitState(NOW, { ui: { railHidden: true, page: '@sessions' } })
+  assert.equal(mount(html`<${TabsColumn} s=${other} c=${recorder()} byKey=${new Map()} inDrawer />`).button(en.tabsPin), null)
+})
+
+test('header: with the tab column hidden the work tab shows the Tabs button, else not', () => {
+  const tabsBtn = el => el.$$('button').find(b => b.text().startsWith('Tabs')) ?? null
+  assert.equal(tabsBtn(renderHeader(null)), null)
+  assert.ok(tabsBtn(renderHeader(null, { ui: { page: 'briefing', railHidden: true } })))
+})

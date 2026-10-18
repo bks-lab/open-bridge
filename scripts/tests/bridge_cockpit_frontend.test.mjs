@@ -1195,6 +1195,8 @@ test('the agent tab column stands only where work is handed to the AI: the work 
   for (const p of ['briefing', '@chat']) assert.equal(logic.railShown(p), true, p)
   assert.equal(logic.railShown('@chat', 'workspaces'), false)          // the chat as cmux holds the tabs itself
   assert.equal(logic.railShown('briefing', 'workspaces'), true)
+  // hidden by the person it stands nowhere, the header's Tabs button takes over
+  for (const p of ['briefing', '@chat']) assert.equal(logic.railShown(p, 'classic', true), false, p)
 })
 
 test('a slim tab card offers one next step: answer, go on, close, else go to the tab', async () => {
@@ -3035,7 +3037,7 @@ test('roomsOf: the longest Bridge path wins, the real folder counts, workspaces 
 test('rooms: the pane never jumps on its own, the header knows the rail is gone, the copy command is quoted', () => {
   const rooms = read('views/rooms.js')
   assert.doesNotMatch(rooms, /x\.state === 'waiting'\)\)/)                 // no auto pick of a waiting tab
-  assert.match(read('views/header.js'), /railShown\(s\.ui\.page, s\.rooms\?\.layout\)/)
+  assert.match(read('views/header.js'), /railShown\(s\.ui\.page, s\.rooms\?\.layout, s\.ui\.railHidden\)/)
   assert.equal(logic.shellQuote("/u/it's here"), "'/u/it'\\''s here'")
   assert.match(rooms, /cd \$\{shellQuote\(b\.path\)\} && claude/)
 })
