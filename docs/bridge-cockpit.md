@@ -1222,24 +1222,41 @@ fixed verbs of section 4.
 
 ## 6. Files
 
-Everything lives under `.bridge/cockpit/` in the Bridge root, which git ignores:
+Everything lives under `.bridge/cockpit/` in the Bridge root, which git ignores.
+The last column says whether a file holds inbox, task or chat text (titles,
+gists, questions, answers): those are the files to think of when you back up,
+share or clean up.
 
-| File | What |
-|---|---|
-| `token` | the key, kept across restarts until `new-token` (readable by you only) |
-| `server.json` | the running server: pid, port, key (readable by you only) |
-| `server.log` | errors, never a key, cookie or request body |
-| `audit.log` | one line per write action, question, route, Jev request and triage run |
-| `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) |
-| `state.json` | rows hidden on the page, team runs started from the page |
-| `view.json` | the last briefing, shown at once on the next start until a fresh one arrives |
-| `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them |
-| `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) |
-| `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) |
-| `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start |
-| `relay/inbox/` | questions for a session (written by the server) |
-| `relay/done/` | what became of each (written by that session) |
-| `relay/heartbeat/` | one file per Claude Code session with the relay on |
+| File | What | Inbox or chat text |
+|---|---|---|
+| `token` | the key, kept across restarts until `new-token` (readable by you only) | no |
+| `server.json` | the running server: pid, port, key (readable by you only) | no |
+| `server.log` | errors, never a key, cookie or request body | no |
+| `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
+| `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) | yes: the titles |
+| `state.json` | rows hidden on the page, rows marked done or not doing, team runs started from the page, the start page's tiles and pins | yes: the title of each row marked done or not doing |
+| `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
+| `days.json` | the day book: each quota's use per day and the counts of each day (section 3), two weeks | no: numbers under ids |
+| `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |
+| `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) | no |
+| `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) | no |
+| `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start | no: news items only |
+| `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |
+| `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
+| `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
+| `jev-pages.json` | Jev's order per page | yes: the titles |
+| `relay/inbox/` | questions for a session (written by the server) | yes: the questions |
+| `relay/done/` | what became of each (written by that session) | yes: the answers |
+| `relay/heartbeat/` | one file per Claude Code session with the relay on | no |
+
+Beside it in `.bridge/`, written by the scripts the cockpit runs and read by
+the cockpit (git ignores them too):
+
+| File | What | Inbox or chat text |
+|---|---|---|
+| `.bridge/triage.json` | the last triage run (`scripts/triage.py`): per task and inbox item a gist, a verdict and who does it | yes: titles and gists |
+| `.bridge/task-review.json` | the last task check (`task.py review`): per task a verdict and its reason | yes: task titles and reasons |
+| `.bridge/resources/workers-view.json` | the full worker view of the Resources section (`scripts/bridge-resources.py workers`) | no |
 
 The server deletes relay files after a day, heartbeats after an hour. The
 `relay/` folder is readable by you only. The signing key `relay.key` is the

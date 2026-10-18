@@ -4927,3 +4927,61 @@ def test_start_names_the_reason_when_the_child_refuses_its_config(cli_world, mon
     assert mod.cmd_start(args, root, state) == 2
     err = capsys.readouterr().err
     assert "cockpit.enabled" in err and "server.log" in err
+
+
+# ------------------------------------------------------------------ the docs name every state file and verb
+
+STATE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*\.(?:json|jsonl|log)$")
+# string constants that look like a state file but are not one the cockpit writes or keeps
+NOT_STATE = {
+    ".meta.json",       # sessions.py reads the subagent meta files Claude Code writes beside its transcripts
+}
+
+
+def _files_table(doc: str) -> tuple[list[str], list[list[str]]]:
+    """Section 6 of the user doc: the header and the rows of its tables, cells stripped"""
+    section = doc.split("\n## 6. Files", 1)[1].split("\n## ", 1)[0]
+    rows = [[c.strip() for c in line.strip().strip("|").split("|")]
+            for line in section.splitlines() if line.startswith("|")]
+    header = rows[0]
+    return header, [r for r in rows if r != header and not set("".join(r)) <= set("-: ")]
+
+
+def _state_names_in_code() -> set[str]:
+    """Every file name the cockpit code names as a constant, plus the key file `token`"""
+    import ast
+    names = set()
+    files = sorted((ROOT / "scripts" / "lib" / "bridge_cockpit").glob("*.py")) + [ROOT / "scripts" / "bridge-cockpit.py"]
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and STATE_NAME_RE.match(node.value):
+                names.add(node.value)
+        if re.search(r"/\s*[\"']token[\"']", text):
+            names.add("token")
+    return names - NOT_STATE
+
+
+def test_the_files_table_lists_every_state_file_the_code_names():
+    header, rows = _files_table((ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8"))
+    listed = {re.sub(r"^.*/", "", m) for r in rows for m in re.findall(r"`([^`]+)`", r[0])}
+    missing = sorted(_state_names_in_code() - listed)
+    assert not missing, f"docs/bridge-cockpit.md section 6 has no row for {missing}"
+
+
+def test_the_files_table_marks_which_files_hold_inbox_or_chat_text():
+    header, rows = _files_table((ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8"))
+    col = next((i for i, h in enumerate(header) if "inbox or chat text" in h.lower()), None)
+    assert col is not None, header
+    for r in rows:
+        assert r[col].split(":")[0].strip() in ("yes", "no"), r
+
+
+def test_the_dev_doc_names_every_cli_subcommand():
+    src = (ROOT / "scripts" / "bridge-cockpit.py").read_text(encoding="utf-8")
+    verbs = re.findall(r"sub\.add_parser\(\s*[\"']([a-z-]+)[\"']", src)
+    assert "autostart" in verbs and "new-token" in verbs
+    line = next(x for x in (ROOT / "docs" / "bridge-cockpit-dev.md").read_text(encoding="utf-8").splitlines()
+                if x.startswith("| `scripts/bridge-cockpit.py` |"))
+    named = set(re.findall(r"[a-z][a-z-]*", line.split("|")[2]))
+    assert not [v for v in verbs if v not in named], line
