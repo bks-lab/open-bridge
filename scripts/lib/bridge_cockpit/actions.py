@@ -1435,7 +1435,7 @@ class Actions:
         ctx.extra["conv"] = conv
 
     def v_quick_forget(self, ctx: Ctx, conv: str) -> None:
-        """Remove a chat with the Bridge from the list; it was a read-only question, nothing else knows of it."""
+        """Take a chat with the Bridge off the list; it is kept in the archive (chats/ in the state dir)."""
         try:
             self.app.quick.forget(conv)
         except KeyError as exc:
@@ -1478,11 +1478,13 @@ class Actions:
         self.launch(ctx, [row], "go", "area", word=self.tx["btn_resume"], resume={"sid": session, "cwd": link.get("cwd")})
 
     def v_a2a_forget(self, ctx: Ctx, conv: str) -> None:
-        """Remove a conversation from the list (local only, the agent is not told)."""
+        """Take a conversation off the list into the archive (local only, the agent is not told)."""
         try:
             self.app.agents.forget(conv)
         except KeyError as exc:
             raise ActionError(409, "stale_row", str(exc).strip("'"), "conv")
+        except RuntimeError as exc:
+            raise ActionError(409, "not_applicable", str(exc), "conv")
         ctx.extra["conv"] = conv
 
     def v_account_status(self, ctx: Ctx, page: str, section: str, index: int, status: str) -> None:

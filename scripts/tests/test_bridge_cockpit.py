@@ -4336,3 +4336,113 @@ def test_github_board_switch_keeps_the_persons_choice_and_asks_the_section_again
                 {"slug": "../x", "mode": "all"}):
         with pytest.raises(ActionError):
             world.act("github_board", **{"section": "work", **bad})
+
+
+# --- chats leave the list into the archive, never into nothing ---
+
+def archived(world, name):
+    month = time.strftime("%Y-%m", time.localtime(world.clock() / 1000))
+    path = world.app.state_dir / "chats" / f"{name}-{month}.jsonl"
+    return path, [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def test_a_removed_chat_is_archived_whole(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("kept", 0.001)
+    conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "weg damit"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    world.act("quick_forget", conv=conv)
+    path, rows = archived(world, "quick")
+    assert [r["conv"]["id"] for r in rows] == [conv] and rows[0]["why"] == "removed"
+    assert rows[0]["conv"]["turns"][0] == {**rows[0]["conv"]["turns"][0], "q": "weg damit", "a": "kept"}
+    assert rows[0]["at_ms"] == int(world.clock())
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_the_oldest_chat_beyond_the_limit_goes_to_the_archive(world, monkeypatch):
+    import lib.bridge_cockpit.quick as quick_mod   # noqa: E402
+    monkeypatch.setattr(quick_mod, "MAX_CONVS", 2)
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    first = None
+    for n in range(3):
+        conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": f"frage {n}"}, "via": "quick"})[2])["conv"]
+        first = first or conv
+        wait_quick(world)
+        world.clock.advance(1)
+    assert first not in [c["id"] for c in world.app.quick.state()["convs"]]
+    _, rows = archived(world, "quick")
+    assert [(r["conv"]["id"], r["why"]) for r in rows] == [(first, "overflow")]
+    assert rows[0]["conv"]["turns"][0]["q"] == "frage 0"
+
+
+def test_a_removed_agent_conversation_is_archived(world):
+    a2a_peers(world, "alpha")
+    world.runner.handlers["a2a.ask"] = lambda argv: a2a_answer(text="Antwort.")
+    res = world.act("a2a_ask", peer="alpha", text="wie geht es?")
+    wait_agents(world)
+    world.act("a2a_forget", conv=res["conv"])
+    _, rows = archived(world, "agents")
+    assert [(r["conv"]["id"], r["why"]) for r in rows] == [(res["conv"], "removed")]
+    assert rows[0]["conv"]["peer"] == "alpha" and rows[0]["conv"]["turns"][0]["a"] == "Antwort."
+
+
+def test_the_oldest_agent_conversation_beyond_the_limit_goes_to_the_archive(world, monkeypatch):
+    import lib.bridge_cockpit.agents as agents_mod   # noqa: E402
+    monkeypatch.setattr(agents_mod, "MAX_CONVS", 1)
+    a2a_peers(world, "alpha")
+    world.runner.handlers["a2a.ask"] = lambda argv: a2a_answer()
+    first = world.act("a2a_ask", peer="alpha", text="eins")["conv"]
+    wait_agents(world)
+    world.clock.advance(1)
+    world.act("a2a_ask", peer="alpha", text="zwei")
+    wait_agents(world)
+    _, rows = archived(world, "agents")
+    assert [(r["conv"]["id"], r["why"]) for r in rows] == [(first, "overflow")]
+
+
+def test_a_chat_that_cannot_be_archived_stays_in_the_list(world, monkeypatch):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "bleib"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    (world.app.state_dir / "chats").write_text("not a folder")      # the archive cannot be written
+    with pytest.raises(ActionError):
+        world.act("quick_forget", conv=conv)
+    assert [c["id"] for c in world.app.quick.state()["convs"]] == [conv]
+
+
+def test_when_the_archive_fails_the_list_keeps_its_chats_and_says_so_once_per_start(world, monkeypatch):
+    import lib.bridge_cockpit.quick as quick_mod   # noqa: E402
+    monkeypatch.setattr(quick_mod, "MAX_CONVS", 1)
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    (world.app.state_dir / "chats").write_text("not a folder")
+    errors = []
+    monkeypatch.setattr(world.app, "log_error", errors.append)
+    for n in range(3):
+        world.post("/api/ask", {"kind": "free", "args": {"text": f"frage {n}"}, "via": "quick"})
+        wait_quick(world)
+        world.clock.advance(1)
+    assert len(world.app.quick.state()["convs"]) == 3             # nothing dropped
+    assert len([e for e in errors if "not archived" in e]) == 2   # one try per start, not one per old chat
+
+
+def test_a_failed_archive_is_refused_with_its_reason(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "bleib"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    (world.app.state_dir / "chats").write_text("not a folder")
+    with pytest.raises(ActionError) as exc:
+        world.act("quick_forget", conv=conv)
+    assert exc.value.status == 409 and exc.value.code == "not_applicable"
+    assert [c["id"] for c in json.loads((world.app.state_dir / "quick.json").read_text())] == [conv]
+
+
+def test_an_agent_conversation_still_waiting_for_its_answer_cannot_be_removed(world):
+    a2a_peers(world, "alpha")
+    gate = threading.Event()
+    world.runner.handlers["a2a.ask"] = lambda argv: (gate.wait(3), a2a_answer())[1]
+    res = world.act("a2a_ask", peer="alpha", text="dauert")
+    try:
+        with pytest.raises(ActionError):
+            world.act("a2a_forget", conv=res["conv"])
+    finally:
+        gate.set()
+    assert wait_agents(world)[0]["turns"][0]["a"] == "Antwort."

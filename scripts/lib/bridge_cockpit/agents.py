@@ -255,8 +255,11 @@ class Agents:
                      "running": False}
                 self.convs[conv] = c
                 for old in sorted(self.convs.values(), key=lambda x: x["started_ms"])[:-MAX_CONVS]:
-                    if not old["running"]:
-                        del self.convs[old["id"]]
+                    if old["running"]:
+                        continue
+                    if not self._archive(old, "overflow", now):
+                        break             # the archive is down: keep them all, try again at the next start
+                    del self.convs[old["id"]]
             sent = TASK_FRAME[self.lang()].format(text=text) if mode == "task" else text
             c["turns"].append({"q": text, "mode": mode, "a": None, "state": None, "task_id": None, "waiting": False,
                                "at_ms": now, "answered_ms": None, "error": None})
@@ -281,12 +284,30 @@ class Agents:
         self._spawn(conv, self.argv("get", "--json", c["peer"], last["task_id"]), polling=True)
 
     def forget(self, conv: str) -> None:
-        """Remove a conversation here; nothing goes to the agent, and its held answer is gone from here."""
+        """Take a conversation off the list into the archive; nothing goes to the agent."""
         with self.lock:
-            if self.convs.pop(conv, None) is None:
+            c = self.convs.get(conv)
+            if c is None:
                 raise KeyError("no such conversation")
+            if c["running"]:
+                raise RuntimeError("this conversation is still waiting for its answer")
+            if not self._archive(c, "removed", int(self.app.clock())):
+                raise RuntimeError("the archive cannot be written, the conversation stays")
+            del self.convs[conv]
             self.save()
         self.app.broadcast("agents", self.state())
+
+    def _archive(self, c: dict, why: str, now: int) -> bool:
+        """Called under the lock: True when the conversation is kept in the archive (or there is no state dir)."""
+        if self.path is None:
+            return True
+        from .store import archive_conv
+        try:
+            archive_conv(self.path.parent, "agents", c, why, now)
+            return True
+        except OSError as exc:
+            self.app.log_error(f"agents: not archived: {exc!r}")
+            return False
 
     def _spawn(self, conv: str, argv: list[str], polling: bool = False) -> None:
         threading.Thread(target=self._run, args=(conv, argv, polling), name="bridge-cockpit-a2a", daemon=True).start()

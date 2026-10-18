@@ -4,7 +4,8 @@
 The mod keeps its own hidden rows and team runs in its `$.store`; the web keeps
 these separately (documented, not synced: contract section 13). Every write is
 atomic (tmp file + os.replace). Also the small file helpers the other modules share:
-atomic JSON writes and log files rotated at 1 MB.
+atomic JSON writes, log files rotated at 1 MB, and the chat archive (chats/<name>-YYYY-MM.jsonl), where a
+conversation goes when it leaves its list, so no chat is ever dropped.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -48,6 +50,21 @@ def read_json(path: Path) -> Any:
         return json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+def archive_conv(state_dir: Path, name: str, conv: dict, why: str, now_ms: int) -> None:
+    """Append one conversation, whole, to the archive file of the month it leaves its list (local time);
+    raises OSError when it cannot be kept, and the caller then keeps the conversation in its list. At
+    least once: should the list file fail to save afterwards, the conversation comes back after a
+    restart and a second removal archives it again."""
+    folder = Path(state_dir) / "chats"
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = folder / f"{name}-{time.strftime('%Y-%m', time.localtime(now_ms / 1000))}.jsonl"
+    line = json.dumps({"at_ms": now_ms, "why": why, "conv": conv}, ensure_ascii=False, separators=(",", ":"))
+    with _log_lock:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
 
 
 _log_lock = threading.Lock()

@@ -1089,7 +1089,12 @@ The answer streams: the CLI runs with `--output-format stream-json --verbose
 --include-partial-messages`, and the text so far plus the file it is reading
 reach the page as the `quick_live` event, at most every 0.3 s. Chats are kept
 in the state dir (`quick.json`, the last 30), so a chat goes on after a
-restart of the dashboard; one that was answering when it stopped says so. The
+restart of the dashboard; one that was answering when it stopped says so.
+No chat is ever dropped: the 31st pushes the oldest, and "remove chat" takes
+one, into the archive `chats/quick-YYYY-MM.jsonl` in the state dir (one line
+per chat, whole, with `why`: `overflow` or `removed`; A2A conversations go to
+`chats/agents-YYYY-MM.jsonl`). When the archive cannot be written, the chat
+stays in its list. Deleting for good means deleting that file by hand. The
 Chat tab lists every kept chat (first question, when, model, cost) and opens
 one with its box ready; "As a tab" in the window moves the open chat there.
 
@@ -1112,7 +1117,7 @@ follow up continues the peer's A2A context. A peer that holds a task for its
 owner's approval answers with a state that is not final: the turn shows as
 held, the tab wears a dot, and "look again" reads the task with `a2a.py get`
 without sending anything new. Conversations are kept in `agents.json` in the
-state dir. Without a peer there is no tab. The quick chat's system text names
+state dir, and one that leaves the list goes to the archive (see the Chat). Without a peer there is no tab. The quick chat's system text names
 `infra/a2a-peers/` too, so it can suggest asking an agent; it sends nothing
 itself.
 

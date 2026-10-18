@@ -255,8 +255,11 @@ class Quick:
                      "running": False, "last_ms": now}
                 self.convs[conv] = c
                 for old in sorted(self.convs.values(), key=lambda x: x["started_ms"])[:-MAX_CONVS]:
-                    if not old["running"]:
-                        del self.convs[old["id"]]
+                    if old["running"]:
+                        continue
+                    if not self._archive(old, "overflow", now):
+                        break             # the archive is down: keep them all, try again at the next start
+                    del self.convs[old["id"]]
             # a resumed session keeps its model: a switch starts the reply in a new session with the history
             last = c["turns"][-1] if c["turns"] else {}
             # A failed switch must never attach the old provider's id to the new provider.
@@ -276,16 +279,30 @@ class Quick:
         return conv
 
     def forget(self, conv: str) -> None:
-        """Remove a chat from the list and from quick.json; one still answering stays until it is done."""
+        """Take a chat off the list into the archive; one still answering stays until it is done."""
         with self.lock:
             c = self.convs.get(conv)
             if c is None:
                 raise KeyError("no such conversation")
             if c.get("running"):
                 raise RuntimeError("this conversation is still answering")
+            if not self._archive(c, "removed", int(self.app.clock())):
+                raise RuntimeError("the archive cannot be written, the chat stays")
             del self.convs[conv]
             self.save()
         self.app.broadcast("quick", self.state())
+
+    def _archive(self, c: dict, why: str, now: int) -> bool:
+        """Called under the lock: True when the chat is kept in the archive (or there is no state dir)."""
+        if self.path is None:
+            return True
+        from .store import archive_conv
+        try:
+            archive_conv(self.path.parent, "quick", c, why, now)
+            return True
+        except OSError as exc:
+            self.app.log_error(f"quick: not archived: {exc!r}")
+            return False
 
     def lang(self) -> str:
         lang = str(getattr(self.app.cfg, "language", "de"))[:2]
