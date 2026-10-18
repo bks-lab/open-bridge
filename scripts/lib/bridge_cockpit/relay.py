@@ -6,11 +6,16 @@ Each file has exactly one writer (the mod has no rename, lock or delete):
   relay/done/<id>.json             the mod of the target session
   relay/heartbeat/<session>.json   the mod of that session, every 5 s
 The server picks the target from fresh heartbeats (younger than 15 s) and names it in
-the record, so two sessions never race for one question. Each record carries `mac`, an
-HMAC-SHA256 over `id|target_session|text` keyed by `relay.key` in a 0700 directory OUTSIDE
-the Bridge (default ~/.local/state/bridge-cockpit, or $BRIDGE_COCKPIT_KEY_DIR): the mod submits only
-records it can verify, so a process that can merely write into the repo cannot hand the
-control session a prompt. Status of a record = the
+the record, so two sessions never race for one question. Every file of the three carries `mac`,
+an HMAC-SHA256 keyed by `relay.key` in a 0700 directory OUTSIDE the Bridge (default
+~/.local/state/bridge-cockpit, or $BRIDGE_COCKPIT_KEY_DIR), over a message that names its kind:
+  inbox      `inbox|id|target_session|expires_ms|text`
+  heartbeat  `heartbeat|session|at_ms|busy|surface`   (busy 1 or 0, surface '' when null)
+  done       `done|id|status|at_ms|answer`            (answer '' when null)
+The free text always comes last. The mod submits only records it can verify, and the server reads
+only heartbeats and done files it can verify, so a process that can merely write into the repo can
+neither hand the control session a prompt, nor pose as the control session, nor answer for it.
+Status of a record = the
 status of its done file, else `queued`; queued past its expiry shows `expired`,
 submitted for longer than 30 min shows `stuck`. Rules: contract sections 6.1 to 6.3.
 """
@@ -73,9 +78,32 @@ def load_key(key_dir: Path) -> str:
     return key
 
 
-def relay_mac(key: str, rid: str, session: str, text: str) -> str:
-    """HMAC-SHA256 (hex) over `id|target_session|text`; the mod computes the same (hooks/relay.ts)."""
-    return hmac.new(key.encode("ascii"), f"{rid}|{session}|{text}".encode("utf-8"), hashlib.sha256).hexdigest()
+def _mac(key: str, *parts: object) -> str:
+    return hmac.new(key.encode("ascii"), "|".join(str(p) for p in parts).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def relay_mac(key: str, rid: str, session: str, expires_ms: int, text: str) -> str:
+    """The inbox record's mac; the mod computes the same (hooks/relay.ts relayMac)."""
+    return _mac(key, "inbox", rid, session, expires_ms, text)
+
+
+def heartbeat_mac(key: str, session: str, at_ms: int, busy: bool, surface: str | None) -> str:
+    """The heartbeat's mac, as the mod signs it (hooks/relay.ts heartbeatMac)."""
+    return _mac(key, "heartbeat", session, at_ms, 1 if busy else 0, surface or "")
+
+
+def done_mac(key: str, rid: str, status: str, at_ms: int, answer: str | None) -> str:
+    """The done file's mac, as the mod signs it (hooks/relay.ts doneMac)."""
+    return _mac(key, "done", rid, status, at_ms, answer or "")
+
+
+def _is_int(v: object) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _mac_ok(data: dict, want: str) -> bool:
+    mac = data.get("mac")
+    return isinstance(mac, str) and hmac.compare_digest(mac, want)
 
 
 def new_relay_id(now_ms: float) -> str:
@@ -136,6 +164,12 @@ class Relay:
         data = read_json(self.done / f"{rid}.json")
         if not isinstance(data, dict) or data.get("id") != rid or data.get("status") not in DONE_STATUSES:
             return None
+        # only the mod holds the key: a done file it did not sign never sets a status or an answer
+        at, answer = data.get("at_ms"), data.get("answer")
+        if not _is_int(at) or not (answer is None or isinstance(answer, str)):
+            return None
+        if not _mac_ok(data, done_mac(self.key, rid, data["status"], at, answer)):
+            return None
         return data
 
     def status_of(self, rec: dict, now: float | None = None) -> str:
@@ -185,11 +219,16 @@ class Relay:
             data = read_json(Path(entry.path))
             if not isinstance(data, dict) or data.get("session") != session:
                 continue
-            at = data.get("at_ms")
-            if not isinstance(at, (int, float)) or isinstance(at, bool) or now - at >= HEARTBEAT_FRESH_MS:
+            at, surface, busy = data.get("at_ms"), data.get("surface"), data.get("busy")
+            if not _is_int(at) or now - at >= HEARTBEAT_FRESH_MS:
                 continue
-            fresh.append({"session": session, "surface": data.get("surface") if isinstance(data.get("surface"), str) else None,
-                          "busy": data.get("busy") is True, "at_ms": int(at)})
+            if not (surface is None or isinstance(surface, str)) or not isinstance(busy, bool):
+                continue
+            # a heartbeat the mod did not sign (a copy of the control tab's surface under another
+            # session id, a newer at_ms) is never a target
+            if not _mac_ok(data, heartbeat_mac(self.key, session, at, busy, surface)):
+                continue
+            fresh.append({"session": session, "surface": surface, "busy": busy, "at_ms": at})
         fresh.sort(key=lambda h: h["at_ms"], reverse=True)
         return fresh
 
@@ -242,7 +281,7 @@ class Relay:
             atomic_write_json(self.inbox / f"{rid}.json", {
                 "v": 1, "id": rid, "created_ms": rec["created_ms"], "expires_ms": rec["expires_ms"],
                 "target_session": target["session"], "kind": kind, "text": framed, "chars": len(framed),
-                "mac": relay_mac(self.key, rid, target["session"], framed)})
+                "mac": relay_mac(self.key, rid, target["session"], rec["expires_ms"], framed)})
         with self.lock:
             self.records[rid] = rec
             self.last_status[rid] = self.status_of(rec, now)

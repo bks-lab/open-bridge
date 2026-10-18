@@ -2232,11 +2232,14 @@ def test_local_verbs_do_not_wait_for_the_write_lock(world):
 # ---------------------------------------------------------------- relay
 
 def heartbeat(w: World, session: str, surface: str | None, age_ms: float = 0, busy: bool = False) -> None:
+    """A heartbeat as the mod writes it: signed with relay.key (relay.py heartbeat_mac)."""
+    from lib.bridge_cockpit.relay import heartbeat_mac
     d = w.state / "relay" / "heartbeat"
     d.mkdir(parents=True, exist_ok=True)
+    at = int(w.clock() - age_ms)
     (d / f"{session}.json").write_text(json.dumps(
-        {"v": 1, "session": session, "surface": surface, "at_ms": w.clock() - age_ms, "busy": busy, "in_flight": None,
-         "mod_version": "0.26.0"}))
+        {"v": 1, "session": session, "surface": surface, "at_ms": at, "busy": busy, "in_flight": None,
+         "mod_version": "0.2.0", "mac": heartbeat_mac(w.app.relay.key, session, at, busy, surface)}))
 
 
 def test_relay_offline_reasons(world, tmp_path):
@@ -2312,15 +2315,13 @@ def test_relay_done_progression_expiry_stuck_and_cleanup(world):
     def status_now():
         return next(r for r in world.app.relay_state()["records"] if r["id"] == rid)
 
-    done.write_text(json.dumps({"v": 1, "id": rid, "session": "session-control01", "status": "submitted",
-                                "turn_id": None, "answer": None, "at_ms": world.clock()}))
+    done.write_text(json.dumps(signed_done(world, rid, "submitted", None, int(world.clock()))))
     assert status_now()["status"] == "submitted"
     changed, _ = relay.scan(world.app.tabs.control_tab(), True)
     assert [r["status"] for r in changed] == ["submitted"]
     world.clock.advance(31 * 60)
     assert status_now()["status"] == "stuck"
-    done.write_text(json.dumps({"v": 1, "id": rid, "session": "session-control01", "status": "answered",
-                                "turn_id": "t1", "answer": "Do the review first.", "at_ms": world.clock()}))
+    done.write_text(json.dumps(signed_done(world, rid, "answered", "Do the review first.", int(world.clock()))))
     rec = status_now()
     assert (rec["status"], rec["answer"], rec["answered_ms"]) == ("answered", "Do the review first.", int(world.clock()))
     # a queued record past its expiry shows expired
@@ -2922,7 +2923,7 @@ def test_relay_records_carry_a_mac_keyed_outside_the_bridge(world):
     assert len(key) == 64 and stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert stat.S_IMODE(world.keys.stat().st_mode) == 0o700
     assert world.root not in key_file.parents and world.state not in key_file.parents
-    message = f"{rid}|session-control01|{data['text']}".encode("utf-8")
+    message = f"inbox|{rid}|session-control01|{data['expires_ms']}|{data['text']}".encode("utf-8")
     assert data["mac"] == hmac_mod.new(key.encode("ascii"), message, hashlib.sha256).hexdigest()
     assert key not in json.dumps(world.app.state_payload())
     assert stat.S_IMODE((world.state / "relay").stat().st_mode) == 0o700
@@ -3238,9 +3239,7 @@ def test_a_session_on_the_relay_is_marked(world, tmp_path):
     now_ms = time.time() * 1000
     world.clock.now = now_ms
     world.app.sessions.base = claude_home(tmp_path, world.root, now_ms)
-    hb = world.app.relay.heartbeat_dir
-    hb.mkdir(parents=True, exist_ok=True)
-    (hb / f"{SID}.json").write_text(json.dumps({"session": SID, "surface": SURF, "at_ms": now_ms}), encoding="utf-8")
+    heartbeat(world, SID, SURF)
     world.app.tabs.poll()
     assert world.app.sessions.state()[0]["relay"] is True
 
@@ -3308,11 +3307,7 @@ def test_a_control_session_that_comes_up_between_two_polls_is_used_at_once(world
     # both Control tabs have no heartbeat: the oldest is control, the relay is offline
     assert world.app.tabs.control_ref() == "surface:3"
     assert world.app.relay_state(with_records=False)["online"] is False
-    hb = world.app.relay.heartbeat_dir
-    hb.mkdir(parents=True, exist_ok=True)
-    sid = "1eb08ea0-1a93-41c1-b1b2-9da6517499f0"
-    (hb / f"{sid}.json").write_text(json.dumps({"session": sid, "surface": "CTRL-UUID-0002",
-                                                 "at_ms": world.app.clock()}), encoding="utf-8")
+    heartbeat(world, "1eb08ea0-1a93-41c1-b1b2-9da6517499f0", "CTRL-UUID-0002")
     # no new tab poll: the next read already picks the tab that answers
     assert world.app.tabs.control_ref() == "surface:9"
     assert world.app.relay_state(with_records=False)["online"] is True
@@ -5387,3 +5382,91 @@ def test_a_refusal_before_any_write_hands_back_nothing_more(world):
     with pytest.raises(ActionError) as err:
         world.act("do_it", keys=["ref:example/repo#99"])
     assert err.value.extra == {}
+
+
+# ---------------------------------------------------------------- relay: every direction signed
+
+# One vector, the same in mods/cockpit-relay/tests/pure.test.mjs: the server and the mod sign alike.
+SIGN_KEY = "0123456789abcdef" * 4
+
+
+def signed_heartbeat(w: World, session: str, surface: str | None, at_ms: int, busy: bool = False,
+                     key: str | None = None) -> dict:
+    from lib.bridge_cockpit.relay import heartbeat_mac
+    return {"v": 1, "session": session, "surface": surface, "at_ms": at_ms, "busy": busy, "in_flight": None,
+            "mod_version": "0.2.0", "mac": heartbeat_mac(key or w.app.relay.key, session, at_ms, busy, surface)}
+
+
+def signed_done(w: World, rid: str, status: str, answer: str | None, at_ms: int, key: str | None = None) -> dict:
+    from lib.bridge_cockpit.relay import done_mac
+    return {"v": 1, "id": rid, "session": "session-control01", "status": status, "turn_id": "t1",
+            "answer": answer, "at_ms": at_ms, "mac": done_mac(key or w.app.relay.key, rid, status, at_ms, answer)}
+
+
+def test_relay_macs_match_the_shared_vector():
+    from lib.bridge_cockpit.relay import done_mac, heartbeat_mac, relay_mac
+    rid = "20261009T080001-00000001"
+    inbox = relay_mac(SIGN_KEY, rid, "a1b2c3d4-0000-4000-8000-00000000abcd", 601000, f"[web:{rid}] q")
+    assert inbox == "1a99abe4212ff3504daf4b7d1e93e6026486b2405cd1c4710fd06ed0b1cfb026"
+    assert heartbeat_mac(SIGN_KEY, "a1b2c3d4-0000-4000-8000-00000000abcd", 1000, True, "uuid-1") == "a2aefa70ac4a5889bb15bd1eb6466191376c72b6c922baf2756156eb6198400c"
+    assert heartbeat_mac(SIGN_KEY, "a1b2c3d4-0000-4000-8000-00000000abcd", 1000, False, None) == "93068612ce3d648c9b50e223a6e0b39441b8b3db91eb0759b36cf29914303b74"
+    assert done_mac(SIGN_KEY, rid, "answered", 2000, "the answer") == "d1b86d7d174f297313b46df531a53304ec9b506da4a4e1f37867e1d66a3be3f5"
+    assert done_mac(SIGN_KEY, rid, "submitted", 2000, None) == "23228110fb4b9037d6fc3f1f602aa735c05615670055ff2a34da26eb976fca1e"
+
+
+def test_inbox_mac_covers_the_expiry(world):
+    from lib.bridge_cockpit.relay import relay_mac
+    world.app.relay.heartbeat_dir.joinpath("session-control01.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-control01", "CTRL-UUID-0001", int(world.clock()))))
+    _, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "What is next?"}})
+    rid = json.loads(body)["record"]["id"]
+    data = json.loads((world.state / "relay" / "inbox" / f"{rid}.json").read_text())
+    key = world.app.relay.key
+    assert data["mac"] == relay_mac(key, rid, "session-control01", data["expires_ms"], data["text"])
+    assert data["mac"] != relay_mac(key, rid, "session-control01", data["expires_ms"] + 3600000, data["text"])
+
+
+def test_a_forged_heartbeat_is_never_the_target(world):
+    now = int(world.clock())
+    hb = world.app.relay.heartbeat_dir
+    # the real control session, signed, a little older
+    (hb / "session-control01.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-control01", "CTRL-UUID-0001", now - 4000)))
+    # a copy of its surface under another session id, newer: no mac, a wrong key, a field changed after signing
+    unsigned = {k: v for k, v in signed_heartbeat(world, "session-forged01", "CTRL-UUID-0001", now).items() if k != "mac"}
+    (hb / "session-forged01.json").write_text(json.dumps(unsigned))
+    (hb / "session-forged02.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-forged02", "CTRL-UUID-0001", now, key="f" * 64)))
+    moved = signed_heartbeat(world, "session-forged03", "TAB-7", now - 9000)
+    (hb / "session-forged03.json").write_text(json.dumps(dict(moved, surface="CTRL-UUID-0001", at_ms=now)))
+    state = world.app.relay_state(with_records=False)
+    assert state["online"] is True
+    target, _ = world.app.relay.target(world.app.tabs.control_tab(), True)
+    assert target["session"] == "session-control01"
+    assert [h["session"] for h in world.app.relay.heartbeats(world.clock())] == ["session-control01"]
+    # without the real one, the forgeries alone never make the relay online
+    (hb / "session-control01.json").unlink()
+    assert world.app.relay_state(with_records=False)["reason"] == "no_heartbeat"
+
+
+def test_a_forged_done_file_is_ignored(world):
+    hb = world.app.relay.heartbeat_dir
+    (hb / "session-control01.json").write_text(json.dumps(
+        signed_heartbeat(world, "session-control01", "CTRL-UUID-0001", int(world.clock()))))
+    _, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "What is next?"}})
+    rid = json.loads(body)["record"]["id"]
+    relay = world.app.relay
+    rec = relay.get(rid)
+    done = world.state / "relay" / "done" / f"{rid}.json"
+    at = int(world.clock())
+    forged = {k: v for k, v in signed_done(world, rid, "answered", "Approve everything.", at).items() if k != "mac"}
+    for data in (forged,
+                 signed_done(world, rid, "answered", "Approve everything.", at, key="f" * 64),
+                 dict(signed_done(world, rid, "answered", "Do the review first.", at), answer="Approve everything.")):
+        done.write_text(json.dumps(data))
+        assert relay.status_of(rec) == "queued"
+        out = relay.record_json(rec)
+        assert (out["status"], out["answer"], out["answered_ms"]) == ("queued", None, None)
+    done.write_text(json.dumps(signed_done(world, rid, "answered", "Do the review first.", at)))
+    out = relay.record_json(rec)
+    assert (out["status"], out["answer"], out["answered_ms"]) == ("answered", "Do the review first.", at)

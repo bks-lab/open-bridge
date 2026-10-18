@@ -11,6 +11,8 @@ What it does, and nothing else:
   `.bridge/cockpit/relay/heartbeat/<session>.json`: alive, busy, the question
   in flight, and where the session runs (the cmux surface, else the tmux pane
   such as `%3`, else `null`), so the server can pick the control session;
+  the heartbeat and every done file are signed with the same `relay.key`, and
+  the server ignores any it cannot verify;
 - reads `.bridge/cockpit/relay/inbox/` every 2 seconds and submits a question
   only when the server addressed it to this session and signed it with
   `relay.key` (kept outside the Bridge in `$BRIDGE_COCKPIT_KEY_DIR`, else

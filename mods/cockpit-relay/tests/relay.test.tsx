@@ -6,7 +6,7 @@ import type { Engine } from 'claude-code/testing'
 import { abs, CWD, SESSION, world } from './world'
 import type { World, WorldOptions } from './world'
 import type { On } from 'claude-code'
-import { relayMac } from '../hooks/relay'
+import { doneMac, heartbeatMac, relayMac } from '../hooks/relay'
 
 const HEARTBEAT = abs(`.bridge/cockpit/relay/heartbeat/${SESSION}.json`)
 const HOME = '/fake/home'
@@ -25,7 +25,7 @@ async function ask(w: World, n: number, extra: Record<string, unknown> = {}, key
   const now = w.clock.now()
   const rec: Record<string, unknown> = { v: 1, id: rid(n), created_ms: now, expires_ms: now + 600000,
     target_session: SESSION, kind: 'overview', text: framed(n), chars: 40, ...extra }
-  const mac = await relayMac(key, String(rec.id), String(rec.target_session), String(rec.text))
+  const mac = relayMac(key, String(rec.id), String(rec.target_session), Number(rec.expires_ms), String(rec.text))
   w.put(inboxPath(n), JSON.stringify({ mac, ...rec }))
 }
 
@@ -63,7 +63,8 @@ test('the heartbeat is written at once and every 5 s, with the fields the server
   const beats = () => w.writes.filter(x => abs(x.path) === HEARTBEAT)
   expect(beats()).toHaveLength(1)
   expect(JSON.parse(beats()[0]?.text ?? '{}')).toEqual({ v: 1, session: SESSION, surface: 'uuid-1',
-    at_ms: w.clock.now(), busy: false, in_flight: null, mod_version: '0.1.0' })
+    at_ms: w.clock.now(), busy: false, in_flight: null, mod_version: '0.2.0',
+    mac: heartbeatMac(RELAY_KEY, SESSION, w.clock.now(), false, 'uuid-1') })
   await w.clock.advance(5000)
   expect(beats()).toHaveLength(2)
   await w.clock.advance(10000)
@@ -329,4 +330,40 @@ test('session.end marks the heartbeat as gone at once (R8)', async ($, on) => {
   expect(beat(w)).toMatchObject({ at_ms: w.clock.now() })
   await $.session.end({ reason: 'prompt_input_exit', sessionId: SESSION, resume: { sessionId: SESSION } } as never)
   expect(beat(w)).toMatchObject({ session: SESSION, at_ms: 0, busy: false })
+})
+
+// ---------------------------------------------------------------- every direction signed
+
+test('an inbox record whose expiry was raised after signing is rejected, not submitted', async ($, on) => {
+  const w = await start($, on)
+  await ask(w, 1)
+  const signed = JSON.parse(w.disk.get(inboxPath(1)) ?? '{}') as Record<string, unknown>
+  w.put(inboxPath(1), JSON.stringify({ ...signed, expires_ms: Number(signed.expires_ms) + 3600000 }))
+  await w.clock.advance(2000)
+  expect(w.prompts).toEqual([])
+  expect(done(w, 1)?.status).toBe('rejected')
+})
+
+test('the heartbeat is signed with the key the server reads, and unsigned without one', async ($, on) => {
+  const w = await start($, on)
+  await $.turn.start({ text: 'the person types something', turnId: 'turn-1' })
+  await w.clock.advance(5000)
+  const b = beat(w)
+  expect(b.mac).toBe(heartbeatMac(RELAY_KEY, SESSION, Number(b.at_ms), true, 'uuid-1'))
+  w.disk.delete(KEY_FILE)
+  await w.clock.advance(5000)
+  expect(beat(w)).toMatchObject({ session: SESSION, mac: null })
+})
+
+test('every done file is signed over id, status, time and answer', async ($, on) => {
+  const w = await start($, on)
+  await ask(w, 1)
+  await w.clock.advance(2000)
+  const sub = done(w, 1) ?? {}
+  expect(sub.mac).toBe(doneMac(RELAY_KEY, rid(1), 'submitted', Number(sub.at_ms), null))
+  await $.turn.start({ text: framed(1), turnId: 'turn-7' })
+  await $.turn.complete(turnEnd('turn-7', 'the signed answer'))
+  const ans = done(w, 1) ?? {}
+  expect(ans).toMatchObject({ status: 'answered', answer: 'the signed answer' })
+  expect(ans.mac).toBe(doneMac(RELAY_KEY, rid(1), 'answered', Number(ans.at_ms), 'the signed answer'))
 })

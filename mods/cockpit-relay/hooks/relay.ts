@@ -10,11 +10,13 @@ import type { RelaySettings } from '../types'
  *   .bridge/cockpit/relay/done/<id>.json            the mod of the target session: what became of it
  *   .bridge/cockpit/relay/heartbeat/<session>.json  the mod of that session: alive, busy, in flight
  *
- * Why only the server's questions are submitted: each inbox record carries `mac`, an HMAC-SHA256 over
- * `id|target_session|text` keyed by relay.key, which the server keeps OUTSIDE the Bridge in a 0700
- * directory ($BRIDGE_COCKPIT_KEY_DIR, else ~/.local/state/bridge-cockpit). A record this session cannot
- * verify is rejected: a process that can only write inside the repo (an agent tab) cannot hand this
- * session a prompt.
+ * Why only the server's questions are submitted, and only this session's word counts: every file of the
+ * three carries `mac`, an HMAC-SHA256 keyed by relay.key, which the server keeps OUTSIDE the Bridge in a
+ * 0700 directory ($BRIDGE_COCKPIT_KEY_DIR, else ~/.local/state/bridge-cockpit), over a message that
+ * names its kind and puts the free text last (relayMac, heartbeatMac, doneMac below). A record this
+ * session cannot verify is rejected, and the server ignores a heartbeat or done file it cannot verify:
+ * a process that can only write inside the repo (an agent tab) can neither hand this session a prompt,
+ * nor pose as this session to get the questions, nor answer in its name.
  *
  * Why a question is submitted at most once: the server names one target session per record
  * (the heartbeat whose surface is the control tab); every other session ignores the record
@@ -49,7 +51,7 @@ export const KEY_HOME_DIR = '.local/state/bridge-cockpit'
 /** In flight for longer than this: done `stuck`, the slot is free again (relay.py STUCK_MS) */
 export const STUCK_MS = 30 * 60000
 /** Must equal .claude-plugin/plugin.json version (pure.test.mjs checks it) */
-export const MOD_VERSION = '0.1.0'
+export const MOD_VERSION = '0.2.0'
 
 const ID = /^\d{8}T\d{6}-[0-9a-f]{8}$/
 const SESSION = /^[A-Za-z0-9-]{8,64}$/
@@ -79,6 +81,8 @@ export type DoneRecord = {
   turn_id: string | null
   answer: string | null
   at_ms: number
+  /** doneMac with relay.key; null when this session cannot read the key (the server then ignores the file) */
+  mac: string | null
 }
 
 /** heartbeat/<session>.json as the mod writes it */
@@ -90,6 +94,8 @@ export type Heartbeat = {
   busy: boolean
   in_flight: string | null
   mod_version: string
+  /** heartbeatMac with relay.key; null when this session cannot read the key (the server then ignores it) */
+  mac: string | null
 }
 
 /**
@@ -209,14 +215,22 @@ export function reasonToStatus(reason: unknown): RelayStatus {
   return 'error'
 }
 
+/** A done file, signed with `key` (whole milliseconds, so the server formats the time alike) */
 export function doneRecord(id: string, session: string, status: RelayStatus, turnId: string | null,
-  answer: unknown, now: number): DoneRecord {
-  return { v: 1, id, session, status, turn_id: turnId, answer: clipAnswer(answer), at_ms: now }
+  answer: unknown, now: number, key: string | null = null): DoneRecord {
+  const text = clipAnswer(answer)
+  const at = Math.floor(now)
+  return { v: 1, id, session, status, turn_id: turnId, answer: text, at_ms: at,
+    mac: isRelayKey(key) ? doneMac(key, id, status, at, text) : null }
 }
 
+/** A heartbeat, signed with `key` (whole milliseconds, so the server formats the time alike) */
 export function heartbeat(session: string, surface: string | null, now: number, busy: boolean,
-  inFlight: string | null): Heartbeat {
-  return { v: 1, session, surface: surface || null, at_ms: now, busy, in_flight: inFlight, mod_version: MOD_VERSION }
+  inFlight: string | null, key: string | null = null): Heartbeat {
+  const at = Math.floor(now)
+  const place = surface || null
+  return { v: 1, session, surface: place, at_ms: at, busy, in_flight: inFlight, mod_version: MOD_VERSION,
+    mac: isRelayKey(key) ? heartbeatMac(key, session, at, busy, place) : null }
 }
 
 /** The ids of a done/ listing: `<id>.json` of valid ids only */
@@ -308,8 +322,8 @@ export function sha256(...parts: Uint8Array[]): Uint8Array {
   return out
 }
 
-/** HMAC-SHA256 (RFC 2104, hex) over `id|session|text` with the key's ASCII bytes, as the server computes it */
-export function relayMac(key: string, id: string, session: string, text: string): string {
+/** HMAC-SHA256 (RFC 2104, hex) over `message` with the key's ASCII bytes, as relay.py _mac computes it */
+function hmacHex(key: string, message: string): string {
   const enc = new TextEncoder()
   let k = enc.encode(key)
   if (k.length > BLOCK) k = sha256(k)
@@ -320,9 +334,24 @@ export function relayMac(key: string, id: string, session: string, text: string)
     ipad[i] = b ^ 0x36
     opad[i] = b ^ 0x5c
   }
-  const inner = sha256(ipad, enc.encode(`${id}|${session}|${text}`))
+  const inner = sha256(ipad, enc.encode(message))
   const outer = sha256(opad, inner)
   return [...outer].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** The inbox record's mac: `inbox|id|target_session|expires_ms|text` (relay.py relay_mac) */
+export function relayMac(key: string, id: string, session: string, expiresMs: number, text: string): string {
+  return hmacHex(key, `inbox|${id}|${session}|${expiresMs}|${text}`)
+}
+
+/** The heartbeat's mac: `heartbeat|session|at_ms|busy|surface`, busy 1 or 0, no surface '' (relay.py heartbeat_mac) */
+export function heartbeatMac(key: string, session: string, atMs: number, busy: boolean, surface: string | null): string {
+  return hmacHex(key, `heartbeat|${session}|${atMs}|${busy ? 1 : 0}|${surface ?? ''}`)
+}
+
+/** The done file's mac: `done|id|status|at_ms|answer`, no answer '' (relay.py done_mac) */
+export function doneMac(key: string, id: string, status: string, atMs: number, answer: string | null): string {
+  return hmacHex(key, `done|${id}|${status}|${atMs}|${answer ?? ''}`)
 }
 
 /** The record's mac matches the server's key (compared in full, without an early exit) */
@@ -330,8 +359,8 @@ export function verifyMac(key: string | null, record: unknown): boolean {
   if (!isRelayKey(key) || typeof record !== 'object' || record === null) return false
   const r = record as Record<string, unknown>
   if (typeof r.mac !== 'string' || typeof r.id !== 'string' || typeof r.target_session !== 'string'
-    || typeof r.text !== 'string') return false
-  const want = relayMac(key, r.id, r.target_session, r.text)
+    || typeof r.text !== 'string' || !Number.isSafeInteger(r.expires_ms)) return false
+  const want = relayMac(key, r.id, r.target_session, r.expires_ms as number, r.text)
   if (want.length !== r.mac.length) return false
   let diff = 0
   for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ r.mac.charCodeAt(i)

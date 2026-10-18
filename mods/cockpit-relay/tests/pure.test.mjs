@@ -141,9 +141,10 @@ test('relay: turn.complete reasons map to done statuses', () => {
 
 test('relay: done record and heartbeat carry exactly the contract fields', () => {
   assert.deepEqual(relay.doneRecord(rid(1), SESSION, 'answered', 't-1', 'yes', 5),
-    { v: 1, id: rid(1), session: SESSION, status: 'answered', turn_id: 't-1', answer: 'yes', at_ms: 5 })
+    { v: 1, id: rid(1), session: SESSION, status: 'answered', turn_id: 't-1', answer: 'yes', at_ms: 5, mac: null })
   assert.deepEqual(relay.heartbeat(SESSION, '', 7, false, null),
-    { v: 1, session: SESSION, surface: null, at_ms: 7, busy: false, in_flight: null, mod_version: relay.MOD_VERSION })
+    { v: 1, session: SESSION, surface: null, at_ms: 7, busy: false, in_flight: null, mod_version: relay.MOD_VERSION,
+      mac: null })
 })
 
 test('relay: the heartbeat names the version of plugin.json', () => {
@@ -177,12 +178,12 @@ test('relay: sha256 matches node for empty, one block and several blocks', async
   }
 })
 
-test('relay: the mac is HMAC-SHA256 over id|session|text, as the server computes it (SEC-1)', async () => {
+test('relay: the mac is HMAC-SHA256 over inbox|id|session|expires_ms|text, as the server computes it (SEC-1)', async () => {
   const { createHmac } = await import('node:crypto')
   const key = 'ab'.repeat(32)
   const text = `[web:${rid(1)}] Sent from the local web dashboard: «Überblick» ${'x'.repeat(300)}`
-  const want = createHmac('sha256', key).update(`${rid(1)}|${SESSION}|${text}`, 'utf8').digest('hex')
-  assert.equal(await relay.relayMac(key, rid(1), SESSION, text), want)
+  const want = createHmac('sha256', key).update(`inbox|${rid(1)}|${SESSION}|601000|${text}`, 'utf8').digest('hex')
+  assert.equal(await relay.relayMac(key, rid(1), SESSION, 601000, text), want)
   assert.equal(await relay.verifyMac(key, rec(1, { text, mac: want })), true)
   assert.equal(await relay.verifyMac(key, rec(1, { text, mac: want.replace(/^./, c => (c === '0' ? '1' : '0')) })), false)
   assert.equal(await relay.verifyMac(key, rec(1, { text })), false)
@@ -274,4 +275,46 @@ test('words: de and en have the same keys, nothing empty, no dash', () => {
 test('config: the retired briefing block no longer sets the language', () => {
   assert.equal(relay.parseRelayConfig({ cockpit: {}, ui_language: 'de', language: 'en' }).language, 'en')
   assert.equal(relay.parseRelayConfig({ cockpit: {}, ui_language: 'en', language: 'de' }).language, 'de')
+})
+
+// ---------------------------------------------------------------- every direction signed
+
+// One vector, the same in scripts/tests/test_bridge_cockpit.py: the mod and the server sign alike.
+const SIGN_KEY = '0123456789abcdef'.repeat(4)
+
+test('relay: inbox, heartbeat and done macs match the vector the server tests', () => {
+  const id = '20261009T080001-00000001'
+  assert.equal(relay.relayMac(SIGN_KEY, id, SESSION, 601000, `[web:${id}] q`),
+    '1a99abe4212ff3504daf4b7d1e93e6026486b2405cd1c4710fd06ed0b1cfb026')
+  assert.equal(relay.heartbeatMac(SIGN_KEY, SESSION, 1000, true, 'uuid-1'),
+    'a2aefa70ac4a5889bb15bd1eb6466191376c72b6c922baf2756156eb6198400c')
+  assert.equal(relay.heartbeatMac(SIGN_KEY, SESSION, 1000, false, null),
+    '93068612ce3d648c9b50e223a6e0b39441b8b3db91eb0759b36cf29914303b74')
+  assert.equal(relay.doneMac(SIGN_KEY, id, 'answered', 2000, 'the answer'),
+    'd1b86d7d174f297313b46df531a53304ec9b506da4a4e1f37867e1d66a3be3f5')
+  assert.equal(relay.doneMac(SIGN_KEY, id, 'submitted', 2000, null),
+    '23228110fb4b9037d6fc3f1f602aa735c05615670055ff2a34da26eb976fca1e')
+})
+
+test('relay: an inbox record whose expires_ms changed after signing does not verify', () => {
+  const r = rec(1)
+  const signed = { ...r, mac: relay.relayMac(SIGN_KEY, r.id, r.target_session, r.expires_ms, r.text) }
+  assert.equal(relay.verifyMac(SIGN_KEY, signed), true)
+  assert.equal(relay.verifyMac(SIGN_KEY, { ...signed, expires_ms: r.expires_ms + 3600000 }), false)
+  assert.equal(relay.verifyMac(SIGN_KEY, { ...signed, expires_ms: String(r.expires_ms) }), false)
+})
+
+test('relay: the heartbeat and the done file carry the mac of the key, null without one', () => {
+  const hb = relay.heartbeat(SESSION, 'uuid-1', 1000.7, true, null, SIGN_KEY)
+  assert.equal(hb.at_ms, 1000)
+  assert.equal(hb.mac, relay.heartbeatMac(SIGN_KEY, SESSION, 1000, true, 'uuid-1'))
+  assert.equal(relay.heartbeat(SESSION, null, 1000, false, null, null).mac, null)
+  const d = relay.doneRecord(rid(1), SESSION, 'answered', 't1', 'the answer', 2000.2, SIGN_KEY)
+  assert.equal(d.at_ms, 2000)
+  assert.equal(d.mac, relay.doneMac(SIGN_KEY, rid(1), 'answered', 2000, 'the answer'))
+  // the answer is signed as written: clipped, and an empty answer counts as none
+  const blank = relay.doneRecord(rid(1), SESSION, 'answered', 't1', '   ', 2000, SIGN_KEY)
+  assert.equal(blank.answer, null)
+  assert.equal(blank.mac, relay.doneMac(SIGN_KEY, rid(1), 'answered', 2000, null))
+  assert.equal(relay.doneRecord(rid(1), SESSION, 'expired', null, null, 2000, null).mac, null)
 })

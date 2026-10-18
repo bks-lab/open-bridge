@@ -1,6 +1,6 @@
 {
   "name": "cockpit-relay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lets the Bridge cockpit (scripts/bridge-cockpit.py) ask this Claude Code session: heartbeats, takes the questions the cockpit signs and addresses to this session as prompts, one at a time, and writes the answers back. Works in any terminal (cmux, tmux or plain). Active only with cockpit.enabled in bridge-config.yaml and the relay not switched off; never in an agent tab.",
   "author": {
     "name": "open-bridge contributors"
