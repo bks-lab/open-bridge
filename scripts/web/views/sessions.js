@@ -43,7 +43,7 @@ function AgentLane({ agents, now }) {
   </div>`
 }
 
-function SessionCard({ x, i = 0, s, c }) {
+export function SessionCard({ x, i = 0, s, c }) {
   const t = T()
   // the session list names its tab slim; the tab list has the rest (last line, filed result, settled)
   const tab = x.tab ? (s.tabs?.tabs ?? []).find(y => y.ref === x.tab.ref) ?? x.tab : null

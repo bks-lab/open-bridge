@@ -270,7 +270,7 @@ missing in one language, an empty value, an em or en dash, or an emoji.
 ```bash
 pytest -q scripts/tests/test_bridge_cockpit*.py scripts/tests/test_task.py scripts/tests/test_task_review.py
 pytest -q scripts/tests/test_bridge_cockpit_ticker.py scripts/tests/test_bridge_cockpit_core.py scripts/tests/test_bridge_cockpit_demo.py
-node --test scripts/tests/bridge_cockpit_frontend.test.mjs scripts/tests/bridge_cockpit_jev.test.mjs scripts/tests/bridge_cockpit_markdown.test.mjs
+node --test scripts/tests/bridge_cockpit_frontend.test.mjs scripts/tests/bridge_cockpit_jev.test.mjs scripts/tests/bridge_cockpit_markdown.test.mjs scripts/tests/bridge_cockpit_render.test.mjs
 python3 scripts/build-cockpit-demo.py --check
 npx -y -p typescript@5.6.3 -c 'node mods/cockpit-relay/tests/pure.test.mjs'
 claude plugin test mods/cockpit-relay        # engine tests, local only
@@ -287,6 +287,14 @@ ticker's source colours are checked on the palette `design.py` resolves, so
 the fallback chain counts; `BRIDGE_DESIGN_MD=/path/to/DESIGN.md` runs that
 check against another fork's `DESIGN.md`, for example the generic open-bridge
 one.
+
+The render tests (`bridge_cockpit_render.test.mjs`) mount a view with the
+vendored Preact into the small DOM of `scripts/tests/cockpit_render.mjs`,
+against the invented state of `mock.js`, and assert on the visible text, the
+buttons, the attributes and the action a click sends. Prefer one there over a
+pattern on a view's source: a rename or a moved call keeps it green while the
+page shows the same thing. A source pattern stays for an invariant of the source
+itself, such as the vendor hash or no colour in the CSS.
 
 ## 7. Rules the code keeps
 

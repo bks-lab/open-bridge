@@ -13,6 +13,10 @@
 // - no innerHTML in authored JS
 // - tokens.css and style.css hold no colour: the server renders colors.css from DESIGN.md
 //
+// Those are invariants of the source and stay patterns on it. What a view shows is better asserted by
+// rendering it: bridge_cockpit_render.test.mjs does that for the return card, the tab controls, the
+// session card and the header, against the states of mock.js.
+//
 // The page's .js files are ES modules without a package.json "type"; to run on every
 // supported Node version they are copied to a temp directory as .mjs and imported there.
 import { createHash } from 'node:crypto'
@@ -1213,8 +1217,7 @@ test('the agent tab column shows slim cards that open to every control', () => {
   assert.match(col, /<\$\{TabCard\}[^>]*slim/)
   const card = comp.match(/function TabCard\([\s\S]*?\n\}/)[0]
   assert.match(card, /aria-expanded/)
-  const ctl = comp.match(/function TabControls\([\s\S]*?\n\}/)[0]
-  assert.match(ctl, /if \(slim\)[\s\S]*tabNextStep/)
+  // the buttons of the slim TabControls are rendered in bridge_cockpit_render.test.mjs
 })
 
 test('a tab preview is plain text: no code fences, no runs of blanks', async () => {
@@ -2021,7 +2024,7 @@ test('the starts handed to the AI fall into: done and to check, needs you, worki
   assert.equal(logic.aiWaiting([], [{ ref: 'surface:8', state: 'working', settled: 'task' }], now), 0)
 })
 
-test('the sessions page leads with what the AI did and shows each tab state, last line and next step', () => {
+test('the sessions page leads with what the AI did, grouped by what it wants of you', () => {
   const src = fs.readFileSync(path.join(WEB, 'views', 'sessions.js'), 'utf8')
   const page = src.match(/export function SessionsPage\([\s\S]*?\n\}/)[0]
   assert.match(page, /<\$\{AiReturns\}/)
@@ -2031,31 +2034,12 @@ test('the sessions page leads with what the AI did and shows each tab state, las
   // a tab settled on its own (no start of the cockpit names it) stands under done as well
   assert.match(ai, /settled && /)
   assert.match(ai, /<\$\{TabCard\}/)
-  const card = src.match(/function SessionCard\([\s\S]*?\n\}/)[0]
-  // the session list carries a slim tab; the card reads the full one (last line, settled) from the tab list
-  assert.match(card, /s\.tabs\?\.tabs/)
-  assert.match(card, /previewText\(tab\.last\)/)
-  assert.match(card, /tab\.settled/)
-  assert.match(card, /<\$\{TabControls\}[^>]*slim/)
 })
 
-test('the return card closes a settled tab, and the tab card passes settled to its next step', () => {
-  const home = fs.readFileSync(path.join(WEB, 'views', 'home.js'), 'utf8')
-  const card = home.match(/export function ReturnCard\([\s\S]*?\n\}/)[0]
-  assert.match(card, /tab_close/)
-  const detail = fs.readFileSync(path.join(WEB, 'views', 'detail.js'), 'utf8')
-  const ctl = detail.match(/export function TabControls\([\s\S]*?\n\}/)[0]
-  assert.match(ctl, /const settled = !!tab\.settled \|\| settledRefs\(/)
-  assert.match(ctl, /tabNextStep\(tab, .*, settled\)/)
-})
-
-test('a cockpit on a copy of the Bridge says so on every page', () => {
-  const header = fs.readFileSync(path.join(WEB, 'views', 'header.js'), 'utf8')
-  assert.match(header, /boot\.scratch/)
-  const t = fs.readFileSync(path.join(WEB, 'text.js'), 'utf8')
-  assert.match(t, /scratchCopy/)
-  assert.match(t, /scratchState/)
-})
+// The session card (the full tab from the tab list, its last line, settled, the slim controls), the
+// return card (closing a settled tab), TabControls (settled reaches the next step) and the header's
+// scratch hint are rendered against mock states in bridge_cockpit_render.test.mjs, which asserts on
+// what they show and send instead of on their source.
 
 test('the sessions tab counts what the AI left for you', () => {
   const src = fs.readFileSync(path.join(WEB, 'views', 'header.js'), 'utf8')
