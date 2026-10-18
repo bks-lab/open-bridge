@@ -391,3 +391,126 @@ def test_the_source_of_an_inbox_item_is_read_from_its_folder(tmp_path):
     assert [it.get("source") for it in sections[0]["items"]] == ["applications", None]
     rows, skipped = jev.pick_rows(sections, {}, cfg)
     assert [r["title"] for r in rows] == ["Anderes"] and skipped["private"] == 1
+
+
+# ------------------------------------------------------------------ one order at a time per page (#383)
+# Two open tabs both ask with daily on load; the second waits for the first and answers its order instead
+# of paying for it again. Tokens are booked after every batch, so a later failure keeps what was spent.
+
+def _blocking_call(entered, release, sent):
+    def call(payload, key):
+        sent.append(payload)
+        entered.set()
+        assert release.wait(5), "the test never released the first call"
+        return answers([{"id": t["id"]} for t in payload["state"]["tasks"]], first="t2")
+    return call
+
+
+def test_rank_two_daily_requests_for_one_page_call_jev_once(tmp_path):
+    import threading
+    import time as _time
+    entered, release, sent, out = threading.Event(), threading.Event(), [], {}
+    call = _blocking_call(entered, release, sent)
+    app = work_app(tmp_path)
+
+    def ask(name):
+        out[name] = jev.rank(app, {"page": "arbeit", "daily": True}, call=call, key=lambda: "k")
+
+    first = threading.Thread(target=ask, args=("first",))
+    first.start()
+    assert entered.wait(5)
+    second = threading.Thread(target=ask, args=("second",))
+    second.start()
+    _time.sleep(0.2)                  # the second request is now waiting, or has called Jev itself
+    release.set()
+    first.join(5)
+    second.join(5)
+    assert len(sent) == 1
+    assert out["first"]["order"] == out["second"]["order"]
+    assert out["second"]["today"]["ratings"] == 1
+
+
+def test_rank_a_click_while_an_order_runs_answers_that_order(tmp_path):
+    import threading
+    import time as _time
+    entered, release, sent, out = threading.Event(), threading.Event(), [], {}
+    call = _blocking_call(entered, release, sent)
+    app = work_app(tmp_path)
+
+    def ask(name):
+        out[name] = jev.rank(app, {"page": "arbeit", "force": True}, call=call, key=lambda: "k")
+
+    first = threading.Thread(target=ask, args=("first",))
+    first.start()
+    assert entered.wait(5)
+    second = threading.Thread(target=ask, args=("second",))
+    second.start()
+    _time.sleep(0.2)
+    release.set()
+    first.join(5)
+    second.join(5)
+    assert len(sent) == 1 and out["first"]["order"] == out["second"]["order"]
+    # a later click, with nothing running, asks Jev again
+    jev.rank(app, {"page": "arbeit", "force": True}, call=call, key=lambda: "k")
+    assert len(sent) == 2
+
+
+def test_rank_different_pages_order_in_parallel(tmp_path):
+    import threading
+    app = work_app(tmp_path)
+    page = app.collector.view["pages"][0]
+    app.collector.view["pages"].append({**page, "id": "zwei"})
+    by = {s["id"]: s["items"] for s in WORK}
+    app.collector.page_items = lambda p, s: (by[s], len(by[s]))
+    inside = {"arbeit": threading.Event(), "zwei": threading.Event()}
+    seen, out = [], {}
+
+    def call_for(page_id, other):
+        def call(payload, key):
+            inside[page_id].set()
+            # each page's call waits until the other page's call is running too: serialised, they would not meet
+            seen.append(inside[other].wait(3))
+            return answers([{"id": t["id"]} for t in payload["state"]["tasks"]])
+        return call
+
+    def ask(page_id, other):
+        out[page_id] = jev.rank(app, {"page": page_id, "force": True}, call=call_for(page_id, other), key=lambda: "k")
+
+    threads = [threading.Thread(target=ask, args=("arbeit", "zwei")), threading.Thread(target=ask, args=("zwei", "arbeit"))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert seen == [True, True] and set(out) == {"arbeit", "zwei"}
+
+
+def test_rank_tokens_of_finished_batches_stay_counted_when_a_later_batch_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(jev, "MAX_TASKS", 1)
+    n = []
+
+    def call(payload, key):
+        n.append(1)
+        if len(n) == 3:
+            raise jev.JevError(502, "jev_failed", "upstream broke")
+        out = answers([{"id": t["id"]} for t in payload["state"]["tasks"]])
+        out["usage"] = {"input_tokens": 10 * len(n), "output_tokens": len(n)}
+        return out
+
+    app = work_app(tmp_path)
+    with pytest.raises(jev.JevError):
+        jev.rank(app, {"page": "arbeit", "force": True}, call=call, key=lambda: "k")
+    assert len(n) == 3
+    today = jev._state(app).today
+    assert (today["input_tokens"], today["output_tokens"], today["ratings"]) == (30, 3, 1)
+    assert jev._pages_state(app).orders.get("arbeit") is None
+    # the booked tokens reach jev.json as well, so a restart keeps them
+    again = jev.rank(work_app(tmp_path), {"page": "arbeit"}, call=call, key=lambda: "k")
+    assert again["today"]["input_tokens"] == 30
+
+
+def test_rank_counts_a_multi_batch_order_as_one_rating(monkeypatch, tmp_path):
+    monkeypatch.setattr(jev, "MAX_TASKS", 1)
+    out = jev.rank(work_app(tmp_path), {"page": "arbeit", "force": True},
+                   call=lambda p, k: answers([{"id": t["id"]} for t in p["state"]["tasks"]]), key=lambda: "k")
+    assert out["order"]["calls"] == 3
+    assert (out["today"]["ratings"], out["today"]["input_tokens"], out["today"]["unknown"]) == (1, 3, 0)

@@ -254,9 +254,10 @@ class JevState:
         self.day: str | None = None          # the day of the last rating
         self.today: dict = _empty_day(None)
         data = read_json(path) if path else None
-        if isinstance(data, dict) and data.get("v") == 1 and isinstance(data.get("result"), dict):
-            self.digest, self.result, self.day = data.get("digest"), data["result"], data.get("day")
-            if isinstance(data.get("today"), dict):
+        if isinstance(data, dict) and data.get("v") == 1:
+            if isinstance(data.get("result"), dict):
+                self.digest, self.result, self.day = data.get("digest"), data["result"], data.get("day")
+            if isinstance(data.get("today"), dict):     # a page order counts here too, without a rating
                 self.today = {**self.today, **data["today"]}
 
     def save(self) -> None:
@@ -264,13 +265,16 @@ class JevState:
             atomic_write_json(self.path, {"v": 1, "digest": self.digest, "day": self.day, "result": self.result,
                                           "today": self.today})
 
-    def count(self, day: str, tokens: dict) -> dict:
+    def count(self, day: str, tokens: dict, rating: bool = True, unknown: bool | None = None) -> dict:
         """Add one rating to the day's total; a new day starts from zero. A rating without a count
-        is counted as `unknown`, so the total never claims more than it knows."""
+        is counted as `unknown`, so the total never claims more than it knows. A later batch of the
+        same rating passes rating=False and says itself whether it marks the rating unknown."""
         if self.today.get("day") != day:
             self.today = _empty_day(day)
-        self.today["ratings"] += 1
-        if tokens.get("input_tokens") is None or tokens.get("output_tokens") is None:
+        self.today["ratings"] += 1 if rating else 0
+        if unknown is None:
+            unknown = tokens.get("input_tokens") is None or tokens.get("output_tokens") is None
+        if unknown:
             self.today["unknown"] += 1
         self.today["input_tokens"] += tokens.get("input_tokens") or 0
         self.today["output_tokens"] += tokens.get("output_tokens") or 0
@@ -463,10 +467,12 @@ def _work_page(app, page_id: str) -> tuple[dict, list[dict]] | None:
 
 
 class PagesState:
-    """The last order per page, kept beside state.json so a restart keeps it"""
+    """The last order per page, kept beside state.json so a restart keeps it. One order runs per page
+    at a time: `running` holds a lock per page, so a second request waits instead of paying again."""
 
     def __init__(self, path: Path | None = None):
         self.lock = threading.Lock()
+        self.running: dict[str, threading.Lock] = {}
         self.path = path
         data = read_json(path) if path else None
         self.orders: dict = data["orders"] if isinstance(data, dict) and isinstance(data.get("orders"), dict) else {}
@@ -474,6 +480,10 @@ class PagesState:
     def save(self) -> None:
         if self.path:
             atomic_write_json(self.path, {"v": 1, "orders": self.orders})
+
+    def gate(self, page_id: str) -> threading.Lock:
+        """The lock an order of this page runs under; called with self.lock held"""
+        return self.running.setdefault(page_id, threading.Lock())
 
 
 def _pages_state(app) -> PagesState:
@@ -509,11 +519,24 @@ def rank(app, body: dict, call: Callable[[dict, str], dict] | None = None,
         raise JevError(404, "not_found", "no page with jev: under that id")
     st = _pages_state(app)
     day = time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000))
-    if not force:
+    with st.lock:
+        kept = st.orders.get(page_id)
+        if not force and (not daily or (kept and kept.get("day") == day)):
+            return {"ok": True, "page": page_id, "order": kept, "today": _today_of(_state(app), day)}
+        gate = st.gate(page_id)
+    with gate:      # another tab or a reconnect asking meanwhile waits here and takes the fresh order
         with st.lock:
-            kept = st.orders.get(page_id)
-            if not daily or (kept and kept.get("day") == day):
-                return {"ok": True, "page": page_id, "order": kept, "today": _today_of(_state(app), day)}
+            fresh = st.orders.get(page_id)
+        if fresh is not kept and fresh is not None and (force or fresh.get("day") == day):
+            return {"ok": True, "page": page_id, "order": fresh, "today": _today_of(_state(app), day)}
+        return _rank_now(app, page_id, found, day, call, key)
+
+
+def _rank_now(app, page_id: str, found: tuple[dict, list[dict]], day: str,
+              call: Callable[[dict, str], dict] | None, key: Callable[[], str] | None) -> dict:
+    """Ask Jev for the order of one page, batch by batch; runs under the page's gate. Each batch's
+    tokens are booked as soon as it answers, so a failing later batch keeps what was already spent."""
+    st, js = _pages_state(app), _state(app)
     cfg, sections = found
     tri = getattr(app, "triage", None)
     rows, skipped = pick_rows(sections, (tri.state().get("items") if tri else None), cfg)
@@ -535,8 +558,12 @@ def rank(app, body: dict, call: Callable[[dict, str], dict] | None = None,
         items.extend(plan["items"])
         picks.extend(x["key"] for x in plan["items"] if x["id"] == plan["first"])
         used = tokens_of((response or {}).get("usage"))
+        was_known = all(tokens[f] is not None for f in tokens)
         for f in tokens:
             tokens[f] = None if tokens[f] is None or used[f] is None else tokens[f] + used[f]
+        with js.lock:
+            js.count(day, used, rating=calls == 1, unknown=was_known and any(tokens[f] is None for f in tokens))
+            js.save()
     items.sort(key=lambda x: (-x["priority"], -x["first"]))
     lead = max((x for x in items if x["key"] in picks), key=lambda x: x["priority"], default=None)
     if lead is not None:
@@ -549,10 +576,6 @@ def rank(app, body: dict, call: Callable[[dict, str], dict] | None = None,
     with st.lock:
         st.orders[page_id] = order
         st.save()
-    js = _state(app)
     with js.lock:
-        if calls:
-            js.count(day, tokens)
-            js.save()
         today = _today_of(js, day)
     return {"ok": True, "page": page_id, "order": order, "today": today}
