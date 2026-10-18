@@ -89,6 +89,7 @@ def collect(section: dict, ctx) -> list:
     kinds = query.get("kinds") or ["issues", "prs"]
     # Always MY login: with `assignee: bob`, Bob's items are not mine.
     me = _me(ctx)
+    section["_me"] = me           # github-work marks the board cards with it, without asking again
     base = _flags(query)
     out: dict = {}
     for kind in kinds:
