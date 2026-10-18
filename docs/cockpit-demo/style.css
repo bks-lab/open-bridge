@@ -1309,7 +1309,7 @@ kbd {
    picked to differ in every mode: the accent, the secondary, a pale accent, and the rest hatched, so it can
    never look like a named series (scripts/tests/test_cockpit_costs_contract.py measures all four) */
 .sr-0 { --us: var(--accent); }
-.sr-1 { --us: var(--secondary); }
+.sr-1 { --us: color-mix(in srgb, var(--accent) 50%, var(--on-surface)); }   /* not --secondary: a palette may set it close to the accent */
 .sr-2 { --us: color-mix(in srgb, var(--accent) 42%, var(--surface)); }
 .sr-3 { --us: repeating-linear-gradient(135deg, var(--on-surface-muted) 0 1.5px, transparent 1.5px 4px); }
 .ubars.is-dense { gap: 1px; }

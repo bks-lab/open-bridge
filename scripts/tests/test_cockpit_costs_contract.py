@@ -283,7 +283,13 @@ def test_the_four_series_and_the_track_are_told_apart_in_both_modes():
     css = (ROOT / "scripts" / "web" / "style.css").read_text(encoding="utf-8")
     series = dict(re.findall(r"\.sr-(\d) \{ --us: (.+?); \}", css))
     assert sorted(series) == ["0", "1", "2", "3"], series
-    for name, pal in (("DESIGN.md", design.palette(design.front_matter(ROOT / "DESIGN.md"))), ("defaults", design.palette({}))):
+    # a fork palette whose accent and secondary sit close together, as one Bridge's brand had them
+    close = {"colors": {"accent": "#5FA0D9", "secondary": "#2D5B8F", "primary": "#0F2A4A", "surface": "#FAF7F3",
+                        "surface-muted": "#F1F5F9", "on-surface": "#1A2433"},
+             "colorsDark": {"accent": "#5FA0D9", "secondary": "#5690D2", "primary": "#0F2A4A", "surface": "#101419",
+                            "surface-raised": "#191E24", "surface-muted": "#20252C", "on-surface": "#E7EAEE"}}
+    for name, pal in (("DESIGN.md", design.palette(design.front_matter(ROOT / "DESIGN.md"))), ("defaults", design.palette({})),
+                      ("close accent", design.palette(close))):
         for mode in ("light", "dark"):
             tokens = {**pal[mode], **design.DERIVED[mode]}
             got = {k: _resolve(v, tokens) for k, v in series.items()}
