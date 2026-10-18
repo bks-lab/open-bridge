@@ -1164,6 +1164,12 @@ export function canTab(s, verb) {
   return !Array.isArray(caps) || caps.includes(verb)
 }
 
+/** No terminal driver lists the tabs (neither cmux nor a driver serving `tabs`, such as tmux); before the
+ *  driver answered, one counts as there */
+export function noTabDriver(s) {
+  return !s?.cmux?.ok && !canTab(s, 'tabs')
+}
+
 // ---------------------------------------------------------------- the start page
 
 /** The part of the day a greeting names: night before 5 and from 22, early to 11, day to 17, evening after */

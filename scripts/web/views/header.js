@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { aiWaiting, attentionTabs, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
+import { aiWaiting, attentionTabs, canTab, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, morePages,
@@ -67,10 +67,12 @@ export function RelayBadge({ s, c }) {
     : html`<span class="hdr-relay" title=${title ?? word}><${StateLine} token=${token} word=${word} /></span>`
 }
 
-/** The relay has nobody to ask: a session can be started in the control workspace with one click */
+/** The relay has nobody to ask: a session can be started in the control workspace with one click, by any
+ *  terminal driver that opens a control tab (workplace.py control) */
 export function canStartControl(s) {
   const r = s.relay ?? {}
-  return !!r.enabled && !r.online && (r.reason === 'no_heartbeat' || r.reason === 'no_control') && !!s.cmux?.ok
+  return !!r.enabled && !r.online && (r.reason === 'no_heartbeat' || r.reason === 'no_control')
+    && (canTab(s, 'control') || canTab(s, 'launch'))
 }
 
 export function StartControl({ s, c, size = 'xs', short: brief = false }) {

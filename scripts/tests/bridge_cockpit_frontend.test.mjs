@@ -1425,6 +1425,41 @@ test('a tab offers only what the terminal driver serves; before the driver answe
   assert.equal(logic.canTab({ driver: { caps: [] } }, 'key'), false)
 })
 
+test('the tmux driver counts as a driver: no cmux banner, Start control offered, no text names cmux', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const TMUX = ['tabs', 'sessions', 'open', 'launch', 'send', 'rename', 'control', 'caps', 'focus', 'key', 'screen', 'close']
+  // the banner says no driver lists the tabs: not with tmux, not while the driver has not answered yet
+  assert.equal(logic.noTabDriver({ cmux: { ok: false, error: 'cmux CLI not found' }, driver: { caps: TMUX } }), false)
+  assert.equal(logic.noTabDriver({ cmux: { ok: true }, driver: { caps: [] } }), false)
+  assert.equal(logic.noTabDriver({ cmux: { ok: false }, driver: { caps: null } }), false)
+  assert.equal(logic.noTabDriver({ cmux: { ok: false }, driver: { caps: [] } }), true)
+  const tabs = read('views/tabs.js')
+  assert.match(tabs, /\$\{noTabDriver\(s\) \? html`<p class="banner">/)
+  assert.doesNotMatch(tabs, /\$\{!s\.cmux\?\.ok \? html`<p class="banner">/)
+  // Start control asks the driver for a control tab: tmux can, without cmux
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-control-'))
+  try {
+    fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
+    const header = await import(pathToFileURL(path.join(dir, 'web', 'views', 'header.js')).href)
+    const relay = { enabled: true, online: false, reason: 'no_control' }
+    assert.equal(header.canStartControl({ relay, cmux: { ok: false }, driver: { caps: TMUX } }), true)
+    assert.equal(header.canStartControl({ relay: { ...relay, reason: 'no_heartbeat' }, cmux: { ok: false }, driver: { caps: TMUX } }), true)
+    assert.equal(header.canStartControl({ relay, cmux: { ok: true }, driver: { caps: [] } }), false)    // no driver: nothing to start in
+    assert.equal(header.canStartControl({ relay: { ...relay, online: true }, cmux: { ok: false }, driver: { caps: TMUX } }), false)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+  // the texts of tabs and sessions name no driver; cmux stays in the texts of its own features
+  const CMUX_ONLY = new Set(['errors.cmux_unavailable'])
+  for (const lang of [text.TABLES.en, text.TABLES.de]) {
+    for (const [at, value] of leaves(lang)) {
+      if (CMUX_ONLY.has(at)) continue
+      assert.doesNotMatch(String(value), /cmux/i, at)
+    }
+  }
+})
+
 test('the start page: greeting by hour, project chips from tabs and rows, cards filtered by project', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   assert.deepEqual([3, 7, 13, 19, 23].map(logic.greetingPart), ['night', 'early', 'day', 'evening', 'night'])

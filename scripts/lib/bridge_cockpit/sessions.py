@@ -6,8 +6,9 @@ busy or idle and since when). A session's subagents write their transcripts to
 ~/.claude/projects/<cwd as a slug>/<session id>/subagents/agent-<id>.jsonl beside a .meta.json (type,
 description); a transcript that grew in the last two minutes counts as running. Workflows leave one
 workflows/wf_*.json per run with its status and agent count. The cmux tab of a session comes from the
-CMUX_SURFACE_ID in the process environment, read once per pid with `ps` and matched to the tab list,
-so the page can jump to it. Only that one variable is kept; the rest of the environment is dropped.
+CMUX_SURFACE_ID in the process environment, the tmux tab from TMUX_PANE (%3, the tmux driver's id and
+ref of a tab), read once per pid with `ps` and matched to the tab list, so the page can jump to it. Only
+that one variable is kept; the rest of the environment is dropped.
 Everything here only reads; a file that does not parse is skipped.
 """
 from __future__ import annotations
@@ -23,6 +24,7 @@ RUNNING_WINDOW_MS = 120_000       # a subagent transcript that grew this recentl
 RECENT_DONE_MS = 3_600_000        # finished subagents of the last hour are counted, not listed
 AGENT_CAP = 12
 SURFACE_RE = re.compile(r"(?:^|\s)CMUX_SURFACE_ID=([0-9A-Fa-f-]{36})(?:\s|$)")
+PANE_RE = re.compile(r"(?:^|\s)TMUX_PANE=(%\d+)(?:\s|$)")    # a tab of the tmux driver
 # the task a tab was started for (scripts/workplace.py TAB_ENV); an inbox tab carries inbox-<words>
 TAB_SLUG_RE = re.compile(r"(?:^|\s)BRIDGE_TAB_SLUG=([A-Za-z0-9][A-Za-z0-9._-]*)(?:\s|$)")
 PS = "/bin/ps"
@@ -118,12 +120,13 @@ class Sessions:
         self.last: list[dict] = []
 
     def env_of(self, pid: int) -> tuple[str | None, str | None]:
-        """(cmux surface, task slug of the tab) from the process environment; read once per pid"""
+        """(terminal tab: cmux surface or tmux pane, task slug of the tab) from the process environment;
+        read once per pid"""
         with self.lock:
             if pid in self.surfaces:
                 return self.surfaces[pid]
         run = self.app.run([PS, "eww", "-o", "command=", "-p", str(pid)], 5)
-        found = SURFACE_RE.search(run.out or "") if run.ok else None
+        found = (SURFACE_RE.search(run.out or "") or PANE_RE.search(run.out or "")) if run.ok else None
         slug = TAB_SLUG_RE.search(run.out or "") if run.ok else None
         env = (found.group(1).upper() if found else None, slug.group(1) if slug else None)
         with self.lock:
@@ -136,7 +139,8 @@ class Sessions:
     def scan(self, tabs: list[dict], now_ms: float, control_ref: str | None = None,
              relay_sessions: frozenset = frozenset()) -> list[dict]:
         base = self.base or claude_dir()
-        by_surface = {str(t.get("id") or "").upper(): t for t in tabs if t.get("id")}
+        # a tab by its id, or by its ref where the driver gives no id (the same rule as the relay's)
+        by_surface = {str(t.get("id") or t.get("ref") or "").upper(): t for t in tabs if t.get("id") or t.get("ref")}
         out = []
         try:
             files = sorted((base / "sessions").glob("*.json"))

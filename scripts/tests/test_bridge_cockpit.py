@@ -3238,6 +3238,25 @@ def test_a_session_on_the_relay_is_marked(world, tmp_path):
     assert world.app.sessions.state()[0]["relay"] is True
 
 
+def test_a_session_in_a_tmux_pane_is_linked_to_its_tab(world, tmp_path):
+    # the tmux driver names a tab by its pane (%3); the session carries the same name in $TMUX_PANE
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    world.app.sessions.base = claude_home(tmp_path, world.root, now_ms)
+    tabs = [{"name": "Web work", "workspace": "Bridge", "ref": "%3", "state": "working", "id": "%3"},
+            {"name": "Other", "workspace": "Bridge", "ref": "%5", "state": "idle", "id": "%5"}]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(tabs)
+    world.runner.handlers["eww.-o"] = lambda argv: ok("claude --x API_TOKEN=secret TMUX_PANE=%3 HOME=/h\n")
+    world.app.tabs.poll()
+    x = world.app.sessions.state()[0]
+    assert x["tab"] and x["tab"]["ref"] == "%3" and x["tab"]["name"] == "Web work"
+    assert "secret" not in json.dumps(x)
+    # a driver that gives a tab no id: its ref counts, as for the relay
+    world.runner.handlers["workplace.status"] = lambda argv: ok([{k: v for k, v in tabs[0].items() if k != "id"}])
+    world.app.tabs.poll()
+    assert world.app.sessions.state()[0]["tab"]["ref"] == "%3"
+
+
 def test_sessions_change_is_broadcast_and_a_jump_goes_through_tab_jump(world, tmp_path):
     now_ms = time.time() * 1000
     world.clock.now = now_ms

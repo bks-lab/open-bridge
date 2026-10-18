@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, groupTabs, stateToken, canTab, screenLines, previewText } from '../logic.js'
+import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, previewText } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -176,7 +176,7 @@ export function TabsColumn({ s, c, byKey, inDrawer }) {
         <span class="muted small">${waiting ? t.waitCount(waiting) : ''}${waiting && working ? ' · ' : ''}${working ? t.workingCount(working) : ''}</span>
         ${inDrawer ? html`<${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${() => c.setDrawer(null)} />` : null}
       </header>
-      ${!s.cmux?.ok ? html`<p class="banner"><${StateLine} token="warning" word=${t.cmuxMissing(s.cmux?.error ?? '')} /></p>` : null}
+      ${noTabDriver(s) ? html`<p class="banner"><${StateLine} token="warning" word=${t.noDriver} /></p>` : null}
       ${s.tabs?.error ? html`<p class="banner"><${StateLine} token="danger" strong word=${t.tabsStale(s.tabs.error.since, s.tabs.error.message)} /></p>` : null}
       ${control ? html`<${TabCard} tab=${control} s=${s} c=${c} byKey=${byKey} slim />` : null}
       ${groups.length ? groups.map(g => html`<section class="tabgroup" key=${g.workspace}>
