@@ -15,7 +15,13 @@ from the closing `result` line; `total_cost_usd` is the sum of the whole session
 difference. Each question runs on a thread of its own; the page gets the conversations as the `quick`
 event. The conversations are kept in the state dir (quick.json), so a chat goes on after a restart.
 When the answer turns into work, the page hands it on: "Do it" starts an agent tab (Sonnet or more,
-the workplace config), or it goes to the control session.
+the workplace config), or it goes to the control session. The conversation then carries `handed`: where it
+went, when, and how that went (`starting` while it is handed on, then the launch outcome or the relay's
+`queued` / `offline`, `failed` on any error), so the page shows a status line instead of a silent click.
+
+A free question may come with `context`: what the page shows right now (logic.js situationText). It goes
+into the system text of that one turn as a block labelled as data, sent fresh with every turn, and is never
+kept: not in `turns`, not in quick.json, not in a transcript.
 """
 from __future__ import annotations
 
@@ -264,7 +270,7 @@ class Quick:
                     "convs": json.loads(json.dumps(convs))}
 
     def start(self, prompt: str, model: str | None, conv: str | None = None, kind: str = "free",
-              place: str | None = None) -> str:
+              place: str | None = None, context: str | None = None) -> str:
         """Ask in a new conversation, or go on in `conv`; returns the conversation id at once. A new one with
         `place` "core" (the start page's core) takes the place of the last: it goes to the archive."""
         model, provider, actual_model = self.selection(model)
@@ -308,10 +314,37 @@ class Quick:
             c["last_ms"] = now
             self.save()
         thread = threading.Thread(target=self._run, args=(conv, model, history + prompt, session, provider, actual_model),
-                                  name="bridge-cockpit-quick", daemon=True)
+                                  kwargs={"context": context}, name="bridge-cockpit-quick", daemon=True)
         thread.start()
         self.app.broadcast("quick", self.state())
         return conv
+
+    def claim_handoff(self, conv: str, to: str, now: float) -> dict:
+        """Mark `conv` as being handed on to `to`; RuntimeError("handoff_running") while an earlier handoff is
+        still starting. Any finished one (started, failed, offline, ...) may be followed by another."""
+        with self.lock:
+            c = self.convs.get(conv)
+            if c is None:
+                raise KeyError("no such conversation")
+            if (c.get("handed") or {}).get("status") == "starting":
+                raise RuntimeError("handoff_running")
+            c["handed"] = {"to": to, "at_ms": int(now), "status": "starting"}
+            self.save()
+            handed = dict(c["handed"])
+        self.app.broadcast("quick", self.state())
+        return handed
+
+    def set_handed(self, conv: str, **fields: Any) -> dict | None:
+        """How the handoff went: the fields go onto the record, it is kept, and the pages are told."""
+        with self.lock:
+            c = self.convs.get(conv)
+            if c is None or not isinstance(c.get("handed"), dict):
+                return None
+            c["handed"].update(fields)
+            self.save()
+            handed = dict(c["handed"])
+        self.app.broadcast("quick", self.state())
+        return handed
 
     def forget(self, conv: str) -> None:
         """Take a chat off the list into the archive; one still answering stays until it is done."""
@@ -369,9 +402,12 @@ class Quick:
         return (f"{f['history']}:\n" + "\n\n".join(parts) + f"\n\n{f['new']}: ") if parts else ""
 
     def _run(self, conv: str, model: str, prompt: str, session: str | None,
-             provider: str = "claude", actual_model: str | None = None) -> None:
+             provider: str = "claude", actual_model: str | None = None, context: str | None = None) -> None:
         app = self.app
         system = system_text(self.lang(), getattr(app.cfg, "person_name", None))
+        if context:
+            # what the page shows, as data after the system text, fresh on every turn and kept nowhere
+            system += "\n\n" + TABLES[self.lang()]["quick_situation"].format(text=app.scrub(context))
         live = ai.CodexStream() if provider == "codex" else Live(getattr(app, "root", None))
         sent = [0.0]
 

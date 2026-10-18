@@ -950,6 +950,11 @@ kbd {
 .info-detail-full { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .send-btns { display: flex; flex-direction: column; gap: 6px; }
 .chat-hint { margin: 6px 0 0; }
+/* the chat's one input: where Enter goes, and once handed on, how that went (views/chat.js ChatFoot) */
+.route-line { margin: 6px 0 0; }
+.route-chip { cursor: pointer; }
+.route-chip.is-tab { font-weight: 600; }
+.handoff-status { margin: 6px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ptab-more { display: inline-flex; }
 .more-menu { position: fixed; right: auto; min-width: 220px; z-index: 70; }
 .more-menu .settle-item { justify-content: space-between; }

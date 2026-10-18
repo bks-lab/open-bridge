@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, centsText, chatStamp, listedChats } from '../logic.js'
+import { short, canTab, centsText, chatStamp, handoffStatus, listedChats, routeOf } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { LaunchPick } from './launch.js'
@@ -104,30 +104,61 @@ export function ChatThread({ s, conv }) {
   })
 }
 
-/** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat) */
+/** The status line of a chat handed on (logic.js handoffStatus) with the one step it offers: try again, open
+ *  the tab it arrived in, or type it into the waiting control tab */
+function HandoffLine({ s, c, st, onRetry, relayId }) {
+  const t = T()
+  const word = st.word === 'inTab' ? t.handoff.inTab(st.tab) : t.handoff[st.word]
+  const action = st.action === 'retry' && onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.retry}</button>`
+    : st.action === 'jump' && canTab(s, 'focus') ? html`<button type="button" class="btn-link small" onClick=${() => c.act('tab_jump', { tab_ref: st.ref })}>${t.handoff.jump}</button>`
+    : st.action === 'ask_via_tab' && relayId ? html`<button type="button" class="btn-link small" onClick=${() => c.act('ask_via_tab', { relay_id: relayId })}>${t.handoff.askViaTab}</button>`
+    : null
+  return html`<p class="handoff-status small" role="status" data-status=${st.word}><${StateLine} token=${st.tone} word=${word} />${action ? ' ' : null}${action}</p>`
+}
+
+/** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat). One input:
+ *  the chip under the field says where Enter goes (logic.js routeOf: a read-only answer here, or an agent tab),
+ *  a click on it switches until the field is empty again. Cmd Enter starts a tab at once. Once handed on, the
+ *  chip gives way to the status line: where it went and how that went. No countdown, no timer */
 export function ChatFoot({ s, c, conv, autofocus }) {
   const t = T()
   const lang = language()
-  const [text, setText] = useState('')
+  const [text, setTextRaw] = useState('')
+  const [flip, setFlip] = useState(false)
+  const setText = v => { setTextRaw(v); if (!v.trim()) setFlip(false) }
   const model = s.ui.quickModel ?? s.quick?.default ?? 'haiku'
   const last = conv?.turns?.[conv.turns.length - 1]
   const total = conv ? conv.turns.reduce((n, x) => n + (x.cost_usd ?? 0), 0) : 0
   const costKnown = !conv || conv.turns.every(x => !x.a || x.cost_usd != null)
   const asked = last?.model_asked
-  const send = async () => {
-    const v = text.trim()
-    if (!v || conv?.running) return
-    if (await c.ask('free', { text: v })) setText('')
-  }
+  const guess = routeOf(text)
+  const route = flip ? { ...guess, to: guess.to === 'tab' ? 'quick' : 'tab', by: 'flipped' } : guess
+  // where the last handoff went: the chat's own record, or for a new problem the page's record of its start
+  const handed = conv ? conv.handed ?? null : (s.ui.sent ?? []).at(-1) ?? null
+  const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs)
+  const starting = status?.word === 'starting'
+  const answered = !!(conv && last?.a && !conv.running)
   // the second way: a real Claude session in a cmux tab, which may act. A new problem opens one at once;
   // an open chat goes on there with what was said so far, and the text in the box as the order on top
-  const answered = !!(conv && last?.a && !conv.running)
-  const solve = async () => {
-    const v = text.trim()
-    if (conv ? !answered : !v) return
-    const r = conv ? await c.act('quick_handoff', { conv: conv.id, to: 'tab', ...(v ? { text: v } : {}) }) : await c.act('chat_tab', { text: v })
-    if (r) setText('')
+  const toTab = async (v, routed) => {
+    if (starting) return null
+    if (conv) return answered ? c.act('quick_handoff', { conv: conv.id, to: 'tab', ...(v ? { text: v } : {}) }) : null
+    if (!v) return null
+    const r = await c.act('chat_tab', { text: v, routed })
+    if (r) c.noteSent({ to: 'tab', status: r.launch ?? 'failed', inbox_id: r.inbox_id ?? null, at_ms: Date.now(), text: v, routed })
+    return r
   }
+  const send = async () => {
+    if (!text.trim() || conv?.running) return
+    const v = route.text
+    const done = route.to === 'tab' ? await toTab(v, route.by) : v ? await c.ask('free', { text: v }) : false
+    if (done) setText('')
+  }
+  const solve = async () => {
+    if (await toTab(routeOf(text).text, 'forced')) setText('')
+  }
+  // only a tab start is tried again from here: a chat never goes to the control session with one click
+  const retry = handed?.to === 'tab' ? () => conv ? c.act('quick_handoff', { conv: conv.id, to: 'tab' }) : toTab(handed.text, handed.routed ?? 'default') : null
   const solveBusy = conv ? !!s.ui.busy[`quick:${conv.id}`] : !!s.ui.busy.chat_tab
   // no "to the control session" button: one stray click put a whole chat into the session at the
   // terminal (14.10.); a chat that needs acting goes to its own tab with "Get it done"
@@ -136,8 +167,13 @@ export function ChatFoot({ s, c, conv, autofocus }) {
       <span class="muted small quick-total">${costKnown ? t.quickTotal(costText(total, lang)) : t.quickCostUnknown}${asked && asked !== model ? ` · ${t.quickSwitch(t.quickModel[model])}` : ''}</span>
     </div>` : null}
     <${SendBox} id="quick-input" label=${t.askLabel} value=${text} setValue=${setText} onSend=${send} max=${ASK_MAX} autofocus=${autofocus}
-      placeholder=${conv ? t.quickReply : t.quickPlaceholder} busy=${!!s.ui.busy['ask:free']} disabled=${!!conv?.running} sendLabel=${t.chatAsk}
-      alt=${{ label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: conv ? answered : !!text.trim() }} />
+      placeholder=${conv ? t.quickReply : t.route.placeholder} busy=${route.to === 'tab' ? solveBusy : !!s.ui.busy['ask:free']}
+      disabled=${!!conv?.running || (route.to === 'tab' && starting)} sendLabel=${route.to === 'tab' ? t.chatSolve : t.chatAsk}
+      alt=${{ label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
+    ${text.trim() ? html`<p class="route-line small"><button type="button" class=${`chip route-chip is-${route.to}`} title=${t.route.flip}
+        aria-label=${`${route.to === 'tab' ? t.route.toTab : t.route.toQuick}. ${t.route.flip}`} data-route=${route.to}
+        onClick=${() => setFlip(f => !f)}>${route.to === 'tab' ? t.route.toTab : t.route.toQuick}</button></p>`
+      : status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
     <${LaunchPick} s=${s} c=${c} />
     <p class="muted small chat-hint">${t.chatSolveHint}</p>
   </footer>`

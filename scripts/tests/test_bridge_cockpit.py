@@ -3904,6 +3904,243 @@ def test_a_tab_started_from_the_chat_reaches_the_return_channel(world):
     assert any(world.runner.key(c) == "inbox.note" for c in world.runner.calls)
 
 
+# ---------------------------------------------------------------- the chat: situation, route, handoff (package 5)
+
+SITUATION = "Waiting for you: Review the demo report\nTabs at work: demo-task"
+
+
+def free_ask(world, text="how many agents run?", **extra):
+    return world.post("/api/ask", {"kind": "free", "args": {"text": text, **extra}, "via": "quick"})
+
+
+def system_of(argv):
+    return argv[argv.index("--append-system-prompt") + 1]
+
+
+def test_a_free_question_carries_the_situation_as_labelled_system_data_not_as_the_question(world):
+    from lib.bridge_cockpit.text import EN
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("Two tabs work.", 0.001)
+    world.runner.calls.clear()
+    status, _, _ = free_ask(world, context=SITUATION)
+    assert status == 202
+    wait_quick(world)
+    argv = world.runner.of("claude.p")[0]
+    system = system_of(argv)
+    head = EN["quick_situation"].split("{text}")[0]
+    assert head in system and "<situation>\n" + SITUATION + "\n</situation>" in system
+    assert system.index(head) > system.index(EN["quick_system"][:30])          # after the system text, as data
+    assert argv[-1] == "how many agents run?" and SITUATION not in argv[-1]      # the question stays the question
+
+
+def test_a_free_question_without_context_still_works(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    world.runner.calls.clear()
+    for extra in ({}, {"context": ""}):
+        status, _, _ = free_ask(world, **extra)
+        assert status == 202
+        wait_quick(world)
+    for argv in world.runner.of("claude.p"):
+        assert "<situation>" not in system_of(argv)
+
+
+def test_the_situation_is_sent_again_on_a_resumed_turn(world):
+    answers = iter([claude_answer("first", 0.001), claude_answer("second", 0.002)])
+    world.runner.handlers["claude.p"] = lambda argv: next(answers)
+    conv = json.loads(free_ask(world, context="Tabs at work: one")[2])["conv"]
+    wait_quick(world)
+    world.runner.calls.clear()
+    status, _, _ = world.post("/api/ask", {"kind": "free", "args": {"text": "and now?", "context": "Tabs at work: two"},
+                                           "via": "quick", "conv": conv})
+    assert status == 202
+    wait_quick(world)
+    argv = world.runner.of("claude.p")[0]
+    assert argv[argv.index("--resume") + 1] == SID
+    assert "Tabs at work: two" in system_of(argv) and "Tabs at work: one" not in system_of(argv)
+
+
+def test_a_too_long_situation_is_refused_not_cut(world):
+    world.runner.calls.clear()
+    status, _, body = free_ask(world, context="x" * 6001)
+    assert status == 400 and json.loads(body)["error"]["field"] == "context"
+    status, _, body = free_ask(world, context=["not", "text"])
+    assert status == 400 and json.loads(body)["error"]["field"] == "context"
+    assert world.runner.of("claude.p") == []
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    assert free_ask(world, context="y" * 6000)[0] == 202                       # the limit itself is fine
+    wait_quick(world)
+
+
+def test_context_is_refused_for_kinds_other_than_free_and_for_the_control_route(world):
+    world.runner.calls.clear()
+    status, _, body = world.post("/api/ask", {"kind": "row", "args": {"key": "task:other-task", "context": SITUATION},
+                                              "via": "quick"})
+    assert status == 400 and json.loads(body)["error"]["field"] == "context"
+    status, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "hi", "context": SITUATION}, "via": "control"})
+    assert status == 400 and json.loads(body)["error"]["field"] == "context"
+    assert world.runner.of("claude.p") == [] and world.app.relay_state()["records"] == []
+
+
+def test_the_situation_is_never_kept_in_quick_json(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("kept", 0.001)
+    free_ask(world, context="SECRET-SITUATION-LINE")
+    convs = wait_quick(world)
+    kept = (world.state / "quick.json").read_text(encoding="utf-8")
+    assert "SECRET-SITUATION-LINE" not in kept and "SECRET-SITUATION-LINE" not in json.dumps(convs)
+    assert world.app.quick.transcript(convs[0]["id"]).count("SECRET") == 0
+
+
+def answered_conv(world, answer="Commit the yaml change."):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer(answer, 0.002)
+    conv = json.loads(free_ask(world, "what next?")[2])["conv"]
+    wait_quick(world)
+    return conv
+
+
+def handed_of(world, conv):
+    return next(c for c in world.app.quick.state()["convs"] if c["id"] == conv).get("handed")
+
+
+def test_handoff_to_a_tab_marks_the_chat_handed_with_inbox_and_launch_status(world):
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    seen = []
+    publish = world.app.broadcast
+    world.app.broadcast = lambda ev, payload: (seen.append((ev, payload)), publish(ev, payload))
+    res = world.act("quick_handoff", conv=conv, to="tab")
+    handed = handed_of(world, conv)
+    assert handed == {"to": "tab", "at_ms": handed["at_ms"], "status": "started", "inbox_id": new_id}
+    assert res["handed"] == handed
+    # the page saw the claim and the outcome, each as a `quick` event
+    states = [next(c for c in p["convs"] if c["id"] == conv).get("handed", {}).get("status")
+              for ev, p in seen if ev == "quick"]
+    assert states[0] == "starting" and states[-1] == "started"
+    kept = json.loads((world.state / "quick.json").read_text(encoding="utf-8"))
+    assert next(c for c in kept if c["id"] == conv)["handed"]["status"] == "started"
+
+
+def test_a_handoff_click_while_one_is_starting_is_refused_before_any_launch(world):
+    conv = answered_conv(world)
+    world.app.quick.claim_handoff(conv, "tab", world.app.clock())
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("quick_handoff", conv=conv, to="tab")
+    assert err.value.status == 409 and err.value.code == "handoff_running"
+    assert writes(world) == []
+    with pytest.raises(RuntimeError):
+        world.app.quick.claim_handoff(conv, "control", world.app.clock())
+    assert handed_of(world, conv)["status"] == "starting"
+
+
+def test_a_refused_handoff_leaves_no_handed_record(tmp_path):
+    w = World(tmp_path, config=RELAY_OFF)
+    try:
+        conv = answered_conv(w)
+        with pytest.raises(ActionError) as err:
+            w.act("quick_handoff", conv=conv, to="control")
+        assert err.value.code == "not_applicable"
+        assert handed_of(w, conv) is None
+        # an empty transcript: the question is still being answered
+        w.runner.handlers["claude.p"] = lambda argv: claude_answer("later", 0.001)
+        w.app.quick.convs[conv]["turns"] = [{**w.app.quick.convs[conv]["turns"][0], "a": None}]
+        with pytest.raises(ActionError) as err:
+            w.act("quick_handoff", conv=conv, to="tab")
+        assert err.value.code == "stale_row" and handed_of(w, conv) is None
+        # an order over the cap is refused before the claim too
+        w.app.quick.convs[conv]["turns"][0]["a"] = "now answered"
+        with pytest.raises(ActionError):
+            w.act("quick_handoff", conv=conv, to="tab", text="Z" * 3001)
+        assert handed_of(w, conv) is None
+    finally:
+        w.close()
+
+
+def test_a_handoff_that_raises_or_cannot_file_ends_as_failed(world, monkeypatch):
+    conv = answered_conv(world)
+    world.runner.handlers["inbox.add"] = lambda argv: fail("inbox is locked")
+    res = world.act("quick_handoff", conv=conv, to="tab")
+    assert res["ok"] is False and handed_of(world, conv)["status"] == "failed"
+    assert world.runner.of("workplace.launch") == []
+    # a launch that raises still ends the claim as failed, and the chat can be handed on again
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1300-what-next-a1b2\n")
+
+    def boom(*a, **k):
+        raise OSError("disk gone")
+    monkeypatch.setattr(world.app.actions, "launch", boom)
+    with pytest.raises(OSError):
+        world.act("quick_handoff", conv=conv, to="tab")
+    assert handed_of(world, conv)["status"] == "failed"
+    # the control route: the relay raising ends as failed as well
+    monkeypatch.setattr(world.app.relay, "ask", boom)
+    with pytest.raises(OSError):
+        world.act("quick_handoff", conv=conv, to="control")
+    handed = handed_of(world, conv)
+    assert handed["status"] == "failed" and handed["to"] == "control"
+
+
+@pytest.mark.parametrize("outcome", ["started", "running", "busy", "failed", "nothing", "manual", "partly"])
+def test_every_launch_outcome_is_recorded_and_manual_nothing_partly_failed_can_be_tried_again(world, monkeypatch, outcome):
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    monkeypatch.setattr(world.app.actions, "launch", lambda *a, **k: outcome)
+    res = world.act("quick_handoff", conv=conv, to="tab")
+    assert res["handed"]["status"] == outcome and res["handed"]["inbox_id"] == new_id
+    assert handed_of(world, conv)["status"] == outcome
+    # only a handoff still starting blocks the next one: any finished outcome may be followed by another
+    res = world.act("quick_handoff", conv=conv, to="tab", text="Then push it.")
+    assert res["handed"]["status"] == outcome
+
+
+def test_a_real_launch_without_a_driver_is_recorded_as_manual(world):
+    conv = answered_conv(world)
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1300-what-next-a1b2\n")
+    world.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": ["tabs"]})
+    world.app.tabs.poll()
+    world.runner.handlers["workplace.launch"] = lambda argv: ok({"ok": True, "items": [], "report": ["cd /x && claude"]})
+    world.act("quick_handoff", conv=conv, to="tab")
+    assert handed_of(world, conv)["status"] == "manual"
+
+
+def test_handoff_to_control_offline_marks_offline_and_a_retry_is_allowed(world, monkeypatch):
+    conv = answered_conv(world)
+    assert world.app.relay_state(with_records=False)["online"] is False
+    res = world.act("quick_handoff", conv=conv, to="control")
+    handed = handed_of(world, conv)
+    assert handed["status"] == "offline" and handed["to"] == "control"
+    assert handed["relay_id"] == res["relay"]["id"] and res["handed"] == handed
+    # once the control session is up the same chat goes again, and waits as queued
+    real_ask = world.app.relay.ask
+    monkeypatch.setattr(world.app.relay, "ask", lambda kind, prompt, *a: (real_ask(kind, prompt, *a)[0], True))
+    res = world.act("quick_handoff", conv=conv, to="control")
+    assert handed_of(world, conv)["status"] == "queued" and res["handed"]["relay_id"] == res["relay"]["id"]
+
+
+def test_chat_tab_answers_with_the_inbox_id_and_the_launch_outcome(world):
+    new_id = "20261012-2300-fix-the-printer-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    res = world.act("chat_tab", text="Fix the printer queue", routed="words")
+    assert res["inbox_id"] == new_id and res["launch"] == "started"
+    audit = (world.state / "audit.log").read_text(encoding="utf-8").splitlines()[-1]
+    assert " chat_tab " in audit and "routed=words" in audit and "printer" not in audit
+    world.runner.handlers["inbox.add"] = lambda argv: fail("locked")
+    res = world.act("chat_tab", text="Fix the printer queue again")
+    assert res["inbox_id"] is None and res["launch"] == "failed"
+    for bad in ("guess", "", 3):
+        with pytest.raises(ActionError) as err:
+            world.act("chat_tab", text="x", routed=bad)
+        assert err.value.field == "routed"
+
+
+def test_quick_argv_with_situation_still_passes_the_runner(tmp_path):
+    from lib.bridge_cockpit.quick import build_argv, system_text
+    from lib.bridge_cockpit.text import EN
+    r = Runner(tmp_path, cmux=None, claude="/x/claude")
+    system = system_text("en", None) + "\n\n" + EN["quick_situation"].format(text=SITUATION)
+    r.check(build_argv("/x/claude", "haiku", "hi", system))
+    r.check(build_argv("/x/claude", "haiku", "hi", system, SID))
+
+
 def test_code_and_data_can_live_apart(tmp_path):
     # a cockpit started from another checkout (a branch beside the live Bridge) reads the live data under
     # --root, but runs its own helpers and serves its own page

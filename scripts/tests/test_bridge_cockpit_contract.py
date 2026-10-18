@@ -666,3 +666,28 @@ def test_state_workspaces_carry_a_palette_name(tmp_path):
         w.close()
     # a name the driver gives that does not match its hex is not taken: the hex decides
     assert state_values(state, "tabs.workspaces[].color_name") == ["Blue", None, None]
+
+
+# the record a chat carries once it is handed on (quick.py claim_handoff / set_handed): the page reads it
+# for the status line under the chat (logic.js handoffStatus)
+HANDED_FIELDS = {"to": str, "at_ms": int, "status": str}
+HANDED_STATUSES = {"starting", "started", "running", "busy", "failed", "partly", "manual", "nothing", "queued", "offline"}
+
+
+def test_state_a_handed_chat_carries_its_handoff_record(tmp_path):
+    w = World(tmp_path)
+    try:
+        w.runner.handlers["claude.p"] = lambda argv: tbc.claude_answer("Commit it.", 0.001)
+        conv = json.loads(w.post("/api/ask", {"kind": "free", "args": {"text": "what next?"}, "via": "quick"})[2])["conv"]
+        tbc.wait_quick(w)
+        w.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1300-what-next-a1b2\n")
+        w.act("quick_handoff", conv=conv, to="tab")
+        tab = state_values(w.app.state_payload(), "quick.convs[].handed")[0]
+        w.act("quick_handoff", conv=conv, to="control")
+        control = state_values(w.app.state_payload(), "quick.convs[].handed")[0]
+    finally:
+        w.close()
+    for handed in (tab, control):
+        assert {k: type(handed[k]) for k in HANDED_FIELDS} == HANDED_FIELDS and handed["status"] in HANDED_STATUSES
+    assert isinstance(tab["inbox_id"], str) and tab["to"] == "tab"
+    assert isinstance(control["relay_id"], str) and control["to"] == "control"

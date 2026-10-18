@@ -119,6 +119,19 @@ const WORDS = {
     'Mock: ticker settings from the config again': 'Demo: Band wieder nach Config',
     'Mock: reading the feeds': 'Demo: Feeds werden gelesen',
     'Mock: the editor is at work, nothing is asked for real': 'Demo: die Redaktion arbeitet, nichts wird wirklich gefragt',
+    // chats handed on, one per status (handedConvs)
+    'Tidy the demo board labels': 'Die Labels auf dem Demo-Board aufräumen',
+    'Add a changelog entry for the demo release': 'Einen Changelog-Eintrag für die Demo-Version anlegen',
+    'Rename the old demo branch': 'Den alten Demo-Branch umbenennen',
+    'Update the example fixtures': 'Die Beispiel-Fixtures aktualisieren',
+    'Fix the broken link check': 'Den kaputten Linkcheck reparieren',
+    'Move the notes into the docs folder': 'Die Notizen in den Doku-Ordner verschieben',
+    'Set up the demo test run': 'Den Demo-Testlauf einrichten',
+    'Write the release summary': 'Die Zusammenfassung zur Version schreiben',
+    'Plan the next demo sprint': 'Den nächsten Demo-Sprint planen',
+    'Check the open demo reviews': 'Die offenen Demo-Reviews prüfen',
+    'Sort the demo inbox': 'Den Demo-Posteingang sortieren',
+    'Example answer from the mock: the steps are clear, an agent can take it from here.': 'Beispielantwort aus der Demo: die Schritte sind klar, ein Agent kann übernehmen.',
   },
 }
 
@@ -567,7 +580,7 @@ export function buildState(now = Date.now(), opts = {}) {
       { ref: 'workspace:5', title: 'Demo', cwd: '/demo/other-repo', description: 'A second workspace with the same title' }]
       .map(w => ({ ...w, color: w.color ?? null, color_name: paletteName(w.color) })) },
     driver: { caps: DRIVER_CAPS },
-    quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: [] },
+    quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: empty ? [] : handedConvs(now) },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
     agents: empty ? { peers: [], convs: [] } : agentsState(now),
     triage: empty ? { running: null, error: null, last: null, items: {} } : triageState(now),
@@ -585,6 +598,7 @@ export function buildState(now = Date.now(), opts = {}) {
           preview: 'My briefing state from the dashboard (09:10): 2 for you today, next: Review the demo report',
           answer: '1. Review the demo report first, it is due tomorrow and only you can do it.\n2. Give your yes to the two label and docs items, they run alone.\n3. The flaky test can wait until after the team call.',
           answered_ms: now - 29 * MIN },
+        ...handedRecords(now),
       ],
     },
     cmux: { ok: true, error: null },
@@ -770,6 +784,39 @@ function historyEntries(now) {
 }
 
 // the other Bridges and A2A agents (agents.py state()): what their cards say and one conversation
+/** Chats handed on, one per status the chat's status line shows (logic.js handoffStatus): a tab start with each
+ *  launch outcome, and the control session waiting, arrived and offline (their relay records below) */
+export const HANDED_EXAMPLES = [
+  ['Tidy the demo board labels', { to: 'tab', status: 'starting' }],
+  ['Add a changelog entry for the demo release', { to: 'tab', status: 'started' }],
+  ['Rename the old demo branch', { to: 'tab', status: 'running' }],
+  ['Update the example fixtures', { to: 'tab', status: 'busy' }],
+  ['Fix the broken link check', { to: 'tab', status: 'failed' }],
+  ['Move the notes into the docs folder', { to: 'tab', status: 'partly' }],
+  ['Set up the demo test run', { to: 'tab', status: 'manual' }],
+  ['Write the release summary', { to: 'tab', status: 'nothing' }],
+  ['Plan the next demo sprint', { to: 'control', status: 'queued', relay_id: '20261009T113000-0a0b0c01' }],
+  ['Check the open demo reviews', { to: 'control', status: 'queued', relay_id: '20261009T113100-0a0b0c02' }],
+  ['Sort the demo inbox', { to: 'control', status: 'offline', relay_id: '20261009T113200-0a0b0c03' }],
+]
+
+export function handedConvs(now) {
+  return HANDED_EXAMPLES.map(([q, handed], i) => {
+    const at = now - (60 - i * 4) * MIN
+    return { id: `qd${String(i + 1).padStart(9, '0')}`, kind: 'free', started_ms: at, session: null, total_usd: 0.002, running: false,
+      last_ms: at + MIN, turns: [{ q, a: 'Example answer from the mock: the steps are clear, an agent can take it from here.', model_asked: 'haiku',
+        model: 'haiku-5-5', cost_usd: 0.002, at_ms: at, error: null }],
+      handed: { at_ms: at + MIN, ...handed, ...(handed.to === 'tab' && handed.status !== 'starting' ? { inbox_id: `20261009-11${String(i).padStart(2, '0')}-demo-chat-a1b${i}` } : {}) } }
+  })
+}
+
+/** The relay records of the chats handed to the control session: still queued, arrived, and offline */
+function handedRecords(now) {
+  return [['20261009T113000-0a0b0c01', 'queued'], ['20261009T113100-0a0b0c02', 'submitted'], ['20261009T113200-0a0b0c03', 'offline']]
+    .map(([id, status], i) => ({ id, kind: 'free', created_ms: now - (24 - i * 4) * MIN, status, preview: 'From a quick question in the dashboard',
+      answer: null, answered_ms: null }))
+}
+
 function agentsState(now) {
   const card = (name, description, skills) => ({ name, description, version: '0.4.0', protocol: '0.3', binding: 'JSONRPC',
     provider: { name: 'Example Org' }, endpoint: 'https://example.org/a2a/', input: ['text'], output: ['text'], streaming: false, docs: null, skills })
@@ -970,6 +1017,9 @@ export function createMockTransport(opts = {}) {
         return { status: 202, ok: true, data: { ok: true, loading }, error: null }
       }
       if (path === '/api/ask' && body?.via === 'quick') {
+        // a free question may bring what the page shows (actions.py ask `context`): refused when too long, never cut
+        const context = body?.args?.context
+        if (context != null && (body.kind !== 'free' || typeof context !== 'string' || context.length > 6000)) return fail(400, 'invalid_argument', 'bad context')
         // a short session of its own: invented answer, invented cost, nothing is asked for real
         const model = body.model || 'haiku'
         const q = body?.kind === 'free' ? String(body.args?.text ?? '') : `Example question of kind ${body?.kind}`
@@ -1059,6 +1109,28 @@ export function createMockTransport(opts = {}) {
           }
           const said = verb === 'tab_option' ? tab.ask?.options.find(o => o.n === args.n)?.label : verb === 'tab_send' ? args.text : verb
           result.note = `Mock: ${tab.name}: ${said}`
+        }
+        // a start from the chat answers with its inbox item and the launch outcome (actions.py v_chat_tab)
+        if (verb === 'chat_tab') {
+          result.inbox_id = `20261009-1200-demo-chat-${Math.random().toString(16).slice(2, 6).padEnd(4, '0')}`
+          result.launch = 'started'
+        }
+        // a chat handed on carries how it went (quick.py handed); a second click while one starts is refused
+        if (verb === 'quick_handoff') {
+          const conv = state.quick.convs.find(x => x.id === args.conv)
+          if (!conv) return fail(409, 'stale_row', 'the conversation is gone')
+          if (conv.handed?.status === 'starting') return fail(409, 'handoff_running', 'This chat is being handed on right now.')
+          if (args.to === 'control') {
+            const record = { id: `${new Date(now()).toISOString().replace(/[-:]/g, '').slice(0, 15)}-${Math.random().toString(16).slice(2, 10).padEnd(8, '0')}`,
+              kind: 'free', created_ms: now(), status: state.relay.online ? 'queued' : 'offline', preview: 'From a quick question in the dashboard', answer: null, answered_ms: null }
+            state.relay = { ...state.relay, records: [...state.relay.records, record] }
+            result.relay = record
+            conv.handed = { to: 'control', at_ms: now(), status: record.status, relay_id: record.id }
+          } else {
+            conv.handed = { to: 'tab', at_ms: now(), status: 'started', inbox_id: `20261009-1200-demo-chat-${Math.random().toString(16).slice(2, 6).padEnd(4, '0')}` }
+          }
+          result.handed = { ...conv.handed }
+          emit('quick', JSON.parse(JSON.stringify(state.quick)))
         }
         // a name of its own for a tab or a workspace, refused like the server (actions.py v_tab_rename)
         if (verb === 'tab_rename' || verb === 'workspace_rename') {

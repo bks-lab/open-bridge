@@ -1104,7 +1104,8 @@ test('the day column: waiting tabs stand in the left column only where no tab co
 
 test('the chat decides per message: ask (read only) or solve it in a real Claude tab in cmux', () => {
   const foot = readComponents().match(/function ChatFoot\([\s\S]*?\n\}/)[0]
-  assert.match(foot, /c\.act\('chat_tab', \{ text: v \}\)/)                         // a new problem opens a tab at once
+  // a new problem opens a tab at once, saying how the route chip chose it (audit only)
+  assert.match(foot, /c\.act\('chat_tab', \{ text: v, routed \}\)/)
   // a chat goes on in a tab; an empty box adds no order (the server refused an empty text, the click came to nothing)
   assert.match(foot, /c\.act\('quick_handoff', \{ conv: conv\.id, to: 'tab', \.\.\.\(v \? \{ text: v \} : \{\}\) \}\)/)
   const box = readComponents().match(/function SendBox\([\s\S]*?\n\}/)[0]
@@ -3869,4 +3870,115 @@ test('apply is disabled until one item is ticked', () => {
   assert.equal(t.canApply({ 'ws_color:workspace:2': false }, ORG_PROPOSAL), false)
   assert.equal(t.canApply({ 'ws_color:workspace:2': true }, ORG_PROPOSAL), true)
   assert.equal(t.canApply({ 'ws_color:workspace:2': true }, null), false)
+})
+
+
+// ---------------------------------------------------------------- the chat: route chip, situation, handoff status (package 5)
+
+const routeTo = t => logic.routeOf(t).to
+
+test('routeOf sends a trailing question mark and question words to the quick chat', () => {
+  for (const q of ['Is the build green?', 'what waits for me', 'Wie viele Agenten laufen gerade', 'Gibt es offene Reviews',
+    'Warum hängt der Test', 'Fix the build?', 'which tabs wait']) {
+    assert.deepEqual([q, routeTo(q)], [q, 'quick'])
+  }
+  assert.equal(logic.routeOf('what waits for me').by, 'words')
+  assert.equal(logic.routeOf('Fix the build?').by, 'words')
+})
+
+test('routeOf sends German and English imperatives to an agent tab', () => {
+  for (const q of ['Fix the flaky test in the demo repo', 'Create a task for the release', 'Set up the new board',
+    'Mach den Release fertig', 'Bitte erstelle eine Aufgabe für das Review', 'Leg eine Aufgabe für den Bericht an',
+    'Räum die alten Tabs auf', 'Ändere den Titel', 'Benenn den Tab um', 'Richte das Board ein', 'please refactor the parser']) {
+    assert.deepEqual([q, routeTo(q)], [q, 'tab'])
+    assert.equal(logic.routeOf(q).by, 'words')
+  }
+})
+
+test('routeOf sends unclear text to the quick chat', () => {
+  for (const q of ['the release notes', 'Bericht von gestern', 'hello', '   ']) {
+    assert.deepEqual([q, logic.routeOf(q).to, logic.routeOf(q).by], [q, 'quick', 'default'])
+  }
+})
+
+test('routeOf honours ? and ! prefixes and strips them', () => {
+  assert.deepEqual(logic.routeOf('? fix the build'), { to: 'quick', by: 'prefix', text: 'fix the build' })
+  assert.deepEqual(logic.routeOf('!what is open'), { to: 'tab', by: 'prefix', text: 'what is open' })
+  assert.deepEqual(logic.routeOf('  Mach den Release  '), { to: 'tab', by: 'words', text: 'Mach den Release' })
+  // the word lists are language data, the same keys in both languages
+  for (const lang of ['en', 'de']) {
+    const r = text.TABLES[lang].route
+    assert.ok(Array.isArray(r.orderWords) && r.orderWords.length >= 10, lang)
+    assert.ok(Array.isArray(r.questionWords) && r.questionWords.length >= 10, lang)
+  }
+})
+
+const H = (over = {}) => ({ to: 'control', at_ms: 1000, status: 'queued', relay_id: 'r1', ...over })
+
+test('handoffStatus maps queued, submitted, answered, offline, expired and stuck', () => {
+  const st = (handed, records = [], tabs = []) => logic.handoffStatus(handed, records, tabs)
+  assert.equal(st(null), null)
+  assert.deepEqual(st(H({ status: 'starting' })), { word: 'starting', tone: 'info', action: null })
+  assert.equal(st(H()).word, 'waiting')
+  assert.equal(st(H(), [{ id: 'r1', status: 'submitted' }]).word, 'arrived')
+  assert.equal(st(H(), [{ id: 'r1', status: 'answered' }]).word, 'answered')
+  assert.equal(st(H(), [{ id: 'r1', status: 'expired' }]).word, 'expired')
+  assert.equal(st(H(), [{ id: 'r1', status: 'stuck' }]).word, 'stuck')
+  assert.equal(st(H(), [{ id: 'other', status: 'answered' }]).word, 'waiting', 'another record says nothing of this one')
+  // offline: typed into the control tab when it waits, else tried again
+  const off = H({ status: 'offline' })
+  const control = { ref: 'surface:3', is_control: true, state: 'waiting' }
+  assert.deepEqual(st(off, [{ id: 'r1', status: 'offline' }], [control]), { word: 'offline', tone: 'warning', action: 'ask_via_tab' })
+  assert.equal(st(off, [], [{ ...control, state: 'working' }]).action, 'retry')
+  assert.equal(st(H({ status: 'failed' })).action, 'retry')
+  // the words exist in both languages
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang].handoff
+    for (const k of ['starting', 'started', 'waiting', 'arrived', 'answered', 'offline', 'sentToTab', 'running', 'failed',
+      'manual', 'nothing', 'retry', 'expired', 'stuck', 'askViaTab', 'jump']) assert.ok(t[k], `${lang} ${k}`)
+    assert.match(t.inTab('Docs'), /Docs/)
+  }
+})
+
+test('handoffStatus maps every launch outcome', () => {
+  const st = status => logic.handoffStatus({ to: 'tab', at_ms: 1, status, inbox_id: 'i1' }, [], [])
+  assert.deepEqual(st('started'), { word: 'started', tone: 'info', action: null })
+  assert.equal(st('running').word, 'running')
+  assert.equal(st('busy').word, 'running')
+  assert.deepEqual(st('failed'), { word: 'failed', tone: 'danger', action: 'retry' })
+  assert.deepEqual(st('partly'), { word: 'failed', tone: 'danger', action: 'retry' })
+  assert.deepEqual(st('manual'), { word: 'manual', tone: 'warning', action: null })
+  assert.deepEqual(st('nothing'), { word: 'nothing', tone: 'warning', action: 'retry' })
+})
+
+test('handoffStatus finds the started tab by its inbox item', () => {
+  const tabs = [{ ref: 'surface:20', name: 'Other', item: 'i0' }, { ref: 'surface:21', name: 'Fix the printer', item: 'i1' }]
+  for (const status of ['started', 'running', 'busy']) {
+    assert.deepEqual(logic.handoffStatus({ to: 'tab', at_ms: 1, status, inbox_id: 'i1' }, [], tabs),
+      { word: 'inTab', tone: 'success', action: 'jump', ref: 'surface:21', tab: 'Fix the printer' })
+  }
+  // a handoff still starting shows that, whatever tab carries the item
+  assert.equal(logic.handoffStatus({ to: 'tab', at_ms: 1, status: 'starting', inbox_id: 'i1' }, [], tabs).word, 'starting')
+})
+
+test('ChatFoot never offers a one click control handoff', () => {
+  const foot = readComponents().match(/function ChatFoot\([\s\S]*?\n\}/)[0]
+  assert.doesNotMatch(foot, /to: 'control'/)
+  assert.doesNotMatch(foot, /quickToControl|askControl/)
+})
+
+test('app.ask sends the situation for free questions only, not for the core', () => {
+  const app = read('app.js')
+  const ask = app.match(/async function ask\(kind[\s\S]*?\n\}/)[0]
+  assert.match(ask, /kind === 'free' \? askContext\(/)
+  const core = app.match(/askQuiet: [\s\S]*?\n {2}\}\),\n/)[0]
+  assert.match(core, /place: 'core'/)
+  assert.doesNotMatch(core, /context/)
+  // the context: the page's own picture plus the working counts, never more than the server takes
+  const ctx = logic.askContext({ model: null, tabs: { tabs: [{ ref: 'surface:5', state: 'working', name: 'Build', ws_ref: 'workspace:2' }] },
+    sessions: { sessions: [{ status: 'busy', tab: { ref: 'surface:5', ws_ref: 'workspace:2' }, agents: { running_count: 2 }, workflows: [] }] },
+    now: 0 }, 'en')
+  assert.match(ctx, /Build/)
+  assert.match(ctx, /1 session busy, 2 subagents, 0 workflows/)
+  assert.equal(logic.askContext({ model: null, tabs: { tabs: [] }, sessions: { sessions: [] }, now: 0 }, 'en').includes('0 sessions busy'), true)
 })

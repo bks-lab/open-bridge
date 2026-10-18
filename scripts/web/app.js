@@ -14,7 +14,7 @@ import {
   CONN_GRACE_MS, DAY, pushNoteState, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
-  applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf,
+  applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -127,7 +127,7 @@ const store = createStore({
   ui: {
     // a new visit opens on the start page, a reload stays where it was; the project chip chosen there is kept
     page: reloaded() ? load('bridge-cockpit.page', START_PAGE) : START_PAGE, homeProject: load('bridge-cockpit.homeProject', null), selectedKey: null,
-    coreConv: null, coreBrief: false, focusKey: null, picked: [], expanded: {},
+    coreConv: null, coreBrief: false, focusKey: null, picked: [], expanded: {}, sent: [],
     // the view of the work tab (due, area, jev); a page with jev: outside it reads area and jev the same way
     workView: load('bridge-cockpit.workTab', 'due'),
     workKind: load('bridge-cockpit.workKind', null),
@@ -451,7 +451,9 @@ async function ask(kind, args = {}) {
   return withBusy(`ask:${kind}`, kind, async () => {
     const onChat = ui.page === CHAT_PAGE && !ui.tabView
     const conv = kind === 'free' && (ui.tabView === '@ask' || onChat) ? ui.quickConv : null
-    const res = await api.ask(kind, args, { via: 'quick', model: ui.quickModel, ...(conv ? { conv } : {}) })
+    // a free question carries what the page shows right now, as data beside it (the core asks without it)
+    const context = kind === 'free' ? askContext(store.get(), language()) : ''
+    const res = await api.ask(kind, context ? { ...args, context } : args, { via: 'quick', model: ui.quickModel, ...(conv ? { conv } : {}) })
     if (res.ok && res.data?.conv) {
       // asked on the Chat tab it stays there, from anywhere else the chat window opens on it
       setUi(onChat && kind === 'free' ? { quickConv: res.data.conv } : { tabView: '@ask', quickConv: res.data.conv, openMsg: null })
@@ -823,6 +825,8 @@ const ctl = {
   // the chat as cmux: what the right side shows ({ kind: 'ws' | 'tab' | 'chat' | 'agent' | 'bridge', id })
   pickRoom: room => setUi({ room }),
   newQuick: () => setUi({ quickConv: null }),
+  // what a chat_tab start from the chat answered (inbox item and launch outcome), for its status line; the last few
+  noteSent: rec => setUi(ui => ({ sent: [...(ui.sent ?? []).slice(-4), rec] })),
   // removes a chat with the Bridge from the list and from the server's file; nothing else knew of it
   quickForget: async conv => {
     const r = await act('quick_forget', { conv })

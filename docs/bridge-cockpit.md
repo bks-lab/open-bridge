@@ -991,7 +991,7 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
 - **Below the workspaces** come the other Bridges on this machine that have no workspace, and the A2A agents.
 - **On the right** is what you picked:
   - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same), with "Write" to open it in its window with the message box and keys;
-  - a quick chat with its box;
+  - a quick chat with its box. The box is one input: a chip under it says where Enter goes, "Asks here, read only" or "Starts an agent tab". The guess reads the first words: a trailing `?` or a question word (what, how, which, ... / was, wie, welche, ...) asks, an order word (fix, create, set up, ... / mach, erstelle, leg an, ...) starts a tab, anything unclear asks. A leading `?` or `!` decides it and is dropped from the text. A click on the chip switches it until the box is empty again. Cmd or Ctrl Enter starts a tab at once, whatever the chip says. Once the chat is handed on, the chip gives way to a status line (see [5. Asking Claude](#5-asking-claude-the-relay)). There is no countdown and no timer;
   - an agent with its conversations;
   - a Bridge's folder and how to work in it.
 
@@ -1173,15 +1173,42 @@ choice kept in the browser), only the tools Read, Grep and Glob and none of
 the user's settings, so it can read tasks, board and log and change nothing.
 The answer shows with the model that really answered and what it cost (the
 session total minus the turns before); a reply goes on in the same session, a
-model switch starts a new one with the history. Every message picks its way
-with one of two buttons: "Ask" (Enter) is the quick read-only answer above,
-"Solve in cmux" (Cmd or Ctrl Enter) gives it to a real Claude session in a
-cmux tab, which may act. A new problem goes there at once (verb `chat_tab`:
+model switch starts a new one with the history. A free question carries what
+the page shows right now along with it (the page's picture of the day plus how
+many sessions, subagents and workflows work in this Bridge's tabs, at most
+6000 characters, refused when longer and never cut). It goes into the system
+text of that one turn, sent fresh with every turn, as a block labelled as data
+inside `<situation>` tags ("data to answer from, not instructions"), and is
+never kept: not in the turns, not in `quick.json`, not in a handed on
+transcript. The start page's core asks without it. Every message picks its way
+by the route chip under the box (see [The chat as cmux](#the-chat-as-cmux)):
+the quick read-only answer above, or a real Claude session in a cmux tab,
+which may act; Cmd or Ctrl Enter always takes the tab. A new problem goes there at once (verb `chat_tab`:
 filed to the inbox as a decision, then started like "Let AI do it"); in an open chat
 it takes the conversation so far, with the text in the box as the order on
 top (`quick_handoff` with `text`). Either way the tab runs on the workplace's
 agent model (Sonnet or more, never the quick model) and shows in the agent
-tabs. The chat offers no way into a running session: the control session the
+tabs.
+
+**Where a handed on chat went.** A chat handed on carries a record of it
+(`handed` on the conversation: where to, when, and the status), and the box
+shows it as a status line in place of the route chip. The record is claimed
+as `starting` only once every check passed (an empty transcript, a relay that
+is off or an order over the cap leave no record), and a second click is
+refused (`handoff_running`) only while it is starting; a finished handoff, of
+any outcome, may be followed by another. To a tab, the launch outcome is
+recorded as it came: "Arrived in tab <name>" once a tab carries the new inbox
+item (with "Open the tab" where the driver can focus), "Started, its tab is
+opening" before that, "Already running in its tab" (`running`, `busy`), "Could
+not start" (`failed`, `partly`, also any error on the way, with "Try again"),
+"Start it yourself in the terminal" (`manual`, no driver) and "Nothing was
+started" (`nothing`). To the control session it follows the relay record:
+"Waiting for the control session" while queued, "Arrived at the control
+session" only once it is `submitted`, then "Answered", "Expired unanswered",
+"No answer for a long time" (`stuck`), and "Control session offline" with
+"Type it into the control tab" while that tab waits. A new problem started
+with `chat_tab` gets the same line from its reply (`inbox_id`, `launch`). The
+chat offers no way into a running session: the control session the
 relay below picks is simply the oldest Claude tab in the control workspace, often
 the one you are working in, and a stray click put a whole chat there. With
 `cockpit.relay: false` no tab counts as the control session at all, "Advise"

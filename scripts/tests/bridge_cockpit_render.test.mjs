@@ -881,3 +881,132 @@ test('the demo proposes every kind and applies the ticked ones', async () => {
   }
   assert.equal((await act('organize_apply', { proposal: 'o9999999999', items: [prop.items[0].id] })).error.code, 'stale_proposal')
 })
+
+// ---------------------------------------------------------------- the chat: one input with a visible route (package 5)
+
+const { ChatFoot } = views.chat
+const ANSWERED = { id: 'q0123456789', kind: 'free', started_ms: NOW, session: null, total_usd: 0, running: false, last_ms: NOW,
+  turns: [{ q: 'what next?', a: 'Commit the yaml change.', model_asked: 'haiku', model: 'haiku-5-5', cost_usd: 0.001, at_ms: NOW, error: null }] }
+
+function renderFoot({ conv = null, over = {} } = {}) {
+  const s = cockpitState(NOW, over)
+  const c = recorder()
+  const el = mount(html`<${ChatFoot} s=${s} c=${c} conv=${conv} autofocus=${false} />`)
+  return { el, c, s }
+}
+const acts = c => c.calls.filter(x => x[0] === 'act' || x[0] === 'ask')
+
+test('the route chip shows the guess and a click flips it', async () => {
+  const { el } = renderFoot()
+  assert.equal(el.$('.route-chip'), null, 'no chip while the field is empty')
+  typeInto(el.$('#quick-input'), 'Fix the flaky test')
+  await settle()
+  assert.equal(el.$('.route-chip').text(), en.route.toTab)
+  assert.equal(el.$('.route-chip').getAttribute('title'), en.route.flip)
+  el.$('.route-chip').click()
+  await settle()
+  assert.equal(el.$('.route-chip').text(), en.route.toQuick)
+  // the flip holds while typing goes on, and ends when the field is cleared
+  typeInto(el.$('#quick-input'), 'Fix the flaky test now')
+  await settle()
+  assert.equal(el.$('.route-chip').text(), en.route.toQuick)
+  typeInto(el.$('#quick-input'), '')
+  await settle()
+  typeInto(el.$('#quick-input'), 'Fix it')
+  await settle()
+  assert.equal(el.$('.route-chip').text(), en.route.toTab)
+  typeInto(el.$('#quick-input'), 'what is open?')
+  await settle()
+  assert.equal(el.$('.route-chip').text(), en.route.toQuick)
+})
+
+test('Enter on a tab route without a conversation calls chat_tab, inside a conversation quick_handoff', async () => {
+  const fresh = renderFoot()
+  typeInto(fresh.el.$('#quick-input'), 'Fix the flaky test')
+  await settle()
+  keydown(fresh.el.$('#quick-input'), 'Enter')
+  await settle()
+  assert.deepEqual(acts(fresh.c), [['act', 'chat_tab', { text: 'Fix the flaky test', routed: 'words' }]])
+  // a question asks here; a ! prefix is stripped and starts a tab
+  const ask = renderFoot()
+  typeInto(ask.el.$('#quick-input'), 'what waits for me?')
+  await settle()
+  keydown(ask.el.$('#quick-input'), 'Enter')
+  typeInto(ask.el.$('#quick-input'), '!tidy the labels')
+  await settle()
+  keydown(ask.el.$('#quick-input'), 'Enter')
+  await settle()
+  assert.deepEqual(acts(ask.c), [['ask', 'free', { text: 'what waits for me?' }],
+    ['act', 'chat_tab', { text: 'tidy the labels', routed: 'prefix' }]])
+  // a flipped chip says so
+  const flipped = renderFoot()
+  typeInto(flipped.el.$('#quick-input'), 'the release notes')
+  await settle()
+  flipped.el.$('.route-chip').click()
+  await settle()
+  keydown(flipped.el.$('#quick-input'), 'Enter')
+  await settle()
+  assert.deepEqual(acts(flipped.c), [['act', 'chat_tab', { text: 'the release notes', routed: 'flipped' }]])
+  // inside an answered conversation the tab route hands the chat on, with the text as the order
+  const inConv = renderFoot({ conv: ANSWERED })
+  typeInto(inConv.el.$('#quick-input'), 'Update the docs too')
+  await settle()
+  keydown(inConv.el.$('#quick-input'), 'Enter')
+  await settle()
+  assert.deepEqual(acts(inConv.c), [['act', 'quick_handoff', { conv: ANSWERED.id, to: 'tab', text: 'Update the docs too' }]])
+})
+
+test('Cmd+Enter starts a tab at once', async () => {
+  const { el, c } = renderFoot()
+  typeInto(el.$('#quick-input'), 'what waits for me?')
+  await settle()
+  el.$('#quick-input').dispatch('keydown', { key: 'Enter', metaKey: true })
+  await settle()
+  assert.deepEqual(acts(c), [['act', 'chat_tab', { text: 'what waits for me?', routed: 'forced' }]])
+})
+
+test('a handed chat shows its status and disables the handoff buttons only while starting', async () => {
+  const solve = el => el.button(en.chatSolve)
+  const starting = renderFoot({ conv: { ...ANSWERED, handed: { to: 'tab', at_ms: NOW, status: 'starting' } } })
+  assert.match(starting.el.$('.handoff-status').text(), new RegExp(en.handoff.starting))
+  assert.equal(solve(starting.el).hasAttribute('disabled'), true)
+  // arrived: the tab that carries the item, one click away
+  const s0 = cockpitState(NOW)
+  const tab = s0.tabs.tabs.find(t => !t.is_control && t.state !== 'shell')
+  const tabs = { ...s0.tabs, tabs: s0.tabs.tabs.map(t => t.ref === tab.ref ? { ...t, item: '20261009-1200-what-next-a1b2' } : t) }
+  const arrived = renderFoot({ conv: { ...ANSWERED, handed: { to: 'tab', at_ms: NOW, status: 'started', inbox_id: '20261009-1200-what-next-a1b2' } },
+    over: { tabs } })
+  assert.match(arrived.el.$('.handoff-status').text(), new RegExp(en.handoff.inTab(tab.name)))
+  assert.equal(solve(arrived.el).hasAttribute('disabled'), false)
+  arrived.el.button(en.handoff.jump).click()
+  assert.deepEqual(acts(arrived.c), [['act', 'tab_jump', { tab_ref: tab.ref }]])
+  // a failed start is tried again on the same route
+  const failed = renderFoot({ conv: { ...ANSWERED, handed: { to: 'tab', at_ms: NOW, status: 'failed', inbox_id: 'x' } } })
+  assert.match(failed.el.$('.handoff-status').text(), new RegExp(en.handoff.failed))
+  failed.el.button(en.handoff.retry).click()
+  assert.deepEqual(acts(failed.c), [['act', 'quick_handoff', { conv: ANSWERED.id, to: 'tab' }]])
+  // a control handoff shows the relay's word, and offers no one click control handoff of its own
+  const control = renderFoot({ conv: { ...ANSWERED, handed: { to: 'control', at_ms: NOW, status: 'queued', relay_id: 'r9' } },
+    over: { relay: { ...s0.relay, records: [{ id: 'r9', status: 'submitted' }] } } })
+  assert.match(control.el.$('.handoff-status').text(), new RegExp(en.handoff.arrived))
+  // while typing, the chip stands where the status was
+  typeInto(arrived.el.$('#quick-input'), 'and the docs?')
+  await settle()
+  assert.equal(arrived.el.$('.handoff-status'), null)
+  assert.ok(arrived.el.$('.route-chip'))
+})
+
+test('every handed chat of the demo shows a worded status line', () => {
+  const s = cockpitState(NOW)
+  const handed = s.quick.convs.filter(x => x.handed)
+  assert.ok(handed.length >= 11, 'one chat per status')
+  const seen = new Set()
+  for (const conv of handed) {
+    const el = mount(html`<${ChatFoot} s=${s} c=${recorder()} conv=${conv} autofocus=${false} />`)
+    const line = el.$('.handoff-status')
+    assert.ok(line && line.text(), conv.handed.status)
+    assert.doesNotMatch(line.text(), /undefined/)
+    seen.add(line.getAttribute('data-status'))
+  }
+  for (const word of ['starting', 'started', 'running', 'failed', 'manual', 'nothing', 'waiting', 'arrived', 'offline']) assert.ok(seen.has(word), word)
+})

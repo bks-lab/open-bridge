@@ -2013,6 +2013,76 @@ export function situationText(sit, nowMs, lang = 'de') {
   return out.join('\n')
 }
 
+/** The most the server takes as the situation of a free question (actions.py CONTEXT_MAX): longer is refused there */
+export const CONTEXT_MAX = 6000
+
+/** What a free question in the chat carries along (actions.py ask `context`): the page's picture of the day
+ *  plus what works in this Bridge's tabs right now, so "how many agents run" has an answer. '' when it
+ *  would not fit: the question goes without it rather than being refused */
+export function askContext(s, lang = 'de') {
+  const picture = situationText(situation(s?.model, s?.tabs?.tabs, s?.now), s?.now, lang)
+  const { total } = agentLoad(s?.sessions?.sessions, s?.tabs?.tabs)
+  const out = [picture, tableOf(lang).situation.load(total.busy, total.subagents, total.workflows)].filter(Boolean).join('\n')
+  return out.length <= CONTEXT_MAX ? out : ''
+}
+
+// ---------------------------------------------------------------- the chat's one input: where Enter goes
+
+/** Where a text typed into the chat goes: `quick` (a read-only answer here) or `tab` (an agent tab that may
+ *  act), and why: a leading ? or ! (`prefix`, stripped), the first words (`words`: a trailing ? or a
+ *  question word asks, an order word starts a tab, in English and German), or `default` (unclear asks).
+ *  The word lists are language data in text.js (route) */
+export function routeOf(raw) {
+  const text = String(raw ?? '').trim()
+  if (text.startsWith('?')) return { to: 'quick', by: 'prefix', text: text.slice(1).trim() }
+  if (text.startsWith('!')) return { to: 'tab', by: 'prefix', text: text.slice(1).trim() }
+  const lists = key => Object.values(TABLES).flatMap(t => t.route?.[key] ?? []).map(w => w.toLowerCase())
+  const filler = new Set(lists('fillerWords'))
+  let words = text.toLowerCase().replace(/[.,:;!?]+/g, ' ').split(/\s+/).filter(Boolean)
+  while (words.length > 1 && filler.has(words[0])) words = words.slice(1)
+  // a list entry of two words matches the first two, or its first word alone (German puts the particle last:
+  // "leg eine Aufgabe an")
+  const hit = list => list.some(w => w === words[0] || w === words.slice(0, 2).join(' ') || (w.includes(' ') && w.split(' ')[0] === words[0]))
+  if (text.endsWith('?') || hit(lists('questionWords'))) return { to: 'quick', by: 'words', text }
+  if (hit(lists('orderWords'))) return { to: 'tab', by: 'words', text }
+  return { to: 'quick', by: 'default', text }
+}
+
+const HANDOFF_FAILED = new Set(['failed', 'partly', 'aborted', 'error', 'rejected'])
+
+/** The status line of a chat that was handed on (quick.py `handed`, or the page's own record of a chat_tab
+ *  reply): `word` is a key of text.js handoff, `tone` a state token, `action` what a button beside it does
+ *  (retry, jump to the tab, ask_via_tab). The control route reads its relay record; the tab route finds the
+ *  tab that carries the inbox item. null without a record */
+export function handoffStatus(handed, relayRecords, tabs) {
+  if (!handed?.status) return null
+  const out = (word, tone, action = null, extra = {}) => ({ word, tone, action, ...extra })
+  if (handed.status === 'starting') return out('starting', 'info')
+  if (handed.to === 'control') {
+    const rec = (relayRecords ?? []).find(r => r?.id && r.id === handed.relay_id)
+    const status = rec?.status ?? handed.status
+    if (status === 'queued') return out('waiting', 'info')
+    if (status === 'submitted') return out('arrived', 'success')
+    if (status === 'answered') return out('answered', 'success')
+    if (status === 'sent_to_tab') return out('sentToTab', 'success')
+    if (status === 'expired') return out('expired', 'warning', 'retry')
+    if (status === 'stuck') return out('stuck', 'warning')
+    if (status === 'offline') {
+      const waiting = (tabs ?? []).some(t => t?.is_control && t.state === 'waiting')
+      return out('offline', 'warning', waiting && handed.relay_id ? 'ask_via_tab' : 'retry')
+    }
+    return out('failed', 'danger', 'retry')
+  }
+  const tab = handed.inbox_id ? (tabs ?? []).find(t => t?.item === handed.inbox_id) : null
+  if (tab && ['started', 'running', 'busy'].includes(handed.status)) return out('inTab', 'success', 'jump', { ref: tab.ref, tab: tab.name })
+  if (handed.status === 'started') return out('started', 'info')
+  if (handed.status === 'running' || handed.status === 'busy') return out('running', 'info')
+  if (handed.status === 'manual') return out('manual', 'warning')
+  if (handed.status === 'nothing') return out('nothing', 'warning', 'retry')
+  if (HANDOFF_FAILED.has(handed.status)) return out('failed', 'danger', 'retry')
+  return out('failed', 'danger', 'retry')
+}
+
 const VERDICT_KEYS = { first: ['zuerst', 'first'], then: ['dann', 'then'], later: ['kann warten', 'can wait'] }
 
 /** Claude's verdict in its three fixed lines (first, then, can wait), or null when the answer has another shape */
