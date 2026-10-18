@@ -5,12 +5,15 @@ The page sends `{verb, args}`; rows are addressed by their row key from the curr
 tabs by their ref, so the page never hands the server an inbox id or a slug. Every id
 that ends up in an argv is checked again against its pattern, every argv element is a
 list item of its own (no shell), free text goes after `--`. Write verbs run one at a
-time and leave one line in audit.log (never a text, never the token). The handlers are
+time and leave one line in audit.log (never a text, never the token). A slow subprocess
+(a start, the layout snapshot) runs outside the write lock, and verbs that only touch
+stores with their own locks never take it. The handlers are
 ports of register.tsx (doIt, advise, launch, startRole, later, drop, closeDone, ...);
 the verb table is contract section 4.2.
 """
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
 import re
@@ -129,6 +132,11 @@ ROW_REF_RE = re.compile(r"^[A-Za-z0-9][^\x00-\x1f]{0,199}\Z")
 PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
 TILE_ID_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9:._@/-]{0,79}\Z")   # a tile or shelf of the start page
 READ_ONLY_VERBS = frozenset({"snapshot_list"})
+# only stores with their own locks (store.py, launch.py, ticker.py): they never wait for a write that runs
+LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
+                         "launch_settings_reset", "session_link"})
+# the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
+LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
 NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_jump": "focus", "tab_close": "close"}
@@ -192,6 +200,20 @@ class Ctx:
         self.history: list[dict] = []  # what this action closed, hid or settled, each with its undo
         self.subject = ""
         self.pick: dict = {}           # the model and effort the start of this action asks for (launch.py)
+        self.locked = False            # this action holds the write lock
+
+    @contextlib.contextmanager
+    def unlocked(self):
+        """The slow part of a verb (a subprocess) without the write lock; what it must keep for itself (the
+        hold on a starting item) it takes under the lock before, the rest it does under the lock after."""
+        if not self.locked:
+            yield
+            return
+        self.actions.write_lock.release()
+        try:
+            yield
+        finally:
+            self.actions.write_lock.acquire()
 
     def call(self, name: str, subject: str, argv: list[str], timeout: float):
         run = self.actions.app.run(argv, timeout)
@@ -217,6 +239,8 @@ class Actions:
     def __init__(self, app: Any):
         self.app = app
         self.write_lock = threading.Lock()
+        self.layout_lock = threading.Lock()
+        self.control_starting = False  # a control tab is being opened (start_control, outside the write lock)
 
     # ------------------------------------------------------------ helpers
 
@@ -510,18 +534,28 @@ class Actions:
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         if verb in READ_ONLY_VERBS:
             handler(ctx, **clean)
+        elif verb in LOCAL_VERBS:
+            self.recorded(ctx, handler, clean)
+        elif verb in LAYOUT_VERBS:
+            with self.layout_lock:
+                self.recorded(ctx, handler, clean)
         else:
             with self.write_lock:
-                try:
-                    handler(ctx, **clean)
-                finally:
-                    if ctx.steps or ctx.notes or ctx.settled:
-                        self.audit(ctx)
-                    if ctx.history and getattr(self.app, "history", None) is not None:
-                        ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history)
-                        ctx.extra["undo"] = [{"title": x["title"], "kind": x["kind"], "undo": x["undo"]}
-                                             for x in ctx.history if x.get("undo")]
+                ctx.locked = True
+                self.recorded(ctx, handler, clean)
         return self.finish(ctx)
+
+    def recorded(self, ctx: Ctx, handler: Any, clean: dict) -> None:
+        """A write: the handler, then its audit line and its history entry, whatever it raised."""
+        try:
+            handler(ctx, **clean)
+        finally:
+            if ctx.steps or ctx.notes or ctx.settled:
+                self.audit(ctx)
+            if ctx.history and getattr(self.app, "history", None) is not None:
+                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history)
+                ctx.extra["undo"] = [{"title": x["title"], "kind": x["kind"], "undo": x["undo"]}
+                                     for x in ctx.history if x.get("undo")]
 
     def audit(self, ctx: Ctx) -> None:
         now = dt.datetime.fromtimestamp(self.app.clock() / 1000).isoformat(timespec="seconds")
@@ -623,7 +657,8 @@ class Actions:
         app.collector.hold(items)
         app.collector.rebuild()
         app.note(tx["launch_start"].format(word=word, n=len(items), where=where), "info")
-        run = ctx.call("workplace.launch", ",".join(items), argv, LAUNCH_TIMEOUT)
+        with ctx.unlocked():    # the items are held: a second start of them is refused as starting_already
+            run = ctx.call("workplace.launch", ",".join(items), argv, LAUNCH_TIMEOUT)
         if run.ok and "launch" not in app.driver_caps():
             # no terminal driver: workplace.py only printed what to start, nothing runs, so nothing is recorded
             lines = []
@@ -1358,7 +1393,15 @@ class Actions:
         app = self.app
         if app.relay_state(with_records=False)["online"]:
             raise self.not_applicable("a control session answers already", None)
-        run = ctx.call("workplace.control", app.cfg.control or "", app.workplace("control", "--yes"), LAUNCH_TIMEOUT)
+        if self.control_starting:
+            raise self.not_applicable("the control tab is starting already", None)
+        self.control_starting = True
+        try:
+            with ctx.unlocked():
+                run = ctx.call("workplace.control", app.cfg.control or "", app.workplace("control", "--yes"),
+                               LAUNCH_TIMEOUT)
+        finally:
+            self.control_starting = False
         if run.ok:
             ctx.note(self.tx["control_starting"])
             ctx.tabs_after(3)

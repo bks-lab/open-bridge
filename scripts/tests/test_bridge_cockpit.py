@@ -2061,6 +2061,108 @@ def test_write_verbs_are_serialized(world):
     assert order == ["start", "end", "start", "end"]
 
 
+def run_aside(world: World, verb: str, **args) -> tuple[threading.Thread, list]:
+    """One verb on its own thread; the list gets its answer or its error."""
+    out: list = []
+
+    def go():
+        try:
+            out.append(world.act(verb, **args))
+        except Exception as error:  # noqa: BLE001 - the test reads it back
+            out.append(error)
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    return t, out
+
+
+def wait_for(seen: list, timeout: float = 3.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not seen and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert seen
+
+
+def test_a_start_does_not_hold_the_write_lock_while_it_runs(world):
+    """The start's subprocess runs outside the write lock: Done answers before it ends, and the same item is
+    still refused as already starting (the hold is taken under the lock, before the call)."""
+    gate, seen = threading.Event(), []
+
+    def slow(argv):
+        seen.append(argv)
+        gate.wait(5)
+        return ok(world.runner.launch_answer(argv))
+    world.runner.handlers["workplace.launch"] = slow
+    try:
+        start, started = run_aside(world, "do_it", keys=["task:other-task"])
+        wait_for(seen)
+        done, answer = run_aside(world, "done", key=f"inbox:{ONLY_ID}")
+        done.join(2)
+        assert answer and answer[0]["ok"] is True and not started
+        again, twice = run_aside(world, "do_it", keys=["task:other-task"])
+        again.join(2)
+        assert twice and "is already starting" in twice[0]["note"] and len(seen) == 1
+    finally:
+        gate.set()
+    start.join(3)
+    assert started and started[0]["ok"] is True
+    assert world.row("task:other-task")["starting"] is True
+
+
+def test_starting_the_control_tab_does_not_hold_the_write_lock(world):
+    gate, seen = threading.Event(), []
+    world.runner.handlers["workplace.control"] = lambda argv: (seen.append(argv), gate.wait(5), ok(""))[2]
+    try:
+        start, started = run_aside(world, "start_control")
+        wait_for(seen)
+        prio, answer = run_aside(world, "priority", key="task:demo-task", value="P2")
+        prio.join(2)
+        assert answer and not isinstance(answer[0], Exception) and not started
+        with pytest.raises(ActionError) as twice:       # a second click while it opens: one tab only
+            world.act("start_control")
+        assert twice.value.code == "not_applicable" and len(seen) == 1
+    finally:
+        gate.set()
+    start.join(3)
+    assert started and started[0]["ok"] is True
+
+
+def test_snapshot_does_not_block_pin_or_a_write(world):
+    gate, seen = threading.Event(), []
+    world.runner.handlers["cmux_layout.snapshot"] = lambda argv: (seen.append(argv), gate.wait(5), ok(""))[2]
+    try:
+        snap, saved = run_aside(world, "snapshot")
+        wait_for(seen)
+        pin, pinned = run_aside(world, "pin", key="task:demo-task", on=True)
+        pin.join(2)
+        assert pinned and pinned[0]["ok"] is True and not saved
+        prio, answer = run_aside(world, "priority", key="task:demo-task", value="P2")
+        prio.join(2)
+        assert answer and not isinstance(answer[0], Exception) and not saved
+    finally:
+        gate.set()
+    snap.join(3)
+    assert saved and saved[0]["ok"] is True
+
+
+def test_local_verbs_do_not_wait_for_the_write_lock(world):
+    """pin, hide, home_tiles and the settings only touch stores with their own locks."""
+    gate, seen = threading.Event(), []
+    world.runner.handlers["inbox.urgency"] = lambda argv: (seen.append(argv), gate.wait(5), ok(""))[2]
+    try:
+        slow, _ = run_aside(world, "urgency", key=f"inbox:{YES_ID}", value="now")
+        wait_for(seen)
+        for verb, args in (("pin", {"key": "task:demo-task", "on": True}),
+                           ("hide", {"key": f"inbox:{YES2_ID}", "until": TOMORROW}),
+                           ("home_tiles", {"ids": ["pinned"]})):
+            t, answer = run_aside(world, verb, **args)
+            t.join(2)
+            assert answer and answer[0]["ok"] is True, verb
+    finally:
+        gate.set()
+    slow.join(3)
+    assert world.app.store.home()["pins"] == ["task:demo-task"]
+
+
 # ---------------------------------------------------------------- relay
 
 def heartbeat(w: World, session: str, surface: str | None, age_ms: float = 0, busy: bool = False) -> None:

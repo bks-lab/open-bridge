@@ -180,6 +180,26 @@ A verb that takes long (minutes, a model call) does not hold the write lock:
 the model carries `review.running`, the end comes as a note and a rebuild.
 One at a time, and `task_keep` waits for it, since both write the same file.
 
+Write verbs run one at a time under `write_lock` in `Actions.execute`, with
+three ways out, each in `actions.py` and covered by a test:
+
+- **A slow subprocess** runs inside `ctx.unlocked()`. A start (`launch`, so
+  every verb that opens an agent tab, `target=auto` with its model call
+  included) holds its items under the lock first, releases the lock for
+  `workplace.py launch`, and records the result under the lock again. A second
+  start of the same item meanwhile gets `starting_already`. `start_control`
+  does the same and refuses a second click while the first one opens.
+- **`LAYOUT_VERBS`** (`snapshot`) write nothing of the Bridge: they run one at
+  a time on `layout_lock`, never on the write lock.
+- **`LOCAL_VERBS`** (`pin`, `hide`, `home_tiles`, the launch and ticker
+  settings, `session_link`) only touch stores with their own locks and never
+  take the write lock. A new verb joins this set only when that holds for
+  everything its handler calls.
+
+A new verb that calls a subprocess for longer than a few seconds wraps that
+call in `ctx.unlocked()` and takes whatever it must keep for itself (a hold,
+a busy flag) under the lock before.
+
 ### The news ticker
 
 The server sends only what the page cannot know: the feed items, the editor's
