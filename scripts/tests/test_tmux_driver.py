@@ -202,9 +202,35 @@ def tm(tmp_path):
 
 
 @needs_tmux
-def test_caps_lists_all_thirteen_verbs(tm):
+def test_caps_lists_all_fourteen_verbs(tm):
     assert set(tm.call({"verb": "caps"})["caps"]) == set(td.VERBS)
-    assert len(td.VERBS) == 13 and "rename_workspace" in td.VERBS
+    assert len(td.VERBS) == 14 and {"rename_workspace", "move_tab"} <= set(td.VERBS)
+    assert not {"set_color", "set_description"} & set(td.VERBS)      # tmux has no colour or description
+
+
+@needs_tmux
+def test_move_tab_moves_the_window_into_the_session(tm):
+    tm.raw("new-session", "-d", "-s", "Other", "-n", "three", "sh")
+    one, other = tm.by_name("one"), tm.by_name("three")
+    report = tm.call({"verb": "move_tab", "tab": one["ref"], "workspace": other["ws_ref"]})["report"]
+    assert report and not report[0].startswith("ERROR")
+    moved = tm.by_name("one")
+    assert moved["ref"] == one["ref"] and moved["ws_ref"] == other["ws_ref"] and moved["workspace"] == "Other"
+    assert tm.by_name("two")["workspace"] == "Work"                  # the other window stays
+    # a malformed or unknown ref is an error, never a guess
+    assert "not a tmux session ref" in tm.call({"verb": "move_tab", "tab": one["ref"], "workspace": "Work"},
+                                               ok=False)["error"]
+    assert "no open workspace" in tm.call({"verb": "move_tab", "tab": one["ref"], "workspace": "$999"},
+                                          ok=False)["error"]
+
+
+@needs_tmux
+def test_move_tab_never_moves_the_last_window_of_a_session(tm):
+    tm.raw("new-session", "-d", "-s", "Solo", "-n", "alone", "sh")
+    alone, work = tm.by_name("alone"), tm.by_name("one")
+    report = tm.call({"verb": "move_tab", "tab": alone["ref"], "workspace": work["ws_ref"]})["report"]
+    assert report[0].startswith("ERROR") and "last" in report[0]
+    assert tm.by_name("alone")["workspace"] == "Solo"
 
 
 @needs_tmux

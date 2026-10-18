@@ -2606,3 +2606,19 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .agent-convs { align-items: center; }
 .agents-list-toggle { flex: none; }
 .agent-current { font-weight: 600; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* organize with AI (views/organize.js): the proposal grouped by workspace, one checkbox per item */
+.org-groups { display: grid; gap: 14px; margin-top: 12px; }
+.org-group { border-top: 1px solid var(--border); padding-top: 10px; }
+.org-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.dialog .org-group-title { font-size: 14px; }
+.org-group-tick { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.org-items { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.org-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; cursor: pointer; min-width: 0; }
+.org-line input { align-self: center; }
+.org-subject { font-weight: 500; overflow-wrap: anywhere; }
+.org-from, .org-to { overflow-wrap: anywhere; }
+.org-why { margin: 2px 0 0 26px; }
+.org-busy { display: flex; align-items: center; gap: 8px; }
+.org-result { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.org-list { margin: 4px 0 8px; padding-left: 18px; }

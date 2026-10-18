@@ -3,11 +3,12 @@
 // workspaces in the terminal's order with their tabs, the other Bridges on this machine and the A2A
 // agents; on the right whatever is picked. Reading only: a tab is written to in its window ("Write"),
 // the quick chat and the agents keep their own boxes. A tab or a workspace of its own may get a name
-// here (RenameField); task tabs and the control session keep theirs (logic.js canRename).
+// here (RenameField); task tabs and the control session keep theirs (logic.js canRename). "Organize with AI"
+// in the sidebar's head asks the model for a tidier order of this Bridge's workspaces (views/organize.js).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -221,6 +222,8 @@ export function Sidebar({ s, c, rooms, here }) {
       <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
       <${Btn} size="xs" variant="ghost" icon="sort" pressed=${urgency} title=${urgency ? t.rooms.sortUrgency : t.rooms.sortTerminal}
         onClick=${() => c.toggleRoomsSort()}>${t.rooms.sortUrgency}<//>
+      ${canTab(s, 'rename') ? html`<${Btn} size="xs" variant="ghost" title=${t.organize.buttonTitle} busy=${!!s.ui?.organize?.busy}
+        onClick=${() => c.organizePropose()}>${t.organize.button}<//>` : null}
     </div>
     ${s.tabs?.workspaces == null ? html`<p class="muted small">${t.rooms.noList}</p>` : null}
     ${order.list.length ? order.list.map(w => html`<${WorkspaceGroup} key=${w.key} w=${w} s=${s} c=${c} here=${here} />`)

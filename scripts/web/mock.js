@@ -274,7 +274,22 @@ function hhmm(ms) {
 const GLYPH_TABS = new Set(['surface:9', 'surface:11'])
 // what the terminal driver serves (workplace.py caps): everything, renaming workspaces included
 const DRIVER_CAPS = ['tabs', 'sessions', 'open', 'launch', 'send', 'rename', 'control', 'focus', 'key', 'screen', 'close',
-  'workspaces', 'rename_workspace']
+  'workspaces', 'rename_workspace', 'move_tab', 'set_color', 'set_description']
+// the portable workspace colours (workplace.py COLORS): a workspace reports its hex and the name of it
+const PALETTE = { Red: '#C0392B', Crimson: '#922B21', Orange: '#A04000', Amber: '#7D6608', Olive: '#4A5C18', Green: '#196F3D',
+  Teal: '#006B6B', Aqua: '#0E6B8C', Blue: '#1565C0', Navy: '#1A5276', Indigo: '#283593', Purple: '#6A1B9A', Magenta: '#AD1457',
+  Rose: '#880E4F', Brown: '#7B3F00', Charcoal: '#3E4B5E' }
+const paletteName = hex => Object.keys(PALETTE).find(k => PALETTE[k] === String(hex ?? '').toUpperCase()) ?? null
+// what "Organize with AI" proposes in the demo: one item of every kind, invented, nothing asked for real
+function organizeProposal(now) {
+  return { id: `o${String(now % 1e10).padStart(10, '0').replace(/[^0-9]/g, '0').slice(0, 10)}`, at_ms: now, scope: 4, items: [
+    { id: 'ws_title:workspace:5', kind: 'ws_title', ref: 'workspace:5', from: 'Demo', to: 'Side project', why: 'Two workspaces share the title Demo', cap: 'rename_workspace' },
+    { id: 'ws_color:workspace:4', kind: 'ws_color', ref: 'workspace:4', from: null, to: 'Teal', why: 'One colour for the writing', cap: 'set_color' },
+    { id: 'ws_description:workspace:4', kind: 'ws_description', ref: 'workspace:4', from: null, to: 'Docs and link checks', why: 'Says what happens here', cap: 'set_description' },
+    { id: 'tab_title:surface:11', kind: 'tab_title', ref: 'surface:11', from: 'zsh', to: 'Docs shell', why: 'A shell name says nothing', cap: 'rename' },
+    { id: 'tab_move:surface:9', kind: 'tab_move', ref: 'surface:9', from: 'workspace:3', to: 'workspace:4', why: 'Notes belong with the docs', cap: 'move_tab' },
+  ] }
+}
 
 export function buildState(now = Date.now(), opts = {}) {
   const empty = !!opts.empty
@@ -549,7 +564,8 @@ export function buildState(now = Date.now(), opts = {}) {
       { ref: 'workspace:2', title: 'Ops', cwd: '/demo/bridge', description: 'Releases and checks' },
       { ref: 'workspace:3', title: 'Demo', cwd: '/demo/bridge' },
       { ref: 'workspace:4', title: 'Docs', cwd: '/demo/bridge' },
-      { ref: 'workspace:5', title: 'Demo', cwd: '/demo/other-repo', description: 'A second workspace with the same title' }] },
+      { ref: 'workspace:5', title: 'Demo', cwd: '/demo/other-repo', description: 'A second workspace with the same title' }]
+      .map(w => ({ ...w, color: w.color ?? null, color_name: paletteName(w.color) })) },
     driver: { caps: DRIVER_CAPS },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: [] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
@@ -822,6 +838,7 @@ export function createMockTransport(opts = {}) {
   let handlers = {}
   const mockMutes = [{ id: '20261008-0900-board-radar-0a1b', source: 'board-radar', scope: 'family', key_prefix: 'radar:stale:' }]   // invented, for the noise card
   let seq = state.model.seq
+  let mockOrganize = null   // the demo's current organize proposal
   const jev = createMockJev ? createMockJev() : null   // the Jev tab's mock: the server's once-per-day rule, invented tokens
   const history = opts.empty ? [] : historyEntries(now())
   const orders = {}                                       // the kept Jev order per work page, as jev.py keeps it
@@ -1066,6 +1083,35 @@ export function createMockTransport(opts = {}) {
           }
           emit('tabs', state.tabs)
           result.note = `Mock: now named ${title}`
+        }
+        // organize with AI: an invented proposal; apply changes the mock state as the terminal would
+        if (verb === 'organize_propose') {
+          mockOrganize = organizeProposal(now())
+          result.proposal = mockOrganize
+          result.note = ''
+        }
+        if (verb === 'organize_apply') {
+          if (!mockOrganize || mockOrganize.id !== args.proposal) return fail(409, 'stale_proposal', 'This proposal is no longer current. Ask for a new one.')
+          const picked = mockOrganize.items.filter(i => (args.items ?? []).includes(i.id))
+          let spaces = state.tabs.workspaces ?? []
+          let all = state.tabs.tabs
+          for (const it of picked) {
+            if (it.kind === 'ws_title') {
+              spaces = spaces.map(w => w.ref === it.ref ? { ...w, title: it.to } : w)
+              all = all.map(t => t.ws_ref === it.ref ? { ...t, workspace: it.to } : t)
+            }
+            if (it.kind === 'ws_color') spaces = spaces.map(w => w.ref === it.ref ? { ...w, color: it.to ? PALETTE[it.to] : null, color_name: it.to } : w)
+            if (it.kind === 'ws_description') spaces = spaces.map(w => w.ref === it.ref ? { ...w, description: it.to } : w)
+            if (it.kind === 'tab_title') all = all.map(t => t.ref === it.ref ? { ...t, name: it.to } : t)
+            if (it.kind === 'tab_move') {
+              const dest = spaces.find(w => w.ref === it.to)
+              all = all.map(t => t.ref === it.ref ? { ...t, ws_ref: it.to, workspace: dest?.title ?? t.workspace } : t)
+            }
+          }
+          state.tabs = { ...state.tabs, workspaces: spaces, tabs: all }
+          emit('tabs', state.tabs)
+          Object.assign(result, { applied: picked.map(i => i.id), skipped: [], failed: [] })
+          result.note = `Mock: ${picked.length} applied`
         }
         if (['drop', 'done', 'later', 'hide', 'task_close', 'settle'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
           result.settled = keys

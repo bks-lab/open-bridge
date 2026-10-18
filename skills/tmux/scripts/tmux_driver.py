@@ -15,6 +15,7 @@ the CORE JSON protocol: one request on stdin, one answer on stdout.
     {"verb": "send", "tab": ref, "text": "..."}
     {"verb": "rename", "tab": ref, "title": "..."}
     {"verb": "rename_workspace", "workspace": ws_ref, "title": "..."}
+    {"verb": "move_tab", "tab": ref, "workspace": ws_ref}   (no index: tmux numbers windows itself)
     {"verb": "control", "control": {...}, "command": "...", "root": "..."}
     {"verb": "caps"} | {"verb": "focus", "tab": ref} | {"verb": "key", "tab": ref, "key": k}
     {"verb": "screen", "tab": ref, "lines": n} | {"verb": "close", "tab": ref}
@@ -53,7 +54,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 VERBS = ["tabs", "sessions", "open", "launch", "send", "rename", "control",
-         "caps", "focus", "key", "screen", "close", "rename_workspace"]
+         "caps", "focus", "key", "screen", "close", "rename_workspace", "move_tab"]
 SHELLS = {"zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "-zsh", "-bash", "-fish", "-sh", "login"}
 KEEP_SHELL = '; exec "${SHELL:-/bin/sh}" -l'
 KEYS = {"enter": ("Enter", False), "escape": ("Escape", False),
@@ -645,6 +646,24 @@ def rename_workspace(req: dict) -> list[str]:
     return [f"{ref} is now named {name!r}"]
 
 
+def move_tab(req: dict) -> list[str]:
+    """Moves the tab's window into another session (`move-window -d`, nothing focused). The last window of a
+    session stays where it is, as in open: tmux would destroy the emptied session. An index is not offered
+    (tmux numbers the windows of a session itself)."""
+    ref = check_ref(req.get("tab"))
+    target = check_ws_ref(req.get("workspace"))
+    wins = windows()
+    w = window_of(ref, wins)
+    if w is None:
+        raise DriverError(f"no open tab {ref}")
+    if w["session_id"] == target:
+        return [f"{ref} is in {target} already"]
+    if sum(1 for x in wins if x["session_id"] == w["session_id"]) <= 1:
+        return [f"ERROR {ref} is the last window of {w['session']}, moving it would close that workspace"]
+    tmux("move-window", "-d", "-s", ref, "-t", f"{target}:")
+    return [f"moved {ref} into {target}"]
+
+
 def key(req: dict) -> list[str]:
     k = str(req.get("key") or "").lower()
     if k not in KEYS:
@@ -704,7 +723,8 @@ def handle(req: dict) -> dict:
     if verb == "screen":
         return screen(req)
     actions = {"open": open_plan, "launch": launch, "send": send, "rename": rename, "control": control,
-               "focus": focus, "key": key, "close": close, "rename_workspace": rename_workspace}
+               "focus": focus, "key": key, "close": close, "rename_workspace": rename_workspace,
+               "move_tab": move_tab}
     if verb in actions:
         return {"report": actions[verb](req)}
     raise ValueError(f"unknown verb {verb!r}")

@@ -5593,3 +5593,427 @@ def test_workspace_rename_takes_a_listed_workspace_without_a_title(tmp_path):
         assert writes(w) == [W(w, "rename-workspace", "workspace:7", "--", "Research")]
     finally:
         w.close()
+
+
+# --- organize with AI: one model call proposes, ticked items are applied (organize_propose, organize_apply) ---
+
+ORG_CAPS = [*RENAME_CAPS, "move_tab", "set_color", "set_description"]
+CLAUDE = "/fake/bin/claude"
+
+
+def organize_world(tmp_path, caps=ORG_CAPS):
+    """A Bridge with workspaces of its own (its folder, a sub folder, a repo it registers), one of a sibling
+    Bridge and one far away; Ops is configured, Control is the control workspace"""
+    base = tmp_path / "base"
+    base.mkdir()
+    repo = (tmp_path / "repos" / "app")
+    repo.mkdir(parents=True)
+    sibling = tmp_path / "other-bridge"
+    sibling.mkdir()
+    w = World(base, config="cockpit:\n  enabled: true\n  language: en\n  relay: true\n  chat_layout: workspaces\n"
+                           "workplace:\n  control:\n    name: Control\n"
+                           "  workspaces:\n    - {name: Ops, aliases: [operations]}\n")
+    (w.root / "ecosystem.yaml").write_text(f"local_root: {tmp_path / 'repos'}\nrepos:\n  app:\n    github: example/app\n",
+                                           encoding="utf-8")
+    (w.root / "infra" / "instances").mkdir(parents=True)
+    (w.root / "infra" / "instances" / "other.yaml").write_text(
+        f"name: Other\nrelationship: sibling\nlocation:\n  path: {sibling}\n", encoding="utf-8")
+    (w.root / "sub").mkdir()
+    root = str(w.root)
+    w.org = {
+        "workspaces": [
+            {"ref": "workspace:1", "title": "Control", "cwd": root, "pinned": True},
+            {"ref": "workspace:2", "title": "Demo", "cwd": f"{root}/sub", "color": "#1565C0", "color_name": "Blue"},
+            {"ref": "workspace:5", "title": "Ops", "cwd": root, "description": "Releases"},
+            {"ref": "workspace:6", "title": "misc", "cwd": str(repo), "color": "#ABCDEF"},
+            {"ref": "workspace:8", "title": "Other", "cwd": str(sibling)},
+            {"ref": "workspace:9", "title": "Far", "cwd": "/x/elsewhere"},
+        ],
+        "tabs": [
+            {"name": "Control", "workspace": "Control", "ref": "surface:3", "ws_ref": "workspace:1", "state": "waiting",
+             "id": "CTRL-UUID-0001"},
+            {"name": "demo-task", "workspace": "Demo", "ref": "surface:7", "ws_ref": "workspace:2", "state": "waiting",
+             "slug": "demo-task", "id": "TAB-7"},
+            {"name": "free tab", "workspace": "Demo", "ref": "surface:11", "ws_ref": "workspace:2", "state": "working",
+             "state_source": "hook", "last": "building the docs", "id": "TAB-11"},
+            {"name": "Notes", "workspace": "Demo", "ref": "surface:14", "ws_ref": "workspace:2", "state": "shell",
+             "state_source": "glyph", "id": "TAB-14"},
+            {"name": "glyph agent", "workspace": "Ops", "ref": "surface:15", "ws_ref": "workspace:5", "state": "waiting",
+             "state_source": "glyph", "id": "TAB-15"},
+            {"name": "ops shell", "workspace": "Ops", "ref": "surface:17", "ws_ref": "workspace:5", "state": "shell",
+             "id": "TAB-17"},
+            {"name": "lonely", "workspace": "misc", "ref": "surface:16", "ws_ref": "workspace:6", "state": "shell",
+             "id": "TAB-16"},
+            {"name": "far tab", "workspace": "Far", "ref": "surface:20", "ws_ref": "workspace:9", "state": "shell",
+             "id": "TAB-20"},
+        ],
+    }
+    w.runner.handlers["workplace.status"] = lambda argv: ok(w.org["tabs"])
+    w.runner.handlers["workplace.workspaces"] = lambda argv: ok(w.org["workspaces"])
+    w.model = {"workspaces": [], "tabs": []}
+    w.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": json.dumps(w.model)})
+    with_caps(w, caps)
+    w.app.tabs.poll()
+    w.runner.calls.clear()
+    return w
+
+
+@pytest.fixture
+def org(tmp_path):
+    w = organize_world(tmp_path)
+    yield w
+    w.close()
+
+
+def org_items(res: dict) -> dict:
+    return {i["id"]: i for i in res["proposal"]["items"]}
+
+
+def org_data(w: World) -> dict:
+    (argv,) = w.runner.of("claude.p")
+    prompt = argv[-1]
+    return json.loads(prompt[prompt.index("{"):])
+
+
+def test_organize_propose_makes_one_model_call_without_tools_or_session_and_returns_items(org):
+    org.model = {"workspaces": [{"ref": "workspace:6", "title": "App", "color": "Teal", "description": "The app repo",
+                                 "why": "named after its repo"}],
+                 "tabs": [{"ref": "surface:11", "title": "Docs build", "why": "says what runs"},
+                          {"ref": "surface:14", "workspace": "workspace:6", "why": "belongs to the app"}]}
+    res = org.act("organize_propose")
+    (argv,) = org.runner.of("claude.p")
+    assert argv[:12] == [CLAUDE, "-p", "--model", "claude-haiku-5-5", "--output-format", "json",
+                         "--no-session-persistence", "--setting-sources", "", "--tools", "", "--append-system-prompt"]
+    assert argv[13] == "--" and len(argv) == 15 and argv[12] == text_mod.TABLES["en"]["organize_system"]
+    prop = res["proposal"]
+    assert re.fullmatch(r"o[0-9a-f]{10}", prop["id"]) and prop["scope"] == 3 and prop["at_ms"] == int(org.clock.now)
+    items = org_items(res)
+    assert set(items) == {"ws_title:workspace:6", "ws_color:workspace:6", "ws_description:workspace:6",
+                          "tab_title:surface:11", "tab_move:surface:14"}
+    assert items["ws_title:workspace:6"] == {"id": "ws_title:workspace:6", "kind": "ws_title", "ref": "workspace:6",
+                                             "from": "misc", "to": "App", "why": "named after its repo",
+                                             "cap": "rename_workspace"}
+    assert (items["ws_color:workspace:6"]["from"], items["ws_color:workspace:6"]["to"]) == (None, "Teal")
+    assert (items["tab_move:surface:14"]["from"], items["tab_move:surface:14"]["to"]) == ("workspace:2", "workspace:6")
+    assert items["tab_move:surface:14"]["cap"] == "move_tab" and items["tab_title:surface:11"]["cap"] == "rename"
+    assert res["ok"]
+
+
+def test_organize_propose_changes_nothing_in_the_terminal_and_writes_one_audit_line(org):
+    org.model = {"workspaces": [{"ref": "workspace:6", "title": "Secret Project", "why": "a secret why"}], "tabs": []}
+    log = org.state / "audit.log"
+    before = log.read_text().splitlines() if log.exists() else []
+    res = org.act("organize_propose")
+    assert {org.runner.key(c) for c in org.runner.calls} <= {"workplace.status", "workplace.workspaces",
+                                                             "workplace.caps", "claude.p"}
+    lines = log.read_text().splitlines()[len(before):]
+    assert len(lines) == 1 and lines[0].split()[1] == "organize_propose" and "items=1" in lines[0]
+    assert "Secret" not in lines[0] and "secret" not in lines[0]
+    assert len(res["proposal"]["items"]) == 1
+
+
+def test_a_second_organize_propose_while_one_runs_is_organize_running(org):
+    entered, gate = threading.Event(), threading.Event()
+
+    def slow(argv):
+        entered.set()
+        gate.wait(5)
+        return ok({"type": "result", "result": json.dumps({"workspaces": [], "tabs": []})})
+    org.runner.handlers["claude.p"] = slow
+    first: dict = {}
+    t = threading.Thread(target=lambda: first.update(org.act("organize_propose")))
+    t.start()
+    try:
+        assert entered.wait(5)
+        with pytest.raises(ActionError) as err:
+            org.act("organize_propose")
+        assert (err.value.status, err.value.code) == (409, "organize_running")
+    finally:
+        gate.set()
+        t.join(5)
+    assert first["proposal"]["items"] == []
+    org.act("organize_propose")                       # free again once the first one ended
+
+
+def test_organize_sees_only_workspaces_of_this_bridge(org):
+    org.act("organize_propose")
+    data = org_data(org)
+    assert [x["ref"] for x in data["workspaces"]] == ["workspace:2", "workspace:5", "workspace:6"]
+    assert {t["ref"] for t in data["tabs"]} == {"surface:7", "surface:11", "surface:14", "surface:15", "surface:17",
+                                                 "surface:16"}
+    tab = next(t for t in data["tabs"] if t["ref"] == "surface:7")
+    assert tab["task_bound"] is True and tab["slug"] == "demo-task" and tab["workspace"] == "workspace:2"
+    ws = next(x for x in data["workspaces"] if x["ref"] == "workspace:2")
+    assert set(ws) == {"ref", "title", "color_name", "description", "pinned", "cwd"} and ws["color_name"] == "Blue"
+    assert ws["cwd"] == "bridge/sub"
+    # nothing of this Bridge listed: nothing to organize
+    org.org["workspaces"] = [w for w in org.org["workspaces"] if w["ref"] in ("workspace:1", "workspace:8", "workspace:9")]
+    with pytest.raises(ActionError) as err:
+        org.act("organize_propose")
+    assert (err.value.status, err.value.code) == (409, "organize_nothing")
+
+
+def test_organize_drops_unknown_refs_control_refs_and_no_ops(org):
+    org.model = {"workspaces": [{"ref": "workspace:99", "title": "Ghost", "why": "x"},
+                                {"ref": "workspace:1", "title": "Steering", "why": "x"},
+                                {"ref": "workspace:9", "title": "Near", "why": "x"},
+                                {"ref": "workspace:2", "title": "Demo", "color": "Blue", "why": "the same"},
+                                {"ref": "workspace:6", "description": "", "why": "x"}],
+                 "tabs": [{"ref": "surface:3", "title": "Steer", "why": "x"},
+                          {"ref": "surface:404", "title": "Ghost tab", "why": "x"},
+                          {"ref": "surface:20", "title": "Near tab", "why": "x"},
+                          {"ref": "surface:11", "title": "free tab", "workspace": "workspace:2", "why": "x"},
+                          {"ref": "surface:11", "workspace": "workspace:1", "why": "into control"},
+                          {"ref": "surface:11", "workspace": "workspace:9", "why": "far away"}]}
+    res = org.act("organize_propose")
+    assert res["proposal"]["items"] == []
+
+
+def test_organize_never_touches_task_tabs_or_configured_workspaces(org):
+    org.model = {"workspaces": [{"ref": "workspace:5", "title": "Releases", "color": "Red", "description": "x",
+                                 "why": "x"},
+                                {"ref": "workspace:6", "title": "operations", "why": "an alias of Ops"},
+                                {"ref": "workspace:2", "title": "OPS", "why": "configured"}],
+                 "tabs": [{"ref": "surface:7", "title": "Demo work", "workspace": "workspace:6", "why": "x"}]}
+    res = org.act("organize_propose")
+    assert res["proposal"]["items"] == []
+
+
+def test_organize_never_proposes_a_managed_or_used_name(org):
+    org.model = {"workspaces": [{"ref": "workspace:6", "title": "control", "why": "x"},
+                                {"ref": "workspace:2", "title": "Misc", "why": "the other one is called misc"}],
+                 "tabs": [{"ref": "surface:11", "title": "demo-task", "why": "a task's name"},
+                          {"ref": "surface:16", "title": "notes", "why": "used by another tab"},
+                          {"ref": "surface:15", "title": "Ops agent", "why": "glyph state"},
+                          {"ref": "surface:17", "title": "Shell", "why": "first"},
+                          {"ref": "surface:14", "title": "shell", "why": "the same new name twice"}]}
+    res = org.act("organize_propose")
+    assert set(org_items(res)) == {"tab_title:surface:17"}
+
+
+def test_organize_never_proposes_moving_the_last_tab_of_a_workspace(org):
+    org.model = {"workspaces": [], "tabs": [
+        {"ref": "surface:16", "workspace": "workspace:2", "why": "the only tab of misc"},
+        {"ref": "surface:15", "workspace": "workspace:6", "why": "first of two"},
+        {"ref": "surface:17", "workspace": "workspace:6", "why": "second of two: Ops would be empty"},
+        {"ref": "surface:11", "workspace": "workspace:6", "why": "Demo keeps two"},
+        {"ref": "surface:14", "workspace": "workspace:6", "why": "Demo keeps its task tab"}]}
+    res = org.act("organize_propose")
+    assert set(org_items(res)) == {"tab_move:surface:15", "tab_move:surface:11", "tab_move:surface:14"}
+
+
+def test_organize_drops_items_the_driver_cannot_apply(tmp_path):
+    w = organize_world(tmp_path, caps=[*RENAME_CAPS])
+    try:
+        w.model = {"workspaces": [{"ref": "workspace:6", "title": "App", "color": "Teal", "description": "Repo",
+                                   "why": "x"}],
+                   "tabs": [{"ref": "surface:11", "title": "Docs", "workspace": "workspace:6", "why": "x"}]}
+        res = w.act("organize_propose")
+        assert set(org_items(res)) == {"ws_title:workspace:6", "tab_title:surface:11"}
+    finally:
+        w.close()
+
+
+def test_organize_compares_colours_by_palette_name(org):
+    org.model = {"workspaces": [{"ref": "workspace:2", "color": "blue", "why": "the same colour"},
+                                {"ref": "workspace:6", "color": "red", "why": "a custom hex now"}], "tabs": []}
+    res = org.act("organize_propose")
+    items = org_items(res)
+    assert set(items) == {"ws_color:workspace:6"}
+    assert (items["ws_color:workspace:6"]["from"], items["ws_color:workspace:6"]["to"]) == (None, "Red")
+    # the poll gives every workspace its palette name, also when the driver reports only the hex
+    listed = {x["ref"]: x for x in org.app.tabs_state()["workspaces"]}
+    assert listed["workspace:6"]["color_name"] is None and listed["workspace:1"]["color_name"] is None
+    org.org["workspaces"][3] = {**org.org["workspaces"][3], "color": "#006b6b"}
+    org.app.tabs.read_workspaces()
+    assert {x["ref"]: x for x in org.app.tabs_state()["workspaces"]}["workspace:6"]["color_name"] == "Teal"
+    # an invalid colour is no item
+    org.model = {"workspaces": [{"ref": "workspace:6", "color": "#ff0000", "why": "x"},
+                                {"ref": "workspace:2", "color": "Sky", "why": "x"}], "tabs": []}
+    assert org.act("organize_propose")["proposal"]["items"] == []
+
+
+def test_an_unreadable_model_answer_is_organize_unreadable(org):
+    for answer in (ok("not json at all"), ok({"type": "result", "result": "no braces here"}),
+                   ok({"type": "result", "is_error": True, "result": "{}"}), fail("claude crashed")):
+        org.runner.handlers["claude.p"] = lambda argv, a=answer: a
+        with pytest.raises(ActionError) as err:
+            org.act("organize_propose")
+        assert (err.value.status, err.value.code) == (502, "organize_unreadable")
+    # a refusal leaves the single flight free
+    org.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": '{"workspaces": [], "tabs": []}'})
+    assert org.act("organize_propose")["proposal"]["items"] == []
+
+
+def full_proposal(w: World) -> dict:
+    w.model = {"workspaces": [{"ref": "workspace:2", "color": "Teal", "description": "Docs and demos", "why": "c"},
+                              {"ref": "workspace:6", "title": "App", "why": "t"}],
+               "tabs": [{"ref": "surface:11", "title": "Docs build", "why": "n"},
+                        {"ref": "surface:14", "workspace": "workspace:6", "why": "m"}]}
+    res = w.act("organize_propose")
+    assert len(res["proposal"]["items"]) == 5
+    w.runner.calls.clear()
+    return res["proposal"]
+
+
+def org_writes(w: World) -> list[list[str]]:
+    return [c[4:] for c in w.runner.calls if w.runner.key(c) in (
+        "workplace.move-tab", "workplace.rename", "workplace.rename-workspace", "workplace.workspace-color",
+        "workplace.workspace-description")]
+
+
+def test_organize_apply_runs_only_ticked_items_in_the_safe_order(org):
+    prop = full_proposal(org)
+    ticked = ["ws_color:workspace:2", "ws_title:workspace:6", "tab_title:surface:11", "tab_move:surface:14"]
+    res = org.act("organize_apply", proposal=prop["id"], items=ticked)
+    assert org_writes(org) == [["move-tab", "surface:14", "workspace:6"],
+                               ["rename", "surface:11", "--", "Docs build"],
+                               ["rename-workspace", "workspace:6", "--", "App"],
+                               ["workspace-color", "workspace:2", "Teal"]]
+    assert sorted(res["applied"]) == sorted(ticked) and res["skipped"] == [] and res["failed"] == []
+    assert res["ok"] and res["reload"] == "tabs"
+    line = (org.state / "audit.log").read_text().splitlines()[-1]
+    assert line.split()[1:3] == ["organize_apply", prop["id"]] and "applied=4" in line
+    assert "Docs" not in line and "Teal" not in line and "App" not in line
+    # the description, never ticked, never ran; a clear goes as --clear
+    assert not [c for c in org_writes(org) if c[0] == "workspace-description"]
+
+
+def test_organize_apply_reports_a_failed_step_and_goes_on(org):
+    prop = full_proposal(org)
+    org.runner.handlers["workplace.rename"] = lambda argv: fail("refused: name in use", 2)
+    res = org.act("organize_apply", proposal=prop["id"], items=["tab_title:surface:11", "ws_title:workspace:6"])
+    assert res["applied"] == ["ws_title:workspace:6"]
+    assert res["failed"] == [{"id": "tab_title:surface:11", "error": "refused: name in use"}]
+    assert not res["ok"]
+
+
+def test_organize_apply_skips_an_item_whose_value_changed_since_the_proposal(org):
+    prop = full_proposal(org)
+    org.org["tabs"] = [dict(t, name="renamed meanwhile") if t["ref"] == "surface:11" else t for t in org.org["tabs"]]
+    org.org["workspaces"] = [dict(x, color="#C0392B", color_name="Red") if x["ref"] == "workspace:2" else x
+                             for x in org.org["workspaces"]]
+    org.org["tabs"] = [t for t in org.org["tabs"] if t["ref"] != "surface:14"]      # gone
+    res = org.act("organize_apply", proposal=prop["id"],
+                  items=["tab_title:surface:11", "ws_color:workspace:2", "tab_move:surface:14", "ws_title:workspace:6"])
+    assert sorted(x["id"] for x in res["skipped"]) == ["tab_move:surface:14", "tab_title:surface:11",
+                                                       "ws_color:workspace:2"]
+    assert all(x["why"] == "changed" for x in res["skipped"])
+    assert org_writes(org) == [["rename-workspace", "workspace:6", "--", "App"]]
+
+
+def test_organize_apply_recounts_the_last_tab_before_each_move(org):
+    org.model = {"workspaces": [], "tabs": [{"ref": "surface:11", "workspace": "workspace:6", "why": "a"},
+                                            {"ref": "surface:14", "workspace": "workspace:6", "why": "b"}]}
+    prop = org.act("organize_propose")["proposal"]
+    # meanwhile the task tab left Demo: of its two free tabs only one may go
+    org.org["tabs"] = [t for t in org.org["tabs"] if t["ref"] != "surface:7"]
+    org.runner.calls.clear()
+    res = org.act("organize_apply", proposal=prop["id"], items=["tab_move:surface:11", "tab_move:surface:14"])
+    assert org_writes(org) == [["move-tab", "surface:11", "workspace:6"]]
+    assert res["skipped"] == [{"id": "tab_move:surface:14", "why": "last_tab"}]
+
+
+def test_organize_apply_does_not_hold_the_write_lock_during_driver_calls(org):
+    prop = full_proposal(org)
+    seen = []
+
+    def rename(argv):
+        seen.append(org.app.actions.write_lock.locked())
+        return ok("renamed")
+    org.runner.handlers["workplace.rename"] = rename
+    org.runner.handlers["workplace.rename-workspace"] = rename
+    org.act("organize_apply", proposal=prop["id"], items=["tab_title:surface:11", "ws_title:workspace:6"])
+    assert seen == [False, False]
+    assert not org.app.actions.write_lock.locked()
+
+
+def test_organize_apply_stops_at_its_time_budget(org, monkeypatch):
+    from lib.bridge_cockpit import organize
+    prop = full_proposal(org)
+    monkeypatch.setattr(organize, "APPLY_BUDGET_S", -1)
+    res = org.act("organize_apply", proposal=prop["id"], items=["tab_title:surface:11", "ws_title:workspace:6"])
+    assert res["applied"] == [] and {x["error"] for x in res["failed"]} == {"timeout"} and len(res["failed"]) == 2
+    assert org_writes(org) == []
+
+
+def test_organize_apply_refuses_an_expired_or_unknown_proposal(org):
+    prop = full_proposal(org)
+    with pytest.raises(ActionError) as err:
+        org.act("organize_apply", proposal="o0123456789", items=["tab_title:surface:11"])
+    assert (err.value.status, err.value.code) == (409, "stale_proposal")
+    with pytest.raises(ActionError) as err:
+        org.act("organize_apply", proposal=prop["id"], items=["tab_title:surface:99"])
+    assert (err.value.status, err.value.code) == (400, "invalid_argument")
+    for bad in ({"proposal": "x123", "items": ["tab_title:surface:11"]}, {"proposal": prop["id"], "items": []},
+                {"proposal": prop["id"], "items": ["tab_title:surface:11", "tab_title:surface:11"]},
+                {"proposal": prop["id"], "items": ["Bad Id"]}, {"proposal": prop["id"], "items": "tab_title:surface:11"}):
+        with pytest.raises(ActionError) as err:
+            org.act("organize_apply", **bad)
+        assert err.value.code == "invalid_argument", bad
+    org.clock.advance(16 * 60)
+    with pytest.raises(ActionError) as err:
+        org.act("organize_apply", proposal=prop["id"], items=["tab_title:surface:11"])
+    assert (err.value.status, err.value.code) == (409, "stale_proposal")
+    assert org_writes(org) == []
+
+
+def test_the_runner_lets_claude_through_in_the_organize_shape_only(tmp_path):
+    from lib.bridge_cockpit import organize
+    r = Runner(tmp_path, cmux=None, claude=CLAUDE, codex=None)
+    good = organize.argv(CLAUDE, "claude-haiku-5-5", "Sort these.", '{"workspaces": []}')
+    r.check(good)
+    bad = [
+        organize.argv(CLAUDE, "haiku", "Sort these.", "{}"),                       # a short name, not a full id
+        organize.argv(CLAUDE, "claude-other-1", "Sort these.", "{}"),
+        organize.argv(CLAUDE, "claude-haiku-5-5", "S" * 4001, "{}"),
+        organize.argv(CLAUDE, "claude-haiku-5-5", "Sort these.", "x" * 24001),
+        organize.argv(CLAUDE, "claude-haiku-5-5", "Sort these.", ""),
+        good[:10] + ["Read"] + good[11:],                                          # a tool
+        good[:13] + ["--resume", "x"] + good[13:],
+        good[:13] + good[14:],                                                     # no --
+        ["/other/claude", *good[1:]],
+    ]
+    for argv in bad:
+        with pytest.raises(RunnerRefused):
+            r.check(argv)
+
+
+def test_the_organize_model_is_checked_against_the_full_model_ids(org):
+    services = org.root / "workflow" / "ai-services"
+    services.mkdir(parents=True)
+    path = services / "cockpit-organize.yaml"
+    path.write_text("schema_version: 1\nscope: user\nid: cockpit-organize\nprovider: claude\n"
+                    "models: {claude: sonnet}\n", encoding="utf-8")
+    org.act("organize_propose")
+    assert org.runner.of("claude.p")[-1][3] == "claude-sonnet-5-5"
+    for text in ("models: {claude: claude-other-9}\n", "provider: codex\n"):
+        body = "schema_version: 1\nscope: user\nid: cockpit-organize\n" + (
+            "provider: claude\n" + text if text.startswith("models") else text)
+        path.write_text(body, encoding="utf-8")
+        with pytest.raises(ActionError) as err:
+            org.act("organize_propose")
+        assert (err.value.status, err.value.code) == (503, "organize_unavailable"), text
+    path.unlink()
+    org.runner.claude = None
+    with pytest.raises(ActionError) as err:
+        org.act("organize_propose")
+    assert (err.value.status, err.value.code) == (503, "cli_unavailable")
+
+
+def test_the_organize_prompt_carries_no_token_and_no_full_home_paths(org, monkeypatch):
+    monkeypatch.setenv("HOME", str(org.root.parent))
+    token = org.app.token
+    assert token
+    org.org["tabs"] = [dict(t, last=f"export KEY={token} done") if t["ref"] == "surface:11" else t
+                       for t in org.org["tabs"]]
+    org.app.tabs.poll()
+    org.act("organize_propose")
+    (argv,) = org.runner.of("claude.p")
+    blob = "\n".join(argv)
+    assert token not in blob and str(org.root) not in blob and str(org.root.parent) not in blob
+    assert "[token]" in blob
+    data = org_data(org)
+    assert all(not x["cwd"].startswith("/") for x in data["workspaces"])
+    tab = next(t for t in data["tabs"] if t["ref"] == "surface:11")
+    assert len(tab["last"]) <= 90

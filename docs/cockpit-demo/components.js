@@ -14,6 +14,7 @@ import { InnerRoom } from './inner.js'
 import { AgentsPage } from './views/agents.js'
 import { ChatPage, QuickChat } from './views/chat.js'
 import { RoomsPage } from './views/rooms.js'
+import { OrganizeView } from './views/organize.js'
 import { ReviewBody, ReviewPage, ReviewStrip } from './views/check.js'
 import { DayColumn, WorkSwitch } from './views/day.js'
 import { DetailColumn } from './views/detail.js'
@@ -168,6 +169,7 @@ export function App({ store, ctl }) {
     ${s.ui.tabView === '@ask' ? html`<${QuickChat} s=${s} c=${ctl} />` : s.ui.tabView ? html`<${TabView} s=${s} c=${ctl} />` : null}
     ${s.ui.inner ? html`<${InnerRoom} s=${s} c=${ctl} focus=${s.ui.innerFocus} onClose=${ctl.closeInner}
       onTab=${ref => { ctl.closeInner(); jumpToTab(s, ctl, ref) }} />` : null}
+    ${s.ui.organize ? html`<${OrganizeView} s=${s} c=${ctl} />` : null}
     <${ConfirmDialog} s=${s} c=${ctl} />
     <${Toasts} s=${s} c=${ctl} />
   </div>`

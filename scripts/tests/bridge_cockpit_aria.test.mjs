@@ -157,3 +157,23 @@ test('reply buttons and the text field have accessible names', async () => {
     }
   }
 })
+
+test('organize checkboxes have labels', async () => {
+  const organize = await load('views/organize.js')
+  const items = [
+    { id: 'ws_color:workspace:2', kind: 'ws_color', ref: 'workspace:2', from: null, to: 'Teal', why: 'x', cap: 'set_color' },
+    { id: 'tab_title:surface:9', kind: 'tab_title', ref: 'surface:9', from: 'release', to: 'Release notes', why: 'y', cap: 'rename' }]
+  const s = cockpitState(NOW, { ui: { organize: { busy: false, proposal: { id: 'o0123456789', at_ms: NOW, scope: 2, items }, ticks: {} } } })
+  const el = mountOwn(html`<${organize.OrganizeView} s=${s} c=${recorder()} />`)
+  await settle()
+  const boxes = el.$$('input[type="checkbox"]')
+  assert.ok(boxes.length >= 3, 'one per item and one per workspace')
+  for (const box of boxes) {
+    const label = box.getAttribute('aria-label') || (box.parentNode?.localName === 'label' ? box.parentNode.textContent.trim() : '')
+    assert.ok(label, 'a checkbox without a name')
+  }
+  const dialog = el.$('[role="dialog"]')
+  assert.ok(dialog && dialog.getAttribute('aria-modal') === 'true' && dialog.getAttribute('aria-labelledby'))
+  assert.ok(el.$$('button').every(b => (b.textContent.trim() || b.getAttribute('aria-label') || '').length > 0))
+  render(null, el)
+})

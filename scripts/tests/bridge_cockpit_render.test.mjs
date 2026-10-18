@@ -787,3 +787,86 @@ test('the demo renames a free tab and a workspace and refuses what the server re
   assert.ok(st.driver.caps.includes('rename_workspace'))
   assert.ok(events.some(([name]) => name === 'tabs'))
 })
+
+// ---------------------------------------------------------------- organize with AI
+
+const { OrganizeView } = views.organize
+const ORG_ITEMS = [
+  { id: 'ws_color:workspace:2', kind: 'ws_color', ref: 'workspace:2', from: null, to: 'Teal', why: 'One colour for the releases', cap: 'set_color' },
+  { id: 'tab_title:surface:9', kind: 'tab_title', ref: 'surface:9', from: 'release', to: 'Release notes', why: 'Says what it holds', cap: 'rename' },
+  { id: 'ws_title:workspace:4', kind: 'ws_title', ref: 'workspace:4', from: 'Docs', to: 'Writing', why: 'Clearer', cap: 'rename_workspace' },
+]
+const orgState = organize => cockpitState(NOW, { ui: { organize } })
+
+test('the organize view shows the scope, from and to with a checkbox per item and the result counts', () => {
+  const busy = mount(html`<${OrganizeView} s=${orgState({ busy: true, proposal: null, ticks: {} })} c=${recorder()} />`)
+  assert.ok(busy.text().includes(en.organize.thinking))
+  const proposal = { id: 'o0123456789', at_ms: NOW, scope: 3, items: ORG_ITEMS }
+  const c = recorder()
+  const el = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal, ticks: {} })} c=${c} />`)
+  assert.ok(el.text().includes(en.organize.scope(3)))
+  assert.ok(el.text().includes(en.organize.hint))
+  const rows = el.$$('.org-item')
+  assert.equal(rows.length, 3)
+  assert.ok(rows.every(r => r.$('input[type="checkbox"]') && !r.$('input[type="checkbox"]').hasAttribute('checked')))
+  const title = rows.find(r => r.text().includes('Release notes'))
+  assert.equal(title.$('s').text(), 'release')
+  assert.ok(title.text().includes(en.organize.kinds.tab_title) && title.text().includes('Says what it holds'))
+  // nothing ticked: apply is off; a tick, a group tick and tick all go to the controller
+  assert.ok(el.button(en.organize.apply(0)).hasAttribute('disabled'))
+  title.$('input[type="checkbox"]').dispatch('change')
+  el.button(en.organize.tickAll).click()
+  el.$$('.org-group-tick input')[0].dispatch('change')
+  assert.deepEqual(c.calls.map(x => x[0]), ['organizeToggle', 'organizeTickAll', 'organizeTickGroup'])
+  // ticked items: apply sends them
+  const ticked = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal, ticks: { 'ws_title:workspace:4': true } })} c=${c} />`)
+  ticked.button(en.organize.apply(1)).click()
+  assert.deepEqual(c.calls.at(-1), ['organizeApply'])
+  ticked.button(en.organize.close).click()
+  assert.deepEqual(c.calls.at(-1), ['organizeClose'])
+  // nothing to improve
+  const none = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal: { ...proposal, items: [] }, ticks: {} })} c=${recorder()} />`)
+  assert.ok(none.text().includes(en.organize.none))
+  // after apply: the counts and the lists
+  const result = { applied: ['ws_title:workspace:4'], skipped: [{ id: 'tab_title:surface:9', why: 'changed' }],
+    failed: [{ id: 'ws_color:workspace:2', error: 'cmux refused' }] }
+  const done = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal, ticks: {}, result })} c=${recorder()} />`)
+  for (const line of [en.organize.applied(1), en.organize.skipped(1), en.organize.failed(1)]) assert.ok(done.text().includes(line), line)
+  assert.ok(done.text().includes('cmux refused'))
+})
+
+test('the sidebar offers Organize with AI with the rename cap and keeps it off while it runs', () => {
+  const c = recorder()
+  const s = cockpitState(NOW)
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  el.button(en.organize.button).click()
+  assert.deepEqual(c.calls, [['organizePropose']])
+  const running = cockpitState(NOW, { ui: { organize: { busy: true, proposal: null, ticks: {} } } })
+  const busy = mount(html`<${Sidebar} s=${running} c=${recorder()} rooms=${roomsOf(running)} here=${{ kind: 'chat' }} />`)
+  assert.ok(busy.button(en.organize.button).hasAttribute('disabled'))
+  const without = cockpitState(NOW, { driver: { caps: ['tabs'] } })
+  const none = mount(html`<${Sidebar} s=${without} c=${recorder()} rooms=${roomsOf(without)} here=${{ kind: 'chat' }} />`)
+  assert.equal(none.button(en.organize.button), null)
+})
+
+test('the demo proposes every kind and applies the ticked ones', async () => {
+  const { mock } = loadedRooms
+  const tr = mock.createMockTransport({ lang: 'en' })
+  tr.events(new Proxy({}, { get: () => () => {} }), () => {})
+  const act = (verb, args) => tr.post('/api/action', { verb, args })
+  const prop = (await act('organize_propose', {})).data.proposal
+  assert.equal(prop.items.length, 5)
+  assert.deepEqual(new Set(prop.items.map(i => i.kind)), new Set(['ws_title', 'ws_color', 'ws_description', 'tab_title', 'tab_move']))
+  const st0 = (await tr.get('/api/state')).data
+  assert.ok(st0.tabs.workspaces.every(w => 'color_name' in w))
+  const res = (await act('organize_apply', { proposal: prop.id, items: prop.items.map(i => i.id) })).data
+  assert.equal(res.applied.length, 5)
+  const st = (await tr.get('/api/state')).data
+  for (const it of prop.items) {
+    if (it.kind === 'ws_title') assert.equal(st.tabs.workspaces.find(w => w.ref === it.ref).title, it.to)
+    if (it.kind === 'ws_color') assert.equal(st.tabs.workspaces.find(w => w.ref === it.ref).color_name, it.to)
+    if (it.kind === 'tab_title') assert.equal(st.tabs.tabs.find(t => t.ref === it.ref).name, it.to)
+    if (it.kind === 'tab_move') assert.equal(st.tabs.tabs.find(t => t.ref === it.ref).ws_ref, it.to)
+  }
+  assert.equal((await act('organize_apply', { proposal: 'o9999999999', items: [prop.items[0].id] })).error.code, 'stale_proposal')
+})

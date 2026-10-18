@@ -23,6 +23,7 @@ from typing import Any
 
 from . import asks as ak
 from . import model as m
+from . import organize as org
 from . import returns as ret
 
 STATUS_TIMEOUT = 20
@@ -102,6 +103,17 @@ class TabPoller:
         Only with chat_layout workspaces: otherwise no list is read and rooms come from the tabs."""
         with self.lock:
             self.workspaces_ms = 0.0
+
+    def read_workspaces(self) -> list[dict] | None:
+        """The workspaces read now (organize: the list as it is, not as it was half a minute ago), one read at a
+        time with the polls (the busy lock). Kept as the list the page shows when the chat lists workspaces."""
+        with self.busy:
+            rows = self._workspaces()
+        if rows is not None and self.app.cfg.chat_layout == "workspaces":
+            with self.lock:
+                self.workspaces = rows
+                self.workspaces_ms = self.app.clock()
+        return [dict(w) for w in rows] if rows is not None else None
 
     def find(self, ref: str) -> dict | None:
         with self.lock:
@@ -263,8 +275,10 @@ class TabPoller:
         for w in rows:
             if isinstance(w, dict) and isinstance(w.get("ref"), str):
                 cwd = w.get("cwd")
-                # the folder as the Bridges list resolves it, so a symlinked path still finds its Bridge
-                out.append({**w, "cwd_real": os.path.realpath(cwd) if isinstance(cwd, str) and cwd else None})
+                # the folder as the Bridges list resolves it, so a symlinked path still finds its Bridge;
+                # the palette name of the colour, by its hex (a name the driver gives that does not match is not taken)
+                out.append({**w, "cwd_real": os.path.realpath(cwd) if isinstance(cwd, str) and cwd else None,
+                            "color_name": org.color_name(w.get("color"))})
         return out
 
     # ------------------------------------------------------------ schedule

@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import re
 import sys
 import textwrap
 from pathlib import Path
@@ -1148,3 +1149,156 @@ def test_cli_rename_workspace_takes_a_listed_workspace_without_a_title(repo, tmp
     log = _rename_driver(repo, tmp_path, tabs=[], workspaces=[{"ref": "workspace:8"}])
     assert wp.main(["--root", str(repo), "rename-workspace", "workspace:8", "--", "Research"]) == 0
     assert _requests(log, "rename_workspace")[0]["workspace"] == "workspace:8"
+
+
+# ---------------------------------------------------------------- move a tab, colour and describe a workspace
+
+LAYOUT_TABS = [
+    {"name": "Scratch", "workspace": "Scratch", "ref": "surface:5", "ws_ref": "workspace:2", "state": "shell"},
+    {"name": "Notes", "workspace": "Scratch", "ref": "surface:6", "ws_ref": "workspace:2", "state": "waiting"},
+    {"name": "Research", "workspace": "Research", "ref": "surface:8", "ws_ref": "workspace:3", "state": "shell"},
+    {"name": "Payments Incident", "workspace": "Bigcorp", "ref": "surface:4", "ws_ref": "workspace:1",
+     "state": "waiting"},
+]
+LAYOUT_CAPS = ["tabs", "sessions", "rename", "move_tab", "set_color", "set_description", "workspaces"]
+
+
+def _layout_driver(repo, tmp_path, tabs=LAYOUT_TABS, caps=LAYOUT_CAPS, workspaces=None) -> Path:
+    """A driver that lists `tabs`, announces `caps`, records every request and answers the layout verbs"""
+    log = tmp_path / "layout-requests.jsonl"
+    script = tmp_path / "layout_driver.py"
+    script.write_text(textwrap.dedent(f"""\
+        import json, sys
+        req = json.load(sys.stdin)
+        with open({str(log)!r}, "a") as f:
+            f.write(json.dumps(req) + "\\n")
+        v = req["verb"]
+        if v == "tabs":
+            print(json.dumps({{"tabs": {tabs!r}}}))
+        elif v == "sessions":
+            print(json.dumps({{"sessions": {{}}}}))
+        elif v == "caps":
+            print(json.dumps({{"caps": {caps!r}}}))
+        elif v == "workspaces":
+            print(json.dumps({{"workspaces": {workspaces or []!r}}}))
+        elif v in ("move_tab", "set_color", "set_description"):
+            print(json.dumps({{"report": [v + " done"]}}))
+        else:
+            print(json.dumps({{"error": "unknown verb " + v}})); sys.exit(1)
+        """))
+    (repo / "bridge-config.yaml").write_text(
+        f"workplace:\n  driver: {{command: ['{sys.executable}', '{script}']}}\n"
+        "  control: {name: Control}\n"
+        "  workspaces:\n    - {name: Bigcorp, contexts: [bigcorp], aliases: [bc]}\n    - {name: Misc, default: true}\n")
+    return log
+
+
+def test_the_palette_maps_every_name_to_one_hex():
+    names = list(wp.COLORS)
+    assert names == ["Red", "Crimson", "Orange", "Amber", "Olive", "Green", "Teal", "Aqua", "Blue", "Navy",
+                     "Indigo", "Purple", "Magenta", "Rose", "Brown", "Charcoal"]
+    hexes = list(wp.COLORS.values())
+    assert len(set(h.upper() for h in hexes)) == 16
+    assert all(re.fullmatch(r"#[0-9A-F]{6}", h) for h in hexes)
+    assert wp.COLORS["Purple"] == "#6A1B9A" and wp.COLORS["Charcoal"] == "#3E4B5E"
+    assert wp.color_name("#6a1b9a") == "Purple" and wp.color_name("#123456") is None and wp.color_name(None) is None
+    assert wp.palette_name("blue") == "Blue" and wp.palette_name("Sky") is None
+
+
+def test_command_driver_payloads_for_move_color_description(tmp_path):
+    log = tmp_path / "req.jsonl"
+    script = tmp_path / "d.py"
+    script.write_text("import json, sys\nreq = json.load(sys.stdin)\nopen(%r, 'a').write(json.dumps(req) + '\\n')\n"
+                      "print(json.dumps({'report': ['done']}))\n" % str(log))
+    drv = wp.CommandDriver([sys.executable, str(script)])
+    assert drv.move_tab("surface:5", "workspace:3") == ["done"]
+    assert drv.move_tab("surface:5", "workspace:3", 2) == ["done"]
+    assert drv.set_color("workspace:3", "Blue") == ["done"]
+    assert drv.set_color("workspace:3", None) == ["done"]
+    assert drv.set_description("workspace:3", "Release work") == ["done"]
+    assert drv.set_description("workspace:3", None) == ["done"]
+    assert not drv.failed
+    assert [json.loads(x) for x in log.read_text().splitlines()] == [
+        {"verb": "move_tab", "tab": "surface:5", "workspace": "workspace:3"},
+        {"verb": "move_tab", "tab": "surface:5", "workspace": "workspace:3", "index": 2},
+        {"verb": "set_color", "workspace": "workspace:3", "color": "Blue"},
+        {"verb": "set_color", "workspace": "workspace:3", "color": None},
+        {"verb": "set_description", "workspace": "workspace:3", "text": "Release work"},
+        {"verb": "set_description", "workspace": "workspace:3", "text": None},
+    ]
+
+
+def test_none_driver_layout_verbs_say_do_it_yourself():
+    none = wp.NoneDriver()
+    for lines in (none.move_tab("surface:5", "workspace:3"), none.set_color("workspace:3", "Blue"),
+                  none.set_description("workspace:3", "Release work")):
+        (line,) = lines
+        assert "no driver" in line.lower() and "yourself" in line
+
+
+def test_cli_move_tab_takes_exact_refs_and_an_optional_index(repo, tmp_path, capsys):
+    log = _layout_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "move-tab", "surface:5", "workspace:3"]) == 0
+    assert wp.main(["--root", str(repo), "move-tab", "surface:6", "workspace:3", "--index", "1"]) == 0
+    assert _requests(log, "move_tab") == [{"verb": "move_tab", "tab": "surface:5", "workspace": "workspace:3"},
+                                          {"verb": "move_tab", "tab": "surface:6", "workspace": "workspace:3",
+                                           "index": 1}]
+    assert "move_tab done" in capsys.readouterr().out
+    # a name, a part of one, a ref that is not open, a workspace that is not open, the workspace it is in already
+    for tab, ws in (("Notes", "workspace:3"), ("surface", "workspace:3"), ("surface:99", "workspace:3"),
+                    ("surface:5", "Research"), ("surface:5", "workspace:77"), ("surface:5", "workspace:2")):
+        assert wp.main(["--root", str(repo), "move-tab", tab, ws]) == 2, (tab, ws)
+    assert wp.main(["--root", str(repo), "move-tab", "surface:5", "workspace:3", "--index", "-1"]) == 2
+    assert len(_requests(log, "move_tab")) == 2
+    assert "refused" in capsys.readouterr().err
+
+
+def test_cli_move_tab_without_the_cap_is_refused(repo, tmp_path, capsys):
+    log = _layout_driver(repo, tmp_path, caps=["tabs", "sessions", "rename"])
+    assert wp.main(["--root", str(repo), "move-tab", "surface:5", "workspace:3"]) == 2
+    assert "cannot" in capsys.readouterr().err
+    assert _requests(log, "move_tab") == []
+
+
+def test_cli_workspace_color_takes_a_palette_name_or_clear(repo, tmp_path, capsys):
+    log = _layout_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "workspace-color", "workspace:2", "teal"]) == 0
+    assert wp.main(["--root", str(repo), "workspace-color", "workspace:3", "--clear"]) == 0
+    assert _requests(log, "set_color") == [{"verb": "set_color", "workspace": "workspace:2", "color": "Teal"},
+                                           {"verb": "set_color", "workspace": "workspace:3", "color": None}]
+    # not a palette name, a hex, both or neither, a ref that is not open, a configured workspace
+    for args in (["workspace:2", "Sky"], ["workspace:2", "#123456"], ["workspace:2", "Teal", "--clear"],
+                 ["workspace:2"], ["workspace:77", "Teal"], ["Scratch", "Teal"], ["workspace:1", "Teal"]):
+        assert wp.main(["--root", str(repo), "workspace-color", *args]) == 2, args
+    assert len(_requests(log, "set_color")) == 2
+    assert "configured workspace" in capsys.readouterr().err
+
+
+def test_cli_workspace_description_takes_text_after_double_dash_or_clear(repo, tmp_path, capsys):
+    log = _layout_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "workspace-description", "workspace:2", "--", "--loose notes"]) == 0
+    assert wp.main(["--root", str(repo), "workspace-description", "workspace:2", "--clear"]) == 0
+    assert _requests(log, "set_description") == [
+        {"verb": "set_description", "workspace": "workspace:2", "text": "--loose notes"},
+        {"verb": "set_description", "workspace": "workspace:2", "text": None}]
+    for args in (["workspace:2", "--", "x" * 121], ["workspace:2", "--", "two\nlines"], ["workspace:2", "--", "  "],
+                 ["workspace:2"], ["workspace:1", "--", "text"], ["workspace:77", "--clear"]):
+        assert wp.main(["--root", str(repo), "workspace-description", *args]) == 2, args
+    assert len(_requests(log, "set_description")) == 2
+
+
+def test_cli_layout_commands_report_a_driver_refusal_as_exit_one(repo, tmp_path, capsys):
+    script = tmp_path / "refusing.py"
+    script.write_text(textwrap.dedent(f"""\
+        import json, sys
+        v = json.load(sys.stdin)["verb"]
+        if v == "tabs":
+            print(json.dumps({{"tabs": {LAYOUT_TABS!r}}}))
+        elif v == "caps":
+            print(json.dumps({{"caps": {LAYOUT_CAPS!r}}}))
+        else:
+            print(json.dumps({{"report": ["ERROR surface:5 is the last tab of workspace:2"]}}))
+        """))
+    (repo / "bridge-config.yaml").write_text(f"workplace:\n  driver: {{command: ['{sys.executable}', '{script}']}}\n")
+    assert wp.main(["--root", str(repo), "move-tab", "surface:5", "workspace:3"]) == 1
+    assert "ERROR surface:5 is the last tab" in capsys.readouterr().out

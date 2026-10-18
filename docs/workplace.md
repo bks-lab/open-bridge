@@ -128,9 +128,12 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 | `{"verb": "key", "tab": ref, "key": k}` | `{"report": [...]}`: one key into the tab, `k` one of `enter`, `escape`, `y`, `n`, `1` to `9` |
 | `{"verb": "screen", "tab": ref, "lines": n}` | `{"text": "..."}`: the last `n` lines the tab shows, plain text, read only |
 | `{"verb": "close", "tab": ref}` | `{"report": [...]}`: closes that one tab, only ever on an explicit request |
-| `{"verb": "workspaces"}` | `{"workspaces": [{"ref", "title", "color", "description", "pinned", "cwd", "branch", "dirty", "pr", "unread", "latest", "statuses"}]}`: the workspaces as the terminal shows them, read only (`workplace.py workspaces --json`; the cockpit's chat as cmux) |
+| `{"verb": "workspaces"}` | `{"workspaces": [{"ref", "title", "color", "color_name", "description", "pinned", "cwd", "branch", "dirty", "pr", "unread", "latest", "statuses"}]}`: the workspaces as the terminal shows them, read only (`workplace.py workspaces --json`; the cockpit's chat as cmux) |
 | `{"verb": "control", "control": {...}, "command": "...", "root": "..."}` | `{"report": [...]}`: a new agent tab in the control workspace, which is created when it is missing (`workplace.py control --yes`) |
 | `{"verb": "rename_workspace", "workspace": ws_ref, "title": "..."}` | `{"report": [...]}`: one workspace gets that title (cmux: `workspace rename`; tmux: `rename-session` on the session id, with `:` and `.` turned into `_` as tmux does). A ref the terminal does not know is an error, never a guess |
+| `{"verb": "move_tab", "tab": ref, "workspace": ws_ref, "index": n}` | `{"report": [...]}`: one tab into another workspace, nothing focused; `index` (from 0) is optional (cmux: `move-surface --focus false`; tmux: `move-window -d` into the session, without an index). The last tab of a workspace is never moved (an `ERROR` line instead): the terminal would drop the emptied workspace |
+| `{"verb": "set_color", "workspace": ws_ref, "color": name or null}` | `{"report": [...]}`: a palette colour by its name (see below), `null` takes the colour off (cmux: `workspace-action set-color` with the hex, `clear-color`; tmux has none) |
+| `{"verb": "set_description", "workspace": ws_ref, "text": "..." or null}` | `{"report": [...]}`: one line of description, `null` takes it off (cmux: `workspace-action set-description`, `clear-description`; tmux has none) |
 
 Every verb after `caps` is optional. A terminal that cannot do one leaves it out of
 `caps`, and whoever steers the tabs (`workplace.py`, the cockpit) offers only
@@ -160,8 +163,35 @@ python3 scripts/workplace.py rename surface:5 -- Scratch pad
 python3 scripts/workplace.py rename-workspace workspace:2 -- Research
 ```
 
-The title goes after `--`, so a title that starts with a dash is no flag. A
-driver ships as an optional skill or with the tool itself; the plan never
+The title goes after `--`, so a title that starts with a dash is no flag.
+
+Three more commands arrange the workspaces, again by live refs only (exit 2 for a
+name, a part of one, a ref that is not open, a verb the driver does not announce in
+its `caps`). A configured workspace keeps the colour and description its config
+gives it, since opening the plan sets them again:
+
+```bash
+python3 scripts/workplace.py move-tab surface:5 workspace:3 [--index 0]
+python3 scripts/workplace.py workspace-color workspace:3 Teal        # or --clear
+python3 scripts/workplace.py workspace-description workspace:3 -- Release work   # or --clear
+```
+
+A description is one line of at most 120 characters. Colours come from one
+palette, `COLORS` in `workplace.py`, the sixteen names cmux knows with the hex it
+stores for each:
+
+| Name | Hex | Name | Hex | Name | Hex | Name | Hex |
+|---|---|---|---|---|---|---|---|
+| Red | `#C0392B` | Olive | `#4A5C18` | Blue | `#1565C0` | Magenta | `#AD1457` |
+| Crimson | `#922B21` | Green | `#196F3D` | Navy | `#1A5276` | Rose | `#880E4F` |
+| Orange | `#A04000` | Teal | `#006B6B` | Indigo | `#283593` | Brown | `#7B3F00` |
+| Amber | `#7D6608` | Aqua | `#0E6B8C` | Purple | `#6A1B9A` | Charcoal | `#3E4B5E` |
+
+A workspace in the `workspaces` answer reports its colour as the hex (`color`) and,
+for a palette hex, its name (`color_name`, `null` for any other colour). Colours are
+compared by that name, never by the hex as typed.
+
+A driver ships as an optional skill or with the tool itself; the plan never
 imports it. `skills/cmux` is the reference driver, active only where cmux is
 installed:
 

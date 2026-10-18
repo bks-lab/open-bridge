@@ -826,13 +826,13 @@ def test_workspaces_carry_what_the_cmux_sidebar_shows(fake):
     assert [w["title"] for w in ws] == ["Platform", "Customer A"]
     p, a = ws
     assert p == {"ref": "workspace:3", "id": "WS-UUID-1", "title": "Platform", "color": "#6A1B9A",
-                 "description": "Own work", "pinned": True, "selected": True, "cwd": "/home/u/bridge",
+                 "color_name": "Purple", "description": "Own work", "pinned": True, "selected": True, "cwd": "/home/u/bridge",
                  "branch": "user/alice", "dirty": True, "pr": None, "unread": 0,
                  "latest": {"text": "ja", "at": "2026-10-18T12:11:44.073Z"},
                  "statuses": [{"name": "program_status", "text": "claude-code · Reading files", "color": None},
                               {"name": "claude_code", "text": "Running", "color": "#4C8DFF"}]}
     assert a["branch"] == "main" and a["dirty"] is False and a["pr"] == "#12" and a["unread"] == 2
-    assert a["color"] is None and a["latest"] is None and a["statuses"] == []
+    assert a["color"] is None and a["color_name"] is None and a["latest"] is None and a["statuses"] == []
     # read only: nothing that types, focuses or selects
     assert not [c for c in fake.argv() if c[:1] and c[0] in ("send", "send-key", "focus-panel", "select-workspace")]
 
@@ -888,3 +888,65 @@ def test_tabs_report_where_the_state_came_from(fake):
 
 def test_caps_name_rename_workspace(fake):
     assert "rename_workspace" in fake.answer({"verb": "caps"})["caps"]
+
+
+# ---------------------------------------------------------------- move a tab, colour and describe a workspace
+
+def test_move_tab_calls_move_surface_without_focus(fake):
+    report = fake.answer({"verb": "move_tab", "tab": "surface:95", "workspace": "workspace:3"})["report"]
+    assert ["move-surface", "--surface", "surface:95", "--workspace", "workspace:3", "--focus", "false"] in fake.argv()
+    assert report and not report[0].startswith("ERROR")
+    fake.answer({"verb": "move_tab", "tab": "surface:91", "workspace": "workspace:4", "index": 1})
+    assert ["move-surface", "--surface", "surface:91", "--workspace", "workspace:4", "--focus", "false",
+            "--index", "1"] in fake.argv()
+
+
+def test_move_tab_refuses_the_last_tab_of_a_workspace(fake):
+    # Customer B (workspace:5) holds one tab only: moving it would drop that workspace
+    report = fake.answer({"verb": "move_tab", "tab": "surface:97", "workspace": "workspace:3"})["report"]
+    assert report[0].startswith("ERROR") and "last tab" in report[0]
+    assert not [a for a in fake.argv() if a[:1] == ["move-surface"]]
+
+
+def test_move_tab_needs_open_refs(fake):
+    for req in ({"tab": "surface:404", "workspace": "workspace:3"}, {"tab": "surface:95", "workspace": "workspace:99"},
+                {"tab": "", "workspace": "workspace:3"}, {"tab": "surface:95", "workspace": "workspace:3", "index": -1}):
+        done = fake.call({"verb": "move_tab", **req})
+        assert done.returncode == 1 and "error" in json.loads(done.stdout), req
+    assert not [a for a in fake.argv() if a[:1] == ["move-surface"]]
+
+
+def test_set_color_sends_the_hex_and_clear_color(fake):
+    fake.answer({"verb": "set_color", "workspace": "workspace:4", "color": "Teal"})
+    fake.answer({"verb": "set_color", "workspace": "workspace:4", "color": None})
+    assert ["workspace-action", "--workspace", "workspace:4", "--action", "set-color", "--color", "#006B6B"] in fake.argv()
+    assert ["workspace-action", "--workspace", "workspace:4", "--action", "clear-color"] in fake.argv()
+    done = fake.call({"verb": "set_color", "workspace": "workspace:4", "color": "#123456"})
+    assert done.returncode == 1 and "error" in json.loads(done.stdout)
+
+
+def test_set_description_and_clear_description(fake):
+    fake.answer({"verb": "set_description", "workspace": "workspace:4", "text": "Invoices and exports"})
+    fake.answer({"verb": "set_description", "workspace": "workspace:4", "text": None})
+    assert ["workspace-action", "--workspace", "workspace:4", "--action", "set-description",
+            "--description", "Invoices and exports"] in fake.argv()
+    assert ["workspace-action", "--workspace", "workspace:4", "--action", "clear-description"] in fake.argv()
+    done = fake.call({"verb": "set_description", "workspace": "", "text": "x"})
+    assert done.returncode == 1
+
+
+def test_workspaces_report_a_palette_name_for_a_known_hex(fake):
+    rows = json.loads(json.dumps(WS_JSON))
+    rows["workspaces"][1]["custom_color"] = "#123456"
+    fake.files["FAKE_CMUX_WSJSON"].write_text(json.dumps(rows))
+    p, a = fake.answer({"verb": "workspaces"})["workspaces"]
+    assert (p["color"], p["color_name"]) == ("#6A1B9A", "Purple")
+    assert (a["color"], a["color_name"]) == ("#123456", None)
+
+
+def test_the_driver_palette_is_the_workplace_palette():
+    assert drv.PALETTE == load_core().COLORS
+
+
+def test_caps_name_the_layout_verbs(fake):
+    assert {"move_tab", "set_color", "set_description"} <= set(fake.answer({"verb": "caps"})["caps"])

@@ -14,7 +14,7 @@ import {
   CONN_GRACE_MS, DAY, pushNoteState, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
-  applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered,
+  applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -139,6 +139,8 @@ const store = createStore({
     roomsSort: load('bridge-cockpit.roomsSort', 'terminal') === 'urgency' ? 'urgency' : 'terminal',
     answered: {},   // per tab ref the answer the page sent last: { hash, q, ms } (views/reply.js)
     renaming: null,  // the tab or workspace whose name is being typed: { kind: 'tab' | 'ws', id: ref } (views/rooms.js)
+    // organize with AI (views/organize.js): { busy, applying, proposal, ticks: { id: true }, result } while open
+    organize: null,
     tickerPaused: load('bridge-cockpit.tickerPaused', '0') === '1', tickerRead: loadTickerRead(), tickerSince: tickerSince(), quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
@@ -700,6 +702,30 @@ const ctl = {
   // a name of its own for a tab or a workspace: the field stands in its sidebar row until saved or cancelled
   startRename: (kind, id) => setUi({ renaming: { kind, id } }),
   stopRename: () => setUi({ renaming: null }),
+  // organize with AI: one proposal at a time; nothing is ticked until a person ticks it, nothing applied unticked
+  organizePropose: async () => {
+    if (store.get().ui.organize?.busy) return
+    setUi({ organize: { busy: true, applying: false, proposal: null, ticks: {}, result: null } })
+    const r = await act('organize_propose', {})
+    setUi(ui => (ui.organize ? { organize: r?.proposal ? { ...ui.organize, busy: false, proposal: r.proposal } : null } : {}))
+  },
+  organizeToggle: id => setUi(ui => (ui.organize ? { organize: { ...ui.organize, ticks: organizeTicks.toggle(ui.organize.ticks, id) } } : {})),
+  organizeTickAll: () => setUi(ui => (ui.organize ? { organize: { ...ui.organize, ticks: organizeTicks.all(ui.organize.proposal) } } : {})),
+  organizeTickGroup: (ref, on) => setUi(ui => {
+    const o = ui.organize
+    const group = o && organizeGroups(o.proposal, roomsOf(store.get())).find(g => g.ref === ref)
+    return group ? { organize: { ...o, ticks: organizeTicks.group(o.ticks, group, on) } } : {}
+  }),
+  organizeApply: async () => {
+    const o = store.get().ui.organize
+    const items = organizeTicks.ids(o?.ticks, o?.proposal)
+    if (!o || o.applying || !items.length) return
+    setUi({ organize: { ...o, applying: true } })
+    const r = await act('organize_apply', { proposal: o.proposal.id, items })
+    setUi(ui => (ui.organize ? { organize: { ...ui.organize, applying: false, ticks: {},
+      result: r ? { applied: r.applied ?? [], skipped: r.skipped ?? [], failed: r.failed ?? [] } : ui.organize.result } } : {}))
+  },
+  organizeClose: () => setUi({ organize: null }),
   toggleRoomsSort: () => {
     const sort = store.get().ui.roomsSort === 'urgency' ? 'terminal' : 'urgency'
     save('bridge-cockpit.roomsSort', sort)
@@ -1046,6 +1072,7 @@ function onKey(e) {
   if (s.ui.inner) return
   if (e.key === 'Escape') {
     if (s.ui.confirm) return ctl.cancelConfirm()
+    if (s.ui.organize) return s.ui.organize.applying ? undefined : ctl.organizeClose()
     if (s.ui.tabView) return setUi({ tabView: null })
     if (s.ui.drawer) return setUi({ drawer: null, item: null })
     if (s.ui.pageDetail && !isTypingTarget(e.target)) return ctl.closePeek()
@@ -1054,7 +1081,7 @@ function onKey(e) {
   }
   // nothing acts on the list hidden behind an open drawer or confirmation (g t still focuses the tabs)
   if (s.ui.tabView) return
-  if (!modalKeyAllowed(s.ui, e.key, gPending)) return
+  if (!modalKeyAllowed(s.ui, e.key, gPending) || s.ui.organize) return
   if (isTypingTarget(e.target)) return
   if (e.altKey && !e.metaKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) {
     const ids = pageOrder(s)

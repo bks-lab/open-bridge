@@ -22,9 +22,11 @@ import sys
 import threading
 from typing import Any
 
+from .. import ai_services as ai
 from .. import model_route as mr
 from . import asks as ak
 from . import model as m
+from . import organize as og
 from . import returns as ret
 from .collector import START_HOLD_MS
 from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as AGENT_PEER_RE
@@ -107,6 +109,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # a name of a tab or a workspace; task tabs and configured workspaces keep theirs (workplace.py managed_names)
     "tab_rename": {"tab_ref": ("tab_ref", True), "title": ("title", True)},
     "workspace_rename": {"ws_ref": ("ws_ref", True), "title": ("title", True)},
+    # organize with AI: a proposal of one model call (read only), then the ticked items of it (organize.py)
+    "organize_propose": {},
+    "organize_apply": {"proposal": ("organize_id", True), "items": ("organize_items", True)},
     "snapshot": {},
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
     "pin": {"key": ("key", True), "on": ("bool", True)},
@@ -149,7 +154,7 @@ PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
 ASK_HASH_RE = re.compile(r"^[0-9a-f]{16}\Z")   # the hash of a tab's question (asks.py)
 TAB_STATES = ("needs-you", "waiting", "working")
 TILE_ID_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9:._@/-]{0,79}\Z")   # a tile or shelf of the start page
-READ_ONLY_VERBS = frozenset({"snapshot_list"})
+READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 # only stores with their own locks (store.py, launch.py, ticker.py): they never wait for a write that runs
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link"})
@@ -219,6 +224,7 @@ class Ctx:
         self.extra: dict = {}          # verb specific answer fields (a conversation id)
         self.history: list[dict] = []  # what this action closed, hid or settled, each with its undo
         self.subject = ""
+        self.audit_extra: dict = {}    # counts a verb adds to its audit line (never a text)
         self.pick: dict = {}           # the model and effort the start of this action asks for (launch.py)
         self.locked = False            # this action holds the write lock
 
@@ -261,6 +267,7 @@ class Actions:
         self.write_lock = threading.Lock()
         self.layout_lock = threading.Lock()
         self.control_starting = False  # a control tab is being opened (start_control, outside the write lock)
+        self.proposals = og.Proposals(lambda: self.app.clock())
 
     # ------------------------------------------------------------ helpers
 
@@ -567,6 +574,17 @@ class Actions:
                 if not isinstance(value, str) or not RELAY_ID_RE.match(value):
                     raise bad_arg(name, "not a relay id")
                 out[name] = value
+            elif kind == "organize_id":
+                if not isinstance(value, str) or not og.ID_RE.match(value):
+                    raise bad_arg(name, "not a proposal id")
+                out[name] = value
+            elif kind == "organize_items":
+                if (not isinstance(value, list) or not 1 <= len(value) <= og.MAX_ITEMS
+                        or not all(isinstance(x, str) and og.ITEM_ID_RE.match(x) for x in value)):
+                    raise bad_arg(name, f"must be a list of 1 to {og.MAX_ITEMS} item ids")
+                if len(set(value)) != len(value):
+                    raise bad_arg(name, "an item is listed twice")
+                out[name] = list(value)
         return out
 
     # ------------------------------------------------------------ entry point
@@ -579,7 +597,7 @@ class Actions:
             raise ActionError(503, "driver_cannot", f"the terminal driver cannot {NEEDS_CAP[verb]} a tab")
         ctx = Ctx(self, verb)
         ctx.subject = ",".join(clean.get("keys", [])) or clean.get("key") or clean.get("tab_ref") or clean.get("ws_ref") \
-            or clean.get("relay_id") or clean.get("slug") or clean.get("id") or ""
+            or clean.get("proposal") or clean.get("relay_id") or clean.get("slug") or clean.get("id") or ""
         handler = getattr(self, f"v_{verb}")
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         if verb in READ_ONLY_VERBS:
@@ -624,7 +642,7 @@ class Actions:
     def audit(self, ctx: Ctx) -> None:
         exits = ",".join(str(s["exit"]) for s in ctx.steps) or "-"
         ok = all(s["ok"] for s in ctx.steps)
-        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok)
+        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **ctx.audit_extra)
 
     def audit_line(self, verb: str, subject: str = "", **fields: Any) -> None:
         """One line in audit.log: time, verb, subject, then key=value. The one writer of that file, for
@@ -1579,6 +1597,125 @@ class Actions:
         if run.ok:
             app.tabs.refresh_workspaces()
         self.renamed(ctx, run)
+
+    # ------------------------------------------------------------ organize with AI (organize.py)
+
+    def v_organize_propose(self, ctx: Ctx) -> None:
+        """One model call over the workspaces and tabs of this Bridge; the checked items come back as a
+        proposal, nothing is ticked and nothing changes. Read only: its own audit line, counts only."""
+        app, tx = self.app, self.tx
+        try:
+            chosen = ai.select(app.root, og.SERVICE, og.DEFAULT_MODEL)
+        except ValueError:
+            raise ActionError(503, "organize_unavailable", tx["organize_unavailable"]) from None
+        if chosen.provider != "claude" or chosen.model not in MODELS.values():
+            raise ActionError(503, "organize_unavailable", tx["organize_unavailable"])
+        if not app.runner.claude:
+            raise ActionError(503, "cli_unavailable", "the claude CLI is not available")
+        if not self.proposals.begin():
+            raise ActionError(409, "organize_running", tx["organize_running"])
+        try:
+            app.tabs.poll(wait=True, asks=False)
+            app.tabs.read_workspaces()
+            snap = og.gather(app)
+            if not snap["workspaces"]:
+                raise ActionError(409, "organize_nothing", tx["organize_nothing"])
+            system, text = og.prompt(snap, app.cfg.language)
+            run = ctx.call("claude.organize", "", og.argv(app.runner.claude, chosen.model, system, text),
+                           og.ORGANIZE_TIMEOUT)
+            if not run.ok:
+                raise ActionError(502, "organize_unreadable", tx["organize_unreadable"])
+            answer = og.parse(run.out)
+            found = og.items(answer, snap, app.driver_caps(), og.managed_names(app.root), app.scrub)
+            prop = self.proposals.put(snap["base"], found)
+        finally:
+            self.proposals.end()
+        self.audit_line("organize_propose", "", scope=len(snap["workspaces"]), items=len(found))
+        ctx.extra["proposal"] = {"id": prop["id"], "at_ms": prop["at_ms"], "scope": len(snap["workspaces"]),
+                                 "items": found}
+
+    def v_organize_apply(self, ctx: Ctx, proposal: str, items: list[str]) -> None:
+        """The ticked items of the current proposal, each only while its value is still the one proposed
+        from, in a safe order (moves, recounting the last tab before each), each through its workplace
+        command with the cap checked again. The driver calls run without the write lock; the whole apply
+        has APPLY_BUDGET_S. Nothing is closed, nothing unticked runs."""
+        import time
+        app, tx = self.app, self.tx
+        prop = self.proposals.get(proposal)
+        if prop is None:
+            raise ActionError(409, "stale_proposal", tx["organize_stale"], "proposal")
+        by_id = {i["id"]: i for i in prop["items"]}
+        if any(x not in by_id for x in items):
+            raise bad_arg("items", "an item is not in this proposal")
+        with ctx.unlocked():
+            app.tabs.poll(wait=True, asks=False)
+            listed = app.tabs.read_workspaces()
+        tabs = {t["ref"]: t for t in app.tabs.tab_list()}
+        spaces: dict[str, dict] = {}
+        for t in tabs.values():
+            if t.get("ws_ref"):
+                spaces.setdefault(t["ws_ref"], {"title": t.get("workspace"), "color_name": None, "description": None})
+        for w in listed or []:
+            spaces[w["ref"]] = {"title": w.get("title"), "color_name": w.get("color_name"),
+                                "description": w.get("description") or None}
+        count: dict[str, int] = {}
+        for t in tabs.values():
+            if t.get("ws_ref"):
+                count[t["ws_ref"]] = count.get(t["ws_ref"], 0) + 1
+
+        def live(it: dict):
+            tab, ws = tabs.get(it["ref"]), spaces.get(it["ref"])
+            if it["kind"] == "tab_title":
+                return tab["name"] if tab else KeyError
+            if it["kind"] == "tab_move":
+                return tab.get("ws_ref") if tab else KeyError
+            if ws is None:
+                return KeyError
+            return {"ws_title": ws["title"], "ws_color": ws["color_name"], "ws_description": ws["description"]}[it["kind"]]
+
+        applied: list[str] = []
+        skipped: list[dict] = []
+        failed: list[dict] = []
+        todo = sorted((by_id[x] for x in items), key=lambda it: og.APPLY_ORDER.index(it["kind"]))
+        started = time.monotonic()
+        for it in todo:
+            if time.monotonic() - started > og.APPLY_BUDGET_S:
+                failed.append({"id": it["id"], "error": "timeout"})
+                continue
+            if live(it) != it["from"]:
+                skipped.append({"id": it["id"], "why": "changed"})
+                continue
+            if it["kind"] == "tab_move" and count.get(it["from"], 0) <= 1:
+                skipped.append({"id": it["id"], "why": "last_tab"})
+                continue
+            if it["cap"] not in app.driver_caps():
+                failed.append({"id": it["id"], "error": "driver_cannot"})
+                continue
+            ref, to = it["ref"], it["to"]
+            argv = {"tab_move": lambda: app.workplace("move-tab", ref, to),
+                    "tab_title": lambda: app.workplace("rename", ref, "--", to),
+                    "ws_title": lambda: app.workplace("rename-workspace", ref, "--", to),
+                    "ws_description": lambda: app.workplace("workspace-description", ref,
+                                                            *(["--clear"] if to is None else ["--", to])),
+                    "ws_color": lambda: app.workplace("workspace-color", ref, *(["--clear"] if to is None else [to])),
+                    }[it["kind"]]()
+            name = "workplace." + argv[4]
+            with ctx.unlocked():
+                run = ctx.call(name, ref, argv, SHORT_TIMEOUT)
+            if run.ok:
+                applied.append(it["id"])
+                if it["kind"] == "tab_move":
+                    count[it["from"]] = count.get(it["from"], 0) - 1
+                    count[to] = count.get(to, 0) + 1
+            else:
+                why = app.scrub(((run.err or run.out) or "").strip())
+                failed.append({"id": it["id"], "error": m.short(why, 160) or f"exit {run.code}"})
+        ctx.extra.update({"applied": applied, "skipped": skipped, "failed": failed})
+        ctx.audit_extra = {"applied": len(applied), "skipped": len(skipped), "failed": len(failed)}
+        ctx.note(tx["organize_applied"].format(applied=len(applied), skipped=len(skipped), failed=len(failed)),
+                 bad=bool(failed))
+        app.tabs.refresh_workspaces()
+        ctx.tabs_after(1)
 
     def layout_script(self, verb: str) -> list[str]:
         return [sys.executable, self.app.runner.script("skills/cmux/scripts/cmux_layout.py"), verb]

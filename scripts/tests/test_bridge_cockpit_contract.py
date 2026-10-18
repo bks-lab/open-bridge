@@ -318,6 +318,30 @@ def s_returns(w: World) -> None:
                                 "result": {"kind": "filed", "text": "--the result", "key": "tab-x-result"}})
 
 
+def s_organize(w: World) -> None:
+    """Organize with AI: one proposal with every kind of item, all of them ticked and applied; a colour and a
+    description are set on one workspace and cleared on the other"""
+    root = str(w.root)
+    tabs = [{"name": "one", "workspace": "Alpha", "ref": "surface:31", "ws_ref": "workspace:3", "state": "shell"},
+            {"name": "two", "workspace": "Alpha", "ref": "surface:32", "ws_ref": "workspace:3", "state": "shell"},
+            {"name": "three", "workspace": "Beta", "ref": "surface:33", "ws_ref": "workspace:4", "state": "shell"}]
+    spaces = [{"ref": "workspace:3", "title": "Alpha", "cwd": root, "description": "old words"},
+              {"ref": "workspace:4", "title": "Beta", "cwd": root, "color": "#1565C0"}]
+    answer = {"workspaces": [{"ref": "workspace:3", "title": "-alpha", "color": "Teal", "description": None, "why": "a"},
+                             {"ref": "workspace:4", "color": None, "description": "--new words", "why": "b"}],
+              "tabs": [{"ref": "surface:31", "title": "--first", "workspace": "workspace:4", "why": "c"}]}
+    w.runner.handlers["workplace.status"] = lambda argv: ok(tabs)
+    w.runner.handlers["workplace.workspaces"] = lambda argv: ok(spaces)
+    w.runner.handlers["workplace.caps"] = lambda argv: ok(
+        {"caps": [*DRIVER_CAPS, "control", "workspaces", "move_tab", "set_color", "set_description"]})
+    w.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": json.dumps(answer)})
+    w.app.driver_caps(fresh=True)
+    w.app.tabs.poll()
+    prop = w.act("organize_propose")["proposal"]
+    assert len(prop["items"]) == 7, prop["items"]
+    w.act("organize_apply", proposal=prop["id"], items=[i["id"] for i in prop["items"]])
+
+
 @dataclass
 class Scenario:
     drive: Callable[[World], None]
@@ -351,6 +375,9 @@ SCENARIOS = {
     "reads": Scenario(s_reads, {"inbox.list", "inbox.stats", "inbox.mute", "workplace.screen", "briefing.detail"}),
     "returns": Scenario(s_returns, {"task.note", "inbox.note"}),
     "workspaces": Scenario(s_workspaces, {"workplace.workspaces"}, config=WORKSPACES_CFG),
+    "organize": Scenario(s_organize, {"workplace.workspaces", "workplace.move-tab", "workplace.rename",
+                                      "workplace.rename-workspace", "workplace.workspace-color",
+                                      "workplace.workspace-description"}, config=WORKSPACES_CFG),
 }
 
 # argv the scenarios must produce in these exact shapes, beyond the verb: the optional parts of a launch
@@ -427,7 +454,7 @@ def test_a_missing_required_flag_or_a_value_outside_the_choices_fails(tmp_path):
 # ---------------------------------------------------------------- real output of collect and caps
 
 DRIVER_CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "focus", "key", "screen", "close",
-               "rename_workspace"]
+               "rename_workspace", "move_tab", "set_color", "set_description"]
 DRIVER = f"""import json, sys
 verb = json.loads(sys.stdin.read() or "{{}}").get("verb")
 print(json.dumps({{"caps": {DRIVER_CAPS!r}}} if verb == "caps" else {{"tabs": []}} if verb == "tabs"
@@ -624,3 +651,18 @@ def test_state_fields_the_page_reads_are_present(tmp_path):
     none, ask = state_values(state, "tabs.tabs[].ask")
     assert none is None and {k: type(v) for k, v in ask.items()} == ASK_FIELDS
     assert ask["options"] == [{"n": 1, "label": "Yes"}, {"n": 2, "label": "No"}]
+
+
+def test_state_workspaces_carry_a_palette_name(tmp_path):
+    """The page compares colours by name (organize): every listed workspace has color_name, str or None"""
+    w = World(tmp_path, config=WORKSPACES_CFG)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok([
+            {"ref": "workspace:1", "title": "A", "color": "#1565C0"}, {"ref": "workspace:2", "title": "B"},
+            {"ref": "workspace:3", "title": "C", "color": "#ABCDEF", "color_name": "Blue"}])
+        w.app.tabs.poll()
+        state = w.app.state_payload()
+    finally:
+        w.close()
+    # a name the driver gives that does not match its hex is not taken: the hex decides
+    assert state_values(state, "tabs.workspaces[].color_name") == ["Blue", None, None]

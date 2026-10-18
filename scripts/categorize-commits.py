@@ -556,6 +556,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/quick.py",
     "scripts/lib/bridge_cockpit/agents.py",
     "scripts/lib/bridge_cockpit/bridges.py",
+    "scripts/lib/bridge_cockpit/organize.py",             # organize with AI: one proposal, ticked items applied
     "scripts/lib/bridge_cockpit/triage.py",
     "scripts/triage.py",
     "scripts/tests/test_triage.py",
@@ -594,6 +595,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/home.js",
     "scripts/web/views/launch.js",
     "scripts/web/views/nav.js",
+    "scripts/web/views/organize.js",
     "scripts/web/views/overlays.js",
     "scripts/web/views/pages.js",
     "scripts/web/views/parts.js",

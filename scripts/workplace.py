@@ -19,6 +19,9 @@ works with a terminal multiplexer, with another one, or with none at all.
     python3 scripts/workplace.py adopt TAB SLUG        # name an existing tab after a task
     python3 scripts/workplace.py rename REF -- TITLE   # name one tab (its live ref only)
     python3 scripts/workplace.py rename-workspace WS_REF -- TITLE   # name one workspace (its live ref only)
+    python3 scripts/workplace.py move-tab TAB_REF WS_REF [--index N]   # move one tab into another workspace
+    python3 scripts/workplace.py workspace-color WS_REF (COLOR | --clear)   # a palette colour (COLORS)
+    python3 scripts/workplace.py workspace-description WS_REF (--clear | -- TEXT)   # one line, 120 characters
 
 CONFIG lives in bridge-config.yaml under `workplace:`:
 
@@ -58,6 +61,14 @@ uses for owner approval:
     {"verb": "close", "tab": ref}                     -> {"report": [...]}
     {"verb": "workspaces"}                            -> {"workspaces": [{"ref", "title", "cwd", ...}]}  (read only)
     {"verb": "rename_workspace", "workspace": ws_ref, "title": "..."} -> {"report": [...]}
+    {"verb": "move_tab", "tab": ref, "workspace": ws_ref, "index": n (optional)} -> {"report": [...]}
+                                              never the last tab of a workspace (an ERROR line instead)
+    {"verb": "set_color", "workspace": ws_ref, "color": "<COLORS name>" | null} -> {"report": [...]}
+    {"verb": "set_description", "workspace": ws_ref, "text": "..." | null}   -> {"report": [...]}
+                                              null clears it
+
+A workspace in the `workspaces` answer may carry `color` (the hex the terminal reports) and
+`color_name`, the COLORS name of that hex (null for any other colour). Colours are compared by name.
 
 A refusal is an `ERROR ...` line in the report (or a non-zero exit with {"error": ...}). Task tab
 names and configured workspace names are the workplace's own (managed_names): `rename` and
@@ -805,6 +816,40 @@ def managed_names(root: Path, cfg: dict) -> dict:
 
 TITLE_MAX = 80
 TITLE_BAD = re.compile(r"[\x00-\x1f\x7f]")
+DESCRIPTION_MAX = 120
+INDEX_MAX = 99
+
+# the portable workspace colours, in the terminal's order: a driver maps a name to its own colour, and a
+# reported hex back to the name (cmux uses exactly these hex values for its named colours)
+COLORS = {
+    "Red": "#C0392B", "Crimson": "#922B21", "Orange": "#A04000", "Amber": "#7D6608",
+    "Olive": "#4A5C18", "Green": "#196F3D", "Teal": "#006B6B", "Aqua": "#0E6B8C",
+    "Blue": "#1565C0", "Navy": "#1A5276", "Indigo": "#283593", "Purple": "#6A1B9A",
+    "Magenta": "#AD1457", "Rose": "#880E4F", "Brown": "#7B3F00", "Charcoal": "#3E4B5E",
+}
+_BY_HEX = {v.upper(): k for k, v in COLORS.items()}
+
+
+def color_name(color) -> str | None:
+    """The COLORS name of a reported hex (any case), else None"""
+    return _BY_HEX.get(color.strip().upper()) if isinstance(color, str) else None
+
+
+def palette_name(name) -> str | None:
+    """A colour name as typed (any case) as its COLORS name, else None"""
+    if not isinstance(name, str):
+        return None
+    return next((k for k in COLORS if k.casefold() == name.strip().casefold()), None)
+
+
+def check_description(text: str) -> str:
+    """A workspace description as typed: one line, trimmed, 1 to DESCRIPTION_MAX characters. Refused, never cut."""
+    if TITLE_BAD.search(text or ""):
+        raise ValueError("refused: control characters in the description")
+    out = (text or "").strip()
+    if not 1 <= len(out) <= DESCRIPTION_MAX:
+        raise ValueError(f"refused: a description has 1 to {DESCRIPTION_MAX} characters")
+    return out
 
 
 def check_title(title: str) -> str:
@@ -872,6 +917,15 @@ class NoneDriver:
 
     def rename_workspace(self, workspace: str, title: str) -> list:
         return [f"No driver configured: name the workspace {title!r} yourself."]
+
+    def move_tab(self, tab: str, workspace: str, index: int | None = None) -> list:
+        return [f"No driver configured: move {tab} into {workspace} yourself."]
+
+    def set_color(self, workspace: str, color: str | None) -> list:
+        return [f"No driver configured: colour {workspace} {color or 'plain'} yourself."]
+
+    def set_description(self, workspace: str, text: str | None) -> list:
+        return [f"No driver configured: describe {workspace} yourself."]
 
     def control(self, ctl: dict, command: str, root) -> list:
         return [f"No driver configured: start {command!r} in a terminal named {ctl.get('name')!r} yourself."]
@@ -974,6 +1028,18 @@ class CommandDriver:
 
     def rename_workspace(self, workspace: str, title: str) -> list:
         return self._report({"verb": "rename_workspace", "workspace": workspace, "title": title})
+
+    def move_tab(self, tab: str, workspace: str, index: int | None = None) -> list:
+        payload = {"verb": "move_tab", "tab": tab, "workspace": workspace}
+        if index is not None:
+            payload["index"] = int(index)
+        return self._report(payload)
+
+    def set_color(self, workspace: str, color: str | None) -> list:
+        return self._report({"verb": "set_color", "workspace": workspace, "color": color})
+
+    def set_description(self, workspace: str, text: str | None) -> list:
+        return self._report({"verb": "set_description", "workspace": workspace, "text": text})
 
     def control(self, ctl: dict, command: str, root) -> list:
         return self._report({"verb": "control", "control": ctl, "command": command, "root": str(root)})
@@ -1129,6 +1195,21 @@ def main(argv=None) -> int:
                                                   "rename-workspace WS_REF -- TITLE")
     rw.add_argument("ws_ref")
     rw.add_argument("title", nargs="+")
+    mv = sub.add_parser("move-tab", help="move one tab into another workspace, both by their live refs only: "
+                                          "move-tab TAB_REF WS_REF [--index N]")
+    mv.add_argument("tab")
+    mv.add_argument("ws_ref")
+    mv.add_argument("--index", type=int, help="its place in that workspace, from 0")
+    wc = sub.add_parser("workspace-color", help="colour one workspace (its live ref only): "
+                                                 f"workspace-color WS_REF (COLOR | --clear), COLOR one of {', '.join(COLORS)}")
+    wc.add_argument("ws_ref")
+    wc.add_argument("color", nargs="?")
+    wc.add_argument("--clear", action="store_true", help="take the colour off")
+    wd = sub.add_parser("workspace-description", help="describe one workspace (its live ref only): "
+                                                       "workspace-description WS_REF (--clear | -- TEXT)")
+    wd.add_argument("ws_ref")
+    wd.add_argument("--clear", action="store_true", help="take the description off")
+    wd.add_argument("text", nargs="*")
     sub.add_parser("caps", help="the verbs the configured driver serves").add_argument("--json", action="store_true")
     sub.add_parser("workspaces", help="the workspaces as the terminal shows them (read only)").add_argument(
         "--json", action="store_true")
@@ -1292,6 +1373,8 @@ def main(argv=None) -> int:
         return 0
     if args.cmd in ("rename", "rename-workspace"):
         return rename_cli(args, cfg, driver)
+    if args.cmd in ("move-tab", "workspace-color", "workspace-description"):
+        return layout_cli(args, cfg, driver)
     tasks = collect_tasks(args.root)
     index = slug_index(tasks, cfg)
     tabs = driver.tabs()
@@ -1369,6 +1452,61 @@ def rename_cli(args, cfg: dict, driver) -> int:
         if _ws_fold(title) in others:
             return refuse("refused: name in use")
         lines = driver.rename_workspace(args.ws_ref, title)
+    print("\n".join(lines))
+    return 1 if getattr(driver, "failed", False) else 0
+
+
+LAYOUT_CAPS = {"move-tab": "move_tab", "workspace-color": "set_color", "workspace-description": "set_description"}
+
+
+def layout_cli(args, cfg: dict, driver) -> int:
+    """`move-tab`, `workspace-color` and `workspace-description`: live refs only (never a name, never a part
+    of one), the driver's verb announced in its caps, a palette colour, a checked description. A configured
+    workspace keeps the colour and description its config gives it (the plan sets them again). A refusal is
+    exit 2 with its reason on stderr; a driver that failed or refused (an ERROR line) is exit 1."""
+    def refuse(why: str) -> int:
+        print(why, file=sys.stderr)
+        return 2
+    verb = LAYOUT_CAPS[args.cmd]
+    if verb not in driver.caps():
+        return refuse(f"refused: driver {driver.name} cannot {verb.replace('_', ' ')}")
+    if args.cmd == "workspace-color":
+        if bool(args.color) == bool(args.clear):
+            return refuse("refused: give one colour or --clear")
+        color = None if args.clear else palette_name(args.color)
+        if not args.clear and color is None:
+            return refuse(f"refused: not a palette colour, one of {', '.join(COLORS)}")
+    if args.cmd == "workspace-description":
+        if bool(args.text) == bool(args.clear):
+            return refuse("refused: give a text after -- or --clear")
+        try:
+            text = None if args.clear else check_description(" ".join(args.text))
+        except ValueError as exc:
+            return refuse(str(exc))
+    if args.cmd == "move-tab" and args.index is not None and not 0 <= args.index <= INDEX_MAX:
+        return refuse(f"refused: an index is 0 to {INDEX_MAX}")
+    tabs = driver.tabs_or_none()
+    if tabs is None:
+        print(getattr(driver, "error", "") or f"driver {driver.name} gave no tab list", file=sys.stderr)
+        return 1
+    listed = driver.workspaces() if "workspaces" in driver.caps() else None
+    titles = {t.get("ws_ref"): t.get("workspace") for t in tabs if t.get("ws_ref")}
+    titles.update({w.get("ref"): w.get("title") for w in listed or [] if w.get("ref")})
+    if args.ws_ref not in titles:
+        return refuse(f"no open workspace with the ref {args.ws_ref!r}")
+    if args.cmd == "move-tab":
+        tab = next((t for t in tabs if t.get("ref") == args.tab), None)
+        if tab is None:
+            return refuse(f"no open tab with the ref {args.tab!r}")
+        if tab.get("ws_ref") == args.ws_ref:
+            return refuse("refused: the tab is in that workspace already")
+        lines = driver.move_tab(args.tab, args.ws_ref, args.index)
+    else:
+        configured = {_ws_fold(n) for n in managed_names(args.root, cfg)["workspace_names"]}
+        if _ws_fold(titles[args.ws_ref]) in configured:
+            return refuse("refused: configured workspace, set it in workplace.workspaces")
+        lines = (driver.set_color(args.ws_ref, color) if args.cmd == "workspace-color"
+                 else driver.set_description(args.ws_ref, text))
     print("\n".join(lines))
     return 1 if getattr(driver, "failed", False) else 0
 

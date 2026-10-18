@@ -1369,6 +1369,46 @@ export function canRenameWorkspace(s, room) {
   return !(room.tabs ?? []).some(t => t.is_control)
 }
 
+// ---------------------------------------------------------------- organize with AI (views/organize.js)
+
+/** The items of an organize proposal grouped by the workspace they touch (a tab item by the workspace the tab
+ *  is in), in the order of the rooms; each item with readable from and to (workspace titles for a move, colour
+ *  names, '' for nothing) and its subject (the tab's or the workspace's name). A workspace the rooms no longer
+ *  show keeps its group under its ref */
+export function organizeGroups(proposal, rooms) {
+  const spaces = rooms?.workspaces ?? []
+  const byRef = new Map(spaces.filter(w => w.ref).map(w => [w.ref, w]))
+  const tabOf = new Map(spaces.flatMap(w => (w.tabs ?? []).map(t => [t.ref, { tab: t, ws: w.ref }])))
+  const titleOf = ref => byRef.get(ref)?.title ?? ref
+  const groups = new Map()
+  for (const it of proposal?.items ?? []) {
+    const isTab = it.kind === 'tab_title' || it.kind === 'tab_move'
+    const found = isTab ? tabOf.get(it.ref) : null
+    const ref = isTab ? (it.kind === 'tab_move' ? it.from : found?.ws ?? it.ref) : it.ref
+    const text = v => (v == null ? '' : String(v))
+    const item = { ...it, subject: isTab ? found?.tab.name ?? it.ref : titleOf(it.ref),
+      fromText: it.kind === 'tab_move' ? titleOf(it.from) : text(it.from), toText: it.kind === 'tab_move' ? titleOf(it.to) : text(it.to) }
+    if (!groups.has(ref)) groups.set(ref, { ref, title: titleOf(ref), items: [] })
+    groups.get(ref).items.push(item)
+  }
+  const at = ref => { const i = spaces.findIndex(w => w.ref === ref); return i < 0 ? Infinity : i }
+  return [...groups.values()].sort((a, b) => at(a.ref) - at(b.ref))
+}
+
+/** The ticks of an organize proposal, { id: true }: nothing is ticked until a person ticks it */
+export const organizeTicks = {
+  all: proposal => Object.fromEntries((proposal?.items ?? []).map(i => [i.id, true])),
+  group: (ticks, group, on) => ({ ...ticks, ...Object.fromEntries(group.items.map(i => [i.id, !!on])) }),
+  toggle: (ticks, id) => ({ ...ticks, [id]: !ticks?.[id] }),
+  /** the ticked ids the proposal holds, in its order: never one it does not hold */
+  ids: (ticks, proposal) => (proposal?.items ?? []).filter(i => ticks?.[i.id]).map(i => i.id),
+  groupState: (ticks, group) => {
+    const n = group.items.filter(i => ticks?.[i.id]).length
+    return n === 0 ? 'none' : n === group.items.length ? 'all' : 'some'
+  },
+  canApply: (ticks, proposal) => organizeTicks.ids(ticks, proposal).length > 0,
+}
+
 // ---------------------------------------------------------------- answering a waiting tab (views/reply.js)
 
 /** The tab states a reply may name as `expect` (actions.py TAB_STATES) */

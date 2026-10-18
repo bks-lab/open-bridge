@@ -3807,3 +3807,66 @@ test('canRenameWorkspace needs a ref and the cap and works for a tmux room built
   const ctl = { ...tmux, tabs: { ...tmux.tabs, tabs: [{ ...tmux.tabs.tabs[0], is_control: true }] } }
   assert.equal(logic.canRenameWorkspace(ctl, logic.roomsOf(ctl).workspaces[0]), false)
 })
+
+// ---------------------------------------------------------------- organize with AI (views/organize.js)
+
+const ORG_STATE = {
+  rooms: { control: 'Control' },
+  tabs: {
+    workspaces: [{ ref: 'workspace:1', title: 'Control' }, { ref: 'workspace:2', title: 'Demo', color_name: 'Blue' },
+      { ref: 'workspace:6', title: 'misc' }],
+    tabs: [{ ref: 'surface:11', ws_ref: 'workspace:2', workspace: 'Demo', name: 'free tab', state: 'working' },
+      { ref: 'surface:14', ws_ref: 'workspace:2', workspace: 'Demo', name: 'Notes', state: 'shell' },
+      { ref: 'surface:16', ws_ref: 'workspace:6', workspace: 'misc', name: 'lonely', state: 'shell' }],
+  },
+}
+const ORG_PROPOSAL = { id: 'o0123456789', at_ms: 1, scope: 2, items: [
+  { id: 'ws_color:workspace:2', kind: 'ws_color', ref: 'workspace:2', from: 'Blue', to: 'Teal', why: 'c', cap: 'set_color' },
+  { id: 'tab_title:surface:11', kind: 'tab_title', ref: 'surface:11', from: 'free tab', to: 'Docs build', why: 'n', cap: 'rename' },
+  { id: 'tab_move:surface:14', kind: 'tab_move', ref: 'surface:14', from: 'workspace:2', to: 'workspace:6', why: 'm', cap: 'move_tab' },
+  { id: 'ws_title:workspace:6', kind: 'ws_title', ref: 'workspace:6', from: 'misc', to: 'App', why: 't', cap: 'rename_workspace' },
+  { id: 'ws_description:workspace:6', kind: 'ws_description', ref: 'workspace:6', from: null, to: 'The app', why: 'd', cap: 'set_description' },
+] }
+
+test('organizeGroups groups by workspace and ticks nothing by default', () => {
+  const groups = logic.organizeGroups(ORG_PROPOSAL, logic.roomsOf(ORG_STATE))
+  assert.deepEqual(groups.map(g => [g.ref, g.title, g.items.map(i => i.id)]), [
+    ['workspace:2', 'Demo', ['ws_color:workspace:2', 'tab_title:surface:11', 'tab_move:surface:14']],
+    ['workspace:6', 'misc', ['ws_title:workspace:6', 'ws_description:workspace:6']],
+  ])
+  const move = groups[0].items.find(i => i.kind === 'tab_move')
+  assert.deepEqual([move.fromText, move.toText, move.subject], ['Demo', 'misc', 'Notes'])
+  const color = groups[0].items[0]
+  assert.deepEqual([color.fromText, color.toText, color.subject], ['Blue', 'Teal', 'Demo'])
+  assert.equal(groups[1].items[1].fromText, '')
+  // a workspace the rooms no longer show still gets its group, by its ref
+  const lost = logic.organizeGroups({ ...ORG_PROPOSAL, items: [{ ...ORG_PROPOSAL.items[3], ref: 'workspace:77' }] }, logic.roomsOf(ORG_STATE))
+  assert.deepEqual(lost.map(g => [g.ref, g.title]), [['workspace:77', 'workspace:77']])
+  // nothing ticked until a person ticks it
+  assert.deepEqual(logic.organizeTicks.ids({}, ORG_PROPOSAL), [])
+  assert.deepEqual(logic.organizeTicks.ids(logic.organizeTicks.all(ORG_PROPOSAL), ORG_PROPOSAL), ORG_PROPOSAL.items.map(i => i.id))
+  assert.equal(logic.organizeGroups(null, logic.roomsOf(ORG_STATE)).length, 0)
+})
+
+test('a group tick ticks only that workspace', () => {
+  const [demo, misc] = logic.organizeGroups(ORG_PROPOSAL, logic.roomsOf(ORG_STATE))
+  const t = logic.organizeTicks
+  let ticks = t.group({}, misc, true)
+  assert.deepEqual(t.ids(ticks, ORG_PROPOSAL), ['ws_title:workspace:6', 'ws_description:workspace:6'])
+  assert.equal(t.groupState(ticks, misc), 'all')
+  assert.equal(t.groupState(ticks, demo), 'none')
+  ticks = t.toggle(ticks, 'tab_move:surface:14')
+  assert.equal(t.groupState(ticks, demo), 'some')
+  ticks = t.group(ticks, misc, false)
+  assert.deepEqual(t.ids(ticks, ORG_PROPOSAL), ['tab_move:surface:14'])
+  // a tick of an id the proposal does not hold is never sent
+  assert.deepEqual(t.ids({ ...ticks, 'tab_title:surface:99': true }, ORG_PROPOSAL), ['tab_move:surface:14'])
+})
+
+test('apply is disabled until one item is ticked', () => {
+  const t = logic.organizeTicks
+  assert.equal(t.canApply({}, ORG_PROPOSAL), false)
+  assert.equal(t.canApply({ 'ws_color:workspace:2': false }, ORG_PROPOSAL), false)
+  assert.equal(t.canApply({ 'ws_color:workspace:2': true }, ORG_PROPOSAL), true)
+  assert.equal(t.canApply({ 'ws_color:workspace:2': true }, null), false)
+})
