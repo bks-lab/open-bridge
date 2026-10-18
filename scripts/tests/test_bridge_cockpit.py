@@ -4184,6 +4184,22 @@ def test_a_settled_waiting_tab_can_be_closed_and_says_so(world):
     assert writes(world) == [W(world, "close", "surface:13")]
 
 
+def test_the_waiting_tab_of_an_executed_item_can_be_closed(world):
+    events = world.root / "work" / "inbox" / YES_ID / "events"
+    events.mkdir(parents=True, exist_ok=True)
+    (events / "20261009T091500Z-00-host-approve.yaml").write_text("verb: approve\n", encoding="utf-8")
+    (events / "20261009T093000Z-00-host-executed.yaml").write_text("verb: executed\n", encoding="utf-8")
+    world.runner.handlers["workplace.status"] = lambda argv: ok(STATUS + [
+        {"name": "inbox tab", "workspace": "Ops", "ref": "surface:14", "ws_ref": "workspace:3", "state": "waiting",
+         "item": YES_ID, "id": "TAB-14"}])
+    world.app.tabs.poll()
+    tabs = {t["ref"]: t for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+    assert tabs["surface:14"]["settled"] == "item"
+    world.runner.calls.clear()
+    world.act("tab_close", tab_ref="surface:14")
+    assert writes(world) == [W(world, "close", "surface:14")]
+
+
 # ---------------------------------------------------------------- the model an agent starts with (launch.py)
 
 LAUNCH_CFG = ("cockpit:\n  enabled: true\n  language: en\n  relay: true\n  launch_model:\n    enabled: true\n{more}"

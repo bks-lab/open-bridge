@@ -68,6 +68,10 @@ from typing import Callable
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+from lib.inbox_verbs import TERMINAL  # noqa: E402  (shared with the cockpit's return channel)
+
 SCHEMA_VERSION = 1
 
 KINDS = ("decision", "question", "finding", "draft", "result", "idea")
@@ -79,7 +83,6 @@ URGENCIES = ("now", "today", "later")
 #: ever, which is what the inbox exists to prevent (2026-10-07: 51 of 62 items had no way out).
 CLOSERS = ("probe", "reporter", "person", "bot")
 VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "executed", "failed", "urgency", "reopen")
-TERMINAL = {"close": "done", "executed": "done", "reject": "dropped", "drop": "dropped"}
 ACTIVE_STATES = ("open", "approved", "waiting")
 #: Why a person dropped an item. `family` and `source` leave a mute rule behind.
 DROP_REASONS = ("once", "duplicate", "family", "source")

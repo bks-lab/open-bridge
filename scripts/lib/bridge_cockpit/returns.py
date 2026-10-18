@@ -11,7 +11,8 @@ Where a start stands is read from what the Bridge already has, nothing is asked 
 - asks      its tab waits for you, asks, or stopped at the prompt
 - result    it left an answer: a filed inbox item (the tab's `filed_by`), or a note on its inbox item
             written after the start (work/inbox/<id>/events/<UTC stamp>-...-note.yaml)
-- done      its inbox item was closed after the start, or its task moved to work/done/
+- done      its inbox item was ended after the start (closed, executed, dropped, rejected), or its task
+            moved to work/done/
 - lost      no tab, no answer, and the start is a while ago
 
 The return channel also writes to the item itself, so the task's notes and the inbox item's events carry it
@@ -31,6 +32,11 @@ import yaml
 
 from .store import atomic_write_json, read_json
 from .text import TABLES
+
+try:
+    from ..inbox_verbs import TERMINAL
+except ImportError:  # loaded as a top-level package (tests that put scripts/lib on the path)
+    from inbox_verbs import TERMINAL  # type: ignore[no-redef]
 
 KEEP_MS = 7 * 24 * 3600 * 1000
 KEEP_MAX = 60
@@ -137,19 +143,29 @@ def task_done(root: Path, slug: str) -> bool:
     return any(Path(root, "work", "done").glob(f"*/{slug}/STATUS.md"))
 
 
-EVENT_VERB_RE = re.compile(r"-(close|drop|reject|reopen)\.yaml\Z")
+# the verbs that end an item (inbox.py owns them) and the one that takes an end back
+EVENT_VERB_RE = re.compile(r"-(" + "|".join(sorted([*TERMINAL, "reopen"])) + r")\.yaml\Z")
+
+
+def _ended_at(root: Path, item: str) -> float | None:
+    """When an inbox item was ended (closed, executed, dropped or rejected) and not reopened since, from its
+    event names; None while it is open"""
+    if not INBOX_ID_RE.match(item):
+        return None
+    folder = Path(root) / "work" / "inbox" / item / "events"
+    try:
+        ends = [(m.group(1), p.name) for p in sorted(folder.iterdir()) if (m := EVENT_VERB_RE.search(p.name))]
+    except OSError:
+        return None
+    if not ends or ends[-1][0] == "reopen":
+        return None
+    at = _stamp_ms(ends[-1][1])
+    return at if at is not None else 0.0
 
 
 def inbox_settled(root: Path, item: str) -> bool:
-    """An inbox item that is closed, dropped or rejected, and not reopened since: read from its event names"""
-    if not INBOX_ID_RE.match(item):
-        return False
-    folder = Path(root) / "work" / "inbox" / item / "events"
-    try:
-        verbs = [m.group(1) for p in sorted(folder.iterdir()) if (m := EVENT_VERB_RE.search(p.name))]
-    except OSError:
-        return False
-    return bool(verbs) and verbs[-1] != "reopen"
+    """An inbox item that is ended, and not reopened since: read from its event names"""
+    return _ended_at(root, item) is not None
 
 
 def tab_settled(root: Path, tab: dict) -> str | None:
@@ -181,9 +197,9 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
             filed = rows.get(tab["filed_by"]) or {}
             result = {"kind": "filed", "text": filed.get("title") or tab["filed_by"], "key": tab["filed_by"], "at_ms": None}
         if INBOX_ID_RE.match(item):
+            ended = _ended_at(root, item)
+            done = ended is not None and ended >= at     # closed, executed, dropped or rejected since the start
             for ev in inbox_answers(root, item, at):
-                if ev["verb"] == "close":
-                    done = True
                 if ev["text"] or not result:
                     result = {"kind": ev["verb"], "text": ev["text"], "key": None, "at_ms": ev["at_ms"]}
         elif task_done(root, item):

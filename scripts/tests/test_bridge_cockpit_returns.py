@@ -156,3 +156,58 @@ def test_the_cockpits_own_notes_are_no_answer(tmp_path):
     event(tmp_path, ITEM, T0 + 8 * MIN, "note", "the vendor has the answer")
     out = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 10 * MIN)}
     assert out[f"inbox:{ITEM}"]["stage"] == "result"
+
+
+def load_inbox():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("inbox_for_returns", ROOT / "scripts" / "inbox.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod      # dataclasses resolve the module by name while loading
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_an_executed_item_is_settled_and_its_start_is_done(tmp_path):
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    event(tmp_path, ITEM, T0 + MIN, "approve", "")
+    event(tmp_path, ITEM, T0 + 3 * MIN, "executed", "sent the answer")
+    assert returns.inbox_settled(tmp_path, ITEM) is True
+    assert returns.tab_settled(tmp_path, {"item": ITEM}) == "item"
+    out = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 10 * MIN)}
+    assert out[f"inbox:{ITEM}"]["stage"] == "done" and out[f"inbox:{ITEM}"]["result"]["text"] == "sent the answer"
+
+
+def test_a_start_dropped_without_a_tab_is_done_and_never_lost(tmp_path):
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    event(tmp_path, ITEM, T0 + MIN, "drop", "not needed after all")
+    for later in (T0 + 2 * MIN, T0 + returns.GRACE_MS + MIN, T0 + 60 * MIN):
+        r = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, later)}[f"inbox:{ITEM}"]
+        assert r["stage"] == "done" and returns.log_line(r, "en") is None
+    # the reason a person dropped it with is no answer of the agent
+    assert r["result"] is None
+    # a reopen after the drop takes the end back
+    event(tmp_path, ITEM, T0 + 5 * MIN, "reopen", "")
+    r = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 60 * MIN)}[f"inbox:{ITEM}"]
+    assert r["stage"] == "lost" and returns.inbox_settled(tmp_path, ITEM) is False
+
+
+def test_an_end_before_the_start_does_not_end_the_start(tmp_path):
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    event(tmp_path, ITEM, T0 - 5 * MIN, "close", "old close")
+    r = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + MIN)}[f"inbox:{ITEM}"]
+    assert r["stage"] == "started"
+
+
+def test_every_terminal_verb_of_the_inbox_ends_a_start(tmp_path):
+    """The inbox owns which verbs end an item: a verb it adds must settle the tab and end the start here too."""
+    inbox = load_inbox()
+    assert inbox.TERMINAL, "the inbox names its terminal verbs"
+    for i, verb in enumerate(sorted(inbox.TERMINAL)):
+        root = tmp_path / verb
+        b = book(root, Clock(T0))
+        event(root, ITEM, T0 + MIN, verb, "")
+        assert returns.inbox_settled(root, ITEM) is True, verb
+        assert {x["key"]: x for x in returns.build(b.all(), [], {}, root, T0 + 60 * MIN)}[f"inbox:{ITEM}"]["stage"] == "done", verb

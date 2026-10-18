@@ -268,6 +268,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/hooks/pre-push",
     "scripts/inbox-approve.py",
     "scripts/inbox.py",
+    "scripts/lib/inbox_verbs.py",   # the verbs that end an item, shared with the cockpit
     "scripts/learning-ledger.py",
     "scripts/memory-location.py",
     "scripts/no-scrub-leak.py",
