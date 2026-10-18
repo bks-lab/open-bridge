@@ -8,7 +8,8 @@ The server shows the briefing of the briefing-ui mod as a local web page. It mus
 - run only a fixed set of verbs with exact argv, ids checked again before they reach an argv,
   free text after `--`, one audit line per write without texts;
 - hand questions to the Claude Code control session only through relay files with one writer each;
-- bind 127.0.0.1, ask for the per-start token as a cookie, check Host on every request and token,
+- bind 127.0.0.1, swap a one-time login code for a cookie derived from the key (never the key itself),
+  check Host on every request and token,
   Origin and content type on every POST, and serve static files from scripts/web/ only.
 
 Hermetic: a fake Bridge in tmp_path (stub scripts printing fixture JSON), a FakeRunner that records
@@ -47,7 +48,7 @@ from lib.bridge_cockpit.actions import ActionError  # noqa: E402
 from lib.bridge_cockpit.config import WebConfigError, load_web_config  # noqa: E402
 from lib.bridge_cockpit.relay import Relay  # noqa: E402
 from lib.bridge_cockpit.runner import Runner, RunnerRefused, RunResult  # noqa: E402
-from lib.bridge_cockpit.server import make_server  # noqa: E402
+from lib.bridge_cockpit.server import COOKIE_AGE_S, login_code, make_server  # noqa: E402
 
 CLI = ROOT / "scripts" / "bridge-cockpit.py"
 PY = sys.executable
@@ -311,10 +312,10 @@ class World:
 
     @property
     def cookie(self) -> dict:
-        return {"Cookie": f"{self.app.cookie_name}={self.app.token}"}
+        return {"Cookie": f"{self.app.cookie_name}={self.app.session_value()}"}
 
     def post(self, path: str, payload, extra: dict | None = None, raw: bytes | None = None):
-        headers = {**self.cookie, "X-Bridge-Token": self.app.token, "Origin": f"http://127.0.0.1:{self.port}",
+        headers = {**self.cookie, "X-Bridge-Token": self.app.csrf, "Origin": f"http://127.0.0.1:{self.port}",
                    "Content-Type": "application/json"}
         headers.update(extra or {})
         headers = {k: v for k, v in headers.items() if v is not None}
@@ -2416,15 +2417,25 @@ def test_page_endpoint(world):
 
 # ---------------------------------------------------------------- security
 
-def test_token_exchange_and_cookie(world):
-    status, headers, _ = world.request("GET", f"/?token={world.app.token}")
+def cookie_of(headers: dict) -> str:
+    """The value of the Set-Cookie header, without its attributes."""
+    return headers["Set-Cookie"].split(";")[0].split("=", 1)[1]
+
+
+def test_login_code_exchange_and_cookie(world):
+    token = world.app.token
+    status, headers, _ = world.request("GET", f"/?code={login_code(token, world.clock())}")
     assert status == 303 and headers["Location"] == "/"
-    assert headers["Set-Cookie"] == (f"bw_token_{world.port}={world.app.token}; HttpOnly; SameSite=Strict; Path=/; "
-                                     "Max-Age=31536000")   # a year: the bare address works after the first visit
+    value = cookie_of(headers)
+    assert value and value != token and token not in headers["Set-Cookie"]
+    assert headers["Set-Cookie"] == (f"bw_token_{world.port}={value}; HttpOnly; SameSite=Strict; Path=/; "
+                                     f"Max-Age={COOKIE_AGE_S}")
+    assert 86400 <= COOKIE_AGE_S <= 7 * 86400             # a few days, not a year
+    assert world.request("GET", "/api/state", headers={"Cookie": f"{world.app.cookie_name}={value}"})[0] == 200
     # the page's own view switches survive the exchange, anything else is dropped
-    status, headers, _ = world.request("GET", f"/?token={world.app.token}&mock=1&lang=de&evil=x&offline=%2F%2Fa")
+    status, headers, _ = world.request("GET", f"/?code={login_code(token, world.clock())}&mock=1&lang=de&evil=x&offline=%2F%2Fa")
     assert status == 303 and headers["Location"] == "/?mock=1&lang=de"
-    status, headers, body = world.request("GET", "/?token=wrong")
+    status, headers, body = world.request("GET", "/?code=wrong")
     assert status == 401 and "Set-Cookie" not in headers
     assert b"<title>Bridge Cockpit</title>" in body and b"open the cockpit" in body.lower()
     status, headers, body = world.request("GET", "/", headers=world.cookie)
@@ -2437,6 +2448,43 @@ def test_token_exchange_and_cookie(world):
     assert "Access-Control-Allow-Origin" not in headers
 
 
+def test_login_code_works_once_and_only_for_a_minute(world):
+    token = world.app.token
+    code = login_code(token, world.clock())
+    assert token not in code
+    assert world.request("GET", f"/?code={code}")[0] == 303
+    status, headers, _ = world.request("GET", f"/?code={code}")          # used up
+    assert status == 401 and "Set-Cookie" not in headers
+    late = login_code(token, world.clock())
+    world.clock.advance(61)
+    status, headers, _ = world.request("GET", f"/?code={late}")          # expired
+    assert status == 401 and "Set-Cookie" not in headers
+    early = login_code(token, world.clock() + 120_000)                     # dated in the future
+    assert world.request("GET", f"/?code={early}")[0] == 401
+    forged = login_code("x" * 43, world.clock())                          # made with another key
+    assert world.request("GET", f"/?code={forged}")[0] == 401
+    fresh = login_code(token, world.clock())
+    assert world.request("GET", f"/?code={fresh}")[0] == 303
+
+
+def test_the_key_itself_no_longer_logs_in(world):
+    token = world.app.token
+    status, headers, _ = world.request("GET", f"/?token={token}")
+    assert status == 401 and "Set-Cookie" not in headers
+    assert world.request("GET", "/api/state", headers={"Cookie": f"{world.app.cookie_name}={token}"})[0] == 401
+    payload = {"verb": "urgency", "args": {"key": f"inbox:{YES_ID}", "value": "now"}}
+    assert world.post("/api/action", payload, {"X-Bridge-Token": token})[0] == 401
+
+
+def test_session_cookie_ends_after_its_days(world):
+    status, headers, _ = world.request("GET", f"/?code={login_code(world.app.token, world.clock())}")
+    cookie = {"Cookie": f"{world.app.cookie_name}={cookie_of(headers)}"}
+    world.clock.advance(COOKIE_AGE_S - 60)
+    assert world.request("GET", "/api/state", headers=cookie)[0] == 200
+    world.clock.advance(120)
+    assert world.request("GET", "/api/state", headers=cookie)[0] == 401
+
+
 @pytest.mark.parametrize("path", ["/", "/api/state", "/api/events", "/api/bootstrap", "/app.js", "/api/relay"])
 def test_no_cookie_is_401(world, path):
     assert world.request("GET", path)[0] == 401
@@ -2446,7 +2494,8 @@ def test_no_cookie_is_401(world, path):
 def test_bootstrap_gives_csrf_and_config(world):
     status, _, body = world.request("GET", "/api/bootstrap", headers=world.cookie)
     data = json.loads(body)
-    assert status == 200 and data["csrf"] == world.app.token and data["language"] == "en" and data["version"] == VERSION
+    assert status == 200 and data["csrf"] == world.app.csrf and data["csrf"] != world.app.token
+    assert data["language"] == "en" and data["version"] == VERSION
     assert data["config"]["port"] == world.port and data["config"]["control"] == "Control"
 
 
@@ -2456,7 +2505,7 @@ def test_bad_host_is_403_everywhere(world, host, path):
     host = host.format(port=world.port, other=world.port + 1)
     status, _, body = world.request("GET", path, headers=world.cookie, host=host)
     assert status == 403 and json.loads(body)["error"]["code"] == "bad_host"
-    status, _, _ = world.request("POST", "/api/action", body=b"{}", headers={**world.cookie, "X-Bridge-Token": world.app.token,
+    status, _, _ = world.request("POST", "/api/action", body=b"{}", headers={**world.cookie, "X-Bridge-Token": world.app.csrf,
                                                                              "Content-Type": "application/json"}, host=host)
     assert status == 403
 
@@ -2594,8 +2643,8 @@ def test_static_traversal(world, path):
 
 def test_token_never_leaks(world):
     token = world.app.token
-    world.request("GET", "/?token=wrong")
-    world.request("GET", f"/?token={token}")
+    world.request("GET", "/?code=wrong")
+    world.request("GET", f"/?code={login_code(token, world.clock())}")
     world.post("/api/action", {"verb": "note", "args": {"key": "task:other-task", "text": "hello"}})
     world.post("/api/action", {"verb": "drop", "args": {"key": "inbox:missing"}})
     world.runner.handlers["briefing.collect"] = lambda argv: fail(f"failure mentioning {token}")
@@ -2626,7 +2675,7 @@ def test_server_json_mode_and_bind_address(world):
 def test_events_stream(world):
     sock = socket.create_connection(("127.0.0.1", world.port), timeout=5)
     try:
-        sock.sendall(f"GET /api/events HTTP/1.1\r\nHost: 127.0.0.1:{world.port}\r\nCookie: {world.app.cookie_name}={world.app.token}\r\n"
+        sock.sendall(f"GET /api/events HTTP/1.1\r\nHost: 127.0.0.1:{world.port}\r\nCookie: {world.app.cookie_name}={world.app.session_value()}\r\n"
                      f"Origin: http://127.0.0.1:{world.port}\r\n\r\n".encode())
         buf = b""
         deadline = time.time() + 5
@@ -2704,14 +2753,16 @@ def cli_world(tmp_path):
 def test_cli_start_reuse_status_stop(cli_world):
     root, state, cli = cli_world
     first = json.loads(cli("start", "--port", "0", "--json", check=0).stdout)
-    assert first["reused"] is False and first["url"].startswith(f"http://127.0.0.1:{first['port']}/?token=")
+    assert first["reused"] is False and first["url"].startswith(f"http://127.0.0.1:{first['port']}/?code=")
     info = json.loads((state / "server.json").read_text())
+    assert info["token"] not in first["url"]
     assert info["pid"] == first["pid"] and stat.S_IMODE((state / "server.json").stat().st_mode) == 0o600
     second = json.loads(cli("start", "--json", check=0).stdout)
     assert second["reused"] is True and second["pid"] == first["pid"]
     status = json.loads(cli("status", "--json", check=0).stdout)
     assert status["running"] is True and status["pid"] == first["pid"] and status["version"] == VERSION
-    assert cli("url", check=0).stdout.strip() == first["url"]
+    again = cli("url", check=0).stdout.strip()
+    assert again.startswith(f"http://127.0.0.1:{first['port']}/?code=") and again != first["url"]
     cli("stop", check=0)
     assert not (state / "server.json").exists()
     deadline = time.time() + 5
@@ -2756,6 +2807,31 @@ def test_cli_open_none_prints_without_token_in_json(cli_world):
     assert data["opened"] == "none" and data["reused"] is False and "token" not in res.stdout
     token = json.loads((state / "server.json").read_text())["token"]
     assert token not in res.stdout
+
+
+def test_cli_never_prints_the_key_and_its_code_logs_in_once(cli_world):
+    root, state, cli = cli_world
+    outputs = [cli("start", "--port", "0", "--json", check=0).stdout, cli("start", check=0).stdout,
+               cli("url", check=0).stdout, cli("status", "--json", check=0).stdout, cli("status", check=0).stdout,
+               cli("open", "--via", "none", "--json", check=0).stdout, cli("open", "--via", "none", check=0).stdout]
+    info = json.loads((state / "server.json").read_text())
+    for out in outputs:
+        assert info["token"] not in out, out
+    link = cli("url", check=0).stdout.strip()
+    path = link[len(f"http://127.0.0.1:{info['port']}"):]
+    assert path.startswith("/?code=")
+
+    def get(p):
+        conn = http.client.HTTPConnection("127.0.0.1", info["port"], timeout=5)
+        conn.request("GET", p, headers={"Host": f"127.0.0.1:{info['port']}"})
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        return resp.status, dict(resp.getheaders())
+
+    status, headers = get(path)
+    assert status == 303 and info["token"] not in headers["Set-Cookie"]
+    assert get(path)[0] == 401
 
 
 # ---------------------------------------------------------------- review findings
@@ -2809,7 +2885,7 @@ def test_relay_frame_does_not_claim_the_user_typed_briefing_data(world):
 
 def test_cookie_survives_foreign_cookies_that_simplecookie_cannot_parse(world):
     """SEC-2: another app on 127.0.0.1 sets a cookie with JSON or a space in it before ours."""
-    name, token = world.app.cookie_name, world.app.token
+    name, token = world.app.cookie_name, world.app.session_value()
     for foreign in ('prefs={"a":1}', 'ph_phc_x_posthog={"distinct_id":"x"}', 'messages="[[\\"__json_message\\"]]"',
                     "redirect_to=/a b", f"{name}=stale-value"):
         status, _, _ = world.request("GET", "/api/state", headers={"Cookie": f"{foreign}; {name}={token}"})
@@ -2820,9 +2896,10 @@ def test_cookie_survives_foreign_cookies_that_simplecookie_cannot_parse(world):
 def test_cookie_name_names_the_port(world):
     """SEC-3: two servers on one host keep their own cookie; the old shared name counts for nothing."""
     assert world.app.cookie_name == f"bw_token_{world.port}"
-    assert world.request("GET", "/api/state", headers={"Cookie": f"bw_token={world.app.token}"})[0] == 401
+    value = world.app.session_value()
+    assert world.request("GET", "/api/state", headers={"Cookie": f"bw_token={value}"})[0] == 401
     other = f"bw_token_{world.port + 1}=someone-else"
-    assert world.request("GET", "/api/state", headers={"Cookie": f"{other}; {world.app.cookie_name}={world.app.token}"})[0] == 200
+    assert world.request("GET", "/api/state", headers={"Cookie": f"{other}; {world.app.cookie_name}={value}"})[0] == 200
 
 
 def test_refused_post_closes_the_connection_so_its_body_is_not_a_second_request(world):
@@ -2831,7 +2908,7 @@ def test_refused_post_closes_the_connection_so_its_body_is_not_a_second_request(
     assert isinstance(Handler.timeout, (int, float)) and 0 < Handler.timeout <= 60
     smuggled = f"GET /api/health HTTP/1.1\r\nHost: 127.0.0.1:{world.port}\r\n\r\n".encode()
     for extra in (f"Sec-Fetch-Site: cross-site\r\nOrigin: http://evil.example\r\n", "",
-                  f"Cookie: {world.app.cookie_name}={world.app.token}\r\nX-Bridge-Token: {world.app.token}\r\n"
+                  f"Cookie: {world.app.cookie_name}={world.app.session_value()}\r\nX-Bridge-Token: {world.app.csrf}\r\n"
                   f"Origin: http://evil.example\r\n"):
         sock = socket.create_connection(("127.0.0.1", world.port), timeout=5)
         try:
@@ -3337,6 +3414,50 @@ def test_a_conversation_hands_on_to_an_agent_tab_or_the_control_session(world):
     world.runner.calls.clear()
     world.act("quick_handoff", conv=conv, to="tab", text="")
     assert writes(world)[1] == launch_argv(world, new_id, "go")
+
+
+def test_a_long_order_on_a_long_conversation_reaches_the_end_whole_within_the_cap(world, monkeypatch):
+    from lib.bridge_cockpit.actions import HANDOFF_MAX, HANDOFF_ORDER_MAX
+    from lib.bridge_cockpit.text import EN
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("A" * 5000, 0.002)
+    conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "what next?"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1300-what-next-a1b2\n")
+    prompts = []
+    real_ask = world.app.relay.ask
+    monkeypatch.setattr(world.app.relay, "ask", lambda kind, prompt, *a: prompts.append(prompt) or real_ask(kind, prompt, *a))
+    head = EN["handoff_control"].split("{text}")[0]
+
+    def payloads(order):
+        world.clock.advance(20)
+        world.runner.calls.clear()
+        prompts.clear()
+        world.act("quick_handoff", conv=conv, to="tab", text=order)
+        detail = next(a for a in writes(world)[0] if a.startswith("--detail="))[len("--detail="):]
+        world.act("quick_handoff", conv=conv, to="control", text=order)
+        return detail, prompts[0][len(head):]
+
+    # an order longer than the room left once the transcript is cut used to drop off the front cut
+    order = "Z" * (HANDOFF_ORDER_MAX - 1) + "!"
+    for payload in payloads(order):
+        assert payload.endswith("\n\n" + order) and payload.startswith(EN["quick_frame"]["q"]) and len(payload) <= HANDOFF_MAX
+    # a short order keeps what it did: the transcript cut to make room, the order whole at the end
+    for payload in payloads("Then push it."):
+        assert payload.endswith("A\n\nThen push it.") and len(payload) == HANDOFF_MAX
+    # without an order the transcript alone is cut at the cap
+    world.clock.advance(20)
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab")
+    detail = next(a for a in writes(world)[0] if a.startswith("--detail="))
+    assert len(detail) == len("--detail=") + HANDOFF_MAX
+    # over the cap the order is refused, never trimmed in silence, and nothing is filed or relayed
+    world.runner.calls.clear()
+    prompts.clear()
+    for to, size in (("tab", HANDOFF_ORDER_MAX + 1), ("control", HANDOFF_ORDER_MAX + 1), ("tab", 3600)):
+        with pytest.raises(ActionError) as err:
+            world.act("quick_handoff", conv=conv, to=to, text="Z" * size)
+        assert err.value.code == "invalid_argument" and err.value.field == "text"
+    assert not writes(world) and not prompts
 
 
 def test_codex_switch_resume_and_switch_back_preserve_history(world):

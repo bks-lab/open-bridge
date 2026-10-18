@@ -6,7 +6,7 @@ tabs and sessions, workers, machines, tokens).
     python3 scripts/bridge-cockpit.py serve [--port N] [--ignore-disabled]   # foreground
     python3 scripts/bridge-cockpit.py start [--port N] [--json]              # in the background, reused
     python3 scripts/bridge-cockpit.py open [--via auto|cmux|system|none]     # start, then open the page
-    python3 scripts/bridge-cockpit.py url                                    # the link with the token
+    python3 scripts/bridge-cockpit.py url                                    # a login link, good once for a minute
     python3 scripts/bridge-cockpit.py status [--json]
     python3 scripts/bridge-cockpit.py stop
     python3 scripts/bridge-cockpit.py autostart on|off|status                # macOS: run from login on, always there
@@ -15,7 +15,8 @@ tabs and sessions, workers, machines, tokens).
 Global flags before the command: --root R (the Bridge, default this repo) and
 --state-dir DIR (default R/.bridge/cockpit). The code that runs is the checkout this file lies in,
 so a cockpit from a branch can be pointed at the live Bridge with --root. The server binds 127.0.0.1 only, keeps one
-key per Bridge (R/.bridge/cockpit/token, 0600) and refuses to start until cockpit.enabled is true in
+key per Bridge (R/.bridge/cockpit/token, 0600) that no command prints (links carry a one-time
+login code made from it) and refuses to start until cockpit.enabled is true in
 bridge-config.yaml. It runs the Bridge scripts (inbox.py, task.py, workplace.py) and collects with
 --no-save. Exit codes: 0 ok, 1 not running, 2 disabled or invalid config, 3 port in use,
 4 did not come up, 5 open failed. User doc: docs/bridge-cockpit.md.
@@ -118,7 +119,9 @@ def running_info(root: Path, state_dir: Path) -> dict | None:
 
 
 def link(info: dict) -> str:
-    return f"http://127.0.0.1:{info['port']}/?token={info['token']}"
+    """A login link: a code made from the key, good once and for a minute, never the key itself."""
+    from lib.bridge_cockpit.server import login_code
+    return f"http://127.0.0.1:{info['port']}/?code={login_code(info['token'], time.time() * 1000)}"
 
 
 def plain(port: int) -> str:
@@ -255,7 +258,7 @@ def cmd_open(args, root: Path, state_dir: Path) -> int:
             ok = False
     if not ok:
         print(f"bridge-cockpit: could not open the page. {plain(info['port'])} "
-              "(the link with the token: python3 scripts/bridge-cockpit.py url)", file=sys.stderr)
+              "(a login link: python3 scripts/bridge-cockpit.py url)", file=sys.stderr)
         if args.json:
             print(json.dumps({"opened": "none", "port": info["port"], "reused": info["reused"], "error": "open failed"}))
         return 5
@@ -405,7 +408,7 @@ def cmd_autostart(args, root: Path, state_dir: Path) -> int:
 def cmd_new_token(args, root: Path, state_dir: Path) -> int:
     from lib.bridge_cockpit.server import forget_token
     forget_token(state_dir)
-    print("a new key on the next start: `stop`, `start`, then open `url` once in each browser")
+    print("a new key on the next start: `stop`, `start`, then open a link from `url` in each browser")
     return 0
 
 
@@ -424,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("open", help="start, then open the page")
     p.add_argument("--via", choices=["auto", "cmux", "system", "none"], default=None)
     p.add_argument("--json", action="store_true")
-    sub.add_parser("url", help="print the link with the token")
+    sub.add_parser("url", help="print a login link (a one-time code, good for a minute)")
     p = sub.add_parser("status", help="is it running")
     p.add_argument("--json", action="store_true")
     sub.add_parser("stop", help="stop the server")

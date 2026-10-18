@@ -18,8 +18,10 @@ python3 scripts/bridge-cockpit.py open --json
 ```
 
 It starts the server in the background (or reuses the running one) and opens the page itself: a
-browser tab in the control workspace when the terminal driver can, else the default browser. Report
-the answer's `url` in one line and nothing else. Arguments after `/cockpit` pass through:
+browser tab in the control workspace when the terminal driver can, else the default browser. The
+answer is `{"opened": ..., "port": ..., "reused": ...}`: report in one line where it `opened` and
+the address `http://127.0.0.1:<port>/`, nothing else. Never run `url` or `start` just to show a link:
+their link carries a login code, and a login code does not belong in the conversation. Arguments after `/cockpit` pass through:
 `--via auto|cmux|system|none` picks where it opens, `status`, `url` and `stop` run that command
 instead of `open`.
 
@@ -30,4 +32,4 @@ instead of `open`.
 | 2 | `cockpit.enabled` is not `true` (or the config is invalid) | how to switch it on: `cockpit: {enabled: true}` in `bridge-config.yaml` |
 | 3 | the port is taken | which port (`cockpit.port`) and that another program holds it |
 | 4 | the server did not come up | the last lines of `.bridge/cockpit/server.log` |
-| 5 | the page could not be opened | the `url` to open by hand |
+| 5 | the page could not be opened | that `python3 scripts/bridge-cockpit.py url` in a terminal prints a login link to open by hand (once, within a minute) |

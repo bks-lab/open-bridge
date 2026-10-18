@@ -52,6 +52,10 @@ CLOSE_REASONS = ("done", "not_doing", "superseded", "elsewhere", "auto")
 DECLINED_REASONS = frozenset({"not_doing", "superseded"})
 # why an inbox item is dropped (inbox.py DROP_REASONS); family and source leave a mute rule behind
 DROP_REASONS = ("once", "duplicate", "family", "source")
+# a quick chat handed on: what reaches the inbox item or the control session, and the most the order
+# typed on handing on may take of it, so some of the conversation always comes along
+HANDOFF_MAX = 3500
+HANDOFF_ORDER_MAX = 3000
 
 SHORT_TIMEOUT = 30
 LAUNCH_TIMEOUT = 150
@@ -1126,20 +1130,23 @@ class Actions:
         (the workplace's agent model, Sonnet or more, never the quick model), "control" gives it to the
         control session through the relay."""
         order = (text or "").strip()
+        if len(order) > HANDOFF_ORDER_MAX:
+            # refused, never trimmed: a cut order would start the work on half the instruction
+            raise bad_arg("text", f"length must be 1 to {HANDOFF_ORDER_MAX}")
         text = self.app.quick.transcript(conv)
         if not text:
             raise ActionError(409, "stale_row", "the conversation has no answer yet", "conv")
         # what the person adds on handing on is the order, kept whole at the end
-        text = f"{text[:3500 - len(order) - 2]}\n\n{order}" if order else text
+        text = f"{text[:HANDOFF_MAX - len(order) - 2]}\n\n{order}" if order else text[:HANDOFF_MAX]
         if to == "control":
             if not self.app.cfg.relay:
                 raise self.not_applicable("no control session: the relay is off", "to")
-            record, online = self.ask_relay(ctx, "free", self.tx["handoff_control"].format(text=text[:3500]))
+            record, online = self.ask_relay(ctx, "free", self.tx["handoff_control"].format(text=text))
             if not online:
                 ctx.note(self.tx["handoff_offline"], bad=True)
             return
         first = self.app.quick.first_question(conv)
-        new_id = self.inbox_add(ctx, conv, first, text[:3500])
+        new_id = self.inbox_add(ctx, conv, first, text)
         if new_id is not None:
             got = self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first}], "go", self.app.cfg.target)
             if got == "busy" and order:

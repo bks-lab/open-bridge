@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the news ticker, the status pages, the task check, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-17
+last_updated: 2026-10-18
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -119,14 +119,14 @@ an edit, start a new session or run `/reload-plugins`. More in
 In a Claude Code session in the Bridge root, type `/cockpit`. The skill
 runs `python3 scripts/bridge-cockpit.py open --json`: the server starts (or the
 running one is reused) and the page opens where `open_in` says. The note in
-the conversation names `http://127.0.0.1:<port>/` and never the key in the
-link.
+the conversation names only where it opened and `http://127.0.0.1:<port>/`,
+never a link with a key or a login code.
 
 From any terminal in the Bridge root:
 
 ```bash
 python3 scripts/bridge-cockpit.py open      # start if needed, then open the page
-python3 scripts/bridge-cockpit.py url       # print the link with its key
+python3 scripts/bridge-cockpit.py url       # print a login link (works once, for a minute)
 python3 scripts/bridge-cockpit.py status    # running? port, open pages, relay
 python3 scripts/bridge-cockpit.py stop      # stop the server
 python3 scripts/bridge-cockpit.py autostart on|off|status   # macOS: run from login on
@@ -134,11 +134,14 @@ python3 scripts/bridge-cockpit.py new-token # a new key on the next start
 ```
 
 **Open it by its address.** The key stays the same across restarts (it lives
-in `.bridge/cockpit/token`, mode 0600). Open the link from `url` once in a
-browser; it sets a cookie for a year, and from then on the bare address
-`http://127.0.0.1:<port>/` opens the page in that browser, so a bookmark is
-enough. `new-token` makes a new key on the next start, and every browser goes
-through `url` once more.
+in `.bridge/cockpit/token`, mode 0600) and no command prints it. `url` (and
+`start`) print a login link instead: it carries a code made from the key that
+works once and only for a minute. Open it in a browser; it sets a cookie for
+three days, and until then the bare address `http://127.0.0.1:<port>/` opens
+the page in that browser, so a bookmark is enough. After three days the page
+asks for a fresh link (`url`, or `/cockpit`). `new-token` makes a new key on
+the next start, which also ends every cookie, and every browser goes through
+`url` once more.
 
 **Always there.** Without autostart the server runs until you stop it or the
 computer restarts. `autostart on` (macOS) installs a LaunchAgent
@@ -990,13 +993,18 @@ The page can approve inbox entries and start agents, so it is built to do
 nothing a stranger could trigger:
 
 - the server binds `127.0.0.1` only, never every interface;
-- every start makes a new random key; the link carries it once, the server
-  swaps it for a cookie (`HttpOnly`, `SameSite=Strict`, named after the port,
-  `bw_token_<port>`, so two Bridges on one computer keep their own) and the
-  address bar keeps no key;
+- the key is made once and kept in `.bridge/cockpit/token` across restarts
+  (`new-token` makes a new one on the next start). No command and no skill
+  prints it: a link from `url`, `start` or `open` carries a login code made
+  from the key (HMAC-SHA256), which works once and only within a minute. The
+  server swaps the code for a cookie (`HttpOnly`, `SameSite=Strict`, named
+  after the port, `bw_token_<port>`, so two Bridges on one computer keep their
+  own) whose value is also derived from the key and dated, so the cookie is
+  not the key and the server stops taking it after three days; the address
+  bar keeps no code;
 - every request must name `127.0.0.1:<port>` or `localhost:<port>` as its
-  host, every click must come from the page itself (`Origin`, a second copy
-  of the key in a header, `Sec-Fetch-Site`), and the page allows no frames,
+  host, every click must come from the page itself (`Origin`, a second value
+  derived from the key in a header, `Sec-Fetch-Site`), and the page allows no frames,
   no scripts from elsewhere and no external addresses at all;
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,
   close, settle (done or not doing), urgency, priority, note, check tasks, keep open, close task, launch, adopt, send, key,
@@ -1041,8 +1049,8 @@ nothing a stranger could trigger:
   between « and » as data, never as an instruction of yours.
 
 **Limits.** Browsers send a cookie to every server on `127.0.0.1`, whatever
-its port. Another local web server you open can therefore read the key in
-the cookie and use it. That needs a program running on your computer, which
+its port. Another local web server you open can therefore read the cookie and
+use it until it ends. That needs a program running on your computer, which
 could also read `server.json`; stop the dashboard (`bridge-cockpit.py stop`) when
 you test web code you do not trust on this computer.
 
@@ -1172,6 +1180,7 @@ Everything lives under `.bridge/cockpit/` in the Bridge root, which git ignores:
 
 | File | What |
 |---|---|
+| `token` | the key, kept across restarts until `new-token` (readable by you only) |
 | `server.json` | the running server: pid, port, key (readable by you only) |
 | `server.log` | errors, never a key, cookie or request body |
 | `audit.log` | one line per write action |
@@ -1355,7 +1364,7 @@ to copy.
 
 | You see | Why, and what to do |
 |---|---|
-| the page says to open it with the link from `bridge-cockpit.py url` | first visit in this browser, the cookie is gone, or `new-token` made a new key: run `python3 scripts/bridge-cockpit.py url` and open that link once, or `/cockpit` |
+| the page says to open it with the link from `bridge-cockpit.py url` | first visit in this browser, the cookie is gone or older than three days, or `new-token` made a new key: run `python3 scripts/bridge-cockpit.py url` and open that link within a minute, or `/cockpit` |
 | the bare address does not answer | the server is not running: `python3 scripts/bridge-cockpit.py start`, or `autostart on` so it runs from login |
 | `/cockpit` is an unknown command | the session does not run in the Bridge root, or `skills/cockpit` is missing in this Bridge; `python3 scripts/bridge-cockpit.py open` works from any terminal |
 | `/cockpit` or `open` says the cockpit is off | `cockpit.enabled` is not `true` or the `cockpit:` block has an invalid value |

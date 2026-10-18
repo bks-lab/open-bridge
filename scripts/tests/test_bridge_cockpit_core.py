@@ -245,9 +245,9 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 app = srv.app
 def call(method, path, body=None):
     c = http.client.HTTPConnection("127.0.0.1", app.port, timeout=5)
-    h = {"Host": f"127.0.0.1:{app.port}", "Cookie": f"{app.cookie_name}={app.token}"}
+    h = {"Host": f"127.0.0.1:{app.port}", "Cookie": f"{app.cookie_name}={app.session_value()}"}
     if body is not None:
-        h.update({"X-Bridge-Token": app.token, "Origin": f"http://127.0.0.1:{app.port}", "Content-Type": "application/json"})
+        h.update({"X-Bridge-Token": app.csrf, "Origin": f"http://127.0.0.1:{app.port}", "Content-Type": "application/json"})
     c.request(method, path, body=json.dumps(body).encode() if body is not None else None, headers=h)
     r = c.getresponse(); data = r.read(); c.close()
     return r.status, data
