@@ -5142,3 +5142,93 @@ def test_a_reconnecting_page_gets_the_whole_text_so_far(world, monkeypatch):
     assert full["full"] is True and full["at"] == 0 and full["text"] == "Seven of eleven."
     assert full["seq"] == seen[1]["seq"]                  # the pieces up to here are in it already
     assert world.app.state_payload()["quick_live"] == {}  # the turn is over: nothing live any more
+
+
+# ---------------------------------------------------------------- #386: the task list only when tasks changed
+
+def _bump(path: Path, step: int = 1) -> None:
+    st = os.stat(path)
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + step * 1_000_000_000))
+
+
+def test_a_delta_from_an_inbox_change_does_not_list_the_tasks(world):
+    from lib.bridge_cockpit import watch
+    watcher = watch.Watcher(world.app)
+    world.runner.calls.clear()
+    _bump(world.root / "work" / "inbox" / YES_ID / "item.yaml")
+    _bump(world.root / "work" / "log.md")
+    assert watcher.check(100.0) is False
+    assert watcher.check(100.0 + watch.DEBOUNCE_S) is True
+    world.app.collector.drain()
+    assert len(collect_calls(world)) == 1
+    assert world.runner.of("workplace.tasks") == []
+
+
+def test_a_change_under_tasks_or_streams_or_a_full_pass_lists_the_tasks(world):
+    from lib.bridge_cockpit import watch
+    watcher = watch.Watcher(world.app)
+    world.runner.calls.clear()
+    _bump(world.root / "work" / "tasks" / "demo-task" / "STATUS.md")
+    watcher.check(100.0)
+    assert watcher.check(100.0 + watch.DEBOUNCE_S) is True
+    world.app.collector.drain()
+    assert len(world.runner.of("workplace.tasks")) == 1
+    # a new stream counts as well
+    world.runner.calls.clear()
+    (world.root / "work" / "streams" / "new-stream").mkdir()
+    (world.root / "work" / "streams" / "new-stream" / "STATUS.md").write_text("---\nstatus: doing\n---\n", encoding="utf-8")
+    watcher.check(200.0)
+    assert watcher.check(200.0 + watch.DEBOUNCE_S) is True
+    world.app.collector.drain()
+    assert len(world.runner.of("workplace.tasks")) == 1
+    # nothing changed since: a plain delta leaves the list alone, a full pass lists it anyway
+    world.runner.calls.clear()
+    world.app.collector.request("delta")
+    world.app.collector.drain()
+    assert world.runner.of("workplace.tasks") == []
+    world.app.collector.request("full")
+    world.app.collector.drain()
+    assert len(world.runner.of("workplace.tasks")) == 1
+
+
+def test_closing_and_reopening_a_task_from_the_cockpit_refreshes_the_list(world):
+    remaining = [t for t in TASKS if t["slug"] != "other-task"]
+    world.runner.handlers["workplace.tasks"] = lambda argv: ok(remaining)
+    world.act("task_close", keys=["task:other-task"], reason="done")
+    world.app.collector.drain()
+    assert all(t["slug"] != "other-task" for t in world.app.collector.tasks)
+    world.runner.handlers["workplace.tasks"] = lambda argv: ok(TASKS)
+    world.act("task_reopen", slug="other-task")
+    world.app.collector.drain()
+    assert any(t["slug"] == "other-task" for t in world.app.collector.tasks)
+
+
+def test_a_pass_that_took_n_ms_holds_the_next_watched_delta_for_n_ms(world):
+    from lib.bridge_cockpit import watch
+    original = world.runner.handlers["briefing.collect"]
+    during = []
+
+    def slow(argv):
+        during.append(world.app.collector.delta_hold_ms())
+        world.clock.now += 4000
+        return original(argv)
+
+    world.runner.handlers["briefing.collect"] = slow
+    world.app.collector.request("delta")
+    world.app.collector.drain()
+    assert during and during[0] > 0                          # a pass in flight holds a watched delta
+    assert world.app.collector.delta_hold_ms() >= 4000
+    world.clock.now += 1000
+    assert 2900 <= world.app.collector.delta_hold_ms() <= 3000
+    world.runner.handlers["briefing.collect"] = original
+    watcher = watch.Watcher(world.app)
+    world.runner.calls.clear()
+    _bump(world.root / "work" / "inbox" / YES_ID / "item.yaml")
+    watcher.check(100.0)
+    # the debounce is over, the hold of the slow pass is not
+    assert watcher.check(100.0 + watch.DEBOUNCE_S) is False
+    assert world.app.collector.is_idle()
+    world.clock.now += 3000
+    assert watcher.check(100.0 + watch.DEBOUNCE_S + 3.0) is True
+    world.app.collector.drain()
+    assert len(collect_calls(world)) == 1

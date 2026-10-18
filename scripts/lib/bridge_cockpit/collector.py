@@ -4,7 +4,9 @@
 Three passes run `briefing.py collect --json --no-save` (never without --no-save: the
 snapshot baseline of .bridge/briefings/ belongs to the terminal briefing): `quick`
 leaves out the slow trackers and command sections, `full` asks everything, `delta`
-asks only what changes on disk. Each pass is parsed, merged with the previous view
+asks only what changes on disk. The task list (`workplace.py tasks`) is read on every
+quick and full pass, but on a delta only when work/tasks or work/streams changed since
+the last read or a cockpit action asked for it. Each pass is parsed, merged with the previous view
 (model.merge_view), joined with the task list (model.with_tasks) and turned into the
 model the page renders (`build_model`). A request while a pass runs is queued as the
 strongest of what was asked (full > quick > delta). Rules: contract section 3.4.
@@ -25,6 +27,7 @@ from typing import Any
 from . import model as m
 from .daybook import week_done
 from .details import INBOX_ID_RE
+from .watch import task_snapshot
 from . import returns as ret
 
 TASK_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")      # the same rule as actions.SLUG_RE
@@ -268,11 +271,18 @@ class Collector:
         self.starting: dict[str, float] = {}
         # when the last full pass started, successful or not: tick waits full_minutes from it
         self.full_attempt_ms = 0.0
+        # the task list: a delta reads it only when an action asked or the task tree changed since the last read
+        self.pending_tasks = False
+        self.tasks_seen: dict[str, int] | None = None
+        # the last pass's end and length, so the watcher's next delta waits at least that long (delta_hold_ms)
+        self.ended_ms = 0.0
+        self.pass_ms = 0.0
         self.stop = False
 
     # ------------------------------------------------------------ queue
 
-    def request(self, kind: str, fresh: bool = False) -> None:
+    def request(self, kind: str, fresh: bool = False, tasks: bool = False) -> None:
+        """Queue a pass; `tasks` makes a delta read the task list even when the task tree looks unchanged."""
         with self.cond:
             busy = self.running is not None
             if busy and kind == "both":
@@ -282,8 +292,17 @@ class Collector:
             if self.pending is None or RANK[kind] > RANK[self.pending]:
                 self.pending = kind
             self.pending_fresh = self.pending_fresh or fresh
+            self.pending_tasks = self.pending_tasks or tasks
             self.cond.notify_all()
         self.app.broadcast("loading", self.loading_state())
+
+    def delta_hold_ms(self) -> float:
+        """How long a watched delta still waits: while a pass runs, and after one for as long as it took."""
+        with self.cond:
+            now = self.app.clock()
+            if self.running is not None:
+                return max(1.0, now - self.started_ms)
+            return max(0.0, self.ended_ms + self.pass_ms - now)
 
     def is_idle(self) -> bool:
         with self.cond:
@@ -304,8 +323,8 @@ class Collector:
         with self.cond:
             if self.pending is None:
                 return False
-            kind, fresh = self.pending, self.pending_fresh
-            self.pending, self.pending_fresh = None, False
+            kind, fresh, tasks = self.pending, self.pending_fresh, self.pending_tasks
+            self.pending, self.pending_fresh, self.pending_tasks = None, False, False
             if kind == "both":
                 kind, self.pending, self.pending_fresh = "quick", "full", fresh
             self.running, self.running_fresh, self.started_ms = kind, fresh, int(self.app.clock())
@@ -313,7 +332,7 @@ class Collector:
                 self.full_attempt_ms = self.started_ms
         self.app.broadcast("loading", self.loading_state())
         try:
-            self.run_pass(kind, fresh)
+            self.run_pass(kind, fresh, tasks)
         except Exception:  # never crash the worker
             self.app.log_error("collect pass failed:\n" + traceback.format_exc())
             self.last_error = {"pass": kind, "message": "internal error", "at": m.clock_time(self.app.clock())}
@@ -321,6 +340,8 @@ class Collector:
         finally:
             with self.cond:
                 self.running = None
+                self.ended_ms = self.app.clock()
+                self.pass_ms = max(0.0, self.ended_ms - self.started_ms)
             self.app.broadcast("loading", self.loading_state())
         return True
 
@@ -357,6 +378,7 @@ class Collector:
         return argv
 
     def refresh_tasks(self) -> None:
+        seen = task_snapshot(self.app.root)     # before the read: a change during it is read next time
         run = self.app.run(self.app.workplace("tasks", "--json"), LIST_TIMEOUT)
         if run.ok:
             try:
@@ -365,6 +387,7 @@ class Collector:
                 return
             with self.lock:
                 self.tasks = tasks
+                self.tasks_seen = seen
 
     def refresh_teams(self) -> None:
         run = self.app.run(self.app.workplace("teams", "--json"), LIST_TIMEOUT)
@@ -376,9 +399,11 @@ class Collector:
             with self.lock:
                 self.teams = teams
 
-    def run_pass(self, kind: str, fresh: bool) -> None:
+    def run_pass(self, kind: str, fresh: bool, tasks: bool = False) -> None:
         app = self.app
-        self.refresh_tasks()
+        # a second process of about a second: a delta from an inbox or log write does without it (#386)
+        if kind != "delta" or tasks or task_snapshot(app.root) != self.tasks_seen:
+            self.refresh_tasks()
         if not self.teams or (fresh and kind == "quick"):
             self.refresh_teams()
         started = app.clock()

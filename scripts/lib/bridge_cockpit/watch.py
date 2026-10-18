@@ -3,7 +3,8 @@
 
 Every 2 s the mtimes of work/inbox (the dir, each item.yaml, each events dir),
 work/tasks and work/streams (the dirs and each STATUS.md) and work/log.md are compared
-with the previous scan; a change schedules a `delta` pass, debounced 3 s. At local
+with the previous scan; a change schedules a `delta` pass, debounced 3 s and held for as
+long as the collector asks (after a pass at least as long as that pass took). At local
 midnight one `full` pass runs (deferred inbox items reopen without an event). The same
 thread scans the relay every 1 s, cleans it every 10 min and writes the server stats
 into server.json every 10 s. Nothing here reads file contents of the work tree.
@@ -33,15 +34,35 @@ def _mtime(path: str) -> int | None:
         return None
 
 
+def _put(out: dict[str, int], path: str) -> None:
+    value = _mtime(path)
+    if value is not None:
+        out[path] = value
+
+
+def task_snapshot(root: Path) -> dict[str, int]:
+    """path -> mtime_ns of work/tasks and work/streams (the dirs and each STATUS.md): what the task list reads."""
+    root = Path(root)
+    out: dict[str, int] = {}
+    for name in ("tasks", "streams"):
+        base = root / "work" / name
+        _put(out, str(base))
+        try:
+            for entry in os.scandir(base):
+                if entry.is_dir(follow_symlinks=False):
+                    _put(out, os.path.join(entry.path, "STATUS.md"))
+        except OSError:
+            pass
+    return out
+
+
 def snapshot(root: Path) -> dict[str, int]:
     """path -> mtime_ns of everything the watcher compares."""
     root = Path(root)
     out: dict[str, int] = {}
 
     def put(path: str) -> None:
-        value = _mtime(path)
-        if value is not None:
-            out[path] = value
+        _put(out, path)
 
     inbox = root / "work" / "inbox"
     put(str(inbox))
@@ -52,15 +73,7 @@ def snapshot(root: Path) -> dict[str, int]:
                 put(os.path.join(entry.path, "events"))
     except OSError:
         pass
-    for name in ("tasks", "streams"):
-        base = root / "work" / name
-        put(str(base))
-        try:
-            for entry in os.scandir(base):
-                if entry.is_dir(follow_symlinks=False):
-                    put(os.path.join(entry.path, "STATUS.md"))
-        except OSError:
-            pass
+    out.update(task_snapshot(root))
     put(str(root / "work" / "log.md"))
     return out
 
@@ -80,6 +93,13 @@ class Watcher:
             self.previous = current
             self.due = now_s + DEBOUNCE_S
         if self.due is not None and now_s >= self.due:
+            # a pass in flight, or one that just ended, holds the delta (#386): passes never follow each other
+            # faster than they take
+            hold = getattr(self.app.collector, "delta_hold_ms", None)
+            wait_ms = hold() if hold else 0
+            if wait_ms > 0:
+                self.due = now_s + wait_ms / 1000
+                return False
             self.due = None
             self.app.collector.request("delta")
             return True

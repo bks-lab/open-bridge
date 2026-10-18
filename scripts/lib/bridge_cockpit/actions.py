@@ -588,7 +588,7 @@ class Actions:
             app.note(note, "ok" if ok else "bad")
         app.collector.rebuild()
         if ctx.reload == "delta":
-            app.collector.request("delta")
+            app.collector.request("delta", tasks=True)     # a verb may have moved or edited a task
         if ctx.tabs_delay is not None:
             app.tabs.schedule(ctx.tabs_delay)
         return {"ok": ok, "verb": ctx.verb, "note": note, "steps": ctx.steps, "settled": ctx.settled,

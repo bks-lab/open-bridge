@@ -175,3 +175,30 @@ def test_loop_logs_a_failed_iteration_and_continues(tree: Path, monkeypatch: pyt
     assert len(app.errors) == 1
     assert "watch loop failed" in app.errors[0]
     assert "boom in one iteration" in app.errors[0]
+
+
+# ---------------------------------------------------------------- #386
+
+class HoldingCollector(Collector):
+    """A collector that still holds watched deltas for `hold` ms (a pass that took that long just ended)."""
+
+    def __init__(self, hold: float) -> None:
+        super().__init__()
+        self.hold = hold
+
+    def delta_hold_ms(self) -> float:
+        return self.hold
+
+
+def test_a_watched_delta_waits_out_the_hold_of_the_last_pass(tree: Path) -> None:
+    app = FakeApp(tree, local_ms(2026, 10, 18, 12, 0))
+    app.collector = HoldingCollector(2500.0)
+    w = watch.Watcher(app)
+    touch(item_yaml(tree), 1)
+    w.check(100.0)
+    assert w.check(100.0 + watch.DEBOUNCE_S) is False
+    app.collector.hold = 0.0
+    assert w.check(100.0 + watch.DEBOUNCE_S + 2.49) is False      # pushed by the hold it saw
+    assert w.check(100.0 + watch.DEBOUNCE_S + 2.5) is True
+    assert app.collector.requests == ["delta"]
+
