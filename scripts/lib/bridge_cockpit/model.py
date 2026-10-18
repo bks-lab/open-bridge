@@ -162,9 +162,28 @@ def parse_info(i: dict) -> dict:
             "row_id": as_text_or_null(i.get("row_id")),
             "flags": [f for f in _list(i.get("flags")) if isinstance(f, str) and len(f) <= 24][:12] or None,
             "who": as_text_or_null(i.get("who")),
+            "gh": parse_gh(i.get("gh")),
             "id": as_text_or_null(i.get("id")), "actionable": i.get("actionable") is True,
             "at": as_text_or_null(i.get("at")),
             "account": parse_account(i.get("account"))}
+
+
+def parse_gh(value: Any) -> dict | None:
+    """A GitHub row's facts (briefing_view.github_facts), checked again: the view file is input."""
+    if not isinstance(value, dict):
+        return None
+    texts = lambda v, n: [x for x in _list(v) if isinstance(x, str)][:n]   # noqa: E731
+    return {"title": as_text(value.get("title")), "repo": as_text_or_null(value.get("repo")),
+            "number": value.get("number") if isinstance(value.get("number"), int) else None,
+            "type": "pr" if value.get("type") == "pr" else "issue", "state": as_text_or_null(value.get("state")),
+            "status": as_text_or_null(value.get("status")), "labels": texts(value.get("labels"), 4),
+            "people": texts(value.get("people"), 3),
+            "prs": [{"n": p["n"], "draft": p.get("draft") is True} for p in _list(value.get("prs"))
+                    if isinstance(p, dict) and isinstance(p.get("n"), int)][:3],
+            "task": as_text_or_null(value.get("task")), "stream": value.get("stream") is True,
+            "changed": as_text_or_null(value.get("changed")),
+            "quiet": value.get("quiet") if isinstance(value.get("quiet"), int) else None,
+            "note": as_text_or_null(value.get("note"))}
 
 
 def parse_boards(value: Any) -> list[dict] | None:

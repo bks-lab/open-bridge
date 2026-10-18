@@ -1724,6 +1724,7 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
         row["flags"] = github_flags(item, now)
         if _text(item.get("assignee")):
             row["who"] = _text(item["assignee"])[:60]     # the person filter
+        row["gh"] = github_facts(item, now)
     # an event's calendar: a fact when it is opened, a filter on the dates page
     tags = tags_of({labels["tag_calendar"]: _text(item["calendar"])}) if kind == "calendar" and _text(item.get("calendar")) \
         else tags_of(item.get("tags"))
@@ -1777,6 +1778,31 @@ def github_flags(item: dict, now: dt.datetime) -> list:
     if changed is not None and (now - changed).days >= QUIET_DAYS:      # _when gives local, naive times
         flags.append("quiet")
     return flags
+
+
+GH_ID_RE = re.compile(r"^([\w.-]+/[\w.-]+)#(\d+)\Z")
+
+
+def github_facts(item: dict, now: dt.datetime) -> dict:
+    """A GitHub row's facts as a dashboard draws them, one field each instead of a detail line: the plain
+    title, repository and number, the normalized state and the board's own word for it, labels, people, the
+    pull requests that close it, the task that syncs it, when it last changed and how long it has been quiet."""
+    m = GH_ID_RE.match(_text(item.get("id")))
+    people = [p for p in (item.get("assignees") or [item.get("assignee")]) if isinstance(p, str) and p][:3]
+    linked = item.get("linked_task") if isinstance(item.get("linked_task"), dict) else {}
+    changed = _when(item.get("changed_at"))
+    quiet = (now - changed).days if changed is not None else None
+    status = re.sub(r"^[^0-9A-Za-zÄÖÜäöü]+", "", _text(item.get("raw_state"))).strip()   # without its emoji
+    return {"title": _text(item.get("title"))[:300], "repo": m.group(1) if m else None,
+            "number": int(m.group(2)) if m else None, "type": "pr" if item.get("type") == "pr" else "issue",
+            "state": _text(item.get("state")) or None, "status": status[:40] or None,
+            "labels": [_text(x)[:40] for x in item.get("labels") or [] if _text(x)][:4], "people": people,
+            "prs": [{"n": int(str(p["id"]).rsplit("#", 1)[-1]), "draft": bool(p.get("draft"))}
+                    for p in item.get("prs") or [] if isinstance(p, dict) and str(p.get("id", "")).rsplit("#", 1)[-1].isdigit()][:3],
+            "task": _text(linked.get("slug")) or None, "stream": bool(linked.get("stream")),
+            "changed": changed.isoformat(timespec="minutes") if changed else None,
+            "quiet": quiet if quiet is not None and quiet >= QUIET_DAYS else None,
+            "note": _text(item.get("note")) or None}
 
 
 def github_metrics(items: list, done: object, now: dt.datetime) -> list:

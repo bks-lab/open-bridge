@@ -163,7 +163,7 @@ def merge(searched: list, carded: list) -> list:
                         "group": hit.get("project") or rid.split("#")[0]}
             continue
         row["assigned_to_me"] = bool(row.get("assigned_to_me") or hit.get("assigned_to_me"))
-        for key in ("labels", "assignee", "changed_at", "url"):
+        for key in ("labels", "assignee", "assignees", "changed_at", "url"):
             if not row.get(key) and hit.get(key):
                 row[key] = hit[key]
         if hit.get("category") == "qa":            # asked to review it: the reading that needs you

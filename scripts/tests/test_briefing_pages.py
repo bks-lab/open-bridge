@@ -162,7 +162,10 @@ def test_tracker_rows_fill_every_column():
                   "tone": None, "url": "https://example.test/acme/app/pull/7", "task": None, "ask": True, "mark": None,
                   "actionable": True, "id": "acme/app#7",
                   # a GitHub row: the id a dashboard asks its detail by, and what the figures filter by
-                  "row_id": "acme/app#7", "flags": []}
+                  "row_id": "acme/app#7", "flags": [], "gh": pr["gh"]}
+    # the facts one field each (github_facts), the plain title without its id
+    assert pr["gh"]["title"] == "Fix login" and pr["gh"]["repo"] == "acme/app" and pr["gh"]["number"] == 7
+    assert pr["gh"]["type"] == "pr"
     # a project that the id already names is not repeated; another one is
     assert old["detail"] == "open · Roadmap · P1"
     assert old["when"] == "05.10"

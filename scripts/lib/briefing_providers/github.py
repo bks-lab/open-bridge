@@ -71,6 +71,7 @@ def normalize(raw: dict, *, is_pr: bool, me: str | None, assignee_query: str | N
         "raw_state": "draft" if raw.get("isDraft") else raw.get("state"),
         "type": "pr" if is_pr else "issue",
         "assignee": assignees[0] if assignees else None,
+        "assignees": assignees,
         "assigned_to_me": bool(mine),
         "url": raw.get("url"),
         "changed_at": raw.get("updatedAt"),

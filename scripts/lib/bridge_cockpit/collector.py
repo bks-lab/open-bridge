@@ -71,7 +71,7 @@ def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | No
             "priority": it.get("priority"), "state": it.get("state"), "lines": it.get("lines", []),
             "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"),
             "tags": it.get("tags"), "account": it.get("account"), "inbox": it.get("inbox"),
-            "actions": it.get("actions"), "row_id": it.get("row_id"), "at": it.get("at"), "flags": it.get("flags"), "who": it.get("who"),
+            "actions": it.get("actions"), "row_id": it.get("row_id"), "at": it.get("at"), "flags": it.get("flags"), "who": it.get("who"), "gh": it.get("gh"),
             "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view)}
 
 

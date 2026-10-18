@@ -603,6 +603,7 @@ def normalize_gh_item(raw: dict, board: dict, assignee_me: str | None) -> dict |
         "state": state,
         "type": content.get("type", "issue"),
         "assignee": assignees[0] if assignees else None,
+        "assignees": assignees,
         "assigned_to_me": bool(assignee_me) and assignee_me in assignees,
         "url": content.get("url"),
         "changed_at": raw.get("updatedAt") or content.get("updatedAt"),
