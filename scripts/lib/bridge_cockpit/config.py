@@ -68,6 +68,8 @@ class WebConfig:
     # the triage sorts every task and inbox item once a day by itself (a model call): only when asked for
     triage_daily: bool = False
     chat_layout: str = "classic"
+    # a quick chat untouched this many hours leaves the list into the archive (cockpit.chat_keep_hours, 0: never)
+    chat_keep_hours: float = 24
     # the model an agent starts with (cockpit.launch_model, model_route.DEFAULTS): off unless switched on;
     # the settings page may change it on top (launch.py), this is what the config says
     launch_model: dict = field(default_factory=lambda: dict(mr.DEFAULTS))
@@ -194,4 +196,5 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                      jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
                      jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
                      snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True,
-                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic")
+                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
+                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

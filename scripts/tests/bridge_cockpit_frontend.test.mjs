@@ -3034,6 +3034,14 @@ test('roomsOf: the longest Bridge path wins, the real folder counts, workspaces 
   assert.deepEqual(r.bridges.map(b => b.id), ['outer'])
 })
 
+test('rooms: every quick chat in the sidebar can be removed, by a button beside the row, never inside it', () => {
+  const rooms = read('views/rooms.js')
+  assert.match(rooms, /class="room-chat-row"/)
+  assert.match(rooms, /class="room-x"[^`]*onClick=\$\{\(\) => c\.quickForget\(x\.id\)\}/)
+  assert.match(rooms, /x\.running \? null : html`<button type="button" class="room-x"/)   // one still answering stays
+  assert.match(read('style.css'), /\.room-chat-row:hover \.room-x/)
+})
+
 test('rooms: the pane never jumps on its own, the header knows the rail is gone, the copy command is quoted', () => {
   const rooms = read('views/rooms.js')
   assert.doesNotMatch(rooms, /x\.state === 'waiting'\)\)/)                 // no auto pick of a waiting tab

@@ -42,12 +42,15 @@ function Chats({ convs, s, c, here }) {
   return html`<div class="room-chats">
     <${Item} on=${here.kind === 'chat' && !s.ui.quickConv} cls="room-chat" onClick=${() => { c.newQuick(); c.pickRoom({ kind: 'chat' }) }}>
       <span class="room-name">+ ${t.quickNew}</span><//>
-    ${shown.map(x => html`<${Item} key=${x.id} on=${here.kind === 'chat' && s.ui.quickConv === x.id} cls="room-chat" title=${x.turns[0]?.q}
-      onClick=${() => { c.pickQuick(x.id); c.pickRoom({ kind: 'chat' }) }}>
-      ${x.running ? html`<${Dot} token="info" pulse />` : html`<span class="room-glyph" aria-hidden="true">?</span>`}
-      <span class="room-name">${short(x.turns[0]?.q ?? '', 40)}</span>
-      <span class="room-meta muted small">${chatStamp(x.last_ms ?? x.started_ms, s.now, language())}</span>
-    <//>`)}
+    ${shown.map(x => html`<div class="room-chat-row" key=${x.id}>
+      <${Item} on=${here.kind === 'chat' && s.ui.quickConv === x.id} cls="room-chat" title=${x.turns[0]?.q}
+        onClick=${() => { c.pickQuick(x.id); c.pickRoom({ kind: 'chat' }) }}>
+        ${x.running ? html`<${Dot} token="info" pulse />` : html`<span class="room-glyph" aria-hidden="true">?</span>`}
+        <span class="room-name">${short(x.turns[0]?.q ?? '', 40)}</span>
+        <span class="room-meta muted small">${chatStamp(x.last_ms ?? x.started_ms, s.now, language())}</span>
+      <//>
+      ${x.running ? null : html`<button type="button" class="room-x" title=${t.quickForgetHint} aria-label=${t.quickForget} onClick=${() => c.quickForget(x.id)}>×</button>`}
+    </div>`)}
     ${convs.length > CHATS_SHOWN ? html`<button type="button" class="btn-link small room-more" onClick=${() => setAll(!all)}>
       ${all ? t.cardLess : t.rooms.allChats(convs.length)}</button>` : null}
   </div>`

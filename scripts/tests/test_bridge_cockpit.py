@@ -4457,6 +4457,53 @@ def test_the_oldest_chat_beyond_the_limit_goes_to_the_archive(world, monkeypatch
     assert rows[0]["conv"]["turns"][0]["q"] == "frage 0"
 
 
+def test_a_chat_untouched_for_a_day_goes_to_the_archive(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    old = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "gestern"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    world.clock.advance(23 * 3600)
+    fresh = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "heute"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    assert {c["id"] for c in world.app.quick.state()["convs"]} == {old, fresh}   # 23 h: still there
+    world.clock.advance(2 * 3600)
+    assert [c["id"] for c in world.app.quick.state()["convs"]] == [fresh]
+    _, rows = archived(world, "quick")
+    assert [(r["conv"]["id"], r["why"]) for r in rows] == [(old, "expired")]
+    assert [c["id"] for c in json.loads((world.app.state_dir / "quick.json").read_text())] == [fresh]
+
+
+def test_an_expiry_the_archive_refuses_is_tried_again_only_after_an_hour(world, monkeypatch):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "alt"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    (world.app.state_dir / "chats").write_text("not a folder")
+    errors = []
+    monkeypatch.setattr(world.app, "log_error", errors.append)
+    world.clock.advance(25 * 3600)
+    for _ in range(5):
+        assert [c["id"] for c in world.app.quick.state()["convs"]] == [conv]
+    assert len([e for e in errors if "not archived" in e]) == 1
+    world.clock.advance(3601)
+    world.app.quick.state()
+    assert len([e for e in errors if "not archived" in e]) == 2
+
+
+def test_chat_keep_hours_sets_the_day_and_zero_keeps_them(tmp_path):
+    assert load_web_config(tmp_path, {}).chat_keep_hours == 24
+    assert load_web_config(tmp_path, {"cockpit": {"chat_keep_hours": 2}}).chat_keep_hours == 2
+    assert load_web_config(tmp_path, {"cockpit": {"chat_keep_hours": 0}}).chat_keep_hours == 0
+    assert load_web_config(tmp_path, {"cockpit": {"chat_keep_hours": "x"}}).chat_keep_hours == 24
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  chat_keep_hours: 0\n")
+    try:
+        w.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+        conv = json.loads(w.post("/api/ask", {"kind": "free", "args": {"text": "bleib"}, "via": "quick"})[2])["conv"]
+        wait_quick(w)
+        w.clock.advance(30 * 24 * 3600)
+        assert [c["id"] for c in w.app.quick.state()["convs"]] == [conv]
+    finally:
+        w.close()
+
+
 def test_a_removed_agent_conversation_is_archived(world):
     a2a_peers(world, "alpha")
     world.runner.handlers["a2a.ask"] = lambda argv: a2a_answer(text="Antwort.")

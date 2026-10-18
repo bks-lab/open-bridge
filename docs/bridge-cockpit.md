@@ -79,6 +79,7 @@ their defaults:
 | `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
+| `chat_keep_hours` | `24` | a quick chat nobody touched for this many hours leaves the list into the archive (below); `0` = only the limit of 30 |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
@@ -1123,11 +1124,13 @@ The answer streams: the CLI runs with `--output-format stream-json --verbose
 reach the page as the `quick_live` event, at most every 0.3 s. Chats are kept
 in the state dir (`quick.json`, the last 30), so a chat goes on after a
 restart of the dashboard; one that was answering when it stopped says so.
-No chat is ever dropped: the 31st pushes the oldest, and "remove chat" takes
+No chat is ever dropped: the 31st pushes the oldest, a chat untouched for
+`chat_keep_hours` (a day by default) leaves on the next look at the list, and
+"remove chat" (or the × beside a chat in the sidebar of the chat as cmux) takes
 one, into the archive `chats/quick-YYYY-MM.jsonl` in the state dir (one line
-per chat, whole, with `why`: `overflow` or `removed`; A2A conversations go to
-`chats/agents-YYYY-MM.jsonl`). When the archive cannot be written, the chat
-stays in its list. Deleting for good means deleting that file by hand. The
+per chat, whole, with `why`: `overflow`, `expired` or `removed`; A2A
+conversations go to `chats/agents-YYYY-MM.jsonl`). When the archive cannot be
+written, the chat stays in its list, and an expiry is tried again an hour later. Deleting for good means deleting that file by hand. The
 Chat tab lists every kept chat (first question, when, model, cost) and opens
 one with its box ready; "As a tab" in the window moves the open chat there.
 

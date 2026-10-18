@@ -171,6 +171,7 @@ class Quick:
         self.codex = getattr(getattr(app, "runner", None), "codex", None)
         self.lock = threading.Lock()
         self.convs: dict[str, dict] = {}
+        self.expire_failed_ms = 0
         self.path = Path(app.state_dir) / "quick.json" if getattr(app, "state_dir", None) else None
         self.load()
 
@@ -220,8 +221,27 @@ class Quick:
         _, provider, _ = self.selection(model)
         return bool(self.codex if provider == "codex" else self.claude)
 
+    def expire(self, now: int) -> None:
+        """Called under the lock: a chat untouched for cockpit.chat_keep_hours goes to the archive."""
+        hours = getattr(getattr(self.app, "cfg", None), "chat_keep_hours", 24)
+        if not hours or now - self.expire_failed_ms < 3600 * 1000:
+            return
+        cutoff = now - hours * 3600 * 1000
+        gone = False
+        for c in list(self.convs.values()):
+            if c.get("running") or (c.get("last_ms") or c["started_ms"]) >= cutoff:
+                continue
+            if not self._archive(c, "expired", now):
+                self.expire_failed_ms = now   # the archive is down: keep them all, try again in an hour
+                break
+            del self.convs[c["id"]]
+            gone = True
+        if gone:
+            self.save()
+
     def state(self) -> dict:
         with self.lock:
+            self.expire(int(self.app.clock()))
             convs = sorted(self.convs.values(), key=lambda c: c.get("last_ms") or c["started_ms"], reverse=True)
             config_error = None
             try:
