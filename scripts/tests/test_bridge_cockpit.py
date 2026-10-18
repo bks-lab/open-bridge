@@ -3237,6 +3237,50 @@ def test_a_conversation_hands_on_to_an_agent_tab_or_the_control_session(world):
     assert writes(world)[1] == launch_argv(world, new_id, "go")
 
 
+def test_a_long_order_on_a_long_conversation_reaches_the_end_whole_within_the_cap(world, monkeypatch):
+    from lib.bridge_cockpit.actions import HANDOFF_MAX, HANDOFF_ORDER_MAX
+    from lib.bridge_cockpit.text import EN
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("A" * 5000, 0.002)
+    conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "what next?"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1300-what-next-a1b2\n")
+    prompts = []
+    real_ask = world.app.relay.ask
+    monkeypatch.setattr(world.app.relay, "ask", lambda kind, prompt, *a: prompts.append(prompt) or real_ask(kind, prompt, *a))
+    head = EN["handoff_control"].split("{text}")[0]
+
+    def payloads(order):
+        world.clock.advance(20)
+        world.runner.calls.clear()
+        prompts.clear()
+        world.act("quick_handoff", conv=conv, to="tab", text=order)
+        detail = next(a for a in writes(world)[0] if a.startswith("--detail="))[len("--detail="):]
+        world.act("quick_handoff", conv=conv, to="control", text=order)
+        return detail, prompts[0][len(head):]
+
+    # an order longer than the room left once the transcript is cut used to drop off the front cut
+    order = "Z" * (HANDOFF_ORDER_MAX - 1) + "!"
+    for payload in payloads(order):
+        assert payload.endswith("\n\n" + order) and payload.startswith(EN["quick_frame"]["q"]) and len(payload) <= HANDOFF_MAX
+    # a short order keeps what it did: the transcript cut to make room, the order whole at the end
+    for payload in payloads("Then push it."):
+        assert payload.endswith("A\n\nThen push it.") and len(payload) == HANDOFF_MAX
+    # without an order the transcript alone is cut at the cap
+    world.clock.advance(20)
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab")
+    detail = next(a for a in writes(world)[0] if a.startswith("--detail="))
+    assert len(detail) == len("--detail=") + HANDOFF_MAX
+    # over the cap the order is refused, never trimmed in silence, and nothing is filed or relayed
+    world.runner.calls.clear()
+    prompts.clear()
+    for to, size in (("tab", HANDOFF_ORDER_MAX + 1), ("control", HANDOFF_ORDER_MAX + 1), ("tab", 3600)):
+        with pytest.raises(ActionError) as err:
+            world.act("quick_handoff", conv=conv, to=to, text="Z" * size)
+        assert err.value.code == "invalid_argument" and err.value.field == "text"
+    assert not writes(world) and not prompts
+
+
 def test_codex_switch_resume_and_switch_back_preserve_history(world):
     from test_ai_services import events
     world.runner.handlers["claude.p"] = lambda argv: claude_answer("Claude first", 0.002)
