@@ -18,7 +18,7 @@
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { clamp, countTo, cursorOn, flash, flowAlpha, noise1, nowSec, o3, ramp, reducedMotion, ripples, spring, track, trackAt, tracking, typed, win } from './motion.js'
-import { CORE, H, W, X0, X1, Y0, Y1, costLine, launch, liveItems, orderPlan, pendingTitles, place, rowJump, tokenText } from './logic.js'
+import { CORE, H, W, X0, X1, Y0, Y1, costLine, launch, liveItems, orderPlan, pendingTitles, place, planOpen, rowJump, tokenText } from './logic.js'
 import { indexRows } from '../logic.js'
 import { T as dashText, language } from '../text.js'
 
@@ -219,12 +219,13 @@ function Matrix({ items, first, spots, emph, onDot }) {
   </g>`
 }
 
-function PlanList({ items, byKey, s, c, emph, setHover, listRef }) {
+function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, onOpen }) {
   const t = tx()
   const d = dashText()
   return html`<ol class="jev-plan" ref=${listRef}>
     ${items.map((it, i) => {
       const row = byKey.get(it.key)
+      const opens = !!planOpen(it, byKey, extra)
       const jump = rowJump(row)
       const selected = s.ui.pageDetail && s.ui.selectedKey === it.key
       return html`<li key=${it.key} data-row=${i} data-key=${it.key}
@@ -232,8 +233,8 @@ function PlanList({ items, byKey, s, c, emph, setHover, listRef }) {
         onMouseEnter=${() => setHover(it.key)} onMouseLeave=${() => setHover(null)}>
         <span class=${`jev-rank mono jev-${it.who}`} data-rank=${i}>${it.rank}</span>
         <span class="jev-row-main">
-          ${row ? html`<button type="button" class="btn-link jev-row-title" data-open=${it.key} title=${d.openDetail} aria-expanded=${String(selected)}
-              onFocus=${() => setHover(it.key)} onBlur=${() => setHover(null)} onClick=${e => c.peek(it.key, e.currentTarget)}>${it.title}</button>`
+          ${opens ? html`<button type="button" class="btn-link jev-row-title" data-open=${it.key} title=${d.openDetail} aria-expanded=${String(selected)}
+              onFocus=${() => setHover(it.key)} onBlur=${() => setHover(null)} onClick=${e => onOpen(it, e.currentTarget)}>${it.title}</button>`
             : html`<span class="jev-row-title">${it.title}</span>`}
           <span class="jev-row-meta">
             <span class=${`jev-pill jev-${it.who}`}>${it.who === 'me' ? t.me : t.delegate}</span>
@@ -561,11 +562,13 @@ export function JevPage({ s, c, ask = null, extra = null, store = 'tab', top = n
     if (changed) kick()
   })
 
-  const onDot = (it, e) => {
-    if (!byKey.has(it.key)) return
-    const from = listRef.current?.querySelector(`[data-open="${CSS.escape(it.key)}"]`) ?? e.currentTarget
-    c.peek(it.key, from)
+  // a dashboard row peeks; an inbox item or task only the work page holds (deferred) opens its drawer
+  const onOpen = (it, from) => {
+    const o = planOpen(it, byKey, extra)
+    if (o?.how === 'peek') c.peek(o.key, from)
+    else if (o?.how === 'item') c.openItem(o.key, o.it)
   }
+  const onDot = (it, e) => onOpen(it, listRef.current?.querySelector(`[data-open="${CSS.escape(it.key)}"]`) ?? e.currentTarget)
 
   const thinking = !plan && (st.reading || st.err)
   const calmNow = still()
@@ -606,7 +609,7 @@ export function JevPage({ s, c, ask = null, extra = null, store = 'tab', top = n
       </div>
       <aside class="jev-side panel">
         <h3 class="jev-side-title">${t.plan}</h3>
-        ${plan ? html`<${PlanList} items=${items} byKey=${byKey} s=${s} c=${c} emph=${emph} setHover=${setHover} listRef=${listRef} />`
+        ${plan ? html`<${PlanList} items=${items} byKey=${byKey} s=${s} c=${c} emph=${emph} setHover=${setHover} listRef=${listRef} extra=${extra} onOpen=${onOpen} />`
           : html`<ol class="jev-plan jev-plan-ghost">${titles.slice(0, 7).map((x, i) => html`<li key=${i} class="jev-row"><span class="jev-rank mono">·</span><span class="jev-row-title muted">${x}</span></li>`)}</ol>`}
       </aside>
     </div>`}

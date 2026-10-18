@@ -95,6 +95,21 @@ test('rowJump: a live tab first, else advise, else nothing', () => {
   assert.equal(logic.rowJump(undefined), null)
 })
 
+test('planOpen: a dashboard row peeks, a row only the work page holds opens its drawer', () => {
+  const byKey = new Map(logic.modelRows(MODEL).map(r => [r.key, r]))
+  assert.deepEqual(logic.planOpen({ key: 'task:b', title: 'Tidy the labels' }, byKey, null), { how: 'peek', key: 'task:b' })
+  // a deferred inbox item stands only on the work page: not in the model, but in extra
+  const extra = ['inbox:20261008-1535-x', 'task:closed-one', 'idea:7']
+  assert.deepEqual(logic.planOpen({ key: 'inbox:20261008-1535-x', title: 'Evaluate' }, byKey, extra),
+    { how: 'item', key: 'inbox:20261008-1535-x', it: { inbox: '20261008-1535-x', title: 'Evaluate' } })
+  assert.deepEqual(logic.planOpen({ key: 'task:closed-one', title: 'Old' }, byKey, extra),
+    { how: 'item', key: 'task:closed-one', it: { task: 'closed-one', title: 'Old' } })
+  // another kind of page row has no drawer of its own; a key nowhere opens nothing
+  assert.equal(logic.planOpen({ key: 'idea:7', title: 'Idea' }, byKey, extra), null)
+  assert.equal(logic.planOpen({ key: 'inbox:gone', title: 'Gone' }, byKey, extra), null)
+  assert.equal(logic.planOpen({ key: 'inbox:gone', title: 'Gone' }, byKey, null), null)
+})
+
 test('mockRating answers in the server shape with the real row keys, tokens and no price', () => {
   const r = logic.mockRating(MODEL)
   assert.equal(r.ok, true)

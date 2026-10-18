@@ -82,6 +82,16 @@ export function rowJump(row) {
   return null
 }
 
+/** What a click on a plan row or dot opens: a dashboard row its detail column ('peek'); an inbox item
+ *  or task only the work page holds (a deferred item, a closed task) its own drawer ('item'), as the
+ *  page's list view does; anything else nothing */
+export function planOpen(it, byKey, extra) {
+  if (byKey.has(it.key)) return { how: 'peek', key: it.key }
+  const m = /^(inbox|task):(.+)$/.exec(it.key)
+  if (!m || !(extra ?? []).includes(it.key)) return null
+  return { how: 'item', key: it.key, it: { [m[1]]: m[2], title: it.title } }
+}
+
 const quadrant = (u, im) => (u >= 0.5 ? (im >= 0.5 ? 'now' : 'hand') : (im >= 0.5 ? 'plan' : 'drop'))
 
 /** One invented rating in the server's shape (jev.py run): judgments seeded by the row keys, so
