@@ -1236,6 +1236,199 @@ export function usageToday(usage) {
   return { today: days[days.length - 1].output ?? 0, usual: earlier.length ? Math.round(earlier.reduce((a, b) => a + b, 0) / earlier.length) : null }
 }
 
+// ---------------------------------------------------------------- live cards on a page, stacked bars, cloud costs
+
+/** Where a page's live cards stand: `after` maps a section id to the cards right after it, `end` the cards at the
+ *  end of the page. A page without `cards:` keeps what `overview: true` alone drew (usage and noise at the end);
+ *  a card after a section the page does not show goes to the end */
+export function cardPlan(page) {
+  const cards = Array.isArray(page?.cards) ? page.cards
+    : page?.overview ? [{ id: 'usage', after: null }, { id: 'noise', after: null }] : []
+  const ids = new Set((page?.sections ?? []).map(sec => sec.id))
+  const plan = { after: {}, end: [] }
+  const seen = new Set()
+  for (const c of cards) {
+    if (seen.has(c.id)) continue   // a card stands once, where it is first named
+    seen.add(c.id)
+    if (c.after && ids.has(c.after)) (plan.after[c.after] ??= []).push(c.id)
+    else plan.end.push(c.id)
+  }
+  return plan
+}
+
+/** The key of the summed rest in a stacked bar (the fourth colour) */
+export const SERIES_REST = '@rest'
+
+/** Stacked bars over days: `partsOf(day)` gives {key: value}; the three largest keys over all days keep their
+ *  own colour and the rest is summed (at most four series), or `order` fixes the keys. Each part is a share of
+ *  the largest day; zero parts are left out */
+export function stackBars(days, partsOf, { n = 3, order = null } = {}) {
+  const rows = (days ?? []).map(d => ({ d, v: partsOf(d) ?? {} }))
+  const sums = {}
+  for (const { v } of rows) for (const [k, x] of Object.entries(v)) sums[k] = (sums[k] ?? 0) + (Number(x) || 0)
+  // SERIES_REST in a day's parts (what a capped list left out) is never a named series, always in the rest
+  const ranked = Object.keys(sums).filter(k => sums[k] > 0 && k !== SERIES_REST).sort((a, b) => sums[b] - sums[a])
+  const top = order ?? ranked.slice(0, n)
+  const rest = !order && (ranked.length > n || sums[SERIES_REST] > 0)
+  const keys = rest ? [...top, SERIES_REST] : top
+  const out = rows.map(({ d, v }) => {
+    const parts = top.map(k => ({ key: k, value: Number(v[k]) || 0 }))
+    if (rest) parts.push({ key: SERIES_REST, value: Object.entries(v).filter(([k]) => !top.includes(k)).reduce((a, [, x]) => a + (Number(x) || 0), 0) })
+    const total = Object.values(v).reduce((a, x) => a + (Number(x) || 0), 0)
+    return { day: d.day, provisional: d.provisional === true, total, parts }
+  })
+  const max = Math.max(0, ...out.map(d => d.total))
+  return {
+    keys, max, total: out.reduce((a, d) => a + d.total, 0),
+    days: out.map(d => ({ ...d, parts: d.parts.filter(p => p.value > 0).map(p => ({ ...p, frac: max ? p.value / max : 0 })) })),
+  }
+}
+
+/** Which day labels a bar chart writes: all of them when they fit `room`, else every k-th, counted back from
+ *  the newest day so today always has its label */
+export function shownLabels(count, room = 10) {
+  const step = Math.max(1, Math.ceil(count / room))
+  return Array.from({ length: Math.max(0, count) }, (_, i) => (count - 1 - i) % step === 0)
+}
+
+/** The points of a sparkline polyline over `w` x `h`, the largest value at the top */
+export function sparkPoints(values, w = 60, h = 16) {
+  const v = (values ?? []).map(x => Math.max(0, Number(x) || 0))
+  if (!v.length) return ''
+  const max = Math.max(...v)
+  const y = x => +(max ? h - (x / max) * h : h).toFixed(1)
+  if (v.length === 1) return `0,${y(v[0])} ${w},${y(v[0])}`
+  return v.map((x, i) => `${+((i * w) / (v.length - 1)).toFixed(1)},${y(x)}`).join(' ')
+}
+
+const MONEY_SIGN = { EUR: '€', USD: '$' }
+
+/** An amount in the words of each language: 1,23 € and 1.234,50 € in German, €1.23 and €1,234.50 in English;
+ *  a whole amount without decimals (a budget of 50 €) */
+export function moneyText(n, lang, currency = 'EUR') {
+  const v = Number(n) || 0
+  const whole = Math.abs(v - Math.round(v)) < 0.005
+  const [int, dec] = Math.abs(v).toFixed(whole ? 0 : 2).split('.')
+  const [group, point] = lang === 'de' ? ['.', ','] : [',', '.']
+  const num = int.replace(/\B(?=(\d{3})+(?!\d))/g, group) + (dec ? point + dec : '')
+  const sign = v < 0 ? '-' : ''
+  const cur = MONEY_SIGN[currency] ?? currency
+  if (lang === 'de') return `${sign}${num} ${cur}`
+  return MONEY_SIGN[currency] ? `${sign}${cur}${num}` : `${sign}${cur} ${num}`
+}
+
+/** The budget bar of an account as shares of one width: the month so far (fill), the forecast (a marker) and the
+ *  budget, which is the full width until the month runs past it. Null without a budget */
+export function budgetBar(acc) {
+  const budget = Number(acc?.budget_month) || 0
+  if (budget <= 0) return null
+  const mtd = Number(acc.month_to_date) || 0
+  const fc = acc.forecast_month == null ? null : Number(acc.forecast_month) || 0
+  const scale = Math.max(budget, mtd, fc ?? 0)
+  return { fill: mtd / scale, forecast: fc == null ? null : fc / scale, budget: budget / scale,
+    tone: mtd > budget ? 'danger' : fc != null && fc > budget ? 'warning' : 'success' }
+}
+
+const isoDay = d => d.toISOString().slice(0, 10)
+const dayShift = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return isoDay(d) }
+
+/** The days a cost range covers, oldest first: the last 7 or 30 days, or the calendar month, ending today */
+export function costWindow(costs, range) {
+  const today = costs?.today
+  if (typeof today !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return []
+  const n = range === 'month' ? Number(today.slice(8, 10)) : range === '30' ? 30 : 7
+  return Array.from({ length: n }, (_, i) => dayShift(today, i - n + 1))
+}
+
+/** Every account's amount per day, as {day: {account id: entry}}; failed accounts have none */
+function costByDay(costs) {
+  const by = {}
+  for (const a of costs?.accounts ?? []) {
+    if (!a.ok) continue
+    for (const d of a.days ?? []) (by[d.day] ??= {})[a.id] = d
+  }
+  return by
+}
+
+/** The cost bars of a range: a bar per day, the three dearest accounts of the range and the rest; a day is
+ *  provisional when any account says so (providers settle late) */
+export function costBars(costs, range) {
+  const by = costByDay(costs)
+  const days = costWindow(costs, range).map(day => ({ day, provisional: Object.values(by[day] ?? {}).some(e => e.provisional) }))
+  return stackBars(days, d => Object.fromEntries(Object.entries(by[d.day] ?? {}).map(([id, e]) => [id, Number(e.amount) || 0])))
+}
+
+/** One day's accounts, dearest first, each with its three largest groups */
+export function costDay(costs, day) {
+  return (costs?.accounts ?? []).filter(a => a.ok).map(a => {
+    const e = (a.days ?? []).find(d => d.day === day)
+    return { id: a.id, name: a.display_name || a.id, provider: a.provider, amount: Number(e?.amount) || 0, provisional: e?.provisional === true,
+      groups: Object.entries(e?.groups ?? {}).map(([g, v]) => [g, Number(v) || 0]).filter(([, v]) => v > 0).sort((x, y) => y[1] - x[1]).slice(0, 3) }
+  }).filter(x => x.amount > 0).sort((x, y) => y.amount - x.amount)
+}
+
+/** The sum over a range and the month so far, over every account that answered */
+export function costTotals(costs, range) {
+  const ok = (costs?.accounts ?? []).filter(a => a.ok)
+  return { range: costBars(costs, range).total, month: ok.reduce((a, x) => a + (Number(x.month_to_date) || 0), 0) }
+}
+
+/** What an account cost yesterday (null when it did not answer or has no such day) */
+export function costYesterday(acc, today) {
+  if (!acc?.ok || !today) return null
+  const e = (acc.days ?? []).find(d => d.day === dayShift(today, -1))
+  return e ? Number(e.amount) || 0 : null
+}
+
+/** One tone per account: a failed one warns, the budget bar decides the rest, no budget is neutral */
+export function costTone(acc) {
+  if (!acc?.ok) return 'warning'
+  return budgetBar(acc)?.tone ?? 'neutral'
+}
+
+const TONE_RANK = { neutral: 0, success: 1, warning: 2, danger: 3 }
+
+/** The overview tile: yesterday and the month so far over all accounts, seven small bars, the worst tone
+ *  (a stale file warns at least) */
+export function costBoard(costs) {
+  const accounts = costs?.accounts ?? []
+  const week = costBars(costs, '7').days
+  const max = Math.max(0, ...week.map(d => d.total))
+  let tone = accounts.reduce((t, a) => (TONE_RANK[costTone(a)] > TONE_RANK[t] ? costTone(a) : t), accounts.length ? 'success' : 'neutral')
+  if (tone === 'neutral' && accounts.length) tone = 'success'
+  if (costs?.stale && TONE_RANK[tone] < TONE_RANK.warning) tone = 'warning'
+  return {
+    yesterday: accounts.reduce((a, x) => a + (costYesterday(x, costs?.today) ?? 0), 0),
+    month: costTotals(costs, 'month').month, tone,
+    week: week.map(d => ({ day: d.day, total: d.total, frac: max ? d.total / max : 0, provisional: d.provisional })),
+  }
+}
+
+/** The token ranges and the ways to split them on the Betrieb page */
+export const USAGE_RANGES = [7, 30, 90]
+export const USAGE_DIMS = ['bridge', 'model', 'source', 'project']
+/** The key of the tokens no Bridge instance claims */
+export const NO_BRIDGE = '@none'
+
+/** A day's written tokens split by one dimension, as {key: tokens}; a Bridge on two machines is one key.
+ *  usage.py lists at most eight models, projects or Bridges per day: what the list leaves out of the day's
+ *  output goes to SERIES_REST, so every dimension sums to the same day */
+export function usageParts(day, dim) {
+  if (dim === 'source') return Object.fromEntries(USAGE_SOURCES.map(k => [k, day?.sources?.[k]?.output ?? 0]))
+  const list = dim === 'model' ? day?.models : dim === 'project' ? day?.projects : day?.bridges
+  const field = dim === 'model' ? 'model' : dim === 'project' ? 'project' : 'bridge'
+  const out = {}
+  let listed = 0
+  for (const x of list ?? []) {
+    const k = x[field] ?? NO_BRIDGE
+    out[k] = (out[k] ?? 0) + (x.output ?? 0)
+    listed += x.output ?? 0
+  }
+  const left = (Number(day?.output) || 0) - listed
+  if (left > 0) out[SERIES_REST] = left
+  return out
+}
+
 // ---------------------------------------------------------------- the noise of the inbox
 
 /** How long a source mute lasts; inbox.py MUTE_SOURCE_DAYS says the same */

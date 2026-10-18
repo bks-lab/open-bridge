@@ -189,7 +189,7 @@ class App:
         self.tabs = TabPoller(self)
         self.review = Review(self)
         self.sessions = Sessions(self)
-        self.usage = Usage()
+        self.usage = Usage(root=self.root)
         self.quick = Quick(self, claude=self.runner.claude)
         self.agents = Agents(self)
         self.bridges = Bridges(self.root)
@@ -507,6 +507,21 @@ class App:
         self.watcher.shutdown()
 
 
+USAGE_RANGES = (7, 30, 90)
+
+
+def usage_days(value: str) -> int:
+    """The range the usage card asks for, as one of 7, 30 or 90 days: a number between becomes the nearest
+    (the lower one on a tie), anything that is no positive number the default of seven."""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return USAGE_RANGES[0]
+    if n <= 0:
+        return USAGE_RANGES[0]
+    return min(USAGE_RANGES, key=lambda r: (abs(r - n), r))
+
+
 def static_etag(mtime_ns: int, size: int) -> str:
     """A strong validator from the file's (mtime, size): changes with every write that a reload must see."""
     return f'"{mtime_ns:x}-{size:x}"'
@@ -725,9 +740,21 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/ticker":
             # the news ticker as the page gets it in the state payload and the `ticker` event (ticker.py)
             self.send_json(200, {"ok": True, "ticker": app.ticker.state()})
+        elif path == "/api/costs":
+            # what the cloud accounts cost per day, as `bridge-resources.py costs` kept it from the collector's
+            # report (scripts/cloud-costs.py), read only; none yet is no error: view null, and the card says what
+            # to declare
+            path_ = app.root / ".bridge" / "resources" / "costs-view.json"
+            try:
+                data = json.loads(path_.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = None
+            ok = isinstance(data, dict) and isinstance(data.get("accounts"), list)
+            self.send_json(200, {"ok": True, "view": data if ok else None})
         elif path == "/api/usage":
-            # the tokens of the last seven days on this machine, counted from the Claude Code transcripts, read only
-            self.send_json(200, {"ok": True, "usage": app.usage.view()})
+            # the tokens of the last 7, 30 or 90 days, counted from the Claude Code transcripts of this machine,
+            # the kept history and the other machines (usage.py), read only; any other range becomes the nearest
+            self.send_json(200, {"ok": True, "usage": app.usage.view(days=usage_days(one("days")))})
         elif path == "/api/inbox/noise":
             # per source what was filed and what a person dropped, and the mute rules in force (inbox.py), read only
             self.send_json(200, {"ok": True, "noise": app.inbox_noise()})

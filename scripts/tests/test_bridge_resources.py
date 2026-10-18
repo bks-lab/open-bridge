@@ -244,3 +244,150 @@ def test_a_cloud_service_names_the_declaration_that_knows_it_and_a_retired_one_i
     assert by["gw-old"]["tags"]["Known from"] == "gw-tunnel"
     assert by["agent-live"]["tags"]["Known from"] == "agent-tunnel" and by["agent-live"]["tone"] == "none"
     assert by["stranger"]["tone"] == "bad" and by["stranger"]["tags"]["Known from"] == "nowhere"
+
+
+# ---------------------------------------------------------------- costs (cloud-costs.py)
+
+def costs_doc(**over) -> dict:
+    day = lambda d, a, prov=False: {"day": d, "amount": a, "provisional": prov, "groups": {}}  # noqa: E731
+    doc = {"schema": 1, "kind": "cloud-costs", "host": "my-server", "at": "2026-10-10T06:15:02+00:00",
+           "currency": "EUR", "days": 35, "today": "2026-10-10",
+           "fx": {"date": "2026-10-09", "source": "ecb", "rates": {"USD": 1.08}},
+           "accounts": [
+               {"id": "azure-example", "display_name": "Example Azure", "provider": "azure", "kind": "usage",
+                "ok": True, "error": None, "currency": "EUR", "budget_month": 50.0,
+                "days": [day("2026-10-08", 1.0), day("2026-10-09", 1.23, True), day("2026-10-10", 0.4, True)],
+                "month_to_date": 12.3, "forecast_month": 38.1, "last_complete_day": "2026-10-08"},
+               {"id": "aws-example", "display_name": "Example AWS", "provider": "aws", "kind": "usage",
+                "ok": True, "error": None, "currency": "EUR", "budget_month": 20.0,
+                "days": [day("2026-10-09", 2.5, True)], "month_to_date": 25.0, "forecast_month": 70.0},
+               {"id": "openai-example", "display_name": "Example OpenAI", "provider": "openai", "kind": "usage",
+                "ok": True, "error": None, "currency": "EUR", "budget_month": 10.0,
+                "days": [day("2026-10-09", 0.5, True)], "month_to_date": 4.0, "forecast_month": 12.0},
+               {"id": "acme-plan", "display_name": "Acme plan", "provider": "contract", "kind": "fixed",
+                "ok": True, "error": None, "currency": "EUR", "budget_month": None,
+                "days": [day("2026-10-09", 0.33)], "month_to_date": 3.3, "forecast_month": 10.0},
+               {"id": "gcp-example", "display_name": "Example Google", "provider": "gcp", "ok": False,
+                "error_kind": "error", "error": "needs a Cloud Billing export to BigQuery (costs.bigquery_table)",
+                "days": [], "month_to_date": None, "forecast_month": None},
+               {"id": "azure-other", "display_name": "Other Azure", "provider": "azure", "ok": False,
+                "error_kind": "auth", "error": "not logged in",
+                "login": {"argv": ["az", "login", "--tenant", "example-tenant"], "hint": "Sign in to Azure."},
+                "days": [], "month_to_date": None, "forecast_month": None}]}
+    doc.update(over)
+    return doc
+
+
+def test_costs_rows_name_yesterday_the_month_and_the_budget_and_tone_by_it(tmp_path):
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(costs_doc()))
+    rows = br.cost_rows(tmp_path, TX, str(src), NOW, 36)
+    by = {r["id"]: r for r in rows}
+    assert len(rows) == 6
+    az = by["costs:azure-example"]
+    assert az["title"] == "Example Azure"
+    assert az["raw_state"] == "yesterday €1.23 · October €12.30 of €50"
+    assert az["tone"] == "none"
+    assert by["costs:aws-example"]["tone"] == "bad"                 # month so far above the budget
+    assert by["costs:openai-example"]["tone"] == "warn"             # the forecast above it
+    assert by["costs:acme-plan"]["raw_state"] == "yesterday €0.33 · October €3.30"   # no budget, no "of"
+    gcp = by["costs:gcp-example"]
+    assert gcp["tone"] == "warn" and "BigQuery" in gcp["raw_state"]
+
+
+def test_costs_rows_speak_german_numbers_in_german(tmp_path):
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(costs_doc()))
+    by = {r["id"]: r for r in br.cost_rows(tmp_path, br.TX["de"], str(src), NOW, 36)}
+    assert by["costs:azure-example"]["raw_state"] == "gestern 1,23 € · Oktober 12,30 € von 50 €"
+    assert by["costs:azure-other"]["title"].startswith("Other Azure: Anmeldung nötig")
+
+
+def test_a_missing_login_asks_with_the_command_to_run(tmp_path):
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(costs_doc()))
+    row = {r["id"]: r for r in br.cost_rows(tmp_path, TX, str(src), NOW, 36)}["costs:azure-other"]
+    assert row["title"] == "Other Azure: sign-in needed, Sign in to Azure."
+    assert row["tone"] == "warn"
+    assert row["action"] == "copy" and row["copy"] == "az login --tenant example-tenant"
+    assert "az login --tenant example-tenant" in row["raw_state"]
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    acc = {a["id"]: a for a in view["accounts"]}
+    assert acc["azure-other"]["login_command"] == "az login --tenant example-tenant"
+    assert "login_command" not in acc["azure-example"]
+
+
+def test_over_ssh_the_login_runs_on_that_host_and_az_uses_a_device_code():
+    doc = costs_doc()
+    def run(argv, **kw):
+        return types.SimpleNamespace(returncode=0, stdout=json.dumps(doc), stderr="")
+    rows = br.cost_rows(None, TX, "ssh:my-server:~/.bridge/resources/costs.json", NOW, 36, run=run)
+    row = {r["id"]: r for r in rows}["costs:azure-other"]
+    assert row["copy"] == "ssh -t my-server 'az login --tenant example-tenant --use-device-code'"
+    assert br.login_command(["aws", "login", "--profile", "p"], "ssh:my-server:/x") == "ssh -t my-server 'aws login --profile p'"
+    assert br.login_command(["bash", "skills/secrets/secrets.sh", "store", "keychain://a b/c", "--from", "prompt"],
+                            "/tmp/costs.json") == "bash skills/secrets/secrets.sh store 'keychain://a b/c' --from prompt"
+
+
+def test_the_costs_view_is_kept_whole_with_source_and_staleness(tmp_path):
+    src = tmp_path / "costs.json"
+    doc = costs_doc()
+    src.write_text(json.dumps(doc))
+    br.cost_rows(tmp_path, TX, str(src), NOW, 36)
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    assert view["source"] == str(src) and view["stale"] is False and view["read_at"].startswith("2026-10-10T14:00")
+    assert view["host"] == "my-server" and len(view["accounts"]) == len(doc["accounts"])
+    # older than 36 h: stale, and every ok account warns
+    src.write_text(json.dumps(costs_doc(at="2026-10-08T06:00:00+00:00")))
+    rows = br.cost_rows(tmp_path, TX, str(src), NOW, 36)
+    assert json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())["stale"] is True
+    assert {r["id"]: r for r in rows}["costs:azure-example"]["tone"] == "warn"
+
+
+def test_a_missing_costs_report_is_one_red_row(tmp_path):
+    rows = br.cost_rows(tmp_path, TX, str(tmp_path / "none.json"), NOW, 36)
+    assert len(rows) == 1 and rows[0]["id"] == "costs:error" and rows[0]["tone"] == "bad"
+    assert "no cost report from" in rows[0]["title"]
+    assert not (tmp_path / ".bridge" / "resources" / "costs-view.json").exists()
+
+
+def test_costs_listing_prints_json_and_keeps_a_copy(tmp_path, capsys):
+    root = bridge(tmp_path)
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(costs_doc()))
+    assert br.main(["--root", str(root), "costs", "--source", str(src)]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    assert len(rows) == 6 and json.loads((root / ".bridge" / "resources" / "costs.json").read_text()) == rows
+    assert (root / ".bridge" / "resources" / "costs-view.json").exists()
+
+
+def test_reports_of_several_machines_merge_and_each_login_runs_where_its_account_is_measured(tmp_path):
+    server = costs_doc()                                   # at 2026-10-10 06:00 on my-server
+    laptop = costs_doc(host="my-laptop", at="2026-10-10T07:00:00+00:00")
+    laptop["accounts"] = [{"id": "aws-laptop", "display_name": "Laptop AWS", "provider": "aws", "ok": False,
+                           "error_kind": "auth", "error": "not logged in",
+                           "login": {"argv": ["aws", "login"], "hint": "Sign in to AWS."},
+                           "days": [], "month_to_date": None, "forecast_month": None},
+                          # the same account in both reports: the good answer wins over the failed one
+                          {**server["accounts"][4], "ok": True, "error_kind": None, "error": None,
+                           "days": [{"day": "2026-10-09", "amount": 0.2, "provisional": True, "groups": {}}],
+                           "month_to_date": 1.0, "forecast_month": 3.0}]
+    (tmp_path / "laptop.json").write_text(json.dumps(laptop))
+
+    def run(argv, **kw):
+        return types.SimpleNamespace(returncode=0, stdout=json.dumps(server), stderr="")
+    rows = br.cost_rows(tmp_path, TX, ["ssh:my-server:~/.bridge/resources/costs.json", str(tmp_path / "laptop.json")],
+                        NOW, 36, run=run)
+    by = {r["id"]: r for r in rows}
+    assert by["costs:aws-laptop"]["copy"] == "aws login"                                    # local file: as is
+    assert by["costs:azure-other"]["copy"].startswith("ssh -t my-server 'az login")        # remote: over ssh
+    assert by["costs:gcp-example"]["tone"] == "none"                                       # ok from the laptop
+    assert len([r for r in rows if r["id"] == "costs:gcp-example"]) == 1
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    assert view["source"] == f"my-server, {tmp_path / 'laptop.json'}" and view["at"] == "2026-10-10T07:00:00+00:00"
+    assert [s["host"] for s in view["sources"]] == ["my-server", "my-laptop"]
+    assert {a["id"]: a["host"] for a in view["accounts"]}["aws-laptop"] == "my-laptop"
+    # one machine missing: its row warns, the other report still shows
+    rows = br.cost_rows(tmp_path, TX, ["ssh:my-server:/x", str(tmp_path / "gone.json")], NOW, 36, run=run)
+    gone = [r for r in rows if r["id"].startswith("costs:error")]
+    assert len(gone) == 1 and gone[0]["tone"] == "warn" and "gone.json" in gone[0]["title"]

@@ -144,6 +144,20 @@ $defs:
             title: {type: string, description: "Tab name. Default: the label page_<id>, else the id."}
             group: {enum: [main, more, work, day], description: "main (default): a tab in the page bar. more: after the daily tabs, and folded behind a More menu when the bar is too narrow. work: no tab of its own; the page is the by-source view of the work tab, beside what is due and, with jev:, by Jev (the Jev tab then folds into it too). day: no tab of its own; its sections stand under the day list of the Today page."}
             overview: {type: boolean, description: "true: a dashboard opens the page with a board of tiles, one per section (its count and its loudest row), each a jump to its section. Default false."}
+            cards:
+              type: array
+              description: |
+                Live cards a dashboard places on the page, in the listed order: costs (cloud costs per
+                account against a budget, scripts/cloud-costs.py), usage (tokens per day, model and Bridge),
+                noise (the inbox sources a person drops from). Without it, a page with overview: true shows
+                usage and noise at its end, as before. docs/bridge-cockpit.md § Betrieb.
+              items:
+                type: object
+                required: [id]
+                additionalProperties: false
+                properties:
+                  id: {enum: [costs, usage, noise]}
+                  after: {type: string, description: "A section id of this page: the card stands right after it. Default: the end of the page."}
             jev:
               type: object
               additionalProperties: false

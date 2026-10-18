@@ -7,6 +7,7 @@ related:
   - briefings.md
   - workplace.md
   - inbox.md
+  - cloud-costs.md
   - ../bridge-config.yaml.template
   - ../workflow/briefings/_template.yaml
   - ../scripts/bridge-cockpit.py
@@ -84,6 +85,9 @@ their defaults:
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
+| `usage.remotes` | the machines of `infra/instances` | other machines whose token use the Betrieb page adds in (`infra/remotes` names; `[]` for none), see the Betrieb page, "Tokens" |
+| `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
+| `usage.remote_file` | `~/.bridge/resources/usage.json` | the file `scripts/usage-export.py` writes on those machines |
 
 Migration note: `language`, `full_minutes`, `voice`, `launch.target` and
 `snapshot_minutes` used to be set under `briefing.claude_code_ui`, the block
@@ -651,20 +655,88 @@ sends, Shift+Enter a new line). Escape or a click outside closes it.
 **Overview pages and tokens.** A profile page with `overview: true` opens
 with a board of tiles: one per section, with its count, its loudest row and a
 colour for the worst tone (a quota gauge shows its fullest value, a plain gauge
-its counts), plus one for the background jobs of the Background jobs tab and one for the tokens
-of the week. A click on a section tile scrolls to that section, the workers
-tile opens the Background jobs tab. Below the sections the page shows the tokens of the
-last seven days: one bar per day, split into sessions, subagents and programs
-(`claude -p`, the workers), and a click on a day lists its models and
-projects. The server counts them from the Claude Code transcripts of this
-machine (`~/.claude/projects`, `scripts/lib/bridge_cockpit/usage.py`, read on from
-where the last count stopped) when the page opens: written tokens as measured,
-cache reads and writes beside them, no price. A source that wrote at least
-three times its usual day (and 50,000 tokens) is named in orange. A machine
-tile whose name runs workers says how many and leads to the Background jobs tab
-filtered to it.
+its counts), plus one for the background jobs of the Background jobs tab, one for the tokens
+of the week and, when the page places the cost card, one for the cloud costs
+(yesterday, the month so far and seven small bars). A click on a section tile
+scrolls to that section, the cost tile to the cost card, the workers
+tile opens the Background jobs tab.
 
-**Noise in the inbox.** Below the tokens an overview page shows the inbox
+**Where the live cards go.** Three cards are not sections but live views:
+`costs` (cloud costs), `usage` (tokens) and `noise` (noise in the inbox). A
+page places them with `cards:`, each after one of its sections or, without
+`after`, at the end, in the listed order:
+
+```yaml
+cards:
+  - {id: costs, after: systems}
+  - {id: usage, after: systems}
+  - {id: noise}
+```
+
+A page with `overview: true` and no `cards:` shows tokens and noise at the end,
+as before. A card named twice stands where it is first named; when the page
+shows Jev's order instead of its sections, cards placed after a section move to
+the end.
+
+**Tokens.** The token card shows one bar per day over 7, 30 or 90 days (chips;
+`/api/usage?days=N`, any other number goes to the nearest of the three), split
+by Bridge, model, source (sessions, subagents and programs: `claude -p`, the
+workers) or project, the three largest and the rest. A click on a day lists its
+models and projects. The server counts them from the Claude Code transcripts of
+this machine (`~/.claude/projects`, `scripts/lib/bridge_cockpit/usage.py`, read
+on from where the last count stopped) when the page opens: written tokens as
+measured, cache reads and writes beside them, no price. A record belongs to the
+Bridge in `infra/instances/` whose `location.path` is the longest prefix of the
+session's folder, else to "no Bridge". The transcripts are read for the last
+eight days only; every closed day is kept in
+`.bridge/resources/usage-days.json` (120 days), which is where 30 and 90 days
+come from. A source that wrote at least three times its usual day (and 50,000
+tokens) is named in orange; that check reads this machine's last seven days.
+
+"Per Bridge" lists every Bridge with its machine, its output tokens, its top
+models and a small line per day, also Bridges on other machines. Each of those
+machines runs `scripts/usage-export.py --out ~/.bridge/resources/usage.json`
+as a workload (daily or hourly); the cockpit reads that file over ssh
+(`ssh:<host>:<path>`, read on a thread of its own, kept 10 minutes, never on a
+page request). Which machines: `cockpit.usage.remotes` in `bridge-config.yaml`
+(a list of `infra/remotes/` slugs), else every `location.host` of
+`infra/instances/` that has an `infra/remotes/<host>.yaml` and is not this
+machine. The file is `cockpit.usage.remote_file`, default
+`~/.bridge/resources/usage.json`. A machine that does not answer stays in the
+list as "not reachable" with the reason; it never breaks the local view. Right
+after a start, before its first read has finished, a machine shows as "being
+read", not as unreachable. A history file that cannot be read is moved aside as
+`usage-days.json.bad-<time>` instead of being overwritten.
+
+```yaml
+cockpit:
+  usage:
+    remotes: [my-server]
+    remote_file: ~/.bridge/resources/usage.json
+```
+
+**Cloud costs.** The cost card shows what the cloud accounts cost per day over
+7 days, 30 days or the month: one stacked bar per day (the three most expensive
+accounts and the rest; the last two days lighter and marked provisional,
+because providers settle late), a click on a day lists its accounts and their
+top groups, and one row per account with yesterday, the month so far and a
+budget bar (forecast as a marker; orange when the forecast passes the budget,
+red when the month so far does). It names when it was measured and on which
+machine, and warns when the report is older than 36 hours. The numbers come
+from `scripts/cloud-costs.py`, run daily on the always-on machine as a
+workload, which asks every account in `identity/accounts/` with
+`costs: {enabled: true}` (Azure, AWS and Google through their CLIs logged in
+there, OpenAI and Anthropic through an admin key by `key_ref`) and adds the
+fixed costs of `identity/contracts/` with `costs: {enabled: true}`, all in EUR
+at the ECB rate. `bridge-resources.py costs --source <file | ssh:host:path>`
+reads the report into `.bridge/resources/costs-view.json`, which
+`GET /api/costs` serves. An account whose login or key is missing says so with
+the command to run ("Copy command"): on that machine as is, for an ssh source
+wrapped in `ssh -t <host> '…'`; for an admin key the command stores it through
+the `secrets` skill, never in the conversation. Without a report the card says
+what to declare. What each provider needs: [`cloud-costs.md`](cloud-costs.md).
+
+**Noise in the inbox.** The noise card shows the inbox
 sources a person had to drop from in the last 30 days, most drops first: how
 many of how many, the share and the reasons. Under it stand the mute rules in
 force, each with Lift. Read from `inbox.py stats` and `inbox.py mute list`
@@ -1297,6 +1369,8 @@ the cockpit (git ignores them too):
 | `.bridge/triage.json` | the last triage run (`scripts/triage.py`): per task and inbox item a gist, a verdict and who does it | yes: titles and gists |
 | `.bridge/task-review.json` | the last task check (`task.py review`): per task a verdict and its reason | yes: task titles and reasons |
 | `.bridge/resources/workers-view.json` | the full worker view of the Resources section (`scripts/bridge-resources.py workers`) | no |
+| `.bridge/resources/costs-view.json` | the last cloud cost report with its source, read time and age (`scripts/bridge-resources.py costs`) | no |
+| `.bridge/resources/usage-days.json` | the token counts of each closed day per source, model, project and Bridge, 120 days | no: numbers under model, project and Bridge names |
 
 The server deletes relay files after a day, heartbeats after an hour. The
 `relay/` folder is readable by you only. The signing key `relay.key` is the

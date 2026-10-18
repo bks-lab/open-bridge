@@ -4,11 +4,12 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  formatDay, indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
+  indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
-  sectionStamp, weekdayNames, triageKey, triageShows, sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES,
+  sectionStamp, triageKey, triageShows, sectionTile, tokenText, usageToday,
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
+  cardPlan, moneyText, costBoard,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -20,6 +21,7 @@ import { rowClickOpens, useFocusOnOpen } from './overlays.js'
 import { Btn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
 import { DatesAgenda } from './dates.js'
+import { CostCard, UsageCard } from './costs.js'
 
 // ---------------------------------------------------------------- pages
 
@@ -537,17 +539,20 @@ function jumpTo(id) {
   if (el) el.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' })
 }
 
-function BoardTile({ title, tone, big, sub, note, onClick, label }) {
+function BoardTile({ title, tone, big, sub, note, onClick, label, bars = null }) {
   return html`<li><button type="button" class=${`otile tk-${tone}`} onClick=${onClick} aria-label=${label}>
     <span class="otile-head"><${Dot} token=${tone === 'neutral' ? 'on-surface-muted' : tone} /><span class="otile-title">${title}</span></span>
     <span class="otile-big num">${big}</span>
     ${sub ? html`<span class="otile-sub">${sub}</span>` : null}
+    ${bars ? html`<span class="otile-bars" aria-hidden="true">${bars.map(b => html`<span key=${b.day}
+      class=${`otile-bar${b.provisional ? ' is-provisional' : ''}`} style=${{ height: `${Math.max(4, b.frac * 100).toFixed(1)}%` }}></span>`)}</span>` : null}
     ${note ? html`<span class="otile-note">${note}</span>` : null}
   </button></li>`
 }
 
-/** The board on top of a page with `overview: true`: a tile per section and per live source (workers, tokens),
- *  each a click away from its details. The running sessions stand in the tab column beside it */
+/** The board on top of a page with `overview: true`: a tile per section and per live source (workers, tokens,
+ *  costs when the page places the cost card), each a click away from its details. The running sessions stand in
+ *  the tab column beside it */
 export function OverviewBoard({ page, s, c }) {
   const t = T()
   const lang = language()
@@ -558,6 +563,16 @@ export function OverviewBoard({ page, s, c }) {
     const all = stats.in_service ?? 0
     tiles.push(html`<${BoardTile} key="@w" title=${t.workersTab} tone=${bad ? 'warning' : 'success'} big=${bad || all}
       sub=${t.overviewWorkers(all - bad, all, bad)} label=${t.overviewJump(t.workersTab)} onClick=${() => c.openWorkers({})} />`)
+  }
+  const plan = cardPlan(page)
+  const placed = [...Object.values(plan.after).flat(), ...plan.end]
+  const k = s.costs?.data
+  if (k && placed.includes('costs')) {
+    const b = costBoard(k)
+    const cur = k.currency ?? 'EUR'
+    tiles.push(html`<${BoardTile} key="@k" title=${t.costsTile} tone=${b.tone} big=${moneyText(b.yesterday, lang, cur)}
+      sub=${t.costsTileSub(moneyText(b.month, lang, cur))} bars=${b.week} note=${k.stale ? t.costsStale : null}
+      label=${t.overviewJump(t.costsTitle)} onClick=${() => jumpTo(`costs-${page.id}`)} />`)
   }
   const u = s.usage?.data
   if (u) {
@@ -580,51 +595,12 @@ export function OverviewBoard({ page, s, c }) {
   return html`<ul class="oboard" aria-label=${page.title}>${tiles}</ul>`
 }
 
-/** The written tokens of the last seven days, a bar per day split by who asked; a click on a day shows its
- *  models and projects. Read when the page opens and with every new briefing, never on a timer */
-export function UsageCard({ page, s, c }) {
-  const t = T()
-  const lang = language()
-  useEffect(() => { c.loadUsage() }, [s.model?.seq ?? 0])
-  const u = s.usage ?? {}
-  const data = u.data
-  const [pick, setPick] = useState(null)
-  const bars = usageBars(data)
-  const sel = (data?.days ?? []).find(d => d.day === pick) ?? data?.days?.[data.days.length - 1]
-  const names = weekdayNames(lang)
-  const dayName = iso => { const d = new Date(`${iso}T12:00:00`); return names[(d.getDay() + 6) % 7] }
-  const sum = f => USAGE_SOURCES.reduce((a, k) => a + (sel?.sources?.[k]?.[f] ?? 0), 0)
-  return html`<section class="panel panel-pad psec usage" id=${`usage-${page.id}`} aria-labelledby=${`usage-${page.id}-t`}>
-    <header class="psec-head">
-      <h2 class="sec-title" id=${`usage-${page.id}-t`}>${t.usageTitle}</h2>
-      <span class="muted small">${t.usageWhere}</span>
-    </header>
-    ${!data ? html`<p class="muted">${u.status === 'error' ? t.unreadable(u.error || '') : t.usageLoading}</p>`
-      : !bars.max ? html`<${Empty}>${t.usageNone}<//>` : html`
-      ${(data.outliers ?? []).map(o => html`<p key=${o.source}><${StateLine} token="warning" strong word=${t.usageOutlier(t.usageSource[o.source], o.factor)} /></p>`)}
-      <div class="ubars" role="group" aria-label=${t.usageTitle}>
-        ${bars.days.map(d => html`<button type="button" key=${d.day} class=${`ubar${sel?.day === d.day ? ' is-on' : ''}`}
-            aria-pressed=${sel?.day === d.day} aria-label=${`${t.usageDayOf(formatDay(d.day, lang))}: ${tokenText(d.total, lang)}`}
-            onClick=${() => setPick(d.day)}>
-          <span class="ubar-n mono">${tokenText(d.total, lang)}</span>
-          <span class="ubar-col">${d.parts.map(p => html`<span key=${p.source} class=${`ubar-part us-${p.source}`}
-            style=${{ height: `${(p.frac * 100).toFixed(2)}%` }} title=${`${t.usageSource[p.source]}: ${tokenText(p.value, lang)}`}></span>`)}</span>
-          <span class="ubar-day">${dayName(d.day)}</span>
-        </button>`)}
-      </div>
-      <ul class="ulegend">${USAGE_SOURCES.map(k => html`<li key=${k}><span class=${`ukey us-${k}`} aria-hidden="true"></span>
-        ${t.usageSource[k]} <span class="mono">${tokenText(sel?.sources?.[k]?.output ?? 0, lang)}</span></li>`)}</ul>
-      ${sel ? html`<div class="uday">
-        <h3 class="uday-title">${formatDay(sel.day, lang)}</h3>
-        <div class="uday-cols">
-          <div><span class="label-caps">${t.usageModels}</span>
-            <ul class="ulist">${(sel.models ?? []).map(m => html`<li key=${m.model}><span>${m.model.replace(/^claude-/, '')}</span><span class="num">${tokenText(m.output, lang)}</span></li>`)}</ul></div>
-          <div><span class="label-caps">${t.usageProjects}</span>
-            <ul class="ulist">${(sel.projects ?? []).map(p => html`<li key=${p.project}><span>${p.project}</span><span class="num">${tokenText(p.output, lang)}</span></li>`)}</ul></div>
-        </div>
-        <p class="muted small">${t.usageInput(tokenText(sum('input'), lang), tokenText(sum('cache_read'), lang), tokenText(sum('cache_write'), lang))}</p>
-      </div>` : null}`}
-  </section>`
+/** A page's live card by its id (`cards:` in the profile places them, cardPlan says where) */
+export function PageCard({ id, page, s, c }) {
+  if (id === 'costs') return html`<${CostCard} page=${page} s=${s} c=${c} />`
+  if (id === 'usage') return html`<${UsageCard} page=${page} s=${s} c=${c} />`
+  if (id === 'noise') return html`<${NoiseCard} page=${page} s=${s} c=${c} />`
+  return null
 }
 
 /** The inbox sources a person had to drop from, most clicks first, and the mute rules in force with a

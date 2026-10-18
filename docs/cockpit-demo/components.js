@@ -7,7 +7,7 @@
 // views/, which imports what it uses from the others. app.js imports from here only.
 
 import { html, useEffect, useLayoutEffect, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { indexRows, railShown, triageKey, workKinds, workPageOf } from './logic.js'
+import { cardPlan, indexRows, railShown, triageKey, workKinds, workPageOf } from './logic.js'
 import { T } from './text.js'
 import { TriageBar } from './triage.js'
 import { InnerRoom } from './inner.js'
@@ -27,7 +27,7 @@ import {
   AuthPanel, BootPanel, ConfirmDialog, HelpDialog, HistoryDrawer, InfoDrawer, ItemDrawer, MobileSwitch, NotesDrawer,
   TabsDrawer, Toasts,
 } from './views/overlays.js'
-import { JevList, KindBar, NoiseCard, OverviewBoard, PageSection, UsageCard, WorkOrder } from './views/pages.js'
+import { JevList, KindBar, OverviewBoard, PageCard, PageSection, WorkOrder } from './views/pages.js'
 import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
 import { CustomizeDrawer, SettingsPage } from './views/settings.js'
@@ -100,6 +100,11 @@ function PageView({ s, c }) {
   }
   const page = kind ? { ...whole, sections: whole.sections.filter(sec => kind.sections.includes(sec.id))
     .map(sec => (checked && sec.kind === 'tasks' ? unseen(sec) : sec)) } : whole
+  // the live cards (costs, tokens, noise): after the section the profile names, or at the end of the page
+  const cards = cardPlan(page)
+  // the order by Jev stands in place of the sections, so a card placed after one moves to the end
+  const jevList = !!(page.jev && !work && s.jev?.enabled && s.jev?.ready && s.ui.workView === 'jev' && s.jevOrder[page.id]?.order)
+  const card = id => html`<${PageCard} key=${`@${id}`} id=${id} page=${page} s=${s} c=${c} />`
   return html`<div class="col col-page">
     <header class="page-head">
       ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : html`<h2 class="detail-title">${page.title}</h2>`}
@@ -113,11 +118,11 @@ function PageView({ s, c }) {
     ${checkHere ? html`<${ReviewBody} s=${s} c=${c} inline />`
       : page.sections?.some(sec => sec.kind === 'tasks' && (sec.items ?? []).some(it => it.task)) ? html`<${ReviewStrip} s=${s} c=${c} />` : null}
     ${page.jev && !work && s.jev?.enabled && s.jev?.ready ? html`<${WorkOrder} page=${page} s=${s} c=${c} />` : null}
-    ${page.jev && !work && s.jev?.enabled && s.jev?.ready && s.ui.workView === 'jev' && s.jevOrder[page.id]?.order ? html`<${JevList} page=${page} s=${s} c=${c} />`
-      : (page.sections ?? []).length ? page.sections.map(sec => html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} />`)
+    ${jevList ? html`<${JevList} page=${page} s=${s} c=${c} />`
+      : (page.sections ?? []).length ? page.sections.flatMap(sec => [html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} />`,
+        ...(cards.after[sec.id] ?? []).map(card)])
       : html`<div class="panel panel-pad"><${Empty}>${t.pageEmpty}<//></div>`}
-    ${page.overview ? html`<${UsageCard} page=${page} s=${s} c=${c} />` : null}
-    ${page.overview ? html`<${NoiseCard} page=${page} s=${s} c=${c} />` : null}
+    ${(jevList ? [...Object.values(cards.after).flat(), ...cards.end] : cards.end).map(card)}
   </div>`
 }
 

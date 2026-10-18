@@ -8,6 +8,7 @@
     bridge-resources.py workers --source SRC          every worker from `workload view --json`, kept for the Workers tab
     bridge-resources.py accounts                      identity/accounts/*.yaml with their resources
     bridge-resources.py cloud --source SRC            what runs in the cloud accounts (cloud-inventory.py)
+    bridge-resources.py costs --source SRC            what the accounts cost per day (cloud-costs.py), kept for the cost card
     bridge-resources.py stamp FILE --host H --now T --out OUT   wrap a `workload reconcile --json` report
     bridge-resources.py set-status ID STATUS          an account's `status:` (active, paused, disabled)
 
@@ -78,6 +79,11 @@ TX = {
         "cloud_head": "{n} resources", "cloud_apps": "{apps} apps: {up} running, {down} stopped",
         "cloud_failed": "not readable: {err}", "cloud_missing": "no cloud report from {src}: {err}",
         "cloud_partly": "partly: {err}",
+        "costs_missing": "no cost report from {src}: {err}", "costs_yesterday": "yesterday {amount}",
+        "costs_month": "{month} {amount}", "costs_of": "{amount} of {budget}", "costs_login": "{name}: sign-in needed, {hint}",
+        "costs_old": "the report is {h} h old",
+        "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September",
+                   "October", "November", "December"],
         "g_always": "Always on", "g_online": "Online", "g_offline": "Offline", "g_outside": "Not in the tailnet",
         "g_cloud": "Cloud", "g_mail": "Mail and calendar", "g_other": "Other", "g_inactive": "Inactive",
         "g_ok": "In order",
@@ -115,6 +121,11 @@ TX = {
         "cloud_head": "{n} Ressourcen", "cloud_apps": "{apps} Apps: {up} laufen, {down} gestoppt",
         "cloud_failed": "nicht lesbar: {err}", "cloud_missing": "kein Cloud-Bericht von {src}: {err}",
         "cloud_partly": "teilweise: {err}",
+        "costs_missing": "kein Kostenbericht von {src}: {err}", "costs_yesterday": "gestern {amount}",
+        "costs_month": "{month} {amount}", "costs_of": "{amount} von {budget}", "costs_login": "{name}: Anmeldung nötig, {hint}",
+        "costs_old": "der Bericht ist {h} h alt",
+        "months": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
+                   "Oktober", "November", "Dezember"],
         "g_always": "Immer an", "g_online": "Online", "g_offline": "Offline", "g_outside": "Nicht im Tailnet",
         "g_cloud": "Cloud", "g_mail": "Mail und Kalender", "g_other": "Weitere", "g_inactive": "Inaktiv",
         "g_ok": "In Ordnung",
@@ -536,6 +547,143 @@ def cloud_rows(tx: dict, src: str, now: dt.datetime, stale_min: int, run=subproc
     return rows
 
 
+# ---------------------------------------------------------------- costs (what the accounts cost, from cloud-costs.py)
+
+CURRENCY_SIGN = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF"}
+
+
+def money(tx: dict, amount, currency: str | None = "EUR", whole: bool = False) -> str:
+    """An amount the way the page's language writes it: '€1.23' in English, '1,23 €' in German; `whole`
+    drops the cents of a round number (a budget of 50 reads '€50')."""
+    value = float(amount or 0)
+    text = f"{value:,.0f}" if whole and value == int(value) else f"{value:,.2f}"
+    sign = CURRENCY_SIGN.get(str(currency or "EUR").upper(), str(currency or "").upper())
+    if tx is TX["de"]:
+        return text.replace(",", "\0").replace(".", ",").replace("\0", ".") + f" {sign}"
+    return f"{sign}{text}" if len(sign) == 1 else f"{text} {sign}"
+
+
+def login_command(argv: list, src: str) -> str:
+    """What the person runs to sign in again: the collector's argv as is on this machine, and for a report read
+    over ssh the same on that host (`ssh -t host '...'`), where `az login` asks for a device code because the
+    host has no browser to open."""
+    args = [str(a) for a in argv]
+    if not src.startswith("ssh:"):
+        return shlex.join(args)
+    if args[:2] == ["az", "login"] and "--use-device-code" not in args:
+        args.append("--use-device-code")
+    return f"ssh -t {source_name(src)} {shlex.quote(shlex.join(args))}"
+
+
+def _amount_on(acc: dict, day: str) -> float:
+    return sum(float(d.get("amount") or 0) for d in acc.get("days") or [] if isinstance(d, dict) and d.get("day") == day)
+
+
+def _age(data: dict, now: dt.datetime, stale_h: float) -> tuple[bool, float | None]:
+    """(stale, age in hours) of a report by its `at`; a report without a readable time is stale."""
+    try:
+        at = dt.datetime.fromisoformat(str(data.get("at")))
+    except ValueError:
+        return True, None
+    if not at.tzinfo:
+        return False, None
+    age_h = (now - at).total_seconds() / 3600
+    return age_h > stale_h, age_h
+
+
+def _merge_costs(reports: list[tuple[str, dict]], now: dt.datetime, stale_h: float) -> list[tuple[str, dict, bool, float | None]]:
+    """(source, account, stale, age) per account id over the reports of several machines: a good answer wins over a
+    failed one, then the newer report, so a collector that cannot reach an account never hides one that could."""
+    best: dict[str, tuple] = {}
+    for src, data in reports:
+        stale, age_h = _age(data, now, stale_h)
+        for acc in data["accounts"]:
+            if not isinstance(acc, dict):
+                continue
+            acc = {**acc, "host": acc.get("host") or data.get("host"), "measured_at": data.get("at")}
+            key = str(acc.get("id"))
+            rank = (bool(acc.get("ok")), str(data.get("at") or ""))
+            if key not in best or rank > best[key][0]:
+                best[key] = (rank, src, acc, stale, age_h)
+    return [(src, acc, stale, age_h) for _rank, src, acc, stale, age_h in best.values()]
+
+
+def cost_rows(root: Path | None, tx: dict, srcs: str | list[str], now: dt.datetime, stale_h: float,
+              run=subprocess.run) -> list[dict]:
+    """One row per account of the cost reports: yesterday, the month so far and the budget, red over the budget,
+    amber when the forecast passes it or its report is old. An account that could not sign in asks for it, with
+    the command to run on the machine that measures it. Several sources (one collector per machine whose CLI
+    logins it uses) merge by account. The merged report is kept in .bridge/resources/costs-view.json for the
+    cost card, with where it came from, when it was read and whether it is stale. No report at all is one red
+    row; a missing one next to others is an amber row."""
+    srcs = [srcs] if isinstance(srcs, str) else list(srcs)
+    reports, missing = [], []
+    for src in srcs:
+        data, err = read_source(src, run)
+        if data is None or not isinstance(data.get("accounts"), list):
+            missing.append((src, err or "no accounts"))
+        else:
+            reports.append((src, data))
+    rows = [row("costs:error" + ("" if i == 0 else f":{i}"),
+                tx["costs_missing"].format(src=source_name(src), err=err), "", "warn" if reports else "bad")
+            for i, (src, err) in enumerate(missing)]
+    if not reports:
+        return rows
+    newest = max(reports, key=lambda r: str(r[1].get("at") or ""))[1]
+    any_stale = any(_age(d, now, stale_h)[0] for _s, d in reports)
+    try:
+        today = max(dt.date.fromisoformat(str(d.get("today"))) for _s, d in reports)
+    except ValueError:
+        today = now.date()
+    data = newest
+    yesterday = (today - dt.timedelta(days=1)).isoformat()
+    month = tx["months"][today.month - 1]
+    kept = []
+    for src, acc, stale, age_h in _merge_costs(reports, now, stale_h):
+        aid, name = str(acc.get("id")), str(acc.get("display_name") or acc.get("id"))
+        provider = str(acc.get("provider") or "")
+        extra = {"group": name, "icon": provider or "account", "account": {"id": aid},
+                 "tags": tags(**{tx["tag_provider"]: provider})}
+        login = acc.get("login") if isinstance(acc.get("login"), dict) else {}
+        if not acc.get("ok") and acc.get("error_kind") == "auth" and isinstance(login.get("argv"), list) and login["argv"]:
+            cmd = login_command(login["argv"], src)
+            acc["login_command"] = cmd
+            hint = str(login.get("hint") or acc.get("error") or "")
+            rows.append(row(f"costs:{aid}", tx["costs_login"].format(name=name, hint=hint), cmd, "warn",
+                            action="copy", copy=cmd, **extra))
+        elif not acc.get("ok"):
+            rows.append(row(f"costs:{aid}", name, str(acc.get("error") or "?")[:200], "warn", **extra))
+        else:
+            cur = acc.get("currency") or data.get("currency") or "EUR"
+            mtd, forecast, budget = acc.get("month_to_date"), acc.get("forecast_month"), acc.get("budget_month")
+            budget = float(budget) if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget > 0 else None
+            so_far = money(tx, mtd, cur)
+            if budget is not None:
+                so_far = tx["costs_of"].format(amount=so_far, budget=money(tx, budget, cur, whole=True))
+            parts = [tx["costs_yesterday"].format(amount=money(tx, _amount_on(acc, yesterday), cur)),
+                     tx["costs_month"].format(month=month, amount=so_far)]
+            if stale and age_h is not None:
+                parts.append(tx["costs_old"].format(h=int(age_h)))
+            over = budget is not None and isinstance(mtd, (int, float)) and mtd > budget
+            ahead = budget is not None and isinstance(forecast, (int, float)) and forecast > budget
+            tone = "bad" if over else "warn" if ahead or stale else "none"
+            meter = {"value": float(mtd), "max": budget, "unit": CURRENCY_SIGN.get(str(cur).upper(), str(cur))[:8]} \
+                if budget is not None and isinstance(mtd, (int, float)) and mtd >= 0 else None
+            rows.append(row(f"costs:{aid}", name, " · ".join(parts), tone, meter=meter, **extra))
+        kept.append(acc)
+    if root is not None:
+        view = {**data, "accounts": kept, "today": today.isoformat(),
+                "source": ", ".join(source_name(s) for s, _d in reports),
+                "sources": [{"source": source_name(s), "host": d.get("host"), "at": d.get("at"),
+                             "stale": _age(d, now, stale_h)[0]} for s, d in reports],
+                "read_at": now.isoformat(timespec="seconds"), "stale": any_stale}
+        try:
+            write_atomic(root / RESOURCES / "costs-view.json", json.dumps(view, ensure_ascii=False))
+        except OSError:
+            pass
+    return rows
+
+
 # ---------------------------------------------------------------- overview
 
 def overview_rows(root: Path, tx: dict, today: dt.date, now: dt.datetime, src: str | None, stale_min: int,
@@ -652,6 +800,11 @@ def main(argv=None) -> int:
     cl = sub.add_parser("cloud")
     cl.add_argument("--source", required=True)
     cl.add_argument("--stale-min", type=int, default=150)
+    co = sub.add_parser("costs")
+    co.add_argument("--source", required=True, action="append",
+                    help="a collector's report; repeat it for one collector per machine")
+    co.add_argument("--stale-h", type=float, default=36, help="hours after which the report counts as old")
+    co.add_argument("--stale-min", type=int, help="the same in minutes, like the other listings")
     st = sub.add_parser("stamp")
     st.add_argument("file", type=Path)
     st.add_argument("--host", required=True)
@@ -679,6 +832,9 @@ def main(argv=None) -> int:
         rows = account_rows(root, tx, today)
     elif args.what == "cloud":
         rows = cloud_rows(tx, args.source, now, args.stale_min, root=root)
+    elif args.what == "costs":
+        stale_h = args.stale_min / 60 if args.stale_min is not None else args.stale_h
+        rows = cost_rows(root, tx, args.source, now, stale_h)
     else:
         rows = overview_rows(root, tx, today, now, args.workloads, args.stale_min, tailscale_peers())
     keep(root, args.what, rows)
