@@ -135,6 +135,8 @@ const store = createStore({
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
+    // the order of the workspaces in the chat as cmux: the terminal's (default) or the most urgent first; kept in this browser
+    roomsSort: load('bridge-cockpit.roomsSort', 'terminal') === 'urgency' ? 'urgency' : 'terminal',
     tickerPaused: load('bridge-cockpit.tickerPaused', '0') === '1', tickerRead: loadTickerRead(), tickerSince: tickerSince(), quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
@@ -677,6 +679,11 @@ const ctl = {
     const hidden = !store.get().ui.railHidden
     save('bridge-cockpit.rail', hidden ? 'hidden' : 'shown')
     setUi({ railHidden: hidden, drawer: hidden ? store.get().ui.drawer : null })
+  },
+  toggleRoomsSort: () => {
+    const sort = store.get().ui.roomsSort === 'urgency' ? 'terminal' : 'urgency'
+    save('bridge-cockpit.roomsSort', sort)
+    setUi({ roomsSort: sort })
   },
   // the task and inbox pages: filter by the triage, sort again on a click (scripts/web/triage.js)
   // the day column's height, measured by the column itself: how many rows its sections fill up to

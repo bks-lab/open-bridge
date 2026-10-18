@@ -81,6 +81,9 @@ const WORDS = {
     'Running the link check (12 of 40 pages)': 'Linkprüfung läuft (12 von 40 Seiten)', 'Reading the meeting notes': 'Lese die Besprechungsnotizen',
     'Review the dashboard change': 'Die Dashboard-Änderung prüfen', 'Find where sessions are stored': 'Finden, wo Sitzungen gespeichert werden',
     'Run the migration tests': 'Die Migrationstests laufen lassen',
+    'Check the release notes': 'Die Release Notes prüfen', 'Summarise the meeting notes': 'Die Besprechungsnotizen zusammenfassen',
+    'Find the action items': 'Die offenen Punkte finden', 'Releases and checks': 'Releases und Prüfungen',
+    'A second workspace with the same title': 'Ein zweiter Workspace mit demselben Titel',
     // chat and relay
     'My briefing state from the dashboard (09:10): 2 for you today, next: Review the demo report':
       'Mein Briefing-Stand aus dem Dashboard (09:10): 2 für dich heute, als Nächstes: Den Demo-Bericht prüfen',
@@ -525,7 +528,13 @@ export function buildState(now = Date.now(), opts = {}) {
       // what the server sends: the Now section's total, the same number as counts.now
       briefing_badge: sections[0].total,
     },
-    tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs },
+    // the terminal's workspace list (the chat as cmux); two workspaces share a title and are told apart by ref
+    tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs, workspaces: empty ? [] : [
+      { ref: 'workspace:1', title: 'Control', pinned: true, cwd: '/demo/bridge' },
+      { ref: 'workspace:2', title: 'Ops', cwd: '/demo/bridge', description: 'Releases and checks' },
+      { ref: 'workspace:3', title: 'Demo', cwd: '/demo/bridge' },
+      { ref: 'workspace:4', title: 'Docs', cwd: '/demo/bridge' },
+      { ref: 'workspace:5', title: 'Demo', cwd: '/demo/other-repo', description: 'A second workspace with the same title' }] },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: [] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
     agents: empty ? { peers: [], convs: [] } : agentsState(now),
@@ -550,15 +559,30 @@ export function buildState(now = Date.now(), opts = {}) {
     sessions: { at_ms: now - 8000, sessions: empty ? [] : [
       { id: '7a16c7b2', pid: 101, name: 'demo-bridge-fc', project: 'demo-bridge', cwd: '/demo/bridge', here: true, status: 'busy',
         since_ms: now - 4 * MIN, started_ms: now - 95 * MIN, kind: 'interactive', version: '2.1.0', remote: true,
-        tab: { ref: 'surface:3', name: 'Control', workspace: 'Control', state: 'working', is_control: true },
+        tab: { ref: 'surface:3', ws_ref: 'workspace:1', name: 'Control', workspace: 'Control', state: 'working', is_control: true },
         agents: { running_count: 2, done_recent: 3, running: [
           { id: 'a1efe80', type: 'code-reviewer', description: 'Review the dashboard change', since_ms: now - 2 * MIN, background: true },
           { id: 'b77c012', type: 'Explore', description: 'Find where sessions are stored', since_ms: now - 40000, background: false }] },
-        workflows: [{ name: 'demo-build', status: 'running', agents: 6, since_ms: now - 12 * MIN }] },
+        workflows: [{ name: 'demo-build', status: 'running', agents: 4, since_ms: now - 12 * MIN },
+          { name: 'demo-nightly', status: 'paused', agents: 2, since_ms: now - 50 * MIN }] },
       { id: 'd8db96ad', pid: 102, name: 'demo-bridge-4b', project: 'demo-bridge', cwd: '/demo/bridge', here: true, status: 'idle',
         since_ms: now - 31 * MIN, started_ms: now - 5 * 60 * MIN, kind: 'interactive', version: '2.1.0', remote: false,
-        tab: { ref: 'surface:7', name: 'alpha-release', workspace: 'Ops', state: 'needs-you', is_control: false },
+        tab: { ref: 'surface:7', ws_ref: 'workspace:2', name: 'alpha-release', workspace: 'Ops', state: 'needs-you', is_control: false },
         agents: { running_count: 0, done_recent: 0, running: [] }, workflows: [] },
+      // a second session on the same tab (a resumed one): the tab counts both
+      { id: '5e0b3d91', pid: 104, name: 'demo-bridge-7c', project: 'demo-bridge', cwd: '/demo/bridge', here: true, status: 'busy',
+        since_ms: now - 2 * MIN, started_ms: now - 15 * MIN, kind: 'interactive', version: '2.1.0', remote: false,
+        tab: { ref: 'surface:7', ws_ref: 'workspace:2', name: 'alpha-release', workspace: 'Ops', state: 'needs-you', is_control: false },
+        agents: { running_count: 1, done_recent: 0, running: [
+          { id: 'd51e2b0', type: 'Explore', description: 'Check the release notes', since_ms: now - 50000, background: false }] },
+        workflows: [] },
+      { id: '9f2c6a17', pid: 105, name: 'demo-bridge-notes', project: 'demo-bridge', cwd: '/demo/bridge', here: true, status: 'busy',
+        since_ms: now - 6 * MIN, started_ms: now - 30 * MIN, kind: 'interactive', version: '2.1.0', remote: false,
+        tab: { ref: 'surface:9', ws_ref: 'workspace:3', name: 'notes', workspace: 'Demo', state: 'working', is_control: false },
+        agents: { running_count: 2, done_recent: 1, running: [
+          { id: 'e8a4c11', type: 'general-purpose', description: 'Summarise the meeting notes', since_ms: now - 3 * MIN, background: true },
+          { id: 'f19b7d3', type: 'Explore', description: 'Find the action items', since_ms: now - 70000, background: false }] },
+        workflows: [{ name: 'demo-check', status: 'running', agents: null, since_ms: now - 5 * MIN }] },
       { id: '3c9a1e44', pid: 103, name: 'other-repo-2a', project: 'other-repo', cwd: '/demo/other-repo', here: false, status: 'busy',
         since_ms: now - 9 * MIN, started_ms: now - 20 * MIN, kind: 'interactive', version: '2.1.0', remote: false,
         tab: null, agents: { running_count: 1, done_recent: 0, running: [

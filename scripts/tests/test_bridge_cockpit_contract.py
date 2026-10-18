@@ -545,3 +545,53 @@ def test_the_undo_of_a_task_closed_in_review_parses_with_task_py(tmp_path):
         w.close()
     reopen = [c for c in w.runner.calls if is_target(c) and w.runner.key(c) == "task.reopen"]
     assert len(reopen) == 1 and parse(reopen[0]).as_status == "review"
+
+
+# ---------------------------------------------------------------- the state fields the page reads
+
+# fields the page reads off /api/state that later work added; a path segment `[]` walks every entry of a
+# list, and each value must have one of the listed types. Later packages add their rows here.
+STATE_FIELDS = {
+    "sessions.sessions[].tab.ws_ref": (str, type(None)),
+}
+
+
+def state_values(data, path: str) -> list:
+    """Every value at `path`; KeyError names the first segment that is missing."""
+    found = [data]
+    for seg in path.split("."):
+        each = seg.endswith("[]")
+        key = seg[:-2] if each else seg
+        nxt = []
+        for node in found:
+            if not isinstance(node, dict) or key not in node:
+                raise KeyError(f"{path}: no {key!r}")
+            value = node[key]
+            if each:
+                assert isinstance(value, list) and value, f"{path}: {key!r} is no list with entries"
+                nxt.extend(value)
+            else:
+                nxt.append(value)
+        found = nxt
+    return found
+
+
+def test_state_fields_the_page_reads_are_present(tmp_path):
+    w = World(tmp_path)
+    try:
+        now_ms = time.time() * 1000
+        w.clock.now = now_ms
+        w.app.sessions.base = tbc.claude_home(tmp_path, w.root, now_ms)
+        tabs = [{"name": "Web work", "workspace": "Bridge", "ref": "surface:40", "ws_ref": "workspace:9",
+                 "state": "working", "id": tbc.SURF}]
+        w.runner.handlers["workplace.status"] = lambda argv: ok(tabs)
+        w.runner.handlers["eww.-o"] = lambda argv: ok(f"claude CMUX_SURFACE_ID={tbc.SURF} X=1\n")
+        w.app.tabs.poll()
+        state = w.app.state_payload()
+    finally:
+        w.close()
+    for path, types in STATE_FIELDS.items():
+        values = state_values(state, path)
+        bad = [v for v in values if not isinstance(v, types)]
+        assert not bad, f"{path}: {bad!r} is not {types}"
+    assert state_values(state, "sessions.sessions[].tab.ws_ref") == ["workspace:9"]

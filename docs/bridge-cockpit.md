@@ -996,6 +996,16 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
 
 The workspaces come from the terminal driver's optional verb `workspaces` (cmux: `workspace list`, `sidebar-state`, `list-notifications`, all read only), asked with each tab poll. A driver without the verb still shows the workspaces, grouped from the tabs.
 
+**What works where.** A tab and a workspace show a small count when something runs in them: the subagents with one icon, the workflows with another, and in the tooltip the busy sessions too. Three numbers count:
+
+- a session that is busy;
+- a subagent whose transcript changed within the last 120 s;
+- a workflow that is not paused.
+
+The counts come from the Sessions scan, which reads every Claude session on this machine. A session is joined to its tab by the tab's id and to its workspace by the workspace ref (`ws_ref`, carried on the session's tab), so two workspaces with the same title never share a count. A session that sits in no tab of this Bridge (another folder, another Bridge here) counts nowhere in the sidebar; the header names it only in its tooltip ("elsewhere on this machine"). The header chip ("3 working · 5 subagents · 2 workflows") adds up this Bridge's tabs and opens the Sessions page on a click.
+
+**Order.** The workspaces keep the terminal's order. A toggle above them ("Most urgent first") orders them instead by their most urgent tab (needs you, waiting, working), then pinned, then the terminal's order, then the title; a workspace with only shells or no tabs comes last, and the control tab does not count. The choice is kept in this browser. While the pointer or the keyboard focus is inside the sidebar the order holds still, so a row never moves away under the hand; counts and states still update, and the new order applies when the pointer leaves.
+
 The other Bridges are the entries in `infra/instances/` that meet four conditions:
 
 - `relationship` is `sibling` or `downstream`;

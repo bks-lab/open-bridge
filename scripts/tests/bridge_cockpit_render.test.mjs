@@ -17,6 +17,7 @@ const { ReturnCard, returnsOf } = views.home
 const { TabControls } = views.detail
 const { SessionCard } = views.sessions
 const { Header } = views.header
+const loadedRooms = await loadCockpit()
 const en = text.TABLES.en
 
 // a fixed local "now": Friday, 9 October 2026, noon (the same moment the frontend suite uses)
@@ -240,6 +241,86 @@ test('header: a cockpit with only its own state names that, and a normal one sho
   const demo = renderHeader(null, { mock: true })
   assert.equal(demo.$('.hdr-scratch'), null)
   assert.equal(demo.$('.hdr-demo .hdr-demo-long').text(), en.demoBadge)
+})
+
+// ---------------------------------------------------------------- what works where: header chip and sidebar counts
+
+test('the header shows the working total from the mock sessions', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const chip = mount(html`<${Header} s=${s} c=${c} />`).$('.hdr-agents')
+  // this Bridge's tabs: three busy sessions, five subagents, two workflows (the paused one does not count);
+  // the session of another folder stands only in the tooltip
+  assert.equal(chip.text(), en.header.working(3, 5, 2))
+  assert.equal(chip.getAttribute('title'), en.header.workingTitle(4, 2))
+  chip.click()
+  assert.deepEqual(c.calls, [['setPage', '@sessions']])
+  // nothing at work: no chip
+  const idle = cockpitState(NOW, { sessions: { at_ms: NOW, sessions: [] } })
+  assert.equal(mount(html`<${Header} s=${idle} c=${recorder()} />`).$('.hdr-agents'), null)
+})
+
+const { Sidebar } = views.rooms
+const { roomsOf } = loadedRooms.logic
+function renderSide(s, root = null) {
+  const vnode = html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`
+  if (!root) return mount(vnode)
+  loadedRooms.render(vnode, root)
+  return root
+}
+const groupOf = (el, title) => el.$$('section.room-ws').find(g => g.$('.room-ws-title')?.text() === title) ?? null
+const tabRow = (el, name) => el.$$('.room-tab').find(b => b.$('.room-name').text() === name) ?? null
+
+test('a workspace group shows the sum of its tabs and a tab its own count', () => {
+  const s = cockpitState(NOW)
+  s.sessions = { at_ms: NOW, sessions: [
+    { id: 'x1', status: 'busy', agents: { running_count: 2 }, workflows: [], tab: { ref: 'surface:9', ws_ref: 'workspace:3', workspace: 'Demo' } },
+    { id: 'x2', status: 'idle', agents: { running_count: 1 }, workflows: [{ status: 'running', agents: 3 }, { status: 'paused' }],
+      tab: { ref: 'surface:12', ws_ref: 'workspace:3', workspace: 'Demo' } },
+    { id: 'x3', status: 'busy', agents: { running_count: 5 }, workflows: [], tab: null }] }
+  const el = renderSide(s)
+  const demo = groupOf(el, 'Demo')
+  const head = demo.$('.room-ws-head .room-load')
+  assert.equal(head.getAttribute('title'), en.rooms.loadTitle(1, 3, 1))
+  assert.match(head.text(), new RegExp(`${en.rooms.subagents(3)}.*${en.rooms.workflows(1)}`))
+  assert.equal(tabRow(el, 'notes').$('.room-load').getAttribute('title'), en.rooms.loadTitle(1, 2, 0))
+  assert.equal(tabRow(el, 'demo-task research').$('.room-load').getAttribute('title'), en.rooms.loadTitle(0, 1, 1))
+  assert.equal(tabRow(el, 'report-draft').$('.room-load'), null)                // nothing runs in it: no chip
+  // the second workspace with the same title shares nothing of it, the session elsewhere stands nowhere
+  const twins = el.$$('section.room-ws').filter(g => g.$('.room-ws-title')?.text() === 'Demo')
+  assert.equal(twins.length, 2)
+  assert.equal(twins[1].$('.room-load'), null)
+  assert.equal(el.$$('.room-load').length, 3)
+})
+
+test('the sidebar keeps its order while the pointer is inside', async () => {
+  const titles = el => el.$$('section.room-ws .room-ws-title').map(x => x.text())
+  const s = cockpitState(NOW, { ui: { roomsSort: 'urgency' } })
+  const el = renderSide(s)
+  const before = titles(el)
+  assert.equal(before[0], 'Ops')                                               // the tab that needs you leads
+  el.$('nav').dispatch('pointerenter')
+  // the Ops tab is answered and a Docs tab now asks: the order would change, the state words follow at once
+  const next = { ...s, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => t.ref === 'surface:7' ? { ...t, state: 'working' }
+    : t.ref === 'surface:8' ? { ...t, state: 'needs-you' } : t) } }
+  renderSide(next, el)
+  assert.deepEqual(titles(el), before)
+  assert.equal(tabRow(el, 'docs-refresh').$('.room-meta').text(), en.state['needs-you'])
+  el.$('nav').dispatch('pointerleave')
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(titles(el)[0], 'Docs')
+})
+
+test('the sidebar order toggle flips between the terminal order and the most urgent first', () => {
+  const c = recorder()
+  const s = cockpitState(NOW)
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const toggle = el.button(en.rooms.sortUrgency)
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false')
+  toggle.click()
+  assert.deepEqual(c.calls, [['toggleRoomsSort']])
+  const on = cockpitState(NOW, { ui: { roomsSort: 'urgency' } })
+  assert.equal(renderSide(on).button(en.rooms.sortUrgency).getAttribute('aria-pressed'), 'true')
 })
 
 // ---------------------------------------------------------------- the agent tab column folds away

@@ -3207,6 +3207,29 @@ def test_sessions_lists_live_claude_sessions_with_subagents_and_their_tab(world,
     assert len([c for c in world.runner.calls if c[0] == "/bin/ps"]) == 1
 
 
+def test_a_session_tab_carries_its_workspace_ref(world, tmp_path):
+    # two workspaces may share a title; the page joins a session to its room by the workspace ref
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    world.app.sessions.base = claude_home(tmp_path, world.root, now_ms)
+    tabs = [{"name": "Web work", "workspace": "Bridge", "ref": "surface:40", "ws_ref": "workspace:9",
+             "state": "working", "id": SURF},
+            {"name": "Other", "workspace": "Bridge", "ref": "surface:41", "ws_ref": "workspace:3", "state": "idle"}]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(tabs)
+    world.runner.handlers["eww.-o"] = lambda argv: ok(f"claude CMUX_SURFACE_ID={SURF} X=1\n")
+    world.app.tabs.poll()
+    x = world.app.state_payload()["sessions"]["sessions"][0]
+    assert x["tab"]["ref"] == "surface:40" and x["tab"]["ws_ref"] == "workspace:9"
+    # a driver without workspace refs (tmux panes) leaves it empty, never another workspace's
+    tmux = [{"name": "Web work", "workspace": "Bridge", "ref": "%3", "state": "working", "id": "%3"}]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(tmux)
+    world.runner.handlers["eww.-o"] = lambda argv: ok("claude TMUX_PANE=%3 X=1\n")
+    world.app.sessions.surfaces.clear()
+    world.app.tabs.poll()
+    x = world.app.sessions.state()[0]
+    assert x["tab"]["ref"] == "%3" and "ws_ref" in x["tab"] and not x["tab"]["ws_ref"]
+
+
 def test_a_session_in_a_task_tab_links_itself_one_can_link_by_hand_and_go_on_in_an_ended_one(world, tmp_path):
     now_ms = time.time() * 1000
     world.clock.now = now_ms

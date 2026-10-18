@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { aiWaiting, attentionTabs, canTab, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, morePages,
@@ -82,6 +82,17 @@ export function StartControl({ s, c, size = 'xs', short: brief = false }) {
     onClick=${() => c.act('start_control', {})}>${brief ? t.btnStartControlShort : t.btnStartControl}<//>`
 }
 
+/** What works in this Bridge's tabs right now: busy sessions, subagents active in the last 2 minutes and
+ *  workflows that are not paused (logic.js agentLoad). Sessions elsewhere on this machine only in the
+ *  tooltip. A click opens the Sessions page */
+export function AgentsChip({ s, c }) {
+  const t = T()
+  const { total, elsewhere } = agentLoad(s.sessions?.sessions, s.tabs?.tabs)
+  if (total.busy + total.subagents + total.workflows <= 0) return null
+  return html`<button type="button" class="hdr-agents btn-link small" title=${t.header.workingTitle(total.workflowAgents, elsewhere.busy + elsewhere.subagents)}
+    onClick=${() => c.setPage(SESSIONS_PAGE)}>${t.header.working(total.busy, total.subagents, total.workflows)}</button>`
+}
+
 function CommandBox({ c }) {
   const t = T()
   const [value, setValue] = useState('')
@@ -127,6 +138,7 @@ export function Header({ s, c }) {
         size="sm" icon="send" onClick=${() => c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>
       <${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
         pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()}><span class="hide-narrow">${t.historyButton}</span><//>
+      ${s.layout === 'narrow' ? null : html`<${AgentsChip} s=${s} c=${c} />`}
       ${s.layout === 'narrow' ? null : html`<${RelayBadge} s=${s} c=${c} />`}
       ${s.layout === 'narrow' ? null : html`<${StartControl} s=${s} c=${c} short />`}
       <${Btn} variant="ghost" size="sm" icon=${themeIcon} label=${`${t.themeLabel}: ${t.theme[s.ui.theme]}`}

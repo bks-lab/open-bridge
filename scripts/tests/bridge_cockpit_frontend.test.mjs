@@ -3033,6 +3033,117 @@ test('roomsOf: the longest Bridge path wins, the real folder counts, workspaces 
   assert.deepEqual(r.bridges.map(b => b.id), ['outer'])
 })
 
+// ---------------------------------------------------------------- agent counts per tab and workspace (agentLoad)
+
+const sess = (ref, wsRef, workspace, over = {}) => ({ status: 'idle', agents: { running_count: 0 }, workflows: [],
+  tab: ref ? { ref, ws_ref: wsRef, workspace, name: ref } : null, ...over })
+
+test('agentLoad sums busy sessions, running subagents and workflows per tab ref', () => {
+  const load = logic.agentLoad([
+    sess('s:1', 'w:1', 'Bridge', { status: 'busy', agents: { running_count: 2 }, workflows: [{ status: 'running', agents: 3 }] }),
+    sess('s:1', 'w:1', 'Bridge', { status: 'busy', agents: { running_count: 1 } }),            // two sessions on one tab
+    sess('s:2', 'w:1', 'Bridge'),
+  ], [])
+  assert.deepEqual(load.byTab['s:1'], { sessions: 2, busy: 2, subagents: 3, workflows: 1 })
+  assert.deepEqual(load.byTab['s:2'], { sessions: 1, busy: 0, subagents: 0, workflows: 0 })
+  assert.deepEqual(load.byWorkspace['w:1'], { sessions: 3, busy: 2, subagents: 3, workflows: 1 })
+  assert.deepEqual(load.total, { busy: 2, subagents: 3, workflows: 1, workflowAgents: 3 })
+  assert.deepEqual(logic.agentLoad(undefined, undefined).total, { busy: 0, subagents: 0, workflows: 0, workflowAgents: 0 })
+})
+
+test('agentLoad joins workspaces by ws_ref, not by title', () => {
+  const load = logic.agentLoad([
+    sess('s:1', 'w:1', 'Same', { status: 'busy' }),
+    sess('s:2', null, 'Same', { agents: { running_count: 4 } }),                                // ws_ref from the tab list
+    { status: 'busy', agents: { running_count: 0 }, workflows: [], tab: { ref: 's:9', workspace: 'Lone', name: 'x' } },
+  ], [{ ref: 's:2', ws_ref: 'w:2', workspace: 'Same' }])
+  assert.deepEqual(load.byWorkspace['w:1'], { sessions: 1, busy: 1, subagents: 0, workflows: 0 })
+  assert.deepEqual(load.byWorkspace['w:2'], { sessions: 1, busy: 0, subagents: 4, workflows: 0 })
+  assert.equal(load.byWorkspace['title:Same'], undefined)                                     // never both by title
+  assert.deepEqual(load.byWorkspace['title:Lone'], { sessions: 1, busy: 1, subagents: 0, workflows: 0 })   // no ref at all: the title
+})
+
+test('agentLoad keeps sessions without a tab out of total and in elsewhere', () => {
+  const load = logic.agentLoad([
+    sess('s:1', 'w:1', 'Bridge', { status: 'busy' }),
+    sess(null, null, null, { status: 'busy', agents: { running_count: 2 }, workflows: [{ status: 'running', agents: 5 }] }),
+  ], [])
+  assert.equal(load.unmapped.length, 1)
+  assert.deepEqual(load.total, { busy: 1, subagents: 0, workflows: 0, workflowAgents: 0 })
+  assert.deepEqual(load.elsewhere, { busy: 1, subagents: 2, workflows: 1, workflowAgents: 5 })
+  assert.deepEqual(Object.keys(load.byTab), ['s:1'])
+})
+
+test('agentLoad leaves paused workflows out of the working count', () => {
+  const load = logic.agentLoad([sess('s:1', 'w:1', 'Bridge', { workflows: [
+    { status: 'running', agents: 4 }, { status: 'paused', agents: 2 }, { status: 'pending' }] })], [])
+  assert.equal(load.byTab['s:1'].workflows, 2)
+  assert.deepEqual(load.total, { busy: 0, subagents: 0, workflows: 2, workflowAgents: 4 })
+})
+
+test('roomsOf puts load on every tab and every workspace', () => {
+  const r = logic.roomsOf({
+    tabs: { workspaces: [{ ref: 'w:1', title: 'Same' }, { ref: 'w:2', title: 'Same' }, { ref: 'w:3', title: 'Quiet' }],
+      tabs: [{ ref: 's:1', ws_ref: 'w:1', workspace: 'Same', state: 'working', name: 'a' },
+        { ref: 's:2', ws_ref: 'w:1', workspace: 'Same', state: 'waiting', name: 'b' },
+        { ref: 's:3', ws_ref: 'w:2', workspace: 'Same', state: 'shell', name: 'c' }] },
+    sessions: { sessions: [sess('s:1', 'w:1', 'Same', { status: 'busy', agents: { running_count: 2 } }),
+      sess('s:2', 'w:1', 'Same', { workflows: [{ status: 'running' }] })] },
+  })
+  const [one, two, quiet] = r.workspaces
+  assert.deepEqual(one.tabs.map(t => [t.ref, t.load.busy, t.load.subagents, t.load.workflows]), [['s:2', 0, 0, 1], ['s:1', 1, 2, 0]])
+  assert.deepEqual(one.load, { sessions: 2, busy: 1, subagents: 2, workflows: 1 })
+  assert.deepEqual(two.load, { sessions: 0, busy: 0, subagents: 0, workflows: 0 })       // the same title shares nothing
+  assert.deepEqual(two.tabs[0].load, { sessions: 0, busy: 0, subagents: 0, workflows: 0 })
+  assert.deepEqual(quiet.load, { sessions: 0, busy: 0, subagents: 0, workflows: 0 })
+})
+
+test('roomsOf gives a room built from tabs the shared ws_ref of its tabs', () => {
+  const r = logic.roomsOf({ tabs: { workspaces: null, tabs: [
+    { ref: '%1', ws_ref: '$1', workspace: 'One', state: 'waiting', name: 'a' },
+    { ref: '%2', ws_ref: '$1', workspace: 'One', state: 'working', name: 'b' },
+    { ref: '%3', ws_ref: '$2', workspace: 'Mixed', state: 'working', name: 'c' },
+    { ref: '%4', ws_ref: '$3', workspace: 'Mixed', state: 'working', name: 'd' },
+    { ref: '%5', workspace: 'Bare', state: 'working', name: 'e' }] },
+    sessions: { sessions: [sess('%2', '$1', 'One', { status: 'busy' })] } })
+  assert.deepEqual(r.workspaces.map(w => [w.title, w.ref, w.known]), [['One', '$1', false], ['Mixed', null, false], ['Bare', null, false]])
+  assert.equal(r.workspaces[0].load.busy, 1)
+  assert.deepEqual(r.workspaces.map(w => w.key), ['title:One', 'title:Mixed', 'title:Bare'])   // the key stays what it was
+})
+
+test('roomsOf without ui keeps the terminal order', () => {
+  const s = { tabs: { workspaces: [{ ref: 'w:1', title: 'Calm' }, { ref: 'w:2', title: 'Loud' }],
+    tabs: [{ ref: 's:1', ws_ref: 'w:1', workspace: 'Calm', state: 'shell', name: 'a' },
+      { ref: 's:2', ws_ref: 'w:2', workspace: 'Loud', state: 'needs-you', name: 'b' }] } }
+  assert.deepEqual(logic.roomsOf(s).workspaces.map(w => w.title), ['Calm', 'Loud'])
+  assert.deepEqual(logic.roomsOf({ ...s, ui: { roomsSort: 'terminal' } }).workspaces.map(w => w.title), ['Calm', 'Loud'])
+  assert.deepEqual(logic.roomsOf({ ...s, ui: {} }).workspaces.map(w => w.title), ['Calm', 'Loud'])
+})
+
+test('roomsOf in urgency mode orders rooms needs-you, waiting, working, idle with pinned, terminal index and title as tie breaks', () => {
+  const tab = (ref, ws, title, state) => ({ ref, ws_ref: ws, workspace: title, state, name: ref })
+  const s = { ui: { roomsSort: 'urgency' }, tabs: {
+    workspaces: [{ ref: 'w:1', title: 'Empty' }, { ref: 'w:2', title: 'Shell' }, { ref: 'w:3', title: 'Busy B' },
+      { ref: 'w:4', title: 'Asks' }, { ref: 'w:5', title: 'Waits' }, { ref: 'w:6', title: 'Busy A', pinned: true },
+      { ref: 'w:7', title: 'Busy C' }],
+    tabs: [tab('s:1', 'w:2', 'Shell', 'shell'), tab('s:2', 'w:3', 'Busy B', 'working'), tab('s:3', 'w:4', 'Asks', 'needs-you'),
+      tab('s:4', 'w:4', 'Asks', 'shell'), tab('s:5', 'w:5', 'Waits', 'waiting'), tab('s:6', 'w:6', 'Busy A', 'working'),
+      tab('s:7', 'w:7', 'Busy C', 'working'),
+      // rooms built from tabs have no index: the title breaks the tie
+      tab('%1', null, 'Zeta', 'working'), tab('%2', null, 'Alpha', 'working')] } }
+  assert.deepEqual(logic.roomsOf(s).workspaces.map(w => w.title),
+    ['Asks', 'Waits', 'Busy A', 'Busy B', 'Busy C', 'Alpha', 'Zeta', 'Empty', 'Shell'])
+})
+
+test('header and rooms take counts only from sessionCounts or agentLoad', () => {
+  for (const file of ['views/header.js', 'views/rooms.js']) {
+    const src = read(file)
+    assert.doesNotMatch(src, /running_count|\.workflows\s*\?\?|\.workflows\?\.|workflows\.(length|filter|reduce)|workflowAgents\s*[+=]/, file)   // no count of their own
+  }
+  assert.match(read('views/header.js'), /agentLoad\(s\.sessions\?\.sessions, s\.tabs\?\.tabs\)/)
+  assert.match(read('logic.js'), /export function roomsOf[\s\S]*?agentLoad\(s\.sessions\?\.sessions, s\.tabs\?\.tabs\)/)
+})
+
 test('rooms: every quick chat in the sidebar can be removed, by a button beside the row, never inside it', () => {
   const rooms = read('views/rooms.js')
   assert.match(rooms, /class="room-chat-row"/)

@@ -187,6 +187,9 @@ const ICONS = {
   pause: 'M9 5v14M15 5v14',
   play: 'M7 5l12 7-12 7z',
   chat: 'M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z',
+  subagent: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0',
+  workflow: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 9v3a6 6 0 0 0 6 6h3',
+  sort: 'M4 6h16M7 12h10M10 18h4',
 }
 
 export function Icon({ name, size = 16 }) {

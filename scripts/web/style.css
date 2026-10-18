@@ -210,6 +210,9 @@ kbd {
 }
 .hdr-status > span { overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
 .hdr-relay { padding: 0 4px; flex: 0 0 auto; }
+/* what works in this Bridge's tabs now; a click opens the Sessions page */
+.hdr-agents { flex: 0 0 auto; padding: 0 4px; font-size: 12.5px; white-space: nowrap; color: var(--on-surface-muted); }
+.hdr-agents:hover { color: var(--ink); }
 /* only the loading line and the as-of time give way; buttons and the relay word never overlap */
 .hdr-right > .btn, .hdr-right > .cmd { flex: 0 0 auto; }
 .hdr-status, .hdr-asof { flex: 0 1 auto; overflow: hidden; }
@@ -1006,6 +1009,13 @@ kbd {
 .rooms-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px; max-height: calc(100dvh - 180px); overflow-y: auto; align-content: start; }
 .rooms-side > .room-item { padding-left: 12px; }
 .room-group { margin: 12px 10px 4px; }
+/* the workspaces heading with the order toggle (terminal order or the most urgent first) */
+.room-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 4px 4px 10px; }
+.room-group-head > .room-group { margin: 0; }
+/* what runs in a tab or a workspace: subagents and workflows, each with its icon */
+.room-load { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-label); font-weight: 400;
+  color: var(--on-surface-muted); }
+.room-load-n { display: inline-flex; align-items: center; gap: 2px; }
 .room-ws { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1px; padding-left: 6px; border-left: 3px solid var(--ws-color, var(--border)); margin: 4px 0 6px; }
 .room-item { display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 8px; border: 1px solid transparent;
   border-radius: var(--radius-md); background: none; color: var(--ink); font: inherit; cursor: pointer; min-width: 0; width: 100%; overflow: hidden; }

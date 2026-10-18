@@ -26,11 +26,23 @@ function Item({ on, onClick, children, title, cls = '' }) {
     title=${title} onClick=${onClick}>${children}</button>`
 }
 
+/** What runs in a tab or a workspace (logic.js agentLoad): its subagents and workflows, each with its icon;
+ *  nothing when neither runs */
+function LoadChip({ load }) {
+  const t = T()
+  if (!load || load.subagents + load.workflows <= 0) return null
+  const part = (n, icon, word) => n > 0 ? html`<span class="room-load-n"><${Icon} name=${icon} size=${12} />
+    <span class="mono" aria-hidden="true">${n}</span><span class="sr-only">${word(n)}</span></span>` : null
+  return html`<span class="room-load" title=${t.rooms.loadTitle(load.busy, load.subagents, load.workflows)}>
+    ${part(load.subagents, 'subagent', t.rooms.subagents)}${part(load.workflows, 'workflow', t.rooms.workflows)}</span>`
+}
+
 function TabItem({ tab, on, c }) {
   const t = T()
   return html`<${Item} on=${on} cls="room-tab" title=${tab.last || tab.name} onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
     <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
     <span class="room-name">${tab.is_control ? t.controlSession : tab.name}</span>
+    <${LoadChip} load=${tab.load} />
     <span class="room-meta muted small">${t.state[tab.state] ?? tab.state}</span>
   <//>`
 }
@@ -62,6 +74,7 @@ function WorkspaceGroup({ w, s, c, here }) {
   return html`<section class="room-ws" style=${w.color ? { '--ws-color': w.color } : undefined}>
     <${Item} on=${on} cls="room-ws-head" title=${w.description || w.title} onClick=${() => c.pickRoom({ kind: 'ws', id: w.key })}>
       <span class="room-ws-title">${w.pinned ? html`<span class="room-pin" aria-label=${t.rooms.pinned}>${t.rooms.pinMark}</span>` : null}${w.title}</span>
+      <${LoadChip} load=${w.load} />
       ${w.state ? html`<span class="room-meta"><${StateLine} token=${stateToken(w.state)} word=${t.state[w.state] ?? w.state} /></span>` : null}
       ${w.unread ? html`<span class="room-badge mono" aria-label=${t.rooms.unread(w.unread)}>${w.unread}</span>` : null}
       ${w.bridge ? html`<span class="chip room-bridge">${w.bridge.name}</span>` : null}
@@ -71,14 +84,39 @@ function WorkspaceGroup({ w, s, c, here }) {
   </section>`
 }
 
-function Sidebar({ s, c, rooms, here }) {
+/** The rooms in the order last shown while the pointer or the focus is in the sidebar: a row never moves
+ *  away under the hand. Only the order holds; counts and states follow at once. A new room goes last */
+function useHeldOrder(list) {
+  const held = useRef(false)
+  const shown = useRef(null)
+  const [, redraw] = useState(0)
+  let out = list
+  if (held.current && shown.current) {
+    const at = new Map(shown.current.map((k, i) => [k, i]))
+    out = list.slice().sort((a, b) => (at.get(a.key) ?? Infinity) - (at.get(b.key) ?? Infinity))
+  }
+  shown.current = out.map(w => w.key)
+  const hold = () => { held.current = true }
+  const release = () => { if (held.current) { held.current = false; redraw(n => n + 1) } }
+  return { list: out, hold, release }
+}
+
+export function Sidebar({ s, c, rooms, here }) {
   const t = T()
-  return html`<nav class="panel rooms-side" aria-label=${t.rooms.side}>
+  const order = useHeldOrder(rooms.workspaces)
+  const urgency = s.ui?.roomsSort === 'urgency'
+  return html`<nav class="panel rooms-side" aria-label=${t.rooms.side}
+    onPointerEnter=${order.hold} onPointerLeave=${order.release} onFocusIn=${order.hold}
+    onFocusOut=${e => { if (!e.currentTarget.contains(e.relatedTarget)) order.release() }}>
     ${rooms.chats.length ? html`<section class="room-ws"><h3 class="label-caps">${t.rooms.chats}</h3>
       <${Chats} convs=${rooms.chats} s=${s} c=${c} here=${here} /></section>` : null}
-    <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
+    <div class="room-group-head">
+      <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
+      <${Btn} size="xs" variant="ghost" icon="sort" pressed=${urgency} title=${urgency ? t.rooms.sortUrgency : t.rooms.sortTerminal}
+        onClick=${() => c.toggleRoomsSort()}>${t.rooms.sortUrgency}<//>
+    </div>
     ${s.tabs?.workspaces == null ? html`<p class="muted small">${t.rooms.noList}</p>` : null}
-    ${rooms.workspaces.length ? rooms.workspaces.map(w => html`<${WorkspaceGroup} key=${w.key} w=${w} s=${s} c=${c} here=${here} />`)
+    ${order.list.length ? order.list.map(w => html`<${WorkspaceGroup} key=${w.key} w=${w} s=${s} c=${c} here=${here} />`)
       : html`<${Empty}>${t.tabsEmpty}<//>`}
     ${rooms.bridges.length ? html`<h3 class="label-caps room-group">${t.rooms.bridges}</h3>
       ${rooms.bridges.map(b => html`<${Item} key=${b.id} on=${here.kind === 'bridge' && here.id === b.id} title=${b.purpose}

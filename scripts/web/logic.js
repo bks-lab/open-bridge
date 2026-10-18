@@ -428,15 +428,31 @@ export function roomsOf(s) {
   }
   const mine = (t, w) => (t.ws_ref && w.ref ? t.ws_ref === w.ref : t.workspace === w.title)
   const rank = t => STATE_ORDER[t.state] ?? 4
+  const load = agentLoad(s.sessions?.sessions, s.tabs?.tabs)
+  const index = new Map()   // room -> its place in the terminal's list; rooms built from tabs have none
   const room = (w, known) => {
     const own = tabs.filter(t => mine(t, w)).sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)))
+      .map(t => ({ ...t, load: load.byTab[t.ref] ?? noLoad() }))
     const side = (w.statuses ?? []).find(x => x.name === 'claude_code')
     const state = own.length && rank(own[0]) < 2 ? own[0].state : SIDEBAR_STATE[String(side?.text ?? '').toLowerCase()] ?? (own.length ? own[0].state : null)
-    return { ...w, key: w.ref ?? `title:${w.title}`, known, tabs: own, state, unread: w.unread ?? 0, bridge: bridgeOf(w), chats: r.control && w.title === r.control ? chats : [] }
+    // a room built from tabs (no workspace list, e.g. tmux) takes the workspace ref its tabs all share
+    const ref = w.ref ?? (own.length && own.every(t => t.ws_ref && t.ws_ref === own[0].ws_ref) ? own[0].ws_ref : null)
+    const sum = ref ? load.byWorkspace[ref] ?? noLoad() : own.reduce((n, t) => addLoad(n, t.load), noLoad())
+    return { ...w, ref, key: w.ref ?? `title:${w.title}`, known, tabs: own, state, load: sum, unread: w.unread ?? 0, bridge: bridgeOf(w), chats: r.control && w.title === r.control ? chats : [] }
   }
-  const out = listed.map((w, i) => ({ w, i })).sort((a, b) => (b.w.pinned ? 1 : 0) - (a.w.pinned ? 1 : 0) || a.i - b.i).map(x => room(x.w, true))
+  const out = listed.map((w, i) => ({ w, i })).sort((a, b) => (b.w.pinned ? 1 : 0) - (a.w.pinned ? 1 : 0) || a.i - b.i)
+    .map(x => { const w = room(x.w, true); index.set(w, x.i); return w })
   for (const t of tabs) {
     if (t.workspace && !out.some(w => mine(t, w))) out.push(room({ ref: null, title: t.workspace }, false))
+  }
+  // on request (a per-viewer toggle) the rooms stand by their most urgent tab; a room of shells or of no
+  // tabs comes last, and the control tab, which never waits for you, does not count. Without the toggle
+  // the terminal's order stays
+  if (s.ui?.roomsSort === 'urgency') {
+    const urgency = w => Math.min(3, ...w.tabs.filter(t => !t.is_control).map(rank))
+    const at = w => index.get(w) ?? Infinity
+    out.sort((a, b) => urgency(a) - urgency(b) || (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || at(a) - at(b)
+      || String(a.title).localeCompare(String(b.title)))
   }
   const placed = out.some(w => w.chats.length || (r.control && w.title === r.control))
   return {
@@ -459,6 +475,39 @@ export function attentionTabs(tabs) {
 export function sessionCounts(sessions) {
   const list = sessions ?? []
   return { sessions: list.length, agents: list.reduce((n, x) => n + (x.agents?.running_count ?? 0) + (x.workflows?.length ?? 0), 0) }
+}
+
+const noLoad = () => ({ sessions: 0, busy: 0, subagents: 0, workflows: 0 })
+const addLoad = (a, b) => ({ sessions: a.sessions + b.sessions, busy: a.busy + b.busy, subagents: a.subagents + b.subagents,
+  workflows: a.workflows + b.workflows })
+
+/** What works where, for the sidebar and the header: per tab ref and per workspace ref the sessions, the
+ *  busy ones, the subagents active in the last 2 minutes and the workflows that are not paused. A session
+ *  without a tab of this Bridge (another folder, another Bridge on this machine) counts in `elsewhere`
+ *  only, never in `total`. A workspace is joined by its ref (two workspaces may share a title); the title
+ *  only when no ref is known at all */
+export function agentLoad(sessions, tabs) {
+  const out = { byTab: {}, byWorkspace: {}, unmapped: [], total: null, elsewhere: null }
+  const refOf = new Map((tabs ?? []).filter(t => t?.ref).map(t => [t.ref, t.ws_ref]))
+  const sums = () => ({ busy: 0, subagents: 0, workflows: 0, workflowAgents: 0 })
+  const total = sums()
+  const elsewhere = sums()
+  for (const x of sessions ?? []) {
+    const running = (x.workflows ?? []).filter(w => String(w?.status ?? '').toLowerCase() !== 'paused')
+    const one = { sessions: 1, busy: x.status === 'busy' ? 1 : 0, subagents: x.agents?.running_count ?? 0, workflows: running.length }
+    const into = x.tab ? total : elsewhere
+    into.busy += one.busy
+    into.subagents += one.subagents
+    into.workflows += one.workflows
+    into.workflowAgents += running.reduce((n, w) => n + (w.agents ?? 0), 0)
+    if (!x.tab) { out.unmapped.push(x); continue }
+    out.byTab[x.tab.ref] = addLoad(out.byTab[x.tab.ref] ?? noLoad(), one)
+    const ws = x.tab.ws_ref || refOf.get(x.tab.ref) || `title:${x.tab.workspace}`
+    out.byWorkspace[ws] = addLoad(out.byWorkspace[ws] ?? noLoad(), one)
+  }
+  out.total = total
+  out.elsewhere = elsewhere
+  return out
 }
 
 /** Seconds left of a running pass, from its remembered duration; null when unknown */
