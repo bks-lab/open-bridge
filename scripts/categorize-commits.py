@@ -556,6 +556,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_triage.py",
     "scripts/tests/test_bridge_cockpit_triage.py",
     "scripts/tests/test_bridge_cockpit_ticker.py",
+    "scripts/tests/test_bridge_cockpit_watch.py",
     "scripts/lib/bridge_cockpit/history.py",
     "scripts/lib/bridge_cockpit/design.py",              # the colours, read from the Bridge's own DESIGN.md
     "scripts/bridge-resources.py",
