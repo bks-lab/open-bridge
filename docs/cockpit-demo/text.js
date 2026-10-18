@@ -940,6 +940,8 @@ const en = {
   scWaiting: 'waiting for someone else, follow up from the card',
   scOnlyYou: 'only you can do this, v for Advise',
   scDropOne: 'one drop at a time, asked about the first',
+  busyAlready: 'already running, sent once',
+  busySkipped: n => `${n} already running, left out`,
   scResult: said => `Shortcuts: ${said}`,
   noRow: 'no row selected',
 
@@ -2025,6 +2027,8 @@ const de = {
   scWaiting: 'wartet auf jemand anderen, Nachfassen über die Karte',
   scOnlyYou: 'nur du, v für Beraten',
   scDropOne: 'eins nach dem anderen, gefragt wird zuerst nach dem ersten',
+  busyAlready: 'läuft schon, nur einmal geschickt',
+  busySkipped: n => n === 1 ? '1 läuft schon, ausgelassen' : `${n} laufen schon, ausgelassen`,
   scResult: said => `Kürzel: ${said}`,
   noRow: 'keine Zeile gewählt',
 

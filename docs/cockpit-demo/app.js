@@ -12,7 +12,7 @@ import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder } from './components.js'
 import {
   CONN_GRACE_MS, DAY, addNote, attentionTabs, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
-  isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, freeKeys, letterShortcut, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
+  isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, letterShortcut, planBusy, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -390,22 +390,15 @@ function rowIndex() {
   return indexRows(store.get().model)
 }
 
-function busyKey(verb, args) {
-  return args?.key ?? args?.tab_ref ?? (args?.keys ? args.keys.join(',') : args?.conv ? `quick:${args.conv}` : verb)
-}
-
 async function act(verb, args = {}) {
-  // a bulk leaves out the rows already in flight, and marks each of the others busy
-  let rows = []
-  if (args.keys?.length) {
-    rows = freeKeys(args.keys, store.get().ui.busy)
-    if (!rows.length) return null
-    args = { ...args, keys: rows }
-  }
-  return withBusy(busyKey(verb, args), verb, async () => {
+  // a bulk leaves out the rows already in flight and says so, and marks each of the others busy (logic.js planBusy)
+  const p = planBusy(verb, args, store.get().ui.busy)
+  if (p.skipped.length) pushNote({ text: T().busySkipped(p.skipped.length), tone: 'warn' })
+  if (p.refused) return null
+  return withBusy(p.key, verb, async () => {
     // a start carries the chosen model and effort, only while launch is on (logic.js withLaunch)
     const st = store.get()
-    const res = await api.action(verb, withLaunch(verb, args, st.launch, st.ui, st.launchRoutes))
+    const res = await api.action(verb, withLaunch(verb, p.args, st.launch, st.ui, st.launchRoutes))
     if (!res.ok) {
       failNote(res)
       return null
@@ -419,15 +412,15 @@ async function act(verb, args = {}) {
     } else if (r.note) pushNote({ text: r.note, tone: r.ok ? 'ok' : 'bad' })
     if (r.relay) store.set(s => ({ ...s, relay: { ...s.relay, records: upsertRecord(s.relay.records, r.relay) } }))
     // the task facts and inbox events of the touched row changed on disk: fetch them again when shown
-    const touched = (args.key ? [args.key] : args.keys ?? []).map(k => rowIndex().get(k)).filter(Boolean)
+    const touched = (p.args.key ? [p.args.key] : p.args.keys ?? []).map(k => rowIndex().get(k)).filter(Boolean)
     if (touched.length) store.set(s => ({ ...s, details: touched.reduce(invalidateDetails, s.details) }))
     if (r.settled?.length) setUi(ui => ({ picked: ui.picked.filter(k => !r.settled.includes(k)), rvPicked: ui.rvPicked.filter(k => !r.settled.includes(k)) }))
     return r
-  }, rows)
+  }, { rows: p.rows, refuse: p.refuse })
 }
 
-/** Mark `key` busy while fn runs, and clear it however fn ends; a key already busy runs nothing (logic.js) */
-const withBusy = createWithBusy(() => store.get().ui.busy, f => setUi(ui => ({ busy: f(ui.busy) })))
+/** Mark `key` busy while fn runs, and clear it however fn ends; a row action already busy runs nothing and says so (logic.js) */
+const withBusy = createWithBusy(() => store.get().ui.busy, f => setUi(ui => ({ busy: f(ui.busy) })), () => pushNote({ text: T().busyAlready, tone: 'warn' }))
 
 /** A question to Claude: a short session of its own (Haiku unless picked), shown in the question window.
  *  A free question in the window goes on in the open conversation; anything else starts a new one */

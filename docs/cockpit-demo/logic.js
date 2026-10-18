@@ -126,17 +126,49 @@ export function freeKeys(keys, busy) {
   return keys.filter(k => !busy?.[k])
 }
 
+/** The busy key of an action: its row, tab or conversation, the joined keys of a bulk, else the verb */
+function busyKey(verb, args) {
+  return args?.key ?? args?.tab_ref ?? (args?.keys ? args.keys.join(',') : args?.conv ? `quick:${args.conv}` : verb)
+}
+
+// a toggle on the start page, carrying a row key but no action on the row: a quick second flip still goes
+const BUSY_TOGGLES = new Set(['pin'])
+
 /**
- * `withBusy(key, what, fn, rows)`: mark `key` (and each row key of a bulk) busy while fn runs,
- * and clear them however fn ends. A key or row already busy runs nothing and returns null, so a
- * shortcut, which bypasses the disabled button, cannot send the same action twice.
+ * How `act` holds an action against the busy map. `key` is busyKey of the args as asked, so the
+ * bulk buttons that check the joined list stay busy; `args` and `rows` leave out the rows already
+ * in flight, named in `skipped`; `refused` when nothing is left to send. `refuse` only for an
+ * action on rows (a key, a tab, a bulk): settings and questions are not held back.
+ */
+export function planBusy(verb, args = {}, busy = {}) {
+  const key = busyKey(verb, args)
+  const bulk = !!args.keys?.length
+  const rows = bulk ? freeKeys(args.keys, busy) : []
+  const skipped = bulk ? args.keys.filter(k => !rows.includes(k)) : []
+  const onRows = bulk || args.key != null || args.tab_ref != null
+  return {
+    key, rows, skipped,
+    args: bulk ? { ...args, keys: rows } : args,
+    refused: bulk && !rows.length,
+    refuse: onRows && !BUSY_TOGGLES.has(verb),
+  }
+}
+
+/**
+ * `withBusy(key, what, fn, { rows, refuse })`: mark `key` (and each row key of a bulk) busy while
+ * fn runs, and clear them however fn ends. With `refuse`, a key or row already busy runs nothing,
+ * calls `onRefused(keys)` and returns null, so a shortcut, which bypasses the disabled button,
+ * cannot send the same row action twice. Without it, as for settings and questions, fn always runs.
  * `getBusy()` reads the busy map, `updateBusy(f)` replaces it with f(busy).
  */
-export function createWithBusy(getBusy, updateBusy) {
-  return async function withBusy(key, what, fn, rows = []) {
+export function createWithBusy(getBusy, updateBusy, onRefused = () => {}) {
+  return async function withBusy(key, what, fn, { rows = [], refuse = false } = {}) {
     const keys = [...new Set([key, ...rows])]
     const busy = getBusy() ?? {}
-    if (keys.some(k => busy[k])) return null
+    if (refuse && keys.some(k => busy[k])) {
+      onRefused(keys)
+      return null
+    }
     updateBusy(b => ({ ...b, ...Object.fromEntries(keys.map(k => [k, what])) }))
     try {
       return await fn()

@@ -254,38 +254,88 @@ test('letterShortcut: a v c b w act once per press, an auto-repeat keydown acts 
   assert.match(read('app.js'), /letterShortcut\(e\)/)
 })
 
-test('createWithBusy: a key already busy runs fn once, clears however fn ends, rows of a bulk count', async () => {
+test('createWithBusy: a row action already busy runs fn once, clears however fn ends, rows of a bulk count', async () => {
   let busy = {}
-  const withBusy = logic.createWithBusy(() => busy, f => { busy = f(busy) })
+  const refused = []
+  const withBusy = logic.createWithBusy(() => busy, f => { busy = f(busy) }, keys => refused.push(keys))
+  const row = { refuse: true }
   let runs = 0
   let release
-  const first = withBusy('task:a', 'do_it', () => { runs += 1; return new Promise(res => { release = res }) })
+  const first = withBusy('task:a', 'do_it', () => { runs += 1; return new Promise(res => { release = res }) }, row)
   assert.deepEqual(busy, { 'task:a': 'do_it' })
-  assert.equal(await withBusy('task:a', 'do_it', () => { runs += 1; return 'second' }), null)
+  assert.equal(await withBusy('task:a', 'do_it', () => { runs += 1; return 'second' }, row), null)
   assert.equal(runs, 1)
+  assert.deepEqual(refused, [['task:a']])   // the refusal is told, never silent
   release('first')
   assert.equal(await first, 'first')
   assert.deepEqual(busy, {})
-  assert.equal(await withBusy('task:a', 'do_it', () => { runs += 1; return 'again' }), 'again')
+  assert.equal(await withBusy('task:a', 'do_it', () => { runs += 1; return 'again' }, row), 'again')
   assert.equal(runs, 2)
-  await assert.rejects(withBusy('task:a', 'do_it', () => { throw new Error('boom') }), /boom/)
+  await assert.rejects(withBusy('task:a', 'do_it', () => { throw new Error('boom') }, row), /boom/)
   assert.deepEqual(busy, {})
   // a bulk marks each of its rows, so a single action on one of them waits its turn
   let releaseBulk
-  const bulk = withBusy('task:a,task:b', 'do_it', () => new Promise(res => { releaseBulk = res }), ['task:a', 'task:b'])
+  const bulk = withBusy('task:a,task:b', 'do_it', () => new Promise(res => { releaseBulk = res }), { rows: ['task:a', 'task:b'], refuse: true })
   assert.deepEqual(busy, { 'task:a,task:b': 'do_it', 'task:a': 'do_it', 'task:b': 'do_it' })
-  assert.equal(await withBusy('task:b', 'drop', () => 'ran'), null)
+  assert.equal(await withBusy('task:b', 'drop', () => 'ran', row), null)
   releaseBulk(true)
   await bulk
   assert.deepEqual(busy, {})
 })
 
-test('freeKeys: a bulk action skips rows that are already busy', () => {
-  const busy = { 'task:a': 'do_it', 'task:x,task:y': 'advise' }
-  assert.deepEqual(logic.freeKeys(['task:a', 'task:b', 'task:c'], busy), ['task:b', 'task:c'])
-  assert.deepEqual(logic.freeKeys(['task:a'], busy), [])
-  assert.deepEqual(logic.freeKeys(['task:b'], {}), ['task:b'])
-  assert.deepEqual(logic.freeKeys(['task:b'], undefined), ['task:b'])
+test('createWithBusy: a key that is not a row (a setting, a question) is never refused', async () => {
+  let busy = {}
+  const refused = []
+  const withBusy = logic.createWithBusy(() => busy, f => { busy = f(busy) }, keys => refused.push(keys))
+  let release
+  const first = withBusy('home_tiles', 'home_tiles', () => new Promise(res => { release = res }))
+  // a second tile flip or a question about another row while the first is pending still runs
+  assert.equal(await withBusy('home_tiles', 'home_tiles', () => 'second'), 'second')
+  assert.equal(await withBusy('ask:row', 'row', () => 'other row'), 'other row')
+  assert.deepEqual(refused, [])
+  release('first')
+  assert.equal(await first, 'first')
+  assert.deepEqual(busy, {})
+})
+
+test('planBusy: row actions refuse when busy, a bulk keeps its own key and names what it left out', () => {
+  // settings and questions are no row: never refused
+  assert.equal(logic.planBusy('home_tiles', { ids: ['a'] }, {}).refuse, false)
+  assert.equal(logic.planBusy('home_tiles', { ids: ['a'] }, {}).key, 'home_tiles')
+  assert.equal(logic.planBusy('launch_settings', { settings: {} }, {}).refuse, false)
+  assert.equal(logic.planBusy('a2a_poll', { conv: 'c1' }, {}).key, 'quick:c1')
+  // a pin is a toggle on the start page, not an action on the row: a quick second flip still goes
+  assert.equal(logic.planBusy('pin', { key: 'task:a', on: true }, { 'task:a': 'pin' }).refuse, false)
+  // one row
+  const one = logic.planBusy('drop', { key: 'task:a' }, {})
+  assert.deepEqual([one.key, one.refuse, one.refused, one.rows, one.skipped], ['task:a', true, false, [], []])
+  assert.equal(logic.planBusy('tab_jump', { tab_ref: 't1' }, {}).refuse, true)
+  // a bulk with one row in flight: that row left out, the key stays the whole list the buttons check
+  const busy = { 'task:a': 'do_it' }
+  const bulk = logic.planBusy('do_it', { keys: ['task:a', 'task:b', 'task:c'], target: 'workspace' }, busy)
+  assert.equal(bulk.key, 'task:a,task:b,task:c')
+  assert.deepEqual(bulk.rows, ['task:b', 'task:c'])
+  assert.deepEqual(bulk.args, { keys: ['task:b', 'task:c'], target: 'workspace' })
+  assert.deepEqual(bulk.skipped, ['task:a'])
+  assert.equal(bulk.refused, false)
+  assert.equal(bulk.refuse, true)
+  // every row in flight: nothing is sent, and it says so
+  const all = logic.planBusy('advise', { keys: ['task:a'] }, busy)
+  assert.equal(all.refused, true)
+  assert.deepEqual(all.skipped, ['task:a'])
+})
+
+test('act() wires planBusy into withBusy and tells what it left out', () => {
+  const app = read('app.js')
+  const body = app.match(/async function act\(verb, args = \{\}\) \{[\s\S]*?\n\}/)[0]
+  assert.match(body, /planBusy\(verb, args, store\.get\(\)\.ui\.busy\)/)
+  assert.match(body, /\.skipped\.length[\s\S]{0,120}busySkipped/)
+  assert.match(body, /\.refused\)[\s\S]{0,80}return null/)
+  assert.match(body, /withBusy\(p\.key, verb,/)
+  assert.match(body, /withLaunch\(verb, p\.args,/)
+  assert.match(body, /\{ rows: p\.rows, refuse: p\.refuse \}\)/)
+  // a refusal inside withBusy shows a note too
+  assert.match(app, /createWithBusy\([^\n]*busyAlready/)
 })
 
 test('planShortcut: c on an inbox row asks why like the Drop button, c on a task drops', () => {
@@ -2013,7 +2063,7 @@ test('launch: start args stay exactly as before while off; on, the choice goes a
   assert.deepEqual(logic.withLaunch('do_it', args, { ...LAUNCH, manual: false, effort: false }, { launchModel: 'opus' }, {}), { ...args, model: 'auto' })
   // the controller sends every action through withLaunch, with the routes it cached
   const act = read('app.js').match(/async function act\(verb, args = \{\}\) \{[\s\S]*?\n\}/)[0]
-  assert.match(act, /api\.action\(verb, withLaunch\(verb, args, st\.launch, st\.ui, st\.launchRoutes\)\)/)
+  assert.match(act, /api\.action\(verb, withLaunch\(verb, p\.args, st\.launch, st\.ui, st\.launchRoutes\)\)/)
 })
 
 test('launch: the recommendation reads short in both languages, its reason as the tooltip', () => {
