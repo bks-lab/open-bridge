@@ -187,23 +187,70 @@ def test_an_issue_assigned_to_you_that_no_task_syncs_is_untasked(tmp_path):
     assert ids(rows["example-org/site#7"]) == ["analyze", "implement", "adopt"]
 
 
-def test_a_stream_or_a_closed_task_that_names_the_issue_tracks_it_too(tmp_path):
+def test_a_stream_tracks_the_issue_and_a_done_task_does_not(tmp_path):
     root = bridge(tmp_path)
     task(root, "site-work", bucket="streams", sync={"github": {"issues": ["example-org/site#7"]}})
     task(root, "old-emoji", status="done", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
     rows, _ = collect(root)
     assert rows["example-org/site#7"]["untasked"] is False
-    assert rows["example-org/tool#12"]["untasked"] is False
+    tool = rows["example-org/tool#12"]
+    assert tool["untasked"] is True                 # the task is done, the issue is still open and yours
+    assert "task" not in tool and "adopt" in ids(tool)
 
 
-def test_untasked_is_left_unknown_when_the_tasks_cannot_be_read(tmp_path, monkeypatch):
+def test_a_live_task_wins_over_a_done_one_that_names_the_same_issue(tmp_path):
+    root = bridge(tmp_path)
+    task(root, "a-old", status="done", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
+    task(root, "b-live", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
+    rows, _ = collect(root)
+    tool = rows["example-org/tool#12"]
+    assert tool["linked_task"]["slug"] == "b-live" and tool["task"] == "b-live"
+    assert tool["untasked"] is False and "adopt" not in ids(tool)
+
+
+def test_a_board_card_assigned_to_you_is_yours_without_assignee_me(tmp_path):
+    root = bridge(tmp_path)
+    (root / "bridge-config.yaml").write_text("{}\n", encoding="utf-8")
+    cards = {"items": [*CARDS["items"], {
+        "status": "Todo", "assignees": ["octo"], "labels": [], "title": "Only on the board",
+        "content": {"number": 60, "title": "Only on the board", "type": "Issue", "repository": "example-other/x",
+                    "updatedAt": "2026-10-02T08:00:00Z", "url": "https://github.com/example-other/x/issues/60"}}]}
+    run = FakeRun(answers(cards))
+    rows, _ = collect(root, run=run)
+    card = rows["example-other/x#60"]                 # beyond query.owners: only the board knows it
+    assert card["assigned_to_me"] is True and card["untasked"] is True
+    assert "example-org/tool#50" not in rows          # someone else's card stays out
+    assert sum(1 for c in run.calls if c[:3] == ["gh", "api", "user"]) == 1     # the login asked once
+
+
+def broken_scan(monkeypatch):
     ts = bf._load_module("tracker_sync", bf.ROOT / "scripts" / "tracker-sync.py")
 
     def broken(root):
         raise RuntimeError("STATUS.md unreadable")
     monkeypatch.setattr(ts, "scan_status_tasks", broken)
+
+
+def test_untasked_is_left_unknown_when_the_tasks_cannot_be_read(tmp_path, monkeypatch):
+    broken_scan(monkeypatch)
     rows, _ = collect(bridge(tmp_path))
     assert not any("untasked" in r for r in rows.values())      # unknown is not "no task": no rule fires
+    assert all(r.get("unknown") == ["untasked"] for r in rows.values())
+
+
+def test_an_item_a_rule_on_untasked_filed_stays_open_while_the_tasks_cannot_be_read(tmp_path, monkeypatch):
+    root = bridge(tmp_path)
+    profile = {"id": "p", "sections": [dict(SECTION, to_inbox=[{"when": {"untasked": True}}])]}
+    box = bf._inbox().Inbox(root / "work" / "inbox", actor="test")
+    filed, _ = bf.file_to_inbox(box, profile, bf.collect(root, profile, bf.Context(root, now=NOW, run=FakeRun(answers()))))
+    assert filed == 2
+    broken_scan(monkeypatch)
+    result = bf.collect(root, profile, bf.Context(root, now=NOW, run=FakeRun(answers())))
+    filed, closed = bf.file_to_inbox(box, profile, result)
+    assert (filed, closed) == (0, 0) and len(box.open_items()) == 2       # kept, not closed and filed again
+    view = bf._view()
+    page = view._page_section(result["sections"][0], {"id": "work"}, NOW, view.labels_for("en"))
+    assert "untasked" not in {m["id"] for m in page["metrics"]}           # no confident 0 for an unknown
 
 
 def test_a_radar_item_filed_for_the_issue_attaches_to_its_row_and_adds_none(tmp_path):
@@ -234,7 +281,12 @@ def test_the_text_says_how_many_of_your_issues_no_task_tracks(tmp_path):
     result = bf.collect(root, {"id": "p", "sections": [dict(SECTION)]}, c)
     assert "  2 assigned issues without a task" in bf.render(result).splitlines()
     built = bf._view().build(result, {"id": "p", "sections": [dict(SECTION)]})
-    assert "Work: 2 assigned issues without a task" in built["hygiene"]
+    assert "Work: assigned to you without a task: 2" in built["hygiene"]
+    task(root, "fix-emoji", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
+    result = bf.collect(root, {"id": "p", "sections": [dict(SECTION)]}, bf.Context(root, now=NOW, run=FakeRun(answers())))
+    assert "  1 assigned issue without a task" in bf.render(result).splitlines()
+    built = bf._view().build(result, {"id": "p", "sections": [dict(SECTION)]})
+    assert "Work: assigned to you without a task: 1" in built["hygiene"]
 
 
 # ---------------------------------------------------------------- steps

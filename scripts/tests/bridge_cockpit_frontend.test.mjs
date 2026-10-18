@@ -919,6 +919,9 @@ test('GitHub work: an issue of yours no task tracks carries a chip and a figure 
   const mock = read('mock.js')
   assert.match(mock, /\{ id: 'untasked', n: 1 \}/)
   assert.match(mock, /flags: \[[^\]]*'untasked'[^\]]*\][\s\S]*?gh: \{[^\n]*untasked: true/)
+  // and offers Make it a task there, as the server does; a row whose issue a task syncs does not
+  assert.match(mock, /untasked: true[^\n]*\n\s*row_id: [^\n]*\{ id: 'adopt'/)
+  assert.doesNotMatch(mock, /task: 'demo-task'[^\n]*\n\s*row_id: [^\n]*\{ id: 'adopt'/)
 })
 
 test('logic: the item drawer turns URLs in a detail into links, http and https only', () => {

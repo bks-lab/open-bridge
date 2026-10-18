@@ -224,6 +224,7 @@ which agent renders it:
 | advice `quiet` | drop (the task shows once, there) |
 | advice `collision` | do · `wip`: housekeeping · `blocked`, `waiting`, `due`: carried by their row |
 | tracker row in review or `category: qa` | do · `blocked`: waiting · done/removed: left out · else plan |
+| tracker rows with `untasked: true` | housekeeping: "<section>: assigned to you without a task: N" (label `untasked`), beside their own rows |
 | a section that failed | housekeeping, with its reason |
 | calendar | the headline, the Calendar block and the plan; activity: the since line; workplace: one line |
 | two calendar events within the lookahead that overlap | do ("A and B overlap"), and both are marked in the Calendar block |
@@ -332,18 +333,22 @@ the task whose `sync.github` names it (a task in `work/tasks/` becomes the row's
 `linked_task`) and the newest active inbox item whose key ends in the row id
 (`inbox`): the item a step, Do it or a `to_inbox` rule filed for it, whose tab a
 dashboard then shows on the row. Any other filer whose key ends in `:<row id>`
-attaches the same way (a daily radar that files
-`issue-radar:untasked:<owner/repo>#<n>`, say): the item joins the row and never
-adds one of its own.
+attaches the same way (a daily radar that files `<source>:<anything>:<owner/repo>#<n>`,
+say): the item joins the row and never adds one of its own.
 
 With `link` on, every row also carries `untasked`, a boolean: true for an open
 issue assigned to you that no task or stream names in `sync.github` (a pull
-request never is; a closed task still counts as naming it). It is left out when
-the tasks could not be read, because unknown is not the same as untracked. Such
-a row offers Analyse, Implement and Make it a task like any issue without a
-task, a dashboard marks it with a **no task** chip, and the text briefing says
-how many there are (`2 assigned issues without a task`, the `untasked` label in
-the bucketed styles). A rule `{when: {untasked: true}}` files them; a profile
+request never is; a task or stream that is `done` tracks nothing, and one that
+is not wins the link over it). A board card counts as yours by
+`integrations.github.assignee_me` or else the login the search already asked
+for. When the tasks could not be read, `untasked` is left out and the row
+carries `unknown: [untasked]`, because unknown is not the same as untracked:
+the figure is not shown, and an item a rule on `untasked` filed earlier stays
+open instead of closing and coming back as new. Such a row offers Analyse, Make
+it a task, and Implement when no pull request closes it, a dashboard marks it
+with a **no task** chip, and the text briefing says how many there are
+(`2 assigned issues without a task`, the `untasked` label in the bucketed
+styles). A rule `{when: {untasked: true}}` files them; a profile
 whose rows a radar already files needs no such rule, since both items would
 attach to the one row.
 
@@ -711,8 +716,9 @@ The key is `briefing:<profile>:<section>:<item>`, so a repeat is one item,
 and a dropped key stays quiet. When the row is gone, the item closes on the
 next run **in which that section completed**; an errored section closes
 nothing, because a failed lookup is no evidence that the row is gone (the
-same rule the advice checks follow). Filing needs `--file`, which the
-briefing workflow passes.
+same rule the advice checks follow). For the same reason a row whose
+`unknown` names a field a rule asks about keeps the item that rule filed.
+Filing needs `--file`, which the briefing workflow passes.
 
 ## Profiles shared by an org
 

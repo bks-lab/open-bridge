@@ -1482,7 +1482,7 @@ const de = {
     searchPlaceholder: 'Titel, Nummer, Label, Person suchen', sortLabel: 'Reihenfolge', sort: { state: 'Nach Status', recent: 'Neueste' },
     foldAll: 'Alle zuklappen', unfoldAll: 'Alle aufklappen', taskChip: slug => `Aufgabe ${slug}`, streamChip: slug => `Strom ${slug}`,
     taskChipTitle: 'Die Aufgabe dieser Bridge, die es abgleicht', untaskedChip: 'ohne Aufgabe',
-    untaskedChipTitle: 'Dir zugewiesen, und keine Aufgabe und kein Strom dieser Bridge gleicht es ab: Als Aufgabe übernehmen oder einen Schritt starten', agentChip: st => `Agent: ${st}`, quietChip: d => `${d} T still`, boardFilterTitle: 'Nur dieses Board zeigen', boardOffTitle: 'Ausgeschaltet: wird nicht abgefragt',
+    untaskedChipTitle: 'Dir zugewiesen, und keine Aufgabe und kein Strom dieser Bridge gleicht es ab: „Als Aufgabe“ wählen oder einen Schritt starten', agentChip: st => `Agent: ${st}`, quietChip: d => `${d} T still`, boardFilterTitle: 'Nur dieses Board zeigen', boardOffTitle: 'Ausgeschaltet: wird nicht abgefragt',
     boardOff: 'aus, wird nicht abgefragt', boardEmpty: 'nichts offen',
     state: { new: 'neu', ready: 'bereit', in_progress: 'in Arbeit', review: 'im Review', blocked: 'blockiert' },
     capped: n => `nur die ersten ${n} Karten`, modeLabel: name => `Welche Karten von ${name}`,

@@ -843,8 +843,9 @@ filed as an inbox item under `tracker:<step>:<row id>`, and the row then names
 that item: its tab's state shows on the row and "Open tab" jumps to it, as on a
 task row. Any other item whose key ends in the row id (a daily radar's, say)
 attaches to the row the same way and never adds a row. An issue assigned to you
-that no task or stream syncs carries a "no task" chip and counts in its figure,
-so Make it a task, Analyse or Implement is one click away. A row whose issue a
+that no live task or stream syncs carries a "no task" chip and counts in its
+figure, so Make it a task and Analyse are one click away, and Implement too
+when no pull request closes it. A row whose issue a
 task syncs opens that task's tab instead. No step
 writes to GitHub by itself; the prompt sends board changes through
 `github-projects-manager` and keeps merging with you.

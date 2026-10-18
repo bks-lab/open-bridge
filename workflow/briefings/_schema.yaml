@@ -452,8 +452,9 @@ $defs:
           sync.github names it, and the newest active inbox item whose key ends
           in the row id (a step, a to_inbox rule, any other filer). Every row
           then also carries untasked: true for an open issue assigned to you
-          that no task or stream names, false otherwise, left out when the
-          tasks could not be read. Default true for github-work, false for the
+          that no task or stream that is not done names, false otherwise; when
+          the tasks could not be read it is left out and the row carries
+          unknown: [untasked], so an item a rule filed on it stays open. Default true for github-work, false for the
           others.
       prepare:
         type: boolean

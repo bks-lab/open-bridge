@@ -1398,13 +1398,21 @@ def _issue_refs(task: dict) -> list:
     return out
 
 
+def _tracked(item: dict) -> bool:
+    """Whether a task or stream that is not done names the row (`link_local`)."""
+    linked = item.get("linked_task")
+    return isinstance(linked, dict) and linked.get("status") != "done"
+
+
 def link_local(items: list, ctx: Context) -> None:
     """What this Bridge knows about a GitHub row: the task whose `sync.github` names it (a finite task
     in work/tasks/ becomes the row's task, so a dashboard opens its tab; a stream is named only) and
     the newest active inbox item filed for it (an agent started on the row, Do it, a briefing rule),
     found by the row id at the end of the item's key. An open issue assigned to you that no task or
-    stream names is `untasked` (a boolean on every row, so a `to_inbox` rule can ask for it); when the
-    tasks cannot be read the field is left out, since unknown is not the same as untracked."""
+    stream names is `untasked` (a boolean on every row, so a `to_inbox` rule can ask for it); a task or
+    stream that is done tracks nothing, and one that is not wins the link over it. When the tasks
+    cannot be read the field is left out and the row says so in `unknown`, since unknown is not the
+    same as untracked: an item a rule filed on it stays open until the tasks can be read again."""
     rows = {str(i.get("id")): i for i in items if GLOBAL_ROW.match(str(i.get("id") or ""))}
     if not rows:
         return
@@ -1414,20 +1422,23 @@ def link_local(items: list, ctx: Context) -> None:
     except Exception:  # noqa: BLE001 - a link is a nicety, never a reason to lose the rows
         tasks, scanned = [], False
     for t in tasks:
-        finite = str(t.get("path") or "").startswith("work/tasks/") and t.get("status") != "done"
+        live = t.get("status") != "done"
+        finite = str(t.get("path") or "").startswith("work/tasks/") and live
         for rid in _issue_refs(t):
             row = rows.get(rid)
-            if row is None or row.get("linked_task"):
-                continue
+            if row is None or (row.get("linked_task") and (not live or row["linked_task"].get("status") != "done")):
+                continue          # the first task that names it, unless a live one comes after a done one
             row["linked_task"] = {"slug": t["slug"], "status": t.get("status"), "path": t.get("path"),
                                   "stream": not str(t.get("path") or "").startswith("work/tasks/")}
             if finite:
                 row["task"] = t["slug"]
-    if scanned:
-        for row in rows.values():
-            pr = str(row.get("type") or "").lower().replace("_", "") in ("pr", "pullrequest")   # a board says PullRequest
-            row["untasked"] = (not pr and bool(row.get("assigned_to_me"))
-                               and row.get("state") not in ("done", "removed") and not row.get("linked_task"))
+    for row in rows.values():
+        if not scanned:
+            row["unknown"] = ["untasked"]
+            continue
+        pr = str(row.get("type") or "").lower().replace("_", "") in ("pr", "pullrequest")   # a board says PullRequest
+        row["untasked"] = (not pr and bool(row.get("assigned_to_me"))
+                           and row.get("state") not in ("done", "removed") and not _tracked(row))
     try:
         box = _inbox().Inbox(ctx.root / "work" / "inbox", actor="briefing", clock=lambda: ctx.now)
         active = [i for i in box.items() if i.state in _inbox().ACTIVE_STATES and i.key]
@@ -1447,7 +1458,7 @@ def tracker_steps(section: dict, item: dict, words: dict) -> list:
     """The steps one GitHub row offers, each {id, label, prompt}: the section's own `row_steps` that fit
     the row, then the built-in ones of a GitHub provider (unless `default_steps: false`): Analyse
     always, Implement on an issue without a pull request, Review on a pull request or an issue that has
-    one, Make it a task on an issue no task syncs, Sync status on a row with a board or a task, Remind on a
+    one, Make it a task on an issue no live task syncs, Sync status on a row with a board or a task, Remind on a
     row someone else is assigned to. A row
     that is done offers none. Every step starts an agent tab; none acts on GitHub by itself."""
     if item.get("state") in ("done", "removed"):
@@ -1474,7 +1485,7 @@ def tracker_steps(section: dict, item: dict, words: dict) -> list:
     if section.get("provider") in GITHUB_TRACKERS and section.get("default_steps", True) is not False:
         has_pr = bool(item.get("prs"))
         offer = {"analyze": True, "implement": kind == "issue" and not has_pr, "review": kind == "pr" or has_pr,
-                 "adopt": kind == "issue" and not item.get("linked_task") and not item.get("task"),
+                 "adopt": kind == "issue" and not _tracked(item) and not item.get("task"),
                  "sync": bool(board or item.get("linked_task")),
                  # someone else's card: a reminder to them, drafted, sent only after a yes
                  "remind": bool(item.get("assignee")) and not item.get("assigned_to_me")}
@@ -1984,7 +1995,8 @@ def file_to_inbox(box, profile: dict, result: dict) -> tuple:
     """File rows matching to_inbox rules; close this profile's items whose row is gone.
 
     Only a section that completed may close: an errored or skipped section did not
-    look, so it cannot know a row is gone (the advise `checks_run` rule)."""
+    look, so it cannot know a row is gone (the advise `checks_run` rule). Likewise a row
+    whose `unknown` names a field a rule asks about keeps its item: the run could not tell."""
     sections = {section_id(s): s for s in profile.get("sections") or [] if isinstance(s, dict)}
     filed, wanted, closable = 0, set(), set()
     present: set = set()          # every row id each section shows now, for the items the cockpit filed
@@ -1999,6 +2011,9 @@ def file_to_inbox(box, profile: dict, result: dict) -> tuple:
         if not rules or entry.get("stale"):      # old rows file nothing: what they showed may be settled since
             continue
         for item in entry.get("all", entry["items"]):
+            unknown = set(item.get("unknown") or [])
+            if unknown and any(unknown & set(r["when"]) for r in rules):
+                wanted.add(prefix + str(item["id"]))   # a field this run could not work out: keep what it filed
             rule = next((r for r in rules if rule_matches(r["when"], item)), None)
             if rule is None:
                 continue

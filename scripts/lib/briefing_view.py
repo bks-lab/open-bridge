@@ -84,7 +84,7 @@ LABELS = {
     "st_blocked": "blocked",
     "capped": "(first {n} cards)",
     "repos_skipped": "{n} repositories not readable: {names}",
-    "untasked": "{title}: {n} assigned issues without a task",
+    "untasked": "{title}: assigned to you without a task: {n}",
     "agenda_title": "Calendar",
     "clashes": "overlaps {title}",
     "clash_row": "{first} and {second} overlap ({when})",
@@ -220,7 +220,7 @@ LABELS_DE = {
     "st_blocked": "blockiert",
     "capped": "(erste {n} Karten)",
     "repos_skipped": "{n} Repos nicht lesbar: {names}",
-    "untasked": "{title}: {n} zugewiesene Issues ohne Aufgabe",
+    "untasked": "{title}: dir zugewiesen, ohne Aufgabe: {n}",
     "agenda_title": "Termine",
     "clashes": "überschneidet sich mit {title}",
     "clash_row": "{first} und {second} überschneiden sich ({when})",
@@ -1927,8 +1927,9 @@ def github_metrics(items: list, done: object, now: dt.datetime) -> list:
            {"id": "ask_review", "n": count("ask_review")},
            {"id": "my_pr", "n": count("my_pr"), **({"days": max(ages)} if ages else {})},
            {"id": "in_progress", "n": count("in_progress")}, {"id": "review", "n": count("review")},
-           {"id": "blocked", "n": count("blocked")}, {"id": "quiet", "n": count("quiet"), "days": QUIET_DAYS},
-           {"id": "untasked", "n": count("untasked")}]
+           {"id": "blocked", "n": count("blocked")}, {"id": "quiet", "n": count("quiet"), "days": QUIET_DAYS}]
+    if any("untasked" in i for i in items):    # left out when the tasks could not be read: no confident 0
+        out.append({"id": "untasked", "n": count("untasked")})
     done = done if isinstance(done, dict) else {}
     for key in ("closed", "landed"):           # landed: your pull requests merged in the window
         if isinstance(done.get(key), int):
