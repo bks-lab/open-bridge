@@ -128,6 +128,9 @@ def plain(port: int) -> str:
     return f"http://127.0.0.1:{port}/"
 
 
+ENABLE_HINT = "Set cockpit.enabled: true in bridge-config.yaml (docs/bridge-cockpit.md)."
+
+
 def check_config(root: Path, ignore_disabled: bool) -> tuple[object | None, int]:
     try:
         cfg = load_web_config(root)
@@ -135,8 +138,7 @@ def check_config(root: Path, ignore_disabled: bool) -> tuple[object | None, int]
         print(f"bridge-cockpit: {error}", file=sys.stderr)
         return None, 2
     if not cfg.enabled and not ignore_disabled:
-        print("bridge-cockpit: off. Set cockpit.enabled: true in bridge-config.yaml (docs/bridge-cockpit.md).",
-              file=sys.stderr)
+        print(f"bridge-cockpit: off. {ENABLE_HINT}", file=sys.stderr)
         return None, 2
     return cfg, 0
 
@@ -208,6 +210,14 @@ def start(args, root: Path, state_dir: Path) -> tuple[int, dict | None]:
     while time.monotonic() < deadline:
         exit_code = child.poll()
         if exit_code is not None:
+            # the child's own words went to server.log; say here what a terminal user has to change
+            if exit_code == 3:
+                port = cfg.port if getattr(args, "port", None) is None else args.port
+                print(f"bridge-cockpit: port {port} is in use, set cockpit.port in bridge-config.yaml",
+                      file=sys.stderr)
+            elif exit_code == 2:
+                print(f"bridge-cockpit: the server refused its config, see .bridge/cockpit/server.log. {ENABLE_HINT}",
+                      file=sys.stderr)
             return (exit_code if exit_code in (2, 3) else 4), None
         info = read_json(server_file(state_dir))
         if isinstance(info, dict) and info.get("pid") == child.pid and isinstance(info.get("port"), int) \

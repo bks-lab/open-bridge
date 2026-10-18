@@ -2860,7 +2860,12 @@ def test_cli_disabled_config_and_occupied_port(cli_world, tmp_path):
     try:
         port = sock.getsockname()[1]
         assert cli("serve", "--port", str(port), "--ignore-disabled").returncode == 3
-        assert cli("start", "--port", str(port), "--ignore-disabled").returncode == 3
+        res = cli("start", "--port", str(port), "--ignore-disabled")
+        assert res.returncode == 3 and f"port {port} is in use" in res.stderr and "cockpit.port" in res.stderr
+        (root / "bridge-config.yaml").write_text(f"cockpit:\n  enabled: true\n  port: {port}\n")
+        res = cli("open", "--via", "none")
+        assert res.returncode == 3 and f"port {port} is in use" in res.stderr and "cockpit.port" in res.stderr
+        (root / "bridge-config.yaml").write_text("cockpit:\n  enabled: false\n")
     finally:
         sock.close()
     started = cli("start", "--port", "0", "--ignore-disabled", "--json", check=0)
@@ -4900,3 +4905,25 @@ def test_the_retired_briefing_block_no_longer_changes_the_config(tmp_path):
     moved = load_web_config(tmp_path, {"cockpit": legacy["briefing"]["claude_code_ui"]})
     assert (moved.language, moved.full_minutes, moved.snapshot_minutes, moved.voice, moved.target) == \
         ("de", 3, 30, True, "tab")
+
+
+def test_start_names_the_reason_when_the_child_refuses_its_config(cli_world, monkeypatch, capsys):
+    import importlib.util
+    root, state, _ = cli_world
+    spec = importlib.util.spec_from_file_location("cockpit_cli_refused", CLI)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    class Refused:
+        pid = 1
+
+        def poll(self):
+            return 2
+
+    import argparse
+    import types
+    monkeypatch.setattr(mod, "subprocess", types.SimpleNamespace(Popen=lambda *a, **k: Refused(), DEVNULL=None))
+    args = argparse.Namespace(port=0, ignore_disabled=False, json=False)
+    assert mod.cmd_start(args, root, state) == 2
+    err = capsys.readouterr().err
+    assert "cockpit.enabled" in err and "server.log" in err
