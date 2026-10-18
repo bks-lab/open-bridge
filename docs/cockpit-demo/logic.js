@@ -595,6 +595,9 @@ export function connLost(conn, sinceMs, now) {
  */
 export function pageWarnings(s, t) {
   const out = []
+  // no driver serves `launch`: every "Let AI do it" fails until workplace.driver is set (18.10.); not known yet is no warning
+  const caps = s.driver?.caps
+  if (Array.isArray(caps) && !caps.includes('launch')) out.push({ token: 'warning', word: t.noDriver, title: t.noDriverTitle, kind: 'driver' })
   if (connLost(s.conn, s.connMs, s.now)) out.push({ token: 'warning', word: t.connLost })
   if (s.model?.stale) out.push({ token: 'warning', word: t.staleModel })
   const ld = s.loading ?? {}
@@ -1055,13 +1058,24 @@ export function newestFirst(events) {
   return [...(events ?? [])].sort((a, b) => String(b?.at ?? '').localeCompare(String(a?.at ?? '')))
 }
 
+/** What a skipped section or status row says: one left out of this pass comes with the full one, any other cannot
+ *  run on this machine and says why (a missing calendar tool read "comes with the full briefing", 18.10.) */
+export function skipText(x, t) {
+  return x.left_out ? t.skippedSection : t.cannotRun(x.reason || '')
+}
+
+/** A skipped section an agent tab can fix: one that cannot run here, not one left out on purpose */
+export function skipFixable(x) {
+  return (x?.status ?? x?.state) === 'skipped' && !x.left_out
+}
+
 /** The overview's status rows, each with the tone it is drawn in: a source that failed (danger, with
  *  its reason), a probe with findings (warning), any other count (info) in view, in that order; the
  *  quiet ones (nothing to count, or a source that comes with the full pass) folded away */
 export function statusSplit(rows) {
   const toned = (rows ?? []).map(x => ({
     ...x,
-    tone: x.state === 'error' ? 'danger' : x.state === 'skipped' ? 'neutral'
+    tone: x.state === 'error' ? 'danger' : x.state === 'skipped' ? (x.left_out ? 'neutral' : 'warning')
       : !(Number(x.count) > 0) ? 'success' : x.probe ? 'warning' : 'info',
   }))
   const rank = ['danger', 'warning', 'info']
@@ -1183,7 +1197,7 @@ export function sectionTile(section) {
   const items = section?.items ?? []
   const count = section?.total ?? section?.count ?? items.length
   if (section?.status === 'error') return { count, loud: 0, tone: 'danger', note: section.reason || null, peak: null, counts: null, state: 'error' }
-  if (section?.status === 'skipped') return { count, loud: 0, tone: 'neutral', note: null, peak: null, counts: null, state: 'skipped' }
+  if (section?.status === 'skipped') return { count, loud: 0, tone: section.left_out ? 'neutral' : 'warning', note: section.reason || null, peak: null, counts: null, state: 'skipped' }
   const loud = items.filter(it => it.tone === 'bad' || it.tone === 'warn')
   let peak = null
   let tone = loud.some(it => it.tone === 'bad') ? 'danger' : loud.length ? 'warning' : 'neutral'
@@ -2094,6 +2108,7 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   else if (pass && pass.took_ms >= 60000) add('pass-slow', 'slow', 'warn', 'passSlow', [Math.round(pass.took_ms / 1000)], { kind: 'page', id: 'briefing' })
   // 7 a source of the briefing in error: out of time is slow, anything else failing
   for (const x of model.status ?? []) {
+    if (skipFixable(x)) add(`source:${x.title}`, 'failing', 'warn', 'sourceCannotRun', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })
     if (x.state !== 'error') continue
     if (/took longer|time limit/i.test(x.reason ?? '')) add(`source:${x.title}`, 'slow', 'warn', 'sourceSlow', [x.title], { kind: 'page', id: 'briefing' })
     else add(`source:${x.title}`, 'failing', 'bad', 'sourceFailed', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })

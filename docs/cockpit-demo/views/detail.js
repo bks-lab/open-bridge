@@ -6,6 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, detailNeedsLoad, duration, formatDay, indexRows, isoDate, nextMonday, parseDate, short, startRefusal,
   stateToken, canTab, settledRefs, statusSplit, tabNextStep, workPageOf,
+  skipFixable, skipText,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -14,7 +15,7 @@ import { ReturnChip, ReturnPanel } from './home.js'
 import { LaunchPick } from './launch.js'
 import { START_PAGE } from './nav.js'
 import { PageSection } from './pages.js'
-import { Btn, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine } from './parts.js'
+import { Btn, SkipFix, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine } from './parts.js'
 import { TaskSessions } from './sessions.js'
 
 // ---------------------------------------------------------------- center: overview and detail
@@ -55,7 +56,7 @@ export function DayView({ s, c, cards = false }) {
     { id: 'agenda', title: t.agendaTitle, body: (m.agenda ?? []).length
       ? html`<ul class="agenda">${m.agenda.map((a, i) => html`<li key=${i}><span class="mono agenda-when">${a.when}</span><span>${a.title}</span></li>`)}</ul>`
       : html`<${Empty}>${t.empty}<//>` },
-    { id: 'status', title: t.statusTitle, body: html`<${StatusList} rows=${m.status} />` },
+    { id: 'status', title: t.statusTitle, body: html`<${StatusList} rows=${m.status} s=${s} c=${c} />` },
     (ex.clear ?? []).length ? { id: 'clear', title: t.clearTitle,
       body: html`<ul class="plain">${ex.clear.map((x, i) => html`<li key=${i}><${StateLine} token="success" word=${x} /></li>`)}</ul>` } : null,
     (ex.hygiene ?? []).length ? { id: 'hygiene', title: t.hygieneTitle,
@@ -91,12 +92,13 @@ export function DayPages({ s, c, shelf = false }) {
 }
 
 /** Status rows: failures and counts in view, the quiet ones (healthy, nothing to count) under one line */
-function StatusList({ rows }) {
+function StatusList({ rows, s, c }) {
   const t = T()
   const { loud, quiet } = statusSplit(rows)
   const line = (x, i) => html`<li key=${i} title=${x.reason ?? undefined}>
     <${StateLine} token=${x.tone === 'neutral' ? 'on-surface-muted' : x.tone} strong=${x.tone === 'danger'} word=${x.title} />
-    <span class="mono muted">${x.state === 'error' ? (x.reason || t.tone.bad) : x.state === 'skipped' ? t.skippedSection : x.count}</span></li>`
+    <span class="mono muted">${x.state === 'error' ? (x.reason || t.tone.bad) : x.state === 'skipped' ? skipText(x, t) : x.count}</span>
+    ${c && skipFixable(x) ? html`<${SkipFix} s=${s} c=${c} title=${x.title} reason=${x.reason} />` : null}</li>`
   return html`<ul class="status-list">${loud.map(line)}</ul>
     ${quiet.length ? html`<details class="status-quiet">
       <summary class="muted">${t.statusQuiet(quiet.length)}</summary>

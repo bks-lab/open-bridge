@@ -657,6 +657,24 @@ def test_report_ok_never_claims_clear_for_a_failed_or_skipped_section():
         assert bv.build(r, profile(view={"style": "triage"}, sections=sections))["clear"] == []
 
 
+def test_a_calendar_that_cannot_run_shows_in_the_status_rows():
+    # 18.10.: a calendar without icalBuddy was skipped and the view left calendars out of the status rows, so the
+    # appointments were simply missing with no word why
+    r = result(sec("calendar", "calendar", [], status="skipped", title="Appointments",
+                   reason="no calendar tool on this machine (icalBuddy not installed)"))
+    rows = bv.build(r, profile())["status"]
+    assert rows == [{"title": "Appointments", "status": "skipped",
+                     "reason": "no calendar tool on this machine (icalBuddy not installed)", "health": False}]
+
+
+def test_a_calendar_left_out_of_a_quick_pass_stays_quiet():
+    r = result(sec("calendar", "calendar", [], status="skipped", title="Appointments", reason="left out", left_out=True))
+    assert bv.build(r, profile())["status"] == []
+    # a tracker left out says so, so the page can say it comes with the full pass
+    r = result(sec("mine", "tracker", [], status="skipped", title="Mine", reason="left out", left_out=True))
+    assert bv.build(r, profile())["status"][0]["left_out"] is True
+
+
 def test_profile_accepts_report_ok_and_agenda():
     p = profile(view={"style": "triage", "agenda": True},
                 sections=[{"kind": "command", "id": "s", "argv": ["x"], "report_ok": True}])

@@ -739,6 +739,8 @@ def test_calendar_auto_without_icalbuddy_is_skipped_not_an_error(tmp_path, monke
     sec = bf.collect(root, {"id": "p", "sections": [{"kind": "calendar", "provider": "auto"}]},
                      ctx(root))["sections"][0]
     assert sec["status"] == "skipped"
+    # a source missing on this machine is not "left out": it never comes with the full pass (18.10.)
+    assert "icalBuddy" in sec["reason"] and "left_out" not in sec
 
 
 def test_advise_section_sees_the_calendar_wherever_it_stands(tmp_path):
@@ -980,6 +982,7 @@ def test_skip_leaves_kinds_out_and_closes_nothing(tmp_path):
     profile = {"id": "p", "sections": [{"kind": "tracker", "provider": "github"}, {"kind": "tasks"}]}
     result = bf.collect(root, profile, ctx(root, run), skip=("tracker",))
     assert result["sections"][0]["status"] == "skipped" and run.calls == []
+    assert result["sections"][0]["left_out"] is True
     assert result["sections"][1]["status"] == "ok"
 
 

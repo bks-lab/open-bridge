@@ -304,6 +304,7 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
     except WebConfigError as error:
         warnings = [str(error)]
     out["config_warnings"] = warnings
+    out["can_launch"] = can_launch(root)
     if args.json:
         print(json.dumps(out))
     elif info:
@@ -314,7 +315,22 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
     if not args.json:
         for line in warnings:
             print(f"warning: {line}")
+        if out["can_launch"] is False:
+            print("warning: agent tabs cannot start: no terminal driver serves launch "
+                  "(workplace.driver in bridge-config.yaml, docs/workplace.md)")
     return 0 if info else 1
+
+
+def can_launch(root: Path) -> bool | None:
+    """Whether the terminal driver starts agent tabs, asked from the driver (`workplace.py caps`) like the server
+    does; None when it did not answer. A cockpit switched on without a driver failed on its first start (18.10.)."""
+    try:
+        run = subprocess.run([sys.executable, str(root / "scripts" / "workplace.py"), "--root", str(root), "caps", "--json"],
+                             capture_output=True, text=True, timeout=15)
+        caps = json.loads(run.stdout).get("caps") if run.returncode == 0 and run.stdout.strip() else None
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
+        return None
+    return "launch" in caps if isinstance(caps, list) else None
 
 
 def is_our_server(pid: int) -> bool:

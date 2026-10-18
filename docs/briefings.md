@@ -624,7 +624,11 @@ needs it. Sections run side by side, so the full run is no slower than one with
 `--only`, and it is the only run where the headline and the advice see the inbox
 and the calendar together. `collect` keeps no rows from an earlier run: a section
 a run leaves out comes back `skipped` with no items, so a dashboard that wants to
-show the earlier rows meanwhile keeps them itself.
+show the earlier rows meanwhile keeps them itself. Such a section carries
+`left_out: true`: it comes with the next full run. A section skipped without it
+cannot run on this machine at all (a calendar with `provider: auto` and no
+icalBuddy), keeps its `reason`, and shows in the view's status rows whatever its
+kind, the calendar included, so a missing source is never just an empty section.
 The cockpit (`scripts/lib/bridge_cockpit/collector.py`) does exactly that: after a click it
 runs only the first part again and keeps every section it left out, the headline
 included, from the earlier run, so a click never waits for a tracker.

@@ -475,15 +475,20 @@ def test_parse_view_duplicate_keys_order_agenda_status():
                "agenda": [{"when": "9", "title": "A"}, {"when": "", "title": "B", "info": True}],
                "headline": "3 for you today · free until 16:00",
                "status": [{"title": "S", "count": 2, "health": False}, {"title": "T", "health": True},
-                          {"title": "G", "status": "skipped", "reason": "quick pass", "health": False}]}}
+                          {"title": "G", "status": "skipped", "reason": "quick pass", "health": False, "left_out": True},
+                          {"title": "Cal", "status": "skipped", "reason": "no calendar tool", "health": False}]}}
     v = m.parse_view(raw, False, NOW)
     assert [b["id"] for b in v["buckets"]] == ["odd", "do", "waiting"]   # unknown ids sort first (indexOf -1)
     do = v["buckets"][1]["rows"]
     assert [r["key"] for r in do] == ["ref:x/y#1", "ref:x/y#1@do:1"]
     assert v["agenda"] == [{"when": "9", "title": "A"}]
-    assert v["status"] == [{"title": "S", "count": 2, "probe": False, "state": "ok", "reason": None},
-                           {"title": "T", "count": 0, "probe": True, "state": "ok", "reason": None},
-                           {"title": "G", "count": 0, "probe": False, "state": "skipped", "reason": "quick pass"}]
+    # left_out: comes with the full pass; without it the source cannot run on this machine (18.10.)
+    assert v["status"] == [{"title": "S", "count": 2, "probe": False, "state": "ok", "reason": None, "left_out": False},
+                           {"title": "T", "count": 0, "probe": True, "state": "ok", "reason": None, "left_out": False},
+                           {"title": "G", "count": 0, "probe": False, "state": "skipped", "reason": "quick pass",
+                            "left_out": True},
+                           {"title": "Cal", "count": 0, "probe": False, "state": "skipped", "reason": "no calendar tool",
+                            "left_out": False}]
     assert v["headline_rest"] == "free until 16:00"
     assert v["skipped"] == ["github"] and v["collected_at"] == "12:00" and v["full_ms"] == 0
     assert m.parse_view(raw, True, NOW)["full_ms"] == int(NOW)
@@ -2880,6 +2885,20 @@ def test_cli_start_reuse_status_stop(cli_world):
     assert cli("url").returncode == 1
 
 
+def test_cli_status_says_whether_an_agent_tab_can_start(cli_world):
+    # 18.10.: a cockpit switched on without workplace.driver failed on its first "Let AI do it"; the status the
+    # cockpit skill reads after opening now says so, asked from the driver, not from the config
+    root, _, cli = cli_world
+    fixture = json.loads((root / "scripts" / "fixture.json").read_text())
+    assert json.loads(cli("status", "--json").stdout)["can_launch"] is None       # the driver did not answer
+    for caps, want in (([], False), (["tabs", "launch"], True)):
+        (root / "scripts" / "fixture.json").write_text(json.dumps({**fixture, "workplace.caps": {"caps": caps}}))
+        assert json.loads(cli("status", "--json").stdout)["can_launch"] is want
+    assert "agent tabs cannot start" not in cli("status").stdout
+    (root / "scripts" / "fixture.json").write_text(json.dumps({**fixture, "workplace.caps": {"caps": []}}))
+    assert "agent tabs cannot start" in cli("status").stdout
+
+
 def test_cli_disabled_config_and_occupied_port(cli_world, tmp_path):
     root, state, cli = cli_world
     (root / "bridge-config.yaml").write_text("cockpit:\n  enabled: false\n")
@@ -3392,6 +3411,14 @@ def test_the_quick_chat_points_to_the_agent_tab_and_never_sends_the_work_back():
         off = system_text(lang, None, can_launch=False)
         assert TABLES[lang]["btn_do"] in off and "workplace.driver" in off
     assert "starts it" not in system_text("en", None)
+
+
+def test_the_quick_chat_reads_why_a_section_is_empty_before_it_guesses():
+    # 18.10.: asked why the calendar was empty, the chat guessed (a connector, a permission) while the skip reason
+    # stood in what the cockpit last showed; it is told where that is
+    from lib.bridge_cockpit.quick import system_text
+    for lang in ("de", "en"):
+        assert ".bridge/cockpit/view.json" in system_text(lang, None)
 
 
 def test_a_quick_question_knows_when_no_agent_tab_can_start(world):

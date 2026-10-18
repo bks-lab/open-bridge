@@ -274,7 +274,7 @@ export function DayColumn({ s, c, byKey }) {
   const colRef = useDayHeight(c, !!m)
   if (!m) {
     // without a model a failed pass or a lost connection is said, not an endless skeleton
-    const warnings = pageWarnings(s, t)
+    const warnings = pageWarnings(s, t).filter(w => w.kind !== 'driver')   // not a reason to hold back the day
     if (warnings.length) {
       return html`<div class="col col-day"><div class="panel panel-pad">${warnings.map(w => html`<p key=${w.word}>
         <${StateLine} token=${w.token} strong word=${w.word} /></p>`)}</div></div>`

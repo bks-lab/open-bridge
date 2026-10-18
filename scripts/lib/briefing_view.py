@@ -887,11 +887,14 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
     for s in result.get("sections") or []:
         sid, kind = s.get("id"), s.get("kind")
         cfg = sections_cfg.get(sid, {})
-        if s.get("status") in ("error", "skipped") and kind not in ("calendar", "activity", "commits", "workplace",
-                                                                    "advise"):
+        # the kinds without status rows of their own still get one when they cannot run on this machine: a calendar
+        # skipped for want of icalBuddy was otherwise just missing, with no word why (18.10.)
+        quiet_kind = kind in ("calendar", "activity", "commits", "workplace", "advise")
+        if s.get("status") in ("error", "skipped") and not (quiet_kind and s.get("left_out")):
             out["status"].append({"title": s.get("title") or sid, "status": s["status"],
                                   "reason": s.get("reason", ""),
-                                  "health": sections_cfg.get(sid, {}).get("report_ok") is True})
+                                  "health": sections_cfg.get(sid, {}).get("report_ok") is True,
+                                  **({"left_out": True} if s.get("left_out") else {})})
         if s.get("status") == "error":
             out["hygiene"].append(labels["error"].format(title=s.get("title") or sid, reason=s.get("reason", "")))
             continue

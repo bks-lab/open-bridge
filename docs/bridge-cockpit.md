@@ -122,7 +122,10 @@ In a Claude Code session in the Bridge root, type `/cockpit`. The skill
 runs `python3 scripts/bridge-cockpit.py open --json`: the server starts (or the
 running one is reused) and the page opens where `open_in` says. The note in
 the conversation names only where it opened and `http://127.0.0.1:<port>/`,
-never a link with a key or a login code.
+never a link with a key or a login code. It then reads `status --json` once:
+`can_launch: false` means no terminal driver starts agent tabs (`workplace.driver`),
+so it says so and offers to set the driver; the header of the page shows "agent
+tabs cannot start" for as long as that holds.
 
 From any terminal in the Bridge root:
 
@@ -1476,6 +1479,7 @@ to copy.
 | a question stays "stuck" | the control session waits for a permission prompt or a long turn; answer it there |
 | a question is "rejected" | its signature did not check out: it was not written by this server, or `relay.key` changed since; ask again |
 | the header says "connection lost" | the server stopped or restarted; the rows shown no longer update: `python3 scripts/bridge-cockpit.py open` |
+| a section reads "cannot run on this machine: ..." | the source is missing here (a calendar without icalBuddy, for one): "Let AI do it" beside it files the reason and starts an agent tab that fixes it. "arrives with the full briefing" instead means only that this pass left it out |
 | "Let AI do it" answers "Not started: agent tabs need a connected terminal" | no driver is set in `workplace.driver`: nothing started, and the message's "Copy command" puts the commands for a terminal of your own on the clipboard |
 | a tab button answers "The terminal cannot do that for a tab" | the terminal driver does not serve that verb (`python3 scripts/workplace.py caps --json`), or no driver is set in `workplace.driver` ([`workplace.md`](workplace.md)) |
 | "Save layout now" answers "cmux is not available" | the server cannot find the cmux CLI: start it from inside cmux, or set `CMUX_BUNDLED_CLI_PATH`; without cmux there is no layout to save |

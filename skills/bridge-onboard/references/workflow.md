@@ -483,17 +483,21 @@ On `[y]` or `[c]`:
     an error line for a tracker is a setup hint to show, not a failure to hide.
 - **D1d: offer the workplace** (one agent tab per task, grouped into workspaces,
   opened from the briefing on the person's yes; `docs/workplace.md`). Only ask when a
-  terminal tool with a driver is installed: today cmux (driver `skills/cmux`), found
+  terminal tool with a driver is installed: cmux (driver `skills/cmux`), found
   by `command -v cmux` OR the app bundle `/Applications/cmux.app/Contents/Resources/bin/cmux`
   (a plain app install puts the CLI on PATH only inside cmux's own shells, so the
-  first check alone misses it when onboarding runs elsewhere). Nothing installed →
+  first check alone misses it when onboarding runs elsewhere), else tmux (driver
+  `skills/tmux`, found by `command -v tmux`). Both installed → offer cmux. Without a
+  driver the cockpit's "Let AI do it" starts nothing either. Nothing installed →
   no question, one line instead: "Tip: with a terminal the Bridge can steer through an
   API (cmux recommended, docs/workplace.md), your briefing can open one agent tab per
   task." `driver: none` still prints the plan, so it can be added any time.
-  > cmux is installed. Should your briefing open one tab per task in cmux, grouped
+  > cmux (or tmux) is installed. Should your briefing open one tab per task there, grouped
   > by customer or project? `[y]` `[later]`
   - `[y]` → write a `workplace:` block to `bridge-config.yaml`: `driver: {command:
-    ["python3", "${root}/skills/cmux/scripts/cmux_driver.py"]}`, one `workspaces`
+    ["python3", "${root}/skills/cmux/scripts/cmux_driver.py"]}` (tmux:
+    `skills/tmux/scripts/tmux_driver.py`; check it with `python3 scripts/workplace.py caps
+    --json`, which must list `launch`), one `workspaces`
     entry per `workflow/contexts/<id>.yaml` the person has (`contexts: [<id>]`) plus
     one `default: true` entry. Leave `agent` out: the defaults start Claude Code. For
     another agent CLI write `agent: {new: "<cli> ... {prompt}", resume: "<cli> ... {session}"}`

@@ -1172,12 +1172,14 @@ test('the status list: a failed source is loud with its reason, a skipped one wa
   const rows = [
     { title: 'quiet', count: 0, probe: false, state: 'ok' },
     { title: 'broken', count: 0, probe: false, state: 'error', reason: 'boom' },
-    { title: 'later', count: 0, probe: false, state: 'skipped' },
+    { title: 'later', count: 0, probe: false, state: 'skipped', left_out: true },
     { title: 'probe', count: 2, probe: true, state: 'ok' },
     { title: 'counted', count: 5, probe: false, state: 'ok' },
+    // a source that cannot run here never comes with the full pass: loud, with its reason (18.10.)
+    { title: 'no tool', count: 0, probe: false, state: 'skipped', reason: 'icalBuddy not installed' },
   ]
   const { loud, quiet } = logic.statusSplit(rows)
-  assert.deepEqual(loud.map(x => [x.title, x.tone]), [['broken', 'danger'], ['probe', 'warning'], ['counted', 'info']])
+  assert.deepEqual(loud.map(x => [x.title, x.tone]), [['broken', 'danger'], ['probe', 'warning'], ['no tool', 'warning'], ['counted', 'info']])
   assert.deepEqual(quiet.map(x => [x.title, x.tone]), [['quiet', 'success'], ['later', 'neutral']])
 })
 
@@ -3293,6 +3295,31 @@ test('notes: the same error twice within a second shows one toast and one note',
   assert.equal(again.notes.length, 1)
   // another tone is another message
   assert.equal(logic.pushNoteState(s, { ...failed, tone: 'warn' }, 900, 2).toasts.length, 2)
+})
+
+test('a section that cannot run on this machine says why and offers the fix; one left out waits for the full pass', () => {
+  const t = text.TABLES.de
+  assert.equal(logic.skipText({ state: 'skipped', left_out: true, reason: 'left out' }, t), t.skippedSection)
+  assert.equal(logic.skipText({ status: 'skipped', reason: 'no calendar tool (icalBuddy not installed)' }, t),
+    t.cannotRun('no calendar tool (icalBuddy not installed)'))
+  assert.equal(logic.skipFixable({ status: 'skipped', reason: 'x' }), true)
+  assert.equal(logic.skipFixable({ status: 'skipped', left_out: true, reason: 'x' }), false)
+  assert.equal(logic.skipFixable({ status: 'ok' }), false)
+  assert.match(t.skippedFixOrder('Termine', 'kein Kalenderwerkzeug'), /Termine/)
+  const tile = logic.sectionTile({ status: 'skipped', reason: 'no tool', items: [] })
+  assert.equal(tile.tone, 'warning')
+  assert.equal(logic.sectionTile({ status: 'skipped', left_out: true, items: [] }).tone, 'neutral')
+})
+
+test('the header warns while no terminal driver can start an agent tab', () => {
+  const t = text.TABLES.en
+  const base = { conn: 'open', connMs: 0, now: 10000, model: { stale: false }, loading: { pass: null, last_error: null } }
+  assert.deepEqual(logic.pageWarnings({ ...base, driver: { caps: null } }, t), [])           // not known yet
+  assert.deepEqual(logic.pageWarnings({ ...base, driver: { caps: ['tabs', 'launch'] } }, t), [])
+  const [w] = logic.pageWarnings({ ...base, driver: { caps: [] } }, t)
+  assert.equal(w.word, t.noDriver)
+  assert.equal(w.kind, 'driver')
+  assert.match(w.title, /workplace\.driver/)
 })
 
 test('a failed action that brings its own note shows that note, never "the action failed" beside it', () => {
