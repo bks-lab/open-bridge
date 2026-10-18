@@ -327,7 +327,8 @@ PAGE_GROUPS = ("main", "more", "work", "day")   # day: no tab, its sections stan
 # work: no tab, it is the "by source" view of the work tab (the briefing), beside "what is due" and "by Jev"
 PAGE_SECTION_KEYS = {"id", "when", "detail", "link", "empty", "alarm", "badge", "view", "hide_empty", "actionable"}
 # how a dashboard draws a section: rows in a table (default), cards, or a mosaic of every row
-PAGE_VIEWS = ("table", "tiles", "mosaic", "groups", "board")   # board: the table, its rows under their group
+# board: the table, its rows under their group; agenda: a calendar by day, with figures and a timeline
+PAGE_VIEWS = ("table", "tiles", "mosaic", "groups", "board", "agenda")
 BOARD_STATES = ("new", "ready", "in_progress", "review", "blocked")
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 # An id that names its repository is the same thing wherever it comes from; any
@@ -1696,6 +1697,13 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
         row["meter"] = meter
     if kind == "calendar" and stamp is not None:     # when it begins, for a countdown
         row["at"] = stamp.isoformat(timespec="minutes")
+    if kind == "calendar":
+        row["cal"] = calendar_facts(item, now)       # one field each, for the agenda view
+    elif kind == "command":
+        # the date of the first column as a date, so a dates page can count what is due or overdue
+        due = _when(item.get(entry["when"]) if "when" in entry else item.get("due"))
+        if due is not None:
+            row["due_at"] = due.date().isoformat()
     # optional hints for a drawn section: which group a row belongs to, which symbol it wears
     for key, cap in (("group", 80), ("icon", 24)):
         if isinstance(item.get(key), str) and item[key].strip():
@@ -1781,6 +1789,99 @@ def github_flags(item: dict, now: dt.datetime) -> list:
 
 
 GH_ID_RE = re.compile(r"^([\w.-]+/[\w.-]+)#(\d+)\Z")
+
+
+CAL_DAY_START = 8          # the working day a free block is looked for in, and a dashboard's timeline spans
+CAL_DAY_END = 20
+
+
+def calendar_facts(item: dict, now: dt.datetime) -> dict:
+    """An event's facts as a dashboard draws them, one field each: start and end (local, to the minute),
+    its day, how long it takes, whether it fills the day, its calendar, whether it is information only
+    (`info_calendars`), where it is and whether it is online (a meeting link), the people, and whether it is
+    over or running now. `overlaps` (the titles it collides with) is added by the section."""
+    start = _when(item.get("start"))
+    end = _when(item.get("end")) or start
+    all_day = bool(start and (len(_text(item.get("start"))) <= 10 or (end and (end - start) >= dt.timedelta(hours=23))))
+    minutes = int((end - start).total_seconds() // 60) if start and end and end > start else 0
+    people = [_text(x)[:80] for x in item.get("attendees") or [] if _text(x)][:20]
+    return {"start": start.isoformat(timespec="minutes") if start else None,
+            "end": end.isoformat(timespec="minutes") if end else None,
+            "day": start.date().isoformat() if start else None, "minutes": minutes, "all_day": all_day,
+            "calendar": _text(item.get("calendar"))[:60] or None, "info": item.get("info") is True,
+            "where": _text(item.get("location"))[:160] or None, "online": bool(_text(item.get("url"))),
+            "people": people, "past": bool(end and end <= now),
+            "running": bool(start and end and start <= now < end and not all_day), "overlaps": []}
+
+
+def _intervals(cals: list) -> list:
+    """The busy time of the events that count (not information, not all day), as (start, end) pairs."""
+    out = []
+    for c in cals:
+        if c.get("info") or c.get("all_day") or not c.get("start") or not c.get("end"):
+            continue
+        a, b = dt.datetime.fromisoformat(c["start"]), dt.datetime.fromisoformat(c["end"])
+        if b > a:
+            out.append((a, b))
+    return sorted(out)
+
+
+def _merged(spans: list) -> list:
+    out: list = []
+    for a, b in sorted(spans):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def mark_overlaps(rows: list) -> None:
+    """Each event that collides with another that counts names the other (up to three titles)."""
+    timed = [(r, dt.datetime.fromisoformat(r["cal"]["start"]), dt.datetime.fromisoformat(r["cal"]["end"]))
+             for r in rows if isinstance(r.get("cal"), dict) and r["cal"].get("start") and r["cal"].get("end")
+             and not r["cal"].get("info") and not r["cal"].get("all_day")]
+    for i, (r, a, b) in enumerate(timed):
+        for j, (o, c, d) in enumerate(timed):
+            if i != j and a < d and c < b and len(r["cal"]["overlaps"]) < 3:
+                r["cal"]["overlaps"].append(o["title"][:80])
+
+
+def calendar_figures(cals: list, now: dt.datetime) -> dict:
+    """The figures above an agenda: today, tomorrow and the next seven days (events that count), today's busy
+    minutes, how many events collide, the next event, and the longest free block left today between
+    CAL_DAY_START and CAL_DAY_END. Information calendars are counted apart (`info_week`)."""
+    today = now.date()
+    mine = [c for c in cals if not c.get("info") and c.get("day")]
+
+    def on(c, d):
+        return c["day"] == d.isoformat()
+    week = [c for c in mine if today <= dt.date.fromisoformat(c["day"]) < today + dt.timedelta(days=7)]
+    busy_today = sum(int((b - a).total_seconds() // 60)
+                     for a, b in _merged([x for x in _intervals([c for c in mine if on(c, today)])]))
+    upcoming = sorted((c for c in mine if c.get("start") and not c.get("all_day")
+                       and dt.datetime.fromisoformat(c["start"]) > now), key=lambda c: c["start"])
+    first = upcoming[0] if upcoming else None
+    day_end = dt.datetime.combine(today, dt.time(CAL_DAY_END))
+    cursor = max(now.replace(second=0, microsecond=0), dt.datetime.combine(today, dt.time(CAL_DAY_START)))
+    free, free_at = 0, None
+    for a, b in _merged(_intervals([c for c in mine if on(c, today)])) + [(day_end, day_end)]:
+        if b <= cursor:
+            continue
+        gap = int((min(a, day_end) - cursor).total_seconds() // 60)
+        if gap > free:
+            free, free_at = gap, cursor.isoformat(timespec="minutes")
+        cursor = max(cursor, b)
+        if cursor >= day_end:
+            break
+    return {"today": sum(1 for c in mine if on(c, today)), "busy_today": busy_today,
+            "tomorrow": sum(1 for c in mine if on(c, today + dt.timedelta(days=1))), "week": len(week),
+            "overlaps": sum(1 for c in mine if c.get("overlaps")),
+            "next": {"start": first["start"], "title": first.get("title") or ""} if first else None,
+            "free_today": {"minutes": free, "from": free_at} if free_at else None,
+            "info_week": sum(1 for c in cals if c.get("info") and c.get("day")
+                             and today <= dt.date.fromisoformat(c["day"]) < today + dt.timedelta(days=7)),
+            "day_start": CAL_DAY_START, "day_end": CAL_DAY_END}
 
 
 def github_facts(item: dict, now: dt.datetime) -> dict:
@@ -1869,6 +1970,8 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
     if kind == "commits":   # whoever committed today first
         items = sorted(items, key=_today_count, reverse=True)
     rows = [_page_row(kind, i, entry, now, labels, root, marks) for i in items]
+    if kind == "calendar":
+        mark_overlaps(rows)
     weight = sum(_today_count(i) for i in items) if kind == "commits" else \
         sum(1 for r in rows if r["tone"] != "dim")
     if entry.get("badge") is False:   # listed, but not what the tab's number counts
@@ -1891,6 +1994,8 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
                else {}),
             **({"metrics": github_metrics(items, section.get("metrics"), now)}
                if section.get("provider") == "github-work" else {}),
+            **({"cal_figures": calendar_figures([{**r["cal"], "title": r["title"]} for r in rows], now)}
+               if kind == "calendar" else {}),
             **({"view": entry["view"]} if entry.get("view") in PAGE_VIEWS[1:] else {}),
             # nothing to say when it is empty: a dashboard leaves the section out instead of "nothing"
             **({"hide_empty": True} if entry.get("hide_empty") is True else {})}

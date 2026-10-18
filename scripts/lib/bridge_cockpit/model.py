@@ -163,9 +163,41 @@ def parse_info(i: dict) -> dict:
             "flags": [f for f in _list(i.get("flags")) if isinstance(f, str) and len(f) <= 24][:12] or None,
             "who": as_text_or_null(i.get("who")),
             "gh": parse_gh(i.get("gh")),
+            "cal": parse_cal(i.get("cal")),
+            "due_at": as_text_or_null(i.get("due_at")),
             "id": as_text_or_null(i.get("id")), "actionable": i.get("actionable") is True,
             "at": as_text_or_null(i.get("at")),
             "account": parse_account(i.get("account"))}
+
+
+def parse_cal(value: Any) -> dict | None:
+    """An event's facts (briefing_view.calendar_facts), checked again: the view file is input."""
+    if not isinstance(value, dict):
+        return None
+    return {"start": as_text_or_null(value.get("start")), "end": as_text_or_null(value.get("end")),
+            "day": as_text_or_null(value.get("day")),
+            "minutes": value.get("minutes") if isinstance(value.get("minutes"), int) else 0,
+            "all_day": value.get("all_day") is True, "calendar": as_text_or_null(value.get("calendar")),
+            "info": value.get("info") is True, "where": as_text_or_null(value.get("where")),
+            "online": value.get("online") is True,
+            "people": [x for x in _list(value.get("people")) if isinstance(x, str)][:20],
+            "past": value.get("past") is True, "running": value.get("running") is True,
+            "overlaps": [x for x in _list(value.get("overlaps")) if isinstance(x, str)][:3]}
+
+
+def parse_cal_figures(value: Any) -> dict | None:
+    """The figures above an agenda (briefing_view.calendar_figures): counts, the next event, the free block."""
+    if not isinstance(value, dict):
+        return None
+    num = lambda k: value.get(k) if isinstance(value.get(k), int) else 0   # noqa: E731
+    nxt = value.get("next") if isinstance(value.get("next"), dict) else None
+    free = value.get("free_today") if isinstance(value.get("free_today"), dict) else None
+    return {**{k: num(k) for k in ("today", "busy_today", "tomorrow", "week", "overlaps", "info_week")},
+            "day_start": value.get("day_start") if isinstance(value.get("day_start"), int) else 8,
+            "day_end": value.get("day_end") if isinstance(value.get("day_end"), int) else 20,
+            "next": {"start": as_text_or_null(nxt.get("start")), "title": as_text(nxt.get("title"))} if nxt else None,
+            "free_today": {"minutes": int(_number(free.get("minutes"))), "from": as_text_or_null(free.get("from"))}
+            if free else None}
 
 
 def parse_gh(value: Any) -> dict | None:
@@ -252,7 +284,8 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                 "total": int(_number(x.get("total"), len(items))),
                 "weight": _number(x.get("weight")), "bad": _number(x.get("bad")),
                 "as_of": as_text_or_null(x.get("as_of")),
-                "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board") else None,
+                "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board", "agenda") else None,
+                "cal_figures": parse_cal_figures(x.get("cal_figures")),
                 "hide_empty": x.get("hide_empty") is True,
                 "stale": as_text_or_null(x.get("stale")),
                 "boards": parse_boards(x.get("boards")),

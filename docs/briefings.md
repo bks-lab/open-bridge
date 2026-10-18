@@ -502,6 +502,18 @@ per group in the order the rows first name them (a `github-work` row's group is
 its board, else its repository). `view: groups` lists short rows under each
 group instead.
 
+`view: agenda` on a calendar section draws it as a calendar: by day, as a week
+grid (Monday to Sunday) or as a month, with figures on top. Every calendar row
+carries its facts as `cal` (`start`, `end`, `day`, `minutes`, `all_day`,
+`calendar`, `info`, `where`, `online`, `people`, `past`, `running`, and
+`overlaps`: the titles of the events it collides with; information calendars
+and all-day events collide with nothing), and the page section carries
+`cal_figures`: events today, tomorrow and in the next seven days, today's busy
+minutes, how many collide, the next event, the longest free block left today
+between 08:00 and 20:00, and the information events of the week counted apart.
+A `command` row whose first column is a date (`when:` or its `due`) carries it
+as `due_at`, so the same page counts what is overdue or due this week.
+
 For a drawn section (`view: tiles | mosaic`) a row may say more: `group` and
 `icon` place and mark it, `tags: {label: value}` (up to six short strings) give
 the filter chips (a label with two to sixteen values gets a row of them), and

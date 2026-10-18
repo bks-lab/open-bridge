@@ -19,6 +19,7 @@ import {
 import { LaunchPick } from './launch.js'
 import { MeterBar, RowSteps, StatusMenu } from './pages.js'
 import { GH_REF, GitHubDetail } from './github.js'
+import { CalendarFacts } from './dates.js'
 import { Btn, Dot, Empty, Icon, Spinner, StateLine } from './parts.js'
 import { TaskSessions } from './sessions.js'
 import { TabsColumn } from './tabs.js'
@@ -326,16 +327,17 @@ export function InfoDrawer({ s, c }) {
       <div class="idrawer-body">
         ${ghRef ? html`<${GitHubDetail} gref=${ghRef} c=${c} />` : null}
         ${onHost.length ? html`<section class="idrawer-sec"><${StateLine} token=${onHostBad ? 'warning' : 'success'} word=${t.workersOnHost(onHost.length, onHostBad)} /></section>` : null}
-        ${cur.detail ? html`<section class="idrawer-sec"><p class="info-detail-full"><${Linked} text=${detailText(cur.detail, t)} /></p></section>` : null}
+        ${cur.detail && !cur.cal ? html`<section class="idrawer-sec"><p class="info-detail-full"><${Linked} text=${detailText(cur.detail, t)} /></p></section>` : null}
         ${cur.meter ? html`<section class="idrawer-sec"><${MeterBar} meter=${cur.meter} scale=${0} tone=${cur.tone} /></section>` : null}
-        ${facts.length ? html`<section class="idrawer-sec"><dl class="meta">${facts.map(([k, v]) => html`<${Fact} key=${k} label=${k}>${v}<//>`)}</dl></section>` : null}
-        ${(cur.lines ?? []).length ? html`<section class="idrawer-sec"><${Lines} lines=${cur.lines} /></section>` : null}
+        ${cur.cal ? html`<${CalendarFacts} it=${cur} />` : null}
+        ${facts.length && !cur.cal ? html`<section class="idrawer-sec"><dl class="meta">${facts.map(([k, v]) => html`<${Fact} key=${k} label=${k}>${v}<//>`)}</dl></section>` : null}
+        ${(cur.lines ?? []).length && !cur.cal ? html`<section class="idrawer-sec"><${Lines} lines=${cur.lines} /></section>` : null}
         ${others.length ? html`<section class="idrawer-sec"><h3 class="label-caps">${t.infoMoreDates}</h3>
           <ul class="agenda">${others.map(e => html`<li key=${`${e.section}:${e.it.at}:${e.it.title}`}>
             <span class="mono agenda-when">${e.it.when}</span>
             <button type="button" class="btn-link" onClick=${() => c.openInfo(e.it, e.page, e.section)}>${e.it.title}</button>
             ${e.it.detail ? html`<span class="muted small">${detailText(e.it.detail, t)}</span>` : null}</li>`)}</ul></section>` : null}
-        ${!ghRef && !cur.detail && !cur.meter && !facts.length && !(cur.lines ?? []).length ? html`<p class="muted">${t.infoNothingMore}</p>` : null}
+        ${!ghRef && !cur.cal && !cur.detail && !cur.meter && !facts.length && !(cur.lines ?? []).length ? html`<p class="muted">${t.infoNothingMore}</p>` : null}
       </div>
     </aside>
   </div>`

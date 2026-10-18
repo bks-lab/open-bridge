@@ -172,7 +172,7 @@ $defs:
                       empty: {type: string, description: "What the section says with nothing in it. Default: label page_empty."}
                       alarm: {type: boolean, description: "Every row is a finding (red), and empty means all green."}
                       badge: {type: boolean, description: "false: listed, but left out of the number on the tab. Default true."}
-                      view: {enum: [table, tiles, mosaic, groups, board], description: "How a dashboard draws the rows. table (default); tiles and mosaic: cards; groups: short lists under each row's group; board: the table with its rows under their group (a GitHub row's board)."}
+                      view: {enum: [table, tiles, mosaic, groups, board, agenda], description: "How a dashboard draws the rows. table (default); tiles and mosaic: cards; groups: short lists under each row's group; board: the table with its rows under their group (a GitHub row's board); agenda: a calendar section by day, as a week or a month, with its figures."}
                       hide_empty: {type: boolean, description: "true: an empty section is left out instead of saying so."}
                       actionable: {type: boolean, description: "Whether a person can hand the rows on (Do it, Advise, Later, Close). Default: findings and tracker rows."}
       page_rest:

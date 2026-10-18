@@ -410,6 +410,22 @@ const en = {
     prsTitle: 'Pull requests that close it', closesTitle: 'Closes', bodyTitle: 'Description', noBody: 'No description.',
     bodyCut: 'Cut here; the rest on GitHub.', commentsTitle: (total, shown) => total > shown ? `Last ${shown} of ${total} comments` : `Comments (${total})`,
   },
+  // the dates page as an agenda (views/dates.js): figures, filters, agenda, week and month
+  cal: {
+    today: 'Today', tomorrow: 'Tomorrow', allDay: 'all day', to: 'to', running: 'now',
+    min: m => `${m} min`, h: h => `${h} h`, hm: (h, m) => `${h} h ${m}`,
+    figuresLabel: 'Figures of your dates, each a filter',
+    fig: { today: 'today', tomorrow: 'tomorrow', week: 'next 7 days', overlaps: 'overlaps', next: 'Next',
+      free: 'free today', freeFrom: t => `longest block from ${t}`, busy: d => `${d} busy`, info: n => `plus ${n} for information`,
+      inMin: d => `in ${d}`, overdue: 'overdue', due: 'due this week', dueToo: n => `${n} more this week` },
+    search: 'Search dates', mineOnly: 'only mine', clear: 'show all', viewLabel: 'View',
+    views: { agenda: 'Agenda', week: 'Week', month: 'Month' }, weekNarrow: 'The week needs a wider screen',
+    prev: 'Back', next: 'Next', back: 'This week', none: 'No dates match.', moreN: n => `${n} more`,
+    dayCount: (n, info) => `${n} date${n === 1 ? '' : 's'}${info ? `, ${info} for information` : ''}`,
+    infoCal: 'information', online: 'online', join: 'Join', people: n => `${n} ${n === 1 ? 'person' : 'people'}`,
+    overlapWith: titles => `overlaps ${titles}`,
+    facts: { when: 'When', duration: 'Length', calendar: 'Calendar', where: 'Where', link: 'Meeting', people: n => `People (${n})` },
+  },
   histDid: did => ({ done: 'done', declined: 'not doing', not_doing: 'not doing', dropped: 'dropped', approved: 'approved' })[did]
     ?? (String(did).startsWith('hidden until ') ? `hidden until ${String(did).slice(13)}`
       : String(did).startsWith('later until ') ? `later, until ${String(did).slice(12)}`
@@ -1481,6 +1497,21 @@ const de = {
     failing: names => `Rot: ${names}`,
     prsTitle: 'Pull Requests, die es schließen', closesTitle: 'Schließt', bodyTitle: 'Beschreibung', noBody: 'Keine Beschreibung.',
     bodyCut: 'Hier gekürzt, der Rest auf GitHub.', commentsTitle: (total, shown) => total > shown ? `Letzte ${shown} von ${total} Kommentaren` : `Kommentare (${total})`,
+  },
+  cal: {
+    today: 'Heute', tomorrow: 'Morgen', allDay: 'ganztägig', to: 'bis', running: 'läuft',
+    min: m => `${m} min`, h: h => `${h} h`, hm: (h, m) => `${h} h ${m}`,
+    figuresLabel: 'Kennzahlen deiner Termine, jede ein Filter',
+    fig: { today: 'heute', tomorrow: 'morgen', week: 'nächste 7 Tage', overlaps: 'Überschneidungen', next: 'Als Nächstes',
+      free: 'frei heute', freeFrom: t => `längster Block ab ${t}`, busy: d => `${d} belegt`, info: n => `plus ${n} zur Info`,
+      inMin: d => `in ${d}`, overdue: 'überfällig', due: 'fällig diese Woche', dueToo: n => `${n} weitere diese Woche` },
+    search: 'Termine durchsuchen', mineOnly: 'nur meine', clear: 'alle zeigen', viewLabel: 'Ansicht',
+    views: { agenda: 'Agenda', week: 'Woche', month: 'Monat' }, weekNarrow: 'Die Woche braucht einen breiteren Bildschirm',
+    prev: 'Zurück', next: 'Weiter', back: 'Diese Woche', none: 'Kein Termin passt.', moreN: n => `${n} weitere`,
+    dayCount: (n, info) => `${n} Termin${n === 1 ? '' : 'e'}${info ? `, ${info} zur Info` : ''}`,
+    infoCal: 'Info', online: 'online', join: 'Beitreten', people: n => `${n} ${n === 1 ? 'Person' : 'Personen'}`,
+    overlapWith: titles => `überschneidet sich mit ${titles}`,
+    facts: { when: 'Wann', duration: 'Dauer', calendar: 'Kalender', where: 'Ort', link: 'Besprechung', people: n => `Teilnehmende (${n})` },
   },
   histDid: did => ({ done: 'erledigt', declined: 'wird nicht gemacht', not_doing: 'wird nicht gemacht', dropped: 'verworfen', approved: 'freigegeben' })[did]
     ?? (String(did).startsWith('hidden until ') ? `ausgeblendet bis ${String(did).slice(13)}`

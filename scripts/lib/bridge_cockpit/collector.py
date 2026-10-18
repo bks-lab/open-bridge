@@ -72,6 +72,7 @@ def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | No
             "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"),
             "tags": it.get("tags"), "account": it.get("account"), "inbox": it.get("inbox"),
             "actions": it.get("actions"), "row_id": it.get("row_id"), "at": it.get("at"), "flags": it.get("flags"), "who": it.get("who"), "gh": it.get("gh"),
+            "cal": it.get("cal"), "due_at": it.get("due_at"),
             "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view)}
 
 
@@ -193,7 +194,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             gone = [i for i in shown if i not in items]
             bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad"))
             sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "weight", "as_of")}
-            for extra in ("stale", "boards", "metrics"):
+            for extra in ("stale", "boards", "metrics", "cal_figures"):
                 if s.get(extra):
                     sec[extra] = s[extra]
             secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,

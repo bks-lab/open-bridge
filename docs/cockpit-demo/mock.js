@@ -235,6 +235,32 @@ function isoIn(days, now) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// a local time as the server writes it (2026-10-18T14:30), and the facts of a made-up event
+function localIso(ms) {
+  const d = new Date(ms)
+  const two = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T${two(d.getHours())}:${two(d.getMinutes())}`
+}
+
+function localDay(days) {
+  return localIso(Date.now() + days * 86400000).slice(0, 10)
+}
+
+function dayAt(days, hour) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  d.setHours(hour, 0, 0, 0)
+  return d.getTime()
+}
+
+function calFacts(startMs, minutes, more) {
+  const start = typeof startMs === 'number' ? startMs : Date.parse(startMs)
+  const end = start + minutes * 60000
+  return { start: localIso(start), end: localIso(end), day: localIso(start).slice(0, 10), minutes, all_day: false, calendar: null,
+    info: false, where: null, online: false, people: [], past: end <= Date.now(), running: start <= Date.now() && Date.now() < end,
+    overlaps: [], ...more }
+}
+
 function hhmm(ms) {
   const d = new Date(ms)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -413,10 +439,31 @@ export function buildState(now = Date.now(), opts = {}) {
     {
       id: 'dates', title: 'Dates', badge: { kind: 'none' }, sections: [
         // the dates lie ahead of the moment the demo opens, so the start page always has a next one
-        { id: 'calendar', kind: 'calendar', title: 'Calendar', status: 'ok', reason: '', alarm: false, empty: 'no dates', count: 2, total: 2,
-          weight: 0, bad: 0, as_of: hhmm(now - 2 * MIN), more: 0, items: [
-            item(0, { title: 'Team call', when: hhmm(now + 70 * MIN), at: new Date(now + 70 * MIN).toISOString() }),
-            item(1, { title: 'Review of the demo project', when: hhmm(now + 250 * MIN), at: new Date(now + 250 * MIN).toISOString() }),
+        // the agenda view (views/dates.js): every event carries its facts (`cal`), the section its figures
+        { id: 'calendar', kind: 'calendar', view: 'agenda', title: 'Calendar', status: 'ok', reason: '', alarm: false, empty: 'no dates', count: 8, total: 8,
+          weight: 0, bad: 0, as_of: hhmm(now - 2 * MIN), more: 0,
+          cal_figures: { today: 2, busy_today: 105, tomorrow: 1, week: 6, overlaps: 2, info_week: 2, day_start: 8, day_end: 20,
+            next: { start: localIso(now + 70 * MIN), title: 'Team call' }, free_today: { minutes: 120, from: localIso(now + 130 * MIN) } },
+          items: [
+            item(0, { title: 'Team call', when: hhmm(now + 70 * MIN), at: new Date(now + 70 * MIN).toISOString(),
+              link: { kind: 'web', href: 'https://example.org/meet/team' }, row_id: 'team-call', actions: [{ id: 'prepare', label: 'Prepare' }],
+              cal: calFacts(now + 70 * MIN, 60, { calendar: 'Work', online: true, people: ['Alex', 'Sam', 'Kim'] }) }),
+            item(1, { title: 'Review of the demo project', when: hhmm(now + 250 * MIN), at: new Date(now + 250 * MIN).toISOString(),
+              row_id: 'review', actions: [{ id: 'prepare', label: 'Prepare' }],
+              cal: calFacts(now + 250 * MIN, 45, { calendar: 'Work', where: 'Room 2', overlaps: ['Pick up from football'] }) }),
+            item(2, { title: 'Pick up from football', when: hhmm(now + 260 * MIN),
+              cal: calFacts(now + 260 * MIN, 30, { calendar: 'Family', info: true, overlaps: ['Review of the demo project'] }) }),
+            item(3, { title: 'Weekly', when: 'tomorrow 10:00', row_id: 'weekly', actions: [{ id: 'prepare', label: 'Prepare the weekly' }],
+              cal: calFacts(dayAt(1, 10), 90, { calendar: 'Work', online: true, people: ['Alex', 'Sam', 'Kim', 'Lee'] }) }),
+            item(4, { title: 'Conference', when: hhmm(dayAt(2, 0)), cal: calFacts(dayAt(2, 0), 1440, { calendar: 'Work', all_day: true }) }),
+            item(5, { title: 'Customer workshop', when: hhmm(dayAt(3, 9)), cal: calFacts(dayAt(3, 9), 180, { calendar: 'Work', where: 'Customer office' }) }),
+            item(6, { title: 'Dentist', when: hhmm(dayAt(3, 15)), cal: calFacts(dayAt(3, 15), 60, { calendar: 'Private' }) }),
+            item(7, { title: 'School evening', when: hhmm(dayAt(5, 19)), cal: calFacts(dayAt(5, 19), 90, { calendar: 'Family', info: true }) }),
+          ] },
+        { id: 'deadlines', kind: 'command', title: 'Deadlines', status: 'ok', reason: '', alarm: false, empty: 'nothing due', count: 2, total: 2,
+          weight: 2, bad: 0, as_of: null, more: 0, items: [
+            item(0, { title: 'Send the slides from the review', detail: 'overdue', tone: 'warn', when: 'Mon', due_at: localDay(-2) }),
+            item(1, { title: 'Answer the offer', detail: 'due', when: 'Fri', due_at: localDay(3) }),
           ] },
         { id: 'mail', kind: 'mail', title: 'Mail', status: 'error', reason: 'mail account token expired', alarm: false, empty: 'nothing', count: 0, total: 0,
           weight: 0, bad: 0, as_of: null, more: 0, items: [] },

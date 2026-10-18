@@ -845,6 +845,22 @@ task row. A row whose issue a task syncs opens that task's tab instead. No step
 writes to GitHub by itself; the prompt sends board changes through
 `github-projects-manager` and keeps merging with you.
 
+**Dates as an agenda.** A calendar section with `view: agenda` (docs/briefings.md
+§ Dashboard pages) opens with its figures: today and how long it is busy,
+tomorrow, the next seven days, collisions, the next event with a countdown, the
+longest free block left today, and what other sections on the page say is
+overdue or due this week. Below, Agenda, Week and Month switch the view (the
+choice is kept in the browser). The agenda lists the events by day under a head
+with a bar of the busy hours and a now mark; each event shows its time and
+length, calendar, place or "online" with Join, its people and what it collides
+with, and its steps (Prepare, the series' own) as buttons. The week is a grid
+from Monday to Sunday with the events placed by time and side by side where
+they overlap (on a narrow screen it falls back to the agenda); the month shows
+each day's count and first titles, and a click on a day opens its week. Calendar
+chips, "only mine" (without the information calendars) and a search filter all
+three. An opened event lists when, how long, its calendar, place, meeting and
+people.
+
 **Close in two clicks.** Every row of the Briefing that can end, its detail,
 a task row on a page and a selection carry "Close ▾" with two outcomes,
 Done and Not doing it (a task also "Other reason …", the full dialog). What

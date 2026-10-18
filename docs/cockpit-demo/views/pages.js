@@ -18,6 +18,7 @@ import { ReturnChip } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
 import { Btn, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
+import { DatesAgenda } from './dates.js'
 
 // ---------------------------------------------------------------- pages
 
@@ -501,6 +502,7 @@ export function PageSection({ page, section, s, c }) {
   if (section.status === 'skipped') body = html`<p class="muted"><${StateLine} token="info" word=${t.skippedSection} /></p>`
   else if (section.status === 'error') body = html`<p><${StateLine} token="danger" strong word=${t.unreadable(section.reason || '')} /></p>`
   else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} />`
+  else if (section.view === 'agenda' && section.kind === 'calendar') body = html`<${DatesAgenda} items=${items} page=${page} section=${section} s=${s} c=${c} />`
   else if (section.view === 'groups') body = html`<${GroupsView} items=${items} page=${page.id} section=${section.id} c=${c} />`
   // a github-work section on its board view: the GitHub list (views/github.js), not the general table
   else if (section.view === 'board' && gh) body = html`<${GitHubList} items=${items} page=${page.id} section=${section} s=${s} c=${c} byKey=${byKey} />`

@@ -437,9 +437,9 @@ def test_parse_pages():
     assert s["items"][0] == {"title": "T", "detail": "open", "when": "09:30", "tone": "warn", "url": "https://x.test",
                              "task": "alpha", "ask": True, "mark": None, "priority": None, "state": None, "lines": [], "meter": None,
                              "group": None, "icon": None, "tags": None, "account": None, "inbox": None,
-                             "actions": None, "row_id": None, "flags": None, "who": None, "gh": None, "at": None, "id": None, "actionable": False}
+                             "actions": None, "row_id": None, "flags": None, "who": None, "gh": None, "cal": None, "due_at": None, "at": None, "id": None, "actionable": False}
     assert s["as_of"] is None and s["empty"] == "nothing"
-    assert s["boards"] is None and s["metrics"] is None and s["stale"] is None
+    assert s["boards"] is None and s["metrics"] is None and s["stale"] is None and s["cal_figures"] is None
     assert pages[0]["overview"] is False
     ops = m.parse_pages({"pages": [{"id": "ops", "title": "Betrieb", "overview": True, "sections": [{"id": "a"}]}]})
     assert ops[0]["overview"] is True
