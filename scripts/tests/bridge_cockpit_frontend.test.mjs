@@ -2747,18 +2747,39 @@ test('ticker: the demo saves and resets its settings, refreshes and edits with i
 // /api/events is the event stream (the transport's events()), /api/health is for scripts, never the page.
 const MOCK_ROUTE_ALLOW = new Set(['GET /api/events', 'GET /api/health'])
 
-function serverRoutes() {
-  const server = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'server.py'), 'utf8')
-  const jev = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'jev.py'), 'utf8')
+// Reads the routes out of the handler source. A route the class misses would be skipped in silence,
+// so every `path == "/api/` and every jev route literal must come out as a route, or the reader throws.
+function extractRoutes(server, jev) {
   const postAt = server.indexOf('    def post(self)')
   assert.ok(postAt > 0, 'server.py has its post handler')
   const out = []
-  for (const m of server.matchAll(/path == "(\/api\/[a-z/]+)"/g)) out.push(`${m.index < postAt ? 'GET' : 'POST'} ${m[1]}`)
+  for (const m of server.matchAll(/path == "(\/api\/[a-z0-9_/-]+)"/g)) out.push(`${m.index < postAt ? 'GET' : 'POST'} ${m[1]}`)
+  const written = server.split('path == "/api/').length - 1
+  assert.equal(out.length, written, `server.py has ${written} route comparisons, ${out.length} read: a route the reader cannot read`)
   const jevRoutes = jev.match(/if path not in \(([^)]*)\)/)
   assert.ok(jevRoutes, 'jev.py names its routes')
-  for (const m of jevRoutes[1].matchAll(/"(\/api\/jev\/[a-z]+)"/g)) out.push(`POST ${m[1]}`)
-  return [...new Set(out)]
+  const jevOut = [...jevRoutes[1].matchAll(/"(\/api\/jev\/[a-z0-9_/-]+)"/g)].map(m => `POST ${m[1]}`)
+  const jevWritten = jevRoutes[1].split('"/api/').length - 1
+  assert.equal(jevOut.length, jevWritten, `jev.py names ${jevWritten} routes, ${jevOut.length} read: a route the reader cannot read`)
+  return [...new Set([...out, ...jevOut])]
 }
+
+function serverRoutes() {
+  const server = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'server.py'), 'utf8')
+  const jev = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'jev.py'), 'utf8')
+  return extractRoutes(server, jev)
+}
+
+test('mock parity: the route reader sees every route spelling, and refuses one it cannot read', () => {
+  const server = [
+    '    def get(self):', '        if path == "/api/state":', '        elif path == "/api/new-thing2":',
+    '    def post(self):', '        if path == "/api/do_it":',
+  ].join('\n')
+  const jev = 'if path not in ("/api/jev/run", "/api/jev/re-rank"):'
+  assert.deepEqual(extractRoutes(server, jev).sort(),
+    ['GET /api/new-thing2', 'GET /api/state', 'POST /api/do_it', 'POST /api/jev/re-rank', 'POST /api/jev/run'])
+  assert.throws(() => extractRoutes(server + '\n        elif path == "/api/Odd.Name":', jev), /route the reader cannot read/)
+})
 
 test('mock parity: every server route has a well-formed mock answer, unless it is allowlisted', async () => {
   const routes = serverRoutes()

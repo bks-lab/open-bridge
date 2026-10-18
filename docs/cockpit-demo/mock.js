@@ -886,6 +886,8 @@ export function createMockTransport(opts = {}) {
     },
     async post(path, body) {
       await new Promise(r => setTimeout(r, 250))
+      // the demo has no server poll to slow down: a page reporting its visibility is simply acknowledged
+      if (path === '/api/presence') return { status: 200, ok: true, data: { ok: true }, error: null }
       if (path === '/api/reload') {
         const loading = { pass: 'quick', fresh: !!body?.fresh, started_ms: now(), eta_ms: 3000, queued: 'full', last_error: null }
         state.loading = loading
