@@ -105,6 +105,21 @@ properties:
     additionalProperties:
       enum: [new, ready, in_progress, review, done, blocked, removed]
 
+  board:
+    type: object
+    additionalProperties: true     # skills/board-pilot adds its own keys here
+    description: "Which board fields a card's lifecycle and priority come from (briefing github-board, cockpit, board-pilot)"
+    properties:
+      status_field:
+        type: string
+        minLength: 1
+        default: Status
+        description: "Single-select field that carries the lifecycle; state_map maps its options. Set it when the lifecycle lives in a custom column."
+      priority_field:
+        type: string
+        minLength: 1
+        description: "Single-select priority field (e.g. Priority with P1, P2, P3). No default: without it no priority is read and the query asks nothing more."
+
   audit:
     type: object
     additionalProperties: true

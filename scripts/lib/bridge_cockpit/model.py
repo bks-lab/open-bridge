@@ -208,7 +208,8 @@ def parse_gh(value: Any) -> dict | None:
     return {"title": as_text(value.get("title")), "repo": as_text_or_null(value.get("repo")),
             "number": value.get("number") if isinstance(value.get("number"), int) else None,
             "type": "pr" if value.get("type") == "pr" else "issue", "state": as_text_or_null(value.get("state")),
-            "status": as_text_or_null(value.get("status")), "labels": texts(value.get("labels"), 4),
+            "status": as_text_or_null(value.get("status")), "priority": as_text_or_null(value.get("priority")),
+            "labels": texts(value.get("labels"), 4),
             "people": texts(value.get("people"), 3),
             "prs": [{"n": p["n"], "draft": p.get("draft") is True} for p in _list(value.get("prs"))
                     if isinstance(p, dict) and isinstance(p.get("n"), int)][:3],

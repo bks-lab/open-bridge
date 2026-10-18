@@ -198,6 +198,29 @@ export function prioToken(priority) {
   return { P0: 'danger', P1: 'warning', P2: 'info' }[priority] ?? 'on-surface-muted'
 }
 
+/** Where a board priority stands in its order: the number in it (P0, P1, "Prio 2"), then the usual words,
+ *  then any other word, a row without one last */
+export function prioRank(priority) {
+  if (!priority) return 1000
+  const n = String(priority).match(/\d+/)
+  if (n) return Number(n[0])
+  const word = { critical: 0, urgent: 0, highest: 0, high: 1, medium: 2, normal: 2, low: 3, lowest: 4 }[String(priority).toLowerCase()]
+  return 100 + (word ?? 50)
+}
+
+// the work's own order on a GitHub page: what is stuck or waits on a review first, what nobody started last
+const GH_STATE_RANK = { blocked: 0, review: 1, in_progress: 2, ready: 3, new: 4 }
+
+/** The rows of one board in the order the person picked: by state (the work's order), newest first, or by
+ *  the board's priority (P1 before P2 before P3, equal ones in the work's order); newest first breaks a tie */
+export function ghSortRows(rows, by) {
+  const at = it => it.gh?.changed ?? ''
+  const state = it => GH_STATE_RANK[it.gh?.state] ?? 5
+  return [...rows].sort((a, b) => by === 'recent'
+    ? at(b).localeCompare(at(a))
+    : (by === 'priority' ? prioRank(a.gh?.priority) - prioRank(b.gh?.priority) : 0) || state(a) - state(b) || at(b).localeCompare(at(a)))
+}
+
 /** Design token for an item tone */
 export function toneToken(tone) {
   return { bad: 'danger', warn: 'warning', dim: 'on-surface-muted' }[tone] ?? 'info'

@@ -2819,3 +2819,19 @@ test('noise: the Betrieb page shows the noise card and lifts a mute through the 
   assert.match(read('app.js'), /api\.get\('\/api\/inbox\/noise'\)/)
   assert.match(read('app.js'), /act\('inbox_unmute', \{ id \}\)/)
 })
+
+test('github rows: the board priority shows as a chip and sorts P1 before P2 before P3 within a board', () => {
+  const row = (n, priority, state = 'ready', changed = '2026-10-0' + n) => ({ index: n, gh: { priority, state, changed } })
+  const rows = [row(1, 'P3'), row(2, null), row(3, 'P1'), row(4, 'P2'), row(5, 'P1', 'blocked')]
+  // by priority: the lowest number first, a row without one last; equal ones in the work's order, then newest
+  assert.deepEqual(logic.ghSortRows(rows, 'priority').map(r => r.index), [5, 3, 4, 1, 2])
+  // the other orders stay as they were
+  assert.deepEqual(logic.ghSortRows(rows, 'recent').map(r => r.index), [5, 4, 3, 2, 1])
+  assert.deepEqual(logic.ghSortRows(rows, 'state').map(r => r.index), [5, 4, 3, 2, 1])
+  assert.ok(logic.prioRank('P0') < logic.prioRank('P1') && logic.prioRank('P9') < logic.prioRank('High'))
+  assert.ok(logic.prioRank('Low') < logic.prioRank(null))
+  const gh = read('views/github.js')
+  assert.match(gh, /<\$\{PrioChip\} priority=\$\{g\.priority\} \/>/)
+  assert.match(gh, /ghSortRows\(/)
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].gh.sort.priority, lang)
+})

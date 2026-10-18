@@ -831,8 +831,12 @@ page entry (docs/briefings.md).
 
 **GitHub work with steps.** A `github-work` section (docs/briefings.md § GitHub
 work) on a page with `view: board` lists one row per issue or pull request
-under its board: the board's status, the pull requests that close it, the task
-of this Bridge that syncs it. Above the rows stand its figures (open, yours,
+under its board: the board's status (the field `board.status_field` of its
+registry names, default `Status`), its priority as a chip when the registry
+names a `board.priority_field`, the pull requests that close it, the task of
+this Bridge that syncs it. The rows of a board sort by state, by priority (P1
+before P2 before P3, a row without one last; offered only when a row carries
+one) or newest first. Above the rows stand its figures (open, yours,
 wanting your review, your open PRs, in progress, in review, blocked, quiet,
 yours without a task, closed and merged lately), a tile per board with its open cards per state as a
 bar and the switch Off · Mine · All, and the people the rows are with; a click

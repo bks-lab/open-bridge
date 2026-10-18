@@ -21,7 +21,7 @@ field values, governance rules, and state mappings.
 | Skill | What it reads |
 |---|---|
 | `skills/github-projects-manager/` | `fields`, `conventions`, `governance`, `state_map` — for `gh project item-edit` commands, issue-creation decisions and board-health checks |
-| `skills/briefing/` (Stream B) | `state_map` — to normalize raw status labels into the unified view |
+| `skills/briefing/` (Stream B) | `state_map` to normalize raw status labels into the unified view; `board.status_field` (the lifecycle field, default `Status`) and `board.priority_field` (optional) for the `github-board` rows and the cockpit's GitHub page |
 | `protocols/standing-orders/task-sync.md` *(Phase 3)* | `context_ref`, `mandant_ref` — for per-task sync resolution |
 
 ## File layout

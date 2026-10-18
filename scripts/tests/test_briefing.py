@@ -335,6 +335,101 @@ def test_github_board_asks_only_what_a_row_needs_page_by_page(tmp_path):
     assert len([c for c in run.calls if c[:3] == ["gh", "api", "graphql"]]) == 2    # two pages, no date call
 
 
+def _registry(root, board=None, state_map=None):
+    """A registry for the Tool board (example-org #3), with a `board:` block when given."""
+    path = root / "workflow" / "projects" / "tool.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"schema_version": 1, "scope": "user", "identity": {"slug": "tool", "display_name": "Tool board"},
+            "project": {"tracker": "github", "org": "example-org", "number": 3},
+            "fields": {"Status": {"type": "single-select"}}, "state_map": state_map or {}}
+    if board:
+        data["board"] = board
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
+        {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
+
+
+def _field_card(n, values, people=("octo",)):
+    """A lean card as GitHub answers it: the status under `fieldValueByName`, the priority under its alias."""
+    card = lean_card(n, values.get("status"), people=people)
+    if "priority" in values:
+        card["priority"] = {"name": values["priority"]} if values["priority"] else None
+    return card
+
+
+def _arg(argv, name):
+    return next((a.split("=", 1)[1] for a in argv if a.startswith(f"{name}=")), None)
+
+
+def test_github_board_reads_the_lifecycle_field_the_registry_names(tmp_path):
+    """A board whose lifecycle lives in a custom column (`board.status_field: Workflow`): the built-in Status
+    still says Todo on every card, so the rows and the counts read the Workflow value instead."""
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    _registry(root, board={"status_field": "Workflow"},
+              state_map={"Ready": "ready", "Building": "in_progress", "Todo": "new"})
+
+    def graphql(argv):
+        workflow = _arg(argv, "status") == "Workflow"
+        return lean_page([_field_card(1, {"status": "Ready" if workflow else "Todo"}),
+                          _field_card(2, {"status": "Building" if workflow else "Todo"})])
+    run = FakeRun({("gh", "api", "graphql"): graphql})
+    section = {"kind": "tracker", "provider": "github-board", "summary": True, "query": {}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    by = {i["id"]: i for i in sec["items"]}
+    assert by["example-org/tool#1"]["raw_state"] == "Ready" and by["example-org/tool#1"]["state"] == "ready"
+    assert by["example-org/tool#2"]["state"] == "in_progress"
+    counts = sec["summary"][0]["counts"]
+    assert counts["ready"] == 1 and counts["in_progress"] == 1 and counts["new"] == 0
+    assert not [c for c in run.calls if c[:3] == ["gh", "project", "item-list"]]     # still the lean query
+
+
+def test_github_board_without_a_status_field_asks_status_and_no_priority(tmp_path):
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    _registry(root)
+    run = FakeRun({("gh", "api", "graphql"): lambda argv: lean_page([lean_card(1, "In Progress")])})
+    section = {"kind": "tracker", "provider": "github-board", "query": {}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    lean = [c for c in run.calls if c[:3] == ["gh", "api", "graphql"] and "projectV2(number" in c[4]][0]
+    assert _arg(lean, "status") == "Status" and _arg(lean, "priority") is None
+    assert "$priority" not in lean[4]
+    assert sec["items"][0]["state"] == "in_progress" and sec["items"][0]["priority"] is None
+
+
+def test_github_board_carries_the_priority_the_registry_names(tmp_path):
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    _registry(root, board={"priority_field": "Priority"})
+
+    def graphql(argv):
+        assert _arg(argv, "priority") == "Priority" and "priority: fieldValueByName(name: $priority)" in argv[4]
+        return lean_page([_field_card(1, {"status": "In Progress", "priority": "P2"}),
+                          _field_card(2, {"status": "Todo", "priority": None})])
+    run = FakeRun({("gh", "api", "graphql"): graphql})
+    section = {"kind": "tracker", "provider": "github-board", "query": {}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    by = {i["id"]: i for i in sec["items"]}
+    assert by["example-org/tool#1"]["priority"] == "P2" and by["example-org/tool#2"]["priority"] is None
+
+
+def test_github_board_listed_the_old_way_reads_the_same_fields(tmp_path):
+    """When the lean query cannot answer, gh item-list keys each field by its lower-cased name."""
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    _registry(root, board={"status_field": "Work Flow", "priority_field": "Priority"},
+              state_map={"Ready": "ready"})
+    listing = json.dumps({"items": [{"status": "Blocked", "workflow": "Ready", "priority": "P1", "assignees": ["octo"],
+                                     "labels": [], "title": "Card 7",
+                                     "content": {"number": 7, "title": "Card 7", "type": "Issue",
+                                                 "repository": "example-org/tool",
+                                                 "url": "https://github.com/example-org/tool/issues/7"}}]})
+    run = FakeRun({("gh", "api", "graphql"): '{"data": null}', ("gh", "project", "item-list"): listing})
+    section = {"kind": "tracker", "provider": "github-board", "query": {}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    assert sec["items"][0]["state"] == "ready" and sec["items"][0]["priority"] == "P1"
+
+
 def test_github_board_lists_without_a_filter_when_gh_does_not_know_it(tmp_path):
     root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
     (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [

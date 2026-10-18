@@ -40,11 +40,13 @@ DEFAULT_FILTER = "is:open"
 # One board through `gh project item-list` cost about 100 GraphQL points whatever its size (it asks every field
 # of every card); this query asks only what a row needs and cost 2 (live 2026-10-18: 721 points a pass for eight
 # boards, against an hourly budget of 5000 that every program of the account shares).
-LEAN_QUERY = """query($login: String!, $number: Int!, $q: String!, $after: String) {
+# The lifecycle column is the registry's `board.status_field` (default Status) and goes in as a variable; a
+# `board.priority_field` adds one aliased field value, and only then, so a board without one asks nothing more.
+LEAN_QUERY = """query($login: String!, $number: Int!, $q: String!, $after: String, $status: String!PRIORITY_VAR) {
   repositoryOwner(login: $login) { ... on ProjectV2Owner { projectV2(number: $number) {
     items(first: 100, after: $after, query: $q) { pageInfo { hasNextPage endCursor } nodes {
       id
-      fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+      fieldValueByName(name: $status) { ... on ProjectV2ItemFieldSingleSelectValue { name } }PRIORITY_FIELD
       content { __typename
         ... on Issue { number title url updatedAt repository { nameWithOwner }
                        assignees(first: 5) { nodes { login } } labels(first: 5) { nodes { name } } }
@@ -52,6 +54,46 @@ LEAN_QUERY = """query($login: String!, $number: Int!, $q: String!, $after: Strin
                              assignees(first: 5) { nodes { login } } labels(first: 5) { nodes { name } } }
         ... on DraftIssue { title updatedAt assignees(first: 5) { nodes { login } } } }
     } } } } } }"""
+PRIORITY_FIELD = """
+      priority: fieldValueByName(name: $priority) { ... on ProjectV2ItemFieldSingleSelectValue { name } }"""
+
+
+def board_fields(board: dict) -> tuple:
+    """The board's lifecycle field and its priority field (None when the registry names none):
+    `board.status_field` and `board.priority_field` of workflow/projects/<slug>.yaml, the keys board-pilot reads."""
+    block = (board.get("registry") or {}).get("board") or {}
+    status = block.get("status_field") if isinstance(block, dict) else None
+    priority = block.get("priority_field") if isinstance(block, dict) else None
+    return (status.strip() if isinstance(status, str) and status.strip() else "Status",
+            priority.strip() if isinstance(priority, str) and priority.strip() else None)
+
+
+def lean_query(priority: bool) -> str:
+    return (LEAN_QUERY.replace("PRIORITY_VAR", ", $priority: String!" if priority else "")
+            .replace("PRIORITY_FIELD", PRIORITY_FIELD if priority else ""))
+
+
+def _listed_field(raw: dict, name: str):
+    """A field of a `gh project item-list` row: gh keys each field by its lower-cased name."""
+    for key in (name, name.lower(), name.lower().replace(" ", "")):
+        value = raw.get(key)
+        if value not in (None, ""):
+            return value if isinstance(value, str) else (value.get("name") if isinstance(value, dict) else None)
+    return None
+
+
+def _listed(payload, board: dict):
+    """An item-list answer read through the board's fields, as the lean query reads them."""
+    status, priority = board_fields(board)
+    if not isinstance(payload, dict):
+        return payload
+    for raw in payload.get("items") or []:
+        if not isinstance(raw, dict):
+            continue
+        if status != "Status":
+            raw["status"] = _listed_field(raw, status) or ""
+        raw["priority"] = _listed_field(raw, priority) if priority else None
+    return payload
 
 
 class _Unexpected(Exception):
@@ -61,9 +103,12 @@ class _Unexpected(Exception):
 def _lean_cards(board: dict, wanted: str, limit: int, ctx) -> dict:
     """A board's cards in the shape of `gh project item-list --format json`, page by page up to `limit`."""
     items, after = [], None
+    status, priority = board_fields(board)
     while len(items) < limit:
-        argv = ["gh", "api", "graphql", "-f", f"query={LEAN_QUERY}", "-f", f"login={board['org']}",
-                "-F", f"number={board['number']}", "-f", f"q={wanted}"]
+        argv = ["gh", "api", "graphql", "-f", f"query={lean_query(bool(priority))}", "-f", f"login={board['org']}",
+                "-F", f"number={board['number']}", "-f", f"q={wanted}", "-f", f"status={status}"]
+        if priority:
+            argv += ["-f", f"priority={priority}"]
         if after:
             argv += ["-f", f"after={after}"]
         data = load_json(ctx.run(argv, timeout=ctx.timeout), f"board {board['slug']}")
@@ -79,6 +124,7 @@ def _lean_cards(board: dict, wanted: str, limit: int, ctx) -> dict:
             people = [a.get("login") for a in ((content.get("assignees") or {}).get("nodes") or []) if isinstance(a, dict)]
             labels = [x.get("name") for x in ((content.get("labels") or {}).get("nodes") or []) if isinstance(x, dict)]
             card = {"id": node.get("id"), "status": (node.get("fieldValueByName") or {}).get("name") or "",
+                    "priority": (node.get("priority") or {}).get("name") or None,
                     "title": content.get("title"), "assignees": people, "labels": labels,
                     "content": {"type": content.get("__typename"), "title": content.get("title"),
                                 "updatedAt": content.get("updatedAt")}}
@@ -179,11 +225,12 @@ def collect(section: dict, ctx) -> list:
                 "--format", "json", "--limit", str(query.get("limit", 200))]
         if wanted:
             try:
-                return load_json(ctx.run([*argv, "--query", wanted], timeout=ctx.timeout), f"board {board['slug']}")
+                return _listed(load_json(ctx.run([*argv, "--query", wanted], timeout=ctx.timeout),
+                                         f"board {board['slug']}"), board)
             except Exception as exc:  # noqa: BLE001 - only an unknown flag falls back, anything else fails
                 if "unknown flag" not in str(exc):
                     raise
-        return load_json(ctx.run(argv, timeout=ctx.timeout), f"board {board['slug']}")
+        return _listed(load_json(ctx.run(argv, timeout=ctx.timeout), f"board {board['slug']}"), board)
 
     # Asked side by side, read back in the registry's order; the first board that fails
     # (in that order) fails the section, as it did one after another.
@@ -208,7 +255,8 @@ def collect(section: dict, ctx) -> list:
             out.append({**{k: v for k, v in item.items() if k not in ("number", "repo")},
                         "id": f"{item.get('repo') or board['org']}#{item['number']}",
                         "type": str(item.get("type") or "issue").lower(),
-                        "project": board["name"], "tracker": "github-board", "priority": None,
+                        "project": board["name"], "tracker": "github-board",
+                        "priority": raw.get("priority") if isinstance(raw.get("priority"), str) else None,
                         "board": {"slug": board["slug"], "name": board["name"], "number": board["number"],
                                   "org": board["org"],
                                   **({"config": board["registry"]["_file"]}

@@ -111,7 +111,7 @@ against recorded answers (`scripts/tests/fixtures/briefing/<provider>/`).
 | provider | Reaches it through | `query` keys |
 |---|---|---|
 | `github` | `gh search` (gh's own login) | `assignee` (default `@me`), `owners`, `repos`, `kinds` (issues, prs), `state`, `labels`, `review_requested`, `authored` (true: your own open PRs, with their age), `others_prs` (N: colleagues' open, non-draft PRs in `owners`/`repos` updated in the last N days, bots and your own left out), `limit` |
-| `github-board` | `gh project item-list`, boards from `github_projects:` in the ecosystem files, state maps from `workflow/projects/` (the same code as `scripts/tracker-sync.py`). GitHub filters before the limit (`filter`, default `is:open`): gh lists the oldest cards first, so without it a board with more cards than `limit` lost its newest, open ones. With `summary: true` on the section, also one line per board with its open cards per state, counted before `assigned_to_me` and the other filters, with the section's `state_map` applied; a status no map knows (Parked, Canceled) is not open work, and a board that filled `limit` says so | `boards`, `assigned_to_me`, `states`, `include_done`, `filter` (the board's filter syntax; `""` for every card), `limit` |
+| `github-board` | one lean GraphQL query per board (`gh project item-list` only when it cannot answer), boards from `github_projects:` in the ecosystem files, state maps and the board's fields from `workflow/projects/` (the same code as `scripts/tracker-sync.py`; see below). GitHub filters before the limit (`filter`, default `is:open`): gh lists the oldest cards first, so without it a board with more cards than `limit` lost its newest, open ones. With `summary: true` on the section, also one line per board with its open cards per state, counted before `assigned_to_me` and the other filters, with the section's `state_map` applied; a status no map knows (Parked, Canceled) is not open work, and a board that filled `limit` says so | `boards`, `assigned_to_me`, `states`, `include_done`, `filter` (the board's filter syntax; `""` for every card), `limit` |
 | `github-work` | both of the above, merged: one row per issue or pull request (see GitHub work) | every `github` key, plus `boards` (the others start switched off), `cards` (`mine`, default, or `all` open cards), `filter`, `board_limit`, `links` (false: do not ask which pull requests close an issue), `done_days` (N, default 7: also count your issues closed and pull requests merged in the last N days; 0 asks none) |
 | `gitlab` | `glab issue list` | `repos` (required), `assignee`, `state`, `labels`, `limit` |
 | `ado` | `az boards query` (WIQL) | `wiql`, `organization`, `project`, `limit` |
@@ -120,6 +120,25 @@ against recorded answers (`scripts/tests/fixtures/briefing/<provider>/`).
 
 `state_map` on a section maps a raw state to a normalized one
 (`{"Waiting for vendor": blocked}`) and overrides the provider's default.
+
+**Which fields a board card reads.** Two optional keys in the board's registry
+(`workflow/projects/<slug>.yaml`, block `board:`, the block board-pilot reads too)
+name them:
+
+- `board.status_field`: the single-select field that carries the board's
+  lifecycle, default `Status`. A board whose lifecycle lives in a custom column
+  (`status_field: Workflow`) shows that column's value on its rows, maps it
+  through the registry's `state_map` and counts its cards per state by it.
+  Without the key the built-in `Status` is read, as before.
+- `board.priority_field`: a single-select priority field (`priority_field:
+  Priority` with P1, P2, P3). When set, the query asks that one field more and
+  each row carries the option name as `priority` (shown as a column wherever a
+  view shows priority, and as a chip on the cockpit's GitHub page, which can
+  sort by it). No default: a board without the key asks nothing more and its
+  rows carry no priority.
+
+Both go into the same lean query, so a board costs the same few points either
+way.
 
 ### Tokens: references only
 

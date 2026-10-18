@@ -1901,9 +1901,9 @@ def calendar_figures(cals: list, now: dt.datetime) -> dict:
 
 def github_facts(item: dict, now: dt.datetime) -> dict:
     """A GitHub row's facts as a dashboard draws them, one field each instead of a detail line: the plain
-    title, repository and number, the normalized state and the board's own word for it, labels, people, the
-    pull requests that close it, the task that syncs it (or that none does), when it last changed and how long it
-    has been quiet."""
+    title, repository and number, the normalized state and the board's own word for it, the board's priority
+    (board.priority_field), labels, people, the pull requests that close it, the task that syncs it (or that none
+    does), when it last changed and how long it has been quiet."""
     m = GH_ID_RE.match(_text(item.get("id")))
     people = [p for p in (item.get("assignees") or [item.get("assignee")]) if isinstance(p, str) and p][:3]
     linked = item.get("linked_task") if isinstance(item.get("linked_task"), dict) else {}
@@ -1913,6 +1913,7 @@ def github_facts(item: dict, now: dt.datetime) -> dict:
     return {"title": _text(item.get("title"))[:300], "repo": m.group(1) if m else None,
             "number": int(m.group(2)) if m else None, "type": "pr" if item.get("type") == "pr" else "issue",
             "state": _text(item.get("state")) or None, "status": status[:40] or None,
+            "priority": _text(item.get("priority"))[:20] or None,
             "labels": [_text(x)[:40] for x in item.get("labels") or [] if _text(x)][:4], "people": people,
             "prs": [{"n": int(str(p["id"]).rsplit("#", 1)[-1]), "draft": bool(p.get("draft"))}
                     for p in item.get("prs") or [] if isinstance(p, dict) and str(p.get("id", "")).rsplit("#", 1)[-1].isdigit()][:3],

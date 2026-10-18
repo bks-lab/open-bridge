@@ -637,3 +637,17 @@ def test_someone_elses_card_offers_a_reminder_the_click_releases_the_comment(tmp
     assert "The click on Remind releases" in en and "a mail or chat only as a draft" in en
     view = bf._view()
     assert view._page_row("tracker", other, {"id": "work"}, NOW, view.labels_for("de"))["who"] == "hubot"
+
+
+def test_a_cards_priority_reaches_the_dashboard_row():
+    """The board's priority (board.priority_field) travels with the row's facts to the cockpit, checked again there."""
+    if str(ROOT / "scripts" / "lib") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import briefing_view as bv   # noqa: E402
+    from bridge_cockpit import model   # noqa: E402
+    card = {"id": "example-org/tool#12", "title": "Ship it", "state": "ready", "raw_state": "Ready", "priority": "P1"}
+    facts = bv.github_facts(card, NOW)
+    assert facts["priority"] == "P1"
+    assert bv.github_facts({**card, "priority": None}, NOW)["priority"] is None
+    assert model.parse_gh(facts)["priority"] == "P1"
+    assert model.parse_gh({**facts, "priority": 3})["priority"] is None

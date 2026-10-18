@@ -5,8 +5,8 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
-import { Btn, Chip, Icon, Spinner, StateLine } from './parts.js'
-import { actionRow, pageItemActs } from '../logic.js'
+import { Btn, Chip, Icon, PrioChip, Spinner, StateLine } from './parts.js'
+import { actionRow, ghSortRows, pageItemActs } from '../logic.js'
 import { SettleMenu } from './day.js'
 import { RowSteps } from './pages.js'
 import { rowClickOpens } from './overlays.js'
@@ -176,8 +176,6 @@ export function GitHubDetail({ gref: id, c }) {
 
 // ---------------------------------------------------------------- the list: one row per issue or pull request
 
-// the work's own order: what is stuck or waits on a review first, what nobody started last
-const STATE_RANK = { blocked: 0, review: 1, in_progress: 2, ready: 3, new: 4 }
 const FOLD_KEY = 'cockpit.github.folded'
 
 function readFolded() {
@@ -209,17 +207,10 @@ function TypeIcon({ type, token }) {
     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d=${d} /></svg>`
 }
 
-function sortRows(rows, by) {
-  const at = it => it.gh?.changed ?? ''
-  return [...rows].sort((a, b) => by === 'recent'
-    ? at(b).localeCompare(at(a))
-    : (STATE_RANK[a.gh?.state] ?? 5) - (STATE_RANK[b.gh?.state] ?? 5) || at(b).localeCompare(at(a)))
-}
-
 function matches(it, q) {
   if (!q) return true
   const g = it.gh ?? {}
-  const hay = [it.title, g.title, g.repo, g.number && `#${g.number}`, g.status, ...(g.labels ?? []), ...(g.people ?? []), g.task]
+  const hay = [it.title, g.title, g.repo, g.number && `#${g.number}`, g.status, g.priority, ...(g.labels ?? []), ...(g.people ?? []), g.task]
     .filter(Boolean).join(' ').toLowerCase()
   return q.toLowerCase().split(/\s+/).every(w => hay.includes(w))
 }
@@ -243,6 +234,7 @@ function GhRow({ it, page, section, s, c, byKey }) {
       <p class="ghl-title">${g.title || it.title}</p>
       <p class="ghl-meta">
         ${g.number ? html`<span class="mono muted" title=${g.repo ?? ''}>${repoName}#${g.number}</span>` : null}
+        <${PrioChip} priority=${g.priority} />
         ${g.status || g.state ? html`<span class=${`ghl-state tk-${token}`}><span class="ghl-dot"></span>${g.status || t.gh.state[g.state] || g.state}</span>` : null}
         ${(g.labels ?? []).map(l => html`<span key=${l} class="gh-label">${l}</span>`)}
         ${(g.prs ?? []).map(p => html`<span key=${p.n} class="ghl-chip">PR #${p.n}${p.draft ? ` · ${t.gh.draft}` : ''}</span>`)}
@@ -278,6 +270,8 @@ export function GitHubList({ items, page, section, s, c, byKey }) {
   const [by, setBy] = useState('state')
   const [folded, setFolded] = useState(readFolded)
   const shown = items.filter(it => matches(it, q.trim()))
+  // the priority order only where a board names its priority field (board.priority_field)
+  const sorts = items.some(it => it.gh?.priority) ? ['state', 'priority', 'recent'] : ['state', 'recent']
   const order = (section.boards ?? []).map(b => b.name)
   const groups = [...new Set(shown.map(it => it.group ?? ''))]
     .sort((a, b) => ((order.indexOf(a) + 1) || 999) - ((order.indexOf(b) + 1) || 999) || a.localeCompare(b))
@@ -299,13 +293,13 @@ export function GitHubList({ items, page, section, s, c, byKey }) {
       <input class="ghl-search" type="search" value=${q} placeholder=${t.gh.searchPlaceholder} aria-label=${t.gh.searchPlaceholder}
         onInput=${e => setQ(e.currentTarget.value)} />
       <div class="ghb-mode" role="group" aria-label=${t.gh.sortLabel}>
-        ${['state', 'recent'].map(k => html`<button type="button" key=${k} class=${`ghb-mode-btn${by === k ? ' is-on' : ''}`}
+        ${sorts.map(k => html`<button type="button" key=${k} class=${`ghb-mode-btn${by === k ? ' is-on' : ''}`}
           aria-pressed=${String(by === k)} onClick=${() => setBy(k)}>${t.gh.sort[k]}</button>`)}
       </div>
       ${groups.length > 1 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${foldAll}>${allFolded ? t.gh.unfoldAll : t.gh.foldAll}<//>` : null}
     </div>
     ${!shown.length ? html`<p class="muted">${t.filterNone}</p>` : groups.map(g => {
-      const rows = sortRows(shown.filter(it => (it.group ?? '') === g), by)
+      const rows = ghSortRows(shown.filter(it => (it.group ?? '') === g), by)
       const isFolded = folded.has(g)
       const counts = rows.reduce((n, it) => ({ ...n, [it.gh?.state ?? 'new']: (n[it.gh?.state ?? 'new'] ?? 0) + 1 }), {})
       return html`<section class="ghl-group" key=${g}>

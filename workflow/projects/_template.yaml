@@ -91,6 +91,19 @@ fields:
   #   default: "In Contract"
 
 # ---------------------------------------------------------------------------
+# Board fields: which fields a reader takes a card's lifecycle and priority
+# from. Optional. `status_field` names the single-select lifecycle field
+# (default Status: set it when the lifecycle lives in a custom column, e.g.
+# Workflow); `state_map` below then maps THAT field's options. `priority_field`
+# names a single-select priority field; without it no priority is read.
+# Read by the briefing's github-board provider (and so the cockpit's GitHub
+# page) and by skills/board-pilot, whose further `board:` keys live here too.
+# ---------------------------------------------------------------------------
+# board:
+#   status_field: Status
+#   priority_field: Priority
+
+# ---------------------------------------------------------------------------
 # State mapping — how raw board states map to the normalized states
 # defined in trackers/README.md. `/briefing` Stream B uses this for
 # unified rendering across multiple tracker providers.
