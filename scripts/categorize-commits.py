@@ -616,6 +616,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_frontend.test.mjs",
     "scripts/tests/bridge_cockpit_markdown.test.mjs",
     "scripts/tests/bridge_cockpit_jev.test.mjs",
+    "scripts/tests/test_cockpit_demo_smoke.py",
     "scripts/tests/bridge_cockpit_render.test.mjs",
     "scripts/tests/cockpit_render.mjs",
     # Registered with the scheduled archive. It runs DAILY and does only the

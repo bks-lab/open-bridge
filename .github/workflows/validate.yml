@@ -379,6 +379,25 @@ jobs:
           scripts/tests/test_push_guard_content_net.py
           scripts/tests/test_validators_coverage.py
 
+  # The cockpit demo (docs/cockpit-demo/) in a real browser: every page of the
+  # page bar opens, in en and de, without a console error. Its own job, so the
+  # browser download stays out of the script-suites job.
+  cockpit-demo-smoke:
+    name: Cockpit Demo Browser Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pytest + Playwright with Chromium
+        run: |
+          pip install pytest playwright==1.64.0
+          python3 -m playwright install --with-deps chromium
+
+      - name: Open every demo page and fail on console errors
+        env:
+          COCKPIT_DEMO_SMOKE: require
+        run: python3 -m pytest scripts/tests/test_cockpit_demo_smoke.py -q -rs
+
   # The workload skill carries three suites of its own, and each answers a
   # different question. The skill writes unit files onto machines: a contract it
   # can break unnoticed is the one contract that ends up on a service manager.

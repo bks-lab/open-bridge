@@ -296,6 +296,18 @@ pattern on a view's source: a rename or a moved call keeps it green while the
 page shows the same thing. A source pattern stays for an invariant of the source
 itself, such as the vendor hash or no colour in the CSS.
 
+The browser smoke test (`test_cockpit_demo_smoke.py`) serves `docs/` locally,
+opens `docs/cockpit-demo/` in headless Chromium, clicks every tab of the page
+bar in English and German and fails on a console error or warning, an uncaught
+exception or a failed request. It needs the `playwright` package and its
+Chromium and skips without them; CI installs both in its own job and sets
+`COCKPIT_DEMO_SMOKE=require`, so a missing browser fails there instead:
+
+```bash
+pip install pytest playwright && python3 -m playwright install chromium
+python3 -m pytest -q scripts/tests/test_cockpit_demo_smoke.py
+```
+
 ## 7. Rules the code keeps
 
 - 127.0.0.1 only, one key per start, every POST with the key header and a
