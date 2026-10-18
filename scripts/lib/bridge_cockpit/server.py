@@ -194,6 +194,7 @@ class App:
         self.ticker = Ticker(self)                     # the news ticker of the start page (ticker.py)
         self.watcher = Watcher(self)
         self.last_tabs_json: str | None = None
+        self.last_model_tabs_json: str | None = None   # the tabs without their last line: what the model reads
         self.inbox_cache: tuple[float, list | None] = (0.0, None)
         self.threads: list[threading.Thread] = []
         self.stopping = False
@@ -351,7 +352,14 @@ class App:
         compare = json.dumps({k: v for k, v in state.items() if k != "at_ms"}, sort_keys=True)
         if compare != self.last_tabs_json:
             self.last_tabs_json = compare
-            self.collector.rebuild()
+            # A busy tab's last line changes on almost every poll and the model does not show it (the
+            # evening text reads the live tabs when asked): it goes out in the narrow tabs event only.
+            model_side = json.dumps({**{k: v for k, v in state.items() if k != "at_ms"},
+                                     "tabs": [{k: v for k, v in t.items() if k != "last"} for t in state["tabs"]]},
+                                    sort_keys=True)
+            if model_side != self.last_model_tabs_json:
+                self.last_model_tabs_json = model_side
+                self.collector.rebuild()
             self.broadcast("tabs", state)
         for alert in alerts:
             self.broadcast("alert", alert)

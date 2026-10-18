@@ -261,6 +261,7 @@ class Collector:
         self.model: dict | None = None
         self.index: dict[str, dict] = {}
         self.seq = 0
+        self.sent: str | None = None           # the last model sent as view, without its seq
         self.stale = False
         self.settled: dict[str, str] = {}
         self.starting: dict[str, float] = {}
@@ -548,8 +549,12 @@ class Collector:
                 model["returns"], to_log = [], []
             self.model, self.index = model, index
             # Published under the lock: two rebuilds reach the page in the order of their seq
-            # (publish only serializes and enqueues).
-            app.broadcast("view", model)
+            # (publish only serializes and enqueues). A model equal to the last one sent but for
+            # its seq is not sent again: the page would only render the same thing anew.
+            sent = json.dumps({k: v for k, v in model.items() if k != "seq"}, sort_keys=True, default=str)
+            if sent != self.sent:
+                self.sent = sent
+                app.broadcast("view", model)
         for r in to_log:
             self.log_return(r)
 

@@ -3083,6 +3083,7 @@ def test_rebuild_publishes_while_it_holds_the_lock(world):
             held.append(collector.lock._is_owned())  # type: ignore[attr-defined]
         original(event, payload)
     world.app.broadcast = spy
+    collector.hold(["demo-task"])               # a change, so the rebuild has a new model to send
     collector.rebuild()
     assert held == [True]
 
@@ -4688,3 +4689,53 @@ def test_full_pass_follows_only_visible_pages(world):
     collector.tick(world.app.client_count())
     collector.drain()
     assert len(world.runner.of("briefing.collect")) == 1
+
+
+# ---------------------------------------------------------------- a busy tab's last line is not a model change
+
+def _with_last(text):
+    return [dict(t, last=text) if t["ref"] == "surface:7" else t for t in STATUS]
+
+
+def test_a_tabs_poll_where_only_the_last_line_changes_sends_tabs_but_no_rebuild(world):
+    world.app.tabs.poll()                       # the first poll of the fixture ran before the briefing was there
+    sent, rebuilds = [], []
+    world.app.broadcast = lambda ev, payload: sent.append((ev, payload))
+    rebuild = world.app.collector.rebuild
+    world.app.collector.rebuild = lambda: (rebuilds.append(1), rebuild())
+    world.runner.handlers["workplace.status"] = lambda argv: ok(_with_last("Running the tests now"))
+    world.app.tabs.poll()
+    events = [ev for ev, _ in sent]
+    assert "tabs" in events and "view" not in events and rebuilds == []
+    tab = next(t for ev, p in sent if ev == "tabs" for t in p["tabs"] if t["ref"] == "surface:7")
+    assert tab["last"] == "Running the tests now"                      # the narrow event still carries it
+
+
+def test_a_tabs_poll_where_the_state_changes_still_rebuilds(world):
+    world.app.tabs.poll()
+    sent, rebuilds = [], []
+    world.app.broadcast = lambda ev, payload: sent.append(ev)
+    rebuild = world.app.collector.rebuild
+    world.app.collector.rebuild = lambda: (rebuilds.append(1), rebuild())
+    moved = [dict(t, state="working") if t["ref"] == "surface:7" else t for t in STATUS]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(moved)
+    world.app.tabs.poll()
+    assert rebuilds == [1] and "view" in sent and "tabs" in sent
+
+
+def test_two_identical_rebuilds_send_the_view_once(world):
+    sent = []
+    world.app.broadcast = lambda ev, payload: sent.append(ev)
+    seq = world.app.collector.model["seq"]
+    world.app.collector.rebuild()
+    world.app.collector.rebuild()
+    assert sent.count("view") <= 1
+    assert world.app.collector.model["seq"] == seq + 2                 # the model itself is still the newest
+
+
+def test_the_evening_text_shows_the_current_last_line_without_a_rebuild(world):
+    world.runner.handlers["workplace.status"] = lambda argv: ok(_with_last("Writing the summary"))
+    world.app.tabs.poll()
+    _, _, body = world.post("/api/ask", {"kind": "evening", "args": {}})
+    rid = json.loads(body)["record"]["id"]
+    assert "Writing the summary" in world.app.relay.records[rid]["text"]
