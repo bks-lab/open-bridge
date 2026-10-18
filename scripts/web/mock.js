@@ -291,7 +291,8 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
     docs: row({
       key: 'inbox:20261009-0915-update-docs-e5f6', bucket: 'delegate', section: 'give', title: 'Update the setup docs after the config change',
-      why: ['needs your yes', 'changed since 08:40'], sources: ['inbox'], inbox_id: '20261009-0915-update-docs-e5f6', gate: 'your-yes',
+      why: ['needs your yes', `due ${isoIn(-3, now).slice(8)}.${isoIn(-3, now).slice(5, 7)}`, 'changed since 08:40'], due: isoIn(-3, now),
+      sources: ['inbox'], inbox_id: '20261009-0915-update-docs-e5f6', gate: 'your-yes',
       has_action: true, area: 'Docs', area_names: ['Docs'], inbox_state: 'open', inbox_key: 'update-docs',
       mark: { label: 'Docs', color: 'green' }, is_changed: true, actions: [A('do', true), A('drop', false, true)], selectable: true,
     }),
@@ -330,7 +331,7 @@ export function buildState(now = Date.now(), opts = {}) {
         title: 'Settle the invoice format with the vendor', status: 'doing', priority: 'P2' },
     }),
     flaky: row({
-      key: 'ref:example/repo#12', bucket: 'do', section: 'work', title: 'Fix the flaky test in example/repo#12',
+      key: 'ref:example/repo#12', bucket: 'plan', section: 'track', title: 'Fix the flaky test in example/repo#12',
       why: ['assigned to you', 'quiet for 3 days'], sources: ['github'], ref: 'example/repo#12', priority: 'P2',
       url: 'https://example.org/repo/issues/12', link: { kind: 'web', href: 'https://example.org/repo/issues/12' },
       mark: { label: 'Demo', color: 'blue' }, actions: [A('ask')],
@@ -356,10 +357,11 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
   }
   const sec = (id, list, compact) => ({ id, total: list.length, rows: list, compact: compact.map(r => r.key) })
-  const sections = empty ? [sec('now', [], []), sec('give', [], []), sec('work', [], []), sec('later', [], [])] : [
+  const sections = empty ? [sec('now', [], []), sec('give', [], []), sec('work', [], []), sec('track', [], []), sec('later', [], [])] : [
     sec('now', [rows.review, rows.release], [rows.review, rows.release]),
     sec('give', [rows.labels, rows.docs, rows.sweep], [rows.labels, rows.docs, rows.sweep]),
-    sec('work', [rows.demo, rows.flaky, rows.index, rows.cleanup], [rows.demo, rows.flaky, rows.index]),
+    sec('work', [rows.demo, rows.index, rows.cleanup], [rows.demo, rows.index]),
+    sec('track', [rows.flaky], []),
     sec('later', [rows.vendor, rows.idea], []),
   ]
   const numbers = {}
@@ -504,7 +506,7 @@ export function buildState(now = Date.now(), opts = {}) {
       agenda: empty ? [] : [{ when: hhmm(now + 70 * MIN), title: 'Team call' }, { when: hhmm(now + 250 * MIN), title: 'Review of the demo project' }],
       status: [{ title: 'Systems', count: empty ? 0 : 1, probe: true, state: 'ok' }, { title: 'Inbox', count: empty ? 0 : 6, probe: false, state: 'ok' }],
       extras: { clear: ['Services: all running'], hygiene: empty ? [] : ['2 tasks without a log row for 7 days'], workplace: empty ? null : 'Tabs: 3 suggested' },
-      counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: sections[0].total, give: sections[1].total, work: sections[2].total, later: sections[3].total, hidden: hidden.length },
+      counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: sections[0].total, give: sections[1].total, work: sections[2].total, track: sections[3].total, later: sections[4].total, hidden: hidden.length },
       sections, numbers, hidden,
       approvable: empty ? [] : [rows.labels.key, rows.docs.key],
       task_rows: empty ? [] : [rows.quiet, rows.waits],
@@ -741,8 +743,11 @@ function triageState(now, running = null) {
   const x = (kind, title, gist, verdict, doer, effort, extra = {}) => ({ kind, title, gist, verdict, reason: null, doer, effort, why: null,
     verdict_from: 'haiku', model: 'haiku-5-5', level: effort === 'small' ? 1 : 2, jev: null, ...extra })
   const items = {
-    'task:demo-task': x('task', 'Write the onboarding guide for the demo project', 'A setup guide for new team members', 'continue', 'either', 'medium'),
-    'task:docs-refresh': x('task', 'Refresh the docs index', 'Rebuild the index after the folder change', 'continue', 'ai', 'small'),
+    'task:demo-task': x('task', 'Write the onboarding guide for the demo project', 'A setup guide for new team members', 'continue', 'either', 'medium',
+      { topic: 'docs' }),
+    'task:docs-refresh': x('task', 'Refresh the docs index', 'Rebuild the index after the folder change', 'continue', 'ai', 'small', { topic: 'docs' }),
+    'inbox:20261009-0915-update-docs-e5f6': x('inbox', 'Update the setup docs after the config change', 'Update the setup docs after the config change',
+      'keep', 'ai', 'small', { topic: 'docs' }),
     'task:alpha-release': x('task', 'Prepare the alpha release notes', 'Release notes from the merged changes', 'continue', 'you', null,
       { why: 'the wording for the announcement' }),
     'inbox:demo-inbox-4': x('inbox', 'Release checklist', 'A review asked on the checklist PR', 'unclear', 'you', null, { reason: 'no answer from the team yet' }),

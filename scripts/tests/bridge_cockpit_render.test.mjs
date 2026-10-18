@@ -270,3 +270,52 @@ test('header: with the tab column hidden the work tab shows the Tabs button, els
   assert.equal(tabsBtn(renderHeader(null)), null)
   assert.ok(tabsBtn(renderHeader(null, { ui: { page: 'briefing', railHidden: true } })))
 })
+
+// ---------------------------------------------------------------- the work tab's day list
+
+const { DayColumn } = views.day
+const dayOf = (over = {}) => {
+  const s = cockpitState(NOW, over)
+  return { el: mount(html`<${DayColumn} s=${s} c=${recorder()} byKey=${logicIndex(s)} />`), s }
+}
+const logicIndex = s => loadedLogic.indexRows(s.model)
+const { logic: loadedLogic } = await loadCockpit()
+const rowOf = (el, key) => el.$$('li.row').find(li => li.getAttribute('data-key') === key)
+
+test('day list: Haiku says what a row is about under its title and labels the kind of work', () => {
+  const { el } = dayOf()
+  const demo = rowOf(el, 'task:demo-task')
+  assert.equal(demo.$('.row-gist').text(), 'A setup guide for new team members')
+  assert.equal(demo.$('.chip-topic').text(), en.topic.docs)
+  // a gist that only repeats the title adds nothing and stays away
+  assert.equal(rowOf(el, 'inbox:20261009-0915-update-docs-e5f6')?.$('.row-gist') ?? null, null)
+})
+
+test('day list: a due date stands once and relative, an overdue one in red', () => {
+  const { el } = dayOf({ ui: { expanded: { give: true } } })
+  const docs = rowOf(el, 'inbox:20261009-0915-update-docs-e5f6')
+  const due = docs.$('.meta-due')
+  assert.equal(due.text(), en.dueOverdue(3))
+  assert.ok(due.hasClass('tk-danger'), due.getAttribute('class'))
+  assert.doesNotMatch(docs.$('.meta-why').text(), /\bdue\b/)            // the why no longer repeats it
+  assert.match(docs.$('.meta-why').text(), /changed since 08:40/)
+  assert.equal(rowOf(el, 'inbox:20261009-0900-review-demo-a1b2').$('.meta-due').text(), en.dueTomorrow)
+})
+
+test('day list: board and tracker rows stand in their own folded section after the tasks', () => {
+  const { el } = dayOf()
+  const titles = el.$$('h2.sec-title').map(h => h.text().replace(/\d+$/, '').trim())
+  assert.deepEqual(titles, [en.section.now, en.section.give, en.section.work, en.section.track, en.section.later])
+  assert.equal(rowOf(el, 'ref:example/repo#12'), undefined)
+  const shown = dayOf({ ui: { expanded: { track: true } } }).el
+  assert.ok(rowOf(shown, 'ref:example/repo#12'))
+})
+
+test('day list: a section fills up to the rows the column has room for, never past what it holds', () => {
+  const s = cockpitState(NOW)
+  const byKey = loadedLogic.indexRows(s.model)
+  const work = s.model.sections.find(x => x.id === 'work')
+  assert.deepEqual(loadedLogic.sectionRows(work, false, byKey).map(r => r.key), work.compact)
+  assert.deepEqual(loadedLogic.sectionRows(work, false, byKey, 10).map(r => r.key), work.rows.map(r => r.key))
+  assert.deepEqual(loadedLogic.sectionRows(work, false, byKey, 1).map(r => r.key), work.compact)   // the compact rows always stand
+})

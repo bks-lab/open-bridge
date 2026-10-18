@@ -2,10 +2,11 @@
 // The cockpit, the day column: the four blocks of the work tab.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
   pageItemActs, workPageOf, workViews,
+  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { CheckButton } from './check.js'
@@ -25,15 +26,24 @@ export function RowMeta({ row, s }) {
   if (row.starting) parts.push(html`<${Chip} token="info">${t.startingTab}<//>`)
   const liveSessions = row.task && !row.inbox_id ? (s?.sessions?.sessions ?? []).filter(x => x.task === row.task).length : 0
   if (liveSessions) parts.push(html`<span class="chip chip-task">${t.sessionsOnTask(liveSessions)}</span>`)
+  const topic = s?.triage?.items?.[row.key]?.topic
+  if (topic && t.topic[topic]) parts.push(html`<span class="chip chip-topic" title=${t.topicTitle}>${t.topic[topic]}</span>`)
   if (row.mark) parts.push(html`<${MarkChip} mark=${row.mark} />`)
   if (row.priority) parts.push(html`<${PrioChip} priority=${row.priority} />`)
   if (row.review) parts.push(html`<${VerdictChip} review=${row.review} />`)
   if (row.urgency === 'now' || row.urgency === 'today') parts.push(html`<${Chip} token=${row.urgency === 'now' ? 'danger' : 'warning'}>${t.urgency[row.urgency]}<//>`)
-  if (row.due) parts.push(html`<span class="meta-due">${t.dueOn(formatDay(row.due, language()))}</span>`)
+  const due = dueWhen(row.due, s?.now ?? Date.now())
+  if (due) {
+    const word = due.kind === 'overdue' ? t.dueOverdue(due.days) : due.kind === 'today' ? t.dueToday : due.kind === 'tomorrow' ? t.dueTomorrow
+      : t.dueOn(formatDay(row.due, language()))
+    parts.push(due.kind === 'overdue' || due.kind === 'today'
+      ? html`<${Chip} token=${due.kind === 'overdue' ? 'danger' : 'warning'} cls="meta-due">${word}<//>`
+      : html`<span class="meta-due">${word}</span>`)
+  }
   if (row.is_new) parts.push(html`<span class="chip chip-active">${t.isNew}</span>`)
   else if (row.is_changed) parts.push(html`<span class="chip chip-active">${t.isChanged}</span>`)
   if (row.area && row.area !== row.mark?.label) parts.push(html`<span class="meta-area">${row.area}</span>`)
-  const why = (row.why ?? []).slice(0, 2).join(' · ')
+  const why = (row.due ? whyWithoutDue(row.why) : row.why ?? []).slice(0, 2).join(' · ')
   return html`<span class="row-meta">${parts}${why ? html`<span class="meta-why">${why}</span>` : null}</span>`
 }
 
@@ -97,6 +107,14 @@ export function PageItemActions({ it, s, c, after }) {
     <${SettleMenu} rows=${[row]} s=${s} c=${cc} />`
 }
 
+/** What the small model says a row is about (triage.py gist), when it says more than the title */
+function gistOf(row, s) {
+  const gist = String(s.triage?.items?.[row.key]?.gist ?? '').trim()
+  const norm = x => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  if (!gist || norm(row.title).startsWith(norm(gist)) || norm(gist).startsWith(norm(row.title))) return null
+  return gist
+}
+
 function RowItem({ row, s, c }) {
   const t = T()
   const selected = s.ui.selectedKey === row.key
@@ -112,6 +130,7 @@ function RowItem({ row, s, c }) {
     <button type="button" class="row-main" aria-current=${selected ? 'true' : undefined}
       onClick=${() => c.select(row.key)} onFocus=${() => c.focusRow(row.key)}>
       <span class="row-title">${short(row.title, 110)}</span>
+      ${gistOf(row, s) ? html`<span class="row-gist">${gistOf(row, s)}</span>` : null}
       <${RowMeta} row=${row} s=${s} />
       <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
     </button>
@@ -119,10 +138,10 @@ function RowItem({ row, s, c }) {
   </li>`
 }
 
-function Section({ section, s, c, byKey }) {
+function Section({ section, s, c, byKey, budget = 0 }) {
   const t = T()
   const expanded = !!s.ui.expanded[section.id]
-  const rows = sectionRows(section, expanded, byKey)
+  const rows = sectionRows(section, expanded, byKey, budget)
   const all = section.rows?.length ?? section.total
   const hiddenCount = Math.max(0, section.total - rows.length)
   // "approve all n" counts every row of the section, also the ones the compact view leaves out
@@ -232,9 +251,25 @@ export function WorkSwitch({ s, c }) {
   </div>`
 }
 
+/** The day column reports its height, so its sections fill the room it has (logic.js rowBudgets) */
+function useDayHeight(c, on) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    const report = () => c.setDayHeight(Math.round(el.clientHeight / 32) * 32)
+    const ro = new ResizeObserver(report)
+    ro.observe(el)
+    report()
+    return () => ro.disconnect()
+  }, [on])
+  return ref
+}
+
 export function DayColumn({ s, c, byKey }) {
   const t = T()
   const m = s.model
+  const colRef = useDayHeight(c, !!m)
   if (!m) {
     // without a model a failed pass or a lost connection is said, not an endless skeleton
     const warnings = pageWarnings(s, t)
@@ -245,8 +280,8 @@ export function DayColumn({ s, c, byKey }) {
     return html`<div class="col col-day" aria-busy="true"><div class="panel panel-pad"><${Skeleton} lines=${7} /></div></div>`
   }
   const total = (m.sections ?? []).reduce((a, x) => a + (x.total ?? 0), 0)
-  const order = ['now', 'give', 'work', 'later']
-  return html`<div class="col col-day">
+  const budgets = rowBudgets(m.sections, s.ui.expanded ?? {}, s.ui.dayHeight ?? 0)
+  return html`<div class="col col-day" ref=${colRef}>
     <div class="panel day-panel">
       <${WorkSwitch} s=${s} c=${c} />
       <${SelectionBar} s=${s} c=${c} />
@@ -254,9 +289,9 @@ export function DayColumn({ s, c, byKey }) {
       <div class="day-counts muted"><span class="day-asof">${t.sourceAsOf(m.collected_at)}</span></div>
       ${s.layout === 'wide' ? null : html`<${WaitingTabs} s=${s} c=${c} />`}
       ${total === 0 && !attentionTabs(s.tabs?.tabs).length ? html`<div class="callout">${t.emptyHint}</div>` : null}
-      ${total === 0 ? null : order.map(id => {
+      ${total === 0 ? null : SECTION_ORDER.map(id => {
         const sec = (m.sections ?? []).find(x => x.id === id)
-        return sec ? html`<${Section} key=${id} section=${sec} s=${s} c=${c} byKey=${byKey} />` : null
+        return sec ? html`<${Section} key=${id} section=${sec} s=${s} c=${c} byKey=${byKey} budget=${budgets[id] ?? 0} />` : null
       })}
       <${HiddenList} s=${s} c=${c} />
     </div>
