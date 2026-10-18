@@ -281,17 +281,58 @@ def test_github_board_asks_github_for_open_cards_before_the_limit(tmp_path):
         {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
     run = FakeRun({("gh", "project", "item-list"): (FIX / "github-board" / "item-list.json").read_text()})
     section = {"kind": "tracker", "provider": "github-board", "query": {}}
+    def listed(calls):
+        return [c for c in calls if c[:3] == ["gh", "project", "item-list"]][0]
+
+    def lean(calls):
+        return [c for c in calls if c[:3] == ["gh", "api", "graphql"] and "projectV2(number" in c[4]][0]
+
     bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))
-    listed = [c for c in run.calls if c[:3] == ["gh", "project", "item-list"]]
-    assert listed and listed[0][-2:] == ["--query", "is:open"]
+    assert "q=is:open" in lean(run.calls) and listed(run.calls)[-2:] == ["--query", "is:open"]   # lean, then the old way
     run.calls.clear()
     own = dict(section, query={"filter": "assignee:@me -status:Parked"})
     bf.collect(root, {"id": "p", "sections": [own]}, ctx(root, run))
-    assert run.calls[0][-2:] == ["--query", "assignee:@me -status:Parked"]
+    assert "q=assignee:@me -status:Parked" in lean(run.calls)
     for query in ({"include_done": True}, {"filter": ""}, {"states": ["done"]}):
         run.calls.clear()
         bf.collect(root, {"id": "p", "sections": [dict(section, query=query)]}, ctx(root, run))
-        assert "--query" not in run.calls[0], query
+        assert "q=" in lean(run.calls) and "--query" not in listed(run.calls), query
+
+
+def lean_page(cards, more=None):
+    return json.dumps({"data": {"repositoryOwner": {"projectV2": {"items": {
+        "pageInfo": {"hasNextPage": more is not None, "endCursor": more}, "nodes": cards}}}}})
+
+
+def lean_card(n, status, people=("octo",), kind="Issue", repo="example-org/tool"):
+    return {"id": f"PVTI_{n}", "fieldValueByName": {"name": status} if status else None,
+            "content": {"__typename": kind, "number": n, "title": f"Card {n}", "updatedAt": "2026-10-03T08:00:00Z",
+                        "url": f"https://github.com/{repo}/issues/{n}", "repository": {"nameWithOwner": repo},
+                        "assignees": {"nodes": [{"login": p} for p in people]}, "labels": {"nodes": [{"name": "bug"}]}}}
+
+
+def test_github_board_asks_only_what_a_row_needs_page_by_page(tmp_path):
+    """gh project item-list cost about 100 GraphQL points a board whatever its size; the lean query cost 2
+    (live 2026-10-18, eight boards 721 points a pass against an hourly budget of 5000)."""
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
+        {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
+    pages = {None: lean_page([lean_card(1, "In Progress"), lean_card(2, "Todo", people=("hubot",))], more="c1"),
+             "c1": lean_page([lean_card(3, "In Review"), {"id": "PVTI_d", "fieldValueByName": None,
+                                                          "content": {"__typename": "DraftIssue", "title": "Idea"}}])}
+
+    def graphql(argv):
+        after = next((a.split("=", 1)[1] for a in argv if a.startswith("after=")), None)
+        return pages[after]
+    run = FakeRun({("gh", "api", "graphql"): graphql})
+    section = {"kind": "tracker", "provider": "github-board", "summary": True, "query": {"assigned_to_me": True}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    assert [i["id"] for i in sec["items"]] == ["example-org/tool#1", "example-org/tool#3"]
+    assert sec["items"][0]["labels"] == ["bug"] and sec["items"][0]["changed_at"] == "2026-10-03T08:00:00Z"
+    assert sec["summary"][0]["open"] == 4                       # the draft counts as open work
+    assert not [c for c in run.calls if c[:3] == ["gh", "project", "item-list"]]
+    assert len([c for c in run.calls if c[:3] == ["gh", "api", "graphql"]]) == 2    # two pages, no date call
 
 
 def test_github_board_lists_without_a_filter_when_gh_does_not_know_it(tmp_path):
@@ -416,7 +457,7 @@ def test_github_board_rows_get_the_date_their_issue_last_changed(tmp_path):
     section = {"kind": "tracker", "provider": "github-board", "query": {"assigned_to_me": True}}
     item = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]["items"][0]
     assert item["changed_at"] == "2026-10-03T14:00:00Z"
-    query = next(c for c in run.calls if c[:3] == ["gh", "api", "graphql"])[-1]
+    query = next(c for c in run.calls if c[:3] == ["gh", "api", "graphql"] and "issueOrPullRequest" in c[-1])[-1]
     assert 'repository(owner: "example-org", name: "tool")' in query and "issueOrPullRequest(number: 5)" in query
 
 
