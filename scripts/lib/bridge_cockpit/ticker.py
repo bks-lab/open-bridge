@@ -655,6 +655,8 @@ class Ticker:
         self.cache_path = app.state_dir / CACHE_FILE
         self.lock = threading.Lock()
         self.refreshing = False
+        # a settings change asked for a refresh while one ran: _refresh runs once more when it ends
+        self.pending_refresh = False
         self.editor_running: dict | None = None
         self.editor_error: str | None = None
         self._outliers: list = []
@@ -705,7 +707,7 @@ class Ticker:
         if after["enabled"] and (after["feeds"] != before["feeds"] or after["per_feed"] != before["per_feed"]
                                  or after["max_items"] != before["max_items"]
                                  or after["refresh_minutes"] != before["refresh_minutes"] or not before["enabled"]):
-            self.request_refresh()
+            self.request_refresh(rerun=True)
         return self.state()
 
     def reset(self) -> dict:
@@ -714,7 +716,7 @@ class Ticker:
             self._rebuild(self.settings())
             self.rev += 1
         if self.settings()["enabled"]:
-            self.request_refresh()
+            self.request_refresh(rerun=True)
         return self.state()
 
     # ------------------------------------------------------------ cache
@@ -779,10 +781,15 @@ class Ticker:
             outliers = []
         now = int(self.app.clock())
         with self.lock:
+            # the settings may have changed while the feeds were read: keep and show only what they hold now
+            s = self.settings()
+            feeds = [f for f in s["feeds"] if f["enabled"]]
             ids = {f["id"] for f in s["feeds"]}
             self.feed_items = {k: v for k, v in self.feed_items.items() if k in ids}
             self.feed_status = {k: v for k, v in self.feed_status.items() if k in ids}
             for fid, (items, error) in results.items():
+                if fid not in ids:
+                    continue
                 if items is not None:
                     self.feed_items[fid] = items
                 self.feed_status[fid] = {"ok": error is None, "error": error, "fetched_ms": now,
@@ -797,9 +804,13 @@ class Ticker:
             self.app.note(self.app.tx["ticker_refresh_failed"].format(err=errors[0]), "bad")
         self.app.broadcast("ticker", self.state())
 
-    def request_refresh(self) -> bool:
+    def request_refresh(self, rerun: bool = False) -> bool:
+        """Start a refresh unless one runs. `rerun` (a settings change) then has the running one go once more
+        when it ends, so a feed just added is read at once; the loop and the refresh click need not."""
         with self.lock:
             if self.refreshing:
+                if rerun:
+                    self.pending_refresh = True
                 return False
             self.refreshing = True
             self.rev += 1
@@ -807,15 +818,19 @@ class Ticker:
         return True
 
     def _refresh(self) -> None:
-        try:
-            self.refresh_sync()
-        except Exception as exc:  # noqa: BLE001 (a failed refresh must never leave `refreshing` set)
-            self.app.log_error(f"ticker: {exc!r}")
-        finally:
-            with self.lock:
-                self.refreshing = False
-                self.rev += 1
-            self.app.broadcast("ticker", self.state())
+        again = True
+        while again:
+            try:
+                self.refresh_sync()
+            except Exception as exc:  # noqa: BLE001 (a failed refresh must never leave `refreshing` set)
+                self.app.log_error(f"ticker: {exc!r}")
+            finally:
+                with self.lock:
+                    again, self.pending_refresh = self.pending_refresh, False
+                    if not again:
+                        self.refreshing = False
+                    self.rev += 1
+        self.app.broadcast("ticker", self.state())
 
     def due(self, now: float) -> bool:
         s = self.settings()
