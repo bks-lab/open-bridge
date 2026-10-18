@@ -94,7 +94,7 @@ def _said(clean: list[str], end: int) -> list[str]:
     return out[-LAST_LINES:]
 
 
-def _dialog(clean: list[str]) -> tuple[list[dict], list[str]] | None:
+def _dialog(clean: list[str], scrub: Callable[[str], str]) -> tuple[list[dict], list[str]] | None:
     """The last block of numbered options and up to ABOVE lines above it; None without one"""
     last = next((i for i in range(len(clean) - 1, -1, -1) if OPTION.match(clean[i])), None)
     if last is None:
@@ -118,7 +118,8 @@ def _dialog(clean: list[str]) -> tuple[list[dict], list[str]] | None:
             between += 1          # a description under an option
         i -= 1
     above = [line[1:].strip() if line.startswith("⏺") else line for line in clean[:top] if _meaningful(line)][-ABOVE:]
-    picked = [{"n": n, "label": _label(options[n])} for n in sorted(options)][:OPTIONS_MAX]
+    # scrubbed before the cut: a key cut in half would no longer be found by scrub
+    picked = [{"n": n, "label": _label(scrub(options[n]))} for n in sorted(options)][:OPTIONS_MAX]
     return picked, above
 
 
@@ -135,14 +136,12 @@ def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | No
         draft = bool(typed and typed.strip())
     end = box if box is not None else len(clean)
     options: list[dict] = []
-    dialog = _dialog(clean[:end]) if state == "needs-you" else None
+    dialog = _dialog(clean[:end], scrub) if state == "needs-you" else None
     if dialog:
         options, lines = dialog
     else:
         lines = _said(clean, end)
     words = scrub("\n".join(lines)).strip()
-    for o in options:
-        o["label"] = _label(scrub(o["label"]))
     if not words and not options:
         return None
     words = _cap(words)

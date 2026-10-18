@@ -1028,6 +1028,10 @@ export function createMockTransport(opts = {}) {
           if ((verb === 'tab_send' || verb === 'tab_go_on') && tab.ask?.draft) {
             return fail(409, 'tab_draft', 'Something is typed in that tab, nothing was sent.')
           }
+          // a dialog takes its options, never typed words (actions.py v_tab_send)
+          if (verb === 'tab_send' && tab.state === 'needs-you' && (args.seen || args.expect || args.name)) {
+            return fail(409, 'not_applicable', 'A dialog takes its options, not text.')
+          }
           const said = verb === 'tab_option' ? tab.ask?.options.find(o => o.n === args.n)?.label : verb === 'tab_send' ? args.text : verb
           result.note = `Mock: ${tab.name}: ${said}`
         }

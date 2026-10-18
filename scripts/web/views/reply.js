@@ -12,10 +12,11 @@ import { TAB_MSG_MAX } from './nav.js'
 import { Btn } from './parts.js'
 
 /** The question of a tab in at most three lines; the tab's last line when none was read, and a word
- *  saying so when there is neither */
+ *  saying so when there is neither and the tab waits (one that runs for an hour asks nothing) */
 export function AskLine({ tab }) {
   const t = T()
   const text = tab?.ask?.text || previewText(tab?.last)
+  if (!text && tab?.state !== 'needs-you' && tab?.state !== 'waiting') return null
   return html`<p class=${`reply-ask clamp3${text ? '' : ' muted'}`} title=${text || undefined}>${text || t.reply.unreadable}</p>`
 }
 

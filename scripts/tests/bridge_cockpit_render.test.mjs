@@ -668,3 +668,18 @@ test('tab view poll: an unchanged screen is not stored again and the next read c
   const distinct = held.filter((x, i) => i === 0 || x !== held[i - 1])
   assert.deepEqual(distinct.map(x => x?.hash ?? null), [null, 'aa11', 'bb22'])
 })
+
+test('a tab that runs for an hour stands in Waiting for you without claiming it waits', () => {
+  const s = cockpitState(NOW)
+  const long = { ...s, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => t.ref === 'surface:8'
+    ? { ...t, state: 'working', waiting: false, long: 'working', last: '', ask: null } : t) } }
+  const el = renderSide(long)
+  const name = tabOf(long, 'surface:8').name
+  const row = replyRow(el, name)
+  assert.ok(row, 'the long runner is listed')
+  assert.doesNotMatch(row.text(), new RegExp(en.reply.unreadable))
+  assert.equal(row.$('.reply-ask'), null)
+  // a tab that waits and whose question cannot be read says so
+  const blind = { ...s, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => t.ref === 'surface:12' ? { ...t, ask: null, last: '' } : t) } }
+  assert.match(replyRow(renderSide(blind), 'demo-task research').$('.reply-ask').text(), new RegExp(en.reply.unreadable))
+})

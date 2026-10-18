@@ -1105,7 +1105,9 @@ nothing a stranger could trigger:
   is in another state, then reads the tab's screen fresh (never the poll's
   copy) and refuses when the question there has another hash. A text answer is
   also refused when something is already typed in the tab's prompt, so your
-  words never land on half a sentence. A refusal sends nothing and says so
+  words never land on half a sentence, and never goes into a dialog, which
+  takes only its options (a typed digit would pick one past that check). A
+  refusal sends nothing and says so
   ("The tab moved on before the answer, nothing was sent.");
 - nothing goes out without your click, and an inbox action approved on the
   page still runs only at the next `inbox.py run`, on the machine named in

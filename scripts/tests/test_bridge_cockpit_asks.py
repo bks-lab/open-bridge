@@ -446,3 +446,28 @@ def test_tab_yes_keeps_the_repoll_guard_and_checks_seen(world):
         [dict(t, state="working") if t["ref"] == "surface:7" else t for t in STATUS])
     res = world.act("tab_yes", tab_ref="surface:7")
     assert writes(world) == [] and "no longer asking, nothing pressed" in res["note"]
+
+
+def test_question_of_scrubs_an_option_label_before_it_is_cut():
+    # the key straddles the 80 characters of a label: scrubbed after the cut, a piece of it would stay
+    secret = "s3cr3t-key-0123456789abcdef"
+    label = "path/" * 14 + secret + " and the rest of the option"
+    assert len("path/" * 14) < 80 < len("path/" * 14) + len(secret)
+    screen = f"Use the key?\n ❯ 1. {label}\n   2. No\n"
+    ask = asks.question_of(screen, "needs-you", lambda x: x.replace(secret, "[token]"))
+    first = ask["options"][0]["label"]
+    assert len(first) <= 80
+    assert not any(secret[:k] in first for k in range(6, len(secret) + 1))
+
+
+def test_a_typed_answer_never_goes_into_a_dialog(world):
+    # a dialog takes its options (tab_option), never free text: a "2" typed there would pick an option
+    # without the option guard
+    asked(world, {"surface:7": PERMISSION})
+    seen = ask_of(world, "surface:7")["hash"]
+    world.runner.calls.clear()
+    for extra in ({"seen": seen}, {"expect": "needs-you"}, {"name": "demo-task"}):
+        with pytest.raises(ActionError) as err:
+            world.act("tab_send", tab_ref="surface:7", text="2", **extra)
+        assert (err.value.status, err.value.code) == (409, "not_applicable")
+    assert writes(world) == []

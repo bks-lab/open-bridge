@@ -1799,7 +1799,7 @@ const de = {
     placeholder: 'Diesem Tab antworten',
     send: 'Senden',
     answered: q => `Beantwortet: ${q}`,
-    movedOn: 'Weiter gelaufen',
+    movedOn: 'Weitergelaufen',
     unreadable: 'Er wartet, die Frage ist hier nicht lesbar',
     openTab: 'Tab öffnen',
     draft: 'Im Tab steht ein Entwurf',

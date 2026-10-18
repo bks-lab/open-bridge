@@ -1485,6 +1485,10 @@ class Actions:
             tab, _ = self.guard_fresh(ctx, tab_ref, expect, seen, name, True)
             if not m.is_live(tab):
                 raise ActionError(409, "tab_moved", self.tx["tab_moved"], "tab_ref")
+            # a dialog takes its options (tab_option), never typed words: a digit typed there would pick
+            # an option past the option's own guard
+            if tab["state"] == "needs-you":
+                raise self.not_applicable("a dialog takes its options, not text", "tab_ref")
         self.send_to(ctx, tab, text)
 
     def v_tab_go_on(self, ctx: Ctx, tab_ref: str, seen: str | None = None, name: str | None = None) -> None:
