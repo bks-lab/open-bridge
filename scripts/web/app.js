@@ -9,11 +9,12 @@
 
 import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
-import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder } from './components.js'
+import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder, quickLive } from './components.js'
 import {
   CONN_GRACE_MS, DAY, pushNoteState, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
+  applyQuickLive, quickLiveSnapshot, whenShown,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -104,7 +105,6 @@ const store = createStore({
   boot: { status: 'loading', error: null, version: null, config: {}, scratch: null, warnings: [] },
   server: null, model: null, tabs: { at_ms: 0, tabs: [], error: null, control: null }, sessions: { at_ms: 0, sessions: [] },
   quick: { available: false, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], convs: [] },
-  quickLive: {},
   agents: { peers: [], convs: [] },
   triage: { items: {}, last: null, running: null },
   history: [],
@@ -236,6 +236,8 @@ function applyState(payload) {
     rooms: payload.rooms ?? s.rooms,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
+  // the answers being written, whole: a page that connects in the middle of one shows all of it
+  if (payload.quick_live) quickLive.set(quickLiveSnapshot(payload.quick_live))
   fixPage()
 }
 
@@ -302,15 +304,10 @@ const handlers = {
       }
     }
   },
-  // the answer while it is written: its text so far and what it reads; null when the turn is over
+  // the answer while it is written: the new piece of its text and what it reads; null when the turn is
+  // over. It goes to its own small store, so only the chat re-renders, not the page (views/chat.js)
   quick_live(p) {
-    if (!p?.conv) return
-    store.set(s => {
-      const quickLive = { ...s.quickLive }
-      if (p.text == null && p.doing == null) delete quickLive[p.conv]
-      else quickLive[p.conv] = { text: p.text ?? '', doing: p.doing ?? null }
-      return { ...s, quickLive }
-    })
+    quickLive.set(applyQuickLive(quickLive.get(), p))
   },
   sessions(sessions) {
     store.set(s => ({ ...s, sessions }))
@@ -1137,10 +1134,13 @@ async function boot() {
   api.events(handlers, onConn)
 
   document.addEventListener('keydown', onKey)
-  // durations and "as of" ages move on without new data
-  setInterval(() => store.set(s => ({ ...s, now: Date.now() })), 15000)
+  // durations and "as of" ages move on without new data; a hidden tab skips the ticks and catches up
+  // the moment it is in view again
+  const tick = whenShown(document, () => store.set(s => ({ ...s, now: Date.now() })))
+  setInterval(tick, 15000)
+  document.addEventListener('visibilitychange', tick)
   ctl.loadWorkers()   // for the Workers tab's badge; the tab reads it again when opened
-  setInterval(() => { const g = store.get(); if (g.loading?.pass || g.model?.review?.running) store.set(s => ({ ...s, now: Date.now() })) }, 1000)
+  setInterval(whenShown(document, () => { const g = store.get(); if (g.loading?.pass || g.model?.review?.running) tick() }), 1000)
 }
 
 // exported for the components' retry button

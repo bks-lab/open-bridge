@@ -3416,3 +3416,56 @@ test('errorText appends the server detail for a code whose entry takes one', () 
   }
   text.setLanguage('en')
 })
+
+// ---------------------------------------------------------------- quick_live as deltas (#400)
+
+test('applyQuickLive appends each new piece once and ignores what the page already has', () => {
+  let m = {}
+  m = logic.applyQuickLive(m, { conv: 'q1', seq: 1, at: 0, text: '', doing: 'Read work/board.md' })
+  assert.deepEqual(m.q1, { seq: 1, end: 0, text: '', doing: 'Read work/board.md' })
+  m = logic.applyQuickLive(m, { conv: 'q1', seq: 2, at: 0, text: 'Seven ', doing: null })
+  m = logic.applyQuickLive(m, { conv: 'q1', seq: 3, at: 6, text: 'of eleven.', doing: null })
+  assert.equal(m.q1.text, 'Seven of eleven.')
+  // an event that came before the state the page connected with is in that state already
+  const same = logic.applyQuickLive(m, { conv: 'q1', seq: 3, at: 6, text: 'of eleven.', doing: null })
+  assert.equal(same, m)
+  // a piece that does not continue where the page stands is never glued on
+  assert.equal(logic.applyQuickLive(m, { conv: 'q1', seq: 9, at: 40, text: 'later', doing: null }), m)
+  // a new message comes whole and takes the place of the old text
+  m = logic.applyQuickLive(m, { conv: 'q1', seq: 4, at: 0, text: 'Found it.', doing: null, full: true })
+  assert.deepEqual(m.q1, { seq: 4, end: 9, text: 'Found it.', doing: null })
+  // the turn is over
+  m = logic.applyQuickLive(m, { conv: 'q1', text: null, doing: null })
+  assert.deepEqual(m, {})
+  // a piece of an answer the page never saw begin waits for the state: only a start at 0 opens one
+  assert.deepEqual(logic.applyQuickLive({}, { conv: 'q2', seq: 5, at: 3, text: 'x', doing: null }), {})
+})
+
+test('quickLiveSnapshot takes the whole text a connecting page gets in its state', () => {
+  const m = logic.quickLiveSnapshot({ q1: { conv: 'q1', seq: 7, at: 0, text: 'Seven of eleven.', doing: null, full: true } })
+  assert.deepEqual(m, { q1: { seq: 7, end: 16, text: 'Seven of eleven.', doing: null } })
+  assert.equal(logic.applyQuickLive(m, { conv: 'q1', seq: 7, at: 6, text: 'of eleven.', doing: null }), m)
+  assert.equal(logic.applyQuickLive(m, { conv: 'q1', seq: 8, at: 16, text: ' Done.', doing: null }).q1.text, 'Seven of eleven. Done.')
+  assert.deepEqual(logic.quickLiveSnapshot(null), {})
+})
+
+test('whenShown runs a render tick only while the tab is in view', () => {
+  const doc = { hidden: true }
+  let ticks = 0
+  const tick = logic.whenShown(doc, () => { ticks += 1 })
+  tick(); tick()
+  assert.equal(ticks, 0, 'a hidden tab renders nothing')
+  doc.hidden = false
+  tick()
+  assert.equal(ticks, 1)
+})
+
+test('app.js runs its render ticks through whenShown and keeps the live text out of the store', () => {
+  const src = fs.readFileSync(path.join(WEB, 'app.js'), 'utf8')
+  for (const m of src.matchAll(/setInterval\(([^\n]*)/g)) assert.match(m[1], /^tick\b|^whenShown\(/, m[0])
+  assert.doesNotMatch(src, /quickLive:/, 'the live text has its own small store (views/chat.js quickLive)')
+  const handler = src.match(/\n  quick_live\(p\) \{\n([\s\S]*?)\n  \},/)
+  assert.ok(handler, 'the quick_live handler')
+  assert.doesNotMatch(handler[1], /store\.set/, 'a piece of an answer never renders the whole page')
+  assert.match(src, /addEventListener\('visibilitychange'/, 'a tab coming back into view catches up at once')
+})

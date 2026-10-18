@@ -9,7 +9,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import { chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
-import { ChatFoot, ChatThread, useStickToEnd } from './chat.js'
+import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Btn, Dot, Empty, Icon, StateLine } from './parts.js'
 import { useTabScreen } from './tabs.js'
 
@@ -122,7 +122,7 @@ function ChatPane({ s, c }) {
   const t = T()
   const q = s.quick ?? {}
   const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
-  const body = useStickToEnd(conv, conv ? s.quickLive?.[conv.id] : null)
+  const body = useStickToEnd(conv, useQuickLive(conv?.id))
   return html`<section class="panel chat-main rooms-main" aria-label=${t.askTitle}>
     <header class="tabview-head"><h2 class="sec-title tabview-title">${conv ? short(conv.turns[0]?.q ?? '', 80) : t.quickNew}</h2>
       <span class="muted small">${t.rooms.chatHint}</span></header>

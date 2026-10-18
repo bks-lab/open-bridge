@@ -5076,3 +5076,69 @@ def test_json_on_a_subcommand_without_it_is_a_usage_error_with_exit_2(capsys):
     with pytest.raises(SystemExit) as exc:
         _cockpit_cli().main(["stop", "--json"])
     assert exc.value.code == 2 and "usage:" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- quick_live as deltas (#400)
+
+def _text_delta(t):
+    return {"type": "stream_event", "event": {"type": "content_block_delta", "index": 0,
+                                              "delta": {"type": "text_delta", "text": t}}}
+
+
+def _quick_live_run(world, monkeypatch, *lines, on_live=None):
+    """Asks once with every stream line broadcast (no throttle); the quick_live payloads in order"""
+    from lib.bridge_cockpit import quick as quick_mod
+    monkeypatch.setattr(quick_mod, "LIVE_EVERY", 0)
+    seen = []
+    publish = world.app.broadcast
+
+    def spy(ev, payload):
+        if ev == "quick_live":
+            seen.append(payload)
+            if on_live:
+                on_live(payload)
+        publish(ev, payload)
+    world.app.broadcast = spy
+    world.runner.handlers["claude.p"] = lambda argv: stream(
+        *lines, {"type": "result", "is_error": False, "result": "done", "session_id": SID, "total_cost_usd": 0.001,
+                 "modelUsage": {"claude-haiku-5-5": {"costUSD": 0.001}}})
+    world.post("/api/ask", {"kind": "free", "args": {"text": "how far?"}, "via": "quick"})
+    wait_quick(world)
+    return seen
+
+
+def test_quick_live_carries_only_the_new_text(world, monkeypatch):
+    words = ["Seven ", "of ", "eleven ", "are done."]
+    seen = _quick_live_run(world, monkeypatch, {"type": "stream_event", "event": {"type": "message_start"}},
+                           *[_text_delta(w) for w in words])
+    parts = [p for p in seen if p.get("text")]
+    assert [p["text"] for p in parts] == words           # each event brings its own words, none repeats
+    assert [p["at"] for p in parts] == [0, 6, 9, 16]      # and says where they go
+    assert all(not p.get("full") for p in parts)
+    seqs = [p["seq"] for p in seen if p.get("text") is not None]
+    assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
+    assert seen[-1] == {"conv": seen[0]["conv"], "text": None, "doing": None}
+
+
+def test_quick_live_sends_the_whole_text_again_when_a_new_message_starts(world, monkeypatch):
+    seen = _quick_live_run(world, monkeypatch, _text_delta("Let me look."),
+                           {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Grep",
+                                                                          "input": {"pattern": "x"}}]}},
+                           {"type": "stream_event", "event": {"type": "message_start"}},
+                           _text_delta("Found it."), _text_delta(" Two."))
+    texts = [p for p in seen if p.get("text")]
+    assert texts[0] == {**texts[0], "at": 0, "text": "Let me look."}
+    assert texts[1]["full"] is True and texts[1]["at"] == 0 and texts[1]["text"] == "Found it."
+    assert texts[2]["at"] == 9 and texts[2]["text"] == " Two." and not texts[2].get("full")
+
+
+def test_a_reconnecting_page_gets_the_whole_text_so_far(world, monkeypatch):
+    snaps = []
+    seen = _quick_live_run(world, monkeypatch, _text_delta("Seven "), _text_delta("of eleven."),
+                           on_live=lambda p: snaps.append(world.app.state_payload()["quick_live"]))
+    conv = seen[0]["conv"]
+    # what a page connecting after the second piece receives in its first state event: all of it
+    full = snaps[1][conv]
+    assert full["full"] is True and full["at"] == 0 and full["text"] == "Seven of eleven."
+    assert full["seq"] == seen[1]["seq"]                  # the pieces up to here are in it already
+    assert world.app.state_payload()["quick_live"] == {}  # the turn is over: nothing live any more

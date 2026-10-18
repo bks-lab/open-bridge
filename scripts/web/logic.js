@@ -2323,3 +2323,42 @@ export function createToastTimers({ setTimer = setTimeout, clearTimer = clearTim
     },
   }
 }
+
+// ---------------------------------------------------------------- the answer while it is written
+
+const LIVE_KEEP = 20000   // the most of a live text the page keeps, as the server sends it (quick.py LIVE_KEEP)
+
+/** The live texts after one `quick_live` event: a piece is appended where it says it goes (`at`), once;
+ *  a whole text (`full`, a new message) takes the old one's place; text and doing null end the turn. An
+ *  event the page already has (its `seq` is not newer) or one that does not continue the text changes
+ *  nothing, so the same map comes back */
+export function applyQuickLive(map, p) {
+  if (!p?.conv) return map
+  if (p.text == null && p.doing == null) {
+    if (!(p.conv in map)) return map
+    const { [p.conv]: _, ...rest } = map
+    return rest
+  }
+  const cur = map[p.conv]
+  const seq = Number(p.seq) || 0
+  if (cur && seq <= cur.seq) return map
+  const piece = String(p.text ?? '')
+  const at = Number(p.at) || 0
+  let text
+  if (p.full) text = piece
+  else if (at === (cur ? cur.end : 0)) text = (cur ? cur.text : '') + piece
+  else return map
+  return { ...map, [p.conv]: { seq, end: at + piece.length, text: text.slice(-LIVE_KEEP), doing: p.doing ?? null } }
+}
+
+/** The live texts of the state a page gets when it connects: each one whole */
+export function quickLiveSnapshot(snap) {
+  let map = {}
+  for (const p of Object.values(snap ?? {})) map = applyQuickLive(map, { ...p, full: true })
+  return map
+}
+
+/** A render tick that runs only while the tab is in view: a hidden tab has nothing to draw */
+export function whenShown(doc, fn) {
+  return () => { if (!doc?.hidden) fn() }
+}

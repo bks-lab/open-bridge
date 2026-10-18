@@ -1129,8 +1129,14 @@ question `via` control answers `relay_disabled`. An answer that arrives while
 the chat is not in view shows as a note with "View".
 
 The answer streams: the CLI runs with `--output-format stream-json --verbose
---include-partial-messages`, and the text so far plus the file it is reading
-reach the page as the `quick_live` event, at most every 0.3 s. Chats are kept
+--include-partial-messages`, and the new text plus the file it is reading
+reach the page as the `quick_live` event, at most every 0.3 s. An event
+carries only the text added since the one before (`at` says where it goes,
+`seq` orders them); a new message in the stream comes whole (`full`), and so
+does the `quick_live` key of the state a page gets when it connects, so a page
+that reconnects mid-answer still shows all of it. The page keeps the live text
+in a small store of its own: a piece re-renders the chat, not the page, and a
+hidden tab skips the page's clock ticks until it is in view again. Chats are kept
 in the state dir (`quick.json`, the last 30), so a chat goes on after a
 restart of the dashboard; one that was answering when it stopped says so.
 No chat is ever dropped: the 31st pushes the oldest, a chat untouched for

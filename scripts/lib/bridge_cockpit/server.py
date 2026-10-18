@@ -318,7 +318,7 @@ class App:
                 "model": self.collector.model, "tabs": self.tabs_state(), "loading": self.collector.loading_state(),
                 "notes": list(self.notes), "relay": self.relay_state(), "cmux": self.cmux_state(),
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
-                "sessions": self.sessions_state(), "quick": self.quick.state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
+                "sessions": self.sessions_state(), "quick": self.quick.state(), "quick_live": self.quick.live_state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(),
                 "rooms": {"layout": self.cfg.chat_layout, "root": str(self.root), "control": self.cfg.control,
                           "bridges": self.bridges.state()}}

@@ -10,7 +10,7 @@ import {
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
-import { ChatThread, Thinking } from './chat.js'
+import { ChatThread, Thinking, useQuickLive } from './chat.js'
 import { RowActions, SettleMenu } from './day.js'
 import {
   DayBars, PinStar, ReturnCard, ReturnChip, jumpToTab, openWhole, pageParts, pageTitleOf, pct, returnsOf, shownTiles,
@@ -406,7 +406,7 @@ function SituationBoard({ s, c }) {
 function Verdict({ s, conv }) {
   const h = T().home
   const turn = conv?.turns?.[0]
-  const live = conv ? s.quickLive?.[conv.id] : null
+  const live = useQuickLive(conv?.id)
   if (!turn || (!turn.a && !turn.error)) {
     return html`<div class="verdict"><${Thinking} label=${live?.doing ? T().quickReading(live.doing) : h.sit.weighing} /></div>`
   }
@@ -425,7 +425,7 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
   const workers = s.workers?.data?.stats
   const agents = (s.sessions?.sessions ?? []).reduce((n, x) => n + (x.agents?.running_count ?? 0) + (x.workflows?.length ?? 0), 0)
   const conv = (s.quick?.convs ?? []).find(x => x.id === s.ui.coreConv) ?? null
-  const live = conv ? s.quickLive?.[conv.id] : null
+  const live = useQuickLive(conv?.id)
   const [text, setText] = useState('')
   const busy = !!s.ui.busy['ask:core']
   const send = async e => {

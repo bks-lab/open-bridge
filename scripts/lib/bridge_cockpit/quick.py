@@ -7,7 +7,10 @@ in this Bridge's folder, with nothing but Read, Grep and Glob and without the us
 can look at tasks, the board and the log and change nothing. A reply in the same window continues
 that session (`--resume`). The CLI streams (`stream-json` with partial messages): the text so far and
 what it is reading go to the page as the `quick_live` event, at most every LIVE_EVERY seconds, so an
-answer shows while it is written. The final answer, the model that really answered and the cost come
+answer shows while it is written. An event carries only the text added since the one before (`at` says
+where it goes, `seq` orders them); a new message in the stream sends its text whole (`full`), and so does
+the `quick_live` key of the state a page gets when it connects, so a page that comes late still has all
+of it. The final answer, the model that really answered and the cost come
 from the closing `result` line; `total_cost_usd` is the sum of the whole session, so a turn costs the
 difference. Each question runs on a thread of its own; the page gets the conversations as the `quick`
 event. The conversations are kept in the state dir (quick.json), so a chat goes on after a restart.
@@ -34,6 +37,7 @@ QUICK_TIMEOUT = 180
 MAX_CONVS = 30
 MAX_TURNS = 30
 LIVE_EVERY = 0.3
+LIVE_KEEP = 20000        # the most of a live text a page is sent in one piece
 OUTPUT = ["--output-format", "stream-json", "--verbose", "--include-partial-messages"]
 SESSION_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 CONV_RE = re.compile(r"^q[0-9a-f]{10}\Z")
@@ -172,6 +176,8 @@ class Quick:
         self.lock = threading.Lock()
         self.convs: dict[str, dict] = {}
         self.expire_failed_ms = 0
+        self.live: dict[str, dict] = {}      # per running conversation what the pages were sent: text, doing, seq
+        self.seq = 0
         self.path = Path(app.state_dir) / "quick.json" if getattr(app, "state_dir", None) else None
         self.load()
 
@@ -333,6 +339,26 @@ class Quick:
             self.app.log_error(f"quick: not archived: {exc!r}")
             return False
 
+    def live_state(self) -> dict:
+        """The live text of every answer being written, whole: for a page that connects in the middle"""
+        with self.lock:
+            return {conv: {"conv": conv, "seq": x["seq"], "at": max(0, len(x["text"]) - LIVE_KEEP),
+                           "text": x["text"][-LIVE_KEEP:], "doing": x["doing"], "full": True}
+                    for conv, x in self.live.items()}
+
+    def live_event(self, conv: str, text: str, doing: str | None) -> dict:
+        """The next `quick_live` payload of `conv`: the text added since the last one, or all of it when
+        the stream started a new message. Numbered and kept under the lock, so live_state() and the
+        events agree on what a page has"""
+        with self.lock:
+            self.seq += 1
+            was = self.live.get(conv, {}).get("text", "")
+            self.live[conv] = {"text": text, "doing": doing, "seq": self.seq}
+            if text.startswith(was):
+                return {"conv": conv, "seq": self.seq, "at": len(was), "text": text[len(was):], "doing": doing}
+            return {"conv": conv, "seq": self.seq, "at": max(0, len(text) - LIVE_KEEP), "text": text[-LIVE_KEEP:],
+                    "doing": doing, "full": True}
+
     def lang(self) -> str:
         lang = str(getattr(self.app.cfg, "language", "de"))[:2]
         return lang if lang in SYSTEM else "en"
@@ -355,7 +381,7 @@ class Quick:
             now = time.monotonic()
             if now - sent[0] >= LIVE_EVERY:
                 sent[0] = now
-                app.broadcast("quick_live", {"conv": conv, "text": live.text[-20000:], "doing": live.doing})
+                app.broadcast("quick_live", self.live_event(conv, live.text, live.doing))
 
         try:
             if provider == "codex":
@@ -393,6 +419,7 @@ class Quick:
                     c["turns"][-1]["error"] = str(exc)[:300]
         finally:
             with self.lock:
+                self.live.pop(conv, None)
                 if conv in self.convs:
                     self.convs[conv]["running"] = False
                     self.convs[conv]["last_ms"] = int(app.clock())

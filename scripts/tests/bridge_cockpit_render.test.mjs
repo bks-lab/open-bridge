@@ -364,3 +364,58 @@ test('row steps: a busy row action disables only its own row', () => {
   assert.equal(steps(1).$('button').hasAttribute('disabled'), true, 'the row in flight waits')
   assert.equal(steps(2).$('button').hasAttribute('disabled'), false, 'another row stays free')
 })
+
+// ---------------------------------------------------------------- quick_live: only the chat re-renders (#400)
+
+/** views/chat.js and the vendored Preact from a copy of their own (cockpit_render.mjs loads other views) */
+async function loadChat() {
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const { fileURLToPath, pathToFileURL } = await import('node:url')
+  const web = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-chat-')), 'web')
+  process.on('exit', () => fs.rmSync(path.dirname(web), { recursive: true, force: true }))
+  fs.cpSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web'), web, { recursive: true })
+  fs.writeFileSync(path.join(web, 'package.json'), '{ "type": "module" }\n')
+  const load = rel => import(pathToFileURL(path.join(web, rel)).href)
+  return { vendor: await load('vendor/htm-preact-3.1.1.module.js'), chat: await load('views/chat.js'), logic: await load('logic.js') }
+}
+
+const settle = () => new Promise(r => setTimeout(r, 20))
+
+test('quick_live: a piece of an answer re-renders the chat thread, never the page around it', async () => {
+  const { vendor, chat, logic } = await loadChat()
+  const { html: h, useLayoutEffect: layout, useState: state } = vendor
+  const conv = { id: 'q0123456789', kind: 'free', started_ms: NOW, session: null, total_usd: 0, running: true, last_ms: NOW,
+    turns: [{ q: 'how far?', a: null, model_asked: 'haiku', model: null, cost_usd: null, at_ms: NOW, error: null }] }
+  // the page's root as components.js App holds it: the store's state, a new render on every store change
+  let s0 = cockpitState(NOW)
+  const subs = new Set()
+  const store = { get: () => s0, set(fn) { s0 = fn(s0); for (const f of subs) f(s0) } }
+  let pageRenders = 0
+  function Page() { pageRenders += 1; return h`<p class="page">page</p>` }
+  function Root() {
+    const [s, setS] = state(store.get())
+    layout(() => { subs.add(setS); return () => subs.delete(setS) }, [])
+    return h`<div><${Page} s=${s} /><div class="thread"><${chat.ChatThread} s=${s} conv=${conv} /></div></div>`
+  }
+  const el = document.createElement('div')
+  vendor.render(h`<${Root} />`, el)          // with the copy's own Preact, whose hooks the chat uses
+  await settle()
+  const before = pageRenders
+  const { quickLive } = chat
+  quickLive.set(logic.applyQuickLive(quickLive.get(), { conv: conv.id, seq: 1, at: 0, text: 'Seven ', doing: null }))
+  await settle()
+  quickLive.set(logic.applyQuickLive(quickLive.get(), { conv: conv.id, seq: 2, at: 6, text: 'of eleven.', doing: null }))
+  await settle()
+  assert.equal(el.$('.thread .qa').text(), 'Seven of eleven.')
+  assert.equal(pageRenders, before, 'the page did not render again')
+  // and the counter would see it: a change in the store renders the page
+  store.set(s => ({ ...s, now: NOW + 1 }))
+  await settle()
+  assert.equal(pageRenders, before + 1)
+  quickLive.set(logic.applyQuickLive(quickLive.get(), { conv: conv.id, text: null, doing: null }))
+  await settle()
+  assert.equal(el.$('.thread .qa'), null)
+  vendor.render(null, el)
+})

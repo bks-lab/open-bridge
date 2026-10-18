@@ -12,6 +12,42 @@ import { useFocusOnOpen } from './overlays.js'
 import { Btn, Dot, StateLine, useClock } from './parts.js'
 import { Prose } from './prose.js'
 
+// ---------------------------------------------------------------- the answer while it is written
+
+/** The live text of every answer being written, kept apart from the page's store: a piece of an answer
+ *  re-renders only the components that show it (useQuickLive), never the whole page. app.js feeds it
+ *  from the `quick_live` events and the state a page connects with (logic.js applyQuickLive) */
+export const quickLive = (() => {
+  let map = {}
+  const subs = new Set()
+  return {
+    get: () => map,
+    set(next) {
+      if (next === map) return
+      map = next
+      for (const fn of subs) fn(map)
+    },
+    subscribe(fn) {
+      subs.add(fn)
+      return () => subs.delete(fn)
+    },
+  }
+})()
+
+/** The live text and doing of the answer `id` is writing, or null; re-renders when that one changes */
+export function useQuickLive(id) {
+  const [, tick] = useState(0)
+  const live = id ? quickLive.get()[id] ?? null : null
+  useLayoutEffect(() => {
+    let last = live
+    const check = m => { const now = id ? m[id] ?? null : null; if (now !== last) { last = now; tick(n => n + 1) } }
+    const off = quickLive.subscribe(check)
+    check(quickLive.get())   // what came between the render and now
+    return off
+  }, [id])
+  return live
+}
+
 // ---------------------------------------------------------------- the chat
 
 /** Cost of a turn in cents, in the page language: 0.0021 $ -> "0,21 ct" */
@@ -53,7 +89,7 @@ export function SendBox({ id, label, value, setValue, onSend, max, placeholder, 
 export function ChatThread({ s, conv }) {
   const t = T()
   const lang = language()
-  const live = conv ? s.quickLive?.[conv.id] : null
+  const live = useQuickLive(conv?.id)
   return conv.turns.map((x, i) => {
     const open = !x.a && !x.error && i === conv.turns.length - 1 && conv.running
     return html`<div class="qturn row-in" key=${i} style=${{ '--i': 0 }}>
@@ -133,7 +169,7 @@ export function QuickChat({ s, c }) {
   const q = s.quick ?? {}
   const convs = listedChats(q.convs, q.keep_hours, s.now)
   const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
-  const body = useStickToEnd(conv, conv ? s.quickLive?.[conv.id] : null)
+  const body = useStickToEnd(conv, useQuickLive(conv?.id))
   const dialog = useFocusOnOpen(true)
   return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.closeTabView() }}>
     <div class="dialog tabview quickchat" role="dialog" aria-modal="true" aria-labelledby="quick-title" ref=${dialog}>
@@ -167,7 +203,7 @@ export function ChatPage({ s, c }) {
   const q = s.quick ?? {}
   const convs = listedChats(q.convs, q.keep_hours, s.now)
   const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
-  const body = useStickToEnd(conv, conv ? s.quickLive?.[conv.id] : null)
+  const body = useStickToEnd(conv, useQuickLive(conv?.id))
   const [forgetArmed, setForgetArmed] = useState(null)
   useEffect(() => { document.getElementById('quick-input')?.focus() }, [conv?.id])
   return html`<div class="col col-page chatpage">
