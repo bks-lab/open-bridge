@@ -3258,3 +3258,17 @@ test('loaders: while a triage run is pending a second one sends no POST and the 
   assert.doesNotMatch(app, /api\.post\('\/api\/triage\/run'/)
   assert.match(read('triage.js'), /const running = triageRunning\(s\)/)
 })
+
+test('loaders: a 409 for a triage run already on is an answer, not an error: its state is applied', async () => {
+  const on = { running: { started_ms: 1, why: 'daily' } }
+  const r = loaderRig({ '/api/triage/run': { status: 409, ok: false, data: { ok: false, triage: on }, error: { code: 'unknown', message: '' } } })
+  await r.loaders.triageRun(false)
+  assert.deepEqual(r.get().notes, [])
+  assert.deepEqual(r.get().triage, on)
+  assert.equal(logic.triageRunning(r.get()), true)
+  // a 409 without a triage state stays an error
+  const bare = loaderRig({ '/api/triage/run': { status: 409, ok: false, data: { ok: false }, error: { code: 'conflict', message: 'x' } } })
+  await bare.loaders.triageRun(false)
+  assert.equal(bare.get().notes.length, 1)
+  assert.equal(bare.get().notes[0].tone, 'bad')
+})

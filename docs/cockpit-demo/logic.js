@@ -209,7 +209,9 @@ export function createLoaders({ api, set, fail, withBusy }) {
     },
     triageRun: fresh => withBusy(TRIAGE_BUSY, 'triage', async () => {
       const res = await api.post('/api/triage/run', { fresh: !!fresh })
-      if (!res.ok) return fail(res)
+      // 409 with a state is the server's answer to a run already on: show that run, it is no error
+      const already = res.status === 409 && res.data?.triage
+      if (!res.ok && !already) return fail(res)
       if (res.data?.triage) set(s => ({ ...s, triage: res.data.triage }))
     }, { refuse: true }),
   }
