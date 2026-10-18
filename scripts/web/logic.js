@@ -1350,6 +1350,69 @@ export function canTab(s, verb) {
   return !Array.isArray(caps) || caps.includes(verb)
 }
 
+// ---------------------------------------------------------------- answering a waiting tab (views/reply.js)
+
+/** The tab states a reply may name as `expect` (actions.py TAB_STATES) */
+const REPLY_STATES = new Set(['needs-you', 'waiting', 'working'])
+
+/** What every reply to `tab` carries beyond its own args: the question it answers (seen, when one was
+ *  read) and the tab's name, so the server sends nothing once the tab moved on (actions.py guard_fresh) */
+function replyGuard(tab) {
+  return { ...(tab.ask?.hash ? { seen: tab.ask.hash } : {}), name: tab.name }
+}
+
+/** A typed answer to `tab`: tab_send with the state the tab is in now, the question and the name */
+export function replySend(tab, text) {
+  return { verb: 'tab_send', args: { tab_ref: tab.ref, text, ...(REPLY_STATES.has(tab.state) ? { expect: tab.state } : {}), ...replyGuard(tab) } }
+}
+
+/** The answers the page offers a tab, the server enforcing each (actions.py): { buttons: [{id, verb, args,
+ *  label}], textBox }. A dialog (needs-you) gets one button per option it shows, never free text and never
+ *  a bare yes for a choice; one that could not be read gets the tab and today's yes and no. A waiting tab
+ *  gets yes and no as words only when it asks a yes or no question, go on unless its result is filed, and
+ *  the text box. The control session answers through its own box. Each control needs its driver right */
+export function replyOptions(tab, s, t = TABLES.en) {
+  const none = { buttons: [], textBox: false }
+  if (!tab) return none
+  const r = t.reply
+  const key = canTab(s, 'key')
+  const send = canTab(s, 'send')
+  const buttons = []
+  const ask = tab.ask ?? null
+  if (tab.state === 'needs-you') {
+    const options = ask?.options ?? []
+    if (options.length) {
+      if (key) for (const o of options) buttons.push({ id: `option-${o.n}`, verb: 'tab_option', label: o.label, args: { tab_ref: tab.ref, n: o.n, ...replyGuard(tab) } })
+      if (canTab(s, 'focus')) buttons.push({ id: 'open', verb: 'tab_jump', label: r.openTab, args: { tab_ref: tab.ref } })
+    } else {
+      if (canTab(s, 'focus')) buttons.push({ id: 'open', verb: 'tab_jump', label: r.openTab, args: { tab_ref: tab.ref } })
+      if (key) {
+        buttons.push({ id: 'yes', verb: 'tab_yes', label: r.yes, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
+        buttons.push({ id: 'no', verb: 'tab_no', label: r.no, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
+      }
+    }
+    return { buttons, textBox: false }
+  }
+  if (tab.state !== 'waiting' || tab.is_control || !send) return none
+  if (ask?.yes_no) {
+    buttons.push({ id: 'yes', ...replySend(tab, r.yesText), label: r.yes })
+    buttons.push({ id: 'no', ...replySend(tab, r.noText), label: r.no })
+  }
+  if (!tab.filed_by) buttons.push({ id: 'goOn', verb: 'tab_go_on', label: r.goOn, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
+  return { buttons, textBox: true }
+}
+
+/** How long the page remembers an answer it sent to a tab (ui.answered), long enough for the tab poll
+ *  to show that the tab moved on */
+export const ANSWERED_KEEP_MS = 120000
+
+/** ui.answered without the answers older than ANSWERED_KEEP_MS; the same object when nothing went */
+export function pruneAnswered(answered, now) {
+  const all = Object.entries(answered ?? {})
+  const kept = all.filter(([, v]) => now - (v?.ms ?? 0) < ANSWERED_KEEP_MS)
+  return kept.length === all.length ? (answered ?? {}) : Object.fromEntries(kept)
+}
+
 /** No terminal driver lists the tabs (neither cmux nor a driver serving `tabs`, such as tmux); before the
  *  driver answered, one counts as there */
 export function noTabDriver(s) {

@@ -263,6 +263,16 @@ def s_tabs(w: World) -> None:
     w.act("tab_jump", tab_ref="surface:7")
     w.act("tab_send", tab_ref="surface:7", text="--please continue")
     w.act("tab_go_on", tab_ref="surface:13")
+    # a reply that names the question it answers, the tab and the state: the screen is read fresh first
+    screens = {"surface:7": " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n", "surface:13": "⏺ Shall I go on?\n"}
+    w.runner.handlers["workplace.screen"] = lambda argv: ok({"text": screens[argv[argv.index("screen") + 1]]})
+    w.app.asks_enabled = True
+    w.app.tabs.poll()
+    ask = {t["ref"]: t["ask"] for t in w.app.tabs_state()["tabs"]}
+    w.act("tab_option", tab_ref="surface:7", n=2, seen=ask["surface:7"]["hash"], name="demo-task")
+    w.act("tab_send", tab_ref="surface:13", text="--yes", seen=ask["surface:13"]["hash"], expect="waiting",
+          name="waiting plain")
+    w.act("tab_go_on", tab_ref="surface:13", seen=ask["surface:13"]["hash"], name="waiting plain")
     w.act("adopt", key="task:other-task", tab_ref="surface:11")
     w.act("tab_close", tab_ref="surface:8")
     w.act("start_control")
@@ -330,7 +340,7 @@ SCENARIOS = {
     "reopen": Scenario(s_reopen, {"task.reopen", "inbox.reopen"}),
     "review": Scenario(s_review, {"task.review"}),
     "tabs": Scenario(s_tabs, {"workplace.key", "workplace.focus", "workplace.send", "workplace.adopt",
-                              "workplace.close", "workplace.control"}),
+                              "workplace.close", "workplace.control", "workplace.screen"}),
     "rows": Scenario(s_rows, {"briefing.act"}),
     "reads": Scenario(s_reads, {"inbox.list", "inbox.stats", "inbox.mute", "workplace.screen", "briefing.detail"}),
     "returns": Scenario(s_returns, {"task.note", "inbox.note"}),
@@ -553,7 +563,10 @@ def test_the_undo_of_a_task_closed_in_review_parses_with_task_py(tmp_path):
 # list, and each value must have one of the listed types. Later packages add their rows here.
 STATE_FIELDS = {
     "sessions.sessions[].tab.ws_ref": (str, type(None)),
+    "tabs.tabs[].ask": (dict, type(None)),
 }
+# the keys and types of a tab's question (asks.py), when it has one
+ASK_FIELDS = {"text": str, "options": list, "hash": str, "yes_no": bool, "draft": bool}
 
 
 def state_values(data, path: str) -> list:
@@ -583,9 +596,13 @@ def test_state_fields_the_page_reads_are_present(tmp_path):
         w.clock.now = now_ms
         w.app.sessions.base = tbc.claude_home(tmp_path, w.root, now_ms)
         tabs = [{"name": "Web work", "workspace": "Bridge", "ref": "surface:40", "ws_ref": "workspace:9",
-                 "state": "working", "id": tbc.SURF}]
+                 "state": "working", "id": tbc.SURF},
+                {"name": "Asks", "workspace": "Bridge", "ref": "surface:41", "ws_ref": "workspace:9",
+                 "state": "needs-you", "id": "TAB-41"}]
         w.runner.handlers["workplace.status"] = lambda argv: ok(tabs)
         w.runner.handlers["eww.-o"] = lambda argv: ok(f"claude CMUX_SURFACE_ID={tbc.SURF} X=1\n")
+        w.runner.handlers["workplace.screen"] = lambda argv: ok({"text": " Proceed?\n ❯ 1. Yes\n   2. No\n"})
+        w.app.asks_enabled = True
         w.app.tabs.poll()
         state = w.app.state_payload()
     finally:
@@ -595,3 +612,6 @@ def test_state_fields_the_page_reads_are_present(tmp_path):
         bad = [v for v in values if not isinstance(v, types)]
         assert not bad, f"{path}: {bad!r} is not {types}"
     assert state_values(state, "sessions.sessions[].tab.ws_ref") == ["workspace:9"]
+    none, ask = state_values(state, "tabs.tabs[].ask")
+    assert none is None and {k: type(v) for k, v in ask.items()} == ASK_FIELDS
+    assert ask["options"] == [{"n": 1, "label": "Yes"}, {"n": 2, "label": "No"}]

@@ -267,7 +267,7 @@ def make_bridge(base: Path, config: str | None = None) -> Path:
 
 class World:
     def __init__(self, base: Path, config: str | None = None, cmux: str | None = "/fake/bin/cmux",
-                 serve: bool = True, prepare: bool = True):
+                 serve: bool = True, prepare: bool = True, asks: bool = False):
         self.root = make_bridge(base, config)
         self.state = base / "state"
         self.clock = FakeClock()
@@ -276,6 +276,9 @@ class World:
         self.server = make_server(self.root, port=0, runner=self.runner, state_dir=self.state, clock=self.clock,
                                   background=False, key_dir=self.keys)
         self.app = self.server.app
+        # the questions of waiting tabs read their screens on every poll: off here, so the tests that count
+        # screen reads and driver calls stay as they are; the tests of the questions switch it on
+        self.app.asks_enabled = asks
         self.port = self.app.port
         self.thread = None
         if serve:

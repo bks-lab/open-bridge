@@ -9,6 +9,9 @@ since when each tab is in its state (tab_seen), raises alerts for tabs that newl
 or wait or run for an hour, and marks the control tab, which never counts as waiting.
 With `cockpit.chat_layout: workspaces` each poll also asks `workplace.py workspaces --json` for the
 workspaces as the terminal shows them (read only); None when the driver cannot say.
+Each poll also reads what the waiting tabs ask (asks.py) off their screens: only for the tabs that wait
+or need you, only when the driver serves `screen`, again only when a tab's state changed or its question
+is a minute old, at most ASK_READS_PER_POLL reads in ASK_BUDGET_S seconds, the tabs that need you first.
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ import threading
 import time
 from typing import Any
 
+from . import asks as ak
 from . import model as m
 from . import returns as ret
 
@@ -25,6 +29,9 @@ STATUS_TIMEOUT = 20
 WORKSPACES_EVERY_MS = 30_000   # the workspaces change slowly and cost one cmux call each: at most every half minute
 WORKSPACES_TIMEOUT = 40
 HIDDEN_TABS_S = 60   # the poll interval while every open page is hidden
+ASK_REFRESH_MS = 60_000   # a question unchanged in its state is read again after a minute
+ASK_READS_PER_POLL = 4
+ASK_BUDGET_S = 3
 
 
 class TabPoller:
@@ -37,6 +44,7 @@ class TabPoller:
         self.workspaces: list[dict] | None = None
         self.workspaces_ms = 0.0
         self.seen: dict[str, dict] = {}
+        self.asks: dict[str, tuple] = {}   # ref -> ((state, last, since_ms), ask or None, read at ms)
         self.error: dict | None = None
         self.at_ms = 0
         self.polled_once = False
@@ -98,6 +106,9 @@ class TabPoller:
                 is_control = t["ref"] == self.control
                 filed = m.filed_by(t, view)
                 seen = self.seen.get(t["ref"], {})
+                held = self.asks.get(t["ref"])
+                # a question only while the tab still is in the state it was read in
+                ask = held[1] if held and held[0][0] == t["state"] and t["state"] in m.ATTENTION else None
                 tabs.append({
                     "ref": t["ref"], "ws_ref": t["ws_ref"], "name": t["name"], "workspace": t["workspace"],
                     "state": t["state"], "last": t["last"], "slug": t["slug"], "item": t["item"], "team": t["team"],
@@ -105,6 +116,7 @@ class TabPoller:
                     "is_control": is_control, "filed_by": filed["key"] if filed else None,
                     "settled": None if is_control else ret.tab_settled(self.app.root, t),
                     "since_ms": int(seen.get("since_ms", 0)), "long": None if is_control else m.long_state(t, self.seen, now),
+                    "ask": None if is_control or ask is None else dict(ask, options=[dict(o) for o in ask["options"]]),
                 })
             control = {"name": self.app.cfg.control, "ref": self.control} if self.app.cfg.control and self.control else None
             return {"at_ms": self.at_ms, "tabs": tabs, "error": dict(self.error) if self.error else None, "control": control,
@@ -112,18 +124,19 @@ class TabPoller:
 
     # ------------------------------------------------------------ poll
 
-    def poll(self, wait: bool = True) -> bool:
-        """One status call; False when another one was running and wait is False."""
+    def poll(self, wait: bool = True, asks: bool = True) -> bool:
+        """One status call; False when another one was running and wait is False. `asks=False` reads no
+        question (the guard of a reply polls that way: it reads the one screen it needs itself)."""
         if not self.busy.acquire(blocking=wait):
             return False
         try:
-            self._poll_once()
+            self._poll_once(asks)
         finally:
             self.busy.release()
             self.last_poll = self.monotonic()
         return True
 
-    def _poll_once(self) -> None:
+    def _poll_once(self, asks: bool = True) -> None:
         app = self.app
         run = app.run(app.workplace("status", "--json"), STATUS_TIMEOUT)
         now = app.clock()
@@ -180,7 +193,50 @@ class TabPoller:
                     self.workspaces = workspaces
                 if workspaces is not None:
                     self.workspaces_ms = now
+        if asks and raw is not None:
+            self._refresh_asks(now)
         app.on_tabs(alerts)
+
+    def _refresh_asks(self, now: float) -> None:
+        """The questions of the tabs that wait or need you, read off their screens (asks.py). The candidates
+        first and the driver's caps second, so a poll without a waiting tab asks the driver nothing."""
+        app = self.app
+        if not getattr(app, "asks_enabled", True):
+            with self.lock:
+                self.asks = {}
+            return
+        view = app.collector.view
+        with self.lock:
+            tabs = [dict(t) for t in self.tabs]
+            seen = {k: dict(v) for k, v in self.seen.items()}
+            control = self.control
+            held = dict(self.asks)
+        candidates = [t for t in tabs if t["ref"] != control and m.is_waiting(t, view)]
+        if not candidates or "screen" not in app.driver_caps():
+            with self.lock:
+                self.asks = {}
+            return
+        keyed = [(t, (t["state"], t["last"], int(seen.get(t["ref"], {}).get("since_ms", 0)))) for t in candidates]
+        keyed.sort(key=lambda x: (0 if x[0]["state"] == "needs-you" else 1, x[1][2]))
+        kept: dict[str, tuple] = {}
+        reads = 0
+        started = self.monotonic()
+        for t, key in keyed:
+            ref = t["ref"]
+            old = held.get(ref)
+            if old and old[0] == key and 0 <= now - old[2] < ASK_REFRESH_MS:
+                kept[ref] = old
+                continue
+            if reads >= ASK_READS_PER_POLL or self.monotonic() - started >= ASK_BUDGET_S:
+                if old and old[0] == key:
+                    kept[ref] = old          # an old question of the same state waits for the next poll
+                continue
+            reads += 1
+            text, _digest, _err = app.tab_screen(ref)
+            ask = ak.question_of(text, t["state"], app.scrub) if text is not None else None
+            kept[ref] = (key, ask, now)
+        with self.lock:
+            self.asks = kept
 
     def _workspaces(self) -> list[dict] | None:
         run = self.app.run(self.app.workplace("workspaces", "--json"), WORKSPACES_TIMEOUT)

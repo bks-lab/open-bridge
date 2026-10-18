@@ -23,6 +23,7 @@ import threading
 from typing import Any
 
 from .. import model_route as mr
+from . import asks as ak
 from . import model as m
 from . import returns as ret
 from .collector import START_HOLD_MS
@@ -90,11 +91,15 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "approve_all": {"keys": ("keys", True), "confirm": ("bool", False)},
     "team_role": {"key": ("key", True), "team": ("team", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "adopt": {"key": ("key", True), "tab_ref": ("tab_ref", True)},
-    "tab_yes": {"tab_ref": ("tab_ref", True)},
-    "tab_no": {"tab_ref": ("tab_ref", True)},
+    # a reply may name the question it answers (seen: its hash), the tab's name and the state it expects;
+    # the server checks them against the tab as it is now before anything reaches it (guard_fresh)
+    "tab_yes": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
+    "tab_no": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
+    "tab_option": {"tab_ref": ("tab_ref", True), "n": ("digit", True), "seen": ("ask_hash", True), "name": ("tab_name", False)},
     "tab_jump": {"tab_ref": ("tab_ref", True)},
-    "tab_send": {"tab_ref": ("tab_ref", True), "text": ("text", True)},
-    "tab_go_on": {"tab_ref": ("tab_ref", True)},
+    "tab_send": {"tab_ref": ("tab_ref", True), "text": ("text", True), "seen": ("ask_hash", False),
+                 "expect": ("tab_state", False), "name": ("tab_name", False)},
+    "tab_go_on": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
     "tab_close": {"tab_ref": ("tab_ref", True)},
     "snapshot": {},
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
@@ -135,6 +140,8 @@ ROW_STEP_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}\Z")
 UNDO_TOKEN_RE = re.compile(r"^restore:[A-Za-z0-9._~-]{1,120}\Z")
 ROW_REF_RE = re.compile(r"^[A-Za-z0-9][^\x00-\x1f]{0,199}\Z")
 PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
+ASK_HASH_RE = re.compile(r"^[0-9a-f]{16}\Z")   # the hash of a tab's question (asks.py)
+TAB_STATES = ("needs-you", "waiting", "working")
 TILE_ID_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9:._@/-]{0,79}\Z")   # a tile or shelf of the start page
 READ_ONLY_VERBS = frozenset({"snapshot_list"})
 # only stores with their own locks (store.py, launch.py, ticker.py): they never wait for a write that runs
@@ -144,7 +151,7 @@ LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
-NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_jump": "focus", "tab_close": "close"}
+NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_jump": "focus", "tab_close": "close"}
 
 
 class ActionError(Exception):
@@ -522,6 +529,23 @@ class Actions:
             elif kind == "row_ref":
                 if not isinstance(value, str) or not ROW_REF_RE.match(value):
                     raise bad_arg(name, "not a row id")
+                out[name] = value
+            elif kind == "ask_hash":
+                if not isinstance(value, str) or not ASK_HASH_RE.match(value):
+                    raise bad_arg(name, "not a question hash")
+                out[name] = value
+            elif kind == "tab_state":
+                if value not in TAB_STATES:
+                    raise bad_arg(name, f"must be one of {', '.join(TAB_STATES)}")
+                out[name] = value
+            elif kind == "tab_name":
+                # compared with the tab's name as it is, so never stripped
+                if not isinstance(value, str) or not 1 <= len(value) <= 120 or "\x00" in value or CONTROL_RE.search(value):
+                    raise bad_arg(name, "must be a tab name of 1 to 120 characters")
+                out[name] = value
+            elif kind == "digit":
+                if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 9:
+                    raise bad_arg(name, "must be a number from 1 to 9")
                 out[name] = value
             elif kind == "relay_id":
                 if not isinstance(value, str) or not RELAY_ID_RE.match(value):
@@ -1381,28 +1405,63 @@ class Actions:
             ctx.note(self.tx["adopt_failed"].format(err=m.short(run.err, 100)), bad=True)
         ctx.tabs_after(0)
 
-    def press(self, ctx: Ctx, tab_ref: str, key: str, said: str) -> None:
+    def guard_fresh(self, ctx: Ctx, ref: str, expect: str | None, seen: str | None, name: str | None,
+                    sends_text: bool) -> tuple[dict, dict | None]:
+        """A reply reaches only the tab and the question it was given for. The tabs are polled again (no
+        question is read there), then the tab must still be there, carry the name and the state the page
+        named, and, with `seen`, its screen read now must ask the question of that hash (never the one
+        kept by the poll). A draft typed in the tab refuses a reply that types text. Nothing is sent on
+        any refusal. Returns the tab as it is now and the question read now (None without `seen`)."""
+        self.app.tabs.poll(asks=False)
+        t = self.app.tabs.find(ref)
+        moved = ActionError(409, "tab_moved", self.tx["tab_moved"], "tab_ref")
+        if not t or (name is not None and t["name"] != name) or (expect is not None and t["state"] != expect):
+            raise moved
+        fresh = None
+        if seen is not None:
+            text, _digest, _err = self.app.tab_screen(ref, fresh=True)
+            fresh = ak.question_of(text, t["state"], self.app.scrub) if text is not None else None
+            if fresh is None or fresh["hash"] != seen:
+                raise moved
+            if sends_text and fresh["draft"]:
+                raise ActionError(409, "tab_draft", self.tx["tab_draft"], "tab_ref")
+        return t, fresh
+
+    def press(self, ctx: Ctx, tab_ref: str, key: str, said: str, seen: str | None = None, name: str | None = None,
+              option: int | None = None) -> None:
         tab = self.tab(tab_ref)
         if tab["state"] != "needs-you":
             raise self.not_applicable("the tab is not asking", "tab_ref")
         # The state on the page may be seconds old: if the tab has moved on, Esc would abort its work.
-        self.app.tabs.poll()
-        now_tab = self.app.tabs.find(tab_ref)
+        if seen is not None or name is not None:
+            now_tab, fresh = self.guard_fresh(ctx, tab_ref, None, seen, name, False)
+        else:
+            self.app.tabs.poll(asks=False)
+            now_tab, fresh = self.app.tabs.find(tab_ref), None
         if not now_tab or now_tab["state"] != "needs-you":
             ctx.note(self.tx["not_asking"].format(name=m.short(tab["name"], 30)))
             return
+        if option is not None:
+            picked = next((o for o in (fresh or {}).get("options") or [] if o["n"] == option), None)
+            if picked is None:
+                raise self.not_applicable("the tab offers no such option", "n")
+            said = self.tx["said_option"].format(n=option, label=m.short(picked["label"], 40))
         run = ctx.call("workplace.key", tab_ref, self.app.workplace("key", tab_ref, key), CMUX_TIMEOUT)
         if run.ok:
             ctx.note(self.tx["key_sent"].format(name=m.short(tab["name"], 30), said=said))
         else:
-            ctx.note(self.tx["key_failed"].format(err=m.short(run.err.strip(), 100)), bad=True)
+            ctx.note(self.tx["key_failed"].format(err=m.short((run.err or run.out).strip(), 100)), bad=True)
         ctx.tabs_after(3)
 
-    def v_tab_yes(self, ctx: Ctx, tab_ref: str) -> None:
-        self.press(ctx, tab_ref, "1", self.tx["said_yes"])
+    def v_tab_yes(self, ctx: Ctx, tab_ref: str, seen: str | None = None, name: str | None = None) -> None:
+        self.press(ctx, tab_ref, "1", self.tx["said_yes"], seen, name)
 
-    def v_tab_no(self, ctx: Ctx, tab_ref: str) -> None:
-        self.press(ctx, tab_ref, "escape", self.tx["said_no"])
+    def v_tab_no(self, ctx: Ctx, tab_ref: str, seen: str | None = None, name: str | None = None) -> None:
+        self.press(ctx, tab_ref, "escape", self.tx["said_no"], seen, name)
+
+    def v_tab_option(self, ctx: Ctx, tab_ref: str, n: int, seen: str, name: str | None = None) -> None:
+        """One numbered option of the dialog the tab shows: its digit, never a yes for a choice"""
+        self.press(ctx, tab_ref, str(n), "", seen, name, option=n)
 
     def v_tab_jump(self, ctx: Ctx, tab_ref: str) -> None:
         tab = self.tab(tab_ref)
@@ -1417,16 +1476,23 @@ class Actions:
             ctx.note(self.tx["send_failed"].format(err=m.short(run.err, 100)), bad=True)
         ctx.tabs_after(3)
 
-    def v_tab_send(self, ctx: Ctx, tab_ref: str, text: str) -> None:
+    def v_tab_send(self, ctx: Ctx, tab_ref: str, text: str, seen: str | None = None, expect: str | None = None,
+                   name: str | None = None) -> None:
         tab = self.tab(tab_ref)
         if not m.is_live(tab):
             raise self.not_applicable("the tab holds no agent", "tab_ref")
+        if seen is not None or expect is not None or name is not None:
+            tab, _ = self.guard_fresh(ctx, tab_ref, expect, seen, name, True)
+            if not m.is_live(tab):
+                raise ActionError(409, "tab_moved", self.tx["tab_moved"], "tab_ref")
         self.send_to(ctx, tab, text)
 
-    def v_tab_go_on(self, ctx: Ctx, tab_ref: str) -> None:
+    def v_tab_go_on(self, ctx: Ctx, tab_ref: str, seen: str | None = None, name: str | None = None) -> None:
         tab = self.tab(tab_ref)
         if tab["state"] != "waiting" or m.filed_by(tab, self.app.collector.view) is not None:
             raise self.not_applicable("go on is for waiting tabs without a filed result", "tab_ref")
+        if seen is not None or name is not None:
+            tab, _ = self.guard_fresh(ctx, tab_ref, "waiting", seen, name, True)
         self.send_to(ctx, tab, self.tx["go_on"])
 
     def v_tab_close(self, ctx: Ctx, tab_ref: str) -> None:

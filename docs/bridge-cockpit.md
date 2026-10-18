@@ -986,7 +986,8 @@ whose command returned an undo token is in the history and in the toast with
 
 With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the terminal you work in.
 
-- **On the left** stand the workspaces in the terminal's order, pinned ones first. Each shows its colour, its state, its unread count and, when its folder is another Bridge's clone, that Bridge's name. Below each workspace are its tabs, most urgent first. The quick chats sit in the control workspace (`workplace.control`), the newest six and "all" for the rest.
+- **On top of the left side**, "Waiting for you" lists the tabs that wait for you or need you, the most urgent first (the control tab never), each with its workspace, its question and the answers, see [Answering a tab from here](#answering-a-tab-from-here).
+- **Below it** stand the workspaces in the terminal's order, pinned ones first. Each shows its colour, its state, its unread count and, when its folder is another Bridge's clone, that Bridge's name. Below each workspace are its tabs, most urgent first. The quick chats sit in the control workspace (`workplace.control`), the newest six and "all" for the rest.
 - **Below the workspaces** come the other Bridges on this machine that have no workspace, and the A2A agents.
 - **On the right** is what you picked:
   - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same), with "Write" to open it in its window with the message box and keys;
@@ -1013,7 +1014,16 @@ The other Bridges are the entries in `infra/instances/` that meet four condition
 - they are not `dormant` or `archived`;
 - one of `location.path`, `location.mac_clone` or `location.local_clone` exists as a folder here.
 
-Only the registry and that the folder exists are read, nothing inside the other Bridge (`rules/multi-instance-isolation.md`). This layout writes nothing new: typing into a tab still goes through its window, with the checks it has there.
+Only the registry and that the folder exists are read, nothing inside the other Bridge (`rules/multi-instance-isolation.md`).
+
+#### Answering a tab from here
+
+A tab that waits shows what it asks, read off its screen, so it can be answered without opening it:
+
+- **A dialog** (needs you) shows one button per option it offers, labelled with that option's own words ("Yes", "Yes, allow all edits during this session", "No, keep planning"), and the button presses that option's number. "Yes" is never a bare "press 1" on a choice or a plan approval. A dialog takes no free text from here; "Open tab" goes to the tab. A dialog that could not be read (a driver without `screen`, a screen that reads as nothing) offers "Open tab" and the plain Yes and No.
+- **A tab that waits** with a yes or no question (its last words end with `?`) shows Yes and No, which type those words. Every waiting tab offers "Go on" (not when its result is filed) and a field to type an answer, behind one click in the sidebar.
+- **What a tab asks** is read by the tab poll through the driver's optional verb `screen`: only for the tabs that wait or need you, again only when a tab's state, last line or since-time changed or its question is a minute old, at most four screens and three seconds per poll, the tabs that need you first. A poll without such a tab asks the driver nothing. The question goes out with the tabs (`tabs.tabs[].ask`: text, options, a hash, whether it reads as yes or no, whether something is typed in the tab) and never rebuilds the briefing.
+- **After an answer** the row stays where it stood for one more poll, greyed, with what was answered, or "Moved on" when the tab went on by itself, so a click never lands on the row that slid up into its place. The tab's pane on the right and its window show the same question and buttons.
 
 ### Keyboard
 
@@ -1088,6 +1098,15 @@ nothing a stranger could trigger:
   layout script), besides the read-only quick chat and the A2A shapes of
   section 5; whatever the page does to an agent tab goes through
   `workplace.py` and its terminal driver;
+- an answer to a tab reaches only the question you saw. It carries the hash
+  of that question, the tab's name and the state it was in. Before anything is
+  sent the server polls the tabs again, refuses when the tab is gone, has
+  another name (its ref was given to another tab after a terminal restart) or
+  is in another state, then reads the tab's screen fresh (never the poll's
+  copy) and refuses when the question there has another hash. A text answer is
+  also refused when something is already typed in the tab's prompt, so your
+  words never land on half a sentence. A refusal sends nothing and says so
+  ("The tab moved on before the answer, nothing was sent.");
 - nothing goes out without your click, and an inbox action approved on the
   page still runs only at the next `inbox.py run`, on the machine named in
   `inbox.runner` ([`inbox.md`](inbox.md));

@@ -42,7 +42,7 @@ flowchart LR
 Everything the page does to an agent tab goes through `scripts/workplace.py`
 and the terminal driver configured in `workplace.driver`
 ([`workplace.md`](workplace.md), "Writing a driver"): `workplace.py focus`
-(Go to tab), `key` (Yes, No), `screen` (the large tab view), `close` (Close
+(Go to tab), `key` (Yes, No, a dialog's option), `screen` (the large tab view, what a waiting tab asks), `close` (Close
 tab), `send` (a message, Go on) and `launch` (Do it, Advise me). The server asks
 `workplace.py caps --json` once and then every few minutes
 (`server.py driver_caps`), and a verb in `actions.py NEEDS_CAP` is refused with
@@ -67,7 +67,8 @@ layout now").
 | `scripts/lib/bridge_cockpit/ticker.py` | the news ticker: settings (`cockpit.ticker` plus `ticker.json`), feed fetching and parsing (RSS, RDF, Atom), the cache `ticker-cache.json`, the Haiku editor on its own thread, and `state()`, the `ticker` key of the model and the payload of the SSE event `ticker` |
 | `scripts/lib/bridge_cockpit/net.py` | the one outbound fetcher, `fetch`, for feeds (ticker) and agent cards (agents): a scheme allowlist that also holds for redirects, no redirect into a private network unless the configured address is there, a size cap and a wall-clock deadline per caller |
 | `scripts/lib/bridge_cockpit/details.py` | read-only detail endpoints: a task's STATUS.md, an inbox item |
-| `scripts/lib/bridge_cockpit/tabs.py` | tab poller over `workplace.py status --json` |
+| `scripts/lib/bridge_cockpit/tabs.py` | tab poller over `workplace.py status --json`, and the questions of the waiting tabs (`_refresh_asks`) |
+| `scripts/lib/bridge_cockpit/asks.py` | pure: what a waiting tab asks, read off its screen (`question_of`: text, options, hash, yes or no, draft) |
 | `scripts/lib/bridge_cockpit/server.py` `driver_caps`, `backup_layout` | what the terminal driver serves; the cmux layout backup every `snapshot_minutes` |
 | `scripts/lib/bridge_cockpit/watch.py` | stat-only watcher of `work/` and the relay folder |
 | `scripts/lib/bridge_cockpit/relay.py` | relay records, HMAC signing, heartbeat reading |
@@ -80,6 +81,7 @@ layout now").
 | `scripts/web/views/*.js` | the components, one file per area (header, day, detail, chat, tabs, pages, start page, stage, sessions, check, overlays, small parts, page ids); each reads the store `s`, calls the controller `c` and imports what it uses from the others |
 | `scripts/web/views/ticker.js` | the news ticker: `TickerBand` on the start page and `TickerSettings`, its group on the Settings page, drawn with the page's own `Card`, `Row` and `Switch` from `views/settings.js` |
 | `scripts/web/markdown.js` | the Markdown reader for answers (Chat, Other Bridges): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
+| `scripts/web/views/reply.js` | `AskLine` and `TabReply`: a waiting tab's question and the answers to it (`logic.js replyOptions`), in the sidebar, the tab pane and the tab window |
 | `scripts/web/views/prose.js` | `Prose`: draws what `markdown.js` read as elements, links in a new tab with `noopener noreferrer` |
 | `scripts/web/logic.js` | pure helpers, tested under node (the ticker's status rules are `tickerStatus` and `tickerItems`) |
 | `scripts/web/motion.js` | springs, hits and rail points from the explainer films (`skills/explainer-video/assets/motion.js`), tested under node |

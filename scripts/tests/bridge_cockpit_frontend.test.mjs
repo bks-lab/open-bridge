@@ -3661,3 +3661,106 @@ test('the demo answers the tab screen like the server: a hash, and unchanged wit
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// ---------------------------------------------------------------- what a tab waits for, answered from the page
+
+const ASK_HASH = '0123456789abcdef'
+const askTab = (over = {}) => ({ ref: 'surface:7', name: 'alpha', workspace: 'Ops', state: 'needs-you', waiting: true,
+  is_control: false, filed_by: null, last: '', ask: { text: 'Do you want to proceed?', hash: ASK_HASH, yes_no: true, draft: false,
+    options: [{ n: 1, label: 'Yes' }, { n: 2, label: 'Yes, and do not ask again' }, { n: 3, label: 'No, tell Claude what to do' }] }, ...over })
+const allCaps = { driver: { caps: ['tabs', 'send', 'key', 'focus', 'screen'] } }
+const verbsOf = r => r.buttons.map(b => b.verb)
+
+test('replyOptions gives one button per option for needs-you and no text box', () => {
+  const en = text.TABLES.en
+  const r = logic.replyOptions(askTab(), allCaps, en)
+  assert.equal(r.textBox, false)
+  assert.deepEqual(r.buttons.filter(b => b.verb === 'tab_option').map(b => [b.label, b.args.n]),
+    [['Yes', 1], ['Yes, and do not ask again', 2], ['No, tell Claude what to do', 3]])
+  // "Yes" is never "press 1" on a dialog: no tab_yes beside the options, the tab itself stays one click away
+  assert.deepEqual(verbsOf(r), ['tab_option', 'tab_option', 'tab_option', 'tab_jump'])
+  assert.equal(r.buttons.at(-1).label, en.reply.openTab)
+  assert.equal(new Set(r.buttons.map(b => b.id)).size, r.buttons.length)
+  // a dialog that could not be read: the tab, and today's yes and no
+  const unread = logic.replyOptions(askTab({ ask: null }), allCaps, en)
+  assert.deepEqual(verbsOf(unread), ['tab_jump', 'tab_yes', 'tab_no'])
+  assert.equal(unread.textBox, false)
+})
+
+test('replyOptions gives yes and no only for a yes or no question', () => {
+  const en = text.TABLES.en
+  const waiting = askTab({ ref: 'surface:12', name: 'research', state: 'waiting',
+    ask: { text: 'Should I summarise them?', hash: ASK_HASH, yes_no: true, draft: false, options: [] } })
+  const r = logic.replyOptions(waiting, allCaps, en)
+  assert.deepEqual(verbsOf(r), ['tab_send', 'tab_send', 'tab_go_on'])
+  assert.deepEqual(r.buttons.slice(0, 2).map(b => [b.label, b.args.text]), [[en.reply.yes, en.reply.yesText], [en.reply.no, en.reply.noText]])
+  assert.equal(r.textBox, true)
+  const de = logic.replyOptions(waiting, allCaps, text.TABLES.de)
+  assert.deepEqual(de.buttons.slice(0, 2).map(b => b.args.text), ['Ja', 'Nein'])
+})
+
+test('replyOptions gives go on and a text box for a summary, go on hidden when filed', () => {
+  const en = text.TABLES.en
+  const summary = askTab({ state: 'waiting', ask: { text: 'Done, the tests are green.', hash: ASK_HASH, yes_no: false, draft: false, options: [] } })
+  const r = logic.replyOptions(summary, allCaps, en)
+  assert.deepEqual(verbsOf(r), ['tab_go_on'])
+  assert.equal(r.buttons[0].label, en.reply.goOn)
+  assert.equal(r.textBox, true)
+  const filed = logic.replyOptions({ ...summary, filed_by: 'inbox:x', waiting: false }, allCaps, en)
+  assert.deepEqual(verbsOf(filed), [])
+  assert.equal(filed.textBox, true)
+  // without a question read (no screen right, nothing readable): the same as a summary
+  assert.deepEqual(verbsOf(logic.replyOptions({ ...summary, ask: null }, allCaps, en)), ['tab_go_on'])
+  // the control session answers through its own box, and a tab at work waits for nothing
+  assert.deepEqual(logic.replyOptions({ ...summary, is_control: true }, allCaps, en), { buttons: [], textBox: false })
+  assert.deepEqual(logic.replyOptions({ ...summary, state: 'working' }, allCaps, en), { buttons: [], textBox: false })
+})
+
+test('replyOptions hides key buttons without the key cap and text replies without send', () => {
+  const en = text.TABLES.en
+  const noKey = { driver: { caps: ['tabs', 'send', 'focus'] } }
+  assert.deepEqual(verbsOf(logic.replyOptions(askTab(), noKey, en)), ['tab_jump'])
+  assert.deepEqual(verbsOf(logic.replyOptions(askTab({ ask: null }), noKey, en)), ['tab_jump'])
+  const noSend = { driver: { caps: ['tabs', 'key'] } }
+  const waiting = askTab({ state: 'waiting', ask: { text: 'Go on?', hash: ASK_HASH, yes_no: true, draft: false, options: [] } })
+  assert.deepEqual(logic.replyOptions(waiting, noSend, en), { buttons: [], textBox: false })
+  assert.deepEqual(verbsOf(logic.replyOptions(askTab(), noSend, en)), ['tab_option', 'tab_option', 'tab_option'])
+  // before the driver answered every control shows, as canTab says
+  assert.deepEqual(verbsOf(logic.replyOptions(waiting, { driver: { caps: null } }, en)), ['tab_send', 'tab_send', 'tab_go_on'])
+})
+
+test('replies carry expect, the ask hash and the tab name', () => {
+  const en = text.TABLES.en
+  const options = logic.replyOptions(askTab(), allCaps, en).buttons
+  assert.deepEqual(options[1].args, { tab_ref: 'surface:7', n: 2, seen: ASK_HASH, name: 'alpha' })
+  assert.deepEqual(options.at(-1).args, { tab_ref: 'surface:7' })
+  const waiting = askTab({ state: 'waiting', ask: { text: 'Go on?', hash: ASK_HASH, yes_no: true, draft: false, options: [] } })
+  const [yes, , goOn] = logic.replyOptions(waiting, allCaps, en).buttons
+  assert.deepEqual(yes.args, { tab_ref: 'surface:7', text: en.reply.yesText, expect: 'waiting', seen: ASK_HASH, name: 'alpha' })
+  assert.deepEqual(goOn.args, { tab_ref: 'surface:7', seen: ASK_HASH, name: 'alpha' })
+  assert.deepEqual(logic.replySend(waiting, 'please go on'),
+    { verb: 'tab_send', args: { tab_ref: 'surface:7', text: 'please go on', expect: 'waiting', seen: ASK_HASH, name: 'alpha' } })
+  // no question read: no seen, the rest stays
+  assert.deepEqual(logic.replySend({ ...waiting, ask: null }, 'x').args, { tab_ref: 'surface:7', text: 'x', expect: 'waiting', name: 'alpha' })
+  assert.deepEqual(logic.replyOptions(askTab({ ask: null }), allCaps, en).buttons[1].args, { tab_ref: 'surface:7', name: 'alpha' })
+})
+
+test('pruneAnswered forgets an answer after two minutes and keeps the object when nothing goes', () => {
+  const answered = { 'surface:7': { hash: ASK_HASH, q: 'Yes', ms: 1000 }, 'surface:9': { hash: null, q: 'x', ms: 100000 } }
+  assert.equal(logic.pruneAnswered(answered, 100000), answered)
+  assert.deepEqual(Object.keys(logic.pruneAnswered(answered, 1000 + logic.ANSWERED_KEEP_MS)), ['surface:9'])
+  assert.deepEqual(logic.pruneAnswered(undefined, 5), {})
+})
+
+test('text tables: the reply words of a tab in both languages, with the answer they name', () => {
+  for (const t of Object.values(text.TABLES)) {
+    for (const k of ['asks', 'yes', 'no', 'goOn', 'yesText', 'noText', 'placeholder', 'send', 'movedOn', 'unreadable', 'openTab', 'draft']) {
+      assert.equal(typeof t.reply[k], 'string', k)
+    }
+    assert.match(t.reply.answered('Yes'), /Yes/)
+    assert.equal(typeof t.errors.tab_moved, 'string')
+    assert.equal(typeof t.errors.tab_draft, 'string')
+  }
+  assert.equal(text.TABLES.en.reply.asks, 'Waiting for you')
+  assert.equal(text.TABLES.de.reply.asks, 'Wartet auf dich')
+})

@@ -534,6 +534,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/net.py",                  # the one outbound fetcher: feeds and agent cards
     "scripts/lib/bridge_cockpit/collector.py",
     "scripts/lib/bridge_cockpit/tabs.py",
+    "scripts/lib/bridge_cockpit/asks.py",                 # what a waiting tab asks, read off its screen
+    "scripts/tests/test_bridge_cockpit_asks.py",
     "scripts/lib/bridge_cockpit/actions.py",
     "scripts/lib/bridge_cockpit/relay.py",
     "scripts/lib/bridge_cockpit/watch.py",
@@ -601,6 +603,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/stage.js",
     "scripts/web/views/ticker.js",
     "scripts/web/views/prose.js",
+    "scripts/web/views/reply.js",
     "scripts/web/views/tabs.js",
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D
     "scripts/web/logic.js",

@@ -6,11 +6,12 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
+import { attentionTabs, chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Btn, Dot, Empty, Icon, StateLine } from './parts.js'
+import { AskLine, TabReply } from './reply.js'
 import { useTabScreen } from './tabs.js'
 
 const CHATS_SHOWN = 6
@@ -39,7 +40,7 @@ function LoadChip({ load }) {
 
 function TabItem({ tab, on, c }) {
   const t = T()
-  return html`<${Item} on=${on} cls="room-tab" title=${tab.last || tab.name} onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
+  return html`<${Item} on=${on} cls="room-tab" title=${tab.ask?.text || tab.last || tab.name} onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
     <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
     <span class="room-name">${tab.is_control ? t.controlSession : tab.name}</span>
     <${LoadChip} load=${tab.load} />
@@ -84,6 +85,53 @@ function WorkspaceGroup({ w, s, c, here }) {
   </section>`
 }
 
+/** The tabs waiting for you, and those that left the list at the last poll: such a row stays one poll
+ *  longer where it stood, greyed, so a click never lands on the row that slid up into its place.
+ *  A poll is a new tabs.at_ms; renders in between change nothing of it. [{ tab, left }] */
+function useLeaving(list, atMs) {
+  const mem = useRef({ at: atMs, list, left: [] })
+  const m = mem.current
+  if (atMs !== m.at) {
+    const now = new Set(list.map(x => x.ref))
+    m.left = m.list.map((tab, i) => ({ tab, i })).filter(x => !now.has(x.tab.ref))
+    m.at = atMs
+    m.list = list
+  }
+  const out = list.map(tab => ({ tab, left: false }))
+  for (const { tab, i } of m.left) out.splice(Math.min(i, out.length), 0, { tab, left: true })
+  return out
+}
+
+/** One tab that waits for you: its name and workspace (a click shows it on the right), its question,
+ *  and the answers; a row that left, or was answered here and still shows that question, is greyed
+ *  with what happened instead of buttons */
+function AskRow({ tab, left, s, c }) {
+  const t = T()
+  const answered = s.ui?.answered?.[tab.ref] ?? null
+  const done = left || (answered && answered.hash && answered.hash === tab.ask?.hash)
+  return html`<div class=${`reply-row${done ? ' is-left' : ''}`}>
+    <button type="button" class="reply-head" onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
+      <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
+      <span class="reply-name">${tab.name}</span>
+      <span class="room-meta muted small">${tab.workspace}</span>
+    </button>
+    <${AskLine} tab=${tab} />
+    ${done ? html`<p class="reply-done muted small">${answered ? t.reply.answered(answered.q) : t.reply.movedOn}</p>`
+      : html`<${TabReply} tab=${tab} s=${s} c=${c} compact />`}
+  </div>`
+}
+
+/** "Waiting for you" on top of the sidebar: the tabs that want attention (logic.js attentionTabs) */
+function WaitingGroup({ s, c }) {
+  const t = T()
+  const rows = useLeaving(attentionTabs(s.tabs?.tabs), s.tabs?.at_ms ?? 0)
+  if (!rows.length) return null
+  return html`<section class="reply-group" aria-label=${t.reply.asks}>
+    <h3 class="label-caps room-group">${t.reply.asks}</h3>
+    ${rows.map(({ tab, left }) => html`<${AskRow} key=${tab.ref} tab=${tab} left=${left} s=${s} c=${c} />`)}
+  </section>`
+}
+
 /** The rooms in the order last shown while the pointer or the focus is in the sidebar: a row never moves
  *  away under the hand. Only the order holds; counts and states follow at once. A new room goes last.
  *  A change of the sort mode is the one reorder the hand asked for (its toggle sits in the sidebar), so it
@@ -113,6 +161,7 @@ export function Sidebar({ s, c, rooms, here }) {
   return html`<nav class="panel rooms-side" aria-label=${t.rooms.side}
     onPointerEnter=${order.hold} onPointerLeave=${order.release} onFocusIn=${order.hold}
     onFocusOut=${e => { if (!e.currentTarget.contains(e.relatedTarget)) order.release() }}>
+    <${WaitingGroup} s=${s} c=${c} />
     ${rooms.chats.length ? html`<section class="room-ws"><h3 class="label-caps">${t.rooms.chats}</h3>
       <${Chats} convs=${rooms.chats} s=${s} c=${c} here=${here} /></section>` : null}
     <div class="room-group-head">
@@ -153,6 +202,10 @@ function TabPane({ s, c, tab }) {
         : screen ? t.tabViewLive : t.loading}</span>
       <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
     </header>
+    ${(tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control ? html`<div class="reply-pane">
+      <${AskLine} tab=${tab} />
+      <${TabReply} tab=${tab} s=${s} c=${c} />
+    </div>` : null}
     <div class="tabview-body" ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
       onScroll=${e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}>
       ${lines.length ? lines.map((l, i) => html`<div key=${i} class=${`tl tl-${l.kind}`}>${l.text || ' '}</div>`)

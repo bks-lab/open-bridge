@@ -339,6 +339,125 @@ test('the sidebar order toggle flips between the terminal order and the most urg
   assert.equal(renderSide(on).button(en.rooms.sortUrgency).getAttribute('aria-pressed'), 'true')
 })
 
+// ---------------------------------------------------------------- what a tab waits for, answered from the page
+
+const { TabReply } = views.reply
+const replyRows = el => el.$$('.reply-group .reply-row')
+const replyRow = (el, name) => replyRows(el).find(r => r.$('.reply-name').text() === name) ?? null
+const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+
+test('the sidebar shows Waiting for you with the question and option buttons', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const group = el.$('.reply-group')
+  assert.equal(group.$('h3').text(), en.reply.asks)
+  // the most urgent first, the control tab never; the group stands above the workspaces
+  assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research'])
+  const side = el.$('nav')
+  assert.ok(side.childNodes.indexOf(group) < side.childNodes.indexOf(el.$('section.room-ws')))
+  const alpha = replyRow(el, 'alpha-release')
+  const ask = tabOf(s, 'surface:7').ask
+  assert.match(alpha.$('.reply-ask').text(), /Do you want to make this edit\?/)
+  assert.match(alpha.text(), /Ops/)
+  // one button per option the dialog shows, labelled with it, and the tab one click away; no free text into a dialog
+  for (const o of ask.options) assert.ok(alpha.button(o.label), o.label)
+  assert.ok(alpha.button(en.reply.openTab))
+  assert.equal(alpha.$('textarea'), null)
+  alpha.button(ask.options[1].label).click()
+  assert.deepEqual(c.calls.at(-1).slice(0, 3), ['reply', 'tab_option', { tab_ref: 'surface:7', n: 2, seen: ask.hash, name: 'alpha-release' }])
+  // a yes or no question: yes and no as words, go on, and the answer field behind one click
+  const research = replyRow(el, 'demo-task research')
+  assert.ok(research.button(en.reply.yes) && research.button(en.reply.no) && research.button(en.reply.goOn))
+  assert.equal(research.$('textarea'), null)
+  research.button(en.reply.yes).click()
+  assert.deepEqual(c.calls.at(-1).slice(0, 3), ['reply', 'tab_send', { tab_ref: 'surface:12', text: en.reply.yesText, expect: 'waiting',
+    seen: tabOf(s, 'surface:12').ask.hash, name: 'demo-task research' }])
+  assert.ok(research.button(en.reply.placeholder))
+  // the name opens the tab on the right; the tab's own row in its workspace reads the question as its title
+  research.$('.reply-head').click()
+  assert.deepEqual(c.calls.at(-1), ['pickRoom', { kind: 'tab', id: 'surface:12' }])
+  assert.equal(tabRow(el, 'demo-task research').getAttribute('title'), tabOf(s, 'surface:12').ask.text)
+  // a filed result offers no go on, and a typed draft in the tab is named
+  const report = replyRow(el, 'report-draft')
+  assert.equal(report.button(en.reply.goOn), null)
+  assert.match(report.text(), new RegExp(en.reply.draft))
+})
+
+test('a tab_moved answer keeps the draft and shows the note', async () => {
+  const s = cockpitState(NOW)
+  const tab = tabOf(s, 'surface:12')
+  const sent = []
+  let answer = { refused: true, error: { code: 'tab_moved', message: 'moved', field: null } }
+  const c = new Proxy({}, { get: (_, p) => p === 'reply' ? (...a) => { sent.push(a); return Promise.resolve(answer) }
+    : p === 'then' ? undefined : () => undefined })
+  const el = mount(html`<${TabReply} tab=${tab} s=${s} c=${c} />`)
+  const box = el.$('textarea')
+  box.value = 'yes, all three'
+  box.dispatch('input')
+  await tick()
+  el.button(en.reply.send).click()
+  await tick()
+  assert.deepEqual(sent[0].slice(0, 2), ['tab_send', { tab_ref: 'surface:12', text: 'yes, all three', expect: 'waiting', seen: tab.ask.hash,
+    name: 'demo-task research' }])
+  assert.equal(el.$('.reply-note').text(), en.errors.tab_moved)
+  assert.equal(el.$('textarea').value, 'yes, all three')
+  // a draft in the tab: the same, in its own words
+  answer = { refused: true, error: { code: 'tab_draft', message: 'draft', field: null } }
+  el.button(en.reply.send).click()
+  await tick()
+  assert.equal(el.$('.reply-note').text(), en.errors.tab_draft)
+  assert.equal(el.$('textarea').value, 'yes, all three')
+})
+
+test('a row that left stays greyed for one poll', () => {
+  const s = cockpitState(NOW)
+  const el = renderSide(s)
+  const moved = { ...s, tabs: { ...s.tabs, at_ms: s.tabs.at_ms + 3000,
+    tabs: s.tabs.tabs.map(t => t.ref === 'surface:12' ? { ...t, state: 'working', waiting: false, ask: null } : t) } }
+  renderSide(moved, el)
+  // still where it stood, greyed, with nothing left to press on it
+  assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research'])
+  const row = replyRow(el, 'demo-task research')
+  assert.ok(row.hasClass('is-left'))
+  assert.match(row.text(), new RegExp(en.reply.movedOn))
+  assert.equal(row.button(en.reply.yes), null)
+  // answered from here, it says what the answer was
+  renderSide({ ...moved, ui: { ...moved.ui, answered: { 'surface:12': { hash: tabOf(s, 'surface:12').ask.hash, q: 'Yes' } } } }, el)
+  assert.match(replyRow(el, 'demo-task research').text(), new RegExp(en.reply.answered('Yes')))
+  // the next poll: gone
+  renderSide({ ...moved, tabs: { ...moved.tabs, at_ms: moved.tabs.at_ms + 3000 } }, el)
+  assert.equal(replyRow(el, 'demo-task research'), null)
+  assert.equal(replyRows(el).length, 2)
+})
+
+test('TabView renders the shared TabReply', async () => {
+  const proto = Object.getPrototypeOf(document.body)
+  proto.focus ??= function focus() { document.activeElement = this }
+  proto.querySelector ??= function querySelector(sel) { return this.$(sel) }
+  const s = cockpitState(NOW, { ui: { tabView: 'surface:7' } })
+  const c = recorder()
+  const root = mount(html`<${views.tabs.TabView} s=${s} c=${c} />`)
+  try {
+    const ask = tabOf(s, 'surface:7').ask
+    for (const o of ask.options) assert.ok(root.button(o.label), o.label)
+    // the dialog's own words, never a bare yes and no beside them
+    assert.equal(root.$$('button').filter(b => b.text() === en.btnNo).length, 0)
+    root.button(ask.options[2].label).click()
+    assert.deepEqual(c.calls.at(-1).slice(0, 3), ['reply', 'tab_option', { tab_ref: 'surface:7', n: 3, seen: ask.hash, name: 'alpha-release' }])
+    // a waiting tab: yes, no and go on above the view's own message box, which stays the one box
+    const research = mount(html`<${views.tabs.TabView} s=${cockpitState(NOW, { ui: { tabView: 'surface:12' } })} c=${recorder()} />`)
+    try {
+      assert.ok(research.button(en.reply.yes) && research.button(en.reply.goOn))
+      assert.equal(research.$$('textarea').length, 1)
+    } finally {
+      loadedRooms.render(null, research)
+    }
+  } finally {
+    loadedRooms.render(null, root)
+  }
+})
+
 // ---------------------------------------------------------------- the agent tab column folds away
 
 const { TabsColumn } = views.tabs

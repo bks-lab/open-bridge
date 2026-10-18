@@ -183,6 +183,7 @@ class App:
         self.daybook = DayBook(self.state_dir, clock)     # the start page's day by day (daybook.py)
         self.launches = Launches(self.state_dir, clock)   # every start handed to a tab, for the return channel (returns.py)
         self.graph = Graph(self.root)                       # the inner room's knowledge graph (graph.py)
+        self.asks_enabled = True   # the tab poll reads what the waiting tabs ask (tabs.py, asks.py); tests switch it off
         self.tabs = TabPoller(self)
         self.review = Review(self)
         self.sessions = Sessions(self)
@@ -306,15 +307,16 @@ class App:
             self._caps = (now, caps)
         return list(caps)
 
-    def tab_screen(self, ref: str) -> tuple[str | None, str, str]:
+    def tab_screen(self, ref: str, fresh: bool = False) -> tuple[str | None, str, str]:
         """The last lines of a tab's terminal as (text, hash, error), read through the terminal driver.
         A read is kept for a second per tab, and a second page asking meanwhile waits for the read under
-        way instead of starting its own; a read that failed is not kept."""
+        way instead of starting its own; a read that failed is not kept. `fresh` reads past the kept one
+        (the guard of a reply compares with the screen as it is now)."""
         with self._screen_lock:
             lock = self._screen_locks.setdefault(ref, threading.Lock())
         with lock:
             hit = self._screens.get(ref)
-            if hit and 0 <= self.clock() - hit[0] < SCREEN_CACHE_MS:
+            if hit and not fresh and 0 <= self.clock() - hit[0] < SCREEN_CACHE_MS:
                 return hit[1], hit[2], ""
             run = self.run(self.workplace("screen", ref, "--lines", str(SCREEN_LINES), "--json"), SCREEN_TIMEOUT)
             try:
@@ -381,9 +383,10 @@ class App:
         if compare != self.last_tabs_json:
             self.last_tabs_json = compare
             # A busy tab's last line changes on almost every poll and the model does not show it (the
-            # evening text reads the live tabs when asked): it goes out in the narrow tabs event only.
+            # evening text reads the live tabs when asked): it goes out in the narrow tabs event only. The
+            # question a waiting tab asks (ask) is the same: the tabs event carries it, the model never reads it.
             model_side = json.dumps({**{k: v for k, v in state.items() if k != "at_ms"},
-                                     "tabs": [{k: v for k, v in t.items() if k != "last"} for t in state["tabs"]]},
+                                     "tabs": [{k: v for k, v in t.items() if k not in ("last", "ask")} for t in state["tabs"]]},
                                     sort_keys=True)
             if model_side != self.last_model_tabs_json:
                 self.last_model_tabs_json = model_side

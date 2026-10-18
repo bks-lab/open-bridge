@@ -11,6 +11,7 @@ import { StartControl } from './header.js'
 import { ASK_MAX, TAB_MSG_MAX } from './nav.js'
 import { useFocusOnOpen } from './overlays.js'
 import { Btn, Chip, Empty, StateLine } from './parts.js'
+import { TabReply } from './reply.js'
 
 // ---------------------------------------------------------------- agent tabs
 
@@ -109,12 +110,7 @@ export function TabView({ s, c }) {
           : html`<p class="muted">${screen ? t.tabViewEmpty : t.loading}</p>`}
       </div>` : html`<div></div>`}
       <footer class="tabview-foot">
-        ${state === 'needs-you' && canTab(s, 'key') ? html`<div class="btn-row">
-          <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: ref })}>${t.btnYes}<//>
-          <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: ref })}>${t.btnNo}<//>
-        </div>` : null}
-        ${state === 'waiting' && tab && !tab.filed_by && !tab.is_control ? html`<div class="btn-row">
-          <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_go_on', { tab_ref: ref })}>${t.btnGoOn}<//></div>` : null}
+        ${tab ? html`<${TabReply} tab=${tab} s=${s} c=${c} bare />` : null}
         <${SendBox} id="tabview-input" label=${t.msgPlaceholder} value=${text} setValue=${setText} onSend=${send} busy=${busy}
           max=${isControl ? ASK_MAX : TAB_MSG_MAX} placeholder=${isControl ? t.askPlaceholder : t.tabViewPlaceholder} />
       </footer>

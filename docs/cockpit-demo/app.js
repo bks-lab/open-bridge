@@ -14,7 +14,7 @@ import {
   CONN_GRACE_MS, DAY, pushNoteState, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
-  applyQuickLive, quickLiveSnapshot, whenShown,
+  applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -137,6 +137,7 @@ const store = createStore({
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
     // the order of the workspaces in the chat as cmux: the terminal's (default) or the most urgent first; kept in this browser
     roomsSort: load('bridge-cockpit.roomsSort', 'terminal') === 'urgency' ? 'urgency' : 'terminal',
+    answered: {},   // per tab ref the answer the page sent last: { hash, q, ms } (views/reply.js)
     tickerPaused: load('bridge-cockpit.tickerPaused', '0') === '1', tickerRead: loadTickerRead(), tickerSince: tickerSince(), quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
@@ -275,7 +276,7 @@ const handlers = {
   tabs(tabs) {
     const prev = store.get()
     if (prev.model) noteFeed(feedEvents(prev.model, prev.model, prev.tabs?.tabs, tabs?.tabs, Date.now()))
-    store.set(s => ({ ...s, tabs }))
+    store.set(s => ({ ...s, tabs, ui: { ...s.ui, answered: pruneAnswered(s.ui.answered, Date.now()) } }))
   },
   quick(q) {
     const before = store.get().quick?.convs ?? []
@@ -391,6 +392,9 @@ function rowIndex() {
   return indexRows(store.get().model)
 }
 
+// the refusal of an action, by the args object it was sent with, for reply() to show where it was asked
+const refusals = new WeakMap()
+
 async function act(verb, args = {}) {
   // a bulk leaves out the rows already in flight and says so, and marks each of the others busy (logic.js planBusy)
   const p = planBusy(verb, args, store.get().ui.busy)
@@ -404,6 +408,7 @@ async function act(verb, args = {}) {
       // a refusal after a step that wrote (a row filed and hidden, then the start refused) still offers its undo
       if (res.data?.undo?.length) pushNote({ text: errorText(res.error, T()), tone: 'bad', action: 'undo', undo: res.data.undo }, { linger: 10000 })
       else failNote(res)
+      if (res.error) refusals.set(args, res.error)
       return null
     }
     const r = res.data
@@ -420,6 +425,14 @@ async function act(verb, args = {}) {
     if (r.settled?.length) setUi(ui => ({ picked: ui.picked.filter(k => !r.settled.includes(k)), rvPicked: ui.rvPicked.filter(k => !r.settled.includes(k)) }))
     return r
   }, { rows: p.rows, refuse: p.refuse })
+}
+
+/** An answer to a tab (views/reply.js): act(), and a refusal comes back as { refused, error } as well, so
+ *  the reply shows it beside the field and keeps what was typed */
+async function reply(verb, args) {
+  const sent = { ...args }
+  const r = await act(verb, sent)
+  return r ?? (refusals.has(sent) ? { refused: true, error: refusals.get(sent) } : null)
 }
 
 /** Mark `key` busy while fn runs, and clear it however fn ends; a row action already busy runs nothing and says so (logic.js) */
@@ -523,6 +536,7 @@ function clearRoutes(launch) {
 
 const ctl = {
   act,
+  reply,
   ask,
   copy,
   dismissToast,
@@ -680,6 +694,8 @@ const ctl = {
     save('bridge-cockpit.rail', hidden ? 'hidden' : 'shown')
     setUi({ railHidden: hidden, drawer: hidden ? store.get().ui.drawer : null })
   },
+  // an answer that went out to a tab from the page: its row says so until the tab moved on (views/reply.js)
+  markAnswered: (ref, { hash, q }) => setUi(ui => ({ answered: { ...pruneAnswered(ui.answered, Date.now()), [ref]: { hash, q, ms: Date.now() } } })),
   toggleRoomsSort: () => {
     const sort = store.get().ui.roomsSort === 'urgency' ? 'terminal' : 'urgency'
     save('bridge-cockpit.roomsSort', sort)

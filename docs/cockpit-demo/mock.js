@@ -476,6 +476,14 @@ export function buildState(now = Date.now(), opts = {}) {
     },
   ]
 
+  // what the waiting tabs ask, as the tab poll reads it off their screens (asks.py): a dialog with three
+  // options, a yes or no question, a summary with a draft typed in the tab; every other tab asks nothing
+  const asks = {
+    'surface:7': { text: 'Edit file RELEASE_NOTES.md\nDo you want to make this edit?', hash: '7a1f0c3e9b2d4a68', yes_no: true, draft: false,
+      options: [{ n: 1, label: 'Yes' }, { n: 2, label: 'Yes, allow all edits during this session' }, { n: 3, label: 'No, and tell Claude what to do differently' }] },
+    'surface:12': { text: 'I found three sources.\nShould I summarise them in team.md?', hash: 'c4e8b1d27f3a9056', yes_no: true, draft: false, options: [] },
+    'surface:10': { text: 'Draft written to the inbox as a result.', hash: '5d0b7e2a8c1f4936', yes_no: false, draft: true, options: [] },
+  }
   const tabs = empty ? [] : [
     { ref: 'surface:3', ws_ref: 'workspace:1', name: 'Control', workspace: 'Control', state: 'waiting', last: '', slug: null, item: null,
       team: null, role: null, live: true, waiting: false, is_control: true, filed_by: null, since_ms: now - 15 * MIN, long: null },
@@ -495,7 +503,7 @@ export function buildState(now = Date.now(), opts = {}) {
       slug: null, item: null, team: null, role: null, live: true, waiting: false, is_control: false, filed_by: null, since_ms: now - 6 * MIN, long: null },
     { ref: 'surface:11', ws_ref: 'workspace:4', name: 'zsh', workspace: 'Docs', state: 'shell', last: '', slug: null, item: null,
       team: null, role: null, live: false, waiting: false, is_control: false, filed_by: null, since_ms: now - 140 * MIN, long: null },
-  ]
+  ].map(t => ({ ...t, ask: asks[t.ref] ?? null }))
 
   const relayOnline = !opts.offline
   return localize({
@@ -1010,6 +1018,19 @@ export function createMockTransport(opts = {}) {
         const result = { ok: true, verb, note: `Mock: ${verb} ${keys.join(', ') || args.tab_ref || ''}`.trim(), steps: [], settled: [],
           reload: 'none', jump: null, relay: null, confirm: null }
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
+        // an answer to a tab: refused like the server when the question it names is no longer on screen
+        // (the third option of the dialog stands for that here) or a draft is typed in the tab
+        if (['tab_send', 'tab_option', 'tab_yes', 'tab_no', 'tab_go_on'].includes(verb)) {
+          const tab = state.tabs.tabs.find(t => t.ref === args.tab_ref)
+          if (!tab || (args.seen && args.seen !== tab.ask?.hash) || (verb === 'tab_option' && args.n === 3)) {
+            return fail(409, 'tab_moved', 'The tab moved on before the answer, nothing was sent.')
+          }
+          if ((verb === 'tab_send' || verb === 'tab_go_on') && tab.ask?.draft) {
+            return fail(409, 'tab_draft', 'Something is typed in that tab, nothing was sent.')
+          }
+          const said = verb === 'tab_option' ? tab.ask?.options.find(o => o.n === args.n)?.label : verb === 'tab_send' ? args.text : verb
+          result.note = `Mock: ${tab.name}: ${said}`
+        }
         if (['drop', 'done', 'later', 'hide', 'task_close', 'settle'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
           result.settled = keys
           remember(verb, keys)

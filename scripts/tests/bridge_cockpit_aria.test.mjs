@@ -126,3 +126,34 @@ test('menu: a pick closes it and the focus returns to its button instead of fall
   assert.deepEqual(c.calls.at(-1), ['act', 'row_action', { page: 'p', section: 'x', index: 0, action: 'follow' }])
   assert.ok(document.activeElement === el.$('button'))
 })
+
+test('reply buttons and the text field have accessible names', async () => {
+  const reply = await load('views/reply.js')
+  const s = cockpitState(NOW)
+  const named = b => (b.textContent.trim() || b.getAttribute('aria-label') || '').length > 0
+  for (const ref of ['surface:7', 'surface:12', 'surface:10']) {
+    const tab = s.tabs.tabs.find(t => t.ref === ref)
+    for (const compact of [false, true]) {
+      const el = mountOwn(html`<${reply.TabReply} tab=${tab} s=${s} c=${recorder()} compact=${compact} />`)
+      await settle()
+      const buttons = el.$$('button')
+      assert.ok(buttons.length > 0, ref)
+      assert.ok(buttons.every(named), `${ref}: a button without a name`)
+      for (const box of el.$$('textarea')) {
+        const id = box.getAttribute('id')
+        assert.ok(id && el.$$('label').some(l => l.getAttribute('for') === id && l.textContent.trim()), `${ref}: the field has no label`)
+      }
+      // the folded field opens on a button that says it opens something
+      const opener = el.$$('button').find(b => b.getAttribute('aria-expanded') !== null)
+      if (compact && ref !== 'surface:7') {
+        assert.ok(opener, `${ref}: no opener`)
+        assert.equal(opener.getAttribute('aria-expanded'), 'false')
+        opener.click()
+        await settle()
+        assert.equal(el.$$('textarea').length, 1)
+        assert.ok(document.activeElement === el.$('textarea'), 'the opened field takes the focus')
+      }
+      render(null, el)
+    }
+  }
+})
