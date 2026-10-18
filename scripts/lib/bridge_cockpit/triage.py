@@ -91,13 +91,14 @@ class Triage:
                 return False
             self.running = {"started_ms": int(self.app.clock()), "why": why}
             self.error = None
-        threading.Thread(target=self._run, args=(fresh,), name="bridge-cockpit-triage", daemon=True).start()
+        threading.Thread(target=self._run, args=(fresh, why), name="bridge-cockpit-triage", daemon=True).start()
         self.app.broadcast("triage", self.state())
         return True
 
-    def _run(self, fresh: bool) -> None:
+    def _run(self, fresh: bool, why: str = "click") -> None:
         app = self.app
         tx = app.tx
+        result = None
         try:
             run = app.run(self.argv(fresh), TIMEOUT)
             result = None
@@ -124,7 +125,16 @@ class Triage:
         finally:
             with self.lock:
                 self.running = None
+            # titles go to the small model: the line says how many items, which model and whether it answered
+            done = isinstance(result, dict)
+            self.audit(why, fresh=fresh, rows=len(result.get("items") or []) if done else 0,
+                       model=str(result.get("model") or "").replace("claude-", "") or "-" if done else "-", ok=done)
             app.broadcast("triage", self.state())
+
+    def audit(self, why: str, **fields: Any) -> None:
+        actions = getattr(self.app, "actions", None)
+        if actions is not None:
+            actions.audit_line("triage", why, **fields)
 
     # ------------------------------------------------------------ once a day by itself
 
@@ -160,4 +170,6 @@ class Triage:
         if not isinstance(fresh, bool):
             raise ActionError(400, "invalid_argument", "fresh must be true or false", "fresh")
         started = self.start(fresh=fresh)
+        if not started:
+            self.audit("click", fresh=fresh, started=False)     # a run is on: this click sent nothing
         handler.send_json(202 if started else 409, {"ok": started, "triage": self.state()})

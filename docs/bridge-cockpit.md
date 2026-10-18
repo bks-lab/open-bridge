@@ -1065,8 +1065,14 @@ nothing a stranger could trigger:
   `inbox.runner` ([`inbox.md`](inbox.md));
 - the server collects with `--no-save`: the page never moves the "since last
   time" baseline of your text briefing;
-- every write action leaves one line in `.bridge/cockpit/audit.log` (time, verb,
-  rows, exit codes), never a text and never the key;
+- every POST except `/api/reload` leaves one line in `.bridge/cockpit/audit.log`,
+  never a text and never the key: a write action through `/api/action` (time,
+  verb, rows, exit codes), a question through `/api/ask` (`ask`, kind, `via`,
+  relay or conversation id, character count), `/api/route` (`route`, number of
+  rows, judge), `/api/jev/run` and `/api/jev/rank` (`jev_run`, `jev_rank`,
+  requests, rows and model sent to Jev) and a triage run (`triage`, click or
+  daily, number of items, model; a click while one runs says `started=false`).
+  Read-only verbs and requests refused before anything happened leave none;
 - a question for Claude carries a signature (HMAC-SHA256) made with
   `relay.key`, which lives outside the Bridge in a folder only you can open
   (`~/.local/state/bridge-cockpit/`, or `$BRIDGE_COCKPIT_KEY_DIR`). The session
@@ -1216,7 +1222,7 @@ Everything lives under `.bridge/cockpit/` in the Bridge root, which git ignores:
 | `token` | the key, kept across restarts until `new-token` (readable by you only) |
 | `server.json` | the running server: pid, port, key (readable by you only) |
 | `server.log` | errors, never a key, cookie or request body |
-| `audit.log` | one line per write action |
+| `audit.log` | one line per write action, question, route, Jev request and triage run |
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) |
 | `state.json` | rows hidden on the page, team runs started from the page |
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives |

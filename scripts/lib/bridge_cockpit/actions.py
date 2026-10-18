@@ -562,11 +562,18 @@ class Actions:
                                      for x in ctx.history if x.get("undo")]
 
     def audit(self, ctx: Ctx) -> None:
-        now = dt.datetime.fromtimestamp(self.app.clock() / 1000).isoformat(timespec="seconds")
         exits = ",".join(str(s["exit"]) for s in ctx.steps) or "-"
         ok = all(s["ok"] for s in ctx.steps)
-        subject = ctx.subject.replace("\n", " ")[:600] or "-"
-        append_log(self.app.state_dir / "audit.log", f"{now} {ctx.verb} {subject} exits={exits} ok={str(ok).lower()}")
+        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok)
+
+    def audit_line(self, verb: str, subject: str = "", **fields: Any) -> None:
+        """One line in audit.log: time, verb, subject, then key=value. The one writer of that file, for
+        /api/action as for ask, route, jev and triage; callers pass ids and counts, never a text or a key."""
+        now = dt.datetime.fromtimestamp(self.app.clock() / 1000).isoformat(timespec="seconds")
+        flat = lambda v: str(v).lower() if isinstance(v, bool) else re.sub(r"\s+", "_", str(v))[:120] or "-"  # noqa: E731
+        subject = re.sub(r"\s+", " ", subject).strip()[:600].replace(" ", "_") or "-"
+        tail = "".join(f" {k}={flat(v)}" for k, v in fields.items())
+        append_log(self.app.state_dir / "audit.log", f"{now} {verb} {subject}{tail}")
 
     def finish(self, ctx: Ctx) -> dict:
         app = self.app
@@ -1708,9 +1715,11 @@ class Actions:
                 raise ActionError(409, "stale_row", "the conversation is gone", "conv")
             except RuntimeError as exc:
                 raise ActionError(409, "not_applicable", str(exc), "conv")
+            self.audit_line("ask", kind, via="quick", conv=conv_id, model=qmodel, chars=len(prompt))
             return 202, {"ok": True, "conv": conv_id}
         ctx = Ctx(self, "ask")
         record, online = self.ask_relay(ctx, kind, prompt)
+        self.audit_line("ask", kind, via="control", id=record.get("id") or "-", chars=len(prompt), online=online)
         app.note(" · ".join(ctx.notes), "info" if online else "warn")
         if online:
             return 202, {"ok": True, "record": record}

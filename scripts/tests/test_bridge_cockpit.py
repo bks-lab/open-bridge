@@ -2038,6 +2038,66 @@ def test_audit_line_without_texts(world):
     assert "confidential" not in log and "secret" not in log and world.app.token not in log
 
 
+AUDIT_CFG = ("cockpit:\n  enabled: true\n  language: en\n  relay: true\n  launch_model:\n    enabled: true\n"
+             "    auto: true\n    router: haiku\nworkplace:\n  control:\n    name: Control\n"
+             "integrations:\n  typesafe:\n    enabled: true\n")
+
+
+def test_every_post_path_but_reload_leaves_exactly_one_audit_line_without_texts(tmp_path, monkeypatch):
+    """A prompt to the control session, a quick question, a route, a Jev rating or order and a triage run all
+    send something on; each POST leaves one line in audit.log, with counts and ids, never a text or a key."""
+    import inspect
+    from lib.bridge_cockpit import jev, server
+    marker, secret = "MARKER-PROMPT-7f3a", "JEVKEY-0123456789abcdef"
+    monkeypatch.setattr(jev, "resolve_key", lambda *a, **k: secret)
+    monkeypatch.setattr(jev, "call_api", lambda payload, key: {"answers": {}, "model": payload["model"]})
+    monkeypatch.setattr(jev, "_work_page", lambda app, page_id: ({}, [{"id": "s", "title": "Work", "items": [
+        {"title": f"Row {marker}", "task": "demo-task"}]}]) if page_id == "work" else None)
+    w = World(tmp_path, config=AUDIT_CFG)
+    try:
+        heartbeat(w, "session-control01", "CTRL-UUID-0001")
+        w.runner.handlers["claude.p"] = lambda argv: claude_answer('[{"id": "k0", "level": 1, "why": "small"}]', 0.001)
+        w.runner.handlers["triage.run"] = lambda argv: ok({"items": [{"key": "task:demo-task"}], "model": "claude-haiku-5-5",
+                                                          "counts": {}})
+        log = w.state / "audit.log"
+        cases = [
+            ("/api/action", {"verb": "note", "args": {"key": "task:other-task", "text": marker}}, "note"),
+            ("/api/ask", {"kind": "free", "args": {"text": marker}}, "ask"),
+            ("/api/ask", {"kind": "free", "args": {"text": marker}, "via": "quick"}, "ask"),
+            ("/api/route", {"keys": ["task:other-task"]}, "route"),
+            ("/api/jev/run", {"force": True}, "jev_run"),
+            ("/api/jev/rank", {"page": "work", "force": True}, "jev_rank"),
+            ("/api/triage/run", {"fresh": True}, "triage"),
+        ]
+        # every POST path the server knows is in the list above, so a new endpoint cannot skip its line
+        known = set(re.findall(r'path == "(/api/[a-z/]+)"', inspect.getsource(server.Handler.post)))
+        known |= {p for p in re.findall(r'"(/api/jev/[a-z]+)"', inspect.getsource(jev.handle_post))}
+        assert known - {"/api/reload"} == {path for path, _, _ in cases}
+        for path, body, verb in cases:
+            before = log.read_text().splitlines() if log.exists() else []
+            status, _, data = w.post(path, body)
+            assert status in (200, 202), (path, data)
+            deadline = time.monotonic() + 5
+            while (not log.exists() or len(log.read_text().splitlines()) == len(before)) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            time.sleep(0.05)
+            new = log.read_text().splitlines()[len(before):]
+            assert len(new) == 1, (path, new)
+            assert new[0].split()[1] == verb, (path, new)
+        wait_quick(w)
+        text = log.read_text()
+        assert marker not in text and secret not in text
+        assert w.app.token not in text and w.app.csrf not in text
+        ask_control, ask_quick = text.splitlines()[1:3]
+        assert "via=control" in ask_control and f"chars={len(marker)}" in ask_control and "id=" in ask_control
+        assert "via=quick" in ask_quick and "conv=q" in ask_quick
+        assert "rows=1" in text.splitlines()[3] and "judge=haiku" in text.splitlines()[3]
+        assert f"model={jev.MODEL}" in text.splitlines()[4] and "rows=" in text.splitlines()[4]
+        assert "rows=1" in text.splitlines()[6] and "model=haiku-5-5" in text.splitlines()[6]
+    finally:
+        w.close()
+
+
 def test_write_verbs_are_serialized(world):
     order = []
     gate = threading.Event()

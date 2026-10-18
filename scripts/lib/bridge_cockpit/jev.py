@@ -350,11 +350,25 @@ def handle_post(handler, app, path: str, body: dict) -> None:
         handler.send_json(404, {"ok": False, "error": {"code": "jev_off", "message":
                                 "Jev is not switched on: integrations.typesafe.enabled in bridge-config.yaml"}})
         return
+    sent = {"calls": 0, "rows": 0, "model": getattr(app.cfg, "jev_model", None) or MODEL}
+
+    def counted(payload: dict, key: str) -> dict:
+        # what really leaves the machine, for the audit line: requests, rows, model
+        sent["calls"] += 1
+        sent["rows"] += sum(1 for q in payload.get("questions") or {} if q.endswith(".urgency"))
+        sent["model"] = payload.get("model") or sent["model"]
+        return call_api(payload, key)
+
+    verb = "jev_rank" if path == "/api/jev/rank" else "jev_run"
     try:
         do = rank if path == "/api/jev/rank" else run
-        handler.send_json(200, do(app, body, key=lambda: resolve_key(ref=app.cfg.jev_key_ref)))
+        handler.send_json(200, do(app, body, call=counted, key=lambda: resolve_key(ref=app.cfg.jev_key_ref)))
     except JevError as e:
         handler.send_json(e.status, {"ok": False, "error": {"code": e.code, "message": e.message}})
+        if e.status in (400, 404):
+            return                      # refused before anything left: no line
+    page = body.get("page") if isinstance(body.get("page"), str) else "-"
+    app.actions.audit_line(verb, page[:80] if verb == "jev_rank" else "-", **sent)
 
 
 # ------------------------------------------------------------------ order of a work page

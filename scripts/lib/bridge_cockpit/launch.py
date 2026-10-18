@@ -225,7 +225,10 @@ class LaunchModel:
                 or not all(isinstance(k, str) and ROW_KEY_RE.match(k) for k in keys) or len(set(keys)) != len(keys)):
             raise LaunchError(400, "invalid_argument", f"keys must be a list of 1 to {mr.MAX_ITEMS} distinct row keys", "keys")
         keyed = list(zip(keys, (e["row"] for e in self.app.actions.entries(keys))))
-        return {"ok": True, "routes": self.route_rows(keyed)}
+        routes = self.route_rows(keyed)
+        # titles of rows no cache knows go to the judge: the line says how many rows and to which judge
+        self.app.actions.audit_line("route", "-", rows=len(keys), judge=self.router(s))
+        return {"ok": True, "routes": routes}
 
     # ------------------------------------------------------------ one start
 
