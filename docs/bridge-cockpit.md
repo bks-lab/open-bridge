@@ -1027,7 +1027,7 @@ The audit line names the tab or workspace ref only, never the name. With the wor
 
 **Organize with AI.** "Organize with AI" in the head of the sidebar (shown when the driver renames tabs) asks the model once for a tidier order: shorter names for tabs and workspaces, which tab belongs in which workspace, a colour and a one-line description per workspace. It is one call without tools, settings or session, Haiku unless `workflow/ai-services/cockpit-organize.yaml` picks another Claude model (Codex is not offered). The proposal comes back grouped by workspace, each item with its old value struck through, the new one and why; nothing is ticked, and nothing changes until you tick items and press "Apply". Afterwards it lists what was applied, what was skipped because it changed meanwhile, and what failed.
 
-- **This Bridge only.** The model sees only the workspaces whose folder lies in this Bridge or in a repo it registers (`ecosystem*.yaml`), by the longest matching folder, so a workspace in another Bridge's clone stays out, and only their tabs; never the control session or its workspace. It reads titles, task slugs, states, 90 characters of a tab's last line, 200 of its question and the last two folder names, all scrubbed: no screen, no full path, no key.
+- **This Bridge only.** The model sees only the workspaces whose folder lies in this Bridge or in a repo it registers (`ecosystem*.yaml`), by the longest matching folder, so a workspace in another Bridge's clone stays out, and only their tabs; never the control session or its workspace. It reads titles, task slugs, states, 90 characters of a tab's last line, 200 of its question and the last two folder names, all scrubbed: no screen, no full path (a home folder in a name or a line is shown as `~`), no key.
 - **Left alone.** Tabs of a task, an inbox item or a team role keep their names and their places (the plan moves them back), configured workspaces (`workplace.workspaces`) keep name, colour and description, a name that is managed or in use is never proposed, an agent tab whose state is read off its title glyph is not renamed, and the last tab of a workspace is never moved. Items the driver cannot carry out (`move_tab`, `set_color`, `set_description` are optional verbs; tmux has no colours or descriptions) are not offered. Reordering workspaces is not part of it.
 - One proposal at a time, kept for 15 minutes in memory; the audit log gets counts only.
 
@@ -1131,8 +1131,8 @@ nothing a stranger could trigger:
   workspace are counted again before each, so the last tab of a workspace never
   leaves it. Each item goes through its own `workplace.py` command (live refs
   only, the driver's verb checked again), outside the write lock so other
-  actions are not held up, within two minutes for the whole apply. Nothing is
-  closed;
+  actions are not held up, within two minutes for the whole apply. One apply
+  runs at a time; a second one meanwhile is refused. Nothing is closed;
 - nothing goes out without your click, and an inbox action approved on the
   page still runs only at the next `inbox.py run`, on the machine named in
   `inbox.runner` ([`inbox.md`](inbox.md));

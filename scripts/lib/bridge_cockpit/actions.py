@@ -1616,8 +1616,7 @@ class Actions:
             raise ActionError(409, "organize_running", tx["organize_running"])
         try:
             app.tabs.poll(wait=True, asks=False)
-            app.tabs.read_workspaces()
-            snap = og.gather(app)
+            snap = og.gather(app, app.tabs.read_workspaces())
             if not snap["workspaces"]:
                 raise ActionError(409, "organize_nothing", tx["organize_nothing"])
             system, text = og.prompt(snap, app.cfg.language)
@@ -1639,14 +1638,24 @@ class Actions:
         from, in a safe order (moves, recounting the last tab before each), each through its workplace
         command with the cap checked again. The driver calls run without the write lock; the whole apply
         has APPLY_BUDGET_S. Nothing is closed, nothing unticked runs."""
-        import time
-        app, tx = self.app, self.tx
+        tx = self.tx
         prop = self.proposals.get(proposal)
         if prop is None:
             raise ActionError(409, "stale_proposal", tx["organize_stale"], "proposal")
         by_id = {i["id"]: i for i in prop["items"]}
         if any(x not in by_id for x in items):
             raise bad_arg("items", "an item is not in this proposal")
+        if not self.proposals.begin_apply():
+            raise ActionError(409, "organize_running", tx["organize_running"])
+        try:
+            self.organize_apply(ctx, by_id, items)
+        finally:
+            self.proposals.end_apply()
+
+    def organize_apply(self, ctx: Ctx, by_id: dict, items: list[str]) -> None:
+        """v_organize_apply while it is the only apply running"""
+        import time
+        app, tx = self.app, self.tx
         with ctx.unlocked():
             app.tabs.poll(wait=True, asks=False)
             listed = app.tabs.read_workspaces()

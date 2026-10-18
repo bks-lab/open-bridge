@@ -835,6 +835,17 @@ test('the organize view shows the scope, from and to with a checkbox per item an
   assert.ok(done.text().includes('cmux refused'))
 })
 
+test('the organize result says in words why an item failed or was skipped, never a code', () => {
+  const proposal = { id: 'o0123456789', at_ms: NOW, scope: 3, items: ORG_ITEMS }
+  const result = { applied: [], skipped: [{ id: 'tab_title:surface:9', why: 'last_tab' }],
+    failed: [{ id: 'ws_color:workspace:2', error: 'timeout' }, { id: 'ws_title:workspace:4', error: 'driver_cannot' }] }
+  const el = mount(html`<${OrganizeView} s=${orgState({ busy: false, proposal, ticks: {}, result })} c=${recorder()} />`)
+  const text = el.text()
+  for (const words of [en.organize.errors.timeout, en.organize.errors.driver_cannot, en.organize.why.last_tab]) assert.ok(text.includes(words), words)
+  assert.ok(!/: (timeout|driver_cannot)\b/.test(text))
+  assert.ok(text.includes(en.organize.skippedAny(1)))
+})
+
 test('the sidebar offers Organize with AI with the rename cap and keeps it off while it runs', () => {
   const c = recorder()
   const s = cockpitState(NOW)

@@ -57,13 +57,15 @@ function Result({ result, byId }) {
   const t = T()
   const what = id => { const it = byId.get(id); return it ? `${t.organize.kinds[it.kind] ?? it.kind}: ${it.subject}` : id }
   const why = x => t.organize.why[x.why] ?? x.why
+  const error = x => t.organize.errors[x.error] ?? x.error
+  const allChanged = result.skipped.every(x => x.why === 'changed')
   return html`<div class="org-result" role="status">
     <p class="small"><strong>${t.organize.applied(result.applied.length)}</strong></p>
     ${result.applied.length ? html`<ul class="org-list small">${result.applied.map(id => html`<li key=${id}>${what(id)}</li>`)}</ul>` : null}
-    ${result.skipped.length ? html`<p class="small">${t.organize.skipped(result.skipped.length)}</p>
+    ${result.skipped.length ? html`<p class="small">${(allChanged ? t.organize.skipped : t.organize.skippedAny)(result.skipped.length)}</p>
       <ul class="org-list small muted">${result.skipped.map(x => html`<li key=${x.id}>${what(x.id)} (${why(x)})</li>`)}</ul>` : null}
     ${result.failed.length ? html`<p class="small">${t.organize.failed(result.failed.length)}</p>
-      <ul class="org-list small">${result.failed.map(x => html`<li key=${x.id}>${what(x.id)}: ${x.error}</li>`)}</ul>` : null}
+      <ul class="org-list small">${result.failed.map(x => html`<li key=${x.id}>${what(x.id)}: ${error(x)}</li>`)}</ul>` : null}
   </div>`
 }
 

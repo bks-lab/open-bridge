@@ -5601,7 +5601,7 @@ ORG_CAPS = [*RENAME_CAPS, "move_tab", "set_color", "set_description"]
 CLAUDE = "/fake/bin/claude"
 
 
-def organize_world(tmp_path, caps=ORG_CAPS):
+def organize_world(tmp_path, caps=ORG_CAPS, layout="workspaces"):
     """A Bridge with workspaces of its own (its folder, a sub folder, a repo it registers), one of a sibling
     Bridge and one far away; Ops is configured, Control is the control workspace"""
     base = tmp_path / "base"
@@ -5610,7 +5610,7 @@ def organize_world(tmp_path, caps=ORG_CAPS):
     repo.mkdir(parents=True)
     sibling = tmp_path / "other-bridge"
     sibling.mkdir()
-    w = World(base, config="cockpit:\n  enabled: true\n  language: en\n  relay: true\n  chat_layout: workspaces\n"
+    w = World(base, config=f"cockpit:\n  enabled: true\n  language: en\n  relay: true\n  chat_layout: {layout}\n"
                            "workplace:\n  control:\n    name: Control\n"
                            "  workspaces:\n    - {name: Ops, aliases: [operations]}\n")
     (w.root / "ecosystem.yaml").write_text(f"local_root: {tmp_path / 'repos'}\nrepos:\n  app:\n    github: example/app\n",
@@ -6017,3 +6017,58 @@ def test_the_organize_prompt_carries_no_token_and_no_full_home_paths(org, monkey
     assert all(not x["cwd"].startswith("/") for x in data["workspaces"])
     tab = next(t for t in data["tabs"] if t["ref"] == "surface:11")
     assert len(tab["last"]) <= 90
+
+
+def test_the_organize_prompt_shows_home_paths_in_names_and_lines_as_tilde(org, monkeypatch):
+    home = str(org.root.parent)
+    monkeypatch.setenv("HOME", home)
+    org.org["tabs"] = [dict(t, name=f"me@host: {home}/Developer/app", last=f"cd {home}/Developer/app && make")
+                       if t["ref"] == "surface:11" else t for t in org.org["tabs"]]
+    org.org["workspaces"] = [dict(x, title=f"{home}/notes", description=f"from {home}/notes")
+                             if x["ref"] == "workspace:6" else x for x in org.org["workspaces"]]
+    org.app.tabs.poll()
+    org.act("organize_propose")
+    blob = "\n".join(org.runner.of("claude.p")[0])
+    assert home not in blob
+    data = org_data(org)
+    tab = next(t for t in data["tabs"] if t["ref"] == "surface:11")
+    assert tab["title"] == "me@host: ~/Developer/app" and tab["last"] == "cd ~/Developer/app && make"
+    ws = next(x for x in data["workspaces"] if x["ref"] == "workspace:6")
+    assert ws["title"] == "~/notes" and ws["description"] == "from ~/notes"
+
+
+def test_organize_reads_the_workspaces_itself_also_without_the_workspaces_layout(tmp_path):
+    w = organize_world(tmp_path, layout="classic")
+    try:
+        assert w.app.tabs.workspace_list() is None
+        w.act("organize_propose")
+        assert [x["ref"] for x in org_data(w)["workspaces"]] == ["workspace:2", "workspace:5", "workspace:6"]
+    finally:
+        w.close()
+
+
+def test_a_second_organize_apply_while_one_runs_is_organize_running(org):
+    prop = full_proposal(org)
+    entered, gate = threading.Event(), threading.Event()
+
+    def slow(argv):
+        entered.set()
+        gate.wait(5)
+        return ok("moved")
+    org.runner.handlers["workplace.move-tab"] = slow
+    first: dict = {}
+    t = threading.Thread(target=lambda: first.update(
+        org.act("organize_apply", proposal=prop["id"], items=["tab_move:surface:14"])))
+    t.start()
+    try:
+        assert entered.wait(5)
+        with pytest.raises(ActionError) as err:
+            org.act("organize_apply", proposal=prop["id"], items=["tab_move:surface:14"])
+        assert (err.value.status, err.value.code) == (409, "organize_running")
+    finally:
+        gate.set()
+        t.join(5)
+    assert first["applied"] == ["tab_move:surface:14"]
+    assert len([c for c in org_writes(org) if c[0] == "move-tab"]) == 1
+    # free again once the first one ended
+    org.act("organize_apply", proposal=prop["id"], items=["ws_title:workspace:6"])

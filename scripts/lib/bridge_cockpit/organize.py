@@ -144,20 +144,29 @@ def short_cwd(cwd: Any) -> str:
     return "/".join(parts[-2:])
 
 
+def tilde(text: str) -> str:
+    """The home folder in a name or a line shown as ~ (a prompt-like tab title, a `cd` on the last line)"""
+    for home in dict.fromkeys(h for h in (os.path.expanduser("~"), _real("~")) if h and h != "/"):
+        text = re.sub(re.escape(home.rstrip("/")) + r"(?![\w.-])", "~", text)
+    return text
+
+
 def _text(value: Any, cap: int, scrub) -> str:
     text = re.sub(r"\s+", " ", str(value or "")).strip()
-    return scrub(text)[:cap]
+    return tilde(scrub(text))[:cap]
 
 
 # ---------------------------------------------------------------- the snapshot
 
-def gather(app: Any) -> dict:
+def gather(app: Any, listed: list[dict] | None = None) -> dict:
     """What the model sees and what apply compares with: the workspaces of this Bridge and their tabs.
-    `base` keeps per ref the values the items start from (internal, never sent)."""
+    `listed` is the workspace list just read (TabPoller.read_workspaces), so the snapshot does not depend on
+    the chat layout keeping one; without it the last list kept. `base` keeps per ref the values the items
+    start from (internal, never sent)."""
     scrub = app.scrub
     state = app.tabs_state()
     tabs = [t for t in state.get("tabs") or [] if isinstance(t, dict)]
-    listed = app.tabs.workspace_list() or []
+    listed = [w for w in (listed if listed is not None else app.tabs.workspace_list()) or [] if isinstance(w, dict)]
     control_ref = app.tabs.control_ref()
     control_name = fold(getattr(app.cfg, "control", None) or "")
     control_ws = {t.get("ws_ref") for t in tabs if control_ref and t.get("ref") == control_ref and t.get("ws_ref")}
@@ -368,13 +377,26 @@ def managed_names(root: Path) -> dict:
 # ---------------------------------------------------------------- proposals in memory
 
 class Proposals:
-    """The current proposal (one at a time, TTL_MS) and the single-flight flag of a propose"""
+    """The current proposal (one at a time, TTL_MS), the single-flight flag of a propose and the one of an
+    apply (a second apply would compare against values the first one is changing)"""
 
     def __init__(self, clock):
         self.clock = clock
         self.lock = threading.Lock()
         self.current: dict | None = None
         self.running = False
+        self.applying = False
+
+    def begin_apply(self) -> bool:
+        with self.lock:
+            if self.applying:
+                return False
+            self.applying = True
+            return True
+
+    def end_apply(self) -> None:
+        with self.lock:
+            self.applying = False
 
     def begin(self) -> bool:
         with self.lock:
