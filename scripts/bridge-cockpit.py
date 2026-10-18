@@ -5,7 +5,7 @@ tabs and sessions, workers, machines, tokens).
 
     python3 scripts/bridge-cockpit.py serve [--port N] [--ignore-disabled]   # foreground
     python3 scripts/bridge-cockpit.py start [--port N] [--json]              # in the background, reused
-    python3 scripts/bridge-cockpit.py open [--via auto|cmux|system|none]     # start, then open the page
+    python3 scripts/bridge-cockpit.py open [--via auto|cmux|system|none] [--json]   # start, then open the page
     python3 scripts/bridge-cockpit.py url                                    # a login link, good once for a minute
     python3 scripts/bridge-cockpit.py status [--json]
     python3 scripts/bridge-cockpit.py stop
@@ -18,8 +18,8 @@ so a cockpit from a branch can be pointed at the live Bridge with --root. The se
 key per Bridge (R/.bridge/cockpit/token, 0600) that no command prints (links carry a one-time
 login code made from it) and refuses to start until cockpit.enabled is true in
 bridge-config.yaml. It runs the Bridge scripts (inbox.py, task.py, workplace.py) and collects with
---no-save. Exit codes: 0 ok, 1 not running, 2 disabled or invalid config, 3 port in use,
-4 did not come up, 5 open failed. User doc: docs/bridge-cockpit.md.
+--no-save. Exit codes: 0 ok, 1 not running, 2 disabled or invalid config (or a wrong call: argparse
+prints a usage text on stderr), 3 port in use, 4 did not come up, 5 open failed. User doc: docs/bridge-cockpit.md.
 """
 from __future__ import annotations
 

@@ -4985,3 +4985,62 @@ def test_the_dev_doc_names_every_cli_subcommand():
                 if x.startswith("| `scripts/bridge-cockpit.py` |"))
     named = set(re.findall(r"[a-z][a-z-]*", line.split("|")[2]))
     assert not [v for v in verbs if v not in named], line
+
+
+# ---------------------------------------------------------------- the exit table of the cockpit skill (#398)
+
+SKILL = ROOT / "skills" / "cockpit" / "SKILL.md"
+
+
+def _cockpit_cli():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("cockpit_cli_exits", CLI)
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    return cli
+
+
+def _skill_exit_rows() -> dict[int, list[str]]:
+    rows = {}
+    for line in SKILL.read_text(encoding="utf-8").splitlines():
+        hit = re.match(r"\|\s*(\d+)\s*\|(.*)\|\s*$", line)
+        if hit:
+            rows.setdefault(int(hit.group(1)), []).append(hit.group(2))
+    return rows
+
+
+def test_the_skill_exit_table_and_the_module_docstring_name_the_same_codes():
+    doc = _cockpit_cli().__doc__
+    codes = re.search(r"Exit codes:(.*?)\. User doc", doc, re.S).group(1)
+    documented = {int(n) for n in re.findall(r"\b(\d+) [a-z]", codes) if int(n) != 0}
+    assert documented == set(_skill_exit_rows()) and 1 in documented
+
+
+def test_exit_1_is_not_running_and_exit_2_tells_a_wrong_call_from_a_disabled_config():
+    rows = _skill_exit_rows()
+    assert len(rows[1]) == 1 and "not running" in rows[1][0] and "start" in rows[1][0]
+    wrong_call, disabled = rows[2]
+    assert "with a usage text on stderr" in wrong_call and "cockpit.enabled" not in wrong_call
+    assert "without a usage text" in disabled and "cockpit.enabled" in disabled
+
+
+def test_the_skill_names_exactly_the_subcommands_that_take_json(capsys):
+    cli = _cockpit_cli()
+    commands = ["serve", "start", "open", "url", "status", "stop", "new-token"]
+    takes_json = set()
+    for command in commands:
+        with pytest.raises(SystemExit):
+            cli.main([command, "--help"])
+        if "--json" in capsys.readouterr().out:
+            takes_json.add(command)
+    line = next(ln for ln in SKILL.read_text(encoding="utf-8").splitlines() if "`--json` applies only to" in ln)
+    assert set(re.findall(r"`([a-z-]+)`", line.split("applies only to", 1)[1].split(";")[0])) == takes_json
+    for command in sorted(takes_json):                                  # the docstring usage lines agree
+        usage = next(ln for ln in cli.__doc__.splitlines() if f"bridge-cockpit.py {command} " in ln)
+        assert "--json" in usage
+
+
+def test_json_on_a_subcommand_without_it_is_a_usage_error_with_exit_2(capsys):
+    with pytest.raises(SystemExit) as exc:
+        _cockpit_cli().main(["stop", "--json"])
+    assert exc.value.code == 2 and "usage:" in capsys.readouterr().err
