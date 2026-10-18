@@ -6,6 +6,10 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
 import { Btn, Chip, Icon, Spinner, StateLine } from './parts.js'
+import { actionRow, pageItemActs } from '../logic.js'
+import { SettleMenu } from './day.js'
+import { RowSteps } from './pages.js'
+import { rowClickOpens } from './overlays.js'
 
 export const GH_REF = /^[\w.-]+\/[\w.-]+#\d+$/
 const BOARD_STATES = ['new', 'ready', 'in_progress', 'review', 'blocked']
@@ -168,4 +172,152 @@ export function GitHubDetail({ gref: id, c }) {
       </li>`)}</ol>
     </div>` : null}
   </section>`
+}
+
+// ---------------------------------------------------------------- the list: one row per issue or pull request
+
+// the work's own order: what is stuck or waits on a review first, what nobody started last
+const STATE_RANK = { blocked: 0, review: 1, in_progress: 2, ready: 3, new: 4 }
+const FOLD_KEY = 'cockpit.github.folded'
+
+function readFolded() {
+  try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) ?? '[]')) } catch { return new Set() }
+}
+
+function keepFolded(set) {
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify([...set])) } catch { /* a convenience, never needed */ }
+}
+
+/** The one step a row leads with: a review someone asked you for, your issue to implement, someone else's
+ *  card to remind them of, else a look at it; the rest stay in the menu */
+export function leadStep(it) {
+  const ids = (it.actions ?? []).map(a => a.id)
+  const f = it.flags ?? []
+  if (f.includes('ask_review') && ids.includes('review')) return 'review'
+  if (f.includes('mine') && ids.includes('implement')) return 'implement'
+  if (!f.includes('mine') && ids.includes('remind')) return 'remind'
+  if (f.includes('my_pr') && ids.includes('review')) return 'review'
+  return ids.includes('analyze') ? 'analyze' : ids[0] ?? null
+}
+
+function TypeIcon({ type, token }) {
+  // an issue: a ring with a dot; a pull request: two branches joining
+  const d = type === 'pr'
+    ? 'M6 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM6 7v10M6 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 17V9a3 3 0 0 0-3-3h-4M13 4l-2 2 2 2'
+    : 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z'
+  return html`<svg class=${`ghl-icon tk-${token}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d=${d} /></svg>`
+}
+
+function sortRows(rows, by) {
+  const at = it => it.gh?.changed ?? ''
+  return [...rows].sort((a, b) => by === 'recent'
+    ? at(b).localeCompare(at(a))
+    : (STATE_RANK[a.gh?.state] ?? 5) - (STATE_RANK[b.gh?.state] ?? 5) || at(b).localeCompare(at(a)))
+}
+
+function matches(it, q) {
+  if (!q) return true
+  const g = it.gh ?? {}
+  const hay = [it.title, g.title, g.repo, g.number && `#${g.number}`, g.status, ...(g.labels ?? []), ...(g.people ?? []), g.task]
+    .filter(Boolean).join(' ').toLowerCase()
+  return q.toLowerCase().split(/\s+/).every(w => hay.includes(w))
+}
+
+function GhRow({ it, page, section, s, c, byKey }) {
+  const t = T()
+  const g = it.gh ?? {}
+  const lead = leadStep(it)
+  const rest = (it.actions ?? []).filter(a => a.id !== lead)
+  const leadLabel = (it.actions ?? []).find(a => a.id === lead)?.label
+  const token = STATE_TOKEN[g.state] ?? 'info'
+  const live = it.tab && it.tab.live
+  const settleRow = (pageItemActs(it) || it.inbox || (it.task && byKey.has(`task:${it.task}`))) ? actionRow(it, byKey) : null
+  const open = () => c.openInfo(it, page, section)
+  const repoName = g.repo ? g.repo.split('/').pop() : ''
+  return html`<li class=${`ghl-row${g.quiet ? ' is-quiet' : ''}`} tabindex="0"
+    onClick=${e => { if (rowClickOpens(e)) open() }}
+    onKeyDown=${e => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); open() } }}>
+    <${TypeIcon} type=${g.type} token=${token} />
+    <div class="ghl-main">
+      <p class="ghl-title">${g.title || it.title}</p>
+      <p class="ghl-meta">
+        ${g.number ? html`<span class="mono muted" title=${g.repo ?? ''}>${repoName}#${g.number}</span>` : null}
+        ${g.status || g.state ? html`<span class=${`ghl-state tk-${token}`}><span class="ghl-dot"></span>${g.status || t.gh.state[g.state] || g.state}</span>` : null}
+        ${(g.labels ?? []).map(l => html`<span key=${l} class="gh-label">${l}</span>`)}
+        ${(g.prs ?? []).map(p => html`<span key=${p.n} class="ghl-chip">PR #${p.n}${p.draft ? ` · ${t.gh.draft}` : ''}</span>`)}
+        ${g.task ? html`<span class="ghl-chip ghl-chip-task" title=${t.gh.taskChipTitle}>${g.stream ? t.gh.streamChip(g.task) : t.gh.taskChip(g.task)}</span>` : null}
+        ${it.tab ? html`<${Chip} token=${it.tab.live ? 'success' : 'on-surface-muted'}>${t.gh.agentChip(t.state?.[it.tab.state] ?? it.tab.state)}<//>` : null}
+        ${g.quiet ? html`<span class="ghl-chip ghl-chip-quiet">${t.gh.quietChip(g.quiet)}</span>` : null}
+        ${g.note ? html`<span class="muted small">${g.note}</span>` : null}
+      </p>
+    </div>
+    <div class="ghl-side">
+      ${(g.people ?? []).length ? html`<span class="ghl-people">${g.people.map(p => html`<span key=${p} class="gh-person mono">@${p}</span>`)}</span>` : null}
+      <span class="muted small" title=${g.changed ?? ''}>${ago(g.changed)}</span>
+    </div>
+    <div class="ghl-acts btn-row">
+      ${live ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[it.tab.ref]} onClick=${() => c.act('tab_jump', { tab_ref: it.tab.ref })}>${t.btnToTab}<//>`
+        : lead ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy.row_action}
+            onClick=${() => c.act('row_action', { page, section, index: it.index, action: lead })}>${leadLabel}<//>` : null}
+      ${rest.length && it.row_id ? html`<${RowSteps} it=${{ ...it, actions: rest }} page=${page} section=${section} s=${s} c=${c} />` : null}
+      ${settleRow ? html`<${SettleMenu} rows=${[settleRow]} s=${s} c=${c} />` : null}
+      ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer"
+        title=${t.openLink} aria-label=${t.openLink}><${Icon} name="external" size=${14} /></a>` : null}
+    </div>
+  </li>`
+}
+
+/** The rows of a github-work section under their board: a one-line head per board (its count and a bar of
+ *  its rows' states) that folds, the rows in the work's order or newest first, a search over everything a
+ *  row names */
+export function GitHubList({ items, page, section, s, c, byKey }) {
+  const t = T()
+  const [q, setQ] = useState('')
+  const [by, setBy] = useState('state')
+  const [folded, setFolded] = useState(readFolded)
+  const shown = items.filter(it => matches(it, q.trim()))
+  const order = (section.boards ?? []).map(b => b.name)
+  const groups = [...new Set(shown.map(it => it.group ?? ''))]
+    .sort((a, b) => ((order.indexOf(a) + 1) || 999) - ((order.indexOf(b) + 1) || 999) || a.localeCompare(b))
+  const fold = key => {
+    const next = new Set(folded)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setFolded(next)
+    keepFolded(next)
+  }
+  const allFolded = groups.length > 0 && groups.every(g => folded.has(g))
+  const foldAll = () => {
+    const next = allFolded ? new Set() : new Set(groups)
+    setFolded(next)
+    keepFolded(next)
+  }
+  return html`<div class="ghl">
+    <div class="ghl-tools">
+      <input class="ghl-search" type="search" value=${q} placeholder=${t.gh.searchPlaceholder} aria-label=${t.gh.searchPlaceholder}
+        onInput=${e => setQ(e.currentTarget.value)} />
+      <div class="ghb-mode" role="group" aria-label=${t.gh.sortLabel}>
+        ${['state', 'recent'].map(k => html`<button type="button" key=${k} class=${`ghb-mode-btn${by === k ? ' is-on' : ''}`}
+          aria-pressed=${String(by === k)} onClick=${() => setBy(k)}>${t.gh.sort[k]}</button>`)}
+      </div>
+      ${groups.length > 1 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${foldAll}>${allFolded ? t.gh.unfoldAll : t.gh.foldAll}<//>` : null}
+    </div>
+    ${!shown.length ? html`<p class="muted">${t.filterNone}</p>` : groups.map(g => {
+      const rows = sortRows(shown.filter(it => (it.group ?? '') === g), by)
+      const isFolded = folded.has(g)
+      const counts = rows.reduce((n, it) => ({ ...n, [it.gh?.state ?? 'new']: (n[it.gh?.state ?? 'new'] ?? 0) + 1 }), {})
+      return html`<section class="ghl-group" key=${g}>
+        <button type="button" class="ghl-head" aria-expanded=${String(!isFolded)} onClick=${() => fold(g)}>
+          <span class=${`ghl-chev${isFolded ? '' : ' is-open'}`} aria-hidden="true">›</span>
+          <span class="ghl-head-name">${g || t.groupOther}</span>
+          <span class="sec-count mono">${rows.length}</span>
+          <span class="ghb-bar ghl-head-bar" aria-hidden="true">${BOARD_STATES.filter(k => counts[k]).map(k => html`<span key=${k}
+            class=${`ghb-seg tk-${STATE_TOKEN[k]}`} style=${{ flexGrow: counts[k] }}></span>`)}</span>
+        </button>
+        ${isFolded ? null : html`<ul class="ghl-rows">${rows.map(it => html`<${GhRow} key=${it.index} it=${it} page=${page}
+          section=${section.id} s=${s} c=${c} byKey=${byKey} />`)}</ul>`}
+      </section>`
+    })}
+  </div>`
 }
