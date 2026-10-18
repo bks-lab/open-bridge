@@ -282,7 +282,7 @@ export function DayColumn({ s, c, byKey }) {
   const total = (m.sections ?? []).reduce((a, x) => a + (x.total ?? 0), 0)
   const budgets = rowBudgets(m.sections, s.ui.expanded ?? {}, s.ui.dayHeight ?? 0)
   return html`<div class="col col-day" ref=${colRef}>
-    <div class="panel day-panel">
+    <div class=${`panel day-panel${s.ui.picked.length ? ' is-picking' : ''}`}>
       <${WorkSwitch} s=${s} c=${c} />
       <${SelectionBar} s=${s} c=${c} />
       <${AlarmBanner} s=${s} c=${c} />

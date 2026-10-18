@@ -810,7 +810,7 @@ def test_start_runs_quick_then_full_and_never_without_no_save(world):
 def test_model_shape(world):
     model = world.app.collector.model
     secs = {s["id"]: s for s in model["sections"]}
-    assert [s["id"] for s in model["sections"]] == ["now", "give", "work", "later"]
+    assert [s["id"] for s in model["sections"]] == ["now", "give", "work", "track", "later"]
     only = world.row(f"inbox:{ONLY_ID}")
     assert only["section"] == "now" and only["number"] == model["numbers"][f"inbox:{ONLY_ID}"]
     # an inbox row of a task finds the task's tab (register.tsx tabFor matches by task slug)
