@@ -65,6 +65,7 @@ layout now").
 | `scripts/lib/bridge_cockpit/sessions.py` | the Sessions page: running Claude sessions, their subagents and tab |
 | `scripts/lib/bridge_cockpit/quick.py` | the chat: one short read-only `claude -p` per chat (Haiku default), streamed (`quick_live`), kept in `quick.json`, resume, cost per turn, handoff |
 | `scripts/lib/bridge_cockpit/ticker.py` | the news ticker: settings (`cockpit.ticker` plus `ticker.json`), feed fetching and parsing (RSS, RDF, Atom), the cache `ticker-cache.json`, the Haiku editor on its own thread, and `state()`, the `ticker` key of the model and the payload of the SSE event `ticker` |
+| `scripts/lib/bridge_cockpit/net.py` | the one outbound fetcher, `fetch`, for feeds (ticker) and agent cards (agents): a scheme allowlist that also holds for redirects, no redirect into a private network unless the configured address is there, a size cap and a wall-clock deadline per caller |
 | `scripts/lib/bridge_cockpit/details.py` | read-only detail endpoints: a task's STATUS.md, an inbox item |
 | `scripts/lib/bridge_cockpit/tabs.py` | tab poller over `workplace.py status --json` |
 | `scripts/lib/bridge_cockpit/server.py` `driver_caps`, `backup_layout` | what the terminal driver serves; the cmux layout backup every `snapshot_minutes` |

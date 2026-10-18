@@ -536,62 +536,7 @@ def test_a_doctype_inside_cdata_text_is_not_a_declaration():
     assert [i["title"] for i in tk.parse_feed(body, {"id": "a", "name": "A", "url": FEED_A})] == ["HTML basics"]
 
 
-def _redirect(handler, newurl):
-    import urllib.request
-    req = urllib.request.Request("https://feeds.example.org/rss")
-    return handler.redirect_request(req, None, 302, "Found", {}, newurl)
-
-
-@pytest.mark.parametrize("target", ["http://127.0.0.1:8797/api/state", "http://192.168.1.10/x",
-                                    "http://169.254.169.254/latest/meta-data/", "http://[::1]/x",
-                                    "http://intranet.example/x", "http://0.0.0.0/x"])
-def test_a_redirect_from_a_public_feed_to_a_private_host_is_refused(monkeypatch, target):
-    monkeypatch.setattr(tk, "_addresses", lambda host: ["10.0.0.5"] if host == "intranet.example" else ["93.184.216.34"])
-    with pytest.raises(tk.FeedError, match="bad redirect"):
-        _redirect(tk._Redirects(allow_private=False), target)
-
-
-def test_a_redirect_to_a_public_host_or_from_a_private_feed_is_followed(monkeypatch):
-    monkeypatch.setattr(tk, "_addresses", lambda host: ["93.184.216.34"])
-    assert _redirect(tk._Redirects(allow_private=False), "https://cdn.example.org/rss").full_url == "https://cdn.example.org/rss"
-    assert _redirect(tk._Redirects(allow_private=True), "http://127.0.0.1:9000/rss").full_url == "http://127.0.0.1:9000/rss"
-
-
-def test_the_configured_hosts_class_decides(monkeypatch):
-    monkeypatch.setattr(tk, "_addresses", lambda host: ["192.168.0.2"] if host == "nas.local" else ["93.184.216.34"])
-    assert tk._host_private("nas.local") and tk._host_private("127.0.0.1") and tk._host_private("::1")
-    assert not tk._host_private("example.org") and not tk._host_private("93.184.216.34")
-
-
-class Drip:
-    """A response that hands out one byte per read and moves a fake clock along."""
-    def __init__(self, clock: list, step: float, total: int = 10_000):
-        self.clock, self.step, self.left = clock, step, total
-
-    def read1(self, n: int = -1) -> bytes:
-        self.clock[0] += self.step
-        if self.left <= 0:
-            return b""
-        self.left -= 1
-        return b"x"
-
-
-def test_reading_a_feed_stops_at_the_wall_clock_deadline():
-    clock = [0.0]
-    with pytest.raises(tk.FeedError, match="timeout"):
-        tk._read_body(Drip(clock, 1.0), deadline=tk.FETCH_TIMEOUT, now=lambda: clock[0])
-    assert clock[0] <= tk.FETCH_TIMEOUT + 1
-
-
-def test_reading_a_feed_stops_at_the_size_cap_and_returns_a_small_body():
-    clock = [0.0]
-
-    class Big:
-        def read1(self, n=-1):
-            return b"y" * n
-    with pytest.raises(tk.FeedError, match="too_large"):
-        tk._read_body(Big(), deadline=10.0, now=lambda: clock[0])
-    assert tk._read_body(Drip(clock, 0.0, total=5), deadline=10.0, now=lambda: clock[0]) == b"xxxxx"
+# redirects, the size cap, the deadline and gzip: test_bridge_cockpit_net.py, for feeds and cards
 
 
 def test_a_collect_pass_sends_the_ticker_state_with_the_new_pass_and_outliers(tworld):
@@ -771,14 +716,3 @@ def test_a_busy_feed_cannot_push_out_a_quiet_one():
     items = tk.merge_items([busy, quiet], 4)
     assert [i["feed"] for i in items] == ["busy", "busy", "busy", "quiet"]
     assert [i["published_ms"] for i in items] == [10_000, 9_999, 9_998, 100]
-
-
-def test_a_gzip_body_sent_unasked_is_unpacked_within_the_cap():
-    import gzip
-    body = rss([("Packed", "https://example.org/p", None)])
-    assert tk.ungzip(gzip.compress(body)) == body
-    assert tk.ungzip(body) == body
-    with pytest.raises(tk.FeedError, match="too_large"):
-        tk.ungzip(gzip.compress(b" " * (tk.MAX_BYTES + 10)))
-    with pytest.raises(tk.FeedError, match="bad gzip"):
-        tk.ungzip(b"\x1f\x8bnot really")

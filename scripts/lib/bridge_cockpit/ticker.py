@@ -29,24 +29,19 @@ import json
 import re
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
-import ipaddress
-import socket
 import xml.etree.ElementTree as ET
-import zlib
 from typing import Any, Callable
 from xml.parsers import expat
 
 from .. import model_route as mr
+from . import net
 from .store import atomic_write_json, read_json
 
 FILE = "ticker.json"                 # the settings page's overrides (only keys differing from the config)
 CACHE_FILE = "ticker-cache.json"     # items per feed, feed status, the editor's last pick
 FETCH_TIMEOUT = 8
 MAX_BYTES = 2_000_000
-MAX_REDIRECTS = 3
 TITLE_MAX = 200
 SHORT_MAX = 90
 URL_MAX = 500
@@ -120,8 +115,7 @@ class TickerError(Exception):
         self.status, self.code, self.message, self.field = status, code, message, field
 
 
-class FeedError(Exception):
-    """A feed that cannot be read; the message is short and shown beside the feed."""
+FeedError = net.FetchError   # a feed that cannot be read; the message is short and shown beside the feed
 
 
 # ------------------------------------------------------------------ settings
@@ -132,14 +126,7 @@ def _is_int(v: Any) -> bool:
 
 def url_ok(url: Any) -> bool:
     """http or https, a host, no userinfo, no whitespace or control character, at most URL_MAX."""
-    if not isinstance(url, str) or not url or len(url) > URL_MAX or re.search(r"[\s\x00-\x1f\x7f]", url):
-        return False
-    try:
-        parts = urllib.parse.urlsplit(url)
-        host = parts.hostname
-    except ValueError:
-        return False
-    return parts.scheme in ("http", "https") and bool(host) and "@" not in parts.netloc
+    return net.url_ok(url, ("http", "https"), URL_MAX)
 
 
 def _feed(value: Any, where: str) -> dict:
@@ -534,107 +521,14 @@ def merge_items(groups: list[list[dict]], max_items: int, smart: dict | None = N
 
 # ------------------------------------------------------------------ fetching
 
-def _addresses(host: str) -> list[str]:
-    """Every address the host resolves to; an empty list when it does not resolve."""
-    try:
-        return [info[4][0] for info in socket.getaddrinfo(host, None)]
-    except (OSError, UnicodeError):
-        return []
-
-
-def _host_private(host: str | None) -> bool:
-    """True when the host is, or resolves to, a loopback, private, link-local, multicast, reserved or
-    unspecified address (any one of its addresses is enough)."""
-    if not host:
-        return False
-    try:
-        candidates = [ipaddress.ip_address(host)]
-    except ValueError:
-        candidates = []
-        for raw in _addresses(host):
-            try:
-                candidates.append(ipaddress.ip_address(raw.split("%", 1)[0]))
-            except ValueError:
-                continue
-    return any(a.is_private or a.is_loopback or a.is_link_local or a.is_multicast or a.is_reserved
-               or a.is_unspecified for a in candidates)
-
-
-class _Redirects(urllib.request.HTTPRedirectHandler):
-    """A redirect may not lead into the owner's own network unless the configured feed lives there: the
-    owner chose that address, the feed's server did not choose the next one."""
-    max_redirections = MAX_REDIRECTS
-
-    def __init__(self, allow_private: bool = False):
-        super().__init__()
-        self.allow_private = allow_private
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
-        if not url_ok(newurl):
-            raise FeedError("bad redirect")
-        if not self.allow_private and _host_private(urllib.parse.urlsplit(newurl).hostname):
-            raise FeedError("bad redirect")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-def _read_body(response: Any, deadline: float, now: Callable[[], float] = time.monotonic) -> bytes:
-    """Read the body in chunks until the end, the wall-clock deadline or MAX_BYTES, whichever comes
-    first. read1 returns after one socket read, so a server dripping bytes cannot stretch a call."""
-    read = getattr(response, "read1", None) or response.read
-    chunks, total = [], 0
-    while True:
-        if now() > deadline:
-            raise FeedError("timeout")
-        chunk = read(65536)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > MAX_BYTES:
-            raise FeedError("too_large")
-        chunks.append(chunk)
-    if now() > deadline:
-        raise FeedError("timeout")
-    return b"".join(chunks)
-
-
-def ungzip(data: bytes) -> bytes:
-    """A body that is gzip although the request asked for no encoding (a server or CDN may send it anyway),
-    unpacked to at most MAX_BYTES; anything else comes back as it was."""
-    if data[:2] != b"\x1f\x8b":
-        return data
-    unpack = zlib.decompressobj(16 + zlib.MAX_WBITS)
-    try:
-        out = unpack.decompress(data, MAX_BYTES + 1)
-    except zlib.error:
-        raise FeedError("bad gzip") from None
-    if len(out) > MAX_BYTES or unpack.unconsumed_tail:
-        raise FeedError("too_large")
-    return out
+# what net.fetch gets for a feed: http or https, the feed media types, MAX_BYTES, FETCH_TIMEOUT
+FEED_FETCH = {"schemes": ("http", "https"), "accept": ACCEPT, "user_agent": USER_AGENT,
+              "max_bytes": MAX_BYTES, "timeout": FETCH_TIMEOUT}
 
 
 def fetch_feed(url: str) -> bytes:
-    """GET one feed: http or https only, at most MAX_REDIRECTS redirects (none into a private network
-    unless the feed is there), FETCH_TIMEOUT seconds of wall clock for the whole feed, MAX_BYTES."""
-    if not url_ok(url):
-        raise FeedError("bad address")
-    deadline = time.monotonic() + FETCH_TIMEOUT
-    opener = urllib.request.build_opener(_Redirects(allow_private=_host_private(urllib.parse.urlsplit(url).hostname)))
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": ACCEPT})
-    try:
-        with opener.open(request, timeout=FETCH_TIMEOUT) as response:
-            data = ungzip(_read_body(response, deadline))
-    except FeedError:
-        raise
-    except urllib.error.HTTPError as error:
-        raise FeedError(f"HTTP {error.code}") from None
-    except urllib.error.URLError as error:
-        reason = getattr(error, "reason", "")
-        raise FeedError("timeout" if isinstance(reason, TimeoutError) else f"unreachable: {str(reason)[:80]}") from None
-    except TimeoutError:
-        raise FeedError("timeout") from None
-    except (OSError, ValueError) as error:
-        raise FeedError(str(error)[:80] or "failed") from None
-    return data
+    """GET one feed through net.fetch (redirects, size cap and wall-clock deadline live there)."""
+    return net.fetch(url, **FEED_FETCH)
 
 
 # ------------------------------------------------------------------ the editor

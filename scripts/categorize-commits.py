@@ -530,6 +530,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/model.py",
     "scripts/lib/bridge_cockpit/text.py",
     "scripts/lib/bridge_cockpit/ticker.py",
+    "scripts/lib/bridge_cockpit/net.py",                  # the one outbound fetcher: feeds and agent cards
     "scripts/lib/bridge_cockpit/collector.py",
     "scripts/lib/bridge_cockpit/tabs.py",
     "scripts/lib/bridge_cockpit/actions.py",
@@ -558,6 +559,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_triage.py",
     "scripts/tests/test_bridge_cockpit_ticker.py",
     "scripts/tests/test_bridge_cockpit_watch.py",
+    "scripts/tests/test_bridge_cockpit_net.py",
     "scripts/lib/bridge_cockpit/history.py",
     "scripts/lib/bridge_cockpit/design.py",              # the colours, read from the Bridge's own DESIGN.md
     "scripts/bridge-resources.py",

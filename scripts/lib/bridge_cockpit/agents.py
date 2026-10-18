@@ -17,15 +17,17 @@ import json
 import re
 import threading
 import time
-import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any, Callable
+
+from . import net
 
 SCRIPT = "skills/a2a/scripts/a2a.py"
 PEERS_DIR = Path("infra") / "a2a-peers"
 CARD_TTL = 300
 CARD_TIMEOUT = 8
+CARD_MAX_BYTES = 256 * 1024
 WAIT = "90"                 # seconds a2a.py waits for a held task before it answers with its state
 ASK_TIMEOUT = 150
 MAX_CONVS = 30
@@ -101,10 +103,15 @@ def summarize_card(card: Any) -> dict:
             "skills": skills[:16]}
 
 
+# what net.fetch gets for a card: https only, also on every redirect, CARD_MAX_BYTES, CARD_TIMEOUT of
+# wall clock; a user agent of its own, since an edge in front of a public agent refuses Python's (403)
+CARD_FETCH = {"schemes": ("https",), "accept": "application/json", "user_agent": "bridge-cockpit/agents",
+              "max_bytes": CARD_MAX_BYTES, "timeout": CARD_TIMEOUT}
+
+
 def fetch_card(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "bridge-cockpit/agents"})
-    with urllib.request.urlopen(req, timeout=CARD_TIMEOUT) as r:   # noqa: S310 - https card urls from the peer files
-        return json.loads(r.read().decode("utf-8"))
+    """GET one agent card through net.fetch; a refusal there (size, deadline, redirect) is the card's error."""
+    return json.loads(net.fetch(url, **CARD_FETCH).decode("utf-8"))
 
 
 class Agents:

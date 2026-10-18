@@ -3820,24 +3820,6 @@ def test_the_quick_chat_knows_the_a2a_agents_and_how_to_reach_them():
         assert "infra/a2a-peers/" in text and "skills/a2a/a2a.sh ask" in text
 
 
-def test_a_card_is_fetched_with_a_user_agent_of_its_own(monkeypatch):
-    # an edge in front of a public agent refuses Python's default user agent (403)
-    from lib.bridge_cockpit import agents as ag
-    seen = {}
-
-    class Resp:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def read(self): return b'{"name": "x"}'
-
-    def opener(req, timeout=0):
-        seen["ua"] = req.get_header("User-agent")
-        return Resp()
-    monkeypatch.setattr(ag.urllib.request, "urlopen", opener)
-    assert ag.fetch_card("https://a.example/.well-known/agent-card.json") == {"name": "x"}
-    assert seen["ua"] and "Python-urllib" not in seen["ua"]
-
-
 def test_a_problem_from_the_chat_opens_a_real_claude_tab_in_cmux(world):
     # some problems need a session that can act: the chat files the text as a decision and starts
     # an agent tab on it at once, the same launch as "Do it", with no quick answer first
