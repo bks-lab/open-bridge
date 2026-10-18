@@ -578,6 +578,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/check.js",
     "scripts/web/views/day.js",
     "scripts/web/views/detail.js",
+    "scripts/web/views/github.js",
     "scripts/web/views/header.js",
     "scripts/web/views/home.js",
     "scripts/web/views/launch.js",

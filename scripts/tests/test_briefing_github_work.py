@@ -370,3 +370,143 @@ def test_the_board_view_and_the_stale_note_reach_the_page():
          "stale": "GitHub limit reached"}]}]})
     sec = pages[0]["sections"][0]
     assert sec["view"] == "board" and sec["stale"] == "GitHub limit reached"
+
+
+# ---------------------------------------------------------------- the person's boards, the figures
+
+def two_boards(root):
+    (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
+        {"org": "example-org", "number": 3, "name": "Tool board"}, {"org": "example-org", "number": 4, "name": "Site board"}]}),
+        encoding="utf-8")
+
+
+def test_a_board_switched_off_is_not_asked_and_one_on_all_shows_every_card(tmp_path):
+    root = bridge(tmp_path)
+    two_boards(root)
+    gw = bf._providers().get("github-work")
+    gw.save_board_mode(root, "site-board", "off")
+    gw.save_board_mode(root, "tool", "all")          # tool.yaml names board 3: its slug is the file's
+    rows, run = collect(root)
+    listed = [c for c in run.calls if c[:3] == ["gh", "project", "item-list"]]
+    assert [c[3] for c in listed] == ["3"]                          # board 4 is off: never asked
+    assert "example-org/tool#50" in rows                            # all: someone else's card too
+    sec = bf.collect(root, {"id": "p", "sections": [dict(SECTION)]}, bf.Context(root, now=NOW, run=FakeRun(answers())))
+    summary = {b["slug"]: b for b in sec["sections"][0]["summary"]}
+    assert summary["tool"]["mode"] == "all" and summary["site-board"] == {**summary["site-board"], "mode": "off", "open": None}
+
+
+def test_a_board_left_out_of_the_query_starts_switched_off(tmp_path):
+    root = bridge(tmp_path)
+    two_boards(root)
+    rows, run = collect(root, dict(SECTION, query={"owners": ["example-org"], "boards": ["tool"]}))
+    assert [c[3] for c in run.calls if c[:3] == ["gh", "project", "item-list"]] == ["3"]
+
+
+def test_a_bad_switch_is_refused_and_a_broken_file_is_no_choice(tmp_path):
+    root = bridge(tmp_path)
+    gw = bf._providers().get("github-work")
+    import pytest
+    for slug, mode in (("../x", "all"), ("tool", "everything")):
+        with pytest.raises(ValueError):
+            gw.save_board_mode(root, slug, mode)
+    (root / gw.BOARDS_FILE).parent.mkdir(parents=True, exist_ok=True)
+    (root / gw.BOARDS_FILE).write_text("{not json")
+    assert gw.board_modes(root) == {}
+
+
+def test_the_figures_count_what_the_rows_are_and_what_you_finished(tmp_path):
+    def done(argv):
+        return json.dumps([{"number": n} for n in range(3 if "--closed" in argv else 2)])
+    run = FakeRun({**answers(), ("gh", "search", "issues", "--assignee", "@me", "--closed"): done,
+                   ("gh", "search", "prs", "--author", "@me", "--merged"): done})
+    run.answers = dict(sorted(run.answers.items(), key=lambda kv: -len(kv[0])))   # the longer prefix first
+    root = bridge(tmp_path)
+    c = bf.Context(root, now=NOW, run=run)
+    result = bf.collect(root, {"id": "p", "sections": [dict(SECTION)]}, c)
+    sec = result["sections"][0]
+    assert sec["metrics"] == {"days": 7, "closed": 3, "landed": 2}
+    view = bf._view()
+    page = view._page_section(sec, {"id": "work"}, NOW, view.labels_for("en"))
+    figures = {m["id"]: m for m in page["metrics"]}
+    assert figures["open"]["n"] == len(sec["items"]) and figures["ask_review"]["n"] == 1
+    assert figures["closed"] == {"id": "closed", "n": 3, "days": 7} and figures["landed"]["n"] == 2
+    assert figures["blocked"]["n"] == 1                               # site#7 carries the label blocked
+    row = next(r for r in page["items"] if r["row_id"] == "example-org/tool#40")
+    assert "ask_review" in row["flags"]
+    assert page["boards"][0]["name"] == "Tool board" and page["boards"][0]["mode"] == "mine"
+
+
+def test_a_quick_pass_shows_what_the_slow_sources_last_said_at_once(tmp_path):
+    root = bridge(tmp_path)
+    now = dt.datetime.now()
+    bf.collect(root, profile_with_cache(), bf.Context(root, now=now - dt.timedelta(minutes=20), run=FakeRun(answers())))
+    quiet = FakeRun({})
+    sec = bf.collect(root, profile_with_cache(), bf.Context(root, now=now, run=quiet), skip=("tracker",))["sections"][0]
+    assert sec["status"] == "ok" and sec["total"] and sec["stale"]["refreshing"] is True
+    assert quiet.calls == []                                          # nothing asked
+    view = bf._view()
+    assert view._page_section(sec, {"id": "work"}, now, view.labels_for("de"))["stale"] == "letzter Stand, wird gerade aktualisiert"
+    fresh_root = bridge(tmp_path / "fresh")                           # nothing kept: left out, as before
+    sec = bf.collect(fresh_root, profile_with_cache(), bf.Context(fresh_root, now=now, run=quiet), skip=("tracker",))["sections"][0]
+    assert sec["status"] == "skipped"
+
+
+# ---------------------------------------------------------------- the detail of one row
+
+ISSUE_NODE = {"__typename": "Issue", "number": 7, "title": "Write the onboarding page", "url": "https://github.com/o/r/issues/7",
+              "state": "OPEN", "body": "## Goal\n\nOne page.", "createdAt": "2026-10-01T08:00:00Z", "updatedAt": "2026-10-03T08:00:00Z",
+              "author": {"login": "octo"}, "assignees": {"nodes": [{"login": "octo"}]},
+              "labels": {"nodes": [{"name": "docs", "color": "0e8a16"}]}, "milestone": None,
+              "comments": {"totalCount": 9, "nodes": [{"author": {"login": "hubot"}, "body": "x" * 5000, "createdAt": "2026-10-02T08:00:00Z"}]},
+              "projectItems": {"nodes": [{"project": {"title": "Site board", "number": 4}, "fieldValueByName": {"name": "Todo"}}]},
+              "closedByPullRequestsReferences": {"nodes": [{"number": 8, "title": "Add page", "url": "u", "state": "OPEN", "isDraft": True}]}}
+PR_NODE = {"__typename": "PullRequest", "number": 8, "title": "Add page", "state": "OPEN", "isDraft": False,
+           "headRefName": "docs/page", "baseRefName": "main", "additions": 10, "deletions": 2, "changedFiles": 1,
+           "reviewDecision": "CHANGES_REQUESTED", "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "hubot"}}]},
+           "latestReviews": {"nodes": [{"author": {"login": "hubot"}, "state": "CHANGES_REQUESTED"}]},
+           "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "FAILURE", "contexts": {"totalCount": 3, "nodes": [
+               {"name": "tests", "conclusion": "FAILURE", "status": "COMPLETED"}, {"name": "lint", "conclusion": "SUCCESS"},
+               {"name": "e2e", "status": "IN_PROGRESS"}]}}}}]},
+           "closingIssuesReferences": {"nodes": [{"number": 7, "title": "Write the onboarding page", "url": "u", "state": "OPEN"}]}}
+
+
+def test_an_opened_issue_says_what_it_is_who_is_on_it_and_where_it_stands():
+    d = bf.detail_of(ISSUE_NODE, "o/r#7")
+    assert d["type"] == "issue" and d["state"] == "open" and d["assignees"] == ["octo"]
+    assert d["boards"] == [{"title": "Site board", "number": 4, "status": "Todo"}]
+    assert d["prs"][0]["draft"] is True and d["comments"]["total"] == 9
+    assert len(d["comments"]["items"][0]["body"]) == bf.COMMENT_MAX
+
+
+def test_an_opened_pull_request_names_its_review_and_its_red_checks():
+    d = bf.detail_of(PR_NODE, "o/r#8")
+    assert d["type"] == "pr" and d["pr"]["review"] == "changes_requested" and d["pr"]["requested"] == ["hubot"]
+    assert d["pr"]["checks"] == {"state": "failure", "total": 3, "failing": ["tests"], "running": ["e2e"]}
+    assert d["closes"][0]["number"] == 7
+
+
+def test_a_detail_is_kept_ten_minutes_and_shown_old_when_github_is_blocked(tmp_path):
+    root = bridge(tmp_path)
+    answer = json.dumps({"data": {"repository": {"issueOrPullRequest": ISSUE_NODE}}})
+    run = FakeRun({("gh", "api", "graphql"): answer})
+    now = dt.datetime.now()
+    code, d = bf.github_detail(root, "o/r#7", ctx=bf.Context(root, now=now, run=run))
+    assert code == 0 and d["title"] == "Write the onboarding page" and len(run.calls) == 1
+    code, d = bf.github_detail(root, "o/r#7", ctx=bf.Context(root, now=now + dt.timedelta(minutes=5), run=run))
+    assert len(run.calls) == 1                                        # kept
+    later = bf.Context(root, now=now + dt.timedelta(minutes=30), run=limited_run())
+    code, d = bf.github_detail(root, "o/r#7", ctx=later)
+    assert code == 0 and "rate limit" in d["stale"]                  # the last kept detail, said to be old
+    assert bf.github_detail(root, "not a ref")[0] == 2
+
+
+def test_someone_elses_card_offers_a_reminder_drafted_never_sent(tmp_path):
+    section = dict(SECTION, query={"owners": ["example-org"], "cards": "all"})
+    rows, _ = collect(bridge(tmp_path), section)
+    other = rows["example-org/tool#50"]
+    assert "remind" in ids(other) and "remind" not in ids(rows["example-org/tool#12"])
+    words = bf._view().labels_for("de")
+    text = bf.tracker_prompt({"id": "remind", "prompt": None}, other, words)
+    assert "@hubot" in text and "Poste und sende nichts" in text
+    view = bf._view()
+    assert view._page_row("tracker", other, {"id": "work"}, NOW, view.labels_for("de"))["who"] == "hubot"

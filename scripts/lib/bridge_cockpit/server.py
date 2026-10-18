@@ -77,6 +77,8 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' 
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 SCREEN_LINES = 400          # the tab view reads this much of a tab's scrollback
 SCREEN_TIMEOUT = 4
+GITHUB_REF_RE = re.compile(r"^[\w.-]{1,100}/[\w.-]{1,100}#\d{1,9}\Z")
+GITHUB_DETAIL_TIMEOUT = 40
 SCREEN_MAX = 120_000
 CAPS_TTL_S = 300
 CAPS_TIMEOUT = 20
@@ -657,6 +659,24 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error_json("not_found", "no such inbox item")
             else:
                 self.send_json(200, app.scrub_tree(result))
+        elif path == "/api/github":
+            # the detail of one GitHub row (briefing.py detail): kept ten minutes, under the GitHub block
+            ref = one("ref")
+            if not GITHUB_REF_RE.match(ref):
+                self.send_error_json("invalid_argument", "not an owner/repo#number", "ref")
+                return
+            argv = [app.runner.python, app.runner.script("scripts/briefing.py"), "--root", str(app.root), "detail", ref]
+            if one("fresh") == "1":
+                argv.append("--fresh")
+            run = app.run(argv, GITHUB_DETAIL_TIMEOUT)
+            try:
+                data = json.loads((run.out if run.ok else run.err).strip().splitlines()[-1])
+            except (ValueError, IndexError):
+                data = {"ok": False, "error": (run.err or run.out or "no answer").strip()[-200:]}
+            if run.ok and isinstance(data, dict):
+                self.send_json(200, app.scrub_tree(data))
+            else:
+                self.send_error_json("unreadable", app.scrub(str((data or {}).get("error") or "GitHub did not answer"))[:200])
         elif path == "/api/relay":
             self.send_json(200, app.relay_state())
         elif path == "/api/graph":

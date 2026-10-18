@@ -363,14 +363,21 @@ export function buildState(now = Date.now(), opts = {}) {
       id: 'trackers', title: 'Trackers', badge: { kind: 'count', n: 5, warn: true }, sections: [
         // github-work in the board view: one row per issue or PR under its board, with the steps an agent starts on it
         { id: 'mine', kind: 'tracker', view: 'board', title: 'GitHub work', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 3, total: 5,
-          weight: 3, bad: 0, as_of: hhmm(now - 22 * MIN), more: 2, items: [
+          weight: 3, bad: 0, as_of: hhmm(now - 22 * MIN), more: 2,
+          metrics: [{ id: 'open', n: 5 }, { id: 'mine', n: 3 }, { id: 'ask_review', n: 1 }, { id: 'my_pr', n: 1, days: 4 },
+            { id: 'in_progress', n: 1 }, { id: 'review', n: 1 }, { id: 'blocked', n: 0 }, { id: 'quiet', n: 1, days: 14 },
+            { id: 'closed', n: 4, days: 7 }, { id: 'landed', n: 2, days: 7 }],
+          boards: [{ name: 'Demo board', slug: 'demo-board', open: 9, mode: 'mine', counts: { new: 3, ready: 2, in_progress: 2, review: 1, blocked: 1 } },
+            { name: 'Docs board', slug: 'docs-board', open: 4, mode: 'all', counts: { new: 1, ready: 2, review: 1 } },
+            { name: 'Old roadmap', slug: 'old-roadmap', open: null, mode: 'off', counts: {} }],
+          items: [
             item(0, { title: 'example/repo#12 Flaky test in the parser suite', detail: 'In Progress · PR #14', when: 'Tue', tone: 'warn', link: { kind: 'web', href: 'https://example.org/repo/issues/12' }, ask: true, mark: { label: 'Demo', color: 'blue' }, priority: 'P2',
-              group: 'Demo board', row_id: 'example/repo#12', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'review', label: 'Review the PR' }, { id: 'sync', label: 'Sync status' }] }),
+              group: 'Demo board', flags: ['mine', 'in_progress'], who: 'demo-user', row_id: 'example/repo#12', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'review', label: 'Review the PR' }, { id: 'sync', label: 'Sync status' }] }),
             item(1, { title: 'example/repo#15 Add a config switch for the report', detail: 'Backlog', when: 'Mon', link: { kind: 'web', href: 'https://example.org/repo/issues/15' }, ask: true, priority: 'P3', actionable: true,
-              group: 'Demo board', row_id: 'example/repo#15', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }, { id: 'adopt', label: 'Make it a task' }, { id: 'sync', label: 'Sync status' }] }),
+              group: 'Demo board', flags: ['mine', 'quiet'], who: 'demo-user', row_id: 'example/repo#15', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }, { id: 'adopt', label: 'Make it a task' }, { id: 'sync', label: 'Sync status' }] }),
             item(2, { title: 'example/tools#4 Release checklist', detail: 'In Review', when: '08:10', link: { kind: 'web', href: 'https://example.org/tools/issues/4' }, ask: true, mark: { label: 'Ops', color: 'red' },
               group: 'example/tools', inbox: 'demo-inbox-4', tab: { ref: 'surface:9', state: 'working', live: true, waiting: false },
-              row_id: 'example/tools#4', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }] }),
+              flags: ['review'], who: 'teammate', row_id: 'example/tools#4', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }, { id: 'remind', label: 'Remind' }] }),
           ] },
         { id: 'tasks', kind: 'tasks', title: 'Bridge tasks', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 2, total: 2,
           weight: 2, bad: 0, as_of: null, more: 0, items: [
@@ -521,6 +528,26 @@ function inboxDetail(id, state) {
   }
 }
 
+// an opened GitHub row (briefing.py detail): made up, in the shape the server sends
+function githubDetail(ref) {
+  const pr = /#14$/.test(ref ?? '')
+  const ago = d => new Date(Date.now() - d * 86400000).toISOString()
+  return {
+    ok: true, ref, type: pr ? 'pr' : 'issue', title: pr ? 'Retry the flaky parser test' : 'Flaky test in the parser suite',
+    url: 'https://example.org/repo/issues/12', state: 'open', draft: false, author: 'demo-user', created: ago(6), updated: ago(1),
+    body: '## What happens\n\nThe parser suite fails about one run in ten on CI.\n\n- only on the slow runner\n- never locally\n\n```\nAssertionError: expected 3 tokens, got 2\n```',
+    assignees: ['demo-user'], labels: [{ name: 'bug', color: 'd73a4a' }, { name: 'ci', color: '0e8a16' }], milestone: null,
+    comments: { total: 2, items: [
+      { author: 'teammate', at: ago(2), url: null, body: 'Seen it twice this week, both on the slow runner.' },
+      { author: 'demo-user', at: ago(1), url: null, body: 'A retry would hide it. **Fix the timing** instead?' }] },
+    boards: [{ title: 'Demo board', number: 3, status: 'In Progress' }],
+    ...(pr ? { pr: { head: 'fix/parser-timing', base: 'main', additions: 42, deletions: 7, files: 3, review: 'review_required',
+      requested: ['teammate'], reviews: [], checks: { state: 'pending', total: 6, failing: [], running: ['tests'] } }, closes: [] }
+      : { prs: [{ number: 14, title: 'Retry the flaky parser test', url: 'https://example.org/repo/pull/14', state: 'open', draft: true }] }),
+    fetched_at: new Date().toISOString(),
+  }
+}
+
 function taskDetail(slug) {
   return {
     ok: true, slug, kind: 'task', path: `work/tasks/${slug}/STATUS.md`,
@@ -586,6 +613,7 @@ export function createMockTransport(opts = {}) {
           sources: [src('homebox/health', 12, 5, { once: 3, family: 2 }, 2), src('board-radar', 8, 2, { duplicate: 2 }), src('mail-watcher', 20, 1, { unknown: 1 })],
           mutes: mockMutes } })
       }
+      if (url.pathname === '/api/github') return ok(githubDetail(url.searchParams.get('ref')))
       if (url.pathname === '/api/relay') return ok(state.relay)
       if (url.pathname === '/api/workers') {
         // invented runs in the shape of `workload view --json`; nothing here is a real machine

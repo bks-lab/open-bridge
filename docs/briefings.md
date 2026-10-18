@@ -112,7 +112,7 @@ against recorded answers (`scripts/tests/fixtures/briefing/<provider>/`).
 |---|---|---|
 | `github` | `gh search` (gh's own login) | `assignee` (default `@me`), `owners`, `repos`, `kinds` (issues, prs), `state`, `labels`, `review_requested`, `authored` (true: your own open PRs, with their age), `others_prs` (N: colleagues' open, non-draft PRs in `owners`/`repos` updated in the last N days, bots and your own left out), `limit` |
 | `github-board` | `gh project item-list`, boards from `github_projects:` in the ecosystem files, state maps from `workflow/projects/` (the same code as `scripts/tracker-sync.py`). GitHub filters before the limit (`filter`, default `is:open`): gh lists the oldest cards first, so without it a board with more cards than `limit` lost its newest, open ones. With `summary: true` on the section, also one line per board with its open cards per state, counted before `assigned_to_me` and the other filters, with the section's `state_map` applied; a status no map knows (Parked, Canceled) is not open work, and a board that filled `limit` says so | `boards`, `assigned_to_me`, `states`, `include_done`, `filter` (the board's filter syntax; `""` for every card), `limit` |
-| `github-work` | both of the above, merged: one row per issue or pull request (see GitHub work) | every `github` key, plus `boards`, `cards` (`mine`, default, or `all` open cards), `filter`, `board_limit`, `links` (false: do not ask which pull requests close an issue) |
+| `github-work` | both of the above, merged: one row per issue or pull request (see GitHub work) | every `github` key, plus `boards` (the others start switched off), `cards` (`mine`, default, or `all` open cards), `filter`, `board_limit`, `links` (false: do not ask which pull requests close an issue), `done_days` (N, default 7: also count your issues closed and pull requests merged in the last N days; 0 asks none) |
 | `gitlab` | `glab issue list` | `repos` (required), `assignee`, `state`, `labels`, `limit` |
 | `ado` | `az boards query` (WIQL) | `wiql`, `organization`, `project`, `limit` |
 | `jira` | REST API | `jql` (default: assigned to you, not done), `fields`, `limit` |
@@ -333,11 +333,36 @@ the task whose `sync.github` names it (a task in `work/tasks/` becomes the row's
 (`inbox`): the item a step, Do it or a `to_inbox` rule filed for it, whose tab a
 dashboard then shows on the row.
 
+Each board of a `github-work` section has a switch a person sets on a
+dashboard: **off** (not asked, costs nothing), **mine** (your cards) or **all**
+(every open card). The choice is kept in `.bridge/github-boards.json`, beside the
+profile and never in it, and wins over `boards` and `cards`. The section's
+`summary` names every registered board with its mode, a board switched off
+without counts.
+
+A dashboard shows figures above the rows (`metrics` of the page section: open,
+yours, wanting your review, your open pull requests with the oldest one's age,
+in progress, in review, blocked, quiet for 14 days, and what you closed and
+merged in the last `done_days`), the boards as tiles with their open cards per
+state, and the people the rows are with; each is a filter on the rows. A row
+carries `flags` (what the figures count) and `who` (its assignee).
+
+`briefing.py detail <owner/repo#n>` prints one issue or pull request as a
+dashboard opens it: body, the last five comments, labels, assignees, the boards
+it sits on with their status, the pull requests that close it, and for a pull
+request its branch, size, review decision, requested reviewers and checks (the
+failing and running ones by name). One GraphQL call of about one point, kept ten
+minutes (`.bridge/briefing-cache/github-detail/`, `--fresh` asks again), under
+the same block as every section: while GitHub is blocked it shows the last kept
+detail, said to be old.
+
 Every row of a GitHub provider that is not done offers steps, which a dashboard
 shows like a calendar row's. Built in: **Analyse** on every row, **Implement**
 on an issue without a pull request, **Review the PR** on a pull request or an
 issue that has one, **Make it a task** on an issue no task syncs, **Sync status**
-on a row on a board or with a task. Each starts an agent tab whose prompt
+on a row on a board or with a task, **Remind** on a row someone else is
+assigned to (a short reminder drafted as a comment that mentions them, or a
+mail or chat draft; nothing is posted or sent without a yes). Each starts an agent tab whose prompt
 carries the row's facts (link, status, board, its config file, the task, the
 pull requests) and an instruction with its gates: read only and drafts until a
 yes for Analyse and Review, a feature branch and a draft pull request for
@@ -572,7 +597,9 @@ briefing, board pollers, agents. Three rules keep a briefing from draining it:
 - A tracker section with `cache_minutes` that cannot answer (blocked, failed,
   timed out) shows its last kept answer of the last 12 hours instead of an
   error, marked `stale` with the reason and, when blocked, the time it asks
-  again. Stale rows file nothing to the inbox and close nothing.
+  again. Stale rows file nothing to the inbox and close nothing. A run that
+  leaves trackers out (`--skip tracker`, the cockpit's quick pass) shows the
+  same kept answer, marked as being refreshed, instead of nothing.
 - Ask less often: GitHub sections rarely need `cache_minutes` below 10 or 15.
   `github-board` filters before the limit (`is:open`), which on large boards
   cuts a listing from hundreds of cards to the open ones.

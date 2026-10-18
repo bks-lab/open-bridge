@@ -160,9 +160,27 @@ def parse_info(i: dict) -> dict:
             "actions": [{"id": a["id"], "label": a["label"]} for a in _list(i.get("actions"))
                         if isinstance(a, dict) and isinstance(a.get("id"), str) and isinstance(a.get("label"), str)] or None,
             "row_id": as_text_or_null(i.get("row_id")),
+            "flags": [f for f in _list(i.get("flags")) if isinstance(f, str) and len(f) <= 24][:12] or None,
+            "who": as_text_or_null(i.get("who")),
             "id": as_text_or_null(i.get("id")), "actionable": i.get("actionable") is True,
             "at": as_text_or_null(i.get("at")),
             "account": parse_account(i.get("account"))}
+
+
+def parse_boards(value: Any) -> list[dict] | None:
+    """A board summary of a GitHub section: name, slug, open cards per state, the person's switch."""
+    out = []
+    for b in _list(value)[:40]:
+        if not isinstance(b, dict) or not isinstance(b.get("name"), str):
+            continue
+        counts = b.get("counts") if isinstance(b.get("counts"), dict) else {}
+        out.append({"name": b["name"], "slug": as_text_or_null(b.get("slug")), "org": as_text_or_null(b.get("org")),
+                    "number": b.get("number") if isinstance(b.get("number"), int) else None,
+                    "open": b.get("open") if isinstance(b.get("open"), int) else None,
+                    "counts": {k: v for k, v in counts.items() if isinstance(k, str) and isinstance(v, int)},
+                    "capped": b.get("capped") if isinstance(b.get("capped"), int) else None,
+                    "mode": b.get("mode") if b.get("mode") in ("off", "mine", "all") else None})
+    return out or None
 
 
 def parse_account(a: Any) -> dict | None:
@@ -218,6 +236,10 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                 "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board") else None,
                 "hide_empty": x.get("hide_empty") is True,
                 "stale": as_text_or_null(x.get("stale")),
+                "boards": parse_boards(x.get("boards")),
+                "metrics": [{"id": as_text(g.get("id")), "n": int(_number(g.get("n"))),
+                             "days": g.get("days") if isinstance(g.get("days"), int) else None}
+                            for g in _list(x.get("metrics")) if isinstance(g, dict) and isinstance(g.get("id"), str)][:12] or None,
             })
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
                 "group": p.get("group") if p.get("group") in ("more", "work", "day") else "main", "overview": p.get("overview") is True,

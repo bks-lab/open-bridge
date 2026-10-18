@@ -124,6 +124,7 @@ export function createApi(transport = httpTransport()) {
     reload: fresh => transport.post('/api/reload', { fresh: !!fresh }, csrf),
     inbox: id => transport.get(`/api/inbox?id=${encodeURIComponent(id)}`),
     task: slug => transport.get(`/api/task?slug=${encodeURIComponent(slug)}`),
+    github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),
     page: (page, section) => transport.get(`/api/page?page=${encodeURIComponent(page)}&section=${encodeURIComponent(section)}`),
     relay: () => transport.get('/api/relay'),
     tabScreen: ref => transport.get(`/api/tab/screen?ref=${encodeURIComponent(ref)}`),

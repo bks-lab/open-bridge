@@ -1433,14 +1433,15 @@ def link_local(items: list, ctx: Context) -> None:
                 row["inbox"] = item.id            # the newest wins: sorted oldest first
 
 
-BUILTIN_ROW_STEPS = ("analyze", "implement", "review", "adopt", "sync")
+BUILTIN_ROW_STEPS = ("analyze", "implement", "review", "adopt", "sync", "remind")
 
 
 def tracker_steps(section: dict, item: dict, words: dict) -> list:
     """The steps one GitHub row offers, each {id, label, prompt}: the section's own `row_steps` that fit
     the row, then the built-in ones of a GitHub provider (unless `default_steps: false`): Analyse
     always, Implement on an issue without a pull request, Review on a pull request or an issue that has
-    one, Make it a task on an issue no task syncs, Sync status on a row with a board or a task. A row
+    one, Make it a task on an issue no task syncs, Sync status on a row with a board or a task, Remind on a
+    row someone else is assigned to. A row
     that is done offers none. Every step starts an agent tab; none acts on GitHub by itself."""
     if item.get("state") in ("done", "removed"):
         return []
@@ -1467,7 +1468,9 @@ def tracker_steps(section: dict, item: dict, words: dict) -> list:
         has_pr = bool(item.get("prs"))
         offer = {"analyze": True, "implement": kind == "issue" and not has_pr, "review": kind == "pr" or has_pr,
                  "adopt": kind == "issue" and not item.get("linked_task") and not item.get("task"),
-                 "sync": bool(board or item.get("linked_task"))}
+                 "sync": bool(board or item.get("linked_task")),
+                 # someone else's card: a reminder to them, drafted, sent only after a yes
+                 "remind": bool(item.get("assignee")) and not item.get("assigned_to_me")}
         for sid in BUILTIN_ROW_STEPS:
             if offer[sid] and sid not in {x["id"] for x in steps}:
                 steps.append({"id": sid, "label": words[f"gh_step_{sid}"], "prompt": None})
@@ -1485,7 +1488,7 @@ def tracker_prompt(step: dict, item: dict, words: dict) -> str:
               "type": "pull request" if item.get("type") == "pr" else "issue", "state": str(item.get("state") or ""),
               "status": str(item.get("raw_state") or ""), "board": str(board.get("name") or ""),
               "board_slug": str(board.get("slug") or ""), "board_config": str(board.get("config") or ""),
-              "task": str(task.get("slug") or ""), "prs": prs}
+              "task": str(task.get("slug") or ""), "prs": prs, "assignee": str(item.get("assignee") or "")}
     if step.get("prompt"):
         return re.sub(r"\{([a-z_]+)\}", lambda m: values.get(m.group(1), m.group(0)), str(step["prompt"]))
     facts = [(words["gh_fact_link"], values["url"]), (words["gh_fact_status"], values["status"] or values["state"]),
@@ -1493,6 +1496,7 @@ def tracker_prompt(step: dict, item: dict, words: dict) -> str:
               if values["board"] else ""),
              (words["gh_fact_config"], values["board_config"]),
              (words["gh_fact_task"], str(task.get("path") or "")), (words["gh_fact_prs"], prs),
+             (words["gh_fact_assignee"], f"@{values['assignee']}" if values["assignee"] else ""),
              (words["gh_fact_note"], str(item.get("note") or ""))]
     head = words["gh_head"].format(type=words["gh_type_pr"] if item.get("type") == "pr" else words["gh_type_issue"],
                                    id=values["id"], title=values["title"])
@@ -1625,7 +1629,7 @@ def _keep(root: Path, profile: dict, section: dict, ctx: Context, items: list) -
     if not _is_positive_int(section.get("cache_minutes")):
         return
     path = _cache_file(root, profile, section)
-    extra = {k: v for k, v in section.items() if k in ("_summary", "_plan", "_skipped")}
+    extra = {k: v for k, v in section.items() if k in ("_summary", "_plan", "_skipped", "_metrics")}
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")   # two sessions may write at once
@@ -1673,7 +1677,14 @@ def collect(root: Path, profile: dict, ctx: Context, previous: dict | None = Non
             if only and s.get("kind") not in only:
                 raise Skip(f"left out in this run (--only {', '.join(only)})")
             if s.get("kind") in skip:
-                raise Skip(f"left out in this mode (--skip {s.get('kind')})")
+                # a quick pass leaves the slow sources out, but what they last said is on disk: shown at once,
+                # said to be refreshing, so a page does not open empty and fill half a minute later
+                kept = _stale(root, profile, s, ctx)
+                if kept is None:
+                    raise Skip(f"left out in this mode (--skip {s.get('kind')})")
+                items, entry["cached_at"] = kept
+                entry["stale"] = {"reason": f"left out in this mode (--skip {s.get('kind')})", "refreshing": True}
+                return sid, entry, items
             cached = _cached(root, profile, s, ctx)
             if cached is not None:
                 items, entry["cached_at"] = cached
@@ -1716,6 +1727,8 @@ def collect(root: Path, profile: dict, ctx: Context, previous: dict | None = Non
             entry["plan"] = s["_plan"]
         if "_summary" in s:
             entry["summary"] = s["_summary"]
+        if "_metrics" in s:
+            entry["metrics"] = s["_metrics"]
         if s.get("kind") == "commits":
             entry["days"] = max(1, _positive(s.get("days"), 7))
             entry["skipped"] = s.get("_skipped") or []
@@ -2188,6 +2201,127 @@ def _act_tracker(root: Path, cfg: dict, profile: dict, section: dict, row_id: st
         "key": f"tracker:{action}:{row_id}"[:240]}}, ensure_ascii=False)
 
 
+# ---------------------------------------------------------------- the detail of one GitHub row
+
+DETAIL_DIR = CACHE / "github-detail"
+DETAIL_MINUTES = 10
+BODY_MAX = 12000
+COMMENT_MAX = 4000
+_PEOPLE = "assignees(first: 10) { nodes { login } } labels(first: 15) { nodes { name color } }"
+_COMMENTS = "comments(last: 5) { totalCount nodes { author { login } body createdAt url } }"
+_BOARDS = ('projectItems(first: 5) { nodes { project { title number } fieldValueByName(name: "Status") '
+           '{ ... on ProjectV2ItemFieldSingleSelectValue { name } } } }')
+DETAIL_QUERY = (
+    "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { "
+    "issueOrPullRequest(number: $number) { __typename "
+    f"... on Issue {{ number title url state stateReason body createdAt updatedAt closedAt author {{ login }} {_PEOPLE} "
+    f"milestone {{ title dueOn }} {_COMMENTS} {_BOARDS} "
+    "closedByPullRequestsReferences(first: 5, includeClosedPrs: true) { nodes { number title url state isDraft } } } "
+    f"... on PullRequest {{ number title url state isDraft body createdAt updatedAt mergedAt closedAt author {{ login }} "
+    f"{_PEOPLE} {_COMMENTS} {_BOARDS} headRefName baseRefName additions deletions changedFiles reviewDecision mergeable "
+    "reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } } "
+    "latestReviews(first: 10) { nodes { author { login } state submittedAt } } "
+    "commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 40) { totalCount nodes { "
+    "... on CheckRun { name conclusion status } ... on StatusContext { context state } } } } } } } "
+    "closingIssuesReferences(first: 5) { nodes { number title url state } } } } } }")
+FAILED_CHECKS = {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"}
+
+
+def _nodes(value) -> list:
+    return [n for n in ((value or {}).get("nodes") or []) if isinstance(n, dict)] if isinstance(value, dict) else []
+
+
+def _login(value) -> str | None:
+    return value.get("login") if isinstance(value, dict) else None
+
+
+def detail_of(node: dict, ref: str) -> dict:
+    """One issue or pull request as a dashboard opens it: what it says, who is on it, where it stands."""
+    kind = "pr" if node.get("__typename") == "PullRequest" else "issue"
+    comments = node.get("comments") if isinstance(node.get("comments"), dict) else {}
+    out = {"ok": True, "ref": ref, "type": kind, "number": node.get("number"), "title": node.get("title"),
+           "url": node.get("url"), "state": str(node.get("state") or "").lower(),
+           "state_reason": str(node.get("stateReason") or "").lower() or None, "draft": bool(node.get("isDraft")),
+           "author": _login(node.get("author")), "created": node.get("createdAt"), "updated": node.get("updatedAt"),
+           "closed": node.get("closedAt"), "landed_at": node.get("mergedAt"),
+           "body": str(node.get("body") or "")[:BODY_MAX], "body_cut": len(str(node.get("body") or "")) > BODY_MAX,
+           "assignees": [x for x in (_login(n) for n in _nodes(node.get("assignees"))) if x],
+           "labels": [{"name": n.get("name"), "color": n.get("color")} for n in _nodes(node.get("labels")) if n.get("name")],
+           "milestone": (node.get("milestone") or {}).get("title") if isinstance(node.get("milestone"), dict) else None,
+           "comments": {"total": comments.get("totalCount") or 0,
+                        "items": [{"author": _login(n.get("author")), "at": n.get("createdAt"), "url": n.get("url"),
+                                   "body": str(n.get("body") or "")[:COMMENT_MAX]} for n in _nodes(comments)]},
+           "boards": [{"title": (n.get("project") or {}).get("title"), "number": (n.get("project") or {}).get("number"),
+                       "status": (n.get("fieldValueByName") or {}).get("name")} for n in _nodes(node.get("projectItems"))]}
+    if kind == "issue":
+        out["prs"] = [{"number": n.get("number"), "title": n.get("title"), "url": n.get("url"),
+                       "state": str(n.get("state") or "").lower(), "draft": bool(n.get("isDraft"))}
+                      for n in _nodes(node.get("closedByPullRequestsReferences"))]
+        return out
+    rollup = {}
+    for c in _nodes(node.get("commits")):
+        rollup = ((c.get("commit") or {}).get("statusCheckRollup") or {}) if isinstance(c.get("commit"), dict) else {}
+    contexts = rollup.get("contexts") if isinstance(rollup.get("contexts"), dict) else {}
+    failing = [n.get("name") or n.get("context") for n in _nodes(contexts)
+               if str(n.get("conclusion") or n.get("state") or "").upper() in FAILED_CHECKS]
+    running = [n.get("name") for n in _nodes(contexts) if str(n.get("status") or "").upper() in ("IN_PROGRESS", "QUEUED")]
+    out["pr"] = {"head": node.get("headRefName"), "base": node.get("baseRefName"), "additions": node.get("additions"),
+                 "deletions": node.get("deletions"), "files": node.get("changedFiles"),
+                 "review": str(node.get("reviewDecision") or "").lower() or None,
+                 "mergeable": str(node.get("mergeable") or "").lower() or None,
+                 "requested": [x for x in ((n.get("requestedReviewer") or {}).get("login") or
+                                           (n.get("requestedReviewer") or {}).get("name") for n in _nodes(node.get("reviewRequests"))) if x],
+                 "reviews": [{"author": _login(n.get("author")), "state": str(n.get("state") or "").lower(),
+                              "at": n.get("submittedAt")} for n in _nodes(node.get("latestReviews"))],
+                 "checks": {"state": str(rollup.get("state") or "").lower() or None,
+                            "total": contexts.get("totalCount") or 0, "failing": [f for f in failing if f][:10],
+                            "running": [r for r in running if r][:10]}}
+    out["closes"] = [{"number": n.get("number"), "title": n.get("title"), "url": n.get("url"),
+                      "state": str(n.get("state") or "").lower()} for n in _nodes(node.get("closingIssuesReferences"))]
+    return out
+
+
+def github_detail(root: Path, ref: str, fresh: bool = False, ctx: Context | None = None) -> tuple[int, dict]:
+    """The detail of one GitHub row, kept for ten minutes: one GraphQL call of a few points, under the same
+    block as every section (a spent budget asks nothing and shows the last kept detail, said to be old)."""
+    m = GLOBAL_ROW.match(ref or "")
+    if not m:
+        return 2, {"ok": False, "error": "not an owner/repo#number"}
+    owner, name = m.group(1).split("/", 1)
+    path = root / DETAIL_DIR / f"{owner}__{name}__{m.group(2)}.json"
+    ctx = ctx or Context(root)
+    kept = None
+    try:
+        kept = json.loads(path.read_text(encoding="utf-8"))
+        at = dt.datetime.fromisoformat(kept["fetched_at"])
+        if not fresh and dt.timedelta(0) <= ctx.now - at < dt.timedelta(minutes=DETAIL_MINUTES):
+            return 0, kept
+    except (OSError, ValueError, KeyError, TypeError):
+        kept = None
+    ctx.deadline = time.monotonic() + ctx.timeout
+    try:
+        data = json.loads(ctx.run(["gh", "api", "graphql", "-f", f"query={DETAIL_QUERY}", "-f", f"owner={owner}",
+                                   "-f", f"name={name}", "-F", f"number={m.group(2)}"], timeout=ctx.timeout))
+        node = ((data.get("data") or {}).get("repository") or {}).get("issueOrPullRequest")
+        if not isinstance(node, dict):
+            raise SourceError("GitHub knows no issue or pull request by that number")
+    except (SourceError, ValueError) as exc:
+        if kept:
+            return 0, {**kept, "stale": ctx.redact(str(exc))[:200]}
+        return 1, {"ok": False, "error": ctx.redact(str(exc))[:300]}
+    finally:
+        ctx.deadline = None
+    out = {**detail_of(node, ref), "fetched_at": ctx.now.isoformat(timespec="seconds")}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+    return 0, out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--root", type=Path, default=ROOT)
@@ -2227,6 +2361,9 @@ def main(argv=None) -> int:
     p_act.add_argument("section")
     p_act.add_argument("row")
     p_act.add_argument("action")
+    p_detail = sub.add_parser("detail", help="the detail of one GitHub issue or pull request (owner/repo#n), as JSON")
+    p_detail.add_argument("ref")
+    p_detail.add_argument("--fresh", action="store_true", help="ask GitHub now, whatever was kept")
     args = ap.parse_args(argv)
     root = args.root.resolve()
     cfg = read_config(root)
@@ -2258,6 +2395,11 @@ def main(argv=None) -> int:
     if args.cmd == "offer":
         print("\n".join(offer(load_profiles(root), args.text)))
         return 0
+
+    if args.cmd == "detail":
+        code, data = github_detail(root, args.ref, fresh=args.fresh)
+        print(json.dumps(data, ensure_ascii=False), file=sys.stdout if code == 0 else sys.stderr)
+        return code
 
     try:
         # the profile carries the Bridge's language, so its default words come in it (briefing_view.labels_for)

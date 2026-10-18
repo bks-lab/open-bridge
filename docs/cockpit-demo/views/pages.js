@@ -17,6 +17,7 @@ import { Lines } from './detail.js'
 import { ReturnChip } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
 import { Btn, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, useTween } from './parts.js'
+import { GitHubBoard, ghShows } from './github.js'
 
 // ---------------------------------------------------------------- pages
 
@@ -475,16 +476,19 @@ function GroupsView({ items, page, section, c }) {
 export function PageSection({ page, section, s, c }) {
   const byKey = indexRows(s.model)
   const t = T()
+  // a GitHub section's figures and boards filter its rows: kept in the section, gone with a new page
+  const [ghFilter, setGhFilter] = useState(null)
+  const gh = !!(section.metrics?.length || section.boards?.length)
   const stamp = sectionStamp(section.as_of, s.model?.collected_at)
   const more = section.whole ? null : s.more[`${page.id}/${section.id}`]   // whole: the caller already took every row
   // a task or inbox section follows the triage filter on top of its page
   const all = more ? more.items : (section.items ?? [])
   const items = section.kind === 'tasks' || section.kind === 'inbox'
-    ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : all
+    ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter)) : all
   const left = more ? 0 : section.more ?? 0
   const scale = meterScale(items)
   // nothing found: a section that says so in one quiet line, or none at all when the profile asks
-  const quiet = !items.length && section.status !== 'error' && section.status !== 'skipped'
+  const quiet = !items.length && section.status !== 'error' && section.status !== 'skipped' && !(gh && ghFilter)
   if (quiet && section.hide_empty) return null
   if (quiet) {
     return html`<section class="panel psec psec-quiet" aria-labelledby=${`ps-${page.id}-${section.id}`}>
@@ -525,7 +529,8 @@ export function PageSection({ page, section, s, c }) {
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </header>
     ${section.stale ? html`<p class="muted small"><${StateLine} token="warning" word=${section.stale} /></p>` : null}
-    ${body}
+    ${gh ? html`<${GitHubBoard} section=${section} filter=${ghFilter} setFilter=${setGhFilter} s=${s} c=${c} />` : null}
+    ${gh && ghFilter && !items.length ? html`<${Empty}>${t.filterNone}<//>` : body}
     ${left > 0 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${() => c.loadMore(page.id, section.id)}>${t.btnMore(left)}<//>` : null}
   </section>`
 }

@@ -118,7 +118,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "ticker_profile": {"llm": ("bool", False)},
     "account_status": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                        "status": ("account_status", True)},
+    "github_board": {"section": ("page_id", True), "slug": ("page_id", True), "mode": ("board_mode", True)},
 }
+BOARD_MODES = ("off", "mine", "all")
 ACCOUNT_STATUSES = ("active", "paused", "disabled")
 # a command row's own step and the undo token it returns (the same rules as briefing.py act)
 ROW_STEP_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}\Z")
@@ -470,6 +472,10 @@ class Actions:
             elif kind == "account_status":
                 if value not in ACCOUNT_STATUSES:
                     raise bad_arg(name, "unknown status")
+                out[name] = value
+            elif kind == "board_mode":
+                if value not in BOARD_MODES:
+                    raise bad_arg(name, "off, mine or all")
                 out[name] = value
             elif kind == "row_step":
                 if not isinstance(value, str) or not ROW_STEP_RE.match(value):
@@ -1455,6 +1461,25 @@ class Actions:
         ctx.note(self.tx["status_set"].format(title=m.short(found[1].get("title") or aid, 60),
                                               status=self.tx["account_status"][status]))
         app.collector.request("full")
+
+    def v_github_board(self, ctx: Ctx, section: str, slug: str, mode: str) -> None:
+        """Switch one board of a GitHub section: off (not asked, costs nothing), mine (your cards), all (every open
+        card). The choice is this person's, kept in .bridge/github-boards.json, never in the profile; the section is
+        asked again at once."""
+        found = next((b for pg in (self.app.collector.view or {}).get("pages", []) for sec in pg.get("sections", [])
+                      if sec.get("id") == section for b in sec.get("boards") or [] if b.get("slug") == slug), None)
+        if found is None:
+            raise ActionError(409, "stale_row", "the board is not in that section", "slug")
+        ctx.subject = f"board:{slug}"
+        try:
+            from ..briefing_providers.github_work import save_board_mode
+            save_board_mode(self.app.root, slug, mode)
+        except (OSError, ValueError, ImportError) as exc:
+            ctx.note(self.tx["status_failed"].format(err=m.short(str(exc), 120)), bad=True)
+            return
+        ctx.note(self.tx["board_mode_set"].format(name=m.short(found.get("name") or slug, 60),
+                                                  mode=self.tx["board_mode"][mode]))
+        self.forget_section(section)
 
     # ------------------------------------------------------------ a command row's own steps
 

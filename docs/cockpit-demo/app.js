@@ -829,6 +829,7 @@ const ctl = {
   setAskFallback: fb => setUi({ askFallback: fb }),
   closeTabView: () => setUi({ tabView: null }),
   tabScreen: ref => api.tabScreen(ref),
+  github: (ref, fresh) => api.github(ref, fresh),
   loadInbox: id => loadDetail('inbox', id),
   loadTask: slug => loadDetail('task', slug),
   async loadMore(pageId, sectionId) {

@@ -160,7 +160,9 @@ def test_tracker_rows_fill_every_column():
     pr, old = rows
     assert pr == {"title": "acme/app#7 Fix login", "when": "09:30", "detail": "PR · open",
                   "tone": None, "url": "https://example.test/acme/app/pull/7", "task": None, "ask": True, "mark": None,
-                  "actionable": True, "id": "acme/app#7"}
+                  "actionable": True, "id": "acme/app#7",
+                  # a GitHub row: the id a dashboard asks its detail by, and what the figures filter by
+                  "row_id": "acme/app#7", "flags": []}
     # a project that the id already names is not repeated; another one is
     assert old["detail"] == "open · Roadmap · P1"
     assert old["when"] == "05.10"

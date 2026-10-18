@@ -18,6 +18,7 @@ import {
 } from './nav.js'
 import { LaunchPick } from './launch.js'
 import { MeterBar, RowSteps, StatusMenu } from './pages.js'
+import { GH_REF, GitHubDetail } from './github.js'
 import { Btn, Dot, Empty, Icon, Spinner, StateLine } from './parts.js'
 import { TaskSessions } from './sessions.js'
 import { TabsColumn } from './tabs.js'
@@ -291,6 +292,8 @@ export function InfoDrawer({ s, c }) {
   const onHostBad = onHost.filter(r => (r.findings ?? []).some(serious)).length
   // an opened event lists the ones after it too, each a click into its own detail
   const dated = sec?.kind === 'calendar'
+  // a GitHub row opens its issue or pull request: what it says, who is on it, its steps as buttons
+  const ghRef = sec?.kind === 'tracker' && GH_REF.test(cur.row_id ?? '') ? cur.row_id : null
   const others = dated
     ? upcomingEvents(s.model, s.now || Date.now()).filter(e => !(e.it.at === cur.at && e.it.title === cur.title)).slice(0, 15)
     : []
@@ -311,8 +314,8 @@ export function InfoDrawer({ s, c }) {
           <${Btn} size="xs" variant="secondary" onClick=${() => { close(); c.openTabView(sess.tab.ref) }}>${t.infoViewTab}<//>` : null}
         ${cur.task ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.openItem(`task:${cur.task}`, cur, { page, section })}>${t.infoOpenTask}<//>` : null}
         ${onHost.length ? html`<${Btn} size="xs" variant="secondary" onClick=${() => { close(); c.openWorkers({ host: cur.title }) }}>${t.workersOpen}<//>` : null}
-        ${cur.actions?.length && cur.row_id ? (dated
-          // an event's steps start an agent tab and change nothing, so each is a button of its own
+        ${cur.actions?.length && cur.row_id ? (dated || ghRef
+          // an event's or a GitHub row's steps start an agent tab and change nothing, so each is a button of its own
           ? cur.actions.map(a => html`<${Btn} key=${a.id} size="xs" variant="primary" busy=${!!s.ui.busy.row_action}
               onClick=${() => c.act('row_action', { page, section, index: cur.index, action: a.id })}>${a.label}<//>`)
           : html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} />`) : null}
@@ -321,6 +324,7 @@ export function InfoDrawer({ s, c }) {
         ${cur.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { close(); c.ask('info', { page, section, index: cur.index }) }}>${t.btnAsk}<//>` : null}
       </div>
       <div class="idrawer-body">
+        ${ghRef ? html`<${GitHubDetail} gref=${ghRef} c=${c} />` : null}
         ${onHost.length ? html`<section class="idrawer-sec"><${StateLine} token=${onHostBad ? 'warning' : 'success'} word=${t.workersOnHost(onHost.length, onHostBad)} /></section>` : null}
         ${cur.detail ? html`<section class="idrawer-sec"><p class="info-detail-full"><${Linked} text=${detailText(cur.detail, t)} /></p></section>` : null}
         ${cur.meter ? html`<section class="idrawer-sec"><${MeterBar} meter=${cur.meter} scale=${0} tone=${cur.tone} /></section>` : null}
@@ -331,7 +335,7 @@ export function InfoDrawer({ s, c }) {
             <span class="mono agenda-when">${e.it.when}</span>
             <button type="button" class="btn-link" onClick=${() => c.openInfo(e.it, e.page, e.section)}>${e.it.title}</button>
             ${e.it.detail ? html`<span class="muted small">${detailText(e.it.detail, t)}</span>` : null}</li>`)}</ul></section>` : null}
-        ${!cur.detail && !cur.meter && !facts.length && !(cur.lines ?? []).length ? html`<p class="muted">${t.infoNothingMore}</p>` : null}
+        ${!ghRef && !cur.detail && !cur.meter && !facts.length && !(cur.lines ?? []).length ? html`<p class="muted">${t.infoNothingMore}</p>` : null}
       </div>
     </aside>
   </div>`

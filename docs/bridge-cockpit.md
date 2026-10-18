@@ -829,9 +829,16 @@ page entry (docs/briefings.md).
 **GitHub work with steps.** A `github-work` section (docs/briefings.md § GitHub
 work) on a page with `view: board` lists one row per issue or pull request
 under its board: the board's status, the pull requests that close it, the task
-of this Bridge that syncs it. Its "Steps ▾" menu starts an agent tab on the row
-with everything the agent needs in its prompt: Analyse, Implement, Review the
-PR, Make it a task, Sync status, plus the section's own `row_steps`. The tab is
+of this Bridge that syncs it. Above the rows stand its figures (open, yours,
+wanting your review, your open PRs, in progress, in review, blocked, quiet,
+closed and merged lately), a tile per board with its open cards per state as a
+bar and the switch Off · Mine · All, and the people the rows are with; a click
+on any of them filters the rows, a second clears it. Opening a row reads its
+issue or pull request (description, last comments, labels, boards, review and
+checks) and shows its steps as buttons. Its "Steps ▾" menu starts an agent tab
+on the row with everything the agent needs in its prompt: Analyse, Implement,
+Review the PR, Make it a task, Sync status, Remind, plus the section's own
+`row_steps`. The tab is
 filed as an inbox item under `tracker:<step>:<row id>`, and the row then names
 that item: its tab's state shows on the row and "Open tab" jumps to it, as on a
 task row. A row whose issue a task syncs opens that task's tab instead. No step

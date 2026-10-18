@@ -690,6 +690,77 @@ kbd {
 .g-label { font-family: var(--font-mono); font-size: 10px; fill: var(--on-surface-muted); }
 .g-num { font-family: var(--font-mono); font-size: 30px; font-weight: 600; fill: var(--counter); font-variant-numeric: tabular-nums; }
 
+/* GitHub work (views/github.js): figures, boards with their switch, an opened issue or pull request */
+.ghb { display: grid; gap: 14px; margin: 4px 0 14px; }
+.ghb-figures { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+.ghb-figure {
+  width: 100%; display: grid; gap: 2px; justify-items: start; padding: 10px 12px; cursor: pointer; text-align: left;
+  background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--on-surface); font: inherit;
+}
+.ghb-figure:hover { border-color: var(--border-strong); }
+.ghb-figure:focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; }
+.ghb-figure.is-on { border-color: var(--secondary); box-shadow: inset 0 0 0 1px var(--secondary); }
+.ghb-figure.is-loud { border-left: 3px solid var(--tk); }
+.ghb-figure.is-loud .ghb-n { color: var(--tk); }
+.ghb-figure.is-done { cursor: default; background: var(--surface-muted); }
+.ghb-n { font-size: 24px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--counter); }
+.ghb-label { font-size: var(--text-sm); }
+.ghb-sub { font-size: var(--text-xs, 11px); }
+.ghb-boards { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.ghb-board {
+  display: grid; gap: 8px; align-content: start; padding: 12px 14px;
+  background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-xl);
+}
+.ghb-board.is-on { border-color: var(--secondary); box-shadow: inset 0 0 0 1px var(--secondary); }
+.ghb-board.is-off { background: var(--surface-muted); }
+.ghb-board.is-off .ghb-board-name { color: var(--on-surface-muted); }
+.ghb-board-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0; border: 0; background: none;
+  color: var(--on-surface); font: inherit; text-align: left; cursor: pointer;
+}
+.ghb-board-head:disabled { cursor: default; }
+.ghb-board-head:focus-visible { outline: 2px solid var(--secondary); outline-offset: 3px; border-radius: 4px; }
+.ghb-board-name { font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
+.ghb-board .ghb-n { font-size: 20px; }
+.ghb-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--border); }
+.ghb-seg { flex-basis: 0; min-width: 4px; background: var(--tk); }
+.ghb-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; }
+.ghb-dot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; background: var(--tk); vertical-align: 0; }
+.ghb-off { margin: 0; }
+.ghb-mode { display: inline-flex; justify-self: start; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.ghb-mode-btn {
+  padding: 3px 10px; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--on-surface-muted);
+  font: inherit; font-size: var(--text-sm); cursor: pointer;
+}
+.ghb-mode-btn:last-child { border-right: 0; }
+.ghb-mode-btn:hover { background: var(--surface-muted); color: var(--on-surface); }
+.ghb-mode-btn.is-on { background: var(--primary); color: var(--on-primary); font-weight: 600; }
+.ghb-mode-btn:focus-visible { outline: 2px solid var(--secondary); outline-offset: -2px; }
+.ghb-filter { display: flex; align-items: center; gap: 8px; margin: 0; }
+.ghb-people { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
+.gh-detail { display: grid; gap: 14px; }
+.gh-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.gh-label {
+  display: inline-flex; padding: 1px 8px; border-radius: 999px; font-size: var(--text-xs, 11px); line-height: 18px;
+  border: 1px solid var(--lc, var(--border)); color: var(--on-surface);
+  background: color-mix(in srgb, var(--lc, transparent) 18%, transparent);
+}
+.gh-facts { margin: 0; }
+.gh-person { font-size: var(--text-sm); }
+.gh-add { color: var(--success); }
+.gh-del { color: var(--danger); }
+.gh-list { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.gh-body, .gh-comments { display: grid; gap: 6px; }
+.gh-prose { overflow-wrap: anywhere; }
+.gh-prose img { max-width: 100%; height: auto; }
+.gh-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.gh-comment { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised); }
+.gh-comment-head { margin: 0 0 6px; display: flex; gap: 6px; align-items: center; }
+@media (max-width: 560px) {
+  .ghb-figures { grid-template-columns: repeat(2, 1fr); }
+  .ghb-boards { grid-template-columns: 1fr; }
+}
+
 .settle { position: relative; display: inline-flex; }
 .settle-menu {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 60; display: grid; gap: 2px; min-width: 210px; padding: 6px;

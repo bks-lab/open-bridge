@@ -100,6 +100,7 @@ LABELS = {
     # a GitHub row's steps (briefing.py tracker_steps): each starts an agent tab, none acts on GitHub by itself
     "stale": "the source did not answer, last rows shown",
     "stale_until": "GitHub limit reached, not asked until {until}, last rows shown",
+    "stale_refreshing": "last rows, being refreshed",
     "gh_draft": "draft",
     "gh_task": "task {slug}",
     "gh_step_analyze": "Analyse",
@@ -107,6 +108,7 @@ LABELS = {
     "gh_step_review": "Review the PR",
     "gh_step_adopt": "Make it a task",
     "gh_step_sync": "Sync status",
+    "gh_step_remind": "Remind",
     "gh_head": "GitHub {type} {id}: {title}",
     "gh_type_issue": "issue",
     "gh_type_pr": "pull request",
@@ -117,6 +119,7 @@ LABELS = {
     "gh_fact_task": "Task of this Bridge",
     "gh_fact_prs": "Pull requests that close it",
     "gh_fact_note": "Note",
+    "gh_fact_assignee": "Assigned to",
     "gh_do_analyze": ("Read it with its comments (gh issue view or gh pr view with --comments), the board config and the "
                       "code it touches. Answer here: what is asked, what is unclear, and a plan in a few steps. Change "
                       "nothing on GitHub; offer a comment as a draft and post it only after a yes."),
@@ -135,6 +138,10 @@ LABELS = {
                    "(python3 scripts/tracker-sync.py diff, the tracker-sync skill). List what differs and propose the "
                    "change on each side; apply a board change only through the github-projects-manager skill and only "
                    "after a yes."),
+    "gh_do_remind": ("Draft a short, friendly reminder to the person it is assigned to: what is open, what is needed from "
+                     "them, by when if a date is known, in the language the issue is written in. Offer it as a GitHub "
+                     "comment that mentions them and, if the person prefers, as a mail or chat draft through this Bridge's "
+                     "drafting skill. Post or send nothing: show the text and wait for a yes."),
     "all_clear": "{title}: all clear",
     "owed": "Not in this profile, still yours to run: {streams} (briefing.py owed)",
     "overview_file": "Boards and activity: {path}",
@@ -227,6 +234,7 @@ LABELS_DE = {
                      "worum es geht, was offen ist, was ich mitbringen oder entscheiden sollte. Nur lesen, nichts senden."),
     "stale": "Quelle antwortet nicht, letzter Stand",
     "stale_until": "GitHub-Kontingent erschöpft, Abfrage erst ab {until}, letzter Stand",
+    "stale_refreshing": "letzter Stand, wird gerade aktualisiert",
     "gh_draft": "Entwurf",
     "gh_task": "Aufgabe {slug}",
     "gh_step_analyze": "Analysieren",
@@ -234,6 +242,7 @@ LABELS_DE = {
     "gh_step_review": "PR prüfen",
     "gh_step_adopt": "Als Aufgabe",
     "gh_step_sync": "Status abgleichen",
+    "gh_step_remind": "Erinnern",
     "gh_head": "GitHub-{type} {id}: {title}",
     "gh_type_issue": "Issue",
     "gh_type_pr": "Pull Request",
@@ -244,6 +253,7 @@ LABELS_DE = {
     "gh_fact_task": "Aufgabe dieser Bridge",
     "gh_fact_prs": "Pull Requests, die es schließen",
     "gh_fact_note": "Hinweis",
+    "gh_fact_assignee": "Zugewiesen an",
     "gh_do_analyze": ("Lies es samt Kommentaren (gh issue view oder gh pr view mit --comments), die Board-Konfiguration "
                       "und den Code, den es berührt. Antworte hier: was verlangt ist, was unklar ist, und ein Plan in "
                       "wenigen Schritten. Ändere nichts auf GitHub; einen Kommentar bietest du als Entwurf an und "
@@ -263,6 +273,10 @@ LABELS_DE = {
                    "(python3 scripts/tracker-sync.py diff, der Skill tracker-sync). Nenne, was abweicht, und schlage die "
                    "Änderung je Seite vor; eine Board-Änderung nur über den Skill github-projects-manager und erst nach "
                    "einem Ja."),
+    "gh_do_remind": ("Entwirf eine kurze, freundliche Erinnerung an die Person, der es zugewiesen ist: was offen ist, was von "
+                     "ihr gebraucht wird, bis wann, falls ein Datum bekannt ist, in der Sprache des Issues. Biete sie als "
+                     "GitHub-Kommentar mit Erwähnung an und, wenn gewünscht, als Mail- oder Chat-Entwurf über den "
+                     "Entwurfs-Skill dieser Bridge. Poste und sende nichts: zeig den Text und warte auf ein Ja."),
     "all_clear": "{title}: alles in Ordnung",
     "owed": "Nicht im Profil, noch von Hand: {streams} (briefing.py owed)",
     "overview_file": "Boards und Aktivität: {path}",
@@ -1705,6 +1719,11 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
              and ACTION_ID_RE.match(a["id"]) and isinstance(a.get("label"), str) and a["label"].strip()][:8]
     if kind in ("command", "calendar", "tracker") and steps and isinstance(item.get("id"), str):
         row["actions"], row["row_id"] = steps, item["id"][:200]
+    if kind == "tracker" and isinstance(item.get("id"), str) and re.match(r"^[\w.-]+/[\w.-]+#\d+\Z", item["id"]):
+        row["row_id"] = item["id"]           # a GitHub row: the dashboard asks for its detail by it
+        row["flags"] = github_flags(item, now)
+        if _text(item.get("assignee")):
+            row["who"] = _text(item["assignee"])[:60]     # the person filter
     # an event's calendar: a fact when it is opened, a filter on the dates page
     tags = tags_of({labels["tag_calendar"]: _text(item["calendar"])}) if kind == "calendar" and _text(item.get("calendar")) \
         else tags_of(item.get("tags"))
@@ -1719,6 +1738,62 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
 
 
 ACTION_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}\Z")      # the same rule as briefing.py ACTION_RE
+BOARD_STATES = ("new", "ready", "in_progress", "review", "blocked")
+BOARD_MODES = ("off", "mine", "all")
+QUIET_DAYS = 14
+PR_AGE_RE = re.compile(r"(\d+) day")
+
+
+def boards_of(summary: list) -> list:
+    """The board summary as a dashboard draws it: name, slug, open cards per state, the switch."""
+    out = []
+    for b in summary[:40]:
+        if not isinstance(b, dict) or not _text(b.get("name")):
+            continue
+        counts = b.get("counts") if isinstance(b.get("counts"), dict) else {}
+        out.append({"name": _text(b["name"])[:80], "slug": _text(b.get("slug"))[:64] or None,
+                    "number": b.get("number") if isinstance(b.get("number"), int) else None,
+                    "org": _text(b.get("org"))[:80] or None,
+                    "open": b.get("open") if isinstance(b.get("open"), int) else None,
+                    "counts": {k: int(counts[k]) for k in BOARD_STATES if isinstance(counts.get(k), int)},
+                    "capped": b.get("capped") if isinstance(b.get("capped"), int) else None,
+                    **({"mode": b["mode"]} if b.get("mode") in BOARD_MODES else {})})
+    return out
+
+
+def github_flags(item: dict, now: dt.datetime) -> list:
+    """What a GitHub row is, as the words a dashboard's figures filter by."""
+    flags = []
+    if item.get("assigned_to_me"):
+        flags.append("mine")
+    if item.get("category") == "qa" and item.get("type") == "pr":
+        flags.append("ask_review")
+    if item.get("type") == "pr" and _text(item.get("note")).startswith("your PR"):
+        flags.append("my_pr")
+    if item.get("state") in ("in_progress", "review", "blocked"):
+        flags.append(item["state"])
+    changed = _when(item.get("changed_at"))
+    if changed is not None and (now - changed).days >= QUIET_DAYS:      # _when gives local, naive times
+        flags.append("quiet")
+    return flags
+
+
+def github_metrics(items: list, done: object, now: dt.datetime) -> list:
+    """The figures above a github-work section: each {id, n} (and `days` for the oldest of your pull
+    requests or the window of what you finished), in the order a dashboard shows them."""
+    flags = [github_flags(i, now) for i in items]
+    count = lambda flag: sum(1 for f in flags if flag in f)   # noqa: E731
+    ages = [int(m.group(1)) for i in items for m in [PR_AGE_RE.search(_text(i.get("note")))] if m]
+    out = [{"id": "open", "n": len(items)}, {"id": "mine", "n": count("mine")},
+           {"id": "ask_review", "n": count("ask_review")},
+           {"id": "my_pr", "n": count("my_pr"), **({"days": max(ages)} if ages else {})},
+           {"id": "in_progress", "n": count("in_progress")}, {"id": "review", "n": count("review")},
+           {"id": "blocked", "n": count("blocked")}, {"id": "quiet", "n": count("quiet"), "days": QUIET_DAYS}]
+    done = done if isinstance(done, dict) else {}
+    for key in ("closed", "landed"):           # landed: your pull requests merged in the window
+        if isinstance(done.get(key), int):
+            out.append({"id": key, "n": done[key], "days": done.get("days") if isinstance(done.get("days"), int) else None})
+    return out
 ACCOUNT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}\Z")
 
 
@@ -1779,8 +1854,15 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
             # From the section's cache (`cache_minutes`): the time its source last answered.
             "as_of": _page_when(section["cached_at"], now, labels) if section.get("cached_at") else None,
             # a source that could not answer: its last kept rows, and why they are old
-            **({"stale": (labels["stale_until"].format(until=section["stale"]["until"]) if section["stale"].get("until")
+            **({"stale": (labels["stale_refreshing"] if section["stale"].get("refreshing")
+                          else labels["stale_until"].format(until=section["stale"]["until"]) if section["stale"].get("until")
                           else labels["stale"])} if isinstance(section.get("stale"), dict) else {}),
+            # a board summary (github-board, github-work): one entry per board, its open cards per state and,
+            # for github-work, the person's switch (off, mine, all)
+            **({"boards": boards_of(section["summary"])} if kind == "tracker" and isinstance(section.get("summary"), list)
+               else {}),
+            **({"metrics": github_metrics(items, section.get("metrics"), now)}
+               if section.get("provider") == "github-work" else {}),
             **({"view": entry["view"]} if entry.get("view") in PAGE_VIEWS[1:] else {}),
             # nothing to say when it is empty: a dashboard leaves the section out instead of "nothing"
             **({"hide_empty": True} if entry.get("hide_empty") is True else {})}

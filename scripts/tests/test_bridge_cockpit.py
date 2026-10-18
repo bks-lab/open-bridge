@@ -437,8 +437,9 @@ def test_parse_pages():
     assert s["items"][0] == {"title": "T", "detail": "open", "when": "09:30", "tone": "warn", "url": "https://x.test",
                              "task": "alpha", "ask": True, "mark": None, "priority": None, "state": None, "lines": [], "meter": None,
                              "group": None, "icon": None, "tags": None, "account": None, "inbox": None,
-                             "actions": None, "row_id": None, "at": None, "id": None, "actionable": False}
+                             "actions": None, "row_id": None, "flags": None, "who": None, "at": None, "id": None, "actionable": False}
     assert s["as_of"] is None and s["empty"] == "nothing"
+    assert s["boards"] is None and s["metrics"] is None and s["stale"] is None
     assert pages[0]["overview"] is False
     ops = m.parse_pages({"pages": [{"id": "ops", "title": "Betrieb", "overview": True, "sections": [{"id": "a"}]}]})
     assert ops[0]["overview"] is True
@@ -4093,3 +4094,22 @@ def test_a_broken_status_frontmatter_falls_through_to_the_check(lworld):
     lworld.runner.calls.clear()
     lworld.act("do_it", keys=["task:other-task"], model="auto")
     assert writes(lworld)[-1][-2:] == ["--model", "haiku"]
+
+
+def test_github_board_switch_keeps_the_persons_choice_and_asks_the_section_again(world):
+    """A board's switch (off, mine, all) is the person's, kept in .bridge/github-boards.json and never in the
+    profile; the section's kept answer goes so the next pass asks with it."""
+    world.app.collector.view.setdefault("pages", []).append({"id": "github", "title": "GitHub", "sections": [
+        {"id": "work", "kind": "tracker", "title": "GitHub", "status": "ok", "reason": "", "items": [], "total": 0,
+         "count": 0, "weight": 0, "bad": 0, "alarm": False, "empty": "nothing", "as_of": None, "boards": [{"slug": "tool-board", "name": "Tool board", "mode": "mine"}]}]})
+    cache = world.app.root / ".bridge" / "briefing-cache" / "cockpit"
+    cache.mkdir(parents=True)
+    (cache / "work.json").write_text("{}")
+    world.act("github_board", section="work", slug="tool-board", mode="off")
+    saved = json.loads((world.app.root / ".bridge" / "github-boards.json").read_text())
+    assert saved == {"boards": {"tool-board": "off"}}
+    assert not (cache / "work.json").exists()
+    for bad in ({"slug": "other-board", "mode": "all"}, {"slug": "tool-board", "mode": "everything"},
+                {"slug": "../x", "mode": "all"}):
+        with pytest.raises(ActionError):
+            world.act("github_board", **{"section": "work", **bad})
