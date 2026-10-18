@@ -9,13 +9,26 @@ decisions at all. A fix was promoted, merged upstream under a new hash, and then
 upstream built on it (a review edit, a follow-up commit). The local file is an OLDER
 upstream version, and upstream's current one is simply newer.
 
-That is the one case this script resolves, and it is decided by CONTENT, never by
-path or by commit message:
+The mirror case froze it just as often: a change is promoted, upstream takes it byte
+for byte, and work goes on locally. Now upstream's file is an OLDER local version.
+Measured 2026-10-17: 23 conflicting files, 21 of them that case, one an appended
+.gitignore block the instance had pulled earlier.
+
+These are the cases this script resolves, decided by CONTENT, never by path or by
+commit message:
 
   take theirs   the local version of the file is byte-identical to a version
                 upstream itself had between the merge base and now, and upstream
                 did not revert any commit since. Upstream has seen our change and
                 moved on from it; nothing local is lost.
+
+  take ours     seen_locally: upstream's version is byte-identical to a version
+                this branch had since the merge base, and the branch did not
+                revert any commit since. We have seen upstream's file and moved
+                on from it; nothing upstream knows is lost.
+                contained: since the merge base upstream only ADDED lines, and
+                every added block stands in the local file verbatim and in one
+                piece. Upstream's change is already there.
 
   unresolved    everything else, each with the reason:
                 · the local version never reached upstream (an unpromoted CORE
@@ -23,10 +36,13 @@ path or by commit message:
                 · upstream had it and then REVERTED it. Taking theirs here would
                   silently withdraw a change that may be running locally — on the
                   instance this was written on, a live launchd job.
+                · this branch had upstream's version and then REVERTED it locally:
+                  upstream still carries what the instance withdrew, a human looks
                 · the file was deleted locally, or the conflict is not a plain
                   content one (rename, mode, submodule)
 
-Every path not provably "take theirs" is unresolved: the script fails closed.
+Every path not provably "take theirs" or "take ours" is unresolved: the script
+fails closed.
 
 Usage:
   upstream-resolve.py --theirs upstream/main [--ours HEAD]   # JSON on stdout
@@ -35,6 +51,7 @@ Exit: 0 = plan printed (check "unresolved") · 2 = git could not answer.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import subprocess
@@ -99,6 +116,62 @@ def local_commits(base: str, ours: str, path: str) -> list[str]:
     return out.decode(errors="replace").splitlines()
 
 
+def last_hit(rev_range: str, path: str, want: str) -> tuple[list[str], int | None]:
+    """(commits in rev_range touching path, oldest first; index of the last one whose blob is want)."""
+    history = git("rev-list", "--reverse", rev_range, "--", path).stdout.decode().split()
+    hit = None
+    for i, c in enumerate(history):
+        if blob(c, path) == want:
+            hit = i
+    return history, hit
+
+
+def lines(oid: str | None) -> list[str] | None:
+    """A blob as lines, [] for a missing one; None when it is not text."""
+    if oid is None:
+        return []
+    try:
+        return git("cat-file", "blob", oid).stdout.decode("utf-8").splitlines(keepends=True)
+    except UnicodeDecodeError:
+        return None
+
+
+def contains(hay: list[str], block: list[str]) -> bool:
+    n = len(block)
+    return any(hay[i:i + n] == block for i in range(len(hay) - n + 1))
+
+
+def additions_held(base_blob: str | None, ours_blob: str, theirs_blob: str) -> bool:
+    """True when upstream only added lines since the base and ours holds each added block in one piece."""
+    old, new, mine = lines(base_blob), lines(theirs_blob), lines(ours_blob)
+    if old is None or new is None or mine is None:
+        return False
+    ops = difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+    if any(tag not in ("equal", "insert") for tag, *_ in ops):
+        return False
+    blocks = [new[j1:j2] for tag, _, _, j1, j2 in ops if tag == "insert"]
+    return bool(blocks) and all(contains(mine, b) for b in blocks)
+
+
+def classify_ours(entry: dict, stages: set[int], base: str, ours: str, theirs: str, ours_blob: str) -> dict | None:
+    """The mirror rules: a take-ours entry, a held entry when this branch reverted, or None."""
+    path = entry["path"]
+    theirs_blob = blob(theirs, path)
+    if theirs_blob is None or 3 not in stages:
+        return None
+    history, hit = last_hit(f"{base}..{ours}", path, theirs_blob)
+    if hit is not None:
+        reverts = [c for c in history[hit + 1:] if is_revert(c)]
+        if reverts:
+            return {**entry, "reason": f"this branch had upstream's version at {short(history[hit])}, then reverted "
+                    "it in " + ", ".join(short(c) for c in reverts),
+                    "local_commits": local_commits(base, ours, path)}
+        return {**entry, "rule": "seen_locally", "seen_locally_at": short(history[hit])}
+    if additions_held(blob(base, path), ours_blob, theirs_blob):
+        return {**entry, "rule": "contained"}
+    return None
+
+
 def classify(path: str, stages: set[int], base: str, ours: str, theirs: str) -> dict:
     entry = {"path": path}
     ours_blob = blob(ours, path)
@@ -106,21 +179,18 @@ def classify(path: str, stages: set[int], base: str, ours: str, theirs: str) -> 
         return {**entry, "reason": "deleted or renamed locally"}
     if 2 not in stages:
         return {**entry, "reason": "not a plain content conflict"}
-    history = git("rev-list", "--reverse", f"{base}..{theirs}", "--", path).stdout.decode().split()
-    hit = None
-    for i, c in enumerate(history):
-        if blob(c, path) == ours_blob:
-            hit = i
+    history, hit = last_hit(f"{base}..{theirs}", path, ours_blob)
     if hit is None:
-        return {**entry, "reason": "local change never reached upstream",
-                "local_commits": local_commits(base, ours, path)}
+        return classify_ours(entry, stages, base, ours, theirs, ours_blob) or {
+            **entry, "reason": "local change never reached upstream",
+            "local_commits": local_commits(base, ours, path)}
     later = history[hit + 1:]
     reverts = [c for c in later if is_revert(c)]
     if reverts:
         return {**entry, "reason": f"upstream had it at {short(history[hit])}, then reverted it in "
                 + ", ".join(short(c) for c in reverts),
                 "local_commits": local_commits(base, ours, path)}
-    return {**entry, "seen_upstream_at": short(history[hit]),
+    return {**entry, "side": "theirs", "seen_upstream_at": short(history[hit]),
             "theirs_deleted": blob(theirs, path) is None}
 
 
@@ -129,11 +199,17 @@ def plan(ours: str, theirs: str) -> dict:
     theirs = git("rev-parse", "--verify", theirs).stdout.decode().strip()
     base = git("merge-base", ours, theirs).stdout.decode().strip()
     clean, paths = conflicts(ours, theirs)
-    take, unresolved = [], []
+    take, keep, unresolved = [], [], []
     for path in sorted(paths):
         r = classify(path, paths[path], base, ours, theirs)
-        (unresolved if "reason" in r else take).append(r)
-    return {"clean": clean, "base": short(base), "take_theirs": take, "unresolved": unresolved}
+        if "reason" in r:
+            unresolved.append(r)
+        elif r.pop("side", None) == "theirs":
+            take.append(r)
+        else:
+            keep.append(r)
+    return {"clean": clean, "base": short(base), "take_theirs": take, "take_ours": keep,
+            "unresolved": unresolved}
 
 
 def main() -> int:
