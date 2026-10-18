@@ -194,7 +194,8 @@ the model carries `review.running`, the end comes as a note and a rebuild.
 One at a time, and `task_keep` waits for it, since both write the same file.
 
 Write verbs run one at a time under `write_lock` in `Actions.execute`, with
-three ways out, each in `actions.py` and covered by a test:
+three ways out, each covered by a test (`Ctx.unlocked` and `LAYOUT_VERBS` in
+`actions_base.py`, the start in `actions_launch.py`):
 
 - **A slow subprocess** runs inside `ctx.unlocked()`. A start (`launch`, so
   every verb that opens an agent tab, `target=auto` with its model call
