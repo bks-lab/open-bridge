@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import threading
 import sys
 from pathlib import Path
 
@@ -120,3 +121,66 @@ def test_a_broken_line_is_skipped_and_an_empty_home_is_an_empty_week(tmp_path):
     assert scan(tmp_path)["days"][-1]["output"] == 100
     v = scan(tmp_path / "nothing")
     assert len(v["days"]) == 7 and v["total"]["output"] == 0 and v["outliers"] == []
+
+
+def test_a_transcript_larger_than_a_block_counts_as_if_read_whole(tmp_path, monkeypatch):
+    # many answers, some of them on several lines, one line longer than a block on its own
+    lines = [line(d % 7, mid=f"m{i}", out=i + 1, cwd=f"/x/p{i % 3}") for i, d in enumerate(range(40))]
+    lines += [line(mid="m3", out=4, cwd="/x/p0"), line(mid="long", out=9, cwd="/x/" + "q" * 300)]
+    path = write(tmp_path, "p/s1.jsonl", lines)
+    whole = scan(tmp_path)
+    monkeypatch.setattr(usage, "BLOCK", 64)
+    u = usage.Usage(base=tmp_path, now=lambda: NOW)
+    assert path.stat().st_size > 10 * usage.BLOCK
+    assert u.view() == whole
+    assert u.offsets[str(path)] == path.stat().st_size
+
+
+def test_a_partial_last_line_across_blocks_is_picked_up_on_the_next_scan(tmp_path, monkeypatch):
+    monkeypatch.setattr(usage, "BLOCK", 50)
+    u = usage.Usage(base=tmp_path, now=lambda: NOW)
+    path = write(tmp_path, "p/s1.jsonl", [line(mid="a")])
+    tail = line(mid="b", out=7)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(tail[:120])                       # longer than a block, still being written
+    assert u.view()["days"][-1]["output"] == 100
+    assert u.offsets[str(path)] == len(line(mid="a")) + 1
+    with path.open("a", encoding="utf-8") as f:
+        f.write(tail[120:] + "\n")
+    assert u.view()["days"][-1]["output"] == 107
+
+
+def test_the_offsets_of_a_deleted_transcript_are_dropped(tmp_path):
+    u = usage.Usage(base=tmp_path, now=lambda: NOW)
+    gone = write(tmp_path, "p/gone.jsonl", [line(mid="a")])
+    kept = write(tmp_path, "p/kept.jsonl", [line(mid="b")])
+    u.view()
+    assert set(u.offsets) == {str(gone), str(kept)}
+    gone.unlink()
+    u.view()
+    assert set(u.offsets) == {str(kept)}
+
+
+def test_latest_never_scans_in_the_calling_thread_and_keeps_the_last_view(tmp_path):
+    write(tmp_path, "p/s1.jsonl", [line()])
+    clock = [0.0]
+    u = usage.Usage(base=tmp_path, now=lambda: NOW, clock=lambda: clock[0])
+    scans: list[int] = []
+    real = u.scan
+
+    def counted():
+        scans.append(threading.get_ident())
+        real()
+    u.scan = counted
+    assert u.latest() is None                     # nothing known yet: the first scan runs on its own thread
+    u.join()
+    assert threading.get_ident() not in scans and len(scans) == 1
+    first = u.latest()
+    assert first["days"][-1]["output"] == 100
+    clock[0] += usage.MAX_AGE - 1                 # still fresh: no new scan
+    assert u.latest() is first
+    assert len(scans) == 1
+    clock[0] += 2                                 # stale: the last view still answers, a new scan starts
+    assert u.latest() is first
+    u.join()
+    assert len(scans) == 2 and threading.get_ident() not in scans

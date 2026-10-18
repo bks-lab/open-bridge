@@ -553,13 +553,25 @@ def test_a_collect_pass_sends_the_ticker_state_with_the_new_pass_and_outliers(tw
     client = tworld.app.hub.add()
     events(client)
     outliers = [{"source": "claude", "today": 900, "usual": 100, "factor": 9.0}]
-    tworld.app.usage.view = lambda: {"outliers": outliers}
+    tworld.app.usage.latest = lambda: {"outliers": outliers}
     tworld.runner.handlers["briefing.collect"] = lambda argv: fail("collect broke")
     tworld.app.collector.request("full")
     tworld.app.collector.drain()
     sent = [data for name, data in events(client) if name == "ticker"]
     assert sent and sent[-1]["perf"]["passes"][-1]["ok"] is False
     assert sent[-1]["perf"]["outliers"] == outliers
+
+
+def test_a_collect_pass_never_scans_the_transcripts_itself(tworld):
+    """pass_recorded runs in the collector's thread: it takes the last known token view, a scan runs elsewhere."""
+    scans: list[int] = []
+    tworld.app.usage.join()
+    tworld.app.usage.last = None                  # as right after start: no view known yet
+    tworld.app.usage.scan = lambda: scans.append(threading.get_ident())
+    tworld.app.ticker.pass_recorded()
+    assert threading.get_ident() not in scans
+    tworld.app.usage.join()
+    assert len(scans) == 1
 
 
 def test_a_collect_pass_sends_no_ticker_event_while_the_ticker_is_off(world):

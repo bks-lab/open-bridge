@@ -8,7 +8,12 @@ last line. `entrypoint` tells who asked: `cli` is a session (a subagent when `is
 (`claude -p`, the workers). Measured counts only: the transcripts carry no price, and nothing here estimates one.
 
 Reading is incremental: each file is read on from where the last scan stopped, a line still being written waits
-for the next scan, and a file untouched for longer than the week is not opened. Everything here only reads.
+for the next scan, and a file untouched for longer than the week is not opened. A file is read in blocks, so a
+large transcript never stands in memory whole. Everything here only reads.
+
+`view()` scans before it answers (the Betrieb page asks for it). `latest()` is for callers on a worker thread
+(the collector after each pass): it answers with the last view and starts a scan on its own thread when that view
+is missing or older than MAX_AGE, so the first scan after start never holds up a collect pass.
 """
 from __future__ import annotations
 
@@ -18,6 +23,7 @@ import json
 import os
 import statistics
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -29,6 +35,8 @@ TOP = 8
 OUTLIER_FACTOR = 3.0
 OUTLIER_MIN = 50_000
 OUTLIER_DAYS = 3          # usual needs at least this many earlier days with use
+BLOCK = 8 << 20           # bytes read at a time from one transcript
+MAX_AGE = 180.0           # seconds latest() answers with a view before it starts a new scan
 
 
 def claude_dir() -> Path:
@@ -71,12 +79,18 @@ def _project_of(cwd: str) -> str:
     return p.name
 
 class Usage:
-    def __init__(self, base: Path | None = None, now: Callable[[], dt.datetime] = dt.datetime.now):
+    def __init__(self, base: Path | None = None, now: Callable[[], dt.datetime] = dt.datetime.now,
+                 clock: Callable[[], float] = time.monotonic):
         self.base = base
         self.now = now
+        self.clock = clock
         self.lock = threading.Lock()
         self.offsets: dict[str, int] = {}
         self.answers: dict[tuple, tuple] = {}   # (message id, request id) -> (day, source, model, project, counts)
+        self.last_lock = threading.Lock()       # guards the fields below; never held during a scan
+        self.last: dict | None = None
+        self.last_at = 0.0
+        self.thread: threading.Thread | None = None
 
     def _read(self, path: Path) -> None:
         key = str(path)
@@ -89,14 +103,25 @@ class Usage:
                 return
             with path.open("rb") as f:
                 f.seek(start)
-                chunk = f.read(size - start)
+                pos, rest = start, b""
+                while pos < size:
+                    block = f.read(min(BLOCK, size - pos))
+                    if not block:
+                        break
+                    pos += len(block)
+                    data = rest + block
+                    end = data.rfind(b"\n")
+                    if end < 0:       # one line longer than the block so far: keep collecting it
+                        rest = data
+                        continue
+                    self._lines(data[: end + 1], path)
+                    rest = data[end + 1:]
+                    self.offsets[key] = pos - len(rest)
         except OSError:
             return
-        end = chunk.rfind(b"\n")
-        if end < 0:
-            return
-        self.offsets[key] = start + end + 1
-        for raw in chunk[: end + 1].splitlines():
+
+    def _lines(self, chunk: bytes, path: Path) -> None:
+        for raw in chunk.splitlines():
             if b'"usage"' not in raw:
                 continue
             try:
@@ -120,24 +145,56 @@ class Usage:
     def scan(self) -> None:
         root = (self.base or claude_dir()) / "projects"
         cutoff = self.now().timestamp() - (DAYS + 1) * 86400
+        present: set[str] = set()
         for folder, _dirs, files in os.walk(root):
             for name in files:
                 if not name.endswith(".jsonl"):
                     continue
                 path = Path(folder) / name
+                present.add(str(path))
                 try:
                     if path.stat().st_mtime < cutoff:
                         continue
                 except OSError:
                     continue
                 self._read(path)
+        self.offsets = {k: v for k, v in self.offsets.items() if k in present}   # a deleted file is forgotten
         first = (self.now().date() - dt.timedelta(days=DAYS - 1)).isoformat()
         self.answers = {k: v for k, v in self.answers.items() if v[0] >= first}
+
+    def latest(self) -> dict | None:
+        """The last view without scanning here (None before the first scan ends). A missing or stale one is
+        recomputed on its own thread, one at a time; the answer is the last view meanwhile."""
+        with self.last_lock:
+            stale = self.last is None or self.clock() - self.last_at >= MAX_AGE
+            if stale and (self.thread is None or not self.thread.is_alive()):
+                self.thread = threading.Thread(target=self._refresh, name="usage-scan", daemon=True)
+                self.thread.start()
+            return self.last
+
+    def join(self, timeout: float | None = None) -> None:
+        """Wait for a scan latest() started (tests, shutdown)."""
+        thread = self.thread
+        if thread is not None:
+            thread.join(timeout)
+
+    def _refresh(self) -> None:
+        try:
+            self.view()
+        except Exception:  # noqa: BLE001 (the token view is an extra; the next latest() tries again)
+            with self.last_lock:
+                self.last_at = self.clock()
 
     def view(self) -> dict:
         with self.lock:
             self.scan()
             answers = list(self.answers.values())
+        result = self._build(answers)
+        with self.last_lock:
+            self.last, self.last_at = result, self.clock()
+        return result
+
+    def _build(self, answers: list[tuple]) -> dict:
         today = self.now().date()
         names = [(today - dt.timedelta(days=DAYS - 1 - i)).isoformat() for i in range(DAYS)]
         zero = lambda: dict.fromkeys(FIELDS, 0)  # noqa: E731

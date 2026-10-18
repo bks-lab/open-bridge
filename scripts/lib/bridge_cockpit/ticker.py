@@ -957,11 +957,13 @@ class Ticker:
 
     def pass_recorded(self) -> None:
         """Called by the collector after each collect pass: the status band's slow-pass and token-outlier
-        items read perf, so a pass sends it at once instead of waiting for the next feed refresh."""
+        items read perf, so a pass sends it at once instead of waiting for the next feed refresh. The token view
+        is the last one known: scanning the transcripts here would hold up the collector (usage.latest)."""
         if not self.settings()["enabled"]:
             return
         try:
-            outliers = self.app.usage.view().get("outliers") or []
+            known = self.app.usage.latest()
+            outliers = (known.get("outliers") or []) if known is not None else None
         except Exception:  # noqa: BLE001 (the token view is an extra)
             outliers = None
         with self.lock:
