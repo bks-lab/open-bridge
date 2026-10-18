@@ -3174,3 +3174,87 @@ test('style.css: every class selector is used by the page, or built from an allo
   const dead = [...classes].filter(c => !used(c) && !built(c)).sort()
   assert.deepEqual(dead, [])
 })
+
+// ---------------------------------------------------------------- load errors (#389)
+
+/** The loaders of logic.js against a fake store and api: what the page shows after each answer */
+function loaderRig(answers) {
+  let state = { boot: { status: 'ready' }, agents: null, history: [], triage: {}, ui: { busy: {} }, notes: [] }
+  const posts = []
+  const pending = {}
+  const api = {
+    get: async p => answers[p],
+    post: (p, b) => { posts.push([p, b]); return pending.post ? pending.post : Promise.resolve(answers[p]) },
+  }
+  const set = f => { state = f(state) }
+  const fail = logic.createFailNote(
+    () => set(s => ({ ...s, boot: { ...s.boot, status: 'unauthorized' } })),
+    res => set(s => ({ ...s, notes: [...s.notes, { text: logic.errorText(res.error, text.TABLES.en), tone: 'bad' }] })))
+  const withBusy = logic.createWithBusy(() => state.ui.busy, f => set(s => ({ ...s, ui: { ...s.ui, busy: f(s.ui.busy) } })),
+    () => set(s => ({ ...s, notes: [...s.notes, { text: 'busy', tone: 'warn' }] })))
+  const loaders = logic.createLoaders({ api, set, fail, withBusy })
+  return { loaders, posts, pending, get: () => state }
+}
+
+test('loaders: a failed agents, history or triage answer leaves an error note, never a silent empty list', async () => {
+  const err = { ok: false, status: 500, error: { code: 'internal', message: 'boom' } }
+  for (const name of ['loadAgents', 'loadHistory', 'triageRun']) {
+    const r = loaderRig({ '/api/agents': err, '/api/history': err, '/api/triage/run': err })
+    await r.loaders[name](false)
+    assert.equal(r.get().notes.length, 1, name)
+    assert.equal(r.get().notes[0].tone, 'bad', name)
+    assert.equal(r.get().boot.status, 'ready', name)
+  }
+  // a network drop (no status at all) is an error note too
+  const r = loaderRig({ '/api/triage/run': { ok: false, error: { code: 'network', message: 'offline' } } })
+  await r.loaders.triageRun(false)
+  assert.equal(r.get().notes.length, 1)
+})
+
+test('loaders: a 401 from any of them goes to the sign-in page, as a reload does', async () => {
+  const unauth = { ok: false, status: 401, error: { code: 'unauthorized', message: 'no' } }
+  for (const name of ['loadAgents', 'loadHistory', 'triageRun']) {
+    const r = loaderRig({ '/api/agents': unauth, '/api/history': unauth, '/api/triage/run': unauth })
+    await r.loaders[name](false)
+    assert.equal(r.get().boot.status, 'unauthorized', name)
+    assert.deepEqual(r.get().notes, [], name)
+  }
+})
+
+test('loaders: a good answer fills the store as before', async () => {
+  const r = loaderRig({
+    '/api/agents': { ok: true, data: { peers: ['p'], convs: [{ id: 'c' }] } },
+    '/api/history': { ok: true, data: { entries: [{ verb: 'task_close' }] } },
+    '/api/triage/run': { ok: true, data: { triage: { running: true } } },
+  })
+  await r.loaders.loadAgents()
+  await r.loaders.loadHistory()
+  await r.loaders.triageRun(true)
+  assert.deepEqual(r.get().agents, { peers: ['p'], convs: [{ id: 'c' }] })
+  assert.deepEqual(r.get().history, [{ verb: 'task_close' }])
+  assert.deepEqual(r.get().triage, { running: true })
+  assert.deepEqual(r.posts, [['/api/triage/run', { fresh: true }]])
+  assert.deepEqual(r.get().notes, [])
+})
+
+test('loaders: while a triage run is pending a second one sends no POST and the button reads as running', async () => {
+  const r = loaderRig({})
+  let release
+  r.pending.post = new Promise(res => { release = res })
+  const first = r.loaders.triageRun(false)
+  assert.equal(r.get().ui.busy[logic.TRIAGE_BUSY], 'triage')
+  assert.equal(logic.triageRunning(r.get()), true)
+  assert.equal(await r.loaders.triageRun(false), null)
+  assert.equal(r.posts.length, 1)
+  release({ ok: true, data: { triage: { running: false } } })
+  await first
+  assert.deepEqual(r.get().ui.busy, {})
+  assert.equal(logic.triageRunning(r.get()), false)
+  assert.equal(logic.triageRunning({ triage: { running: true }, ui: { busy: {} } }), true)
+  // the page wires them: app.js builds its failNote and loaders here, the button reads triageRunning
+  const app = read('app.js')
+  assert.match(app, /const failNote = createFailNote\(/)
+  assert.match(app, /createLoaders\(\{ api: \{[^}]*\}, set: store\.set, fail: failNote, withBusy \}\)/)
+  assert.doesNotMatch(app, /api\.post\('\/api\/triage\/run'/)
+  assert.match(read('triage.js'), /const running = triageRunning\(s\)/)
+})

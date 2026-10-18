@@ -180,6 +180,41 @@ export function createWithBusy(getBusy, updateBusy, onRefused = () => {}) {
   }
 }
 
+/** What a failed answer does: a 401 goes to the sign-in page, anything else leaves an error note */
+export function createFailNote(onUnauthorized, onError) {
+  return res => (res?.status === 401 ? onUnauthorized(res) : onError(res))
+}
+
+/** The busy key of a triage run, so a second click while one is pending sends nothing */
+export const TRIAGE_BUSY = 'triage_run'
+
+/** The triage counts as running while the server says so and while its request is still out */
+export function triageRunning(s) {
+  return !!s.triage?.running || !!s.ui?.busy?.[TRIAGE_BUSY]
+}
+
+/** The loads of the Workers tab, the history drawer and the triage run; a failed answer goes to `fail`,
+ *  never into an empty list that reads as "nothing there" */
+export function createLoaders({ api, set, fail, withBusy }) {
+  return {
+    loadAgents: async () => {
+      const res = await api.get('/api/agents')
+      if (!res.ok) return fail(res)
+      set(s => ({ ...s, agents: { peers: res.data.peers ?? [], convs: res.data.convs ?? [] } }))
+    },
+    loadHistory: async () => {
+      const res = await api.get('/api/history')
+      if (!res.ok) return fail(res)
+      set(s => ({ ...s, history: res.data.entries ?? [] }))
+    },
+    triageRun: fresh => withBusy(TRIAGE_BUSY, 'triage', async () => {
+      const res = await api.post('/api/triage/run', { fresh: !!fresh })
+      if (!res.ok) return fail(res)
+      if (res.data?.triage) set(s => ({ ...s, triage: res.data.triage }))
+    }, { refuse: true }),
+  }
+}
+
 /** Design token for a profile mark color name. Never put a profile value into CSS. */
 export function markToken(color) {
   const c = typeof color === 'string' ? color.trim().toLowerCase() : ''

@@ -11,7 +11,7 @@ import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder } from './components.js'
 import {
-  CONN_GRACE_MS, DAY, addNote, attentionTabs, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
+  CONN_GRACE_MS, DAY, addNote, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, letterShortcut, planBusy, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
 } from './logic.js'
@@ -181,13 +181,9 @@ function clock(ms) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function failNote(res) {
-  if (res.status === 401) {
-    store.set(s => ({ ...s, boot: { ...s.boot, status: 'unauthorized' } }))
-    return
-  }
-  pushNote({ text: errorText(res.error, T()), tone: 'bad' })
-}
+const failNote = createFailNote(
+  () => store.set(s => ({ ...s, boot: { ...s.boot, status: 'unauthorized' } })),
+  res => pushNote({ text: errorText(res.error, T()), tone: 'bad' }))
 
 // ---------------------------------------------------------------- theme and layout
 
@@ -425,6 +421,9 @@ async function act(verb, args = {}) {
 /** Mark `key` busy while fn runs, and clear it however fn ends; a row action already busy runs nothing and says so (logic.js) */
 const withBusy = createWithBusy(() => store.get().ui.busy, f => setUi(ui => ({ busy: f(ui.busy) })), () => pushNote({ text: T().busyAlready, tone: 'warn' }))
 
+// the api is made at boot, after this line runs, so the loaders reach it through a forwarder
+const loaders = createLoaders({ api: { get: p => api.get(p), post: (p, b) => api.post(p, b) }, set: store.set, fail: failNote, withBusy })
+
 /** A question to Claude: a short session of its own (Haiku unless picked), shown in the question window.
  *  A free question in the window goes on in the open conversation; anything else starts a new one */
 async function ask(kind, args = {}) {
@@ -635,15 +634,9 @@ const ctl = {
   openTabView: ref => setUi({ tabView: ref, openMsg: null }),
   openClaude: () => setUi({ tabView: '@control', openMsg: null }),
   // the Workers tab: the kept worker view, read again on every visit and every new model
-  loadAgents: async () => {
-    const res = await api.get('/api/agents')
-    if (res.ok) store.set(s => ({ ...s, agents: { peers: res.data.peers ?? [], convs: res.data.convs ?? [] } }))
-  },
+  // with loadHistory and triageRun (logic.js createLoaders): a failed answer leaves a note or signs out
+  ...loaders,
   // an agent opens on its latest conversation; "new chat" starts empty
-  loadHistory: async () => {
-    const res = await api.get('/api/history')
-    if (res.ok) store.set(s => ({ ...s, history: res.data.entries ?? [] }))
-  },
   openHistory: () => { setUi({ drawer: 'history' }); ctl.loadHistory() },
   // the inverse of a close: a task back with the status it had (the toast), or as doing or backlog by choice
   undo: async (u, as = u.args?.as ?? 'doing') => {
@@ -685,10 +678,6 @@ const ctl = {
   // the day column's height, measured by the column itself: how many rows its sections fill up to
   setDayHeight: px => { if (store.get().ui.dayHeight !== px) setUi({ dayHeight: px }) },
   setTriageFilter: f => setUi({ triageFilter: f }),
-  triageRun: async fresh => {
-    const res = await api.post('/api/triage/run', { fresh: !!fresh })
-    if (res.data?.triage) store.set(s => ({ ...s, triage: res.data.triage }))
-  },
   // sending is always the user's click: nothing here goes out on its own
   agentSend: async (peer, text, mode, conv) => {
     const r = await act('a2a_ask', { peer, text, mode, ...(conv ? { conv } : {}) })

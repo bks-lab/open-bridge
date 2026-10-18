@@ -6,7 +6,7 @@
 // pieces stay in views/; this file only draws what the triage adds, from s.triage.
 
 import { html, useEffect, useRef, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { TRIAGE_FILTERS, actionRow, centsText, checkPick, checkPickText, effortDots, triageCounts, triageKey } from './logic.js'
+import { TRIAGE_FILTERS, actionRow, centsText, checkPick, checkPickText, effortDots, triageCounts, triageKey, triageRunning } from './logic.js'
 import { T, language } from './text.js'
 
 const TONE = { close: 'success', ai: 'info', you: 'warning', either: 'on-surface-muted', unclear: 'on-surface-muted' }
@@ -44,7 +44,7 @@ export function TriageBar({ s, c, items, byKey }) {
   const counts = triageCounts(items, map)
   const closable = items.filter(it => map[triageKey(it)]?.verdict === 'close')
     .map(it => actionRow(it, byKey)).filter(r => r && (r.settle ?? []).length)
-  const running = !!tr.running
+  const running = triageRunning(s)
   const last = tr.last
   return html`<div class="panel panel-pad tri-bar" role="group" aria-label=${t.triage.label}>
     <span class="fbar-chips" role="radiogroup" aria-label=${t.triage.label}>
