@@ -167,6 +167,10 @@ python3 scripts/bridge-cockpit.py status --json
 4. `test_bridge_cockpit.py`: a test that asserts the exact argv (`writes(world)`
    with the helpers `I`, `K`, `W`, `C`), a refusal for a wrong row, and a bad
    argument in the injection list `test_argument_injection_is_rejected_before_any_call`.
+   Those argv are rebuilt by the test, so `test_bridge_cockpit_contract.py` also
+   drives the verb and parses what it emits with the real parser of `inbox.py`,
+   `task.py`, `workplace.py` or `briefing.py`; a script verb no scenario there
+   emits yet fails its source scan, so add the verb to a scenario.
 5. the view under `views/`: the button, through `c.act(verb, args)`, or a controller
    method in `app.js` when it needs a confirmation (see `askTaskDone` and
    `confirmYes`).

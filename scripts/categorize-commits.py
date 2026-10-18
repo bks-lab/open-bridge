@@ -625,6 +625,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_archive_autorun.py",
     "scripts/build-cockpit-demo.py",
     "scripts/tests/test_bridge_cockpit_demo.py",
+    "scripts/tests/test_bridge_cockpit_contract.py",
 })
 
 
