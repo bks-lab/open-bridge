@@ -137,6 +137,9 @@ def check_config(root: Path, ignore_disabled: bool) -> tuple[object | None, int]
     except WebConfigError as error:
         print(f"bridge-cockpit: {error}", file=sys.stderr)
         return None, 2
+    for line in cfg.config_warnings:
+        # never a reason to refuse: the loader fell back, this says where (status prints them too)
+        print(f"bridge-cockpit: warning: {line}", file=sys.stderr)
     if not cfg.enabled and not ignore_disabled:
         print(f"bridge-cockpit: off. {ENABLE_HINT}", file=sys.stderr)
         return None, 2
@@ -295,6 +298,12 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
     out = {"running": bool(info), "pid": info.get("pid") if info else None, "port": info.get("port") if info else None,
            "started_ms": info.get("started_ms") if info else None, "version": info.get("version") if info else None,
            "clients": info.get("clients", 0) if info else 0, "relay_online": bool(info.get("relay_online")) if info else False}
+    # what the check of the cockpit: block found, read from the file now (the running server may be older)
+    try:
+        warnings = list(load_web_config(root).config_warnings)
+    except WebConfigError as error:
+        warnings = [str(error)]
+    out["config_warnings"] = warnings
     if args.json:
         print(json.dumps(out))
     elif info:
@@ -302,6 +311,9 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
               f"relay {'online' if out['relay_online'] else 'offline'}")
     else:
         print("not running")
+    if not args.json:
+        for line in warnings:
+            print(f"warning: {line}")
     return 0 if info else 1
 
 

@@ -6,10 +6,11 @@ Resolution rules: docs/bridge-cockpit.md, the cockpit: block.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+import json
 import re
 
 import yaml
@@ -75,6 +76,9 @@ class WebConfig:
     # the news ticker of the start page (cockpit.ticker, ticker.DEFAULTS): off unless switched on;
     # the settings page may change it on top (ticker.py), this is what the config says
     ticker: dict = field(default_factory=tk.defaults)
+    # what the check of the block found (check_block): unknown keys and values the loader replaced, each
+    # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
+    config_warnings: tuple = ()
 
 
 def _dict(value: Any) -> dict:
@@ -130,6 +134,135 @@ def launch_model_of(value: Any, jev_model: str | None = None) -> dict:
     return out
 
 
+# The keys of the cockpit: block and what each takes. The loader below keeps its fallbacks; check_block only
+# says when one applied, so a typo shows in `status` and on the settings page instead of nowhere.
+# (kind, detail): bool, text, choice (the allowed values), int and number (the minimum the loader clamps to),
+# block (the keys of a nested mapping); port is checked by the loader itself (a bad one is an error),
+# launch_model and ticker by their own modules' rules, key by key.
+BLOCK = {
+    "enabled": ("bool", "enabled"), "port": ("port", "port"), "open_in": ("choice", "open_in", OPEN_IN),
+    "relay": ("bool", "relay"), "person_name": ("text", "person_name"), "profile": ("text", "profile"),
+    "tabs_seconds": ("int", "tabs_seconds", 5), "full_minutes": ("number", "full_minutes", 1),
+    "snapshot_minutes": ("number", "snapshot_minutes", 0), "voice": ("bool", "voice"),
+    "triage_daily": ("bool", "triage_daily"), "language": ("text", "language"),
+    "chat_layout": ("choice", "chat_layout", CHAT_LAYOUTS), "chat_keep_hours": ("number", "chat_keep_hours", 0),
+    "launch": ("block", {"target": ("choice", "target", TARGETS)}),
+    "launch_model": ("launch_model",), "ticker": ("ticker",),
+}
+BLOCK_KEYS = tuple(BLOCK)
+
+
+def _show(value: Any) -> str:
+    """A value as the config would spell it, short: true, 7, "auto", none."""
+    if value is None:
+        return "none"
+    if isinstance(value, (list, dict)):
+        return "the default"
+    text = json.dumps(value, ensure_ascii=False, default=str)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+def _check_launch_model(value: Any, cfg: WebConfig, where: str) -> list[str]:
+    if not isinstance(value, dict):
+        return [f"{where}: must be a mapping, got {_show(value)}; using the defaults"]
+    out = []
+    for key, v in value.items():
+        try:
+            mr.normalize({key: v})
+        except mr.SettingsError as error:
+            fallback = "ignored" if key not in mr.DEFAULTS else f"using {_show(cfg.launch_model.get(key))}"
+            out.append(f"{where}.{str(key)[:40]}: {str(error).split(': ', 1)[-1]}; {fallback}")
+    return out
+
+
+def _check_ticker(value: Any, cfg: WebConfig, where: str) -> list[str]:
+    if not isinstance(value, dict):
+        return [f"{where}: must be a mapping, got {_show(value)}; using the defaults"]
+    out = []
+
+    def bad(name: str, change: dict, used: Any) -> None:
+        try:
+            tk.normalize(change)
+        except tk.TickerSettingsError as error:
+            out.append(f"{where}.{name}: {error.message}; using {_show(used)}")
+
+    for key, v in value.items():
+        if key not in tk.KEYS:
+            out.append(f"{where}.{str(key)[:40]}: unknown key, ignored")
+        elif key == "feeds" and isinstance(v, list):
+            seen = set()
+            for i, entry in enumerate(v):
+                at = f"{where}.feeds[{i}]"
+                if i >= tk.MAX_FEEDS:
+                    out.append(f"{at}: more than {tk.MAX_FEEDS} feeds, skipped")
+                    continue
+                try:
+                    feed = tk.normalize({"feeds": [entry]})["feeds"][0]
+                except tk.TickerSettingsError as error:
+                    out.append(f"{at}{error.field.removeprefix('feeds[0]')}: {error.message}; skipped")
+                    continue
+                if feed["id"] in seen:
+                    out.append(f"{at}.id: this id is taken by an earlier feed; skipped")
+                seen.add(feed["id"])
+                out += [f"{at}.{str(k)[:40]}: unknown key, ignored" for k in entry
+                        if k not in ("id", "name", "url", "enabled")]
+        elif key in ("status", "editor", "smart") and isinstance(v, dict):
+            for name, x in v.items():
+                if name not in tk.DEFAULTS[key]:
+                    out.append(f"{where}.{key}.{str(name)[:40]}: unknown key, ignored")
+                else:
+                    bad(f"{key}.{name}", {key: {name: x}}, cfg.ticker[key][name])
+        else:
+            bad(key, {key: v}, cfg.ticker.get(key))
+    return out
+
+
+def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict = BLOCK) -> tuple:
+    """One warning per unknown key, wrong type or value the loader replaced, naming the key and the value
+    `cfg` (the loaded config) uses instead. A None value counts as left out, as it does for the loader."""
+    if block is None:
+        return ()
+    if not isinstance(block, dict):
+        return (f"{where}: must be a mapping, got {_show(block)}; ignored",)
+    out = []
+    for key, value in block.items():
+        at = f"{where}.{str(key)[:40]}"
+        rule = keys.get(key)
+        if rule is None:
+            out.append(f"{at}: unknown key, ignored")
+            continue
+        kind = rule[0]
+        if value is None or kind == "port":
+            continue
+        if kind == "launch_model":
+            out += _check_launch_model(value, cfg, at)
+            continue
+        if kind == "ticker":
+            out += _check_ticker(value, cfg, at)
+            continue
+        if kind == "block":
+            if not isinstance(value, dict):
+                used = ", ".join(f"{name} {_show(getattr(cfg, r[1]))}" for name, r in rule[1].items())
+                out.append(f"{at}: must be a mapping, got {_show(value)}; using {used}")
+            else:
+                out += check_block(value, cfg, at, rule[1])
+            continue
+        used = f"using {_show(getattr(cfg, rule[1]))}"
+        if kind == "bool" and not isinstance(value, bool):
+            out.append(f"{at}: must be true or false, got {_show(value)}; {used}")
+        elif kind == "text" and not isinstance(value, str):
+            out.append(f"{at}: must be text, got {_show(value)}; {used}")
+        elif kind == "choice" and value not in rule[2]:
+            out.append(f"{at}: {_show(value)} is not one of {', '.join(rule[2])}; {used}")
+        elif kind in ("int", "number"):
+            if not (_is_int(value) if kind == "int" else _is_number(value)):
+                what = "a whole number" if kind == "int" else "a number"
+                out.append(f"{at}: must be {what}, got {_show(value)}; {used}")
+            elif value < rule[2]:
+                out.append(f"{at}: {_show(value)} is below the minimum {rule[2]}; {used}")
+    return tuple(out)
+
+
 def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     root = Path(root).resolve()
     raw = read_config_file(root) if data is None else data
@@ -176,12 +309,13 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     def text_or_none(v: Any, cap: int) -> str | None:
         return v.strip()[:cap] if isinstance(v, str) and v.strip() else None
 
-    return WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
-                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
-                     voice=voice, target=target, control=control, jev_enabled=ts.get("enabled") is True,
-                     jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
-                     jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
-                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
-                     snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True,
-                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
-                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)
+    cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
+                    profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
+                    voice=voice, target=target, control=control, jev_enabled=ts.get("enabled") is True,
+                    jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
+                    jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
+                    jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
+                    snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True,
+                    chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
+                    chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)
+    return replace(cfg, config_warnings=check_block(raw.get("cockpit"), cfg))

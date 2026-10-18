@@ -478,6 +478,8 @@ const en = {
     title: 'Settings',
     lead: 'What you change here applies at once.',
     sectionsLabel: 'Areas of the settings',
+    configWarnings: 'The config has keys the cockpit does not use as written',
+    configWarningsExplain: 'The cockpit runs with the fallback each line names. Fix the key under cockpit: in bridge-config.yaml and restart the cockpit.',
     section: {
       start: { title: 'Start page', sub: 'View, stations, sections' },
       look: { title: 'Appearance', sub: 'Colours and details' },
@@ -1601,6 +1603,8 @@ const de = {
     title: 'Einstellungen',
     lead: 'Was du hier änderst, gilt sofort.',
     sectionsLabel: 'Bereiche der Einstellungen',
+    configWarnings: 'Die Config hat Schlüssel, die das Cockpit so nicht verwendet',
+    configWarningsExplain: 'Das Cockpit läuft mit dem Ersatzwert, den jede Zeile nennt. Korrigiere den Schlüssel unter cockpit: in bridge-config.yaml und starte das Cockpit neu.',
     section: {
       start: { title: 'Startseite', sub: 'Ansicht, Stationen, Bereiche' },
       look: { title: 'Darstellung', sub: 'Farben und Details' },

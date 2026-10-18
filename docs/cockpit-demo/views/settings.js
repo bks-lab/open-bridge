@@ -12,7 +12,7 @@ import { T } from '../text.js'
 import { Segmented } from './detail.js'
 import { catalogLabel } from './home.js'
 import { Drawer } from './overlays.js'
-import { Btn, Chip, Empty, Icon } from './parts.js'
+import { Btn, Chip, Empty, Icon, StateLine } from './parts.js'
 import { TickerSettings } from './ticker.js'
 
 const SECTIONS = ['start', 'look', 'launch', 'ticker']
@@ -368,6 +368,19 @@ function HaikuTable({ map, models, efforts, busy, save }) {
 
 // ---------------------------------------------------------------- the page and the drawer
 
+/** What the server's check of the cockpit: block found (/api/bootstrap config_warnings): one line per key it
+ *  does not know or could not use, each with the value used instead; nothing when the block is clean */
+export function ConfigWarnings({ s }) {
+  const lines = s.boot?.warnings ?? []
+  if (!lines.length) return null
+  const w = T().settings
+  return html`<div class="banner set-warnings" role="status">
+    <${StateLine} token="warning" strong word=${w.configWarnings} />
+    <p class="muted small">${w.configWarningsExplain}</p>
+    <ul class="set-warnings-list">${lines.map((line, i) => html`<li key=${i} class="mono small">${line}</li>`)}</ul>
+  </div>`
+}
+
 // the news ticker on the start page: its own group from views/ticker.js
 const AREAS = { start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings }
 const AREA_ICONS = { start: 'home', look: 'sun', launch: 'spark', ticker: 'bell' }
@@ -382,6 +395,7 @@ export function SettingsPage({ s, c }) {
       <h2 class="detail-title">${w.title}</h2>
       <p class="muted">${w.lead}</p>
     </header>
+    <${ConfigWarnings} s=${s} />
     <div class="settings-layout">
       <nav class="settings-nav" aria-label=${w.sectionsLabel}>
         ${SECTIONS.map(id => html`<button type="button" key=${id} class=${`settings-nav-item${at === id ? ' is-on' : ''}`}

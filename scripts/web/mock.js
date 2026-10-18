@@ -822,7 +822,8 @@ export function createMockTransport(opts = {}) {
       const url = { pathname, searchParams: new URLSearchParams(query) }
       if (url.pathname === '/api/bootstrap') {
         if (opts.auth === false) return fail(401, 'unauthorized', 'no cookie')
-        return ok({ ok: true, csrf: 'mock', language: opts.lang || 'en', version: '0.1.0',
+        // the check of the cockpit: block finds nothing in the invented config (config_warnings, #402)
+        return ok({ ok: true, csrf: 'mock', language: opts.lang || 'en', version: '0.1.0', config_warnings: [],
           config: { port: 8797, relay: true, tabs_seconds: 10, full_minutes: 10, voice: false, target: 'area', control: 'Control', profile: 'morning' } })
       }
       if (url.pathname === '/api/state') return ok(state)

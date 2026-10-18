@@ -638,6 +638,8 @@ class Handler(BaseHTTPRequestHandler):
             cfg = app.cfg
             self.send_json(200, {"ok": True, "csrf": app.csrf, "language": cfg.language, "version": VERSION,
                                  "scratch": scratch_of(app.root, app.state_dir),
+                                 # what the check of the cockpit: block found; the settings page shows it (#402)
+                                 "config_warnings": list(getattr(cfg, "config_warnings", ())),
                                  "config": {"port": app.port, "relay": cfg.relay, "tabs_seconds": cfg.tabs_seconds,
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
                                             "control": cfg.control, "profile": cfg.profile}})

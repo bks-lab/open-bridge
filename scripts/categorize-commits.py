@@ -561,6 +561,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_ticker.py",
     "scripts/tests/test_bridge_cockpit_watch.py",
     "scripts/tests/test_bridge_cockpit_net.py",
+    "scripts/tests/test_bridge_cockpit_config.py",
     "scripts/lib/bridge_cockpit/history.py",
     "scripts/lib/bridge_cockpit/design.py",              # the colours, read from the Bridge's own DESIGN.md
     "scripts/bridge-resources.py",
@@ -619,6 +620,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_jev.test.mjs",
     "scripts/tests/test_cockpit_demo_smoke.py",
     "scripts/tests/bridge_cockpit_render.test.mjs",
+    "scripts/tests/bridge_cockpit_config.test.mjs",
     "scripts/tests/cockpit_render.mjs",
     # Registered with the scheduled archive. It runs DAILY and does only the
     # mechanical half; the judgement half is recorded as owed. lib/bridge-python.sh

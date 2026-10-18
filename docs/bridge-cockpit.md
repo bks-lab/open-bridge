@@ -82,6 +82,7 @@ their defaults:
 | `chat_keep_hours` | `24` | a quick chat nobody touched for this many hours leaves the list into the archive (below); `0` = only the limit of 30 |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
+| `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
 
 Migration note: `language`, `full_minutes`, `voice`, `launch.target` and
@@ -1431,6 +1432,7 @@ to copy.
 | the bare address does not answer | the server is not running: `python3 scripts/bridge-cockpit.py start`, or `autostart on` so it runs from login |
 | `/cockpit` is an unknown command | the session does not run in the Bridge root, or `skills/cockpit` is missing in this Bridge; `python3 scripts/bridge-cockpit.py open` works from any terminal |
 | `/cockpit` or `open` says the cockpit is off | `cockpit.enabled` is not `true` or the `cockpit:` block has an invalid value |
+| `status` prints `warning:` lines, or the settings page shows a box "The config has keys the cockpit does not use as written" | the `cockpit:` block has a key the cockpit does not know (a typo such as `tab_seconds`) or a value it cannot use (`open_in: browser`); the cockpit runs with the fallback each line names. Fix the key in `bridge-config.yaml` and restart (`stop`, then `open`). Only a bad `port` stops the start |
 | the port is taken | another program uses it: set `cockpit.port`, then open again |
 | the server did not come up | read `.bridge/cockpit/server.log` |
 | relay offline: "no heartbeat" | no Claude Code session with the `cockpit-relay` mod runs here (section 1, `claude plugin list`), `cockpit.relay` is `false`, or the session started before you switched the cockpit on: start a new Claude Code session (`/reload-plugins` reads the config again only when the mod itself changed) |

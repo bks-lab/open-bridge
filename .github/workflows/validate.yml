@@ -159,7 +159,7 @@ jobs:
       - name: Run bridge-cockpit server tests
         run: python3 -m pytest scripts/tests/test_ai_services.py scripts/tests/test_bridge_cockpit*.py scripts/tests/test_task.py scripts/tests/test_task_review.py scripts/tests/test_triage.py scripts/tests/test_bridge_resources.py scripts/tests/test_cloud_inventory.py -q -rs
       - name: Run bridge-cockpit frontend tests
-        run: node scripts/tests/bridge_cockpit_frontend.test.mjs && node scripts/tests/bridge_cockpit_jev.test.mjs && node scripts/tests/bridge_cockpit_markdown.test.mjs && node scripts/tests/bridge_cockpit_render.test.mjs
+        run: node scripts/tests/bridge_cockpit_frontend.test.mjs && node scripts/tests/bridge_cockpit_jev.test.mjs && node scripts/tests/bridge_cockpit_markdown.test.mjs && node scripts/tests/bridge_cockpit_render.test.mjs && node scripts/tests/bridge_cockpit_config.test.mjs
 
       # The mail-draft engine (skills/mail-draft). Hermetic: osascript is
       # replaced in every client test, so nothing reaches a mail client. The

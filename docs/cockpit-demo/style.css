@@ -2365,6 +2365,8 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 
 /* the settings page: the areas on the left, the cards of the one chosen beside them */
 .settings-head { flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 4px 0; }
+.set-warnings { display: flex; flex-direction: column; gap: 4px; margin: 0 4px; }
+.set-warnings-list { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 .settings-layout {
   display: grid; grid-template-columns: 236px minmax(0, 760px); gap: var(--space-xl); align-items: start;
 }
