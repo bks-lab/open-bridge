@@ -111,7 +111,8 @@ against recorded answers (`scripts/tests/fixtures/briefing/<provider>/`).
 | provider | Reaches it through | `query` keys |
 |---|---|---|
 | `github` | `gh search` (gh's own login) | `assignee` (default `@me`), `owners`, `repos`, `kinds` (issues, prs), `state`, `labels`, `review_requested`, `authored` (true: your own open PRs, with their age), `others_prs` (N: colleagues' open, non-draft PRs in `owners`/`repos` updated in the last N days, bots and your own left out), `limit` |
-| `github-board` | `gh project item-list`, boards from `github_projects:` in the ecosystem files, state maps from `workflow/projects/` (the same code as `scripts/tracker-sync.py`). With `summary: true` on the section, also one line per board with its open cards per state, counted before `assigned_to_me` and the other filters, with the section's `state_map` applied; a status no map knows (Parked, Canceled) is not open work, and a board that filled `limit` says so | `boards`, `assigned_to_me`, `states`, `include_done`, `limit` |
+| `github-board` | `gh project item-list`, boards from `github_projects:` in the ecosystem files, state maps from `workflow/projects/` (the same code as `scripts/tracker-sync.py`). GitHub filters before the limit (`filter`, default `is:open`): gh lists the oldest cards first, so without it a board with more cards than `limit` lost its newest, open ones. With `summary: true` on the section, also one line per board with its open cards per state, counted before `assigned_to_me` and the other filters, with the section's `state_map` applied; a status no map knows (Parked, Canceled) is not open work, and a board that filled `limit` says so | `boards`, `assigned_to_me`, `states`, `include_done`, `filter` (the board's filter syntax; `""` for every card), `limit` |
+| `github-work` | both of the above, merged: one row per issue or pull request (see GitHub work) | every `github` key, plus `boards`, `cards` (`mine`, default, or `all` open cards), `filter`, `board_limit`, `links` (false: do not ask which pull requests close an issue) |
 | `gitlab` | `glab issue list` | `repos` (required), `assignee`, `state`, `labels`, `limit` |
 | `ado` | `az boards query` (WIQL) | `wiql`, `organization`, `project`, `limit` |
 | `jira` | REST API | `jql` (default: assigned to you, not done), `fields`, `limit` |
@@ -314,6 +315,59 @@ short brief, read only. A section adds its own:
 offers the step: `{"did": ..., "launch": {"summary", "prompt", "key"}}`, which
 the cockpit files and starts. The step itself runs nothing.
 
+**GitHub work.** A `github` and a `github-board` section side by side show the
+same card twice, and they disagree: the search says `open`, the board `In
+Progress`. A `github-work` section asks both side by side and keeps one row per
+issue or pull request: the board's status wins, the search adds what only it
+knows (asked to review, your own pull request and its age), and each row names
+its `board` (name, slug, number, org and its `workflow/projects/` file), a
+`group` (the board, else the repository), and the open pull requests that close
+it (`prs`, one GraphQL call for all rows). A pull request that closes an issue
+in the list stands in that issue's row instead of one of its own, unless you
+were asked to review it.
+
+`link` (default true for `github-work`) adds what this Bridge knows about a row:
+the task whose `sync.github` names it (a task in `work/tasks/` becomes the row's
+`task`, so a dashboard opens or jumps to its tab; a stream is only named, as
+`linked_task`) and the newest active inbox item whose key ends in the row id
+(`inbox`): the item a step, Do it or a `to_inbox` rule filed for it, whose tab a
+dashboard then shows on the row.
+
+Every row of a GitHub provider that is not done offers steps, which a dashboard
+shows like a calendar row's. Built in: **Analyse** on every row, **Implement**
+on an issue without a pull request, **Review the PR** on a pull request or an
+issue that has one, **Make it a task** on an issue no task syncs, **Sync status**
+on a row on a board or with a task. Each starts an agent tab whose prompt
+carries the row's facts (link, status, board, its config file, the task, the
+pull requests) and an instruction with its gates: read only and drafts until a
+yes for Analyse and Review, a feature branch and a draft pull request for
+Implement, board fields only through the `github-projects-manager` skill, never a
+merge. `default_steps: false` turns them off; a section adds its own:
+
+```yaml
+- kind: tracker
+  id: github-work
+  provider: github-work
+  query: {owners: [example-org], others_prs: 14, cards: mine}
+  cache_minutes: 5
+  row_steps:
+    - id: implement              # stands in for the built-in Implement
+      label: "Run the pipeline"
+      types: [issue]             # optional: issue, pr
+      boards: [example-board]    # optional: board slugs
+      states: [ready]            # optional: normalized states
+      match: "^feat"             # optional: a pattern on the title
+      prompt: "/board-pilot {id} on {board_slug}"
+```
+
+`{id}` `{title}` `{url}` `{type}` `{state}` `{status}` `{board}` `{board_slug}`
+`{board_config}` `{task}` `{prs}` are filled in. `briefing.py act <profile>
+<section> <row-id> <step>` reads the rows the page was drawn from (the section's
+kept answer of today, else it asks again) and answers only when the row still
+offers the step: `{"did": ..., "launch": {"summary", "prompt", "key"}}` with the
+key `tracker:<step>:<row id>`, so a second click finds the same inbox item and
+the row names it. The step itself runs nothing and writes nothing to GitHub.
+
 **Owed streams.** A profile covers some of the playbook's streams; the rest
 are still run by the agent. `briefing.py owed [<id>]` names every stream that
 applies to this Bridge (`prs`, `meetings`, `imports`, `upstream`,
@@ -378,8 +432,7 @@ view:
     - id: github
       title: GitHub
       sections:
-        - github-mine
-        - {id: boards, detail: [raw_state, project]}
+        - {id: github-work, view: board}   # one row per issue or PR, under its board, with steps
     - id: work
       title: Work
       jev:                   # cockpit with Jev on: orders the rows on a click, never by itself
@@ -396,7 +449,7 @@ columns, **when** (a date, today as its time), **title**, **detail** and a
 | Kind | when | detail | dimmed |
 |---|---|---|---|
 | `calendar` | start | "until HH:MM", the calendar, "info" | started already |
-| `tracker` | `due`, else `changed_at` | PR, state, project (when the id does not name it), priority | |
+| `tracker` | `due`, else `changed_at` | PR, state, project (when the id does not name it and the view is not `board`), priority, note, the pull requests that close it, its task | |
 | `command` | `due` | `raw_state` or `state` (every row is a finding: yellow, `blocked` red) | |
 | `commits` | today's commits | sparkline and branch, busiest first | none today |
 | `activity` | `changed_at` | project | an earlier day |
@@ -418,6 +471,11 @@ passed (a quota that resets). With a `max`, `warn` and `bad` say where those ran
 `elapsed` and says in words when the value runs ahead of the time; the terminal
 card ignores it. A gauge with a value it cannot read is dropped, a bad `max`,
 `unit` or `elapsed` only loses that field.
+
+`view: board` keeps the table and sets its rows under their `group`, one head
+per group in the order the rows first name them (a `github-work` row's group is
+its board, else its repository). `view: groups` lists short rows under each
+group instead.
 
 For a drawn section (`view: tiles | mosaic`) a row may say more: `group` and
 `icon` place and mark it, `tags: {label: value}` (up to six short strings) give

@@ -60,7 +60,9 @@ sections:
     status: [doing, review]
     # step_headings: ["<your heading>"]   # "next steps" headings of your own STATUS.md, besides the English ones
 
-  # Issues and PRs assigned to you on GitHub (gh CLI, its own login).
+  # Issues and PRs assigned to you on GitHub (gh CLI, its own login). `provider: github-work`
+  # merges them with your cards on the boards of github_projects: one row each, with the board's
+  # status, the PRs that close it, your task, and steps that start an agent (docs/briefings.md § GitHub work).
   - kind: tracker
     id: github-mine
     title: "GitHub"

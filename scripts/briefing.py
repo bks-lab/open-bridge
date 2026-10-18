@@ -61,7 +61,8 @@ KEY_PREFIX = "briefing:"
 DEFAULT_TIMEOUT = 30
 
 SECTION_KINDS = ("inbox", "advise", "workplace", "tasks", "activity", "commits", "calendar", "tracker", "command")
-TRACKERS = ("github", "github-board", "gitlab", "ado", "jira", "linear")
+TRACKERS = ("github", "github-board", "github-work", "gitlab", "ado", "jira", "linear")
+GITHUB_TRACKERS = ("github", "github-board", "github-work")
 CALENDARS = ("auto", "icalbuddy", "ics", "command")
 STATES = ("new", "ready", "in_progress", "review", "done", "blocked", "removed")
 PROFILE_KEYS = {"schema_version", "scope", "id", "title", "for", "default", "offer_on", "timeout_sec", "sections",
@@ -71,7 +72,8 @@ NOT_INHERITED = {"id", "title", "default", "offer_on", "extends", "_path"}
 SECTION_KEYS = {"kind", "id", "title", "max", "to_inbox", "provider", "query", "account_ref", "state_map",
                 "status", "contexts", "days", "path", "argv", "exclude_calendars", "info_calendars", "bucket",
                 "repos", "author", "all_branches", "summary", "report_ok", "covers", "kinds", "skip_kinds",
-                "deferred", "cache_minutes", "step_headings", "actions_argv", "event_steps", "prepare"}
+                "deferred", "cache_minutes", "step_headings", "actions_argv", "event_steps", "prepare",
+                "row_steps", "default_steps", "link"}
 # A profile is committed and often shared: a value under one of these names is
 # a credential, and credentials only ever travel as references (account_ref).
 SECRET_NAME = re.compile(r"(token|secret|password|passwd|api[_-]?key|private[_-]?key)", re.I)
@@ -492,6 +494,44 @@ def _event_step_problems(steps) -> list:
     return out
 
 
+ROW_STEP_KEYS = {"id", "label", "match", "types", "states", "boards", "prompt"}
+ROW_TYPES = ("issue", "pr")
+
+
+def _row_step_problems(steps) -> list:
+    """A tracker section's own steps: id, label, the prompt of the tab it starts, and which rows offer
+    it (a pattern on the title, the row's type, state, board)."""
+    if not isinstance(steps, list):
+        return ["row_steps must be a list of steps"]
+    out = []
+    for n, step in enumerate(steps, 1):
+        where = f"row_steps[{n}]"
+        if not isinstance(step, dict):
+            out.append(f"{where} must be a mapping")
+            continue
+        unknown = sorted(set(step) - ROW_STEP_KEYS)
+        if unknown:
+            out.append(f"{where}: unknown key(s) {', '.join(unknown)}")
+        if not (isinstance(step.get("id"), str) and ACTION_RE.match(step["id"])):
+            out.append(f"{where}: id must be lowercase letters, digits, _ and -")
+        if not (isinstance(step.get("label"), str) and 0 < len(step["label"].strip()) <= 40):
+            out.append(f"{where}: label must be text of 1 to 40 characters")
+        if not (isinstance(step.get("prompt"), str) and step["prompt"].strip()):
+            out.append(f"{where}: prompt must be text")
+        if "match" in step:
+            try:
+                re.compile(str(step["match"]))
+            except re.error as exc:
+                out.append(f"{where}: match is not a pattern ({exc})")
+        if "types" in step and not (_is_str_list(step["types"]) and set(step["types"]) <= set(ROW_TYPES)):
+            out.append(f"{where}: types must be a list of issue, pr")
+        if "states" in step and not (_is_str_list(step["states"]) and set(step["states"]) <= set(STATES)):
+            out.append(f"{where}: states must be a list of {', '.join(STATES)}")
+        if "boards" in step and not _is_str_list(step["boards"]):
+            out.append(f"{where}: boards must be a list of board slugs")
+    return out
+
+
 def _section_types(s: dict) -> list:
     """Shapes the JSON schema promises, checked without a jsonschema dependency."""
     out = []
@@ -519,6 +559,13 @@ def _section_types(s: dict) -> list:
         out.append("prepare must be true or false")
     if "event_steps" in s:
         out += _event_step_problems(s["event_steps"])
+    if ("row_steps" in s or "default_steps" in s or "link" in s) and s.get("kind") != "tracker":
+        out.append("row_steps, default_steps and link belong to a tracker section")
+    for key in ("default_steps", "link"):
+        if key in s and not isinstance(s[key], bool):
+            out.append(f"{key} must be true or false")
+    if "row_steps" in s:
+        out += _row_step_problems(s["row_steps"])
     for key in ("kinds", "skip_kinds"):
         unknown = sorted(set(s.get(key) or []) - set(_inbox().KINDS)) if _is_str_list(s.get(key)) else []
         if unknown:
@@ -598,7 +645,7 @@ def profile_problems(data, stem: str) -> list:
             out.append(f"{where}: unknown key {key}")
         out += [f"{where}: {p}" for p in _section_types(s)]
         query = s.get("query") if isinstance(s.get("query"), dict) else {}
-        if kind == "tracker" and s.get("provider") == "github" and query.get("others_prs") and \
+        if kind == "tracker" and s.get("provider") in ("github", "github-work") and query.get("others_prs") and \
                 not (query.get("owners") or query.get("repos")):
             out.append(f"{where}: others_prs needs owners or repos (it would search all of GitHub)")
         if kind == "tracker" and s.get("provider") not in TRACKERS:
@@ -1306,8 +1353,138 @@ def sec_tracker(section: dict, ctx: Context) -> list:
             item.pop("_category_from_state", None)
             st = item.get("state")
             item["category"] = "done" if st in ("done", "removed") else "qa" if st == "review" else "open"
+    if section.get("link", section.get("provider") == "github-work") is True:
+        link_local(items, ctx)
+    words = None
+    for item in items:
+        if not GLOBAL_ROW.match(str(item.get("id") or "")):
+            continue
+        words = words or _view().labels_for(conversation_language(ctx.cfg))
+        steps = tracker_steps(section, item, words)
+        if steps:
+            item["actions"] = [{"id": x["id"], "label": x["label"]} for x in steps]
     items.sort(key=lambda i: str(i.get("changed_at") or ""), reverse=True)
     return items
+
+
+GLOBAL_ROW = re.compile(r"^([\w.-]+/[\w.-]+)#(\d+)\Z")
+
+
+def _issue_refs(task: dict) -> list:
+    """The `owner/repo#n` ids a task's `sync.github` names: a number belongs to its `repo`, a full
+    reference or URL names its own."""
+    out = []
+    for ref in task.get("issues") or []:
+        text = str(ref).strip()
+        m = re.search(r"github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)", text) or \
+            re.fullmatch(r"([\w.-]+/[\w.-]+)#(\d+)", text)
+        if m:
+            out.append(f"{m.group(1)}#{m.group(2)}")
+        elif re.fullmatch(r"#?\d+", text) and task.get("repo"):
+            out.append(f"{task['repo']}#{text.lstrip('#')}")
+    return out
+
+
+def link_local(items: list, ctx: Context) -> None:
+    """What this Bridge knows about a GitHub row: the task whose `sync.github` names it (a finite task
+    in work/tasks/ becomes the row's task, so a dashboard opens its tab; a stream is named only) and
+    the newest active inbox item filed for it (an agent started on the row, Do it, a briefing rule),
+    found by the row id at the end of the item's key."""
+    rows = {str(i.get("id")): i for i in items if GLOBAL_ROW.match(str(i.get("id") or ""))}
+    if not rows:
+        return
+    try:
+        ts = _load_module("tracker_sync", ROOT / "scripts" / "tracker-sync.py")
+        tasks = ts.scan_status_tasks(ctx.root)
+    except Exception:  # noqa: BLE001 - a link is a nicety, never a reason to lose the rows
+        tasks = []
+    for t in tasks:
+        finite = str(t.get("path") or "").startswith("work/tasks/") and t.get("status") != "done"
+        for rid in _issue_refs(t):
+            row = rows.get(rid)
+            if row is None or row.get("linked_task"):
+                continue
+            row["linked_task"] = {"slug": t["slug"], "status": t.get("status"), "path": t.get("path"),
+                                  "stream": not str(t.get("path") or "").startswith("work/tasks/")}
+            if finite:
+                row["task"] = t["slug"]
+    try:
+        box = _inbox().Inbox(ctx.root / "work" / "inbox", actor="briefing", clock=lambda: ctx.now)
+        active = [i for i in box.items() if i.state in _inbox().ACTIVE_STATES and i.key]
+    except Exception:  # noqa: BLE001
+        active = []
+    for item in sorted(active, key=lambda i: str(i.created or "")):
+        key = str(item.key)
+        for rid, row in rows.items():
+            if key.endswith((f":{rid}", f"/{rid}")):
+                row["inbox"] = item.id            # the newest wins: sorted oldest first
+
+
+BUILTIN_ROW_STEPS = ("analyze", "implement", "review", "adopt", "sync")
+
+
+def tracker_steps(section: dict, item: dict, words: dict) -> list:
+    """The steps one GitHub row offers, each {id, label, prompt}: the section's own `row_steps` that fit
+    the row, then the built-in ones of a GitHub provider (unless `default_steps: false`): Analyse
+    always, Implement on an issue without a pull request, Review on a pull request or an issue that has
+    one, Make it a task on an issue no task syncs, Sync status on a row with a board or a task. A row
+    that is done offers none. Every step starts an agent tab; none acts on GitHub by itself."""
+    if item.get("state") in ("done", "removed"):
+        return []
+    kind = "pr" if item.get("type") == "pr" else "issue"
+    board = (item.get("board") or {}).get("slug") if isinstance(item.get("board"), dict) else None
+    steps = []
+    for step in section.get("row_steps") or []:
+        if not isinstance(step, dict) or not isinstance(step.get("id"), str):
+            continue
+        if step.get("types") and kind not in step["types"]:
+            continue
+        if step.get("states") and item.get("state") not in step["states"]:
+            continue
+        if step.get("boards") and board not in step["boards"]:
+            continue
+        try:
+            if step.get("match") and not re.search(str(step["match"]), str(item.get("title") or ""), re.I):
+                continue
+        except re.error:
+            continue
+        if step["id"] not in {x["id"] for x in steps}:
+            steps.append({"id": step["id"], "label": str(step.get("label") or "").strip(), "prompt": step.get("prompt")})
+    if section.get("provider") in GITHUB_TRACKERS and section.get("default_steps", True) is not False:
+        has_pr = bool(item.get("prs"))
+        offer = {"analyze": True, "implement": kind == "issue" and not has_pr, "review": kind == "pr" or has_pr,
+                 "adopt": kind == "issue" and not item.get("linked_task") and not item.get("task"),
+                 "sync": bool(board or item.get("linked_task"))}
+        for sid in BUILTIN_ROW_STEPS:
+            if offer[sid] and sid not in {x["id"] for x in steps}:
+                steps.append({"id": sid, "label": words[f"gh_step_{sid}"], "prompt": None})
+    return [x for x in steps if ACTION_RE.match(x["id"]) and x["label"]][:8]
+
+
+def tracker_prompt(step: dict, item: dict, words: dict) -> str:
+    """The prompt a GitHub row's step starts its tab with: the row's facts, then the step's own prompt
+    (its {placeholders} filled in) or the built-in instruction."""
+    board = item.get("board") if isinstance(item.get("board"), dict) else {}
+    task = item.get("linked_task") if isinstance(item.get("linked_task"), dict) else {}
+    prs = ", ".join(f"{p.get('id')}{' (draft)' if p.get('draft') else ''}" for p in item.get("prs") or []
+                    if isinstance(p, dict))
+    values = {"id": str(item.get("id") or ""), "title": str(item.get("title") or ""), "url": str(item.get("url") or ""),
+              "type": "pull request" if item.get("type") == "pr" else "issue", "state": str(item.get("state") or ""),
+              "status": str(item.get("raw_state") or ""), "board": str(board.get("name") or ""),
+              "board_slug": str(board.get("slug") or ""), "board_config": str(board.get("config") or ""),
+              "task": str(task.get("slug") or ""), "prs": prs}
+    if step.get("prompt"):
+        return re.sub(r"\{([a-z_]+)\}", lambda m: values.get(m.group(1), m.group(0)), str(step["prompt"]))
+    facts = [(words["gh_fact_link"], values["url"]), (words["gh_fact_status"], values["status"] or values["state"]),
+             (words["gh_fact_board"], f"{values['board']} (#{board.get('number')}, {board.get('org')})"
+              if values["board"] else ""),
+             (words["gh_fact_config"], values["board_config"]),
+             (words["gh_fact_task"], str(task.get("path") or "")), (words["gh_fact_prs"], prs),
+             (words["gh_fact_note"], str(item.get("note") or ""))]
+    head = words["gh_head"].format(type=words["gh_type_pr"] if item.get("type") == "pr" else words["gh_type_issue"],
+                                   id=values["id"], title=values["title"])
+    return "\n".join([head, *[f"{label}: {value}" for label, value in facts if value], "",
+                      words[f"gh_do_{step['id']}"]])
 
 
 KINDS = {"inbox": sec_inbox, "advise": sec_advise, "workplace": sec_workplace, "tasks": sec_tasks,
@@ -1554,12 +1731,12 @@ def owed(root: Path, cfg: dict, profile: dict) -> list:
     covered = {c for s in sections for c in (s.get("covers") or []) if isinstance(c, str)}
     for s in sections:
         q = s.get("query") if isinstance(s.get("query"), dict) else {}
-        if s.get("kind") == "tracker" and s.get("provider") == "github" and q.get("others_prs"):
+        if s.get("kind") == "tracker" and s.get("provider") in ("github", "github-work") and q.get("others_prs"):
             covered.add("prs")
     integrations = cfg.get("integrations") or {}
     applies = {
         "prs": bool((integrations.get("github") or {}).get("enabled")) or any(
-            s.get("provider") in ("github", "github-board") for s in sections),
+            s.get("provider") in GITHUB_TRACKERS for s in sections),
         "meetings": (root / "work" / "tasks" / "_meetings").is_dir(),
         "imports": _imports_waiting(root, cfg),
         "upstream": bool(cfg.get("upstreams")),
@@ -1818,6 +1995,8 @@ def act(root: Path, cfg: dict, profile: dict, section_ref: str, row_id: str, act
     section = next((s for s in profile.get("sections") or [] if section_id(s) == section_ref), None)
     if section and section.get("kind") == "calendar":
         return _act_calendar(root, cfg, section, row_id, action)
+    if section and section.get("kind") == "tracker":
+        return _act_tracker(root, cfg, profile, section, row_id, action)
     if not section or section.get("kind") != "command" or not _is_str_list(section.get("actions_argv")):
         return 2, f"section {section_ref} has no actions"
     if not ROW_ID_RE.match(row_id or ""):
@@ -1874,6 +2053,40 @@ def _act_calendar(root: Path, cfg: dict, section: dict, row_id: str, action: str
     return 0, json.dumps({"ok": True, "did": step["label"], "launch": {
         "summary": f"{step['label']}: {event.get('title')} ({when})"[:200], "prompt": prompt[:3500],
         "key": f"event:{action}:{row_id}"[:240]}}, ensure_ascii=False)
+
+
+def _tracker_rows(root: Path, cfg: dict, profile: dict, section: dict) -> list:
+    """The rows a tracker section showed: its kept answer of today (the one the page was drawn from,
+    whatever its age, since GitHub takes half a minute), else asked again."""
+    try:
+        data = json.loads(_cache_file(root, profile, section).read_text(encoding="utf-8"))
+        if dt.datetime.fromisoformat(data["at"]).date() == dt.date.today() and isinstance(data.get("items"), list):
+            return data["items"]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    ctx = Context(root, cfg=cfg)
+    ctx.deadline = time.monotonic() + _positive(profile.get("timeout_sec"), ctx.timeout)
+    return sec_tracker(dict(section), ctx)
+
+
+def _act_tracker(root: Path, cfg: dict, profile: dict, section: dict, row_id: str, action: str) -> tuple[int, str]:
+    """A GitHub row's step runs nothing here either: it hands back the tab to start, keyed
+    `tracker:<step>:<row id>`, so a second click finds the same inbox item and the row names it."""
+    if not GLOBAL_ROW.match(row_id or "") or not ACTION_RE.match(action or ""):
+        return 2, "not a row id or not an action"
+    try:
+        rows = _tracker_rows(root, cfg, profile, section)
+    except (SourceError, Skip) as exc:
+        return 2, f"section {section_id(section)} did not answer: {exc}"
+    item = next((r for r in rows if str(r.get("id")) == row_id), None)
+    words = _view().labels_for(conversation_language(cfg))
+    step = next((x for x in tracker_steps(section, item, words) if x["id"] == action), None) if item else None
+    if step is None:
+        return 2, f"row {row_id} does not offer {action}"
+    prompt = tracker_prompt(step, item, words)
+    return 0, json.dumps({"ok": True, "did": step["label"], "launch": {
+        "summary": f"{step['label']}: {row_id} {item.get('title') or ''}".strip()[:200], "prompt": prompt[:3500],
+        "key": f"tracker:{action}:{row_id}"[:240]}}, ensure_ascii=False)
 
 
 def main(argv=None) -> int:

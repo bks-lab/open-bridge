@@ -97,6 +97,42 @@ LABELS = {
     "prepare_tail": ("Look through this Bridge for what bears on it: tasks, inbox, the work log, earlier meeting "
                      "notes, mails and issues that name the title or the people. Then give me a short brief: what "
                      "it is about, what is open, what I should bring or decide. Read only, send nothing."),
+    # a GitHub row's steps (briefing.py tracker_steps): each starts an agent tab, none acts on GitHub by itself
+    "gh_draft": "draft",
+    "gh_task": "task {slug}",
+    "gh_step_analyze": "Analyse",
+    "gh_step_implement": "Implement",
+    "gh_step_review": "Review the PR",
+    "gh_step_adopt": "Make it a task",
+    "gh_step_sync": "Sync status",
+    "gh_head": "GitHub {type} {id}: {title}",
+    "gh_type_issue": "issue",
+    "gh_type_pr": "pull request",
+    "gh_fact_link": "Link",
+    "gh_fact_status": "Status",
+    "gh_fact_board": "Board",
+    "gh_fact_config": "Board config",
+    "gh_fact_task": "Task of this Bridge",
+    "gh_fact_prs": "Pull requests that close it",
+    "gh_fact_note": "Note",
+    "gh_do_analyze": ("Read it with its comments (gh issue view or gh pr view with --comments), the board config and the "
+                      "code it touches. Answer here: what is asked, what is unclear, and a plan in a few steps. Change "
+                      "nothing on GitHub; offer a comment as a draft and post it only after a yes."),
+    "gh_do_implement": ("Implement it. First read the repository's AGENTS.md or CLAUDE.md and its branch model, and check "
+                        "whether a task of this Bridge already covers it. Work on a feature branch, tests first. Board "
+                        "fields only through the github-projects-manager skill with the values of the board config: In "
+                        "Progress when you start, In Review once a draft pull request that closes the issue is open. Never "
+                        "merge and never push to the default branch: that stays with the person."),
+    "gh_do_review": ("Review the pull request (a code review skill if you have one, else gh pr diff): correctness first, "
+                     "then tests and fit. Prepare the findings as a pending review with inline comments and submit it "
+                     "only after a yes."),
+    "gh_do_adopt": ("Make this a task of this Bridge. First look in work/tasks/ and work/streams/ for one that already "
+                    "fits; else create it from the template (rules/task-management-workflow.md) with sync.github naming "
+                    "the repository, the issue number and the board. Change nothing on GitHub."),
+    "gh_do_sync": ("Compare the board status, the state of the issue or pull request and the task of this Bridge "
+                   "(python3 scripts/tracker-sync.py diff, the tracker-sync skill). List what differs and propose the "
+                   "change on each side; apply a board change only through the github-projects-manager skill and only "
+                   "after a yes."),
     "all_clear": "{title}: all clear",
     "owed": "Not in this profile, still yours to run: {streams} (briefing.py owed)",
     "overview_file": "Boards and activity: {path}",
@@ -187,6 +223,42 @@ LABELS_DE = {
     "prepare_tail": ("Such in dieser Bridge, was dazu gehört: Aufgaben, Posteingang, Arbeitslog, frühere Protokolle, "
                      "Mails und Issues, die den Titel oder die Personen nennen. Gib mir dann eine kurze Vorbereitung: "
                      "worum es geht, was offen ist, was ich mitbringen oder entscheiden sollte. Nur lesen, nichts senden."),
+    "gh_draft": "Entwurf",
+    "gh_task": "Aufgabe {slug}",
+    "gh_step_analyze": "Analysieren",
+    "gh_step_implement": "Umsetzen",
+    "gh_step_review": "PR prüfen",
+    "gh_step_adopt": "Als Aufgabe",
+    "gh_step_sync": "Status abgleichen",
+    "gh_head": "GitHub-{type} {id}: {title}",
+    "gh_type_issue": "Issue",
+    "gh_type_pr": "Pull Request",
+    "gh_fact_link": "Link",
+    "gh_fact_status": "Status",
+    "gh_fact_board": "Board",
+    "gh_fact_config": "Board-Konfiguration",
+    "gh_fact_task": "Aufgabe dieser Bridge",
+    "gh_fact_prs": "Pull Requests, die es schließen",
+    "gh_fact_note": "Hinweis",
+    "gh_do_analyze": ("Lies es samt Kommentaren (gh issue view oder gh pr view mit --comments), die Board-Konfiguration "
+                      "und den Code, den es berührt. Antworte hier: was verlangt ist, was unklar ist, und ein Plan in "
+                      "wenigen Schritten. Ändere nichts auf GitHub; einen Kommentar bietest du als Entwurf an und "
+                      "postest ihn erst nach einem Ja."),
+    "gh_do_implement": ("Setze es um. Lies zuerst AGENTS.md oder CLAUDE.md des Repos und sein Branch-Modell und prüfe, ob "
+                        "eine Aufgabe dieser Bridge es schon abdeckt. Arbeite auf einem Feature-Branch, Tests zuerst. "
+                        "Board-Felder nur über den Skill github-projects-manager mit den Werten der Board-Konfiguration: "
+                        "In Progress beim Start, In Review, sobald ein Draft-PR offen ist, der das Issue schließt. Nie "
+                        "mergen und nie auf den Default-Branch pushen: das bleibt beim Menschen."),
+    "gh_do_review": ("Prüfe den Pull Request (ein Code-Review-Skill, wenn du einen hast, sonst gh pr diff): zuerst "
+                     "Korrektheit, dann Tests und Passung. Bereite die Befunde als ausstehendes Review mit "
+                     "Inline-Kommentaren vor und reiche es erst nach einem Ja ein."),
+    "gh_do_adopt": ("Mach daraus eine Aufgabe dieser Bridge. Sieh zuerst in work/tasks/ und work/streams/ nach, ob eine "
+                    "schon passt; sonst leg sie nach der Vorlage an (rules/task-management-workflow.md), mit sync.github "
+                    "auf Repo, Issue-Nummer und Board. Ändere nichts auf GitHub."),
+    "gh_do_sync": ("Vergleiche den Board-Status, den Stand des Issues oder PRs und die Aufgabe dieser Bridge "
+                   "(python3 scripts/tracker-sync.py diff, der Skill tracker-sync). Nenne, was abweicht, und schlage die "
+                   "Änderung je Seite vor; eine Board-Änderung nur über den Skill github-projects-manager und erst nach "
+                   "einem Ja."),
     "all_clear": "{title}: alles in Ordnung",
     "owed": "Nicht im Profil, noch von Hand: {streams} (briefing.py owed)",
     "overview_file": "Boards und Aktivität: {path}",
@@ -237,7 +309,7 @@ PAGE_GROUPS = ("main", "more", "work", "day")   # day: no tab, its sections stan
 # work: no tab, it is the "by source" view of the work tab (the briefing), beside "what is due" and "by Jev"
 PAGE_SECTION_KEYS = {"id", "when", "detail", "link", "empty", "alarm", "badge", "view", "hide_empty", "actionable"}
 # how a dashboard draws a section: rows in a table (default), cards, or a mosaic of every row
-PAGE_VIEWS = ("table", "tiles", "mosaic", "groups")
+PAGE_VIEWS = ("table", "tiles", "mosaic", "groups", "board")   # board: the table, its rows under their group
 BOARD_STATES = ("new", "ready", "in_progress", "review", "blocked")
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 # An id that names its repository is the same thing wherever it comes from; any
@@ -1539,8 +1611,14 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
                  _text(item.get("calendar")), labels["info_tag"] if item.get("info") is True else ""]
     elif kind == "tracker":
         project = _text(item.get("project"))
+        linked = item.get("linked_task") if isinstance(item.get("linked_task"), dict) else {}
+        prs = [p for p in item.get("prs") or [] if isinstance(p, dict) and _text(p.get("id"))]
         parts = ["PR" if item.get("type") == "pr" else "", state,
-                 "" if project and iid.startswith(project) else project, _text(item.get("priority"))]
+                 "" if project and iid.startswith(project) or entry.get("view") == "board" else project,
+                 _text(item.get("priority")), _text(item.get("note")),
+                 " ".join(f"PR #{_text(p['id']).rsplit('#', 1)[-1]}" + (f" ({labels['gh_draft']})" if p.get("draft") else "")
+                          for p in prs),
+                 labels["gh_task"].format(slug=_text(linked.get("slug"))) if _text(linked.get("slug")) else ""]
     elif kind == "commits":
         parts = [f"{_text(item.get('spark'))} {_text(item.get('branch'))}".strip()]
     elif kind in ("activity", "workplace"):
@@ -1609,6 +1687,8 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
         row["group"] = _text(item.get("project"))[:80]
     if kind == "inbox" and iid:      # the item's id: a dashboard joins its triage and its close by it
         row["inbox"] = iid[:160]
+    elif kind == "tracker" and not task and _text(item.get("inbox")):
+        row["inbox"] = _text(item["inbox"])[:160]      # an agent was started on the row: its inbox item stands for it
     # whether a person can hand this row on (Do it, Advise, Later, Settle): a finding or a tracker row by
     # default, whatever the page entry says otherwise; a row with an inbox item or a task has its own path
     row["actionable"] = not (row.get("inbox") or row["task"]) and (
@@ -1619,7 +1699,7 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
     steps = [{"id": a["id"], "label": a["label"].strip()[:40]} for a in item.get("actions") or []
              if isinstance(item.get("actions"), list) and isinstance(a, dict) and isinstance(a.get("id"), str)
              and ACTION_ID_RE.match(a["id"]) and isinstance(a.get("label"), str) and a["label"].strip()][:8]
-    if kind in ("command", "calendar") and steps and isinstance(item.get("id"), str):
+    if kind in ("command", "calendar", "tracker") and steps and isinstance(item.get("id"), str):
         row["actions"], row["row_id"] = steps, item["id"][:200]
     # an event's calendar: a fact when it is opened, a filter on the dates page
     tags = tags_of({labels["tag_calendar"]: _text(item["calendar"])}) if kind == "calendar" and _text(item.get("calendar")) \

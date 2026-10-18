@@ -239,6 +239,7 @@ def load_registries(root: Path) -> dict:
             continue
         key = (proj.get("org"), proj.get("number"))
         data["_slug"] = (data.get("identity") or {}).get("slug", yf.stem)
+        data["_file"] = f"workflow/projects/{yf.name}"
         reg[key] = data
     return reg
 

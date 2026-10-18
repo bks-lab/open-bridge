@@ -21,6 +21,7 @@ import importlib
 MODULES = {
     "github": "github",
     "github-board": "github_board",
+    "github-work": "github_work",
     "gitlab": "gitlab",
     "ado": "ado",
     "jira": "jira",

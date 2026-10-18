@@ -504,12 +504,14 @@ export function PageSection({ page, section, s, c }) {
   } else {
     const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} />`
     // a task list in lanes: being worked on, runs on (quiet until a day), waits for your yes; one lane, no heads
-    const lanes = section.kind === 'tasks' ? TASK_LANES.map(id => [id, items.filter(it => taskLane(it) === id)]).filter(([, l]) => l.length) : []
+    // board: the rows under their group (a GitHub row's board), the groups in the order the rows first name them
+    const lanes = section.kind === 'tasks' ? TASK_LANES.map(id => [id, items.filter(it => taskLane(it) === id)]).filter(([, l]) => l.length)
+      : section.view === 'board' ? [...new Set(items.map(it => it.group ?? ''))].map(g => [g, items.filter(it => (it.group ?? '') === g)]) : []
     body = html`<div class="table-wrap" tabindex="0" role="region" aria-label=${section.title}>
       <table class="tbl">
         <thead><tr><th scope="col" class="c-when">${t.col.when}</th><th scope="col">${t.col.item}</th><th scope="col" class="c-acts">${t.col.actions}</th></tr></thead>
-        ${lanes.length > 1 ? lanes.map(([id, list]) => html`<tbody key=${id} class=${`lane-${id}`}>
-          <tr class="lane-head"><th scope="rowgroup" colspan="3"><span class="label-caps">${t.lane[id]}</span> <span class="sec-count mono">${list.length}</span></th></tr>
+        ${lanes.length > 1 ? lanes.map(([id, list]) => html`<tbody key=${id} class=${section.view === 'board' ? 'lane-group' : `lane-${id}`}>
+          <tr class="lane-head"><th scope="rowgroup" colspan="3"><span class="label-caps">${section.view === 'board' ? (id || t.groupOther) : t.lane[id]}</span> <span class="sec-count mono">${list.length}</span></th></tr>
           ${list.map(row)}</tbody>`)
           : html`<tbody>${items.map(row)}</tbody>`}
       </table>

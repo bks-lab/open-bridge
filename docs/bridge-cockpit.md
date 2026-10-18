@@ -826,6 +826,18 @@ Later. Rows that need no one (a gauge, an appointment, a commit count, a log lin
 buttons; a section can switch it for all its rows with `actionable: true|false` in its
 page entry (docs/briefings.md).
 
+**GitHub work with steps.** A `github-work` section (docs/briefings.md § GitHub
+work) on a page with `view: board` lists one row per issue or pull request
+under its board: the board's status, the pull requests that close it, the task
+of this Bridge that syncs it. Its "Steps ▾" menu starts an agent tab on the row
+with everything the agent needs in its prompt: Analyse, Implement, Review the
+PR, Make it a task, Sync status, plus the section's own `row_steps`. The tab is
+filed as an inbox item under `tracker:<step>:<row id>`, and the row then names
+that item: its tab's state shows on the row and "Open tab" jumps to it, as on a
+task row. A row whose issue a task syncs opens that task's tab instead. No step
+writes to GitHub by itself; the prompt sends board changes through
+`github-projects-manager` and keeps merging with you.
+
 **Close in two clicks.** Every row of the Briefing that can end, its detail,
 a task row on a page and a selection carry "Close ▾" with two outcomes,
 Done and Not doing it (a task also "Other reason …", the full dialog). What

@@ -273,6 +273,44 @@ def test_github_board_provider_reuses_tracker_sync_and_the_registry(tmp_path):
     assert states == {"in_progress", "done", "blocked"}
 
 
+def test_github_board_asks_github_for_open_cards_before_the_limit(tmp_path):
+    """gh lists a board's oldest cards first: 393 cards behind a limit of 200 showed none of the
+    10 open ones (live 2026-10-17). The filter goes to GitHub, so the limit counts open cards."""
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
+        {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
+    run = FakeRun({("gh", "project", "item-list"): (FIX / "github-board" / "item-list.json").read_text()})
+    section = {"kind": "tracker", "provider": "github-board", "query": {}}
+    bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))
+    listed = [c for c in run.calls if c[:3] == ["gh", "project", "item-list"]]
+    assert listed and listed[0][-2:] == ["--query", "is:open"]
+    run.calls.clear()
+    own = dict(section, query={"filter": "assignee:@me -status:Parked"})
+    bf.collect(root, {"id": "p", "sections": [own]}, ctx(root, run))
+    assert run.calls[0][-2:] == ["--query", "assignee:@me -status:Parked"]
+    for query in ({"include_done": True}, {"filter": ""}, {"states": ["done"]}):
+        run.calls.clear()
+        bf.collect(root, {"id": "p", "sections": [dict(section, query=query)]}, ctx(root, run))
+        assert "--query" not in run.calls[0], query
+
+
+def test_github_board_lists_without_a_filter_when_gh_does_not_know_it(tmp_path):
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
+        {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
+    listing = (FIX / "github-board" / "item-list.json").read_text()
+
+    def answer(argv):
+        if "--query" in argv:
+            raise bf.SourceError("unknown flag: --query")
+        return listing
+    run = FakeRun({("gh", "project", "item-list"): answer})
+    section = {"kind": "tracker", "provider": "github-board", "query": {"assigned_to_me": True}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    assert sec["items"][0]["board"] == {"slug": "tool-board", "name": "Tool board", "number": 3, "org": "example-org"}
+
+
 def _three_boards(root):
     (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
         {"org": "example-org", "number": n, "name": f"Board {n}"} for n in (3, 4, 5)]}), encoding="utf-8")

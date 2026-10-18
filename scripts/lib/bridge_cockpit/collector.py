@@ -63,7 +63,9 @@ def make_link(url: str | None, root: Path) -> dict | None:
 
 def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | None, starting: set,
              page_id: str = "", section_id: str = "") -> dict:
-    tab = m.tab_for({"task": it.get("task"), "inbox_id": None}, tabs) if it.get("task") else None
+    # a task row, or a row an agent was started on (its inbox item): either way the tab shows on the row
+    tab = m.tab_for({"task": it.get("task"), "inbox_id": None if it.get("task") else it.get("inbox")}, tabs) \
+        if it.get("task") or it.get("inbox") else None
     return {"index": index, "key": m.item_key(page_id, section_id, it), "actionable": it.get("actionable") is True, "title": it["title"], "detail": it["detail"], "when": it["when"], "tone": it["tone"],
             "link": make_link(it.get("url"), root), "task": it.get("task"), "ask": it["ask"], "mark": it["mark"],
             "priority": it.get("priority"), "state": it.get("state"), "lines": it.get("lines", []),

@@ -11,6 +11,12 @@ query keys (all optional):
                   integrations.github.assignee_me, else your gh login)
   states          [normalized state, ...]  only these
   include_done    true: keep done/removed cards
+  filter          the board's own filter syntax, applied by GitHub before the limit
+                  (default `is:open`; "" asks for every card). Without it a board with
+                  more cards than the limit lost its newest ones: gh lists the oldest
+                  first, so 393 cards behind a limit of 200 showed none of the 10 open
+                  (live 2026-10-17). With include_done or a done/removed state no
+                  filter is applied.
   limit           per board, default 200
 """
 from __future__ import annotations
@@ -30,6 +36,7 @@ _LOADING = threading.Lock()
 # section's 30 s, the two largest 16 s each; side by side the section takes the slowest one.
 # Four, not all eight: eight in one burst tripped GitHub's secondary rate limit.
 BOARD_WORKERS = 4
+DEFAULT_FILTER = "is:open"
 
 
 def _tracker_sync(ctx):
@@ -92,14 +99,23 @@ def collect(section: dict, ctx) -> list:
         return default_keys.get(re.sub(r"^[^0-9A-Za-z]+", "", raw_state).strip().lower())
 
     deadline = getattr(ctx, "deadline", None)
+    wanted = "" if keep_done else query.get("filter", DEFAULT_FILTER)
+    wanted = wanted.strip() if isinstance(wanted, str) else DEFAULT_FILTER
 
     def fetch(board: dict):
         """One board's cards, on a helper thread. The section's deadline lives per thread,
-        so it is carried over: the board ends with its section, not with a limit of its own."""
+        so it is carried over: the board ends with its section, not with a limit of its own.
+        A gh that does not know --query (before 2.70) lists without it."""
         if deadline is not None:
             ctx.deadline = deadline
         argv = ["gh", "project", "item-list", str(board["number"]), "--owner", str(board["org"]),
                 "--format", "json", "--limit", str(query.get("limit", 200))]
+        if wanted:
+            try:
+                return load_json(ctx.run([*argv, "--query", wanted], timeout=ctx.timeout), f"board {board['slug']}")
+            except Exception as exc:  # noqa: BLE001 - only an unknown flag falls back, anything else fails
+                if "unknown flag" not in str(exc):
+                    raise
         return load_json(ctx.run(argv, timeout=ctx.timeout), f"board {board['slug']}")
 
     # Asked side by side, read back in the registry's order; the first board that fails
@@ -126,6 +142,10 @@ def collect(section: dict, ctx) -> list:
                         "id": f"{item.get('repo') or board['org']}#{item['number']}",
                         "type": str(item.get("type") or "issue").lower(),
                         "project": board["name"], "tracker": "github-board", "priority": None,
+                        "board": {"slug": board["slug"], "name": board["name"], "number": board["number"],
+                                  "org": board["org"],
+                                  **({"config": board["registry"]["_file"]}
+                                     if (board.get("registry") or {}).get("_file") else {})},
                         "_category_from_state": True})
         limit = int(query.get("limit", 200))
         summary.append({"name": board["name"], "number": board["number"], "org": board["org"],

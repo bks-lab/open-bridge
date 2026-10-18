@@ -361,11 +361,16 @@ export function buildState(now = Date.now(), opts = {}) {
     },
     {
       id: 'trackers', title: 'Trackers', badge: { kind: 'count', n: 5, warn: true }, sections: [
-        { id: 'mine', kind: 'github', title: 'Assigned to me', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 3, total: 5,
+        // github-work in the board view: one row per issue or PR under its board, with the steps an agent starts on it
+        { id: 'mine', kind: 'tracker', view: 'board', title: 'GitHub work', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 3, total: 5,
           weight: 3, bad: 0, as_of: hhmm(now - 22 * MIN), more: 2, items: [
-            item(0, { title: 'example/repo#12 Flaky test in the parser suite', detail: 'In Progress', when: 'Tue', tone: 'warn', link: { kind: 'web', href: 'https://example.org/repo/issues/12' }, ask: true, mark: { label: 'Demo', color: 'blue' }, priority: 'P2' }),
-            item(1, { title: 'example/repo#15 Add a config switch for the report', detail: 'Backlog', when: 'Mon', link: { kind: 'web', href: 'https://example.org/repo/issues/15' }, ask: true, priority: 'P3' }),
-            item(2, { title: 'example/tools#4 Release checklist', detail: 'In Review', when: '08:10', link: { kind: 'web', href: 'https://example.org/tools/issues/4' }, ask: true, mark: { label: 'Ops', color: 'red' } }),
+            item(0, { title: 'example/repo#12 Flaky test in the parser suite', detail: 'In Progress · PR #14', when: 'Tue', tone: 'warn', link: { kind: 'web', href: 'https://example.org/repo/issues/12' }, ask: true, mark: { label: 'Demo', color: 'blue' }, priority: 'P2',
+              group: 'Demo board', row_id: 'example/repo#12', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'review', label: 'Review the PR' }, { id: 'sync', label: 'Sync status' }] }),
+            item(1, { title: 'example/repo#15 Add a config switch for the report', detail: 'Backlog', when: 'Mon', link: { kind: 'web', href: 'https://example.org/repo/issues/15' }, ask: true, priority: 'P3', actionable: true,
+              group: 'Demo board', row_id: 'example/repo#15', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }, { id: 'adopt', label: 'Make it a task' }, { id: 'sync', label: 'Sync status' }] }),
+            item(2, { title: 'example/tools#4 Release checklist', detail: 'In Review', when: '08:10', link: { kind: 'web', href: 'https://example.org/tools/issues/4' }, ask: true, mark: { label: 'Ops', color: 'red' },
+              group: 'example/tools', inbox: 'demo-inbox-4', tab: { ref: 'surface:9', state: 'working', live: true, waiting: false },
+              row_id: 'example/tools#4', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }] }),
           ] },
         { id: 'tasks', kind: 'tasks', title: 'Bridge tasks', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 2, total: 2,
           weight: 2, bad: 0, as_of: null, more: 0, items: [
@@ -704,6 +709,7 @@ export function createMockTransport(opts = {}) {
         }
         if (verb === 'inbox_unmute') mockMutes.splice(0, mockMutes.length, ...mockMutes.filter(r => r.id !== args.id))
         if (verb === 'snapshot_list') result.note = 'Mock: 3 snapshots, latest 09:00'
+        if (verb === 'row_action') result.note = `Mock: the step ${args.action} would start an agent tab on this row`
         if (verb === 'launch_settings' || verb === 'launch_settings_reset') {
           const next = verb === 'launch_settings' ? { ...state.launch.settings, ...(args.settings ?? {}) } : LAUNCH_CONFIG
           state.launch = launchState(next, !!createMockJev)

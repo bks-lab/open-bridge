@@ -172,6 +172,9 @@ $defs:
                       empty: {type: string, description: "What the section says with nothing in it. Default: label page_empty."}
                       alarm: {type: boolean, description: "Every row is a finding (red), and empty means all green."}
                       badge: {type: boolean, description: "false: listed, but left out of the number on the tab. Default true."}
+                      view: {enum: [table, tiles, mosaic, groups, board], description: "How a dashboard draws the rows. table (default); tiles and mosaic: cards; groups: short lists under each row's group; board: the table with its rows under their group (a GitHub row's board)."}
+                      hide_empty: {type: boolean, description: "true: an empty section is left out instead of saying so."}
+                      actionable: {type: boolean, description: "Whether a person can hand the rows on (Do it, Advise, Later, Close). Default: findings and tracker rows."}
       page_rest:
         enum: [show, hide]
         description: "A section no page names: show it on the tab 'more' (default) or leave it out."
@@ -328,7 +331,7 @@ $defs:
       provider:
         type: string
         description: |
-          tracker: github | github-board | gitlab | ado | jira | linear.
+          tracker: github | github-board | github-work | gitlab | ado | jira | linear.
           calendar: icalbuddy | ics | command | auto.
       query:
         type: object
@@ -409,6 +412,43 @@ $defs:
             calendars: {type: array, items: {type: string}}
             phase: {enum: [before, after]}
             prompt: {type: string, minLength: 1}
+      row_steps:
+        type: array
+        maxItems: 8
+        description: |
+          tracker: the section's own steps on a row, shown as a dashboard's row
+          steps beside the built-in ones of a GitHub provider. A step fits a row
+          whose title `match` finds (optional pattern), of the given `types`
+          (issue, pr), `states` and `boards` (board slugs) when given. Running
+          one starts an agent tab on `prompt`, filed as an inbox item under
+          `tracker:<step>:<row id>`; {id} {title} {url} {type} {state} {status}
+          {board} {board_slug} {board_config} {task} {prs} are filled in. One
+          with the id of a built-in step (analyze, implement, review, adopt,
+          sync) stands in for it. docs/briefings.md § GitHub work.
+        items:
+          type: object
+          required: [id, label, prompt]
+          additionalProperties: false
+          properties:
+            id: {type: string, pattern: "^[a-z][a-z0-9_-]{0,39}$"}
+            label: {type: string, minLength: 1, maxLength: 40}
+            match: {type: string, description: "A pattern on the row's title."}
+            types: {type: array, items: {enum: [issue, pr]}}
+            states: {type: array, items: {enum: [new, ready, in_progress, review, done, blocked, removed]}}
+            boards: {type: array, items: {type: string}}
+            prompt: {type: string, minLength: 1}
+      default_steps:
+        type: boolean
+        description: |
+          tracker (github, github-board, github-work): offer the built-in steps
+          Analyse, Implement, Review the PR, Make it a task and Sync status on
+          rows that are not done. Default true; false leaves only row_steps.
+      link:
+        type: boolean
+        description: |
+          tracker: name on each GitHub row the task of this Bridge whose
+          sync.github names it, and the inbox item an agent was started on.
+          Default true for github-work, false for the others.
       prepare:
         type: boolean
         description: |
