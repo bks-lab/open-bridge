@@ -454,6 +454,21 @@ def test_parse_pages():
                                      "sections": [{"id": "a"}]}]})
     assert work[0]["jev"] == {"skip_sections": ["b"], "private": ["p"]}
     assert pages[0]["jev"] is None
+    assert pages[0]["cards"] is None
+
+
+def test_parse_pages_places_cards_by_the_profile():
+    # `cards:` puts the live cards (costs, usage, noise) after a section of the page, or at its end;
+    # an unknown id or a broken entry is dropped, the order stays as listed
+    pages = m.parse_pages({"pages": [{"id": "ops", "title": "Betrieb", "overview": True, "sections": [{"id": "systeme"}],
+                                      "cards": [{"id": "costs", "after": "systeme"}, {"id": "usage", "after": "systeme"},
+                                                {"id": "noise"}, {"id": "weather"}, "costs", {"after": "x"},
+                                                {"id": "usage", "after": 3}]}]})
+    assert pages[0]["cards"] == [{"id": "costs", "after": "systeme"}, {"id": "usage", "after": "systeme"},
+                                 {"id": "noise", "after": None}, {"id": "usage", "after": None}]
+    # not a list: no placement, the page keeps what `overview` alone draws
+    assert m.parse_pages({"pages": [{"id": "ops", "title": "B", "cards": "costs", "sections": [{"id": "a"}]}]})[0]["cards"] is None
+    assert m.parse_cards([]) == []
 
 
 def test_mark_and_as_of():
@@ -3807,6 +3822,39 @@ def test_the_token_use_of_the_week_is_served_from_the_transcripts(world, tmp_pat
     assert data["usage"]["days"][-1]["sources"]["session"]["output"] == 42
     assert data["usage"]["projects"] == [{"project": "proj", "output": 42}]
     assert world.request("GET", "/api/usage")[0] == 401
+
+
+
+def test_the_costs_view_is_served_from_the_kept_copy(world):
+    # the cost card reads what `bridge-resources.py costs` kept; none yet, or not a report, is no error: view null
+    status, _, body = world.request("GET", "/api/costs", headers=world.cookie)
+    assert status == 200 and json.loads(body) == {"ok": True, "view": None}
+    folder = world.root / ".bridge" / "resources"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "costs-view.json").write_text("{not json", encoding="utf-8")
+    assert json.loads(world.request("GET", "/api/costs", headers=world.cookie)[2])["view"] is None
+    (folder / "costs-view.json").write_text(json.dumps({"schema": 1, "kind": "cloud-costs"}), encoding="utf-8")
+    assert json.loads(world.request("GET", "/api/costs", headers=world.cookie)[2])["view"] is None   # no accounts
+    doc = {"schema": 1, "kind": "cloud-costs", "accounts": [{"id": "azure-example", "ok": True}], "stale": False}
+    (folder / "costs-view.json").write_text(json.dumps(doc), encoding="utf-8")
+    status, _, body = world.request("GET", "/api/costs", headers=world.cookie)
+    assert status == 200 and json.loads(body)["view"] == doc
+    assert world.request("GET", "/api/costs")[0] == 401
+
+
+def test_the_token_use_is_served_for_7_30_or_90_days(world):
+    # the range chips of the usage card ask for a range; anything else becomes the nearest allowed one
+    asked = []
+    world.app.usage.view = lambda days=7: asked.append(days) or {"range": days}
+    for query, days in (("", 7), ("?days=7", 7), ("?days=30", 30), ("?days=90", 90), ("?days=20", 30),
+                        ("?days=1000", 90), ("?days=1", 7), ("?days=abc", 7), ("?days=-5", 7)):
+        status, _, body = world.request("GET", "/api/usage" + query, headers=world.cookie)
+        assert status == 200 and json.loads(body)["usage"] == {"range": days}, query
+    assert asked == [7, 7, 30, 90, 30, 90, 7, 7, 7]
+
+
+def test_the_usage_counter_knows_the_bridge_root(world):
+    assert world.app.usage.root == world.app.root
 
 
 # ---------------------------------------------------------------- A2A agents (agents.py)

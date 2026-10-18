@@ -577,6 +577,11 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_resources.py",
     "scripts/cloud-inventory.py",
     "scripts/tests/test_cloud_inventory.py",
+    "scripts/cloud-costs.py",                 # what the cloud accounts cost per day, for the Betrieb page
+    "scripts/tests/test_cloud_costs.py",
+    "scripts/usage-export.py",                # tokens per Bridge, exported for a cockpit on another machine
+    "scripts/tests/test_usage_export.py",
+    "scripts/tests/test_cockpit_costs_contract.py",
     "scripts/lib/bridge_cockpit/server.py",
     "scripts/tests/test_bridge_cockpit.py",
     "scripts/tests/test_bridge_cockpit_core.py",
@@ -593,6 +598,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/agents.js",
     "scripts/web/views/chat.js",
     "scripts/web/views/check.js",
+    "scripts/web/views/costs.js",
     "scripts/web/views/dates.js",
     "scripts/web/views/day.js",
     "scripts/web/views/detail.js",
@@ -639,6 +645,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/cockpit_render.mjs",
     "scripts/tests/bridge_cockpit_aria.test.mjs",
     "scripts/tests/bridge_cockpit_draft_cards.test.mjs",
+    "scripts/tests/bridge_cockpit_costs.test.mjs",
     # Registered with the scheduled archive. It runs DAILY and does only the
     # mechanical half; the judgement half is recorded as owed. lib/bridge-python.sh
     # is the one interpreter resolver the currency jobs share, so a fix lands once.

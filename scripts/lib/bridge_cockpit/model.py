@@ -269,6 +269,19 @@ def task_row_for(slug: str, title: str, tasks: list[dict], tx: dict = EN) -> dic
     return row
 
 
+# the live cards a page may place after one of its sections (`cards:` in workflow/briefings/*.yaml)
+CARD_IDS = ("costs", "usage", "noise")
+
+
+def parse_cards(value) -> list[dict] | None:
+    """A page's `cards:` as [{id, after}], in the listed order: an unknown id or a broken entry is dropped,
+    `after` is a section id or None (the end of the page). None when the page names no list at all."""
+    if not isinstance(value, list):
+        return None
+    return [{"id": c["id"], "after": c["after"] if isinstance(c.get("after"), str) and c["after"] else None}
+            for c in value if isinstance(c, dict) and c.get("id") in CARD_IDS]
+
+
 def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
     pages = []
     for p in _list(_dict(data).get("pages")):
@@ -297,6 +310,7 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
             })
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
                 "group": p.get("group") if p.get("group") in ("more", "work", "day") else "main", "overview": p.get("overview") is True,
+                "cards": parse_cards(p.get("cards")),
                 # the order by Jev: the words stay on the server (jev.rank), the page only learns there is one
                 "jev": ({k: [as_text(x) for x in v] if isinstance(v := p["jev"].get(k), list) else []
                          for k in ("skip_sections", "private")} if isinstance(p.get("jev"), dict) else None)}

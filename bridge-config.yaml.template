@@ -230,6 +230,10 @@ work:
 #       max_picks: 12        # 1 to 40
 #       shorten: true        # one-line titles
 #   # The settings page changes these on top, kept in .bridge/cockpit/ticker.json.
+#   usage:                   # the token card on the Betrieb page (docs/bridge-cockpit.md)
+#     remotes: []            # infra/remotes names to read token use from; leave out: the machines of infra/instances
+#     remote_file: ~/.bridge/resources/usage.json   # what scripts/usage-export.py writes there
+#     host: my-laptop        # this machine's infra/remotes name; leave out: found by hostname or Bonjour name
 
 
 # ─── Orchestrator ─────────────────────────────────────────────────────

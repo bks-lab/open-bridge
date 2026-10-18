@@ -351,7 +351,9 @@ DEFAULT_PAGES = ("work", "status", "dates", "trackers", "today")
 # where a default page sits: work and status in front, the rest behind More, today's activity under the day list
 DEFAULT_PAGE_GROUP = {"work": "main", "status": "main", "dates": "more", "trackers": "more", "today": "day"}
 REST_PAGE = "more"
-PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev"}
+PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev", "cards"}
+# the live cards a dashboard may place after a section of a page (bridge_cockpit.model.CARD_IDS)
+PAGE_CARDS = ("costs", "usage", "noise")
 JEV_KEYS = {"skip_sections", "private"}
 # where a page sits in a dashboard's page bar: in front, or behind a "More" menu
 PAGE_GROUPS = ("main", "more", "work", "day")   # day: no tab, its sections stand under the day list;
@@ -620,6 +622,8 @@ def _page_problems(view: dict) -> list:
                 for key in sorted(set(page["jev"]) - JEV_KEYS):
                     out.append(f"{where}: jev: unknown key {key}")
         sections = page.get("sections")
+        if "cards" in page:
+            out += _card_problems(page["cards"], sections, where)
         if not isinstance(sections, list) or not sections:
             out.append(f"{where}: sections must be a non-empty list")
             continue
@@ -2057,6 +2061,20 @@ def _jev_of(page: dict) -> dict | None:
     return {k: [x for x in jev.get(k) or [] if isinstance(x, str)] if isinstance(jev.get(k), list) else []
             for k in ("skip_sections", "private")}
 
+def _card_problems(cards, sections, where: str) -> list:
+    """`cards:` of a page: a list of {id, after}, every id a known card, every `after` a section of the page."""
+    if not isinstance(cards, list) or not all(isinstance(c, dict) for c in cards):
+        return [f"{where}: cards must be a list of {{id, after}}"]
+    ids = {e if isinstance(e, str) else e.get("id") for e in sections or [] if isinstance(e, (str, dict))}
+    out = []
+    for c in cards:
+        if c.get("id") not in PAGE_CARDS:
+            out.append(f"{where}: cards: unknown card {c.get('id')} (costs, usage or noise)")
+        elif c.get("after") is not None and c["after"] not in ids:
+            out.append(f"{where}: cards: {c['id']} stands after {c['after']}, which is not a section of this page")
+    return out
+
+
 def pages(result: dict, profile: dict, root: Path | None = None) -> list:
     """The dashboard's pages beside the briefing: which section on which page, every row
     in the same columns. `view.pages` decides; without it a section's kind does, and a
@@ -2067,6 +2085,7 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
     now = _when(result.get("collected_at")) or dt.datetime.now()
     sections = {s.get("id"): s for s in result.get("sections") or [] if isinstance(s, dict) and s.get("id")}
     plan = []   # (id, title, [entry], group, overview, jev)
+    cards = {}  # page id -> its `cards:`, passed through as written (the dashboard places them)
     configured = view.get("pages") if isinstance(view.get("pages"), list) else None
     if configured is not None:
         for page in configured:
@@ -2078,6 +2097,8 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
                 labels.get(f"page_{page['id']}", page["id"])
             plan.append((page["id"], title, entries, page.get("group") if page.get("group") in PAGE_GROUPS else "main",
                          page.get("overview") is True, _jev_of(page)))
+            if isinstance(page.get("cards"), list):
+                cards[page["id"]] = page["cards"]
     else:
         for pid in DEFAULT_PAGES:
             plan.append((pid, labels[f"page_{pid}"],
@@ -2095,5 +2116,5 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
         built = [_page_section(sections[e["id"]], e, now, labels, root, marks) for e in entries if e["id"] in sections]
         if built:
             out.append({"id": pid, "title": title, "sections": built, "group": group, **({"overview": True} if overview else {}),
-                        **({"jev": jev} if jev is not None else {})})
+                        **({"jev": jev} if jev is not None else {}), **({"cards": cards[pid]} if pid in cards else {})})
     return out

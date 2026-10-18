@@ -462,7 +462,9 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
     },
     {
-      id: 'usage', title: 'Usage', badge: { kind: 'none' }, overview: true, sections: [
+      id: 'usage', title: 'Usage', badge: { kind: 'none' }, overview: true,
+      // the live cards placed by the profile (`cards:`): costs right after the quota, tokens and noise at the end
+      cards: [{ id: 'costs', after: 'quota' }, { id: 'usage', after: null }, { id: 'noise', after: null }], sections: [
         { id: 'quota', kind: 'command', title: 'Quota', status: 'ok', reason: '', alarm: false, empty: 'no account', count: 2, total: 2,
           weight: 0, bad: 0, as_of: hhmm(now - 2 * MIN), more: 0, items: [
             item(0, { title: 'Session (5 h): 22 %', when: '16:00', meter: { value: 22, max: 100, unit: '%', elapsed: 0.4, warn: 80, bad: 95 } }),
@@ -698,26 +700,88 @@ function taskDetail(slug) {
   }
 }
 
-// the tokens of the week (usage.py view()): invented counts per day and source, today a little loud
-function usageView(now) {
-  const per = [[38, 9, 4], [52, 14, 0], [0, 0, 0], [61, 22, 6], [44, 11, 3], [57, 18, 5], [96, 31, 7]]
+// the tokens of 7, 30 or 90 days (usage.py view(days=n)): invented counts per day and source, today a little loud;
+// two Bridges on this machine and one on another, and a third machine that does not answer
+function usageView(now, n = 7) {
+  const week = [[38, 9, 4], [52, 14, 0], [0, 0, 0], [61, 22, 6], [44, 11, 3], [57, 18, 5], [96, 31, 7]]
+  const per = Array.from({ length: n }, (_, i) => {
+    const [a, b, c] = week[(i + 7 - (n % 7)) % 7]
+    const f = i === n - 1 ? 1 : 0.7 + 0.3 * Math.abs(Math.sin(i * 1.7))
+    return [Math.round(a * f), Math.round(b * f), Math.round(c * f)]
+  })
   const models = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5']
-  const projects = ['demo-project', 'docs-site', 'example-tools']
+  const projects = ['demo-project', 'docs-site', 'example-tools', 'example-api']   // four: the chart shows its rest
+  const bridges = [['demo-bridge', 'my-laptop', 0.6], ['team-bridge', 'my-server', 0.3], [null, 'my-laptop', 0.1]]
   const total = { input: 0, output: 0, cache_read: 0, cache_write: 0 }
   const days = per.map(([session, subagent, worker], i) => {
-    const day = isoIn(i - 6, now)
+    const day = isoIn(i - n + 1, now)
     const sources = Object.fromEntries([['session', session], ['subagent', subagent], ['worker', worker]].map(([s, k]) => {
       const counts = { input: k * 300, output: k * 1000, cache_read: k * 42000, cache_write: k * 2600 }
       for (const f of Object.keys(total)) total[f] += counts[f]
       return [s, counts]
     }))
     const output = (session + subagent + worker) * 1000
-    const split = (names, key) => output ? names.map((n, j) => ({ [key]: n, output: Math.round(output * [0.6, 0.3, 0.1][j]) })) : []
-    return { day, sources, output, models: split(models, 'model'), projects: split(projects, 'project') }
+    const shares = { 3: [0.6, 0.3, 0.1], 4: [0.5, 0.25, 0.15, 0.1] }
+    const split = (names, key) => output ? names.map((x, j) => ({ [key]: x, output: Math.round(output * shares[names.length][j]) })) : []
+    return { day, sources, output, models: split(models, 'model'), projects: split(projects, 'project'),
+      bridges: output ? bridges.map(([bridge, host, f]) => ({ bridge, host, output: Math.round(output * f) })) : [] }
   })
-  const sum = names => names.map((n, j) => ({ n, output: days.reduce((a, d) => a + (d.models[j]?.output ?? 0), 0) }))
-  return { days, total, models: sum(models).map(x => ({ model: x.n, output: x.output })), projects: sum(projects).map(x => ({ project: x.n, output: x.output })),
-    outliers: [{ source: 'subagent', today: 31000, usual: 14000, factor: 2.2 }] }
+  const sum = names => names.map((x, j) => ({ x, output: days.reduce((a, d) => a + (d.models[j]?.output ?? 0), 0) }))
+  const all = days.reduce((a, d) => a + d.output, 0)
+  return { range: n, at: new Date(now - 4 * MIN).toISOString(), host: 'my-laptop',
+    days, total, models: sum(models).map(m => ({ model: m.x, output: m.output })),
+    projects: sum(projects).map(x => ({ project: x.x, output: days.reduce((a, d) => a + (d.projects[projects.indexOf(x.x)]?.output ?? 0), 0) })),
+    outliers: [{ source: 'subagent', today: 31000, usual: 14000, factor: 2.2 }],
+    bridges: bridges.map(([bridge, host, f], j) => ({ bridge, host, output: Math.round(all * f), all: Math.round(all * f * 48),
+      models: models.slice(0, 3 - j).map((m, k) => ({ model: m, output: Math.round(all * f * [0.6, 0.3, 0.1][k]) })),
+      days: days.map(d => Math.round(d.output * f)) })),
+    hosts: [{ host: 'my-laptop', ok: true, error: null, at: new Date(now - 4 * MIN).toISOString(), local: true },
+      { host: 'my-server', ok: true, error: null, at: new Date(now - 9 * MIN).toISOString(), local: false },
+      { host: 'my-workstation', ok: false, error: 'ssh: connect timed out', at: null, local: false }] }
+}
+
+// the cloud costs (bridge-resources.py costs -> costs-view.json): invented accounts, 35 days up to today; one over
+// its forecast, one that needs a key, one fixed contract. Nothing here is a real tenant or account
+function costsView(now) {
+  const N = 35
+  const today = isoIn(0, now)
+  const day = i => isoIn(i - N + 1, now)
+  const month = today.slice(0, 7)
+  const left = (() => { const d = new Date(now); return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - d.getDate() })()
+  const r2 = x => Math.round(x * 100) / 100
+  const usage = (id, name, provider, base, groups, budget) => {
+    const days = Array.from({ length: N }, (_, i) => {
+      const weekend = [0, 6].includes(new Date(`${day(i)}T12:00:00`).getDay())
+      const amount = r2(base * (weekend ? 0.6 : 1) * (0.8 + 0.4 * Math.abs(Math.sin(i * 1.3))))
+      return { day: day(i), amount, provisional: i >= N - 2,
+        groups: Object.fromEntries(groups.map(([g, f]) => [g, r2(amount * f)])) }
+    })
+    const mtd = r2(days.filter(d => d.day.startsWith(month)).reduce((a, d) => a + d.amount, 0))
+    const settled = days.filter(d => !d.provisional).slice(-7)
+    const mean = settled.reduce((a, d) => a + d.amount, 0) / settled.length
+    return { id, display_name: name, provider, kind: 'usage', ok: true, error: null, currency: 'EUR',
+      original_currency: provider === 'azure' ? 'EUR' : 'USD', group_by: 'service', budget_month: budget, days,
+      month_to_date: mtd, forecast_month: r2(mtd + mean * left), last_complete_day: day(N - 3) }
+  }
+  const fixed = 12
+  const contract = { id: 'hosting-example', display_name: 'Example web hosting', provider: 'contract', kind: 'fixed', ok: true, error: null,
+    currency: 'EUR', original_currency: 'EUR', group_by: null, budget_month: null,
+    days: Array.from({ length: N }, (_, i) => ({ day: day(i), amount: r2(fixed * 12 / 365), provisional: false, groups: { 'Web hosting': r2(fixed * 12 / 365) } })),
+    month_to_date: r2(fixed * 12 / 365 * Number(today.slice(8, 10))), forecast_month: fixed, last_complete_day: today }
+  return { schema: 1, kind: 'cloud-costs', host: 'my-server', at: new Date(now - 3 * 3600000).toISOString(), currency: 'EUR', days: N, today,
+    fx: { date: isoIn(-1, now), source: 'ecb', rates: { USD: 1.08 } },
+    source: 'ssh:my-server:~/.bridge/resources/costs.json', read_at: new Date(now - 2 * MIN).toISOString(), stale: false,
+    accounts: [
+      usage('azure-example', 'Example Azure', 'azure', 1.2, [['Functions', 0.55], ['Storage', 0.3], ['Key Vault', 0.15]], 50),
+      usage('anthropic-example', 'Example Anthropic', 'anthropic', 2.6, [['Claude API, input', 0.4], ['Claude API, output', 0.6]], 60),
+      usage('aws-example', 'Example AWS', 'aws', 0.35, [['Amazon S3', 0.7], ['AWS Lambda', 0.3]], null),
+      { id: 'openai-example', display_name: 'Example OpenAI', provider: 'openai', kind: 'usage', ok: false, error_kind: 'auth',
+        error: 'no admin key in the keychain', currency: 'EUR', days: [], month_to_date: null, forecast_month: null, budget_month: 20,
+        login: { argv: ['bash', '/srv/bridge/skills/secrets/secrets.sh', 'store', 'keychain://openai-admin/example', '--root', '/srv/bridge', '--from', 'prompt'],
+          hint: 'Create an admin key at platform.openai.com > Settings > Organization > Admin keys, then store it with this command.' },
+        login_command: "ssh -t my-server 'bash /srv/bridge/skills/secrets/secrets.sh store keychain://openai-admin/example --root /srv/bridge --from prompt'" },
+      contract,
+    ] }
 }
 
 // the knowledge graph (graph.py view()): a small invented Bridge, its config entries, tasks and the files they name
@@ -1004,7 +1068,11 @@ export function createMockTransport(opts = {}) {
       if (url.pathname === '/api/history') return ok({ ok: true, entries: history })
       if (url.pathname === '/api/agents') return ok({ ok: true, ...state.agents })
       if (url.pathname === '/api/ticker') return ok({ ok: true, ticker: state.ticker })
-      if (url.pathname === '/api/usage') return ok({ ok: true, usage: usageView(now()) })
+      if (url.pathname === '/api/usage') {
+        const n = Number(url.searchParams.get('days'))
+        return ok({ ok: true, usage: usageView(now(), [7, 30, 90].includes(n) ? n : 7) })
+      }
+      if (url.pathname === '/api/costs') return ok({ ok: true, view: costsView(now()) })
       if (url.pathname === '/api/graph') return ok({ ok: true, ...graphView() })
       if (url.pathname === '/api/graph/node') {
         const found = graphNode(url.searchParams.get('id'))

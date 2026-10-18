@@ -1314,10 +1314,7 @@ kbd {
 .noise { scroll-margin-top: 12px; }
 .noise-sub { margin-top: 12px; }
 .psec { scroll-margin-top: 12px; }
-.us-session { --us: var(--secondary); }
-.us-subagent { --us: var(--series-2); }
-.us-worker { --us: var(--on-surface-faint); }
-.ubars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: end; margin: 8px 0 4px; }
+.ubars { display: grid; grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr)); gap: 8px; align-items: end; margin: 8px 0 4px; }
 .ubar {
   display: grid; grid-template-rows: auto 160px auto; gap: 4px; justify-items: center; padding: 6px 4px;
   background: none; border: 1px solid transparent; border-radius: var(--radius-md); cursor: pointer;
@@ -1340,6 +1337,54 @@ kbd {
 .ulist { display: grid; gap: 2px; font-size: var(--text-sm); }
 .ulist li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--border); }
 .ulist li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.otile-bars { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-top: 2px; }
+.otile-bar { flex: 1; min-height: 2px; background: var(--secondary); border-radius: 1px; }
+.otile-bar.is-provisional { opacity: 0.5; }
+/* the series of a stacked chart: the three largest and the rest (DESIGN.md: at most four). The palettes
+   reuse tokens (secondary is also on-surface-faint, accent-line is also the dark track), so the series are
+   picked to differ in every mode: the accent, the secondary, a pale accent, and the rest hatched, so it can
+   never look like a named series (scripts/tests/test_cockpit_costs_contract.py measures all four) */
+.sr-0 { --us: var(--accent); }
+.sr-1 { --us: color-mix(in srgb, var(--accent) 50%, var(--on-surface)); }   /* not --secondary: a palette may set it close to the accent */
+.sr-2 { --us: color-mix(in srgb, var(--accent) 42%, var(--surface)); }
+.sr-3 { --us: repeating-linear-gradient(135deg, var(--on-surface-muted) 0 1.5px, transparent 1.5px 4px); }
+.ubars.is-dense { gap: 1px; }
+.ubars.is-dense .ubar { grid-template-rows: 160px auto; padding: 4px 0; }
+.ubars.is-dense .ubar-col { width: 100%; }
+.ubars.is-dense .ubar-day { font-size: 10px; font-weight: 500; }
+.ubar.is-provisional .ubar-part { opacity: 0.5; }
+.ubar.is-provisional .ubar-part:last-child { border-top: 1px dashed var(--on-surface); }
+.ukey-provisional { background: none; border: 1px dashed var(--on-surface-muted); }
+.chip-pick { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.usage > .chip-pick { margin: 4px 0; }
+.costs { scroll-margin-top: 12px; }
+.costs-sub { margin-top: 14px; }
+.costs-total { margin-top: 10px; font-size: var(--text-sm); font-weight: 600; }
+.clist, .blist { display: grid; }
+.crow {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) auto auto minmax(120px, 1fr); gap: 4px 18px; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--border); font-size: var(--text-sm);
+}
+.crow.is-failed { color: var(--on-surface-muted); }
+.crow-why { grid-column: 2 / -1; display: grid; gap: 4px; }
+.crow-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.crow-title { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crow-fig { display: grid; justify-items: end; gap: 2px; }
+.crow-budget { display: grid; gap: 3px; }
+.crow-cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.crow-cmd code { padding: 2px 6px; background: var(--surface-muted); border-radius: var(--radius-sm); color: var(--ink); }
+.cbudget { position: relative; display: block; height: 8px; margin: 3px 0; background: var(--surface-muted); border-radius: var(--radius-sm); }
+.cbudget-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--tk); border-radius: inherit; }
+.cbudget-fc { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--tk); }
+.cbudget-cap { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 1px dashed var(--ink); }
+.brow {
+  display: grid; grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 1fr) 60px; gap: 4px 18px; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--text-sm);
+}
+.brow.is-failed { grid-template-columns: 1fr; }
+.brow-models { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spark { display: block; overflow: visible; }
+.spark polyline { fill: none; stroke: var(--secondary); stroke-width: 1.5; stroke-linejoin: round; }
 @media (max-width: 640px) {
   .oboard { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .otile { padding: 10px; }
@@ -1348,6 +1393,12 @@ kbd {
   .ubar { grid-template-rows: auto 120px auto; padding: 4px 0; }
   .ubar-col { height: 120px; }
   .ubar-n { font-size: 9px; }
+  .ubars.is-dense .ubar { grid-template-rows: 120px auto; }
+  .ubars.is-dense .ubar-day { font-size: 8px; }
+  .crow { grid-template-columns: minmax(0, 1fr) auto; }
+  .crow-budget, .crow-why { grid-column: 1 / -1; }
+  .brow { grid-template-columns: minmax(0, 1fr) auto 60px; }
+  .brow-models { display: none; }
 }
 
 @media (max-width: 1279px) {

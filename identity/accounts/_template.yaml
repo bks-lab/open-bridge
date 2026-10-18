@@ -62,6 +62,26 @@ calendar:
 #   token_ref: "azure-keyvault://<vault>/<secret>"   # NEVER inline the token
 
 # ---------------------------------------------------------------------------
+# Cloud costs (optional): scripts/cloud-costs.py, guide docs/cloud-costs.md
+# Read once a day on the always-on machine for the cockpit's Betrieb page.
+# azure, aws and gcp use their logged-in CLIs (az, aws, bq); openai and
+# anthropic need an ADMIN key, stored with the secrets skill and named here.
+# ---------------------------------------------------------------------------
+# costs:
+#   enabled: true
+#   provider: azure                # optional: azure | aws | gcp | openai | anthropic (default: guessed)
+#   subscriptions: [<subscription-id>]   # azure, optional: default every id under `subscriptions:`
+#   group_by: service              # azure: service | resource_group | tag:<name>; aws: service
+#   profile: my-profile            # aws CLI profile (default: the default credentials)
+#   key_ref: "keychain://<service>/<account>"   # openai, anthropic: the admin key, a reference only
+#   bigquery_table: my-project.billing.export   # gcp: the Cloud Billing export table
+#   budget_month: 50               # optional, in `currency`
+#   currency: EUR                  # optional, default EUR
+#   login: [az, login]             # optional: the command the cockpit offers when the login is missing
+#   host: my-laptop                # optional: only the collector on this infra/remotes machine asks it
+#                                  #   (the machine whose CLI login or key store holds it); unset: every collector
+
+# ---------------------------------------------------------------------------
 # Cross-references (optional)
 # ---------------------------------------------------------------------------
 # persona_ref: my-persona          # which persona owns this account

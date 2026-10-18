@@ -208,7 +208,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 alarms.append({"page_id": pg["id"], "page_title": pg["title"], "section_title": s["title"],
                                "count": int(bad)})
         pages.append({"id": pg["id"], "title": pg["title"], "badge": m.page_badge({"sections": secs}), "sections": secs,
-                      "group": pg.get("group", "main"), "overview": pg.get("overview") is True,
+                      "group": pg.get("group", "main"), "overview": pg.get("overview") is True, "cards": m.parse_cards(pg.get("cards")),
                       "jev": isinstance(pg.get("jev"), dict)})
 
     waiting_tabs = [t for t in others if m.is_waiting(t, view)]

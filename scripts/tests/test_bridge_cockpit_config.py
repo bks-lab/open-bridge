@@ -206,3 +206,18 @@ def test_the_doc_says_chat_keep_hours_covers_quick_chats_and_a2a_conversations()
     assert "0 keeps them" in row
     assert ("a chat started from a briefing row or handed to a tab leaves when its item closes, "
             "once it has been quiet for 10 minutes") in " ".join(doc.split()).lower()
+
+
+# ---------------------------------------------------------------- cockpit.usage (read by usage.remote_hosts)
+
+def test_the_usage_block_is_known_and_checked(tmp_path):
+    assert warnings_of(tmp_path, {"usage": {"remotes": ["my-server"], "remote_file": "~/.bridge/resources/usage.json"}}) == ()
+    assert warnings_of(tmp_path, {"usage": {"remotes": []}}) == ()            # an empty list: no other machine
+    out = warnings_of(tmp_path, {"usage": {"remotes": "my-server", "remote_file": 7, "remots": []}})
+    assert sorted(w.split(":", 1)[0] for w in out) == ["cockpit.usage.remote_file", "cockpit.usage.remotes",
+                                                       "cockpit.usage.remots"], out
+    bad = warnings_of(tmp_path, {"usage": {"remotes": ["my-server", "not a host"]}})
+    assert len(bad) == 1 and "cockpit.usage.remotes" in bad[0] and "not a host" in bad[0]
+    assert warnings_of(tmp_path, {"usage": "x"})[0].startswith("cockpit.usage: must be a mapping")
+    assert warnings_of(tmp_path, {"usage": {"host": "my-laptop"}}) == ()
+    assert warnings_of(tmp_path, {"usage": {"host": "a b"}})[0].startswith("cockpit.usage.host")

@@ -111,7 +111,8 @@ const store = createStore({
   history: [],
   jev: { enabled: false, ready: false, reason: 'off' },
   workers: { status: 'idle', data: null, error: null },
-  usage: { status: 'idle', data: null, error: null },
+  usage: { status: 'idle', data: null, error: null, days: 7 },   // days: the range the Betrieb page asked for (7, 30, 90)
+  costs: { status: 'idle', data: null, error: null },   // the cloud costs per account (cloud-costs.py, read by bridge-resources.py costs)
   noise: { status: 'idle', data: null, error: null },   // the loud inbox sources and the mute rules (inbox.py stats)
   jevOrder: {},   // per page with `jev:`: { order, error, running }
   home: { tiles: null, seen: null, pins: [] },
@@ -806,11 +807,23 @@ const ctl = {
   graph: () => api.get('/api/graph'),
   graphNode: id => api.get(`/api/graph/node?id=${encodeURIComponent(id)}`),
   setHomeProject: p => { save('bridge-cockpit.homeProject', p ?? ''); setUi({ homeProject: p }) },
-  loadUsage: async () => {
-    store.set(s => ({ ...s, usage: { ...s.usage, status: s.usage.data ? 'ok' : 'loading' } }))
-    const res = await api.get('/api/usage')
-    store.set(s => ({ ...s, usage: res.ok ? { status: 'ok', data: res.data.usage, error: null }
-      : { status: 'error', data: s.usage.data, error: res.error?.message ?? null } }))
+  // days: 7, 30 or 90; without it the range asked for last
+  loadUsage: async days => {
+    const n = [7, 30, 90].includes(days) ? days : store.get().usage.days ?? 7
+    store.set(s => ({ ...s, usage: { ...s.usage, days: n, status: s.usage.data ? 'ok' : 'loading' } }))
+    const res = await api.get(`/api/usage?days=${n}`)
+    // an answer for a range no longer asked for is dropped
+    if (store.get().usage.days !== n) return
+    store.set(s => ({ ...s, usage: res.ok ? { status: 'ok', data: res.data.usage, error: null, days: n }
+      : { status: 'error', data: s.usage.data, error: res.error?.message ?? null, days: n } }))
+  },
+  // the cloud costs (bridge-resources.py costs -> costs-view.json); read when the card shows, with each new
+  // briefing and on its reload button. 404 or no view: nothing collected yet
+  loadCosts: async () => {
+    store.set(s => ({ ...s, costs: { ...s.costs, status: s.costs.data ? 'ok' : 'loading' } }))
+    const res = await api.get('/api/costs')
+    store.set(s => ({ ...s, costs: res.ok ? { status: res.data.view ? 'ok' : 'none', data: res.data.view ?? null, error: null }
+      : { status: res.status === 404 ? 'none' : 'error', data: s.costs.data, error: res.error?.message ?? null } }))
   },
   // the noise of the inbox (inbox.py stats + mute list); the Betrieb page reads it when it opens and with each new briefing
   loadNoise: async () => {

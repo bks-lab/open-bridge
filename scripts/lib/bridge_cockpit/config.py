@@ -147,8 +147,10 @@ BLOCK = {
     "triage_daily": ("bool", "triage_daily"), "language": ("text", "language"),
     "chat_layout": ("choice", "chat_layout", CHAT_LAYOUTS), "chat_keep_hours": ("number", "chat_keep_hours", 0),
     "launch": ("block", {"target": ("choice", "target", TARGETS)}),
-    "launch_model": ("launch_model",), "ticker": ("ticker",),
+    "launch_model": ("launch_model",), "ticker": ("ticker",), "usage": ("usage",),
 }
+USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
+HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 BLOCK_KEYS = tuple(BLOCK)
 
 
@@ -217,6 +219,34 @@ def _check_ticker(value: Any, cfg: WebConfig, where: str) -> list[str]:
     return out
 
 
+def _check_usage(value: Any, where: str) -> list[str]:
+    """cockpit.usage: remotes (infra/remotes slugs; a list, empty for none), remote_file (text) and host (this machine). usage.py
+    skips what does not fit, so each warning says what is used instead."""
+    if not isinstance(value, dict):
+        return [f"{where}: must be a mapping, got {_show(value)}; using the machines of infra/instances"]
+    out = []
+    for key, v in value.items():
+        at = f"{where}.{str(key)[:40]}"
+        if key not in USAGE_KEYS:
+            out.append(f"{at}: unknown key, ignored")
+        elif v is None:
+            continue
+        elif key == "remotes":
+            if not isinstance(v, list):
+                out.append(f"{at}: must be a list of infra/remotes names, got {_show(v)}; "
+                           "using the machines of infra/instances")
+            else:
+                bad = [x for x in v if not isinstance(x, str) or not HOST_SLUG_RE.fullmatch(x)]
+                if bad:
+                    out.append(f"{at}: {', '.join(_show(x) for x in bad[:3])} is no machine name; skipped")
+        elif key == "host":
+            if not isinstance(v, str) or not HOST_SLUG_RE.fullmatch(v):
+                out.append(f"{at}: {_show(v)} is no machine name; using the infra/remotes entry that matches this machine")
+        elif not isinstance(v, str) or not v.strip():
+            out.append(f"{at}: must be text, got {_show(v)}; using \"~/.bridge/resources/usage.json\"")
+    return out
+
+
 def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict = BLOCK) -> tuple:
     """One warning per unknown key, wrong type or value the loader replaced, naming the key and the value
     `cfg` (the loaded config) uses instead. A None value counts as left out, as it does for the loader."""
@@ -239,6 +269,9 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
             continue
         if kind == "ticker":
             out += _check_ticker(value, cfg, at)
+            continue
+        if kind == "usage":
+            out += _check_usage(value, at)
             continue
         if kind == "block":
             if not isinstance(value, dict):

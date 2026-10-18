@@ -751,6 +751,34 @@ def test_a_page_can_open_with_an_overview_of_its_sections():
         "view.pages 1: overview must be true or false"]
 
 
+def test_a_page_can_place_live_cards_after_its_sections():
+    # `cards:` places the dashboard's live cards (costs, usage, noise) after a section of the page, or at its end
+    cards = [{"id": "costs", "after": "probes"}, {"id": "usage"}]
+    view = {"pages": [{"id": "ops", "sections": ["probes"], "overview": True, "cards": cards}, {"id": "week", "sections": ["cal"]}]}
+    pages = bv.pages(_result(), _profile(view))
+    assert _page(pages, "ops")["cards"] == cards
+    assert "cards" not in _page(pages, "week")
+    assert bv._page_problems(view) == []
+    assert bv._page_problems({"pages": [{"id": "ops", "sections": ["probes"], "cards": "costs"}]}) == [
+        "view.pages 1: cards must be a list of {id, after}"]
+    assert bv._page_problems({"pages": [{"id": "ops", "sections": ["probes"], "cards": [{"id": "weather"}]}]}) == [
+        "view.pages 1: cards: unknown card weather (costs, usage or noise)"]
+    assert bv._page_problems({"pages": [{"id": "ops", "sections": ["probes"], "cards": [{"id": "costs", "after": "nope"}]}]}) == [
+        "view.pages 1: cards: costs stands after nope, which is not a section of this page"]
+
+
+def test_cards_are_valid_for_the_schema_too():
+    import pytest
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = yaml.safe_load((ROOT / "workflow" / "briefings" / "_schema.yaml").read_text(encoding="utf-8"))
+    profile = {"schema_version": 1, "scope": "user", "id": "p", "sections": [{"kind": "tasks"}],
+               "view": {"pages": [{"id": "ops", "sections": ["tasks"], "cards": [{"id": "costs", "after": "tasks"}, {"id": "noise"}]}]}}
+    jsonschema.validate(profile, schema)
+    profile["view"]["pages"][0]["cards"] = [{"id": "weather"}]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(profile, schema)
+
+
 def test_a_page_can_ask_for_an_order_by_jev():
     # `jev:` asks a dashboard for an order of the page's rows on a click; skip_sections and private keep rows home
     jev = {"skip_sections": ["probes"], "private": ["privat"]}

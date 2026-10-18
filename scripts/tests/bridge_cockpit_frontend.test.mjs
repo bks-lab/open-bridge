@@ -2955,7 +2955,9 @@ test('drop: an inbox row asks why, the command box and bulk drops stay one keyst
 })
 
 test('noise: the Betrieb page shows the noise card and lifts a mute through the action', () => {
-  assert.match(read('components.js'), /page\.overview \? html`<\$\{NoiseCard\} page=\$\{page\} s=\$\{s\} c=\$\{c\} \/>`/)
+  // the profile places the live cards (`cards:`); a page with overview and no cards keeps usage and noise at its end
+  assert.match(read('components.js'), /const cards = cardPlan\(page\)/)
+  assert.match(read('views/pages.js'), /id === 'noise'\) return html`<\$\{NoiseCard\} page=\$\{page\} s=\$\{s\} c=\$\{c\} \/>`/)
   assert.match(read('views/pages.js'), /export function NoiseCard/)
   assert.match(read('app.js'), /api\.get\('\/api\/inbox\/noise'\)/)
   assert.match(read('app.js'), /act\('inbox_unmute', \{ id \}\)/)
@@ -3297,7 +3299,7 @@ test('style.css: every class selector is used by the page, or built from an allo
   const DYNAMIC = {
     'btn-': null, 'day-': null, 'fdot-': null, 'g-': null, 'hist-': null, 'is-': null, 'lane-': null,
     'layout-': null, 'mc-': null, 'md-h': null, 'rdot-': null, 'rt-': null, 'sm-': null, 'st-': null, 'tk-': null,
-    'tl-': null, 'us-': null, 'view-thumb-': null, 'vs-': null,
+    'tl-': null, 'sr-': ['0', '1', '2', '3'], 'view-thumb-': null, 'vs-': null,
     'ticker-': ['slow', 'normal', 'fast'],
     'tri-': ['ai', 'either'],
   }

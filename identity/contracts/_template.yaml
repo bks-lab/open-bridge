@@ -87,6 +87,13 @@ pricing:
   options:
     - example-option-name                    # free-form strings or {name, cost, ...} objects
 
+# Cloud costs (optional): spread this contract evenly over the days on the
+# cockpit's Betrieb page (monthly_fee, else base_per_year / 12). Use it for a
+# flat plan with no daily cost API, e.g. a Cloudflare plan. docs/cloud-costs.md
+# costs:
+#   enabled: true
+#   budget_month: 25               # optional, in pricing.currency
+
 # ----------------------------------------------------------------------------
 # Payment
 # ----------------------------------------------------------------------------
