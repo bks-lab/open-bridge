@@ -5282,3 +5282,36 @@ def test_a_tab_screen_the_driver_could_not_read_is_not_kept(world):
     assert world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)[0] == 502
     status, _, body = world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)
     assert status == 200 and json.loads(body)["text"] == "> back"
+
+
+# ---------------------------------------------------------------- static files: ETag and 304 (#388)
+
+def test_a_static_file_answers_a_matching_if_none_match_with_304_and_no_body(world):
+    status, headers, body = world.request("GET", "/app.js", headers=world.cookie)
+    etag = headers.get("ETag")
+    assert status == 200 and body == b"export const ok = 1\n" and etag and etag.startswith('"')
+    assert headers["Cache-Control"] == "no-cache"
+    status, headers, body = world.request("GET", "/app.js", headers={**world.cookie, "If-None-Match": etag})
+    assert status == 304 and body == b"" and headers["ETag"] == etag
+    assert headers["Cache-Control"] == "no-cache" and headers["X-Content-Type-Options"] == "nosniff"
+    # a list, a weak form and the wildcard match too; a stale tag does not
+    for value in (f'"x", {etag}', f"W/{etag}", "*"):
+        assert world.request("GET", "/app.js", headers={**world.cookie, "If-None-Match": value})[0] == 304
+    status, _, body = world.request("GET", "/app.js", headers={**world.cookie, "If-None-Match": '"stale"'})
+    assert status == 200 and body == b"export const ok = 1\n"
+
+
+def test_a_changed_static_file_gets_200_with_a_new_etag(world):
+    _, headers, _ = world.request("GET", "/app.js", headers=world.cookie)
+    etag = headers["ETag"]
+    path = world.root / "scripts" / "web" / "app.js"
+    path.write_text("export const ok = 22\n", encoding="utf-8")
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    status, headers, body = world.request("GET", "/app.js", headers={**world.cookie, "If-None-Match": etag})
+    assert status == 200 and body == b"export const ok = 22\n" and headers["ETag"] not in ("", etag)
+
+
+def test_the_page_itself_stays_no_store_without_an_etag(world):
+    status, headers, _ = world.request("GET", "/", headers=world.cookie)
+    assert status == 200 and headers["Cache-Control"] == "no-store" and "ETag" not in headers

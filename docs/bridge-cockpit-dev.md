@@ -123,7 +123,9 @@ python3 scripts/bridge-cockpit.py status --json
 ```
 
 - **Page files** (`scripts/web/`): reload the browser. Static files go out with
-  `Cache-Control: no-cache`, `index.html` with `no-store`.
+  `Cache-Control: no-cache` and an `ETag` from the file's mtime and size, so a
+  reload of an unchanged file gets `304 Not Modified` without a body;
+  `index.html` goes out with `no-store`.
 - **Server files** (`scripts/lib/bridge_cockpit/`): `stop`, then `open`. The key
   and the browser's cookie survive a restart, so an open tab just reloads; after
   `new-token` it shows the sign-in panel and `open` logs it in again.

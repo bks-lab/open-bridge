@@ -10,6 +10,7 @@ Run: pytest -q scripts/tests/test_bridge_cockpit_ticker.py
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import time
@@ -842,3 +843,76 @@ def test_a_refresh_builds_the_items_from_the_settings_at_its_end(tworld):
     t.fetch = fetch
     t.refresh_sync()
     assert {i["feed"] for i in t.state()["items"]} == {"beta"}
+
+
+# ---------------------------------------------------------------- settings cache and loop wake (#388)
+
+def _count_reads(monkeypatch, path) -> list:
+    reads = []
+    real = tk.read_json
+
+    def counting(p, *args, **kwargs):
+        if p == path:
+            reads.append(p)
+        return real(p, *args, **kwargs)
+    monkeypatch.setattr(tk, "read_json", counting)
+    return reads
+
+
+def test_settings_are_not_read_again_while_the_file_is_unchanged(tworld, monkeypatch):
+    t = tworld.app.ticker
+    tworld.act("ticker_settings", settings={"speed": "fast"})
+    reads = _count_reads(monkeypatch, t.path)
+    first = t.settings()
+    for _ in range(5):
+        assert t.settings() == first
+        t.due(tworld.clock())
+    assert len(reads) <= 1 and first["speed"] == "fast"
+    first["feeds"].clear()                               # a caller's copy never reaches the cache
+    assert t.settings()["feeds"] and len(reads) <= 1
+
+
+def test_a_hand_edit_with_a_new_mtime_is_read_again(tworld):
+    t = tworld.app.ticker
+    assert t.settings()["max_items"] == 30
+    t.path.write_text(json.dumps({"max_items": 50}), encoding="utf-8")
+    stat = t.path.stat()
+    os.utime(t.path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    assert t.settings()["max_items"] == 50
+
+
+def test_a_save_still_refreshes_and_the_new_interval_counts_at_once(tworld):
+    t = tworld.app.ticker
+    tworld.app.hub.add()
+    t.refresh_sync()
+    assert t.settings()["refresh_minutes"] == 30 and t.due(tworld.clock()) is False
+    calls = len(t.fetch.calls)
+    tworld.act("ticker_settings", settings={"refresh_minutes": 5})
+    wait_for(lambda: len(t.fetch.calls) > calls and not t.refreshing)
+    tworld.clock.advance(6 * 60)
+    assert t.due(tworld.clock()) is True
+
+
+def test_the_loop_sleeps_until_the_feeds_are_due(tworld):
+    t = tworld.app.ticker
+    tworld.app.hub.add()
+    assert t.next_wait(tworld.clock()) == tk.LOOP_STEP_S          # never fetched: look again soon
+    t.refresh_sync()
+    assert t.next_wait(tworld.clock()) == tk.LOOP_IDLE_S          # 30 minutes away, capped
+    tworld.clock.advance(29 * 60 + 30)
+    assert t.next_wait(tworld.clock()) == pytest.approx(30)
+    tworld.act("ticker_settings", settings={"enabled": False})
+    assert t.next_wait(tworld.clock()) == tk.LOOP_IDLE_S
+
+
+def test_a_save_wakes_the_sleeping_loop(tworld):
+    t = tworld.app.ticker
+    tworld.app.hub.add()
+    t.refresh_sync()
+    thread = threading.Thread(target=t.loop, daemon=True)
+    thread.start()
+    time.sleep(0.05)
+    tworld.app.stopping = True
+    tworld.act("ticker_settings", settings={"speed": "fast"})
+    thread.join(timeout=2)
+    assert not thread.is_alive()

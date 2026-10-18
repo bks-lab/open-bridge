@@ -504,6 +504,22 @@ class App:
         self.watcher.shutdown()
 
 
+def static_etag(mtime_ns: int, size: int) -> str:
+    """A strong validator from the file's (mtime, size): changes with every write that a reload must see."""
+    return f'"{mtime_ns:x}-{size:x}"'
+
+
+def etag_matches(header: str | None, etag: str) -> bool:
+    """If-None-Match uses the weak comparison (RFC 9110 13.1.2): a W/ prefix does not matter, * matches."""
+    if not header:
+        return False
+    for part in header.split(","):
+        tag = part.strip()
+        if tag == "*" or (tag[2:] if tag.startswith("W/") else tag) == etag:
+            return True
+    return False
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "bridge-cockpit"
     sys_version = ""
@@ -810,8 +826,19 @@ class Handler(BaseHTTPRequestHandler):
         if not target.is_file():
             self.send_error_json("not_found", "not found")
             return
-        body = target.read_bytes()
-        self.send_bytes(200, body, CONTENT_TYPES[ext], html=ext == ".html", static=ext != ".html")
+        if ext == ".html":
+            self.send_bytes(200, target.read_bytes(), CONTENT_TYPES[ext], html=True)
+            return
+        # no-cache makes the browser revalidate every load; the tag lets it keep the body it has (304)
+        st = target.stat()
+        etag = static_etag(st.st_mtime_ns, st.st_size)
+        if etag_matches(self.headers.get("If-None-Match"), etag):
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.security_headers(static=True)
+            self.end_headers()
+            return
+        self.send_bytes(200, target.read_bytes(), CONTENT_TYPES[ext], static=True, extra={"ETag": etag})
 
     def events(self) -> None:
         app = self.app

@@ -49,7 +49,8 @@ USER_AGENT = "bridge-cockpit/ticker"
 ACCEPT = "application/rss+xml, application/atom+xml, application/xml, text/xml"
 EDITOR_TIMEOUT = 60
 PROMPT_BUDGET = 7600                 # below model_route.HAIKU_PROMPT_MAX: a longer prompt is refused, not cut
-LOOP_STEP_S = 5
+LOOP_STEP_S = 5                      # how soon the loop looks again while stale feeds wait for a page
+LOOP_IDLE_S = 60                     # the longest the loop sleeps, so a stop or a clock jump is seen
 PASSES_KEEP = 10
 MAX_FEEDS = 20
 MUTE_MAX = 30
@@ -671,6 +672,12 @@ class Ticker:
         # raised under self.lock on every change of the state; the page keeps the newer of two states by it
         # (logic.js newerTicker), since an action's answer and the event of a later change may cross
         self.rev = 0
+        # settings() keyed on the file's (mtime, size) and the config's block: the loop asks every few seconds
+        self._settings_key: tuple | None = None
+        self._settings: dict | None = None
+        self._settings_gen = 0
+        # set by a save or a reset, so the sleeping loop recomputes when the feeds are due
+        self._wake = threading.Event()
         self._load_cache()
 
     # ------------------------------------------------------------ settings
@@ -688,7 +695,29 @@ class Ticker:
         return {k: merged[k] for k in KEYS if k in data and merged[k] != base[k]}
 
     def settings(self) -> dict:
-        return {**self.defaults(), **copy.deepcopy(self.overrides())}
+        return copy.deepcopy(self._current())
+
+    def _current(self) -> dict:
+        """The settings, read again only when the file or the config changed. Shared: never mutate."""
+        try:
+            st = self.path.stat()
+            stamp: tuple = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            stamp = ()
+        key = (stamp, id(getattr(self.app.cfg, "ticker", None)))
+        cached, gen = self._settings, self._settings_gen
+        if cached is None or key != self._settings_key:
+            cached = {**self.defaults(), **copy.deepcopy(self.overrides())}
+            if gen == self._settings_gen:          # a save in between wins: its read comes next
+                self._settings, self._settings_key = cached, key
+        return cached
+
+    def _changed(self) -> None:
+        """After a write of the settings file: drop the cached settings (an mtime may not move within one
+        tick of the file system clock) and wake the loop."""
+        self._settings_gen += 1
+        self._settings = None
+        self._wake.set()
 
     def save(self, change: Any) -> dict:
         if not isinstance(change, dict) or not change:
@@ -701,6 +730,7 @@ class Ticker:
                 raise TickerError(400, "invalid_argument", error.message, error.field) from None
             base = self.defaults()
             atomic_write_json(self.path, {k: after[k] for k in KEYS if after[k] != base[k]})
+            self._changed()
             if after["smart"] != before["smart"]:
                 self._rebuild(after)
             self.rev += 1
@@ -713,6 +743,7 @@ class Ticker:
     def reset(self) -> dict:
         with self.lock:
             atomic_write_json(self.path, {})
+            self._changed()
             self._rebuild(self.settings())
             self.rev += 1
         if self.settings()["enabled"]:
@@ -833,19 +864,31 @@ class Ticker:
         self.app.broadcast("ticker", self.state())
 
     def due(self, now: float) -> bool:
-        s = self.settings()
+        s = self._current()
         return bool(s["enabled"] and self.app.client_count() > 0
                     and now - self.fetched_ms >= s["refresh_minutes"] * 60000)
+
+    def next_wait(self, now: float) -> float:
+        """Seconds until the loop looks again: until the feeds are due, LOOP_STEP_S while they are due but
+        no page is open (one may open any moment), at most LOOP_IDLE_S."""
+        s = self._current()
+        if not s["enabled"]:
+            return LOOP_IDLE_S
+        left = (self.fetched_ms + s["refresh_minutes"] * 60000 - now) / 1000
+        return min(max(left, LOOP_STEP_S), LOOP_IDLE_S)
 
     def loop(self) -> None:
         """Started by App.start() only: reads the feeds while a page is open and they are old. Never edits."""
         while not self.app.stopping:
+            wait: float = LOOP_STEP_S
             try:
                 if self.due(self.app.clock()):
                     self.request_refresh()
+                wait = self.next_wait(self.app.clock())
             except Exception as exc:  # noqa: BLE001 (the ticker never takes the server down)
                 self.app.log_error(f"ticker loop: {exc!r}")
-            time.sleep(LOOP_STEP_S)
+            self._wake.wait(wait)
+            self._wake.clear()
 
     # ------------------------------------------------------------ the editor
 
