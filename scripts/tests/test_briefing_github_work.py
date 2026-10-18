@@ -504,13 +504,17 @@ def test_a_detail_is_kept_ten_minutes_and_shown_old_when_github_is_blocked(tmp_p
     assert bf.github_detail(root, "not a ref")[0] == 2
 
 
-def test_someone_elses_card_offers_a_reminder_drafted_never_sent(tmp_path):
+def test_someone_elses_card_offers_a_reminder_the_click_releases_the_comment(tmp_path):
     section = dict(SECTION, query={"owners": ["example-org"], "cards": "all"})
     rows, _ = collect(bridge(tmp_path), section)
     other = rows["example-org/tool#50"]
     assert "remind" in ids(other) and "remind" not in ids(rows["example-org/tool#12"])
     words = bf._view().labels_for("de")
     text = bf.tracker_prompt({"id": "remind", "prompt": None}, other, words)
-    assert "@hubot" in text and "Poste und sende nichts" in text
+    # the click on Remind is the yes for exactly one GitHub comment; a mail or chat stays a draft
+    assert "@hubot" in text and "Der Klick auf Erinnern gibt" in text and "gh issue comment" in text
+    assert "Mail oder Chat nur als Entwurf" in text and "inbox.py note" in text
+    en = bf.tracker_prompt({"id": "remind", "prompt": None}, other, bf._view().labels_for("en"))
+    assert "The click on Remind releases" in en and "a mail or chat only as a draft" in en
     view = bf._view()
     assert view._page_row("tracker", other, {"id": "work"}, NOW, view.labels_for("de"))["who"] == "hubot"
