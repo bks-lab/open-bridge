@@ -1027,6 +1027,9 @@ kbd {
 .room-tab, .room-chat { padding-left: 16px; }
 .room-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-meta { flex: none; }
+/* a new name typed in place of a tab's or a workspace's row (views/rooms.js RenameField) */
+.room-rename { display: flex; align-items: center; gap: 6px; padding: 4px 8px; min-width: 0; }
+.room-rename-input { flex: 1 1 auto; }
 /* a quick chat leaves the list by the × beside its row (into the archive); it shows on hover, always on touch */
 .room-chat-row { display: flex; align-items: center; min-width: 0; }
 .room-x { flex: none; width: 24px; height: 24px; padding: 0; border: none; border-radius: var(--radius-md); background: none;

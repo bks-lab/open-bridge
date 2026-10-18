@@ -683,3 +683,107 @@ test('a tab that runs for an hour stands in Waiting for you without claiming it 
   const blind = { ...s, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => t.ref === 'surface:12' ? { ...t, ask: null, last: '' } : t) } }
   assert.match(replyRow(renderSide(blind), 'demo-task research').$('.reply-ask').text(), new RegExp(en.reply.unreadable))
 })
+
+const { RoomsPage } = views.rooms
+const keydown = (el, key) => el.dispatch('keydown', { key })
+function typeInto(input, value) {
+  input.value = value
+  input.dispatch('input')
+}
+
+test('the rename field replaces the item, saves through tab_rename and workspace_rename and Esc cancels', () => {
+  // a tab: its row in the sidebar is the field while it is renamed, not a field inside a button
+  const s = cockpitState(NOW, { ui: { renaming: { kind: 'tab', id: 'surface:11' } } })
+  const c = recorder()
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  assert.ok(tabRow(el, 'zsh') === null, 'the tab row is replaced by the field')
+  const input = el.$('.room-rename input')
+  assert.ok(input, 'the field stands where the tab was')
+  assert.equal(input.getAttribute('aria-label'), en.rooms.renameTab)
+  assert.equal(el.$$('button .room-rename').length + el.$$('button input').length, 0)
+  typeInto(input, '   ')
+  keydown(input, 'Enter')
+  assert.deepEqual(c.calls.filter(x => x[0] === 'act'), [])                       // empty is refused, nothing sent
+  typeInto(input, '  Scratch pad ')
+  keydown(input, 'Enter')
+  assert.deepEqual(c.calls.filter(x => x[0] === 'act'), [['act', 'tab_rename', { tab_ref: 'surface:11', title: 'Scratch pad' }]])
+  keydown(input, 'Escape')
+  assert.deepEqual(c.calls.at(-1), ['stopRename'])
+  // the Save and Cancel buttons do the same
+  el.button(en.rooms.cancel).click()
+  assert.deepEqual(c.calls.at(-1), ['stopRename'])
+
+  // a workspace: its head is the field
+  const w = cockpitState(NOW, { ui: { renaming: { kind: 'ws', id: 'workspace:4' } } })
+  const cw = recorder()
+  const side = mount(html`<${Sidebar} s=${w} c=${cw} rooms=${roomsOf(w)} here=${{ kind: 'chat' }} />`)
+  const docs = side.$$('section.room-ws').find(g => g.$('.room-rename'))
+  assert.ok(docs && docs.$('.room-ws-head') === null, 'the head is replaced by the field')
+  assert.equal(docs.$$('.room-tab').length, 2)                                     // its tabs stay
+  const wsInput = docs.$('.room-rename input')
+  assert.equal(wsInput.getAttribute('aria-label'), en.rooms.renameWs)
+  typeInto(wsInput, 'Writing')
+  side.button(en.rooms.save).click()
+  assert.deepEqual(cw.calls.filter(x => x[0] === 'act'), [['act', 'workspace_rename', { ws_ref: 'workspace:4', title: 'Writing' }]])
+})
+
+test('a double click on a title opens the rename field once, and only where a rename is allowed', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const zsh = tabRow(el, 'zsh')
+  zsh.dispatch('click', { detail: 1 })
+  zsh.dispatch('click', { detail: 2 })
+  zsh.dispatch('dblclick')
+  assert.deepEqual(c.calls, [['pickRoom', { kind: 'tab', id: 'surface:11' }], ['startRename', 'tab', 'surface:11']])
+  // a task tab keeps its name: a double click opens nothing (its pane says why)
+  const task = tabRow(el, 'alpha-release')
+  c.calls.length = 0
+  task.dispatch('dblclick')
+  assert.deepEqual(c.calls, [])
+  groupOf(el, 'Docs').$('.room-ws-head').dispatch('dblclick')
+  assert.deepEqual(c.calls, [['startRename', 'ws', 'workspace:4']])
+})
+
+test('the tab and the workspace pane carry a pencil that opens the rename', () => {
+  const pane = (room, over = {}) => {
+    const s = cockpitState(NOW, { ui: { room, tabView: 'surface:99', ...over } })
+    const c = recorder()
+    return { el: mount(html`<${RoomsPage} s=${s} c=${c} />`), c }
+  }
+  const tab = pane({ kind: 'tab', id: 'surface:11' })
+  tab.el.$('.tabview-head').button(en.rooms.rename).click()
+  assert.deepEqual(tab.c.calls.filter(x => x[0] === 'startRename'), [['startRename', 'tab', 'surface:11']])
+  const task = pane({ kind: 'tab', id: 'surface:7' })
+  assert.ok(task.el.$('.tabview-head').button(en.rooms.rename) === null, 'no pencil on a task tab')
+  assert.equal(task.el.$('#room-title').getAttribute('title'), en.rooms.taskName)
+  const ws = pane({ kind: 'ws', id: 'workspace:4' })
+  ws.el.$('.tabview-head').button(en.rooms.rename).click()
+  assert.deepEqual(ws.c.calls.filter(x => x[0] === 'startRename'), [['startRename', 'ws', 'workspace:4']])
+  // without the driver's verb, no pencil
+  const none = pane({ kind: 'ws', id: 'workspace:4' })
+  assert.ok(none.el)
+  const s = cockpitState(NOW, { ui: { room: { kind: 'ws', id: 'workspace:4' } }, driver: { caps: ['tabs', 'rename'] } })
+  const el = mount(html`<${RoomsPage} s=${s} c=${recorder()} />`)
+  assert.ok(el.$('.tabview-head').button(en.rooms.rename) === null, 'no pencil without the cap')
+})
+
+test('the demo renames a free tab and a workspace and refuses what the server refuses', async () => {
+  const { mock } = loadedRooms
+  const tr = mock.createMockTransport({ lang: 'en' })
+  const events = []
+  tr.events(new Proxy({}, { get: (_, name) => p => events.push([name, p]) }), () => {})
+  const act = (verb, args) => tr.post('/api/action', { verb, args })
+  assert.equal((await act('tab_rename', { tab_ref: 'surface:7', title: 'Mine' })).error.code, 'task_tab_name')
+  assert.equal((await act('tab_rename', { tab_ref: 'surface:9', title: 'Mine' })).error.code, 'rename_loses_state')
+  assert.equal((await act('tab_rename', { tab_ref: 'surface:11', title: 'notes' })).error.code, 'name_in_use')
+  assert.equal((await act('workspace_rename', { ws_ref: 'workspace:1', title: 'Mine' })).error.code, 'control_tab')
+  assert.equal((await act('tab_rename', { tab_ref: 'surface:11', title: 'Scratch' })).ok, true)
+  assert.equal((await act('workspace_rename', { ws_ref: 'workspace:4', title: 'Writing' })).ok, true)
+  const st = (await tr.get('/api/state')).data
+  assert.equal(st.tabs.tabs.find(t => t.ref === 'surface:11').name, 'Scratch')
+  assert.equal(st.tabs.workspaces.find(w => w.ref === 'workspace:4').title, 'Writing')
+  assert.ok(st.tabs.tabs.filter(t => t.ws_ref === 'workspace:4').every(t => t.workspace === 'Writing'))
+  assert.ok(st.driver.caps.includes('rename_workspace'))
+  assert.ok(events.some(([name]) => name === 'tabs'))
+})

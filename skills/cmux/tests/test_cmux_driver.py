@@ -852,3 +852,39 @@ def test_workspaces_are_unknown_when_cmux_refuses_the_list(fake):
 
 def test_caps_name_workspaces(fake):
     assert "workspaces" in fake.answer({"verb": "caps"})["caps"]
+
+
+# ---------------------------------------------------------------- rename a workspace, where a tab's state came from
+
+def test_rename_workspace_calls_workspace_rename_with_title(fake):
+    report = fake.answer({"verb": "rename_workspace", "workspace": "workspace:4", "title": "Invoices"})["report"]
+    assert ["workspace", "rename", "workspace:4", "--title", "Invoices"] in fake.argv()
+    assert report and "Invoices" in report[0]
+
+
+def test_rename_workspace_that_cmux_rejects_is_a_driver_error(fake):
+    fake.fail = "workspace rename"
+    done = fake.call({"verb": "rename_workspace", "workspace": "workspace:99", "title": "Invoices"})
+    assert done.returncode == 1 and "error" in json.loads(done.stdout)
+
+
+def test_rename_workspace_needs_a_ref_and_a_title(fake):
+    for req in ({"workspace": "", "title": "X"}, {"workspace": "workspace:4", "title": ""}, {"title": "X"}):
+        done = fake.call({"verb": "rename_workspace", **req})
+        assert done.returncode == 1 and "error" in json.loads(done.stdout)
+    assert not [a for a in fake.argv() if a[:2] == ["workspace", "rename"]]
+
+
+def test_tabs_report_where_the_state_came_from(fake):
+    by_name = {t["name"]: t for t in fake.answer({"verb": "tabs"})["tabs"]}
+    assert by_name["Fix login"]["state_source"] == "hook"          # the hook file knows this surface
+    assert by_name["Invoice export"]["state_source"] == "glyph"    # nothing but its title to go by
+    hooks = {"activeSessionsBySurface": {}, "sessions": {}}
+    session = {"windows": [{"tabManager": {"workspaces": [{"customTitle": "W", "panels": [
+        {"id": "A", "type": "terminal", "title": "✳ idle"}, {"id": "B", "type": "terminal", "title": "user@host:~"}]}]}}]}
+    sources = {t["surface"]: (t["state"], t["state_source"]) for t in drv.live_tabs(session, hooks)}
+    assert sources == {"A": ("waiting", "glyph"), "B": ("shell", "glyph")}
+
+
+def test_caps_name_rename_workspace(fake):
+    assert "rename_workspace" in fake.answer({"verb": "caps"})["caps"]

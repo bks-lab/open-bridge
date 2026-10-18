@@ -665,6 +665,8 @@ def to_tab(t: dict) -> dict:
             "ws_ref": as_text(t.get("ws_ref")), "state": as_text(t.get("state")), "last": as_text(t.get("last")),
             "slug": as_text_or_null(t.get("slug")), "item": as_text_or_null(t.get("item")),
             "team": as_text_or_null(t.get("team")), "role": as_text_or_null(t.get("role")),
+            # where the driver read the state (cmux: hook or glyph); a glyph is lost with a title of its own
+            "state_source": t.get("state_source") if t.get("state_source") in ("hook", "glyph") else None,
             # kept internally, never sent to the page
             "id": as_text_or_null(t.get("id")), "is_self": t.get("is_self") is True}
 

@@ -17,6 +17,8 @@ works with a terminal multiplexer, with another one, or with none at all.
     python3 scripts/workplace.py teams [--json]        # team recipes; launch --team T --role R opens one role
     python3 scripts/workplace.py send TAB TEXT...      # type into one tab
     python3 scripts/workplace.py adopt TAB SLUG        # name an existing tab after a task
+    python3 scripts/workplace.py rename REF -- TITLE   # name one tab (its live ref only)
+    python3 scripts/workplace.py rename-workspace WS_REF -- TITLE   # name one workspace (its live ref only)
 
 CONFIG lives in bridge-config.yaml under `workplace:`:
 
@@ -34,8 +36,11 @@ DRIVER PROTOCOL. A driver is a command. It gets one JSON object on stdin with a
 `verb` and answers one JSON object on stdout, the shape agents/_runtime/approval.py
 uses for owner approval:
 
-    {"verb": "tabs"}                       -> {"tabs": [{"name", "workspace", "ref", "state", "last"}]}
+    {"verb": "tabs"}                       -> {"tabs": [{"name", "workspace", "ref", "ws_ref", "state", "last",
+                                                         "state_source"}]}
                                               state: working | waiting | needs-you | shell
+                                              state_source (optional): hook | glyph, where the state was read;
+                                              a glyph goes once a tab has a title of its own
     {"verb": "sessions"}                   -> {"sessions": {"<tab name>": "<session id>"}}
     {"verb": "open", "plan": {...}, "only": [...] | null, "resume": bool, "here": ref | null}
                                            -> {"report": ["line", ...]}
@@ -45,12 +50,18 @@ uses for owner approval:
     {"verb": "send", "tab": ref, "text": "..."}       -> {"report": [...]}
     {"verb": "rename", "tab": ref, "title": "..."}    -> {"report": [...]}
   optional, a driver names the ones it serves in caps (without an answer: the six above):
+    {"verb": "control", "control": {...}, "command": "...", "root": "..."} -> {"report": [...]}
     {"verb": "caps"}                                  -> {"caps": ["tabs", "sessions", ...]}
     {"verb": "focus", "tab": ref}                     -> {"report": [...]}
     {"verb": "key", "tab": ref, "key": "enter" | "escape" | "y" | "n" | "1".."9"} -> {"report": [...]}
     {"verb": "screen", "tab": ref, "lines": n}        -> {"text": "..."}
     {"verb": "close", "tab": ref}                     -> {"report": [...]}
     {"verb": "workspaces"}                            -> {"workspaces": [{"ref", "title", "cwd", ...}]}  (read only)
+    {"verb": "rename_workspace", "workspace": ws_ref, "title": "..."} -> {"report": [...]}
+
+A refusal is an `ERROR ...` line in the report (or a non-zero exit with {"error": ...}). Task tab
+names and configured workspace names are the workplace's own (managed_names): `rename` and
+`rename-workspace` refuse to take them, or to rename a configured workspace.
 
 A driver never closes a tab or a workspace on its own, only on `close`, which a person asked for. A driver that fails or answers
 nonsense is reported, never raised, and never read as "no tab is open":
@@ -773,6 +784,45 @@ def status_rows(root: Path, cfg: dict, driver) -> list | None:
     return sorted(rows, key=lambda r: (order.get(r.get("state"), 9), r.get("workspace") or ""))
 
 
+def managed_names(root: Path, cfg: dict) -> dict:
+    """The names the workplace gives and finds tabs and workspaces by, casefolded: a tab of a task, an
+    inbox item or a team role is known by its name (status_rows), a workspace by its configured name or
+    alias (the plan, the drivers). A rename must neither take one of them nor rename a configured workspace."""
+    tasks = collect_tasks(root)
+    tab_names = set(slug_index(tasks, cfg)) | set(slug_index(done_tasks(root), cfg)) | set(inbox_tab_index(root))
+    for t in tasks:
+        for team in teams(cfg):
+            for r in team["roles"]:
+                tab_names.update(team_tab_names(tab_label(t, cfg), t["slug"], team, r))
+    spaces = set()
+    for ws in cfg.get("workspaces") or []:
+        if isinstance(ws, dict):
+            spaces.update(str(n) for n in [ws.get("name"), *(ws.get("aliases") or [])] if n)
+    spaces.add(str((cfg.get("control") or {}).get("name") or "Control"))
+    return {"tab_names": {n.strip().casefold() for n in tab_names if str(n).strip()},
+            "workspace_names": {n.strip().casefold() for n in spaces if n.strip()}}
+
+
+TITLE_MAX = 80
+TITLE_BAD = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def check_title(title: str) -> str:
+    """A tab or workspace title as typed: trimmed, 1 to TITLE_MAX characters, no control character
+    (no newline, no tab). Refused, never cut. Raises ValueError with the reason."""
+    if TITLE_BAD.search(title or ""):
+        raise ValueError("refused: control characters in the title")
+    text = (title or "").strip()
+    if not 1 <= len(text) <= TITLE_MAX:
+        raise ValueError(f"refused: a title has 1 to {TITLE_MAX} characters")
+    return text
+
+
+def _ws_fold(name) -> str:
+    """A workspace name as compared: casefolded, and `:` and `.` read as `_` (tmux turns them into `_`)."""
+    return re.sub(r"[:.]", "_", str(name or "").strip()).casefold()
+
+
 # ---------------------------------------------------------------- drivers
 
 # the verbs every driver serves; the others it names in its answer to `caps`
@@ -819,6 +869,9 @@ class NoneDriver:
 
     def rename(self, tab: str, title: str) -> list:
         return [f"No driver configured: name the tab {title!r} yourself."]
+
+    def rename_workspace(self, workspace: str, title: str) -> list:
+        return [f"No driver configured: name the workspace {title!r} yourself."]
 
     def control(self, ctl: dict, command: str, root) -> list:
         return [f"No driver configured: start {command!r} in a terminal named {ctl.get('name')!r} yourself."]
@@ -918,6 +971,9 @@ class CommandDriver:
 
     def rename(self, tab: str, title: str) -> list:
         return self._report({"verb": "rename", "tab": tab, "title": title})
+
+    def rename_workspace(self, workspace: str, title: str) -> list:
+        return self._report({"verb": "rename_workspace", "workspace": workspace, "title": title})
 
     def control(self, ctl: dict, command: str, root) -> list:
         return self._report({"verb": "control", "control": ctl, "command": command, "root": str(root)})
@@ -1066,6 +1122,13 @@ def main(argv=None) -> int:
     ad = sub.add_parser("adopt")
     ad.add_argument("tab")
     ad.add_argument("slug")
+    rn = sub.add_parser("rename", help="name one tab, addressed by its live ref only: rename REF -- TITLE")
+    rn.add_argument("ref")
+    rn.add_argument("title", nargs="+")
+    rw = sub.add_parser("rename-workspace", help="name one workspace, addressed by its live ref only: "
+                                                  "rename-workspace WS_REF -- TITLE")
+    rw.add_argument("ws_ref")
+    rw.add_argument("title", nargs="+")
     sub.add_parser("caps", help="the verbs the configured driver serves").add_argument("--json", action="store_true")
     sub.add_parser("workspaces", help="the workspaces as the terminal shows them (read only)").add_argument(
         "--json", action="store_true")
@@ -1227,6 +1290,8 @@ def main(argv=None) -> int:
             return 1
         print(json.dumps(rows, ensure_ascii=False) if args.json else "\n".join(f"{w.get('title')}  {w.get('cwd') or ''}" for w in rows))
         return 0
+    if args.cmd in ("rename", "rename-workspace"):
+        return rename_cli(args, cfg, driver)
     tasks = collect_tasks(args.root)
     index = slug_index(tasks, cfg)
     tabs = driver.tabs()
@@ -1256,6 +1321,51 @@ def main(argv=None) -> int:
         lines = driver.key(ref, args.key)
     else:
         lines = driver.send(ref, " ".join(args.text))
+    print("\n".join(lines))
+    return 1 if getattr(driver, "failed", False) else 0
+
+
+def rename_cli(args, cfg: dict, driver) -> int:
+    """`rename` and `rename-workspace`: a live ref only (never a name, never a part of one: a ref that
+    vanished must not land on a tab found by name), a checked title, no managed name and no name in use.
+    A refusal is exit 2 with its reason on stderr; a driver that failed is exit 1."""
+    def refuse(why: str) -> int:
+        print(why, file=sys.stderr)
+        return 2
+    try:
+        title = check_title(" ".join(args.title))
+    except ValueError as exc:
+        return refuse(str(exc))
+    tabs = driver.tabs_or_none()
+    if tabs is None:
+        print(getattr(driver, "error", "") or f"driver {driver.name} gave no tab list", file=sys.stderr)
+        return 1
+    managed = managed_names(args.root, cfg)
+    if args.cmd == "rename":
+        tab = next((t for t in tabs if t.get("ref") == args.ref), None)
+        if tab is None:
+            return refuse(f"no open tab with the ref {args.ref!r}")
+        want = title.casefold()
+        if want in managed["tab_names"]:
+            return refuse("refused: a task, inbox or team tab is known by this name")
+        if any(str(t.get("name") or "").strip().casefold() == want for t in tabs if t.get("ref") != args.ref):
+            return refuse("refused: name in use")
+        lines = driver.rename(args.ref, title)
+    else:
+        current = next((t.get("workspace") for t in tabs if t.get("ws_ref") == args.ws_ref), None)
+        listed = driver.workspaces() if "workspaces" in driver.caps() else None
+        if current is None:
+            current = next((w.get("title") for w in listed or [] if w.get("ref") == args.ws_ref), None)
+        if current is None:
+            return refuse(f"no open workspace with the ref {args.ws_ref!r}")
+        configured = {_ws_fold(n) for n in managed["workspace_names"]}
+        if _ws_fold(current) in configured or _ws_fold(title) in configured:
+            return refuse("refused: configured workspace, rename it in workplace.workspaces")
+        others = {_ws_fold(t.get("workspace")) for t in tabs if t.get("ws_ref") != args.ws_ref and t.get("workspace")}
+        others |= {_ws_fold(w.get("title")) for w in listed or [] if w.get("ref") != args.ws_ref and w.get("title")}
+        if _ws_fold(title) in others:
+            return refuse("refused: name in use")
+        lines = driver.rename_workspace(args.ws_ref, title)
     print("\n".join(lines))
     return 1 if getattr(driver, "failed", False) else 0
 

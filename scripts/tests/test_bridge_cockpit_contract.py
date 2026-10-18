@@ -276,6 +276,11 @@ def s_tabs(w: World) -> None:
     w.act("adopt", key="task:other-task", tab_ref="surface:11")
     w.act("tab_close", tab_ref="surface:8")
     w.act("start_control")
+    # a name of its own for a free tab and for a workspace; the title goes after `--`, so a dash is no flag
+    w.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": [*DRIVER_CAPS, "control"]})
+    w.app.driver_caps(fresh=True)
+    w.act("tab_rename", tab_ref="surface:11", title="--scratch")
+    w.act("workspace_rename", ws_ref="workspace:2", title="-research")
 
 
 def s_rows(w: World) -> None:
@@ -340,7 +345,8 @@ SCENARIOS = {
     "reopen": Scenario(s_reopen, {"task.reopen", "inbox.reopen"}),
     "review": Scenario(s_review, {"task.review"}),
     "tabs": Scenario(s_tabs, {"workplace.key", "workplace.focus", "workplace.send", "workplace.adopt",
-                              "workplace.close", "workplace.control", "workplace.screen"}),
+                              "workplace.close", "workplace.control", "workplace.screen", "workplace.rename",
+                              "workplace.rename-workspace"}),
     "rows": Scenario(s_rows, {"briefing.act"}),
     "reads": Scenario(s_reads, {"inbox.list", "inbox.stats", "inbox.mute", "workplace.screen", "briefing.detail"}),
     "returns": Scenario(s_returns, {"task.note", "inbox.note"}),
@@ -420,7 +426,8 @@ def test_a_missing_required_flag_or_a_value_outside_the_choices_fails(tmp_path):
 
 # ---------------------------------------------------------------- real output of collect and caps
 
-DRIVER_CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "focus", "key", "screen", "close"]
+DRIVER_CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "focus", "key", "screen", "close",
+               "rename_workspace"]
 DRIVER = f"""import json, sys
 verb = json.loads(sys.stdin.read() or "{{}}").get("verb")
 print(json.dumps({{"caps": {DRIVER_CAPS!r}}} if verb == "caps" else {{"tabs": []}} if verb == "tabs"
@@ -564,6 +571,7 @@ def test_the_undo_of_a_task_closed_in_review_parses_with_task_py(tmp_path):
 STATE_FIELDS = {
     "sessions.sessions[].tab.ws_ref": (str, type(None)),
     "tabs.tabs[].ask": (dict, type(None)),
+    "tabs.tabs[].state_source": (str, type(None)),   # hook | glyph where the driver says, else None
 }
 # the keys and types of a tab's question (asks.py), when it has one
 ASK_FIELDS = {"text": str, "options": list, "hash": str, "yes_no": bool, "draft": bool}
@@ -596,7 +604,7 @@ def test_state_fields_the_page_reads_are_present(tmp_path):
         w.clock.now = now_ms
         w.app.sessions.base = tbc.claude_home(tmp_path, w.root, now_ms)
         tabs = [{"name": "Web work", "workspace": "Bridge", "ref": "surface:40", "ws_ref": "workspace:9",
-                 "state": "working", "id": tbc.SURF},
+                 "state": "working", "id": tbc.SURF, "state_source": "hook"},
                 {"name": "Asks", "workspace": "Bridge", "ref": "surface:41", "ws_ref": "workspace:9",
                  "state": "needs-you", "id": "TAB-41"}]
         w.runner.handlers["workplace.status"] = lambda argv: ok(tabs)
@@ -612,6 +620,7 @@ def test_state_fields_the_page_reads_are_present(tmp_path):
         bad = [v for v in values if not isinstance(v, types)]
         assert not bad, f"{path}: {bad!r} is not {types}"
     assert state_values(state, "sessions.sessions[].tab.ws_ref") == ["workspace:9"]
+    assert state_values(state, "tabs.tabs[].state_source") == ["hook", None]
     none, ask = state_values(state, "tabs.tabs[].ask")
     assert none is None and {k: type(v) for k, v in ask.items()} == ASK_FIELDS
     assert ask["options"] == [{"n": 1, "label": "Yes"}, {"n": 2, "label": "No"}]

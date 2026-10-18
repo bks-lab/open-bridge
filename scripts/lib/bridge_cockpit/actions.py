@@ -43,6 +43,9 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 SESSION_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 # a tab is the terminal driver's own name for it (surface:3 in cmux, %3 in tmux), passed as one argv word
 TAB_REF_RE = re.compile(r"^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}\Z")
+# a workspace the same way (workspace:2 in cmux, $2 in tmux)
+WS_REF_RE = re.compile(r"^[A-Za-z0-9$%@][A-Za-z0-9:%_.@$/-]{0,63}\Z")
+TITLE_MAX = 80
 TEAM_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}\Z")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -101,6 +104,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
                  "expect": ("tab_state", False), "name": ("tab_name", False)},
     "tab_go_on": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
     "tab_close": {"tab_ref": ("tab_ref", True)},
+    # a name of a tab or a workspace; task tabs and configured workspaces keep theirs (workplace.py managed_names)
+    "tab_rename": {"tab_ref": ("tab_ref", True), "title": ("title", True)},
+    "workspace_rename": {"ws_ref": ("ws_ref", True), "title": ("title", True)},
     "snapshot": {},
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
     "pin": {"key": ("key", True), "on": ("bool", True)},
@@ -151,7 +157,8 @@ LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
-NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_jump": "focus", "tab_close": "close"}
+NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_jump": "focus", "tab_close": "close",
+             "tab_rename": "rename", "workspace_rename": "rename_workspace"}
 
 
 class ActionError(Exception):
@@ -470,6 +477,15 @@ class Actions:
                 if not isinstance(value, str) or not TAB_REF_RE.match(value):
                     raise bad_arg(name, "not a tab ref")
                 out[name] = value
+            elif kind == "ws_ref":
+                if not isinstance(value, str) or not WS_REF_RE.match(value):
+                    raise bad_arg(name, "not a workspace ref")
+                out[name] = value
+            elif kind == "title":
+                # a name as typed: refused when it does not fit, never cut (a cut name is not the one asked for)
+                if isinstance(value, str) and re.search(r"[\n\t]", value):
+                    raise bad_arg(name, "one line, no tabs")
+                out[name] = check_text(value, name, TITLE_MAX)
             elif kind == "peer":
                 if not isinstance(value, str) or not AGENT_PEER_RE.match(value):
                     raise bad_arg(name, "not a peer id")
@@ -562,8 +578,8 @@ class Actions:
         if verb in NEEDS_CAP and NEEDS_CAP[verb] not in self.app.driver_caps():
             raise ActionError(503, "driver_cannot", f"the terminal driver cannot {NEEDS_CAP[verb]} a tab")
         ctx = Ctx(self, verb)
-        ctx.subject = ",".join(clean.get("keys", [])) or clean.get("key") or clean.get("tab_ref") or clean.get("relay_id") \
-            or clean.get("slug") or clean.get("id") or ""
+        ctx.subject = ",".join(clean.get("keys", [])) or clean.get("key") or clean.get("tab_ref") or clean.get("ws_ref") \
+            or clean.get("relay_id") or clean.get("slug") or clean.get("id") or ""
         handler = getattr(self, f"v_{verb}")
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         if verb in READ_ONLY_VERBS:
@@ -1510,6 +1526,55 @@ class Actions:
         else:
             ctx.note(self.tx["close_failed"].format(err=m.short(run.err.strip(), 100)), bad=True)
         ctx.tabs_after(1)
+
+    def renamed(self, ctx: Ctx, run) -> None:
+        """What a rename through workplace.py came to. Its refusal (exit 2: a name in use or managed, a ref
+        that is gone) is this action's refusal; a driver that failed (exit 1, an ERROR line) is a note."""
+        tx = self.tx
+        why = ((run.err or run.out) or "").strip()
+        if run.code == 2:
+            if "name in use" in why:
+                raise ActionError(409, "name_in_use", tx["name_in_use"], "title")
+            if "configured workspace" in why or "known by this name" in why:
+                raise ActionError(409, "name_managed", tx["name_managed"], "title")
+            raise ActionError(409, "not_applicable", m.short(why, 160) or tx["rename_failed"].format(err="?"), "title")
+        if run.ok:
+            ctx.note(tx["renamed"])
+        else:
+            ctx.note(tx["rename_failed"].format(err=m.short(why, 100)), bad=True)
+        ctx.tabs_after(1)
+
+    def v_tab_rename(self, ctx: Ctx, tab_ref: str, title: str) -> None:
+        """A tab of its own gets a name. A task, inbox or team tab is found by its name, the control session
+        is the control, and a tab whose state only its title glyph tells would lose it with a name of its own."""
+        tab = self.tab(tab_ref)
+        if tab_ref == self.app.tabs.control_ref():
+            raise ActionError(409, "control_tab", self.tx["control_name"], "tab_ref")
+        if tab.get("slug") or tab.get("item") or tab.get("team"):
+            raise ActionError(409, "task_tab_name", self.tx["task_tab_name"], "tab_ref")
+        if tab.get("state_source") == "glyph" and tab.get("state") != "shell":
+            raise ActionError(409, "rename_loses_state", self.tx["rename_loses_state"], "tab_ref")
+        run = ctx.call("workplace.rename", tab_ref, self.app.workplace("rename", tab_ref, "--", title), SHORT_TIMEOUT)
+        self.renamed(ctx, run)
+
+    def v_workspace_rename(self, ctx: Ctx, ws_ref: str, title: str) -> None:
+        """A workspace the terminal shows gets a name; the control workspace keeps its own."""
+        app = self.app
+        listed = app.tabs.workspace_list() or []
+        tabs = app.tabs.tab_list()
+        current = next((w.get("title") for w in listed if w.get("ref") == ws_ref), None) \
+            or next((t["workspace"] for t in tabs if t.get("ws_ref") == ws_ref), None)
+        if current is None and not any(t.get("ws_ref") == ws_ref for t in tabs):
+            raise ActionError(409, "stale_workspace", self.tx["stale_workspace"], "ws_ref")
+        control = app.tabs.control_tab()
+        name = (app.cfg.control or "").strip().casefold()
+        if (control and control.get("ws_ref") == ws_ref) or (name and str(current or "").strip().casefold() == name):
+            raise ActionError(409, "control_tab", self.tx["control_name"], "ws_ref")
+        run = ctx.call("workplace.rename-workspace", ws_ref,
+                       app.workplace("rename-workspace", ws_ref, "--", title), SHORT_TIMEOUT)
+        if run.ok:
+            app.tabs.refresh_workspaces()
+        self.renamed(ctx, run)
 
     def layout_script(self, verb: str) -> list[str]:
         return [sys.executable, self.app.runner.script("skills/cmux/scripts/cmux_layout.py"), verb]

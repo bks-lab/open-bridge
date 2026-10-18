@@ -1016,6 +1016,15 @@ The other Bridges are the entries in `infra/instances/` that meet four condition
 
 Only the registry and that the folder exists are read, nothing inside the other Bridge (`rules/multi-instance-isolation.md`).
 
+**Renaming.** A tab or a workspace of your own gets a new name from here: the pencil beside its title on the right, or a double click on it in the sidebar, puts a field in its place in the sidebar (Enter or Save takes it, Esc or Cancel keeps the old one, an empty name is not taken). The terminal driver renames it (`workplace.py rename` and `rename-workspace`; renaming a workspace needs the driver's optional verb `rename_workspace`, without it no pencil shows). The cockpit refuses, and says why:
+
+- the control session, and the control workspace;
+- a tab of a task, an inbox item or a team role: the workplace knows it by that name, so it keeps it;
+- an agent tab whose state the terminal reads off its title glyph (cmux without a hook): with a name of its own it would read as a shell from then on;
+- a name another tab or workspace already has, a configured workspace (`workplace.workspaces`) and the name of one, an empty name and one over 80 characters. A name is refused, never cut.
+
+The audit line names the tab or workspace ref only, never the name. With the workspace list on, a renamed workspace is read again at the next poll.
+
 #### Answering a tab from here
 
 A tab that waits shows what it asks, read off its screen, so it can be answered without opening it:

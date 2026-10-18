@@ -980,3 +980,156 @@ def test_workspaces_come_from_a_driver_that_serves_them(repo, capsys):
 def test_workspaces_without_a_driver_that_serves_them_are_refused(repo, capsys):
     assert wp.main(["--root", str(repo), "workspaces", "--json"]) == 2
     assert "workspaces" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- rename a tab or a workspace
+
+RENAME_TABS = [
+    {"name": "Payments Incident", "workspace": "Bigcorp", "ref": "surface:4", "ws_ref": "workspace:1", "state": "waiting"},
+    {"name": "user@host:~", "workspace": "Scratch", "ref": "surface:5", "ws_ref": "workspace:2", "state": "shell"},
+    {"name": "Notes", "workspace": "Scratch", "ref": "surface:6", "ws_ref": "workspace:2", "state": "waiting"},
+    {"name": "surface:5", "workspace": "Scratch", "ref": "surface:7", "ws_ref": "workspace:2", "state": "shell"},
+]
+
+
+def _rename_driver(repo, tmp_path, tabs=RENAME_TABS, workspaces=None, extra_cfg: str = "") -> Path:
+    """A driver that lists `tabs` (and `workspaces` when given), records every request and renames"""
+    log = tmp_path / "requests.jsonl"
+    script = tmp_path / "rename_driver.py"
+    script.write_text(textwrap.dedent(f"""\
+        import json, sys
+        req = json.load(sys.stdin)
+        with open({str(log)!r}, "a") as f:
+            f.write(json.dumps(req) + "\\n")
+        v = req["verb"]
+        if v == "tabs":
+            print(json.dumps({{"tabs": {tabs!r}}}))
+        elif v == "sessions":
+            print(json.dumps({{"sessions": {{}}}}))
+        elif v == "caps":
+            print(json.dumps({{"caps": ["tabs", "sessions", "rename", "rename_workspace"]
+                                        + (["workspaces"] if {workspaces is not None!r} else [])}}))
+        elif v == "workspaces":
+            print(json.dumps({{"workspaces": {workspaces or []!r}}}))
+        elif v == "rename":
+            print(json.dumps({{"report": [req["tab"] + " is now named " + req["title"]]}}))
+        elif v == "rename_workspace":
+            print(json.dumps({{"report": [req["workspace"] + " is now named " + req["title"]]}}))
+        else:
+            print(json.dumps({{"error": "unknown verb " + v}})); sys.exit(1)
+        """))
+    (repo / "bridge-config.yaml").write_text(
+        f"workplace:\n  driver: {{command: ['{sys.executable}', '{script}']}}\n"
+        "  control: {name: Control}\n"
+        "  workspaces:\n    - {name: Bigcorp, contexts: [bigcorp], aliases: [bc]}\n    - {name: Misc, default: true}\n"
+        + extra_cfg)
+    return log
+
+
+def _requests(log: Path, verb: str) -> list:
+    if not log.exists():
+        return []
+    return [r for r in map(json.loads, log.read_text().splitlines()) if r["verb"] == verb]
+
+
+def test_command_driver_sends_the_rename_workspace_payload(tmp_path):
+    log = tmp_path / "req.json"
+    script = tmp_path / "d.py"
+    script.write_text("import json, sys\nreq = json.load(sys.stdin)\nopen(%r, 'w').write(json.dumps(req))\n"
+                      "print(json.dumps({'report': ['renamed']}))\n" % str(log))
+    drv = wp.CommandDriver([sys.executable, str(script)])
+    assert drv.rename_workspace("workspace:2", "Research") == ["renamed"] and not drv.failed
+    assert json.loads(log.read_text()) == {"verb": "rename_workspace", "workspace": "workspace:2", "title": "Research"}
+
+
+def test_none_driver_rename_workspace_says_do_it_yourself():
+    (line,) = wp.NoneDriver().rename_workspace("workspace:2", "Research")
+    assert "no driver" in line.lower() and "Research" in line
+
+
+def test_managed_names_cover_task_inbox_and_team_tabs_and_configured_workspaces(lrepo):
+    cfg = {"control": {"name": "Control"},
+           "workspaces": [{"name": "Bigcorp", "aliases": ["bc"]}, {"name": "Misc", "default": True}]}
+    names = wp.managed_names(lrepo, cfg)
+    assert {"payments-incident", "payments incident", "long-runner"} <= names["tab_names"]
+    assert any(n.startswith("inbox ") for n in names["tab_names"])
+    assert any(" · build implement" in n for n in names["tab_names"])
+    assert names["workspace_names"] == {"bigcorp", "bc", "misc", "control"}
+
+
+def test_cli_rename_takes_an_exact_ref_and_refuses_a_name(repo, tmp_path, capsys):
+    log = _rename_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "rename", "surface:5", "--", "Scratch pad"]) == 0
+    assert _requests(log, "rename") == [{"verb": "rename", "tab": "surface:5", "title": "Scratch pad"}]
+    assert "surface:5 is now named Scratch pad" in capsys.readouterr().out
+    # a name, a part of one, or a ref that is not open never lands on a tab found by name
+    for ref in ("Notes", "note", "surface:99"):
+        assert wp.main(["--root", str(repo), "rename", ref, "--", "Other"]) == 2
+    assert len(_requests(log, "rename")) == 1
+    assert "no open tab" in capsys.readouterr().err
+
+
+def test_cli_rename_takes_a_title_starting_with_a_dash_after_double_dash(repo, tmp_path):
+    log = _rename_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "rename", "surface:5", "--", "--draft notes"]) == 0
+    assert _requests(log, "rename")[0]["title"] == "--draft notes"
+
+
+@pytest.mark.parametrize("title", ["Payments Incident", "payments-incident", "PAYMENTS INCIDENT", "notes", " Notes "])
+def test_cli_rename_refuses_a_managed_or_used_tab_name(repo, tmp_path, capsys, title):
+    log = _rename_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "rename", "surface:5", "--", title]) == 2
+    assert _requests(log, "rename") == []
+    assert "refused" in capsys.readouterr().err
+
+
+def test_cli_rename_keeps_a_tab_s_own_name_free_for_itself(repo, tmp_path):
+    log = _rename_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "rename", "surface:6", "--", "notes"]) == 0
+    assert len(_requests(log, "rename")) == 1
+
+
+@pytest.mark.parametrize("ws_ref, title, why", [
+    ("workspace:1", "Payments", "configured workspace"),      # the current title is configured
+    ("workspace:2", "Bigcorp", "configured workspace"),       # the new title is configured
+    ("workspace:2", "BC", "configured workspace"),            # an alias
+    ("workspace:2", "control", "configured workspace"),       # the control workspace's name
+    ("workspace:2", "Misc", "configured workspace"),
+])
+def test_cli_rename_workspace_refuses_a_configured_workspace_and_a_configured_new_name(repo, tmp_path, capsys,
+                                                                                      ws_ref, title, why):
+    log = _rename_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "rename-workspace", ws_ref, "--", title]) == 2
+    assert _requests(log, "rename_workspace") == []
+    assert f"refused: {why}, rename it in workplace.workspaces" in capsys.readouterr().err
+
+
+def test_cli_rename_workspace_refuses_a_name_another_workspace_has(repo, tmp_path, capsys):
+    workspaces = [{"ref": "workspace:2", "title": "Scratch"}, {"ref": "workspace:9", "title": "Research"}]
+    log = _rename_driver(repo, tmp_path, workspaces=workspaces)
+    assert wp.main(["--root", str(repo), "rename-workspace", "workspace:2", "--", "research"]) == 2
+    assert "refused: name in use" in capsys.readouterr().err
+    assert _requests(log, "rename_workspace") == []
+
+
+def test_cli_rename_workspace_finds_the_title_from_tabs_by_ws_ref(repo, tmp_path, capsys):
+    log = _rename_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "rename-workspace", "workspace:2", "--", "Research"]) == 0
+    assert _requests(log, "rename_workspace") == [{"verb": "rename_workspace", "workspace": "workspace:2",
+                                                    "title": "Research"}]
+    # without a tab in it, the driver's own workspace list names it; without either the ref is unknown
+    second = tmp_path / "second"
+    second.mkdir()
+    log2 = _rename_driver(repo, second, tabs=[], workspaces=[{"ref": "workspace:8", "title": "Empty"}])
+    assert wp.main(["--root", str(repo), "rename-workspace", "workspace:8", "--", "Research"]) == 0
+    assert _requests(log2, "rename_workspace")[0]["workspace"] == "workspace:8"
+    assert wp.main(["--root", str(repo), "rename-workspace", "workspace:77", "--", "Research"]) == 2
+    assert "no open workspace" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("title", ["", "   ", "x" * 81, "bad\x07bell", "two\nlines", "tab\there"])
+def test_cli_rename_refuses_empty_long_and_control_character_titles(repo, tmp_path, capsys, title):
+    log = _rename_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "rename", "surface:5", "--", title]) == 2
+    assert wp.main(["--root", str(repo), "rename-workspace", "workspace:2", "--", title]) == 2
+    assert _requests(log, "rename") == [] and _requests(log, "rename_workspace") == []

@@ -202,9 +202,33 @@ def tm(tmp_path):
 
 
 @needs_tmux
-def test_caps_lists_all_twelve_verbs(tm):
+def test_caps_lists_all_thirteen_verbs(tm):
     assert set(tm.call({"verb": "caps"})["caps"]) == set(td.VERBS)
-    assert len(td.VERBS) == 12
+    assert len(td.VERBS) == 13 and "rename_workspace" in td.VERBS
+
+
+@needs_tmux
+def test_tabs_carry_the_session_id_as_ws_ref(tm):
+    sid = tm.raw("display-message", "-p", "-t", "=Work:", "#{session_id}").strip()
+    tabs = tm.tabs()
+    assert sid.startswith("$") and {t["ws_ref"] for t in tabs} == {sid}
+
+
+@needs_tmux
+def test_rename_workspace_renames_the_session_with_the_sanitized_title(tm):
+    sid = tm.by_name("one")["ws_ref"]
+    report = tm.call({"verb": "rename_workspace", "workspace": sid, "title": "open.bridge: notes"})["report"]
+    assert report and not report[0].startswith("ERROR")
+    assert {t["workspace"] for t in tm.tabs()} == {"open_bridge_ notes"}
+    assert {t["ws_ref"] for t in tm.tabs()} == {sid}          # the id stays, only the name changes
+    # a name another session has (after the same sanitizer), a malformed or unknown ref: errors, nothing renamed
+    tm.raw("new-session", "-d", "-s", "Other_x", "sh")
+    assert "in use" in tm.call({"verb": "rename_workspace", "workspace": sid, "title": "other.x"}, ok=False)["error"]
+    assert "not a tmux session ref" in tm.call({"verb": "rename_workspace", "workspace": "Work", "title": "X"},
+                                               ok=False)["error"]
+    assert "no open workspace" in tm.call({"verb": "rename_workspace", "workspace": "$999", "title": "X"},
+                                          ok=False)["error"]
+    assert "open_bridge_ notes" in {t["workspace"] for t in tm.tabs()}
 
 
 @needs_tmux

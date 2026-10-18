@@ -92,6 +92,17 @@ class TabPoller:
         with self.lock:
             return next((dict(t) for t in self.tabs if t["ref"] == ref), None)
 
+    def workspace_list(self) -> list[dict] | None:
+        """The workspaces as the terminal showed them at the last read (chat_layout workspaces), else None"""
+        with self.lock:
+            return [dict(w) for w in self.workspaces] if self.workspaces is not None else None
+
+    def refresh_workspaces(self) -> None:
+        """The next poll reads the workspaces again, not after half a minute (a workspace was renamed).
+        Only with chat_layout workspaces: otherwise no list is read and rooms come from the tabs."""
+        with self.lock:
+            self.workspaces_ms = 0.0
+
     def find(self, ref: str) -> dict | None:
         with self.lock:
             return next((dict(t) for t in self.tabs if t["ref"] == ref), None)
@@ -112,7 +123,7 @@ class TabPoller:
                 tabs.append({
                     "ref": t["ref"], "ws_ref": t["ws_ref"], "name": t["name"], "workspace": t["workspace"],
                     "state": t["state"], "last": t["last"], "slug": t["slug"], "item": t["item"], "team": t["team"],
-                    "role": t["role"], "live": m.is_live(t), "waiting": m.is_waiting(t, view) and not is_control,
+                    "role": t["role"], "state_source": t.get("state_source"), "live": m.is_live(t), "waiting": m.is_waiting(t, view) and not is_control,
                     "is_control": is_control, "filed_by": filed["key"] if filed else None,
                     "settled": None if is_control else ret.tab_settled(self.app.root, t),
                     "since_ms": int(seen.get("since_ms", 0)), "long": None if is_control else m.long_state(t, self.seen, now),

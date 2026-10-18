@@ -5413,3 +5413,160 @@ def test_a_refusal_before_any_write_hands_back_nothing_more(world):
     with pytest.raises(ActionError) as err:
         world.act("do_it", keys=["ref:example/repo#99"])
     assert err.value.extra == {}
+
+
+# --- renaming a tab or a workspace (tab_rename, workspace_rename) ---
+
+RENAME_CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "control", "focus", "key", "screen", "close",
+               "workspaces", "rename_workspace"]
+
+
+def with_caps(w: World, caps: list) -> None:
+    w.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": caps})
+    w.app.driver_caps(fresh=True)
+
+
+def test_tab_rename_calls_workplace_rename_and_repolls(world):
+    world.runner.calls.clear()
+    res = world.act("tab_rename", tab_ref="surface:11", title="  Scratch pad ")
+    assert writes(world) == [W(world, "rename", "surface:11", "--", "Scratch pad")]
+    assert res["ok"] and res["note"] == "Renamed." and res["reload"] == "tabs"
+    assert world.app.tabs.next_extra < float("inf")          # a poll follows, so the new name shows
+
+
+def test_tab_rename_refuses_a_task_tab_and_the_control_tab_by_ref(world):
+    item_tab = {"name": "Inbox tidy", "workspace": "Demo", "ref": "surface:20", "ws_ref": "workspace:2",
+                "state": "waiting", "item": YES_ID, "id": "TAB-20"}
+    team_tab = {"name": "Build Review", "workspace": "Demo", "ref": "surface:21", "ws_ref": "workspace:2",
+                "state": "waiting", "team": "build", "id": "TAB-21"}
+    world.runner.handlers["workplace.status"] = lambda argv: ok(STATUS + [item_tab, team_tab])
+    world.app.tabs.poll()
+    world.runner.calls.clear()
+    for ref, code in (("surface:7", "task_tab_name"), ("surface:20", "task_tab_name"), ("surface:21", "task_tab_name"),
+                      ("surface:3", "control_tab")):
+        with pytest.raises(ActionError) as err:
+            world.act("tab_rename", tab_ref=ref, title="Mine now")
+        assert (err.value.status, err.value.code) == (409, code), ref
+    with pytest.raises(ActionError) as err:
+        world.act("tab_rename", tab_ref="surface:404", title="Mine now")
+    assert err.value.code == "stale_tab"
+    assert writes(world) == []
+
+
+def test_tab_rename_refuses_a_glyph_state_agent_tab(world):
+    glyph = [dict(t, state_source="glyph") if t["ref"] == "surface:11" else t for t in STATUS]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(glyph)
+    world.app.tabs.poll()
+    assert next(t for t in world.app.tabs_state()["tabs"] if t["ref"] == "surface:11")["state_source"] == "glyph"
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("tab_rename", tab_ref="surface:11", title="Scratch")
+    assert (err.value.status, err.value.code) == (409, "rename_loses_state")
+    assert writes(world) == []
+    # a shell has no state to lose
+    shell = [dict(t, state="shell") if t["ref"] == "surface:11" else t for t in glyph]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(shell)
+    world.app.tabs.poll()
+    world.act("tab_rename", tab_ref="surface:11", title="Scratch")
+    assert writes(world) == [W(world, "rename", "surface:11", "--", "Scratch")]
+
+
+def test_workspace_rename_without_the_cap_is_driver_cannot(world):
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("workspace_rename", ws_ref="workspace:2", title="Research")
+    assert (err.value.status, err.value.code) == (503, "driver_cannot")
+    with_caps(world, [c for c in RENAME_CAPS if c != "rename"])
+    with pytest.raises(ActionError) as err:
+        world.act("tab_rename", tab_ref="surface:11", title="Research")
+    assert (err.value.status, err.value.code) == (503, "driver_cannot")
+    assert writes(world) == []
+
+
+def test_workspace_rename_forces_a_workspaces_refresh(tmp_path):
+    w = rooms_world(tmp_path)
+    try:
+        with_caps(w, RENAME_CAPS)
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES)
+        w.app.tabs.poll()
+        w.runner.calls.clear()
+        w.app.tabs.poll()
+        assert w.runner.of("workplace.workspaces") == []          # kept for half a minute
+        res = w.act("workspace_rename", ws_ref="workspace:2", title="Research")
+        assert writes(w) == [W(w, "rename-workspace", "workspace:2", "--", "Research")]
+        assert res["ok"] and res["note"] == "Renamed." and res["reload"] == "tabs"
+        w.app.tabs.poll()
+        assert len(w.runner.of("workplace.workspaces")) == 1      # read again at once, not after half a minute
+    finally:
+        w.close()
+
+
+def test_workspace_rename_takes_a_room_built_from_tabs(world):
+    """tmux: no workspace list, the ref is the session id the tabs carry"""
+    tabs = [dict(t, ws_ref="$2") if t["ws_ref"] == "workspace:2" else t for t in STATUS]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(tabs)
+    with_caps(world, RENAME_CAPS)
+    world.app.tabs.poll()
+    world.runner.calls.clear()
+    world.act("workspace_rename", ws_ref="$2", title="Research")
+    assert writes(world) == [W(world, "rename-workspace", "$2", "--", "Research")]
+
+
+def test_workspace_rename_refuses_an_unknown_ref_and_the_control_workspace(world):
+    with_caps(world, RENAME_CAPS)
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("workspace_rename", ws_ref="workspace:99", title="Research")
+    assert (err.value.status, err.value.code) == (409, "stale_workspace")
+    with pytest.raises(ActionError) as err:
+        world.act("workspace_rename", ws_ref="workspace:1", title="Research")
+    assert (err.value.status, err.value.code) == (409, "control_tab")
+    for bad in ("work space", "-workspace", "a" * 70, "x;rm"):
+        with pytest.raises(ActionError) as err:
+            world.act("workspace_rename", ws_ref=bad, title="Research")
+        assert (err.value.code, err.value.field) == ("invalid_argument", "ws_ref")
+    assert writes(world) == []
+
+
+def test_a_driver_refusal_reaches_the_note_from_stdout(world):
+    with_caps(world, RENAME_CAPS)
+    world.runner.handlers["workplace.rename"] = lambda argv: RunResult(False, 1, "ERROR cmux refused the title", "", 1)
+    res = world.act("tab_rename", tab_ref="surface:11", title="Scratch")
+    assert not res["ok"] and "cmux refused the title" in res["note"]
+    # a refusal of the workplace (exit 2) is the action's refusal: a name in use, a managed name, anything else
+    for err_text, code in (("refused: name in use", "name_in_use"),
+                           ("refused: configured workspace, rename it in workplace.workspaces", "name_managed"),
+                           ("refused: a task, inbox or team tab is known by this name", "name_managed"),
+                           ("no open tab with the ref 'surface:11'", "not_applicable")):
+        world.runner.handlers["workplace.rename"] = lambda argv, e=err_text: fail(e, 2)
+        world.runner.handlers["workplace.rename-workspace"] = lambda argv, e=err_text: fail(e, 2)
+        for verb, args in (("tab_rename", {"tab_ref": "surface:11"}), ("workspace_rename", {"ws_ref": "workspace:2"})):
+            with pytest.raises(ActionError) as err:
+                world.act(verb, title="Scratch", **args)
+            assert (err.value.status, err.value.code, err.value.field) == (409, code, "title"), (verb, err_text)
+            if code == "not_applicable":
+                assert err_text in err.value.message
+
+
+@pytest.mark.parametrize("title", ["", "   ", "x" * 81, "two\nlines", "tab\there", "bell\x07", "nul\x00", 7, None, ["a"]])
+def test_rename_titles_are_refused_not_cut(world, title):
+    with_caps(world, RENAME_CAPS)
+    world.runner.calls.clear()
+    for verb, args in (("tab_rename", {"tab_ref": "surface:11"}), ("workspace_rename", {"ws_ref": "workspace:2"})):
+        with pytest.raises(ActionError) as err:
+            world.act(verb, title=title, **args)
+        assert (err.value.status, err.value.code, err.value.field) == (400, "invalid_argument", "title")
+    assert writes(world) == []
+    world.act("tab_rename", tab_ref="surface:11", title="y" * 80)
+    assert writes(world) == [W(world, "rename", "surface:11", "--", "y" * 80)]
+
+
+def test_rename_audit_line_carries_no_title(world):
+    with_caps(world, RENAME_CAPS)
+    world.act("tab_rename", tab_ref="surface:11", title="secret tab name")
+    world.act("workspace_rename", ws_ref="workspace:2", title="hidden workspace name")
+    lines = (world.state / "audit.log").read_text().strip().splitlines()
+    assert lines[-2].split()[1:] == ["tab_rename", "surface:11", "exits=0", "ok=true"]
+    assert lines[-1].split()[1:] == ["workspace_rename", "workspace:2", "exits=0", "ok=true"]
+    log = "\n".join(lines)
+    assert "secret" not in log and "hidden" not in log

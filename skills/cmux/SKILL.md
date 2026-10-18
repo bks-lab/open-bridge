@@ -158,7 +158,7 @@ cmux rename-tab --surface "$NEW_SURFACE" "agent-name"
 | [`references/local.md`](references/local.md) | quick reference, spawning agents, splits, sidebar, notifications, wait-for, observe protocol, tab management, settings, browser limits, environment, socket API, traps |
 | [`references/sessions.md`](references/sessions.md) | layout snapshots and restore, loss alarm, what cmux and Claude Code already do natively, restart across all tabs |
 | [`references/remote.md`](references/remote.md) | socket modes, steering agents on another machine |
-| `scripts/cmux_driver.py` | the workplace driver (JSON protocol: tabs, sessions, open, launch, send, rename) |
+| `scripts/cmux_driver.py` | the workplace driver (JSON protocol: tabs, sessions, open, launch, send, rename, and the optional verbs in its `caps`, `rename_workspace` among them) |
 | `scripts/cmux_layout.py` | snapshot / list / show / restore |
 | `scripts/cmux-open.sh` | tab / browser / split in a verified target workspace |
 | `scripts/spawn-workspace.sh` | named workspace with an agent, prompt via file, verified start |

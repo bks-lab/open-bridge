@@ -115,7 +115,7 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 
 | Request | Answer |
 |---|---|
-| `{"verb": "tabs"}` | `{"tabs": [{"name", "workspace", "ref", "state", "last"}]}`, state one of `working`, `waiting`, `needs-you`, `shell`; optionally `id` (a stable tab id) and `is_self` (the tab the caller runs in) |
+| `{"verb": "tabs"}` | `{"tabs": [{"name", "workspace", "ref", "state", "last"}]}`, state one of `working`, `waiting`, `needs-you`, `shell`; optionally `id` (a stable tab id), `is_self` (the tab the caller runs in), `ws_ref` (the driver's own name for the tab's workspace: `workspace:2` in cmux, the session id `$2` in tmux) and `state_source` (`hook` or `glyph`: where the state was read. A state read off the title's status glyph is lost once the tab has a title of its own, so the cockpit offers no rename for such an agent tab) |
 | `{"verb": "sessions"}` | `{"sessions": {"<tab name>": "<session id>"}}` |
 | `{"verb": "open", "plan": {...}, "only": [...] or null, "resume": bool, "here": ref or null}` | `{"report": ["line", ...]}` |
 | `{"verb": "launch", "tabs": [{"label", "slug", "command", "workspace", "aliases"}], "target": "tab" \| "workspace" \| "area", "here": ref \| null}`: one `target` key with one of three values, never `auto` (the CLI splits `--target auto` into one `workspace` call and one `area` call) | `{"report": ["line", ...]}` |
@@ -127,8 +127,10 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 | `{"verb": "screen", "tab": ref, "lines": n}` | `{"text": "..."}`: the last `n` lines the tab shows, plain text, read only |
 | `{"verb": "close", "tab": ref}` | `{"report": [...]}`: closes that one tab, only ever on an explicit request |
 | `{"verb": "workspaces"}` | `{"workspaces": [{"ref", "title", "color", "description", "pinned", "cwd", "branch", "dirty", "pr", "unread", "latest", "statuses"}]}`: the workspaces as the terminal shows them, read only (`workplace.py workspaces --json`; the cockpit's chat as cmux) |
+| `{"verb": "control", "control": {...}, "command": "...", "root": "..."}` | `{"report": [...]}`: a new agent tab in the control workspace, which is created when it is missing (`workplace.py control --yes`) |
+| `{"verb": "rename_workspace", "workspace": ws_ref, "title": "..."}` | `{"report": [...]}`: one workspace gets that title (cmux: `workspace rename`; tmux: `rename-session` on the session id, with `:` and `.` turned into `_` as tmux does). A ref the terminal does not know is an error, never a guess |
 
-The last five are optional. A terminal that cannot do one leaves it out of
+Every verb after `caps` is optional. A terminal that cannot do one leaves it out of
 `caps`, and whoever steers the tabs (`workplace.py`, the cockpit) offers only
 what the driver serves. With them the cockpit steers any terminal the same way:
 jump to a tab, answer a question with a key, read what a tab shows, close a
@@ -142,7 +144,22 @@ control tab and moves last so no workspace is ever left empty. A driver that fai
 answers something unreadable is reported as a line, never raised, so the plan always
 stands. A step the terminal refused is a report line starting with `ERROR`, never a
 success line; `open --yes`, `send` and `adopt` then exit 1, so a script or workload
-sees the failure the person reads. A driver ships as an optional skill or with the tool itself; the plan never
+sees the failure the person reads. Names the workplace manages stay as they are. A tab of a task, an inbox item or a
+team role is found by its name (the status rows and the session snapshots go by
+it), and the plan finds a workspace by its configured name, alias or the control
+name (`workplace.workspaces`, `workplace.control`). So the two rename commands
+take a live ref only, never a name or a part of one, and refuse (exit 2) to give a
+tab a managed name or the name another open tab has, to rename a configured
+workspace or give a workspace a configured name or one in use, and an empty title,
+one over 80 characters or one with a control character:
+
+```bash
+python3 scripts/workplace.py rename surface:5 -- Scratch pad
+python3 scripts/workplace.py rename-workspace workspace:2 -- Research
+```
+
+The title goes after `--`, so a title that starts with a dash is no flag. A
+driver ships as an optional skill or with the tool itself; the plan never
 imports it. `skills/cmux` is the reference driver, active only where cmux is
 installed:
 

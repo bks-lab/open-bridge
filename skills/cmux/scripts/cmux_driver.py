@@ -7,14 +7,19 @@ The plan (which task, which workspace, new or resumed) belongs to CORE
 list the tabs, open the plan, type into a tab, rename a tab. It speaks the CORE
 JSON protocol: one request on stdin, one answer on stdout.
 
-    {"verb": "tabs"}       -> {"tabs": [{"name", "workspace", "ref", "ws_ref", "state", "last"}]}
+    {"verb": "tabs"}       -> {"tabs": [{"name", "workspace", "ref", "ws_ref", "state", "state_source", "last"}]}
     {"verb": "sessions"}   -> {"sessions": {"<tab title>": "<agent session id>"}}
     {"verb": "open", "plan": {...}, "only": [...] | null, "resume": bool, "here": ref | null}
     {"verb": "launch", "tabs": [{"label", "slug", "command", "workspace", "aliases"}],
      "target": "tab" | "workspace" | "area", "here": ref | null}
     {"verb": "send", "tab": ref, "text": "..."}
     {"verb": "rename", "tab": ref, "title": "..."}
+    {"verb": "rename_workspace", "workspace": ws_ref, "title": "..."}
     {"verb": "workspaces"} -> {"workspaces": [{"ref", "title", "color", "description", "cwd", "branch", ...}]}
+
+A tab's `state_source` says where its state was read: `hook` (the hook file knows its agent) or
+`glyph` (only the status glyph of its title). cmux drops the glyph once a tab has a title of its own,
+so a renamed tab without a hook reads as a shell from then on.
 
 `workspaces` only reads (workspace list, sidebar-state, list-notifications): what the cmux sidebar
 shows, for the cockpit's own sidebar. Like `workspace list` it covers the current window.
@@ -123,7 +128,7 @@ def live_tabs(session: dict, hooks: dict) -> list[dict]:
                     glyph = _glyph(raw)
                     state = "shell" if glyph is None else "waiting" if glyph == "idle" else "working"
                 tabs.append({"workspace": ws_title, "ws_ref": ws.get("workspaceId"),
-                             "surface": pid, "state": state,
+                             "surface": pid, "state": state, "state_source": "hook" if bound else "glyph",
                              "title": p.get("customTitle") or cl.strip_status_glyph(raw),
                              "last": (hook.get("lastBody") or "").replace("\n", " ")[:90]})
     return tabs
@@ -227,6 +232,7 @@ def tabs() -> list[dict]:
         info = live.get(_key(t), {})
         out.append({"name": t["title"], "workspace": t["workspace"], "ref": t["surface"],
                     "ws_ref": t.get("ws_ref"), "state": info.get("state", "shell"),
+                    "state_source": info.get("state_source", "glyph"),
                     "last": info.get("last", ""), "id": t.get("id"),
                     "is_self": own is not None and t.get("id") == own})
     return out
@@ -658,6 +664,18 @@ def rename(req: dict) -> list[str]:
     return [f"{req['tab']} is now named {req['title']!r}"]
 
 
+def rename_workspace(req: dict) -> list[str]:
+    """One workspace gets a title of its own; a ref cmux does not know is an error, never a guess."""
+    ref, title = req.get("workspace"), req.get("title")
+    if not isinstance(ref, str) or not ref.strip() or not isinstance(title, str) or not title.strip():
+        raise DriverError("rename_workspace needs a workspace ref and a title")
+    try:
+        cl.cmux_checked("workspace", "rename", ref, "--title", title)
+    except cl.CmuxError as exc:
+        raise DriverError(f"cmux refused to rename {ref}: {exc}") from exc
+    return [f"{ref} is now named {title!r}"]
+
+
 # ---------------------------------------------------------------- workspaces, read only
 
 STATUS_ATTR = re.compile(r"\s+(icon|color|priority|work|url)=(\S+)$")
@@ -729,7 +747,7 @@ def workspaces() -> list[dict]:
 
 # the cockpit steers a tab with these (docs/workplace.md, the optional verbs); cmux serves them all
 CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "control", "focus", "key", "screen", "close",
-        "workspaces"]
+        "workspaces", "rename_workspace"]
 # the one key set a driver takes; cmux's own names for the two that are not typed as they are
 KEYS = {"enter": "Enter", "escape": "escape", "y": "y", "n": "n", **{str(i): str(i) for i in range(1, 10)}}
 
@@ -787,6 +805,8 @@ def handle(req: dict) -> dict:
         return {"report": send(req)}
     if verb == "rename":
         return {"report": rename(req)}
+    if verb == "rename_workspace":
+        return {"report": rename_workspace(req)}
     if verb == "control":
         return {"report": control(req)}
     if verb == "caps":

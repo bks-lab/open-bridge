@@ -3764,3 +3764,46 @@ test('text tables: the reply words of a tab in both languages, with the answer t
   assert.equal(text.TABLES.en.reply.asks, 'Waiting for you')
   assert.equal(text.TABLES.de.reply.asks, 'Wartet auf dich')
 })
+
+// ---------------------------------------------------------------- renaming a tab or a workspace
+
+test('canRename hides rename for task tabs, the control tab, glyph-state agent tabs and without the cap', () => {
+  const s = { driver: { caps: ['tabs', 'rename'] } }
+  const own = { ref: 's:1', name: 'scratch', state: 'waiting', slug: null, item: null, team: null, is_control: false }
+  assert.equal(logic.canRename(s, own), true)
+  assert.equal(logic.canRename(s, { ...own, state_source: 'hook' }), true)
+  assert.equal(logic.canRename(s, { ...own, slug: 'demo-task' }), false)
+  assert.equal(logic.canRename(s, { ...own, item: '20261009-0910-tidy-labels-c3d4' }), false)
+  assert.equal(logic.canRename(s, { ...own, team: 'build' }), false)
+  assert.equal(logic.canRename(s, { ...own, is_control: true }), false)
+  // a state read off the title glyph goes with a name of its own; a shell has none to lose
+  assert.equal(logic.canRename(s, { ...own, state_source: 'glyph' }), false)
+  assert.equal(logic.canRename(s, { ...own, state_source: 'glyph', state: 'shell' }), true)
+  assert.equal(logic.canRename({ driver: { caps: ['tabs'] } }, own), false)
+  assert.equal(logic.canRename({ driver: { caps: null } }, own), true)       // not known yet: offered
+  assert.equal(logic.canRename(s, null), false)
+})
+
+test('canRenameWorkspace needs a ref and the cap and works for a tmux room built from tabs', () => {
+  const caps = { driver: { caps: ['tabs', 'rename', 'rename_workspace'] } }
+  const listed = { ...caps, rooms: { control: 'Control' }, tabs: { workspaces: [
+    { ref: 'workspace:1', title: 'Control' }, { ref: 'workspace:2', title: 'Demo' }], tabs: [] } }
+  const [control, demo] = logic.roomsOf(listed).workspaces
+  assert.equal(logic.canRenameWorkspace(listed, demo), true)
+  assert.equal(logic.canRenameWorkspace(listed, control), false)            // the control workspace keeps its name
+  assert.equal(logic.canRenameWorkspace({ ...listed, driver: { caps: ['tabs', 'rename'] } }, demo), false)
+  assert.equal(logic.canRenameWorkspace(listed, { ...demo, ref: null }), false)
+  // tmux lists no workspaces: the room takes the session id its tabs share
+  const tmux = { ...caps, rooms: {}, tabs: { workspaces: null, tabs: [
+    { ref: '%1', ws_ref: '$2', workspace: 'Work', name: 'one', state: 'shell' },
+    { ref: '%2', ws_ref: '$2', workspace: 'Work', name: 'two', state: 'shell' }] } }
+  const [work] = logic.roomsOf(tmux).workspaces
+  assert.equal(work.ref, '$2')
+  assert.equal(logic.canRenameWorkspace(tmux, work), true)
+  // a room whose tabs do not share one ref cannot be addressed
+  const mixed = { ...tmux, tabs: { ...tmux.tabs, tabs: [tmux.tabs.tabs[0], { ...tmux.tabs.tabs[1], ws_ref: null }] } }
+  assert.equal(logic.canRenameWorkspace(mixed, logic.roomsOf(mixed).workspaces[0]), false)
+  // the room of the control tab keeps its name too, whatever it is called
+  const ctl = { ...tmux, tabs: { ...tmux.tabs, tabs: [{ ...tmux.tabs.tabs[0], is_control: true }] } }
+  assert.equal(logic.canRenameWorkspace(ctl, logic.roomsOf(ctl).workspaces[0]), false)
+})

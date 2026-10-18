@@ -138,6 +138,7 @@ const store = createStore({
     // the order of the workspaces in the chat as cmux: the terminal's (default) or the most urgent first; kept in this browser
     roomsSort: load('bridge-cockpit.roomsSort', 'terminal') === 'urgency' ? 'urgency' : 'terminal',
     answered: {},   // per tab ref the answer the page sent last: { hash, q, ms } (views/reply.js)
+    renaming: null,  // the tab or workspace whose name is being typed: { kind: 'tab' | 'ws', id: ref } (views/rooms.js)
     tickerPaused: load('bridge-cockpit.tickerPaused', '0') === '1', tickerRead: loadTickerRead(), tickerSince: tickerSince(), quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
@@ -696,6 +697,9 @@ const ctl = {
   },
   // an answer that went out to a tab from the page: its row says so until the tab moved on (views/reply.js)
   markAnswered: (ref, { hash, q }) => setUi(ui => ({ answered: { ...pruneAnswered(ui.answered, Date.now()), [ref]: { hash, q, ms: Date.now() } } })),
+  // a name of its own for a tab or a workspace: the field stands in its sidebar row until saved or cancelled
+  startRename: (kind, id) => setUi({ renaming: { kind, id } }),
+  stopRename: () => setUi({ renaming: null }),
   toggleRoomsSort: () => {
     const sort = store.get().ui.roomsSort === 'urgency' ? 'terminal' : 'urgency'
     save('bridge-cockpit.roomsSort', sort)

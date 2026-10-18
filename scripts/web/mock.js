@@ -269,6 +269,13 @@ function hhmm(ms) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+// tabs whose state the terminal reads off the title glyph (cmux without a hook): a name of their own would hide
+// whether they wait, so the page offers no rename for the agent among them (logic.js canRename)
+const GLYPH_TABS = new Set(['surface:9', 'surface:11'])
+// what the terminal driver serves (workplace.py caps): everything, renaming workspaces included
+const DRIVER_CAPS = ['tabs', 'sessions', 'open', 'launch', 'send', 'rename', 'control', 'focus', 'key', 'screen', 'close',
+  'workspaces', 'rename_workspace']
+
 export function buildState(now = Date.now(), opts = {}) {
   const empty = !!opts.empty
   const rows = {
@@ -503,7 +510,7 @@ export function buildState(now = Date.now(), opts = {}) {
       slug: null, item: null, team: null, role: null, live: true, waiting: false, is_control: false, filed_by: null, since_ms: now - 6 * MIN, long: null },
     { ref: 'surface:11', ws_ref: 'workspace:4', name: 'zsh', workspace: 'Docs', state: 'shell', last: '', slug: null, item: null,
       team: null, role: null, live: false, waiting: false, is_control: false, filed_by: null, since_ms: now - 140 * MIN, long: null },
-  ].map(t => ({ ...t, ask: asks[t.ref] ?? null }))
+  ].map(t => ({ ...t, ask: asks[t.ref] ?? null, state_source: GLYPH_TABS.has(t.ref) ? 'glyph' : 'hook' }))
 
   const relayOnline = !opts.offline
   return localize({
@@ -543,6 +550,7 @@ export function buildState(now = Date.now(), opts = {}) {
       { ref: 'workspace:3', title: 'Demo', cwd: '/demo/bridge' },
       { ref: 'workspace:4', title: 'Docs', cwd: '/demo/bridge' },
       { ref: 'workspace:5', title: 'Demo', cwd: '/demo/other-repo', description: 'A second workspace with the same title' }] },
+    driver: { caps: DRIVER_CAPS },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: [] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
     agents: empty ? { peers: [], convs: [] } : agentsState(now),
@@ -1034,6 +1042,30 @@ export function createMockTransport(opts = {}) {
           }
           const said = verb === 'tab_option' ? tab.ask?.options.find(o => o.n === args.n)?.label : verb === 'tab_send' ? args.text : verb
           result.note = `Mock: ${tab.name}: ${said}`
+        }
+        // a name of its own for a tab or a workspace, refused like the server (actions.py v_tab_rename)
+        if (verb === 'tab_rename' || verb === 'workspace_rename') {
+          const title = String(args.title ?? '').trim()
+          const all = state.tabs.tabs
+          if (verb === 'tab_rename') {
+            const tab = all.find(t => t.ref === args.tab_ref)
+            if (!tab) return fail(409, 'stale_tab', 'This tab is gone or changed meanwhile.')
+            if (tab.is_control) return fail(409, 'control_tab', 'The control session keeps its name.')
+            if (tab.slug || tab.item || tab.team) return fail(409, 'task_tab_name', 'This tab\'s name comes from its task and stays.')
+            if (tab.state_source === 'glyph' && tab.state !== 'shell') return fail(409, 'rename_loses_state', 'Renaming this tab would hide whether it waits.')
+            if (all.some(t => t.ref !== tab.ref && t.name.toLowerCase() === title.toLowerCase())) return fail(409, 'name_in_use', 'That name is already in use.')
+            state.tabs = { ...state.tabs, tabs: all.map(t => t.ref === tab.ref ? { ...t, name: title } : t) }
+          } else {
+            const spaces = state.tabs.workspaces ?? []
+            const ws = spaces.find(w => w.ref === args.ws_ref)
+            if (!ws) return fail(409, 'stale_workspace', 'This workspace is gone or changed meanwhile.')
+            if (ws.title === state.tabs.control?.name) return fail(409, 'control_tab', 'The control session keeps its name.')
+            if (spaces.some(w => w.ref !== ws.ref && w.title.toLowerCase() === title.toLowerCase())) return fail(409, 'name_in_use', 'That name is already in use.')
+            state.tabs = { ...state.tabs, workspaces: spaces.map(w => w.ref === ws.ref ? { ...w, title } : w),
+              tabs: all.map(t => t.ws_ref === ws.ref ? { ...t, workspace: title } : t) }
+          }
+          emit('tabs', state.tabs)
+          result.note = `Mock: now named ${title}`
         }
         if (['drop', 'done', 'later', 'hide', 'task_close', 'settle'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
           result.settled = keys

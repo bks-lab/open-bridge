@@ -7,20 +7,22 @@ The plan (which task, which workspace, new or resumed) belongs to CORE
 in whatever terminal app runs it (iTerm, Terminal, Ghostty, VS Code). It speaks
 the CORE JSON protocol: one request on stdin, one answer on stdout.
 
-    {"verb": "tabs"}       -> {"tabs": [{"name", "workspace", "ref", "state", "last", "id", "is_self"}]}
+    {"verb": "tabs"}       -> {"tabs": [{"name", "workspace", "ref", "ws_ref", "state", "last", "id", "is_self"}]}
     {"verb": "sessions"}   -> {"sessions": {"<window name>": "<agent session id>"}}
     {"verb": "open", "plan": {...}, "only": [...] | null, "resume": bool, "here": ref | null}
     {"verb": "launch", "tabs": [{"label", "slug", "command", "workspace", "aliases"}],
      "target": "tab" | "workspace" | "area", "here": ref | null}
     {"verb": "send", "tab": ref, "text": "..."}
     {"verb": "rename", "tab": ref, "title": "..."}
+    {"verb": "rename_workspace", "workspace": ws_ref, "title": "..."}
     {"verb": "control", "control": {...}, "command": "...", "root": "..."}
     {"verb": "caps"} | {"verb": "focus", "tab": ref} | {"verb": "key", "tab": ref, "key": k}
     {"verb": "screen", "tab": ref, "lines": n} | {"verb": "close", "tab": ref}
 
 Mapping: a tmux SESSION is a workspace, a WINDOW is a tab (its name is the tab
 name), and a tab's ref is the pane id of the window's active pane (`%3`), which
-stays stable while the window lives and moves with it between sessions.
+stays stable while the window lives and moves with it between sessions. A workspace's
+ref (`ws_ref`) is the session id (`$2`), which stays when the session is renamed.
 
 Wire it in bridge-config.yaml:
 
@@ -51,12 +53,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 VERBS = ["tabs", "sessions", "open", "launch", "send", "rename", "control",
-         "caps", "focus", "key", "screen", "close"]
+         "caps", "focus", "key", "screen", "close", "rename_workspace"]
 SHELLS = {"zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "-zsh", "-bash", "-fish", "-sh", "login"}
 KEEP_SHELL = '; exec "${SHELL:-/bin/sh}" -l'
 KEYS = {"enter": ("Enter", False), "escape": ("Escape", False),
         **{k: (k, True) for k in ("y", "n", *map(str, range(1, 10)))}}
 REF_RE = re.compile(r"%\d+")
+WS_REF_RE = re.compile(r"\$\d+")
 SEP = "\x1f"
 SEND_CHUNK = 2000          # tmux carries a command in one IPC message (16 KB); long text goes in parts
 INLINE_MAX = 1000          # a longer launch command goes into a private launcher file
@@ -230,7 +233,7 @@ def tmux(*args: str, check: bool = True) -> str:
     return done.stdout
 
 
-PANE_FIELDS = ["session_name", "window_id", "window_name", "window_index", "pane_id", "pane_active",
+PANE_FIELDS = ["session_name", "session_id", "window_id", "window_name", "window_index", "pane_id", "pane_active",
                "pane_current_command", "pane_pid", "window_active"]
 
 
@@ -254,7 +257,8 @@ def windows(panes: list[dict] | None = None) -> list[dict]:
     panes = list_panes() if panes is None else panes
     by_win: dict[str, dict] = {}
     for p in panes:
-        w = by_win.setdefault(p["window_id"], {"session": p["session_name"], "name": p["window_name"],
+        w = by_win.setdefault(p["window_id"], {"session": p["session_name"], "session_id": p["session_id"],
+                                               "name": p["window_name"],
                                                "window_id": p["window_id"], "index": p["window_index"],
                                                "panes": [], "active": None})
         w["panes"].append(p["pane_id"])
@@ -294,6 +298,24 @@ def check_ref(ref) -> str:
     return ref
 
 
+def session_ids() -> dict[str, str]:
+    """Session id ($N) -> session name, of every session on the server."""
+    try:
+        out = tmux("list-sessions", "-F", "#{session_id}" + SEP + "#{session_name}")
+    except NoServer:
+        return {}
+    return dict(ln.split(SEP, 1) for ln in out.splitlines() if SEP in ln)
+
+
+def check_ws_ref(ref) -> str:
+    """A workspace ref must be a session id that exists now; anything else is an error, never a guess."""
+    if not isinstance(ref, str) or not WS_REF_RE.fullmatch(ref):
+        raise ValueError(f"not a tmux session ref: {ref!r} (expected $N)")
+    if ref not in session_ids():
+        raise DriverError(f"no open workspace {ref}")
+    return ref
+
+
 # ---------------------------------------------------------------- reading verbs
 
 def tabs() -> list[dict]:
@@ -309,7 +331,7 @@ def tabs() -> list[dict]:
         tree = descendants(int(p["pane_pid"]), procs) if p["pane_pid"].isdigit() else []
         agent = any(is_agent_args(a) for a in tree) or (
             not is_shell(p["pane_current_command"]) and screen_shows_agent(screen))
-        out.append({"name": w["name"], "workspace": w["session"], "ref": p["pane_id"],
+        out.append({"name": w["name"], "workspace": w["session"], "ref": p["pane_id"], "ws_ref": w["session_id"],
                     "state": classify_state(screen, agent), "last": last_line(screen),
                     "id": p["pane_id"], "is_self": bool(own) and own in w["panes"]})
     return out
@@ -608,6 +630,21 @@ def rename(req: dict) -> list[str]:
     return [f"{ref} is now named {req['title']!r}"]
 
 
+def rename_workspace(req: dict) -> list[str]:
+    """Renames the session with the session-name sanitizer; a name another session has (compared after
+    the same sanitizer, in any case) is refused: tmux would refuse it too, and two workspaces of one name
+    could no longer be told apart by the plan."""
+    ref = check_ws_ref(req.get("workspace"))
+    title = req.get("title")
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("rename_workspace needs a title")
+    name = session_name(title)
+    if any(sid != ref and session_name(n).casefold() == name.casefold() for sid, n in session_ids().items()):
+        raise DriverError(f"the name {name!r} is in use by another session")
+    tmux("rename-session", "-t", ref, name)
+    return [f"{ref} is now named {name!r}"]
+
+
 def key(req: dict) -> list[str]:
     k = str(req.get("key") or "").lower()
     if k not in KEYS:
@@ -667,7 +704,7 @@ def handle(req: dict) -> dict:
     if verb == "screen":
         return screen(req)
     actions = {"open": open_plan, "launch": launch, "send": send, "rename": rename, "control": control,
-               "focus": focus, "key": key, "close": close}
+               "focus": focus, "key": key, "close": close, "rename_workspace": rename_workspace}
     if verb in actions:
         return {"report": actions[verb](req)}
     raise ValueError(f"unknown verb {verb!r}")

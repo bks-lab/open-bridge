@@ -2,11 +2,12 @@
 // The cockpit, the chat as cmux shows it (cockpit.chat_layout: workspaces): on the left the
 // workspaces in the terminal's order with their tabs, the other Bridges on this machine and the A2A
 // agents; on the right whatever is picked. Reading only: a tab is written to in its window ("Write"),
-// the quick chat and the agents keep their own boxes.
+// the quick chat and the agents keep their own boxes. A tab or a workspace of its own may get a name
+// here (RenameField); task tabs and the control session keep theirs (logic.js canRename).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -22,9 +23,51 @@ function pickedRoom(s) {
   return s.ui.room ?? { kind: 'chat' }
 }
 
-function Item({ on, onClick, children, title, cls = '' }) {
+function Item({ on, onClick, onDblClick, children, title, cls = '' }) {
   return html`<button type="button" class=${`room-item ${cls}${on ? ' is-on' : ''}`} aria-current=${on ? 'true' : undefined}
-    title=${title} onClick=${onClick}>${children}</button>`
+    title=${title} onClick=${onClick} onDblClick=${onDblClick}>${children}</button>`
+}
+
+/** A click that picks a room; the second click of a double click picks nothing again (it opens the rename) */
+const firstClick = fn => e => { if ((e?.detail ?? 1) <= 1) fn() }
+
+/** Whether the workplace knows this tab by its name (a task, an inbox item, a team role): it keeps that name */
+const taskTab = tab => !!(tab.slug || tab.item || tab.team)
+
+/** The new name of a tab or a workspace, in place of its row: Enter or Save takes it (trimmed, never
+ *  empty), Esc or Cancel leaves the old one. The field stands instead of the row's button, never inside it */
+function RenameField({ value, label, onSave, onCancel }) {
+  const t = T()
+  const [text, setText] = useState(value ?? '')
+  const [bad, setBad] = useState(false)
+  const input = useRef(null)
+  useEffect(() => { input.current?.focus?.(); input.current?.select?.() }, [])
+  const save = raw => {
+    const v = String(raw ?? '').trim()
+    if (!v) { setBad(true); return }
+    onSave(v)
+  }
+  const onKey = e => {
+    if (e.key === 'Enter') { e.preventDefault(); save(e.currentTarget.value) }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel() }
+  }
+  return html`<div class="room-rename">
+    <input type="text" class="input room-rename-input" ref=${input} value=${text} maxlength="80" aria-label=${label}
+      aria-invalid=${bad ? 'true' : undefined} onInput=${e => { setText(e.currentTarget.value); setBad(false) }} onKeyDown=${onKey} />
+    <${Btn} size="xs" variant="primary" onClick=${() => save(input.current?.value ?? text)}>${t.rooms.save}<//>
+    <${Btn} size="xs" variant="ghost" onClick=${() => onCancel()}>${t.rooms.cancel}<//>
+  </div>`
+}
+
+/** Sends the new name; the field closes once the terminal took it, and stays with what was typed otherwise */
+async function saveName(c, verb, args) {
+  const r = await c.act(verb, args)
+  if (r?.ok) c.stopRename()
+}
+
+function renaming(s, kind, id) {
+  const r = s.ui?.renaming
+  return !!r && r.kind === kind && r.id === id
 }
 
 /** What runs in a tab or a workspace (logic.js agentLoad): its subagents and workflows, each with its icon;
@@ -38,9 +81,14 @@ function LoadChip({ load }) {
     ${part(load.subagents, 'subagent', t.rooms.subagents)}${part(load.workflows, 'workflow', t.rooms.workflows)}</span>`
 }
 
-function TabItem({ tab, on, c }) {
+function TabItem({ tab, on, s, c }) {
   const t = T()
-  return html`<${Item} on=${on} cls="room-tab" title=${tab.ask?.text || tab.last || tab.name} onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
+  if (renaming(s, 'tab', tab.ref)) {
+    return html`<${RenameField} value=${tab.name} label=${t.rooms.renameTab}
+      onSave=${title => saveName(c, 'tab_rename', { tab_ref: tab.ref, title })} onCancel=${() => c.stopRename()} />`
+  }
+  return html`<${Item} on=${on} cls="room-tab" title=${tab.ask?.text || tab.last || tab.name} onClick=${firstClick(() => c.pickRoom({ kind: 'tab', id: tab.ref }))}
+    onDblClick=${canRename(s, tab) ? () => c.startRename('tab', tab.ref) : undefined}>
     <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
     <span class="room-name">${tab.is_control ? t.controlSession : tab.name}</span>
     <${LoadChip} load=${tab.load} />
@@ -72,15 +120,20 @@ function Chats({ convs, s, c, here }) {
 function WorkspaceGroup({ w, s, c, here }) {
   const t = T()
   const on = here.kind === 'ws' && here.id === w.key
+  const head = renaming(s, 'ws', w.ref) && w.ref
+    ? html`<${RenameField} value=${w.title} label=${t.rooms.renameWs}
+        onSave=${title => saveName(c, 'workspace_rename', { ws_ref: w.ref, title })} onCancel=${() => c.stopRename()} />`
+    : null
   return html`<section class="room-ws" style=${w.color ? { '--ws-color': w.color } : undefined}>
-    <${Item} on=${on} cls="room-ws-head" title=${w.description || w.title} onClick=${() => c.pickRoom({ kind: 'ws', id: w.key })}>
+    ${head ?? html`<${Item} on=${on} cls="room-ws-head" title=${w.description || w.title} onClick=${firstClick(() => c.pickRoom({ kind: 'ws', id: w.key }))}
+      onDblClick=${canRenameWorkspace(s, w) ? () => c.startRename('ws', w.ref) : undefined}>
       <span class="room-ws-title">${w.pinned ? html`<span class="room-pin" aria-label=${t.rooms.pinned}>${t.rooms.pinMark}</span>` : null}${w.title}</span>
       <${LoadChip} load=${w.load} />
       ${w.state ? html`<span class="room-meta"><${StateLine} token=${stateToken(w.state)} word=${t.state[w.state] ?? w.state} /></span>` : null}
       ${w.unread ? html`<span class="room-badge mono" aria-label=${t.rooms.unread(w.unread)}>${w.unread}</span>` : null}
       ${w.bridge ? html`<span class="chip room-bridge">${w.bridge.name}</span>` : null}
-    <//>
-    ${w.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} c=${c} />`)}
+    <//>`}
+    ${w.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} />`)}
     ${w.chats.length || (s.rooms?.control && w.title === s.rooms.control) ? html`<${Chats} convs=${w.chats} s=${s} c=${c} here=${here} />` : null}
   </section>`
 }
@@ -196,7 +249,10 @@ function TabPane({ s, c, tab }) {
   return html`<section class="panel chat-main rooms-main" aria-labelledby="room-title">
     <header class="tabview-head">
       <${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />
-      <h2 class="sec-title tabview-title" id="room-title">${tab.is_control ? t.controlSession : tab.name}</h2>
+      <h2 class="sec-title tabview-title" id="room-title" title=${taskTab(tab) && !tab.is_control ? t.rooms.taskName : undefined}>
+        ${tab.is_control ? t.controlSession : tab.name}</h2>
+      ${canRename(s, tab) ? html`<${Btn} size="xs" variant="ghost" icon="pencil" label=${t.rooms.rename} title=${t.rooms.rename}
+        onClick=${() => c.startRename('tab', tab.ref)} />` : null}
       <span class="muted small">${tab.workspace}</span>
       <span class="tabview-live muted small" aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
         : screen ? t.tabViewLive : t.loading}</span>
@@ -236,6 +292,8 @@ function WorkspacePane({ s, c, w }) {
     [t.rooms.fact.pr, w.pr], [t.rooms.fact.bridge, w.bridge?.name], [t.rooms.fact.last, w.latest?.text]].filter(([, v]) => v)
   return html`<section class="panel chat-main rooms-main room-ws-pane" style=${w.color ? { '--ws-color': w.color } : undefined} aria-labelledby="room-title">
     <header class="tabview-head"><h2 class="sec-title tabview-title" id="room-title">${w.title}</h2>
+      ${canRenameWorkspace(s, w) ? html`<${Btn} size="xs" variant="ghost" icon="pencil" label=${t.rooms.rename} title=${t.rooms.rename}
+        onClick=${() => c.startRename('ws', w.ref)} />` : null}
       ${w.description ? html`<span class="muted small">${w.description}</span>` : null}</header>
     <div class="tabview-body">
       ${facts.length ? html`<dl class="agent-facts">${facts.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd class="mono">${v}</dd></div>`)}</dl>` : null}

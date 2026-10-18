@@ -36,11 +36,14 @@ Then `python3 scripts/workplace.py open --yes [--here "$TMUX_PANE"]`, `launch`,
 | tab | window, its name is the tab name |
 | `ref` / `id` | pane id of the window's active pane, `%3` |
 | `is_self` | the window holds `$TMUX_PANE` of the caller |
+| `ws_ref` | the session id, `$2`; it stays when the session is renamed |
 | `state` | read from the pane: no agent process below the pane is `shell`; `esc to interrupt` is `working`; a permission or numbered choice prompt is `needs-you`; else `waiting` |
 | `sessions` | `--resume <uuid>`, `-r <uuid>` or `--session-id <uuid>` in the agent's process args |
 
-All twelve verbs are served: `tabs`, `sessions`, `open`, `launch`, `send`,
-`rename`, `control`, `caps`, `focus`, `key`, `screen`, `close`.
+All thirteen verbs are served: `tabs`, `sessions`, `open`, `launch`, `send`,
+`rename`, `control`, `caps`, `focus`, `key`, `screen`, `close`, `rename_workspace`.
+`rename_workspace` renames the session by its id, with `:` and `.` turned into `_`
+as tmux does, and refuses a name another session has after that same change.
 
 ## What it guarantees
 

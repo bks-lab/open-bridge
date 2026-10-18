@@ -1350,6 +1350,25 @@ export function canTab(s, verb) {
   return !Array.isArray(caps) || caps.includes(verb)
 }
 
+/** Whether a tab may get a name of its own (actions.py v_tab_rename): the driver renames tabs, it is not the
+ *  control session, the workplace does not know it by its name (a task, inbox item or team role), and its
+ *  state is not read off its title glyph, which goes with a title of its own (a shell has none to lose) */
+export function canRename(s, tab) {
+  if (!tab || !canTab(s, 'rename') || tab.is_control) return false
+  if (tab.slug || tab.item || tab.team) return false
+  return !(tab.state_source === 'glyph' && tab.state !== 'shell')
+}
+
+/** Whether a workspace (a room of roomsOf) may get a name of its own: the driver renames workspaces, the
+ *  room has a ref (a tmux room built from tabs takes the session id they share), and it is not the control
+ *  workspace. Configured workspace names the server refuses (it knows the config) */
+export function canRenameWorkspace(s, room) {
+  if (!room?.ref || !canTab(s, 'rename_workspace')) return false
+  const control = s?.rooms?.control ?? s?.tabs?.control?.name
+  if (control && String(room.title ?? '').toLowerCase() === String(control).toLowerCase()) return false
+  return !(room.tabs ?? []).some(t => t.is_control)
+}
+
 // ---------------------------------------------------------------- answering a waiting tab (views/reply.js)
 
 /** The tab states a reply may name as `expect` (actions.py TAB_STATES) */
