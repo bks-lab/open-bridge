@@ -366,10 +366,12 @@ class Quick:
         return handed
 
     def set_about(self, conv: str, about: dict) -> bool:
-        """Name what a chat is about when it names nothing yet (a handed chat: the inbox item it became)."""
+        """Name what a chat is about when it names no item yet (a handed chat: the inbox item it became). A chat
+        from an info row nobody filed has an `about` without an item: that one takes the handed item too."""
         with self.lock:
             c = self.convs.get(conv)
-            if c is None or c.get("about"):
+            old = c.get("about") if c is not None else None
+            if c is None or isinstance(old, dict) and (old.get("inbox") or old.get("task")):
                 return False
             c["about"] = dict(about)
             self.save()

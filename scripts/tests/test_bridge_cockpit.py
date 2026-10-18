@@ -6381,6 +6381,9 @@ def test_a_chat_from_an_info_row_finds_its_inbox_item(world):
     conv = chat_on(world, "info", page="systems", section="checks", index=0)
     about = conv_of(world, conv)["about"]
     assert about["kind"] == "info" and about["inbox"] == FILED_ID
+    # the key is the row's own `item:` key, the one the page and page_item_by_key use
+    found = world.app.collector.page_item_by_key(about["key"])
+    assert found and found[2] == world.app.collector.page_item("systems", "checks", 0)[1]
     world.clock.advance(QUIET)
     end_item(world, FILED_ID, world.app.clock() - 60_000, "executed")
     assert sweep(world) is True and conv_of(world, conv) is None
@@ -6490,6 +6493,22 @@ def test_a_handed_chat_leaves_with_its_inbox_item(world):
     assert conv_of(world, row_conv)["about"]["inbox"] == YES2_ID
 
 
+def test_an_info_chat_without_an_item_takes_the_item_it_is_handed_on_as(world):
+    """An info row nobody filed gives its chat an `about` without an item: handed to a tab, the chat is about
+    the inbox item the handoff filed, and leaves with it like any handed chat"""
+    world.runner.handlers["inbox.list"] = lambda argv: ok([])
+    world.app.inbox_cache = (0.0, None)
+    conv = chat_on(world, "info", page="systems", section="upstream", index=0)
+    assert conv_of(world, conv)["about"]["inbox"] is None
+    new_id = "20261010-1500-info-chat-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.act("quick_handoff", conv=conv, to="tab")
+    assert conv_of(world, conv)["about"] == {"kind": "handoff", "inbox": new_id}
+    world.clock.advance(QUIET)
+    end_item(world, new_id, world.app.clock() - 60_000, "executed")
+    assert sweep(world) is True and conv_of(world, conv) is None
+
+
 def test_settle_verbs_trigger_the_sweep_on_the_next_poll(world):
     conv = chat_on(world, "row", key=f"inbox:{ONLY_ID}")
     world.clock.advance(QUIET)
@@ -6504,7 +6523,8 @@ def test_settle_verbs_trigger_the_sweep_on_the_next_poll(world):
     assert conv_of(world, conv) is None and world.app.quick.settle_due is False
     # the other verbs that end or take back an item ask for the same
     for verb, args in (("drop", {"key": f"inbox:{YES_ID}"}), ("settle", {"keys": [f"inbox:{YES2_ID}"], "outcome": "done"}),
-                       ("task_close", {"keys": ["task:other-task"], "reason": "done"}), ("inbox_reopen", {"id": YES_ID})):
+                       ("task_close", {"keys": ["task:other-task"], "reason": "done"}), ("inbox_reopen", {"id": YES_ID}),
+                       ("task_reopen", {"slug": "other-task"})):
         world.app.quick.settle_due = False
         world.act(verb, **args)
         assert world.app.quick.settle_due is True, verb

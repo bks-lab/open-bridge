@@ -15,6 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
+  listedChats,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -671,7 +672,8 @@ const ctl = {
     return r
   },
   pickAgent: peer => {
-    const latest = (store.get().agents?.convs ?? []).filter(x => x.peer === peer)
+    const a = store.get().agents ?? {}
+    const latest = listedChats(a.convs, a.keep_hours, Date.now()).filter(x => x.peer === peer)
       .sort((a, b) => (b.last_ms ?? 0) - (a.last_ms ?? 0))[0]
     setUi({ agentPeer: peer, agentConv: latest?.id ?? null })
   },

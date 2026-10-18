@@ -3181,6 +3181,8 @@ test('agents list hides conversations past keep_hours like chats', () => {
   assert.match(agents, /listedChats\(a\.convs, a\.keep_hours, s\.now\)/)
   // the agents state the page loads keeps keep_hours, like the pushed event
   assert.match(read('logic.js'), /convs: res\.data\.convs \?\? \[\],\s*\.\.\.\(res\.data\.keep_hours != null \? \{ keep_hours: res\.data\.keep_hours \} : \{\}\)/)
+  // picking an agent opens its latest conversation the list shows, never one already past keep_hours
+  assert.match(read('app.js'), /pickAgent: peer => \{\s*const a = store\.get\(\)\.agents \?\? \{\}\s*const latest = listedChats\(a\.convs, a\.keep_hours, Date\.now\(\)\)\.filter\(x => x\.peer === peer\)/)
 })
 
 test('rooms: a quick chat shows a speech bubble, not a question mark; the core asks with place core', () => {

@@ -2104,7 +2104,8 @@ class Actions:
                 raise ActionError(409, "stale_row", "the page item is no longer in the model", "index")
             sec, info = found
             prompt = m.ask_info(re.sub(r"\s*\(.*?\)", "", sec["title"]), info, tx)
-            about = {"kind": "info", "key": info.get("key"), "inbox": self.info_inbox(sec, info) if via == "quick" else None}
+            about = {"kind": "info", "key": m.item_key(page, sec["id"], info),
+                     "inbox": self.info_inbox(sec, info) if via == "quick" else None}
         elif kind == "free":
             prompt = check_text(args["text"], "text", 4000)
         else:
