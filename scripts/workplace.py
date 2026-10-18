@@ -103,7 +103,7 @@ NEW_TAB_PROMPT = (
     TASK_READ_PROMPT + " Then wait; on 'go on' take the "
     "next step." + FILE_TAIL + " Never close a tab or a workspace.")
 GO_TAIL = ("Then start on the next step right away. Before anything that leaves this machine (a push, "
-           "a message, a board write) ask first.")
+           "a message, a board write) ask first, unless the item itself says the click released exactly that step.")
 INBOX_REPORT_PROMPT = (
     "You are the tab for inbox item {id}. Read it with python3 scripts/inbox.py show {id} and the task it "
     "names, if any. Then print at most eight lines: what it is, what would settle it, and whether you "
@@ -111,7 +111,9 @@ INBOX_REPORT_PROMPT = (
     "'<finding>'. Then wait; on 'go on' take the next step. Never close a tab or a workspace.")
 INBOX_GO_PROMPT = (
     "You are the tab for inbox item {id}. Read it with python3 scripts/inbox.py show {id} and the task it "
-    "names, if any. " + GO_TAIL + " When it is settled, close the item with python3 scripts/inbox.py close "
+    "names, if any. " + GO_TAIL + " Whenever you stop to ask or to show a draft, first put the question or "
+    "the draft on the item with python3 scripts/inbox.py note {id} '<text>': the cockpit sees the item, not "
+    "this chat. When it is settled, close the item with python3 scripts/inbox.py close "
     "{id} --note '<what settled it>'. Never close a tab or a workspace.")
 CONTEXT_PROMPT = (
     "You are the tab that finds the missing context for {what}. Read it first ({read}). Then search for "

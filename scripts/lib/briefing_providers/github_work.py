@@ -96,9 +96,10 @@ def collect(section: dict, ctx) -> list:
         if deadline is not None:
             ctx.deadline = deadline
         if part == "search":
-            rows = github.collect({"query": search_q}, ctx)
+            search = {"query": search_q}
+            rows = github.collect(search, ctx)
             section["_metrics"] = _done(query, ctx)
-            return rows
+            return rows, search.get("_me")
         board_section = {"query": board_q, "summary": True}
         rows = github_board.collect(board_section, ctx)
         return rows, board_section.get("_summary") or []
@@ -106,7 +107,13 @@ def collect(section: dict, ctx) -> list:
     parts = ["search", "boards"] if has_boards else ["search"]
     with ThreadPoolExecutor(max_workers=len(parts)) as pool:
         found = dict(zip(parts, pool.map(run, parts)))
+    searched, me = found["search"]
     carded, counted = found.get("boards") or ([], [])
+    # a card knows it is yours only from integrations.github.assignee_me; the login the search asked for
+    # covers the rest, so an assigned card the search did not reach (another owner, past its limit) stays
+    for card in carded:
+        if me and me in (card.get("assignees") or []):
+            card["assigned_to_me"] = True
     me_only = {b["slug"] for b in boards if mode_of[b["slug"]] == "mine"}
     carded = [c for c in carded if c["board"]["slug"] not in me_only or c.get("assigned_to_me")]
     # one entry per registered board, in the registry's order, each with its mode: a dashboard draws them as
@@ -115,7 +122,7 @@ def collect(section: dict, ctx) -> list:
     section["_summary"] = [{**(by_slug.get(b["slug"]) or {"name": b["name"], "number": b["number"], "org": b["org"],
                                                          "slug": b["slug"], "counts": {}, "open": None, "capped": None}),
                             "mode": mode_of[b["slug"]]} for b in boards]
-    rows = merge(found.get("search") or [], carded)
+    rows = merge(searched or [], carded)
     if query.get("links") is not False:
         _links(rows, ctx)
         rows = fold(rows)

@@ -451,6 +451,14 @@ def test_launch_prompts_are_ascii_and_name_the_item(kind, mode):
         assert ("inbox.py close the-id --note" in p) == (mode == "go")
 
 
+def test_inbox_go_tab_reports_a_stop_on_the_item_and_honours_a_click_release():
+    # live 2026-10-18: a reminder tab showed its draft only in its own chat, the cockpit saw no answer,
+    # and it asked again for a yes the click on the GitHub row had already given
+    p = wp.launch_prompt("inbox", "go", "the-id")
+    assert "inbox.py note the-id" in p
+    assert "unless the item itself says the click released" in p
+
+
 def test_launch_task_report_prompt_is_exactly_the_open_prompt(lrepo):
     (e,) = wp.build_launch(lrepo, {}, ["payments-incident"], "report")
     status = "work/tasks/payments-incident/STATUS.md"
