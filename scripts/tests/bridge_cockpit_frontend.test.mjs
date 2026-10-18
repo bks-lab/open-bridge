@@ -143,7 +143,7 @@ test('text tables: one word per thing, the retired words appear nowhere', () => 
 test('text tables: an error text for every error code of the API', () => {
   const codes = ['unauthorized', 'forbidden_origin', 'bad_host', 'bad_fetch_site', 'not_found', 'method_not_allowed',
     'unsupported_media_type', 'payload_too_large', 'unknown_verb', 'invalid_argument', 'invalid_json', 'stale_row',
-    'stale_tab', 'not_applicable', 'relay_offline', 'cmux_unavailable', 'internal']
+    'stale_tab', 'not_applicable', 'relay_offline', 'cmux_unavailable', 'cli_unavailable', 'internal']
   for (const t of Object.values(text.TABLES)) for (const c of codes) assert.ok(t.errors[c], c)
 })
 
@@ -3096,4 +3096,23 @@ test('due dates: overdue, today, tomorrow, else the day itself', async () => {
   assert.equal(logic.dueWhen('', now), null)
   // a why that names the due date again is left out where the row shows the date itself
   assert.deepEqual(logic.whyWithoutDue(['due 13.10', 'only you', 'fällig 16.10 09:00', 'back on 19.10']), ['only you', 'back on 19.10'])
+})
+
+test('errorText: a missing quick-question CLI is named as such, not as cmux, in both languages', () => {
+  for (const lang of ['en', 'de']) {
+    text.setLanguage(lang)
+    const t = text.T()
+    for (const provider of ['claude', 'codex']) {
+      const said = logic.errorText({ code: 'cli_unavailable', message: `the ${provider} CLI is not available` }, t)
+      assert.match(said, new RegExp(`\\b${provider}\\b`), `${lang} ${provider}`)
+      assert.match(said, /CLI/, lang)
+      assert.doesNotMatch(said, /cmux/i, lang)
+    }
+    // without a readable provider the text still says what is missing
+    const bare = logic.errorText({ code: 'cli_unavailable', message: '' }, t)
+    assert.match(bare, /CLI/, lang)
+    assert.doesNotMatch(bare, /cmux|undefined/i, lang)
+    assert.equal(logic.errorText({ code: 'cmux_unavailable', message: 'x' }, t), t.errors.cmux_unavailable)
+  }
+  text.setLanguage('en')
 })

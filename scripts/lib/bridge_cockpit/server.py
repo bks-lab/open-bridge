@@ -90,8 +90,8 @@ TAB_REF_RE = re.compile(r"^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}\Z")   # the term
 ERROR_STATUS = {"unauthorized": 401, "forbidden_origin": 403, "bad_host": 403, "bad_fetch_site": 403, "not_found": 404,
                 "method_not_allowed": 405, "unsupported_media_type": 415, "payload_too_large": 413,
                 "unknown_verb": 400, "invalid_argument": 400, "invalid_json": 400, "stale_row": 409, "stale_tab": 409,
-                "not_applicable": 409, "relay_offline": 409, "cmux_unavailable": 503, "driver_cannot": 503, "unreadable": 502,
-                "internal": 500}
+                "not_applicable": 409, "relay_offline": 409, "cmux_unavailable": 503, "cli_unavailable": 503,
+                "driver_cannot": 503, "unreadable": 502, "internal": 500}
 UNAUTHORIZED_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Bridge Cockpit</title></head>"
                      "<body><p>Open the cockpit once with a fresh link from <code>python3 scripts/bridge-cockpit.py url</code> "
                      "(it works once, for a minute); after that the plain address works in this browser for a few days.</p>"

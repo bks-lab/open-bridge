@@ -4867,3 +4867,21 @@ def test_reopen_as_review_says_so_and_a_new_task_still_never_starts_in_review(wo
     assert res["ok"] and "review" in res["note"]
     with pytest.raises(ActionError):
         world.act("to_task", key=f"inbox:{YES_ID}", status="review")
+
+
+def test_a_quick_question_without_its_cli_says_cli_unavailable_not_cmux(world, tmp_path):
+    world.app.quick.available = lambda model=None: False
+    with pytest.raises(ActionError) as err:
+        world.app.actions.ask("free", {"text": "what waits?"}, via="quick")
+    assert (err.value.status, err.value.code) == (503, "cli_unavailable")
+    assert "claude" in err.value.message
+    status, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "what waits?"}, "via": "quick"})
+    assert status == 503 and json.loads(body)["error"]["code"] == "cli_unavailable"
+    # the genuine cmux checks keep their own code
+    w2 = World(tmp_path / "nocmux", cmux=None, serve=False)
+    try:
+        with pytest.raises(ActionError) as err:
+            w2.act("snapshot")
+        assert (err.value.status, err.value.code) == (503, "cmux_unavailable")
+    finally:
+        w2.close()

@@ -1681,7 +1681,7 @@ class Actions:
             if conv is not None and (not isinstance(conv, str) or not CONV_RE.match(conv)):
                 raise bad_arg("conv", "not a conversation id")
             if not app.quick.available(qmodel):
-                raise ActionError(503, "cmux_unavailable", f"the {provider} CLI is not available", None)
+                raise ActionError(503, "cli_unavailable", f"the {provider} CLI is not available", None)
         if not isinstance(kind, str) or kind not in ASK_KINDS:
             raise bad_arg("kind", "unknown kind")
         args = {} if args is None else args

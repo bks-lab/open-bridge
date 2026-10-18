@@ -480,7 +480,8 @@ export function upsertRecord(records, record) {
 /** Text of an API error in the page language; `table` is T() */
 export function errorText(error, table) {
   if (!error) return table.errors.unknown
-  const base = table.errors[error.code] ?? error.message ?? table.errors.unknown
+  const entry = table.errors[error.code]
+  const base = (typeof entry === 'function' ? entry(error) : entry) ?? error.message ?? table.errors.unknown
   return error.field ? `${base} (${table.errorField(error.field)})` : base
 }
 

@@ -9,6 +9,9 @@
 // a word (reload arrow, dot, check, cross), the web value keeps the word only: the page
 // draws its own icons and status dots.
 
+/** The CLI an error names ("the claude CLI is not available"), or null */
+const cliName = e => /\bthe (\S+) CLI\b/.exec(String(e?.message ?? ''))?.[1] ?? null
+
 const en = {
   appName: 'Bridge',
   cockpit: 'Cockpit',
@@ -1003,6 +1006,7 @@ const en = {
     not_applicable: 'This action does not apply to this row.',
     relay_offline: 'Claude is not reachable right now.',
     cmux_unavailable: 'cmux is not available.',
+    cli_unavailable: e => `The ${cliName(e) ?? 'AI'} CLI is not installed or not on the PATH.`,
     driver_cannot: 'The terminal cannot do that for a tab.',
     internal: 'Something went wrong on the server. See server.log.',
     network: 'The server does not answer.',
@@ -2120,6 +2124,7 @@ const de = {
     not_applicable: 'Diese Aktion passt nicht zu dieser Zeile.',
     relay_offline: 'Claude ist gerade nicht erreichbar.',
     cmux_unavailable: 'cmux ist nicht verfügbar.',
+    cli_unavailable: e => `Die ${cliName(e) ?? 'KI'}-CLI ist nicht installiert oder nicht im PATH.`,
     driver_cannot: 'Das Terminal kann das bei einem Tab nicht.',
     internal: 'Auf dem Server ging etwas schief. Siehe server.log.',
     network: 'Der Server antwortet nicht.',
