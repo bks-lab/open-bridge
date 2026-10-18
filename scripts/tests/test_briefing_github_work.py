@@ -433,6 +433,10 @@ def test_the_figures_count_what_the_rows_are_and_what_you_finished(tmp_path):
     assert figures["blocked"]["n"] == 1                               # site#7 carries the label blocked
     row = next(r for r in page["items"] if r["row_id"] == "example-org/tool#40")
     assert "ask_review" in row["flags"]
+    # your own PR that only the search knows (no board card): raw_state says it, and its age counts
+    mine = {**sec["items"][0], "id": "o/r#9", "type": "pr", "raw_state": "your PR, open 4 days", "note": None}
+    assert "my_pr" in view.github_flags(mine, NOW)
+    assert next(m for m in view.github_metrics([mine], {}, NOW) if m["id"] == "my_pr") == {"id": "my_pr", "n": 1, "days": 4}
     assert page["boards"][0]["name"] == "Tool board" and page["boards"][0]["mode"] == "mine"
 
 

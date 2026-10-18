@@ -1768,7 +1768,8 @@ def github_flags(item: dict, now: dt.datetime) -> list:
         flags.append("mine")
     if item.get("category") == "qa" and item.get("type") == "pr":
         flags.append("ask_review")
-    if item.get("type") == "pr" and _text(item.get("note")).startswith("your PR"):
+    # your own pull request: the search says so in raw_state, or in note once a board card took the row over
+    if item.get("type") == "pr" and (_text(item.get("note")) or _text(item.get("raw_state"))).startswith("your PR"):
         flags.append("my_pr")
     if item.get("state") in ("in_progress", "review", "blocked"):
         flags.append(item["state"])
@@ -1783,7 +1784,8 @@ def github_metrics(items: list, done: object, now: dt.datetime) -> list:
     requests or the window of what you finished), in the order a dashboard shows them."""
     flags = [github_flags(i, now) for i in items]
     count = lambda flag: sum(1 for f in flags if flag in f)   # noqa: E731
-    ages = [int(m.group(1)) for i in items for m in [PR_AGE_RE.search(_text(i.get("note")))] if m]
+    ages = [int(m.group(1)) for i in items if i.get("type") == "pr"
+            for m in [PR_AGE_RE.search(_text(i.get("note")) or _text(i.get("raw_state")))] if m]
     out = [{"id": "open", "n": len(items)}, {"id": "mine", "n": count("mine")},
            {"id": "ask_review", "n": count("ask_review")},
            {"id": "my_pr", "n": count("my_pr"), **({"days": max(ages)} if ages else {})},
