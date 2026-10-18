@@ -387,7 +387,7 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
     },
     {
-      id: 'trackers', title: 'Trackers', badge: { kind: 'count', n: 5, warn: true }, sections: [
+      id: 'trackers', title: 'Trackers', badge: { kind: 'count', n: 5, warn: true }, jev: { skip_sections: [], private: [] }, sections: [
         // github-work in the board view: one row per issue or PR under its board, with the steps an agent starts on it
         { id: 'mine', kind: 'tracker', view: 'board', title: 'GitHub work', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 3, total: 5,
           weight: 3, bad: 0, as_of: hhmm(now - 22 * MIN), more: 2,
@@ -422,7 +422,7 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
     },
     {
-      id: 'usage', title: 'Usage', badge: { kind: 'none' }, sections: [
+      id: 'usage', title: 'Usage', badge: { kind: 'none' }, overview: true, sections: [
         { id: 'quota', kind: 'command', title: 'Quota', status: 'ok', reason: '', alarm: false, empty: 'no account', count: 2, total: 2,
           weight: 0, bad: 0, as_of: hhmm(now - 2 * MIN), more: 0, items: [
             item(0, { title: 'Session (5 h): 22 %', when: '16:00', meter: { value: 22, max: 100, unit: '%', elapsed: 0.4, warn: 80, bad: 95 } }),
@@ -526,6 +526,8 @@ export function buildState(now = Date.now(), opts = {}) {
     tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], convs: [] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
+    agents: empty ? { peers: [], convs: [] } : agentsState(now),
+    triage: empty ? { running: null, error: null, last: null, items: {} } : triageState(now),
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     ticker: tickerState(TICKER_CONFIG, now),
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
@@ -619,6 +621,155 @@ function taskDetail(slug) {
   }
 }
 
+// the tokens of the week (usage.py view()): invented counts per day and source, today a little loud
+function usageView(now) {
+  const per = [[38, 9, 4], [52, 14, 0], [0, 0, 0], [61, 22, 6], [44, 11, 3], [57, 18, 5], [96, 31, 7]]
+  const models = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5']
+  const projects = ['demo-project', 'docs-site', 'example-tools']
+  const total = { input: 0, output: 0, cache_read: 0, cache_write: 0 }
+  const days = per.map(([session, subagent, worker], i) => {
+    const day = isoIn(i - 6, now)
+    const sources = Object.fromEntries([['session', session], ['subagent', subagent], ['worker', worker]].map(([s, k]) => {
+      const counts = { input: k * 300, output: k * 1000, cache_read: k * 42000, cache_write: k * 2600 }
+      for (const f of Object.keys(total)) total[f] += counts[f]
+      return [s, counts]
+    }))
+    const output = (session + subagent + worker) * 1000
+    const split = (names, key) => output ? names.map((n, j) => ({ [key]: n, output: Math.round(output * [0.6, 0.3, 0.1][j]) })) : []
+    return { day, sources, output, models: split(models, 'model'), projects: split(projects, 'project') }
+  })
+  const sum = names => names.map((n, j) => ({ n, output: days.reduce((a, d) => a + (d.models[j]?.output ?? 0), 0) }))
+  return { days, total, models: sum(models).map(x => ({ model: x.n, output: x.output })), projects: sum(projects).map(x => ({ project: x.n, output: x.output })),
+    outliers: [{ source: 'subagent', today: 31000, usual: 14000, factor: 2.2 }] }
+}
+
+// the knowledge graph (graph.py view()): a small invented Bridge, its config entries, tasks and the files they name
+const GRAPH_NODES = [
+  ['bridge-config.yaml', 'core', 'core', 'Bridge configuration'],
+  ['identity/personas/demo-user.yaml', 'identity', 'personas', 'Demo user'],
+  ['identity/mandants/demo-team.yaml', 'identity', 'mandants', 'Demo team'],
+  ['infra/remotes/homebox.yaml', 'infra', 'remotes', 'The always-on example machine'],
+  ['infra/channels/mail.yaml', 'infra', 'channels', 'Mail drafts'],
+  ['workflow/projects/demo-board.yaml', 'workflow', 'projects', 'Demo board'],
+  ['workflow/contexts/demo.yaml', 'workflow', 'contexts', 'Demo project'],
+  ['workflow/briefings/morning.yaml', 'workflow', 'briefings', 'Morning briefing'],
+  ['workflow/workloads/mail-watcher.yaml', 'workflow', 'workloads', 'Mail watcher'],
+  ['work/tasks/demo-task/STATUS.md', 'work', 'tasks', 'Onboarding guide for the demo project', 'doing'],
+  ['work/tasks/docs-refresh/STATUS.md', 'work', 'tasks', 'Refresh the docs index', 'doing'],
+  ['work/tasks/alpha-release/STATUS.md', 'work', 'tasks', 'Prepare the alpha release notes', 'doing'],
+  ['docs/demo-guide.md', 'docs', 'docs', '', null, true],
+]
+const GRAPH_EDGES = [
+  ['workflow/contexts/demo.yaml', 'workflow/projects/demo-board.yaml', 'project_ref', 'ref'],
+  ['workflow/contexts/demo.yaml', 'identity/mandants/demo-team.yaml', 'mandant_ref', 'ref'],
+  ['identity/mandants/demo-team.yaml', 'identity/personas/demo-user.yaml', 'persona_ref', 'ref'],
+  ['workflow/briefings/morning.yaml', 'workflow/projects/demo-board.yaml', 'project_ref', 'ref'],
+  ['workflow/workloads/mail-watcher.yaml', 'infra/remotes/homebox.yaml', 'remote_ref', 'ref'],
+  ['workflow/workloads/mail-watcher.yaml', 'infra/channels/mail.yaml', 'channel_ref', 'ref'],
+  ['work/tasks/demo-task/STATUS.md', 'workflow/contexts/demo.yaml', 'context_ref', 'ref'],
+  ['work/tasks/demo-task/STATUS.md', 'docs/demo-guide.md', 'deliverable', 'path'],
+  ['work/tasks/docs-refresh/STATUS.md', 'docs/demo-guide.md', 'deliverable', 'path'],
+  ['work/tasks/alpha-release/STATUS.md', 'workflow/projects/demo-board.yaml', 'project_ref', 'ref'],
+  ['bridge-config.yaml', 'workflow/briefings/morning.yaml', 'profile', 'path'],
+]
+
+function graphView() {
+  const edges = GRAPH_EDGES.map(([s, t, key, kind]) => ({ s, t, key, kind }))
+  const degree = id => edges.filter(e => e.s === id || e.t === id).length
+  const nodes = GRAPH_NODES.map(([id, group, family, title, status = null, leaf = false]) => ({
+    id, group, family, label: id.endsWith('/STATUS.md') ? id.split('/').at(-2) : id.split('/').at(-1).replace(/\.[a-z]+$/, ''),
+    title, status, ...(leaf ? { leaf: true } : {}), degree: degree(id) }))
+  return { nodes, edges }
+}
+
+function graphNode(id) {
+  const g = graphView()
+  const n = g.nodes.find(x => x.id === id)
+  if (!n) return null
+  const text = id.endsWith('.md') ? `# ${n.title || n.label}\n\nInvented example text: nothing here comes from a real Bridge.\n`
+    : `# invented example entry\ntitle: ${n.title}\n${g.edges.filter(e => e.s === id).map(e => `${e.key}: ${e.t.split('/').at(-1).replace(/\.yaml$/, '')}`).join('\n')}\n`
+  return { id, text, cut: false, out: g.edges.filter(e => e.s === id), in: g.edges.filter(e => e.t === id) }
+}
+
+// what the dashboard closed, dropped or hid (history.py state()), newest first, each with its undo
+function historyItem(key, title, kind, did, ident) {
+  return { key, title, kind, did, ident, undone_ms: null,
+    undo: kind === 'task' ? { verb: 'task_reopen', args: { slug: ident } } : kind === 'inbox' ? { verb: 'inbox_reopen', args: { id: ident } }
+      : { verb: 'unhide', args: { key } } }
+}
+
+function historyEntries(now) {
+  const it = historyItem
+  return [
+    { id: 'h0a1b2c3d4e', at_ms: now - 40 * MIN, verb: 'done', backfilled: false,
+      items: [it('inbox:20261009-0800-demo-renewal-9f8e', 'Renew the test certificate', 'inbox', 'done', '20261009-0800-demo-renewal-9f8e')] },
+    { id: 'h1b2c3d4e5f', at_ms: now - 3 * 3600000, verb: 'hide', backfilled: false,
+      items: [it('gh:example/repo#9', 'Waiting for the reply on the license question', 'other', `hidden until ${isoIn(3, now)}`, null)] },
+    { id: 'h2c3d4e5f60', at_ms: now - DAY - 2 * 3600000, verb: 'task_close', backfilled: false,
+      items: [it('task:old-fixtures', 'Clean up the old example fixtures', 'task', 'done', 'old-fixtures'),
+        it('task:old-notes', 'Tidy the old setup notes', 'task', 'declined', 'old-notes')] },
+  ]
+}
+
+// the other Bridges and A2A agents (agents.py state()): what their cards say and one conversation
+function agentsState(now) {
+  const card = (name, description, skills) => ({ name, description, version: '0.4.0', protocol: '0.3', binding: 'JSONRPC',
+    provider: { name: 'Example Org' }, endpoint: 'https://example.org/a2a/', input: ['text'], output: ['text'], streaming: false, docs: null, skills })
+  return {
+    peers: [
+      { id: 'team-bridge', reach: 'ok', last_error: null, summary: 'The Bridge of a teammate: board, docs and release questions',
+        owner: 'teammate', network: 'tailnet', needs_token: true, usage: { allowed: ['ask', 'task'], human_gate: 'the owner confirms every task' },
+        card: card('Team Bridge', 'Answers questions about the demo project and takes small tasks.', [
+          { id: 'status', name: 'Project status', description: 'Says where the demo project stands: open items, the next release, who works on what.',
+            tags: ['board'], examples: ['Where does the alpha release stand?'] },
+          { id: 'docs', name: 'Docs lookup', description: 'Finds the page in the project docs that answers a question.', tags: ['docs'], examples: ['Where is the setup guide?'] }]),
+        card_error: null, card_at_ms: now - 15 * MIN, last_ms: now - 2 * 3600000 },
+      { id: 'docs-agent', reach: 'unknown', last_error: null, summary: 'An example agent for the public docs', owner: null, network: 'public',
+        needs_token: false, usage: { allowed: ['ask'], human_gate: null }, card: null, card_error: null, card_at_ms: null, last_ms: null },
+    ],
+    convs: [
+      { id: 'g0a1b2c3d4e', peer: 'team-bridge', started_ms: now - 2 * 3600000 - 5 * MIN, last_ms: now - 2 * 3600000, context_id: 'ctx-demo', running: false,
+        turns: [{ q: 'Where does the alpha release stand?', mode: 'ask', a: 'Two of five items are open, the release notes and one test fix. The date holds.',
+          state: 'completed', task_id: null, waiting: false, at_ms: now - 2 * 3600000 - 5 * MIN, answered_ms: now - 2 * 3600000, error: null }] },
+    ],
+  }
+}
+
+// the triage (triage.py state()): one line per task and inbox row of the demo, the last run 20 minutes ago
+function triageState(now, running = null) {
+  // effort is for the AI only: a row the person does carries none (triage.py)
+  const x = (kind, title, gist, verdict, doer, effort, extra = {}) => ({ kind, title, gist, verdict, reason: null, doer, effort, why: null,
+    verdict_from: 'haiku', model: 'haiku-5-5', level: effort === 'small' ? 1 : 2, jev: null, ...extra })
+  const items = {
+    'task:demo-task': x('task', 'Write the onboarding guide for the demo project', 'A setup guide for new team members', 'continue', 'either', 'medium'),
+    'task:docs-refresh': x('task', 'Refresh the docs index', 'Rebuild the index after the folder change', 'continue', 'ai', 'small'),
+    'task:alpha-release': x('task', 'Prepare the alpha release notes', 'Release notes from the merged changes', 'continue', 'you', null,
+      { why: 'the wording for the announcement' }),
+    'inbox:demo-inbox-4': x('inbox', 'Release checklist', 'A review asked on the checklist PR', 'unclear', 'you', null, { reason: 'no answer from the team yet' }),
+    'inbox:20261009-0900-review-demo-a1b2': x('inbox', 'Review the demo report', 'The report waits for a read', 'close', 'you', null,
+      { reason: 'the linked issue is closed' }),
+  }
+  return { running, error: null, items,
+    last: { at: localIso(now - 20 * MIN), count: Object.keys(items).length, cost_ct: 0.42, cost_known: true, calls: 2, model: 'haiku-5-5', duration_sec: 18.5 } }
+}
+
+// a Jev order of a work page (jev.py rank()): the page's task and inbox rows, by an invented priority
+function jevOrder(page, now) {
+  const keys = []
+  for (const sec of page.sections ?? []) for (const it of sec.items ?? []) {
+    const key = it.inbox ? `inbox:${it.inbox}` : it.task ? `task:${it.task}` : null
+    if (key && !keys.some(k => k.key === key)) keys.push({ key, title: it.title })
+  }
+  const items = keys.map((k, i) => {
+    const u = Math.max(0.2, 0.9 - i * 0.2), im = i < 2 ? 0.8 : 0.4, ef = i % 2 ? 0.3 : 0.6, me = i === 0 ? 0.7 : 0.3
+    const priority = Math.round((0.42 * u + 0.38 * im + 0.12 * (1 - ef)) * 1000) / 1000
+    return { key: k.key, rank: i + 1, title: k.title, urgency: u, impact: im, effort: ef, only_me: me, first: i ? 0.1 : 0.6, priority, confidence: 0.8,
+      quadrant: u >= 0.5 && im >= 0.5 ? 'now' : im >= 0.5 ? 'plan' : u >= 0.5 ? 'hand' : 'drop', who: me >= 0.5 ? 'me' : 'delegate' }
+  })
+  return { at_ms: now, day: isoIn(0, now), took_ms: 2400, calls: 1, sent: items.length, skipped: { private: 0, section: 0, triage: 0, over: 0 },
+    first: items[0]?.key ?? null, items, usage: { input_tokens: 1840, output_tokens: 220 }, price: null }
+}
+
 /** A transport with the same interface as the real one, backed by the example state */
 export function createMockTransport(opts = {}) {
   const now = () => Date.now()
@@ -627,12 +778,25 @@ export function createMockTransport(opts = {}) {
   const mockMutes = [{ id: '20261008-0900-board-radar-0a1b', source: 'board-radar', scope: 'family', key_prefix: 'radar:stale:' }]   // invented, for the noise card
   let seq = state.model.seq
   const jev = createMockJev ? createMockJev() : null   // the Jev tab's mock: the server's once-per-day rule, invented tokens
+  const history = opts.empty ? [] : historyEntries(now())
+  const orders = {}                                       // the kept Jev order per work page, as jev.py keeps it
   const words = WORDS[opts.lang]
   const emit = (name, payload) => { if (handlers[name]) handlers[name](localize(payload, words)) }
   const note = (text, tone = 'info') => emit('note', { at: hhmm(now()), text, tone })
   const ok = data => ({ status: 200, ok: true, data: localize(data, words), error: null })
   const fail = (status, code, message, extra = {}) => ({ status, ok: false, data: { ok: false, ...extra, error: { code, message, field: null } }, error: { code, message, field: null } })
 
+  // what a close, drop or hide leaves in the history drawer, in the shape history.py keeps
+  const remember = (verb, keys) => {
+    const rows = state.model.sections.flatMap(s => s.rows)
+    const items = keys.map(key => {
+      const r = rows.find(x => x.key === key)
+      const kind = key.startsWith('task:') ? 'task' : r?.inbox_id ? 'inbox' : 'other'
+      const ident = kind === 'task' ? key.slice(5) : kind === 'inbox' ? r.inbox_id : null
+      return historyItem(key, r?.title ?? key, kind, verb === 'drop' ? 'dropped' : verb === 'hide' ? `hidden until ${isoIn(3, now())}` : 'done', ident)
+    })
+    history.unshift({ id: `h${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, at_ms: now(), verb, items, backfilled: false })
+  }
   const removeRows = keys => {
     for (const s of state.model.sections) {
       s.rows = s.rows.filter(r => !keys.includes(r.key))
@@ -700,6 +864,15 @@ export function createMockTransport(opts = {}) {
           '', '─'.repeat(40), '> '].join('\n')
         return ok({ ok: true, ref: tab.ref, name: tab.name, state: tab.state, workspace: tab.workspace, text, at_ms: now() })
       }
+      if (url.pathname === '/api/history') return ok({ ok: true, entries: history })
+      if (url.pathname === '/api/agents') return ok({ ok: true, ...state.agents })
+      if (url.pathname === '/api/ticker') return ok({ ok: true, ticker: state.ticker })
+      if (url.pathname === '/api/usage') return ok({ ok: true, usage: usageView(now()) })
+      if (url.pathname === '/api/graph') return ok({ ok: true, ...graphView() })
+      if (url.pathname === '/api/graph/node') {
+        const found = graphNode(url.searchParams.get('id'))
+        return found ? ok({ ok: true, ...found }) : fail(404, 'not_found', 'no such node')
+      }
       if (url.pathname === '/api/page') {
         const page = state.model.pages.find(p => p.id === url.searchParams.get('page'))
         const section = page?.sections.find(s => s.id === url.searchParams.get('section'))
@@ -766,7 +939,25 @@ export function createMockTransport(opts = {}) {
         const keys = (body?.keys ?? []).slice(0, 20)
         return ok({ ok: true, routes: Object.fromEntries(keys.map(k => [k, mockRoute(k, state.launch)])) })
       }
-      if (path === '/api/jev/run' && !jev) return fail(404, 'jev_off', 'Jev is off')
+      if (path === '/api/triage/run') {
+        // a run of a few seconds, then the same lines with a new time; nothing is asked for real
+        if (state.triage.running) return { status: 409, ok: false, data: { ok: false, triage: state.triage }, error: null }
+        state.triage = { ...state.triage, running: { started_ms: now(), why: 'click' } }
+        emit('triage', state.triage)
+        setTimeout(() => { state.triage = opts.empty ? { ...state.triage, running: null } : triageState(now()); emit('triage', state.triage) }, 3000)
+        return { status: 202, ok: true, data: { ok: true, triage: state.triage }, error: null }
+      }
+      if (path.startsWith('/api/jev/') && !jev) return fail(404, 'jev_off', 'Jev is off')
+      if (path === '/api/jev/rank') {
+        const page = state.model.pages.find(p => p.id === body?.page && p.jev)
+        if (!page) return fail(404, 'not_found', 'no page with jev: under that id')
+        const day = isoIn(0, now())
+        if (body.force || (body.daily && orders[page.id]?.day !== day)) {
+          await new Promise(res => setTimeout(res, 1200))
+          orders[page.id] = jevOrder(page, now())
+        }
+        return ok({ ok: true, page: page.id, order: orders[page.id] ?? null, today: { day, ratings: 0, input_tokens: 0, output_tokens: 0, unknown: 0 } })
+      }
       if (path === '/api/jev/run') {
         // the Jev tab: invented judgments from jev/logic.js, the real API is never asked
         const r = jev(state.model, { force: !!body?.force, cacheOnly: !!body?.cache_only })
@@ -782,7 +973,14 @@ export function createMockTransport(opts = {}) {
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
         if (['drop', 'done', 'later', 'hide', 'task_close', 'settle'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
           result.settled = keys
+          remember(verb, keys)
           removeRows(keys)
+        }
+        if (['task_reopen', 'inbox_reopen', 'unhide'].includes(verb)) {
+          // the undo of the history drawer: the newest item that hands out exactly this undo is taken back
+          const hit = history.flatMap(e => e.items).find(it => !it.undone_ms && it.undo?.verb === verb
+            && Object.entries(args).every(([k, v]) => k === 'as' || k === 'note' || it.undo.args[k] === v))
+          if (hit) hit.undone_ms = now()
         }
         if (verb === 'drop' && (args.reason === 'family' || args.reason === 'source')) {
           result.muted = `20261010-1200-mock-${mockMutes.length}`

@@ -2743,6 +2743,101 @@ test('ticker: the demo saves and resets its settings, refreshes and edits with i
   }
 })
 
+// Every route the server answers, read from its source: what the page may ask, the mock answers too.
+// /api/events is the event stream (the transport's events()), /api/health is for scripts, never the page.
+const MOCK_ROUTE_ALLOW = new Set(['GET /api/events', 'GET /api/health'])
+
+function serverRoutes() {
+  const server = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'server.py'), 'utf8')
+  const jev = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'jev.py'), 'utf8')
+  const postAt = server.indexOf('    def post(self)')
+  assert.ok(postAt > 0, 'server.py has its post handler')
+  const out = []
+  for (const m of server.matchAll(/path == "(\/api\/[a-z/]+)"/g)) out.push(`${m.index < postAt ? 'GET' : 'POST'} ${m[1]}`)
+  const jevRoutes = jev.match(/if path not in \(([^)]*)\)/)
+  assert.ok(jevRoutes, 'jev.py names its routes')
+  for (const m of jevRoutes[1].matchAll(/"(\/api\/jev\/[a-z]+)"/g)) out.push(`POST ${m[1]}`)
+  return [...new Set(out)]
+}
+
+test('mock parity: every server route has a well-formed mock answer, unless it is allowlisted', async () => {
+  const routes = serverRoutes()
+  for (const r of ['GET /api/usage', 'GET /api/graph', 'GET /api/graph/node', 'GET /api/history', 'GET /api/agents',
+    'GET /api/ticker', 'POST /api/triage/run', 'POST /api/jev/run', 'POST /api/jev/rank']) assert.ok(routes.includes(r), `found ${r}`)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-parity-'))
+  try {
+    fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
+    const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
+    const tr = mock.createMockTransport({ lang: 'en' })
+    const st = (await tr.get('/api/state')).data
+    const page = st.model.pages.find(p => p.sections.length)
+    const jevPage = st.model.pages.find(p => p.jev)
+    const node = (await tr.get('/api/graph')).data?.nodes?.[0]?.id ?? ''
+    const inbox = st.model.sections.flatMap(s => s.rows).find(r => r.inbox_id)
+    const query = {
+      '/api/page': `page=${page.id}&section=${page.sections[0].id}`, '/api/tab/screen': `ref=${encodeURIComponent(st.tabs.tabs[0].ref)}`,
+      '/api/task': 'slug=demo-task', '/api/inbox': `id=${inbox.inbox_id}`, '/api/github': `ref=${encodeURIComponent('example/repo#12')}`,
+      '/api/graph/node': `id=${encodeURIComponent(node)}`,
+    }
+    const body = {
+      '/api/action': { verb: 'snapshot_list', args: {} }, '/api/ask': { kind: 'free', args: { text: 'hi' }, via: 'quick' },
+      '/api/route': { keys: ['task:demo-task'] }, '/api/reload': {}, '/api/triage/run': { fresh: false },
+      '/api/jev/run': {}, '/api/jev/rank': { page: jevPage?.id ?? '', force: true },
+    }
+    for (const route of routes) {
+      if (MOCK_ROUTE_ALLOW.has(route)) continue
+      const [method, p] = route.split(' ')
+      const res = method === 'GET' ? await tr.get(query[p] ? `${p}?${query[p]}` : p) : await tr.post(p, body[p] ?? {})
+      assert.notEqual(res.error?.message, 'unknown path', `${route}: the mock has no answer; add one to mock.js or allowlist it here`)
+      assert.equal(res.ok, true, `${route}: ${JSON.stringify(res.error)}`)
+      assert.notEqual(res.data?.ok, false, route)
+    }
+    // the shapes the pages read: usage.view(), graph.view() and node(), history, agents, ticker, triage, a Jev order
+    const usage = (await tr.get('/api/usage')).data.usage
+    assert.equal(usage.days.length, 7)
+    for (const d of usage.days) for (const k of ['session', 'subagent', 'worker']) assert.equal(typeof d.sources[k].output, 'number', `${d.day} ${k}`)
+    assert.ok(logic.usageBars(usage).max > 0, 'the usage card draws bars')
+    const graph = (await tr.get('/api/graph')).data
+    const ids = new Set(graph.nodes.map(n => n.id))
+    assert.ok(graph.nodes.length >= 8 && graph.edges.length >= 6)
+    for (const n of graph.nodes) assert.ok(logic.GRAPH_GROUPS.includes(n.group), n.id)
+    for (const e of graph.edges) assert.ok(ids.has(e.s) && ids.has(e.t), `${e.s} -> ${e.t}`)
+    const detail = (await tr.get(`/api/graph/node?id=${encodeURIComponent(node)}`)).data
+    assert.equal(detail.id, node)
+    assert.equal(typeof detail.text, 'string')
+    assert.ok(Array.isArray(detail.out) && Array.isArray(detail.in) && detail.out.length + detail.in.length > 0)
+    assert.equal((await tr.get('/api/graph/node?id=nowhere.md')).error.code, 'not_found')
+    const history = (await tr.get('/api/history')).data.entries
+    assert.ok(history.length >= 2)
+    for (const e of history) assert.ok(typeof e.at_ms === 'number' && e.items.length && e.items.every(it => it.title && it.kind && it.did), e.id)
+    const agents = (await tr.get('/api/agents')).data
+    assert.ok(agents.peers.length >= 1 && agents.peers.every(p => p.id && p.reach))
+    assert.ok(agents.convs.every(c => agents.peers.some(p => p.id === c.peer) && c.turns.length))
+    assert.deepEqual(st.agents.peers.map(p => p.id), agents.peers.map(p => p.id), 'the state carries the same peers')
+    assert.ok((await tr.get('/api/ticker')).data.ticker.items.length >= 3)
+    assert.ok(Object.keys(st.triage.items).length >= 3, 'the state carries a triage')
+    const tri = await tr.post('/api/triage/run', { fresh: false })
+    assert.equal(tri.status, 202)
+    assert.ok(tri.data.triage.running)
+    assert.ok(jevPage, 'a page with jev: in the mock')
+    const order = (await tr.post('/api/jev/rank', { page: jevPage.id, force: true })).data.order
+    assert.ok(order.items.length >= 1 && order.items.every((x, i) => x.rank === i + 1 && x.key))
+    assert.equal(order.first, order.items[0].key)
+    const kept = (await tr.post('/api/jev/rank', { page: jevPage.id, force: false })).data.order
+    assert.equal(kept.at_ms, order.at_ms, 'without force the kept order comes back')
+    assert.equal((await tr.post('/api/jev/rank', { page: 'nowhere' })).error.code, 'not_found')
+    // a close lands in the history with its undo, and the undo takes it back
+    await tr.post('/api/action', { verb: 'done', args: { key: inbox.key } })
+    const top = (await tr.get('/api/history')).data.entries[0]
+    assert.deepEqual([top.verb, top.items[0].key, top.items[0].undo], ['done', inbox.key, { verb: 'inbox_reopen', args: { id: inbox.inbox_id } }])
+    await tr.post('/api/action', { verb: 'inbox_reopen', args: { id: inbox.inbox_id } })
+    assert.equal(typeof (await tr.get('/api/history')).data.entries[0].items[0].undone_ms, 'number')
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('ticker names a token source as the usage page does, not by its raw id', () => {
   const it = { key: 'outlier', vars: ['worker', 6.9] }
   assert.match(logic.tickerText(it, text.TABLES.de), /Programme \(claude -p\)/)
