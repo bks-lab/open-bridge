@@ -243,7 +243,8 @@ def collect(section: dict, ctx) -> list:
             state = known_state(str(raw.get("status") or ""), board)
             if state in counts:              # every open card, drafts too, before the person's filters
                 counts[state] += 1
-            item = ts.normalize_gh_item(raw, board, me)
+            # a draft card is a row too (type draft, no number, no link): the count above has it
+            item = ts.normalize_gh_item(raw, board, me, drafts=True)
             if not item:
                 continue
             if query.get("assigned_to_me") and not item["assigned_to_me"]:
@@ -253,7 +254,8 @@ def collect(section: dict, ctx) -> list:
             if not keep_done and item["state"] in ("done", "removed"):
                 continue
             out.append({**{k: v for k, v in item.items() if k not in ("number", "repo")},
-                        "id": f"{item.get('repo') or board['org']}#{item['number']}",
+                        "id": item["id"] if item.get("type") == "draft"
+                        else f"{item.get('repo') or board['org']}#{item['number']}",
                         "type": str(item.get("type") or "issue").lower(),
                         "project": board["name"], "tracker": "github-board",
                         "priority": raw.get("priority") if isinstance(raw.get("priority"), str) else None,

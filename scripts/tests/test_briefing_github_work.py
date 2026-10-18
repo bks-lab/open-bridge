@@ -651,3 +651,97 @@ def test_a_cards_priority_reaches_the_dashboard_row():
     assert bv.github_facts({**card, "priority": None}, NOW)["priority"] is None
     assert model.parse_gh(facts)["priority"] == "P1"
     assert model.parse_gh({**facts, "priority": 3})["priority"] is None
+
+
+# ---------------------------------------------------------------- draft cards (#407)
+# A project item without a backing issue or pull request: no number, no URL. It was dropped before the
+# briefing while the board's count still had it, so the count and the rows disagreed.
+
+DRAFT = {"id": "PVTI_d1", "status": "Todo", "assignees": ["octo"], "labels": [], "title": "Private finding",
+         "content": {"type": "DraftIssue", "title": "Private finding", "body": "SECRET-DRAFT-BODY",
+                     "updatedAt": "2026-10-03T09:00:00Z"}}
+DRAFT_ID = "draft:tool:PVTI_d1"
+
+
+def board_rows(root, query=None, run=None):
+    run = run or FakeRun(answers({"items": [*CARDS["items"], DRAFT]}))
+    section = {"kind": "tracker", "id": "boards", "provider": "github-board", "summary": True, "query": query or {}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, bf.Context(root, now=NOW, run=run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    return sec
+
+
+def test_a_draft_card_is_one_row_of_type_draft_without_number_or_link(tmp_path):
+    sec = board_rows(bridge(tmp_path))
+    rows = {i["id"]: i for i in sec["items"]}
+    draft = rows[DRAFT_ID]
+    assert draft["type"] == "draft" and draft["title"] == "Private finding"
+    assert draft["raw_state"] == "Todo" and draft["state"] == "ready"
+    assert draft.get("url") is None and "number" not in draft and draft["board"]["slug"] == "tool"
+    assert draft["assigned_to_me"] is True and draft["changed_at"] == "2026-10-03T09:00:00Z"
+    # every card shown: the board's count and the visible rows agree
+    assert sec["summary"][0]["open"] == len(sec["items"]) == 3
+
+
+def test_a_draft_cards_body_reaches_no_row_and_no_cache_file(tmp_path):
+    root = bridge(tmp_path)
+    run = FakeRun(answers({"items": [*CARDS["items"], DRAFT]}))
+    profile = {"id": "p", "sections": [{"kind": "tracker", "id": "boards", "provider": "github-board",
+                                        "cache_minutes": 5, "query": {}}]}
+    result = bf.collect(root, profile, bf.Context(root, now=NOW, run=run))
+    assert DRAFT_ID in {i["id"] for i in result["sections"][0]["items"]}
+    assert "SECRET-DRAFT-BODY" not in json.dumps(result, default=str)
+    written = [p for p in root.rglob("*") if p.is_file()]
+    assert any(".bridge" in p.parts for p in written)          # the section's answer was kept
+    assert not [p for p in written if "SECRET-DRAFT-BODY" in p.read_text(encoding="utf-8", errors="ignore")]
+    ts = bf._load_module("tracker_sync", bf.ROOT / "scripts" / "tracker-sync.py")
+    assert ts.normalize_gh_item(DRAFT, {"slug": "tool"}, "octo") is None     # tracker-sync's snapshots keep none
+
+
+def test_a_draft_offers_analyse_and_make_it_a_task_only(tmp_path):
+    rows, _ = collect(bridge(tmp_path), run=FakeRun(answers({"items": [*CARDS["items"], DRAFT]})))
+    assert rows[DRAFT_ID]["type"] == "draft"                   # github-work keeps the kind
+    assert ids(rows[DRAFT_ID]) == ["analyze", "adopt"]
+    words = bf._view().labels_for("en")
+    other = {"id": DRAFT_ID, "type": "draft", "state": "in_progress", "assignee": "hubot",
+             "board": {"slug": "tool", "name": "Tool board"}}
+    section = {"provider": "github-work"}
+    assert [x["id"] for x in bf.tracker_steps(section, other, words)] == ["analyze", "adopt"]
+    # a section's own step reaches a draft only when it names drafts: its prompt may need an issue URL
+    own = dict(section, row_steps=[{"id": "triage", "label": "Triage", "prompt": "triage {url}"},
+                                   {"id": "issue_only", "label": "Issue", "types": ["issue"]},
+                                   {"id": "file", "label": "File it", "types": ["draft"], "prompt": "file {id}"}])
+    assert [x["id"] for x in bf.tracker_steps(own, other, words)] == ["file", "analyze", "adopt"]
+
+
+def test_a_drafts_step_comes_back_as_a_tab_without_an_issue_link(tmp_path, capsys, monkeypatch):
+    root = act_bridge(tmp_path)
+    c = bf.Context(root, now=dt.datetime.now(), run=FakeRun(answers({"items": [*CARDS["items"], DRAFT]})))
+    bf.collect(root, yaml.safe_load((root / "workflow" / "briefings" / "p.yaml").read_text()), c)
+    monkeypatch.setattr(bf, "_default_run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked GitHub")))
+    code = bf.main(["--root", str(root), "act", "p", "work", DRAFT_ID, "analyze"])
+    out = capsys.readouterr().out
+    assert code == 0, out
+    launch = json.loads(out)["launch"]
+    assert launch["key"] == f"tracker:analyze:{DRAFT_ID}"
+    assert "draft card" in launch["prompt"] and "PVTI_d1" in launch["prompt"]
+    assert "gh issue view" not in launch["prompt"] and "Link:" not in launch["prompt"]
+    for action in ("implement", "review", "remind", "sync"):
+        assert bf.main(["--root", str(root), "act", "p", "work", DRAFT_ID, action]) == 2, action
+    capsys.readouterr()
+    adopt = bf.tracker_prompt({"id": "adopt", "prompt": None}, {"id": DRAFT_ID, "type": "draft", "title": "T"},
+                              bf._view().labels_for("de"))
+    assert "Entwurfskarte" in adopt and "Issue-Nummer" not in adopt
+
+
+def test_the_view_marks_a_draft_and_gives_it_no_link():
+    if str(ROOT / "scripts" / "lib") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import briefing_view as bv   # noqa: E402
+    from bridge_cockpit import model   # noqa: E402
+    item = {"id": DRAFT_ID, "title": "Private finding", "type": "draft", "state": "ready", "raw_state": "Todo",
+            "url": None, "actions": [{"id": "analyze", "label": "Analyse"}, {"id": "adopt", "label": "Make it a task"}]}
+    row = bv._page_row("tracker", item, {"id": "work", "view": "board"}, NOW, bv.labels_for("en"))
+    assert row["row_id"] == DRAFT_ID and "link" not in row
+    assert row["gh"]["type"] == "draft" and row["gh"]["number"] is None and row["gh"]["repo"] is None
+    assert model.parse_gh(row["gh"])["type"] == "draft"

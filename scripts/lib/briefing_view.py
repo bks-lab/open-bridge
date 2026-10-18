@@ -113,6 +113,7 @@ LABELS = {
     "gh_head": "GitHub {type} {id}: {title}",
     "gh_type_issue": "issue",
     "gh_type_pr": "pull request",
+    "gh_type_draft": "draft card",
     "gh_fact_link": "Link",
     "gh_fact_status": "Status",
     "gh_fact_board": "Board",
@@ -135,6 +136,16 @@ LABELS = {
     "gh_do_adopt": ("Make this a task of this Bridge. First look in work/tasks/ and work/streams/ for one that already "
                     "fits; else create it from the template (rules/task-management-workflow.md) with sync.github naming "
                     "the repository, the issue number and the board. Change nothing on GitHub."),
+    # a draft card has no issue, no number and no URL; its text may be private, so it stays where it is
+    "gh_do_analyze_draft": ("This is a draft card on the board, not an issue: there is no number and no link. Read its "
+                            "text on the board (gh project item-list with the board's number and owner, the card with "
+                            "this project item id) and the board config. Answer here: what is asked, what is unclear, "
+                            "and a plan in a few steps. Change nothing on GitHub and do not turn the card into an issue: "
+                            "its text may be meant to stay private."),
+    "gh_do_adopt_draft": ("Make this draft card a task of this Bridge. First look in work/tasks/ and work/streams/ for one "
+                          "that already fits; else create it from the template (rules/task-management-workflow.md) and "
+                          "name the board and this project item id in it, since there is no issue to sync. Keep the "
+                          "card's text out of anything that leaves this machine. Change nothing on GitHub."),
     "gh_do_sync": ("Compare the board status, the state of the issue or pull request and the task of this Bridge "
                    "(python3 scripts/tracker-sync.py diff, the tracker-sync skill). List what differs and propose the "
                    "change on each side; apply a board change only through the github-projects-manager skill and only "
@@ -251,6 +262,7 @@ LABELS_DE = {
     "gh_head": "GitHub-{type} {id}: {title}",
     "gh_type_issue": "Issue",
     "gh_type_pr": "Pull Request",
+    "gh_type_draft": "Entwurfskarte",
     "gh_fact_link": "Link",
     "gh_fact_status": "Status",
     "gh_fact_board": "Board",
@@ -274,6 +286,16 @@ LABELS_DE = {
     "gh_do_adopt": ("Mach daraus eine Aufgabe dieser Bridge. Sieh zuerst in work/tasks/ und work/streams/ nach, ob eine "
                     "schon passt; sonst leg sie nach der Vorlage an (rules/task-management-workflow.md), mit sync.github "
                     "auf Repo, Issue-Nummer und Board. Ändere nichts auf GitHub."),
+    "gh_do_analyze_draft": ("Das ist eine Entwurfskarte auf dem Board, kein Issue: es gibt keine Nummer und keinen Link. "
+                            "Lies ihren Text auf dem Board (gh project item-list mit Nummer und Owner des Boards, die "
+                            "Karte mit dieser Projekt-Item-ID) und die Board-Konfiguration. Antworte hier: was verlangt "
+                            "ist, was unklar ist, und ein Plan in wenigen Schritten. Ändere nichts auf GitHub und mach "
+                            "aus der Karte kein Issue: ihr Text soll womöglich privat bleiben."),
+    "gh_do_adopt_draft": ("Mach aus dieser Entwurfskarte eine Aufgabe dieser Bridge. Sieh zuerst in work/tasks/ und "
+                          "work/streams/ nach, ob eine schon passt; sonst leg sie nach der Vorlage an "
+                          "(rules/task-management-workflow.md) und nenne darin das Board und diese Projekt-Item-ID, "
+                          "denn es gibt kein Issue zum Abgleichen. Der Text der Karte bleibt aus allem heraus, was "
+                          "diese Maschine verlässt. Ändere nichts auf GitHub."),
     "gh_do_sync": ("Vergleiche den Board-Status, den Stand des Issues oder PRs und die Aufgabe dieser Bridge "
                    "(python3 scripts/tracker-sync.py diff, der Skill tracker-sync). Nenne, was abweicht, und schlage die "
                    "Änderung je Seite vor; eine Board-Änderung nur über den Skill github-projects-manager und erst nach "
@@ -1740,8 +1762,9 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
              and ACTION_ID_RE.match(a["id"]) and isinstance(a.get("label"), str) and a["label"].strip()][:8]
     if kind in ("command", "calendar", "tracker") and steps and isinstance(item.get("id"), str):
         row["actions"], row["row_id"] = steps, item["id"][:200]
-    if kind == "tracker" and isinstance(item.get("id"), str) and re.match(r"^[\w.-]+/[\w.-]+#\d+\Z", item["id"]):
-        row["row_id"] = item["id"]           # a GitHub row: the dashboard asks for its detail by it
+    if kind == "tracker" and isinstance(item.get("id"), str) and (
+            re.match(r"^[\w.-]+/[\w.-]+#\d+\Z", item["id"]) or item.get("type") == "draft"):
+        row["row_id"] = item["id"]           # a GitHub row: the dashboard asks for its detail by it (not a draft's)
         row["flags"] = github_flags(item, now)
         if _text(item.get("assignee")):
             row["who"] = _text(item["assignee"])[:60]     # the person filter
@@ -1911,7 +1934,8 @@ def github_facts(item: dict, now: dt.datetime) -> dict:
     quiet = (now - changed).days if changed is not None else None
     status = re.sub(r"^[^0-9A-Za-zÄÖÜäöü]+", "", _text(item.get("raw_state"))).strip()   # without its emoji
     return {"title": _text(item.get("title"))[:300], "repo": m.group(1) if m else None,
-            "number": int(m.group(2)) if m else None, "type": "pr" if item.get("type") == "pr" else "issue",
+            "number": int(m.group(2)) if m else None,
+            "type": item["type"] if item.get("type") in ("pr", "draft") else "issue",
             "state": _text(item.get("state")) or None, "status": status[:40] or None,
             "priority": _text(item.get("priority"))[:20] or None,
             "labels": [_text(x)[:40] for x in item.get("labels") or [] if _text(x)][:4], "people": people,

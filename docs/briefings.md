@@ -111,7 +111,7 @@ against recorded answers (`scripts/tests/fixtures/briefing/<provider>/`).
 | provider | Reaches it through | `query` keys |
 |---|---|---|
 | `github` | `gh search` (gh's own login) | `assignee` (default `@me`), `owners`, `repos`, `kinds` (issues, prs), `state`, `labels`, `review_requested`, `authored` (true: your own open PRs, with their age), `others_prs` (N: colleagues' open, non-draft PRs in `owners`/`repos` updated in the last N days, bots and your own left out), `limit` |
-| `github-board` | one lean GraphQL query per board (`gh project item-list` only when it cannot answer), boards from `github_projects:` in the ecosystem files, state maps and the board's fields from `workflow/projects/` (the same code as `scripts/tracker-sync.py`; see below). GitHub filters before the limit (`filter`, default `is:open`): gh lists the oldest cards first, so without it a board with more cards than `limit` lost its newest, open ones. With `summary: true` on the section, also one line per board with its open cards per state, counted before `assigned_to_me` and the other filters, with the section's `state_map` applied; a status no map knows (Parked, Canceled) is not open work, and a board that filled `limit` says so | `boards`, `assigned_to_me`, `states`, `include_done`, `filter` (the board's filter syntax; `""` for every card), `limit` |
+| `github-board` | one lean GraphQL query per board (`gh project item-list` only when it cannot answer), boards from `github_projects:` in the ecosystem files, state maps and the board's fields from `workflow/projects/` (the same code as `scripts/tracker-sync.py`; see below). GitHub filters before the limit (`filter`, default `is:open`): gh lists the oldest cards first, so without it a board with more cards than `limit` lost its newest, open ones. Draft cards are rows too (type `draft`, no number, no link, never their text), so with every card shown the counts and the rows agree. With `summary: true` on the section, also one line per board with its open cards per state, counted before `assigned_to_me` and the other filters, with the section's `state_map` applied; a status no map knows (Parked, Canceled) is not open work, and a board that filled `limit` says so | `boards`, `assigned_to_me`, `states`, `include_done`, `filter` (the board's filter syntax; `""` for every card), `limit` |
 | `github-work` | both of the above, merged: one row per issue or pull request (see GitHub work) | every `github` key, plus `boards` (the others start switched off), `cards` (`mine`, default, or `all` open cards), `filter`, `board_limit`, `links` (false: do not ask which pull requests close an issue), `done_days` (N, default 7: also count your issues closed and pull requests merged in the last N days; 0 asks none) |
 | `gitlab` | `glab issue list` | `repos` (required), `assignee`, `state`, `labels`, `limit` |
 | `ado` | `az boards query` (WIQL) | `wiql`, `organization`, `project`, `limit` |
@@ -405,7 +405,13 @@ carries the row's facts (link, status, board, its config file, the task, the
 pull requests) and an instruction with its gates: read only and drafts until a
 yes for Analyse and Review, a feature branch and a draft pull request for
 Implement, board fields only through the `github-projects-manager` skill, never a
-merge. `default_steps: false` turns them off; a section adds its own:
+merge. A board's **draft card** (a project item without an issue or pull
+request behind it) is a row too, id `draft:<board slug>:<project item id>` and
+type `draft`, with its title, status and assignees but no number and no link,
+and never its text. It offers only Analyse and Make it a task, each told that
+there is no issue and that the card's text stays where it is; a section's own
+step reaches it only when its `types` name `draft`. `default_steps: false` turns
+the built-in steps off; a section adds its own:
 
 ```yaml
 - kind: tracker
@@ -416,7 +422,7 @@ merge. `default_steps: false` turns them off; a section adds its own:
   row_steps:
     - id: implement              # stands in for the built-in Implement
       label: "Run the pipeline"
-      types: [issue]             # optional: issue, pr
+      types: [issue]             # optional: issue, pr, draft
       boards: [example-board]    # optional: board slugs
       states: [ready]            # optional: normalized states
       match: "^feat"             # optional: a pattern on the title

@@ -577,10 +577,14 @@ def resolve_boards(root: Path, registries: dict) -> list[dict]:
     return boards
 
 
-def normalize_gh_item(raw: dict, board: dict, assignee_me: str | None) -> dict | None:
+def normalize_gh_item(raw: dict, board: dict, assignee_me: str | None,
+                      drafts: bool = False) -> dict | None:
+    """One board card as a row. A draft card (no backing issue or PR, so no
+    number and no URL) is left out unless `drafts` asks for it; then its id is
+    `draft:<board>:<item id>` and its type `draft`. Its body is never copied."""
     content = raw.get("content") or {}
     number = content.get("number")
-    if number is None:
+    if number is None and not (drafts and raw.get("id")):
         return None  # draft item without a backing issue/PR
     reg = board.get("registry")
     state_map = (reg or {}).get("state_map") or {}
@@ -594,6 +598,20 @@ def normalize_gh_item(raw: dict, board: dict, assignee_me: str | None) -> dict |
     for lab in raw.get("labels", []) or []:
         labels.append(lab.get("name") if isinstance(lab, dict) else lab)
 
+    if number is None:
+        return {
+            "id": f"draft:{board.get('slug')}:{raw['id']}",
+            "title": content.get("title") or raw.get("title"),
+            "raw_state": raw_state,
+            "state": state,
+            "type": "draft",
+            "assignee": assignees[0] if assignees else None,
+            "assignees": assignees,
+            "assigned_to_me": bool(assignee_me) and assignee_me in assignees,
+            "url": None,
+            "changed_at": raw.get("updatedAt") or content.get("updatedAt"),
+            "labels": labels,
+        }
     repo = content.get("repository") or board.get("issue_repo")
     return {
         "id": f"#{number}",

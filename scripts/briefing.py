@@ -1370,7 +1370,7 @@ def sec_tracker(section: dict, ctx: Context) -> list:
         link_local(items, ctx)
     words = None
     for item in items:
-        if not GLOBAL_ROW.match(str(item.get("id") or "")):
+        if not (GLOBAL_ROW.match(str(item.get("id") or "")) or DRAFT_ROW.match(str(item.get("id") or ""))):
             continue
         words = words or _view().labels_for(conversation_language(ctx.cfg))
         steps = tracker_steps(section, item, words)
@@ -1381,6 +1381,8 @@ def sec_tracker(section: dict, ctx: Context) -> list:
 
 
 GLOBAL_ROW = re.compile(r"^([\w.-]+/[\w.-]+)#(\d+)\Z")
+# a board's draft card (github-board): no issue behind it, so no number and no URL; the project item id names it
+DRAFT_ROW = re.compile(r"^draft:[\w.-]+:[\w-]+\Z")
 
 
 def _issue_refs(task: dict) -> list:
@@ -1414,7 +1416,8 @@ def link_local(items: list, ctx: Context) -> None:
     cannot be read the field is left out and the row says so in `unknown`, since unknown is not the
     same as untracked: an item a rule filed on it stays open until the tasks can be read again."""
     rows = {str(i.get("id")): i for i in items if GLOBAL_ROW.match(str(i.get("id") or ""))}
-    if not rows:
+    drafts = [i for i in items if DRAFT_ROW.match(str(i.get("id") or ""))]
+    if not rows and not drafts:
         return
     try:
         ts = _load_module("tracker_sync", ROOT / "scripts" / "tracker-sync.py")
@@ -1449,6 +1452,9 @@ def link_local(items: list, ctx: Context) -> None:
         for rid, row in rows.items():
             if key.endswith((f":{rid}", f"/{rid}")):
                 row["inbox"] = item.id            # the newest wins: sorted oldest first
+        for row in drafts:                        # a draft is named by no task, but an agent may run on it
+            if key.endswith(f":{row['id']}"):
+                row["inbox"] = item.id
 
 
 BUILTIN_ROW_STEPS = ("analyze", "implement", "review", "adopt", "sync", "remind")
@@ -1459,11 +1465,12 @@ def tracker_steps(section: dict, item: dict, words: dict) -> list:
     the row, then the built-in ones of a GitHub provider (unless `default_steps: false`): Analyse
     always, Implement on an issue without a pull request, Review on a pull request or an issue that has
     one, Make it a task on an issue no live task syncs, Sync status on a row with a board or a task, Remind on a
-    row someone else is assigned to. A row
+    row someone else is assigned to. A draft card has no issue and no URL: it offers Analyse and Make it a task
+    only, and a section's own step only when its `types` name `draft`. A row
     that is done offers none. Every step starts an agent tab; none acts on GitHub by itself."""
     if item.get("state") in ("done", "removed"):
         return []
-    kind = "pr" if item.get("type") == "pr" else "issue"
+    kind = "pr" if item.get("type") == "pr" else "draft" if item.get("type") == "draft" else "issue"
     board = (item.get("board") or {}).get("slug") if isinstance(item.get("board"), dict) else None
     steps = []
     for step in section.get("row_steps") or []:
@@ -1471,6 +1478,8 @@ def tracker_steps(section: dict, item: dict, words: dict) -> list:
             continue
         if step.get("types") and kind not in step["types"]:
             continue
+        if kind == "draft" and not step.get("types"):
+            continue                  # a step for every row may need the issue a draft does not have
         if step.get("states") and item.get("state") not in step["states"]:
             continue
         if step.get("boards") and board not in step["boards"]:
@@ -1485,10 +1494,12 @@ def tracker_steps(section: dict, item: dict, words: dict) -> list:
     if section.get("provider") in GITHUB_TRACKERS and section.get("default_steps", True) is not False:
         has_pr = bool(item.get("prs"))
         offer = {"analyze": True, "implement": kind == "issue" and not has_pr, "review": kind == "pr" or has_pr,
-                 "adopt": kind == "issue" and not _tracked(item) and not item.get("task"),
+                 "adopt": kind in ("issue", "draft") and not _tracked(item) and not item.get("task"),
                  "sync": bool(board or item.get("linked_task")),
                  # someone else's card: a reminder to them, drafted, sent only after a yes
                  "remind": bool(item.get("assignee")) and not item.get("assigned_to_me")}
+        if kind == "draft":       # no issue to sync, comment on or remind on
+            offer.update(sync=False, remind=False, review=False)
         for sid in BUILTIN_ROW_STEPS:
             if offer[sid] and sid not in {x["id"] for x in steps}:
                 steps.append({"id": sid, "label": words[f"gh_step_{sid}"], "prompt": None})
@@ -1502,8 +1513,9 @@ def tracker_prompt(step: dict, item: dict, words: dict) -> str:
     task = item.get("linked_task") if isinstance(item.get("linked_task"), dict) else {}
     prs = ", ".join(f"{p.get('id')}{' (draft)' if p.get('draft') else ''}" for p in item.get("prs") or []
                     if isinstance(p, dict))
+    draft = item.get("type") == "draft"
     values = {"id": str(item.get("id") or ""), "title": str(item.get("title") or ""), "url": str(item.get("url") or ""),
-              "type": "pull request" if item.get("type") == "pr" else "issue", "state": str(item.get("state") or ""),
+              "type": "pull request" if item.get("type") == "pr" else "draft card" if draft else "issue", "state": str(item.get("state") or ""),
               "status": str(item.get("raw_state") or ""), "board": str(board.get("name") or ""),
               "board_slug": str(board.get("slug") or ""), "board_config": str(board.get("config") or ""),
               "task": str(task.get("slug") or ""), "prs": prs, "assignee": str(item.get("assignee") or "")}
@@ -1516,10 +1528,10 @@ def tracker_prompt(step: dict, item: dict, words: dict) -> str:
              (words["gh_fact_task"], str(task.get("path") or "")), (words["gh_fact_prs"], prs),
              (words["gh_fact_assignee"], f"@{values['assignee']}" if values["assignee"] else ""),
              (words["gh_fact_note"], str(item.get("note") or ""))]
-    head = words["gh_head"].format(type=words["gh_type_pr"] if item.get("type") == "pr" else words["gh_type_issue"],
-                                   id=values["id"], title=values["title"])
+    kind = "pr" if item.get("type") == "pr" else "draft" if draft else "issue"
+    head = words["gh_head"].format(type=words[f"gh_type_{kind}"], id=values["id"], title=values["title"])
     return "\n".join([head, *[f"{label}: {value}" for label, value in facts if value], "",
-                      words[f"gh_do_{step['id']}"]])
+                      words[f"gh_do_{step['id']}_draft" if draft else f"gh_do_{step['id']}"]])
 
 
 KINDS = {"inbox": sec_inbox, "advise": sec_advise, "workplace": sec_workplace, "tasks": sec_tasks,
@@ -2209,7 +2221,7 @@ def _tracker_rows(root: Path, cfg: dict, profile: dict, section: dict) -> list:
 def _act_tracker(root: Path, cfg: dict, profile: dict, section: dict, row_id: str, action: str) -> tuple[int, str]:
     """A GitHub row's step runs nothing here either: it hands back the tab to start, keyed
     `tracker:<step>:<row id>`, so a second click finds the same inbox item and the row names it."""
-    if not GLOBAL_ROW.match(row_id or "") or not ACTION_RE.match(action or ""):
+    if not (GLOBAL_ROW.match(row_id or "") or DRAFT_ROW.match(row_id or "")) or not ACTION_RE.match(action or ""):
         return 2, "not a row id or not an action"
     try:
         rows = _tracker_rows(root, cfg, profile, section)

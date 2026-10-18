@@ -207,7 +207,7 @@ def parse_gh(value: Any) -> dict | None:
     texts = lambda v, n: [x for x in _list(v) if isinstance(x, str)][:n]   # noqa: E731
     return {"title": as_text(value.get("title")), "repo": as_text_or_null(value.get("repo")),
             "number": value.get("number") if isinstance(value.get("number"), int) else None,
-            "type": "pr" if value.get("type") == "pr" else "issue", "state": as_text_or_null(value.get("state")),
+            "type": value["type"] if value.get("type") in ("pr", "draft") else "issue", "state": as_text_or_null(value.get("state")),
             "status": as_text_or_null(value.get("status")), "priority": as_text_or_null(value.get("priority")),
             "labels": texts(value.get("labels"), 4),
             "people": texts(value.get("people"), 3),

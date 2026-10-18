@@ -199,12 +199,14 @@ export function leadStep(it) {
 }
 
 function TypeIcon({ type, token }) {
-  // an issue: a ring with a dot; a pull request: two branches joining
+  // an issue: a ring with a dot; a pull request: two branches joining; a draft card: a dashed ring, nothing behind it
   const d = type === 'pr'
     ? 'M6 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM6 7v10M6 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 17V9a3 3 0 0 0-3-3h-4M13 4l-2 2 2 2'
-    : 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z'
+    : type === 'draft' ? 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z'
+      : 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z'
   return html`<svg class=${`ghl-icon tk-${token}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d=${d} /></svg>`
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray=${type === 'draft' ? '3 3' : null}
+    aria-hidden="true" focusable="false"><path d=${d} /></svg>`
 }
 
 function matches(it, q) {
@@ -234,6 +236,7 @@ function GhRow({ it, page, section, s, c, byKey }) {
       <p class="ghl-title">${g.title || it.title}</p>
       <p class="ghl-meta">
         ${g.number ? html`<span class="mono muted" title=${g.repo ?? ''}>${repoName}#${g.number}</span>` : null}
+        ${g.type === 'draft' ? html`<span class="ghl-chip ghl-chip-draft" title=${t.gh.draftCardTitle}>${t.gh.draftCard}</span>` : null}
         <${PrioChip} priority=${g.priority} />
         ${g.status || g.state ? html`<span class=${`ghl-state tk-${token}`}><span class="ghl-dot"></span>${g.status || t.gh.state[g.state] || g.state}</span>` : null}
         ${(g.labels ?? []).map(l => html`<span key=${l} class="gh-label">${l}</span>`)}

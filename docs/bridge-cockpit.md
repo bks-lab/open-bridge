@@ -863,7 +863,9 @@ task row. Any other item whose key ends in the row id (a daily radar's, say)
 attaches to the row the same way and never adds a row. An issue assigned to you
 that no live task or stream syncs carries a "no task" chip and counts in its
 figure, so Make it a task and Analyse are one click away, and Implement too
-when no pull request closes it. A row whose issue a
+when no pull request closes it. A board's draft card (no issue behind it) is a
+row with a dashed icon and a "draft card" chip, no number and no link; it offers
+Analyse and Make it a task only, and opening it reads nothing from GitHub. A row whose issue a
 task syncs opens that task's tab instead. No step
 writes to GitHub by itself; the prompt sends board changes through
 `github-projects-manager` and keeps merging with you.

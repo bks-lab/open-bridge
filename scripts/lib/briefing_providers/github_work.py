@@ -66,7 +66,7 @@ def save_board_mode(root: Path, slug: str, mode: str) -> dict:
 
 def _type(value) -> str:
     text = str(value or "issue").lower().replace("_", "")
-    return "pr" if text in ("pr", "pullrequest") else "issue"
+    return "pr" if text in ("pr", "pullrequest") else "draft" if text == "draft" else "issue"
 
 
 def collect(section: dict, ctx) -> list:
