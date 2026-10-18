@@ -878,6 +878,7 @@ kbd {
 .ghl-chip { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--on-surface-muted); }
 .ghl-chip-task { border-color: var(--secondary); color: var(--on-surface); }
 .ghl-chip-quiet { border-color: var(--warning); color: var(--on-surface); }
+.ghl-chip-untasked { border-color: var(--warning); border-style: dashed; color: var(--on-surface); }
 .ghl-side { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
 .ghl-people { display: flex; gap: 6px; }
 .ghl-acts { justify-content: flex-end; flex-wrap: nowrap; }

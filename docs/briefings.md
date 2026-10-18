@@ -249,7 +249,7 @@ the person's language: `yours_today`, `free_until`, `free_rest`, `busy_until`,
 `no_next`, `muted`, `hidden`, `error`, `workplace`, `more`, `end`, `why`,
 `meanwhile`, `later`, `shutdown`, `activity_title`, `commits`, `boards_title`,
 `st_new`, `st_ready`, `st_in_progress`, `st_review`, `st_blocked`, `agenda_title`,
-`clashes`, `clash_row`, `parallel`, `info_tag`, `all_clear`, `owed`, `overview_file`, and for `report` `report_title`, `lage`, `first_title`, `bucket_more` and the table columns `col_when`, `col_what`, `col_note`, `col_board`, `col_repo`, `col_branch`, `col_days`, `col_commits`. Placeholders in braces stay as they are: a label may use only the placeholders
+`clashes`, `clash_row`, `parallel`, `info_tag`, `all_clear`, `owed`, `overview_file`, `untasked`, and for `report` `report_title`, `lage`, `first_title`, `bucket_more` and the table columns `col_when`, `col_what`, `col_note`, `col_board`, `col_repo`, `col_branch`, `col_days`, `col_commits`. Placeholders in braces stay as they are: a label may use only the placeholders
 its default has (`validate` names them), and one that would not format falls
 back to the default wording instead of breaking the briefing.
 
@@ -331,7 +331,21 @@ the task whose `sync.github` names it (a task in `work/tasks/` becomes the row's
 `task`, so a dashboard opens or jumps to its tab; a stream is only named, as
 `linked_task`) and the newest active inbox item whose key ends in the row id
 (`inbox`): the item a step, Do it or a `to_inbox` rule filed for it, whose tab a
-dashboard then shows on the row.
+dashboard then shows on the row. Any other filer whose key ends in `:<row id>`
+attaches the same way (a daily radar that files
+`issue-radar:untasked:<owner/repo>#<n>`, say): the item joins the row and never
+adds one of its own.
+
+With `link` on, every row also carries `untasked`, a boolean: true for an open
+issue assigned to you that no task or stream names in `sync.github` (a pull
+request never is; a closed task still counts as naming it). It is left out when
+the tasks could not be read, because unknown is not the same as untracked. Such
+a row offers Analyse, Implement and Make it a task like any issue without a
+task, a dashboard marks it with a **no task** chip, and the text briefing says
+how many there are (`2 assigned issues without a task`, the `untasked` label in
+the bucketed styles). A rule `{when: {untasked: true}}` files them; a profile
+whose rows a radar already files needs no such rule, since both items would
+attach to the one row.
 
 Each board of a `github-work` section has a switch a person sets on a
 dashboard: **off** (not asked, costs nothing), **mine** (your cards) or **all**
@@ -342,8 +356,8 @@ without counts.
 
 A dashboard shows figures above the rows (`metrics` of the page section: open,
 yours, wanting your review, your open pull requests with the oldest one's age,
-in progress, in review, blocked, quiet for 14 days, and what you closed and
-merged in the last `done_days`), the boards as tiles with their open cards per
+in progress, in review, blocked, quiet for 14 days, yours without a task, and
+what you closed and merged in the last `done_days`), the boards as tiles with their open cards per
 state, and the people the rows are with; each is a filter on the rows. A row
 carries `flags` (what the figures count) and `who` (its assignee).
 
@@ -687,7 +701,11 @@ to_inbox:
   - when: {state: blocked}                         # every listed field must match
     urgency: now                                   # now | today (default) | later
   - when: {category: qa, assigned_to_me: true}     # a list value means "any of"
+  - when: {untasked: true}                         # yours, and no task syncs it (link on)
 ```
+
+A rule matches any field a row carries: `state`, `category`, `raw_state`,
+`type`, `assigned_to_me`, `untasked` and the rest of what its provider writes.
 
 The key is `briefing:<profile>:<section>:<item>`, so a repeat is one item,
 and a dropped key stays quiet. When the row is gone, the item closes on the

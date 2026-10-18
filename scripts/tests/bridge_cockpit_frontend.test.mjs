@@ -906,6 +906,21 @@ test('a command row with its own steps shows them as a two-click menu that acts 
   assert.match(src, /it\.actions\?\.length && it\.row_id \? html`<\$\{RowSteps\}/)
 })
 
+test('GitHub work: an issue of yours no task tracks carries a chip and a figure that filters, in both languages', () => {
+  for (const t of Object.values(text.TABLES)) {
+    assert.ok(t.gh.figure.untasked && t.gh.figureTitle.untasked({ n: 2 }), 'figure label and title')
+    assert.ok(t.gh.untaskedChip && t.gh.untaskedChipTitle, 'chip text and title')
+  }
+  const gh = read('views/github.js')
+  assert.match(gh, /const LOUD = \{[^}]*\buntasked: '[a-z-]+'/)          // a reason to look: loud when not zero
+  assert.match(gh, /g\.untasked \? html`<span class="ghl-chip ghl-chip-untasked" title=\$\{t\.gh\.untaskedChipTitle\}>\$\{t\.gh\.untaskedChip\}/)
+  assert.match(read('style.css'), /\.ghl-chip-untasked \{[^}]*var\(--/)
+  // the demo shows one: a row flagged untasked and a figure that counts it
+  const mock = read('mock.js')
+  assert.match(mock, /\{ id: 'untasked', n: 1 \}/)
+  assert.match(mock, /flags: \[[^\]]*'untasked'[^\]]*\][\s\S]*?gh: \{[^\n]*untasked: true/)
+})
+
 test('logic: the item drawer turns URLs in a detail into links, http and https only', () => {
   const parts = logic.linkParts('see https://example.org/a?b=1, then javascript:alert(1) and http://example.org/c.')
   assert.deepEqual(parts, [{ text: 'see ' }, { href: 'https://example.org/a?b=1', text: 'https://example.org/a?b=1' },

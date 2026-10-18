@@ -174,6 +174,69 @@ def test_the_newest_active_inbox_item_filed_for_a_row_names_it(tmp_path):
     assert "inbox" not in rows["example-org/tool#12"]          # a closed item stands for nothing
 
 
+# ---------------------------------------------------------------- assigned to you, tracked by no task
+
+def test_an_issue_assigned_to_you_that_no_task_syncs_is_untasked(tmp_path):
+    root = bridge(tmp_path)
+    task(root, "fix-emoji", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
+    rows, _ = collect(root)
+    assert rows["example-org/site#7"]["untasked"] is True          # yours, on no board, no task
+    assert rows["example-org/tool#12"]["untasked"] is False        # a task syncs it
+    assert rows["example-org/tool#40"]["untasked"] is False        # a pull request asking your review
+    assert all(isinstance(r.get("untasked"), bool) for r in rows.values())
+    assert ids(rows["example-org/site#7"]) == ["analyze", "implement", "adopt"]
+
+
+def test_a_stream_or_a_closed_task_that_names_the_issue_tracks_it_too(tmp_path):
+    root = bridge(tmp_path)
+    task(root, "site-work", bucket="streams", sync={"github": {"issues": ["example-org/site#7"]}})
+    task(root, "old-emoji", status="done", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
+    rows, _ = collect(root)
+    assert rows["example-org/site#7"]["untasked"] is False
+    assert rows["example-org/tool#12"]["untasked"] is False
+
+
+def test_untasked_is_left_unknown_when_the_tasks_cannot_be_read(tmp_path, monkeypatch):
+    ts = bf._load_module("tracker_sync", bf.ROOT / "scripts" / "tracker-sync.py")
+
+    def broken(root):
+        raise RuntimeError("STATUS.md unreadable")
+    monkeypatch.setattr(ts, "scan_status_tasks", broken)
+    rows, _ = collect(bridge(tmp_path))
+    assert not any("untasked" in r for r in rows.values())      # unknown is not "no task": no rule fires
+
+
+def test_a_radar_item_filed_for_the_issue_attaches_to_its_row_and_adds_none(tmp_path):
+    root = bridge(tmp_path)
+    box = bf._inbox().Inbox(root / "work" / "inbox", actor="test")
+    radar = box.add(source="issue-radar", kind="finding", summary="no task",
+                    key="issue-radar:untasked:example-org/site#7")
+    plain, _ = collect(bridge(tmp_path / "plain"))
+    rows, _ = collect(root)
+    assert rows["example-org/site#7"]["inbox"] == radar
+    assert sorted(rows) == sorted(plain)                          # attached, never a row of its own
+    assert rows["example-org/site#7"]["untasked"] is True         # an inbox item is no task
+
+
+def test_a_rule_on_untasked_files_only_those_rows(tmp_path):
+    root = bridge(tmp_path)
+    task(root, "fix-emoji", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
+    profile = {"id": "p", "sections": [dict(SECTION, to_inbox=[{"when": {"untasked": True}}])]}
+    c = bf.Context(root, now=NOW, run=FakeRun(answers()))
+    box = bf._inbox().Inbox(root / "work" / "inbox", actor="test")
+    filed, _ = bf.file_to_inbox(box, profile, bf.collect(root, profile, c))
+    assert filed == 1 and [i.key for i in box.items()] == ["briefing:p:work:example-org/site#7"]
+
+
+def test_the_text_says_how_many_of_your_issues_no_task_tracks(tmp_path):
+    root = bridge(tmp_path)
+    c = bf.Context(root, now=NOW, run=FakeRun(answers()))
+    result = bf.collect(root, {"id": "p", "sections": [dict(SECTION)]}, c)
+    assert "  2 assigned issues without a task" in bf.render(result).splitlines()
+    built = bf._view().build(result, {"id": "p", "sections": [dict(SECTION)]})
+    assert "Work: 2 assigned issues without a task" in built["hygiene"]
+
+
 # ---------------------------------------------------------------- steps
 
 def ids(row):
@@ -438,6 +501,10 @@ def test_the_figures_count_what_the_rows_are_and_what_you_finished(tmp_path):
     assert "my_pr" in view.github_flags(mine, NOW)
     assert next(m for m in view.github_metrics([mine], {}, NOW) if m["id"] == "my_pr") == {"id": "my_pr", "n": 1, "days": 4}
     assert page["boards"][0]["name"] == "Tool board" and page["boards"][0]["mode"] == "mine"
+    assert figures["untasked"]["n"] == 2                              # tool#12 and site#7: no task names them
+    site = next(r for r in page["items"] if r["row_id"] == "example-org/site#7")
+    assert "untasked" in site["flags"] and site["gh"]["untasked"] is True
+    assert "untasked" not in view.github_flags({**mine, "untasked": False}, NOW)
 
 
 def test_a_quick_pass_shows_what_the_slow_sources_last_said_at_once(tmp_path):

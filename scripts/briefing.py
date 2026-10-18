@@ -1402,15 +1402,17 @@ def link_local(items: list, ctx: Context) -> None:
     """What this Bridge knows about a GitHub row: the task whose `sync.github` names it (a finite task
     in work/tasks/ becomes the row's task, so a dashboard opens its tab; a stream is named only) and
     the newest active inbox item filed for it (an agent started on the row, Do it, a briefing rule),
-    found by the row id at the end of the item's key."""
+    found by the row id at the end of the item's key. An open issue assigned to you that no task or
+    stream names is `untasked` (a boolean on every row, so a `to_inbox` rule can ask for it); when the
+    tasks cannot be read the field is left out, since unknown is not the same as untracked."""
     rows = {str(i.get("id")): i for i in items if GLOBAL_ROW.match(str(i.get("id") or ""))}
     if not rows:
         return
     try:
         ts = _load_module("tracker_sync", ROOT / "scripts" / "tracker-sync.py")
-        tasks = ts.scan_status_tasks(ctx.root)
+        tasks, scanned = ts.scan_status_tasks(ctx.root), True
     except Exception:  # noqa: BLE001 - a link is a nicety, never a reason to lose the rows
-        tasks = []
+        tasks, scanned = [], False
     for t in tasks:
         finite = str(t.get("path") or "").startswith("work/tasks/") and t.get("status") != "done"
         for rid in _issue_refs(t):
@@ -1421,6 +1423,11 @@ def link_local(items: list, ctx: Context) -> None:
                                   "stream": not str(t.get("path") or "").startswith("work/tasks/")}
             if finite:
                 row["task"] = t["slug"]
+    if scanned:
+        for row in rows.values():
+            pr = str(row.get("type") or "").lower().replace("_", "") in ("pr", "pullrequest")   # a board says PullRequest
+            row["untasked"] = (not pr and bool(row.get("assigned_to_me"))
+                               and row.get("state") not in ("done", "removed") and not row.get("linked_task"))
     try:
         box = _inbox().Inbox(ctx.root / "work" / "inbox", actor="briefing", clock=lambda: ctx.now)
         active = [i for i in box.items() if i.state in _inbox().ACTIVE_STATES and i.key]
@@ -2072,6 +2079,9 @@ def render(result: dict) -> str:
         if s.get("stale"):
             out.append(f"  stale, as of {s.get('cached_at', '')}: {s['stale'].get('reason', '')}")
         out += [_line(str(s.get("kind")), i) for i in s["items"]]
+        untracked = sum(1 for i in s.get("all") or s["items"] if i.get("untasked") is True)
+        if untracked:
+            out.append(f"  {untracked} assigned issue{'s' if untracked != 1 else ''} without a task")
         for b in [b for b in s.get("summary") or [] if b.get("open")]:
             counts = " · ".join(f"{n} {st.replace('_', ' ')}" for st, n in b["counts"].items() if n)
             out.append(f"  #{b.get('number')} {b['name']}: {counts or 'empty'}")

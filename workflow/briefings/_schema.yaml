@@ -199,7 +199,7 @@ $defs:
       labels:
         type: object
         propertyNames:
-          enum: [activity_title, agenda_title, all_clear, back_on, boards_title, bucket_more, busy_until, capped, clash_row, clashes, col_board, col_branch, col_commits, col_days, col_note, col_repo, col_what, col_when, collides, commits, commits_today, due, end, error, first_title, free_rest, free_until, hidden, housekeeping, info_tag, lage, later, look_again, meanwhile, more, muted, new, next_date, no_next, nudge, only_you, overview_file, owed, page_dates, page_empty, page_more, page_status, page_today, page_trackers, page_work, parallel, report_title, repos_skipped, section_activity, section_advise, section_calendar, section_inbox, section_next_up, section_runs_on, section_tasks, section_workplace, shutdown, since, st_blocked, st_in_progress, st_new, st_ready, st_review, task, today, tomorrow, until, waiting_days, why, with, workplace, yours_today]
+          enum: [activity_title, agenda_title, all_clear, back_on, boards_title, bucket_more, busy_until, capped, clash_row, clashes, col_board, col_branch, col_commits, col_days, col_note, col_repo, col_what, col_when, collides, commits, commits_today, due, end, error, first_title, free_rest, free_until, hidden, housekeeping, info_tag, lage, later, look_again, meanwhile, more, muted, new, next_date, no_next, nudge, only_you, overview_file, owed, page_dates, page_empty, page_more, page_status, page_today, page_trackers, page_work, parallel, report_title, repos_skipped, section_activity, section_advise, section_calendar, section_inbox, section_next_up, section_runs_on, section_tasks, section_workplace, shutdown, since, st_blocked, st_in_progress, st_new, st_ready, st_review, task, today, tomorrow, until, untasked, waiting_days, why, with, workplace, yours_today]
         additionalProperties: {type: string}
         description: |
           Any word the reader sees, by label name (docs/briefings.md lists them). A
@@ -325,8 +325,10 @@ $defs:
         items: {$ref: "#/$defs/rule"}
         description: |
           Which rows become inbox items (key briefing:<profile>:<section>:<item>).
-          An item whose row is gone closes on the next run of a section that
-          completed; an errored section closes nothing.
+          A rule's when matches any field a row carries (state, category,
+          raw_state, type, assigned_to_me, untasked, ...). An item whose row is
+          gone closes on the next run of a section that completed; an errored
+          section closes nothing.
       # tracker
       provider:
         type: string
@@ -447,8 +449,12 @@ $defs:
         type: boolean
         description: |
           tracker: name on each GitHub row the task of this Bridge whose
-          sync.github names it, and the inbox item an agent was started on.
-          Default true for github-work, false for the others.
+          sync.github names it, and the newest active inbox item whose key ends
+          in the row id (a step, a to_inbox rule, any other filer). Every row
+          then also carries untasked: true for an open issue assigned to you
+          that no task or stream names, false otherwise, left out when the
+          tasks could not be read. Default true for github-work, false for the
+          others.
       prepare:
         type: boolean
         description: |
