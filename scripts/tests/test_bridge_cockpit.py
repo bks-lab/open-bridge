@@ -209,7 +209,7 @@ class FakeRunner(Runner):
         name = Path(argv[1]).stem
         rest, i = [], 2
         while i < len(argv):
-            if argv[i] in ("--root", "--by"):
+            if argv[i] in ("--root", "--by", "--view"):
                 i += 2
                 continue
             rest.append(argv[i])

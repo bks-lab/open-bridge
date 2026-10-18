@@ -940,8 +940,12 @@ starts waiting for you is announced; with `voice: true` the browser also says
 it.
 
 **Triage on the task and inbox pages.** `scripts/triage.py run` sorts every
-task that is not done (streams never close and are left out) and every open
-inbox item: one line of what it is about (`gist`), whether it can go
+task that is not done (streams never close and are left out), every open
+inbox item and, since the cockpit hands over its view (`--view`), every board,
+application and issue row of the work tab, read with the issue's state and the
+start of its text or the application's STATUS.md: one line of what it is about
+(`gist`, saying what the title leaves out), what kind of work it is (`topic`,
+shown as a chip on the work tab), whether it can go
 (`verdict`; for a task the task check's verdict wins where it judged), and who
 does it (`doer`: the AI with its `effort` as one to three dots, you with a
 short `why`, or "the AI prepares, you confirm"). For what the AI may do it

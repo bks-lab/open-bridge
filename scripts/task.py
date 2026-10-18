@@ -596,8 +596,9 @@ def signals(own: list, blocker: list, states: dict) -> dict:
     return {"own_refs_closed": own_done, "blocker_resolved": blocker_done, "closed_refs": closed}
 
 
-def resolve_refs(refs: list, run) -> dict:
-    """State of every issue or PR in ONE `gh api graphql` call. A failure leaves them `unknown`."""
+def resolve_refs(refs: list, run, body: bool = False) -> dict:
+    """State of every issue or PR in ONE `gh api graphql` call. A failure leaves them `unknown`. `body` asks
+    for the start of each text too (the triage describes board items from it)."""
     result = {f"{r}#{n}": {"state": "unknown"} for r, n in refs}
     if not refs:
         return result
@@ -608,8 +609,8 @@ def resolve_refs(refs: list, run) -> dict:
         nums = sorted({n for r, n in refs if r == repo})
         fields = " ".join(
             f"n{n}: issueOrPullRequest(number: {n}) {{ __typename "
-            f"... on Issue {{ state stateReason closedAt title }} "
-            f"... on PullRequest {{ state merged closedAt title }} }}" for n in nums)
+            f"... on Issue {{ state stateReason closedAt title{' body' if body else ''} }} "
+            f"... on PullRequest {{ state merged closedAt title{' body' if body else ''} }} }}" for n in nums)
         parts.append(f"r{i}: repository(owner: {json.dumps(owner)}, name: {json.dumps(name)}) {{ {fields} }}")
     query = "query { " + " ".join(parts) + " }"
     try:
@@ -626,7 +627,8 @@ def resolve_refs(refs: list, run) -> dict:
                     "kind": "pr" if x.get("__typename") == "PullRequest" else "issue",
                     "state": x.get("state") or "unknown", "reason": x.get("stateReason"),
                     "merged": x.get("merged"), "closed_at": (x.get("closedAt") or "")[:10] or None,
-                    "title": _briefing()._clip(str(x.get("title") or ""), 80)}
+                    "title": _briefing()._clip(str(x.get("title") or ""), 80),
+                    **({"body": _briefing()._clip(str(x.get("body") or ""), 500)} if body else {})}
     return result
 
 

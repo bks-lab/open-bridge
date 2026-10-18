@@ -4,8 +4,9 @@
 
     triage.py run [--fresh] [--json]
 
-For every task under work/tasks/ that is not done (streams never close, so they are left out) and every
-open inbox item, one line each:
+For every task under work/tasks/ that is not done (streams never close, so they are left out), every
+open inbox item and, with `--view`, every board, application and issue row of the cockpit's view (read
+with the issue's text or the application's STATUS.md), one line each:
 
 - `gist`: what it is about, one line;
 - `verdict`: for a task close|continue|waiting|stale|unclear (the task check's verdict wins where it
@@ -63,6 +64,8 @@ For every item answer:
 - gist: what it is about, one short line in {language}, at most 80 characters, no ID, no dash as punctuation. Say
   what the title leaves out (the thing concerned, the reason, or the next step) and never repeat the title.
 - topic: what kind of work it is, one of {topics}.
+  A "tracker item" is a board card, an issue, an application or a date someone else keeps; judge it like an inbox
+  item.
 - verdict: for a task one of close (the evidence shows it is done or moot), continue, waiting (on a person or an
   event still pending), stale (no activity for {stale_days} days and nothing pending), unclear; for an inbox item
   one of close (what it reports is resolved or answered, its condition holds, or a log row says it is done), keep,
@@ -133,6 +136,43 @@ def inbox_evidence(root: Path) -> list:
     return out
 
 
+GITHUB_REF = re.compile(r"^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(\d+)$")
+
+
+def tracker_items(root: Path, view: Path | None, run) -> list:
+    """The rows of the cockpit's view that come from a tracker (a `ref`, no task, no inbox item): a board card, an
+    issue, an application, a date. The evidence is the row itself, the issue's state and the start of its text
+    (one GraphQL call for all), and a local STATUS.md the row links to. A missing or broken view is none."""
+    try:
+        data = json.loads(Path(view).read_text(encoding="utf-8")) if view else {}
+        v = data.get("view", data) if isinstance(data, dict) else {}
+        rows = [r for b in v.get("buckets") or [] for r in b.get("rows") or [] if isinstance(r, dict)]
+    except (OSError, ValueError, AttributeError, TypeError):
+        return []
+    seen, picked = set(), []
+    for r in rows:
+        if r.get("ref") and not r.get("task") and not r.get("inbox_id") and r.get("key") and r["key"] not in seen:
+            seen.add(r["key"])
+            picked.append(r)
+    refs = [(m.group(1), int(m.group(2))) for r in picked if (m := GITHUB_REF.match(str(r["ref"])))]
+    states = _task().resolve_refs(refs, run, body=True) if refs else {}
+    out = []
+    for r in picked:
+        ev = {"ref": r["ref"], "sources": list(r.get("sources") or []), "why": list(r.get("why") or [])[:4],
+              "area": r.get("area"), "priority": r.get("priority"), "due": r.get("due")}
+        st = states.get(str(r["ref"]))
+        if st and st.get("state") != "unknown":
+            ev.update(state=("MERGED" if st.get("merged") else st.get("state")), text=st.get("body") or None)
+        url = str(r.get("url") or "")
+        if url.endswith(".md") and "://" not in url:
+            path = (root / url).resolve()
+            if path.is_file() and root.resolve() in path.parents:
+                body = re.sub(r"\A---\n.*?\n---\n", "", path.read_text(encoding="utf-8"), flags=re.S)
+                ev["text"] = _clip(body, 600)
+        out.append({"key": r["key"], "kind": "track", "title": _clip(r.get("title"), 120) or r["key"], "evidence": ev})
+    return out
+
+
 def _task_items(root: Path, run) -> list:
     t = _task()
     slugs = open_task_slugs(root)
@@ -149,6 +189,15 @@ def _block(item: dict) -> str:
     if item.get("block"):
         return item["block"]
     ev = item["evidence"]
+    if item["kind"] == "track":
+        lines = [f"## {item['key']}", f"type: tracker item, title: {item['title']}"]
+        for k in ("ref", "state", "area", "priority", "due", "text"):
+            if ev.get(k):
+                lines.append(f"{k}: {ev[k]}")
+        for k in ("sources", "why"):
+            if ev.get(k):
+                lines.append(f"{k}: " + ", ".join(str(x) for x in ev[k]))
+        return "\n".join(lines)
     lines = [f"## {item['key']}", f"type: inbox item, title: {item['title']}"]
     for k in ("kind", "gate", "urgency", "created", "state", "task", "detail", "closes_when", "action"):
         if ev.get(k):
@@ -286,7 +335,7 @@ def _check_verdicts(root: Path) -> dict:
 
 
 def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None = None, save: bool = True,
-           jev=None) -> dict:
+           jev=None, view: Path | None = None) -> dict:
     t = _task()
     run = run or t.default_run
     now = now or dt.datetime.now()
@@ -296,7 +345,7 @@ def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None
     language = t._language(cfg)
     words = why_words(cfg)
     model = t.service_model(root, "triage", t.tier_model(cfg, "mechanical"))
-    items = _task_items(root, run) + inbox_evidence(root)
+    items = _task_items(root, run) + inbox_evidence(root) + tracker_items(root, view, run)
     settings = json.dumps([language, model, rcfg["stale_days"], PROMPT_VERSION,
                            t.ai.load(root, "triage"), rcfg["command"]], sort_keys=True)
     for it in items:
@@ -381,12 +430,14 @@ def last(root: Path) -> dict | None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--root", type=Path, default=ROOT)
+    ap.add_argument("--view", type=Path, default=None,
+                    help="the cockpit's view.json: its board, application and issue rows are sorted too")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="sort every open task and inbox item (cached per item)")
     r.add_argument("--fresh", action="store_true", help="ask again for every item")
     r.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
-    result = triage(args.root.resolve(), fresh=args.fresh)
+    result = triage(args.root.resolve(), fresh=args.fresh, view=args.view)
     if args.json:
         json.dump(result, sys.stdout, ensure_ascii=False)
         print()

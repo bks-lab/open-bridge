@@ -82,8 +82,9 @@ class Triage:
 
     def argv(self, fresh: bool) -> list[str]:
         app = self.app
-        return [sys.executable, app.runner.script(SCRIPT), "--root", str(app.root), "run", "--json",
-                *(["--fresh"] if fresh else [])]
+        view = app.store.view_path
+        return [sys.executable, app.runner.script(SCRIPT), "--root", str(app.root),
+                *(["--view", str(view)] if view.is_file() else []), "run", "--json", *(["--fresh"] if fresh else [])]
 
     def start(self, fresh: bool = False, why: str = "click") -> bool:
         with self.lock:

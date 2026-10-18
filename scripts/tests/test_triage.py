@@ -248,3 +248,55 @@ def test_every_item_gets_a_topic_from_the_fixed_list_and_the_prompt_asks_for_mor
     text = fake.model_calls()[0][1]
     assert "topic" in text and all(t in text for t in triage.TOPICS)
     assert "never repeat the title" in text
+
+
+def tracker_view(root):
+    """The cockpit's view.json: a board issue, an application with its STATUS.md, rows triage already covers"""
+    app = root / "work" / "streams" / "applications" / "2026-10" / "acme-sdet"
+    app.mkdir(parents=True)
+    (app / "STATUS.md").write_text("---\nstatus: doing\n---\n# ACME: SDET\n\nDraft ready since 06.10, waits for the send.\n",
+                                   encoding="utf-8")
+    rows = [
+        {"key": "ref:org/infra#17", "title": "Requirements for time tracking", "ref": "org/infra#17", "sources": ["boards"],
+         "why": ["org/infra#17", "open"], "url": "https://github.com/org/infra/issues/17", "task": None, "inbox_id": None},
+        {"key": "ref:2026-10/acme-sdet", "title": "ACME: SDET, draft ready: send", "ref": "2026-10/acme-sdet",
+         "sources": ["bewerbungen"], "why": ["Bewerbung"], "task": None, "inbox_id": None,
+         "url": "work/streams/applications/2026-10/acme-sdet/STATUS.md"},
+        {"key": "task:alpha", "title": "alpha", "ref": "org/infra#1", "task": "alpha", "sources": ["tasks"], "why": []},
+        {"key": "inbox:x", "title": "x", "ref": "org/infra#2", "inbox_id": "x", "sources": ["inbox"], "why": []},
+    ]
+    path = root / ".bridge" / "cockpit" / "view.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"v": 1, "view": {"buckets": [{"id": "plan", "rows": rows}]}}), encoding="utf-8")
+    return path
+
+
+def test_board_application_and_issue_rows_of_the_cockpit_view_are_read_and_described_too(repo):
+    setup(repo)
+    view = tracker_view(repo)
+    gh = {"r0": {"n17": {"__typename": "Issue", "state": "OPEN", "title": "Requirements for time tracking",
+                         "body": "Collect what Lior needs from the time tracking: export, approvals, holidays."}}}
+    rows = ROWS + [{"key": "ref:org/infra#17", "gist": "Lior's needs for export and holidays", "topic": "research",
+                    "verdict": "keep", "doer": "either", "effort": "small", "why": "", "reason": ""}]
+    fake = Fake(answers={HAIKU: answers(rows)}, gh=gh)
+    out = triage.triage(repo, run=fake, now=NOW, view=view)
+    by = {x["key"]: x for x in out["items"]}
+    assert by["ref:org/infra#17"]["kind"] == "track" and by["ref:org/infra#17"]["topic"] == "research"
+    assert by["ref:org/infra#17"]["gist"] == "Lior's needs for export and holidays"
+    assert "ref:2026-10/acme-sdet" in by
+    assert "task:alpha" in by and "inbox:x" not in by       # rows of a task or an inbox item stay theirs
+    prompt = "\n".join(p for _, p in fake.model_calls())
+    assert "export, approvals, holidays" in prompt          # the issue's text, not only its title
+    assert "waits for the send" in prompt                    # the application's STATUS.md
+    # without the view nothing changes: tasks and inbox only
+    plain = triage.triage(repo, run=Fake(answers={HAIKU: answers(ROWS)}), now=NOW, save=False)
+    assert not any(x["kind"] == "track" for x in plain["items"])
+
+
+def test_a_missing_or_broken_view_is_no_tracker_row_and_no_failure(repo):
+    setup(repo)
+    out = triage.triage(repo, run=Fake(answers={HAIKU: answers(ROWS)}), now=NOW, view=repo / "nope.json")
+    assert not any(x["kind"] == "track" for x in out["items"])
+    bad = repo / "bad.json"
+    bad.write_text("{", encoding="utf-8")
+    assert triage.triage(repo, run=Fake(answers={HAIKU: answers(ROWS)}), now=NOW, view=bad)["items"]

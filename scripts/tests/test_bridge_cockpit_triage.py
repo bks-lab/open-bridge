@@ -60,6 +60,9 @@ def test_a_click_runs_triage_py_in_the_background_with_the_allowed_argv(world):
         time.sleep(0.02)
     argv = world.runner.of("triage.run")[0]
     assert argv[0] == sys.executable and argv[1].endswith("scripts/triage.py") and argv[-3:] == ["run", "--json", "--fresh"]
+    # the board, application and issue rows come from the cockpit's own view, handed over as a file
+    assert world.app.store.view_path.is_file()
+    assert argv[argv.index("--view") + 1] == str(world.app.store.view_path) and argv.index("--view") < argv.index("run")
     status, _, _ = world.post("/api/triage/run", {"what": 1})
     assert status == 400
 
