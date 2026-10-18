@@ -10,6 +10,10 @@ work/log.md, dirty for most of every working day, stopped it as well.
 What a machine may decide, and what it must not:
   · promoted, then built on upstream  → take upstream, merge
   · promoted, then REVERTED upstream  → hold (the change may be live locally)
+  · promoted, then built on LOCALLY   → keep local, merge
+  · promoted, then REVERTED locally   → hold (upstream still carries it)
+  · upstream only ADDED lines, and the local file already holds every added
+    block as it stands                → keep local, merge
   · never promoted                    → hold
   · one held file holds the whole run, and the branch is left exactly as it was
   · a dirty file the merge does not touch is no reason to stop; one it touches is
@@ -190,6 +194,80 @@ def test_promoted_then_deleted_upstream_takes_the_delete(w):
     p, status = w.autoupdate()
     assert "auto-updated" in status, status
     assert not (w.inst / "core.txt").exists()
+
+
+# ------------------------------------------- the mirror case: local is newer
+def test_promoted_then_built_on_locally_keeps_local(w):
+    # The promote lands upstream byte for byte, and work goes on locally. Upstream's
+    # file is one this instance already had: nothing upstream knows is lost.
+    w.promote("core.txt", "a\nB\nc\n", "fix b")
+    w.write(w.inst, "core.txt", "a\nB2\nc\n"); w.commit(w.inst, "local follow-up on b")
+    plan = w.plan()
+    assert plan["unresolved"] == [], plan
+    assert [(t["path"], t["rule"]) for t in plan["take_ours"]] == [("core.txt", "seen_locally")]
+    p, status = w.autoupdate()
+    assert "auto-updated" in status, status
+    assert "kept local: core.txt" in status
+    assert w.show("HEAD", "core.txt") == "a\nB2\nc\n"
+    assert run(w.inst, "git", "rev-list", "--count", "HEAD..upstream/main").stdout.strip() == "0"
+
+
+def test_promoted_then_reverted_locally_is_held(w):
+    w.promote("core.txt", "a\nB\nc\n", "feature b")
+    run(w.inst, "git", "revert", "--no-edit", "HEAD")
+    w.write(w.inst, "core.txt", "a\nb2\nc\n"); w.commit(w.inst, "later local edit on that line")
+    before = w.head()
+    plan = w.plan()
+    assert plan["take_ours"] == [] and plan["take_theirs"] == []
+    assert "reverted" in plan["unresolved"][0]["reason"]
+    p, status = w.autoupdate()
+    assert "SKIPPED" in status and "core.txt" in status, status
+    assert w.head() == before
+
+
+def test_upstream_additions_already_held_locally_keep_local(w):
+    # The .gitignore case: upstream appends a block, the instance pulled the same
+    # block earlier and has more lines of its own around it.
+    w.write(w.inst, "core.txt", "a\nb\nc\nlocal-1\nX\nY\nlocal-2\n"); w.commit(w.inst, "local lines + pulled block")
+    w.write(w.up, "core.txt", "a\nb\nc\nX\nY\n"); w.commit(w.up, "add X Y")
+    plan = w.plan()
+    assert [(t["path"], t["rule"]) for t in plan["take_ours"]] == [("core.txt", "contained")], plan
+    p, status = w.autoupdate()
+    assert "auto-updated" in status, status
+    assert w.show("HEAD", "core.txt") == "a\nb\nc\nlocal-1\nX\nY\nlocal-2\n"
+
+
+def test_upstream_addition_split_locally_is_held(w):
+    w.write(w.inst, "core.txt", "a\nb\nc\nX\nlocal\nY\n"); w.commit(w.inst, "local")
+    w.write(w.up, "core.txt", "a\nb\nc\nX\nY\n"); w.commit(w.up, "add X Y")
+    plan = w.plan()
+    assert plan["take_ours"] == [], plan
+    assert [u["path"] for u in plan["unresolved"]] == ["core.txt"]
+
+
+def test_upstream_that_also_changed_a_line_is_held(w):
+    # Upstream did more than add: the contained rule must not hide its edit of a.
+    w.write(w.inst, "core.txt", "a\nb\nc\nlocal\nX\nY\n"); w.commit(w.inst, "local")
+    w.write(w.up, "core.txt", "A\nb\nc\nX\nY\n"); w.commit(w.up, "add X Y, edit a")
+    plan = w.plan()
+    assert plan["take_ours"] == [], plan
+    assert [u["path"] for u in plan["unresolved"]] == ["core.txt"]
+
+
+def test_mixed_plan_resolves_both_sides_in_one_merge(w):
+    w.promote("core.txt", "a\nB\nc\n", "fix b")
+    w.write(w.up, "core.txt", "a\nB-up\nc\n"); w.commit(w.up, "upstream follow-up")
+    w.promote("other.txt", "x\nZ\n", "add z")
+    w.write(w.inst, "other.txt", "x\nZ-local\n"); w.commit(w.inst, "local follow-up")
+    plan = w.plan()
+    assert [t["path"] for t in plan["take_theirs"]] == ["core.txt"]
+    assert [t["path"] for t in plan["take_ours"]] == ["other.txt"]
+    p, status = w.autoupdate()
+    assert "auto-updated" in status, status
+    assert w.show("HEAD", "core.txt") == "a\nB-up\nc\n"
+    assert w.show("HEAD", "other.txt") == "x\nZ-local\n"
+    msg = run(w.inst, "git", "log", "-1", "--format=%B").stdout
+    assert "core.txt" in msg and "other.txt" in msg, msg
 
 
 # ---------------------------------------------------------------- notifier

@@ -21,10 +21,12 @@
 #   3. git merge-tree predicts 0 conflicts (read from its EXIT CODE — never
 #      from its localized output; see the note at the guard itself) — OR every
 #      predicted conflict is one scripts/upstream-resolve.py proves a machine
-#      may take upstream's side of: the local version of the file is one
-#      upstream itself already had, and upstream has not reverted anything
-#      since. Any other conflict still stops the job, file by file, with the
-#      reason and the local commits behind it.
+#      may decide: take upstream's side when the local version of the file is
+#      one upstream itself already had (and upstream has not reverted since),
+#      keep the local side when upstream's version is one this branch already
+#      had (and the branch has not reverted since), or when upstream only added
+#      lines the local file already holds. Any other conflict still stops the
+#      job, file by file, with the reason and the local commits behind it.
 #
 # Before the resolver, ONE conflict froze this job for good: nothing ever
 # resolved it, so every later morning skipped again. Measured 2026-10-01: 84
@@ -148,16 +150,20 @@ risk=$(python3 scripts/bridge-divergence-check.py --upstream "$UPSTREAM_REF" --j
        | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("conflict_risk",[])))' 2>/dev/null)
 is_int "$risk" || risk="?"
 
-# resolve_plan — ask scripts/upstream-resolve.py which conflicts may take theirs.
-# Sets take_theirs (paths, newline-separated) and held (one "path (reason)" per
-# unresolved file, '; '-joined). Any failure sets reason instead: fail closed.
-take_theirs=""; held=""
+# resolve_plan — ask scripts/upstream-resolve.py which conflicts a machine may decide.
+# Sets take_theirs and take_ours (paths, newline-separated) and held (one
+# "path (reason)" per unresolved file, '; '-joined). Any failure sets reason
+# instead: fail closed.
+take_theirs=""; take_ours=""; held=""
 resolve_plan() {
   local plan
   plan=$(python3 scripts/upstream-resolve.py --theirs "$UPSTREAM_REF" 2>/tmp/ob-autoupdate-resolve.log) \
     || { reason="conflict resolver failed (see /tmp/ob-autoupdate-resolve.log), failing closed"; return; }
   take_theirs=$(printf '%s' "$plan" | python3 -c 'import sys,json
 for t in json.load(sys.stdin)["take_theirs"]: print(t["path"])') \
+    || { reason="conflict resolver output unreadable, failing closed"; return; }
+  take_ours=$(printf '%s' "$plan" | python3 -c 'import sys,json
+for t in json.load(sys.stdin)["take_ours"]: print(t["path"])') \
     || { reason="conflict resolver output unreadable, failing closed"; return; }
   held=$(printf '%s' "$plan" | python3 -c 'import sys,json
 u=json.load(sys.stdin)["unresolved"]
@@ -220,31 +226,43 @@ fi
 before=$(git rev-parse --short HEAD)
 
 # resolve_merge — finish a merge that stopped on exactly the planned conflicts by
-# taking upstream's side of each. Anything else unmerged, or any step failing,
-# returns non-zero and the caller aborts the merge.
+# taking upstream's side of each take_theirs path and the local side of each
+# take_ours path. Anything else unmerged, or any step failing, returns non-zero
+# and the caller aborts the merge.
 resolve_merge() {
-  local unmerged planned p
+  local unmerged planned theirs ours p
+  theirs=$(printf '%s\n' "$take_theirs" | sed '/^$/d' | sort -u)
+  ours=$(printf '%s\n' "$take_ours" | sed '/^$/d' | sort -u)
   unmerged=$(git diff --name-only --diff-filter=U | sort -u)
-  planned=$(printf '%s\n' "$take_theirs" | sed '/^$/d' | sort -u)
+  planned=$(printf '%s\n%s\n' "$theirs" "$ours" | sed '/^$/d' | sort -u)
   [ -n "$unmerged" ] && [ "$unmerged" = "$planned" ] || return 1
-  while IFS= read -r p; do
-    if git cat-file -e "$UPSTREAM_REF:$p" 2>/dev/null; then
-      git checkout --theirs -- "$p" && git add -- "$p" || return 1
-    else
-      git rm -q -- "$p" || return 1
-    fi
-  done <<< "$planned"
+  if [ -n "$theirs" ]; then
+    while IFS= read -r p; do
+      if git cat-file -e "$UPSTREAM_REF:$p" 2>/dev/null; then
+        git checkout --theirs -- "$p" && git add -- "$p" || return 1
+      else
+        git rm -q -- "$p" || return 1
+      fi
+    done <<< "$theirs"
+  fi
+  if [ -n "$ours" ]; then
+    while IFS= read -r p; do
+      git checkout --ours -- "$p" && git add -- "$p" || return 1
+    done <<< "$ours"
+  fi
   [ -z "$(git diff --name-only --diff-filter=U)" ] || return 1
   git -c core.hooksPath=/dev/null commit -q --no-edit \
     -m "Merge $UPSTREAM_REF into $branch (auto-update)" \
-    -m "Conflicts resolved to upstream by scripts/upstream-resolve.py (local version already seen upstream):" \
-    -m "$(printf '%s\n' "$planned" | sed 's/^/  /')"
+    ${theirs:+-m "Conflicts resolved to upstream by scripts/upstream-resolve.py (local version already seen upstream):"} \
+    ${theirs:+-m "$(printf '%s\n' "$theirs" | sed 's/^/  /')"} \
+    ${ours:+-m "Conflicts kept local by scripts/upstream-resolve.py (upstream version already seen locally, or already contained):"} \
+    ${ours:+-m "$(printf '%s\n' "$ours" | sed 's/^/  /')"}
 }
 
 merged=0
 if git -c core.hooksPath=/dev/null merge --no-edit "$UPSTREAM_REF" >/tmp/ob-autoupdate-merge.log 2>&1; then
   merged=1
-elif [ -n "$take_theirs" ] && resolve_merge >>/tmp/ob-autoupdate-merge.log 2>&1; then
+elif [ -n "$take_theirs$take_ours" ] && resolve_merge >>/tmp/ob-autoupdate-merge.log 2>&1; then
   merged=1
 fi
 
@@ -253,8 +271,10 @@ if [ "$merged" = 1 ]; then
   mirror_line=$(mirror_core_branch)
   resolved_line=""
   [ -n "$take_theirs" ] && resolved_line="- auto-resolved to upstream: $(printf '%s' "$take_theirs" | tr '\n' ' ')"
+  kept_line=""
+  [ -n "$take_ours" ] && kept_line="- kept local: $(printf '%s' "$take_ours" | tr '\n' ' ')"
   report "- ✅ auto-updated \`$before\` → \`$after\` ($behind commit(s) merged from \`$UPSTREAM_REF\`)" \
-         ${resolved_line:+"$resolved_line"} "$mirror_line"
+         ${resolved_line:+"$resolved_line"} ${kept_line:+"$kept_line"} "$mirror_line"
   notify "✅ open-bridge auto-updated: $behind commit(s) merged ($before→$after)"
   echo "autoupdate: merged $behind commit(s) ($before→$after)"
   echo "autoupdate: mirror — ${mirror_line#- }"
