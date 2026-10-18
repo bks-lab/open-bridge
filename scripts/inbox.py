@@ -517,6 +517,11 @@ class Inbox:
             target = (live or dropped or [None])[-1]
             if target is not None:
                 self.event(target.id, "seen", summary=summary)
+                drops = [e for e in target.events if e.verb == "drop"]
+                if (target.state == "dropped" and drops and drops[-1].by == MUTE_ACTOR
+                        and (urgency == "now" or self.muted_by(source, kind, key) is None)):
+                    # only a rule dropped it, and no rule holds any more (or it is an outage)
+                    self.event(target.id, "reopen", by=MUTE_ACTOR, text="no mute rule holds any more")
                 return target.id
         now = self.clock()
         # A random tail: two machines filing the same summary in the same minute
@@ -623,6 +628,9 @@ class Inbox:
     def _rule_problem(data) -> str | None:
         if not isinstance(data, dict) or not data.get("source"):
             return "not a rule (needs at least a source)"
+        for name in ("key_prefix", "kind"):
+            if name in data and not (isinstance(data[name], str) and data[name]):
+                return f"{name} {data[name]!r} is not a text"
         if data.get("until"):
             try:
                 _parse_when(data["until"])
@@ -643,9 +651,9 @@ class Inbox:
             if self._rule_problem(data):
                 _warn(f"skipping mute rule {path.name}: {self._rule_problem(data)}")
                 continue
-            if data.get("until") and _local_date(_parse_when(data["until"])) < today:
-                continue
-            rules.append({"id": path.stem, **{k: v for k, v in data.items() if k != "schema_version"}})
+            if data.get("until") and _local_date(_parse_when(data["until"])) <= today:
+                continue    # a source mute of N days ends on the Nth day
+            rules.append({**{k: v for k, v in data.items() if k != "schema_version"}, "id": path.stem})
         return rules
 
     def muted_by(self, source: str, kind: str, key: str | None) -> dict | None:
@@ -654,8 +662,8 @@ class Inbox:
                 continue
             if rule.get("key_prefix") and not str(key or "").startswith(rule["key_prefix"]):
                 continue
-            if rule.get("kind") and rule["kind"] != kind:
-                continue
+            if rule.get("kind") and (rule["kind"] != kind or ":" in str(key or "").rstrip(":")):
+                continue    # a kind rule stands for the keys without a family, it leaves the families alone
             return rule
         return None
 
@@ -1061,7 +1069,7 @@ def main(argv=None) -> int:
         elif args.cmd == "mute":
             rules = box.mutes()
             if args.json:
-                print(json.dumps(rules, ensure_ascii=False, indent=1))
+                print(json.dumps(rules, ensure_ascii=False, indent=1, default=str))
             else:
                 for r in rules:
                     what = r.get("key_prefix") or r.get("kind") or "everything"

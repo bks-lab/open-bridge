@@ -136,6 +136,70 @@ def test_a_muted_key_stays_one_item(box):
     assert finding(box, key="notify:bb") == muted
 
 
+def test_a_muted_key_comes_back_once_the_rule_is_lifted(box):
+    rule = box.drop(finding(box, key="disk:a"), reason="family")
+    muted = finding(box, key="disk:full")
+    assert box.get(muted).state == "dropped"
+    box.unmute(rule)
+    assert finding(box, key="disk:full") == muted
+    assert box.get(muted).state == "open"
+
+
+def test_a_muted_key_comes_back_once_a_source_mute_ends(box, clock):
+    box.drop(finding(box), reason="source")
+    muted = finding(box, key="disk:full")
+    clock.now = NOW + dt.timedelta(days=inbox.MUTE_SOURCE_DAYS)
+    assert finding(box, key="disk:full") == muted
+    assert box.get(muted).state == "open"
+
+
+def test_a_muted_key_filed_as_now_comes_through(box):
+    box.drop(finding(box), reason="source")
+    muted = finding(box, key="disk:full")
+    assert finding(box, key="disk:full", urgency="now") == muted
+    assert box.get(muted).state == "open"
+
+
+def test_a_key_a_person_dropped_stays_dropped_when_no_rule_holds(box):
+    item_id = finding(box, key="disk:full")
+    box.drop(item_id, reason="once")
+    assert finding(box, key="disk:full", urgency="now") == item_id
+    assert box.get(item_id).state == "dropped"
+
+
+def test_a_source_mute_lasts_exactly_its_days(box, clock):
+    box.drop(finding(box), reason="source")
+    clock.now = NOW + dt.timedelta(days=inbox.MUTE_SOURCE_DAYS - 1)
+    assert len(box.mutes()) == 1
+    clock.now = NOW + dt.timedelta(days=inbox.MUTE_SOURCE_DAYS)
+    assert box.mutes() == []
+
+
+def test_a_kind_rule_leaves_keyed_families_alone(box):
+    box.drop(finding(box, key="plain-key"), reason="family")
+    assert box.get(finding(box, key="mini-health:disk:full")).state == "open"
+    assert box.get(finding(box, key="other-plain")).state == "dropped"
+
+
+def test_a_rule_with_wrong_types_is_skipped_and_reported(box):
+    rule_dir = box.root / inbox.MUTES_DIR
+    rule_dir.mkdir(parents=True)
+    (rule_dir / "prefix.yaml").write_text("source: mini/daily-health\nkey_prefix: 123\n", encoding="utf-8")
+    (rule_dir / "kind.yaml").write_text("source: mini/daily-health\nkind: [finding]\n", encoding="utf-8")
+    assert box.mutes() == []
+    assert box.get(finding(box, key="a:b")).state == "open"
+    problems = box.validate()
+    assert any("prefix.yaml" in p for p in problems) and any("kind.yaml" in p for p in problems)
+
+
+def test_a_rule_file_cannot_change_its_id(box):
+    rule = box.drop(finding(box, key="a:b"), reason="family")
+    path = box.root / inbox.MUTES_DIR / f"{rule}.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + "id: something-else\n", encoding="utf-8")
+    [r] = box.mutes()
+    assert r["id"] == rule
+
+
 def test_unmute_lifts_the_rule(box):
     rule = box.drop(finding(box, key="a:b"), reason="family")
     box.unmute(rule)
@@ -227,6 +291,15 @@ def test_cli_drop_with_reason_mute_list_unmute_and_stats(tmp_path):
     assert json.loads(run(tmp_path, "mute", "list", "--json").stdout) == []
     bad = run(tmp_path, "drop", item_id, "--reason", "annoying")
     assert bad.returncode != 0
+
+
+def test_cli_mute_list_reads_an_unquoted_date(tmp_path):
+    rule_dir = tmp_path / "work" / "inbox" / "_mutes"
+    rule_dir.mkdir(parents=True)
+    (rule_dir / "hand.yaml").write_text("source: x\nuntil: 2999-01-01\n", encoding="utf-8")
+    listed = run(tmp_path, "mute", "list", "--json")
+    assert listed.returncode == 0, listed.stderr
+    assert json.loads(listed.stdout)[0]["until"] == "2999-01-01"
 
 
 def test_cli_drop_without_reason_still_works(tmp_path):

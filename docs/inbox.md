@@ -204,7 +204,7 @@ part of the `drop` event:
 |---|---|---|
 | `once` | not worth it this time | nothing; the key stays dropped as before |
 | `duplicate` | already known elsewhere | nothing |
-| `family` | never this kind again | a rule: the source plus the key up to its last colon (`health:crash:1a20` mutes `health:crash:`), or the source plus the kind when the key has no family |
+| `family` | never this kind again | a rule: the source plus the key up to its last colon (`health:crash:1a20` mutes `health:crash:`), or the source plus the kind when the key has no family (such a rule leaves keys with a family alone) |
 | `source` | this source is too loud | a rule: everything of the source for 30 days (`MUTE_SOURCE_DAYS`) |
 
 A rule is a file of its own under `work/inbox/_mutes/`, so two machines never
@@ -213,7 +213,7 @@ keeps the folder out of the item list. A finding that matches a rule is
 **still filed** and dropped at once by `mute`, with the rule's id on the
 event: nothing is lost, it counts in `stats`, and `reopen` brings it back. An
 item filed with `--urgency now` is never muted, so a muted source cannot
-swallow an outage. A source mute ends by itself, a family mute stays until
+swallow an outage, and a muted key that comes back as `now`, or after its rule is gone, is reopened. A source mute ends by itself, a family mute stays until
 `unmute` lifts it.
 
 `stats` counts, per source, the items filed in the last N days: how many a
