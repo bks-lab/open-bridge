@@ -1546,3 +1546,17 @@ def test_event_steps_are_checked():
         assert bf._section_types({**ok, "event_steps": bad}), bad
     assert bf._section_types({**ok, "prepare": "no"})
     assert bf._section_types({"kind": "tasks", "event_steps": ok["event_steps"]})
+
+
+def test_to_inbox_items_name_the_briefing_as_their_closer(tmp_path):
+    # The briefing closes these items itself when the row is gone, so it is their closer. Without
+    # one an item filed by a run looks hand-made: `add` warns it has no way out, and a watcher that
+    # investigates reporter findings before announcing them passes it on raw.
+    root = bridge(tmp_path)
+    section = {"kind": "tracker", "id": "gh", "provider": "github",
+               "query": {"assignee": "@me", "kinds": ["issues"]},
+               "to_inbox": [{"when": {"state": "blocked"}, "urgency": "now"}]}
+    profile = {"id": "morning", "sections": [section]}
+    box = inbox.Inbox(root / "work" / "inbox", actor="t", clock=lambda: NOW)
+    bf.file_to_inbox(box, profile, bf.collect(root, profile, ctx(root, FakeRun(gh_answers()))))
+    assert box.open_items()[0].closer == "reporter"

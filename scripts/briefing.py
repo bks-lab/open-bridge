@@ -1715,7 +1715,7 @@ def file_to_inbox(box, profile: dict, result: dict) -> tuple:
             existing = [i for i in box.items() if i.key == key and i.state not in ("done",)]
             box.add(source=f"briefing/{pid}", kind="finding", summary=summary + (f" ({label})" if label else ""),
                     detail=item.get("url"), urgency=rule.get("urgency", "today"), gate=rule.get("gate", "your-yes"),
-                    key=key)
+                    key=key, closer="reporter")      # this function closes it when the row is gone
             if not existing:
                 filed += 1
     closed = 0
