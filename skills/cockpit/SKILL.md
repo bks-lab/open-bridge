@@ -1,7 +1,7 @@
 ---
 name: cockpit
 description: >-
-  Open the Bridge cockpit, the local web page (127.0.0.1) that watches and steers the whole Bridge: briefing, work (inbox and tasks), agent tabs and sessions, workers, machines, tokens. Starts the server if needed. Trigger: "/cockpit", "cockpit", "open the cockpit", "dashboard", "Cockpit öffnen".
+  Open the Bridge cockpit, the local web page (127.0.0.1) that watches and steers the whole Bridge: briefing, work (inbox and tasks), agent tabs and sessions, workers, machines, tokens. Starts the server if needed. Not the per-project view (/dashboard). Trigger: "/cockpit", "cockpit", "open the cockpit", "web cockpit", "bridge dashboard in the browser", "Cockpit öffnen".
 metadata:
   scope: core
 ---

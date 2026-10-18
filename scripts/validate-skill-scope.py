@@ -12,7 +12,12 @@ What it does:
   1. Every `skills/*/SKILL.md` must declare scope ∈ {core, org, user, personal}.
      Missing / invalid → exit 1 (CI + pre-commit gate). This is the load-bearing
      part: it makes the frontmatter authoritative instead of drift-prone.
-  2. Refreshes the per-instance tier map at `.bridge/skill-scope.md`.
+  2. No two CORE skills may quote the same phrase in their `Trigger:` list
+     (case-insensitive). CORE ships to every installation, so a shared trigger
+     makes the harness pick between two skills by wording and model, and the
+     choice cannot be reproduced. Org and user skills may still shadow a CORE
+     trigger on purpose.
+  3. Refreshes the per-instance tier map at `.bridge/skill-scope.md`.
 
 Why the map is NOT in AGENTS.md any more (changed 2026-08-19):
   Every instance has a different skill tree by design (org skills, personal
@@ -32,6 +37,7 @@ Usage:
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -80,10 +86,29 @@ def scope_of(fm: dict | None) -> str | None:
     return None
 
 
+def quoted_triggers(description: str) -> list[str]:
+    """The quoted phrases after `Trigger:` (or `Triggers:`) in a description."""
+    m = re.search(r"Triggers?:(.*)$", description, re.S)
+    return re.findall(r'"([^"]+)"', m.group(1)) if m else []
+
+
+def trigger_collisions(core: dict[str, list[str]]) -> list[str]:
+    """One error per trigger that more than one CORE skill quotes."""
+    owners: dict[str, list[str]] = {}
+    for name, triggers in sorted(core.items()):
+        for t in {t.strip().casefold() for t in triggers}:
+            owners.setdefault(t, []).append(name)
+    return [
+        f'trigger "{t}" is claimed by several core skills: {", ".join(names)}'
+        for t, names in sorted(owners.items()) if len(names) > 1
+    ]
+
+
 def collect() -> tuple[dict[str, list[str]], list[str]]:
     """Return ({scope: [skill names]}, [error strings])."""
     by_scope: dict[str, list[str]] = {s: [] for s in VALID}
     errors: list[str] = []
+    core_triggers: dict[str, list[str]] = {}
     # Iterate DIRECTORIES, not `*/SKILL.md`. Globbing the file made a skill
     # directory WITHOUT a SKILL.md invisible: it was neither counted nor flagged,
     # so the validator printed "92 skills valid" against 93 directories. The
@@ -99,13 +124,17 @@ def collect() -> tuple[dict[str, list[str]], list[str]]:
                 f"scope router cannot classify anything inside it"
             )
             continue
-        sc = scope_of(frontmatter(skill_md))
+        fm = frontmatter(skill_md)
+        sc = scope_of(fm)
         if sc is None:
             errors.append(f"{name}: no scope declared (need metadata.scope ∈ {VALID})")
         elif sc not in VALID:
             errors.append(f"{name}: invalid scope '{sc}' (must be one of {VALID})")
         else:
             by_scope[sc].append(name)
+            if sc == "core":
+                core_triggers[name] = quoted_triggers(str(fm.get("description", "")))
+    errors.extend(trigger_collisions(core_triggers))
     return by_scope, errors
 
 
