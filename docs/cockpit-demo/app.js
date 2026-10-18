@@ -12,7 +12,7 @@ import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder } from './components.js'
 import {
   CONN_GRACE_MS, DAY, pushNoteState, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
-  isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, letterShortcut, planBusy, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
+  isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -160,20 +160,24 @@ function pushNote(note, { toast = true, linger = 6000 } = {}) {
       // an action, an undo, gives it to that toast and keeps it up as long as its own would stay
       const twin = note.action && s.toasts.find(t => t.text === note.text && !t.action)
       if (!twin) return s
-      setTimeout(() => dismissToast(twin.id), linger)
+      toastTimers.start(twin.id, toastLinger(twin.tone, linger))
       return { ...s, toasts: s.toasts.map(t => t === twin ? { ...t, action: note.action, conv: note.conv ?? null, undo: note.undo ?? null } : t) }
     }
     if (next.toast) {
       toastSeq = next.toast.id
-      setTimeout(() => dismissToast(next.toast.id), linger)
+      toastTimers.start(next.toast.id, toastLinger(next.toast.tone, linger))
     }
     return { ...s, notes: next.notes, toasts: next.toasts }
   })
 }
 
 function dismissToast(id) {
+  toastTimers.stop(id)
   store.set(s => ({ ...s, toasts: s.toasts.filter(t => t.id !== id) }))
 }
+
+// a toast waits while the pointer or the focus is inside it, a bad one until it is dismissed (logic.js)
+const toastTimers = createToastTimers({ expire: dismissToast })
 
 function clock(ms) {
   const d = new Date(ms)
@@ -521,6 +525,8 @@ const ctl = {
   ask,
   copy,
   dismissToast,
+  pauseToast: (id, why) => toastTimers.pause(id, why),
+  resumeToast: (id, why) => toastTimers.resume(id, why),
   reload: async () => {
     const res = await api.reload(true)
     if (res.ok && res.data?.loading) store.set(s => ({ ...s, loading: res.data.loading }))

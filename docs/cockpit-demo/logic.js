@@ -124,8 +124,14 @@ export function freeKeys(keys, busy) {
   return keys.filter(k => !busy?.[k])
 }
 
+/** The busy key of one row's step (row_action): its page, section and index, so one row in flight leaves the others free */
+export function rowActionKey({ page, section, index }) {
+  return `row_action:${page}:${section}:${index}`
+}
+
 /** The busy key of an action: its row, tab or conversation, the joined keys of a bulk, else the verb */
-function busyKey(verb, args) {
+export function busyKey(verb, args) {
+  if (verb === 'row_action' && args?.index != null) return rowActionKey(args)
   return args?.key ?? args?.tab_ref ?? (args?.keys ? args.keys.join(',') : args?.conv ? `quick:${args.conv}` : verb)
 }
 
@@ -2264,4 +2270,55 @@ export function tickerFeedValid(feed) {
   const name = typeof feed.name === 'string' ? feed.name.trim() : ''
   return /^[a-z0-9][a-z0-9-]{0,39}$/.test(String(feed.id ?? '').trim()) && name.length >= 1 && name.length <= 60
     && !TICKER_CTRL.test(feed.name) && tickerUrlValid(String(feed.url ?? '').trim())
+}
+
+// ---------------------------------------------------------------- toast timers
+
+/** How long a toast stays: a `bad` one until it is dismissed (null), every other its own linger */
+export function toastLinger(tone, linger) {
+  return tone === 'bad' ? null : linger
+}
+
+/**
+ * The timers of the toasts. `start(id, ms)` lets a toast go after ms (null: never), `pause(id, why)`
+ * holds it while the pointer (`hover`) or the focus (`focus`) is inside it, `resume(id, why)` lets
+ * it run on with the time it had left once every reason has gone, `stop(id)` forgets it.
+ */
+export function createToastTimers({ setTimer = setTimeout, clearTimer = clearTimeout, now = Date.now, expire }) {
+  const all = new Map()   // id -> { left, until, timer, held: Set }
+  const run = (id, t) => {
+    t.until = now() + t.left
+    t.timer = setTimer(() => { all.delete(id); expire(id) }, t.left)
+  }
+  return {
+    start(id, ms) {
+      const old = all.get(id)
+      if (old?.timer != null) clearTimer(old.timer)
+      all.delete(id)
+      if (ms == null) return
+      const t = { left: ms, until: 0, timer: null, held: old?.held ?? new Set() }
+      all.set(id, t)
+      if (!t.held.size) run(id, t)
+    },
+    pause(id, why) {
+      const t = all.get(id)
+      if (!t) return
+      if (!t.held.size && t.timer != null) {
+        clearTimer(t.timer)
+        t.timer = null
+        t.left = Math.max(0, t.until - now())
+      }
+      t.held.add(why)
+    },
+    resume(id, why) {
+      const t = all.get(id)
+      if (!t || !t.held.delete(why) || t.held.size) return
+      run(id, t)
+    },
+    stop(id) {
+      const t = all.get(id)
+      if (t?.timer != null) clearTimer(t.timer)
+      all.delete(id)
+    },
+  }
 }

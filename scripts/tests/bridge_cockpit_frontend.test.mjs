@@ -3317,3 +3317,88 @@ test('notes: without a toast the note is kept, the newest four toasts stay up', 
   assert.deepEqual(s.toasts.map(t => t.id), [3, 4, 5, 6])
   assert.equal(s.notes.length, 6)
 })
+
+// ---------------------------------------------------------------- toasts that wait, row actions busy per row (#391)
+
+/** A clock the test moves by hand: setTimer and clearTimer as createToastTimers takes them */
+function handClock() {
+  let at = 0
+  let seq = 0
+  const due = new Map()
+  return {
+    now: () => at,
+    setTimer: (fn, ms) => { seq += 1; due.set(seq, { fn, when: at + ms }); return seq },
+    clearTimer: id => { due.delete(id) },
+    advance(ms) {
+      at += ms
+      for (const [id, d] of [...due].sort((a, b) => a[1].when - b[1].when)) {
+        if (d.when > at) continue
+        due.delete(id)
+        d.fn()
+      }
+    },
+  }
+}
+
+test('createToastTimers: a toast with focus inside it outlives its linger time and goes once focus leaves', () => {
+  const clock = handClock()
+  const gone = []
+  const timers = logic.createToastTimers({ ...clock, expire: id => gone.push(id) })
+  timers.start(1, 6000)
+  timers.start(2, 6000)
+  clock.advance(1000)
+  timers.pause(1, 'focus')
+  clock.advance(9000)
+  assert.deepEqual(gone, [2], 'the toast without focus went on time, the focused one stays')
+  timers.resume(1, 'focus')
+  clock.advance(4999)
+  assert.deepEqual(gone, [2], 'it keeps the 5 s it had left when the focus came')
+  clock.advance(1)
+  assert.deepEqual(gone, [2, 1])
+})
+
+test('createToastTimers: hover and focus each hold the toast, it runs again only when both have left', () => {
+  const clock = handClock()
+  const gone = []
+  const timers = logic.createToastTimers({ ...clock, expire: id => gone.push(id) })
+  timers.start(1, 6000)
+  timers.pause(1, 'hover')
+  timers.pause(1, 'focus')
+  timers.resume(1, 'hover')
+  clock.advance(60000)
+  assert.deepEqual(gone, [])
+  timers.resume(1, 'focus')
+  clock.advance(6000)
+  assert.deepEqual(gone, [1])
+  // a dismissed toast leaves no timer behind, and a hover on it afterwards starts none
+  timers.start(3, 6000)
+  timers.stop(3)
+  timers.pause(3, 'hover')
+  timers.resume(3, 'hover')
+  clock.advance(60000)
+  assert.deepEqual(gone, [1])
+})
+
+test('toastLinger: a bad toast stays until dismissed, every other tone keeps its linger', () => {
+  const clock = handClock()
+  const gone = []
+  const timers = logic.createToastTimers({ ...clock, expire: id => gone.push(id) })
+  assert.equal(logic.toastLinger('bad', 6000), null)
+  for (const tone of ['info', 'ok', 'warn']) assert.equal(logic.toastLinger(tone, 6000), 6000)
+  timers.start(1, logic.toastLinger('bad', 6000))
+  timers.pause(1, 'hover')
+  timers.resume(1, 'hover')
+  clock.advance(24 * 3600 * 1000)
+  assert.deepEqual(gone, [], 'no timer ever takes a bad toast away')
+})
+
+test('busyKey: a row action is busy per row, other actions keep their key', () => {
+  const at = index => logic.busyKey('row_action', { page: 'dates', section: 'cal', index, action: 'prep' })
+  assert.equal(at(1), 'row_action:dates:cal:1')
+  assert.notEqual(at(1), at(2))
+  assert.notEqual(at(1), logic.busyKey('row_action', { page: 'dates', section: 'other', index: 1 }))
+  assert.equal(logic.rowActionKey({ page: 'dates', section: 'cal', index: 1 }), at(1), 'the views read the same key')
+  assert.equal(logic.planBusy('row_action', { page: 'dates', section: 'cal', index: 2, action: 'prep' }, {}).key, at(2))
+  assert.equal(logic.busyKey('task_close', { key: 'task:a' }), 'task:a')
+  assert.equal(logic.busyKey('home_tiles', { ids: ['a'] }), 'home_tiles')
+})

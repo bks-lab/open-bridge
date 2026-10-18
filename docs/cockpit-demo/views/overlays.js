@@ -5,7 +5,7 @@
 import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
-  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope,
+  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
@@ -29,7 +29,9 @@ import { TabsColumn } from './tabs.js'
 export function Toasts({ s, c }) {
   const t = T()
   return html`<div class="toasts" role="status" aria-live="polite" aria-atomic="false">
-    ${s.toasts.map(x => html`<div class="toast" key=${x.id}>
+    ${s.toasts.map(x => html`<div class="toast" key=${x.id}
+        onMouseEnter=${() => c.pauseToast(x.id, 'hover')} onMouseLeave=${() => c.resumeToast(x.id, 'hover')}
+        onfocusin=${() => c.pauseToast(x.id, 'focus')} onfocusout=${() => c.resumeToast(x.id, 'focus')}>
       <${Dot} token=${noteToken(x.tone)} />
       <span class="toast-text">${x.text}</span>
       ${x.action === 'undo' && x.undo?.length ? html`<${Btn} size="xs" variant="primary"
@@ -317,7 +319,7 @@ export function InfoDrawer({ s, c }) {
         ${onHost.length ? html`<${Btn} size="xs" variant="secondary" onClick=${() => { close(); c.openWorkers({ host: cur.title }) }}>${t.workersOpen}<//>` : null}
         ${cur.actions?.length && cur.row_id ? (dated || ghRef
           // an event's or a GitHub row's steps start an agent tab and change nothing, so each is a button of its own
-          ? cur.actions.map(a => html`<${Btn} key=${a.id} size="xs" variant="primary" busy=${!!s.ui.busy.row_action}
+          ? cur.actions.map(a => html`<${Btn} key=${a.id} size="xs" variant="primary" busy=${!!s.ui.busy[rowActionKey({ page, section, index: cur.index })]}
               onClick=${() => c.act('row_action', { page, section, index: cur.index, action: a.id })}>${a.label}<//>`)
           : html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} />`) : null}
         ${cur.account?.status ? html`<${StatusMenu} it=${cur} page=${page} section=${section} c=${c} />` : null}

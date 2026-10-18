@@ -7,7 +7,7 @@ import {
   formatDay, indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
   sectionStamp, weekdayNames, triageKey, triageShows, sectionTile, tokenText, usageBars, usageToday, USAGE_SOURCES,
-  jevList, TASK_LANES, taskLane, noiseRows,
+  jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -99,7 +99,7 @@ export function RowSteps({ it, page, section, s, c }) {
   const t = T()
   const [open, setOpen] = useState(false)
   const box = usePopover(open, setOpen)
-  const busy = !!s.ui.busy.row_action
+  const busy = !!s.ui.busy[rowActionKey({ page, section, index: it.index })]
   const pick = action => { setOpen(false); c.act('row_action', { page, section, index: it.index, action }) }
   return html`<span class="settle" ref=${box}>
     <${Btn} size="xs" variant="ghost" busy=${busy} pressed=${open} title=${t.rowStepsTitle} onClick=${() => setOpen(!open)}>${t.rowSteps} ▾<//>

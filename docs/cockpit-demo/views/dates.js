@@ -5,6 +5,7 @@
 import { html, useEffect, useMemo, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T, language } from '../text.js'
 import { Btn, Chip, Icon, MarkChip, StateLine } from './parts.js'
+import { rowActionKey } from '../logic.js'
 
 const MODES = ['agenda', 'week', 'month']
 const MODE_KEY = 'cockpit.dates.mode'
@@ -150,7 +151,7 @@ function DayBar({ events, figures, now, isToday }) {
 function EventRow({ it, page, section, s, c }) {
   const t = T()
   const cal = it.cal
-  const busy = !!s.ui.busy.row_action
+  const busy = !!s.ui.busy[rowActionKey({ page: page.id, section: section.id, index: it.index })]
   const open = () => c.openInfo(it, page.id, section.id)
   const cls = `cal-row card-opens${cal.info ? ' is-info' : ''}${cal.past ? ' is-past' : ''}${cal.running ? ' is-running' : ''}`
   return html`<li class=${cls} tabindex="0"

@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
 import { Btn, Chip, Icon, PrioChip, Spinner, StateLine } from './parts.js'
-import { actionRow, ghSortRows, pageItemActs } from '../logic.js'
+import { actionRow, ghSortRows, pageItemActs, rowActionKey } from '../logic.js'
 import { SettleMenu } from './day.js'
 import { RowSteps } from './pages.js'
 import { rowClickOpens } from './overlays.js'
@@ -251,7 +251,7 @@ function GhRow({ it, page, section, s, c, byKey }) {
     </div>
     <div class="ghl-acts btn-row">
       ${live ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[it.tab.ref]} onClick=${() => c.act('tab_jump', { tab_ref: it.tab.ref })}>${t.btnToTab}<//>`
-        : lead ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy.row_action}
+        : lead ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[rowActionKey({ page, section, index: it.index })]}
             onClick=${() => c.act('row_action', { page, section, index: it.index, action: lead })}>${leadLabel}<//>` : null}
       ${rest.length && it.row_id ? html`<${RowSteps} it=${{ ...it, actions: rest }} page=${page} section=${section} s=${s} c=${c} />` : null}
       ${settleRow ? html`<${SettleMenu} rows=${[settleRow]} s=${s} c=${c} />` : null}

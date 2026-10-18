@@ -319,3 +319,48 @@ test('day list: a section fills up to the rows the column has room for, never pa
   assert.deepEqual(loadedLogic.sectionRows(work, false, byKey, 10).map(r => r.key), work.rows.map(r => r.key))
   assert.deepEqual(loadedLogic.sectionRows(work, false, byKey, 1).map(r => r.key), work.compact)   // the compact rows always stand
 })
+
+// ---------------------------------------------------------------- Toasts and row steps (#391)
+
+// the overlays and the row steps from a copy of scripts/web of their own, rendered with that copy's Preact
+const extra = await (async () => {
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const { fileURLToPath, pathToFileURL } = await import('node:url')
+  const web = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-render-391-')), 'web')
+  process.on('exit', () => fs.rmSync(path.dirname(web), { recursive: true, force: true }))
+  fs.cpSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web'), web, { recursive: true })
+  fs.writeFileSync(path.join(web, 'package.json'), '{ "type": "module" }\n')
+  const load = rel => import(pathToFileURL(path.join(web, rel)).href)
+  return { ...(await load('vendor/htm-preact-3.1.1.module.js')), overlays: await load('views/overlays.js'),
+    pages: await load('views/pages.js'), logic: await load('logic.js') }
+})()
+
+function mountExtra(vnode) {
+  const root = document.createElement('div')
+  extra.render(vnode, root)
+  return root
+}
+
+test('toasts: hover and focus inside a toast hold its timer, leaving lets it run again', () => {
+  const s = cockpitState(NOW, { toasts: [
+    { id: 7, text: 'Closed the task', tone: 'ok', at: '12:00', action: 'undo', undo: [{ undo: { verb: 'task_reopen' } }] },
+  ] })
+  const c = recorder()
+  const el = mountExtra(extra.html`<${extra.overlays.Toasts} s=${s} c=${c} />`)
+  const toast = el.$('.toast')
+  toast.dispatch('mouseenter')
+  toast.dispatch('mouseleave')
+  el.button(en.undoToast).dispatch('focusin')
+  el.button(en.undoToast).dispatch('focusout')
+  assert.deepEqual(c.calls, [['pauseToast', 7, 'hover'], ['resumeToast', 7, 'hover'], ['pauseToast', 7, 'focus'], ['resumeToast', 7, 'focus']])
+})
+
+test('row steps: a busy row action disables only its own row', () => {
+  const s = cockpitState(NOW, { ui: { busy: { [extra.logic.rowActionKey({ page: 'p', section: 'sec', index: 1 })]: 'row_action' } } })
+  const row = index => ({ index, row_id: `r${index}`, actions: [{ id: 'follow', label: 'Followed up' }] })
+  const steps = index => mountExtra(extra.html`<${extra.pages.RowSteps} it=${row(index)} page="p" section="sec" s=${s} c=${recorder()} />`)
+  assert.equal(steps(1).$('button').hasAttribute('disabled'), true, 'the row in flight waits')
+  assert.equal(steps(2).$('button').hasAttribute('disabled'), false, 'another row stays free')
+})
