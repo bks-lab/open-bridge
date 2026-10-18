@@ -45,7 +45,7 @@ and the terminal driver configured in `workplace.driver`
 (Go to tab), `key` (Yes, No), `screen` (the large tab view), `close` (Close
 tab), `send` (a message, Go on) and `launch` (Do it, Advise me). The server asks
 `workplace.py caps --json` once and then every few minutes
-(`server.py driver_caps`), and a verb in `actions.py NEEDS_CAP` is refused with
+(`server.py driver_caps`), and a verb in `actions_base.py NEEDS_CAP` is refused with
 `driver_cannot` when the driver does not serve it. So the server calls no
 terminal directly for a tab; the cmux CLI stays only for the layout backup
 (`skills/cmux/scripts/cmux_layout.py`, every `snapshot_minutes` and on "Save
@@ -60,7 +60,9 @@ layout now").
 | `scripts/lib/bridge_cockpit/runner.py` | the one place that starts a subprocess: program allowlist, timeouts, clean env |
 | `scripts/lib/bridge_cockpit/collector.py` | collect pipeline (quick, full, delta), and `build_model`: the JSON the page gets |
 | `scripts/lib/bridge_cockpit/model.py` | pure domain functions, first ported from the retired briefing card's `logic.ts` (buckets, layout, tab matching) |
-| `scripts/lib/bridge_cockpit/actions.py` | the verb table `SPEC`, argument checks, one `v_<verb>` handler per verb |
+| `scripts/lib/bridge_cockpit/actions.py` | `Actions`: the argument checks (`validate`), `execute`, the audit line, `finish`; it re-exports every name of `actions_base.py` |
+| `scripts/lib/bridge_cockpit/actions_base.py` | the verb table `SPEC`, the patterns and word lists, `ActionError`, `Ctx` |
+| `scripts/lib/bridge_cockpit/actions_*.py` | the `v_<verb>` handlers by area, each a part of `Actions`: `launch` (the shared pieces, the start of agents), `work` (inbox items and tasks), `tabs`, `chats` (quick chats, A2A, sessions, `/api/ask`), `pages` (start and settings page, a page row's steps) |
 | `scripts/lib/bridge_cockpit/review.py` | the task check: `task.py review` on its own thread, the last run for the model |
 | `scripts/lib/bridge_cockpit/sessions.py` | the Sessions page: running Claude sessions, their subagents and tab |
 | `scripts/lib/bridge_cockpit/quick.py` | the chat: one short read-only `claude -p` per chat (Haiku default), streamed (`quick_live`), kept in `quick.json`, resume, cost per turn, handoff |
@@ -159,8 +161,8 @@ python3 scripts/bridge-cockpit.py status --json
 
 ### A new verb
 
-1. `actions.py`: an entry in `SPEC` (argument name to type and required), and a
-   `v_<verb>(self, ctx, ...)` handler. Run programs only through `ctx.call(name,
+1. `actions_base.py`: an entry in `SPEC` (argument name to type and required), and a
+   `v_<verb>(self, ctx, ...)` handler in the `actions_*.py` of its area. Run programs only through `ctx.call(name,
    subject, argv, timeout)`, argv a list, free text after `--`. End with
    `self.settle(...)` when the row should disappear, or `ctx.delta()` when it
    only changed.
