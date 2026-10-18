@@ -2627,3 +2627,10 @@ export function quickLiveSnapshot(snap) {
 export function whenShown(doc, fn) {
   return () => { if (!doc?.hidden) fn() }
 }
+
+/** Who measured the cost view: the host of every report it merges (one collector per machine), else its host or
+ *  source, so a card fed by two machines names both. */
+export function costSources(view) {
+  const hosts = (view?.sources ?? []).map(x => x?.host || x?.source).filter(Boolean)
+  return [...new Set(hosts)].join(', ') || view?.host || view?.source || ''
+}

@@ -299,3 +299,10 @@ test('the overview board shows a cost tile when the page places the cost card', 
   const none = mount(html`<${views.pages.OverviewBoard} page=${{ ...page, cards: null }} s=${s} c=${recorder()} />`)
   assert.equal(none.$$('.otile-bar').length, 0)
 })
+
+test('the cost card names every machine whose report it merges', () => {
+  assert.equal(logic.costSources({ sources: [{ host: 'my-server' }, { host: 'my-laptop' }, { host: 'my-server' }] }), 'my-server, my-laptop')
+  assert.equal(logic.costSources({ host: 'my-server', source: 'ssh:my-server:/x' }), 'my-server')
+  assert.equal(logic.costSources({ sources: [{ source: '/tmp/costs.json' }] }), '/tmp/costs.json')
+  assert.equal(logic.costSources(null), '')
+})

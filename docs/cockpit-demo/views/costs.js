@@ -6,7 +6,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   formatDay, weekdayNames, tokenText, USAGE_SOURCES, stackBars, shownLabels, sparkPoints, moneyText, budgetBar, costBars,
-  costDay, costTotals, costYesterday, costTone, clockTime, SERIES_REST, USAGE_RANGES, USAGE_DIMS, NO_BRIDGE, usageParts,
+  costDay, costTotals, costYesterday, costTone, costSources, clockTime, SERIES_REST, USAGE_RANGES, USAGE_DIMS, NO_BRIDGE, usageParts,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Btn, Chip, Empty, StateLine } from './parts.js'
@@ -119,7 +119,7 @@ export function CostCard({ page, s, c }) {
       <h2 class="sec-title" id=${`costs-${page.id}-t`}>${t.costsTitle}</h2>
       ${data ? html`<${ChipPick} label=${t.costsRangeLabel} values=${['7', '30', 'month']} value=${range} textOf=${v => t.costsRanges[v]}
         onPick=${v => { setRange(v); setPick(null) }} />` : null}
-      ${data && !Number.isNaN(at) ? html`<span class="muted small">${t.costsMeasured(clockTime(at), data.host || data.source || '')}</span>` : null}
+      ${data && !Number.isNaN(at) ? html`<span class="muted small">${t.costsMeasured(clockTime(at), costSources(data))}</span>` : null}
       <${Btn} size="xs" variant="ghost" icon="reload" label=${t.costsReload} busy=${k.status === 'loading'} onClick=${() => c.loadCosts()} />
     </header>
     ${data?.stale ? html`<p><${StateLine} token="warning" strong word=${t.costsStale} /></p>` : null}
