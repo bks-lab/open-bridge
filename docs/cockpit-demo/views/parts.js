@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { markToken, prioToken, short, verdictToken } from '../logic.js'
+import { markToken, prioToken, rovingIndex, short, verdictToken } from '../logic.js'
 import { nowSec, reducedMotion, settled, springTo } from '../motion.js'
 import { T } from '../text.js'
 
@@ -64,6 +64,101 @@ export function useHits(value, counts = () => true) {
 export function CountNum({ value, start = 0, cls = '' }) {
   const v = useTween(Number(value) || 0, { start })
   return html`<span class=${`num ${cls}`}>${v.toFixed(0)}</span>`
+}
+
+// ---------------------------------------------------------------- keyboard (the ARIA roles keep their promise, #401)
+
+const ROVING = { radiogroup: ['radio', 'aria-checked'], tablist: ['tab', 'aria-selected'] }
+const MENU_ITEMS = ['menuitem', 'menuitemradio', 'menuitemcheckbox']
+
+/** The elements under `root` with one of `roles`, in page order, the disabled ones left out */
+function withRole(root, roles) {
+  const out = []
+  const walk = n => {
+    for (const k of n.childNodes ?? []) {
+      if (k.nodeType !== 1) continue
+      if (roles.includes(k.getAttribute('role')) && !k.hasAttribute('disabled')) out.push(k)
+      walk(k)
+    }
+  }
+  if (root) walk(root)
+  return out
+}
+
+/** The button that opens a popover: the first one in its box outside the menu */
+function opener(root) {
+  for (const k of root?.childNodes ?? []) {
+    if (k.nodeType !== 1 || k.getAttribute('role') === 'menu') continue
+    if (k.localName === 'button') return k
+    const inner = opener(k)
+    if (inner) return inner
+  }
+  return null
+}
+
+/** A radio group or a tab list as one tab stop: the chosen option takes the Tab key, the arrows, Home
+ *  and End move the focus and the choice with it. A tab that opens a menu (More) only takes the focus.
+ *  Put `ref` and `onKeyDown` on the element with role radiogroup or tablist; `given` reuses a ref it has */
+export function useRoving(given) {
+  const own = useRef(null)
+  const ref = given ?? own
+  useEffect(() => {
+    const root = ref.current
+    const [role, attr] = ROVING[root?.getAttribute('role')] ?? []
+    if (!role) return
+    const items = withRole(root, [role])
+    const on = Math.max(0, items.findIndex(el => el.getAttribute(attr) === 'true'))
+    items.forEach((el, i) => el.setAttribute('tabindex', i === on ? '0' : '-1'))
+  })
+  const onKeyDown = e => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return
+    const root = ref.current
+    const [role] = ROVING[root?.getAttribute('role')] ?? []
+    const items = role ? withRole(root, [role]) : []
+    const at = items.indexOf(e.target)
+    const next = at < 0 ? -1 : rovingIndex(items.length, at, e.key)
+    if (next < 0) return
+    e.preventDefault()
+    const el = items[next]
+    el.focus()
+    if (next !== at && !el.hasAttribute('aria-haspopup')) el.click()
+  }
+  return { ref, onKeyDown }
+}
+
+/** A small menu that closes on Escape or a click outside it; returns the ref for its box. On open the
+ *  focus moves to its first item, the arrows, Home and End move it between the items. Closed by Escape
+ *  or a pick, the focus goes back to the button that opened it; a click outside leaves it where it went */
+export function usePopover(open, setOpen) {
+  const box = useRef(null)
+  useEffect(() => {
+    const root = box.current
+    if (!open || !root) return undefined
+    const trigger = opener(root)
+    let giveBack = true
+    withRole(root, MENU_ITEMS)[0]?.focus()
+    const away = e => { if (!root.contains(e.target)) { giveBack = false; setOpen(false) } }
+    const keys = e => {
+      if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); return }
+      const items = withRole(root, MENU_ITEMS)
+      const at = items.indexOf(document.activeElement)
+      if (at < 0 && document.activeElement !== trigger) return
+      const next = rovingIndex(items.length, at, e.key)
+      if (next < 0) return
+      e.preventDefault()
+      items[next].focus()
+    }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', keys, true)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', keys, true)
+      const now = document.activeElement
+      const elsewhere = now && now !== document.body && document.contains(now) && !root.contains(now)
+      if (giveBack && !elsewhere && trigger && document.contains(trigger)) trigger.focus()
+    }
+  }, [open])
+  return box
 }
 
 // ---------------------------------------------------------------- small parts

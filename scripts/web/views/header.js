@@ -10,7 +10,7 @@ import {
   pageOrder, reviewHomeOf,
 } from './nav.js'
 import { usePopover } from './pages.js'
-import { Btn, Dot, Spinner, StateLine, useTween } from './parts.js'
+import { Btn, Dot, Spinner, StateLine, useRoving, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- header and page bar
 
@@ -167,6 +167,7 @@ export function PageBar({ s, c }) {
   const t = T()
   const pages = s.model?.pages ?? []
   const tabsRef = useRef(null)
+  const keys = useRoving(tabsRef)
   const [box, setBox] = useState(null)
   useLayoutEffect(() => {
     const el = tabsRef.current?.querySelector('.ptab.is-active')
@@ -210,7 +211,7 @@ export function PageBar({ s, c }) {
   // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip
   const sess = sessionCounts(s.sessions?.sessions)
   return html`<nav class="pagebar" aria-label=${t.pagesLabel} ref=${navRef}>
-    <div class="pagebar-tabs" role="tablist" ref=${tabsRef}>
+    <div class="pagebar-tabs" role="tablist" ref=${tabsRef} onKeyDown=${keys.onKeyDown}>
       ${box ? html`<${TabMarker} box=${box} />` : null}
       ${tab(START_PAGE, t.startTab, null)}
       ${tab('briefing', briefingTitle(s), n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}

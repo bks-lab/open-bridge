@@ -15,7 +15,7 @@ import { PinStar, ReturnChip } from './home.js'
 import { LaunchPick } from './launch.js'
 import { workViewNow } from './nav.js'
 import { usePopover } from './pages.js'
-import { Btn, Chip, Dot, Empty, MarkChip, PrioChip, StateLine, VerdictChip } from './parts.js'
+import { Btn, Chip, Dot, Empty, MarkChip, PrioChip, StateLine, VerdictChip, useRoving } from './parts.js'
 
 // ---------------------------------------------------------------- left column: the day
 
@@ -243,9 +243,11 @@ function HiddenList({ s, c }) {
 export function WorkSwitch({ s, c }) {
   const t = T()
   const views = workViews(workPageOf(s.model?.pages), s.jev)
+  const keys = useRoving()
   if (views.length < 2) return null
   const view = workViewNow(s)
-  return html`<div class="fbar-chips work-switch" role="radiogroup" aria-label=${t.workOrder.viewLabel}>
+  return html`<div class="fbar-chips work-switch" role="radiogroup" aria-label=${t.workOrder.viewLabel}
+    ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
     ${views.map(v => html`<button type="button" role="radio" key=${v} aria-checked=${String(view === v)}
       class=${`fchip${view === v ? ' is-on' : ''}`} onClick=${() => c.setWorkView(v)}>${t.workOrder.views[v]}</button>`)}
   </div>`

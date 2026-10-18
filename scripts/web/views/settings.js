@@ -12,7 +12,7 @@ import { T } from '../text.js'
 import { Segmented } from './detail.js'
 import { catalogLabel } from './home.js'
 import { Drawer } from './overlays.js'
-import { Btn, Chip, Empty, Icon, StateLine } from './parts.js'
+import { Btn, Chip, Empty, Icon, StateLine, useRoving } from './parts.js'
 import { TickerSettings } from './ticker.js'
 
 const SECTIONS = ['start', 'look', 'launch', 'ticker']
@@ -63,8 +63,9 @@ function useHome(s, c) {
 function ViewCard({ home }) {
   const w = T().settings
   const view = home.on.has('o:classic') ? 'tiles' : 'stage'
+  const keys = useRoving()
   return html`<${Card} title=${w.viewTitle} intro=${w.viewIntro}>
-    <div class="view-pick" role="radiogroup" aria-label=${w.viewTitle}>
+    <div class="view-pick" role="radiogroup" aria-label=${w.viewTitle} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
       ${['stage', 'tiles'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
         class=${`view-opt${view === v ? ' is-on' : ''}`} onClick=${() => view !== v && home.flip('o:classic', v === 'tiles')}>
         <span class=${`view-thumb view-thumb-${v}`} aria-hidden="true">${v === 'stage'

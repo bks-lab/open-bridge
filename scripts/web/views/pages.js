@@ -2,7 +2,7 @@
 // The cockpit, profile pages: sections, tiles, mosaic, the overview board, the Jev order.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   formatDay, indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
@@ -16,7 +16,7 @@ import { PageItemActions, SettleMenu } from './day.js'
 import { Lines } from './detail.js'
 import { ReturnChip } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
-import { Btn, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, useTween } from './parts.js'
+import { Btn, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
 import { DatesAgenda } from './dates.js'
 
@@ -202,19 +202,7 @@ function ResIcon({ name, size = 18 }) {
     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d=${d} /></svg>`
 }
 
-/** A small menu that closes on Escape or a click outside it; returns the ref for its box */
-export function usePopover(open, setOpen) {
-  const box = useRef(null)
-  useEffect(() => {
-    if (!open) return undefined
-    const away = e => { if (box.current && !box.current.contains(e.target)) setOpen(false) }
-    const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
-    document.addEventListener('pointerdown', away)
-    document.addEventListener('keydown', esc, true)
-    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc, true) }
-  }, [open])
-  return box
-}
+export { usePopover }   // the menus of day.js and header.js take it from here
 
 /** Search, state, group and tags: what a drawn section shows; the counts say what each choice holds */
 function useRowFilter(items, initTags = {}) {
@@ -674,10 +662,11 @@ export function NoiseCard({ page, s, c }) {
 export function KindBar({ kinds, active, c }) {
   const t = T()
   const total = kinds.reduce((a, k) => a + k.n, 0)
+  const keys = useRoving()
   const chip = (label, n, on) => html`<button type="button" role="radio" key=${label ?? '@all'} aria-checked=${String(on)}
     class=${`fchip${on ? ' is-on' : ''}`} onClick=${() => c.setWorkKind(label)}>${label ?? t.workOrder.kindAll} <span class="mono">${n}</span></button>`
   return html`<div class="panel panel-pad tri-bar" role="group" aria-label=${t.workOrder.kindFilter}>
-    <span class="fbar-chips" role="radiogroup" aria-label=${t.workOrder.kindFilter}>
+    <span class="fbar-chips" role="radiogroup" aria-label=${t.workOrder.kindFilter} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
       ${chip(null, total, !active)}${kinds.map(k => chip(k.label, k.n, active?.label === k.label))}
     </span></div>`
 }
@@ -691,9 +680,10 @@ export function WorkOrder({ page, s, c }) {
   useEffect(() => { if (st === undefined) c.jevRank(page.id, false) }, [page.id])
   const order = st?.order ?? null
   const view = order && s.ui.workView === 'jev' ? 'jev' : 'area'
+  const keys = useRoving()
   const tokens = order?.usage && order.usage.input_tokens != null ? tokenText((order.usage.input_tokens ?? 0) + (order.usage.output_tokens ?? 0), lang) : null
   return html`<div class="panel panel-pad tri-bar jorder" role="group" aria-label=${t.workOrder.label}>
-    <span class="fbar-chips" role="radiogroup" aria-label=${t.workOrder.label}>
+    <span class="fbar-chips" role="radiogroup" aria-label=${t.workOrder.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
       ${['area', 'jev'].map(v => html`<button type="button" role="radio" key=${v} aria-checked=${String(view === v)}
         class=${`fchip${view === v ? ' is-on' : ''}`} disabled=${v === 'jev' && !order} onClick=${() => c.setWorkView(v)}>
         ${v === 'area' ? t.workOrder.byArea : t.workOrder.byJev}</button>`)}

@@ -3469,3 +3469,29 @@ test('app.js runs its render ticks through whenShown and keeps the live text out
   assert.doesNotMatch(handler[1], /store\.set/, 'a piece of an answer never renders the whole page')
   assert.match(src, /addEventListener\('visibilitychange'/, 'a tab coming back into view catches up at once')
 })
+
+test('rovingIndex: arrows step around the ends, Home and End jump, other keys and empty groups do nothing (#401)', () => {
+  assert.equal(logic.rovingIndex(4, 1, 'ArrowRight'), 2)
+  assert.equal(logic.rovingIndex(4, 1, 'ArrowDown'), 2)
+  assert.equal(logic.rovingIndex(4, 3, 'ArrowRight'), 0)
+  assert.equal(logic.rovingIndex(4, 1, 'ArrowLeft'), 0)
+  assert.equal(logic.rovingIndex(4, 0, 'ArrowUp'), 3)
+  assert.equal(logic.rovingIndex(4, 2, 'Home'), 0)
+  assert.equal(logic.rovingIndex(4, 0, 'End'), 3)
+  assert.equal(logic.rovingIndex(4, 1, 'Enter'), -1)
+  assert.equal(logic.rovingIndex(0, 0, 'ArrowRight'), -1)
+  assert.equal(logic.rovingIndex(3, -1, 'ArrowRight'), 0)
+})
+
+test('aria roles: every radio group and tab list takes the arrow keys, every menu is a popover that moves focus (#401)', () => {
+  for (const file of ['triage.js', ...COMPONENT_FILES]) {
+    const src = read(file)
+    const groups = [...src.matchAll(/<[a-z]+\b[^>]*role="(radiogroup|tablist)"[^>]*>/g)]
+    for (const [tag, role] of groups) assert.match(tag, /onKeyDown=\$\{/, `${file}: a ${role} without the arrow keys: ${tag}`)
+    if (/role="radio"/.test(src)) assert.match(src, /role="radiogroup"/, `${file}: role="radio" outside a radiogroup`)
+    if (/role="tab"/.test(src)) assert.match(src, /role="tablist"/, `${file}: role="tab" outside a tablist`)
+    if (/role="menu"/.test(src)) assert.match(src, /usePopover\(/, `${file}: a menu without usePopover`)
+    if (file !== 'views/parts.js') assert.doesNotMatch(src, /const esc = e => \{ if \(e\.key === 'Escape'\) \{ e\.stopPropagation\(\); setOpen\(false\) \} \}/,
+      `${file}: a popover of its own instead of usePopover`)
+  }
+})

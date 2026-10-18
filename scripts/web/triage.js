@@ -5,9 +5,10 @@
 // again on a click (scripts/triage.py, cached per item, so a run costs cents). The dashboard's own
 // pieces stay in views/; this file only draws what the triage adds, from s.triage.
 
-import { html, useEffect, useRef, useState } from './vendor/htm-preact-3.1.1.module.js'
+import { html, useState } from './vendor/htm-preact-3.1.1.module.js'
 import { TRIAGE_FILTERS, actionRow, centsText, checkPick, checkPickText, effortDots, triageCounts, triageKey, triageRunning } from './logic.js'
 import { T, language } from './text.js'
+import { usePopover, useRoving } from './views/parts.js'
 
 const TONE = { close: 'success', ai: 'info', you: 'warning', either: 'on-surface-muted', unclear: 'on-surface-muted' }
 
@@ -46,8 +47,9 @@ export function TriageBar({ s, c, items, byKey }) {
     .map(it => actionRow(it, byKey)).filter(r => r && (r.settle ?? []).length)
   const running = triageRunning(s)
   const last = tr.last
+  const keys = useRoving()
   return html`<div class="panel panel-pad tri-bar" role="group" aria-label=${t.triage.label}>
-    <span class="fbar-chips" role="radiogroup" aria-label=${t.triage.label}>
+    <span class="fbar-chips" role="radiogroup" aria-label=${t.triage.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
       ${TRIAGE_FILTERS.map(k => html`<button type="button" role="radio" key=${k} aria-checked=${String(f === k)}
         class=${`fchip${f === k ? ' is-on' : ''}`} disabled=${k !== 'all' && !counts[k]} onClick=${() => c.setTriageFilter(k)}>
         ${k !== 'all' ? html`<span class=${`dot tk-${TONE[k]}`} aria-hidden="true"></span>` : null}${t.triage.filter[k]}${k !== 'all' ? html` <span class="mono">${counts[k]}</span>` : null}</button>`)}
@@ -65,15 +67,7 @@ export function TriageBar({ s, c, items, byKey }) {
 function CloseAll({ rows, c, s }) {
   const t = T()
   const [open, setOpen] = useState(false)
-  const box = useRef(null)
-  useEffect(() => {
-    if (!open) return undefined
-    const away = e => { if (box.current && !box.current.contains(e.target)) setOpen(false) }
-    const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
-    document.addEventListener('pointerdown', away)
-    document.addEventListener('keydown', esc, true)
-    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc, true) }
-  }, [open])
+  const box = usePopover(open, setOpen)
   const keys = rows.map(r => r.key)
   const pick = outcome => { setOpen(false); c.act('settle', { keys, outcome }) }
   return html`<span class="settle" ref=${box}>

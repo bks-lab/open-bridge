@@ -296,6 +296,14 @@ pattern on a view's source: a rename or a moved call keeps it green while the
 page shows the same thing. A source pattern stays for an invariant of the source
 itself, such as the vendor hash or no colour in the CSS.
 
+A role promises a keyboard, so the page keeps it (`bridge_cockpit_aria.test.mjs`).
+A `radiogroup` or `tablist` takes `useRoving()` from `views/parts.js`: the chosen
+option is the one tab stop, the arrows, Home and End move the choice. A `menu`
+opens through `usePopover()`, which focuses its first item, moves between the
+items on the arrows and gives the focus back to its button on Escape or a pick.
+The frontend suite fails on a group without the arrow keys or a menu without
+the hook.
+
 The browser smoke test (`test_cockpit_demo_smoke.py`) serves `docs/` locally,
 opens `docs/cockpit-demo/` in headless Chromium, clicks every tab of the page
 bar in English and German and fails on a console error or warning, an uncaught

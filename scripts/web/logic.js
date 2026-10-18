@@ -613,6 +613,18 @@ export function nextFocusIndex(count, at, shift) {
   return shift ? (at - 1 + count) % count : (at + 1) % count
 }
 
+/** Where an arrow key moves in a radio group, a tab list or a menu of `count` options: the arrows step
+ *  around the ends, Home and End jump, any other key or an empty group gives -1 */
+export function rovingIndex(count, at, key) {
+  if (count <= 0) return -1
+  if (key === 'Home') return 0
+  if (key === 'End') return count - 1
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[key]
+  if (!step) return -1
+  if (at < 0) return step > 0 ? 0 : count - 1
+  return (at + step + count) % count
+}
+
 // ---------------------------------------------------------------- task check (task.py review)
 
 export const VERDICT_ORDER = ['close', 'stale', 'unclear', 'waiting', 'continue']

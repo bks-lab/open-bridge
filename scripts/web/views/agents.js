@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { short, chatStamp } from '../logic.js'
 import { T, language } from '../text.js'
 import { SendBox, Thinking, useStickToEnd } from './chat.js'
-import { Btn, Dot, Icon, StateLine } from './parts.js'
+import { Btn, Dot, Icon, StateLine, useRoving } from './parts.js'
 import { Prose } from './prose.js'
 
 // ---------------------------------------------------------------- A2A agents
@@ -110,6 +110,7 @@ export function AgentsPage({ s, c, embedded = false }) {
   const [profile, setProfile] = useState(false)
   const [forgetArmed, setForgetArmed] = useState(null)
   const body = useStickToEnd(conv, null)
+  const modeKeys = useRoving()
   useEffect(() => { c.loadAgents() }, [])
   // a draft belongs to the agent it was written for: switching agents never carries it over
   useEffect(() => { setProfile(false); setText('') }, [peer?.id])
@@ -152,7 +153,7 @@ export function AgentsPage({ s, c, embedded = false }) {
           ${conv ? html`<${AgentThread} conv=${conv} peer=${peer} c=${c} s=${s} />` : null}
         </div>
         <footer class="tabview-foot">
-          <div class="btn-row agent-modes" role="radiogroup" aria-label=${t.agentModeLabel}>
+          <div class="btn-row agent-modes" role="radiogroup" aria-label=${t.agentModeLabel} ref=${modeKeys.ref} onKeyDown=${modeKeys.onKeyDown}>
             ${['question', 'task'].map(m => html`<button type="button" role="radio" key=${m} aria-checked=${String(mode === m)}
               class=${`fchip${mode === m ? ' is-on' : ''}`} onClick=${() => c.setAgentMode(m)}>${t.agentModes[m]}</button>`)}
             <span class="muted small">${t.agentModeHint[mode]}</span>
