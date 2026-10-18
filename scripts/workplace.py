@@ -50,6 +50,7 @@ uses for owner approval:
     {"verb": "key", "tab": ref, "key": "enter" | "escape" | "y" | "n" | "1".."9"} -> {"report": [...]}
     {"verb": "screen", "tab": ref, "lines": n}        -> {"text": "..."}
     {"verb": "close", "tab": ref}                     -> {"report": [...]}
+    {"verb": "workspaces"}                            -> {"workspaces": [{"ref", "title", "cwd", ...}]}  (read only)
 
 A driver never closes a tab or a workspace on its own, only on `close`, which a person asked for. A driver that fails or answers
 nonsense is reported, never raised, and never read as "no tab is open":
@@ -834,6 +835,9 @@ class NoneDriver:
     def screen(self, tab: str, lines: int) -> str | None:
         return None
 
+    def workspaces(self) -> list | None:
+        return None
+
     def close(self, tab: str) -> list:
         return [f"No driver configured: close {tab} yourself."]
 
@@ -948,6 +952,16 @@ class CommandDriver:
     def close(self, tab: str) -> list:
         return self._report({"verb": "close", "tab": tab})
 
+    def workspaces(self) -> list | None:
+        """The workspaces as the terminal shows them (read only); None when the driver cannot say."""
+        data = self._call({"verb": "workspaces"})
+        rows = (data or {}).get("workspaces")
+        if not isinstance(rows, list):
+            if data is not None:
+                self.error = f"driver {self.name} answered no workspaces"
+            return None
+        return [w for w in rows if isinstance(w, dict) and isinstance(w.get("ref"), str)]
+
 
 def driver_from(spec):
     if spec in (None, "none"):
@@ -1053,6 +1067,8 @@ def main(argv=None) -> int:
     ad.add_argument("tab")
     ad.add_argument("slug")
     sub.add_parser("caps", help="the verbs the configured driver serves").add_argument("--json", action="store_true")
+    sub.add_parser("workspaces", help="the workspaces as the terminal shows them (read only)").add_argument(
+        "--json", action="store_true")
     for name, what in (("focus", "bring a tab to the front"), ("close", "close one tab (only when you ask)")):
         sub.add_parser(name, help=what).add_argument("tab")
     ky = sub.add_parser("key", help="one key into a tab: " + ", ".join(KEYS))
@@ -1200,6 +1216,16 @@ def main(argv=None) -> int:
     if args.cmd == "caps":
         caps = driver.caps()
         print(json.dumps({"caps": caps}) if args.json else "\n".join(caps))
+        return 0
+    if args.cmd == "workspaces":
+        if isinstance(driver, NoneDriver):
+            print(f"driver {driver.name} serves no workspaces", file=sys.stderr)
+            return 2
+        rows = driver.workspaces()
+        if rows is None:
+            print(getattr(driver, "error", "") or "the driver cannot list the workspaces", file=sys.stderr)
+            return 1
+        print(json.dumps(rows, ensure_ascii=False) if args.json else "\n".join(f"{w.get('title')}  {w.get('cwd') or ''}" for w in rows))
         return 0
     tasks = collect_tasks(args.root)
     index = slug_index(tasks, cfg)

@@ -78,6 +78,7 @@ their defaults:
 | `voice` | `false` | the browser also speaks a tab that starts waiting for you |
 | `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
+| `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
@@ -962,6 +963,29 @@ an "Action" menu: two clicks run one through `row_action {page, section, index,
 action}`, which calls `briefing.py act` and voids the section's cache. A step
 whose command returned an undo token is in the history and in the toast with
 "take back" (`row_undo {section, row, action}`), the same way as a close.
+
+### The chat as cmux
+
+With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the terminal you work in.
+
+- **On the left** stand the workspaces in the terminal's order, pinned ones first. Each shows its colour, its state, its unread count and, when its folder is another Bridge's clone, that Bridge's name. Below each workspace are its tabs, most urgent first. The quick chats sit in the control workspace (`workplace.control`), the newest six and "all" for the rest.
+- **Below the workspaces** come the other Bridges on this machine that have no workspace, and the A2A agents.
+- **On the right** is what you picked:
+  - a tab's terminal, read every 1.5 s, with "Write" to open it in its window with the message box and keys;
+  - a quick chat with its box;
+  - an agent with its conversations;
+  - a Bridge's folder and how to work in it.
+
+The workspaces come from the terminal driver's optional verb `workspaces` (cmux: `workspace list`, `sidebar-state`, `list-notifications`, all read only), asked with each tab poll. A driver without the verb still shows the workspaces, grouped from the tabs.
+
+The other Bridges are the entries in `infra/instances/` that meet four conditions:
+
+- `relationship` is `sibling` or `downstream`;
+- they are not `read-only-from-here`;
+- they are not `dormant` or `archived`;
+- one of `location.path`, `location.mac_clone` or `location.local_clone` exists as a folder here.
+
+Only the registry and that the folder exists are read, nothing inside the other Bridge (`rules/multi-instance-isolation.md`). This layout writes nothing new: typing into a tab still goes through its window, with the checks it has there.
 
 ### Keyboard
 

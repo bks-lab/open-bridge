@@ -120,6 +120,7 @@ const store = createStore({
   driver: { caps: null },
   launch: null,        // the model an agent tab starts with (state.launch); null: an older server, the choice stays hidden
   ticker: null,        // the news ticker (state.ticker); null: an older server, the band and its settings stay hidden
+  rooms: null,         // the chat as cmux (state.rooms: layout, root, control, Bridges); null: an older server, the classic chat
   launchRoutes: {},    // per row key the recommendation of Auto: { title, status: loading|ok|error, route }   // null: not known yet, every button shows; a list: only what the terminal driver serves
   notes: [], toasts: [], conn: 'connecting', connMs: Date.now(), now: Date.now(), mock: MOCK,
   layout: 'wide',
@@ -132,7 +133,7 @@ const store = createStore({
     workKind: load('bridge-cockpit.workKind', null),
     theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
-    busy: {}, snapshotText: null, openMsg: null, tabView: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
+    busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     tickerPaused: load('bridge-cockpit.tickerPaused', '0') === '1', tickerRead: loadTickerRead(), tickerSince: tickerSince(), quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
@@ -232,6 +233,7 @@ function applyState(payload) {
     home: payload.home ?? s.home,
     launch: payload.launch ?? s.launch,
     ticker: payload.ticker ?? s.ticker,
+    rooms: payload.rooms ?? s.rooms,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
   fixPage()
@@ -587,7 +589,7 @@ const ctl = {
     }
     save('bridge-cockpit.page', id)
     // a page with the tab column beside it closes the tab drawer a folded page opened
-    const drawer = s.layout === 'wide' && railShown(id) && s.ui.drawer === 'tabs' ? null : s.ui.drawer
+    const drawer = s.layout === 'wide' && railShown(id, s.rooms?.layout) && s.ui.drawer === 'tabs' ? null : s.ui.drawer
     setUi({ page: id, pageDetail: false, drawer, pane: s.layout === 'narrow' ? 'day' : s.ui.pane, workersFilter: null })
   },
   // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab
@@ -762,6 +764,8 @@ const ctl = {
   // the chat as a tab of its own: the open conversation goes along, the window closes
   chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi({ page: CHAT_PAGE, tabView: null, pageDetail: false }) },
   pickQuick: conv => setUi({ quickConv: conv }),
+  // the chat as cmux: what the right side shows ({ kind: 'ws' | 'tab' | 'chat' | 'agent' | 'bridge', id })
+  pickRoom: room => setUi({ room }),
   newQuick: () => setUi({ quickConv: null }),
   // removes a chat with the Bridge from the list and from the server's file; nothing else knew of it
   quickForget: async conv => {
@@ -1001,7 +1005,7 @@ function moveFocus(step) {
 
 function focusTabs() {
   const s = store.get()
-  if (s.layout === 'medium' || (s.layout === 'wide' && !railShown(s.ui.page))) setUi({ drawer: 'tabs' })
+  if (s.layout === 'medium' || (s.layout === 'wide' && !railShown(s.ui.page, s.rooms?.layout))) setUi({ drawer: 'tabs' })
   else if (s.layout === 'narrow') setUi({ pane: 'tabs' })
   requestAnimationFrame(() => document.getElementById('tabs-column')?.focus())
 }

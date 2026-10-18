@@ -14,6 +14,10 @@ JSON protocol: one request on stdin, one answer on stdout.
      "target": "tab" | "workspace" | "area", "here": ref | null}
     {"verb": "send", "tab": ref, "text": "..."}
     {"verb": "rename", "tab": ref, "title": "..."}
+    {"verb": "workspaces"} -> {"workspaces": [{"ref", "title", "color", "description", "cwd", "branch", ...}]}
+
+`workspaces` only reads (workspace list, sidebar-state, list-notifications): what the cmux sidebar
+shows, for the cockpit's own sidebar. Like `workspace list` it covers the current window.
 
 Wire it in bridge-config.yaml:
 
@@ -654,8 +658,78 @@ def rename(req: dict) -> list[str]:
     return [f"{req['tab']} is now named {req['title']!r}"]
 
 
+# ---------------------------------------------------------------- workspaces, read only
+
+STATUS_ATTR = re.compile(r"\s+(icon|color|priority|work|url)=(\S+)$")
+
+
+def parse_sidebar(text: str) -> dict:
+    """`cmux sidebar-state` (key=value lines, status entries indented): branch, dirty, PR and the
+    status entries with their text and colour."""
+    out: dict = {"branch": None, "dirty": False, "pr": None, "statuses": []}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.strip().split("=", 1)
+        if line.startswith((" ", "\t")):
+            attrs = {}
+            while (m := STATUS_ATTR.search(value)):
+                attrs[m.group(1)] = m.group(2)
+                value = value[:m.start()]
+            out["statuses"].append({"name": key, "text": value.strip()[:200], "color": attrs.get("color")})
+        elif key == "git_branch" and value and value != "none":
+            branch, _, flag = value.partition(" ")
+            out["branch"], out["dirty"] = branch, flag.strip() == "dirty"
+        elif key == "pr" and value and value != "none":
+            out["pr"] = value[:120]
+    return out
+
+
+def workspaces() -> list[dict]:
+    """The workspaces of the current window as the cmux sidebar shows them. A workspace whose
+    sidebar cannot be read still shows, with its name; a list that cannot be read is an error."""
+    try:
+        data = json.loads(cl.cmux_checked("--json", "workspace", "list"))
+    except ValueError as exc:
+        raise DriverError(f"cmux workspace list is not JSON ({exc})") from exc
+    rows = data.get("workspaces") if isinstance(data, dict) else data
+    if not isinstance(rows, list):
+        raise DriverError("cmux workspace list has no workspaces")
+    unread: dict[str, int] = {}
+    try:
+        notes = json.loads(cl.cmux_checked("--json", "list-notifications") or "[]")
+        for n in notes if isinstance(notes, list) else []:
+            if isinstance(n, dict) and n.get("is_read") is False and isinstance(n.get("workspace_id"), str):
+                unread[n["workspace_id"]] = unread.get(n["workspace_id"], 0) + 1
+    except (cl.CmuxError, ValueError):
+        pass
+    out = []
+    for w in rows:
+        if not isinstance(w, dict) or not isinstance(w.get("ref"), str):
+            continue
+        try:
+            side = parse_sidebar(cl.cmux_checked("sidebar-state", "--workspace", w["ref"]))
+        except cl.CmuxError:
+            side = parse_sidebar("")
+
+        def text(key: str, cap: int = 300) -> str | None:
+            v = w.get(key)
+            return v.strip()[:cap] if isinstance(v, str) and v.strip() else None
+
+        latest = text("latest_submitted_message", 500)
+        out.append({"ref": w["ref"], "id": text("id", 80), "title": text("title", 120) or w["ref"],
+                    "color": text("custom_color", 20), "description": text("description"),
+                    "pinned": w.get("pinned") is True, "selected": w.get("selected") is True,
+                    "cwd": text("current_directory", 500), "branch": side["branch"], "dirty": side["dirty"],
+                    "pr": side["pr"], "unread": unread.get(w.get("id") or "", 0),
+                    "latest": {"text": latest, "at": text("latest_submitted_at", 40)} if latest else None,
+                    "statuses": side["statuses"][:6]})
+    return out
+
+
 # the cockpit steers a tab with these (docs/workplace.md, the optional verbs); cmux serves them all
-CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "control", "focus", "key", "screen", "close"]
+CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "control", "focus", "key", "screen", "close",
+        "workspaces"]
 # the one key set a driver takes; cmux's own names for the two that are not typed as they are
 KEYS = {"enter": "Enter", "escape": "escape", "y": "y", "n": "n", **{str(i): str(i) for i in range(1, 10)}}
 
@@ -703,6 +777,8 @@ def handle(req: dict) -> dict:
         return {"tabs": tabs()}
     if verb == "sessions":
         return {"sessions": sessions()}
+    if verb == "workspaces":
+        return {"workspaces": workspaces()}
     if verb == "open":
         return {"report": open_plan(req)}
     if verb == "launch":

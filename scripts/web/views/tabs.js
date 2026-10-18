@@ -17,23 +17,15 @@ import { Btn, Chip, Empty, StateLine } from './parts.js'
 /** One agent tab large in the middle, like the Claude Code CLI: its terminal read every 1.5 s while
  *  the page is visible, the end in view unless you scrolled up, and below it the message box and the
  *  buttons the tab's state allows. Read only through the terminal driver (screen); sending goes through tab_send */
-export function TabView({ s, c }) {
-  const t = T()
-  const claude = s.ui.tabView === '@control'
-  const ref = claude ? s.tabs?.control?.ref ?? null : s.ui.tabView
-  const tab = (s.tabs?.tabs ?? []).find(x => x.ref === ref) ?? null
-  const isControl = claude || !!tab?.is_control
-  const relay = s.relay ?? {}
-  const fb = s.ui.askFallback
+/** The terminal of one tab, read every 1.5 s while the page is visible: { screen, err } */
+export function useTabScreen(c, ref) {
   const [screen, setScreen] = useState(null)
   const [err, setErr] = useState(null)
-  const [text, setText] = useState('')
-  const body = useRef(null)
-  const stick = useRef(true)
-  const dialog = useFocusOnOpen(true)
   useEffect(() => {
     let alive = true
     let timer = null
+    setScreen(null)
+    setErr(null)
     if (!ref) return undefined
     const pull = async () => {
       if (document.visibilityState === 'visible') {
@@ -46,6 +38,22 @@ export function TabView({ s, c }) {
     pull()
     return () => { alive = false; clearTimeout(timer) }
   }, [ref])
+  return { screen, err }
+}
+
+export function TabView({ s, c }) {
+  const t = T()
+  const claude = s.ui.tabView === '@control'
+  const ref = claude ? s.tabs?.control?.ref ?? null : s.ui.tabView
+  const tab = (s.tabs?.tabs ?? []).find(x => x.ref === ref) ?? null
+  const isControl = claude || !!tab?.is_control
+  const relay = s.relay ?? {}
+  const fb = s.ui.askFallback
+  const { screen, err } = useTabScreen(c, ref)
+  const [text, setText] = useState('')
+  const body = useRef(null)
+  const stick = useRef(true)
+  const dialog = useFocusOnOpen(true)
   useLayoutEffect(() => {
     const el = body.current
     if (el && stick.current) el.scrollTop = el.scrollHeight

@@ -126,6 +126,7 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 | `{"verb": "key", "tab": ref, "key": k}` | `{"report": [...]}`: one key into the tab, `k` one of `enter`, `escape`, `y`, `n`, `1` to `9` |
 | `{"verb": "screen", "tab": ref, "lines": n}` | `{"text": "..."}`: the last `n` lines the tab shows, plain text, read only |
 | `{"verb": "close", "tab": ref}` | `{"report": [...]}`: closes that one tab, only ever on an explicit request |
+| `{"verb": "workspaces"}` | `{"workspaces": [{"ref", "title", "color", "description", "pinned", "cwd", "branch", "dirty", "pr", "unread", "latest", "statuses"}]}`: the workspaces as the terminal shows them, read only (`workplace.py workspaces --json`; the cockpit's chat as cmux) |
 
 The last five are optional. A terminal that cannot do one leaves it out of
 `caps`, and whoever steers the tabs (`workplace.py`, the cockpit) offers only

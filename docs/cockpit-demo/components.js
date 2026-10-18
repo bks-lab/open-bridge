@@ -13,6 +13,7 @@ import { TriageBar } from './triage.js'
 import { InnerRoom } from './inner.js'
 import { AgentsPage } from './views/agents.js'
 import { ChatPage, QuickChat } from './views/chat.js'
+import { RoomsPage } from './views/rooms.js'
 import { ReviewBody, ReviewPage, ReviewStrip } from './views/check.js'
 import { DayColumn, WorkSwitch } from './views/day.js'
 import { DetailColumn } from './views/detail.js'
@@ -61,7 +62,7 @@ function PageView({ s, c }) {
   if (s.ui.page === CHECK_PAGE) return html`<${ReviewPage} s=${s} c=${c} />`
   if (s.ui.page === SESSIONS_PAGE) return html`<${SessionsPage} s=${s} c=${c} />`
   if (s.ui.page === WORKERS_PAGE) return html`<${WorkersPage} s=${s} c=${c} />`
-  if (s.ui.page === CHAT_PAGE) return html`<${ChatPage} s=${s} c=${c} />`
+  if (s.ui.page === CHAT_PAGE) return s.rooms?.layout === 'workspaces' ? html`<${RoomsPage} s=${s} c=${c} />` : html`<${ChatPage} s=${s} c=${c} />`
   if (s.ui.page === SETTINGS_PAGE) return html`<${SettingsPage} s=${s} c=${c} />`
   if (s.ui.page === AGENTS_PAGE && (s.agents?.peers ?? []).length) return html`<${AgentsPage} s=${s} c=${c} />`
   const view = workViewNow(s)
@@ -139,7 +140,7 @@ export function App({ store, ctl }) {
   const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
   const pane = onPage && !peek && s.ui.pane === 'detail' ? 'day' : s.ui.pane
   // a wide page that shows sessions itself or needs the width folds the tab column to its header button
-  const rail = layout === 'wide' && railShown(s.ui.page)
+  const rail = layout === 'wide' && railShown(s.ui.page, s.rooms?.layout)
   const tabsDrawer = layout === 'medium' || (layout === 'wide' && !rail)
   const showTabsCol = rail || (layout === 'narrow' && pane === 'tabs')
   const main = onPage

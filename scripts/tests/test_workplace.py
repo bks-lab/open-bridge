@@ -960,3 +960,23 @@ def test_a_bad_agent_default_is_left_out(lrepo, agent):
     cfg = {"agent": {"new": "claude -n {slug} {prompt}", **agent}}
     (e,) = wp.build_launch(lrepo, cfg, ["payments-incident"], "go")
     assert "--model" not in e["command"] and "--effort" not in e["command"]
+
+
+def test_workspaces_come_from_a_driver_that_serves_them(repo, capsys):
+    script = repo / "d.py"
+    script.write_text(textwrap.dedent("""\
+        import json, sys
+        req = json.load(sys.stdin)
+        if req["verb"] == "caps":
+            print(json.dumps({"caps": ["tabs", "workspaces"]}))
+        elif req["verb"] == "workspaces":
+            print(json.dumps({"workspaces": [{"ref": "w:1", "title": "Bigcorp", "cwd": "/x"}, "junk"]}))
+        """))
+    (repo / "bridge-config.yaml").write_text(f"workplace:\n  driver: {{command: ['{sys.executable}', '{script}']}}\n")
+    assert wp.main(["--root", str(repo), "workspaces", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == [{"ref": "w:1", "title": "Bigcorp", "cwd": "/x"}]
+
+
+def test_workspaces_without_a_driver_that_serves_them_are_refused(repo, capsys):
+    assert wp.main(["--root", str(repo), "workspaces", "--json"]) == 2
+    assert "workspaces" in capsys.readouterr().err

@@ -95,7 +95,8 @@ function AgentThread({ conv, peer, c, s }) {
   })
 }
 
-export function AgentsPage({ s, c }) {
+/** The page of the A2A agents; `embedded` (the chat as cmux) shows one agent without the page head and the list */
+export function AgentsPage({ s, c, embedded = false }) {
   const t = T()
   const lang = language()
   const a = s.agents ?? {}
@@ -120,10 +121,10 @@ export function AgentsPage({ s, c }) {
   }
   const example = v => { setText(v); document.getElementById('agent-input')?.focus() }
   const showProfile = !conv || profile
-  const listHidden = !!s.ui.agentsListHidden
-  return html`<div class="col col-page agentspage">
-    <header class="page-head"><h2 class="detail-title">${t.agentsTab}</h2>
-      <span class="muted small">${t.agentsIntro}</span></header>
+  const listHidden = embedded || !!s.ui.agentsListHidden
+  return html`<div class=${embedded ? 'agentspage is-embedded' : 'col col-page agentspage'}>
+    ${embedded ? null : html`<header class="page-head"><h2 class="detail-title">${t.agentsTab}</h2>
+      <span class="muted small">${t.agentsIntro}</span></header>`}
     <div class=${`agents-grid${listHidden ? ' is-wide' : ''}`}>
       ${listHidden ? null : html`<nav class="agents-list" id="agents-list" aria-label=${t.agentsTab}>
         ${peers.map(p => html`<${AgentCard} key=${p.id} p=${p} on=${p.id === peer?.id} c=${c} s=${s}
@@ -131,9 +132,9 @@ export function AgentsPage({ s, c }) {
       </nav>`}
       <section class="panel chat-main" aria-label=${peer?.card?.name || peer?.id}>
         <header class="agent-convs">
-          <button type="button" class="btn btn-ghost btn-xs agents-list-toggle" aria-expanded=${String(!listHidden)} aria-controls="agents-list"
+          ${embedded ? null : html`<button type="button" class="btn btn-ghost btn-xs agents-list-toggle" aria-expanded=${String(!listHidden)} aria-controls="agents-list"
             title=${listHidden ? t.agentsListShow : t.agentsListHide} aria-label=${listHidden ? t.agentsListShow : t.agentsListHide}
-            onClick=${c.toggleAgentsList}><${Icon} name=${listHidden ? 'chevronRight' : 'back'} /></button>
+            onClick=${c.toggleAgentsList}><${Icon} name=${listHidden ? 'chevronRight' : 'back'} /></button>`}
           ${listHidden && peer ? html`<span class="agent-current" title=${peer.id}>${peer.card?.name || peer.id}</span>` : null}
           <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${() => c.newAgentChat(peer.id)}>+ ${t.quickNew}</button>
           ${mine.slice(0, 8).map(x => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}

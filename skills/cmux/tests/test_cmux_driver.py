@@ -67,6 +67,13 @@ FAKE_CMUX = textwrap.dedent("""\
         print(json.dumps(tree))
     elif args[:1] == ["tree"]:
         print("surface:61")
+    elif args[:3] == ["--json", "workspace", "list"]:
+        print(answer("FAKE_CMUX_WSJSON"))
+    elif args[:2] == ["--json", "list-notifications"]:
+        print(answer("FAKE_CMUX_NOTES") or "[]")
+    elif args[:1] == ["sidebar-state"]:
+        ref = args[args.index("--workspace") + 1]
+        print(json.loads(answer("FAKE_CMUX_SIDEBAR") or "{}").get(ref, ""))
     elif args[:2] == ["workspace", "list"]:  # like cmux: current window only
         print(answer("FAKE_CMUX_WS"))
     elif args[:2] == ["workspace", "create"]:
@@ -120,6 +127,9 @@ def fake(tmp_path, monkeypatch):
         "FAKE_CMUX_LOG": tmp_path / "cmux.log",
         "FAKE_CMUX_TREE": tmp_path / "tree.json",
         "FAKE_CMUX_WS": tmp_path / "ws.txt",
+        "FAKE_CMUX_WSJSON": tmp_path / "ws.json",
+        "FAKE_CMUX_NOTES": tmp_path / "notes.json",
+        "FAKE_CMUX_SIDEBAR": tmp_path / "sidebar.json",
         "CMUX_SESSION_FILE": tmp_path / "session.json",
         "CMUX_HOOKS_FILE": tmp_path / "hooks.json",
         "CMUX_LAYOUT_DIR": tmp_path / "layouts",
@@ -787,3 +797,58 @@ def test_focus_key_screen_and_close_address_the_tab_in_its_workspace(fake):
 def test_a_key_outside_the_fixed_set_is_refused(fake):
     done = fake.call({"verb": "key", "tab": "surface:91", "key": "ctrl-c"})
     assert done.returncode == 1 and "key" in json.loads(done.stdout)["error"]
+
+
+# ---------------------------------------------------------------- workspaces (read only, for the cockpit's sidebar)
+
+WS_JSON = {"window_ref": "window:1", "workspaces": [
+    {"ref": "workspace:3", "id": "WS-UUID-1", "title": "Platform", "custom_color": "#6A1B9A", "description": "Own work",
+     "pinned": True, "current_directory": "/home/u/bridge", "latest_submitted_message": "ja", "selected": True,
+     "latest_submitted_at": "2026-10-18T12:11:44.073Z", "index": 0, "remote": {"state": "disconnected"}},
+    {"ref": "workspace:4", "id": "WS-UUID-2", "title": "Customer A", "custom_color": None, "description": None,
+     "pinned": False, "current_directory": "/home/u/other-bridge", "index": 1}]}
+
+SIDEBAR = {"workspace:3": "tab=WS-UUID-1\ncolor=#6A1B9A\ncwd=/home/u/bridge\ngit_branch=user/alice dirty\npr=none\n"
+                          "status_count=2\n  program_status=claude-code · Reading files icon=bolt.fill priority=2\n"
+                          "  claude_code=Running icon=bolt.fill color=#4C8DFF work=running\nlog_count=0\n",
+           "workspace:4": "tab=WS-UUID-2\ngit_branch=main\npr=#12\nstatus_count=0\n"}
+
+NOTES = [{"workspace_id": "WS-UUID-2", "is_read": False, "subtitle": "Waiting"},
+         {"workspace_id": "WS-UUID-2", "is_read": False, "subtitle": "Completed"},
+         {"workspace_id": "WS-UUID-1", "is_read": True, "subtitle": "Completed"}]
+
+
+def test_workspaces_carry_what_the_cmux_sidebar_shows(fake):
+    fake.files["FAKE_CMUX_WSJSON"].write_text(json.dumps(WS_JSON))
+    fake.files["FAKE_CMUX_SIDEBAR"].write_text(json.dumps(SIDEBAR))
+    fake.files["FAKE_CMUX_NOTES"].write_text(json.dumps(NOTES))
+    ws = fake.answer({"verb": "workspaces"})["workspaces"]
+    assert [w["title"] for w in ws] == ["Platform", "Customer A"]
+    p, a = ws
+    assert p == {"ref": "workspace:3", "id": "WS-UUID-1", "title": "Platform", "color": "#6A1B9A",
+                 "description": "Own work", "pinned": True, "selected": True, "cwd": "/home/u/bridge",
+                 "branch": "user/alice", "dirty": True, "pr": None, "unread": 0,
+                 "latest": {"text": "ja", "at": "2026-10-18T12:11:44.073Z"},
+                 "statuses": [{"name": "program_status", "text": "claude-code · Reading files", "color": None},
+                              {"name": "claude_code", "text": "Running", "color": "#4C8DFF"}]}
+    assert a["branch"] == "main" and a["dirty"] is False and a["pr"] == "#12" and a["unread"] == 2
+    assert a["color"] is None and a["latest"] is None and a["statuses"] == []
+    # read only: nothing that types, focuses or selects
+    assert not [c for c in fake.argv() if c[:1] and c[0] in ("send", "send-key", "focus-panel", "select-workspace")]
+
+
+def test_a_workspace_whose_sidebar_cannot_be_read_still_shows(fake):
+    fake.files["FAKE_CMUX_WSJSON"].write_text(json.dumps(WS_JSON))
+    fake.fail = "sidebar-state"
+    ws = fake.answer({"verb": "workspaces"})["workspaces"]
+    assert [w["title"] for w in ws] == ["Platform", "Customer A"] and ws[0]["branch"] is None
+
+
+def test_workspaces_are_unknown_when_cmux_refuses_the_list(fake):
+    fake.fail = "--json workspace"
+    done = fake.call({"verb": "workspaces"})
+    assert done.returncode != 0 and "error" in json.loads(done.stdout)
+
+
+def test_caps_name_workspaces(fake):
+    assert "workspaces" in fake.answer({"verb": "caps"})["caps"]

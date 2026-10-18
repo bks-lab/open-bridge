@@ -46,6 +46,7 @@ from .graph import Graph
 from .config import WebConfig, load_web_config
 from .relay import Relay, default_key_dir, load_key
 from .agents import Agents
+from .bridges import Bridges
 from .triage import Triage
 from .history import History
 from .quick import Quick
@@ -171,6 +172,7 @@ class App:
         self.usage = Usage()
         self.quick = Quick(self, claude=self.runner.claude)
         self.agents = Agents(self)
+        self.bridges = Bridges(self.root)
         self.triage = Triage(self)
         self.history = History(self.state_dir, self.clock)
         self.collector = Collector(self)
@@ -299,7 +301,9 @@ class App:
                 "notes": list(self.notes), "relay": self.relay_state(), "cmux": self.cmux_state(),
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
-                "launch": self.launch_model.state(), "ticker": self.ticker.state()}
+                "launch": self.launch_model.state(), "ticker": self.ticker.state(),
+                "rooms": {"layout": self.cfg.chat_layout, "root": str(self.root), "control": self.cfg.control,
+                          "bridges": self.bridges.state()}}
 
     def task_open(self, slug: str) -> bool:
         return bool(slug) and (self.root / "work" / "tasks" / slug / "STATUS.md").is_file()

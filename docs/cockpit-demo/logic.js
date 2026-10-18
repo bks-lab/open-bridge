@@ -304,6 +304,53 @@ export function groupTabs(tabs) {
   return out
 }
 
+/** A text as one single-quoted shell word: a path to paste stays one argument, whatever it holds */
+export function shellQuote(text) {
+  return `'${String(text).replace(/'/g, "'\\''")}'`
+}
+
+/** The state a workspace shows: its most urgent tab, else what the terminal's sidebar says (claude_code) */
+const SIDEBAR_STATE = { waiting: 'waiting', 'needs input': 'needs-you', running: 'working' }
+
+/** The chat as cmux shows it (cockpit.chat_layout: workspaces): the workspaces in the terminal's order,
+ *  pinned first, each with its tabs (most urgent first), the Bridge it belongs to when its folder is
+ *  another Bridge's clone, and the quick chats in the control workspace; then the other Bridges on this
+ *  machine that have no workspace, and the A2A agents. A workspace the list does not name (or no list
+ *  at all) still shows from its tabs, marked known: false */
+export function roomsOf(s) {
+  const r = s.rooms ?? {}
+  const tabs = (s.tabs?.tabs ?? []).filter(t => !t.is_control || t.workspace)
+  const listed = s.tabs?.workspaces ?? []
+  const bridges = r.bridges ?? []
+  const chats = s.quick?.convs ?? []
+  // the longest Bridge folder the workspace lies in; the real folder (symlinks resolved by the server) first
+  const bridgeOf = w => {
+    const cwd = w.cwd_real || w.cwd
+    const hits = bridges.filter(b => cwd && b.path && (cwd === b.path || cwd.startsWith(`${b.path}/`)))
+    return hits.sort((a, b) => b.path.length - a.path.length)[0] ?? null
+  }
+  const mine = (t, w) => (t.ws_ref && w.ref ? t.ws_ref === w.ref : t.workspace === w.title)
+  const rank = t => STATE_ORDER[t.state] ?? 4
+  const room = (w, known) => {
+    const own = tabs.filter(t => mine(t, w)).sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)))
+    const side = (w.statuses ?? []).find(x => x.name === 'claude_code')
+    const state = own.length && rank(own[0]) < 2 ? own[0].state : SIDEBAR_STATE[String(side?.text ?? '').toLowerCase()] ?? (own.length ? own[0].state : null)
+    return { ...w, key: w.ref ?? `title:${w.title}`, known, tabs: own, state, unread: w.unread ?? 0, bridge: bridgeOf(w), chats: r.control && w.title === r.control ? chats : [] }
+  }
+  const out = listed.map((w, i) => ({ w, i })).sort((a, b) => (b.w.pinned ? 1 : 0) - (a.w.pinned ? 1 : 0) || a.i - b.i).map(x => room(x.w, true))
+  for (const t of tabs) {
+    if (t.workspace && !out.some(w => mine(t, w))) out.push(room({ ref: null, title: t.workspace }, false))
+  }
+  const placed = out.some(w => w.chats.length || (r.control && w.title === r.control))
+  return {
+    workspaces: out,
+    chats: placed ? [] : chats,
+    bridges: bridges.filter(b => !out.some(w => w.bridge?.id === b.id)),
+    agents: s.agents?.peers ?? [],
+    waiting: tabs.filter(t => !t.is_control && (t.state === 'needs-you' || t.state === 'waiting')).length,
+  }
+}
+
 /** Tabs that want attention (waiting or long), most urgent first, without the control tab */
 export function attentionTabs(tabs) {
   return (tabs ?? []).filter(t => !t.is_control && (t.waiting || t.long))
@@ -919,9 +966,10 @@ export function detailText(detail, t) {
 
 // The pages where work is handed to the AI and comes back: only there the agent tab column stands beside
 // the page; everywhere else it folds to its header button and the page keeps the full width
+// The chat as cmux (chat layout workspaces) holds the tabs itself, so it needs no column beside it
 const RAIL = new Set(['briefing', '@chat'])
-export function railShown(page) {
-  return RAIL.has(page)
+export function railShown(page, chatLayout = 'classic') {
+  return RAIL.has(page) && !(page === '@chat' && chatLayout === 'workspaces')
 }
 
 /** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab

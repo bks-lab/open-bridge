@@ -947,7 +947,7 @@ test('agents: a conversation is removed only on a second click and the page goes
   const app = read('app.js')
   assert.match(app, /agentForget: async conv => \{\n\s+const r = await act\('a2a_forget', \{ conv \}\)/)
   assert.match(app, /agentForget[\s\S]{0,200}agentConv: ui\.agentConv === conv \? null/)
-  const page = readComponents().match(/function AgentsPage\(\{ s, c \}\) \{[\s\S]*?\n\}/)[0]
+  const page = readComponents().match(/function AgentsPage\(\{ s, c(?:, embedded = false)? \}\) \{[\s\S]*?\n\}/)[0]
   // the first click only arms the button, the second removes
   assert.match(page, /forgetArmed === conv\.id \? c\.agentForget\(conv\.id\) : setForgetArmed\(conv\.id\)/)
   assert.equal((read('text.js').match(/agentForgetSure:/g) ?? []).length, 2)
@@ -955,7 +955,7 @@ test('agents: a conversation is removed only on a second click and the page goes
 
 test('agents: a draft never travels to another agent, held answers show on the card', () => {
   const src = readComponents()
-  const page = src.match(/function AgentsPage\(\{ s, c \}\) \{[\s\S]*?\n\}/)[0]
+  const page = src.match(/function AgentsPage\(\{ s, c(?:, embedded = false)? \}\) \{[\s\S]*?\n\}/)[0]
   assert.match(page, /useEffect\(\(\) => \{[^}]*setText\(''\)[^}]*\}, \[peer\?\.id\]\)/)
   assert.match(page, /held=\$\{convs\.filter\(x => x\.peer === p\.id && !x\.running && x\.turns\.at\(-1\)\?\.waiting\)\.length\}/)
 })
@@ -1189,6 +1189,8 @@ test('the agent tab column stands only where work is handed to the AI: the work 
   for (const p of ['@start', '@sessions', '@workers', '@check', '@agents', 'calendar', 'github', 'ops', undefined])
     assert.equal(logic.railShown(p), false, String(p))
   for (const p of ['briefing', '@chat']) assert.equal(logic.railShown(p), true, p)
+  assert.equal(logic.railShown('@chat', 'workspaces'), false)          // the chat as cmux holds the tabs itself
+  assert.equal(logic.railShown('briefing', 'workspaces'), true)
 })
 
 test('a slim tab card offers one next step: answer, go on, close, else go to the tab', async () => {
@@ -2834,4 +2836,71 @@ test('github rows: the board priority shows as a chip and sorts P1 before P2 bef
   assert.match(gh, /<\$\{PrioChip\} priority=\$\{g\.priority\} \/>/)
   assert.match(gh, /ghSortRows\(/)
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].gh.sort.priority, lang)
+})
+
+// ---------------------------------------------------------------- the chat as cmux: roomsOf
+
+test('roomsOf: workspaces in the terminal order, pinned first, with their tabs, the chats in the control one', () => {
+  const tab = (ref, state, workspace, extra = {}) => ({ ref, state, workspace, name: ref, ...extra })
+  const s = {
+    rooms: { layout: 'workspaces', root: '/u/bridge', control: 'Bridge', bridges: [
+      { id: 'kion', name: 'kion-bridge', path: '/u/k1/kion-bridge' }, { id: 'family', name: 'family', path: '/u/family' }] },
+    tabs: {
+      workspaces: [
+        { ref: 'w:2', title: 'Stepstone', cwd: '/u/bridge', unread: 2, statuses: [{ name: 'claude_code', text: 'Idle' }] },
+        { ref: 'w:1', title: 'Bridge', cwd: '/u/bridge', pinned: true, statuses: [{ name: 'claude_code', text: 'Waiting' }] },
+        { ref: 'w:3', title: 'K1', cwd: '/u/k1/kion-bridge/sub' }],
+      tabs: [tab('s:1', 'working', 'Bridge'), tab('s:2', 'needs-you', 'Bridge'), tab('s:3', 'waiting', 'Stepstone'),
+        tab('s:4', 'waiting', 'Gone')],
+    },
+    quick: { convs: [{ id: 'q1', running: false, turns: [{ q: 'hi' }] }] },
+    agents: { peers: [{ id: 'axel' }] },
+  }
+  const r = logic.roomsOf(s)
+  assert.deepEqual(r.workspaces.map(w => w.title), ['Bridge', 'Stepstone', 'K1', 'Gone'])
+  const [bridge, step, k1, gone] = r.workspaces
+  assert.deepEqual(bridge.tabs.map(t => t.ref), ['s:2', 's:1'])        // needs-you first
+  assert.equal(bridge.chats.length, 1)                                  // the chats live in the control workspace
+  assert.equal(step.chats.length, 0)
+  assert.equal(bridge.state, 'needs-you')                              // its most urgent tab
+  assert.equal(k1.state, null)
+  assert.equal(step.unread, 2)
+  assert.equal(k1.bridge?.id, 'kion')                                   // a workspace in another Bridge says which
+  assert.equal(bridge.bridge, null)
+  assert.equal(gone.known, false)                                       // tabs of a workspace the list does not name still show
+  assert.deepEqual(r.bridges.map(b => b.id), ['family'])                // a Bridge with a workspace is not listed twice
+  assert.deepEqual(r.agents.map(a => a.id), ['axel'])
+  assert.equal(r.waiting, 3)
+})
+
+test('roomsOf: without the workspace list the tabs still group, the chats get their own place', () => {
+  const r = logic.roomsOf({ rooms: { control: 'Bridge' }, tabs: { workspaces: null, tabs: [{ ref: 's:1', state: 'waiting', workspace: 'Demo', name: 'x' }] },
+    quick: { convs: [{ id: 'q1', turns: [] }] } })
+  assert.deepEqual(r.workspaces.map(w => [w.title, w.known]), [['Demo', false]])
+  assert.equal(r.chats.length, 1)                                       // no control workspace: the chats stand on their own
+})
+
+test('roomsOf: the page keeps state.rooms, so the chat layout reaches the router', () => {
+  const app = read('app.js')
+  assert.match(app, /rooms: payload\.rooms \?\? s\.rooms,/)
+  assert.match(readComponents(), /s\.rooms\?\.layout === 'workspaces' \? html`<\$\{RoomsPage\}/)
+})
+
+test('roomsOf: the longest Bridge path wins, the real folder counts, workspaces go by ref', () => {
+  const r = logic.roomsOf({
+    rooms: { bridges: [{ id: 'outer', path: '/u/a' }, { id: 'inner', path: '/u/a/b' }, { id: 'linked', path: '/real/x' }] },
+    tabs: { workspaces: [{ ref: 'w:1', title: 'Same', cwd: '/u/a/b/c' }, { ref: 'w:2', title: 'Same', cwd: '/link/x', cwd_real: '/real/x' }],
+      tabs: [{ ref: 's:1', ws_ref: 'w:2', workspace: 'Same', state: 'waiting', name: 'one' }] },
+  })
+  assert.deepEqual(r.workspaces.map(w => [w.ref, w.bridge?.id, w.tabs.length]), [['w:1', 'inner', 0], ['w:2', 'linked', 1]])
+  assert.deepEqual(r.workspaces.map(w => w.key), ['w:1', 'w:2'])
+  assert.deepEqual(r.bridges.map(b => b.id), ['outer'])
+})
+
+test('rooms: the pane never jumps on its own, the header knows the rail is gone, the copy command is quoted', () => {
+  const rooms = read('views/rooms.js')
+  assert.doesNotMatch(rooms, /x\.state === 'waiting'\)\)/)                 // no auto pick of a waiting tab
+  assert.match(read('views/header.js'), /railShown\(s\.ui\.page, s\.rooms\?\.layout\)/)
+  assert.equal(logic.shellQuote("/u/it's here"), "'/u/it'\\''s here'")
+  assert.match(rooms, /cd \$\{shellQuote\(b\.path\)\} && claude/)
 })

@@ -69,7 +69,7 @@ export function ChatThread({ s, conv }) {
 }
 
 /** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat) */
-function ChatFoot({ s, c, conv, autofocus }) {
+export function ChatFoot({ s, c, conv, autofocus }) {
   const t = T()
   const lang = language()
   const [text, setText] = useState('')

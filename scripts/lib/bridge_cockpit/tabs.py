@@ -7,10 +7,13 @@ a launch (+5 s), a key or a message (+3 s), a close (+1 s) and an adopt (now). I
 since when each tab is in its state (tab_seen), raises alerts for tabs that newly wait
 or wait or run for an hour, and marks the control tab, which never counts as waiting.
 The server never reads or writes .bridge/briefing-ui/tabs.json (that file is the mod's).
+With `cockpit.chat_layout: workspaces` each poll also asks `workplace.py workspaces --json` for the
+workspaces as the terminal shows them (read only); None when the driver cannot say.
 """
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from typing import Any
@@ -19,6 +22,8 @@ from . import model as m
 from . import returns as ret
 
 STATUS_TIMEOUT = 20
+WORKSPACES_EVERY_MS = 30_000   # the workspaces change slowly and cost one cmux call each: at most every half minute
+WORKSPACES_TIMEOUT = 40
 
 
 class TabPoller:
@@ -28,6 +33,8 @@ class TabPoller:
         self.busy = threading.Lock()
         self.cond = threading.Condition()
         self.tabs: list[dict] = []
+        self.workspaces: list[dict] | None = None
+        self.workspaces_ms = 0.0
         self.seen: dict[str, dict] = {}
         self.error: dict | None = None
         self.at_ms = 0
@@ -98,7 +105,8 @@ class TabPoller:
                     "since_ms": int(seen.get("since_ms", 0)), "long": None if is_control else m.long_state(t, self.seen, now),
                 })
             control = {"name": self.app.cfg.control, "ref": self.control} if self.app.cfg.control and self.control else None
-            return {"at_ms": self.at_ms, "tabs": tabs, "error": dict(self.error) if self.error else None, "control": control}
+            return {"at_ms": self.at_ms, "tabs": tabs, "error": dict(self.error) if self.error else None, "control": control,
+                    "workspaces": [dict(w) for w in self.workspaces] if self.workspaces is not None else None}
 
     # ------------------------------------------------------------ poll
 
@@ -160,7 +168,35 @@ class TabPoller:
                 self.tabs, self.seen, self.control = new, seen, control
                 self.polled_once = True
                 self.at_ms = int(now)
+        if app.cfg.chat_layout != "workspaces":
+            with self.lock:
+                self.workspaces = None
+        elif self.workspaces is None or now - self.workspaces_ms >= WORKSPACES_EVERY_MS:
+            workspaces = self._workspaces()
+            with self.lock:
+                if workspaces is not None or self.workspaces is None:   # a failed read keeps the last list
+                    self.workspaces = workspaces
+                if workspaces is not None:
+                    self.workspaces_ms = now
         app.on_tabs(alerts)
+
+    def _workspaces(self) -> list[dict] | None:
+        run = self.app.run(self.app.workplace("workspaces", "--json"), WORKSPACES_TIMEOUT)
+        if not run.ok:
+            return None
+        try:
+            rows = json.loads(run.out)
+        except ValueError:
+            return None
+        if not isinstance(rows, list):
+            return None
+        out = []
+        for w in rows:
+            if isinstance(w, dict) and isinstance(w.get("ref"), str):
+                cwd = w.get("cwd")
+                # the folder as the Bridges list resolves it, so a symlinked path still finds its Bridge
+                out.append({**w, "cwd_real": os.path.realpath(cwd) if isinstance(cwd, str) and cwd else None})
+        return out
 
     # ------------------------------------------------------------ schedule
 

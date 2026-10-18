@@ -4446,3 +4446,101 @@ def test_an_agent_conversation_still_waiting_for_its_answer_cannot_be_removed(wo
     finally:
         gate.set()
     assert wait_agents(world)[0]["turns"][0]["a"] == "Antwort."
+
+
+# --- the chat as cmux: workspaces from the terminal driver, the other Bridges on this machine ---
+
+WORKSPACES = [{"ref": "workspace:1", "title": "Control", "color": "#6A1B9A", "description": "Own work", "pinned": True,
+               "selected": True, "cwd": "/x/bridge", "branch": "user/alice", "dirty": True, "pr": None, "unread": 0,
+               "latest": {"text": "ja", "at": "2026-10-18T12:11:44Z"}, "statuses": [{"name": "claude_code", "text": "Waiting", "color": None}]},
+              {"ref": "workspace:2", "title": "Demo", "cwd": "/x/other", "unread": 2}]
+
+
+def rooms_world(tmp_path, extra=""):
+    return World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  chat_layout: workspaces\n"
+                                  "workplace:\n  control:\n    name: Control\n" + extra)
+
+
+def test_the_classic_chat_asks_the_driver_for_no_workspaces(world):
+    world.app.tabs.poll()
+    assert world.runner.of("workplace.workspaces") == []
+    st = world.app.state_payload()
+    assert st["rooms"]["layout"] == "classic" and st["tabs"]["workspaces"] is None
+
+
+def test_the_workspace_chat_carries_the_terminals_workspaces(tmp_path):
+    w = rooms_world(tmp_path)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES)
+        w.app.tabs.poll()
+        st = w.app.state_payload()
+        assert st["rooms"]["layout"] == "workspaces" and st["rooms"]["root"] == str(w.root)
+        assert [x["title"] for x in st["tabs"]["workspaces"]] == ["Control", "Demo"]
+        assert st["tabs"]["workspaces"][1]["unread"] == 2
+        assert [t["name"] for t in st["tabs"]["tabs"]][:1] == ["Control"]       # the tabs are still there
+    finally:
+        w.close()
+
+
+def test_workspaces_that_cannot_be_read_leave_the_tabs_alone(tmp_path):
+    w = rooms_world(tmp_path)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: fail("cmux does not answer")
+        w.app.tabs.poll()
+        st = w.app.state_payload()
+        assert st["tabs"]["workspaces"] is None and st["tabs"]["error"] is None and st["tabs"]["tabs"]
+    finally:
+        w.close()
+
+
+def test_an_unknown_chat_layout_is_the_classic_one(tmp_path):
+    from lib.bridge_cockpit.config import load_web_config   # noqa: E402
+    assert load_web_config(tmp_path, {"cockpit": {"chat_layout": "tiles"}}).chat_layout == "classic"
+    assert load_web_config(tmp_path, {"cockpit": {"chat_layout": "workspaces"}}).chat_layout == "workspaces"
+
+
+def test_the_other_bridges_are_the_siblings_with_a_clone_on_this_machine(tmp_path):
+    w = rooms_world(tmp_path)
+    try:
+        here = tmp_path / "clones"
+        for name in ("sib", "second"):
+            (here / name).mkdir(parents=True)
+        folder = w.root / "infra" / "instances"
+        folder.mkdir(parents=True)
+        (folder / "_template.yaml").write_text("name: example\n")
+        files = {
+            "sib": f"relationship: sibling\npurpose: 'A sibling'\nstatus: active\nlocation: {{path: '{here / 'sib'}', working_branch: user/a}}\n",
+            "second": f"relationship: sibling\npurpose: 'Second clone'\nlocation: {{path: '', mac_clone: '{here / 'second'}'}}\n",
+            "gone": f"relationship: sibling\npurpose: 'No clone here'\nlocation: {{path: '{here / 'missing'}'}}\n",
+            "up": f"relationship: upstream\npurpose: 'Upstream'\nlocation: {{path: '{here / 'sib'}'}}\n",
+            "ro": f"relationship: sibling\npurpose: 'Look only'\naccess: {{mode: read-only-from-here}}\nlocation: {{path: '{here / 'sib'}'}}\n",
+            "old": f"relationship: sibling\npurpose: 'Archived'\nstatus: archived\nlocation: {{path: '{here / 'sib'}'}}\n",
+            "me": f"relationship: self\npurpose: 'This one'\nlocation: {{path: '{w.root}'}}\n",
+        }
+        for name, body in files.items():
+            (folder / f"{name}.yaml").write_text(f"name: {name}\nscope: user\n" + body)
+        bridges = w.app.state_payload()["rooms"]["bridges"]
+        assert [(b["id"], b["path"], b["branch"]) for b in bridges] == [
+            ("second", str(here / "second"), None), ("sib", str(here / "sib"), "user/a")]
+        assert bridges[1]["purpose"] == "A sibling"
+    finally:
+        w.close()
+
+
+def test_workspaces_are_asked_at_most_every_half_minute_with_their_real_folder(tmp_path):
+    w = rooms_world(tmp_path)
+    try:
+        real = tmp_path / "real"
+        real.mkdir()
+        (tmp_path / "link").symlink_to(real)
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok([{"ref": "w:1", "title": "A", "cwd": str(tmp_path / "link")}])
+        w.runner.calls.clear()                 # the world's own first poll had no list yet
+        w.app.tabs.poll()
+        w.app.tabs.poll()
+        assert len(w.runner.of("workplace.workspaces")) == 1                 # the second poll keeps the list
+        assert w.app.tabs_state()["workspaces"][0]["cwd_real"] == str(real.resolve())
+        w.clock.advance(31)
+        w.app.tabs.poll()
+        assert len(w.runner.of("workplace.workspaces")) == 2
+    finally:
+        w.close()
