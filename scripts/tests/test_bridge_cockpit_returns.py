@@ -211,3 +211,17 @@ def test_every_terminal_verb_of_the_inbox_ends_a_start(tmp_path):
         event(root, ITEM, T0 + MIN, verb, "")
         assert returns.inbox_settled(root, ITEM) is True, verb
         assert {x["key"]: x for x in returns.build(b.all(), [], {}, root, T0 + 60 * MIN)}[f"inbox:{ITEM}"]["stage"] == "done", verb
+
+
+def test_ended_at_is_public_and_none_for_an_unreadable_time(tmp_path):
+    """A chat leaves only when its item ended after it started: a close at an unknown time is no such end.
+    The item is still settled for the tab (inbox_settled), which needs no time."""
+    assert returns.ended_at is returns._ended_at        # the old name stays for its callers
+    assert returns.ended_at(tmp_path, ITEM) is None
+    event(tmp_path, ITEM, T0 + MIN, "close", "closed")
+    assert returns.ended_at(tmp_path, ITEM) == T0 + MIN
+    d = tmp_path / "work" / "inbox" / ITEM / "events"
+    (d / "zz-no-stamp-close.yaml").write_text("verb: close\n", encoding="utf-8")
+    assert returns.ended_at(tmp_path, ITEM) is None
+    assert returns.inbox_settled(tmp_path, ITEM) is True
+    assert returns.ended_at(tmp_path, "../escape") is None

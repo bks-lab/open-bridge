@@ -206,7 +206,8 @@ export function createLoaders({ api, set, fail, withBusy }) {
     loadAgents: async () => {
       const res = await api.get('/api/agents')
       if (!res.ok) return fail(res)
-      set(s => ({ ...s, agents: { peers: res.data.peers ?? [], convs: res.data.convs ?? [] } }))
+      set(s => ({ ...s, agents: { peers: res.data.peers ?? [], convs: res.data.convs ?? [],
+        ...(res.data.keep_hours != null ? { keep_hours: res.data.keep_hours } : {}) } }))
     },
     loadHistory: async () => {
       const res = await api.get('/api/history')
@@ -407,11 +408,13 @@ const SIDEBAR_STATE = { waiting: 'waiting', 'needs input': 'needs-you', running:
  *  another Bridge's clone, and the quick chats in the control workspace; then the other Bridges on this
  *  machine that have no workspace, and the A2A agents. A workspace the list does not name (or no list
  *  at all) still shows from its tabs, marked known: false */
-/** The chats a list shows: not the start page's core (its panel shows it, a new one replaces it) and none
- *  untouched past keep_hours (the server archives it with its next look); one still answering always */
+/** The chats a list shows, quick chats and A2A conversations alike: not the start page's core (its panel
+ *  shows it, a new one replaces it) and none untouched past keep_hours (the server archives it with its
+ *  next look); one still answering, or an A2A task its owner still holds, always */
 export function listedChats(convs, keepHours, nowMs) {
   const cutoff = keepHours > 0 && Number.isFinite(nowMs) ? nowMs - keepHours * 3600000 : null
-  return (convs ?? []).filter(x => x.place !== 'core' && (x.running || cutoff == null || (x.last_ms ?? x.started_ms) >= cutoff))
+  return (convs ?? []).filter(x => x.place !== 'core' && (x.running || x.turns?.at(-1)?.waiting || cutoff == null
+    || (x.last_ms ?? x.started_ms) >= cutoff))
 }
 
 export function roomsOf(s) {

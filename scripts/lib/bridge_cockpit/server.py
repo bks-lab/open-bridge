@@ -401,6 +401,12 @@ class App:
                 self.broadcast("sessions", self.sessions_state())
         except Exception as exc:  # noqa: BLE001 - the sessions page is an extra, never a reason for the tabs to stop
             self.log_error(f"sessions: {exc!r}")
+        try:
+            # a chat about an item that has ended leaves (quick.py sweep_settled): on this poll, no thread of its own
+            if self.quick.sweep_settled(self.clock()):
+                self.broadcast("quick", self.quick.state())
+        except Exception as exc:  # noqa: BLE001 - the chat list is an extra, never a reason for the tabs to stop
+            self.log_error(f"quick settle: {exc!r}")
 
     def relay_scan(self) -> None:
         changed, state = self.relay.scan(self.tabs.control_tab(), self.names_tabs())

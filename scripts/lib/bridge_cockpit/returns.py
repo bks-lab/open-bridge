@@ -147,25 +147,34 @@ def task_done(root: Path, slug: str) -> bool:
 EVENT_VERB_RE = re.compile(r"-(" + "|".join(sorted([*TERMINAL, "reopen"])) + r")\.yaml\Z")
 
 
-def _ended_at(root: Path, item: str) -> float | None:
-    """When an inbox item was ended (closed, executed, dropped or rejected) and not reopened since, from its
-    event names; None while it is open"""
+def _last_end(root: Path, item: str) -> tuple[bool, float | None]:
+    """(ended, when) of an inbox item from its event names: ended while its last end (closed, executed,
+    dropped or rejected) is not followed by a reopen; `when` is None when that name carries no stamp"""
     if not INBOX_ID_RE.match(item):
-        return None
+        return False, None
     folder = Path(root) / "work" / "inbox" / item / "events"
     try:
         ends = [(m.group(1), p.name) for p in sorted(folder.iterdir()) if (m := EVENT_VERB_RE.search(p.name))]
     except OSError:
-        return None
+        return False, None
     if not ends or ends[-1][0] == "reopen":
-        return None
-    at = _stamp_ms(ends[-1][1])
-    return at if at is not None else 0.0
+        return False, None
+    return True, _stamp_ms(ends[-1][1])
+
+
+def ended_at(root: Path, item: str) -> float | None:
+    """When an inbox item was ended and not reopened since, in ms; None while it is open, and None as well
+    when its end carries no readable time: "closed at an unknown moment" never counts as closed after a start"""
+    ended, at = _last_end(root, item)
+    return at if ended else None
+
+
+_ended_at = ended_at   # the older private name
 
 
 def inbox_settled(root: Path, item: str) -> bool:
-    """An inbox item that is ended, and not reopened since: read from its event names"""
-    return _ended_at(root, item) is not None
+    """An inbox item that is ended, and not reopened since: read from its event names, whenever it was"""
+    return _last_end(root, item)[0]
 
 
 def tab_settled(root: Path, tab: dict) -> str | None:
@@ -197,7 +206,7 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
             filed = rows.get(tab["filed_by"]) or {}
             result = {"kind": "filed", "text": filed.get("title") or tab["filed_by"], "key": tab["filed_by"], "at_ms": None}
         if INBOX_ID_RE.match(item):
-            ended = _ended_at(root, item)
+            ended = ended_at(root, item)
             done = ended is not None and ended >= at     # closed, executed, dropped or rejected since the start
             for ev in inbox_answers(root, item, at):
                 if ev["text"] or not result:

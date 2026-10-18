@@ -79,7 +79,7 @@ their defaults:
 | `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
-| `chat_keep_hours` | `24` | a quick chat nobody touched for this many hours leaves the list into the archive (below); `0` = only the limit of 30 |
+| `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
@@ -995,6 +995,8 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   - an agent with its conversations;
   - a Bridge's folder and how to work in it.
 
+**Chats leave on their own.** A chat started from a briefing row or handed to a tab leaves when its item closes, once it has been quiet for 10 minutes. The chat keeps what it is about (`about`: the row, and the inbox item or task behind it, or the inbox item it was handed on as). On the tab poll, at most once a minute and at once after a verb that closes, drops or reopens an item, the cockpit looks whether that item has ended after the chat started: an inbox item closed, executed, dropped or rejected and not reopened since, or a task moved to `work/done/`. Such a chat goes to the archive with `why: settled`. Never one that is still answering, one without an item (a free question), one that was touched in the last 10 minutes, or one whose item was closed before the chat began or at a time its event does not name. A chat that changes while the files are read stays. When the archive cannot be written the chat stays, and the next try comes an hour later. A2A conversations follow `chat_keep_hours` like the quick chats, except one still sending or one whose task waits for the other Bridge's owner.
+
 The workspaces come from the terminal driver's optional verb `workspaces` (cmux: `workspace list`, `sidebar-state`, `list-notifications`, all read only), asked with each tab poll. A driver without the verb still shows the workspaces, grouped from the tabs.
 
 **What works where.** A tab and a workspace show a small count when something runs in them: the subagents with one icon, the workflows with another, and in the tooltip the busy sessions too. Three numbers count:
@@ -1233,9 +1235,11 @@ No chat is ever dropped: the 31st pushes the oldest, a chat untouched for
 "remove chat" (or the × beside a chat in the sidebar of the chat as cmux) takes
 one, into the archive `chats/quick-YYYY-MM.jsonl` in the state dir (one line
 per chat, whole, with `why`: `overflow`, `expired`, `replaced` or `removed`; A2A
-conversations go to `chats/agents-YYYY-MM.jsonl`). When the archive cannot be
+conversations go to `chats/agents-YYYY-MM.jsonl`, `expired` past `chat_keep_hours` like a chat, unless
+one still sends or waits for the peer's owner; a chat about an item also leaves as `settled`, see
+[The chat as cmux](#the-chat-as-cmux)). When the archive cannot be
 written, the chat stays in its list, and an expiry is tried again an hour later.
-An open page hides an expired chat at once (`keep_hours` in the `quick` state),
+An open page hides an expired chat at once (`keep_hours` in the `quick` and the `agents` state),
 before the server has archived it. Deleting for good means deleting that file by hand. The
 Chat tab lists every kept chat (first question, when, model, cost) and opens
 one with its box ready; "As a tab" in the window moves the open chat there.

@@ -1010,3 +1010,26 @@ test('every handed chat of the demo shows a worded status line', () => {
   }
   for (const word of ['starting', 'started', 'running', 'failed', 'manual', 'nothing', 'waiting', 'arrived', 'offline']) assert.ok(seen.has(word), word)
 })
+
+
+// ---------------------------------------------------------------- the A2A agents page
+
+test('the agents section no longer lists an expired conversation', () => {
+  const { AgentsPage } = views.agents
+  const s0 = cockpitState(NOW)
+  const peer = s0.agents.peers[0].id
+  const conv = (id, q, ago, extra = {}) => ({ id, peer, started_ms: NOW - ago, last_ms: NOW - ago, context_id: null, running: false,
+    turns: [{ q, mode: 'question', a: 'An answer.', state: 'completed', task_id: null, waiting: false, at_ms: NOW - ago, answered_ms: NOW - ago, error: null, ...extra }] })
+  const agents = { ...s0.agents, keep_hours: 24, convs: [conv('g0000000001', 'A fresh question', 2 * 3600000),
+    conv('g0000000002', 'A question from last week', 7 * 24 * 3600000),
+    conv('g0000000003', 'A task the owner still holds', 7 * 24 * 3600000, { waiting: true, state: 'input-required' })] }
+  const s = cockpitState(NOW, { agents, ui: { agentPeer: peer } })
+  const el = mount(html`<${AgentsPage} s=${s} c=${recorder()} />`)
+  const listed = el.$$('.agent-convs .quick-conv').map(b => b.text())
+  assert.ok(listed.some(x => x.includes('A fresh question')), listed.join(' | '))
+  assert.ok(listed.some(x => x.includes('A task the owner still holds')), listed.join(' | '))
+  assert.ok(!listed.some(x => x.includes('A question from last week')), listed.join(' | '))
+  // 0 keeps every one
+  const all = mount(html`<${AgentsPage} s=${{ ...s, agents: { ...agents, keep_hours: 0 } }} c=${recorder()} />`)
+  assert.ok(all.$$('.agent-convs .quick-conv').some(b => b.text().includes('A question from last week')))
+})

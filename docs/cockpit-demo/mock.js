@@ -580,7 +580,7 @@ export function buildState(now = Date.now(), opts = {}) {
       { ref: 'workspace:5', title: 'Demo', cwd: '/demo/other-repo', description: 'A second workspace with the same title' }]
       .map(w => ({ ...w, color: w.color ?? null, color_name: paletteName(w.color) })) },
     driver: { caps: DRIVER_CAPS },
-    quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: empty ? [] : handedConvs(now) },
+    quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: empty ? [] : [aboutConv(now), ...handedConvs(now)] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
     agents: empty ? { peers: [], convs: [] } : agentsState(now),
     triage: empty ? { running: null, error: null, last: null, items: {} } : triageState(now),
@@ -803,11 +803,23 @@ export const HANDED_EXAMPLES = [
 export function handedConvs(now) {
   return HANDED_EXAMPLES.map(([q, handed], i) => {
     const at = now - (60 - i * 4) * MIN
+    const inbox = handed.to === 'tab' && handed.status !== 'starting' ? `20261009-11${String(i).padStart(2, '0')}-demo-chat-a1b${i}` : null
     return { id: `qd${String(i + 1).padStart(9, '0')}`, kind: 'free', started_ms: at, session: null, total_usd: 0.002, running: false,
       last_ms: at + MIN, turns: [{ q, a: 'Example answer from the mock: the steps are clear, an agent can take it from here.', model_asked: 'haiku',
         model: 'haiku-5-5', cost_usd: 0.002, at_ms: at, error: null }],
-      handed: { at_ms: at + MIN, ...handed, ...(handed.to === 'tab' && handed.status !== 'starting' ? { inbox_id: `20261009-11${String(i).padStart(2, '0')}-demo-chat-a1b${i}` } : {}) } }
+      // a chat handed to a tab is about the item it became: it leaves with that item (quick.py sweep_settled)
+      about: inbox ? { kind: 'handoff', inbox } : null,
+      handed: { at_ms: at + MIN, ...handed, ...(inbox ? { inbox_id: inbox } : {}) } }
   })
+}
+
+/** A chat asked on a briefing row: it carries the row and its inbox item, and leaves once that item is closed */
+function aboutConv(now) {
+  const at = now - 18 * MIN
+  return { id: 'qr000000001', kind: 'row', started_ms: at, session: null, total_usd: 0.001, running: false, last_ms: at + MIN,
+    about: { kind: 'row', key: 'inbox:20261009-0910-tidy-labels-c3d4', inbox: '20261009-0910-tidy-labels-c3d4' },
+    turns: [{ q: 'What is behind: Tidy the issue labels on the demo board', a: 'Twelve labels overlap; the item asks to merge them into five.',
+      model_asked: 'haiku', model: 'haiku-5-5', cost_usd: 0.001, at_ms: at, error: null }] }
 }
 
 /** The relay records of the chats handed to the control session: still queued, arrived, and offline */
@@ -832,7 +844,12 @@ function agentsState(now) {
       { id: 'docs-agent', reach: 'unknown', last_error: null, summary: 'An example agent for the public docs', owner: null, network: 'public',
         needs_token: false, usage: { allowed: ['ask'], human_gate: null }, card: null, card_error: null, card_at_ms: null, last_ms: null },
     ],
+    keep_hours: 24,
     convs: [
+      // three days untouched: past keep_hours, so the page lists it no more (the server archives it on its next look)
+      { id: 'g0f0e0d0c0b', peer: 'team-bridge', started_ms: now - 72 * 3600000, last_ms: now - 72 * 3600000, context_id: null, running: false,
+        turns: [{ q: 'Is the old demo branch still needed?', mode: 'ask', a: 'No, it was merged and can go.', state: 'completed', task_id: null,
+          waiting: false, at_ms: now - 72 * 3600000, answered_ms: now - 72 * 3600000, error: null }] },
       { id: 'g0a1b2c3d4e', peer: 'team-bridge', started_ms: now - 2 * 3600000 - 5 * MIN, last_ms: now - 2 * 3600000, context_id: 'ctx-demo', running: false,
         turns: [{ q: 'Where does the alpha release stand?', mode: 'ask', a: 'Two of five items are open, the release notes and one test fix. The date holds.',
           state: 'completed', task_id: null, waiting: false, at_ms: now - 2 * 3600000 - 5 * MIN, answered_ms: now - 2 * 3600000, error: null }] },

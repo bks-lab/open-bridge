@@ -3167,6 +3167,22 @@ test('listedChats: the picture of the day and chats past keep_hours stay out of 
   assert.match(read('views/chat.js'), /listedChats\(q\.convs, q\.keep_hours, s\.now\)/)       // the Chat tab lists the same
 })
 
+test('agents list hides conversations past keep_hours like chats', () => {
+  const now = Date.UTC(2026, 9, 18, 20)
+  const h = 3600000
+  const convs = [{ id: 'g1', peer: 'a', last_ms: now - h, turns: [{ q: 'x' }] },
+    { id: 'g2', peer: 'a', last_ms: now - 30 * h, turns: [{ q: 'old' }] },
+    { id: 'g3', peer: 'a', last_ms: now - 30 * h, running: true, turns: [{ q: 'sent' }] },
+    { id: 'g4', peer: 'a', last_ms: now - 30 * h, turns: [{ q: 'held', waiting: true }] }]
+  // the server keeps a running or a held conversation past the limit (agents.py expire), the page does too
+  assert.deepEqual(logic.listedChats(convs, 24, now).map(x => x.id), ['g1', 'g3', 'g4'])
+  assert.deepEqual(logic.listedChats(convs, 0, now).map(x => x.id), ['g1', 'g2', 'g3', 'g4'])
+  const agents = read('views/agents.js')
+  assert.match(agents, /listedChats\(a\.convs, a\.keep_hours, s\.now\)/)
+  // the agents state the page loads keeps keep_hours, like the pushed event
+  assert.match(read('logic.js'), /convs: res\.data\.convs \?\? \[\],\s*\.\.\.\(res\.data\.keep_hours != null \? \{ keep_hours: res\.data\.keep_hours \} : \{\}\)/)
+})
+
 test('rooms: a quick chat shows a speech bubble, not a question mark; the core asks with place core', () => {
   const rooms = read('views/rooms.js')
   assert.doesNotMatch(rooms, />\?<\/span>/)

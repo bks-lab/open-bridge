@@ -599,6 +599,8 @@ STATE_FIELDS = {
     "sessions.sessions[].tab.ws_ref": (str, type(None)),
     "tabs.tabs[].ask": (dict, type(None)),
     "tabs.tabs[].state_source": (str, type(None)),   # hook | glyph where the driver says, else None
+    "agents.keep_hours": (int, float),                # A2A conversations untouched this long leave (0: never)
+    "quick.convs[].about": (dict, type(None)),        # the row or item a chat is about; None for a free one
 }
 # the keys and types of a tab's question (asks.py), when it has one
 ASK_FIELDS = {"text": str, "options": list, "hash": str, "yes_no": bool, "draft": bool}
@@ -639,9 +641,15 @@ def test_state_fields_the_page_reads_are_present(tmp_path):
         w.runner.handlers["workplace.screen"] = lambda argv: ok({"text": " Proceed?\n ❯ 1. Yes\n   2. No\n"})
         w.app.asks_enabled = True
         w.app.tabs.poll()
+        w.runner.handlers["claude.p"] = lambda argv: tbc.claude_answer("About the row.", 0.001)
+        for args in ({"kind": "row", "args": {"key": f"inbox:{tbc.YES_ID}"}}, {"kind": "free", "args": {"text": "hi"}}):
+            assert w.post("/api/ask", {**args, "via": "quick"})[0] == 202
+            tbc.wait_quick(w)
         state = w.app.state_payload()
     finally:
         w.close()
+    about = [x for x in state_values(state, "quick.convs[].about") if x is not None]
+    assert about == [{"kind": "row", "key": f"inbox:{tbc.YES_ID}", "inbox": tbc.YES_ID}]
     for path, types in STATE_FIELDS.items():
         values = state_values(state, path)
         bad = [v for v in values if not isinstance(v, types)]

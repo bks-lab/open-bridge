@@ -679,6 +679,11 @@ class Actions:
 
     # ------------------------------------------------------------ shared pieces (register.tsx)
 
+    def settle_soon(self, ctx: Ctx) -> None:
+        """An item ended or came back: the chats about it are looked at on the next tab poll (quick.py)."""
+        self.app.quick.settle_soon()
+        ctx.tabs_after(1)
+
     def settle(self, ctx: Ctx, row: dict, text: str) -> None:
         self.app.collector.settle(row["key"], text)
         ctx.settled.append(row["key"])
@@ -887,18 +892,25 @@ class Actions:
         has no such key: it is filed for a person to close."""
         inbox_key = page.get("inbox_key")
         if inbox_key:
-            # the same row filed under any profile's name: the cockpit's profile often extends the briefing's
-            same = page["row"]
-            for e in self.app.inbox_listing() or []:
-                key = str(e.get("key") or "") if isinstance(e, dict) else ""
-                if ((key == inbox_key or key.startswith("briefing:") and key.endswith(same))
-                        and e.get("state") in ACTIVE_INBOX_STATES and INBOX_ID_RE.match(str(e.get("id")))):
-                    return e["id"]
+            filed = self.filed_page_item(inbox_key, page["row"])
+            if filed:
+                return filed
         detail = " ".join(x for x in [page.get("detail"), m.row_url(row) or ""] if x)
         summary = f"{page['section']}: {row['title']}"
         if inbox_key:
             return self.inbox_add(ctx, row["key"], summary, detail, key=inbox_key, closer="reporter")
         return self.inbox_add(ctx, row["key"], summary, detail)
+
+    def filed_page_item(self, inbox_key: str, same: str | None) -> str | None:
+        """The active inbox item filed for a page row: under `inbox_key`, or the same row (`same` is
+        ":<section>:<item>") filed under any profile's name, since the cockpit's profile often extends the
+        briefing's. None when there is none."""
+        for e in self.app.inbox_listing() or []:
+            key = str(e.get("key") or "") if isinstance(e, dict) else ""
+            if ((inbox_key and key == inbox_key or same and key.startswith("briefing:") and key.endswith(same))
+                    and e.get("state") in ACTIVE_INBOX_STATES and INBOX_ID_RE.match(str(e.get("id")))):
+                return e["id"]
+        return None
 
     def inbox_add(self, ctx: Ctx, row_key: str, summary: str, detail: str, key: str | None = None,
                   closer: str = "person") -> str | None:
@@ -1144,6 +1156,7 @@ class Actions:
         if muted:
             ctx.extra["muted"] = muted
         self.settle(ctx, row, self.tx["dropped_muted" if muted else "dropped"])
+        self.settle_soon(ctx)
 
     def v_inbox_unmute(self, ctx: Ctx, id: str) -> None:  # noqa: A002 - the API name
         run = ctx.call("inbox.unmute", id, self.inbox("unmute", id), SHORT_TIMEOUT)
@@ -1163,6 +1176,7 @@ class Actions:
             return
         ctx.history.append(history_item(row["key"], row["title"], "inbox", "done", item))
         self.settle(ctx, row, self.tx["res_done"])
+        self.settle_soon(ctx)
 
     def v_urgency(self, ctx: Ctx, key: str, value: str) -> None:
         row = self.entry(key)["row"]
@@ -1240,6 +1254,8 @@ class Actions:
         if len(rows) > 1:
             ctx.note(self.tx["tasks_closed"].format(n=done) + (f" · {failed} ✗" if failed else ""), bad=bool(failed))
             ctx.delta()
+        if done:
+            self.settle_soon(ctx)
 
     def v_quick_handoff(self, ctx: Ctx, conv: str, to: str, text: str | None = None) -> None:
         """A quick conversation becomes work: "tab" files it to the inbox and starts an agent tab on it
@@ -1278,6 +1294,8 @@ class Actions:
             if new_id is None:
                 return
             done = {"status": "failed", "inbox_id": new_id}
+            # a chat that is about nothing yet is now about this item: it leaves when the item ends
+            app.quick.set_about(conv, {"kind": "handoff", "inbox": new_id})
             got = self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first}], "go", app.cfg.target)
             done = {"status": got, "inbox_id": new_id}
             if got == "busy" and order:
@@ -1336,6 +1354,7 @@ class Actions:
                     continue
                 ctx.history.append(history_item(key, row["title"], "inbox", "done" if outcome == "done" else "dropped", item))
                 self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped"])
+                self.settle_soon(ctx)
             elif kind == "other":
                 # not collector.settle: its source still lists the row, so it would stay invisible for good;
                 # dismissed it shows under the hidden rows with "show again"
@@ -1363,6 +1382,7 @@ class Actions:
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
+        self.settle_soon(ctx)
         self.reopened(ctx, "task_reopen", slug, (f"task:{slug}",),
                       self.tx[{"doing": "task_reopened", "review": "task_reopened_review"}.get(status, "task_reopened_backlog")])
 
@@ -1371,6 +1391,7 @@ class Actions:
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
+        self.settle_soon(ctx)
         self.reopened(ctx, "inbox_reopen", id, (f"inbox:{id}",), self.tx["inbox_reopened"])
 
     def v_task_review(self, ctx: Ctx, keys: list[str] | None = None, escalate: bool = False,
@@ -2010,6 +2031,14 @@ class Actions:
 
     # ------------------------------------------------------------ /api/ask
 
+    def info_inbox(self, sec: dict, info: dict) -> str | None:
+        """The inbox item a page row stands for, found the way page_item_entry and file_page_item key it."""
+        if not info.get("id"):
+            return None
+        profile = self.app.collector.view_profile() or ""
+        same = f":{sec['id']}:{info['id']}"
+        return self.filed_page_item(f"briefing:{profile}{same}" if profile else "", same)
+
     def ask(self, kind: Any, args: Any, via: Any = "control", model: Any = None, conv: Any = None,
             place: Any = None) -> tuple[int, dict]:
         """A question to Claude. `via` "quick" (what the page sends) asks a short read-only session of its
@@ -2059,9 +2088,13 @@ class Actions:
                 raise bad_arg("context", f"length must be at most {CONTEXT_MAX}")
             context = context.strip() or None
         model = app.collector.model
+        about = None                     # the row and the item a quick chat is about: it leaves when that ends
         if kind in ("row", "follow_up"):
             row = self.entry(check_key(args["key"], "key"))["row"]
             prompt = m.ask_about(row, tx) if kind == "row" else m.follow_up(row, tx)
+            item = m.launch_item(row)
+            if item:
+                about = {"kind": kind, "key": row["key"], **({"inbox": item} if INBOX_ID_RE.match(item) else {"task": item})}
         elif kind == "info":
             page, section, index = args["page"], args["section"], args["index"]
             if not isinstance(page, str) or not isinstance(section, str) or not isinstance(index, int) or isinstance(index, bool):
@@ -2071,6 +2104,7 @@ class Actions:
                 raise ActionError(409, "stale_row", "the page item is no longer in the model", "index")
             sec, info = found
             prompt = m.ask_info(re.sub(r"\s*\(.*?\)", "", sec["title"]), info, tx)
+            about = {"kind": "info", "key": info.get("key"), "inbox": self.info_inbox(sec, info) if via == "quick" else None}
         elif kind == "free":
             prompt = check_text(args["text"], "text", 4000)
         else:
@@ -2089,7 +2123,7 @@ class Actions:
                 prompt = m.evening(tabs, app.tabs.seen_copy(), app.clock(), tx)
         if via == "quick":
             try:
-                conv_id = app.quick.start(prompt, qmodel, conv, kind, place, context=context)
+                conv_id = app.quick.start(prompt, qmodel, conv, kind, place, context=context, about=about)
             except KeyError:
                 raise ActionError(409, "stale_row", "the conversation is gone", "conv")
             except RuntimeError as exc:

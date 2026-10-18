@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, chatStamp } from '../logic.js'
+import { short, chatStamp, listedChats } from '../logic.js'
 import { T, language } from '../text.js'
 import { SendBox, Thinking, useStickToEnd } from './chat.js'
 import { Btn, Dot, Icon, StateLine, useRoving } from './parts.js'
@@ -101,8 +101,9 @@ export function AgentsPage({ s, c, embedded = false }) {
   const lang = language()
   const a = s.agents ?? {}
   const peers = a.peers ?? []
-  const convs = a.convs ?? []
-  const conv = convs.find(x => x.id === s.ui.agentConv) ?? null
+  // the conversations the lists show: none untouched past keep_hours, the way the chats leave (agents.py expire)
+  const convs = listedChats(a.convs, a.keep_hours, s.now)
+  const conv = (a.convs ?? []).find(x => x.id === s.ui.agentConv) ?? null
   const peerId = conv?.peer ?? s.ui.agentPeer ?? peers[0]?.id
   const peer = peers.find(p => p.id === peerId) ?? peers[0]
   const mine = convs.filter(x => x.peer === peer?.id)

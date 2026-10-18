@@ -9,7 +9,8 @@ through `skills/a2a/scripts/a2a.py ask --json`, which resolves the peer's token 
 peer's A2A context. A peer that holds a task (it waits for its owner's approval) answers with a
 state that is not final; the turn then shows as waiting and `get` reads it again later, without
 sending anything new. Each message runs on a thread of its own; the page gets the state as the
-`agents` event. Conversations are kept in the state dir (agents.json).
+`agents` event. Conversations are kept in the state dir (agents.json); one untouched for
+cockpit.chat_keep_hours goes to the archive like a quick chat, unless it is sending or a held task waits.
 """
 from __future__ import annotations
 
@@ -122,6 +123,7 @@ class Agents:
         self.cards: dict[str, dict] = {}
         self.refreshing = False
         self.convs: dict[str, dict] = {}
+        self.expire_failed_ms = 0
         self.path = Path(app.state_dir) / "agents.json" if getattr(app, "state_dir", None) else None
         self.load()
 
@@ -197,12 +199,36 @@ class Agents:
                 "card": cached.get("card") or None, "card_error": cached.get("error"),
                 "card_at_ms": int(cached["at"] * 1000) if cached.get("at") else None, "last_ms": last}
 
+    def keep_hours(self) -> float:
+        return getattr(getattr(self.app, "cfg", None), "chat_keep_hours", 24)
+
+    def expire(self, now: int) -> None:
+        """Called under the lock: a conversation untouched for cockpit.chat_keep_hours goes to the archive;
+        one still sending, or whose last turn waits for the peer's owner, stays."""
+        hours = self.keep_hours()
+        if not hours or now - self.expire_failed_ms < 3600 * 1000:
+            return
+        cutoff = now - hours * 3600 * 1000
+        gone = False
+        for c in list(self.convs.values()):
+            last = c["turns"][-1] if c.get("turns") else {}
+            if c.get("running") or last.get("waiting") or (c.get("last_ms") or c["started_ms"]) >= cutoff:
+                continue
+            if not self._archive(c, "expired", now):
+                self.expire_failed_ms = now   # the archive is down: keep them all, try again in an hour
+                break
+            del self.convs[c["id"]]
+            gone = True
+        if gone:
+            self.save()
+
     def state(self) -> dict:
         peers = self.peers()
         with self.lock:
+            self.expire(int(self.app.clock()))
             out = [self.peer_out(pid, p) for pid, p in peers.items()]
             convs = sorted(self.convs.values(), key=lambda c: c.get("last_ms") or 0, reverse=True)
-            return {"peers": out, "convs": json.loads(json.dumps(convs))}
+            return {"peers": out, "convs": json.loads(json.dumps(convs)), "keep_hours": self.keep_hours()}
 
     # ------------------------------------------------------------ conversations
 

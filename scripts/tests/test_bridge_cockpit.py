@@ -6330,3 +6330,279 @@ def test_a_second_organize_apply_while_one_runs_is_organize_running(org):
     assert len([c for c in org_writes(org) if c[0] == "move-tab"]) == 1
     # free again once the first one ended
     org.act("organize_apply", proposal=prop["id"], items=["ws_title:workspace:6"])
+
+
+# ---------------------------------------------------------------- chats leave on their own (package 6)
+
+QUIET = 11 * 60          # seconds: past the ten quiet minutes a settled chat waits for
+
+
+def end_item(world, item, at_ms, verb="close", name=None):
+    """An end event of an inbox item, the way inbox.py names it: a UTC stamp, a counter, who, the verb"""
+    events = world.root / "work" / "inbox" / item / "events"
+    events.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.fromtimestamp(at_ms / 1000, dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    (events / (name or f"{stamp}-09-web-{verb}.yaml")).write_text(f"verb: {verb}\nby: web\n", encoding="utf-8")
+
+
+def chat_on(world, kind, **args):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("Here is what it is about.", 0.001)
+    status, _, body = world.post("/api/ask", {"kind": kind, "args": args, "via": "quick"})
+    assert status == 202, body
+    conv = json.loads(body)["conv"]
+    wait_quick(world)
+    return conv
+
+
+def conv_of(world, conv):
+    return next((c for c in world.app.quick.state()["convs"] if c["id"] == conv), None)
+
+
+def sweep(world, force=True):
+    return world.app.quick.sweep_settled(world.app.clock(), force=force)
+
+
+def test_a_chat_from_a_briefing_row_goes_to_the_archive_when_its_inbox_item_closes(world):
+    conv = chat_on(world, "row", key=f"inbox:{YES_ID}")
+    assert conv_of(world, conv)["about"] == {"kind": "row", "key": f"inbox:{YES_ID}", "inbox": YES_ID}
+    world.clock.advance(QUIET)
+    assert sweep(world) is False and conv_of(world, conv)       # still open: it stays
+    end_item(world, YES_ID, world.app.clock() - 60_000)
+    assert sweep(world) is True and conv_of(world, conv) is None
+    _, rows = archived(world, "quick")
+    assert [(r["conv"]["id"], r["why"]) for r in rows] == [(conv, "settled")]
+    assert conv not in [c["id"] for c in json.loads((world.app.state_dir / "quick.json").read_text())]
+
+
+def test_a_chat_from_an_info_row_finds_its_inbox_item(world):
+    world.runner.handlers["inbox.list"] = lambda argv: ok([
+        {"id": YES_ID, "state": "open"}, {"id": FILED_ID, "state": "open", "key": "briefing:morning:checks:backup-stale"}])
+    world.app.inbox_cache = (0.0, None)
+    conv = chat_on(world, "info", page="systems", section="checks", index=0)
+    about = conv_of(world, conv)["about"]
+    assert about["kind"] == "info" and about["inbox"] == FILED_ID
+    world.clock.advance(QUIET)
+    end_item(world, FILED_ID, world.app.clock() - 60_000, "executed")
+    assert sweep(world) is True and conv_of(world, conv) is None
+    # a row nobody filed has no item to wait for: that chat stays
+    world.runner.handlers["inbox.list"] = lambda argv: ok([])
+    world.app.inbox_cache = (0.0, None)
+    other = chat_on(world, "info", page="systems", section="upstream", index=0)
+    assert conv_of(world, other)["about"]["inbox"] is None
+    world.clock.advance(QUIET)
+    assert sweep(world) is False and conv_of(world, other)
+
+
+def test_a_chat_on_a_task_row_leaves_when_the_task_moves_to_done(world):
+    conv = chat_on(world, "follow_up", key="task:other-task")
+    assert conv_of(world, conv)["about"] == {"kind": "follow_up", "key": "task:other-task", "task": "other-task"}
+    world.clock.advance(QUIET)
+    assert sweep(world) is False
+    done = world.root / "work" / "done" / "2026-10" / "other-task"
+    done.mkdir(parents=True)
+    (done / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+    assert sweep(world) is True and conv_of(world, conv) is None
+
+
+def test_a_chat_on_an_item_closed_before_it_started_stays(world):
+    end_item(world, YES_ID, world.app.clock() - 5 * 60_000)
+    conv = chat_on(world, "row", key=f"inbox:{YES_ID}")
+    world.clock.advance(QUIET)
+    assert sweep(world) is False and conv_of(world, conv)
+
+
+def test_a_close_without_a_readable_time_does_not_settle(world):
+    conv = chat_on(world, "row", key=f"inbox:{YES_ID}")
+    world.clock.advance(QUIET)
+    end_item(world, YES_ID, 0, name="zz-no-stamp-close.yaml")
+    assert sweep(world) is False and conv_of(world, conv)
+
+
+def test_a_reopened_item_keeps_its_chat(world):
+    conv = chat_on(world, "row", key=f"inbox:{YES_ID}")
+    world.clock.advance(QUIET)
+    end_item(world, YES_ID, world.app.clock() - 3 * 60_000)
+    end_item(world, YES_ID, world.app.clock() - 2 * 60_000, "reopen")
+    assert sweep(world) is False and conv_of(world, conv)
+
+
+def test_a_chat_touched_in_the_last_ten_minutes_stays(world):
+    conv = chat_on(world, "row", key=f"inbox:{YES_ID}")
+    end_item(world, YES_ID, world.app.clock() + 1000)
+    world.clock.advance(9 * 60)
+    assert sweep(world) is False and conv_of(world, conv)
+    world.clock.advance(2 * 60)
+    assert sweep(world) is True and conv_of(world, conv) is None
+
+
+def test_a_running_chat_is_never_archived_by_the_sweep(world):
+    gate = threading.Event()
+    world.runner.handlers["claude.p"] = lambda argv: (gate.wait(5), claude_answer("late", 0.001))[1]
+    status, _, body = world.post("/api/ask", {"kind": "row", "args": {"key": f"inbox:{YES_ID}"}, "via": "quick"})
+    conv = json.loads(body)["conv"]
+    try:
+        end_item(world, YES_ID, world.app.clock() + 1000)
+        world.clock.advance(QUIET)
+        assert conv_of(world, conv)["running"] is True
+        assert sweep(world) is False and conv_of(world, conv)
+    finally:
+        gate.set()
+        wait_quick(world)
+
+
+def test_a_chat_that_restarts_during_the_sweep_is_not_archived(world, monkeypatch):
+    import lib.bridge_cockpit.returns as returns_mod
+    conv = chat_on(world, "row", key=f"inbox:{YES_ID}")
+    end_item(world, YES_ID, world.app.clock() + 1000)
+    world.clock.advance(QUIET)
+    real = returns_mod.ended_at
+
+    def meanwhile(root, item):
+        # a new question lands while the files are read, outside the lock
+        world.app.quick.convs[conv]["last_ms"] = int(world.app.clock())
+        return real(root, item)
+    monkeypatch.setattr(returns_mod, "ended_at", meanwhile)
+    assert sweep(world) is False and conv_of(world, conv)
+    assert archived(world, "quick")[1] == []
+
+
+def test_a_free_chat_without_an_item_is_never_archived_by_the_sweep(world):
+    conv = chat_on(world, "free", text="what is open?")
+    assert conv_of(world, conv)["about"] is None
+    world.clock.advance(QUIET)
+    assert sweep(world) is False and conv_of(world, conv)
+
+
+def test_a_handed_chat_leaves_with_its_inbox_item(world):
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.act("quick_handoff", conv=conv, to="tab")
+    assert conv_of(world, conv)["about"] == {"kind": "handoff", "inbox": new_id}
+    world.clock.advance(QUIET)
+    assert sweep(world) is False
+    end_item(world, new_id, world.app.clock() - 60_000, "executed")
+    assert sweep(world) is True and conv_of(world, conv) is None
+    # a chat that already has its row keeps that one when it is handed on
+    row_conv = chat_on(world, "row", key=f"inbox:{YES2_ID}")
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1400-other-chat-a1b2\n")
+    world.act("quick_handoff", conv=row_conv, to="tab")
+    assert conv_of(world, row_conv)["about"]["inbox"] == YES2_ID
+
+
+def test_settle_verbs_trigger_the_sweep_on_the_next_poll(world):
+    conv = chat_on(world, "row", key=f"inbox:{ONLY_ID}")
+    world.clock.advance(QUIET)
+    world.app.tabs.poll()                      # a plain poll sweeps: nothing ended yet
+    assert conv_of(world, conv)
+    end_item(world, ONLY_ID, world.app.clock() - 1000)
+    world.app.tabs.poll()                      # within the minute: no second read on its own
+    assert conv_of(world, conv)
+    res = world.act("done", key=f"inbox:{ONLY_ID}")
+    assert world.app.quick.settle_due is True and res["reload"] in ("delta", "tabs")
+    world.app.tabs.poll()
+    assert conv_of(world, conv) is None and world.app.quick.settle_due is False
+    # the other verbs that end or take back an item ask for the same
+    for verb, args in (("drop", {"key": f"inbox:{YES_ID}"}), ("settle", {"keys": [f"inbox:{YES2_ID}"], "outcome": "done"}),
+                       ("task_close", {"keys": ["task:other-task"], "reason": "done"}), ("inbox_reopen", {"id": YES_ID})):
+        world.app.quick.settle_due = False
+        world.act(verb, **args)
+        assert world.app.quick.settle_due is True, verb
+
+
+def test_the_sweep_reads_files_at_most_once_a_minute_on_plain_polls(world, monkeypatch):
+    import lib.bridge_cockpit.returns as returns_mod
+    chat_on(world, "row", key=f"inbox:{YES_ID}")
+    world.clock.advance(QUIET)
+    reads = []
+    real = returns_mod.ended_at
+    monkeypatch.setattr(returns_mod, "ended_at", lambda root, item: (reads.append(item), real(root, item))[1])
+    for _ in range(4):
+        sweep(world, force=False)
+    assert len(reads) == 1
+    world.clock.advance(30)
+    sweep(world, force=False)
+    assert len(reads) == 1
+    world.clock.advance(31)
+    sweep(world, force=False)
+    assert len(reads) == 2
+    world.app.quick.settle_soon()
+    sweep(world, force=False)
+    assert len(reads) == 3
+
+
+def test_a_failed_settle_archive_keeps_the_chat_and_backs_off(world, monkeypatch):
+    conv = chat_on(world, "row", key=f"inbox:{YES_ID}")
+    end_item(world, YES_ID, world.app.clock() + 1000)
+    world.clock.advance(QUIET)
+    (world.app.state_dir / "chats").write_text("not a folder")
+    errors = []
+    monkeypatch.setattr(world.app, "log_error", errors.append)
+    for _ in range(3):
+        assert sweep(world) is False and conv_of(world, conv)
+    assert len([e for e in errors if "not archived" in e]) == 1
+    world.clock.advance(3601)
+    sweep(world)
+    assert len([e for e in errors if "not archived" in e]) == 2
+    (world.app.state_dir / "chats").unlink()
+    world.clock.advance(3601)
+    assert sweep(world) is True and conv_of(world, conv) is None
+
+
+def agents_conv(world, answer):
+    a2a_peers(world, "alpha")
+    world.runner.handlers["a2a.ask"] = lambda argv: answer
+    conv = world.act("a2a_ask", peer="alpha", text="where does it stand?")["conv"]
+    wait_agents(world)
+    return conv
+
+
+def test_a2a_conversations_past_keep_hours_go_to_the_archive(world):
+    conv = agents_conv(world, a2a_answer(text="Done."))
+    world.clock.advance(23 * 3600)
+    assert [c["id"] for c in world.app.agents.state()["convs"]] == [conv]
+    world.clock.advance(2 * 3600)
+    assert world.app.agents.state()["convs"] == []
+    _, rows = archived(world, "agents")
+    assert [(r["conv"]["id"], r["why"]) for r in rows] == [(conv, "expired")]
+    assert json.loads((world.app.state_dir / "agents.json").read_text()) == []
+
+
+def test_a2a_running_or_waiting_conversations_stay(world):
+    waiting = agents_conv(world, a2a_answer(state="input-required", text="The owner decides."))
+    assert world.app.agents.state()["convs"][0]["turns"][-1]["waiting"] is True
+    gate = threading.Event()
+    world.runner.handlers["a2a.ask"] = lambda argv: (gate.wait(5), a2a_answer())[1]
+    running = world.act("a2a_ask", peer="alpha", text="and the other one?")["conv"]
+    try:
+        world.clock.advance(48 * 3600)
+        assert {c["id"] for c in world.app.agents.state()["convs"]} == {waiting, running}
+    finally:
+        gate.set()
+        wait_agents(world)
+
+
+def test_a2a_keep_hours_zero_keeps_everything(tmp_path):
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  chat_keep_hours: 0\n")
+    try:
+        conv = agents_conv(w, a2a_answer())
+        w.clock.advance(30 * 24 * 3600)
+        st = w.app.agents.state()
+        assert [c["id"] for c in st["convs"]] == [conv] and st["keep_hours"] == 0
+    finally:
+        w.close()
+
+
+def test_a2a_expiry_the_archive_refuses_keeps_them_and_backs_off(world, monkeypatch):
+    conv = agents_conv(world, a2a_answer())
+    (world.app.state_dir / "chats").write_text("not a folder")
+    errors = []
+    monkeypatch.setattr(world.app, "log_error", errors.append)
+    world.clock.advance(25 * 3600)
+    for _ in range(3):
+        assert [c["id"] for c in world.app.agents.state()["convs"]] == [conv]
+    assert len([e for e in errors if "not archived" in e]) == 1
+
+
+def test_a2a_state_carries_keep_hours(world):
+    assert world.app.agents.state()["keep_hours"] == 24
