@@ -91,6 +91,7 @@ const ICONS = {
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
   pause: 'M9 5v14M15 5v14',
   play: 'M7 5l12 7-12 7z',
+  chat: 'M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z',
 }
 
 export function Icon({ name, size = 16 }) {

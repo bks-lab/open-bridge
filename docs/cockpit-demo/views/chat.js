@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, centsText, chatStamp } from '../logic.js'
+import { short, centsText, chatStamp, listedChats } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { LaunchPick } from './launch.js'
@@ -131,8 +131,8 @@ export function useStickToEnd(conv, live) {
 export function QuickChat({ s, c }) {
   const t = T()
   const q = s.quick ?? {}
-  const convs = q.convs ?? []
-  const conv = convs.find(x => x.id === s.ui.quickConv) ?? null
+  const convs = listedChats(q.convs, q.keep_hours, s.now)
+  const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
   const body = useStickToEnd(conv, conv ? s.quickLive?.[conv.id] : null)
   const dialog = useFocusOnOpen(true)
   return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.closeTabView() }}>
@@ -165,8 +165,8 @@ export function ChatPage({ s, c }) {
   const t = T()
   const lang = language()
   const q = s.quick ?? {}
-  const convs = q.convs ?? []
-  const conv = convs.find(x => x.id === s.ui.quickConv) ?? null
+  const convs = listedChats(q.convs, q.keep_hours, s.now)
+  const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
   const body = useStickToEnd(conv, conv ? s.quickLive?.[conv.id] : null)
   const [forgetArmed, setForgetArmed] = useState(null)
   useEffect(() => { document.getElementById('quick-input')?.focus() }, [conv?.id])

@@ -734,7 +734,7 @@ const ctl = {
   },
   // a question from the bridge's core: it stays in the core's panel, no chat window opens
   askQuiet: (text, conv) => withBusy('ask:core', 'free', async () => {
-    const res = await api.ask('free', { text }, { via: 'quick', model: store.get().ui.quickModel, ...(conv ? { conv } : {}) })
+    const res = await api.ask('free', { text }, { via: 'quick', place: 'core', model: store.get().ui.quickModel, ...(conv ? { conv } : {}) })
     if (res.ok && res.data?.conv) { setUi({ coreConv: res.data.conv }); return res.data.conv }
     failNote(res)
     return null

@@ -867,10 +867,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, app.actions.execute(body.get("verb"), body.get("args")))
             elif path == "/api/ask":
                 for name in body:
-                    if name not in ("kind", "args", "via", "model", "conv"):
+                    if name not in ("kind", "args", "via", "model", "conv", "place"):
                         raise ActionError(400, "invalid_argument", "unknown field", str(name)[:40])
                 status, payload = app.actions.ask(body.get("kind"), body.get("args"), via=body.get("via", "control"),
-                                                  model=body.get("model"), conv=body.get("conv"))
+                                                  model=body.get("model"), conv=body.get("conv"), place=body.get("place"))
                 self.send_json(status, payload)
             elif path == "/api/reload":
                 for name in body:

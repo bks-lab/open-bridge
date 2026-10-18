@@ -10,7 +10,7 @@ import { chatStamp, roomsOf, screenLines, shellQuote, short, stateToken } from '
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useStickToEnd } from './chat.js'
-import { Btn, Dot, Empty, StateLine } from './parts.js'
+import { Btn, Dot, Empty, Icon, StateLine } from './parts.js'
 import { useTabScreen } from './tabs.js'
 
 const CHATS_SHOWN = 6
@@ -45,7 +45,7 @@ function Chats({ convs, s, c, here }) {
     ${shown.map(x => html`<div class="room-chat-row" key=${x.id}>
       <${Item} on=${here.kind === 'chat' && s.ui.quickConv === x.id} cls="room-chat" title=${x.turns[0]?.q}
         onClick=${() => { c.pickQuick(x.id); c.pickRoom({ kind: 'chat' }) }}>
-        ${x.running ? html`<${Dot} token="info" pulse />` : html`<span class="room-glyph" aria-hidden="true">?</span>`}
+        ${x.running ? html`<${Dot} token="info" pulse />` : html`<span class="room-glyph"><${Icon} name="chat" size=${12} /></span>`}
         <span class="room-name">${short(x.turns[0]?.q ?? '', 40)}</span>
         <span class="room-meta muted small">${chatStamp(x.last_ms ?? x.started_ms, s.now, language())}</span>
       <//>

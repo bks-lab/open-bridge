@@ -1040,7 +1040,7 @@ kbd {
 .room-chat-row:hover .room-x, .room-x:focus-visible { opacity: 1; }
 .room-x:hover { color: var(--ink); background: var(--surface-raised); }
 @media (hover: none) { .room-x { opacity: 1; } }
-.room-glyph { width: 8px; text-align: center; color: var(--on-surface-muted); flex: none; }
+.room-glyph { display: inline-flex; width: 12px; justify-content: center; color: var(--on-surface-muted); flex: none; }
 .room-badge { flex: none; min-width: 20px; padding: 0 6px; border-radius: var(--radius-full); border: 1px solid var(--secondary);
   color: var(--secondary); font-size: var(--text-label); text-align: center; }
 .room-bridge { font-weight: 400; }

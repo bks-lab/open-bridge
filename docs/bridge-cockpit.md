@@ -382,7 +382,10 @@ findings and can wait. Each field leads where it names. Then Claude gets
 exactly that board as lines (`situationText` in `logic.js`) and answers in
 three fixed lines, first, then, can wait, which the panel shows as three
 rows; an answer of another shape shows as it came. Questions after it go on
-in the same conversation.
+in the same conversation. That conversation belongs to the core (`/api/ask`
+with `place: core`): it stays out of the chat lists, and the next assessment
+or question typed in the core's panel takes its place, the last one going to
+the archive with `why: replaced`.
 
 **The inner room.** Held down a moment, or clicked with the option key, the
 core opens the inner room: the knowledge graph of the Bridge in 3D
@@ -1128,9 +1131,11 @@ No chat is ever dropped: the 31st pushes the oldest, a chat untouched for
 `chat_keep_hours` (a day by default) leaves on the next look at the list, and
 "remove chat" (or the × beside a chat in the sidebar of the chat as cmux) takes
 one, into the archive `chats/quick-YYYY-MM.jsonl` in the state dir (one line
-per chat, whole, with `why`: `overflow`, `expired` or `removed`; A2A
+per chat, whole, with `why`: `overflow`, `expired`, `replaced` or `removed`; A2A
 conversations go to `chats/agents-YYYY-MM.jsonl`). When the archive cannot be
-written, the chat stays in its list, and an expiry is tried again an hour later. Deleting for good means deleting that file by hand. The
+written, the chat stays in its list, and an expiry is tried again an hour later.
+An open page hides an expired chat at once (`keep_hours` in the `quick` state),
+before the server has archived it. Deleting for good means deleting that file by hand. The
 Chat tab lists every kept chat (first question, when, model, cost) and opens
 one with its box ready; "As a tab" in the window moves the open chat there.
 

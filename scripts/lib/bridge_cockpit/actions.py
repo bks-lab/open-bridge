@@ -1647,13 +1647,17 @@ class Actions:
 
     # ------------------------------------------------------------ /api/ask
 
-    def ask(self, kind: Any, args: Any, via: Any = "control", model: Any = None, conv: Any = None) -> tuple[int, dict]:
+    def ask(self, kind: Any, args: Any, via: Any = "control", model: Any = None, conv: Any = None,
+            place: Any = None) -> tuple[int, dict]:
         """A question to Claude. `via` "quick" (what the page sends) asks a short read-only session of its
         own (quick.py, Haiku unless the page names a model) and answers with the conversation id; "control"
-        hands it to the control session through the relay."""
+        hands it to the control session through the relay. `place` "core": a free quick question of the start
+        page's core, kept out of the chat lists, and a new one replaces the last."""
         app, tx = self.app, self.tx
         if via not in ("quick", "control"):
             raise bad_arg("via", "quick or control")
+        if place is not None and (place != "core" or via != "quick" or kind != "free"):
+            raise bad_arg("place", "only core, for a free quick question")
         if via == "control" and not app.cfg.relay:
             return 409, {"ok": False, "error": {"code": "relay_disabled", "message": "no control session: the relay is off",
                                                  "field": "via"}}
@@ -1710,7 +1714,7 @@ class Actions:
                 prompt = m.evening(tabs, app.tabs.seen_copy(), app.clock(), tx)
         if via == "quick":
             try:
-                conv_id = app.quick.start(prompt, qmodel, conv, kind)
+                conv_id = app.quick.start(prompt, qmodel, conv, kind, place)
             except KeyError:
                 raise ActionError(409, "stale_row", "the conversation is gone", "conv")
             except RuntimeError as exc:

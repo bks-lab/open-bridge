@@ -526,7 +526,7 @@ export function buildState(now = Date.now(), opts = {}) {
       briefing_badge: sections[0].total,
     },
     tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs },
-    quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], convs: [] },
+    quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: [] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
     agents: empty ? { peers: [], convs: [] } : agentsState(now),
     triage: empty ? { running: null, error: null, last: null, items: {} } : triageState(now),
@@ -912,8 +912,10 @@ export function createMockTransport(opts = {}) {
         const q = body?.kind === 'free' ? String(body.args?.text ?? '') : `Example question of kind ${body?.kind}`
         let conv = state.quick.convs.find(c => c.id === body.conv)
         if (!conv) {
-          conv = { id: `q${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, kind: body.kind, started_ms: now(), session: null, total_usd: 0, turns: [], running: false }
-          state.quick = { ...state.quick, convs: [conv, ...state.quick.convs] }
+          conv = { id: `q${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, kind: body.kind, started_ms: now(), session: null, total_usd: 0, turns: [], running: false,
+            ...(body.place ? { place: body.place } : {}) }
+          // a new conversation of the core takes the place of the last
+          state.quick = { ...state.quick, convs: [conv, ...state.quick.convs.filter(c => !body.place || c.place !== body.place || c.running)] }
         }
         conv.turns.push({ q, a: null, model_asked: model, model: null, cost_usd: null, at_ms: now(), error: null })
         conv.running = true

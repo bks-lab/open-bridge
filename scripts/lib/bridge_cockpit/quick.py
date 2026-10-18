@@ -252,12 +252,15 @@ class Quick:
             if default == "claude":
                 models.insert(0, "claude")
             return {"available": bool(self.claude or self.codex), "default": default, "models": models,
+                    "keep_hours": getattr(getattr(self.app, "cfg", None), "chat_keep_hours", 24),
                     "config_error": config_error,
                     "providers": {"claude": bool(self.claude), "codex": bool(self.codex)},
                     "convs": json.loads(json.dumps(convs))}
 
-    def start(self, prompt: str, model: str | None, conv: str | None = None, kind: str = "free") -> str:
-        """Ask in a new conversation, or go on in `conv`; returns the conversation id at once."""
+    def start(self, prompt: str, model: str | None, conv: str | None = None, kind: str = "free",
+              place: str | None = None) -> str:
+        """Ask in a new conversation, or go on in `conv`; returns the conversation id at once. A new one with
+        `place` "core" (the start page's core) takes the place of the last: it goes to the archive."""
         model, provider, actual_model = self.selection(model)
         now = int(self.app.clock())
         with self.lock:
@@ -273,6 +276,12 @@ class Quick:
                 conv = "q" + uuid.uuid4().hex[:10]
                 c = {"id": conv, "kind": kind, "started_ms": now, "session": None, "total_usd": 0.0, "turns": [],
                      "running": False, "last_ms": now}
+                if place:
+                    c["place"] = place
+                    for old in [x for x in self.convs.values() if x.get("place") == place and not x["running"]]:
+                        if not self._archive(old, "replaced", now):
+                            break
+                        del self.convs[old["id"]]
                 self.convs[conv] = c
                 for old in sorted(self.convs.values(), key=lambda x: x["started_ms"])[:-MAX_CONVS]:
                     if old["running"]:

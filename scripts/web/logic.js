@@ -366,12 +366,19 @@ const SIDEBAR_STATE = { waiting: 'waiting', 'needs input': 'needs-you', running:
  *  another Bridge's clone, and the quick chats in the control workspace; then the other Bridges on this
  *  machine that have no workspace, and the A2A agents. A workspace the list does not name (or no list
  *  at all) still shows from its tabs, marked known: false */
+/** The chats a list shows: not the start page's core (its panel shows it, a new one replaces it) and none
+ *  untouched past keep_hours (the server archives it with its next look); one still answering always */
+export function listedChats(convs, keepHours, nowMs) {
+  const cutoff = keepHours > 0 && Number.isFinite(nowMs) ? nowMs - keepHours * 3600000 : null
+  return (convs ?? []).filter(x => x.place !== 'core' && (x.running || cutoff == null || (x.last_ms ?? x.started_ms) >= cutoff))
+}
+
 export function roomsOf(s) {
   const r = s.rooms ?? {}
   const tabs = (s.tabs?.tabs ?? []).filter(t => !t.is_control || t.workspace)
   const listed = s.tabs?.workspaces ?? []
   const bridges = r.bridges ?? []
-  const chats = s.quick?.convs ?? []
+  const chats = listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)
   // the longest Bridge folder the workspace lies in; the real folder (symlinks resolved by the server) first
   const bridgeOf = w => {
     const cwd = w.cwd_real || w.cwd

@@ -4507,6 +4507,38 @@ def test_chat_keep_hours_sets_the_day_and_zero_keeps_them(tmp_path):
         w.close()
 
 
+def test_a_new_picture_of_the_day_replaces_the_last_one(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    ask = lambda text, **kw: json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": text}, "via": "quick", **kw})[2])["conv"]
+    free = ask("eine frage")
+    wait_quick(world)
+    first = ask("Einschätzung 1", place="core")
+    wait_quick(world)
+    assert ask("und dann?", place="core", conv=first) == first     # going on in it keeps it
+    wait_quick(world)
+    world.clock.advance(1)
+    second = ask("Einschätzung 2", place="core")
+    wait_quick(world)
+    convs = {c["id"]: c for c in world.app.quick.state()["convs"]}
+    assert set(convs) == {free, second} and convs[second]["place"] == "core" and "place" not in convs[free]
+    _, rows = archived(world, "quick")
+    assert [(r["conv"]["id"], r["why"]) for r in rows] == [(first, "replaced")]
+    assert len(rows[0]["conv"]["turns"]) == 2
+
+
+def test_place_is_only_core_and_only_for_a_quick_free_question(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    for body in ({"kind": "free", "args": {"text": "x"}, "via": "quick", "place": "elsewhere"},
+                 {"kind": "overview", "args": {}, "via": "quick", "place": "core"},
+                 {"kind": "free", "args": {"text": "x"}, "via": "control", "place": "core"}):
+        status, _, raw = world.post("/api/ask", body)
+        assert status == 400 and json.loads(raw)["error"]["field"] == "place", body
+
+
+def test_the_page_learns_how_long_a_chat_stays(world):
+    assert world.app.quick.state()["keep_hours"] == 24
+
+
 def test_a_removed_agent_conversation_is_archived(world):
     a2a_peers(world, "alpha")
     world.runner.handlers["a2a.ask"] = lambda argv: a2a_answer(text="Antwort.")

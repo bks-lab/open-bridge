@@ -3042,6 +3042,29 @@ test('rooms: every quick chat in the sidebar can be removed, by a button beside 
   assert.match(read('style.css'), /\.room-chat-row:hover \.room-x/)
 })
 
+test('listedChats: the picture of the day and chats past keep_hours stay out of the lists', () => {
+  const now = Date.UTC(2026, 9, 18, 20)
+  const h = 3600000
+  const convs = [{ id: 'q1', last_ms: now - h }, { id: 'q2', last_ms: now - 25 * h }, { id: 'q3', last_ms: now - h, place: 'core' },
+    { id: 'q4', started_ms: now - 30 * h, last_ms: now - 30 * h, running: true }, { id: 'q5', started_ms: now - 2 * h }]
+  assert.deepEqual(logic.listedChats(convs, 24, now).map(x => x.id), ['q1', 'q4', 'q5'])
+  assert.deepEqual(logic.listedChats(convs, 0, now).map(x => x.id), ['q1', 'q2', 'q4', 'q5'])     // 0: no day limit
+  assert.deepEqual(logic.listedChats(convs, undefined, now).map(x => x.id), ['q1', 'q2', 'q4', 'q5'])
+  const r = logic.roomsOf({ rooms: { control: 'Bridge' }, now, tabs: { workspaces: [{ ref: 'w:1', title: 'Bridge' }], tabs: [] },
+    quick: { keep_hours: 24, convs } })
+  assert.deepEqual(r.workspaces[0].chats.map(x => x.id), ['q1', 'q4', 'q5'])
+  assert.match(read('views/chat.js'), /listedChats\(q\.convs, q\.keep_hours, s\.now\)/)       // the Chat tab lists the same
+})
+
+test('rooms: a quick chat shows a speech bubble, not a question mark; the core asks with place core', () => {
+  const rooms = read('views/rooms.js')
+  assert.doesNotMatch(rooms, />\?<\/span>/)
+  assert.match(rooms, /<\$\{Icon\} name="chat"/)
+  assert.match(read('views/parts.js'), /\n  chat: '/)
+  assert.match(read('app.js'), /askQuiet: [^\n]*\n[^\n]*api\.ask\('free', \{ text \}, \{ via: 'quick', place: 'core'/)
+  assert.match(read('text.js'), /allChats: n => `alle \$\{n\} Chats`/)
+})
+
 test('rooms: the pane never jumps on its own, the header knows the rail is gone, the copy command is quoted', () => {
   const rooms = read('views/rooms.js')
   assert.doesNotMatch(rooms, /x\.state === 'waiting'\)\)/)                 // no auto pick of a waiting tab
