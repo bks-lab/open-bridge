@@ -139,10 +139,13 @@ LABELS = {
                    "(python3 scripts/tracker-sync.py diff, the tracker-sync skill). List what differs and propose the "
                    "change on each side; apply a board change only through the github-projects-manager skill and only "
                    "after a yes."),
-    "gh_do_remind": ("Draft a short, friendly reminder to the person it is assigned to: what is open, what is needed from "
-                     "them, by when if a date is known, in the language the issue is written in. Offer it as a GitHub "
-                     "comment that mentions them and, if the person prefers, as a mail or chat draft through this Bridge's "
-                     "drafting skill. Post or send nothing: show the text and wait for a yes."),
+    "gh_do_remind": ("Write a short, friendly reminder to the person it is assigned to: what is open, what is needed from "
+                     "them, by when if a date is known, in the language the issue is written in. The click on Remind "
+                     "releases exactly this one GitHub comment that mentions them: post it right away (gh issue comment, "
+                     "on a pull request gh pr comment, text from a file), without asking again. Then put the comment's "
+                     "link on the inbox item (python3 scripts/inbox.py note) and close it. Anything else, a mail or chat "
+                     "only as a draft through this Bridge's drafting skill. If posting is refused, note the text and the "
+                     "reason on the inbox item instead, so the cockpit shows it."),
     "all_clear": "{title}: all clear",
     "owed": "Not in this profile, still yours to run: {streams} (briefing.py owed)",
     "overview_file": "Boards and activity: {path}",
@@ -275,10 +278,14 @@ LABELS_DE = {
                    "(python3 scripts/tracker-sync.py diff, der Skill tracker-sync). Nenne, was abweicht, und schlage die "
                    "Änderung je Seite vor; eine Board-Änderung nur über den Skill github-projects-manager und erst nach "
                    "einem Ja."),
-    "gh_do_remind": ("Entwirf eine kurze, freundliche Erinnerung an die Person, der es zugewiesen ist: was offen ist, was von "
-                     "ihr gebraucht wird, bis wann, falls ein Datum bekannt ist, in der Sprache des Issues. Biete sie als "
-                     "GitHub-Kommentar mit Erwähnung an und, wenn gewünscht, als Mail- oder Chat-Entwurf über den "
-                     "Entwurfs-Skill dieser Bridge. Poste und sende nichts: zeig den Text und warte auf ein Ja."),
+    "gh_do_remind": ("Schreib eine kurze, freundliche Erinnerung an die Person, der es zugewiesen ist: was offen ist, was "
+                     "von ihr gebraucht wird, bis wann, falls ein Datum bekannt ist, in der Sprache des Issues. Der Klick "
+                     "auf Erinnern gibt genau diesen einen GitHub-Kommentar mit Erwähnung frei: poste ihn sofort (gh issue "
+                     "comment, bei einem Pull Request gh pr comment, Text aus einer Datei), ohne noch einmal zu fragen. "
+                     "Dann den Link des Kommentars als Notiz auf das Posteingang-Item (python3 scripts/inbox.py note) und "
+                     "das Item schließen. Alles andere, Mail oder Chat nur als Entwurf über den Entwurfs-Skill dieser "
+                     "Bridge. Wird das Posten abgelehnt, schreib Text und Grund als Notiz auf das Item, damit das Cockpit "
+                     "es zeigt."),
     "all_clear": "{title}: alles in Ordnung",
     "owed": "Nicht im Profil, noch von Hand: {streams} (briefing.py owed)",
     "overview_file": "Boards und Aktivität: {path}",
