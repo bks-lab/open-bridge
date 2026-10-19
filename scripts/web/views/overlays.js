@@ -5,7 +5,7 @@
 import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
-  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey,
+  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, rowKind,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
@@ -243,7 +243,7 @@ export function ItemDrawer({ s, c, byKey }) {
     <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="idrawer-title" ref=${ref}>
       <header class="idrawer-head">
         <div class="idrawer-head-main">
-          <span class="eyebrow">${isInbox ? t.inboxTitle : t.taskTitle}</span>
+          <span class="eyebrow">${t.kind[rowKind(row ?? { inbox_id: isInbox ? id : null, task: isInbox ? null : id }).kind]}</span>
           <h2 class="idrawer-title" id="idrawer-title">${title}</h2>
         </div>
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.item.close} onClick=${c.closeItem} />
@@ -413,7 +413,8 @@ export function HelpDialog({ c }) {
           <p class="muted small">${t.commandHint}</p>
         </section>
         <section>
-          <dl class="help-text">${t.helpText.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${v}</dd></div>`)}</dl>
+          <dl class="help-text">${t.helpText.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
+            ? html`<ul class="plain help-list">${v.map(x => html`<li key=${x}>${x}</li>`)}</ul>` : v}</dd></div>`)}</dl>
         </section>
       </div>
     </div>

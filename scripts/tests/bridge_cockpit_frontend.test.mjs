@@ -3311,6 +3311,7 @@ test('style.css: every class selector is used by the page, or built from an allo
     'tl-': null, 'sr-': ['0', '1', '2', '3'], 'view-thumb-': null, 'vs-': null,
     'ticker-': ['slow', 'normal', 'fast'],
     'tri-': ['ai', 'either'],
+    'kind-': ['task', 'stream', 'inbox', 'issue', 'other'],
   }
   for (const p of Object.keys(DYNAMIC)) assert.ok(src.includes(`${p}\${`), `allowed prefix ${p} is built nowhere any more`)
   const built = c => Object.entries(DYNAMIC).some(([p, ok]) => c.startsWith(p) && (ok === null || ok.includes(c.slice(p.length))))
@@ -4203,4 +4204,39 @@ test('row panel: stands fixed in the window, so no column, card or table clips i
   // a transform on an ancestor would make fixed relative to it: no entrance animation keeps one, no card lifts while open
   assert.match(css, /\.row-in \{ animation: row-in 360ms ease-out backwards;/)
   assert.match(css, /\.hcard:has\(\.row-panel\) \{ transform: none; \}/)
+})
+
+// ---------------------------------------------------------------- what a row is
+
+test('rowKind: four kinds and a rest, read from the row alone', () => {
+  assert.deepEqual(logic.rowKind({ key: 'task:a', task: 'a' }), { kind: 'task', task: 'a' })
+  assert.deepEqual(logic.rowKind({ key: 'task:s', task: 's', stream: true }), { kind: 'stream', task: 's' })
+  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: null }), { kind: 'inbox', task: null })
+  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: 'a' }), { kind: 'inbox', task: 'a' })     // a report about a task
+  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#12', ref: 'o/r#12', sources: ['boards'] }), { kind: 'issue', ref: 'o/r#12' })
+  assert.deepEqual(logic.rowKind({ key: 'ref:2026-10/app', ref: '2026-10/app', sources: ['Bewerbungen'] }), { kind: 'other', source: 'Bewerbungen' })
+  assert.deepEqual(logic.rowKind({ key: 'item:x' }), { kind: 'other', source: null })
+})
+
+test('the kind stands first on every row, in the detail head and in the drawer head', () => {
+  const day = read('views/day.js')
+  const meta = day.slice(day.indexOf('export function RowMeta'), day.indexOf('export function RowMeta') + 500)
+  assert.match(meta, /<\$\{KindTag\} row=\$\{row\}/, 'first thing in the meta line')
+  assert.match(day, /export function KindTag\(/)
+  const tag = day.slice(day.indexOf('export function KindTag('), day.indexOf('export function KindTag(') + 1400)
+  assert.match(tag, /t\.kind\[k\.kind\]/)
+  assert.match(tag, /t\.kindAbout/)                              // a report names the task it is about
+  assert.match(tag, /c\.select\(`task:\$\{k\.task\}`\)/)
+  assert.match(read('views/detail.js'), /<\$\{KindTag\} row=\$\{row\} s=\$\{s\} c=\$\{c\} link \/>/)
+  assert.match(read('views/overlays.js'), /t\.kind\[/)
+  assert.match(read('views/stage.js'), /<\$\{KindTag\}/)
+  for (const lang of [text.TABLES.en, text.TABLES.de]) {
+    for (const k of ['task', 'stream', 'inbox', 'issue', 'other']) assert.ok(lang.kind?.[k], `kind.${k}`)
+    assert.ok(lang.kindAbout && lang.kindTitle?.stream && lang.streamHint, 'about, titles, the stream hint')
+    assert.ok(lang.helpText.some(([k]) => k === lang.kindHelp), 'the help names the kinds')
+  }
+  assert.equal(text.TABLES.de.kind.inbox, 'Meldung')
+  assert.equal(text.TABLES.de.kind.stream, 'Stream')
+  const panel = day.slice(day.indexOf('function RowPanel'), day.indexOf('export function StartMenu'))
+  assert.match(panel, /t\.streamHint/)
 })

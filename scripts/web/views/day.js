@@ -5,7 +5,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
-  pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice,
+  pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice, rowKind,
   SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -19,9 +19,27 @@ import { Btn, Chip, Dot, Empty, MarkChip, PrioChip, StateLine, VerdictChip, useR
 
 // ---------------------------------------------------------------- left column: the day
 
+const KIND_MARK = { task: '▣', stream: '↻', inbox: '◆', issue: '#', other: '•' }
+
+/** What a row is (rowKind), first on every row and in every head, in one shape that stands apart from the state
+ *  chips: the state changes, the kind does not. A report about a task names it; `link` makes that name open the
+ *  task (not inside a row's own button, where a second button cannot stand) */
+export function KindTag({ row, s, c, link = false }) {
+  const t = T()
+  const k = rowKind(row)
+  const title = k.task ? (indexRows(s?.model).get(`task:${k.task}`)?.title ?? k.task) : null
+  const about = k.kind === 'inbox' && k.task
+    ? html`<span class="kind-about"> · ${t.kindAbout} ${link && c
+      ? html`<button type="button" class="btn-link" onClick=${() => c.select(`task:${k.task}`)}>${short(title, 48)}</button>`
+      : short(title, 48)}</span>` : null
+  const detail = k.kind === 'issue' ? html` <span class="mono">${k.ref}</span>` : k.kind === 'other' && k.source ? html` · ${k.source}` : null
+  return html`<span class=${`kind kind-${k.kind}`} title=${t.kindTitle[k.kind]}>
+    <span class="kind-mark" aria-hidden="true">${KIND_MARK[k.kind]}</span><span>${t.kind[k.kind]}${detail}</span></span>${about}`
+}
+
 export function RowMeta({ row, s }) {
   const t = T()
-  const parts = []
+  const parts = [html`<${KindTag} row=${row} s=${s} />`]
   if (row.tab) parts.push(html`<${Chip} token=${stateToken(row.tab.state)}>${t.state[row.tab.state] ?? row.tab.state}<//>`)
   if (row.starting) parts.push(html`<${Chip} token="info">${t.startingTab}<//>`)
   const liveSessions = row.task && !row.inbox_id ? (s?.sessions?.sessions ?? []).filter(x => x.task === row.task).length : 0
@@ -154,7 +172,8 @@ function RowPanel({ rows, s, c, focus, close, anchor }) {
           <${LaunchPick} s=${s} c=${c} items=${[{ key: one.key, title: one.title }]} />
         </details>` : null) : null}
     ${group(t.grp.close, html`${item(t.settleDone, () => settle('done'), { token: 'success', ref: first })}
-      ${item(t.settleNot, discard, { token: 'on-surface-muted' })}`)}
+      ${item(t.settleNot, discard, { token: 'on-surface-muted' })}
+      ${streams ? html`<span class="settle-hint muted small">${t.streamHint}</span>` : null}`)}
     ${group(t.grp.later, html`${item(t.laterTomorrow, () => later(r => c.laterDays(r, 1)))}
       ${item(t.laterMonday, () => later(r => c.laterMonday(r)))}
       ${item(t.laterWeek, () => later(r => c.laterDays(r, 7)))}

@@ -10,7 +10,7 @@ import {
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
-import { RowBar, Skeleton } from './day.js'
+import { KindTag, RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
 import { START_PAGE } from './nav.js'
 import { PageSection } from './pages.js'
@@ -339,6 +339,7 @@ function RowDetail({ row, s, c }) {
       <span class="detail-eyebrow">${n ? html`<span class="sec-count mono" aria-label=${t.numberLabel(n)}>${n}</span>` : null}
         <span class="eyebrow">${t.section[row.section] ?? row.section}</span></span>
       <h2 class="detail-title" id="detail-title" tabindex="-1">${row.title}</h2>
+      <p class="detail-kind"><${KindTag} row=${row} s=${s} c=${c} link /></p>
       <div class="detail-chips">
         <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
         ${row.tab ? html`<${Chip} token=${stateToken(row.tab.state)}>${t.state[row.tab.state]}<//>` : null}

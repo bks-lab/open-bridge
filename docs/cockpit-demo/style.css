@@ -2704,3 +2704,14 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .panel-model[open] summary { margin-bottom: 4px; }
 .row-panel .launch-pick { font-size: var(--text-label); }
 .settle-item:disabled { opacity: .45; cursor: default; }
+/* what a row is (views/day.js KindTag): an outlined mark, apart from the filled state chips */
+.kind { display: inline-flex; align-items: baseline; gap: 4px; padding: 0 6px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); font-size: var(--text-label); font-weight: 600; color: var(--on-surface); white-space: nowrap; }
+.kind-mark { color: var(--on-surface-muted); }
+.kind-about { font-weight: 400; color: var(--on-surface-muted); white-space: normal; }
+.kind-stream .kind-mark { color: var(--secondary); }
+.kind-inbox .kind-mark { color: var(--warning); }
+.kind-issue .kind-mark { color: var(--info, var(--secondary)); }
+.detail-kind { margin: 4px 0 0; }
+.stage-row-sub .kind { margin-right: 4px; }
+.help-list { display: grid; gap: 2px; margin: 0; }
