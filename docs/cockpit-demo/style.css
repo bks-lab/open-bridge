@@ -646,7 +646,7 @@ kbd {
 
 /* motion and drawings (motion.js): only transform and opacity move */
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.row-in { animation: row-in 360ms ease-out both; animation-delay: calc(var(--i, 0) * 120ms); }
+.row-in { animation: row-in 360ms ease-out backwards; animation-delay: calc(var(--i, 0) * 120ms); }
 @keyframes row-in { from { transform: translateX(-22px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 .hit {
   position: absolute; inset: -1px; border: 2px solid var(--success); border-radius: inherit; pointer-events: none;
@@ -1530,8 +1530,9 @@ kbd {
 /* a row or tile with an open menu: its appear animation makes it a stacking context of its own,
    so it has to come forward, or the next tile paints over the menu */
 .row-in:has(.settle-menu), .rtile:has(.settle-menu), .rgroup-head:has(.settle-menu) { position: relative; z-index: 30; }
-/* a card clips its content to its rounded corners; while one of its menus is open the menu must reach past it */
-.hcard:has(.settle-menu) { overflow: visible; position: relative; z-index: 30; }
+/* the row panel stands fixed in the window; a transform on an ancestor would pin it to that ancestor instead,
+   so a card does not lift while its panel is open */
+.hcard:has(.row-panel) { transform: none; }
 
 /* the chat window: head, the strip of chats, the thread that grows, the send box; the grid of
    .tabview has three rows and would hand the growing one to the strip */
@@ -2691,7 +2692,7 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
   padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-md);
   background: var(--surface); color: var(--on-surface); }
 /* the row panel: one sentence field, then the four groups (views/day.js RowPanel) */
-.row-panel { width: min(400px, calc(100vw - 32px)); gap: 6px; }
+.row-panel { position: fixed; right: auto; z-index: 80; overflow-y: auto; width: min(400px, calc(100vw - 16px)); gap: 6px; }
 .panel-group { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
 .panel-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 0 4px; }
 /* a group's buttons side by side, wrapping: the panel stays short */

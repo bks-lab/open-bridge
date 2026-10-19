@@ -4185,3 +4185,22 @@ test('row panel: no second place for a note, a model or a start beside it', () =
   assert.equal(text.TABLES.de.grp.start, 'Weitergeben')
   assert.equal(text.TABLES.de.grp.close, 'Abschließen')
 })
+
+test('row panel: stands fixed in the window, so no column, card or table clips it', () => {
+  const day = read('views/day.js')
+  const panel = day.slice(day.indexOf('function RowPanel'), day.indexOf('export function StartMenu'))
+  assert.match(panel, /anchor\.current\?\.getBoundingClientRect\(\)/)
+  assert.match(panel, /window\.innerWidth/)
+  assert.match(panel, /window\.innerHeight/)
+  assert.match(panel, /addEventListener\('scroll', place, true\)/)            // any scrolling column moves it along
+  assert.doesNotMatch(panel, /is-left/)
+  for (const door of ['export function StartMenu', 'export function SettleMenu']) {
+    const body = day.slice(day.indexOf(door), day.indexOf(door) + 2400)
+    assert.match(body, /anchor=\$\{box\}/, `${door} anchors the panel at itself`)
+  }
+  const css = read('style.css')
+  assert.match(css, /\.row-panel \{[^}]*position: fixed/)
+  // a transform on an ancestor would make fixed relative to it: no entrance animation keeps one, no card lifts while open
+  assert.match(css, /\.row-in \{ animation: row-in 360ms ease-out backwards;/)
+  assert.match(css, /\.hcard:has\(\.row-panel\) \{ transform: none; \}/)
+})

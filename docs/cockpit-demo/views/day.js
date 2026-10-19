@@ -2,7 +2,7 @@
 // The cockpit, the day column: the four blocks of the work tab.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
   pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice,
@@ -63,12 +63,36 @@ export function RowActions({ row, s, c, all = false }) {
  *  waits on, the note itself. Without a sentence each button does what it always did. Several rows (a selection,
  *  the triage strip) get the groups that work on many: close and not now. `focus` is only where the cursor
  *  starts: the sentence for the start button, Done for the close button */
-function RowPanel({ rows, s, c, focus, close }) {
+function RowPanel({ rows, s, c, focus, close, anchor }) {
   const t = T()
   const [text, setText] = useState('')
   const [asking, setAsking] = useState(null)       // the outcome a stream's end waits on
   const field = useRef(null)
   const first = useRef(null)
+  const me = useRef(null)
+  // fixed in the window under its door, kept inside the window: a column, a card or a table that clips its
+  // content (the detail column does) can no longer cut it off. Above the door when there is more room there
+  const [at, setAt] = useState(null)
+  const place = () => {
+    const a = anchor.current?.getBoundingClientRect()
+    const el = me.current
+    if (!a || !el) return
+    const w = el.offsetWidth
+    const h = el.scrollHeight
+    const left = Math.max(8, Math.min(a.left, window.innerWidth - w - 8))
+    const below = window.innerHeight - a.bottom - 12
+    const above = a.top - 12
+    setAt(h <= below || below >= above
+      ? { left, top: a.bottom + 4, max: below }
+      : { left, top: Math.max(8, a.top - 4 - Math.min(h, above)), max: above })
+  }
+  useLayoutEffect(() => {
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [])
+  const style = at ? { left: `${at.left}px`, top: `${at.top}px`, maxHeight: `${at.max}px` } : { visibility: 'hidden' }
   // the door's own popover moves the focus to the first item after this effect ran (a child's effects run
   // first), so the move waits one turn: the start door types, the close door picks
   useEffect(() => { const id = setTimeout(() => (focus === 'start' ? field : first).current?.focus(), 0); return () => clearTimeout(id) }, [])
@@ -102,14 +126,14 @@ function RowPanel({ rows, s, c, focus, close }) {
   const group = (title, body, extra = null) => html`<div class="panel-group" role="group" aria-label=${title}>
     <span class="panel-group-head"><span class="label-caps">${title}</span>${extra}</span><div class="panel-group-body">${body}</div></div>`
   if (asking) {
-    return html`<span class=${`settle-menu row-panel${focus === 'start' ? ' is-left' : ''}`} role="menu">
+    return html`<span class="settle-menu row-panel" role="menu" ref=${me} style=${style}>
       <span class="settle-hint small">${t.streamEndAsk}</span>
       ${item(t.streamEndYes, () => settle(asking), { token: asking === 'done' ? 'success' : 'on-surface-muted', ref: first })}
       ${item(t.streamEndNo, () => setAsking(null))}
     </span>`
   }
   const needsWords = mode === 'note'
-  return html`<span class=${`settle-menu row-panel${focus === 'start' ? ' is-left' : ''}`} role="menu">
+  return html`<span class="settle-menu row-panel" role="menu" ref=${me} style=${style}>
     ${rows.length > 1 ? html`<ul class="settle-list">${rows.map(r => html`<li key=${r.key}>${r.title}</li>`)}</ul>` : null}
     <label class="start-note">
       <span class="label-caps">${t.panelText}</span>
@@ -180,7 +204,7 @@ export function StartMenu({ row, s, c, size = 'xs' }) {
   return html`<span class="settle start" ref=${box}>
     ${main}
     <${Btn} size=${size} variant="ghost" pressed=${open} label=${t.startMore} onClick=${() => setOpen(!open)}>▾<//>
-    ${open ? html`<${RowPanel} rows=${[row]} s=${s} c=${c} focus="start" close=${() => setOpen(false)} />` : null}
+    ${open ? html`<${RowPanel} rows=${[row]} s=${s} c=${c} focus="start" close=${() => setOpen(false)} anchor=${box} />` : null}
   </span>`
 }
 
@@ -195,7 +219,7 @@ export function SettleMenu({ rows, s, c, size = 'xs' }) {
   const word = ok.length > 1 ? t.settleMany(ok.length) : t.settle
   return html`<span class="settle" ref=${box}>
     <${Btn} size=${size} variant="ghost" busy=${busy} pressed=${open} onClick=${() => setOpen(!open)} label=${word}>${word} ▾<//>
-    ${open ? html`<${RowPanel} rows=${ok} s=${s} c=${c} focus="close" close=${() => setOpen(false)} />` : null}
+    ${open ? html`<${RowPanel} rows=${ok} s=${s} c=${c} focus="close" close=${() => setOpen(false)} anchor=${box} />` : null}
   </span>`
 }
 
