@@ -706,14 +706,14 @@ def row_actions(row: dict, tab: dict | None) -> list[dict]:
     if tab:
         return [act("to_tab", primary=True)]
     if row.get("inbox_id") and approved:
-        return [act("approved", dim=True), act("drop", dim=True)]
+        return [act("approved", dim=True)]     # discarding is in the close menu beside every row
     if row.get("bucket") == "waiting":
         return [act("follow_up")]
     if row.get("inbox_id") and row.get("gate") == "only-you":
         # yours to do: an agent can only advise; "done" is in the close menu beside it, never a second button
         return [act("advise", primary=True)]
     if launch_item(row) is not None:
-        return [act("do", primary=True), act("drop", dim=True) if row.get("inbox_id") else act("advise")]
+        return [act("do", primary=True), act("advise")]
     # a foreign row (an issue, an application, a deadline): Get it done and Advise file it to the inbox, then start on that
     return [act("do", primary=True), act("advise"), act("ask")]
 

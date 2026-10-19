@@ -225,7 +225,6 @@ function ActionsBlock({ row, s, c }) {
     <div class="btn-row">
       <${RowActions} row=${row} s=${s} c=${c} all />
       <${SettleMenu} rows=${[row]} s=${s} c=${c} />
-      ${!ids.includes('drop') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => row.inbox_id ? c.askDrop(row) : c.act('drop', { key: row.key })}>${t.action.drop}<//>` : null}
       ${!ids.includes('ask') ? html`<${Btn} size="xs" variant="ghost" busy=${!!s.ui.busy['ask:row']} onClick=${() => c.ask('row', { key: row.key })}>${t.askChat}<//>` : null}
       ${row.bucket === 'waiting' && !ids.includes('follow_up') ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.ask('follow_up', { key: row.key })}>${t.action.follow_up}<//>` : null}
     </div>

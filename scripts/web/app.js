@@ -1042,10 +1042,10 @@ async function runPlan(plan) {
     said.push(t.scHasTab(n, short(row.title, 30)))
   }
   for (const { n, row, reason } of plan.refused) {
-    said.push(`${label(n, row)}: ${reason === 'approved' ? t.scApproved : reason === 'waiting' ? t.scWaiting : t.scOnlyYou}`)
+    said.push(`${label(n, row)}: ${{ approved: t.scApproved, waiting: t.scWaiting, stream: t.scStream }[reason] ?? t.scOnlyYou}`)
   }
   for (const { row } of plan.later) await ctl.laterDays(row, 1)
-  for (const { row } of plan.drop) await act('drop', { key: row.key })
+  if (plan.decline.length) await act('settle', { keys: plan.decline.map(x => x.row.key), outcome: 'not_doing' })
   // an inbox entry asks why first, like the Drop button; one dialog at a time, so the first one
   const [ask, ...rest] = plan.askDrop
   if (ask) await ctl.askDrop(ask.row)

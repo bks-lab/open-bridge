@@ -678,10 +678,11 @@ def test_row_actions_every_branch():
     assert ids(m.row_actions(task, tab("working", "t"))) == [("to_tab", True, False)]
     approved = {**inbox_yes, "inbox_state": "approved"}
     assert ids(m.row_actions(approved, tab("shell", "t"))) == [("to_tab", True, False)]
-    assert ids(m.row_actions(approved, None)) == [("approved", False, True), ("drop", False, True)]
+    # discarding is the negative half of the close menu beside every row, never a button of its own
+    assert ids(m.row_actions(approved, None)) == [("approved", False, True)]
     assert ids(m.row_actions(row("ref:a", ["github"], ref="a/b#1", bucket="waiting"), None)) == [("follow_up", False, False)]
     assert ids(m.row_actions({**inbox_yes, "gate": "only-you"}, None)) == [("advise", True, False)]   # done is in the close menu
-    assert ids(m.row_actions(inbox_yes, None)) == [("do", True, False), ("drop", False, True)]
+    assert ids(m.row_actions(inbox_yes, None)) == [("do", True, False), ("advise", False, False)]
     assert ids(m.row_actions(task, None)) == [("do", True, False), ("advise", False, False)]
     # a foreign row (an issue, an application, a deadline): Do it and Advise me file it to the inbox first, Ask stays
     assert ids(m.row_actions(row("ref:a", ["github"], ref="a/b#1", bucket="delegate"), None)) == \
@@ -838,7 +839,7 @@ def test_model_shape(world):
     assert only["section"] == "now" and only["number"] == model["numbers"][f"inbox:{ONLY_ID}"]
     # an inbox row of a task finds the task's tab (register.tsx tabFor matches by task slug)
     assert [a["id"] for a in only["actions"]] == ["to_tab"] and only["tab"]["ref"] == "surface:7"
-    assert [a["id"] for a in world.row(f"inbox:{YES_ID}")["actions"]] == ["do", "drop"]
+    assert [a["id"] for a in world.row(f"inbox:{YES_ID}")["actions"]] == ["do", "advise"]
     assert only["mark"] == {"label": "Demo", "color": "blue"} and only["is_new"] is True and only["area"] == "Demo"
     assert set(model["approvable"]) == {f"inbox:{YES_ID}", f"inbox:{YES2_ID}"}
     assert secs["give"]["total"] == 3

@@ -57,8 +57,10 @@ export function RowActions({ row, s, c, all = false }) {
         onClick=${() => c.rowAction(row, a.id)}>${t.action[a.id] ?? a.id}<//>`)
 }
 
-/** Close in two clicks: "Close" opens the two outcomes, a click on one settles the row. A task also
- *  offers the longer dialog with every reason. Escape or a click outside closes the menu */
+/** Close in two clicks: "Close" opens the two outcomes, Done or Discard, a click on one settles the row.
+ *  Discard is the only way to discard: on a single inbox row it asks why (the reason can mute a source),
+ *  a task closes as declined. A task also offers the longer dialog with every reason. Escape or a click
+ *  outside closes the menu */
 export function SettleMenu({ rows, s, c, size = 'xs' }) {
   const t = T()
   const [open, setOpen] = useState(false)
@@ -68,6 +70,7 @@ export function SettleMenu({ rows, s, c, size = 'xs' }) {
   const keys = ok.map(r => r.key)
   const busy = !!s.ui.busy[keys.join(',')] || ok.some(r => s.ui.busy[r.key])
   const pick = outcome => { setOpen(false); c.act('settle', { keys, outcome }) }
+  const discard = () => ok.length === 1 && ok[0].inbox_id ? (setOpen(false), c.askDrop(ok[0])) : pick('not_doing')
   const tasks = ok.filter(r => r.closable)
   return html`<span class="settle" ref=${box}>
     <${Btn} size=${size} variant="ghost" busy=${busy} pressed=${open} onClick=${() => setOpen(!open)}
@@ -75,7 +78,7 @@ export function SettleMenu({ rows, s, c, size = 'xs' }) {
     ${open ? html`<span class="settle-menu" role="menu">
       <button type="button" role="menuitem" class="settle-item" onClick=${() => pick('done')}>
         <${Dot} token="success" /><span>${t.settleDone}</span></button>
-      <button type="button" role="menuitem" class="settle-item" onClick=${() => pick('not_doing')}>
+      <button type="button" role="menuitem" class="settle-item" onClick=${discard}>
         <${Dot} token="on-surface-muted" /><span>${t.settleNot}</span></button>
       <button type="button" role="menuitem" class="settle-item" onClick=${() => { setOpen(false); c.askRunsOn(ok) }}>
         <${Dot} token="info" /><span>${t.settleRuns}</span></button>

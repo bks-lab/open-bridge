@@ -118,7 +118,10 @@ test('text tables: every row action id of the server has a label', () => {
 test('text tables: one word per thing, the retired words appear nowhere', () => {
   const { de, en } = text.TABLES
   assert.equal(de.action.done, 'Abhaken'); assert.equal(en.action.done, 'Close')
-  assert.equal(de.settleDone, 'Abhaken'); assert.equal(en.settleDone, 'Close')
+  // Close is the one verb; its menu holds the two outcomes, and Discard is only there
+  assert.equal(de.settle, 'Abhaken'); assert.equal(en.settle, 'Close')
+  assert.equal(de.settleDone, 'Erledigt'); assert.equal(en.settleDone, 'Done')
+  assert.equal(de.settleNot, 'Verwerfen'); assert.equal(en.settleNot, 'Discard')
   assert.deepEqual(de.section, { now: 'Wartet auf dich', give: 'Kann die AI übernehmen', work: 'Aufgaben', track: 'Aus Boards und Trackern', later: 'Später' })
   assert.deepEqual(en.section, { now: 'Waiting for you', give: 'AI can take over', work: 'Tasks', track: 'From boards and trackers', later: 'Later' })
   // the same sections on the start board (home.sit) and in the assessment Claude reads (logic.situation)
@@ -235,7 +238,7 @@ test('planShortcut: tab rows jump, a/w refused like the mod, letters grouped', (
     [3, r('inbox:x', { inbox_id: 'x', gate: 'only-you' })],
     [4, r('inbox:y', { inbox_id: 'y', inbox_state: 'approved' })],
     [5, r('ref:o/r#1', { bucket: 'waiting' })],
-    [6, r('task:c')],
+    [6, r('task:c', { settle: ['done', 'not_doing'], closable: true })],
     [7, r('task:d', { tab: { ref: 'surface:2', state: 'shell', live: false, waiting: false } })],
   ])
   const plan = logic.planShortcut(logic.parseShortcut('1a 2a 3a 4w 5a 6w 9a 3v 1b 6c 7a 2b'), n => rows.get(n))
@@ -246,7 +249,7 @@ test('planShortcut: tab rows jump, a/w refused like the mod, letters grouped', (
   assert.deepEqual(plan.ws.map(x => x.n), [6])
   assert.deepEqual(plan.advise.map(x => x.n), [3])                   // v is fine for only-you
   assert.deepEqual(plan.later.map(x => x.n), [1, 2])
-  assert.deepEqual(plan.drop.map(x => x.n), [6])
+  assert.deepEqual(plan.decline.map(x => x.n), [6])
 })
 
 test('letterShortcut: a v c b w act once per press, an auto-repeat keydown acts not at all', () => {
@@ -342,17 +345,42 @@ test('act() wires planBusy into withBusy and tells what it left out', () => {
   assert.match(app, /createWithBusy\([^\n]*busyAlready/)
 })
 
-test('planShortcut: c on an inbox row asks why like the Drop button, c on a task drops', () => {
+test('planShortcut: c is the negative close: an inbox row asks why, a task or other row is declined, a stream refuses', () => {
   const rows = new Map([
-    [1, { key: 'task:a', title: 'a', bucket: 'do', inbox_id: null, tab: null }],
-    [2, { key: 'inbox:x', title: 'x', bucket: 'do', inbox_id: 'x', tab: null }],
-    [3, { key: 'inbox:y', title: 'y', bucket: 'do', inbox_id: 'y', tab: null }],
+    [1, { key: 'task:a', title: 'a', bucket: 'do', inbox_id: null, tab: null, settle: ['done', 'not_doing'], closable: true }],
+    [2, { key: 'inbox:x', title: 'x', bucket: 'do', inbox_id: 'x', tab: null, settle: ['done', 'not_doing'] }],
+    [3, { key: 'inbox:y', title: 'y', bucket: 'do', inbox_id: 'y', tab: null, settle: ['done', 'not_doing'] }],
+    [4, { key: 'task:s', title: 's', bucket: 'do', inbox_id: null, tab: null, settle: [], closable: false }],
+    [5, { key: 'ref:a/b#1', title: 'r', bucket: 'do', inbox_id: null, tab: null, settle: ['done', 'not_doing'] }],
   ])
-  const plan = logic.planShortcut(logic.parseShortcut('1c 2c 3c'), n => rows.get(n))
-  assert.deepEqual(plan.drop.map(x => x.n), [1])
+  const plan = logic.planShortcut(logic.parseShortcut('1c 2c 3c 4c 5c'), n => rows.get(n))
+  assert.deepEqual(plan.decline.map(x => x.n), [1, 5])
   assert.deepEqual(plan.askDrop.map(x => x.n), [2, 3])
-  // the command box and the c key run the plan, and its inbox drops open the drop dialog
-  assert.match(read('app.js'), /plan\.askDrop[\s\S]{0,200}ctl\.askDrop\(/)
+  assert.deepEqual(plan.refused.map(x => [x.n, x.reason]), [[4, 'stream']])
+  assert.equal(plan.drop, undefined)
+  // the command box and the c key run the plan: inbox drops open the drop dialog, the rest closes as not doing
+  const app = read('app.js')
+  assert.match(app, /plan\.askDrop[\s\S]{0,200}ctl\.askDrop\(/)
+  assert.match(app, /plan\.decline[\s\S]{0,120}act\('settle', \{[^}]*outcome: 'not_doing'/)
+  assert.doesNotMatch(app, /plan\.drop\b/)
+})
+
+test('close menu: one way to close, Done or Discard; Discard on one inbox row asks why, no separate Discard button', () => {
+  const day = read('views/day.js')
+  const menu = day.slice(day.indexOf('export function SettleMenu'), day.indexOf('/** The buttons of a page row'))
+  assert.match(menu, /t\.settleDone/)
+  assert.match(menu, /t\.settleNot/)
+  assert.match(menu, /const discard = \(\) => ok\.length === 1 && ok\[0\]\.inbox_id \? \(setOpen\(false\), c\.askDrop\(ok\[0\]\)\) : pick\('not_doing'\)/)
+  assert.match(menu, /onClick=\$\{discard\}>\s*<\$\{Dot\} token="on-surface-muted" \/><span>\$\{t\.settleNot\}/)
+  // the detail card has the close menu and no Discard of its own: for a task that one only hid it for a week
+  const detail = read('views/detail.js')
+  const block = detail.slice(detail.indexOf('function ActionsBlock'), detail.indexOf('function ActionsBlock') + 2500)
+  assert.doesNotMatch(block, /t\.action\.drop/)
+  for (const lang of [text.TABLES.en, text.TABLES.de]) {
+    assert.ok(lang.settleNot && lang.settleDone && lang.scStream, 'close menu words and the stream refusal in both languages')
+  }
+  assert.equal(text.TABLES.de.settleNot, 'Verwerfen')
+  assert.equal(text.TABLES.de.settleDone, 'Erledigt')
 })
 
 test('markToken: profile color names map to design tokens, unknown to muted', () => {
@@ -2940,14 +2968,13 @@ test('noise: only sources a person dropped from, most clicks first, at most eigh
   assert.deepEqual(logic.noiseRows(null), [])
 })
 
-test('drop: an inbox row asks why, the command box and bulk drops stay one keystroke', () => {
+test('drop: an inbox row asks why, from the close menu and from the c key', () => {
   const app = read('app.js')
   const overlays = read('views/overlays.js')
   assert.match(app, /case 'drop':\s*\n\s*return row\.inbox_id \? ctl\.askDrop\(row\) : act\('drop', \{ key: row\.key \}\)/)
-  assert.match(app, /for \(const \{ row \} of plan\.drop\) await act\('drop', \{ key: row\.key \}\)/)
   assert.match(app, /c\?\.kind === 'drop'/)
   assert.match(overlays, /conf\.kind === 'drop'\) return html`<\$\{DropDialog\}/)
-  assert.match(read('views/detail.js'), /c\.askDrop\(row\)/)
+  assert.match(read('views/day.js'), /c\.askDrop\(ok\[0\]\)/)
   for (const lang of ['en', 'de']) {
     const t = text.TABLES[lang]
     for (const r of ['once', 'duplicate', 'family', 'source']) assert.ok(t.dropReason[r], `${lang} dropReason.${r}`)

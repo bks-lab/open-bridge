@@ -325,20 +325,20 @@ export function buildState(now = Date.now(), opts = {}) {
       key: 'inbox:20261009-0910-tidy-labels-c3d4', bucket: 'delegate', section: 'give', title: 'Tidy the issue labels on the demo board',
       why: ['needs your yes'], sources: ['inbox'], inbox_id: '20261009-0910-tidy-labels-c3d4', gate: 'your-yes', has_action: true,
       priority: 'P2', area: 'Demo', area_names: ['Demo'], inbox_state: 'open', inbox_key: 'tidy-labels',
-      actions: [A('do', true), A('drop', false, true)], selectable: true,
+      actions: [A('do', true), A('advise')], selectable: true,
     }),
     docs: row({
       key: 'inbox:20261009-0915-update-docs-e5f6', bucket: 'delegate', section: 'give', title: 'Update the setup docs after the config change',
       why: ['needs your yes', `due ${isoIn(-3, now).slice(8)}.${isoIn(-3, now).slice(5, 7)}`, 'changed since 08:40'], due: isoIn(-3, now),
       sources: ['inbox'], inbox_id: '20261009-0915-update-docs-e5f6', gate: 'your-yes',
       has_action: true, area: 'Docs', area_names: ['Docs'], inbox_state: 'open', inbox_key: 'update-docs',
-      mark: { label: 'Docs', color: 'green' }, is_changed: true, actions: [A('do', true), A('drop', false, true)], selectable: true,
+      mark: { label: 'Docs', color: 'green' }, is_changed: true, actions: [A('do', true), A('advise')], selectable: true,
     }),
     sweep: row({
       key: 'inbox:20261009-0920-sweep-logs-0a0b', bucket: 'plan', section: 'give', title: 'Sweep old log files in the scratch folder',
       why: ['may run alone'], sources: ['inbox'], inbox_id: '20261009-0920-sweep-logs-0a0b', gate: 'free', has_action: true,
       area: 'Ops', area_names: ['Ops'], inbox_state: 'approved', inbox_key: 'sweep-logs',
-      actions: [A('approved', false, true), A('drop', false, true)],
+      actions: [A('approved', false, true)],
     }),
     demo: row({
       key: 'task:demo-task', bucket: 'tasks', section: 'work', title: 'Write the onboarding guide for the demo project',

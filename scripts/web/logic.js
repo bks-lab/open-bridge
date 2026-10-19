@@ -89,12 +89,13 @@ export function startRefusal(row) {
 /**
  * Turn parsed codes into a plan, the way the mod's shortcut hook does (register.tsx):
  * rows with a live tab jump instead of a/v/w; a/w refused for only-you, waiting and
- * approved rows; all a rows together, all w rows together, all v rows together; b and c
- * per row, c on an inbox row through the drop dialog like the Drop button (`askDrop`).
+ * approved rows; all a rows together, all w rows together, all v rows together; b per row.
+ * c is Discard from the close menu: an inbox row asks why (`askDrop`, one at a time), a task or
+ * any other closable row closes as not doing, a stream never closes and is refused.
  * `rowFor(n)` returns the row numbered n or undefined.
  */
 export function planShortcut(codes, rowFor) {
-  const plan = { missing: [], jump: [], refused: [], do: [], ws: [], advise: [], later: [], drop: [], askDrop: [] }
+  const plan = { missing: [], jump: [], refused: [], do: [], ws: [], advise: [], later: [], decline: [], askDrop: [] }
   for (const { n, letter } of codes) {
     const row = rowFor(n)
     if (!row) {
@@ -104,7 +105,9 @@ export function planShortcut(codes, rowFor) {
     if (row.tab && row.tab.live && 'avw'.includes(letter)) plan.jump.push({ n, row })
     else if ('aw'.includes(letter) && startRefusal(row)) plan.refused.push({ n, row, reason: startRefusal(row) })
     else if (letter === 'b') plan.later.push({ n, row })
-    else if (letter === 'c') (row.inbox_id ? plan.askDrop : plan.drop).push({ n, row })
+    else if (letter === 'c' && row.inbox_id) plan.askDrop.push({ n, row })
+    else if (letter === 'c' && (row.settle ?? []).length) plan.decline.push({ n, row })
+    else if (letter === 'c') plan.refused.push({ n, row, reason: 'stream' })
     else if (letter === 'v') plan.advise.push({ n, row })
     else if (letter === 'w') plan.ws.push({ n, row })
     else plan.do.push({ n, row })
