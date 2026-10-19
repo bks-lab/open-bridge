@@ -9,6 +9,8 @@ scope: user              # REQUIRED — a remote is local hardware/network inven
                          # always user/private, never promoted upstream.
 type: linux              # macos | linux | windows
 os: "Ubuntu 24.04"
+default_target: false    # true = implicit target for "my PC" when no machine is
+                         # named. At most one remote sets it (skills/remote/references/fleet.md).
 
 ssh:
   user: deploy

@@ -49,6 +49,14 @@ properties:
         usb-toolkit                    — portable hardware (Flipper Zero, Yubikey-cli, etc.)
       Free-form to allow new device profiles without schema change.
 
+  default_target:
+    type: boolean
+    default: false
+    description: |
+      Marks the implicit target when the user names no machine ("my PC").
+      Set it on at most one remote; the remote skill reads it
+      (skills/remote/references/fleet.md § Learned routing patterns).
+
   os:
     type: string
     description: "OS / firmware version (e.g. 'macOS 26.4 (Tahoe)', 'FRITZ!OS 7.59')"
