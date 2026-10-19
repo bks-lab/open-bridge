@@ -7100,3 +7100,16 @@ def test_later_puts_off_every_inbox_item_whatever_its_gate(world):
     world.act("later", key=f"inbox:{FILED_ID}", until=TOMORROW)
     assert writes(world) == [I(world, "defer", FILED_ID, "--until", TOMORROW)]
     assert f"inbox:{FILED_ID}" not in world.app.store.hidden()
+
+
+def test_to_task_can_be_taken_back_the_task_closes_as_declined_and_the_item_opens_again(world):
+    world.runner.handlers["task.new"] = lambda argv: ok(json.dumps({"slug": "tidy-labels", "status": "backlog"}))
+    res = world.act("to_task", key=f"inbox:{YES_ID}")
+    assert res["undo"][0]["undo"] == {"verb": "to_task_undo", "args": {"id": YES_ID, "slug": "tidy-labels"}}
+    world.runner.calls.clear()
+    world.act("to_task_undo", id=YES_ID, slug="tidy-labels")
+    assert writes(world) == [K(world, "close", "tidy-labels", "--declined", "--reason", "Taken back: back to the inbox"),
+                             I(world, "reopen", YES_ID)]
+    # an undo the server never handed out finds nothing to take back
+    with pytest.raises(ActionError):
+        world.act("to_task_undo", id=YES_ID, slug="tidy-labels")

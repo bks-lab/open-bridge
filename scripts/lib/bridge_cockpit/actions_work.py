@@ -184,8 +184,27 @@ class WorkVerbs:
         except ValueError:
             slug = ""
         self.settle(ctx, row, self.tx["to_task_note"].format(slug=slug))
+        if slug:
+            ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "inbox", "did": f"to task {slug}",
+                                "ident": item, "undo": {"verb": "to_task_undo", "args": {"id": item, "slug": slug}},
+                                "undone_ms": None})
         ctx.extra["task"] = slug
         self.app.collector.request("both")
+
+    def v_to_task_undo(self, ctx: Ctx, id: str, slug: str) -> None:  # noqa: A002 - the API name
+        """Takes a to_task back. Nothing is deleted: the task it made closes as declined, so its folder and
+        notes stay findable under work/done/, and the inbox item opens again. Only an undo the server handed out."""
+        history = getattr(self.app, "history", None)
+        it = history.open_undo("to_task_undo", {"id": id, "slug": slug}) if history else None
+        if it is None:
+            raise self.not_applicable("nothing of that to take back", "id")
+        run = ctx.call("task.close", slug, self.task_cmd("close", slug, "--declined", "--reason", self.tx["to_task_undone_reason"]),
+                       SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["task_close_failed"].format(title=slug, err=m.short(run.err, 100)), bad=True)
+            return
+        self.v_inbox_reopen(ctx, id)
+        history.mark_undone("to_task_undo", id)
 
     def v_hide(self, ctx: Ctx, key: str, until: str) -> None:
         self.hide_until(ctx, self.entry(key)["row"], until)

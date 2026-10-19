@@ -115,6 +115,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "inbox_reopen": {"id": ("inbox_id", True), "note": ("text", False)},
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
     "task_running": {"slug": ("slug", True)},
+    # taking a to_task back: the task it made closes as declined, the inbox item opens again
+    "to_task_undo": {"id": ("inbox_id", True), "slug": ("slug", True)},
     "to_task": {"key": ("key", True), "status": ("reopen_as", False)},
     "session_link": {"session": ("session_id", True), "slug": ("slug", True)},
     "session_unlink": {"session": ("session_id", True)},

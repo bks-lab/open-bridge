@@ -5,7 +5,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
-  pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice, rowKind,
+  pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups,
   SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -156,14 +156,15 @@ function RowPanel({ rows, s, c, focus, close, anchor }) {
     <label class="start-note">
       <span class="label-caps">${t.panelText}</span>
       <textarea rows="2" ref=${field} value=${text} placeholder=${needsWords ? t.startNeedsHint : t.panelTextHint}
-        onInput=${e => setText(e.currentTarget.value)}></textarea>
+        onInput=${e => setText(e.currentTarget.value)}
+        onKeyDown=${e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && focus === 'start' && one && (mode === 'do' || mode === 'restart' || (mode === 'note' && x))) { e.preventDefault(); done(() => c.act('do_it', { keys, ...(x ? { note: x } : {}) })) } }}></textarea>
     </label>
     ${one ? group(t.grp.start, mode === 'approved'
       ? item(t.approvedBack, () => done(() => c.act('inbox_reopen', { id: one.inbox_id })))
       : mode === 'tab'
         ? html`${item(t.sendHint, () => done(() => c.act('do_it', { keys, ...(x ? { note: x } : {}) })), { off: !x, token: 'info' })}
             ${item(t.btnTabView, () => done(() => c.openTabView(one.tab.ref)))}`
-        : html`${item(t.action.do, () => done(() => c.act('do_it', { keys, ...(x ? { note: x } : {}) })), { off: needsWords && !x, token: 'info' })}
+        : html`${item(mode === 'restart' ? t.action.restart : t.action.do, () => done(() => c.act('do_it', { keys, ...(x ? { note: x } : {}) })), { off: needsWords && !x, token: 'info' })}
             ${item(t.action.advise, () => done(() => c.act('advise', { keys, ...(x ? { note: x } : {}) })))}
             ${launchable ? item(t.btnCollect, () => done(() => c.act('collect_context', { key: one.key, ...(x ? { note: x } : {}) }))) : null}
             ${item(t.btnDoOwnWs, () => done(() => c.act('do_it', { keys, target: 'workspace', ...(x ? { note: x } : {}) })), { off: needsWords && !x })}`,
@@ -211,18 +212,16 @@ export function StartMenu({ row, s, c, size = 'xs' }) {
   const [open, setOpen] = useState(false)
   const box = usePopover(open, setOpen)
   const busy = !!s.ui.busy[row.key]
-  const main = mode === 'tab'
-    ? html`<${Btn} size=${size} variant="primary" busy=${busy}
-        onClick=${() => (canTab(s, 'focus') ? c.act('tab_jump', { tab_ref: row.tab.ref }) : c.openTabView(row.tab.ref))}>${t.action.to_tab}<//>`
-    : mode === 'restart'
-      ? html`<${Btn} size=${size} variant="primary" busy=${busy} onClick=${() => c.act('do_it', { keys: [row.key] })}>${t.action.restart}<//>`
-      : mode === 'approved'
-        ? html`<${Btn} size=${size} variant="ghost" busy=${busy} onClick=${() => setOpen(!open)}>${t.action.approved}<//>`
-        : html`<${Btn} size=${size} variant="primary" busy=${busy} title=${mode === 'note' ? t.startNeedsHint : undefined}
-            onClick=${() => (mode === 'note' ? setOpen(true) : c.rowAction(row, 'do'))}>${t.action.do}<//>`
+  // a click opens the panel, so a sentence can go with every start; only To tab acts at once, it starts nothing
+  const word = mode === 'restart' ? t.action.restart : mode === 'approved' ? t.action.approved : t.action.do
   return html`<span class="settle start" ref=${box}>
-    ${main}
-    <${Btn} size=${size} variant="ghost" pressed=${open} label=${t.startMore} onClick=${() => setOpen(!open)}>▾<//>
+    ${mode === 'tab' ? html`<${Btn} size=${size} variant="primary" busy=${busy}
+        onClick=${() => (canTab(s, 'focus') ? c.act('tab_jump', { tab_ref: row.tab.ref }) : c.openTabView(row.tab.ref))}>${t.action.to_tab}<//>
+      <${Btn} size=${size} variant="ghost" pressed=${open} label=${t.startMore} onClick=${() => setOpen(!open)}>▾<//>`
+      : mode === 'approved' ? html`<${Btn} size=${size} variant="ghost" busy=${busy} pressed=${open} onClick=${() => setOpen(!open)}>${word} ▾<//>`
+      : mode === 'restart' ? html`<${Btn} size=${size} variant="primary" busy=${busy} pressed=${open} onClick=${() => setOpen(!open)}>${word} ▾<//>`
+      : html`<${Btn} size=${size} variant="primary" busy=${busy} pressed=${open} title=${mode === 'note' ? t.startNeedsHint : undefined}
+          onClick=${() => setOpen(!open)}>${t.action.do} ▾<//>`}
     ${open ? html`<${RowPanel} rows=${[row]} s=${s} c=${c} focus="start" close=${() => setOpen(false)} anchor=${box} />` : null}
   </span>`
 }
@@ -313,9 +312,13 @@ function Section({ section, s, c, byKey, budget = 0 }) {
               ${expanded ? t.btnCompact : rows.length ? t.allN(all) : t.showN(section.total)}</button>` : null}
       </span>
     </header>
-    ${rows.length
-      ? html`<ol class="rows">${rows.map(r => html`<${RowItem} key=${r.key} row=${r} s=${s} c=${c} />`)}</ol>`
-      : section.total === 0 ? html`<${Empty}>${t.empty}<//>` : null}
+    ${!rows.length ? (section.total === 0 ? html`<${Empty}>${t.empty}<//>` : null)
+      // the board section is mostly issues: by repo, so one board's items stand together
+      : section.id === 'track' && repoGroups(rows).length > 1
+        ? repoGroups(rows).map(g => html`<div class="row-group" key=${g.repo ?? '-'}>
+            <h3 class="row-group-head">${g.repo ?? t.otherSources} <span class="sec-count mono">${g.rows.length}</span></h3>
+            <ol class="rows">${g.rows.map(r => html`<${RowItem} key=${r.key} row=${r} s=${s} c=${c} />`)}</ol></div>`)
+        : html`<ol class="rows">${rows.map(r => html`<${RowItem} key=${r.key} row=${r} s=${s} c=${c} />`)}</ol>`}
   </section>`
 }
 

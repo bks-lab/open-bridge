@@ -87,6 +87,20 @@ export function rowKind(row) {
   return { kind: 'other', source: row?.sources?.[0] ?? null }
 }
 
+/** The rows of a section by the repo of their issue (owner/repo#n), in the order a repo first shows up; rows
+ * without an issue form a last group with repo null. The day list groups the board section this way */
+export function repoGroups(rows) {
+  const groups = new Map()
+  for (const r of rows ?? []) {
+    const k = rowKind(r)
+    const repo = k.kind === 'issue' ? k.ref.split('#')[0] : null
+    if (!groups.has(repo)) groups.set(repo, [])
+    groups.get(repo).push(r)
+  }
+  const out = [...groups].filter(([repo]) => repo !== null).map(([repo, list]) => ({ repo, rows: list }))
+  return groups.has(null) ? [...out, { repo: null, rows: groups.get(null) }] : out
+}
+
 /** Which start button a row shows, the same on every view (views/day.js StartMenu):
  * 'tab' its agent tab runs (go there), 'restart' the tab died, 'approved' the yes is given (take it back),
  * 'note' waiting or yours alone (a start needs a sentence of yours), 'do' everything else. */

@@ -122,8 +122,8 @@ test('text tables: one word per thing, the retired words appear nowhere', () => 
   assert.equal(de.settle, 'Abhaken'); assert.equal(en.settle, 'Close')
   assert.equal(de.settleDone, 'Erledigt'); assert.equal(en.settleDone, 'Done')
   assert.equal(de.settleNot, 'Verwerfen'); assert.equal(en.settleNot, 'Discard')
-  assert.deepEqual(de.section, { now: 'Wartet auf dich', give: 'Kann die AI übernehmen', work: 'Aufgaben', track: 'Aus Boards und Trackern', later: 'Später' })
-  assert.deepEqual(en.section, { now: 'Waiting for you', give: 'AI can take over', work: 'Tasks', track: 'From boards and trackers', later: 'Later' })
+  assert.deepEqual(de.section, { now: 'Wartet auf dich', give: 'Kann die AI übernehmen', work: 'Aufgaben und Streams', track: 'Aus Boards und Trackern', later: 'Später' })
+  assert.deepEqual(en.section, { now: 'Waiting for you', give: 'AI can take over', work: 'Tasks and streams', track: 'From boards and trackers', later: 'Later' })
   // the same sections on the start board (home.sit) and in the assessment Claude reads (logic.situation)
   for (const id of ['now', 'give', 'work', 'later']) {
     assert.equal(de.logic.situation[id], de.section[id], id); assert.equal(en.logic.situation[id], en.section[id], id)
@@ -4239,4 +4239,29 @@ test('the kind stands first on every row, in the detail head and in the drawer h
   assert.equal(text.TABLES.de.kind.stream, 'Stream')
   const panel = day.slice(day.indexOf('function RowPanel'), day.indexOf('export function StartMenu'))
   assert.match(panel, /t\.streamHint/)
+})
+
+test('the start door opens the panel: a sentence can go with every start, a click never starts at once', () => {
+  const day = read('views/day.js')
+  const start = day.slice(day.indexOf('export function StartMenu'), day.indexOf('export function SettleMenu'))
+  assert.doesNotMatch(start, /c\.rowAction\(row, 'do'\)/, 'no start on one click')
+  assert.doesNotMatch(start, /c\.act\('do_it'/, 'the panel starts, the door only opens it')
+  assert.match(start, /\$\{t\.action\.do\} ▾/)
+  assert.match(start, /mode === 'tab'/)                      // To tab still goes there at once: it starts nothing
+  const panel = day.slice(day.indexOf('function RowPanel'), day.indexOf('export function StartMenu'))
+  // Cmd or Ctrl with Enter in the sentence starts from the start door
+  assert.match(panel, /\(e\.metaKey \|\| e\.ctrlKey\) && e\.key === 'Enter'/)
+})
+
+test('issues from boards stand grouped by repo, the other sections as they are', () => {
+  assert.deepEqual(logic.repoGroups([
+    { key: 'ref:a/x#1', ref: 'a/x#1' }, { key: 'ref:b/y#2', ref: 'b/y#2' }, { key: 'ref:a/x#3', ref: 'a/x#3' },
+    { key: 'ref:2026-10/app', ref: '2026-10/app' },
+  ]).map(g => [g.repo, g.rows.map(r => r.key)]), [
+    ['a/x', ['ref:a/x#1', 'ref:a/x#3']], ['b/y', ['ref:b/y#2']], [null, ['ref:2026-10/app']]])
+  const day = read('views/day.js')
+  const sec = day.slice(day.indexOf('function Section('), day.indexOf('function TabMini('))
+  assert.match(sec, /section\.id === 'track'/)
+  assert.match(sec, /repoGroups\(rows\)/)
+  assert.match(sec, /class="row-group-head"/)
 })

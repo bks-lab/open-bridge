@@ -25,7 +25,7 @@ from .store import atomic_write_json, read_json
 
 MAX_ENTRIES = 500
 KINDS = ("task", "inbox", "other")
-UNDO_VERBS = ("task_reopen", "inbox_reopen", "unhide")
+UNDO_VERBS = ("task_reopen", "inbox_reopen", "unhide", "to_task_undo")
 REOPEN_AS = ("doing", "backlog", "review")     # task.py REOPEN_STATUSES: what a closed task can come back as
 AUDIT_RE = re.compile(r"^(\S+) (settle|task_close|done|drop) (\S+) exits=\S+ ok=true$")
 
