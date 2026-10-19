@@ -1402,13 +1402,17 @@ def test_hide_persists_in_state_json(world):
                     "home_tiles": None, "home_seen": None, "pins": [], "session_links": {}}
 
 
-def test_drop_inbox_and_hide_non_inbox_for_seven_days(world):
+def test_drop_on_an_inbox_item_drops_it_and_on_any_other_row_discards_it_for_good(world):
     world.runner.calls.clear()
     world.act("drop", key=f"inbox:{YES_ID}")
     assert writes(world) == [I(world, "drop", YES_ID, "--note", "dropped in the cockpit")]
     world.runner.calls.clear()
-    world.act("drop", key="ref:example/repo#12")
-    assert writes(world) == [] and world.app.store.hidden()["ref:example/repo#12"] == "2026-10-16"
+    world.act("drop", key="ref:example/repo#12")       # the same as Discard in the close menu, no week of hiding
+    assert writes(world) == [] and "ref:example/repo#12" not in world.app.store.hidden()
+    assert world.app.store.dismissed()["ref:example/repo#12"]["outcome"] == "not_doing"
+    world.runner.calls.clear()
+    world.act("drop", key="task:other-task")
+    assert writes(world) == [K(world, "close", "other-task", "--declined", "--reason", "Will not be done")]
 
 
 def test_drop_with_a_reason_passes_it_and_says_what_was_muted(world):
@@ -1425,10 +1429,10 @@ def test_drop_with_a_reason_passes_it_and_says_what_was_muted(world):
     assert err.value.status == 400
 
 
-def test_a_reason_on_a_row_that_is_no_inbox_item_still_hides_it(world):
+def test_a_reason_on_a_row_that_is_no_inbox_item_still_discards_it(world):
     world.runner.calls.clear()
     world.act("drop", key="ref:example/repo#12", reason="source")
-    assert writes(world) == [] and world.app.store.hidden()["ref:example/repo#12"] == "2026-10-16"
+    assert writes(world) == [] and world.app.store.dismissed()["ref:example/repo#12"]["outcome"] == "not_doing"
 
 
 def test_unmute_lifts_a_rule_by_id(world):
@@ -1701,10 +1705,10 @@ def test_the_history_is_filled_once_from_the_older_audit_log(tmp_path):
     assert History(state, lambda: 0).backfill(root, state / "audit.log") == 0  # only once
 
 
-def test_settle_refuses_a_stream_and_rows_say_whether_they_settle(world):
+def test_settle_asks_before_a_stream_ends_and_rows_say_whether_they_settle(world):
     with pytest.raises(ActionError):
         world.act("settle", keys=["task:quiet-task"], outcome="done")
-    assert world.row("task:quiet-task")["settle"] == []
+    assert world.row("task:quiet-task")["settle"] == ["done", "not_doing"]
     assert world.row("task:other-task")["settle"] == ["done", "not_doing"]
     assert world.row(f"inbox:{YES_ID}")["settle"] == ["done", "not_doing"]
     assert world.row("ref:example/repo#12")["settle"] == ["done", "not_doing"]
@@ -7021,3 +7025,78 @@ def test_a_lone_surrogate_in_a_relay_file_never_breaks_the_state(world):
     world.app.state_payload()
     out = world.app.relay.record_json(world.app.relay.get(rid))
     assert (out["status"], out["answer"]) == ("queued", None)
+
+
+# ---------------------------------------------------------------- every row the same: start note, streams, not now
+
+def test_do_it_with_a_note_writes_it_on_the_task_first_and_the_agent_reads_it(world):
+    world.runner.calls.clear()
+    res = world.act("do_it", keys=["task:other-task"], note="Bitte nur die Tests, nichts mergen")
+    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: Bitte nur die Tests, nichts mergen"),
+                             launch_argv(world, "other-task", "go", "area", "--start-note")]
+    assert res["ok"] is True
+
+
+def test_a_note_on_a_yes_item_starts_an_agent_instead_of_approving_its_action(world):
+    world.runner.calls.clear()
+    world.act("do_it", keys=[f"inbox:{YES_ID}"], note="erst Axel fragen")
+    assert writes(world) == [I(world, "note", YES_ID, "--", "Start note: erst Axel fragen"),
+                             launch_argv(world, YES_ID, "go", "area", "--start-note")]
+
+
+def test_a_note_for_a_row_whose_tab_runs_goes_into_that_tab(world):
+    working = [{**t, "state": "working"} if t.get("slug") == "demo-task" else t for t in STATUS]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(working)
+    world.app.tabs.poll()
+    world.runner.calls.clear()
+    world.act("do_it", keys=["task:demo-task"], note="auch die Doku anpassen")
+    assert writes(world) == [W(world, "send", "surface:7", "--", "auch die Doku anpassen")]
+
+
+def test_a_note_never_types_into_a_tab_that_asks_you_something(world):
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("do_it", keys=["task:demo-task"], note="weiter")     # surface:7 waits on a dialog
+    assert err.value.code == "not_applicable" and writes(world) == []
+
+
+@pytest.mark.parametrize("verb, mode", [("advise", "report"), ("start_agent", "go")])
+def test_every_start_verb_takes_a_note(world, verb, mode):
+    world.runner.calls.clear()
+    world.act(verb, keys=["task:other-task"], note="kurz halten")
+    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: kurz halten"),
+                             launch_argv(world, "other-task", mode, "area", "--start-note")]
+
+
+def test_collect_context_takes_a_note_too(world):
+    world.runner.calls.clear()
+    world.act("collect_context", key="task:other-task", note="nur Mails")
+    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: nur Mails"),
+                             launch_argv(world, "other-task", "context", "area", "--start-note")]
+
+
+def test_start_agent_refuses_an_approved_item_like_do_it(world):
+    world.app.collector.resolve(f"inbox:{YES_ID}")["row"]["inbox_state"] = "approved"     # the yes is given
+    for verb in ("do_it", "start_agent"):
+        with pytest.raises(ActionError) as err:
+            world.act(verb, keys=[f"inbox:{YES_ID}"])
+        assert err.value.code == "not_applicable"
+
+
+def test_a_stream_offers_the_close_menu_and_ends_only_when_the_page_says_so(world):
+    row = world.row("task:quiet-task")
+    assert row["settle"] == ["done", "not_doing"] and row["stream"] is True and row["closable"] is False
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("settle", keys=["task:quiet-task"], outcome="done")
+    assert err.value.code == "not_applicable" and writes(world) == []
+    world.act("settle", keys=["task:quiet-task"], outcome="not_doing", stream=True)
+    assert writes(world) == [K(world, "close", "quiet-task", "--stream", "--declined", "--reason", "Will not be done")]
+    assert world.row("task:other-task")["stream"] is False
+
+
+def test_later_puts_off_every_inbox_item_whatever_its_gate(world):
+    world.runner.calls.clear()
+    world.act("later", key=f"inbox:{FILED_ID}", until=TOMORROW)
+    assert writes(world) == [I(world, "defer", FILED_ID, "--until", TOMORROW)]
+    assert f"inbox:{FILED_ID}" not in world.app.store.hidden()

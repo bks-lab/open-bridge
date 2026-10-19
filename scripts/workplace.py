@@ -373,8 +373,18 @@ def team_tab_names(task_label: str, slug: str, team: dict, role: dict) -> tuple[
     return f"{task_label} · {team['label']} {role['name']}", f"{slug}--{team['id']}-{role['id']}"
 
 
-def launch_prompt(kind: str, mode: str, item: str, status_path: str = "") -> str:
-    """ASCII-only prompt for one launched tab (cmux re-encodes non-ASCII; the agent reads details itself)."""
+START_NOTE_HEAD = ("The person gave you a sentence for this start: it is the newest note that begins with "
+                   "'Start note:' on this item ({where}). Read it before anything else; it comes before everything else "
+                   "below when the two disagree. ")
+
+
+def launch_prompt(kind: str, mode: str, item: str, status_path: str = "", start_note: bool = False) -> str:
+    """ASCII-only prompt for one launched tab (cmux re-encodes non-ASCII; the agent reads details itself).
+    start_note: the person wrote a sentence for this start onto the item (task.py / inbox.py note, UTF-8);
+    the prompt only points at it, so the words reach the agent unchanged."""
+    if start_note:
+        where = status_path if kind == "task" else f"python3 scripts/inbox.py show {item}"
+        return START_NOTE_HEAD.format(where=where) + launch_prompt(kind, mode, item, status_path)
     if mode == "context":
         if kind == "task":
             return CONTEXT_PROMPT.format(what=f"the task {item}", read=status_path,
@@ -485,12 +495,13 @@ SESSION_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 
 def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None = None,
                  role: str | None = None, resume: str | None = None, resume_cwd: str | None = None,
-                 model: str | None = None, effort: str | None = None) -> list:
+                 model: str | None = None, effort: str | None = None, start_note: bool = False) -> list:
     """One entry per requested item: label + command, or an error. Labels are unique.
     With team and role: the tab of that role of the team on each task (inbox items have no team).
     With resume (a Claude session id): the tab goes on in that session of the task, in the folder it ran in
     (resume_cwd; a session only resumes from its own project folder), with agent.resume as the command.
-    model (an alias or id) and effort go to the agent as agent_run says; without them the command is today's."""
+    model (an alias or id) and effort go to the agent as agent_run says; without them the command is today's.
+    start_note: the prompt sends the agent to the person's sentence for this start (see launch_prompt)."""
     if resume is not None and not SESSION_RE.fullmatch(resume):
         return [{"item": ",".join(items), "kind": "unknown", "error": f"not a session id: {resume!r}"}]
     the_team = next((t for t in teams(cfg) if t["id"] == team), None) if team else None
@@ -518,7 +529,7 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
             label = tab_label({"slug": name, "heading": heading(text)}, cfg)
             kind, slug = "task", name
             area = _task_area(root, name, cfg)
-            prompt = launch_prompt("task", mode, name, str(task_dir.relative_to(root) / "STATUS.md"))
+            prompt = launch_prompt("task", mode, name, str(task_dir.relative_to(root) / "STATUS.md"), start_note)
             if the_team and the_role:
                 status_path = str(task_dir.relative_to(root) / "STATUS.md")
                 label, slug = team_tab_names(label, name, the_team, the_role)
@@ -539,7 +550,7 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
             # summary words are no area: "platform broke" must not match a platform-* pattern)
             area = (_task_area(root, linked, cfg) if linked and _task_dir(root, linked)
                     else workspace_for({"slug": "", "context": None}, cfg))
-            prompt = launch_prompt("inbox", mode, full)
+            prompt = launch_prompt("inbox", mode, full, start_note=start_note)
         base, n = label, 1
         while label in used:
             n += 1
@@ -1175,6 +1186,8 @@ def main(argv=None) -> int:
     ln.add_argument("--cwd", help="with --resume: the folder the session ran in")
     ln.add_argument("--model", choices=tuple(CLAUDE_MODELS), help="the model the agent starts with")
     ln.add_argument("--effort", choices=EFFORTS, help="the agent's effort level")
+    ln.add_argument("--start-note", action="store_true",
+                    help="the person noted a sentence for this start on the item ('Start note: ...'); the agent reads it first")
     ln.add_argument("--again", action="store_true",
                     help="open a tab even when an agent tab for the item is open already")
     sub.add_parser("teams", help="the team recipes: ordered role tabs on one task").add_argument(
@@ -1298,7 +1311,8 @@ def main(argv=None) -> int:
             print("--resume goes on in one session of one task, without a team", file=sys.stderr)
             return 2
         entries = build_launch(args.root, cfg, args.items.split(","), args.mode or "report", args.team, args.role,
-                               resume=args.resume, resume_cwd=args.cwd, model=args.model, effort=args.effort)
+                               resume=args.resume, resume_cwd=args.cwd, model=args.model, effort=args.effort,
+                               start_note=args.start_note)
         if args.resume:
             args.again = True     # going on in an ended session is asked for, even beside an open tab
         good = [e for e in entries if "command" in e]

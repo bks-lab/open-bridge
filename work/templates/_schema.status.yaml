@@ -119,6 +119,12 @@ properties:
       Set only with status: done. 'declined' = task closed without completion.
       Absent = normal completion.
 
+  was_stream:
+    type: boolean
+    description: |
+      Set only with status: done, by `task.py close --stream`: this was a stream under
+      work/streams/ that a person ended. `task.py reopen` puts it back there.
+
   horizon:
     enum: [finite, stream]
     description: |

@@ -57,7 +57,7 @@ class LaunchSteps:
         return True
 
     def launch(self, ctx: Ctx, rows: list[dict], mode: str, target: str, team: dict | None = None,
-               word: str | None = None, resume: dict | None = None) -> str:
+               word: str | None = None, resume: dict | None = None, start_note: bool = False) -> str:
         """register.tsx launch: returns started | partly | failed | running | busy | nothing | manual (no driver)."""
         tx, app = self.tx, self.app
         wanted = [m.launch_item(r) for r in rows if m.launch_item(r)]
@@ -83,6 +83,8 @@ class LaunchSteps:
                 target = "area"
                 ctx.note(tx["here_missing"])
         argv = app.workplace("launch", "--items", ",".join(items), "--mode", mode, "--target", target, "--yes", "--json")
+        if start_note:
+            argv += ["--start-note"]
         if here:
             argv += ["--here", here]
         if team:

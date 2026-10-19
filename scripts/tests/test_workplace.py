@@ -1302,3 +1302,22 @@ def test_cli_layout_commands_report_a_driver_refusal_as_exit_one(repo, tmp_path,
     (repo / "bridge-config.yaml").write_text(f"workplace:\n  driver: {{command: ['{sys.executable}', '{script}']}}\n")
     assert wp.main(["--root", str(repo), "move-tab", "surface:5", "workspace:3"]) == 1
     assert "ERROR surface:5 is the last tab" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("kind, mode", [("task", "go"), ("task", "report"), ("task", "context"), ("inbox", "go"), ("inbox", "report")])
+def test_a_start_note_is_read_first_and_the_prompt_stays_ascii(lrepo, kind, mode):
+    """The person's sentence for this start lives on the item (UTF-8, in its log), the ASCII prompt points at it."""
+    item = "payments-incident" if kind == "task" else INBOX_ID
+    (plain,) = wp.build_launch(lrepo, {}, [item], mode)
+    (noted,) = wp.build_launch(lrepo, {}, [item], mode, start_note=True)
+    assert "Start note:" not in plain["command"]
+    cmd = noted["command"].replace("'\"'\"'", "'")
+    assert "newest note that begins with 'Start note:'" in cmd and "comes before everything else" in cmd
+    assert wp.launch_prompt(kind, mode, item, "work/tasks/x/STATUS.md", start_note=True).isascii()
+
+
+def test_launch_cli_takes_start_note(lrepo, capsys):
+    # a dry run (no --yes) prints the plan with the command
+    assert wp.main(["--root", str(lrepo), "launch", "--items", "payments-incident", "--mode", "go",
+                    "--start-note", "--json"]) in (0, 1)
+    assert "Start note:" in capsys.readouterr().out

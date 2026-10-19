@@ -3,7 +3,6 @@
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 
 from . import model as m
@@ -15,11 +14,51 @@ from .actions_base import DECLINED_REASONS, SHORT_TIMEOUT, TEAM_RE, ActionError,
 class WorkVerbs:
     """A part of Actions (actions.py), which holds the registry and the helpers called here."""
 
-    def v_do_it(self, ctx: Ctx, keys: list[str], target: str | None = None) -> None:
-        rows = [e["row"] for e in self.entries(keys)]
-        for row in rows:
-            if row.get("inbox_state") == "approved":
-                raise self.not_applicable("Do it needs an inbox item or a task that is not approved yet", "keys")
+    def refuse_approved(self, rows: list[dict]) -> None:
+        """A yes already given runs on the next pass: no start verb goes at the same item a second time."""
+        if any(row.get("inbox_state") == "approved" for row in rows):
+            raise self.not_applicable("an approved item runs on its own; take the yes back first", "keys")
+
+    def start_noted(self, ctx: Ctx, entries: list[dict], note: str, mode: str, target: str, word: str | None = None) -> None:
+        """A start with the person's sentence. A row whose agent tab runs gets the sentence typed into that tab;
+        every other row gets it on the item first ("Start note: ..."), and the agent is told to read it before
+        anything else (workplace.py launch --start-note). A tab that asks something takes no text: it is refused
+        before anything is written."""
+        for e in entries:
+            tab = e.get("tab")
+            if tab and m.is_live(tab) and tab.get("state") == "needs-you":
+                raise self.not_applicable("the tab asks you something; answer it there first", "keys")
+        rows = []
+        for e in entries:
+            tab = e.get("tab")
+            if tab and m.is_live(tab):
+                self.send_to(ctx, tab, note)
+            else:
+                rows.append(e["row"])
+        rows = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
+        started = [r for r in rows if self.write_note(ctx, r, f"Start note: {note}")]
+        if started:
+            self.launch(ctx, started, mode, target, word=word, start_note=True)
+
+    def write_note(self, ctx: Ctx, row: dict, text: str) -> bool:
+        if row.get("inbox_id"):
+            item = self.inbox_id(row)
+            run = ctx.call("inbox.note", item, self.inbox("note", item, "--", text), SHORT_TIMEOUT)
+        else:
+            slug = self.slug(row)
+            run = ctx.call("task.note", slug, self.task_cmd("note", slug, "--", text), SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["note_failed"].format(err=m.short(run.err, 100)), bad=True)
+        return run.ok
+
+    def v_do_it(self, ctx: Ctx, keys: list[str], target: str | None = None, note: str | None = None) -> None:
+        entries = self.entries(keys)
+        rows = [e["row"] for e in entries]
+        self.refuse_approved(rows)
+        if note:
+            # a sentence of the person's is an order for an agent, never the item's own canned action
+            self.start_noted(ctx, entries, note, "go", target or self.app.cfg.target)
+            return
         rows = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
         yes = [r for r in rows if r.get("inbox_id") and r.get("gate") == "your-yes" and r.get("has_action")]
         rest = [r for r in rows if r not in yes]
@@ -30,7 +69,10 @@ class WorkVerbs:
         if not yes and not rest and not ctx.failed:
             ctx.note(self.tx["nothing_to_do"])
 
-    def v_advise(self, ctx: Ctx, keys: list[str]) -> None:
+    def v_advise(self, ctx: Ctx, keys: list[str], note: str | None = None) -> None:
+        if note:
+            self.start_noted(ctx, self.entries(keys), note, "report", self.app.cfg.target)
+            return
         rows = [e["row"] for e in self.entries(keys)]
         # a row with nothing to start on (an issue, a deadline) becomes an inbox item first, as for do_it:
         # it gets a tab of its own and never goes into a running session (14.10.)
@@ -38,23 +80,33 @@ class WorkVerbs:
         if startable:
             self.launch(ctx, startable, "report", self.app.cfg.target)
 
-    def v_start_agent(self, ctx: Ctx, keys: list[str]) -> None:
+    def v_start_agent(self, ctx: Ctx, keys: list[str], note: str | None = None) -> None:
         """An agent tab that goes at the item at once ("go"), for an inbox item as for a task: unlike
         do_it it never approves an item's own action, unlike advise it does not stop at a report"""
-        rows = [e["row"] for e in self.entries(keys)]
+        entries = self.entries(keys)
+        rows = [e["row"] for e in entries]
         if any(m.launch_item(r) is None for r in rows):
             raise self.not_applicable("an agent starts on an inbox item or a task", "keys")
+        self.refuse_approved(rows)
+        if note:
+            self.start_noted(ctx, entries, note, "go", self.app.cfg.target, word=self.tx["btn_start_agent"])
+            return
         self.launch(ctx, rows, "go", self.app.cfg.target, word=self.tx["btn_start_agent"])
 
-    def v_collect_context(self, ctx: Ctx, key: str) -> None:
-        row = self.entry(key)["row"]
+    def v_collect_context(self, ctx: Ctx, key: str, note: str | None = None) -> None:
+        entry = self.entry(key)
+        row = entry["row"]
         if m.launch_item(row) is None:
             raise self.not_applicable("collecting context needs an inbox item or a task")
+        if note:
+            self.start_noted(ctx, [entry], note, "context", self.app.cfg.target)
+            return
         self.launch(ctx, [row], "context", self.app.cfg.target)
 
     def v_later(self, ctx: Ctx, key: str, until: str) -> None:
         row = self.entry(key)["row"]
-        if row.get("inbox_id") and row.get("gate") != "free":
+        # every inbox item is put off, whatever its gate: hidden only, a free one would still run meanwhile
+        if row.get("inbox_id"):
             item = self.inbox_id(row)
             run = ctx.call("inbox.defer", item, self.inbox("defer", item, "--until", until), SHORT_TIMEOUT)
             if not run.ok:
@@ -149,8 +201,9 @@ class WorkVerbs:
     def v_drop(self, ctx: Ctx, key: str, reason: str | None = None) -> None:
         row = self.entry(key)["row"]
         if not row.get("inbox_id"):
-            until = (self.today() + dt.timedelta(days=7)).isoformat()
-            self.hide_until(ctx, row, until)
+            # Discard means discard: a task closes as declined, any other row leaves for good (settle not_doing).
+            # It used to hide the row for a week, so a discarded task came back
+            self.v_settle(ctx, [key], "not_doing")
             return
         item = self.inbox_id(row)
         argv = self.inbox("drop", item, "--note", self.tx["drop_note"], *(["--reason", reason] if reason else []))
@@ -211,8 +264,9 @@ class WorkVerbs:
         else:
             ctx.note(self.tx["prio_failed"].format(err=m.short(run.err, 100)), bad=True)
 
-    def task_rows(self, keys: list[str], closing: bool = False) -> list[tuple[dict, dict]]:
-        """(row, out) per key, every one a task row; closing also needs every one finite."""
+    def task_rows(self, keys: list[str], closing: bool = False, stream: bool = False) -> list[tuple[dict, dict]]:
+        """(row, out) per key, every one a task row; closing also needs every one finite, or a stream the page
+        asked about (stream)."""
         found = []
         for key in keys:
             entry = self.entry(key, "keys")
@@ -220,22 +274,27 @@ class WorkVerbs:
             if not row.get("task") or row.get("inbox_id"):
                 raise self.not_applicable("this is for tasks", "keys")
             self.slug(row)
-            if closing and not (entry["out"] or {}).get("closable"):
-                raise self.not_applicable("only a finite task closes, never a stream", "keys")
+            out = entry["out"] or {}
+            if closing and not out.get("closable") and not (stream and out.get("stream")):
+                raise self.not_applicable("a stream ends only when the page asked first", "keys")
             found.append((row, entry["out"] or {}))
         return found
 
     def task_status(self, slug: str) -> str | None:
-        """The status in an open task's STATUS.md, or None when there is none to read."""
-        try:
-            text = (self.app.root / "work" / "tasks" / slug / "STATUS.md").read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        """The status in an open task's or stream's STATUS.md, or None when there is none to read."""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+                break
+            except (OSError, UnicodeDecodeError):
+                continue
+        else:
             return None
         status = split_front(text)[0].get("status")
         return status if isinstance(status, str) else None
 
-    def v_task_close(self, ctx: Ctx, keys: list[str], reason: str, text: str | None = None) -> None:
-        rows = self.task_rows(keys, closing=True)
+    def v_task_close(self, ctx: Ctx, keys: list[str], reason: str, text: str | None = None, stream: bool = False) -> None:
+        rows = self.task_rows(keys, closing=True, stream=stream)
         done = failed = 0
         for row, out in rows:
             slug = self.slug(row)
@@ -243,7 +302,8 @@ class WorkVerbs:
             if why == "auto":
                 why = "not_doing" if ((out.get("review") or {}).get("verdict") == "stale") else "done"
             words = self.tx["close_reason"][why] + (f": {text}" if text else "")
-            argv = self.task_cmd("close", slug, *(["--declined"] if why in DECLINED_REASONS else []), "--reason", words)
+            argv = self.task_cmd("close", slug, *(["--stream"] if out.get("stream") else []),
+                                 *(["--declined"] if why in DECLINED_REASONS else []), "--reason", words)
             before = self.task_status(slug)     # read before the close moves the folder: the undo restores it
             run = ctx.call("task.close", slug, argv, SHORT_TIMEOUT)
             if not run.ok:
@@ -265,7 +325,7 @@ class WorkVerbs:
         if done:
             self.settle_soon(ctx)
 
-    def v_settle(self, ctx: Ctx, keys: list[str], outcome: str, text: str | None = None) -> None:
+    def v_settle(self, ctx: Ctx, keys: list[str], outcome: str, text: str | None = None, stream: bool = False) -> None:
         """Done or not doing, for any row: a finite task closes through task.py, an inbox item closes or
         drops, every other row (a GitHub issue, an application, a deadline from a protocol) leaves the
         briefing for good, while its source stays as it is. A stream never settles. All rows are checked
@@ -275,8 +335,8 @@ class WorkVerbs:
             entry = self.entry(key, "keys")
             row, out = entry["row"], entry["out"] or {}
             if row.get("task") and not row.get("inbox_id"):
-                if not out.get("closable"):
-                    raise self.not_applicable("a stream runs on, it never settles", "keys")
+                if not out.get("closable") and not (stream and out.get("stream")):
+                    raise self.not_applicable("a stream ends only when the page asked first", "keys")
                 plan.append(("task", key, row))
             elif row.get("inbox_id"):
                 self.inbox_id(row)
@@ -286,7 +346,7 @@ class WorkVerbs:
         extra = f": {text}" if text else ""
         tasks = [k for kind, k, _ in plan if kind == "task"]
         if tasks:
-            self.v_task_close(ctx, tasks, outcome, text)
+            self.v_task_close(ctx, tasks, outcome, text, stream)
         for kind, key, row in plan:
             if kind == "inbox":
                 item = self.inbox_id(row)

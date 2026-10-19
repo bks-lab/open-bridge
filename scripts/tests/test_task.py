@@ -402,3 +402,33 @@ def test_reopen_as_review_restores_a_task_closed_while_in_review(repo):
     assert r.returncode == 0, r.stderr
     assert "status: review\n" in (repo / "work/tasks/alpha/STATUS.md").read_text(encoding="utf-8")
     assert _json.loads(r.stdout)["status"] == "review"
+
+
+def test_close_stream_ends_a_stream_and_reopen_brings_it_back_as_a_stream(repo):
+    _log_with_today(repo)
+    r = run(repo, "close", "river", "--stream", "--declined", "--reason", "customer left", "--json")
+    assert r.returncode == 0, r.stderr
+    today = _dt.date.today()
+    dest = repo / "work" / "done" / f"{today:%Y-%m}" / "river"
+    assert not (repo / "work/streams/river").exists() and not (repo / "work/tasks/river").exists()
+    text = (dest / "STATUS.md").read_text(encoding="utf-8")
+    assert "status: done\n" in text and "outcome: declined\n" in text and "was_stream: true\n" in text
+    assert "Stream ended, declined: customer left" in text
+    out = _json.loads(r.stdout)
+    assert out["moved_to"] == f"work/done/{today:%Y-%m}/river" and out["stream"] is True
+    # the undo puts a stream back where it lived, not into work/tasks/
+    r = run(repo, "reopen", "river", "--json")
+    assert r.returncode == 0, r.stderr
+    back = (repo / "work/streams/river/STATUS.md").read_text(encoding="utf-8")
+    assert not (repo / "work/tasks/river").exists()
+    assert "was_stream" not in back and "status: doing\n" in back and "outcome:" not in back
+    assert _json.loads(r.stdout)["moved_to"] == "work/streams/river"
+
+
+def test_close_stream_on_a_task_closes_it_as_usual_and_reopen_stays_a_task(repo):
+    _log_with_today(repo)
+    assert run(repo, "close", "alpha", "--stream").returncode == 0
+    today = _dt.date.today()
+    assert "was_stream" not in (repo / "work" / "done" / f"{today:%Y-%m}" / "alpha" / "STATUS.md").read_text(encoding="utf-8")
+    assert run(repo, "reopen", "alpha").returncode == 0
+    assert (repo / "work/tasks/alpha/STATUS.md").is_file()

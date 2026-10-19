@@ -216,16 +216,21 @@ def append_log_row(root: Path, now: dt.datetime, context: str, what: str) -> Non
 # ---------------------------------------------------------------- close
 
 def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bool = False,
-               now: dt.datetime | None = None) -> dict:
-    """The 3-step close of docs/work-system.md: fields and note, move to work/done/YYYY-MM/, board, log row."""
+               stream: bool = False, now: dt.datetime | None = None) -> dict:
+    """The 3-step close of docs/work-system.md: fields and note, move to work/done/YYYY-MM/, board, log row.
+    stream also ends a stream: a stream never completes on its own, but a person may end one (the customer left,
+    the chance passed). It closes like a task and keeps was_stream, so reopen puts it back under work/streams/."""
     now = now or dt.datetime.now()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
         raise ValueError(f"not a task slug: {slug!r}")
     work = root / "work"
     src = work / "tasks" / slug
+    was_stream = False
+    if not (src / "STATUS.md").is_file() and stream and (work / "streams" / slug / "STATUS.md").is_file():
+        src, was_stream = work / "streams" / slug, True
     if not (src / "STATUS.md").is_file():
         if (work / "streams" / slug / "STATUS.md").is_file():
-            raise ValueError(f"{slug} is a stream: streams never close (move it to work/tasks/ first)")
+            raise ValueError(f"{slug} is a stream: streams never close on their own (--stream ends one)")
         if any((work / "done").glob(f"*/{slug}/STATUS.md")):
             raise ValueError(f"{slug} is already closed (work/done/)")
         raise ValueError(f"no task {slug!r} under {work / 'tasks'}")
@@ -239,10 +244,13 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
     fields = [("status", "done", None), ("closed", f'"{today}"', "status")]
     if declined:
         fields.append(("outcome", "declined", "closed"))
+    if was_stream:
+        fields.append(("was_stream", "true", "closed"))
     # a normal close drops an old "outcome: declined", which would otherwise survive and mislabel the task
     text = remove_fields(set_fields(text, fields), ("blocked_by", "blocked_since") + (() if declined else ("outcome",)))
     word = "Declined" if declined else "Closed"
-    text = add_note(text, f"{word}: {reason}" if reason else word, today)
+    said = ("Stream ended, declined" if declined else "Stream ended") if was_stream else word
+    text = add_note(text, f"{said}: {reason}" if reason else said, today)
     # Move first, then write at the destination: a move that fails leaves the task untouched in place.
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -267,7 +275,8 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
     except Exception as exc:  # noqa: BLE001 - the task is closed; a missing row is a warning
         warnings.append(f"work/log.md row not written: {exc}")
     return {"slug": slug, "moved_to": f"work/done/{now:%Y-%m}/{slug}", "closed": today,
-            "outcome": "declined" if declined else None, "reason": reason or None, "warnings": warnings}
+            "outcome": "declined" if declined else None, "reason": reason or None, "stream": was_stream,
+            "warnings": warnings}
 
 
 # ---------------------------------------------------------------- runs on
@@ -383,7 +392,8 @@ REOPEN_STATUSES = ("doing", "backlog", "review")   # review too: an undo restore
 
 def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | None = None,
                 now: dt.datetime | None = None) -> dict:
-    """The inverse of close_task: back to work/tasks/, status set, close fields gone, note, board, log row."""
+    """The inverse of close_task: back to work/tasks/ (an ended stream back to work/streams/), status set, close
+    fields gone, note, board, log row."""
     now = now or dt.datetime.now()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
         raise ValueError(f"not a task slug: {slug!r}")
@@ -397,11 +407,11 @@ def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | Non
     if not closed:
         raise ValueError(f"no closed task {slug!r} under {work / 'done'}")
     src = closed[-1].parent                     # month folders sort by date: the latest close
-    dest = work / "tasks" / slug
+    text = closed[-1].read_bytes().decode("utf-8")
+    dest = work / ("streams" if re.search(r"^was_stream:\s*true\s*$", text, re.M) else "tasks") / slug
     today = now.date().isoformat()
     note = " ".join((note or "").split())
-    text = closed[-1].read_bytes().decode("utf-8")
-    text = remove_fields(set_fields(text, [("status", status, None)]), ("closed", "outcome"))
+    text = remove_fields(set_fields(text, [("status", status, None)]), ("closed", "outcome", "was_stream"))
     text = add_note(text, f"Reopened: {note}" if note else "Reopened", today)
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -425,8 +435,8 @@ def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | Non
         append_log_row(root, now, slug, "reopened" + (f": {note}" if note else ""))
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"work/log.md row not written: {exc}")
-    return {"slug": slug, "moved_from": str(src.relative_to(root)), "status": status, "note": note or None,
-            "warnings": warnings}
+    return {"slug": slug, "moved_from": str(src.relative_to(root)), "moved_to": str(dest.relative_to(root)),
+            "status": status, "note": note or None, "warnings": warnings}
 
 
 # ---------------------------------------------------------------- review
@@ -1018,6 +1028,7 @@ def main(argv=None) -> int:
     cl.add_argument("slug")
     cl.add_argument("--reason", default="")
     cl.add_argument("--declined", action="store_true", help="closed without completion (outcome: declined)")
+    cl.add_argument("--stream", action="store_true", help="also end a stream (reopen puts it back under work/streams/)")
     cl.add_argument("--json", action="store_true")
     ro = sub.add_parser("reopen", help="the inverse of close: back to work/tasks/, status, note, board, log row")
     ro.add_argument("slug")
@@ -1052,7 +1063,7 @@ def main(argv=None) -> int:
     today = dt.date.today().isoformat()
     try:
         if args.cmd == "close":
-            out = close_task(root, args.slug, reason=args.reason, declined=args.declined)
+            out = close_task(root, args.slug, reason=args.reason, declined=args.declined, stream=args.stream)
             print(json.dumps(out, ensure_ascii=False) if args.json else f"closed {out['slug']} -> {out['moved_to']}")
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)

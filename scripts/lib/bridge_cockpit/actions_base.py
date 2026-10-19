@@ -52,10 +52,13 @@ LIST_TIMEOUT = 20
 
 # verb -> {arg: (type, required)}
 SPEC: dict[str, dict[str, tuple[str, bool]]] = {
-    "do_it": {"keys": ("keys", True), "target": ("target", False), "model": ("launch_model", False), "effort": ("launch_effort", False)},
-    "advise": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
-    "start_agent": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
-    "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    # note: the person's sentence for this start; it goes on the item first (a live tab gets it typed in instead)
+    "do_it": {"keys": ("keys", True), "target": ("target", False), "model": ("launch_model", False), "effort": ("launch_effort", False),
+              "note": ("text", False)},
+    "advise": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
+    "start_agent": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
+    "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False),
+                        "note": ("text", False)},
     "later": {"key": ("key", True), "until": ("date", True)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     "unhide": {"key": ("key", True)},
@@ -64,8 +67,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "done": {"key": ("key", True)},
     "urgency": {"key": ("key", True), "value": ("urgency", True)},
     "priority": {"key": ("key", True), "value": ("priority", True)},
-    "task_close": {"keys": ("keys", True), "reason": ("close_reason", True), "text": ("text", False)},
-    "settle": {"keys": ("keys", True), "outcome": ("outcome", True), "text": ("text", False)},
+    # stream: the page asked, and a stream among the keys ends (task.py close --stream)
+    "task_close": {"keys": ("keys", True), "reason": ("close_reason", True), "text": ("text", False), "stream": ("bool", False)},
+    "settle": {"keys": ("keys", True), "outcome": ("outcome", True), "text": ("text", False), "stream": ("bool", False)},
     "quick_handoff": {"conv": ("conv", True), "to": ("handoff", True), "text": ("long_text", False), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "quick_forget": {"conv": ("conv", True)},
     # `routed`: how the chat's route chip chose the tab (audit only, never acted on)

@@ -243,10 +243,14 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             return self.page_item_entry(key)
         if key.startswith("task:"):
             slug = key[5:]
-            if not SLUG_RE.match(slug) or not (root / "work" / "tasks" / slug / "STATUS.md").is_file():
+            if not SLUG_RE.match(slug):
+                return None
+            stream = (root / "work" / "streams" / slug / "STATUS.md").is_file()
+            if not stream and not (root / "work" / "tasks" / slug / "STATUS.md").is_file():
                 return None
             row = m.task_row(slug, slug)
-            return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": True}, "hidden": False}
+            return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": not stream, "stream": stream},
+                    "hidden": False}
         return None
 
     def page_item_entry(self, key: str) -> dict | None:

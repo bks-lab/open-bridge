@@ -108,6 +108,12 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         kind = kinds.get(slug)
         return kind == "tasks" if kind else (root / "work" / "tasks" / slug).is_dir()
 
+    def is_stream(slug: Any) -> bool:
+        if not isinstance(slug, str) or not TASK_SLUG_RE.match(slug):
+            return False
+        kind = kinds.get(slug)
+        return kind == "streams" if kind else (root / "work" / "streams" / slug).is_dir()
+
     review = review or {"running": None, "error": None, "last": None, "tasks": {}}
     verdicts = review["tasks"]
 
@@ -147,8 +153,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "starting": bool(item and item in starting), "adopt_candidates": adopt, "team": team,
             "team_suggestions": suggestions,
             "closable": is_task_row and closable(row.get("task")),
-            # done or not doing in two clicks: a finite task, an inbox item, any other row; a stream never
-            "settle": ([] if is_task_row and not closable(row.get("task")) else list(m.SETTLE_OUTCOMES)),
+            # done or not doing in two clicks, every row the same: a stream too, it only asks first ("stream")
+            "stream": is_task_row and is_stream(row.get("task")),
+            "settle": list(m.SETTLE_OUTCOMES),
             "review": verdicts.get(row.get("task")) if is_task_row else None,
         }
         index[row["key"]] = {"row": row, "section": section, "tab": tab, "out": out, "hidden": False}
