@@ -365,24 +365,6 @@ test('planShortcut: c is the negative close: an inbox row asks why, a task or ot
   assert.doesNotMatch(app, /plan\.drop\b/)
 })
 
-test('close menu: one way to close, Done or Discard; Discard on one inbox row asks why, no separate Discard button', () => {
-  const day = read('views/day.js')
-  const menu = day.slice(day.indexOf('export function SettleMenu'), day.indexOf('export function StartMenu'))
-  assert.match(menu, /t\.settleDone/)
-  assert.match(menu, /t\.settleNot/)
-  assert.match(menu, /const discard = \(\) => ok\.length === 1 && ok\[0\]\.inbox_id \? \(setOpen\(false\), c\.askDrop\(ok\[0\]\)\) : pick\('not_doing'\)/)
-  assert.match(menu, /item\('on-surface-muted', t\.settleNot, discard\)/)
-  // the detail card has the close menu and no Discard of its own: for a task that one only hid it for a week
-  const detail = read('views/detail.js')
-  const block = detail.slice(detail.indexOf('function ActionsBlock'), detail.indexOf('function ActionsBlock') + 2500)
-  assert.doesNotMatch(block, /t\.action\.drop/)
-  for (const lang of [text.TABLES.en, text.TABLES.de]) {
-    assert.ok(lang.settleNot && lang.settleDone && lang.scStream, 'close menu words and the stream refusal in both languages')
-  }
-  assert.equal(text.TABLES.de.settleNot, 'Verwerfen')
-  assert.equal(text.TABLES.de.settleDone, 'Erledigt')
-})
-
 test('markToken: profile color names map to design tokens, unknown to muted', () => {
   assert.equal(logic.markToken('red'), 'danger')
   assert.equal(logic.markToken('Yellow'), 'warning')
@@ -2176,8 +2158,8 @@ test('launch: the picker stands in every start block and only there through one 
   assert.match(app, /launchEffort: load\('bridge-cockpit\.launchEffort', null\)/)
   assert.match(app, /setLaunchModel: m => \{ save\('bridge-cockpit\.launchModel', m\); setUi\(\{ launchModel: m \}\) \}/)
   assert.match(app, /launch: payload\.launch \?\? s\.launch/)
-  // the detail's start block, the item drawer, the chat foot, both bulk bars
-  for (const name of ['ActionsBlock', 'ItemDrawer', 'ChatFoot', 'SelectionBar']) {
+  // the row panel (every row, every view), the chat foot, both bulk bars
+  for (const name of ['RowPanel', 'ChatFoot', 'SelectionBar']) {
     const body = comp.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))[0]
     assert.match(body, /<\$\{LaunchPick\}/, name)
   }
@@ -2974,7 +2956,7 @@ test('drop: an inbox row asks why, from the close menu and from the c key', () =
   assert.match(app, /case 'drop':\s*\n\s*return row\.inbox_id \? ctl\.askDrop\(row\) : act\('drop', \{ key: row\.key \}\)/)
   assert.match(app, /c\?\.kind === 'drop'/)
   assert.match(overlays, /conf\.kind === 'drop'\) return html`<\$\{DropDialog\}/)
-  assert.match(read('views/day.js'), /c\.askDrop\(ok\[0\]\)/)
+  assert.match(read('views/day.js'), /c\.askDrop\(one\)/)
   for (const lang of ['en', 'de']) {
     const t = text.TABLES[lang]
     for (const r of ['once', 'duplicate', 'family', 'source']) assert.ok(t.dropReason[r], `${lang} dropReason.${r}`)
@@ -4152,34 +4134,54 @@ test('one row bar everywhere: every view shows RowBar, none builds its own start
   assert.match(read('triage.js'), /<\$\{SettleMenu\} rows=\$\{closable\}/)
 })
 
-test('start menu: a note goes with the start, every way to start is in the menu', () => {
+
+test('row panel: one sentence field, four groups, the same panel behind both buttons', () => {
   const day = read('views/day.js')
-  const menu = day.slice(day.indexOf('export function StartMenu'), day.indexOf('export function RowBar'))
-  assert.match(menu, /c\.act\('do_it', \{ keys: \[row\.key\], \.\.\.\(note \? \{ note \} : \{\}\) \}\)/)
-  assert.match(menu, /c\.act\('advise', \{ keys: \[row\.key\], \.\.\.\(note \? \{ note \} : \{\}\) \}\)/)
-  assert.match(menu, /c\.act\('collect_context'/)
-  assert.match(menu, /target: 'workspace'/)
-  assert.match(menu, /c\.ask\('row', \{ key: row\.key \}\)/)
-  assert.match(menu, /'follow_up'/)
-  assert.match(menu, /inbox_reopen/)                                   // an approved item: take the yes back
-  assert.match(menu, /mode === 'note'/)                                // waiting and only-you open the note
-  const bar = day.slice(day.indexOf('export function RowBar'), day.indexOf('export function RowBar') + 600)
-  assert.match(bar, /<\$\{StartMenu\}[\s\S]*<\$\{SettleMenu\}[\s\S]*<\$\{PinStar\}/)   // one order everywhere
+  const panel = day.slice(day.indexOf('function RowPanel'), day.indexOf('export function StartMenu'))
+  // the order of the groups is fixed: hand on, close, not now, keep
+  const at = k => panel.indexOf(`t.grp.${k}`)
+  assert.ok(at('start') > 0 && at('start') < at('close') && at('close') < at('later') && at('later') < at('keep'), 'group order')
+  // every verb takes the one sentence along, in its own meaning
+  assert.match(panel, /c\.act\('do_it', \{ keys, \.\.\.\(x \? \{ note: x \} : \{\}\) \}\)/)
+  assert.match(panel, /c\.act\('advise', \{ keys, \.\.\.\(x \? \{ note: x \} : \{\}\) \}\)/)
+  assert.match(panel, /c\.act\('collect_context'/)
+  assert.match(panel, /target: 'workspace'/)
+  assert.match(panel, /c\.act\('settle', \{ keys, outcome, \.\.\.\(x \? \{ text: x \} : \{\}\)/)   // a reason of your own, any row
+  assert.match(panel, /c\.askRunsOn\(rows, x\)/)                                                    // what it waits on
+  assert.match(panel, /c\.act\('note', \{ key: one\.key, text: x \}\)/)                              // keep it, nothing else
+  assert.match(panel, /c\.laterDays\(r, 1\)/)
+  assert.match(panel, /c\.laterMonday\(r\)/)
+  assert.match(panel, /c\.laterDays\(r, 7\)/)
+  assert.match(panel, /c\.act\('later', \{ key: r\.key, until: iso \}\)/)                          // a day of your own
+  assert.doesNotMatch(read('views/detail.js'), /function DateBlock/, 'not now lives in the panel')
+  assert.match(panel, /<\$\{LaunchPick\}/)                                                          // the model, on every row
+  assert.match(panel, /stream: true/)
+  assert.match(panel, /t\.streamEndAsk/)
+  assert.match(panel, /c\.askDrop\(one\)/)                                                           // an inbox item without a reason asks why
+  assert.match(panel, /inbox_reopen/)
+  assert.match(panel, /'follow_up'/)
+  assert.match(panel, /c\.ask\('row', \{ key: one\.key \}\)/)
+  assert.doesNotMatch(panel, /askClose/, 'no second close dialog: the sentence is the reason')
+  // both doors open the same room
+  const start = day.slice(day.indexOf('export function StartMenu'), day.indexOf('export function SettleMenu'))
+  const settle = day.slice(day.indexOf('export function SettleMenu'), day.indexOf('export function RowBar'))
+  assert.match(start, /<\$\{RowPanel\} rows=\$\{\[row\]\}[^>]*focus="start"/)
+  assert.match(settle, /<\$\{RowPanel\} rows=\$\{ok\}[^>]*focus="close"/)
+  const bar = day.slice(day.indexOf('export function RowBar'), day.indexOf('export function RowBar') + 700)
+  assert.match(bar, /<\$\{StartMenu\}[\s\S]*<\$\{SettleMenu\}[\s\S]*<\$\{PinStar\}/)
 })
 
-test('close menu: Later sits beside Done and Discard, a stream asks before it ends', () => {
-  const day = read('views/day.js')
-  const menu = day.slice(day.indexOf('export function SettleMenu'), day.indexOf('export function StartMenu'))
-  assert.match(menu, /c\.laterDays\(r, 1\)/)
-  assert.match(menu, /c\.laterMonday\(r\)/)
-  assert.match(menu, /c\.laterDays\(r, 7\)/)
-  assert.match(menu, /stream: true/)
-  assert.match(menu, /t\.streamEndAsk/)
-  assert.match(menu, /t\.settleReopen/)                                 // an inbox item opens again, a task runs again
+test('row panel: no second place for a note, a model or a start beside it', () => {
+  const detail = read('views/detail.js')
+  assert.doesNotMatch(detail, /<\$\{NoteBlock\}/, 'the note lives in the panel')
+  assert.doesNotMatch(detail, /<\$\{LaunchPick\}/, 'the model lives in the panel')
+  assert.doesNotMatch(detail, /t\.startTitle/, 'the start lives in the panel')
+  assert.doesNotMatch(read('views/overlays.js'), /<\$\{LaunchPick\}/)
   for (const lang of [text.TABLES.en, text.TABLES.de]) {
-    for (const k of ['startHintLabel', 'startHintPlaceholder', 'startNeedsHint', 'startWithHint', 'sendHint', 'startMore',
-      'approvedBack', 'laterTomorrow', 'laterMonday', 'laterWeek', 'streamEndAsk', 'streamEndYes', 'streamEndNo', 'settleReopen']) {
-      assert.ok(lang[k], k)
-    }
+    for (const k of ['panelText', 'panelTextHint', 'startNeedsHint', 'sendHint', 'startMore', 'approvedBack', 'btnSaveNote',
+      'laterTomorrow', 'laterMonday', 'laterWeek', 'streamEndAsk', 'streamEndYes', 'streamEndNo', 'settleReopen']) assert.ok(lang[k], k)
+    for (const g of ['start', 'close', 'later', 'keep']) assert.ok(lang.grp?.[g], `grp.${g}`)
   }
+  assert.equal(text.TABLES.de.grp.start, 'Weitergeben')
+  assert.equal(text.TABLES.de.grp.close, 'Abschließen')
 })

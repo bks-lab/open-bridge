@@ -944,10 +944,10 @@ const ctl = {
   },
   /** Ask why before closing; one row gets the four reasons, several also "as the check says" */
   // "runs on": a small dialog asks until when and on what; it acts through runs_on
-  askRunsOn(rows) {
+  askRunsOn(rows, on = '') {
     const list = rows.filter(Boolean)
     if (!list.length) return
-    setUi({ confirm: { kind: 'runs_on', keys: list.map(r => r.key), titles: list.map(r => r.title), until: null, on: '' } })
+    setUi({ confirm: { kind: 'runs_on', keys: list.map(r => r.key), titles: list.map(r => r.title), until: null, on } })
   },
   async runsOn() {
     const conf = store.get().ui.confirm

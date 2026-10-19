@@ -4,7 +4,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  DAY, detailNeedsLoad, duration, formatDay, indexRows, isoDate, nextMonday, parseDate, short, startRefusal,
+  detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabNextStep, workPageOf,
   skipFixable, skipText,
 } from '../logic.js'
@@ -12,7 +12,6 @@ import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
 import { RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
-import { LaunchPick } from './launch.js'
 import { START_PAGE } from './nav.js'
 import { PageSection } from './pages.js'
 import { Btn, SkipFix, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine } from './parts.js'
@@ -126,65 +125,10 @@ function MetaList({ row, s }) {
   return html`<dl class="meta">${items.map(([k, v]) => html`<div class="meta-item" key=${k}><dt>${t.meta[k]}</dt><dd>${v}</dd></div>`)}</dl>`
 }
 
-function DateBlock({ row, s, c }) {
-  const t = T()
-  const [text, setText] = useState('')
-  const [err, setErr] = useState('')
-  const busy = !!s.ui.busy[row.key]
-  const now = s.now
-  const pick = verb => {
-    const iso = parseDate(text, now)
-    if (!iso) return setErr(t.noDate(text || ' '))
-    if (iso <= isoDate(now)) return setErr(t.pastDate)
-    setErr('')
-    setText('')
-    c.act(verb, { key: row.key, until: iso })
-  }
-  const id = `date-${row.key}`
-  return html`<div class="block">
-    <h3 class="label-caps">${t.laterTitle}</h3>
-    <div class="btn-row">
-      <${Btn} size="xs" busy=${busy} onClick=${() => c.act('later', { key: row.key, until: isoDate(now + DAY) })}>${t.btnTomorrow}<//>
-      <${Btn} size="xs" busy=${busy} onClick=${() => c.act('later', { key: row.key, until: isoDate(nextMonday(now)) })}>${t.btnMonday}<//>
-      <${Btn} size="xs" busy=${busy} onClick=${() => c.act('later', { key: row.key, until: isoDate(now + 7 * DAY) })}>${t.btnWeek}<//>
-    </div>
-    <div class="field-row">
-      <label class="sr-only" for=${id}>${t.dateLabel}</label>
-      <input id=${id} class="input input-date mono" type="text" inputmode="numeric" placeholder=${t.datePlaceholder} value=${text}
-        aria-invalid=${err ? 'true' : undefined} onInput=${e => { setText(e.currentTarget.value); setErr('') }}
-        onKeyDown=${e => { if (e.key === 'Enter') pick('later') }} />
-      <${Btn} size="xs" busy=${busy} onClick=${() => pick('later')}>${t.btnLater}<//>
-      <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => pick('hide')}>${t.btnHideUntil}<//>
-    </div>
-    ${err ? html`<p class="field-err" role="alert"><${StateLine} token="danger" word=${err} /></p>` : null}
-  </div>`
-}
-
 export function Segmented({ label, values, current, onPick, busy }) {
   return html`<div class="seg" role="group" aria-label=${label}>
     ${values.map(([v, word]) => html`<button type="button" key=${v} class=${`seg-btn${current === v ? ' is-on' : ''}`}
       aria-pressed=${String(current === v)} disabled=${busy} onClick=${() => current !== v && onPick(v)}>${word}</button>`)}
-  </div>`
-}
-
-function NoteBlock({ row, s, c }) {
-  const t = T()
-  const [text, setText] = useState('')
-  const busy = !!s.ui.busy[row.key]
-  const id = `note-${row.key}`
-  const send = async () => {
-    const v = text.trim()
-    if (!v) return
-    const r = await c.act('note', { key: row.key, text: v })
-    if (r) setText('')
-  }
-  return html`<div class="block">
-    <label class="label-caps" for=${id}>${t.noteLabel}</label>
-    <div class="field-row">
-      <input id=${id} class="input" type="text" maxlength="2000" placeholder=${t.notePlaceholder} value=${text}
-        onInput=${e => setText(e.currentTarget.value)} onKeyDown=${e => { if (e.key === 'Enter') send() }} />
-      <${Btn} size="xs" busy=${busy} disabled=${!text.trim()} onClick=${send}>${t.btnNote}<//>
-    </div>
   </div>`
 }
 
@@ -217,24 +161,11 @@ function TeamBlock({ row, s, c }) {
 function ActionsBlock({ row, s, c }) {
   const t = T()
   const busy = !!s.ui.busy[row.key]
-  const launch = !!(row.inbox_id || row.task)
-  const startable = launch && row.inbox_state !== 'approved' && !startRefusal(row) && !(row.tab && row.tab.live)
   return html`<div class="block block-actions">
     <h3 class="label-caps">${t.actionsTitle}</h3>
     <div class="btn-row"><${RowBar} row=${row} s=${s} c=${c} /></div>
     ${row.task && !row.inbox_id ? html`<${ReviewBlock} row=${row} s=${s} c=${c} />` : null}
     ${row.task && !row.inbox_id ? html`<${TaskSessions} row=${row} s=${s} c=${c} />` : null}
-    ${launch && !startable ? html`<${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: row.title }]} />` : null}
-    ${startable ? html`<div class="sub-block">
-      <h4 class="sub-title">${t.startTitle}</h4>
-      <${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: row.title }]} />
-      <div class="btn-row">
-        <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('do_it', { keys: [row.key], target: 'workspace' })}>${t.btnDoOwnWs}<//>
-        <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('do_it', { keys: [row.key], target: 'tab' })}>${t.where.tab}<//>
-        <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('do_it', { keys: [row.key], target: 'area' })}>${t.where.area}<//>
-        <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('collect_context', { key: row.key })}>${t.btnCollect}<//>
-      </div>
-    </div>` : null}
     ${row.inbox_id ? html`<div class="sub-block">
       <h4 class="sub-title">${t.urgencyPrefix}</h4>
       <${Segmented} label=${t.urgencyPrefix} busy=${busy} current=${row.urgency}
@@ -425,9 +356,7 @@ function RowDetail({ row, s, c }) {
     <${TabInfo} row=${row} s=${s} c=${c} />
     <${ActionsBlock} row=${row} s=${s} c=${c} />
     ${row.hidden_until ? html`<div class="block"><${Btn} size="xs" onClick=${() => c.act('unhide', { key: row.key })}>${t.btnShowAgain}<//></div>` : null}
-    <${DateBlock} row=${row} s=${s} c=${c} />
     <${TeamBlock} row=${row} s=${s} c=${c} />
-    ${row.task || row.inbox_id ? html`<${NoteBlock} row=${row} s=${s} c=${c} />` : null}
     ${row.task ? html`<${TaskDetail} slug=${row.task} s=${s} c=${c} exclude=${row.key} />` : null}
   </article>`
 }

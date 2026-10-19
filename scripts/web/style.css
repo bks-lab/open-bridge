@@ -935,7 +935,6 @@ kbd {
   background: transparent; color: var(--on-surface); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
 }
 .settle-item:hover, .settle-item:focus-visible { background: var(--surface-muted); }
-.settle-more { color: var(--on-surface-muted); border-top: 1px solid var(--border); border-radius: 0; margin-top: 2px; }
 .settle-hint { padding: 4px 10px 2px; max-width: 240px; }
 .settle-menu.is-left { left: 0; right: auto; }
 /* a table row shows its main button; copy, ask and unfold appear when the row is pointed at or focused.
@@ -1640,7 +1639,7 @@ kbd {
 .tri-dots i.on { opacity: 1; }
 .has-gist .info-title { font-size: var(--text-label); color: var(--on-surface-muted); }
 .has-gist .info-title .btn-link { color: var(--on-surface-muted); }
-.settle-many { min-width: 300px; max-width: 420px; }
+
 .settle-list { margin: 0 0 6px; padding: 4px 10px 6px 24px; max-height: 220px; overflow-y: auto; font-size: var(--text-label);
   color: var(--on-surface-muted); border-bottom: 1px solid var(--border); }
 .agent-forget { margin-left: auto; }
@@ -2687,8 +2686,20 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .org-list { margin: 4px 0 8px; padding-left: 18px; }
 /* the start button and its ▾: one row bar on every view (views/day.js StartMenu) */
 .start { gap: 2px; }
-.start-menu { min-width: 260px; }
 .start-note { display: grid; gap: 4px; padding: 4px 4px 6px; }
 .start-note textarea { width: 100%; min-height: 3.2em; resize: vertical; font: inherit; font-size: var(--text-sm);
   padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-md);
   background: var(--surface); color: var(--on-surface); }
+/* the row panel: one sentence field, then the four groups (views/day.js RowPanel) */
+.row-panel { width: min(400px, calc(100vw - 32px)); gap: 6px; }
+.panel-group { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
+.panel-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 0 4px; }
+/* a group's buttons side by side, wrapping: the panel stays short */
+.panel-group-body { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px; }
+.row-panel .settle-item { padding: 4px 9px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.panel-group-body .panel-day { flex-basis: 100%; padding: 2px 0 0; }
+.panel-model { padding: 0 4px; }
+.panel-model summary { cursor: pointer; }
+.panel-model[open] summary { margin-bottom: 4px; }
+.row-panel .launch-pick { font-size: var(--text-label); }
+.settle-item:disabled { opacity: .45; cursor: default; }
