@@ -76,6 +76,16 @@ export function parseShortcut(text) {
   return t.split(/\s+/).map(code => ({ n: Number(code.slice(0, -1)), letter: code.slice(-1) }))
 }
 
+/** Which start button a row shows, the same on every view (views/day.js StartMenu):
+ * 'tab' its agent tab runs (go there), 'restart' the tab died, 'approved' the yes is given (take it back),
+ * 'note' waiting or yours alone (a start needs a sentence of yours), 'do' everything else. */
+export function startMode(row) {
+  if (row?.tab) return row.tab.live ? 'tab' : 'restart'
+  if (row?.inbox_state === 'approved') return 'approved'
+  if (row?.bucket === 'waiting' || (row?.inbox_id && row?.gate === 'only-you')) return 'note'
+  return 'do'
+}
+
 /** Why a/w (start) is refused on a row, as in the mod's shortcut hook and card buttons:
  * 'approved', 'waiting', 'only_you', or null when starting is fine. */
 export function startRefusal(row) {

@@ -5,10 +5,11 @@
 // again on a click (scripts/triage.py, cached per item, so a run costs cents). The dashboard's own
 // pieces stay in views/; this file only draws what the triage adds, from s.triage.
 
-import { html, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { TRIAGE_FILTERS, actionRow, centsText, checkPick, checkPickText, effortDots, triageCounts, triageKey, triageRunning } from './logic.js'
+import { html } from './vendor/htm-preact-3.1.1.module.js'
+import { TRIAGE_FILTERS, actionRow, centsText, checkPick, checkPickText, effortDots, startMode, triageCounts, triageKey, triageRunning } from './logic.js'
 import { T, language } from './text.js'
-import { usePopover, useRoving } from './views/parts.js'
+import { SettleMenu } from './views/day.js'
+import { useRoving } from './views/parts.js'
 
 const TONE = { close: 'success', ai: 'info', you: 'warning', either: 'on-surface-muted', unclear: 'on-surface-muted' }
 
@@ -30,7 +31,7 @@ export function TriageGist({ tri, keyRow, c, s }) {
         ${dots ? html`<span class="tri-dots" aria-label=${t.triage.effort[tri.effort]}>${[1, 2, 3].map(i => html`<i key=${i} class=${i <= dots ? 'on' : ''}></i>`)}</span>` : null}</span>` : null}
       ${pick ? html`<span class="tri-mark tri-model" title=${t.launch.checkPickTitle}>${checkPickText(pick, t)}</span>` : null}
       ${tri.doer === 'you' ? html`<span class="tri-mark tri-you" title=${tri.why || undefined}>${tri.why ? `${t.triage.you}: ${tri.why}` : t.triage.you}</span>` : null}
-      ${tri.doer === 'ai' && keyRow ? html`<button type="button" class="btn btn-secondary btn-xs tri-do" disabled=${busy}
+      ${tri.doer === 'ai' && keyRow && startMode(keyRow) === 'do' ? html`<button type="button" class="btn btn-secondary btn-xs tri-do" disabled=${busy}
         title=${t.triage.doTitle} onClick=${() => c.act('do_it', { keys: [keyRow.key] })}><span class="btn-label">${t.triage.doIt}</span></button>` : null}
     </span>
   </div>`
@@ -54,7 +55,7 @@ export function TriageBar({ s, c, items, byKey }) {
         class=${`fchip${f === k ? ' is-on' : ''}`} disabled=${k !== 'all' && !counts[k]} onClick=${() => c.setTriageFilter(k)}>
         ${k !== 'all' ? html`<span class=${`dot tk-${TONE[k]}`} aria-hidden="true"></span>` : null}${t.triage.filter[k]}${k !== 'all' ? html` <span class="mono">${counts[k]}</span>` : null}</button>`)}
     </span>
-    ${closable.length ? html`<${CloseAll} rows=${closable} c=${c} s=${s} />` : null}
+    ${closable.length ? html`<${SettleMenu} rows=${closable} s=${s} c=${c} />` : null}
     <span class="tri-run">
       <span class="muted small">${running ? t.triage.running : last ? t.triage.last({ ...last, cost: centsText(last.cost_ct, language()) }, language()) : t.triage.never}</span>
       <button type="button" class="btn btn-ghost btn-xs" disabled=${running} aria-busy=${running ? 'true' : undefined}
@@ -63,22 +64,3 @@ export function TriageBar({ s, c, items, byKey }) {
   </div>`
 }
 
-/** Close everything closable in two clicks: the menu names what goes, then done or not doing */
-function CloseAll({ rows, c, s }) {
-  const t = T()
-  const [open, setOpen] = useState(false)
-  const box = usePopover(open, setOpen)
-  const keys = rows.map(r => r.key)
-  const pick = outcome => { setOpen(false); c.act('settle', { keys, outcome }) }
-  return html`<span class="settle" ref=${box}>
-    <button type="button" class="btn btn-primary btn-xs" aria-pressed=${String(open)} disabled=${!!s.ui.busy[keys.join(',')]}
-      onClick=${() => setOpen(!open)}><span class="btn-label">${t.triage.closeAll(rows.length)} ▾</span></button>
-    ${open ? html`<span class="settle-menu tri-menu" role="menu">
-      <ul class="tri-list">${rows.map(r => html`<li key=${r.key}>${r.title}</li>`)}</ul>
-      <button type="button" role="menuitem" class="settle-item" onClick=${() => pick('done')}>
-        <span class="dot tk-success" aria-hidden="true"></span><span>${t.settleDone}</span></button>
-      <button type="button" role="menuitem" class="settle-item" onClick=${() => pick('not_doing')}>
-        <span class="dot tk-on-surface-muted" aria-hidden="true"></span><span>${t.settleNot}</span></button>
-    </span>` : null}
-  </span>`
-}

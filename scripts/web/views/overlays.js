@@ -9,7 +9,7 @@ import {
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
-import { PageItemActions, RowActions, SettleMenu } from './day.js'
+import { PageItemActions, RowBar } from './day.js'
 import { DetailFailed, Lines, Segmented } from './detail.js'
 import { AsOf, RelayBadge } from './header.js'
 import { ReturnPanel } from './home.js'
@@ -231,8 +231,10 @@ export function ItemDrawer({ s, c, byKey }) {
   const it = cur.it ?? {}
   const tri = s.triage?.items?.[key] ?? null
   const own = byKey.get(key)
-  const row = own ?? actionRow(isInbox ? { inbox: id, title: it.title, task: it.task } : { task: id, title: it.title }, byKey)
   const data = s.details[isInbox ? 'inbox' : 'task'][id]?.data
+  const made = own ? null : actionRow(isInbox ? { inbox: id, title: it.title, task: it.task } : { task: id, title: it.title }, byKey)
+  // a row built here knows from the item whether its yes is given already, so its start button says so
+  const row = own ?? (made && isInbox && data?.item?.state ? { ...made, inbox_state: data.item.state } : made)
   const title = (isInbox ? data?.item?.summary : data?.front?.headline) || it.title || id
   const slug = isInbox ? (data?.item?.task ?? it.task) : id
   // a close from inside the drawer ends the item: the drawer goes with it
@@ -254,13 +256,8 @@ export function ItemDrawer({ s, c, byKey }) {
       </header>
       <div class="btn-row idrawer-actions">
         ${cur.prev ? html`<${Btn} size="xs" variant="ghost" icon="back" onClick=${() => c.openItem(cur.prev.key, cur.prev.it, { page: cur.prev.page, section: cur.prev.section }, cur.prev.prev)}>${t.item.backTo}<//>` : null}
-        ${own ? html`<${RowActions} row=${own} s=${s} c=${cc} all />` : null}
-        ${ownStarts ? null : slug && s.details.task[slug]?.data?.kind !== 'done' ? html`<${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy[`task:${slug}`]} title=${t.btnStartAgentTitle}
-          onClick=${() => c.act('start_agent', { keys: [`task:${slug}`] })}>${t.btnOpenTab}<//>`
-          : isInbox && data?.item?.state !== 'approved' ? html`<${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy[key]} title=${t.btnStartAgentTitle}
-          onClick=${() => c.act('start_agent', { keys: [key] })}>${t.btnOpenTab}<//>` : null}
+        ${row ? html`<${RowBar} row=${row} s=${s} c=${cc} />` : null}
         ${asks ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.ask('info', { page: cur.page, section: cur.section, index: it.index })}>${t.btnAsk}<//>` : null}
-        ${row ? html`<${SettleMenu} rows=${[row]} s=${s} c=${cc} />` : null}
         ${slug ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openInner(`task:${slug}`)}>${t.item.inNet}<//>` : null}
         ${own && !isInbox ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { c.closeItem(); c.peek(key) }}>${t.item.more}<//>` : null}
       </div>

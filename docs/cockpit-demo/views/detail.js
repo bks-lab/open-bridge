@@ -10,7 +10,7 @@ import {
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
-import { RowActions, SettleMenu, Skeleton } from './day.js'
+import { RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
 import { LaunchPick } from './launch.js'
 import { START_PAGE } from './nav.js'
@@ -219,15 +219,9 @@ function ActionsBlock({ row, s, c }) {
   const busy = !!s.ui.busy[row.key]
   const launch = !!(row.inbox_id || row.task)
   const startable = launch && row.inbox_state !== 'approved' && !startRefusal(row) && !(row.tab && row.tab.live)
-  const ids = (row.actions ?? []).map(a => a.id)
   return html`<div class="block block-actions">
     <h3 class="label-caps">${t.actionsTitle}</h3>
-    <div class="btn-row">
-      <${RowActions} row=${row} s=${s} c=${c} all />
-      <${SettleMenu} rows=${[row]} s=${s} c=${c} />
-      ${!ids.includes('ask') ? html`<${Btn} size="xs" variant="ghost" busy=${!!s.ui.busy['ask:row']} onClick=${() => c.ask('row', { key: row.key })}>${t.askChat}<//>` : null}
-      ${row.bucket === 'waiting' && !ids.includes('follow_up') ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.ask('follow_up', { key: row.key })}>${t.action.follow_up}<//>` : null}
-    </div>
+    <div class="btn-row"><${RowBar} row=${row} s=${s} c=${c} /></div>
     ${row.task && !row.inbox_id ? html`<${ReviewBlock} row=${row} s=${s} c=${c} />` : null}
     ${row.task && !row.inbox_id ? html`<${TaskSessions} row=${row} s=${s} c=${c} />` : null}
     ${launch && !startable ? html`<${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: row.title }]} />` : null}
@@ -400,7 +394,7 @@ function TaskDetail({ slug, s, c, exclude }) {
     ${entries.length ? html`<div class="sub-block"><h4 class="sub-title">${t.taskEntries}</h4>
       <ul class="entries">${entries.map(r => html`<li key=${r.key} class="entry">
         <button type="button" class="btn-link" onClick=${() => c.select(r.key)}>${short(r.title, 80)}</button>
-        <span class="btn-row"><${RowActions} row=${r} s=${s} c=${c} all /></span></li>`)}</ul></div>` : null}
+        <span class="btn-row"><${RowBar} row=${r} s=${s} c=${c} pin=${false} /></span></li>`)}</ul></div>` : null}
   </div>`
 }
 

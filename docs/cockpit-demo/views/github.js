@@ -7,7 +7,7 @@ import { T } from '../text.js'
 import { Prose } from './prose.js'
 import { Btn, Chip, Icon, PrioChip, Spinner, StateLine } from './parts.js'
 import { actionRow, ghSortRows, pageItemActs, rowActionKey } from '../logic.js'
-import { SettleMenu } from './day.js'
+import { RowBar } from './day.js'
 import { RowSteps } from './pages.js'
 import { rowClickOpens } from './overlays.js'
 
@@ -253,11 +253,11 @@ function GhRow({ it, page, section, s, c, byKey }) {
       <span class="muted small" title=${g.changed ?? ''}>${ago(g.changed)}</span>
     </div>
     <div class="ghl-acts btn-row">
-      ${live ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[it.tab.ref]} onClick=${() => c.act('tab_jump', { tab_ref: it.tab.ref })}>${t.btnToTab}<//>`
-        : lead ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[rowActionKey({ page, section, index: it.index })]}
+      ${settleRow ? html`<${RowBar} row=${settleRow} s=${s} c=${c} tab=${it.tab} pin=${false} />`
+        : live ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[it.tab.ref]} onClick=${() => c.act('tab_jump', { tab_ref: it.tab.ref })}>${t.btnToTab}<//>` : null}
+      ${lead && !live ? html`<${Btn} size="xs" variant=${settleRow ? 'secondary' : 'primary'} busy=${!!s.ui.busy[rowActionKey({ page, section, index: it.index })]}
             onClick=${() => c.act('row_action', { page, section, index: it.index, action: lead })}>${leadLabel}<//>` : null}
       ${rest.length && it.row_id ? html`<${RowSteps} it=${{ ...it, actions: rest }} page=${page} section=${section} s=${s} c=${c} />` : null}
-      ${settleRow ? html`<${SettleMenu} rows=${[settleRow]} s=${s} c=${c} />` : null}
       ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer"
         title=${t.openLink} aria-label=${t.openLink}><${Icon} name="external" size=${14} /></a>` : null}
     </div>

@@ -1531,6 +1531,8 @@ kbd {
 /* a row or tile with an open menu: its appear animation makes it a stacking context of its own,
    so it has to come forward, or the next tile paints over the menu */
 .row-in:has(.settle-menu), .rtile:has(.settle-menu), .rgroup-head:has(.settle-menu) { position: relative; z-index: 30; }
+/* a card clips its content to its rounded corners; while one of its menus is open the menu must reach past it */
+.hcard:has(.settle-menu) { overflow: visible; position: relative; z-index: 30; }
 
 /* the chat window: head, the strip of chats, the thread that grows, the send box; the grid of
    .tabview has three rows and would hand the growing one to the strip */
@@ -1638,8 +1640,8 @@ kbd {
 .tri-dots i.on { opacity: 1; }
 .has-gist .info-title { font-size: var(--text-label); color: var(--on-surface-muted); }
 .has-gist .info-title .btn-link { color: var(--on-surface-muted); }
-.tri-menu { min-width: 300px; max-width: 420px; }
-.tri-list { margin: 0 0 6px; padding: 4px 10px 6px 24px; max-height: 220px; overflow-y: auto; font-size: var(--text-label);
+.settle-many { min-width: 300px; max-width: 420px; }
+.settle-list { margin: 0 0 6px; padding: 4px 10px 6px 24px; max-height: 220px; overflow-y: auto; font-size: var(--text-label);
   color: var(--on-surface-muted); border-bottom: 1px solid var(--border); }
 .agent-forget { margin-left: auto; }
 .agent-forget.is-armed { color: var(--danger); border-color: var(--danger); }
@@ -2683,3 +2685,10 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .org-busy { display: flex; align-items: center; gap: 8px; }
 .org-result { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .org-list { margin: 4px 0 8px; padding-left: 18px; }
+/* the start button and its ▾: one row bar on every view (views/day.js StartMenu) */
+.start { gap: 2px; }
+.start-menu { min-width: 260px; }
+.start-note { display: grid; gap: 4px; padding: 4px 4px 6px; }
+.start-note textarea { width: 100%; min-height: 3.2em; resize: vertical; font: inherit; font-size: var(--text-sm);
+  padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--on-surface); }

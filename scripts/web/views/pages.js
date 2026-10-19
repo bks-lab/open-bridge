@@ -14,7 +14,7 @@ import {
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
-import { PageItemActions, SettleMenu } from './day.js'
+import { PageItemActions, RowBar } from './day.js'
 import { Lines } from './detail.js'
 import { ReturnChip } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
@@ -154,16 +154,9 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null }) {
       ${it.link?.kind === 'file' ? html`<${Btn} size="xs" variant="ghost" icon="copy" cls="act-quiet" title=${it.link.path} onClick=${() => c.copy(it.link.path)}>${t.copyPath}<//>` : null}
       <${PageItemActions} it=${it} s=${s} c=${c} />
       ${it.ask ? html`<${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
-      ${it.task ? html`<${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy[`task:${it.task}`]}
-        title=${it.tab && it.tab.live ? undefined : t.btnStartAgentTitle} onClick=${() => (it.tab && it.tab.live ? c.act('tab_jump', { tab_ref: it.tab.ref }) : c.act('start_agent', { keys: [`task:${it.task}`] }))}>
-        ${it.tab && it.tab.live ? t.btnToTab : t.btnOpenTab}<//>`
-      // an inbox item of its own (a finding, a decision) gets an agent that goes at it at once
-      : it.inbox && !(it.lines ?? []).some(l => l.kind === 'look') ? html`<${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy[`inbox:${it.inbox}`]}
-        title=${it.tab && it.tab.live ? undefined : t.btnStartAgentTitle} onClick=${() => (it.tab && it.tab.live ? c.act('tab_jump', { tab_ref: it.tab.ref }) : c.act('start_agent', { keys: [`inbox:${it.inbox}`] }))}>
-        ${it.tab && it.tab.live ? t.btnToTab : t.btnOpenTab}<//>` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
       ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} />` : null}
-      ${actionRow(it, byKey) && (it.inbox || section === 'tasks' || byKey.has(`task:${it.task}`)) ? html`<${SettleMenu} rows=${[actionRow(it, byKey)]} s=${s} c=${c} />` : null}
+      ${actionRow(it, byKey) && (it.inbox || it.task) ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}
     </span></td>
   </tr>`
 }

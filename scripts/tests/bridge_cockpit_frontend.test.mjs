@@ -367,11 +367,11 @@ test('planShortcut: c is the negative close: an inbox row asks why, a task or ot
 
 test('close menu: one way to close, Done or Discard; Discard on one inbox row asks why, no separate Discard button', () => {
   const day = read('views/day.js')
-  const menu = day.slice(day.indexOf('export function SettleMenu'), day.indexOf('/** The buttons of a page row'))
+  const menu = day.slice(day.indexOf('export function SettleMenu'), day.indexOf('export function StartMenu'))
   assert.match(menu, /t\.settleDone/)
   assert.match(menu, /t\.settleNot/)
   assert.match(menu, /const discard = \(\) => ok\.length === 1 && ok\[0\]\.inbox_id \? \(setOpen\(false\), c\.askDrop\(ok\[0\]\)\) : pick\('not_doing'\)/)
-  assert.match(menu, /onClick=\$\{discard\}>\s*<\$\{Dot\} token="on-surface-muted" \/><span>\$\{t\.settleNot\}/)
+  assert.match(menu, /item\('on-surface-muted', t\.settleNot, discard\)/)
   // the detail card has the close menu and no Discard of its own: for a task that one only hid it for a week
   const detail = read('views/detail.js')
   const block = detail.slice(detail.indexOf('function ActionsBlock'), detail.indexOf('function ActionsBlock') + 2500)
@@ -4123,4 +4123,63 @@ test('the workspaces heading row wraps its buttons instead of cutting them off',
   assert.ok(rule, 'no .room-group-head rule')
   assert.match(rule[1], /flex-wrap: wrap/)
   assert.doesNotMatch(rule[1], /justify-content: space-between/)
+})
+
+// ---------------------------------------------------------------- every row the same
+
+test('startMode: one start button per row, its word follows the row state', () => {
+  const r = extra => ({ key: 'task:a', task: 'a', inbox_id: null, bucket: 'do', tab: null, ...extra })
+  assert.equal(logic.startMode(r()), 'do')
+  assert.equal(logic.startMode(r({ tab: { ref: 'surface:1', live: true } })), 'tab')
+  assert.equal(logic.startMode(r({ tab: { ref: 'surface:1', live: false } })), 'restart')
+  assert.equal(logic.startMode(r({ inbox_id: 'x', inbox_state: 'approved' })), 'approved')
+  assert.equal(logic.startMode(r({ bucket: 'waiting' })), 'note')
+  assert.equal(logic.startMode(r({ inbox_id: 'x', gate: 'only-you' })), 'note')
+  assert.equal(logic.startMode({ key: 'ref:o/r#1', bucket: 'do' }), 'do')          // a foreign row is filed, then started
+  assert.equal(logic.startMode(r({ task: 's', stream: true })), 'do')              // a stream starts like any task
+})
+
+test('one row bar everywhere: every view shows RowBar, none builds its own start and close pair', () => {
+  for (const f of ['views/day.js', 'views/home.js', 'views/stage.js', 'views/overlays.js', 'views/pages.js', 'views/detail.js']) {
+    const src = read(f)
+    assert.match(src, /<\$\{RowBar\}/, `${f} renders RowBar`)
+    assert.doesNotMatch(src, /act\('start_agent'/, `${f}: one start verb, do_it`)
+    assert.doesNotMatch(src, /<\$\{RowActions\}/, `${f}: no buttons beside the bar`)
+  }
+  assert.doesNotMatch(read('views/pages.js'), /<\$\{SettleMenu\} rows=\$\{\[actionRow/, 'the page row closes through its bar')
+  // the triage strip closes through the same menu, not a second one with fewer ways
+  assert.doesNotMatch(read('triage.js'), /function CloseAll/)
+  assert.match(read('triage.js'), /<\$\{SettleMenu\} rows=\$\{closable\}/)
+})
+
+test('start menu: a note goes with the start, every way to start is in the menu', () => {
+  const day = read('views/day.js')
+  const menu = day.slice(day.indexOf('export function StartMenu'), day.indexOf('export function RowBar'))
+  assert.match(menu, /c\.act\('do_it', \{ keys: \[row\.key\], \.\.\.\(note \? \{ note \} : \{\}\) \}\)/)
+  assert.match(menu, /c\.act\('advise', \{ keys: \[row\.key\], \.\.\.\(note \? \{ note \} : \{\}\) \}\)/)
+  assert.match(menu, /c\.act\('collect_context'/)
+  assert.match(menu, /target: 'workspace'/)
+  assert.match(menu, /c\.ask\('row', \{ key: row\.key \}\)/)
+  assert.match(menu, /'follow_up'/)
+  assert.match(menu, /inbox_reopen/)                                   // an approved item: take the yes back
+  assert.match(menu, /mode === 'note'/)                                // waiting and only-you open the note
+  const bar = day.slice(day.indexOf('export function RowBar'), day.indexOf('export function RowBar') + 600)
+  assert.match(bar, /<\$\{StartMenu\}[\s\S]*<\$\{SettleMenu\}[\s\S]*<\$\{PinStar\}/)   // one order everywhere
+})
+
+test('close menu: Later sits beside Done and Discard, a stream asks before it ends', () => {
+  const day = read('views/day.js')
+  const menu = day.slice(day.indexOf('export function SettleMenu'), day.indexOf('export function StartMenu'))
+  assert.match(menu, /c\.laterDays\(r, 1\)/)
+  assert.match(menu, /c\.laterMonday\(r\)/)
+  assert.match(menu, /c\.laterDays\(r, 7\)/)
+  assert.match(menu, /stream: true/)
+  assert.match(menu, /t\.streamEndAsk/)
+  assert.match(menu, /t\.settleReopen/)                                 // an inbox item opens again, a task runs again
+  for (const lang of [text.TABLES.en, text.TABLES.de]) {
+    for (const k of ['startHintLabel', 'startHintPlaceholder', 'startNeedsHint', 'startWithHint', 'sendHint', 'startMore',
+      'approvedBack', 'laterTomorrow', 'laterMonday', 'laterWeek', 'streamEndAsk', 'streamEndYes', 'streamEndNo', 'settleReopen']) {
+      assert.ok(lang[k], k)
+    }
+  }
 })

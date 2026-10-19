@@ -9,7 +9,7 @@ import {
   nextEvent, untilText, liveStage, stageTone, RETURN_STAGES,
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { RowActions, RowMeta, SettleMenu } from './day.js'
+import { RowBar, RowMeta } from './day.js'
 import { DayPages, DayView } from './detail.js'
 import { PageBadge } from './header.js'
 import {
@@ -83,7 +83,7 @@ export function ReturnCard({ r, s, c }) {
       ${r.result?.key ? html`<${Btn} size="xs" variant=${closable ? 'secondary' : 'primary'} onClick=${() => c.openItem(r.result.key, null)}>${h.returnOpenAnswer}<//>` : null}
       ${tab ? html`<${Btn} size="xs" variant=${r.result?.key || closable ? 'secondary' : 'primary'} onClick=${() => jumpToTab(s, c, tab.ref)}>${h.toTab}<//>
         <${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${h.view}<//>` : null}
-      ${!tab && row && r.live === 'lost' ? html`<${RowActions} row=${row} s=${s} c=${c} />` : null}
+      ${!tab && row && r.live === 'lost' ? html`<${RowBar} row=${row} s=${s} c=${c} pin=${false} />` : null}
     </div>
   </article>`
 }
@@ -210,9 +210,7 @@ function HomeRowCard({ row, s, c, tab, big = false }) {
     </button>
     <${RowMeta} row=${row} s=${s} />
     <div class="hcard-acts">
-      ${tab ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[tab.ref]} onClick=${() => jumpToTab(s, c, tab.ref)}>${t.home.toTab}<//>`
-        : html`<${RowActions} row=${row} s=${s} c=${c} />`}
-      <${SettleMenu} rows=${[row]} s=${s} c=${c} />
+      <${RowBar} row=${row} s=${s} c=${c} tab=${tab} pin=${false} />
     </div>
   </article>`
 }

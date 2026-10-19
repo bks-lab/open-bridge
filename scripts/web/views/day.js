@@ -5,7 +5,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
-  pageItemActs, workPageOf, workViews,
+  pageItemActs, workPageOf, workViews, startMode,
   SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -57,57 +57,125 @@ export function RowActions({ row, s, c, all = false }) {
         onClick=${() => c.rowAction(row, a.id)}>${t.action[a.id] ?? a.id}<//>`)
 }
 
-/** Close in two clicks: "Close" opens the two outcomes, Done or Discard, a click on one settles the row.
+/** Close in two clicks: "Close" opens the outcomes, Done or Discard, a click on one settles the row.
  *  Discard is the only way to discard: on a single inbox row it asks why (the reason can mute a source),
- *  a task closes as declined. A task also offers the longer dialog with every reason. Escape or a click
- *  outside closes the menu */
+ *  a task closes as declined. Later and Runs on sit beside them: not now is the third way out. A stream
+ *  closes too, but asks first, inside the menu. A task also offers the longer dialog with every reason.
+ *  Escape or a click outside closes the menu */
 export function SettleMenu({ rows, s, c, size = 'xs' }) {
   const t = T()
   const [open, setOpen] = useState(false)
-  const box = usePopover(open, setOpen)
+  const [asking, setAsking] = useState(null)      // the outcome a stream's end waits on
+  const box = usePopover(open, v => { setOpen(v); if (!v) setAsking(null) })
   const ok = rows.filter(r => (r.settle ?? []).length)
   if (!ok.length) return null
   const keys = ok.map(r => r.key)
   const busy = !!s.ui.busy[keys.join(',')] || ok.some(r => s.ui.busy[r.key])
-  const pick = outcome => { setOpen(false); c.act('settle', { keys, outcome }) }
+  const streams = ok.some(r => r.stream)
+  const pick = outcome => {
+    if (streams && asking !== outcome) { setAsking(outcome); return }
+    setOpen(false); setAsking(null)
+    c.act('settle', { keys, outcome, ...(streams ? { stream: true } : {}) })
+  }
   const discard = () => ok.length === 1 && ok[0].inbox_id ? (setOpen(false), c.askDrop(ok[0])) : pick('not_doing')
+  const later = fn => { setOpen(false); ok.forEach(fn) }
   const tasks = ok.filter(r => r.closable)
+  const one = ok.length === 1 ? ok[0] : null
+  const item = (token, word, onClick, cls = '') => html`<button type="button" role="menuitem" class=${`settle-item${cls}`} onClick=${onClick}>
+    ${token ? html`<${Dot} token=${token} />` : null}<span>${word}</span></button>`
   return html`<span class="settle" ref=${box}>
     <${Btn} size=${size} variant="ghost" busy=${busy} pressed=${open} onClick=${() => setOpen(!open)}
       label=${ok.length > 1 ? t.settleMany(ok.length) : t.settle}>${ok.length > 1 ? t.settleMany(ok.length) : t.settle} ▾<//>
-    ${open ? html`<span class="settle-menu" role="menu">
-      <button type="button" role="menuitem" class="settle-item" onClick=${() => pick('done')}>
-        <${Dot} token="success" /><span>${t.settleDone}</span></button>
-      <button type="button" role="menuitem" class="settle-item" onClick=${discard}>
-        <${Dot} token="on-surface-muted" /><span>${t.settleNot}</span></button>
-      <button type="button" role="menuitem" class="settle-item" onClick=${() => { setOpen(false); c.askRunsOn(ok) }}>
-        <${Dot} token="info" /><span>${t.settleRuns}</span></button>
-      ${ok.length === 1 && ok[0].task && ok[0].bucket === 'waiting' && !ok[0].inbox_id ? html`<button type="button" role="menuitem" class="settle-item"
-        onClick=${() => { setOpen(false); c.act('task_running', { slug: ok[0].task }) }}><${Dot} token="success" /><span>${t.settleAgain}</span></button>` : null}
-      ${ok.length === 1 && ok[0].inbox_id && ok[0].runs ? html`<button type="button" role="menuitem" class="settle-item"
-        onClick=${() => { setOpen(false); c.act('inbox_reopen', { id: ok[0].inbox_id }) }}><${Dot} token="success" /><span>${t.settleAgain}</span></button>` : null}
-      ${ok.length === 1 && ok[0].inbox_id ? html`<button type="button" role="menuitem" class="settle-item"
-        onClick=${() => { setOpen(false); c.act('to_task', { key: ok[0].key }) }}><${Dot} token="info" /><span>${t.settleToTask}</span></button>` : null}
-      ${tasks.length === ok.length ? html`<button type="button" role="menuitem" class="settle-item settle-more"
-        onClick=${() => { setOpen(false); c.askClose(tasks) }}><span>${t.settleMore}</span></button>` : null}
+    ${open && asking ? html`<span class="settle-menu" role="menu">
+      <span class="settle-hint small">${t.streamEndAsk}</span>
+      ${item(asking === 'done' ? 'success' : 'on-surface-muted', t.streamEndYes, () => pick(asking))}
+      ${item(null, t.streamEndNo, () => setAsking(null))}
+    </span>` : open ? html`<span class=${`settle-menu${ok.length > 1 ? ' settle-many' : ''}`} role="menu">
+      ${ok.length > 1 ? html`<ul class="settle-list">${ok.map(r => html`<li key=${r.key}>${r.title}</li>`)}</ul>` : null}
+      ${item('success', t.settleDone, () => pick('done'))}
+      ${item('on-surface-muted', t.settleNot, discard)}
+      ${item('info', t.laterTomorrow, () => later(r => c.laterDays(r, 1)), ' settle-more')}
+      ${item('info', t.laterMonday, () => later(r => c.laterMonday(r)))}
+      ${item('info', t.laterWeek, () => later(r => c.laterDays(r, 7)))}
+      ${item('info', t.settleRuns, () => { setOpen(false); c.askRunsOn(ok) })}
+      ${one && one.task && one.bucket === 'waiting' && !one.inbox_id
+        ? item('success', t.settleAgain, () => { setOpen(false); c.act('task_running', { slug: one.task }) }) : null}
+      ${one && one.inbox_id && one.runs
+        ? item('success', t.settleReopen, () => { setOpen(false); c.act('inbox_reopen', { id: one.inbox_id }) }) : null}
+      ${one && one.inbox_id ? item('info', t.settleToTask, () => { setOpen(false); c.act('to_task', { key: one.key }) }) : null}
+      ${tasks.length && tasks.length === ok.length ? item(null, t.settleMore, () => { setOpen(false); c.askClose(tasks) }, ' settle-more') : null}
       ${ok.some(r => !r.task && !r.inbox_id) ? html`<span class="settle-hint muted small">${t.settleHint}</span>` : null}
     </span>` : null}
   </span>`
 }
 
-/** The buttons of a page row that is no inbox item or task but a person can hand on: the same Do it, Advise
- *  and Settle as a work row. The server files it to the inbox first and starts on that */
-export function PageItemActions({ it, s, c, after }) {
+/** The one start button of a row, the same on every view: its word follows the row (startMode), the ▾ beside it
+ *  holds every other way to start and a note for the agent. The note goes with the start (do_it note): on the
+ *  item first, or typed into the agent tab that already runs. Waiting and yours-alone rows open the note,
+ *  since an agent there needs to be told what to do */
+export function StartMenu({ row, s, c, size = 'xs' }) {
   const t = T()
+  const mode = startMode(row)
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const box = usePopover(open, setOpen)
+  const field = useRef(null)
+  // after usePopover moved the focus to the first item: the note is what one types here
+  useEffect(() => { if (open) field.current?.focus() }, [open])
+  const busy = !!s.ui.busy[row.key]
+  const launchable = !!(row.inbox_id || row.task)
+  const run = fn => { setOpen(false); const n = note.trim(); setNote(''); return fn(n) }
+  const start = () => run(note => c.act('do_it', { keys: [row.key], ...(note ? { note } : {}) }))
+  const needsWords = mode === 'note' || mode === 'tab'
+  const main = mode === 'tab'
+    ? html`<${Btn} size=${size} variant="primary" busy=${busy}
+        onClick=${() => (canTab(s, 'focus') ? c.act('tab_jump', { tab_ref: row.tab.ref }) : c.openTabView(row.tab.ref))}>${t.action.to_tab}<//>`
+    : mode === 'restart'
+      ? html`<${Btn} size=${size} variant="primary" busy=${busy} onClick=${() => c.act('do_it', { keys: [row.key] })}>${t.action.restart}<//>`
+      : mode === 'approved'
+        ? html`<${Btn} size=${size} variant="ghost" busy=${busy} onClick=${() => setOpen(!open)}>${t.action.approved}<//>`
+        : html`<${Btn} size=${size} variant="primary" busy=${busy} title=${mode === 'note' ? t.startNeedsHint : undefined}
+            onClick=${() => (mode === 'note' ? setOpen(true) : c.rowAction(row, 'do'))}>${t.action.do}<//>`
+  const item = (word, onClick) => html`<button type="button" role="menuitem" class="settle-item" onClick=${onClick}><span>${word}</span></button>`
+  return html`<span class="settle start" ref=${box}>
+    ${main}
+    <${Btn} size=${size} variant="ghost" pressed=${open} label=${t.startMore} onClick=${() => setOpen(!open)}>▾<//>
+    ${open ? html`<span class="settle-menu is-left start-menu" role="menu">
+      ${mode === 'approved' ? item(t.approvedBack, () => { setOpen(false); c.act('inbox_reopen', { id: row.inbox_id }) }) : html`
+        <label class="start-note">
+          <span class="label-caps">${t.startHintLabel}</span>
+          <textarea rows="2" ref=${field} value=${note} placeholder=${mode === 'note' ? t.startNeedsHint : t.startHintPlaceholder}
+            onInput=${e => setNote(e.currentTarget.value)}
+            onKeyDown=${e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (note.trim() || !needsWords) start() } }}></textarea>
+        </label>
+        <${Btn} size=${size} variant="primary" disabled=${needsWords && !note.trim()} onClick=${start}>
+          ${mode === 'tab' ? t.sendHint : t.startWithHint}<//>
+        ${mode === 'tab' ? item(t.btnTabView, () => { setOpen(false); c.openTabView(row.tab.ref) }) : null}
+        ${mode !== 'tab' ? item(t.action.advise, () => run(note => c.act('advise', { keys: [row.key], ...(note ? { note } : {}) }))) : null}
+        ${mode !== 'tab' && launchable ? item(t.btnCollect, () => run(note => c.act('collect_context', { key: row.key, ...(note ? { note } : {}) }))) : null}
+        ${mode !== 'tab' ? item(t.btnDoOwnWs, () => run(note => c.act('do_it', { keys: [row.key], target: 'workspace', ...(note ? { note } : {}) }))) : null}
+        ${row.bucket === 'waiting' ? item(t.action.follow_up, () => { setOpen(false); c.ask('follow_up', { key: row.key }) }) : null}
+        ${item(t.askChat, () => { setOpen(false); c.ask('row', { key: row.key }) })}`}
+    </span>` : null}
+  </span>`
+}
+
+/** The buttons of a row, one order on every view: start, close, pin. `tab` is an agent tab a view found for the
+ *  row's task in the tab list, when the row itself names none */
+export function RowBar({ row, s, c, pin = true, size = 'xs', tab = null }) {
+  const r = tab && !row.tab ? { ...row, tab: { ref: tab.ref, state: tab.state, live: tab.live ?? tab.state !== 'shell' } } : row
+  return html`<${StartMenu} row=${r} s=${s} c=${c} size=${size} /><${SettleMenu} rows=${[row]} s=${s} c=${c} size=${size} />${pin
+    ? html`<${PinStar} rowKey=${row.key} s=${s} c=${c} />` : null}`
+}
+
+/** The buttons of a page row that is no inbox item or task but a person can hand on: the same bar as a work row.
+ *  The server files it to the inbox first and starts on that */
+export function PageItemActions({ it, s, c, after }) {
   if (!pageItemActs(it)) return null
   const row = actionRow(it, new Map())
-  const busy = !!s.ui.busy[it.key]
   // `after` runs once a step went through (the detail drawer closes with it)
-  const run = verb => Promise.resolve(c.rowAction(row, verb)).then(r => { if (r?.ok) after?.() })
   const cc = after ? { ...c, act: async (verb, args) => { const r = await c.act(verb, args); if (r?.ok) after(); return r } } : c
-  return html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => run('do')}>${t.action.do}<//>
-    <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => run('advise')}>${t.action.advise}<//>
-    <${SettleMenu} rows=${[row]} s=${s} c=${cc} />`
+  return html`<${RowBar} row=${row} s=${s} c=${cc} pin=${false} />`
 }
 
 /** What the small model says a row is about (triage.py gist), when it says more than the title */
@@ -137,7 +205,7 @@ function RowItem({ row, s, c }) {
       <${RowMeta} row=${row} s=${s} />
       <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
     </button>
-    <span class="row-acts"><${RowActions} row=${row} s=${s} c=${c} /><${SettleMenu} rows=${[row]} s=${s} c=${c} /><${PinStar} rowKey=${row.key} s=${s} c=${c} /></span>
+    <span class="row-acts"><${RowBar} row=${row} s=${s} c=${c} /></span>
   </li>`
 }
 
