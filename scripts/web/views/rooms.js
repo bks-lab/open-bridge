@@ -8,7 +8,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, isAnswered, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -157,10 +157,11 @@ function useLeaving(list, atMs) {
   return out
 }
 
-/** One tab that waits for you: its name and workspace (a click shows it on the right), its question,
- *  and the answers; a row that left, or was answered here and still shows that very question (the same
- *  words in the same stretch of its state, logic.js isAnswered), is greyed with what happened instead of
- *  buttons. The same question asked again after the tab worked gets its buttons back */
+/** One tab that waits for you: its name and workspace (a click shows it on the right), its question (or,
+ *  once the decision guide has read it, what it is about and where it stands), and the answers; a row
+ *  that left, or was answered here and still shows that very question (the same words in the same
+ *  stretch of its state, logic.js isAnswered), is greyed with what happened instead of buttons. The same
+ *  question asked again after the tab worked gets its buttons back */
 function AskRow({ tab, left, s, c }) {
   const t = T()
   const answered = s.ui?.answered?.[tab.ref] ?? null
@@ -171,8 +172,8 @@ function AskRow({ tab, left, s, c }) {
       <span class="reply-name">${tab.name}</span>
       <span class="room-meta muted small">${tab.workspace}</span>
     </button>
-    <${AskLine} tab=${tab} />
-    ${done ? null : html`<${GuideLine} tab=${tab} s=${s} />`}
+    ${!done && guideOf(s, tab).status === 'fresh' ? html`<${GuideLine} tab=${tab} s=${s} />` : html`<${AskLine} tab=${tab} />
+      ${done ? null : html`<${GuideLine} tab=${tab} s=${s} />`}`}
     ${done ? html`<p class="reply-done muted small">${answered ? t.reply.answered(answered.q) : t.reply.movedOn}</p>`
       : html`<${TabReply} tab=${tab} s=${s} c=${c} compact />`}
   </div>`

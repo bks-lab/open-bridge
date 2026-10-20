@@ -447,3 +447,107 @@ def test_the_guide_verbs_never_take_the_write_lock():
     from lib.bridge_cockpit.actions_base import LOCAL_VERBS, SPEC
     for verb in ("guide_read", "guide_settings", "guide_settings_reset"):
         assert verb in SPEC and verb in LOCAL_VERBS
+
+
+# ---------------------------------------------------------------- 6 what the session is about
+
+def test_the_first_ask_comes_from_the_head_of_the_transcript(tmp_path):
+    path = tmp_path / "s.jsonl"
+    lines = [line("user", "meta first", isMeta=True),
+             json.dumps({"type": "user", "isSidechain": True, "message": {"role": "user", "content": "a subagent"}}),
+             line("user", "<system-reminder>noise</system-reminder>Build the release checklist for the demo"),
+             *TRANSCRIPT]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert gd.first_ask(path) == "Build the release checklist for the demo"
+    path.write_text("\n".join(["x" * 10] + [line("user", "y" * 5000)]) + "\n", encoding="utf-8")
+    assert len(gd.first_ask(path)) <= gd.FIRST_MAX
+    assert gd.first_ask(tmp_path / "missing.jsonl") is None
+
+
+def test_the_prompt_carries_what_the_session_was_started_for_and_asks_what_it_is_about(gworld):
+    tab = {"name": "Claude Code", "workspace": "Bridge", "state": "waiting", "ask": None}
+    context = {"title": "README flag", "first": "Document every flag of the CLI", "task": "demo-task",
+               "task_title": "Demo task", "prev": None, "user": "now the --dry flag", "said": "Done.",
+               "source": "transcript", "project": "bridge"}
+    text = gd.prompt(tab, context, "en", None)
+    assert "Document every flag of the CLI" in text and "Demo task" in text and '"about"' in text
+    same = gd.prompt(tab, {**context, "first": "now the --dry flag"}, "en", None)
+    assert same.count("now the --dry flag") == 1                                       # one ask is not shown twice
+    huge = {**context, "first": "f" * 20000, "said": "s" * 20000, "user": "u" * 20000}
+    assert len(gd.prompt(tab, huge, "en", None)) <= mr.HAIKU_PROMPT_MAX
+
+
+def test_the_answer_says_what_the_session_is_about_in_one_short_line(gworld):
+    result, _ = gd.parse(haiku_answer({**WAITING_ANSWER, "about": "  Documenting the CLI flags\n in the README  "}), "waiting", None)
+    assert result["about"] == "Documenting the CLI flags in the README"
+    long, _ = gd.parse(haiku_answer({**WAITING_ANSWER, "about": "w " * 200}), "waiting", None)
+    assert len(long["about"]) <= gd.ABOUT_MAX
+    assert gd.parse(haiku_answer(WAITING_ANSWER), "waiting", None)[0]["about"] == ""
+
+
+def test_a_reading_carries_the_topic_its_task_and_the_line_haiku_wrote(tmp_path):
+    w = make_world(tmp_path, answer=haiku_answer({**WAITING_ANSWER, "about": "Documenting the --dry flag"}))
+    w.runner.handlers["eww.-o"] = lambda argv: ok(f"claude CMUX_SURFACE_ID={SURF} BRIDGE_TAB_SLUG=demo-task X=1\n")
+    try:
+        poll(w)
+        argv = haiku_calls(w)[0]
+        assert "first ask: look at the flags" in argv[12] and "Demo task" in argv[12]
+        entry = w.app.guide.state()["entries"]["surface:40"]
+        assert entry["about"] == "Documenting the --dry flag"
+        assert entry["topic"] == {"title": "README flag", "first": "first ask: look at the flags", "task": "demo-task",
+                                  "task_title": "Demo task", "project": "bridge"}
+    finally:
+        w.close()
+
+
+def test_without_a_line_from_haiku_the_title_or_the_first_ask_stands_in(tmp_path):
+    w = make_world(tmp_path)
+    try:
+        poll(w)
+        assert w.app.guide.state()["entries"]["surface:40"]["about"] == "README flag"
+    finally:
+        w.close()
+    lines = [ln for ln in TRANSCRIPT if '"ai-title"' not in ln]
+    w = make_world(tmp_path / "two", transcript=lines)
+    try:
+        poll(w)
+        assert w.app.guide.state()["entries"]["surface:40"]["about"] == "first ask: look at the flags"
+    finally:
+        w.close()
+
+
+def test_the_topic_shows_while_haiku_still_reads(tmp_path):
+    w = make_world(tmp_path)
+    seen = []
+    original = w.app.broadcast
+    w.app.broadcast = lambda event, payload: (seen.append(json.loads(json.dumps(payload))) if event == "guide" else None,
+                                              original(event, payload))
+    try:
+        poll(w)
+        running = [p["entries"]["surface:40"] for p in seen if p["entries"].get("surface:40", {}).get("running")]
+        assert any(e["about"] == "README flag" and e["topic"]["project"] == "bridge" for e in running)
+    finally:
+        w.close()
+
+
+def test_a_task_headline_is_read_only_for_a_slug_of_an_open_task(gworld):
+    root = gworld.root
+    assert gd.task_headline(root, "demo-task") == "Demo task"
+    assert gd.task_headline(root, "../etc") is None
+    assert gd.task_headline(root, "no-such-task") is None
+
+
+def test_risk_reads_the_words_sent_and_not_a_word_that_is_negated_or_only_in_the_label(gworld):
+    answer = {**WAITING_ANSWER, "options": [
+        {"label": "Link the wiki", "send": "Set the link to the wiki. Commit locally, aber nicht pushen.", "risky": False},
+        {"label": "Wait for the merge", "send": "Leave the link until PR #26 is merged, then update it.", "risky": False},
+        {"label": "Do not push yet", "send": "Don't push or merge anything yet, just show me the diff.", "risky": False},
+        {"label": "Ship", "send": "Commit and push it now.", "risky": False},
+    ]}
+    result, _ = gd.parse(haiku_answer(answer), "waiting", None)
+    assert [o["risky"] for o in result["options"]] == [False, False, False, True]
+    assert gd.risky_words("Lösche die Datei und push danach") is True
+    assert gd.risky_words("keine Datei löschen, nur lesen") is False
+    assert gd.risky_words("Passt so. Nichts pushen, der lokale Commit bleibt.") is False
+    assert gd.risky_words("Don’t merge it, nothing to deploy yet") is False
+    assert gd.risky_words("never deploy on Friday, but deploy the docs now") is True

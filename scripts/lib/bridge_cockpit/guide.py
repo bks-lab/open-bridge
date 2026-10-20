@@ -9,8 +9,11 @@ a dialog's numbered option), so the guide adds no way of its own to write into a
 
 What Haiku reads: the session's transcript, ~/.claude/projects/<cwd as a slug>/<session id>.jsonl, found
 through the Sessions scan (sessions.py, a session's tab by CMUX_SURFACE_ID or TMUX_PANE), of which only the
-last ask, the one before it and the agent's words after the last ask are kept: no tool calls, tool output,
-thinking, meta lines or subagents. A tab without a transcript gives its screen instead. The cockpit's key
+first ask (what the session was started for), its title, the last ask, the one before it and the agent's
+words after the last ask are kept: no tool calls, tool output, thinking, meta lines or subagents. The task
+the session belongs to (a task tab's BRIDGE_TAB_SLUG, or a link made on the Sessions page) adds its headline.
+Besides where it stands, Haiku says in one line what the session is about (`about`); without that line the
+title, the task's headline or the first ask stand in, and they show already while Haiku reads. A tab without a transcript gives its screen instead. The cockpit's key
 is scrubbed out before the prompt is written and again from the answer. The call is model_route.haiku_argv:
 no tools, no settings, no session.
 
@@ -45,6 +48,12 @@ PREV_MAX = 300                # the ask before it: its start
 SAID_MAX = 3000               # what the agent said after the last ask: its end
 SCREEN_MAX = 2500             # a tab without a transcript: the end of its screen
 TITLE_MAX = 120
+HEAD_BYTES = 200_000          # the start of a transcript read for its first ask
+FIRST_MAX = 600               # the first ask: its start
+TASK_TITLE_MAX = 160
+ABOUT_MAX = 120
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
+HEADLINE_RE = re.compile(r"^headline:\s*(.+?)\s*$", re.M)
 ASK_MAX = 600
 WHERE_MAX = 200
 WAITS_MAX = 160
@@ -57,12 +66,29 @@ NOISE_RE = re.compile(r"<(system-reminder|local-command-stdout|local-command-std
                       r"command-message|command-args)>.*?</\1>", re.S)
 TAG_RE = re.compile(r"</?[A-Za-z][\w-]*>")
 # what reaches beyond the session or cannot be taken back: such an option needs a second click on the page,
-# whatever Haiku said about it
+# whatever Haiku said about it; read in the words a step sends (a dialog's label), never negated (risky_words)
 RISKY_RE = re.compile(
     r"\b(push|force|merge|delete|remove|drop|deploy|release|publish|rm\s+-|reset\s+--hard|rebase|send|mail|"
     r"pay|transfer|revoke|rotate|shutdown|reboot|wipe|purge|"
     r"pushen|mergen|löschen|lösche|entfernen|entferne|veröffentlich\w*|senden|sende|schick\w*|ausroll\w*|"
     r"überweis\w*|zurücksetzen)\b", re.I)
+
+
+# a risky word does not count right after a negation in the same clause: "commit, aber nicht pushen"
+NEGATION_RE = re.compile(r"(?:^|\s)(?:nicht|nichts|kein\w*|ohne|nie|niemals|no|not|nothing|never|without|don['’]?t|do\s+not)"
+                         r"(?:\s+\S+){0,2}\s*$", re.I)
+CLAUSE_RE = re.compile(r"[,.;:!?\n]")
+
+
+def risky_words(text: str) -> bool:
+    """Whether words sent to a session ask for something that reaches beyond it (RISKY_RE), not counting a
+    word negated in its own clause"""
+    for found in RISKY_RE.finditer(text or ""):
+        before = text[max(0, found.start() - 60):found.start()]
+        cut = max((m.end() for m in CLAUSE_RE.finditer(before)), default=0)
+        if not NEGATION_RE.search(before[cut:]):
+            return True
+    return False
 
 
 class GuideError(Exception):
@@ -200,6 +226,48 @@ def turns_of(lines: list[str]) -> dict:
             "said": clean("\n".join(said), SAID_MAX, keep="end") if said else None}
 
 
+def first_ask(path: Path) -> str | None:
+    """The first thing the person asked in a session: what it was started for. Read from the start of the
+    transcript; None when there is none."""
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read(HEAD_BYTES)
+    except OSError:
+        return None
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    if len(data) >= HEAD_BYTES and lines:
+        lines = lines[:-1]                 # the read may end inside a line
+    for raw in lines:
+        try:
+            entry = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get("type") != "user" or entry.get("isSidechain") or entry.get("isMeta"):
+            continue
+        message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+        text = _user_text(message.get("content"))
+        if text:
+            return clean(text, FIRST_MAX)
+    return None
+
+
+def task_headline(root: Path, slug: str | None) -> str | None:
+    """The headline of an open task or stream (its STATUS.md front matter); None for anything else."""
+    if not isinstance(slug, str) or not SLUG_RE.match(slug):
+        return None
+    for kind in ("tasks", "streams"):
+        path = Path(root) / "work" / kind / slug / "STATUS.md"
+        try:
+            head = path.read_text(encoding="utf-8")[:6000]
+        except OSError:
+            continue
+        found = HEADLINE_RE.search(head)
+        if found:
+            return clean(found.group(1).strip().strip('"\''), TASK_TITLE_MAX) or None
+        return None
+    return None
+
+
 def transcript_path(base: Path, cwd: str, sid: str) -> Path:
     return base / "projects" / project_slug(cwd) / f"{sid}.jsonl"
 
@@ -218,17 +286,19 @@ def key_of(tab: dict) -> str:
 PROMPT = """You help {person} decide what to tell an AI coding agent session that now waits for them.
 Read the session below and answer in {language}, plainly, without dashes as punctuation.
 
-Session: "{name}" in workspace "{workspace}"{project}{title}
+Session: "{name}" in workspace "{workspace}"{project}{title}{task}
 State: {state_words}
 {question}
 {turns}
 Answer with one JSON object only:
-{{"where": "<where the session stands, one sentence, at most 25 words>",
+{{"about": "<what this session works on as a whole, so {person} recognises it at a glance: a short phrase, at most 12 words, naming the subject, not the state>",
+ "where": "<where the session stands, one sentence, at most 25 words>",
  "waits_for": "<what exactly it waits for from {person}, one sentence, at most 18 words>",
  "options": [{options_shape}],
  "pick": <index of the option you recommend, or null>}}
-Rules: two to four options, the most sensible first. {options_rule} Mark "risky": true for anything that
-pushes, merges, deletes, deploys, sends something outside or cannot be undone. Invent no facts; when the
+Rules: two to four options, the most sensible first. {options_rule} Mark "risky": true only when the message itself
+asks the agent to push, merge, delete, deploy, send something outside, or do what cannot be undone; a message
+that says not to (commit, but do not push) is not risky. Invent no facts; when the
 session gives too little to go on, give no options and say so in "where"."""
 
 WAIT_SHAPE = ('{"label": "<button text, at most 5 words>", "send": "<the exact message to type into the session, '
@@ -254,15 +324,20 @@ def prompt(tab: dict, context: dict, language: str, person: str | None) -> str:
     base = dict(person=person or "the user", language=LANGUAGES.get(language, "English"),
                 name=clean(tab.get("name"), 80), workspace=clean(tab.get("workspace"), 80),
                 project=f', folder "{clean(context.get("project"), 60)}"' if context.get("project") else "",
-                title=f', about "{context["title"]}"' if context.get("title") else "",
+                title=f', titled "{context["title"]}"' if context.get("title") else "",
+                task=f'\nIt belongs to the task "{context["task_title"]}"' if context.get("task_title") else "",
                 state_words=state_words, question="\n".join(lines),
                 options_shape=DIALOG_SHAPE if dialog else WAIT_SHAPE, options_rule=DIALOG_RULE if dialog else WAIT_RULE)
     prev, user, said = context.get("prev") or "", context.get("user") or "", context.get("said") or ""
-    for _ in range(12):
+    first = context.get("first") or ""
+    if first and first in (user, prev):
+        first = ""                 # a session of one or two asks: the first is already there
+    for _ in range(14):
+        started = f"\nWhat the session was started for (its first ask):\n<<<\n{first}\n>>>\n" if first else ""
         if context.get("source") == "screen":
-            turns = f"\nThe end of its terminal screen:\n<<<\n{said}\n>>>\n"
+            turns = started + f"\nThe end of its terminal screen:\n<<<\n{said}\n>>>\n"
         else:
-            turns = ((f"\nThe ask before the last one:\n<<<\n{prev}\n>>>\n" if prev else "")
+            turns = (started + (f"\nThe ask before the last one:\n<<<\n{prev}\n>>>\n" if prev else "")
                      + (f"\nThe last ask to the agent:\n<<<\n{user}\n>>>\n" if user else "")
                      + (f"\nWhat the agent said after it:\n<<<\n{said}\n>>>\n" if said else ""))
         text = PROMPT.format(turns=turns, **base)
@@ -271,12 +346,14 @@ def prompt(tab: dict, context: dict, language: str, person: str | None) -> str:
         over = len(text) - mr.HAIKU_PROMPT_MAX + 20
         if prev:
             prev = ""
+        elif len(first) > 300:
+            first = first[:300] + "…"
         elif len(said) > 600:
             said = "…" + said[min(len(said) - 500, over):]
         elif len(user) > 300:
             user = user[:max(200, len(user) - over)] + "…"
         else:
-            said, user = said[-300:], user[:200]
+            said, user, first = said[-300:], user[:200], first[:150]
     return text[:mr.HAIKU_PROMPT_MAX]
 
 
@@ -327,15 +404,16 @@ def parse(stdout: str, state: str, ask: dict | None) -> tuple[dict | None, float
             taken.add(n)
             label = _flat(shown[n], LABEL_MAX)
             options.append({"label": label, "send": None, "n": n, "why": why,
-                            "risky": raw.get("risky") is True or bool(RISKY_RE.search(label))})
+                            "risky": raw.get("risky") is True or risky_words(label)})
         else:
             label, send = _flat(raw.get("label"), LABEL_MAX), _flat(raw.get("send"), SEND_MAX)
             if not label or not send:
                 continue
             options.append({"label": label, "send": send, "n": None, "why": why,
-                            "risky": raw.get("risky") is True or bool(RISKY_RE.search(send) or RISKY_RE.search(label))})
+                            "risky": raw.get("risky") is True or risky_words(send)})
     pick = data.get("pick")
-    return {"where": where, "waits_for": _flat(data.get("waits_for"), WAITS_MAX), "options": options,
+    return {"where": where, "waits_for": _flat(data.get("waits_for"), WAITS_MAX), "about": _flat(data.get("about"), ABOUT_MAX),
+            "options": options,
             "pick": pick if _is_int(pick) and 0 <= pick < len(options) else None}, cost
 
 
@@ -499,22 +577,49 @@ class Guide:
                 self.app.broadcast("guide", self.state())
 
     def _session_of(self, ref: str) -> dict | None:
-        return next((x for x in self.app.sessions.state() if (x.get("tab") or {}).get("ref") == ref), None)
+        """The live session in a tab, with the task it is linked to (server.sessions_state)"""
+        try:
+            sessions = self.app.sessions_state()["sessions"]
+        except Exception:  # noqa: BLE001 - an app without the links still finds the session
+            sessions = self.app.sessions.state()
+        return next((x for x in sessions if (x.get("tab") or {}).get("ref") == ref), None)
 
     def context_of(self, tab: dict) -> dict:
-        """What Haiku reads of a tab: its session's turns, else the end of its screen; scrubbed."""
+        """What Haiku reads of a tab: its session's first ask and last turns, else the end of its screen,
+        and the task it belongs to; scrubbed."""
         app = self.app
         scrub = app.scrub
-        session = self._session_of(tab["ref"])
-        if session and session.get("sid") and session.get("cwd"):
+        session = self._session_of(tab["ref"]) or {}
+        slug = session.get("task") or session.get("tab_slug") or tab.get("slug")
+        headline = task_headline(app.root, slug)
+        about = {"task": slug if headline else None, "task_title": scrub(headline) if headline else None,
+                 "project": session.get("project")}
+        if session.get("sid") and session.get("cwd"):
             base = getattr(app.sessions, "base", None) or claude_dir()
-            turns = turns_of(read_tail(transcript_path(Path(base), session["cwd"], session["sid"]), TAIL_BYTES))
+            path = transcript_path(Path(base), session["cwd"], session["sid"])
+            turns = turns_of(read_tail(path, TAIL_BYTES))
             if turns["user"] or turns["said"]:
+                first = first_ask(path)
                 return {**{k: scrub(v) if isinstance(v, str) else v for k, v in turns.items()},
-                        "source": "transcript", "project": session.get("project")}
+                        "first": scrub(first) if first else None, **about, "source": "transcript"}
         text, _digest, _err = app.tab_screen(tab["ref"])
-        return {"title": None, "prev": None, "user": None, "said": clean(scrub(text or ""), SCREEN_MAX, keep="end"),
-                "source": "screen", "project": (session or {}).get("project")}
+        return {"title": None, "first": None, "prev": None, "user": None,
+                "said": clean(scrub(text or ""), SCREEN_MAX, keep="end"), **about, "source": "screen"}
+
+    @staticmethod
+    def topic_of(context: dict) -> dict:
+        """What the page shows of what a session is about before and beside Haiku's line"""
+        return {"title": context.get("title"), "first": clean(context.get("first"), 300) or None,
+                "task": context.get("task"), "task_title": context.get("task_title"), "project": context.get("project")}
+
+    @staticmethod
+    def fallback_about(context: dict) -> str:
+        """The line for `about` without Haiku's: the session's title, its task's headline, its first ask"""
+        for value in (context.get("title"), context.get("task_title"), context.get("first"), context.get("user")):
+            text = _flat(value or "", ABOUT_MAX)
+            if text:
+                return text
+        return ""
 
     def _read(self, ref: str, manual: bool) -> None:
         app = self.app
@@ -527,14 +632,21 @@ class Guide:
             return
         key = key_of(tab)
         base = {"ref": ref, "key": key, "state": tab["state"], "auto": not manual, "running": True,
-                "started_ms": int(app.clock()), "at_ms": None, "error": None, "where": "", "waits_for": "",
-                "options": [], "pick": None, "cost_usd": None, "source": None}
+                "started_ms": int(app.clock()), "at_ms": None, "error": None, "about": "", "topic": None, "where": "",
+                "waits_for": "", "options": [], "pick": None, "cost_usd": None, "source": None}
         with self.lock:
             self.entries[ref] = base
             self.rev += 1
         app.broadcast("guide", self.state())
         context = self.context_of(tab)
-        entry = {**base, "source": context["source"]}
+        # what the session is about shows at once, while Haiku still reads
+        base = {**base, "source": context["source"], "topic": self.topic_of(context), "about": self.fallback_about(context)}
+        with self.lock:
+            if (self.entries.get(ref) or {}).get("started_ms") == base["started_ms"]:
+                self.entries[ref] = base
+                self.rev += 1
+        app.broadcast("guide", self.state())
+        entry = dict(base)
         if not (context.get("user") or context.get("said")):
             entry.update(running=False, at_ms=int(app.clock()), error="nothing to read in this session yet")
         else:
@@ -548,7 +660,8 @@ class Guide:
                 if result is None:
                     entry.update(running=False, at_ms=int(app.clock()), cost_usd=cost, error="no usable answer")
                 else:
-                    entry.update(running=False, at_ms=int(app.clock()), cost_usd=cost, **result)
+                    entry.update(running=False, at_ms=int(app.clock()), cost_usd=cost,
+                                 **{**result, "about": result["about"] or base["about"]})
         with self.lock:
             if (self.entries.get(ref) or {}).get("started_ms") == base["started_ms"]:
                 self.entries[ref] = entry

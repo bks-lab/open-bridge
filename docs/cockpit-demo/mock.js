@@ -106,6 +106,12 @@ const WORDS = {
     'Task opened after the team call': 'Aufgabe nach dem Team-Call angelegt',
     'Mock: 3 snapshots, latest 09:00': 'Demo: 3 Abzüge, der neueste von 09:00',
     // the decision guide: invented readings of the waiting tabs
+    'Release notes for the alpha release': 'Release Notes für das Alpha-Release', 'Alpha release notes': 'Alpha-Release-Notizen',
+    'Prepare the alpha release notes from the merged pull requests': 'Bereite die Alpha-Release-Notes aus den gemergten Pull Requests vor',
+    'Sources for the team page of the demo project': 'Quellen für die Teamseite des Demo-Projekts',
+    'Find three good sources for the team page and summarise them': 'Finde drei gute Quellen für die Teamseite und fass sie zusammen',
+    'Changelog for the coming release': 'Changelog für das kommende Release', 'Changelog entry': 'Changelog-Eintrag',
+    'Write the changelog entry for the release': 'Schreib den Changelog-Eintrag für das Release',
     'The release notes edit is ready; it waits for your permission to write RELEASE_NOTES.md.':
       'Die Änderung der Release Notes steht; sie wartet auf deine Erlaubnis, RELEASE_NOTES.md zu schreiben.',
     'Permission to edit one file.': 'Die Erlaubnis, eine Datei zu ändern.',
@@ -226,16 +232,21 @@ function tickerItemsOf(now) {
 // the changelog tab is not read yet, so it shows the button
 let guideRev = 0
 const GUIDE_READS = {
-  'surface:7': { state: 'needs-you', where: 'The release notes edit is ready; it waits for your permission to write RELEASE_NOTES.md.',
+  'surface:7': { state: 'needs-you', about: 'Release notes for the alpha release',
+    topic: { title: 'Alpha release notes', first: 'Prepare the alpha release notes from the merged pull requests', task: 'alpha-release',
+      task_title: 'Prepare the alpha release notes', project: 'demo' }, where: 'The release notes edit is ready; it waits for your permission to write RELEASE_NOTES.md.',
     waits_for: 'Permission to edit one file.', pick: 0, options: [
       { label: 'Yes', send: null, n: 1, why: 'a single file, easy to review', risky: false },
       { label: 'No, and tell Claude what to do differently', send: null, n: 3, why: 'let it plan once more', risky: false }] },
-  'surface:12': { state: 'waiting', where: 'Three sources found and read; nothing is written to team.md yet.',
+  'surface:12': { state: 'waiting', about: 'Sources for the team page of the demo project',
+    topic: { title: null, first: 'Find three good sources for the team page and summarise them', task: 'demo-task',
+      task_title: 'Write the onboarding guide for the demo project', project: 'demo' }, where: 'Three sources found and read; nothing is written to team.md yet.',
     waits_for: 'Whether to summarise the sources in team.md.', pick: 0, options: [
       { label: 'Summarise', send: 'Yes, summarise them in team.md.', n: null, why: 'the sources are read', risky: false },
       { label: 'List them first', send: 'List the three sources with one line each first.', n: null, why: 'check before writing', risky: false },
       { label: 'Summarise and push', send: 'Summarise them in team.md, commit and push.', n: null, why: 'saves a round trip', risky: true }] },
-  'surface:13': { state: 'waiting', where: 'The changelog entry is written; the release itself has not started.',
+  'surface:13': { state: 'waiting', about: 'Changelog for the coming release',
+    topic: { title: 'Changelog entry', first: 'Write the changelog entry for the release', task: null, task_title: null, project: 'demo' }, where: 'The changelog entry is written; the release itself has not started.',
     waits_for: 'What comes after the changelog.', pick: 0, options: [
       { label: 'Show the entry', send: 'Show me the changelog entry.', n: null, why: 'read it before it ships', risky: false },
       { label: 'Tag the release', send: 'Tag the release and push the tag.', n: null, why: 'the entry is done', risky: true }] },

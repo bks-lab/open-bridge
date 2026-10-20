@@ -2755,6 +2755,15 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .guide-foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px;
   margin-top: 8px; }
 .guide-line { display: flex; gap: 4px; align-items: baseline; margin: 0; overflow-wrap: anywhere; }
+.guide-line-text { display: grid; gap: 1px; min-width: 0; }
+.guide-line-about { font-weight: 600; overflow-wrap: anywhere; }
+.guide-line-where { color: var(--on-surface-muted); }
+.guide-head { display: grid; gap: 2px; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.guide.is-running .guide-head, .guide.is-error .guide-head { flex: 1 1 100%; border-bottom: 0; padding-bottom: 0; }
+.guide-about { margin: 0; font-size: var(--text-body); font-weight: 650; overflow-wrap: anywhere; }
+.guide-topic { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; }
+.guide-fact { overflow-wrap: anywhere; }
+.guide-fact + .guide-fact::before { content: '·'; margin-right: 10px; }
 .guide-line .icon { flex: none; align-self: flex-start; margin-top: 3px; }
 .guide.is-compact { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .guide.is-compact .guide-root::after { display: none; }

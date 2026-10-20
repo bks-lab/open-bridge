@@ -347,7 +347,8 @@ const replyRow = (el, name) => replyRows(el).find(r => r.$('.reply-name').text()
 const tick = () => new Promise(resolve => setTimeout(resolve, 20))
 
 test('the sidebar shows Waiting for you with the question and option buttons', () => {
-  const s = cockpitState(NOW)
+  // without the decision guide: the question as read off the screen (with it, see the guide tests below)
+  const s = cockpitState(NOW, { guide: null })
   const c = recorder()
   const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
   const group = el.$('.reply-group')
@@ -1257,4 +1258,43 @@ test('guide: the settings switch the guide and reading by itself, beside the con
   assert.deepEqual(c.calls.at(-1), ['saveGuide', { enabled: false }])
   switches[1].click()
   assert.deepEqual(c.calls.at(-1), ['saveGuide', { auto: false }])
+})
+
+test('guide: the tree opens with what the session is about, its folder and its task', () => {
+  const s = cockpitState(NOW)
+  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${recorder()} />`)
+  assert.equal(el.$('.guide-about').text(), 'Sources for the team page of the demo project')
+  assert.match(el.$('.guide-root').text(), new RegExp(en.guide.about))
+  const topic = el.$('.guide-topic')
+  assert.match(topic.text(), /demo/)
+  assert.match(topic.text(), new RegExp(en.guide.task('Write the onboarding guide for the demo project')))
+  assert.equal(topic.getAttribute('title'), en.guide.startedWith('Find three good sources for the team page and summarise them'))
+})
+
+test('guide: the line names what the session is about first, then where it stands', () => {
+  const s = cockpitState(NOW)
+  const el = mount(html`<${GuideLine} tab=${tabOf(s, 'surface:12')} s=${s} />`)
+  assert.equal(el.$('.guide-line-about').text(), 'Sources for the team page of the demo project')
+  assert.match(el.text(), /Three sources found and read/)
+})
+
+test('guide: while Haiku reads, what the session is about already shows', () => {
+  const s = cockpitState(NOW)
+  const entry = { ...s.guide.entries['surface:12'], running: true, where: '', options: [], about: 'Sources for the team page' }
+  const st = { ...s, guide: { ...s.guide, entries: { ...s.guide.entries, 'surface:12': entry } } }
+  const tree = mount(html`<${GuideTree} tab=${tabOf(st, 'surface:12')} s=${st} c=${recorder()} />`)
+  assert.equal(tree.$('.guide-about').text(), 'Sources for the team page')
+  assert.match(tree.text(), new RegExp(en.guide.reading))
+  assert.equal(mount(html`<${GuideLine} tab=${tabOf(st, 'surface:12')} s=${st} />`).$('.guide-line-about').text(), 'Sources for the team page')
+})
+
+test('guide: a row of Waiting for you that was read shows what it is about and where it stands instead of the screen words', () => {
+  const s = cockpitState(NOW)
+  const el = mount(html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const research = replyRow(el, 'demo-task research')
+  assert.equal(research.$('.guide-line-about').text(), 'Sources for the team page of the demo project')
+  assert.equal(research.$('.reply-ask'), null)
+  assert.ok(research.button(en.reply.goOn), 'the answers stay')
+  // a tab not read yet keeps the words off its screen
+  assert.match(replyRow(el, 'changelog').$('.reply-ask').text(), /Changelog entry written/)
 })

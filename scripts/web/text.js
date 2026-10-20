@@ -759,6 +759,9 @@ const en = {
   },
   guide: {
     title: 'Decision guide',
+    about: 'What it is about',
+    startedWith: text => `Started with: ${text}`,
+    task: title => `Task: ${title}`,
     where: 'Where it stands',
     waitsFor: 'Waits for:',
     read: 'Read with Haiku',
@@ -2116,6 +2119,9 @@ const de = {
   },
   guide: {
     title: 'Entscheidungshilfe',
+    about: 'Worum es geht',
+    startedWith: text => `Begonnen mit: ${text}`,
+    task: title => `Aufgabe: ${title}`,
     where: 'Wo es steht',
     waitsFor: 'Wartet auf:',
     read: 'Mit Haiku lesen',

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, the decision guide (guide.py): what Claude Haiku read of a waiting tab, drawn as a small
-// tree. The root says where the session stands and what it waits for; each branch is one next step, and a
+// tree. The root says what the session is about (its folder and task beside it, its first ask on hover),
+// where it stands and what it waits for; each branch is one next step, and a
 // click on it sends through the reply verbs that guard a tab (logic.js guideChoices: tab_send with the
 // question's hash, tab_option for a dialog's number). A step that reaches beyond the session (push, merge,
 // delete, deploy, send) takes a second click. The last branch always opens the tab to answer it yourself.
@@ -16,6 +17,22 @@ import { Btn, Chip, Dot, Empty, Icon, StateLine } from './parts.js'
 import { Card, Switch } from './settings.js'
 
 const URGENCY = { 'needs-you': 0, waiting: 1 }
+
+/** What the session is about: Haiku's line (or its title, task or first ask while Haiku reads), its folder
+ *  and its task beside it, the ask it was started with on hover; nothing before the session was read */
+function About({ entry }) {
+  const g = T().guide
+  if (!entry?.about) return null
+  const topic = entry.topic ?? {}
+  const facts = [topic.project, topic.task_title ? g.task(topic.task_title) : null].filter(Boolean)
+  return html`<div class="guide-head">
+    <span class="label-caps guide-cap">${g.about}</span>
+    <p class="guide-about">${entry.about}</p>
+    ${facts.length || topic.first ? html`<p class="guide-topic muted small" title=${topic.first ? g.startedWith(topic.first) : undefined}>
+      ${facts.length ? facts.map((f, i) => html`<span key=${i} class="guide-fact">${f}</span>`)
+        : html`<span class="guide-fact">${g.startedWith(short(topic.first, 80))}</span>`}</p>` : null}
+  </div>`
+}
 
 /** The reading of one waiting tab as a tree; nothing while the guide is off or the tab does not wait.
  *  `compact` (a narrow column) leaves out the words a step would send */
@@ -34,10 +51,12 @@ export function GuideTree({ tab, s, c, compact = false }) {
       <p class="muted small guide-empty"><${Icon} name="spark" size=${12} /> ${g.noneYet}</p>${read}</div>`
   }
   if (status === 'running') {
-    return html`<div class="guide is-running" role="group" aria-label=${g.title} aria-busy="true"><${Thinking} label=${g.reading} /></div>`
+    return html`<div class="guide is-running" role="group" aria-label=${g.title} aria-busy="true">
+      <${About} entry=${entry} /><${Thinking} label=${g.reading} /></div>`
   }
   if (status === 'error') {
     return html`<div class="guide is-error" role="group" aria-label=${g.title}>
+      <${About} entry=${entry} />
       <p class="small"><${StateLine} token="danger" word=${g.failed(entry.error)} /></p>${read}</div>`
   }
   const choices = status === 'fresh' ? guideChoices(tab, entry, s) : []
@@ -54,6 +73,7 @@ export function GuideTree({ tab, s, c, compact = false }) {
   const ago = duration((s.now || Date.now()) - (entry.at_ms ?? s.now ?? Date.now()))
   return html`<div class=${`guide${status === 'stale' ? ' is-stale' : ''}${compact ? ' is-compact' : ''}`} role="group" aria-label=${g.title}>
     <div class="guide-root">
+      <${About} entry=${entry} />
       <span class="label-caps guide-cap"><${Icon} name="spark" size=${12} /> ${g.where}</span>
       <p class="guide-where">${entry.where}</p>
       ${entry.waits_for ? html`<p class="guide-waits small"><span class="muted">${g.waitsFor}</span> ${entry.waits_for}</p>` : null}
@@ -87,13 +107,19 @@ export function GuideTree({ tab, s, c, compact = false }) {
   </div>`
 }
 
-/** One line of the reading: where the tab stands, for the sidebar and a session card; nothing otherwise */
+/** The reading in two lines, for the sidebar and a session card: what the session is about, then where
+ *  it stands (or that Haiku reads); nothing otherwise */
 export function GuideLine({ tab, s }) {
   const t = T()
   const { status, entry } = guideOf(s, tab)
-  if (status === 'running') return html`<p class="guide-line muted small"><${Icon} name="spark" size=${12} /> ${t.guide.reading}</p>`
+  const about = entry?.about ? html`<span class="guide-line-about">${entry.about}</span>` : null
+  if (status === 'running') {
+    return html`<p class="guide-line small"><${Icon} name="spark" size=${12} /><span class="guide-line-text">${about}
+      <span class="muted">${t.guide.reading}</span></span></p>`
+  }
   if (status !== 'fresh' || !entry?.where) return null
-  return html`<p class="guide-line small clamp2" title=${entry.where}><${Icon} name="spark" size=${12} /> ${entry.where}</p>`
+  return html`<p class="guide-line small" title=${tab.ask?.text || entry.where}><${Icon} name="spark" size=${12} /><span class="guide-line-text">${about}
+    <span class="guide-line-where clamp2">${entry.where}</span></span></p>`
 }
 
 /** "Where you are needed" on top of the Sessions page: every tab that waits for you with its reading,
