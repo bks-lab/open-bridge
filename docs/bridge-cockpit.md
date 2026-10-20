@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the news ticker, the status pages, the task check, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-18
+last_updated: 2026-10-20
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -85,6 +85,7 @@ their defaults:
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
+| `session_guide` | off | the decision guide: Claude Haiku reads a waiting tab's session and offers its next steps as buttons, in the chat and on the Sessions page (section 3, "The decision guide") |
 | `usage.remotes` | the machines of `infra/instances` | other machines whose token use the Betrieb page adds in (`infra/remotes` names; `[]` for none), see the Betrieb page, "Tokens" |
 | `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
 | `usage.remote_file` | `~/.bridge/resources/usage.json` | the file `scripts/usage-export.py` writes on those machines |
@@ -1136,6 +1137,25 @@ A tab that waits shows what it asks, read off its screen, so it can be answered 
 - **What a tab asks** is read by the tab poll through the driver's optional verb `screen`: only for the tabs that wait or need you, again only when a tab's state, last line or since-time changed or its question is a minute old, at most four screens and three seconds per poll, the tabs that need you first. A poll without such a tab asks the driver nothing. The question goes out with the tabs (`tabs.tabs[].ask`: text, options, a hash, whether it reads as yes or no, whether something is typed in the tab) and never rebuilds the briefing.
 - **After an answer** the row stays where it stood for one more poll, greyed, with what was answered, or "Moved on" when the tab went on by itself, so a click never lands on the row that slid up into its place. The tab's pane on the right and its window show the same question and buttons.
 
+#### The decision guide
+
+Off until `cockpit.session_guide.enabled` (or the switch under Settings, "Decision guide") turns it on. Then a tab that waits for you gets a short reading by Claude Haiku: where the session stands, what exactly it waits for, and two to four next steps, the recommended one marked. The page draws that as a small tree, the reading on the left and one branch per step on the right, and a click on a branch is the answer:
+
+- **A waiting tab**: each step carries the words it types into the tab, shown under it ("Sends: ..."). The click goes through `tab_send` with the question's hash, the tab's state and its name, so it reaches the tab only while it still asks what was read (the same guard as the answers above).
+- **A dialog** (needs you): each step names one of the dialog's own numbered options and presses it through `tab_option`; Haiku cannot add an option the dialog does not show.
+- **A step that reaches beyond the session** (push, merge, delete, deploy, send, publish and their German words, or one Haiku marks so) is marked and sends only on a second click. The last branch, "Answer yourself", opens the tab.
+- **Where it shows**: in the chat as cmux, the reading's first sentence under each row of "Waiting for you" and the whole tree in a tab's pane on the right; in the classic chat, the sentence on a slim tab card and the tree once "more" opens it; on the Sessions page, "Where you are needed" on top lists every waiting tab with its tree (a tab whose result is filed stays out, "With AI" offers it), and each session card carries the sentence.
+- **When it reads**: with `auto` (the default once on) a tab is read as soon as it waits with a question the tab poll has read and no reading answers yet, at most `per_hour` such readings an hour (30 by default); never the control tab, never a tab whose result is filed. "Read with Haiku" and "Read again" read any waiting tab at once and do not count. One reading runs at a time. A reading made for another question than the tab asks now shows greyed as stale, without steps; a failed one says why and is not retried by itself.
+- **What Haiku reads**: the session's transcript (`~/.claude/projects/<folder>/<session id>.jsonl`, found through the Sessions scan), of which only the session's title, the last ask, the one before it and the agent's words after the last ask are kept: no tool calls, tool output, thinking, reminders, meta lines or subagents, at most about 4500 characters. A tab without a transcript gives the end of its screen instead. The cockpit's key is taken out before and after. The call is one `claude -p` with Haiku, no tools, no settings, no session (`model_route.haiku_argv`). The footer names the source, the cost and the age of the reading.
+
+| Key | Default | What |
+|---|---|---|
+| `session_guide.enabled` | `false` | the guide at all |
+| `session_guide.auto` | `true` | read a tab by itself when it starts waiting with a new question; `false`: only on the button |
+| `session_guide.per_hour` | `30` | the most readings `auto` starts in an hour (1 to 1000) |
+
+The settings page switches `enabled` and `auto` on top of the config, kept in `.bridge/cockpit/guide.json`, with its own "Reset to config".
+
 ### Keyboard
 
 The shortcuts are off until switched on under Settings, Look, Keyboard
@@ -1189,7 +1209,7 @@ nothing a stranger could trigger:
   no scripts from elsewhere and no external addresses at all;
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,
   close, settle (done or not doing), urgency, priority, note, check tasks, keep open, close task, launch, adopt, send, key,
-  close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker profile), every id
+  close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker profile, guide read, guide settings), every id
   checked again before it reaches a script, every argument a separate word,
   texts after `--`;
 - the news ticker reads only the feed addresses you wrote into
@@ -1204,6 +1224,13 @@ nothing a stranger could trigger:
   call with no tools, and what comes back is used only as item numbers and
   short titles. The titles of your open tasks reach Haiku only on the button
   "Written by Haiku", and its answer is shown as text to take or drop;
+- the decision guide sends nothing of its own: its buttons are the guarded
+  replies `tab_send` and `tab_option`, a dialog step only one of the dialog's
+  own numbers, and a step that pushes, merges, deletes, deploys or sends takes
+  a second click. What Haiku reads of a session is its last turns without tool
+  output or thinking, scrubbed of the cockpit's key, in one call without tools;
+  what comes back is shown as text and used only as button labels and the words
+  a button types;
 - a Markdown answer (Chat, Other Bridges) is read into plain objects and drawn
   as elements, never parsed as HTML, so text in an answer cannot become markup
   or script; a link keeps only http, https and mailto and opens with
@@ -1466,6 +1493,7 @@ share or clean up.
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |
 | `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) | no |
 | `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) | no |
+| `guide.json` | the settings page's switches of `cockpit.session_guide` (only those that differ from the config) | no |
 | `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start | no: news items only |
 | `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |

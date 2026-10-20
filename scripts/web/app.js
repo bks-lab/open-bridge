@@ -122,6 +122,7 @@ const store = createStore({
   driver: { caps: null },
   launch: null,        // the model an agent tab starts with (state.launch); null: an older server, the choice stays hidden
   ticker: null,        // the news ticker (state.ticker); null: an older server, the band and its settings stay hidden
+  guide: null,         // the decision guide of waiting tabs (state.guide); null: an older server, the guide stays hidden
   rooms: null,         // the chat as cmux (state.rooms: layout, root, control, Bridges); null: an older server, the classic chat
   launchRoutes: {},    // per row key the recommendation of Auto: { title, status: loading|ok|error, route }   // null: not known yet, every button shows; a list: only what the terminal driver serves
   notes: [], toasts: [], conn: 'connecting', connMs: Date.now(), now: Date.now(), mock: MOCK,
@@ -243,6 +244,7 @@ function applyState(payload) {
     home: payload.home ?? s.home,
     launch: payload.launch ?? s.launch,
     ticker: payload.ticker ?? s.ticker,
+    guide: payload.guide ?? s.guide,
     rooms: payload.rooms ?? s.rooms,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
@@ -343,6 +345,10 @@ const handlers = {
   // the news ticker changed: new items, a refresh or an edit ended, settings saved here or in another browser
   ticker(tk) {
     store.set(s => (newerTicker(s.ticker, tk) ? { ...s, ticker: tk } : s))
+  },
+  // the decision guide changed: a reading started or ended, a tab left, the switches changed here or elsewhere
+  guide(g) {
+    store.set(s => (newerTicker(s.guide, g) ? { ...s, guide: g } : s))
   },
   // the start page's choice of tiles, made in this or another browser
   home(h) {
@@ -543,6 +549,12 @@ function tickerAnswer(r) {
     if (newerTicker(s.ticker, r?.ticker)) return { ...s, ticker: r.ticker }
     return s
   })
+  return r
+}
+
+/** The guide block an answer carries, into the store unless a newer one is already there */
+function guideAnswer(r) {
+  if (r?.guide) store.set(s => (newerTicker(s.guide, r.guide) ? { ...s, guide: r.guide } : s))
   return r
 }
 
@@ -903,6 +915,10 @@ const ctl = {
   // the interest profile: keywords from the open tasks at once, or (llm) Haiku's line, only on its button;
   // a proposal the settings show until the owner saves it into the interests
   tickerProfile: async llm => tickerAnswer(await act('ticker_profile', { llm: !!llm })),
+  // the decision guide: a reading returns at once and ends with a guide event; the switches save at once
+  guideRead: async ref => guideAnswer(await act('guide_read', { tab_ref: ref })),
+  saveGuide: async patch => guideAnswer(await act('guide_settings', patch)),
+  resetGuide: async () => guideAnswer(await act('guide_settings_reset', {})),
   setTickerPaused: on => { save('bridge-cockpit.tickerPaused', on ? '1' : '0'); setUi({ tickerPaused: !!on }) },
   tickerOpened: id => {
     const read = tickerRemember(store.get().ui.tickerRead, id)

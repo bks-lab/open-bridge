@@ -16,6 +16,7 @@ import re
 import yaml
 
 from .. import model_route as mr
+from . import guide as gd
 from . import ticker as tk
 
 DEFAULT_PORT = 8797
@@ -76,6 +77,9 @@ class WebConfig:
     # the news ticker of the start page (cockpit.ticker, ticker.DEFAULTS): off unless switched on;
     # the settings page may change it on top (ticker.py), this is what the config says
     ticker: dict = field(default_factory=tk.defaults)
+    # the decision guide of waiting tabs (cockpit.session_guide, guide.DEFAULTS): off unless switched on;
+    # the settings page may switch it on top (guide.py), this is what the config says
+    session_guide: dict = field(default_factory=lambda: dict(gd.DEFAULTS))
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
     config_warnings: tuple = ()
@@ -138,7 +142,7 @@ def launch_model_of(value: Any, jev_model: str | None = None) -> dict:
 # says when one applied, so a typo shows in `status` and on the settings page instead of nowhere.
 # (kind, detail): bool, text, choice (the allowed values), int and number (the minimum the loader clamps to),
 # block (the keys of a nested mapping); port is checked by the loader itself (a bad one is an error),
-# launch_model and ticker by their own modules' rules, key by key.
+# launch_model, ticker and session_guide by their own modules' rules, key by key.
 BLOCK = {
     "enabled": ("bool", "enabled"), "port": ("port", "port"), "open_in": ("choice", "open_in", OPEN_IN),
     "relay": ("bool", "relay"), "person_name": ("text", "person_name"), "profile": ("text", "profile"),
@@ -148,6 +152,7 @@ BLOCK = {
     "chat_layout": ("choice", "chat_layout", CHAT_LAYOUTS), "chat_keep_hours": ("number", "chat_keep_hours", 0),
     "launch": ("block", {"target": ("choice", "target", TARGETS)}),
     "launch_model": ("launch_model",), "ticker": ("ticker",), "usage": ("usage",),
+    "session_guide": ("session_guide",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -273,6 +278,9 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
         if kind == "usage":
             out += _check_usage(value, at)
             continue
+        if kind == "session_guide":
+            out += gd.check(value, cfg.session_guide, at)
+            continue
         if kind == "block":
             if not isinstance(value, dict):
                 used = ", ".join(f"{name} {_show(getattr(cfg, r[1]))}" for name, r in rule[1].items())
@@ -348,6 +356,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
                     jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
+                    session_guide=gd.guide_of(w.get("session_guide")),
                     snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

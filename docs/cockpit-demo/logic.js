@@ -1759,6 +1759,47 @@ export function replyOptions(tab, s, t = TABLES.en) {
   return { buttons, textBox: true }
 }
 
+// ---------------------------------------------------------------- the decision guide (guide.py)
+
+/** Which question a reading of the guide answers: the hash of the question the tab poll read, else the
+ *  state and since when the tab is in it (guide.py key_of) */
+export function guideKey(tab) {
+  return tab?.ask?.hash ?? `${tab?.state}:${Math.trunc(tab?.since_ms || 0)}`
+}
+
+/** The guide's reading of `tab`: { status, entry }. off: the guide is off or the tab does not wait for
+ *  you; none: not read yet; running; error; stale: read for another question or state than the tab shows
+ *  now; fresh: its options answer what the tab asks now */
+export function guideOf(s, tab) {
+  const g = s?.guide
+  if (!g?.enabled || !tab || tab.is_control || (tab.state !== 'needs-you' && tab.state !== 'waiting')) return { status: 'off', entry: null }
+  const entry = g.entries?.[tab.ref] ?? null
+  if (!entry) return { status: 'none', entry }
+  if (entry.running) return { status: 'running', entry }
+  if (entry.key !== guideKey(tab) || entry.state !== tab.state) return { status: 'stale', entry }
+  if (entry.error) return { status: 'error', entry }
+  return { status: 'fresh', entry }
+}
+
+/** The buttons of a fresh reading, each through a reply verb that guards the tab (actions.py guard_fresh):
+ *  a waiting tab's option types its words (tab_send with the question's hash, the state and the name), a
+ *  dialog's option presses its number (tab_option, only with the hash it was read for). [{ id, verb, args,
+ *  label, why, send, n, risky, picked }]; none without the driver's right */
+export function guideChoices(tab, entry, s) {
+  if (!tab || !entry) return []
+  const options = entry.options ?? []
+  if (tab.state === 'needs-you') {
+    if (!canTab(s, 'key') || !tab.ask?.hash) return []
+    return options.map((o, i) => ({ o, i })).filter(({ o }) => Number.isInteger(o.n)).map(({ o, i }) => ({
+      id: `guide-${o.n}`, verb: 'tab_option', args: { tab_ref: tab.ref, n: o.n, ...replyGuard(tab) },
+      label: o.label, why: o.why ?? '', send: null, n: o.n, risky: !!o.risky, picked: entry.pick === i }))
+  }
+  if (!canTab(s, 'send')) return []
+  return options.map((o, i) => ({ o, i })).filter(({ o }) => typeof o.send === 'string' && o.send).map(({ o, i }) => ({
+    id: `guide-${i}`, ...replySend(tab, o.send), label: o.label, why: o.why ?? '', send: o.send, n: null,
+    risky: !!o.risky, picked: entry.pick === i }))
+}
+
 /** How long the page remembers an answer it sent to a tab (ui.answered), long enough for the tab poll
  *  to show that the tab moved on */
 export const ANSWERED_KEEP_MS = 120000

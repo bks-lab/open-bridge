@@ -1,7 +1,7 @@
 ---
 summary: "Working on the cockpit: which files make up the server, the page and the mod relay, which of them are shared with the rest of the Bridge, the edit and test loop (mock mode, a second instance beside the live one), recipes for a new verb, a new model field and new text, the rules the tests hold, and what has to travel together when it moves to open-bridge."
 type: guide
-last_updated: 2026-10-18
+last_updated: 2026-10-20
 related:
   - bridge-cockpit.md
   - ai-services.md
@@ -67,6 +67,7 @@ layout now").
 | `scripts/lib/bridge_cockpit/sessions.py` | the Sessions page: running Claude sessions, their subagents and tab |
 | `scripts/lib/bridge_cockpit/quick.py` | the chat: one short read-only `claude -p` per chat (Haiku default), streamed (`quick_live`), kept in `quick.json`, resume, cost per turn, handoff |
 | `scripts/lib/bridge_cockpit/ticker.py` | the news ticker: settings (`cockpit.ticker` plus `ticker.json`), feed fetching and parsing (RSS, RDF, Atom), the cache `ticker-cache.json`, the Haiku editor on its own thread, and `state()`, the `ticker` key of the model and the payload of the SSE event `ticker` |
+| `scripts/lib/bridge_cockpit/guide.py` | the decision guide: settings (`cockpit.session_guide` plus `guide.json`), a waiting tab's last turns from its transcript (`turns_of`, the screen as fallback), the Haiku prompt and the parse of its answer (only steps safe to offer, a dialog step only one of the dialog's numbers, `RISKY_RE`), the auto reading after each tab poll (`on_tabs`, `per_hour`), one worker thread, `state()` as the `guide` key and SSE event |
 | `scripts/lib/bridge_cockpit/net.py` | the one outbound fetcher, `fetch`, for feeds (ticker) and agent cards (agents): a scheme allowlist that also holds for redirects, no redirect into a private network unless the configured address is there, a size cap and a wall-clock deadline per caller |
 | `scripts/lib/bridge_cockpit/details.py` | read-only detail endpoints: a task's STATUS.md, an inbox item |
 | `scripts/lib/bridge_cockpit/tabs.py` | tab poller over `workplace.py status --json`, and the questions of the waiting tabs (`_refresh_asks`) |
@@ -85,6 +86,7 @@ layout now").
 | `scripts/web/views/ticker.js` | the news ticker: `TickerBand` on the start page and `TickerSettings`, its group on the Settings page, drawn with the page's own `Card`, `Row` and `Switch` from `views/settings.js` |
 | `scripts/web/markdown.js` | the Markdown reader for answers (Chat, Other Bridges): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
 | `scripts/web/views/organize.js` | `OrganizeView`: the proposal grouped by workspace, nothing ticked, the ticks, Apply, and the applied, skipped and failed items in words |
+| `scripts/web/views/guide.js` | the decision guide: `GuideTree` (the reading as a tree, its steps through `logic.js guideChoices`), `GuideLine`, `GuideBoard` on the Sessions page, `GuideSettings` |
 | `scripts/web/views/reply.js` | `AskLine` and `TabReply`: a waiting tab's question and the answers to it (`logic.js replyOptions`), in the sidebar, the tab pane and the tab window |
 | `scripts/web/views/prose.js` | `Prose`: draws what `markdown.js` read as elements, links in a new tab with `noopener noreferrer` |
 | `scripts/web/logic.js` | pure helpers, tested under node (the ticker's status rules are `tickerStatus` and `tickerItems`) |
@@ -281,7 +283,7 @@ missing in one language, an empty value, an em or en dash, or an emoji.
 
 ```bash
 pytest -q scripts/tests/test_bridge_cockpit*.py scripts/tests/test_task.py scripts/tests/test_task_review.py
-pytest -q scripts/tests/test_bridge_cockpit_ticker.py scripts/tests/test_bridge_cockpit_core.py scripts/tests/test_bridge_cockpit_demo.py
+pytest -q scripts/tests/test_bridge_cockpit_ticker.py scripts/tests/test_bridge_cockpit_guide.py scripts/tests/test_bridge_cockpit_core.py scripts/tests/test_bridge_cockpit_demo.py
 node --test scripts/tests/bridge_cockpit_frontend.test.mjs scripts/tests/bridge_cockpit_jev.test.mjs scripts/tests/bridge_cockpit_markdown.test.mjs scripts/tests/bridge_cockpit_render.test.mjs
 python3 scripts/build-cockpit-demo.py --check
 npx -y -p typescript@5.6.3 -c 'node mods/cockpit-relay/tests/pure.test.mjs'

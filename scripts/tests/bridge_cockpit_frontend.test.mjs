@@ -2207,8 +2207,8 @@ test('settings: a page of its own behind More, always there, with the launch gro
   }
   const page = read('views/settings.js')
   assert.match(page, /export function SettingsPage\(\{ s, c \}\)/)
-  assert.match(page, /const SECTIONS = \['start', 'look', 'launch', 'ticker'\]/)                   // the areas; a later one joins the list
-  assert.match(page, /const AREAS = \{ start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings \}/)
+  assert.match(page, /const SECTIONS = \['start', 'look', 'launch', 'ticker', 'guide'\]/)          // the areas; a later one joins the list
+  assert.match(page, /const AREAS = \{ start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings \}/)
   // the ticker's group draws with the page's own parts, no copies of them
   for (const part of ['Switch', 'Card', 'Row']) assert.match(page, new RegExp(`^export function ${part}\\(`, 'm'), part)
   const tickerView = read('views/ticker.js')
@@ -4343,4 +4343,61 @@ test('keyboard shortcuts are off unless switched on in the settings, this browse
   assert.match(help, /t\.keysOff/)
   assert.match(help, /c\.openSettings\('look'\)/)
   for (const lang of [text.TABLES.en, text.TABLES.de]) assert.ok(lang.keysOff && lang.keysOn && lang.settings.keysTitle && lang.settings.keysIntro, 'labels')
+})
+
+// ---------------------------------------------------------------- the decision guide (guide.py, views/guide.js)
+
+const guideEntry = (over = {}) => ({ ref: 'surface:12', key: ASK_HASH, state: 'waiting', running: false, error: null, auto: true,
+  where: 'Three sources found, nothing written yet.', waits_for: 'Whether to summarise them.', source: 'transcript',
+  at_ms: 1000, cost_usd: 0.002, pick: 1, options: [
+    { label: 'Summarise', send: 'Yes, summarise them in team.md.', n: null, why: 'the sources are read', risky: false },
+    { label: 'List first', send: 'List the three sources first.', n: null, why: 'check them', risky: false },
+    { label: 'Publish', send: 'Summarise and push it.', n: null, why: '', risky: true },
+  ], ...over })
+const guideTab = (over = {}) => askTab({ ref: 'surface:12', name: 'research', state: 'waiting', since_ms: 500,
+  ask: { text: 'Should I summarise them?', hash: ASK_HASH, yes_no: true, draft: false, options: [] }, ...over })
+const guideState = (entries = {}, over = {}) => ({ ...allCaps, guide: { enabled: true, auto: true, per_hour: 30, available: true,
+  overridden: [], rev: 1, entries, ...over } })
+
+test('guideKey names the question a tab asks, else its state and since when', () => {
+  assert.equal(logic.guideKey(guideTab()), ASK_HASH)
+  assert.equal(logic.guideKey(guideTab({ ask: null })), 'waiting:500')
+})
+
+test('guideOf tells off, none, running, error, stale and fresh apart', () => {
+  const tab = guideTab()
+  assert.equal(logic.guideOf({ ...allCaps }, tab).status, 'off')
+  assert.equal(logic.guideOf(guideState({}, { enabled: false }), tab).status, 'off')
+  assert.equal(logic.guideOf(guideState(), { ...tab, is_control: true }).status, 'off')
+  assert.equal(logic.guideOf(guideState(), { ...tab, state: 'working' }).status, 'off')
+  assert.equal(logic.guideOf(guideState(), tab).status, 'none')
+  assert.equal(logic.guideOf(guideState({ 'surface:12': guideEntry({ running: true }) }), tab).status, 'running')
+  assert.equal(logic.guideOf(guideState({ 'surface:12': guideEntry({ error: 'rate limited' }) }), tab).status, 'error')
+  assert.equal(logic.guideOf(guideState({ 'surface:12': guideEntry({ key: 'ffffffffffffffff' }) }), tab).status, 'stale')
+  assert.equal(logic.guideOf(guideState({ 'surface:12': guideEntry({ state: 'needs-you' }) }), tab).status, 'stale')
+  const fresh = logic.guideOf(guideState({ 'surface:12': guideEntry() }), tab)
+  assert.equal(fresh.status, 'fresh')
+  assert.equal(fresh.entry.where, 'Three sources found, nothing written yet.')
+})
+
+test('guideChoices sends a waiting tab its words through the guarded tab_send', () => {
+  const tab = guideTab()
+  const choices = logic.guideChoices(tab, guideEntry(), guideState())
+  assert.deepEqual(choices.map(c => c.verb), ['tab_send', 'tab_send', 'tab_send'])
+  assert.deepEqual(choices[0].args, { tab_ref: 'surface:12', text: 'Yes, summarise them in team.md.', expect: 'waiting', seen: ASK_HASH, name: 'research' })
+  assert.deepEqual(choices.map(c => c.picked), [false, true, false])
+  assert.deepEqual(choices.map(c => c.risky), [false, false, true])
+  assert.equal(new Set(choices.map(c => c.id)).size, 3)
+  // without the driver's send there is nothing to press
+  assert.deepEqual(logic.guideChoices(tab, guideEntry(), { ...guideState(), driver: { caps: ['tabs', 'key'] } }), [])
+})
+
+test('guideChoices presses a dialog option by its number, only with the question it was read for', () => {
+  const tab = askTab()
+  const entry = guideEntry({ ref: 'surface:7', state: 'needs-you', pick: 0, options: [
+    { label: 'Yes', send: null, n: 1, why: 'a plain edit', risky: false }, { label: 'No, tell Claude what to do', send: null, n: 3, why: '', risky: false }] })
+  const choices = logic.guideChoices(tab, entry, guideState())
+  assert.deepEqual(choices.map(c => [c.verb, c.args.n, c.args.seen]), [['tab_option', 1, ASK_HASH], ['tab_option', 3, ASK_HASH]])
+  assert.deepEqual(logic.guideChoices({ ...tab, ask: { ...tab.ask, hash: undefined } }, entry, guideState()), [])
+  assert.deepEqual(logic.guideChoices(tab, entry, { ...guideState(), driver: { caps: ['tabs', 'send'] } }), [])
 })

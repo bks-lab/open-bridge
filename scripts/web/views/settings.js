@@ -13,9 +13,10 @@ import { Segmented } from './detail.js'
 import { catalogLabel } from './home.js'
 import { Drawer } from './overlays.js'
 import { Btn, Chip, Empty, Icon, StateLine, useRoving } from './parts.js'
+import { GuideSettings } from './guide.js'
 import { TickerSettings } from './ticker.js'
 
-const SECTIONS = ['start', 'look', 'launch', 'ticker']
+const SECTIONS = ['start', 'look', 'launch', 'ticker', 'guide']
 const STATION_KINDS = ['quota', 'count', 'page']
 
 // ---------------------------------------------------------------- the parts every area uses
@@ -392,8 +393,8 @@ export function ConfigWarnings({ s }) {
 }
 
 // the news ticker on the start page: its own group from views/ticker.js
-const AREAS = { start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings }
-const AREA_ICONS = { start: 'home', look: 'sun', launch: 'spark', ticker: 'bell' }
+const AREAS = { start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings }
+const AREA_ICONS = { start: 'home', look: 'sun', launch: 'spark', ticker: 'bell', guide: 'chat' }
 
 /** The page: the areas as a list on the left (a row of buttons on a narrow screen), the one chosen beside it */
 export function SettingsPage({ s, c }) {

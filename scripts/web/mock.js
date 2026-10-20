@@ -105,6 +105,22 @@ const WORDS = {
     '2026-10-08: outline written, examples collected\n2026-10-03: task opened': '2026-10-08: Gliederung geschrieben, Beispiele gesammelt\n2026-10-03: Aufgabe angelegt',
     'Task opened after the team call': 'Aufgabe nach dem Team-Call angelegt',
     'Mock: 3 snapshots, latest 09:00': 'Demo: 3 Abzüge, der neueste von 09:00',
+    // the decision guide: invented readings of the waiting tabs
+    'The release notes edit is ready; it waits for your permission to write RELEASE_NOTES.md.':
+      'Die Änderung der Release Notes steht; sie wartet auf deine Erlaubnis, RELEASE_NOTES.md zu schreiben.',
+    'Permission to edit one file.': 'Die Erlaubnis, eine Datei zu ändern.',
+    'a single file, easy to review': 'eine einzige Datei, leicht zu prüfen', 'let it plan once more': 'noch einmal planen lassen',
+    'Three sources found and read; nothing is written to team.md yet.': 'Drei Quellen gefunden und gelesen; in team.md steht noch nichts.',
+    'Whether to summarise the sources in team.md.': 'Ob es die Quellen in team.md zusammenfassen soll.',
+    'Summarise': 'Zusammenfassen', 'Yes, summarise them in team.md.': 'Ja, fass sie in team.md zusammen.', 'the sources are read': 'die Quellen sind gelesen',
+    'List them first': 'Erst auflisten', 'List the three sources with one line each first.': 'Liste zuerst die drei Quellen mit je einer Zeile auf.',
+    'check before writing': 'vor dem Schreiben prüfen',
+    'Summarise and push': 'Zusammenfassen und pushen', 'Summarise them in team.md, commit and push.': 'Fass sie in team.md zusammen, committe und pushe.',
+    'saves a round trip': 'spart eine Runde',
+    'The changelog entry is written; the release itself has not started.': 'Der Changelog-Eintrag ist geschrieben; das Release selbst hat nicht begonnen.',
+    'What comes after the changelog.': 'Was nach dem Changelog kommt.',
+    'Show the entry': 'Eintrag zeigen', 'Show me the changelog entry.': 'Zeig mir den Changelog-Eintrag.', 'read it before it ships': 'vor dem Ausliefern lesen',
+    'Tag the release': 'Release taggen', 'Tag the release and push the tag.': 'Tagge das Release und pushe den Tag.', 'the entry is done': 'der Eintrag ist fertig',
     // the news ticker: invented feeds and items, the editor's invented short titles
     'Demo AI News': 'Demo-KI-Nachrichten', 'Demo Research Blog': 'Demo-Forschungsblog', 'Demo Tools Weekly': 'Demo-Werkzeuge der Woche',
     'A new example model reads long documents twice as fast': 'Ein neues Beispielmodell liest lange Dokumente doppelt so schnell',
@@ -116,6 +132,7 @@ const WORDS = {
     'Example model reads long texts twice as fast': 'Beispielmodell liest lange Texte doppelt so schnell',
     'Test time cut in half': 'Testzeit halbiert',
     'Mock: ticker setting saved': 'Demo: Einstellung des Bands gespeichert',
+    'Mock: Haiku reads the session, nothing is asked for real': 'Demo: Haiku liest die Sitzung, nichts wird wirklich gefragt',
     'Mock: ticker settings from the config again': 'Demo: Band wieder nach Config',
     'Mock: reading the feeds': 'Demo: Feeds werden gelesen',
     'Mock: the editor is at work, nothing is asked for real': 'Demo: die Redaktion arbeitet, nichts wird wirklich gefragt',
@@ -203,6 +220,39 @@ function tickerItemsOf(now) {
     it('a2', 'demo-ai', 'Demo AI News', 'Release notes of the example toolkit 3.0', 300),
     it('t2', 'demo-tools', 'Demo Tools Weekly', 'Five patterns for small, safe automation', 600),
   ]
+}
+
+// the decision guide (guide.py): a dialog read with its numbered options, a question read with three steps;
+// the changelog tab is not read yet, so it shows the button
+let guideRev = 0
+const GUIDE_READS = {
+  'surface:7': { state: 'needs-you', where: 'The release notes edit is ready; it waits for your permission to write RELEASE_NOTES.md.',
+    waits_for: 'Permission to edit one file.', pick: 0, options: [
+      { label: 'Yes', send: null, n: 1, why: 'a single file, easy to review', risky: false },
+      { label: 'No, and tell Claude what to do differently', send: null, n: 3, why: 'let it plan once more', risky: false }] },
+  'surface:12': { state: 'waiting', where: 'Three sources found and read; nothing is written to team.md yet.',
+    waits_for: 'Whether to summarise the sources in team.md.', pick: 0, options: [
+      { label: 'Summarise', send: 'Yes, summarise them in team.md.', n: null, why: 'the sources are read', risky: false },
+      { label: 'List them first', send: 'List the three sources with one line each first.', n: null, why: 'check before writing', risky: false },
+      { label: 'Summarise and push', send: 'Summarise them in team.md, commit and push.', n: null, why: 'saves a round trip', risky: true }] },
+  'surface:13': { state: 'waiting', where: 'The changelog entry is written; the release itself has not started.',
+    waits_for: 'What comes after the changelog.', pick: 0, options: [
+      { label: 'Show the entry', send: 'Show me the changelog entry.', n: null, why: 'read it before it ships', risky: false },
+      { label: 'Tag the release', send: 'Tag the release and push the tag.', n: null, why: 'the entry is done', risky: true }] },
+}
+
+/** A reading of a mock tab as the server keeps it: keyed by the question the tab asks */
+function guideEntry(ref, tab, now) {
+  const read = GUIDE_READS[ref]
+  return { ref, key: tab?.ask?.hash ?? `${read.state}:${tab?.since_ms ?? 0}`, auto: true, running: false, started_ms: now - 2 * MIN,
+    at_ms: now - 2 * MIN, error: null, cost_usd: 0.0021, source: 'transcript', ...read }
+}
+
+/** The guide block of the state: on, reading by itself, the first two waiting tabs read */
+function guideState(tabs, now, extra = {}) {
+  const byRef = Object.fromEntries(tabs.map(t => [t.ref, t]))
+  const entries = Object.fromEntries(['surface:7', 'surface:12'].filter(r => byRef[r]).map(r => [r, guideEntry(r, byRef[r], now)]))
+  return { enabled: true, auto: true, per_hour: 30, available: true, overridden: [], rev: ++guideRev, entries, ...extra }
 }
 
 /** Raised on every change of the ticker block, like the server's Ticker.rev: the page keeps the newer state */
@@ -593,6 +643,7 @@ export function buildState(now = Date.now(), opts = {}) {
     triage: empty ? { running: null, error: null, last: null, items: {} } : triageState(now),
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     ticker: tickerState(TICKER_CONFIG, now),
+    guide: guideState(tabs, now),
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
       { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
@@ -1332,6 +1383,30 @@ export function createMockTransport(opts = {}) {
           emit('ticker', state.ticker)
         }
         if (verb.startsWith('ticker_')) result.ticker = state.ticker
+        if (verb === 'guide_read') {
+          // an invented reading after a moment; nothing is asked for real
+          const ref = args.tab_ref
+          const tab = state.tabs.tabs.find(x => x.ref === ref)
+          if (GUIDE_READS[ref]) {
+            const started = now()
+            state.guide = { ...state.guide, rev: ++guideRev, entries: { ...state.guide.entries,
+              [ref]: { ...guideEntry(ref, tab, started), running: true, started_ms: started, at_ms: null, options: [], where: '' } } }
+            emit('guide', state.guide)
+            result.note = 'Mock: Haiku reads the session, nothing is asked for real'
+            setTimeout(() => {
+              state.guide = { ...state.guide, rev: ++guideRev, entries: { ...state.guide.entries, [ref]: { ...guideEntry(ref, tab, now()), at_ms: now() } } }
+              emit('guide', state.guide)
+            }, 1800)
+          }
+        }
+        if (verb === 'guide_settings' || verb === 'guide_settings_reset') {
+          const patch = verb === 'guide_settings' ? Object.fromEntries(['enabled', 'auto'].filter(k => typeof args[k] === 'boolean').map(k => [k, args[k]])) : {}
+          const settings = verb === 'guide_settings' ? { enabled: state.guide.enabled, auto: state.guide.auto, ...patch } : { enabled: true, auto: true }
+          state.guide = guideState(state.tabs.tabs, now(), { ...settings, overridden: Object.keys(settings).filter(k => settings[k] !== true),
+            entries: settings.enabled ? state.guide.entries : {} })
+          result.note = verb === 'guide_settings' ? 'Mock: setting saved' : 'Mock: settings from the config again'
+        }
+        if (verb.startsWith('guide_')) result.guide = state.guide
         if (verb === 'task_review') {
           // a check that runs for six seconds, then the same result again with a new time
           const publish = review => { seq += 1; state.model = { ...state.model, seq, review }; emit('view', state.model) }

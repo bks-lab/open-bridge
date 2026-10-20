@@ -230,6 +230,11 @@ work:
 #       max_picks: 12        # 1 to 40
 #       shorten: true        # one-line titles
 #   # The settings page changes these on top, kept in .bridge/cockpit/ticker.json.
+#   session_guide:           # Claude Haiku reads a waiting tab's session and offers next steps as buttons; off by default
+#     enabled: false
+#     auto: true             # read a tab by itself when it starts waiting with a new question; false = only on the button
+#     per_hour: 30           # the most readings auto starts in an hour (1 to 1000); the button is not counted
+#   # The settings page switches enabled and auto on top, kept in .bridge/cockpit/guide.json.
 #   usage:                   # the token card on the Betrieb page (docs/bridge-cockpit.md)
 #     remotes: []            # infra/remotes names to read token use from; leave out: the machines of infra/instances
 #     remote_file: ~/.bridge/resources/usage.json   # what scripts/usage-export.py writes there

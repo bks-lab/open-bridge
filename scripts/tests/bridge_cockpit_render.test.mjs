@@ -1151,3 +1151,110 @@ test('the route chip keeps the route picked by hand while the guess changes unde
   assert.equal(sent.length, 1)
   assert.equal(picked === en.route.toQuick ? sent[0][0] : sent[0][1], picked === en.route.toQuick ? 'ask' : 'chat_tab')
 })
+
+// ---------------------------------------------------------------- the decision guide (views/guide.js)
+
+const { GuideTree, GuideBoard, GuideLine, GuideSettings } = views.guide
+/** A controller whose reply answers ok and records what it sent; every other call is recorded too */
+function guideCtl() {
+  const calls = []
+  const c = new Proxy({}, { get: (_, p) => p === 'calls' ? calls : p === 'then' ? undefined
+    : (...a) => { calls.push([p, ...a]); return p === 'reply' ? Promise.resolve({ ok: true }) : undefined } })
+  return c
+}
+const optLabels = el => el.$$('.guide-opt-label').map(x => x.text())
+
+test('guide: a waiting tab shows where it stands and one branch per step, the recommended one marked', async () => {
+  const s = cockpitState(NOW)
+  const tab = tabOf(s, 'surface:12')
+  const c = guideCtl()
+  const el = mount(html`<${GuideTree} tab=${tab} s=${s} c=${c} />`)
+  assert.equal(el.$('.guide-where').text(), 'Three sources found and read; nothing is written to team.md yet.')
+  assert.match(el.$('.guide-waits').text(), /Whether to summarise the sources in team\.md\./)
+  assert.deepEqual(optLabels(el), ['Summarise', 'List them first', 'Summarise and push', en.guide.own])
+  assert.ok(el.$('.guide-branch.is-picked'), 'the recommended step is marked')
+  assert.match(el.$('.guide-branch.is-picked').text(), new RegExp(en.guide.picked))
+  assert.match(el.$$('.guide-branch')[2].text(), new RegExp(en.guide.risky))
+  el.$$('.guide-opt')[0].click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'reply').slice(1), ['tab_send', { tab_ref: 'surface:12', text: 'Yes, summarise them in team.md.',
+    expect: 'waiting', seen: tab.ask.hash, name: 'demo-task research' }])
+  assert.ok(c.calls.some(x => x[0] === 'markAnswered' && x[1] === 'surface:12'))
+})
+
+test('guide: a step that reaches beyond the session sends only on the second click', async () => {
+  const s = cockpitState(NOW)
+  const c = guideCtl()
+  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${c} />`)
+  el.$$('.guide-opt')[2].click()
+  await tick()
+  assert.equal(c.calls.filter(x => x[0] === 'reply').length, 0)
+  assert.equal(optLabels(el)[2], en.guide.confirm('Summarise and push'))
+  el.$$('.guide-opt')[2].click()
+  await tick()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'reply').map(x => x[2].text), ['Summarise them in team.md, commit and push.'])
+})
+
+test('guide: a dialog step presses its own number with the question it was read for', async () => {
+  const s = cockpitState(NOW)
+  const tab = tabOf(s, 'surface:7')
+  const c = guideCtl()
+  const el = mount(html`<${GuideTree} tab=${tab} s=${s} c=${c} />`)
+  assert.deepEqual(optLabels(el), ['Yes', 'No, and tell Claude what to do differently', en.guide.own])
+  el.$$('.guide-opt')[1].click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'reply').slice(1), ['tab_option', { tab_ref: 'surface:7', n: 3, seen: tab.ask.hash, name: 'alpha-release' }])
+})
+
+test('guide: a tab not read yet offers the reading, and answering yourself opens the tab', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:13')} s=${s} c=${c} />`)
+  assert.match(el.text(), new RegExp(en.guide.noneYet.slice(0, 20)))
+  el.button(en.guide.read).click()
+  assert.deepEqual(c.calls.at(-1), ['guideRead', 'surface:13'])
+  const read = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${c} />`)
+  read.$$('.guide-opt').at(-1).click()
+  assert.deepEqual(c.calls.at(-1), ['openTabView', 'surface:12'])
+})
+
+test('guide: a reading made for another question shows as stale without steps', () => {
+  const s = cockpitState(NOW)
+  const tab = { ...tabOf(s, 'surface:12'), ask: { ...tabOf(s, 'surface:12').ask, hash: 'ffffffffffffffff' } }
+  const el = mount(html`<${GuideTree} tab=${tab} s=${s} c=${recorder()} />`)
+  assert.ok(el.$('.guide.is-stale'))
+  assert.match(el.text(), new RegExp(en.guide.stale))
+  assert.deepEqual(optLabels(el), [en.guide.own])
+})
+
+test('guide: off, the tree, the line and the board draw nothing', () => {
+  const s = cockpitState(NOW, { guide: { enabled: false, auto: true, per_hour: 30, entries: {}, rev: 1, overridden: [] } })
+  const tab = tabOf(s, 'surface:12')
+  assert.equal(mount(html`<${GuideTree} tab=${tab} s=${s} c=${recorder()} />`).text(), '')
+  assert.equal(mount(html`<${GuideLine} tab=${tab} s=${s} />`).text(), '')
+  assert.equal(mount(html`<${GuideBoard} s=${s} c=${recorder()} />`).text(), '')
+  // the control tab and a working tab never get a reading
+  const on = cockpitState(NOW)
+  assert.equal(mount(html`<${GuideTree} tab=${tabOf(on, 'surface:3')} s=${on} c=${recorder()} />`).text(), '')
+  assert.equal(mount(html`<${GuideTree} tab=${tabOf(on, 'surface:8')} s=${on} c=${recorder()} />`).text(), '')
+})
+
+test('guide: the board lists every waiting tab, the one that needs you first, each with its tree', () => {
+  const s = cockpitState(NOW)
+  const el = mount(html`<${GuideBoard} s=${s} c=${recorder()} />`)
+  assert.match(el.$('.sec-title').text(), new RegExp(en.guide.boardTitle))
+  assert.deepEqual(el.$$('.guide-card-name').map(x => x.text()), ['alpha-release', 'demo-task research', 'changelog'])
+  assert.equal(el.$$('.guide').length, 3)
+})
+
+test('guide: the settings switch the guide and reading by itself, beside the config', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const el = mount(html`<${GuideSettings} s=${s} c=${c} />`)
+  const switches = el.$$('[role="switch"]')
+  assert.deepEqual(switches.map(x => x.getAttribute('aria-label')), [en.settings.guideLabel.enabled, en.settings.guideLabel.auto])
+  switches[0].click()
+  assert.deepEqual(c.calls.at(-1), ['saveGuide', { enabled: false }])
+  switches[1].click()
+  assert.deepEqual(c.calls.at(-1), ['saveGuide', { auto: false }])
+})

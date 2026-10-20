@@ -12,6 +12,7 @@ import { Skeleton } from './day.js'
 import { TabControls } from './detail.js'
 import { ReturnCard } from './home.js'
 import { TabCard } from './tabs.js'
+import { GuideBoard, GuideLine } from './guide.js'
 import { StartControl, canStartControl } from './header.js'
 import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
 
@@ -85,6 +86,7 @@ export function SessionCard({ x, i = 0, s, c }) {
       </li>`)}${agents.running_count > agents.running.length ? html`<li class="muted small">${t.moreAgents(agents.running_count - agents.running.length)}</li>` : null}</ul>` : null}
     ${(x.workflows ?? []).map((w, i) => html`<div class="small" key=${i}><${StateLine} token="info" word=${t.workflowLine(w.name, w.agents)} /></div>`)}
     ${tab && previewText(tab.last) ? html`<p class="tab-last clamp2" title=${tab.last}>${previewText(tab.last)}</p>` : null}
+    ${tab ? html`<${GuideLine} tab=${tab} s=${s} />` : null}
     ${tab?.settled ? html`<p class="small"><${StateLine} token="success" word=${t.tabSettled[tab.settled] ?? tab.settled} /></p>` : null}
     <div class="btn-row sess-foot">
       ${tab ? html`<${TabControls} tab=${tab} s=${s} c=${c} slim />`
@@ -188,6 +190,7 @@ export function SessionsPage({ s, c }) {
     </dl>` : null}
     ${canStartControl(s) ? html`<p class="sess-intro"><${StateLine} token="warning" word=${t.relayReason[s.relay.reason]} /></p>` : null}
     <p class="muted small sess-intro">${t.sessionsIntro}</p>
+    <${GuideBoard} s=${s} c=${c} />
     <${AiReturns} s=${s} c=${c} />
     ${!list.length ? html`<div class="panel panel-pad"><${Empty}>${t.sessionsEmpty}<//></div>` : html`<div class="sess-groups">${groups.map(g => html`<section class="panel panel-pad psec" key=${`${g.here}/${g.project}`}
       style=${{ flex: `${g.items.length} 1 ${Math.min(g.items.length, 3) * 330}px` }}>

@@ -52,6 +52,7 @@ from .history import History
 from .quick import Quick
 from .review import Review
 from .sessions import Sessions
+from .guide import Guide
 from .usage import Usage
 from .runner import Runner, RunnerRefused
 from .design import stylesheet
@@ -201,6 +202,7 @@ class App:
         self.actions = Actions(self)
         self.launch_model = LaunchModel(self)         # the model an agent starts with (launch.py)
         self.ticker = Ticker(self)                     # the news ticker of the start page (ticker.py)
+        self.guide = Guide(self)                       # the decision guide of waiting tabs (guide.py)
         self.watcher = Watcher(self)
         self.last_tabs_json: str | None = None
         self.last_model_tabs_json: str | None = None   # the tabs without their last line: what the model reads
@@ -352,7 +354,7 @@ class App:
                 "notes": list(self.notes), "relay": self.relay_state(), "cmux": self.cmux_state(),
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "quick_live": self.quick.live_state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
-                "launch": self.launch_model.state(), "ticker": self.ticker.state(),
+                "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
                 "rooms": {"layout": self.cfg.chat_layout, "root": str(self.root), "control": self.cfg.control,
                           "bridges": self.bridges.state()}}
 
@@ -404,6 +406,11 @@ class App:
                 self.broadcast("sessions", self.sessions_state())
         except Exception as exc:  # noqa: BLE001 - the sessions page is an extra, never a reason for the tabs to stop
             self.log_error(f"sessions: {exc!r}")
+        try:
+            # after the sessions scan: a reading finds a tab's session there (guide.py)
+            self.guide.on_tabs(state)
+        except Exception as exc:  # noqa: BLE001 - the decision guide is an extra, never a reason for the tabs to stop
+            self.log_error(f"guide: {exc!r}")
         try:
             # a chat about an item that has ended leaves (quick.py sweep_settled): on this poll, no thread of its own
             if self.quick.sweep_settled(self.clock()):

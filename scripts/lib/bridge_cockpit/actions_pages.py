@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: MIT
-"""Verbs of the start page and the settings page (tiles, pins, launch and ticker settings, the return
-channel) and of a briefing page's own rows (an account's status, a board's mode, a command row's steps).
+"""Verbs of the start page and the settings page (tiles, pins, launch and ticker settings, the decision
+guide, the return channel) and of a briefing page's own rows (an account's status, a board's mode, a command row's steps).
 """
 from __future__ import annotations
 
 import json
 
 from . import model as m
+from .guide import GuideError
 from .launch import LaunchError
 from .ticker import TickerError
 from .actions_base import CONTROL_RE, SHORT_TIMEOUT, UNDO_TOKEN_RE, ActionError, Ctx
@@ -80,6 +81,38 @@ class PageVerbs:
         if not started:
             raise ActionError(409, "not_applicable", "a proposal is already being written")
         self.ticker_changed(ctx)
+
+    # the decision guide (guide.py): a reading runs on the guide's own thread and ends with a `guide` event
+
+    def v_guide_read(self, ctx: Ctx, tab_ref: str) -> None:
+        """Let Claude Haiku read where this waiting tab stands and what it could be told next"""
+        try:
+            started = self.app.guide.start(tab_ref)
+        except GuideError as error:
+            raise ActionError(error.status, error.code, error.message, error.field) from None
+        if not started:
+            raise ActionError(409, "not_applicable", "a reading of this tab is already under way")
+        self.guide_changed(ctx)
+
+    def v_guide_settings(self, ctx: Ctx, enabled: bool | None = None, auto: bool | None = None) -> None:
+        """The settings page's switches of the guide; kept beside the config, never in it"""
+        change = {k: v for k, v in (("enabled", enabled), ("auto", auto)) if v is not None}
+        try:
+            self.app.guide.save(change)
+        except GuideError as error:
+            raise ActionError(error.status, error.code, error.message, error.field) from None
+        self.guide_changed(ctx)
+        self.app.tabs.schedule(0)          # switched on: the waiting tabs are read at the next poll
+
+    def v_guide_settings_reset(self, ctx: Ctx) -> None:
+        """Back to what bridge-config.yaml says"""
+        self.app.guide.reset()
+        self.guide_changed(ctx)
+
+    def guide_changed(self, ctx: Ctx) -> None:
+        state = self.app.guide.state()
+        ctx.extra["guide"] = state
+        self.app.broadcast("guide", state)
 
     def ticker_changed(self, ctx: Ctx) -> None:
         state = self.app.ticker.state()

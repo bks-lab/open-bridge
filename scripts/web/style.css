@@ -2720,3 +2720,51 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .help-list { display: grid; gap: 2px; margin: 0; }
 /* the board section by repo (views/day.js Section) */
 .row-group-head { margin: 10px 0 2px; font-size: var(--text-label); font-weight: 600; color: var(--on-surface-muted); }
+
+/* the decision guide (views/guide.js): the reading of a waiting tab as a small tree, the root on the left,
+   one branch per next step on the right, joined by a spine; stacked in a narrow column */
+.guide { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 0 22px; align-items: center; min-width: 0;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); }
+.guide.is-empty, .guide.is-running, .guide.is-error { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.guide.is-stale { opacity: 0.7; }
+.guide-empty { margin: 0; flex: 1 1 220px; }
+.guide-root { position: relative; display: grid; gap: 4px; min-width: 0; padding: 8px 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); background: var(--surface); }
+.guide-root::after { content: ''; position: absolute; top: 50%; right: -23px; width: 22px; border-top: 1px solid var(--border-strong); }
+.guide-cap { display: inline-flex; align-items: center; gap: 4px; color: var(--on-surface-muted); }
+.guide-where { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.guide-waits { margin: 0; overflow-wrap: anywhere; }
+.guide-branches { position: relative; display: grid; gap: 6px; margin: 0; padding: 0 0 0 14px; list-style: none; min-width: 0; }
+.guide-branches::before { content: ''; position: absolute; left: 0; top: 18px; bottom: 18px; border-left: 1px solid var(--border-strong); }
+.guide-branch { position: relative; min-width: 0; }
+.guide-branch::before { content: ''; position: absolute; left: -14px; top: 18px; width: 14px; border-top: 1px solid var(--border-strong); }
+.guide-branch.is-none { padding: 6px 0 6px 10px; }
+.guide-opt { display: grid; gap: 2px; width: 100%; min-width: 0; padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--surface); color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; }
+.guide-opt:hover:not(:disabled), .guide-opt:focus-visible { border-color: var(--accent); }
+.guide-opt:disabled { cursor: default; opacity: 0.6; }
+.guide-branch.is-picked .guide-opt { border-color: var(--accent-line); background: var(--accent-subtle); }
+.guide-branch.is-risky .guide-opt { border-style: dashed; }
+.guide-opt.is-armed { border-color: var(--warning); border-style: solid; }
+.guide-opt.is-own { color: var(--on-surface-muted); background: none; border-style: dashed; }
+.guide-opt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.guide-opt-label { font-weight: 600; overflow-wrap: anywhere; }
+.guide-chip { font-size: var(--text-label); }
+.guide-why, .guide-send { overflow-wrap: anywhere; }
+.guide-send { color: var(--on-surface-muted); }
+.guide-foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px;
+  margin-top: 8px; }
+.guide-line { display: flex; gap: 4px; align-items: baseline; margin: 0; overflow-wrap: anywhere; }
+.guide-line .icon { flex: none; align-self: flex-start; margin-top: 3px; }
+.guide.is-compact { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.guide.is-compact .guide-root::after { display: none; }
+.guide-board { margin-bottom: 12px; }
+.guide-board-intro { margin: 0 0 10px; }
+.guide-board-list { display: grid; gap: 12px; }
+.guide-card { display: grid; gap: 6px; min-width: 0; }
+.guide-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.guide-card-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+@media (max-width: 760px) {
+  .guide { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .guide-root::after { display: none; }
+}

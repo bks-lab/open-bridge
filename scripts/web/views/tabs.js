@@ -11,6 +11,7 @@ import { StartControl } from './header.js'
 import { ASK_MAX, TAB_MSG_MAX } from './nav.js'
 import { useFocusOnOpen } from './overlays.js'
 import { Btn, Chip, Empty, StateLine } from './parts.js'
+import { GuideLine, GuideTree } from './guide.js'
 import { TabReply } from './reply.js'
 
 // ---------------------------------------------------------------- agent tabs
@@ -141,6 +142,7 @@ export function TabCard({ tab, s, c, byKey, slim = false }) {
       ? html`<button type="button" class="btn-link" title=${t.showTab(tab.name)} onClick=${() => c.select(rowKey)}>${tab.name}</button>`
       : html`<button type="button" class="btn-link" title=${t.btnTabView} onClick=${() => c.openTabView(tab.ref)}>${tab.name}</button>`}</h3>
     ${full && previewText(tab.last) ? html`<p class="tab-last clamp2" title=${tab.last}>${previewText(tab.last)}</p>` : null}
+    ${full ? html`<${GuideTree} tab=${tab} s=${s} c=${c} compact />` : html`<${GuideLine} tab=${tab} s=${s} />`}
     ${tab.settled ? html`<p class="small"><${StateLine} token="success" word=${t.tabSettled[tab.settled] ?? tab.settled} /></p>` : null}
     ${full && (tab.slug || tab.team || tab.role || tab.filed_by) ? html`<div class="chips">
       ${tab.slug ? html`<span class="chip"><span class="muted">${t.tabChips.task}</span> ${tab.slug}</span>` : null}

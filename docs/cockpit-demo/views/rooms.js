@@ -13,6 +13,7 @@ import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Btn, Dot, Empty, Icon, StateLine } from './parts.js'
+import { GuideLine, GuideTree } from './guide.js'
 import { AskLine, TabReply } from './reply.js'
 import { useTabScreen } from './tabs.js'
 
@@ -171,6 +172,7 @@ function AskRow({ tab, left, s, c }) {
       <span class="room-meta muted small">${tab.workspace}</span>
     </button>
     <${AskLine} tab=${tab} />
+    ${done ? null : html`<${GuideLine} tab=${tab} s=${s} />`}
     ${done ? html`<p class="reply-done muted small">${answered ? t.reply.answered(answered.q) : t.reply.movedOn}</p>`
       : html`<${TabReply} tab=${tab} s=${s} c=${c} compact />`}
   </div>`
@@ -270,6 +272,7 @@ function TabPane({ s, c, tab }) {
     </header>
     ${(tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control ? html`<div class="reply-pane">
       <${AskLine} tab=${tab} />
+      <${GuideTree} tab=${tab} s=${s} c=${c} />
       <${TabReply} tab=${tab} s=${s} c=${c} />
     </div>` : null}
     <div class="tabview-body" ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
