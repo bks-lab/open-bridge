@@ -1532,7 +1532,6 @@ kbd {
 .row-in:has(.settle-menu), .rtile:has(.settle-menu), .rgroup-head:has(.settle-menu) { position: relative; z-index: 30; }
 /* the row panel stands fixed in the window; a transform on an ancestor would pin it to that ancestor instead,
    so a card does not lift while its panel is open */
-.hcard:has(.row-panel) { transform: none; }
 
 /* the chat window: head, the strip of chats, the thread that grows, the send box; the grid of
    .tabview has three rows and would hand the growing one to the strip */
@@ -1748,6 +1747,8 @@ kbd {
   transition: transform var(--motion), border-color var(--motion);
 }
 .hcard:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow-hover); }
+/* after the hover: an open panel keeps its card still, a lifted card would carry the fixed panel along */
+.hcard:has(.row-panel) { transform: none; }
 
 .hcard-thumb {
   position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
@@ -2692,6 +2693,8 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
   padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-md);
   background: var(--surface); color: var(--on-surface); }
 /* the row panel: one sentence field, then the four groups (views/day.js RowPanel) */
+/* the panel's origin: fixed at 0,0 in the same containing block, without the panel's own entrance animation */
+.fixed-origin { position: fixed; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
 .row-panel { position: fixed; right: auto; z-index: 80; overflow-y: auto; width: min(400px, calc(100vw - 16px)); gap: 6px; }
 .panel-group { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
 .panel-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 0 4px; }

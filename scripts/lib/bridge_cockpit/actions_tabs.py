@@ -108,13 +108,14 @@ class TabVerbs:
         if self.jump_to(ctx, tab):
             ctx.note(self.tx["jumped"].format(label=m.short(tab.get("label") or tab["ref"], 40)))
 
-    def send_to(self, ctx: Ctx, tab: dict, text: str) -> None:
+    def send_to(self, ctx: Ctx, tab: dict, text: str) -> bool:
         run = ctx.call("workplace.send", tab["ref"], self.app.workplace("send", tab["ref"], "--", text), SHORT_TIMEOUT)
         if run.ok:
             ctx.note(self.tx["sent_to"].format(name=m.short(tab["name"], 30), text=m.short(text, 60)))
         else:
             ctx.note(self.tx["send_failed"].format(err=m.short(run.err, 100)), bad=True)
         ctx.tabs_after(3)
+        return run.ok
 
     def v_tab_send(self, ctx: Ctx, tab_ref: str, text: str, seen: str | None = None, expect: str | None = None,
                    name: str | None = None) -> None:

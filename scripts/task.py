@@ -9,6 +9,7 @@
     python3 scripts/task.py review [slug ...] [--all] [--fresh] [--keep SLUG ...] [--json]
     python3 scripts/task.py wait <slug> --until YYYY-MM-DD [--on TEXT] | --clear [--json]
     python3 scripts/task.py new [slug] --headline TEXT | --from-inbox ID [--status backlog|doing] [--json]
+    python3 scripts/task.py log [--] <context> <text>
 
 Rewrites only the ``priority:`` line inside the YAML frontmatter of
 work/tasks/<slug>/STATUS.md or work/streams/<slug>/STATUS.md (the key is added
@@ -29,6 +30,9 @@ gets ``status: done``, ``closed:``, ``outcome: declined`` with ``--declined``, l
 directory moves to work/done/YYYY-MM/<slug>/ (a plain move, no git), the board is
 regenerated and one row goes into today's block of work/log.md. A stream, an
 unknown slug or a task already under work/done/ is refused without writing.
+
+``log`` writes one row into today's block of work/log.md, for a decision on a row that has no task or
+inbox item of its own (a GitHub issue, a deadline): the cockpit keeps the person's sentence there.
 
 ``reopen`` is the inverse of close, for a close by mistake or a task that still has to
 be done: the newest work/done/*/<slug>/ moves back to work/tasks/<slug>/, ``status``
@@ -1041,6 +1045,10 @@ def main(argv=None) -> int:
     wt.add_argument("--on", default=None, help="what it waits on; without it simply \"runs on\"")
     wt.add_argument("--clear", action="store_true", help="running again: blocked_by and quiet_until go")
     wt.add_argument("--json", action="store_true")
+    lg = sub.add_parser("log", help="one row in today's block of work/log.md, for a decision on a row with no task or "
+                                    "inbox item of its own (an issue, a deadline)")
+    lg.add_argument("context")
+    lg.add_argument("text")
     nw = sub.add_parser("new", help="a new task in work/tasks/, also from an inbox item (which then closes)")
     nw.add_argument("slug", nargs="?")
     nw.add_argument("--headline")
@@ -1078,6 +1086,12 @@ def main(argv=None) -> int:
             out = wait_task(root, args.slug, until=args.until, on=args.on, clear=args.clear)
             print(json.dumps(out, ensure_ascii=False) if args.json else
                   (f"{out['slug']} running again" if args.clear else f"{out['slug']} runs on until {out['quiet_until']}"))
+            return 0
+        if args.cmd == "log":
+            what = " ".join(args.text.split())
+            if not what:
+                raise ValueError("empty log row")
+            append_log_row(root, dt.datetime.now(), " ".join(args.context.split()) or "cockpit", what)
             return 0
         if args.cmd == "new":
             out = new_task(root, args.slug, headline=args.headline, status=args.status, from_inbox=args.from_inbox,

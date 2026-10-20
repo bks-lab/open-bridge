@@ -474,9 +474,9 @@ On a wide screen the Today tab has three columns:
   row has its number, a box to select it (only rows you can start), why it is
   there, its mark, priority, urgency, due date, the state of its tab, and its
   main button. A selection gets a bar with the same two doors as a row: Let
-  AI do it (n) ▾ opens the row panel with one sentence for all of them (start,
-  advise, each in its own workspace, the model), Close n ▾ the close part of
-  it. "Approve all N" under "AI can take over" asks once, with the count the
+  AI do it (n) ▾ with one order for all of them (start, advise, each in its own
+  workspace, the model), Close n ▾ with one comment for all (done, discard, not
+  now, a note). "Approve all N" under "AI can take over" asks once, with the count the
   server found, before it approves anything. Rows you hid sit at the bottom
   with "show again".
 - **center, the detail** of the row you clicked: its link, its facts, every
@@ -573,7 +573,7 @@ Keep open (until the task changes), Check again and, for unclear or guessed
 answers, Check closer with the stronger model. The Check tab is the overview of
 the last run: a filter per verdict and "changed", sort by verdict, priority or
 quiet, and a selection for Let AI do it (n) ▾, Close n ▾, Keep open and Check
-closer. Both doors open the same row panel as every other row: Close ▾ on a
+closer. Both doors work as on every other row: Close ▾ on a
 task the check would close starts with the check's reason in the sentence, and
 the panel names an agent tab still working on it. `task.py close` then moves
 the task to `work/done/`, regenerates the board and writes a row to
@@ -961,16 +961,35 @@ chips, "only mine" (without the information calendars) and a search filter all
 three. An opened event lists when, how long, its calendar, place, meeting and
 people.
 
-**Close in two clicks.** Every row of the Briefing that can end, its detail,
-a task row on a page and a selection carry "Close ▾" with two outcomes,
-Done and Not doing it (a task also "Other reason …", the full dialog). What
-it does depends on the row: a finite task closes through `task.py close`
-(not doing it as declined), an inbox item closes or drops, and any other row
-(a GitHub issue, an application, a deadline from a protocol, an upstream)
-leaves the briefing for good with its outcome while its source stays as it is:
-the issue stays open. Such a row waits under the hidden rows marked "done" or
-"not doing it", and "show again" brings it back; no date does. A stream never
-closes, so it has no Close.
+**Two doors on every row.** Every row of the Briefing, its detail, a row on a
+page, the check and a selection carry the same two buttons, and each opens the
+row panel with only its own part. Both start with one sentence field, and the
+door says what the sentence becomes:
+
+- **Let AI do it ▾**: the order for the agent. Start, Advise, Collect context,
+  in its own workspace, the model; Follow up and Ask in the chat. The sentence
+  goes on the item as "Start note: ..." before the agent starts and reads it
+  first; a row whose agent tab already runs gets it typed into that tab and
+  kept on the item as well. `Cmd` or `Ctrl` with `Enter` starts.
+- **Close ▾**: a comment. Done and Discard; not now (tomorrow, Monday, a week,
+  runs on, a day of your own); keep a note; for an inbox entry, make it a task.
+
+What Close does depends on the row: a finite task closes through
+`task.py close` (Discard as declined), a stream asks once before it ends, an
+inbox item closes or drops, and any other row (a GitHub issue, an application,
+a deadline from a protocol, an upstream) leaves the briefing for good with its
+outcome while its source stays as it is: the issue stays open. Such a row waits
+under the hidden rows marked "done" or "not doing it", and "show again" brings
+it back; no date does.
+
+**Every decision is written where the row lives**, the sentence with it, so
+the briefing, other sessions and a later look back read it without the page: a
+task or stream gets a dated line in its notes (`task.py note`; a close also
+its reason in STATUS.md and a row in `work/log.md`), an inbox item a note
+(`inbox.py note`, its close, drop and defer record themselves), and any other
+row a row in `work/log.md` (`task.py log`), since it has no place of its own
+here. Not now on a task writes "Later until <day>" even without a sentence:
+the page only hides the row, the task keeps why it was put off.
 
 **Dropping asks why.** Drop on an inbox row opens a small dialog with four
 reasons: not worth it this time (preselected, so Enter keeps it one keystroke),

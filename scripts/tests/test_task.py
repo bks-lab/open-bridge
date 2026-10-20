@@ -432,3 +432,19 @@ def test_close_stream_on_a_task_closes_it_as_usual_and_reopen_stays_a_task(repo)
     assert "was_stream" not in (repo / "work" / "done" / f"{today:%Y-%m}" / "alpha" / "STATUS.md").read_text(encoding="utf-8")
     assert run(repo, "reopen", "alpha").returncode == 0
     assert (repo / "work/tasks/alpha/STATUS.md").is_file()
+
+
+def test_log_writes_one_row_into_todays_block_for_a_row_without_a_task(repo):
+    log = _log_with_today(repo)
+    r = run(repo, "log", "--", "repo", "Fix the example issue (example/repo#12) · Will not be done: dup of #3")
+    assert r.returncode == 0, r.stderr
+    rows = [ln for ln in log.read_text(encoding="utf-8").splitlines() if ln.startswith(f"| {_dt.date.today():%Y-%m-%d}")]
+    assert rows[0].endswith("| other | earlier row |")
+    assert rows[-1].endswith("| repo | Fix the example issue (example/repo#12) · Will not be done: dup of #3 |")
+
+
+def test_log_refuses_an_empty_row_and_keeps_a_pipe_from_breaking_the_table(repo):
+    assert run(repo, "log", "--", "repo", "   ").returncode == 1
+    assert not (repo / "work" / "log.md").exists()
+    assert run(repo, "log", "--", "repo", "a | b").returncode == 0
+    assert "| repo | a / b |" in (repo / "work" / "log.md").read_text(encoding="utf-8")

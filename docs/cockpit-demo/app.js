@@ -430,7 +430,15 @@ async function act(verb, args = {}) {
     // the task facts and inbox events of the touched row changed on disk: fetch them again when shown
     const touched = (p.args.key ? [p.args.key] : p.args.keys ?? []).map(k => rowIndex().get(k)).filter(Boolean)
     if (touched.length) store.set(s => ({ ...s, details: touched.reduce(invalidateDetails, s.details) }))
-    if (r.settled?.length) setUi(ui => ({ picked: ui.picked.filter(k => !r.settled.includes(k)), rvPicked: ui.rvPicked.filter(k => !r.settled.includes(k)) }))
+    if (r.settled?.length) {
+      setUi(ui => ({ picked: ui.picked.filter(k => !r.settled.includes(k)), rvPicked: ui.rvPicked.filter(k => !r.settled.includes(k)) }))
+      // a row that left the list takes its open detail along: back to the list, whatever closed it
+      const sel = store.get().ui.selectedKey
+      if (sel && r.settled.includes(sel)) {
+        if (store.get().ui.pageDetail) ctl.closePeek()
+        else setUi({ selectedKey: null, pane: 'day' })
+      }
+    }
     return r
   }, { rows: p.rows, refuse: p.refuse })
 }
@@ -938,7 +946,6 @@ const ctl = {
     const res = await api.inbox(row.inbox_id)
     if (res.ok) setUi(ui => ({ confirm: ui.confirm?.kind === 'drop' && ui.confirm.key === row.key ? { ...ui.confirm, item: res.data.item } : ui.confirm }))
   },
-  /** Ask why before closing; one row gets the four reasons, several also "as the check says" */
   // "runs on": a small dialog asks until when and on what; it acts through runs_on
   askRunsOn(rows, on = '') {
     const list = rows.filter(Boolean)
@@ -965,11 +972,12 @@ const ctl = {
     const r = await act(list ? 'snapshot_list' : 'snapshot', {})
     if (r && list) setUi({ snapshotText: r.note })
   },
-  laterDays(row, days) {
-    return act('later', { key: row.key, until: isoDate(today() + days * DAY) })
+  // text: the person's sentence, which the server keeps where the row lives
+  laterDays(row, days, text = '') {
+    return act('later', { key: row.key, until: isoDate(today() + days * DAY), ...(text ? { text } : {}) })
   },
-  laterMonday(row) {
-    return act('later', { key: row.key, until: isoDate(nextMonday(today())) })
+  laterMonday(row, text = '') {
+    return act('later', { key: row.key, until: isoDate(nextMonday(today())), ...(text ? { text } : {}) })
   },
   rowAction(row, id) {
     switch (id) {

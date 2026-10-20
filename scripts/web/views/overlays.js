@@ -502,7 +502,6 @@ function DropDialog({ conf, c, dialogRef }) {
   </div>`
 }
 
-/** Closing asks why: the reason goes into STATUS.md and the log, not-doing and superseded close as declined */
 export function AuthPanel() {
   const t = T()
   return html`<main class="center-page">

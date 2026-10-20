@@ -235,6 +235,7 @@ def s_settle(w: World) -> None:
     w.act("settle", keys=[f"inbox:{YES_ID}"], outcome="done")
     w.act("settle", keys=[f"inbox:{ONLY_ID}"], outcome="not_doing")
     w.act("settle", keys=["task:other-task"], outcome="done")
+    w.act("settle", keys=["ref:example/repo#12"], outcome="done", text="fixed with #14")   # no place of its own: the log
 
 
 def s_reopen(w: World) -> None:
@@ -365,7 +366,7 @@ SCENARIOS = {
     "to_task": Scenario(s_to_task, {"task.new"}),
     "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
     "task_edits": Scenario(s_task_edits, {"task.priority", "task.note", "task.close"}),
-    "settle": Scenario(s_settle, {"inbox.close", "inbox.drop", "task.close"}),
+    "settle": Scenario(s_settle, {"inbox.close", "inbox.drop", "task.close", "task.log"}),
     "reopen": Scenario(s_reopen, {"task.reopen", "inbox.reopen"}),
     "review": Scenario(s_review, {"task.review"}),
     "tabs": Scenario(s_tabs, {"workplace.key", "workplace.focus", "workplace.send", "workplace.adopt",

@@ -59,7 +59,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "start_agent": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False),
                         "note": ("text", False)},
-    "later": {"key": ("key", True), "until": ("date", True)},
+    # text: the person's sentence, kept where the row lives (WorkVerbs.write_note)
+    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     "unhide": {"key": ("key", True)},
     "drop": {"key": ("key", True), "reason": ("drop_reason", False)},

@@ -1385,7 +1385,8 @@ def test_later_defers_inbox_and_hides_the_rest(world):
     assert res["settled"] == [f"inbox:{YES_ID}"] and "Later, back on 2026-10-10" in res["note"]
     world.runner.calls.clear()
     res = world.act("later", key="task:other-task", until=TOMORROW)
-    assert writes(world) == [] and world.app.store.hidden() == {"task:other-task": TOMORROW}
+    assert writes(world) == [K(world, "note", "other-task", "--", "Later until 2026-10-10")]
+    assert world.app.store.hidden() == {"task:other-task": TOMORROW}
     model = world.app.collector.model
     assert [r["key"] for r in model["hidden"]] == ["task:other-task"] and model["hidden"][0]["hidden_until"] == TOMORROW
     res = world.act("unhide", key="task:other-task")
@@ -1408,7 +1409,7 @@ def test_drop_on_an_inbox_item_drops_it_and_on_any_other_row_discards_it_for_goo
     assert writes(world) == [I(world, "drop", YES_ID, "--note", "dropped in the cockpit")]
     world.runner.calls.clear()
     world.act("drop", key="ref:example/repo#12")       # the same as Discard in the close menu, no week of hiding
-    assert writes(world) == [] and "ref:example/repo#12" not in world.app.store.hidden()
+    assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Will not be done")] and "ref:example/repo#12" not in world.app.store.hidden()
     assert world.app.store.dismissed()["ref:example/repo#12"]["outcome"] == "not_doing"
     world.runner.calls.clear()
     world.act("drop", key="task:other-task")
@@ -1432,7 +1433,8 @@ def test_drop_with_a_reason_passes_it_and_says_what_was_muted(world):
 def test_a_reason_on_a_row_that_is_no_inbox_item_still_discards_it(world):
     world.runner.calls.clear()
     world.act("drop", key="ref:example/repo#12", reason="source")
-    assert writes(world) == [] and world.app.store.dismissed()["ref:example/repo#12"]["outcome"] == "not_doing"
+    assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Will not be done")]
+    assert world.app.store.dismissed()["ref:example/repo#12"]["outcome"] == "not_doing"
 
 
 def test_unmute_lifts_a_rule_by_id(world):
@@ -1490,8 +1492,9 @@ def test_urgency_priority_note(world):
         world.act("priority", key=f"inbox:{YES_ID}", value="P1")
     with pytest.raises(ActionError):
         world.act("urgency", key="task:other-task", value="now")
-    with pytest.raises(ActionError):
-        world.act("note", key="ref:example/repo#12", text="x")
+    world.runner.calls.clear()
+    world.act("note", key="ref:example/repo#12", text="Axel looks at it")     # no place of its own: the log
+    assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Axel looks at it")]
 
 
 def test_task_close_closes_through_task_py_with_the_reason(world):
@@ -1625,7 +1628,8 @@ def test_a_row_step_the_row_does_not_offer_or_a_row_without_steps_is_refused(wor
 def test_settle_takes_a_foreign_row_out_for_good_and_show_again_brings_it_back(world):
     world.runner.calls.clear()
     res = world.act("settle", keys=["ref:example/repo#12"], outcome="not_doing")
-    assert writes(world) == [] and res["settled"] == ["ref:example/repo#12"]
+    assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Will not be done")]
+    assert res["settled"] == ["ref:example/repo#12"]
     assert world.app.store.dismissed()["ref:example/repo#12"]["outcome"] == "not_doing"
     world.app.collector.rebuild()
     model = world.app.collector.model
@@ -7050,7 +7054,9 @@ def test_a_note_for_a_row_whose_tab_runs_goes_into_that_tab(world):
     world.app.tabs.poll()
     world.runner.calls.clear()
     world.act("do_it", keys=["task:demo-task"], note="auch die Doku anpassen")
-    assert writes(world) == [W(world, "send", "surface:7", "--", "auch die Doku anpassen")]
+    # typed into the tab, and kept on the task, so the sentence is not only on a screen
+    assert writes(world) == [W(world, "send", "surface:7", "--", "auch die Doku anpassen"),
+                             K(world, "note", "demo-task", "--", "Typed into its agent tab: auch die Doku anpassen")]
 
 
 def test_a_note_never_types_into_a_tab_that_asks_you_something(world):
@@ -7113,3 +7119,33 @@ def test_to_task_can_be_taken_back_the_task_closes_as_declined_and_the_item_open
     # an undo the server never handed out finds nothing to take back
     with pytest.raises(ActionError):
         world.act("to_task_undo", id=YES_ID, slug="tidy-labels")
+
+
+# ---------------------------------------------------------------- every decision lands where the row lives, with its sentence
+
+def test_later_takes_the_sentence_to_the_task_the_inbox_item_and_the_log(world):
+    world.runner.calls.clear()
+    world.act("later", key="task:other-task", until=TOMORROW, text="after the release")
+    assert writes(world) == [K(world, "note", "other-task", "--", "Later until 2026-10-10: after the release")]
+    world.runner.calls.clear()
+    world.act("later", key=f"inbox:{YES_ID}", until=TOMORROW, text="ask Axel first")
+    assert writes(world) == [I(world, "note", YES_ID, "--", "Later until 2026-10-10: ask Axel first"),
+                             I(world, "defer", YES_ID, "--until", TOMORROW)]
+    world.runner.calls.clear()
+    world.act("later", key=f"inbox:{ONLY_ID}", until=TOMORROW)        # an inbox item records its defer itself
+    assert writes(world) == [I(world, "defer", ONLY_ID, "--until", TOMORROW)]
+    world.runner.calls.clear()
+    world.act("later", key="ref:example/repo#12", until=TOMORROW)
+    assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Later until 2026-10-10")]
+    assert "ref:example/repo#12" in world.app.store.hidden()
+
+
+def test_a_decision_on_a_foreign_row_keeps_its_sentence_in_the_log(world):
+    world.runner.calls.clear()
+    world.act("settle", keys=["ref:example/repo#12"], outcome="done", text="fixed with #14")
+    assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Done: fixed with #14")]
+    world.act("unhide", key="ref:example/repo#12")
+    world.runner.calls.clear()
+    world.act("runs_on", keys=["ref:example/repo#12"], until=TOMORROW, on="the vendor")
+    assert writes(world) == [K(world, "log", "--", "repo",
+                               "Fix the example issue (example/repo#12) · Runs on, look again 2026-10-10: the vendor")]

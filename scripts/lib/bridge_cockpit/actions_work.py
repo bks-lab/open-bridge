@@ -32,7 +32,9 @@ class WorkVerbs:
         for e in entries:
             tab = e.get("tab")
             if tab and m.is_live(tab):
-                self.send_to(ctx, tab, note)
+                # kept on the item too: typed into a tab, the sentence would otherwise live only on a screen
+                if self.send_to(ctx, tab, note):
+                    self.write_note(ctx, e["row"], self.tx["tab_note"].format(text=note))
             else:
                 rows.append(e["row"])
         rows = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
@@ -41,12 +43,21 @@ class WorkVerbs:
             self.launch(ctx, started, mode, target, word=word, start_note=True)
 
     def write_note(self, ctx: Ctx, row: dict, text: str) -> bool:
+        """The person's sentence, or a decision with it, where the row lives: an inbox item's notes, a task's or a
+        stream's notes, and for any other row (an issue, a deadline) a row in work/log.md, since it has no place of
+        its own here and its source stays as it is."""
         if row.get("inbox_id"):
             item = self.inbox_id(row)
             run = ctx.call("inbox.note", item, self.inbox("note", item, "--", text), SHORT_TIMEOUT)
-        else:
+        elif row.get("task"):
             slug = self.slug(row)
             run = ctx.call("task.note", slug, self.task_cmd("note", slug, "--", text), SHORT_TIMEOUT)
+        else:
+            ref = str(row.get("ref") or "")
+            # the repo of an issue, else the source the row came from (an application, a protocol)
+            context = (ref.split("#")[0].rsplit("/", 1)[-1] if "#" in ref else str((row.get("sources") or [""])[0])) or "cockpit"
+            label = str(row.get("title") or row["key"])[:120] + (f" ({ref})" if ref else "")
+            run = ctx.call("task.log_row", row["key"], self.task_cmd("log", "--", context, f"{label} · {text}"), SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["note_failed"].format(err=m.short(run.err, 100)), bad=True)
         return run.ok
@@ -103,11 +114,17 @@ class WorkVerbs:
             return
         self.launch(ctx, [row], "context", self.app.cfg.target)
 
-    def v_later(self, ctx: Ctx, key: str, until: str) -> None:
+    def v_later(self, ctx: Ctx, key: str, until: str, text: str | None = None) -> None:
+        """Put off until a day. An inbox item records its defer itself and keeps the sentence as a note; a task, a
+        stream and any other row are only hidden here, so the decision is written where the row lives
+        (write_note), with the sentence when there is one."""
         row = self.entry(key)["row"]
+        words = self.tx["later_note"].format(until=until) + (f": {text}" if text else "")
         # every inbox item is put off, whatever its gate: hidden only, a free one would still run meanwhile
         if row.get("inbox_id"):
             item = self.inbox_id(row)
+            if text and not self.write_note(ctx, row, words):
+                return
             run = ctx.call("inbox.defer", item, self.inbox("defer", item, "--until", until), SHORT_TIMEOUT)
             if not run.ok:
                 ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -116,6 +133,7 @@ class WorkVerbs:
             ctx.history.append(history_item(row["key"], row["title"], "inbox", f"later until {until}", item))
             self.settle(ctx, row, self.tx["later_back"].format(until=until))
             return
+        self.write_note(ctx, row, words)
         self.hide_until(ctx, row, until)
 
     def v_runs_on(self, ctx: Ctx, keys: list[str], until: str, on: str | None = None) -> None:
@@ -153,6 +171,7 @@ class WorkVerbs:
                 ctx.note(self.tx["runs_on_note"].format(until=until) + f": {title}")
                 ctx.delta()
             else:
+                self.write_note(ctx, row, self.tx["runs_on_note"].format(until=until) + (f": {on}" if on else ""))
                 self.hide_until(ctx, row, until)
         self.app.collector.request("both")
 
@@ -381,6 +400,7 @@ class WorkVerbs:
                 # not collector.settle: its source still lists the row, so it would stay invisible for good;
                 # dismissed it shows under the hidden rows with "show again"
                 self.app.store.dismiss(key, outcome, row["title"])
+                self.write_note(ctx, row, self.tx["close_reason"][outcome] + extra)
                 ctx.history.append(history_item(key, row["title"], "other", outcome))
                 ctx.settled.append(key)
                 ctx.note(f"{self.tx['dismissed_' + outcome]}: {m.short(row['title'], 60)}")
@@ -440,19 +460,9 @@ class WorkVerbs:
 
     def v_note(self, ctx: Ctx, key: str, text: str) -> None:
         row = self.entry(key)["row"]
-        if row.get("task"):
-            slug = self.slug(row)
-            run = ctx.call("task.note", slug, self.task_cmd("note", slug, "--", text), SHORT_TIMEOUT)
-        elif row.get("inbox_id"):
-            item = self.inbox_id(row)
-            run = ctx.call("inbox.note", item, self.inbox("note", item, "--", text), SHORT_TIMEOUT)
-        else:
-            raise self.not_applicable("notes only go to tasks and inbox items")
-        if run.ok:
+        if self.write_note(ctx, row, " ".join(text.split())):
             ctx.note(self.tx["note_added"].format(title=m.short(row["title"], 40), line=m.short(text, 60)))
             ctx.delta()
-        else:
-            ctx.note(self.tx["note_failed"].format(err=m.short(run.err, 100)), bad=True)
 
     def v_approve_all(self, ctx: Ctx, keys: list[str], confirm: bool = False) -> None:
         model = self.app.collector.model or {}
