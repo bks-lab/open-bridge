@@ -133,6 +133,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "guide_read": {"tab_ref": ("tab_ref", True)},
     "guide_settings": {"enabled": ("bool", False), "auto": ("bool", False)},
     "guide_settings_reset": {},
+    # the first-run tour: finished or skipped (v: the page's tour version), and taken back to offer it again
+    "tour_done": {"how": ("tour_how", True), "v": ("index", True)},
+    "tour_reset": {},
     "account_status": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                        "status": ("account_status", True)},
     "github_board": {"section": ("page_id", True), "slug": ("page_id", True), "mode": ("board_mode", True)},
@@ -146,11 +149,13 @@ ROW_REF_RE = re.compile(r"^[A-Za-z0-9][^\x00-\x1f]{0,199}\Z")
 PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
 ASK_HASH_RE = re.compile(r"^[0-9a-f]{16}\Z")   # the hash of a tab's question (asks.py)
 TAB_STATES = ("needs-you", "waiting", "working")
+TOUR_HOW = ("finished", "skipped")   # how the first-run tour ended (store.py tour)
 TILE_ID_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9:._@/-]{0,79}\Z")   # a tile or shelf of the start page
 READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
-                         "launch_settings_reset", "session_link", "guide_read", "guide_settings", "guide_settings_reset"})
+                         "launch_settings_reset", "session_link", "guide_read", "guide_settings", "guide_settings_reset",
+                         "tour_done", "tour_reset"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb

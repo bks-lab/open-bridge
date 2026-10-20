@@ -199,7 +199,19 @@ function DetailsCard({ s, c }) {
 }
 
 function LookArea({ s, c }) {
-  return html`<${ThemeCard} s=${s} c=${c} /><${KeysCard} s=${s} c=${c} /><${DetailsCard} s=${s} c=${c} />`
+  return html`<${ThemeCard} s=${s} c=${c} /><${KeysCard} s=${s} c=${c} /><${DetailsCard} s=${s} c=${c} /><${TourCard} s=${s} c=${c} />`
+}
+
+/** The first-run tour: start it now, and offer it again on the next visit once it ended */
+function TourCard({ s, c }) {
+  const w = T().tour
+  const tr = s.tour
+  const busy = !!s.ui.busy?.tour_reset
+  return html`<${Card} title=${w.settingsTitle} intro=${tr?.enabled === false ? w.settingsOff : w.settingsIntro}
+    head=${html`<${Btn} size="sm" variant="secondary" onClick=${c.tourStart}>${w.again}<//>`}>
+    ${tr?.done ? html`<p class="small tour-done"><span class="muted">${w.settingsDone(tr.done.how, tr.done.at)}</span>
+      <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.tourReset()}>${w.reset}<//></p>` : null}
+  <//>`
 }
 
 // ---------------------------------------------------------------- the model an agent tab starts with

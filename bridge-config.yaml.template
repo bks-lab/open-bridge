@@ -230,6 +230,8 @@ work:
 #       max_picks: 12        # 1 to 40
 #       shorten: true        # one-line titles
 #   # The settings page changes these on top, kept in .bridge/cockpit/ticker.json.
+#   tour: true               # the first-run tour: a first visit offers a short introduction of the page;
+#                            # false = never by itself (Help and Settings still start it)
 #   session_guide:           # Claude Haiku reads a waiting tab's session and offers next steps as buttons; off by default
 #     enabled: false
 #     auto: true             # read a tab by itself when it starts waiting with a new question; false = only on the button

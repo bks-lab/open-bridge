@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Verbs of the start page and the settings page (tiles, pins, launch and ticker settings, the decision
+"""Verbs of the start page and the settings page (tiles, pins, the first-run tour, launch and ticker settings, the decision
 guide, the return channel) and of a briefing page's own rows (an account's status, a board's mode, a command row's steps).
 """
 from __future__ import annotations
@@ -20,6 +20,21 @@ class PageVerbs:
         """The start page's choice of tiles and shelves, kept on the server so every browser shows the same"""
         self.app.store.set_home_tiles(ids, seen)
         self.app.broadcast("home", self.app.store.home())
+
+    def v_tour_done(self, ctx: Ctx, how: str, v: int) -> None:
+        """The first-run tour was finished or skipped: kept on the server, so no other browser offers it again"""
+        self.app.store.set_tour(how, v)
+        self.tour_changed(ctx)
+
+    def v_tour_reset(self, ctx: Ctx) -> None:
+        """Offer the tour again on the next visit"""
+        self.app.store.set_tour(None)
+        self.tour_changed(ctx)
+
+    def tour_changed(self, ctx: Ctx) -> None:
+        state = self.app.tour_state()
+        ctx.extra["tour"] = state
+        self.app.broadcast("tour", state)
 
     def v_launch_settings(self, ctx: Ctx, settings: dict) -> None:
         """The settings page's change of how an agent picks its model; kept beside the config, never in it"""

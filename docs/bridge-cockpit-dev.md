@@ -87,6 +87,8 @@ layout now").
 | `scripts/web/markdown.js` | the Markdown reader for answers (Chat, Other Bridges): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
 | `scripts/web/views/organize.js` | `OrganizeView`: the proposal grouped by workspace, nothing ticked, the ticks, Apply, and the applied, skipped and failed items in words |
 | `scripts/web/views/guide.js` | the decision guide: `GuideTree` (the reading as a tree; a branch fills the box, Send or Press goes through `logic.js guideChoices`; To tab, Watch, What was read), `GuideLine`, `GuideBoard` on the Sessions page, `GuideSettings` |
+| `scripts/web/views/hints.js` | the explain overlay: `HintsOverlay` measures the areas `logic.js hintsFor` names for the page, `hintLayout` places a numbered note beside each (never over another, a hint without room is dropped), `HintsLayer` draws the notes, the rings (an ellipse for a small area, a frame for a long or large one) and the arrows; nothing is sent or kept |
+| `scripts/web/views/tour.js` | the first-run tour: `Tour` (the welcome, one step per area with the area lit, Next, Back, Skip); the steps are `logic.js tourSteps`, where the box stands `tourPlace`, whether a visit offers it `tourOffered`; the end goes to the server as `tour_done` (`store.py` keeps it in `state.json`) |
 | `scripts/web/views/reply.js` | `AskLine` and `TabReply`: a waiting tab's question and the answers to it (`logic.js replyOptions`), in the sidebar, the tab pane and the tab window |
 | `scripts/web/views/prose.js` | `Prose`: draws what `markdown.js` read as elements, links in a new tab with `noopener noreferrer` |
 | `scripts/web/logic.js` | pure helpers, tested under node (the ticker's status rules are `tickerStatus` and `tickerItems`) |

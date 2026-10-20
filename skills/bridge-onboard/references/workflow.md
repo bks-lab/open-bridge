@@ -507,6 +507,26 @@ On `[y]` or `[c]`:
     Add `- kind: workplace` to `workflow/briefings/morning.yaml`.
   - Show `python3 scripts/workplace.py propose` once, never `open --yes` here: opening
     tabs is the person's call in their first briefing.
+- **D1e: offer the cockpit** (`docs/bridge-cockpit.md`): the local web page
+  (127.0.0.1 only) that shows the briefing, inbox and tasks, the agent tabs and the
+  sessions, with buttons that act. Ask whenever task management is on; it is an early
+  version (alpha), so say so in the question. Skip the question only when
+  `cockpit.enabled` is already `true` (a re-run) or `scripts/bridge-cockpit.py` is
+  missing in this Bridge.
+  > There is also the cockpit, a local web page (early version) with your briefing,
+  > tasks and agent tabs at a glance, and buttons that act. Switch it on? It opens with a
+  > short tour of the page, which you can skip. `[y]` `[later]`
+  - `[y]` → write `cockpit: {enabled: true}` to `bridge-config.yaml` (nothing else: every
+    other key has its default; the language follows `language.conversation`). Leave
+    `cockpit.tour` out, so the first visit offers the tour. Without a terminal driver
+    from D1d, say in one line that "Let AI do it" on the page starts nothing until one is
+    set. Opening it waits for Phase F step 8.
+  - `[later]` → no config change. Record it in `work/onboarding-state.yaml` under
+    `suggestions:` as `cockpit: {status: deferred, decided_at: <date -Iseconds>,
+    remind_after: <30 days on>}` (`system-discovery.md` § Discovery State), so it comes
+    back; `/bridge-onboard --add cockpit` (S15 in `smart-suggestions.md`) switches it on
+    any time.
+  - `[y]` records `cockpit: {status: accepted, decided_at: <date -Iseconds>}` there too.
 
 On `[n]`: leave `work.enabled: false` (still write `work.transcript_retention_days` as above: memory facts exist without task management, so the choice is recorded either way), explicitly mention that
 `/briefing`, `/debrief`, `/archive`, and **`feature-discovery`** are
@@ -693,7 +713,8 @@ entry** under `suggestions:` in `work/onboarding-state.yaml` (from Phase A
 steps 9/10, or Phase C when it ran), write one with `status: not_evaluated`
 (see `system-discovery.md § Discovery State` for the enum). Skip only what
 Phase D itself already decided under its own key (Task Management via D1 →
-`work.enabled`, Themes via D2 → `theme:`) and anything the catalog marks as
+`work.enabled`, the cockpit via D1e → `cockpit.enabled` or its `deferred` entry, Themes
+via D2 → `theme:`) and anything the catalog marks as
 not shipped here / org-overlay-only / "not yet public" (that entry has no
 real activation path to evaluate). No `decided_at` — nothing was decided,
 so there is nothing to timestamp. Never overwrite an existing entry — this
@@ -882,6 +903,13 @@ exists" pointer, not a second survey.
      /bridge-onboard --add <X>  — activate any feature on demand
      /knowledge-repo-init       — only if you marked it for follow-up
    ```
+   **Cockpit switched on in D1e:** after the briefing, run `python3 scripts/bridge-cockpit.py
+   open --json` and report in one line where it opened and the address
+   `http://127.0.0.1:<port>/` (never the `url` command: its link carries a login code).
+   Say that the page starts with a short tour, that Skip ends it, and that Help starts
+   it again; the "Explain this page" button lays notes over any page. A refusal goes
+   by the table in `skills/cockpit/SKILL.md` ("When it refuses"), never as a failed
+   onboarding.
    **Honesty (gate on `discovery.mode`):** only under `broader` add "I'll proactively
    suggest features when new evidence appears." Under **confined** (default), do NOT —
    the heuristics don't run; instead: "You drive activation with `--features` / `--add`."

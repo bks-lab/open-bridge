@@ -131,22 +131,24 @@ export function Header({ s, c }) {
       ${s.layout === 'narrow' ? null : html`<${AsOf} s=${s} />`}
       ${s.layout === 'narrow' ? null : s.ui.shortcuts ? html`<${CommandBox} c=${c} />` : null}
       ${s.layout === 'medium' || (s.layout === 'wide' && !railShown(s.ui.page, s.rooms?.layout, s.ui.railHidden)) ? html`<${Btn} variant=${waiting ? 'primary' : 'secondary'} size="sm" icon="tabs"
-        onClick=${() => c.setDrawer(s.ui.drawer === 'tabs' ? null : 'tabs')} pressed=${s.ui.drawer === 'tabs'}>${t.tabsButton(waiting)}<//>` : null}
+        onClick=${() => c.setDrawer(s.ui.drawer === 'tabs' ? null : 'tabs')} pressed=${s.ui.drawer === 'tabs'} cls="hdr-tabs">${t.tabsButton(waiting)}<//>` : null}
       <${Btn} variant="ghost" size="sm" icon="reload" title=${t.reloadTitle} label=${t.reloadTitle}
         busy=${!!s.loading?.pass && s.loading?.fresh} onClick=${c.reload} cls="hdr-reload"><span class="hide-narrow">${t.reload}</span><//>
       <${Btn} variant=${(s.quick?.convs ?? []).some(x => x.running) ? 'primary' : 'secondary'}
         size="sm" icon="send" onClick=${() => c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>
       <${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
-        pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()}><span class="hide-narrow">${t.historyButton}</span><//>
+        pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()} cls="hdr-history"><span class="hide-narrow">${t.historyButton}</span><//>
       ${s.layout === 'narrow' ? null : html`<${AgentsChip} s=${s} c=${c} />`}
       ${s.layout === 'narrow' ? null : html`<${RelayBadge} s=${s} c=${c} />`}
       ${s.layout === 'narrow' ? null : html`<${StartControl} s=${s} c=${c} short />`}
       <${Btn} variant="ghost" size="sm" icon=${themeIcon} label=${`${t.themeLabel}: ${t.theme[s.ui.theme]}`}
         title=${`${t.themeLabel}: ${t.theme[s.ui.theme]}`} onClick=${c.cycleTheme} />
       <${Btn} variant="ghost" size="sm" icon="bell" label=${t.notesTitle} title=${t.notesTitle}
-        onClick=${() => c.setDrawer(s.ui.drawer === 'notes' ? null : 'notes')} pressed=${s.ui.drawer === 'notes'} />
+        onClick=${() => c.setDrawer(s.ui.drawer === 'notes' ? null : 'notes')} pressed=${s.ui.drawer === 'notes'} cls="hdr-notes" />
+      <${Btn} variant="ghost" size="sm" icon="bulb" label=${t.hints.buttonTitle} title=${t.hints.buttonTitle}
+        pressed=${!!s.ui.hints} onClick=${() => c.setHints(!s.ui.hints)} cls="hdr-explain"><span class="hide-narrow">${t.hints.button}</span><//>
       <${Btn} variant="ghost" size="sm" icon="help" label=${t.helpTitle} title=${`${t.helpTitle} (?)`}
-        onClick=${() => c.setDrawer('help')} />
+        onClick=${() => c.setDrawer('help')} cls="hdr-help" />
     </div>
   </header>`
 }

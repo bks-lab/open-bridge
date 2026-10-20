@@ -665,6 +665,8 @@ export function buildState(now = Date.now(), opts = {}) {
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     ticker: tickerState(TICKER_CONFIG, now),
     guide: guideState(tabs, now),
+    // the first-run tour: ended in the demo unless ?tour=1 asks for a first visit
+    tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
       { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
@@ -1428,6 +1430,11 @@ export function createMockTransport(opts = {}) {
           result.note = verb === 'guide_settings' ? 'Mock: setting saved' : 'Mock: settings from the config again'
         }
         if (verb.startsWith('guide_')) result.guide = state.guide
+        if (verb === 'tour_done' || verb === 'tour_reset') {
+          state.tour = { ...state.tour, done: verb === 'tour_done' ? { how: args.how, v: args.v, at: isoIn(0, now()) } : null }
+          result.tour = state.tour
+          emit('tour', state.tour)
+        }
         if (verb === 'task_review') {
           // a check that runs for six seconds, then the same result again with a new time
           const publish = review => { seq += 1; state.model = { ...state.model, seq, review }; emit('view', state.model) }

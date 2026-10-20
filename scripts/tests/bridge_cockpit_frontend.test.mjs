@@ -4401,3 +4401,131 @@ test('guideChoices presses a dialog option by its number, only with the question
   assert.deepEqual(logic.guideChoices({ ...tab, ask: { ...tab.ask, hash: undefined } }, entry, guideState()), [])
   assert.deepEqual(logic.guideChoices(tab, entry, { ...guideState(), driver: { caps: ['tabs', 'send'] } }), [])
 })
+
+// ---------------------------------------------------------------- the first-run tour (views/tour.js)
+
+test('tourOffered: a first visit offers the tour, an ended one or a switched off one does not', () => {
+  assert.equal(logic.tourOffered({ enabled: true, done: null }), true)
+  assert.equal(logic.tourOffered({ enabled: true, done: { how: 'skipped', v: 1, at: '2026-10-20' } }), false)
+  assert.equal(logic.tourOffered({ enabled: false, done: null }), false)
+  assert.equal(logic.tourOffered(null), false)       // an older server: no tour by itself
+  assert.equal(logic.tourOffered(undefined), false)
+})
+
+test('tourOffered: a tour that ended for an older version is offered again', () => {
+  const done = how => ({ enabled: true, done: { how, v: 1, at: '2026-10-20' } })
+  assert.equal(logic.tourOffered(done('finished'), 1), false)
+  assert.equal(logic.tourOffered(done('finished'), 2), true)
+  assert.equal(logic.tourOffered(done('skipped'), 2), true)
+})
+
+test('tourIndex: the step is kept by id, so a narrow layout without the tab step does not move it', () => {
+  const wide = { layout: 'wide', ui: { tour: { id: 'ask' } } }
+  const narrow = { ...wide, layout: 'narrow' }
+  assert.equal(logic.tourSteps(wide)[logic.tourIndex(wide)].id, 'ask')
+  assert.equal(logic.tourSteps(narrow)[logic.tourIndex(narrow)].id, 'ask')
+  assert.equal(logic.tourIndex({ layout: 'narrow', ui: { tour: { id: 'tabs' } } }), 0)   // gone in this layout: the start
+})
+
+test('tourSteps: a welcome first and an end last, the tab column only where the layout shows one', () => {
+  const wide = logic.tourSteps({ layout: 'wide' })
+  assert.equal(wide[0].id, 'welcome')
+  assert.equal(wide.at(-1).id, 'done')
+  assert.ok(wide.some(x => x.id === 'tabs'))
+  assert.equal(new Set(wide.map(x => x.id)).size, wide.length)
+  assert.ok(wide.every(x => !x.target || typeof x.target === 'string'))
+  const narrow = logic.tourSteps({ layout: 'narrow' })
+  assert.ok(!narrow.some(x => x.id === 'tabs'))
+  // a step that shows a page names one the page knows
+  assert.ok(wide.filter(x => x.page).every(x => ['@start', 'briefing', '@sessions', '@chat', '@settings'].includes(x.page)))
+})
+
+test('tourPlace: below the area when it fits, above when not, inside a large one, never off the screen', () => {
+  const view = { width: 1200, height: 800 }
+  const box = { width: 320, height: 180 }
+  const below = logic.tourPlace({ top: 60, left: 100, width: 400, height: 40 }, box, view)
+  assert.equal(below.side, 'below')
+  assert.equal(below.top, 60 + 40 + 12)
+  const above = logic.tourPlace({ top: 700, left: 100, width: 200, height: 60 }, box, view)
+  assert.equal(above.side, 'above')
+  assert.equal(above.top, 700 - 12 - 180)
+  const inside = logic.tourPlace({ top: 100, left: 0, width: 1200, height: 700 }, box, view)
+  assert.equal(inside.side, 'inside')
+  const beside = logic.tourPlace({ top: 100, left: 980, width: 410, height: 790 }, box, view)
+  assert.deepEqual(beside, { side: 'left', top: 100, left: 980 - 12 - 320 })
+  const right = logic.tourPlace({ top: 10, left: 1150, width: 40, height: 30 }, box, view)
+  assert.ok(right.left + box.width <= view.width - 16 && right.left >= 16)
+  const center = logic.tourPlace(null, box, view)
+  assert.deepEqual(center, { side: 'center', top: (800 - 180) / 2, left: (1200 - 320) / 2 })
+})
+
+// ---------------------------------------------------------------- the explain overlay (views/hints.js)
+
+test('hintsFor: the page\'s own areas first, then the header, each once, each with its words in both languages', () => {
+  for (const page of ['@start', 'briefing', '@chat', '@sessions', '@settings', 'some-profile-page']) {
+    const list = logic.hintsFor({ ui: { page }, layout: 'wide' })
+    assert.equal(new Set(list.map(h => h.id)).size, list.length, page)
+    assert.ok(list.every(h => typeof h.target === 'string' && h.target), page)
+    for (const lang of ['en', 'de']) for (const h of list) assert.ok(text.TABLES[lang].hints.items[h.id]?.title, `${lang} ${h.id}`)
+    assert.equal(list.at(-1).id, 'help', page)       // the header's help comes last everywhere
+  }
+  const start = logic.hintsFor({ ui: { page: '@start' }, layout: 'wide' }).map(h => h.id)
+  assert.equal(start[0], 'prompt')
+  const day = logic.hintsFor({ ui: { page: 'briefing' }, layout: 'wide' }).map(h => h.id)
+  assert.ok(day.includes('day') && day.includes('detail') && day.includes('tabcol'))
+  // the work tab showing a page instead of the day's columns has no day list to point at
+  const view = logic.hintsFor({ ui: { page: 'briefing', workView: 'area' }, layout: 'wide', model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }).map(h => h.id)
+  assert.ok(!view.includes('day'))
+})
+
+test('hintLayout: every note beside its area, no two notes over each other, an arrow from note to ring', () => {
+  const view = { width: 1400, height: 900 }
+  const note = { width: 220, height: 80 }
+  const items = [
+    { id: 'a', rect: { top: 60, left: 20, width: 1360, height: 40 }, note },     // the tab bar
+    { id: 'b', rect: { top: 12, left: 700, width: 90, height: 32 }, note },      // a header button
+    { id: 'c', rect: { top: 12, left: 800, width: 90, height: 32 }, note },      // the one beside it
+    { id: 'd', rect: { top: 120, left: 20, width: 600, height: 760 }, note },    // a whole column
+  ]
+  const { placed, dropped } = logic.hintLayout(items, view)
+  assert.deepEqual(placed.map(p => p.id), ['a', 'b', 'c', 'd'])
+  assert.deepEqual(dropped, [])
+  const box = n => ({ x1: n.left, y1: n.top, x2: n.left + n.width, y2: n.top + n.height })
+  const meet = (p, q) => p.x1 < q.x2 && q.x1 < p.x2 && p.y1 < q.y2 && q.y1 < p.y2
+  for (let i = 0; i < placed.length; i++) {
+    const n = box(placed[i].note)
+    assert.ok(n.x1 >= 12 && n.y1 >= 12 && n.x2 <= view.width - 12 && n.y2 <= view.height - 12, placed[i].id)
+    for (let j = i + 1; j < placed.length; j++) assert.ok(!meet(n, box(placed[j].note)), `${placed[i].id} over ${placed[j].id}`)
+  }
+  assert.deepEqual(placed.map(p => p.n), [1, 2, 3, 4])
+  // a whole column takes its note inside, near its top, and needs no arrow
+  const col = placed.find(p => p.id === 'd')
+  assert.ok(col.note.top < 120 + 760 / 2 && col.note.left >= 20 && col.note.left + col.note.width <= 620)
+  assert.equal(col.arrow, null)
+  // a small area is circled, a long or large one framed
+  assert.equal(placed.find(p => p.id === 'b').shape, 'ellipse')
+  assert.equal(placed.find(p => p.id === 'a').shape, 'frame')
+  // the arrow starts on the note's edge and ends on the ring's
+  for (const p of placed.filter(x => x.arrow)) {
+    const n = p.note
+    const onNote = p.arrow.x1 >= n.left - 0.5 && p.arrow.x1 <= n.left + n.width + 0.5 && p.arrow.y1 >= n.top - 0.5 && p.arrow.y1 <= n.top + n.height + 0.5
+    assert.ok(onNote, p.id)
+    const r = p.ring
+    assert.ok(p.arrow.x2 >= r.left - 0.5 && p.arrow.x2 <= r.left + r.width + 0.5 && p.arrow.y2 >= r.top - 0.5 && p.arrow.y2 <= r.top + r.height + 0.5, p.id)
+  }
+})
+
+test('hintLayout: an area off the screen or without room for its note is left out, never drawn over another', () => {
+  const view = { width: 400, height: 300 }
+  const note = { width: 220, height: 120 }
+  const { placed, dropped } = logic.hintLayout([
+    { id: 'gone', rect: { top: 900, left: 10, width: 100, height: 40 }, note },
+    { id: 'one', rect: { top: 20, left: 20, width: 80, height: 30 }, note },
+    { id: 'two', rect: { top: 20, left: 110, width: 80, height: 30 }, note },
+    { id: 'three', rect: { top: 20, left: 200, width: 80, height: 30 }, note },
+  ], view)
+  assert.ok(dropped.includes('gone'))
+  assert.ok(placed.length >= 1 && placed.length < 3)
+  assert.equal(placed.length + dropped.length, 4)
+  assert.deepEqual(logic.hintLayout([], view), { placed: [], dropped: [] })
+})

@@ -275,7 +275,7 @@ skills.
 
 **When you need it:** You want everything at a glance in a browser tab and to act from there, not via CLI commands.
 
-**Activate:** `cockpit.enabled: true` in `bridge-config.yaml`, then `/cockpit`. Guide: `docs/bridge-cockpit.md`.
+**Activate:** asked in the wizard (Phase D, D1e) whenever task management is on; otherwise `cockpit.enabled: true` in `bridge-config.yaml` (or `/bridge-onboard --add cockpit`), then `/cockpit`. The first visit opens with a short tour of the page (skippable, `cockpit.tour: false` switches the offer off), and "Explain this page" lays notes over any page. Guide: `docs/bridge-cockpit.md`.
 
 ### Cockpit relay (Claude Code mod, early access)
 **What:** Lets the cockpit hand a question to the Claude Code session that steers the others ("To the control session" on the page). It only heartbeats and submits signed questions; no card, no command. Claude Code only (function hooks).

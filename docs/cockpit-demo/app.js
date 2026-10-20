@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats,
+  listedChats, TOUR_VERSION, tourIndex, tourOffered, tourSteps,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -123,6 +123,7 @@ const store = createStore({
   launch: null,        // the model an agent tab starts with (state.launch); null: an older server, the choice stays hidden
   ticker: null,        // the news ticker (state.ticker); null: an older server, the band and its settings stay hidden
   guide: null,         // the decision guide of waiting tabs (state.guide); null: an older server, the guide stays hidden
+  tour: null,          // the first-run tour (state.tour): { enabled, done }; null: an older server, it never starts by itself
   rooms: null,         // the chat as cmux (state.rooms: layout, root, control, Bridges); null: an older server, the classic chat
   launchRoutes: {},    // per row key the recommendation of Auto: { title, status: loading|ok|error, route }   // null: not known yet, every button shows; a list: only what the terminal driver serves
   notes: [], toasts: [], conn: 'connecting', connMs: Date.now(), now: Date.now(), mock: MOCK,
@@ -147,6 +148,9 @@ const store = createStore({
     renaming: null,  // the tab or workspace whose name is being typed: { kind: 'tab' | 'ws', id: ref } (views/rooms.js)
     // organize with AI (views/organize.js): { busy, applying, proposal, ticks: { id: true }, result } while open
     organize: null,
+    // the first-run tour (views/tour.js): { step, from } while it runs, from: the page to go back to
+    tour: null,
+    hints: false,   // the explain overlay (views/hints.js): notes over the page, open or not
     tickerPaused: load('bridge-cockpit.tickerPaused', '0') === '1', tickerRead: loadTickerRead(), tickerSince: tickerSince(), quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
@@ -246,12 +250,24 @@ function applyState(payload) {
     launch: payload.launch ?? s.launch,
     ticker: payload.ticker ?? s.ticker,
     guide: payload.guide ?? s.guide,
+    tour: payload.tour ?? s.tour,
     rooms: payload.rooms ?? s.rooms,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
   // the answers being written, whole: a page that connects in the middle of one shows all of it
   if (payload.quick_live) quickLive.set(quickLiveSnapshot(payload.quick_live))
   fixPage()
+  offerTour()
+}
+
+let tourOffer = true   // a visit offers the tour once, on its first state; Help and Settings start it again
+
+/** The first-run tour on a first visit: the server says it never ended and the config leaves it on */
+function offerTour() {
+  const s = store.get()
+  if (!tourOffer || !s.tour) return
+  tourOffer = false
+  if (tourOffered(s.tour) && !s.ui.tour) setUi({ tour: { id: 'welcome', from: s.ui.page } })
 }
 
 /** A stored page that the profile no longer has falls back to the Briefing ('@check' is the page's own) */
@@ -350,6 +366,13 @@ const handlers = {
   // the decision guide changed: a reading started or ended, a tab left, the switches changed here or elsewhere
   guide(g) {
     store.set(s => (newerTicker(s.guide, g) ? { ...s, guide: g } : s))
+  },
+  // the first-run tour ended or was offered again, in this or another browser
+  tour(tr) {
+    // ended in another tab of this page: the offer open here closes too, the page goes back where it began
+    const s = store.get()
+    if (tr?.done && !s.tour?.done && s.ui.tour) ctl.tourClose()
+    store.set(x => ({ ...x, tour: tr ?? x.tour }))
   },
   // the start page's choice of tiles, made in this or another browser
   home(h) {
@@ -922,6 +945,36 @@ const ctl = {
   guideRead: async ref => guideAnswer(await act('guide_read', { tab_ref: ref })),
   saveGuide: async patch => guideAnswer(await act('guide_settings', patch)),
   resetGuide: async () => guideAnswer(await act('guide_settings_reset', {})),
+  // the first-run tour: a step opens its page; the end goes back to where it began and is kept on the server
+  tourStart: () => setUi(ui => ({ tour: { id: 'welcome', from: ui.page }, hints: false, drawer: null, item: null, tabView: null })),
+  // the explain overlay: notes over the page as it stands; drawers and the tab window close, so it sees the page
+  setHints: on => setUi(on ? { hints: true, drawer: null, item: null, tabView: null } : { hints: false }),
+  tourGo(n) {
+    const s = store.get()
+    const step = tourSteps(s)[n]
+    if (!s.ui.tour || !step) return
+    if (step.page && step.page !== s.ui.page) {
+      ctl.setPage(step.page)
+      // the page a step shows is the tour's, not the person's: a reload mid-tour opens where it began
+      if (s.ui.tour.from) save('bridge-cockpit.page', s.ui.tour.from)
+    }
+    setUi(ui => ({ tour: { ...ui.tour, id: step.id }, drawer: null, tabView: null }))
+  },
+  // the tour closes and the page goes back to where it began; nothing is sent
+  tourClose() {
+    const from = store.get().ui.tour?.from
+    setUi({ tour: null })
+    if (from && from !== store.get().ui.page) ctl.setPage(from)
+  },
+  async tourEnd(how) {
+    ctl.tourClose()
+    const r = await act('tour_done', { how, v: TOUR_VERSION })
+    if (r?.tour) store.set(s => ({ ...s, tour: r.tour }))
+  },
+  async tourReset() {
+    const r = await act('tour_reset', {})
+    if (r?.tour) store.set(s => ({ ...s, tour: r.tour }))
+  },
   setTickerPaused: on => { save('bridge-cockpit.tickerPaused', on ? '1' : '0'); setUi({ tickerPaused: !!on }) },
   tickerOpened: id => {
     const read = tickerRemember(store.get().ui.tickerRead, id)
@@ -1101,6 +1154,21 @@ function onKey(e) {
   const s = store.get()
   // the inner room keeps its own keys (inner.js)
   if (s.ui.inner) return
+  // the tour keeps the keys while it runs: Escape skips it, the arrows go on and back
+  if (s.ui.tour) {
+    const n = tourSteps(s).length
+    const i = tourIndex(s)
+    if (e.key === 'Escape') ctl.tourEnd(i === n - 1 ? 'finished' : 'skipped')   // Esc on the last step is its Done
+    else if (e.altKey || e.metaKey || e.ctrlKey) return   // Alt Left is the browser's back, never a step
+    else if (e.key === 'ArrowRight' && i < n - 1) { e.preventDefault(); ctl.tourGo(i + 1) }
+    else if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); ctl.tourGo(i - 1) }
+    return
+  }
+  // the explain overlay: Escape closes it, no other key acts on the page beneath
+  if (s.ui.hints) {
+    if (e.key === 'Escape') ctl.setHints(false)
+    return
+  }
   if (e.key === 'Escape') {
     if (s.ui.confirm) return ctl.cancelConfirm()
     if (s.ui.organize) return s.ui.organize.applying ? undefined : ctl.organizeClose()
@@ -1193,7 +1261,7 @@ async function boot() {
     const mock = await import('./mock.js')
     transport = mock.createMockTransport({
       lang: params.get('lang') || 'en', offline: params.get('offline') === '1', empty: params.get('empty') === '1',
-      auth: params.get('auth') === '0' ? false : undefined,
+      auth: params.get('auth') === '0' ? false : undefined, tour: params.get('tour') === '1',
     })
   }
   api = createApi(transport)

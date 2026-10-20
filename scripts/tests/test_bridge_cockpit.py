@@ -1400,7 +1400,7 @@ def test_hide_persists_in_state_json(world):
     world.act("hide", key="ref:example/repo#12", until="2026-10-12")
     data = json.loads((world.state / "state.json").read_text())
     assert data == {"v": 1, "hidden": {"ref:example/repo#12": "2026-10-12"}, "dismissed": {}, "team_runs": {},
-                    "home_tiles": None, "home_seen": None, "pins": [], "session_links": {}}
+                    "home_tiles": None, "home_seen": None, "pins": [], "session_links": {}, "tour": None}
 
 
 def test_drop_on_an_inbox_item_drops_it_and_on_any_other_row_discards_it_for_good(world):

@@ -559,12 +559,38 @@ Phase C done — {accepted} enabled, {deferred} on the later-list, {nothing_foun
 Continuing to Phase D (work-system, theme, agents).
 ```
 
+### S15: Cockpit (the local web page)
+
+**Trigger:** not from scan evidence. Asked in Phase D (D1e) whenever task management
+is on, and run on its own by `/bridge-onboard --add cockpit`.
+
+**Offer:** "The cockpit is a local web page (127.0.0.1 only, an early version) with
+your briefing, tasks and agent tabs at a glance, and buttons that act. Switch it on?
+It opens with a short tour of the page, which you can skip. `[y]` `[later]`"
+
+**On `[y]`:** write `cockpit: {enabled: true}` to `bridge-config.yaml`, leave
+`cockpit.tour` out (the first visit offers the tour), then open it: run from D1e, at
+Phase F step 8 after the first briefing; run by `--add cockpit`, at once. Opening is
+`python3 scripts/bridge-cockpit.py open --json`; report where it opened and the address,
+never the login link of `url`. A refusal: the table in `skills/cockpit/SKILL.md`.
+Without a terminal driver (`workplace.driver`), say in one line that "Let AI do it"
+starts nothing until one is set (D1d).
+
+**Record** the answer in `work/onboarding-state.yaml` either way: `cockpit: {status:
+accepted, decided_at: ...}` on `[y]`, `status: deferred` with `remind_after` 30 days on
+for `[later]`.
+
+**Skip when:** `cockpit.enabled` is already `true`, or `scripts/bridge-cockpit.py` is
+missing in this Bridge.
+
+---
+
 Write each decision to `work/onboarding-state.yaml` per the schema in
 `system-discovery.md`.
 
 ## Adding a Feature Later — `/bridge-onboard --add <feature>`
 
-The same advisory blocks (S1–S14) are reused when the user invokes
+The same advisory blocks (S1–S15) are reused when the user invokes
 `--add <feature>` (e.g. `--add personas`, `--add doc-system`). The
 mode is: skip Phases A, B, D, E, F; run only the single S-block
 matching the feature; record the result in `onboarding-state.yaml`.

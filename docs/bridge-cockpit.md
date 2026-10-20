@@ -85,6 +85,7 @@ their defaults:
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
+| `tour` | `true` | the first-run tour: a first visit offers a short introduction of the page; `false` never offers it by itself (Help and Settings still start it), see [The first-run tour](#the-first-run-tour) |
 | `session_guide` | off | the decision guide: Claude Haiku reads a waiting tab's session and offers its next steps as buttons, in the chat and on the Sessions page (section 3, "The decision guide") |
 | `usage.remotes` | the machines of `infra/instances` | other machines whose token use the Betrieb page adds in (`infra/remotes` names; `[]` for none), see the Betrieb page, "Tokens" |
 | `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
@@ -1159,6 +1160,33 @@ Off until `cockpit.session_guide.enabled` (or the switch under Settings, "Decisi
 
 The settings page switches `enabled` and `auto` on top of the config, kept in `.bridge/cockpit/guide.json`, with its own "Reset to config".
 
+### The first-run tour
+
+The first time the page opens it offers a short tour, the way other tools introduce
+themselves: a welcome with "Start the tour" and "Skip", then one step per area with
+that area lit up and the rest dimmed: the tabs on top, Start, Today, the agent tabs
+(not on a narrow screen), Ask, Sessions, Help and settings. Next and Back go
+through it (also the arrow keys), a step opens the page it shows, and the end goes
+back to the page where it began. Skip or `Esc` ends it at any step.
+
+How it ended (finished or skipped, with the date) is kept on the server in
+`state.json`, key `tour`, so another browser does not offer it again. Help ("Start
+the tour") and Settings, Look, Introduction start it again at any time; Settings
+can also offer it again on the next visit (verb `tour_reset`). `cockpit.tour:
+false` switches the offer off for a Bridge whose people know the page; the buttons
+still start it. In mock mode it stays closed unless the link carries `&tour=1`.
+
+### Explain this page
+
+"Explain" in the header (the bulb; also in Help) lays notes over the page as it
+stands: each area the page shows gets a numbered note beside it, a ring around it
+(an ellipse for a button, a frame for a column) and an arrow from the note to the
+ring. Start, Today, Chat, Sessions and Settings have their own areas; every page
+explains the header (tabs, Ask, History, Notes, Help). An area the page does not
+show right now, or one whose note finds no free room, is left out, so the notes never
+cover each other. A click anywhere or `Esc` closes it, and its bar starts the tour.
+It sends nothing and keeps nothing.
+
 ### Keyboard
 
 The shortcuts are off until switched on under Settings, Look, Keyboard
@@ -1490,7 +1518,7 @@ share or clean up.
 | `server.log` | errors, never a key, cookie or request body | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) | yes: the titles |
-| `state.json` | rows hidden on the page, rows marked done or not doing, team runs started from the page, the start page's tiles and pins | yes: the title of each row marked done or not doing |
+| `state.json` | rows hidden on the page, rows marked done or not doing, team runs started from the page, the start page's tiles and pins, how the first-run tour ended | yes: the title of each row marked done or not doing |
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
 | `days.json` | the day book: each quota's use per day and the counts of each day (section 3), two weeks | no: numbers under ids |
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |

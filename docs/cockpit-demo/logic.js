@@ -2976,3 +2976,155 @@ export function costSources(view) {
   const hosts = (view?.sources ?? []).map(x => x?.host || x?.source).filter(Boolean)
   return [...new Set(hosts)].join(', ') || view?.host || view?.source || ''
 }
+
+// ---------------------------------------------------------------- the first-run tour (views/tour.js)
+
+/** The tour's version: a later tour with other steps counts up; tour_done keeps the one that ended */
+export const TOUR_VERSION = 1
+
+/** Whether this visit offers the tour by itself: the server knows it (an older one sends no `tour`), the
+ *  config leaves it on (cockpit.tour) and it never ended, finished or skipped, in any browser; or it ended
+ *  for an older tour than this page's (`version`) */
+export function tourOffered(tour, version = TOUR_VERSION) {
+  if (!tour || tour.enabled === false) return false
+  return !tour.done || !(tour.done.v >= version)
+}
+
+/** The running tour's place in this state's steps: the step it stands on is kept by id, so a layout that
+ *  drops a step (narrow) does not move it onto another; an id the steps lack falls back to the first */
+export function tourIndex(s) {
+  const i = tourSteps(s).findIndex(x => x.id === s?.ui?.tour?.id)
+  return i < 0 ? 0 : i
+}
+
+/** The tour's steps in order. A step names its texts (text.js tour.steps.<id>), the page it opens and the
+ *  area it lights (a CSS selector); one without a target stands in the middle. The tab column is left out
+ *  where the layout shows none (narrow: its own switch at the foot) */
+export function tourSteps(s) {
+  const narrow = s?.layout === 'narrow'
+  return [
+    { id: 'welcome' },
+    { id: 'pages', target: '.pagebar' },
+    { id: 'start', page: '@start', target: '#main' },
+    { id: 'work', page: 'briefing', target: '#main' },
+    ...(narrow ? [] : [{ id: 'tabs', target: '#tabs-column, .hdr-tabs' }]),
+    { id: 'ask', target: '.hdr-ask' },
+    { id: 'sessions', page: '@sessions', target: '#main' },
+    { id: 'help', target: '.hdr-help' },
+    { id: 'done' },
+  ]
+}
+
+/** Where the tour's box stands beside the lit area `rect` ({top, left, width, height}, null: none): below
+ *  when it fits, else above, else beside it (a tall column), else inside it at its top (the whole page);
+ *  always 16px off the edges */
+export function tourPlace(rect, box, view, gap = 12) {
+  const margin = 16
+  const clampX = x => Math.max(margin, Math.min(x, view.width - box.width - margin))
+  const clampY = y => Math.max(margin, Math.min(y, view.height - box.height - margin))
+  if (!rect) return { side: 'center', top: (view.height - box.height) / 2, left: (view.width - box.width) / 2 }
+  const left = clampX(rect.left + rect.width / 2 - box.width / 2)
+  const below = rect.top + rect.height + gap
+  if (below + box.height <= view.height - margin) return { side: 'below', top: below, left }
+  const above = rect.top - gap - box.height
+  if (above >= margin) return { side: 'above', top: above, left }
+  // a tall column: beside it, its top in line with the area's
+  const top = clampY(rect.top)
+  if (rect.left - gap - box.width >= margin) return { side: 'left', top, left: rect.left - gap - box.width }
+  if (rect.left + rect.width + gap + box.width <= view.width - margin) return { side: 'right', top, left: rect.left + rect.width + gap }
+  return { side: 'inside', top: clampY(rect.top + gap * 2), left: clampX(rect.left + rect.width - box.width - gap * 2) }
+}
+
+// ---------------------------------------------------------------- the explain overlay (views/hints.js)
+
+// the areas the overlay can point at, per page, in the order they matter; the header's last on every page.
+// Each id has its words in text.js hints.items.<id>; an area the page does not show is left out when drawn
+const HINTS = {
+  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'], ['stations', '.station'],
+    ['core', '.core-button'], ['today', '.stage-card']],
+  briefing: [['day', '.col-day'], ['detail', '.col-detail'], ['tabcol', '#tabs-column']],
+  '@chat': [['chatList', '.chat-list'], ['chatBox', '.tabview-send'], ['launch', '.launch-pick'], ['tabcol', '#tabs-column']],
+  '@sessions': [['stats', '.stats'], ['guideBoard', '.guide-board'], ['sessCards', '.sess-grid']],
+  '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body']],
+}
+const HEADER_HINTS = [['pages', '.pagebar'], ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['notes', '.hdr-notes'], ['help', '.hdr-help']]
+
+/** What the overlay explains on the page now: its own areas, then the header. The work tab showing a page
+ *  instead of the day's columns (by source, by Jev) has no day list to point at */
+export function hintsFor(s) {
+  const page = s?.ui?.page
+  const dayColumns = page !== 'briefing' || workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'due'
+  const own = HINTS[page] ?? (page === 'briefing' ? [] : [['tabcol', '#tabs-column']])
+  return [...(dayColumns ? own : own.filter(([id]) => id === 'tabcol')), ...HEADER_HINTS]
+    .map(([id, target]) => ({ id, target }))
+}
+
+const HINT_MARGIN = 12    // the notes keep this far off the screen's edges
+const HINT_GAP = 40       // and this far from their area, room for the arrow
+const HINT_RING = 6       // the ring stands this far outside the area
+
+const overlaps = (a, b, pad = 0) => a.left < b.left + b.width + pad && b.left < a.left + a.width + pad
+  && a.top < b.top + b.height + pad && b.top < a.top + a.height + pad
+const clampTo = (v, lo, hi) => Math.max(lo, Math.min(v, hi))
+
+/** A small area is circled, a long or large one framed */
+const ringShape = r => (r.width <= 320 && r.height <= 200 && r.width / r.height < 6 ? 'ellipse' : 'frame')
+
+/** Where each hint's note, ring and arrow stand. `items` in order of importance, each {id, rect, note:
+ *  {width, height}}; the rects as the screen shows them. A note goes below, above, right or left of its
+ *  area, inside a large one; never over another note, never over a small area still to be explained, never
+ *  off the screen. A hint without room, or whose area is off the screen, is dropped. A small area gets an
+ *  ellipse, a long or large one a frame; the arrow runs from the note's edge to the ring's */
+export function hintLayout(items, view) {
+  const visible = items.filter(it => it.rect && it.rect.width > 0 && it.rect.height > 0
+    && it.rect.top < view.height && it.rect.top + it.rect.height > 0 && it.rect.left < view.width && it.rect.left + it.rect.width > 0)
+  const dropped = items.filter(it => !visible.includes(it)).map(it => it.id)
+  const rings = new Map(visible.map(it => {
+    const r = it.rect
+    return [it.id, { top: r.top - HINT_RING, left: r.left - HINT_RING, width: r.width + HINT_RING * 2, height: r.height + HINT_RING * 2 }]
+  }))
+  const big = r => r.width * r.height > view.width * view.height * 0.12
+  const placed = []
+  for (const it of visible) {
+    const ring = rings.get(it.id)
+    const { width, height } = it.note
+    const fit = (top, left) => ({ top: clampTo(top, HINT_MARGIN, view.height - height - HINT_MARGIN),
+      left: clampTo(left, HINT_MARGIN, view.width - width - HINT_MARGIN), width, height })
+    const cx = ring.left + ring.width / 2
+    const cy = ring.top + ring.height / 2
+    // a large area takes its note inside, near its top; beside it, the note would stand in the next column
+    const within = big(ring) ? [fit(ring.top + HINT_GAP, ring.left + HINT_GAP), fit(ring.top + HINT_GAP, ring.left + ring.width - width - HINT_GAP),
+      fit(cy - height / 2, ring.left + HINT_GAP)] : []
+    const tries = [...within,
+      fit(ring.top + ring.height + HINT_GAP, cx - width / 2),
+      fit(ring.top - HINT_GAP - height, cx - width / 2),
+      fit(cy - height / 2, ring.left + ring.width + HINT_GAP),
+      fit(cy - height / 2, ring.left - HINT_GAP - width)]
+    // the small areas the note must not cover, already drawn or still to come: first every one, then, where
+    // that leaves no room (a header button above the tab bar), only those an ellipse circles
+    const others = visible.filter(x => x !== it && !big(rings.get(x.id))).map(x => rings.get(x.id))
+    const circled = others.filter(r => ringShape(r) === 'ellipse')
+    // a note pushed back onto the screen may land on its own area: only the inside places may stand there
+    const free = (n, clear) => (within.includes(n) || !overlaps(n, ring)) && placed.every(p => !overlaps(n, p.note, 8))
+      && clear.every(r => !overlaps(n, r))
+    const note = tries.find(n => free(n, others)) ?? tries.find(n => free(n, circled))
+    if (!note) { dropped.push(it.id); continue }
+    const inside = overlaps(note, ring)
+    // the note's point nearest the area's middle, and the ring's point nearest that
+    const x1 = clampTo(cx, note.left, note.left + note.width)
+    const y1 = clampTo(cy, note.top, note.top + note.height)
+    const arrow = inside ? null : (() => {
+      let x2 = clampTo(x1, ring.left, ring.left + ring.width)
+      let y2 = clampTo(y1, ring.top, ring.top + ring.height)
+      // a point that fell inside the ring is pushed onto its nearest edge
+      if (x2 > ring.left && x2 < ring.left + ring.width && y2 > ring.top && y2 < ring.top + ring.height) {
+        const d = [y2 - ring.top, ring.top + ring.height - y2, x2 - ring.left, ring.left + ring.width - x2]
+        const k = d.indexOf(Math.min(...d))
+        if (k === 0) y2 = ring.top; else if (k === 1) y2 = ring.top + ring.height; else if (k === 2) x2 = ring.left; else x2 = ring.left + ring.width
+      }
+      return { x1, y1, x2, y2 }
+    })()
+    placed.push({ id: it.id, n: placed.length + 1, ring, shape: ringShape(ring), note, arrow })
+  }
+  return { placed, dropped }
+}

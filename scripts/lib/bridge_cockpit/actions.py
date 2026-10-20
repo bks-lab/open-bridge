@@ -33,7 +33,7 @@ from .actions_base import *  # noqa: F401,F403
 from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
                            READ_ONLY_VERBS, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
-                           TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
+                           TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
                            Ctx, bad_arg, check_date, check_key, check_text)
 from .actions_chats import ChatVerbs
 from .actions_launch import LaunchSteps
@@ -80,6 +80,7 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "board_mode": (BOARD_MODES, "off, mine or all"),
     "route_by": (ROUTE_BY, f"must be one of {', '.join(ROUTE_BY)}"),
     "tab_state": (TAB_STATES, f"must be one of {', '.join(TAB_STATES)}"),
+    "tour_how": (TOUR_HOW, "finished or skipped"),
 }
 
 

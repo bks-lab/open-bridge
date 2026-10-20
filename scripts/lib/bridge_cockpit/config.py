@@ -80,6 +80,9 @@ class WebConfig:
     # the decision guide of waiting tabs (cockpit.session_guide, guide.DEFAULTS): off unless switched on;
     # the settings page may switch it on top (guide.py), this is what the config says
     session_guide: dict = field(default_factory=lambda: dict(gd.DEFAULTS))
+    # the first-run tour of the page (cockpit.tour): offered on a first visit unless switched off;
+    # Help and Settings start it by hand either way
+    tour: bool = True
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
     config_warnings: tuple = ()
@@ -152,7 +155,7 @@ BLOCK = {
     "chat_layout": ("choice", "chat_layout", CHAT_LAYOUTS), "chat_keep_hours": ("number", "chat_keep_hours", 0),
     "launch": ("block", {"target": ("choice", "target", TARGETS)}),
     "launch_model": ("launch_model",), "ticker": ("ticker",), "usage": ("usage",),
-    "session_guide": ("session_guide",),
+    "session_guide": ("session_guide",), "tour": ("bool", "tour"),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -357,6 +360,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
                     session_guide=gd.guide_of(w.get("session_guide")),
+                    tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
                     snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

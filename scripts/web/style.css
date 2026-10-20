@@ -2795,3 +2795,64 @@ pre.guide-read-text { font-family: var(--font-mono); }
   .guide { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .guide-root::after { display: none; }
 }
+
+/* the first-run tour (views/tour.js): the lit area cuts a hole into the scrim, the box stands beside it */
+.tour { position: fixed; inset: 0; z-index: 95; }
+.tour-scrim { position: absolute; inset: 0; background: var(--scrim); animation: fade 200ms ease-out; }
+.tour-spot {
+  position: fixed; border-radius: var(--radius-lg); box-shadow: 0 0 0 100vmax var(--scrim);
+  outline: 2px solid var(--accent); outline-offset: 0; pointer-events: none;
+  transition: top var(--motion), left var(--motion), width var(--motion), height var(--motion);
+}
+.tour-box {
+  position: fixed; width: min(380px, calc(100vw - 32px)); background: var(--surface-raised);
+  border: 1px solid var(--border); border-radius: var(--radius-xl); box-shadow: var(--shadow-float);
+  padding: 18px 20px 16px; animation: fade 200ms ease-out;
+}
+.tour-center { top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.tour-count { margin: 0 0 6px; color: var(--on-surface-muted); }
+.tour-title { margin: 0 0 8px; font-size: 17px; color: var(--on-surface); }
+.tour-body { margin: 0; color: var(--on-surface); line-height: 1.5; }
+.tour-dots { display: flex; gap: 6px; margin: 14px 0 0; }
+.tour-dot { width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--border-strong); }
+.tour-dot.is-on { background: var(--accent); width: 16px; }
+.tour-acts { margin-top: 14px; align-items: center; }
+.tour-gap { flex: 1; }
+.help-tour { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.tour-done { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot { transition: none; }
+  .tour-scrim, .tour-box { animation: none; }
+}
+
+/* the explain overlay (views/hints.js): rings and arrows in one svg over a light scrim, the notes above them */
+.hints { position: fixed; inset: 0; z-index: 94; cursor: pointer; }
+.hints-scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0.55; animation: fade 200ms ease-out; }
+.hints-svg { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.hints-ring { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 7 5; }
+.hints-arrow { fill: none; stroke: var(--accent); stroke-width: 2; }
+.hints-head { fill: var(--accent); }
+.hints-note {
+  position: fixed; background: var(--surface-raised); border: 1px solid var(--accent-line);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-float); padding: 10px 12px 10px 38px;
+  animation: fade 220ms ease-out; cursor: default;
+}
+.hints-n {
+  position: absolute; left: 10px; top: 10px; width: 20px; height: 20px; border-radius: var(--radius-full);
+  background: var(--accent); color: var(--surface-raised); font-size: 11px; line-height: 20px; text-align: center;
+}
+.hints-title { display: block; color: var(--on-surface); font-size: var(--text-sm); }
+.hints-body { margin: 2px 0 0; color: var(--on-surface-muted); font-size: 12.5px; line-height: 18px; }
+.hints-bar {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  max-width: calc(100vw - 32px); background: var(--surface-raised); border: 1px solid var(--border); cursor: default;
+  border-radius: var(--radius-full); box-shadow: var(--shadow-float); padding: 6px 8px 6px 16px;
+}
+.hints-bar .btn { white-space: nowrap; }
+@media (max-width: 599px) {
+  .hints-bar-text { display: none; }
+  .hints-bar { padding-left: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hints-scrim, .hints-note { animation: none; }
+}

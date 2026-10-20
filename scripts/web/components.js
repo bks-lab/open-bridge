@@ -33,6 +33,8 @@ import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
 import { CustomizeDrawer, SettingsPage } from './views/settings.js'
 import { TabView, TabsColumn } from './views/tabs.js'
+import { Tour } from './views/tour.js'
+import { HintsOverlay } from './views/hints.js'
 export { useHomeTitle } from './views/home.js'
 export { quickLive } from './views/chat.js'
 export {
@@ -177,5 +179,7 @@ export function App({ store, ctl }) {
     ${s.ui.organize ? html`<${OrganizeView} s=${s} c=${ctl} />` : null}
     <${ConfirmDialog} s=${s} c=${ctl} />
     <${Toasts} s=${s} c=${ctl} />
+    <${HintsOverlay} s=${s} c=${ctl} />
+    <${Tour} s=${s} c=${ctl} />
   </div>`
 }

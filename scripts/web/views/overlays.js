@@ -415,6 +415,9 @@ export function HelpDialog({ s, c }) {
           : html`<p class="muted small">${t.keysOff} <button type="button" class="btn-link" onClick=${() => c.openSettings('look')}>${t.settings.keysTitle}</button></p>`}
         </section>
         <section>
+          <p class="help-tour"><span class="muted small">${t.tour.helpLine}</span>
+            <button type="button" class="btn btn-secondary btn-xs" onClick=${c.tourStart}><span class="btn-label">${t.tour.again}</span></button>
+            <button type="button" class="btn btn-ghost btn-xs" onClick=${() => c.setHints(true)}><span class="btn-label">${t.hints.helpButton}</span></button></p>
           <dl class="help-text">${t.helpText.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
             ? html`<ul class="plain help-list">${v.map(x => html`<li key=${x}>${x}</li>`)}</ul>` : v}</dd></div>`)}</dl>
         </section>

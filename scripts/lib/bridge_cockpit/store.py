@@ -110,6 +110,11 @@ class WebStore:
         # what the chooser offered when the choice was made: a tile it did not offer yet gets its default
         self._seen = [x for x in seen if isinstance(x, str)] if isinstance(seen, list) else None
         self._pins = [x for x in pins if isinstance(x, str)] if isinstance(pins, list) else []
+        # the first-run tour: {how: finished|skipped, v: the page's tour version, at: date}; None until it ended
+        tour = data.get("tour")
+        ok = (isinstance(tour, dict) and tour.get("how") in ("finished", "skipped") and isinstance(tour.get("v"), int)
+              and not isinstance(tour.get("v"), bool) and tour["v"] >= 0 and isinstance(tour.get("at"), str))
+        self._tour = {"how": tour["how"], "v": tour["v"], "at": tour["at"]} if ok else None
         self._runs = {k: v for k, v in runs.items()
                       if isinstance(v, dict) and isinstance(v.get("team"), str) and isinstance(v.get("roles"), list)}
         links = data.get("session_links") if isinstance(data.get("session_links"), dict) else {}
@@ -126,7 +131,7 @@ class WebStore:
     def _save(self) -> None:
         atomic_write_json(self.path, {"v": 1, "hidden": self._hidden, "dismissed": self._dismissed,
                                       "team_runs": self._runs, "home_tiles": self._home, "home_seen": self._seen,
-                                      "pins": self._pins, "session_links": self._links})
+                                      "pins": self._pins, "session_links": self._links, "tour": self._tour})
 
     def prune(self) -> bool:
         """Drop hidden entries whose date has come (hidden while date > today)."""
@@ -154,6 +159,16 @@ class WebStore:
         with self.lock:
             return {"tiles": None if self._home is None else list(self._home),
                     "seen": None if self._seen is None else list(self._seen), "pins": list(self._pins)}
+
+    def tour(self) -> dict | None:
+        with self.lock:
+            return None if self._tour is None else dict(self._tour)
+
+    def set_tour(self, how: str | None, v: int = 0) -> None:
+        """The first-run tour ended (finished or skipped), or None to offer it again"""
+        with self.lock:
+            self._tour = None if how is None else {"how": how, "v": v, "at": iso_date(self.clock())}
+            self._save()
 
     def pin(self, key: str, on: bool) -> None:
         """A row pinned to the start page, or taken off it; the order is the order of pinning"""

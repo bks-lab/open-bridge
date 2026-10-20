@@ -1378,3 +1378,75 @@ test('guide: a chosen step brings its box into view and puts the cursor in it, S
     proto.focus = had.focus
   }
 })
+
+// ---------------------------------------------------------------- the first-run tour (views/tour.js)
+
+const { Tour } = views.tour
+const { tourSteps } = (await loadCockpit()).logic
+
+test('tour: the welcome offers the tour and a skip, the skip ends it as skipped', () => {
+  const s = cockpitState(NOW, { tour: { enabled: true, done: null }, ui: { tour: { id: 'welcome' } } })
+  const c = recorder()
+  const el = mount(html`<${Tour} s=${s} c=${c} />`)
+  assert.match(el.text(), new RegExp(en.tour.steps.welcome.title))
+  assert.ok(labels(el).includes(en.tour.start))
+  el.button(en.tour.skip).click()
+  assert.deepEqual(c.calls.at(-1), ['tourEnd', 'skipped'])
+})
+
+test('tour: a middle step counts, goes back and on, the last one ends it as finished', () => {
+  const steps = text.TABLES.en.tour.steps
+  const s = cockpitState(NOW, { tour: { enabled: true, done: null }, ui: { tour: { id: 'start' } } })
+  const c = recorder()
+  const el = mount(html`<${Tour} s=${s} c=${c} />`)
+  const list = tourSteps(s)
+  assert.match(el.text(), new RegExp(steps[list[2].id].title))
+  assert.match(el.$('.tour-count').text(), new RegExp(`2.*${list.length - 2}`))
+  el.button(en.tour.next).click()
+  assert.deepEqual(c.calls.at(-1), ['tourGo', 3])
+  el.button(en.tour.back).click()
+  assert.deepEqual(c.calls.at(-1), ['tourGo', 1])
+  const last = mount(html`<${Tour} s=${{ ...s, ui: { ...s.ui, tour: { id: list.at(-1).id } } }} c=${c} />`)
+  last.button(en.tour.finish).click()
+  assert.deepEqual(c.calls.at(-1), ['tourEnd', 'finished'])
+})
+
+test('tour: closed, it draws nothing', () => {
+  const s = cockpitState(NOW, { tour: { enabled: true, done: null }, ui: { tour: null } })
+  assert.equal(mount(html`<${Tour} s=${s} c=${recorder()} />`).text(), '')
+})
+
+// ---------------------------------------------------------------- the explain overlay (views/hints.js)
+
+const { HintsLayer, HintsOverlay } = views.hints
+
+test('hints: closed, the overlay draws nothing', () => {
+  const s = cockpitState(NOW, { ui: { hints: false } })
+  assert.equal(mount(html`<${HintsOverlay} s=${s} c=${recorder()} />`).text(), '')
+})
+
+test('hints: every placed hint has its numbered note, its ring and its arrow; Close and the tour act', () => {
+  const layout = { view: { width: 1400, height: 900 }, dropped: [], placed: [
+    { id: 'ask', n: 1, shape: 'ellipse', ring: { top: 6, left: 700, width: 100, height: 44 },
+      note: { top: 90, left: 640, width: 240, height: 80 }, arrow: { x1: 750, y1: 90, x2: 750, y2: 50 } },
+    { id: 'day', n: 2, shape: 'frame', ring: { top: 110, left: 10, width: 620, height: 770 },
+      note: { top: 150, left: 50, width: 240, height: 80 }, arrow: null },
+  ] }
+  const c = recorder()
+  const el = mount(html`<${HintsLayer} layout=${layout} c=${c} />`)
+  assert.deepEqual(el.$$('.hints-note').map(n => n.getAttribute('data-hint')), ['ask', 'day'])
+  assert.deepEqual(el.$$('.hints-n').map(n => n.text()), ['1', '2'])
+  assert.match(el.$('.hints-note').text(), new RegExp(en.hints.items.ask.title))
+  assert.equal(el.$$('ellipse').length, 1)
+  assert.equal(el.$$('rect').length, 1)
+  assert.equal(el.$$('.hints-arrow').length, 1)
+  el.button(en.hints.close).click()
+  assert.deepEqual(c.calls.at(-1), ['setHints', false])
+  el.button(en.hints.tour).click()
+  assert.deepEqual(c.calls.at(-1), ['tourStart'])
+})
+
+test('hints: nothing in view says so instead of an empty overlay', () => {
+  const el = mount(html`<${HintsLayer} layout=${{ view: { width: 800, height: 600 }, placed: [], dropped: ['ask'] }} c=${recorder()} />`)
+  assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.none.slice(0, 20)))
+})

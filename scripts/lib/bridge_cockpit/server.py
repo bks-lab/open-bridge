@@ -355,8 +355,13 @@ class App:
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "quick_live": self.quick.live_state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
+                "tour": self.tour_state(),
                 "rooms": {"layout": self.cfg.chat_layout, "root": str(self.root), "control": self.cfg.control,
                           "bridges": self.bridges.state()}}
+
+    def tour_state(self) -> dict:
+        """The first-run tour: whether a first visit offers it (cockpit.tour) and how it ended, if it did"""
+        return {"enabled": bool(getattr(self.cfg, "tour", True)), "done": self.store.tour()}
 
     def task_open(self, slug: str) -> bool:
         return bool(slug) and (self.root / "work" / "tasks" / slug / "STATUS.md").is_file()
