@@ -12,7 +12,7 @@
 // and on a session card, GuideBoard on top of the Sessions page, GuideSettings on the settings page.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { answerMark, canTab, centsText, duration, errorText, guideChoices, guideOf, replySend, short, stateToken } from '../logic.js'
 import { T, language } from '../text.js'
 import { Thinking } from './chat.js'
@@ -75,6 +75,14 @@ export function GuideTree({ tab, s, c, compact = false }) {
   const [draft, setDraft] = useState('')
   const [open, setOpen] = useState(false)           // what was read, unfolded
   const [note, setNote] = useState(null)
+  const box = useRef(null)
+  const field = useRef(null)
+  // a step just chosen: its box comes into view (in a scrolling pane it opens below the fold) and takes the cursor
+  useEffect(() => {
+    if (!chosen) return
+    box.current?.scrollIntoView?.({ block: 'nearest' })
+    field.current?.focus?.()
+  }, [chosen])
   if (status === 'off') return null
   const busy = !!s.ui?.busy?.[tab.ref]
   const read = html`<${Btn} size="xs" variant="ghost" icon="reload" busy=${busy} onClick=${() => c.guideRead(tab.ref)}>
@@ -153,18 +161,18 @@ export function GuideTree({ tab, s, c, compact = false }) {
         </button>
       </li>
     </ul>
-    ${current ? html`<div class="guide-compose">
+    ${current ? html`<div class="guide-compose" ref=${box}>
       ${current.risky ? html`<p class="small"><${StateLine} token="warning" word=${g.riskyNote} /></p>` : null}
       ${current.n != null ? html`<p class="small">${g.presses(current.n)}: <strong>${current.label}</strong></p>`
         : html`<label class="sr-only" for=${boxId}>${g.composeLabel}</label>
-          <textarea id=${boxId} class="input guide-box" rows="3" maxlength=${TAB_MSG_MAX} value=${draft} placeholder=${g.composeLabel}
+          <textarea id=${boxId} ref=${field} class="input guide-box" rows="3" maxlength=${TAB_MSG_MAX} value=${draft} placeholder=${g.composeLabel}
             onInput=${e => setDraft(e.currentTarget.value)}
             onKeyDown=${e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send() } }}></textarea>`}
       ${tab.ask?.draft && current.n == null ? html`<p class="reply-draft muted small">${t.reply.draft}</p>` : null}
       <div class="btn-row">
-        <${Btn} size="xs" variant="primary" icon="send" busy=${busy} disabled=${current.n == null && !draft.trim()} onClick=${send}>
+        <${Btn} size="sm" variant="primary" icon="send" busy=${busy} disabled=${current.n == null && !draft.trim()} onClick=${send}>
           ${current.n != null ? g.press : g.send}<//>
-        <${Btn} size="xs" variant="ghost" onClick=${cancel}>${g.cancel}<//>
+        <${Btn} size="sm" variant="ghost" onClick=${cancel}>${g.cancel}<//>
       </div>
     </div>` : null}
     <footer class="guide-foot muted small">

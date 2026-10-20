@@ -1357,3 +1357,24 @@ test('guide: in the chat the view switches between reading, both and terminal', 
   const side = mount(html`<${Sidebar} s=${cockpitState(NOW, { ui: { guideView: 'screen' } })} c=${recorder()} rooms=${roomsOf(cockpitState(NOW))} here=${{ kind: 'chat' }} />`)
   assert.match(replyRow(side, 'demo-task research').$('.reply-ask').text(), /Should I summarise them/)
 })
+
+test('guide: a chosen step brings its box into view and puts the cursor in it, Send in reach', async () => {
+  const s = cockpitState(NOW)
+  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${guideCtl()} />`)
+  // the small DOM has no layout and no focus: count the calls instead
+  const proto = Object.getPrototypeOf(el)
+  const seen = []
+  const had = { scroll: proto.scrollIntoView, focus: proto.focus }
+  proto.scrollIntoView = function (o) { seen.push(['scroll', this.getAttribute('class'), o?.block]) }
+  proto.focus = function () { seen.push(['focus', this.tagName?.toLowerCase?.() ?? this.nodeName]) }
+  try {
+    el.$$('.guide-opt')[0].click()
+    await tick()
+    assert.deepEqual(seen.find(x => x[0] === 'scroll'), ['scroll', 'guide-compose', 'nearest'])
+    assert.ok(seen.some(x => x[0] === 'focus' && /textarea/i.test(x[1])), JSON.stringify(seen))
+    assert.ok(el.$('.guide-compose').button(en.guide.send))
+  } finally {
+    proto.scrollIntoView = had.scroll
+    proto.focus = had.focus
+  }
+})
