@@ -12,12 +12,18 @@ import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideO
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
+import { Segmented } from './detail.js'
 import { Btn, Dot, Empty, Icon, StateLine } from './parts.js'
 import { GuideLine, GuideTree } from './guide.js'
 import { AskLine, TabReply } from './reply.js'
 import { useTabScreen } from './tabs.js'
 
 const CHATS_SHOWN = 6
+const GUIDE_VIEWS = ['guide', 'both', 'screen']
+
+/** What a waiting tab's pane and its sidebar row show while the decision guide is on: the reading, both,
+ *  or the terminal as before (ui.guideView, kept in this browser) */
+const guideView = s => (GUIDE_VIEWS.includes(s.ui?.guideView) ? s.ui.guideView : 'both')
 
 /** The room picked, else the chat (the open quick chat is ui.quickConv). Never picked on its own from
  *  the tabs: a tab that starts waiting would take the pane away while you type */
@@ -172,8 +178,8 @@ function AskRow({ tab, left, s, c }) {
       <span class="reply-name">${tab.name}</span>
       <span class="room-meta muted small">${tab.workspace}</span>
     </button>
-    ${!done && guideOf(s, tab).status === 'fresh' ? html`<${GuideLine} tab=${tab} s=${s} />` : html`<${AskLine} tab=${tab} />
-      ${done ? null : html`<${GuideLine} tab=${tab} s=${s} />`}`}
+    ${!done && guideView(s) !== 'screen' && guideOf(s, tab).status === 'fresh' ? html`<${GuideLine} tab=${tab} s=${s} />` : html`<${AskLine} tab=${tab} />
+      ${done || guideView(s) === 'screen' ? null : html`<${GuideLine} tab=${tab} s=${s} />`}`}
     ${done ? html`<p class="reply-done muted small">${answered ? t.reply.answered(answered.q) : t.reply.movedOn}</p>`
       : html`<${TabReply} tab=${tab} s=${s} c=${c} compact />`}
   </div>`
@@ -259,7 +265,10 @@ function TabPane({ s, c, tab }) {
   useLayoutEffect(() => { const el = body.current; if (el && stick.current) el.scrollTop = el.scrollHeight }, [screen?.text])
   useEffect(() => { stick.current = true }, [tab.ref])
   const lines = screenLines(screen?.text)
-  return html`<section class="panel chat-main rooms-main" aria-labelledby="room-title">
+  const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
+  const guided = replying && guideOf(s, tab).status !== 'off'
+  const view = guided ? guideView(s) : 'screen'
+  return html`<section class=${`panel chat-main rooms-main${replying ? ' has-reply' : ''}${view === 'guide' ? ' is-guide-only' : ''}`} aria-labelledby="room-title">
     <header class="tabview-head">
       <${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />
       <h2 class="sec-title tabview-title" id="room-title" title=${taskTab(tab) && !tab.is_control ? t.rooms.taskName : undefined}>
@@ -269,18 +278,20 @@ function TabPane({ s, c, tab }) {
       <span class="muted small">${tab.workspace}</span>
       <span class="tabview-live muted small" aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
         : screen ? t.tabViewLive : t.loading}</span>
+      ${guided ? html`<span class="guide-view"><${Segmented} label=${t.guide.viewLabel} current=${view}
+        values=${GUIDE_VIEWS.map(v => [v, t.guide.view[v]])} onPick=${v => c.setGuideView(v)} /></span>` : null}
       <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
     </header>
-    ${(tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control ? html`<div class="reply-pane">
-      <${AskLine} tab=${tab} />
-      <${GuideTree} tab=${tab} s=${s} c=${c} />
+    ${replying ? html`<div class="reply-pane">
+      ${view === 'guide' ? null : html`<${AskLine} tab=${tab} />`}
+      ${view === 'screen' ? null : html`<${GuideTree} tab=${tab} s=${s} c=${c} />`}
       <${TabReply} tab=${tab} s=${s} c=${c} />
     </div>` : null}
-    <div class="tabview-body" ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
+    ${view === 'guide' ? null : html`<div class="tabview-body" ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
       onScroll=${e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}>
       ${lines.length ? lines.map((l, i) => html`<div key=${i} class=${`tl tl-${l.kind}`}>${l.text || ' '}</div>`)
         : html`<p class="muted">${screen ? t.tabViewEmpty : t.loading}</p>`}
-    </div>
+    </div>`}
   </section>`
 }
 

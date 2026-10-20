@@ -1164,60 +1164,8 @@ function guideCtl() {
   return c
 }
 const optLabels = el => el.$$('.guide-opt-label').map(x => x.text())
-
-test('guide: a waiting tab shows where it stands and one branch per step, the recommended one marked', async () => {
-  const s = cockpitState(NOW)
-  const tab = tabOf(s, 'surface:12')
-  const c = guideCtl()
-  const el = mount(html`<${GuideTree} tab=${tab} s=${s} c=${c} />`)
-  assert.equal(el.$('.guide-where').text(), 'Three sources found and read; nothing is written to team.md yet.')
-  assert.match(el.$('.guide-waits').text(), /Whether to summarise the sources in team\.md\./)
-  assert.deepEqual(optLabels(el), ['Summarise', 'List them first', 'Summarise and push', en.guide.own])
-  assert.ok(el.$('.guide-branch.is-picked'), 'the recommended step is marked')
-  assert.match(el.$('.guide-branch.is-picked').text(), new RegExp(en.guide.picked))
-  assert.match(el.$$('.guide-branch')[2].text(), new RegExp(en.guide.risky))
-  el.$$('.guide-opt')[0].click()
-  await tick()
-  assert.deepEqual(c.calls.find(x => x[0] === 'reply').slice(1), ['tab_send', { tab_ref: 'surface:12', text: 'Yes, summarise them in team.md.',
-    expect: 'waiting', seen: tab.ask.hash, name: 'demo-task research' }])
-  assert.ok(c.calls.some(x => x[0] === 'markAnswered' && x[1] === 'surface:12'))
-})
-
-test('guide: a step that reaches beyond the session sends only on the second click', async () => {
-  const s = cockpitState(NOW)
-  const c = guideCtl()
-  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${c} />`)
-  el.$$('.guide-opt')[2].click()
-  await tick()
-  assert.equal(c.calls.filter(x => x[0] === 'reply').length, 0)
-  assert.equal(optLabels(el)[2], en.guide.confirm('Summarise and push'))
-  el.$$('.guide-opt')[2].click()
-  await tick()
-  assert.deepEqual(c.calls.filter(x => x[0] === 'reply').map(x => x[2].text), ['Summarise them in team.md, commit and push.'])
-})
-
-test('guide: a dialog step presses its own number with the question it was read for', async () => {
-  const s = cockpitState(NOW)
-  const tab = tabOf(s, 'surface:7')
-  const c = guideCtl()
-  const el = mount(html`<${GuideTree} tab=${tab} s=${s} c=${c} />`)
-  assert.deepEqual(optLabels(el), ['Yes', 'No, and tell Claude what to do differently', en.guide.own])
-  el.$$('.guide-opt')[1].click()
-  await tick()
-  assert.deepEqual(c.calls.find(x => x[0] === 'reply').slice(1), ['tab_option', { tab_ref: 'surface:7', n: 3, seen: tab.ask.hash, name: 'alpha-release' }])
-})
-
-test('guide: a tab not read yet offers the reading, and answering yourself opens the tab', () => {
-  const s = cockpitState(NOW)
-  const c = recorder()
-  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:13')} s=${s} c=${c} />`)
-  assert.match(el.text(), new RegExp(en.guide.noneYet.slice(0, 20)))
-  el.button(en.guide.read).click()
-  assert.deepEqual(c.calls.at(-1), ['guideRead', 'surface:13'])
-  const read = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${c} />`)
-  read.$$('.guide-opt').at(-1).click()
-  assert.deepEqual(c.calls.at(-1), ['openTabView', 'surface:12'])
-})
+// a textarea's words: Preact writes `value` as an attribute into the small DOM until something sets the property
+const boxValue = box => box.value ?? box.getAttribute('value') ?? ''
 
 test('guide: a reading made for another question shows as stale without steps', () => {
   const s = cockpitState(NOW)
@@ -1297,4 +1245,115 @@ test('guide: a row of Waiting for you that was read shows what it is about and w
   assert.ok(research.button(en.reply.goOn), 'the answers stay')
   // a tab not read yet keeps the words off its screen
   assert.match(replyRow(el, 'changelog').$('.reply-ask').text(), /Changelog entry written/)
+})
+
+test('guide: a waiting tab shows where it stands and one branch per step, the recommended one marked', () => {
+  const s = cockpitState(NOW)
+  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${guideCtl()} />`)
+  assert.equal(el.$('.guide-where').text(), 'Three sources found and read; nothing is written to team.md yet.')
+  assert.match(el.$('.guide-waits').text(), /Whether to summarise the sources in team\.md\./)
+  assert.deepEqual(optLabels(el), ['Summarise', 'List them first', 'Summarise and push', en.guide.own])
+  assert.match(el.$('.guide-branch.is-picked').text(), new RegExp(en.guide.picked))
+  assert.match(el.$$('.guide-branch')[2].text(), new RegExp(en.guide.risky))
+})
+
+test('guide: a click only puts the words in the box, Send sends them, edited if you edited them', async () => {
+  const s = cockpitState(NOW)
+  const tab = tabOf(s, 'surface:12')
+  const c = guideCtl()
+  const el = mount(html`<${GuideTree} tab=${tab} s=${s} c=${c} />`)
+  assert.equal(el.$('.guide-compose'), null)
+  el.$$('.guide-opt')[0].click()
+  await tick()
+  assert.equal(c.calls.filter(x => x[0] === 'reply').length, 0, 'a click sends nothing')
+  assert.ok(el.$('.guide-branch.is-chosen'))
+  const box = el.$('.guide-compose textarea')
+  assert.equal(boxValue(box), 'Yes, summarise them in team.md.')
+  box.value = 'Yes, but only the first two.'
+  box.dispatch('input')
+  await tick()
+  el.$('.guide-compose').button(en.guide.send).click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'reply').slice(1), ['tab_send', { tab_ref: 'surface:12', text: 'Yes, but only the first two.',
+    expect: 'waiting', seen: tab.ask.hash, name: 'demo-task research' }])
+  assert.ok(c.calls.some(x => x[0] === 'markAnswered' && x[1] === 'surface:12'))
+})
+
+test('guide: a step that reaches beyond the session says so in the box before it is sent; Cancel leaves it', async () => {
+  const s = cockpitState(NOW)
+  const c = guideCtl()
+  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${c} />`)
+  el.$$('.guide-opt')[2].click()
+  await tick()
+  assert.match(el.$('.guide-compose').text(), new RegExp(en.guide.riskyNote))
+  el.$('.guide-compose').button(en.guide.cancel).click()
+  await tick()
+  assert.equal(el.$('.guide-compose'), null)
+  assert.equal(c.calls.filter(x => x[0] === 'reply').length, 0)
+})
+
+test('guide: a dialog step is chosen first and pressed with its own number on Press', async () => {
+  const s = cockpitState(NOW)
+  const tab = tabOf(s, 'surface:7')
+  const c = guideCtl()
+  const el = mount(html`<${GuideTree} tab=${tab} s=${s} c=${c} />`)
+  assert.deepEqual(optLabels(el), ['Yes', 'No, and tell Claude what to do differently', en.guide.own])
+  el.$$('.guide-opt')[1].click()
+  await tick()
+  assert.equal(c.calls.filter(x => x[0] === 'reply').length, 0)
+  assert.equal(el.$('.guide-compose textarea'), null, 'a dialog takes no typed words')
+  el.$('.guide-compose').button(en.guide.press).click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'reply').slice(1), ['tab_option', { tab_ref: 'surface:7', n: 3, seen: tab.ask.hash, name: 'alpha-release' }])
+})
+
+test('guide: Answer yourself opens an empty box; the tab is one click away, its screen another', async () => {
+  const s = cockpitState(NOW)
+  const c = guideCtl()
+  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${c} />`)
+  el.$$('.guide-opt').at(-1).click()
+  await tick()
+  assert.equal(boxValue(el.$('.guide-compose textarea')), '')
+  el.button(en.guide.toTab).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'tab_jump', { tab_ref: 'surface:12' }])
+  el.button(en.guide.watch).click()
+  assert.deepEqual(c.calls.at(-1), ['openTabView', 'surface:12'])
+  // a tab not read yet offers the reading
+  const fresh = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:13')} s=${s} c=${c} />`)
+  fresh.button(en.guide.read).click()
+  assert.deepEqual(c.calls.at(-1), ['guideRead', 'surface:13'])
+})
+
+test('guide: What was read shows the asks and the agent words Haiku read', async () => {
+  const s = cockpitState(NOW)
+  const el = mount(html`<${GuideTree} tab=${tabOf(s, 'surface:12')} s=${s} c=${guideCtl()} />`)
+  assert.equal(el.$('.guide-read'), null)
+  el.button(en.guide.showRead).click()
+  await tick()
+  const read = el.$('.guide-read')
+  assert.match(read.text(), /Find three good sources for the team page/)
+  assert.match(read.text(), /I found three sources/)
+  el.button(en.guide.hideRead).click()
+  await tick()
+  assert.equal(el.$('.guide-read'), null)
+})
+
+test('guide: in the chat the view switches between reading, both and terminal', () => {
+  const pane = guideView => mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99',
+    ...(guideView ? { guideView } : {}) } })} c=${recorder()} />`)
+  const both = pane(null)
+  assert.ok(both.$('.rooms-main .guide') && both.$('.rooms-main .tabview-body'), 'both by default')
+  assert.ok(both.$('.rooms-main.has-reply'), 'the reading gets a row of its own')
+  const only = pane('guide')
+  assert.ok(only.$('.rooms-main .guide') && !only.$('.rooms-main .tabview-body'))
+  const screen = pane('screen')
+  assert.ok(!screen.$('.rooms-main .guide') && screen.$('.rooms-main .tabview-body'))
+  assert.match(screen.$('.reply-pane').text(), /Should I summarise them/)
+  // the switch itself, and the sidebar following it
+  const c = recorder()
+  const el = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } })} c=${c} />`)
+  el.$('.guide-view').button(en.guide.view.screen).click()
+  assert.deepEqual(c.calls.at(-1), ['setGuideView', 'screen'])
+  const side = mount(html`<${Sidebar} s=${cockpitState(NOW, { ui: { guideView: 'screen' } })} c=${recorder()} rooms=${roomsOf(cockpitState(NOW))} here=${{ kind: 'chat' }} />`)
+  assert.match(replyRow(side, 'demo-task research').$('.reply-ask').text(), /Should I summarise them/)
 })

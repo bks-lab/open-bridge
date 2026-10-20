@@ -613,6 +613,13 @@ class Guide:
                 "task": context.get("task"), "task_title": context.get("task_title"), "project": context.get("project")}
 
     @staticmethod
+    def read_of(context: dict) -> dict:
+        """What Haiku read, as the page shows it under "What was read": the asks and the agent's last words
+        (or the end of the screen), already scrubbed and capped"""
+        return {"first": context.get("first"), "prev": context.get("prev"), "user": context.get("user"),
+                "said": context.get("said"), "source": context.get("source")}
+
+    @staticmethod
     def fallback_about(context: dict) -> str:
         """The line for `about` without Haiku's: the session's title, its task's headline, its first ask"""
         for value in (context.get("title"), context.get("task_title"), context.get("first"), context.get("user")):
@@ -632,7 +639,7 @@ class Guide:
             return
         key = key_of(tab)
         base = {"ref": ref, "key": key, "state": tab["state"], "auto": not manual, "running": True,
-                "started_ms": int(app.clock()), "at_ms": None, "error": None, "about": "", "topic": None, "where": "",
+                "started_ms": int(app.clock()), "at_ms": None, "error": None, "about": "", "topic": None, "read": None, "where": "",
                 "waits_for": "", "options": [], "pick": None, "cost_usd": None, "source": None}
         with self.lock:
             self.entries[ref] = base
@@ -640,7 +647,8 @@ class Guide:
         app.broadcast("guide", self.state())
         context = self.context_of(tab)
         # what the session is about shows at once, while Haiku still reads
-        base = {**base, "source": context["source"], "topic": self.topic_of(context), "about": self.fallback_about(context)}
+        base = {**base, "source": context["source"], "topic": self.topic_of(context), "about": self.fallback_about(context),
+                "read": self.read_of(context)}
         with self.lock:
             if (self.entries.get(ref) or {}).get("started_ms") == base["started_ms"]:
                 self.entries[ref] = base

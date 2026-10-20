@@ -551,3 +551,23 @@ def test_risk_reads_the_words_sent_and_not_a_word_that_is_negated_or_only_in_the
     assert gd.risky_words("Passt so. Nichts pushen, der lokale Commit bleibt.") is False
     assert gd.risky_words("Don’t merge it, nothing to deploy yet") is False
     assert gd.risky_words("never deploy on Friday, but deploy the docs now") is True
+
+
+# ---------------------------------------------------------------- 7 what was read, for the page to show
+
+def test_a_reading_keeps_what_haiku_read_so_the_page_can_show_it(gworld):
+    poll(gworld)
+    read = gworld.app.guide.state()["entries"]["surface:40"]["read"]
+    assert read == {"first": "first ask: look at the flags", "prev": "first ask: look at the flags",
+                    "user": "please document the --dry flag in the README",
+                    "said": "The README now names the --dry flag.\nShall I open a pull request?", "source": "transcript"}
+
+
+def test_without_a_transcript_what_was_read_is_the_end_of_the_screen(tmp_path):
+    w = make_world(tmp_path, transcript=None)
+    try:
+        poll(w)
+        read = w.app.guide.state()["entries"]["surface:40"]["read"]
+        assert read["source"] == "screen" and "The README now names the new flag" in read["said"] and read["user"] is None
+    finally:
+        w.close()

@@ -1071,6 +1071,12 @@ kbd {
 .reply-field { display: flex; gap: 6px; align-items: flex-end; }
 .reply-field .input { flex: 1 1 auto; min-width: 0; resize: vertical; }
 .reply-pane { display: grid; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+/* a waiting tab's pane: the reply block gets a row of its own above the terminal and scrolls inside it,
+   so a long reading never runs over the terminal; with the reading only, it takes the whole pane */
+.rooms-main.has-reply { grid-template-rows: auto auto minmax(0, 1fr); }
+.rooms-main.has-reply > .reply-pane { max-height: 48vh; overflow-y: auto; }
+.rooms-main.is-guide-only { grid-template-rows: auto minmax(0, 1fr); }
+.rooms-main.is-guide-only > .reply-pane { max-height: none; }
 .room-list { display: grid; gap: 6px; padding-left: 18px; }
 .rooms-agent { overflow: hidden; }
 .rooms-agent .agentspage.is-embedded, .rooms-agent .agents-grid { height: 100%; }
@@ -2752,6 +2758,18 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .guide-chip { font-size: var(--text-label); }
 .guide-why, .guide-send { overflow-wrap: anywhere; }
 .guide-send { color: var(--on-surface-muted); }
+.guide-compose { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--accent-line);
+  border-radius: var(--radius-md); background: var(--surface); }
+.guide-box { width: 100%; min-width: 0; resize: vertical; font-family: var(--font-mono); }
+.guide-branch.is-chosen .guide-opt { border-color: var(--accent); border-style: solid; }
+.guide-foot-tools { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.guide-ways { display: inline-flex; flex-wrap: wrap; gap: 2px 4px; }
+.guide-read { grid-column: 1 / -1; display: grid; gap: 8px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--surface); max-height: 360px; overflow-y: auto; }
+.guide-read h4 { margin: 0 0 2px; }
+.guide-read-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.guide-read-text { font-family: var(--font-mono); }
+.guide.is-running, .guide.is-error, .guide.is-empty { row-gap: 8px; }
 .guide-foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px;
   margin-top: 8px; }
 .guide-line { display: flex; gap: 4px; align-items: baseline; margin: 0; overflow-wrap: anywhere; }
