@@ -570,6 +570,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_triage.py",
     "scripts/tests/test_bridge_cockpit_ticker.py",
     "scripts/tests/test_bridge_cockpit_guide.py",
+    "scripts/tests/test_bridge_cockpit_tour.py",
     "scripts/tests/test_bridge_cockpit_watch.py",
     "scripts/tests/test_bridge_cockpit_net.py",
     "scripts/tests/test_bridge_cockpit_config.py",
