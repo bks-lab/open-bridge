@@ -137,6 +137,8 @@ const store = createStore({
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
+    // keyboard shortcuts wait until switched on in the settings (this browser only): a stray letter acts on nothing
+    shortcuts: load('bridge-cockpit.shortcuts', 'off') === 'on',
     // the order of the workspaces in the chat as cmux: the terminal's (default) or the most urgent first; kept in this browser
     roomsSort: load('bridge-cockpit.roomsSort', 'terminal') === 'urgency' ? 'urgency' : 'terminal',
     answered: {},   // per tab ref the answer the page sent last: { hash, q, ms } (views/reply.js)
@@ -638,6 +640,10 @@ const ctl = {
     applyTheme(mode)
     setUi({ theme: mode })
   },
+  setShortcuts(on) {
+    save('bridge-cockpit.shortcuts', on ? 'on' : 'off')
+    setUi({ shortcuts: on })
+  },
   cycleTheme() {
     const order = ['auto', 'light', 'dark']
     ctl.setTheme(order[(order.indexOf(store.get().ui.theme) + 1) % order.length])
@@ -922,16 +928,6 @@ const ctl = {
       const r = await act('drop', { key: c.key, reason: c.reason })
       if (r?.muted) ctl.loadNoise()
     }
-    if (c?.kind === 'task_close') {
-      const text = (c.text ?? '').trim()
-      const r = await act('task_close', { keys: c.keys, reason: c.reason, ...(text ? { text } : {}) })
-      // a closed task is gone: its detail would only fail to load, so go back to the list
-      const sel = store.get().ui.selectedKey
-      if (r?.settled?.includes(sel)) {
-        if (store.get().ui.pageDetail) ctl.closePeek()
-        else setUi({ selectedKey: null, pane: 'day' })
-      }
-    }
   },
   cancelConfirm: () => setUi({ confirm: null }),
   /** Ask why before dropping an inbox report; the item's source and key say what a mute would cover.
@@ -954,19 +950,6 @@ const ctl = {
     if (!conf || conf.kind !== 'runs_on' || !conf.until) return
     setUi({ confirm: null })
     await act('runs_on', { keys: conf.keys, until: conf.until, ...(conf.on.trim() ? { on: conf.on.trim() } : {}) })
-  },
-  askClose(rows) {
-    const list = rows.filter(r => r?.closable)
-    if (!list.length) return
-    const all = [...indexRows(store.get().model).values()]
-    const tasks = new Set(list.map(r => r.task))
-    const openInbox = all.filter(r => r.inbox_id && tasks.has(r.task)).length
-    const one = list.length === 1 ? list[0] : null
-    const rv = one?.review
-    setUi({ confirm: { kind: 'task_close', keys: list.map(r => r.key), titles: list.map(r => r.title),
-      reason: one ? (rv?.verdict === 'stale' ? 'not_doing' : 'done') : 'auto',
-      text: rv && (rv.verdict === 'close' || rv.resolved) ? (rv.reason ?? '').slice(0, 400) : '',
-      liveTab: list.some(r => r.tab?.live), openInbox } })
   },
   setConfirm: patch => setUi(ui => ({ confirm: ui.confirm ? { ...ui.confirm, ...patch } : null })),
   review(keys, escalate = false, fresh = false) {
@@ -1100,6 +1083,7 @@ function onKey(e) {
     if (isTypingTarget(e.target)) e.target.blur()
     return
   }
+  if (!s.ui.shortcuts) return
   // nothing acts on the list hidden behind an open drawer or confirmation (g t still focuses the tabs)
   if (s.ui.tabView) return
   if (!modalKeyAllowed(s.ui, e.key, gPending) || s.ui.organize) return

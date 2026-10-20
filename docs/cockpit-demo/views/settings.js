@@ -180,6 +180,15 @@ function ThemeCard({ s, c }) {
   <//>`
 }
 
+/** Keyboard shortcuts: off unless switched on, kept in this browser only like the colours */
+function KeysCard({ s, c }) {
+  const w = T().settings
+  return html`<${Card} title=${w.keysTitle} intro=${w.keysIntro} head=${html`<span class="muted small">${w.thisBrowser}</span>`}>
+    <${Segmented} label=${w.keysTitle} current=${s.ui.shortcuts ? 'on' : 'off'} values=${[['off', w.keysOffWord], ['on', w.keysOnWord]]}
+      onPick=${v => c.setShortcuts(v === 'on')} />
+  <//>`
+}
+
 function DetailsCard({ s, c }) {
   const w = T().settings
   const home = useHome(s, c)
@@ -189,7 +198,7 @@ function DetailsCard({ s, c }) {
 }
 
 function LookArea({ s, c }) {
-  return html`<${ThemeCard} s=${s} c=${c} /><${DetailsCard} s=${s} c=${c} />`
+  return html`<${ThemeCard} s=${s} c=${c} /><${KeysCard} s=${s} c=${c} /><${DetailsCard} s=${s} c=${c} />`
 }
 
 // ---------------------------------------------------------------- the model an agent tab starts with

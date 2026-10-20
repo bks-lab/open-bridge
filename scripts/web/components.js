@@ -168,7 +168,7 @@ export function App({ store, ctl }) {
     ${s.ui.drawer === 'notes' ? html`<${NotesDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'customize' ? html`<${CustomizeDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'history' ? html`<${HistoryDrawer} s=${s} c=${ctl} />` : null}
-    ${s.ui.drawer === 'help' ? html`<${HelpDialog} c=${ctl} />` : null}
+    ${s.ui.drawer === 'help' ? html`<${HelpDialog} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'item' && s.ui.item ? html`<${ItemDrawer} s=${s} c=${ctl} byKey=${byKey} />` : null}
     ${s.ui.drawer === 'info' && s.ui.info ? html`<${InfoDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.tabView === '@ask' ? html`<${QuickChat} s=${s} c=${ctl} />` : s.ui.tabView ? html`<${TabView} s=${s} c=${ctl} />` : null}

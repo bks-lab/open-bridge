@@ -10,7 +10,7 @@ import {
 import { flash, flowAlpha, flowPoints, nowSec } from '../motion.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
-import { LaunchPick } from './launch.js'
+import { SettleMenu, StartMany } from './day.js'
 import { Btn, CountNum, Dot, Empty, PrioChip, StateLine, useClock, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- task check
@@ -151,8 +151,7 @@ export function ReviewBlock({ row, s, c }) {
       </div>`
       : html`<p class="muted small">${t.reviewNone}</p>`}
     <div class="btn-row">
-      ${row.closable ? html`<${Btn} size="xs" variant=${rv?.verdict === 'close' || rv?.resolved ? 'danger-solid' : 'danger'} busy=${busy}
-        onClick=${() => c.askClose([row])}>${t.btnCloseTask}<//>` : null}
+      <${SettleMenu} rows=${[row]} s=${s} c=${c} seed=${rv && (rv.verdict === 'close' || rv.resolved) ? (rv.reason ?? '').slice(0, 400) : ''} />
       ${rv && rv.verdict !== 'continue' && !rv.kept ? html`<${Btn} size="xs" variant="secondary" busy=${busy} disabled=${running}
         onClick=${() => c.keep([row.key])}>${t.btnKeep}<//>` : null}
       <${Btn} size="xs" variant="secondary" disabled=${running} busy=${busy} onClick=${() => c.review([row.key], false, !!rv)}>
@@ -187,7 +186,6 @@ export function ReviewBody({ s, c, inline = false }) {
   const rows = reviewRows(all, filter, s.ui.rvSort)
   const picked = s.ui.rvPicked.filter(k => byKey.has(k))
   const pickedRows = picked.map(k => byKey.get(k))
-  const closable = pickedRows.filter(r => r.closable)
   const running = !!rv.running
   const lang = language()
   const allShown = rows.length > 0 && rows.every(r => picked.includes(r.key))
@@ -210,13 +208,12 @@ export function ReviewBody({ s, c, inline = false }) {
           values=${['verdict', 'priority', 'activity'].map(v => [v, t.sortBy[v]])} onPick=${v => c.setReview({ rvSort: v })} />` : null}
     </div>
     ${picked.length ? html`<div class="panel panel-pad review-bulk" role="toolbar" aria-label=${t.bulkLabel(picked.length)}>
-      ${closable.length ? html`<${Btn} size="xs" variant="danger" onClick=${() => c.askClose(closable)}>${t.bulkClose(closable.length)}<//>` : null}
+      <${StartMany} rows=${pickedRows} s=${s} c=${c} />
+      <${SettleMenu} rows=${pickedRows} s=${s} c=${c} />
       <${Btn} size="xs" variant="secondary" disabled=${running} busy=${!!s.ui.busy[picked.join(',')]} onClick=${() => c.keep(picked)}>${t.bulkKeep(picked.length)}<//>
       <${Btn} size="xs" variant="secondary" disabled=${running} onClick=${() => c.review(picked, true)}>
         ${t.bulkCloser(picked.length, t.reviewCost(centsText(rv.last?.escalate_ct, lang), rv.last?.escalate_ct != null))}<//>
-      <${Btn} size="xs" variant="secondary" onClick=${() => c.act('advise', { keys: picked })}>${t.bulkStart(picked.length)}<//>
       <button type="button" class="btn-link" onClick=${() => c.setReview({ rvPicked: [] })}>${t.bulkClear}</button>
-      <${LaunchPick} s=${s} c=${c} items=${picked.map(k => ({ key: k, title: indexRows(s.model).get(k)?.title ?? '' }))} />
     </div>` : null}
     <section class="panel panel-pad psec">
       ${!rv.last ? html`<${Empty}>${t.rvNoRun}<//>` : !rows.length ? html`<${Empty}>${t.rvEmpty}<//>` : html`<div class="table-wrap" tabindex="0" role="region" aria-label=${t.reviewTitle}>

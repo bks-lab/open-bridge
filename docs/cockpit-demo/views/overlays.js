@@ -397,7 +397,7 @@ export function NotesDrawer({ s, c }) {
   <//>`
 }
 
-export function HelpDialog({ c }) {
+export function HelpDialog({ s, c }) {
   const t = T()
   const ref = useFocusOnOpen(true)
   return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.setDrawer(null) }}>
@@ -409,8 +409,10 @@ export function HelpDialog({ c }) {
       <div class="help-grid">
         <section>
           <h3 class="label-caps">${t.keysTitle}</h3>
-          <dl class="keys">${t.keys.map(([k, v]) => html`<div key=${k}><dt><kbd>${k}</kbd></dt><dd>${v}</dd></div>`)}</dl>
-          <p class="muted small">${t.commandHint}</p>
+          ${s.ui.shortcuts ? html`<dl class="keys">${t.keys.map(([k, v]) => html`<div key=${k}><dt><kbd>${k}</kbd></dt><dd>${v}</dd></div>`)}</dl>
+            <p class="muted small">${t.commandHint}</p>
+            <p class="muted small">${t.keysOn} <button type="button" class="btn-link" onClick=${() => c.openSettings('look')}>${t.settings.keysTitle}</button></p>`
+          : html`<p class="muted small">${t.keysOff} <button type="button" class="btn-link" onClick=${() => c.openSettings('look')}>${t.settings.keysTitle}</button></p>`}
         </section>
         <section>
           <dl class="help-text">${t.helpText.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
@@ -426,7 +428,6 @@ export function ConfirmDialog({ s, c }) {
   const conf = s.ui.confirm
   const ref = useFocusOnOpen(!!conf)
   if (!conf) return null
-  if (conf.kind === 'task_close') return html`<${CloseDialog} conf=${conf} c=${c} dialogRef=${ref} />`
   if (conf.kind === 'runs_on') return html`<${RunsOnDialog} conf=${conf} s=${s} c=${c} dialogRef=${ref} />`
   if (conf.kind === 'drop') return html`<${DropDialog} conf=${conf} c=${c} dialogRef=${ref} />`
   return html`<div class="overlay overlay-center">
@@ -502,40 +503,6 @@ function DropDialog({ conf, c, dialogRef }) {
 }
 
 /** Closing asks why: the reason goes into STATUS.md and the log, not-doing and superseded close as declined */
-function CloseDialog({ conf, c, dialogRef }) {
-  const t = T()
-  const n = conf.keys.length
-  const reasons = n > 1 ? ['auto', 'done', 'not_doing', 'superseded', 'elsewhere'] : ['done', 'not_doing', 'superseded', 'elsewhere']
-  const declined = conf.reason === 'not_doing' || conf.reason === 'superseded'
-  return html`<div class="overlay overlay-center">
-    <div class="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="confirm-title" ref=${dialogRef}>
-      <h2 class="sec-title" id="confirm-title">${t.closeAsk(n)}</h2>
-      <ul class="close-list">${conf.titles.slice(0, 6).map((title, i) => html`<li key=${i}>${short(title, 90)}</li>`)}
-        ${n > 6 ? html`<li class="muted">+${n - 6}</li>` : null}</ul>
-      <fieldset class="close-reasons">
-        <legend class="label-caps">${t.closeReasonLabel}</legend>
-        ${reasons.map(r => html`<label key=${r} class="radio-line">
-          <input type="radio" name="close-reason" value=${r} checked=${conf.reason === r} data-autofocus=${conf.reason === r ? '' : undefined}
-            onChange=${() => c.setConfirm({ reason: r })} />
-          <span>${t.closeReason[r]}</span></label>`)}
-        ${declined ? html`<p class="muted small">${t.closeDeclinedHint}</p>` : null}
-      </fieldset>
-      <label class="field">
-        <span class="label-caps">${t.closeTextLabel}</span>
-        <textarea class="input" rows="3" maxlength="2000" value=${conf.text ?? ''}
-          onInput=${e => c.setConfirm({ text: e.currentTarget.value })}></textarea>
-        <span class="muted small">${t.closeTextHint}</span>
-      </label>
-      ${conf.liveTab ? html`<p><${StateLine} token="warning" word=${t.taskDoneLiveTab} /></p>` : null}
-      ${conf.openInbox ? html`<p><${StateLine} token="warning" word=${t.taskDoneInbox(conf.openInbox)} /></p>` : null}
-      <div class="btn-row dialog-acts">
-        <button type="button" class="btn btn-secondary btn-sm" onClick=${c.cancelConfirm}><span class="btn-label">${t.approveNo}</span></button>
-        <button type="button" class="btn btn-danger btn-sm" onClick=${c.confirmYes}><span class="btn-label">${t.closeYes(n)}</span></button>
-      </div>
-    </div>
-  </div>`
-}
-
 export function AuthPanel() {
   const t = T()
   return html`<main class="center-page">

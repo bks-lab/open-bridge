@@ -129,7 +129,7 @@ export function Header({ s, c }) {
     <div class="hdr-right">
       <${LoadingIndicator} s=${s} />
       ${s.layout === 'narrow' ? null : html`<${AsOf} s=${s} />`}
-      ${s.layout === 'narrow' ? null : html`<${CommandBox} c=${c} />`}
+      ${s.layout === 'narrow' ? null : s.ui.shortcuts ? html`<${CommandBox} c=${c} />` : null}
       ${s.layout === 'medium' || (s.layout === 'wide' && !railShown(s.ui.page, s.rooms?.layout, s.ui.railHidden)) ? html`<${Btn} variant=${waiting ? 'primary' : 'secondary'} size="sm" icon="tabs"
         onClick=${() => c.setDrawer(s.ui.drawer === 'tabs' ? null : 'tabs')} pressed=${s.ui.drawer === 'tabs'}>${t.tabsButton(waiting)}<//>` : null}
       <${Btn} variant="ghost" size="sm" icon="reload" title=${t.reloadTitle} label=${t.reloadTitle}

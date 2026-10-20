@@ -473,8 +473,10 @@ On a wide screen the Today tab has three columns:
   blocks of the briefing: waiting for you, to hand off, backlog, later. Each
   row has its number, a box to select it (only rows you can start), why it is
   there, its mark, priority, urgency, due date, the state of its tab, and its
-  main button. A selection gets a bar: Let AI do it, Advise, each in its own
-  workspace. "Approve all N" under "AI can take over" asks once, with the count the
+  main button. A selection gets a bar with the same two doors as a row: Let
+  AI do it (n) ▾ opens the row panel with one sentence for all of them (start,
+  advise, each in its own workspace, the model), Close n ▾ the close part of
+  it. "Approve all N" under "AI can take over" asks once, with the count the
   server found, before it approves anything. Rows you hid sit at the bottom
   with "show again".
 - **center, the detail** of the row you clicked: its link, its facts, every
@@ -566,18 +568,16 @@ to a stronger model, unchanged tasks come from the cache
 (`.bridge/task-review.json`). The rest of the page stays usable meanwhile, and
 the finished check arrives as a note with its cost. Rows then carry a verdict
 chip (close?, stale?, waiting, unclear?). A task's detail shows the
-recommendation with its reason, confidence, model and evidence, with Close …,
+recommendation with its reason, confidence, model and evidence, with Close ▾,
 Keep open (until the task changes), Check again and, for unclear or guessed
 answers, Check closer with the stronger model. The Check tab is the overview of
 the last run: a filter per verdict and "changed", sort by verdict, priority or
-quiet, and a selection for Close selected, Keep open, Check closer and Start
-agent. Close … asks why (done, will not be done, superseded or part of another
-task, done elsewhere; several at once also "as the check says", stale ones as
-declined), with a note for the log prefilled from the check's evidence, and
-names an agent tab still working on it and inbox entries that point at it.
-`task.py close` then moves the task to `work/done/`, regenerates the board and
-writes a row to `work/log.md`. Close appears for a finite task only, never for
-a stream.
+quiet, and a selection for Let AI do it (n) ▾, Close n ▾, Keep open and Check
+closer. Both doors open the same row panel as every other row: Close ▾ on a
+task the check would close starts with the check's reason in the sentence, and
+the panel names an agent tab still working on it. `task.py close` then moves
+the task to `work/done/`, regenerates the board and writes a row to
+`work/log.md`.
 
 What the check reads costs nothing: per task in `work/tasks/` in `doing` or
 `review` (`--backlog` adds the backlog) the frontmatter (status, priority,
@@ -1119,14 +1119,18 @@ A tab that waits shows what it asks, read off its screen, so it can be answered 
 
 ### Keyboard
 
-When the focus is not in a text field:
+The shortcuts are off until switched on under Settings, Look, Keyboard
+shortcuts (kept in this browser only). Off, no key acts on the page and the
+command box is not in the header; `Esc` still closes a dialog or a drawer, and
+`Cmd` or `Ctrl` with `Enter` in the panel's sentence still starts. On, when
+the focus is not in a text field:
 
 | Key | Action |
 |---|---|
 | `j` / `k` | next / previous row |
 | `Enter` | show the row in the center |
 | `x` | select the row |
-| `a` `v` `c` `b` `w` | Let AI do it, Advise, Drop, Later (tomorrow), Let AI do it in its own workspace |
+| `a` `v` `c` `b` `w` | Let AI do it, Advise, Discard, Later (tomorrow), Let AI do it in its own workspace |
 | `r` | reload, fresh |
 | `/` | the command box |
 | `g` then `t` | the agent tabs |
