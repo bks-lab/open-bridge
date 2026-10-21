@@ -4677,3 +4677,15 @@ test('n and p walk the list of an open detail, also inside the item drawer; othe
   assert.equal(logic.modalKeyAllowed({ ...ui, drawer: 'notes' }, 'n', false), false)
   assert.equal(logic.modalKeyAllowed({ ...ui, confirm: { kind: 'x' } }, 'n', false), false)
 })
+
+test('dayQueue: the Today list walks every row in section order, also the ones folded behind "more"', () => {
+  const model = { sections: [
+    { id: 'later', rows: [{ key: 'l1', title: 'L1' }] },
+    { id: 'now', rows: [{ key: 'n1', title: 'N1' }, { key: 'n2', title: 'N2' }], compact: ['n1'] },
+    { id: 'work', rows: [{ key: 'w1', title: 'W1' }] },
+  ] }
+  const q = logic.dayQueue(model)
+  assert.deepEqual(q.map(e => e.key), ['n1', 'n2', 'w1', 'l1'])
+  assert.deepEqual(q[0], { how: 'select', key: 'n1', title: 'N1' })
+  assert.deepEqual(logic.dayQueue(null), [])
+})

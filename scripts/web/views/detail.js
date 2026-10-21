@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabNextStep, workPageOf,
-  skipFixable, skipText, queueLiveKeys, queueView,
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -365,10 +365,10 @@ function RowDetail({ row, s, c }) {
 /** The walk through the list this detail was opened from, as a small bar that stays at the foot of
  *  the column or drawer however long the detail runs: back, where you stand, the next entry with
  *  "next" (key n), and the two after it as plain links. A settled entry drops out at once */
-export function NextUp({ s, c, byKey, current }) {
+export function NextUp({ s, c, byKey, current, queue = s.ui.queue }) {
   const t = T()
   const live = queueLiveKeys(s.model, s.more)
-  const v = current ? queueView(s.ui.queue, current, e => live.has(e.key)) : null
+  const v = current ? queueView(queue, current, e => live.has(e.key)) : null
   if (!v || v.total < 2) return null
   const [next, ...later] = v.next
   const name = e => e.title || byKey.get(e.key)?.title || e.key
@@ -416,6 +416,7 @@ export function DetailColumn({ s, c, byKey }) {
   }
   return html`<div class="col col-detail">
     <div class="detail-scroll">${body}</div>
-    ${s.ui.pageDetail ? html`<${NextUp} s=${s} c=${c} byKey=${byKey} current=${key} />` : null}
+    ${s.ui.pageDetail ? html`<${NextUp} s=${s} c=${c} byKey=${byKey} current=${key} />`
+      : key ? html`<${NextUp} s=${s} c=${c} byKey=${byKey} current=${key} queue=${dayQueue(s.model)} />` : null}
   </div>`
 }

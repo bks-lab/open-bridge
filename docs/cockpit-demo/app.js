@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats, nextTabByStatus, statusQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView,
+  listedChats, nextTabByStatus, statusQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -635,6 +635,8 @@ const ctl = {
   openNext(next) {
     const queue = store.get().ui.queue
     if (!next) return
+    // a row of the Today list opens in the center, as its click does
+    if (next.how === 'select') return ctl.select(next.key)
     if (next.how === 'item') {
       setUi({ pageDetail: false, selectedKey: null })
       return ctl.openItem(next.key, next.it ?? null, next.where ?? {}, null, queue)
@@ -1241,11 +1243,14 @@ function onKey(e) {
     return
   }
   // n / p in a detail opened from a list (beside the page or in the item drawer): walk that list
-  const walking = s.ui.queue?.length && (s.ui.drawer === 'item' || (s.ui.pageDetail && !s.ui.drawer))
+  // (the Today list walks its own rows: a row picked there is open in the center)
+  const today = s.ui.page === 'briefing' && workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'due'
+    && !s.ui.pageDetail && !s.ui.drawer && !!s.ui.selectedKey
+  const walking = today || (s.ui.queue?.length && (s.ui.drawer === 'item' || (s.ui.pageDetail && !s.ui.drawer)))
   if ((key === 'n' || key === 'p') && walking) {
     const cur = s.ui.drawer === 'item' ? s.ui.item?.key : s.ui.selectedKey
     const live = queueLiveKeys(s.model, s.more)
-    const v = queueView(s.ui.queue, cur, x => live.has(x.key))
+    const v = queueView(today ? dayQueue(s.model) : s.ui.queue, cur, x => live.has(x.key))
     const to = key === 'n' ? v?.next[0] : v?.prev
     e.preventDefault()
     if (to) ctl.openNext(to)

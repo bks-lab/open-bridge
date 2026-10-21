@@ -507,8 +507,10 @@ action of the center column as buttons (the keyboard shortcuts work on the
 Today tab only); the page stays where it was, and Escape or "Close details"
 goes back to it.
 
-**Working through a list.** A detail opened from a list (Jev's plan and its
-list view, a section of a work page, the task check) carries that list with it.
+**Working through a list.** A detail opened from a list (the Today list, Jev's
+plan and its list view, a section of a work page, the task check) carries that
+list with it; the Today list walks all its rows in section order, the ones
+folded behind "more" included.
 A small bar stays at the foot of the detail column or the item drawer however
 long the detail runs: back, where you stand ("2 of 13"), the next entry with
 **Next**, and the two after it as plain links. The order is the one the list

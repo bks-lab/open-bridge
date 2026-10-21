@@ -768,6 +768,13 @@ export function queueView(queue, key, alive = () => true, more = 2) {
 /** The entry after the open one that still exists, or null */
 export const nextInQueue = (queue, key, alive = () => true) => queueView(queue, key, alive, 0)?.next[0] ?? null
 
+/** The queue of the Today list (the briefing): every row in section order, the ones folded behind
+ *  "more" included, so a detail opened there walks the whole day; each opens in the center */
+export function dayQueue(model) {
+  return SECTION_ORDER.flatMap(id => (model?.sections ?? []).find(x => x.id === id)?.rows ?? [])
+    .map(r => ({ how: 'select', key: r.key, title: r.title }))
+}
+
 /** Every key a queue entry can still open: the briefing's rows and every inbox item or task the pages
  *  hold now (`more`: the rows a section loaded beyond its first ones) */
 export function queueLiveKeys(model, more = {}) {
