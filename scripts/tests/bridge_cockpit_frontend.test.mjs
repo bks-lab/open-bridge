@@ -4508,12 +4508,13 @@ test('hintRounds: the page first, the header after it, every area in one round, 
     ...Array.from({ length: 8 }, (_, k) => ({ id: `p${k}`, group: 'page', note,
       rect: { top: 140 + Math.floor(k / 4) * 260, left: 20 + (k % 4) * 240, width: 120, height: 30 } })),
     { id: 'gone', group: 'page', note, rect: { top: 1600, left: 20, width: 200, height: 40 } },
+    { id: 'above', group: 'page', note, rect: { top: -400, left: 20, width: 200, height: 40 } },
     { id: 'none', group: 'page', note, rect: null },
     { id: 'h0', group: 'head', note, rect: { top: 10, left: 600, width: 90, height: 30 } },
     { id: 'h1', group: 'head', note, rect: { top: 10, left: 700, width: 90, height: 30 } },
   ]
   const { rounds, away } = logic.hintRounds(items, view)
-  assert.deepEqual(away, ['gone'])
+  assert.deepEqual(away, ['gone'])            // further down counts, scrolled past above does not
   const groups = rounds.map(r => r.group)
   assert.ok(groups.includes('page') && groups.includes('head'))
   assert.ok(groups.lastIndexOf('page') < groups.indexOf('head'), 'the page before the header')

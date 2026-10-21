@@ -397,10 +397,14 @@ export function NotesDrawer({ s, c }) {
   <//>`
 }
 
-/** Whether the page shows an area now; without a document to ask (a test, a render elsewhere) every one counts */
+/** Whether the page shows an area now; without a document to ask (a render elsewhere) every one counts */
 function onPage(target) {
   if (typeof document === 'undefined' || !document.querySelector) return true
-  try { return !!document.querySelector(target) } catch { return false }
+  try {
+    // as the overlay counts it: a part in a hidden pane has no size and gets no note, so no line here either
+    const r = document.querySelector(target)?.getBoundingClientRect?.()
+    return !!r && r.width > 0 && r.height > 0
+  } catch { return false }
 }
 
 const HELP_TABS = ['page', 'rows', 'act', 'keys', 'trust']

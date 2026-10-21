@@ -3160,8 +3160,8 @@ export function hintLayout(items, view) {
 
 /** The hints in rounds, so every note has room: the page's areas first, then the header's, each group in as
  *  many rounds as its notes need. `items` as for hintLayout plus their group. An area the page does not show
- *  (no rect) is not counted; one the screen shows not (scrolled away), or that has no room even alone, is
- *  `away`. Each round numbers its notes from 1 */
+ *  (no rect) is not counted; one further down than the screen reaches is `away`, so the bar can say that
+ *  scrolling brings more. Each round numbers its notes from 1 */
 export function hintRounds(items, view) {
   const rounds = []
   const away = []
@@ -3171,10 +3171,11 @@ export function hintRounds(items, view) {
     if (group === 'head') mine.sort((a, b) => a.rect.left - b.rect.left)
     let rest = mine.filter(it => it.rect.top < view.height && it.rect.top + it.rect.height > 0
       && it.rect.left < view.width && it.rect.left + it.rect.width > 0)
-    away.push(...mine.filter(it => !rest.includes(it)).map(it => it.id))
+    // further down is what scrolling brings; above or beside the view, or without room even alone, is left out
+    away.push(...mine.filter(it => !rest.includes(it) && it.rect.top >= view.height).map(it => it.id))
     while (rest.length) {
       const { placed } = hintLayout(rest, view)
-      if (!placed.length) { away.push(...rest.map(it => it.id)); break }
+      if (!placed.length) break
       rounds.push({ group, placed })
       const done = new Set(placed.map(p => p.id))
       rest = rest.filter(it => !done.has(it.id))

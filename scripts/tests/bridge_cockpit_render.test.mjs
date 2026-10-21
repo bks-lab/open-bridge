@@ -1442,6 +1442,7 @@ test('hints: every placed hint has its numbered note, its ring and its arrow; Cl
   assert.equal(el.$$('.hints-arrow').length, 1)
   assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.groups.page))
   assert.equal(el.$$('.hints-bar button').filter(b => b.text() === en.hints.next).length, 0)   // one round: no Next
+  assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.barOne))                      // and no arrow keys promised
   el.button(en.hints.close).click()
   assert.deepEqual(c.calls.at(-1), ['setHints', false])
   el.button(en.hints.tour).click()

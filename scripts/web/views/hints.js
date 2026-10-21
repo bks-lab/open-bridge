@@ -56,7 +56,6 @@ function HintsMeasured({ s, c }) {
       setLayout({ ...hintRounds(items, { width: view.width, height: view.height - BAR_ROOM }), view })
     }
     measure()
-    setAt(0)
     if (typeof window === 'undefined' || !window.addEventListener) return undefined
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)
@@ -65,6 +64,8 @@ function HintsMeasured({ s, c }) {
       window.removeEventListener('scroll', measure, true)
     }
   }, [s.ui.page, s.layout, s.model?.seq])   // new data can move or add an area: measure again
+  // another page starts at its first round; new data or a resize keeps the round (HintsLayer clamps it)
+  useLayoutEffect(() => setAt(0), [s.ui.page])
   return html`<${HintsLayer} layout=${layout} at=${at} go=${setAt} c=${c} />`
 }
 
@@ -127,7 +128,7 @@ export function HintsLayer({ layout, at = 0, go = () => {}, c }) {
     <div class="hints-bar" role="status" onClick=${e => e.stopPropagation()}>
       ${round ? html`<span class="hints-where small"><b>${t.groups[round.group]}</b>${rounds.length > 1
         ? html` <span class="muted mono">${t.round(i + 1, rounds.length)}</span>` : null}</span>` : null}
-      <span class="small muted hints-bar-text">${layout && !rounds.length ? t.none : below && round?.group === 'page' ? t.below(below) : t.bar}</span>
+      <span class="small muted hints-bar-text">${layout && !rounds.length ? t.none : below && round?.group === 'page' ? t.below(below) : rounds.length > 1 ? t.bar : t.barOne}</span>
       <button type="button" class="btn btn-ghost btn-xs" onClick=${() => c.tourStart()}><span class="btn-label">${t.tour}</span></button>
       ${i > 0 ? html`<button type="button" class="btn btn-secondary btn-xs" onClick=${() => go(i - 1)}><span class="btn-label">${t.back}</span></button>` : null}
       ${last ? html`<button type="button" class="btn btn-primary btn-xs" data-autofocus onClick=${close}><span class="btn-label">${t.close}</span></button>`
