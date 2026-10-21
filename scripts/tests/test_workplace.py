@@ -449,7 +449,7 @@ def test_launch_prompts_are_ascii_and_name_the_item(kind, mode):
         assert "wait" in p
     if kind == "inbox":
         assert "python3 scripts/inbox.py show the-id" in p
-        assert ("inbox.py close the-id --note" in p) == (mode == "go")
+        assert "inbox.py close the-id --note" in p
 
 
 def test_inbox_go_tab_reports_a_stop_on_the_item_and_honours_a_click_release():
@@ -458,6 +458,23 @@ def test_inbox_go_tab_reports_a_stop_on_the_item_and_honours_a_click_release():
     p = wp.launch_prompt("inbox", "go", "the-id")
     assert "inbox.py note the-id" in p
     assert "unless the item itself says the click released" in p
+
+
+def test_inbox_go_tab_closes_an_overtaken_item_itself():
+    # live 2026-10-21: a go tab found its four decisions overtaken by a newer plan, noted that on the
+    # item, then asked "close it?" because the item said gate: only-you / closer: person
+    p = wp.launch_prompt("inbox", "go", "the-id")
+    assert "already done, overtaken" in p and "without asking" in p
+    assert "inbox.py reopen the-id" in p
+    assert "already decided" in p and "name them in the close note" in p
+    assert "closer: person" in p and "decide nothing new" in p
+
+
+def test_inbox_report_tab_closes_only_an_overtaken_item():
+    p = wp.launch_prompt("inbox", "report", "the-id")
+    assert "already done, overtaken" in p and "inbox.py close the-id --note" in p
+    assert "inbox.py reopen the-id" in p
+    assert "Otherwise change nothing" in p and "wait" in p
 
 
 def test_launch_task_report_prompt_is_exactly_the_open_prompt(lrepo):

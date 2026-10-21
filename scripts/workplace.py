@@ -127,17 +127,28 @@ NEW_TAB_PROMPT = (
     "next step." + FILE_TAIL + " Never close a tab or a workspace.")
 GO_TAIL = ("Then start on the next step right away. Before anything that leaves this machine (a push, "
            "a message, a board write) ask first, unless the item itself says the click released exactly that step.")
+# An item that is already done or overtaken needs no person: a tab that asks "close it?" there only adds
+# a round trip (live 2026-10-21), and a close is one reopen away from undone.
+INBOX_OVERTAKEN = (
+    " If the item is already done, overtaken, or answered by facts you can check yourself, note the finding "
+    "with its sources and close it without asking: python3 scripts/inbox.py close {id} --note '<what settled "
+    "it>'. The person undoes that with python3 scripts/inbox.py reopen {id}.")
 INBOX_REPORT_PROMPT = (
     "You are the tab for inbox item {id}. Read it with python3 scripts/inbox.py show {id} and the task it "
     "names, if any. Then print at most eight lines: what it is, what would settle it, and whether you "
     "could do that without asking. Note what you found on the item with python3 scripts/inbox.py note {id} "
-    "'<finding>'. Then wait; on 'go on' take the next step. Never close a tab or a workspace.")
+    "'<finding>'." + INBOX_OVERTAKEN + " Otherwise change nothing; wait, and on 'go on' take the next step. "
+    "Never close a tab or a workspace.")
 INBOX_GO_PROMPT = (
     "You are the tab for inbox item {id}. Read it with python3 scripts/inbox.py show {id} and the task it "
     "names, if any. " + GO_TAIL + " Whenever you stop to ask or to show a draft, first put the question or "
     "the draft on the item with python3 scripts/inbox.py note {id} '<text>': the cockpit sees the item, not "
     "this chat. When it is settled, close the item with python3 scripts/inbox.py close "
-    "{id} --note '<what settled it>'. Never close a tab or a workspace.")
+    "{id} --note '<what settled it>'." + INBOX_OVERTAKEN + " Local follow-ups that only write down what is "
+    "already decided (a plan, STATUS.md, the log) make yourself and name them in the close note. Ask only for "
+    "a decision that is still the person's, for anything that leaves this machine, or for what cannot be "
+    "undone. The click that started you releases the close even when the item says gate: only-you or "
+    "closer: person, as long as you decide nothing new. Never close a tab or a workspace.")
 CONTEXT_PROMPT = (
     "You are the tab that finds the missing context for {what}. Read it first ({read}). Then search for "
     "what a person picking it up would need and cannot see there: its rows in work/log.md (grep), related "

@@ -235,8 +235,8 @@ Each tab starts the configured `agent.new` command on an ASCII prompt, by `--mod
 
 | Mode | The tab |
 |---|---|
-| `report` (default) | reads the item, prints at most eight lines and waits |
-| `go` | starts on the next step right away, asks before anything that leaves the machine, and closes an inbox item once it is settled |
+| `report` (default) | reads the item, prints at most eight lines and waits; an inbox item already done or overtaken it closes with its finding noted, and changes nothing else |
+| `go` | starts on the next step right away, asks before anything that leaves the machine, and closes an inbox item once it is settled; an item already done or overtaken it closes without asking (its finding noted, `reopen` undoes it), and local follow-ups that only record a decision it makes itself |
 | `context` | looks for what someone picking the item up would miss (log rows, related inbox items, commits, issues, mails, meeting notes), shows the facts with their sources and writes the essentials back as one note (`task.py note` or `inbox.py note`), changing nothing else |
 
 A task tab that reaches a result, a question only the person can answer, or a draft
