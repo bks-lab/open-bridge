@@ -366,15 +366,39 @@ test('the order choice stands on top of the sidebar, and by status Waiting for y
   assert.ok(byStatus.$('section.room-status'))
 })
 
-test('Next opens the tab after the one shown, among those that want you', () => {
-  const s = cockpitState(NOW, { ui: { roomsSort: 'status' } })
-  const c = recorder()
-  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'tab', id: 'surface:7' }} />`)
-  el.button(en.rooms.next).click()
-  assert.deepEqual(c.calls, [['pickRoom', { kind: 'tab', id: 'surface:10' }]])
+test('Next tab stands on top in every order and opens the tab after the one shown, among those that want you', () => {
+  for (const roomsSort of ['terminal', 'urgency', 'status']) {
+    const s = cockpitState(NOW, { ui: { roomsSort } })
+    const c = recorder()
+    const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'tab', id: 'surface:7' }} />`)
+    const next = el.$('.room-order').$$('button').find(b => b.text() === en.rooms.next)
+    assert.ok(next, roomsSort)
+    next.click()
+    assert.deepEqual(c.calls, [['pickRoom', { kind: 'tab', id: 'surface:10' }]], roomsSort)
+  }
   // nothing waits: no Next
-  const calm = cockpitState(NOW, { ui: { roomsSort: 'status' }, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => ({ ...t, state: 'working' })) } })
+  const s = cockpitState(NOW)
+  const calm = cockpitState(NOW, { tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => ({ ...t, state: 'working' })) } })
   assert.equal(renderSide(calm).button(en.rooms.next), null)
+})
+
+test('the open tab carries Next tab in its head', () => {
+  const c = recorder()
+  const el = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:10' }, tabView: 'surface:99' } })} c=${c} />`)
+  el.$('.rooms-main .tabview-head').$$('button').find(b => b.text() === en.rooms.next).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'pickRoom'), [['pickRoom', { kind: 'tab', id: 'surface:12' }]])
+})
+
+test('a click anywhere in a waiting row opens its tab, its buttons keep their own work', () => {
+  const s = cockpitState(NOW, { guide: null })
+  const c = recorder()
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const row = el.$$('.reply-group .reply-row').find(r => r.$('.reply-name').text() === 'demo-task research')
+  row.$('.reply-ask').click()                                                 // the question text, not the name
+  assert.deepEqual(c.calls.filter(x => x[0] === 'pickRoom'), [['pickRoom', { kind: 'tab', id: 'surface:12' }]])
+  c.calls.length = 0
+  row.button(en.reply.goOn).click()
+  assert.equal(c.calls.some(x => x[0] === 'pickRoom'), false)                  // an answer button does not also switch
 })
 
 // ---------------------------------------------------------------- what a tab waits for, answered from the page

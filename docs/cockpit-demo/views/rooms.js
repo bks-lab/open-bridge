@@ -168,12 +168,26 @@ function useLeaving(list, atMs) {
  *  that left, or was answered here and still shows that very question (the same words in the same
  *  stretch of its state, logic.js isAnswered), is greyed with what happened instead of buttons. The same
  *  question asked again after the tab worked gets its buttons back */
+const CONTROLS = new Set(['button', 'a', 'input', 'textarea', 'select', 'label', 'summary'])
+
+/** Whether a click began on a control between `node` and the row `row` (the row itself is none) */
+function fromControl(node, row) {
+  for (let n = node; n && n !== row; n = n.parentNode) {
+    if (CONTROLS.has(n.localName) || n.isContentEditable) return true
+  }
+  return false
+}
+
 function AskRow({ tab, left, s, c }) {
   const t = T()
   const answered = s.ui?.answered?.[tab.ref] ?? null
   const done = left || isAnswered(answered, tab)
-  return html`<div class=${`reply-row${done ? ' is-left' : ''}`}>
-    <button type="button" class="reply-head" onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
+  const pick = () => c.pickRoom({ kind: 'tab', id: tab.ref })
+  // a click anywhere in the row opens the tab, not only on its name; one on a control of the row (an
+  // answer, the text field) does that control's work alone. The name stays the button for the keyboard
+  const onRow = e => { if (!fromControl(e.target, e.currentTarget)) pick() }
+  return html`<div class=${`reply-row is-pickable${done ? ' is-left' : ''}`} onClick=${onRow}>
+    <button type="button" class="reply-head" onClick=${pick}>
       <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
       <span class="reply-name">${tab.name}</span>
       <span class="room-meta muted small">${tab.workspace}</span>
@@ -225,18 +239,16 @@ function useHeldOrder(list, mode, keyOf = w => w.key) {
 }
 
 /** The tabs by status (logic.js statusQueue), each row with its workspace, so you walk them top to bottom:
- *  answer or close what needs you or waits, then the rest. Next opens the tab after the one shown among
- *  those that want you (logic.js nextTabByStatus). Below stand the control session and the quick chats, which have no status of
+ *  answer or close what needs you or waits, then the rest (NextTab walks them). Below stand the control
+ *  session and the quick chats, which have no status of
  *  that kind. A tab that changes its status starts its time again, so it goes last in its new group and
  *  the rows above it stay where they were */
 function StatusGroups({ s, c, here }) {
   const t = T()
   const groups = statusQueue(s.tabs?.tabs)
-  const next = nextTabByStatus(groups, here.kind === 'tab' ? here.id : null)
   const control = (s.tabs?.tabs ?? []).find(x => x.is_control)
   const chats = listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)
   return html`<div class="room-status-list">
-    ${next ? html`<${Btn} size="xs" variant="primary" title=${t.rooms.nextTitle} onClick=${() => c.pickRoom({ kind: 'tab', id: next })}>${t.rooms.next}<//>` : null}
     ${groups.map(g => html`<section class="room-status" key=${g.state}>
       <h3 class="label-caps room-group"><${StateLine} token=${stateToken(g.state)} word=${t.rooms.status[g.state]} /> <span class="mono muted">${g.tabs.length}</span></h3>
       ${g.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} where />`)}
@@ -247,6 +259,14 @@ function StatusGroups({ s, c, here }) {
       <${Chats} convs=${chats} s=${s} c=${c} here=${here} />
     </section>` : null}
   </div>`
+}
+
+/** Next tab: the tab after the one shown among those that need you or wait, in the order By status lists
+ *  them (logic.js nextTabByStatus), whichever order the sidebar shows; nothing when no other tab wants you */
+function NextTab({ s, c, current }) {
+  const t = T()
+  const next = nextTabByStatus(statusQueue(s.tabs?.tabs), current)
+  return next ? html`<${Btn} size="xs" variant="primary" title=${t.rooms.nextTitle} onClick=${() => c.pickRoom({ kind: 'tab', id: next })}>${t.rooms.next}<//>` : null
 }
 
 /** The sidebar: the order of the tabs on top, where it is reached without scrolling past the asks; then
@@ -262,6 +282,7 @@ export function Sidebar({ s, c, rooms, here }) {
     <div class="room-order">
       <${Segmented} label=${t.rooms.sortLabel} current=${sort} onPick=${v => c.setRoomsSort(v)}
         values=${[['terminal', t.rooms.sortTerminal], ['urgency', t.rooms.sortUrgency], ['status', t.rooms.sortStatus]]} />
+      <${NextTab} s=${s} c=${c} current=${here.kind === 'tab' ? here.id : null} />
     </div>
     ${sort === 'status' ? null : html`<${WaitingGroup} s=${s} c=${c} />`}
     ${rooms.chats.length && sort !== 'status' ? html`<section class="room-ws"><h3 class="label-caps">${t.rooms.chats}</h3>
@@ -312,6 +333,7 @@ function TabPane({ s, c, tab }) {
       ${guided ? html`<span class="guide-view"><${Segmented} label=${t.guide.viewLabel} current=${view}
         values=${GUIDE_VIEWS.map(v => [v, t.guide.view[v]])} onPick=${v => c.setGuideView(v)} /></span>` : null}
       <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
+      <${NextTab} s=${s} c=${c} current=${tab.ref} />
     </header>
     ${replying ? html`<div class="reply-pane">
       ${view === 'guide' ? null : html`<${AskLine} tab=${tab} />`}

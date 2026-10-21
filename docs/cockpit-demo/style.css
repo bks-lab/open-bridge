@@ -1042,10 +1042,9 @@ kbd {
 .room-group-head > .room-group { margin: 0; flex: 1 1 auto; }
 /* the order of the tabs, three ways, on top of the sidebar: the choice wraps inside the narrow sidebar
    rather than being cut */
-.room-order { margin: 10px 10px 4px; }
+.room-order { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 10px 4px; }
 .room-order > .seg { max-width: 100%; }
 /* by status: each group under its status word with its count, Next on top */
-.room-status-list > .btn { margin: 8px 10px 0; }
 .room-status > .room-group { display: flex; align-items: center; gap: 6px; }
 /* what runs in a tab or a workspace: subagents and workflows, each with its icon */
 .room-load { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-label); font-weight: 400;
@@ -1087,6 +1086,8 @@ kbd {
 .reply-row { display: grid; gap: 4px; min-width: 0; padding: 6px 8px; margin: 0 4px; border: 1px solid var(--border);
   border-radius: var(--radius-md); background: var(--surface-raised); }
 .reply-row.is-left { opacity: 0.55; }
+/* the whole row opens its tab (a control in it does its own work) */
+.reply-row.is-pickable { cursor: pointer; }
 .reply-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: none; background: none;
   color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
 .reply-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
