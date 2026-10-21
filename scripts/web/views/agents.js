@@ -13,23 +13,28 @@ import { Prose } from './prose.js'
 
 const REACH_TONE = { ok: 'ok', refused: 'bad', failed: 'bad', unreachable: 'warn', unknown: 'dim' }
 
-/** One agent as a card: who it is from its card, what it may do, whether the last call went through */
-function AgentCard({ p, on, c, s, held = 0 }) {
+/** One agent as a card: who it is from its card, what it may do, whether the last call went through, and
+ *  its own button for the card (Steckbrief), beside the pick and never inside it */
+function AgentCard({ p, on, c, s, held = 0, profileOpen, onProfile }) {
   const t = T()
   const card = p.card ?? {}
   const tone = REACH_TONE[p.reach] ?? 'dim'
-  return html`<button type="button" class=${`agent-card rt-${tone}${on ? ' is-on' : ''}`} onClick=${() => c.pickAgent(p.id)}
-    aria-current=${on ? 'true' : undefined}>
-    <span class="agent-head"><span class=${`rdot rdot-${tone}`} aria-hidden="true"></span>
-      <span class="agent-name" title=${card.name || p.id}>${card.name || p.id}</span></span>
-    <span class="agent-id mono small muted">${p.id}</span>
-    <span class="agent-sum">${p.summary || card.description}</span>
-    <span class="agent-meta small">
-      ${p.reach !== 'ok' ? html`<span class=${`agent-reach is-${tone}`}>${t.agentReach[p.reach] ?? p.reach}</span>` : null}
-      ${held ? html`<span class="agent-reach is-warn">${t.agentHeld(held)}</span>` : null}
-      ${p.last_ms ? html`<span class="muted">${t.agentLast(chatStamp(p.last_ms, s.now, language()))}</span>` : null}
-    </span>
-  </button>`
+  return html`<div class=${`agent-card rt-${tone}${on ? ' is-on' : ''}`}>
+    <button type="button" class="agent-pick" onClick=${() => c.pickAgent(p.id)} aria-current=${on ? 'true' : undefined}>
+      <span class="agent-head"><span class=${`rdot rdot-${tone}`} aria-hidden="true"></span>
+        <span class="agent-name" title=${card.name || p.id}>${card.name || p.id}</span></span>
+      <span class="agent-id mono small muted">${p.id}</span>
+      <span class="agent-sum">${p.summary || card.description}</span>
+      <span class="agent-meta small">
+        ${p.reach !== 'ok' ? html`<span class=${`agent-reach is-${tone}`}>${t.agentReach[p.reach] ?? p.reach}</span>` : null}
+        ${held ? html`<span class="agent-reach is-warn">${t.agentHeld(held)}</span>` : null}
+        ${p.last_ms ? html`<span class="muted">${t.agentLast(chatStamp(p.last_ms, s.now, language()))}</span>` : null}
+      </span>
+    </button>
+    <button type="button" class=${`btn btn-${on && profileOpen ? 'primary' : 'secondary'} btn-xs agent-card-profile`}
+      aria-expanded=${String(!!(on && profileOpen))} aria-controls="agent-profile" onClick=${() => onProfile(p.id)}>
+      <${Icon} name=${on && profileOpen ? 'chevronUp' : 'chevronDown'} size=${13} /><span class="btn-label">${on && profileOpen ? t.agentCardHide : t.agentCardShow}</span></button>
+  </div>`
 }
 
 /** The agent above its conversation: who it is, whether it is reachable, what failed, and the button that
@@ -156,13 +161,13 @@ export function AgentsPage({ s, c, embedded = false }) {
   const mine = convs.filter(x => x.peer === peer?.id)
   const [text, setText] = useState('')
   // the card: open by itself while no conversation is open, folded under one; the bar's button decides otherwise
-  const [profile, setProfile] = useState(null)
+  const [profile, setProfile] = useState({ peer: null, open: null })
   const [forgetArmed, setForgetArmed] = useState(null)
   const body = useStickToEnd(conv, null)
   const modeKeys = useRoving()
   useEffect(() => { c.loadAgents() }, [])
   // a draft belongs to the agent it was written for: switching agents never carries it over
-  useEffect(() => { setProfile(null); setText('') }, [peer?.id])
+  useEffect(() => { setText('') }, [peer?.id])
   const mode = s.ui.agentMode
   const send = async () => {
     const v = text.trim()
@@ -170,7 +175,13 @@ export function AgentsPage({ s, c, embedded = false }) {
     if (await c.agentSend(peer.id, v, mode, conv?.id)) setText('')
   }
   const example = v => { setText(v); document.getElementById('agent-input')?.focus() }
-  const showProfile = profile ?? !conv
+  const showProfile = (profile.peer === peer?.id ? profile.open : null) ?? !conv
+  // the card button of a list card: picks that agent and opens its card, or folds it when it is open already
+  const toggleProfile = pid => {
+    if (pid === peer?.id) return setProfile({ peer: pid, open: !showProfile })
+    c.pickAgent(pid)
+    setProfile({ peer: pid, open: true })
+  }
   const listHidden = embedded || !!s.ui.agentsListHidden
   return html`<div class=${embedded ? 'agentspage is-embedded' : 'col col-page agentspage'}>
     ${embedded ? null : html`<header class="page-head"><h2 class="detail-title">${t.agentsTab}</h2>
@@ -178,10 +189,11 @@ export function AgentsPage({ s, c, embedded = false }) {
     <div class=${`agents-grid${listHidden ? ' is-wide' : ''}`}>
       ${listHidden ? null : html`<nav class="agents-list" id="agents-list" aria-label=${t.agentsTab}>
         ${peers.map(p => html`<${AgentCard} key=${p.id} p=${p} on=${p.id === peer?.id} c=${c} s=${s}
-          held=${convs.filter(x => x.peer === p.id && !x.running && x.turns.at(-1)?.waiting).length} />`)}
+          held=${convs.filter(x => x.peer === p.id && !x.running && x.turns.at(-1)?.waiting).length}
+          profileOpen=${showProfile} onProfile=${toggleProfile} />`)}
       </nav>`}
       <section class="panel chat-main" aria-label=${peer?.card?.name || peer?.id}>
-        ${peer ? html`<${AgentBar} p=${peer} open=${showProfile} onToggle=${() => setProfile(!showProfile)}
+        ${peer ? html`<${AgentBar} p=${peer} open=${showProfile} onToggle=${() => toggleProfile(peer.id)}
           listToggle=${embedded ? null : html`<button type="button" class="btn btn-ghost btn-xs agents-list-toggle" aria-expanded=${String(!listHidden)} aria-controls="agents-list"
             title=${listHidden ? t.agentsListShow : t.agentsListHide} aria-label=${listHidden ? t.agentsListShow : t.agentsListHide}
             onClick=${c.toggleAgentsList}><${Icon} name=${listHidden ? 'chevronRight' : 'back'} /></button>`} />` : null}

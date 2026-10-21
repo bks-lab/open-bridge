@@ -1566,12 +1566,14 @@ kbd {
 .agents-grid { display: grid; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .agents-list { display: grid; gap: 8px; max-height: calc(100dvh - 200px); overflow-y: auto; }
 .agent-card {
-  display: grid; gap: 6px; text-align: left; padding: 12px 14px; font: inherit; color: var(--on-surface); cursor: pointer;
+  display: grid; gap: 8px; padding: 12px 14px; color: var(--on-surface);
   background: var(--surface-raised); border: 1px solid var(--border); border-left: 4px solid var(--border-strong); border-radius: var(--radius-lg);
 }
 .agent-card.rt-ok { border-left-color: var(--success); }
 .agent-card.rt-warn { border-left-color: var(--warning); }
 .agent-card.is-on { border-color: var(--secondary); background: var(--accent-subtle); }
+.agent-pick { display: grid; gap: 6px; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; min-width: 0; }
+.agent-card-profile { justify-self: start; }
 .agent-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .agent-id { margin-left: auto; flex: none; }
 .agent-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

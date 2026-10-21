@@ -1460,8 +1460,10 @@ itself.
 
 **The agent bar.** Above the conversation stands the chosen agent: its name,
 the dot of its last check, and what failed (card not readable, last message not
-delivered), so a failure shows with the card folded away. Its button "Show
-card" opens the card: by itself while no conversation is open, folded under one.
+delivered), so a failure shows with the card folded away. Every agent in the
+list carries its own "Show card" button, and the bar carries one too: it picks
+that agent and opens its card. The card opens by itself while no conversation
+is open, and folds under one.
 
 **When a card or a message fails.** An agent whose card cannot be read, or
 whose last message did not go out, says so in plain words instead of the raw

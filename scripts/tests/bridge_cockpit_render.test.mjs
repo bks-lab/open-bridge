@@ -1130,6 +1130,22 @@ test('the agent stands in a bar above the conversation: name, state and a real b
 })
 
 
+test('every agent card in the list carries its own card button, which picks the agent and opens the card', () => {
+  const { AgentsPage } = views.agents
+  const s0 = cockpitState(NOW)
+  const c = recorder()
+  const el = mount(html`<${AgentsPage} s=${s0} c=${c} />`)
+  const cards = el.$$('.agents-list .agent-card')
+  assert.equal(cards.length, s0.agents.peers.length)
+  for (const card of cards) assert.ok(card.$$('button').some(b => /card/i.test(b.text())), card.text())
+  // no button inside a button: the pick and the card button are siblings
+  assert.equal(el.$$('.agents-list button button').length, 0)
+  const last = cards.at(-1)
+  last.$$('button').find(b => /card/i.test(b.text())).click()
+  assert.ok(c.calls.some(([name, id]) => name === 'pickAgent' && id === s0.agents.peers.at(-1).id), JSON.stringify(c.calls))
+})
+
+
 // ---------------------------------------------------------------- review findings
 
 test('the demo state carries only question states the server emits and ids it accepts', () => {
