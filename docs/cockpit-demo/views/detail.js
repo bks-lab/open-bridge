@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabNextStep, workPageOf,
-  skipFixable, skipText,
+  skipFixable, skipText, queueLiveKeys, queueView,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -362,6 +362,33 @@ function RowDetail({ row, s, c }) {
   </article>`
 }
 
+/** The walk through the list this detail was opened from, as a small bar that stays at the foot of
+ *  the column or drawer however long the detail runs: back, where you stand, the next entry with
+ *  "next" (key n), and the two after it as plain links. A settled entry drops out at once */
+export function NextUp({ s, c, byKey, current }) {
+  const t = T()
+  const live = queueLiveKeys(s.model, s.more)
+  const v = current ? queueView(s.ui.queue, current, e => live.has(e.key)) : null
+  if (!v || v.total < 2) return null
+  const [next, ...later] = v.next
+  const name = e => e.title || byKey.get(e.key)?.title || e.key
+  const look = e => s.triage?.items?.[e.key]?.gist || (byKey.get(e.key)?.why ?? [])[0] || undefined
+  // the keys only when single-key shortcuts are on (settings); otherwise n and p do nothing
+  const key = k => (s.ui.shortcuts ? ` (${k})` : '')
+  return html`<nav class="next-up" aria-label=${t.nextLabel}>
+    <div class="next-up-bar">
+      <${Btn} size="xs" variant="ghost" icon="back" label=${t.nextPrev} title=${t.nextPrev + key('p')} disabled=${!v.prev} onClick=${() => c.openNext(v.prev)} />
+      <span class="next-up-pos mono" aria-live="polite">${t.nextPos(v.pos, v.total)}</span>
+      ${next ? html`<span class="next-up-text" title=${look(next)}><span class="label-caps">${t.nextUp}</span>
+          <span class="next-up-title">${short(name(next), 90)}</span></span>
+        <${Btn} size="xs" variant="primary" icon="forward" title=${t.nextOpen + key('n')} onClick=${() => c.openNext(next)}>${t.nextOpen}<//>`
+        : html`<span class="next-up-text muted small">${t.nextDone}</span>`}
+    </div>
+    ${later.length ? html`<ol class="next-up-later" start=${v.pos + 2}>${later.map(e => html`<li key=${e.key}>
+      <button type="button" class="btn-link" title=${look(e)} onClick=${() => c.openNext(e)}>${short(name(e), 80)}</button></li>`)}</ol>` : null}
+  </nav>`
+}
+
 /** Back to the list: "close details" beside a page, "back" on a phone, nothing on a wide briefing */
 function DetailBack({ s, c }) {
   const t = T()
@@ -389,5 +416,6 @@ export function DetailColumn({ s, c, byKey }) {
   }
   return html`<div class="col col-detail">
     <div class="detail-scroll">${body}</div>
+    ${s.ui.pageDetail ? html`<${NextUp} s=${s} c=${c} byKey=${byKey} current=${key} />` : null}
   </div>`
 }

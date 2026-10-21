@@ -563,10 +563,15 @@ export function JevPage({ s, c, ask = null, extra = null, store = 'tab', top = n
   })
 
   // a dashboard row peeks; an inbox item or task only the work page holds (deferred) opens its drawer
+  // the plan in its order is the queue the detail walks on: "open next" without going back to the list
+  const queue = items.map(x => {
+    const o = planOpen(x, byKey, extra)
+    return o ? { how: o.how, key: o.key, title: x.title, it: o.it ?? null } : null
+  }).filter(Boolean)
   const onOpen = (it, from) => {
     const o = planOpen(it, byKey, extra)
-    if (o?.how === 'peek') c.peek(o.key, from)
-    else if (o?.how === 'item') c.openItem(o.key, o.it)
+    if (o?.how === 'peek') c.peek(o.key, from, queue)
+    else if (o?.how === 'item') c.openItem(o.key, o.it, {}, null, queue)
   }
   const onDot = (it, e) => onOpen(it, listRef.current?.querySelector(`[data-open="${CSS.escape(it.key)}"]`) ?? e.currentTarget)
 

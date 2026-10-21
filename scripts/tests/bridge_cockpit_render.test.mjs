@@ -1616,3 +1616,40 @@ test('help: one topic at a time, this page first; a topic tab shows its own word
     if (ask) Object.defineProperty(document, 'querySelector', ask); else delete document.querySelector
   }
 })
+
+// ---------------------------------------------------------------- NextUp
+
+test('next up: a small bar under a detail opened from a list: back, where you stand, the next with "next", two more as links', () => {
+  const { NextUp } = views.detail
+  const s = cockpitState(NOW)
+  const rows = [...(s.model.sections ?? []).flatMap(sec => sec.rows ?? [])].slice(0, 5)
+  assert.equal(rows.length, 5)
+  const byKey = new Map(rows.map(r => [r.key, r]))
+  const entry = r => ({ how: 'peek', key: r.key, title: r.title })
+  s.ui = { ...s.ui, pageDetail: true, selectedKey: rows[1].key, queue: rows.map(entry) }
+  const c = recorder()
+  const el = mount(html`<${NextUp} s=${s} c=${c} byKey=${byKey} current=${rows[1].key} />`)
+  assert.ok(el.$('nav.next-up'))
+  assert.equal(el.$('.next-up-pos').text(), en.nextPos(2, 5))
+  assert.equal(el.$('.next-up-title').text(), rows[2].title)
+  // the two after the next one stand open below it, each a click away
+  assert.deepEqual(el.$$('.next-up-later button').map(b => b.text()), [rows[3].title, rows[4].title])
+  el.button(en.nextOpen).click()
+  assert.deepEqual(c.calls.at(-1), ['openNext', entry(rows[2])])
+  el.$$('.next-up-later button')[1].click()
+  assert.deepEqual(c.calls.at(-1), ['openNext', entry(rows[4])])
+  el.button(en.nextPrev).click()
+  assert.deepEqual(c.calls.at(-1), ['openNext', entry(rows[0])])
+  // the next one was settled: it no longer counts, the one after moves up
+  s.model = { ...s.model, sections: s.model.sections.map(sec => ({ ...sec, rows: (sec.rows ?? []).filter(r => r.key !== rows[2].key) })) }
+  const el2 = mount(html`<${NextUp} s=${s} c=${recorder()} byKey=${byKey} current=${rows[1].key} />`)
+  assert.equal(el2.$('.next-up-pos').text(), en.nextPos(2, 4))
+  assert.equal(el2.$('.next-up-title').text(), rows[3].title)
+  // the last one says so, and back still works
+  const el3 = mount(html`<${NextUp} s=${s} c=${recorder()} byKey=${byKey} current=${rows[4].key} />`)
+  assert.equal(el3.$('.next-up-title'), null)
+  assert.match(el3.text(), new RegExp(en.nextDone.replace(/[.]/g, '\\.')))
+  // a detail not opened from a list has no bar
+  s.ui = { ...s.ui, queue: null }
+  assert.equal(mount(html`<${NextUp} s=${s} c=${recorder()} byKey=${byKey} current=${rows[1].key} />`).$('nav.next-up'), null)
+})

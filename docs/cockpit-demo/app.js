@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats, nextTabByStatus, statusQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps,
+  listedChats, nextTabByStatus, statusQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -135,7 +135,7 @@ const store = createStore({
     // the view of the work tab (due, area, jev); a page with jev: outside it reads area and jev the same way
     workView: load('bridge-cockpit.workTab', 'due'),
     workKind: load('bridge-cockpit.workKind', null),
-    theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false,
+    theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false, queue: null,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
@@ -608,24 +608,39 @@ const ctl = {
     if (s.layout === 'narrow') requestAnimationFrame(() => window.scrollTo(0, 0))
     else requestAnimationFrame(() => document.querySelector('.detail-scroll')?.scrollTo?.(0, 0))
   },
-  /** Open a row's detail next to the current page (a task on the tasks page); the page stays */
-  peek(key, from) {
+  /** Open a row's detail next to the current page (a task on the tasks page); the page stays.
+   *  `queue` is the list it was opened from, so the detail's foot offers the next one */
+  peek(key, from, queue = null, { keepFocus = false } = {}) {
     const s = store.get()
-    peekFrom = from ?? null
-    setUi({ selectedKey: key, pageDetail: true, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
+    // the next of a list keeps the title the list was left from, so closing goes back there
+    peekFrom = from ?? (queue ? peekFrom : null)
+    setUi({ selectedKey: key, pageDetail: true, queue, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
     requestAnimationFrame(() => {
       if (s.layout === 'narrow') window.scrollTo(0, 0)
       else document.querySelector('.detail-scroll')?.scrollTo?.(0, 0)
-      document.getElementById('detail-title')?.focus({ preventScroll: true })
+      // walking a list keeps the focus on its "next" button, so Enter goes on to the one after
+      if (!keepFocus) document.getElementById('detail-title')?.focus({ preventScroll: true })
     })
   },
   /** The drawer of an inbox item or task on the Inbox and Tasks pages: `it` is the page row it was
    *  opened from (title, triage, actions), `prev` the item a task was opened from, for the way back */
-  openItem(key, it = null, where = {}, prev = null) {
-    setUi({ drawer: 'item', item: { key, it, page: where.page ?? null, section: where.section ?? null, prev } })
+  openItem(key, it = null, where = {}, prev = null, queue = null) {
+    setUi({ drawer: 'item', item: { key, it, page: where.page ?? null, section: where.section ?? null, prev }, queue })
   },
   closeItem() {
-    setUi({ drawer: null, item: null })
+    setUi({ drawer: null, item: null, queue: null })
+  },
+  /** The next entry of the list a detail was opened from (ui.queue), opened the way its list opens it:
+   *  beside the page ('peek') or in the item drawer ('item'); the queue stays, so the flow goes on */
+  openNext(next) {
+    const queue = store.get().ui.queue
+    if (!next) return
+    if (next.how === 'item') {
+      setUi({ pageDetail: false, selectedKey: null })
+      return ctl.openItem(next.key, next.it ?? null, next.where ?? {}, null, queue)
+    }
+    if (store.get().ui.drawer === 'item') setUi({ drawer: null, item: null })
+    ctl.peek(next.key, null, queue, { keepFocus: true })
   },
   // any other page item (a table row, a resource tile, a gauge): its detail in a drawer
   openInfo(it, page, section) {
@@ -635,7 +650,7 @@ const ctl = {
     setUi({ drawer: null, info: null })
   },
   closePeek() {
-    setUi({ pageDetail: false, selectedKey: null, pane: 'day' })
+    setUi({ pageDetail: false, selectedKey: null, queue: null, pane: 'day' })
     const back = peekFrom
     peekFrom = null
     if (back?.isConnected) requestAnimationFrame(() => back.focus())
@@ -664,7 +679,7 @@ const ctl = {
     save('bridge-cockpit.page', id)
     // a page with the tab column beside it closes the tab drawer a folded page opened
     const drawer = s.layout === 'wide' && railShown(id, s.rooms?.layout, s.ui.railHidden) && s.ui.drawer === 'tabs' ? null : s.ui.drawer
-    setUi({ page: id, pageDetail: false, drawer, pane: s.layout === 'narrow' ? 'day' : s.ui.pane, workersFilter: null })
+    setUi({ page: id, pageDetail: false, queue: null, drawer, pane: s.layout === 'narrow' ? 'day' : s.ui.pane, workersFilter: null })
   },
   // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab
   openReview() {
@@ -1178,7 +1193,7 @@ function onKey(e) {
     if (s.ui.confirm) return ctl.cancelConfirm()
     if (s.ui.organize) return s.ui.organize.applying ? undefined : ctl.organizeClose()
     if (s.ui.tabView) return setUi({ tabView: null })
-    if (s.ui.drawer) return setUi({ drawer: null, item: null })
+    if (s.ui.drawer) return setUi({ drawer: null, item: null, queue: s.ui.pageDetail ? s.ui.queue : null })
     if (s.ui.pageDetail && !isTypingTarget(e.target)) return ctl.closePeek()
     if (isTypingTarget(e.target)) e.target.blur()
     return
@@ -1223,6 +1238,17 @@ function onKey(e) {
   if (key === 'g') {
     gPending = true
     gTimer = setTimeout(() => { gPending = false }, 1500)
+    return
+  }
+  // n / p in a detail opened from a list (beside the page or in the item drawer): walk that list
+  const walking = s.ui.queue?.length && (s.ui.drawer === 'item' || (s.ui.pageDetail && !s.ui.drawer))
+  if ((key === 'n' || key === 'p') && walking) {
+    const cur = s.ui.drawer === 'item' ? s.ui.item?.key : s.ui.selectedKey
+    const live = queueLiveKeys(s.model, s.more)
+    const v = queueView(s.ui.queue, cur, x => live.has(x.key))
+    const to = key === 'n' ? v?.next[0] : v?.prev
+    e.preventDefault()
+    if (to) ctl.openNext(to)
     return
   }
   if (key === 'n' && s.ui.page === CHAT_PAGE) {

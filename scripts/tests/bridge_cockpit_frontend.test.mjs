@@ -4628,3 +4628,52 @@ test('a2aHost: the host of a card address, nothing for one that is not a URL', (
   assert.equal(logic.a2aHost(null), null)
   assert.equal(logic.a2aHost('not a url'), null)
 })
+
+test('nextInQueue: the entry after the open one that still exists, also when the open one is gone', () => {
+  const q = [{ key: 'a', title: 'A' }, { key: 'b', title: 'B' }, { key: 'c', title: 'C' }, { key: 'd', title: 'D' }]
+  const all = () => true
+  assert.equal(logic.nextInQueue(q, 'a', all).key, 'b')
+  assert.equal(logic.nextInQueue(q, 'd', all), null)
+  // b was settled and left the model: from a the next is c, and from b itself (now gone) too
+  const alive = e => e.key !== 'b'
+  assert.equal(logic.nextInQueue(q, 'a', alive).key, 'c')
+  assert.equal(logic.nextInQueue(q, 'b', alive).key, 'c')
+  // a key not in the queue, or no queue, has no next
+  assert.equal(logic.nextInQueue(q, 'x', all), null)
+  assert.equal(logic.nextInQueue(null, 'a', all), null)
+})
+
+test('queueView: position, previous and the next few of the open entry, settled ones left out', () => {
+  const q = ['a', 'b', 'c', 'd', 'e'].map(k => ({ key: k, title: k.toUpperCase() }))
+  const v = logic.queueView(q, 'b', () => true)
+  assert.equal(v.pos, 2)
+  assert.equal(v.total, 5)
+  assert.equal(v.prev.key, 'a')
+  assert.deepEqual(v.next.map(e => e.key), ['c', 'd', 'e'])   // the next one and two after it
+  // c was settled: it neither counts nor shows; the open entry counts even when it is gone itself
+  const w = logic.queueView(q, 'b', e => e.key !== 'c' && e.key !== 'b')
+  assert.equal(w.total, 4)
+  assert.deepEqual(w.next.map(e => e.key), ['d', 'e'])
+  assert.equal(logic.queueView(q, 'e', () => true).next.length, 0)
+  assert.equal(logic.queueView(q, 'a', () => true).prev, null)
+  assert.equal(logic.queueView(q, 'x', () => true), null)
+  assert.equal(logic.queueView(null, 'a', () => true), null)
+})
+
+test('queueLiveKeys: the briefing rows and every inbox item or task the pages hold now', () => {
+  const model = { sections: [{ rows: [{ key: 'r1', title: 'R1' }] }],
+    pages: [{ id: 'w', sections: [{ id: 'inbox', items: [{ inbox: 'i1', title: 'I' }, { task: 't1', title: 'T' }, { title: 'plain' }] }] }] }
+  const keys = logic.queueLiveKeys(model, { 'w/inbox': { items: [{ inbox: 'i2', title: 'more' }] } })
+  for (const k of ['r1', 'inbox:i1', 'task:t1', 'inbox:i2']) assert.ok(keys.has(k), k)
+  assert.equal(keys.has('inbox:gone'), false)
+})
+
+test('n and p walk the list of an open detail, also inside the item drawer; other single keys stay blocked there', () => {
+  const ui = { confirm: null, drawer: 'item', queue: [{ key: 'a' }] }
+  assert.equal(logic.modalKeyAllowed(ui, 'n', false), true)
+  assert.equal(logic.modalKeyAllowed(ui, 'p', false), true)
+  assert.equal(logic.modalKeyAllowed(ui, 'x', false), false)
+  assert.equal(logic.modalKeyAllowed({ ...ui, queue: null }, 'n', false), false)
+  assert.equal(logic.modalKeyAllowed({ ...ui, drawer: 'notes' }, 'n', false), false)
+  assert.equal(logic.modalKeyAllowed({ ...ui, confirm: { kind: 'x' } }, 'n', false), false)
+})

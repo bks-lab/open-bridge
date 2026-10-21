@@ -507,6 +507,19 @@ action of the center column as buttons (the keyboard shortcuts work on the
 Today tab only); the page stays where it was, and Escape or "Close details"
 goes back to it.
 
+**Working through a list.** A detail opened from a list (Jev's plan and its
+list view, a section of a work page, the task check) carries that list with it.
+A small bar stays at the foot of the detail column or the item drawer however
+long the detail runs: back, where you stand ("2 of 13"), the next entry with
+**Next**, and the two after it as plain links. The order is the one the list
+shows (Jev's rank, the lanes from top to bottom). An entry settled meanwhile
+drops out at once, and the last one says so. After **Next** the focus stays on
+the button, so `Enter` goes on to the one after; the drawer starts each entry at
+its top. Settling an item in the drawer ("Close", "Let AI do it") opens the
+next one instead of closing the drawer. With the keyboard shortcuts on, `n` and
+`p` walk the list, in the drawer too. On a phone the bar sits at the bottom of
+the screen and shows the next title on its own line.
+
 **With AI on the Sessions tab.** The Sessions tab leads with what the AI was
 handed, in four groups: **Done, please check** (a start whose item closed or
 whose task moved to `work/done/`, or that left an answer, plus every waiting tab
@@ -1220,11 +1233,13 @@ the focus is not in a text field:
 | `r` | reload, fresh |
 | `/` | the command box |
 | `g` then `t` | the agent tabs |
+| `n` / `p` | in a detail opened from a list: its next / previous entry |
 | `Alt` + `1` to `9` | the page tabs |
 | `?` | help |
 
 The row keys (`j` `k` `Enter` `x` and the five letters) act on the Briefing
-page only; the others work on every page. A text field keeps every key,
+page only; `n` and `p` act while a detail opened from a list is open, the item
+drawer included; the others work on every page. A text field keeps every key,
 `Alt` + a digit included, because on many keyboards that is how a bracket
 or a pipe is typed: leave the field with `Esc` first, for instance after
 the Chat page put the cursor in its box.

@@ -749,7 +749,33 @@ export function pageWarnings(s, t) {
 export function modalKeyAllowed(ui, key, gPending) {
   if (ui?.confirm) return false
   if (!ui?.drawer) return true
+  // n and p act on the item drawer itself: they walk the list it was opened from
+  if (ui.drawer === 'item' && ui.queue?.length && (key === 'n' || key === 'p')) return true
   return key === 'g' || (gPending && key === 't')
+}
+
+/** The list a detail was opened from (ui.queue), seen from its open entry: where it stands (pos of
+ *  total), the one before and the next `more + 1` after it. `alive` says whether an entry still exists
+ *  (a settled one leaves the model and neither counts nor shows); the open entry counts even when it
+ *  is gone itself, so the place it held stays. Null when the key is not in the queue */
+export function queueView(queue, key, alive = () => true, more = 2) {
+  const list = (queue ?? []).filter(e => e.key === key || alive(e))
+  const i = list.findIndex(e => e.key === key)
+  if (i < 0) return null
+  return { pos: i + 1, total: list.length, prev: list[i - 1] ?? null, next: list.slice(i + 1, i + 2 + more) }
+}
+
+/** The entry after the open one that still exists, or null */
+export const nextInQueue = (queue, key, alive = () => true) => queueView(queue, key, alive, 0)?.next[0] ?? null
+
+/** Every key a queue entry can still open: the briefing's rows and every inbox item or task the pages
+ *  hold now (`more`: the rows a section loaded beyond its first ones) */
+export function queueLiveKeys(model, more = {}) {
+  const keys = new Set(indexRows(model).keys())
+  const rows = [...(model?.pages ?? []).flatMap(p => (p.sections ?? []).flatMap(sec => sec.items ?? [])),
+    ...Object.values(more ?? {}).flatMap(m => m?.items ?? [])]
+  for (const it of rows) { const k = triageKey(it); if (k) keys.add(k) }
+  return keys
 }
 
 /**

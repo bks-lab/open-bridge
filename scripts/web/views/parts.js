@@ -181,6 +181,7 @@ const ICONS = {
   sliders: 'M4 6h9M17 6h3M15 4v4M4 12h3M11 12h9M9 10v4M4 18h11M19 18h1M17 16v4',
   chevronRight: 'M9 6l6 6-6 6',
   back: 'M15 18l-6-6 6-6',
+  forward: 'M9 18l6-6-6-6',
   tabs: 'M3 5h18v14H3zM15 5v14',
   send: 'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z',
   spark: 'M12 3v4M12 17v4M3 12h4M17 12h4',

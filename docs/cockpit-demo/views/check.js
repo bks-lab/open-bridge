@@ -227,7 +227,7 @@ export function ReviewBody({ s, c, inline = false }) {
           <tbody>${rows.map((r, i) => html`<tr key=${r.key} class=${`row-in${r.review.kept ? ' is-kept' : ''}`} style=${{ '--i': Math.min(i, 12) }}>
             <td class="c-pick"><input type="checkbox" checked=${picked.includes(r.key)} aria-label=${t.rvPick(short(r.title, 40))}
               onChange=${() => c.toggleRvPick(r.key)} /></td>
-            <td class="c-task"><button type="button" class="btn-link info-open" title=${t.openDetail} onClick=${e => c.peek(r.key, e.currentTarget)}>${short(r.title, 80)}</button>
+            <td class="c-task"><button type="button" class="btn-link info-open" title=${t.openDetail} onClick=${e => c.peek(r.key, e.currentTarget, rows.map(x => ({ how: 'peek', key: x.key, title: x.title })))}>${short(r.title, 80)}</button>
               <span class="row-meta"><${PrioChip} priority=${r.priority} />${r.area ? html`<span class="meta-area">${r.area}</span>` : null}</span></td>
             <td class="c-verdict"><${StateLine} token=${verdictToken(r.review.verdict)} strong=${r.review.verdict === 'close'} word=${t.verdictName[r.review.verdict]} />
               <span class="muted small conf" title=${t.confidence[r.review.confidence] ?? ''}>${confidenceDots(r.review.confidence)}</span>

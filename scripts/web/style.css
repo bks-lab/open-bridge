@@ -445,6 +445,25 @@ kbd {
 
 .detail-title { font-size: var(--text-h3); font-weight: 600; line-height: 1.35; color: var(--on-surface); overflow-wrap: anywhere; }
 .detail-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.next-up { flex: 0 0 auto; position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: 4px;
+  padding: 8px 12px; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float); }
+.idrawer > .next-up { border-radius: 0; border-width: 1px 0 0; padding: 8px 20px; }
+.next-up-bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.next-up-pos { flex: 0 0 auto; font-size: 12px; color: var(--on-surface-muted); }
+.next-up-text { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 auto; }
+.next-up-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.next-up-later { margin: 0; padding: 0 0 0 calc(28px + 8px); display: flex; flex-direction: column; gap: 1px; font-size: 13px;
+  color: var(--on-surface-muted); }
+.next-up-later li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.next-up-later li::marker { font-variant-numeric: tabular-nums; }
+.next-up-later .btn-link { color: inherit; font-size: inherit; }
+/* a phone: the title gets the whole line; the label "next" would leave it a few letters */
+@media (max-width: 899px) {
+  .next-up-text > .label-caps { display: none; }
+  .next-up-later { padding-left: 4px; }
+  .next-up-later li:nth-child(n+2) { display: none; }
+}
 .detail-eyebrow { display: flex; align-items: center; gap: 8px; }
 .detail-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .detail-chips:empty { display: none; }

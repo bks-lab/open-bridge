@@ -5,12 +5,12 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
-  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, rowKind, hintsFor,
+  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, rowKind, hintsFor, nextInQueue,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
 import { PageItemActions, RowBar } from './day.js'
-import { DetailFailed, Lines, Segmented } from './detail.js'
+import { DetailFailed, Lines, NextUp, Segmented } from './detail.js'
 import { AsOf, RelayBadge } from './header.js'
 import { ReturnPanel } from './home.js'
 import {
@@ -225,6 +225,8 @@ export function ItemDrawer({ s, c, byKey }) {
   const ref = useFocusOnOpen(true)
   const cur = s.ui.item
   const key = cur.key
+  // the next of a list opens in the same drawer: it starts at its top, not where the last one was left
+  useEffect(() => { ref.current?.querySelector('.idrawer-body')?.scrollTo?.(0, 0) }, [key])
   const isInbox = key.startsWith('inbox:')
   const id = key.slice(isInbox ? 6 : 5)
   const it = cur.it ?? {}
@@ -236,8 +238,13 @@ export function ItemDrawer({ s, c, byKey }) {
   const row = own ?? (made && isInbox && data?.item?.state ? { ...made, inbox_state: data.item.state } : made)
   const title = (isInbox ? data?.item?.summary : data?.front?.headline) || it.title || id
   const slug = isInbox ? (data?.item?.task ?? it.task) : id
-  // a close from inside the drawer ends the item: the drawer goes with it
-  const cc = { ...c, act: async (verb, args) => { const r = await c.act(verb, args); if (r?.ok && (verb === 'settle' || verb === 'do_it')) c.closeItem(); return r } }
+  // a close from inside the drawer ends the item: the drawer goes with it, or on to the next of its list
+  const next = nextInQueue(s.ui.queue, key, e => e.key !== key)
+  const cc = { ...c, act: async (verb, args) => {
+    const r = await c.act(verb, args)
+    if (r?.ok && (verb === 'settle' || verb === 'do_it')) { if (next) c.openNext(next); else c.closeItem() }
+    return r
+  } }
   const asks = it.ask && cur.page && cur.section && it.index != null
   return html`<div class="overlay" onClick=${e => { if (e.target === e.currentTarget) c.closeItem() }}>
     <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="idrawer-title" ref=${ref}>
@@ -263,6 +270,7 @@ export function ItemDrawer({ s, c, byKey }) {
           ${tri.reason ? html`<p class="muted small">${tri.reason}</p>` : null}</section>` : null}
         ${isInbox ? html`<${InboxBody} key=${id} id=${id} cur=${cur} s=${s} c=${c} />` : html`<${TaskBody} key=${id} slug=${id} cur=${cur} s=${s} c=${c} />`}
       </div>
+      <${NextUp} s=${s} c=${c} byKey=${byKey} current=${key} />
     </aside>
   </div>`
 }

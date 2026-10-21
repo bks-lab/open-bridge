@@ -111,7 +111,19 @@ export function RowSteps({ it, page, section, s, c }) {
   </span>`
 }
 
-function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null }) {
+/** What a row opens, as an entry of the list a detail walks through (ui.queue): an inbox item or task
+ *  its drawer, a row of a known task that task's detail beside the page, anything else nothing */
+export function rowEntry(it, page, section, byKey) {
+  const itemKey = (section === 'tasks' || section === 'inbox' || it.inbox) ? triageKey(it) : null
+  if (itemKey) return { how: 'item', key: itemKey, title: it.title, it, where: { page, section } }
+  if (it.task && byKey.has(`task:${it.task}`)) return { how: 'peek', key: `task:${it.task}`, title: it.title }
+  return null
+}
+
+/** The rows of a list in the order it shows them, as the queue its details walk through */
+export const rowQueue = (rows, byKey) => rows.map(r => rowEntry(r.it, r.page, r.section, byKey)).filter(Boolean)
+
+function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue = null }) {
   const t = T()
   const tri = s.triage?.items?.[triageKey(it)] ?? null
   const [open, setOpen] = useState(false)
@@ -119,7 +131,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null }) {
   // an inbox item or task opens its drawer: a click anywhere on the row but its controls, or Enter on the row
   const itemKey = (section === 'tasks' || section === 'inbox' || it.inbox) ? triageKey(it) : null
   // an inbox item or task opens its own drawer, every other row the general detail
-  const openIt = () => (itemKey ? c.openItem(itemKey, it, { page, section }) : c.openInfo(it, page, section))
+  const openIt = () => (itemKey ? c.openItem(itemKey, it, { page, section }, null, queue) : c.openInfo(it, page, section))
   // the detail line in words, without the priority the chip beside the title already shows
   const detail = detailText(it.detail, t).split(' · ').filter(p => p !== it.priority).join(' · ')
   return html`<tr class=${`${tone ? `tone-${tone}` : ''} row-opens`} tabindex="0"
@@ -134,7 +146,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null }) {
             aria-haspopup="dialog" onClick=${openIt}>
             ${tone ? html`<${StateLine} token=${toneToken(tone)} strong=${tone === 'bad'} word=${it.title} />` : it.title}</button>`
           : it.task && byKey.has(`task:${it.task}`) ? html`<button type="button" class="btn-link info-open" title=${t.openDetail}
-            aria-haspopup="true" onClick=${e => c.peek(`task:${it.task}`, e.currentTarget)}>
+            aria-haspopup="true" onClick=${e => c.peek(`task:${it.task}`, e.currentTarget, queue)}>
             ${tone ? html`<${StateLine} token=${toneToken(tone)} strong=${tone === 'bad'} word=${it.title} />` : it.title}</button>`
           : tone ? html`<${StateLine} token=${toneToken(tone)} strong=${tone === 'bad'} word=${it.title} />` : html`<span>${it.title}</span>`}
         <${MarkChip} mark=${it.mark} /><${PrioChip} priority=${it.priority} />
@@ -495,11 +507,14 @@ export function PageSection({ page, section, s, c }) {
   else if (gaugeSection(items)) {
     body = html`<ul class="gtiles">${items.map(it => html`<${GaugeTile} key=${it.index} it=${it} page=${page.id} section=${section.id} c=${c} />`)}</ul>`
   } else {
-    const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} />`
     // a task list in lanes: being worked on, runs on (quiet until a day), waits for your yes; one lane, no heads
     // board: the rows under their group (a GitHub row's board), the groups in the order the rows first name them
     const lanes = section.kind === 'tasks' ? TASK_LANES.map(id => [id, items.filter(it => taskLane(it) === id)]).filter(([, l]) => l.length)
       : section.view === 'board' ? [...new Set(items.map(it => it.group ?? ''))].map(g => [g, items.filter(it => (it.group ?? '') === g)]) : []
+    // the order the rows are shown in is the order a detail walks on to the next
+    const shown = lanes.length > 1 ? lanes.flatMap(([, l]) => l) : items
+    const queue = rowQueue(shown.map(it => ({ it, page: page.id, section: section.id })), byKey)
+    const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} queue=${queue} />`
     body = html`<div class="table-wrap" tabindex="0" role="region" aria-label=${section.title}>
       <table class="tbl">
         <thead><tr><th scope="col" class="c-when">${t.col.when}</th><th scope="col">${t.col.item}</th><th scope="col" class="c-acts">${t.col.actions}</th></tr></thead>
@@ -681,10 +696,12 @@ export function JevList({ page, s, c }) {
     return { ...sec, items: all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) }
   })
   const list = jevList(sections, s.jevOrder[page.id]?.order, t.workOrder.kinds)
+  // one queue over both parts: after Jev's last row the detail walks on into the rest
+  const queue = rowQueue([...list.ranked, ...list.rest].map(r => ({ it: r.it, page: page.id, section: r.section })), byKey)
   const rows = entries => html`<div class="table-wrap" tabindex="0" role="region" aria-label=${page.title}>
     <table class="tbl"><thead><tr><th scope="col" class="c-when">${t.col.when}</th><th scope="col">${t.col.item}</th><th scope="col" class="c-acts">${t.col.actions}</th></tr></thead>
       <tbody>${entries.map(r => html`<${InfoRow} key=${`${r.section}/${r.it.index}`} it=${r.it} page=${page.id} section=${r.section} s=${s} c=${c}
-        byKey=${byKey} lead=${{ rank: r.rank, label: r.label, judge: r.judge }} />`)}</tbody></table></div>`
+        byKey=${byKey} lead=${{ rank: r.rank, label: r.label, judge: r.judge }} queue=${queue} />`)}</tbody></table></div>`
   return html`
     <section class="panel panel-pad psec" aria-labelledby=${`ps-${page.id}-jev`}>
       <header class="psec-head"><h2 class="sec-title" id=${`ps-${page.id}-jev`}>${t.workOrder.byJev}
