@@ -102,6 +102,16 @@ BOXED_DRAFT = """\
 │ > half a sentence                        │
 ╰──────────────────────────────────────────╯
 """
+# a tab started with `claude -n <name>` puts its name into the rule above the prompt (21.10.: a half word typed
+# there was not seen, the send went out, cmux refused it and the page said only "the action failed")
+NAMED_DRAFT = """\
+⏺ Done. Shall I commit the three files?
+
+───────────────────────────────────────────── docs-update ─
+❯ commit th
+──────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)
+"""
 
 
 def plain(text: str) -> str:
@@ -178,6 +188,13 @@ def test_question_of_marks_yes_no_and_draft():
     assert boxed["draft"] is True and boxed["text"] == "Done. Anything else?" and boxed["yes_no"] is True
     # an earlier prompt of yours in the history is no draft
     assert asks.question_of(WAITING, "waiting", plain)["draft"] is False
+
+
+def test_a_draft_under_a_rule_that_carries_the_session_name_is_seen():
+    assert asks.draft_of(NAMED_DRAFT) is True
+    named = asks.question_of(NAMED_DRAFT, "waiting", plain)
+    assert named["draft"] is True and named["text"] == "Done. Shall I commit the three files?"
+    assert asks.draft_of(NAMED_DRAFT.replace("❯ commit th", "❯")) is False
 
 
 def test_question_of_returns_none_for_an_empty_or_frame_only_screen():

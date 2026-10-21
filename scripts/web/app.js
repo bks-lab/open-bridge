@@ -11,7 +11,7 @@ import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder, quickLive } from './components.js'
 import {
-  CONN_GRACE_MS, DAY, pushNoteState, actionFailNote, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
+  CONN_GRACE_MS, DAY, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
@@ -430,6 +430,7 @@ function rowIndex() {
 }
 
 // the refusal of an action, by the args object it was sent with, for reply() to show where it was asked
+// (logic.js replyRefusal: a step that failed keeps its own note)
 const refusals = new WeakMap()
 
 async function act(verb, args = {}) {
@@ -446,7 +447,7 @@ async function act(verb, args = {}) {
       if (res.data?.undo?.length) pushNote({ text: errorText(res.error, T()), tone: 'bad', action: 'undo', undo: res.data.undo }, { linger: 10000 })
       else if (res.status === 401) failNote(res)
       else pushNote(actionFailNote(res, T()))
-      if (res.error) refusals.set(args, res.error)
+      if (res.error) refusals.set(args, replyRefusal(res))
       return null
     }
     const r = res.data
@@ -478,7 +479,7 @@ async function act(verb, args = {}) {
 async function reply(verb, args) {
   const sent = { ...args }
   const r = await act(verb, sent)
-  return r ?? (refusals.has(sent) ? { refused: true, error: refusals.get(sent) } : null)
+  return r ?? refusals.get(sent) ?? null
 }
 
 /** Mark `key` busy while fn runs, and clear it however fn ends; a row action already busy runs nothing and says so (logic.js) */

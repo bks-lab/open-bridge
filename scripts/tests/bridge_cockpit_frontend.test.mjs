@@ -3507,6 +3507,18 @@ test('a failed action that brings its own note shows that note, never "the actio
   assert.equal(s.toasts[0].copy, 'c')
 })
 
+test('a reply whose send the driver refused shows that note beside the field, a refusal its error', () => {
+  // 21.10.: cmux refused a send into a tab with a typed draft; the field said only "Die Aktion ging nicht"
+  const failed = { status: 200, ok: false, error: { code: 'unknown', message: 'OK', field: null },
+    data: { ok: false, verb: 'tab_send', note: 'Sending failed: draft in prompt', steps: [] } }
+  assert.deepEqual(logic.replyRefusal(failed), failed.data)
+  const refused = { status: 409, ok: false, error: { code: 'tab_draft', message: 'x', field: null },
+    data: { ok: false, error: { code: 'tab_draft', message: 'x' } } }
+  assert.deepEqual(logic.replyRefusal(refused), { refused: true, error: refused.error })
+  const down = { status: 0, ok: false, error: { code: 'network', message: '', field: null }, data: null }
+  assert.deepEqual(logic.replyRefusal(down), { refused: true, error: down.error })
+})
+
 test('chat reminders: the marker lines become cards and leave the answer', () => {
   const answer = 'Der Brief ist noch offen.\n\n[[remind: 2026-10-20 | Einschreiben zur Post]]\n[[remind: synMedico anrufen]]'
   assert.deepEqual(logic.chatReminders(answer), {

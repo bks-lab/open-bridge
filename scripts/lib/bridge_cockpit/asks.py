@@ -20,7 +20,8 @@ ABOVE = 3          # lines of a dialog above its options
 LAST_LINES = 4     # lines of what the agent said
 FRAME = "╭╮╰╯│─━═┌┐└┘├┤"
 EDGES = re.compile(f"^[\\s{FRAME}]+|[\\s{FRAME}]+$")
-RULE = re.compile(f"^\\s*[{FRAME}]+\\s*$")
+# a rule may carry the session's name (`claude -n <name>`): `──── docs-update ─`
+RULE = re.compile(f"^\\s*[{FRAME}]+(?: [^{FRAME}]+ [{FRAME}]+)?\\s*$")
 OPTION = re.compile(r"^\s*[>❯]?\s*(\d)\.\s+(.+)$")
 PROMPT = re.compile(r"^[>❯](?:\s+(.*))?$")
 TOOL_CALL = re.compile(r"^⏺\s*[A-Za-z][\w.:-]*\(")
@@ -135,6 +136,8 @@ def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | No
         typed = PROMPT.match(clean[box]).group(1)
         draft = bool(typed and typed.strip())
     end = box if box is not None else len(clean)
+    if box is not None and box > 0 and RULE.match(raw[box - 1]):
+        end = box - 1                      # the rule above the prompt, and a session name on it, is no word said
     options: list[dict] = []
     dialog = _dialog(clean[:end], scrub) if state == "needs-you" else None
     if dialog:

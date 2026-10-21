@@ -698,6 +698,14 @@ export function actionFailNote(res, table) {
   return { text: errorText(res?.error, table), tone: 'bad' }
 }
 
+/** What a reply (views/reply.js, views/guide.js) gets back from a failed action: a verb that ran and failed in a
+ *  step (the driver refused the send) its own result, so the field shows its note; a refusal { refused, error } */
+export function replyRefusal(res) {
+  const data = res?.data
+  if (data && data.ok === false && typeof data.note === 'string' && data.note && !data.error) return data
+  return { refused: true, error: res?.error }
+}
+
 /** A line of its own [[remind: YYYY-MM-DD | what]] or [[remind: what]]: the chat's way to propose a reminder */
 const REMIND_RE = /^[ \t]*\[\[remind:[ \t]*(?:(\d{4}-\d{2}-\d{2})[ \t]*\|[ \t]*)?([^\]\n|][^\]\n]{0,299}?)[ \t]*\]\][ \t]*$/gm
 
