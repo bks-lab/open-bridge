@@ -3147,6 +3147,30 @@ test('roomsOf in urgency mode orders rooms needs-you, waiting, working, idle wit
     ['Asks', 'Waits', 'Busy A', 'Busy B', 'Busy C', 'Alpha', 'Zeta', 'Empty', 'Shell'])
 })
 
+test('statusQueue lays every tab out by status, the longest waiting first, the control tab never', () => {
+  const tab = (ref, state, since, name = ref) => ({ ref, state, since_ms: since, name, workspace: 'W' })
+  const tabs = [tab('s:1', 'working', 50), tab('s:2', 'waiting', 30), tab('s:3', 'needs-you', 40), tab('s:4', 'waiting', 10),
+    tab('s:5', 'shell', 5), tab('s:6', 'needs-you', 20), { ...tab('s:7', 'waiting', 1), is_control: true }, tab('s:8', 'odd', 2),
+    tab('s:9', 'waiting', 10, 'a'), tab('s:10', 'working', null)]
+  const q = logic.statusQueue(tabs)
+  assert.deepEqual(q.map(g => g.state), ['needs-you', 'waiting', 'working', 'shell'])
+  assert.deepEqual(q.map(g => g.tabs.map(t => t.ref)), [['s:6', 's:3'], ['s:9', 's:4', 's:2'], ['s:1', 's:10'], ['s:8', 's:5']])
+  // an empty status has no group
+  assert.deepEqual(logic.statusQueue([tab('s:1', 'working', 1)]).map(g => g.state), ['working'])
+  assert.deepEqual(logic.statusQueue(null), [])
+})
+
+test('nextInQueue walks the tabs that want you in order and starts over at the end', () => {
+  const tab = (ref, state, since) => ({ ref, state, since_ms: since, name: ref })
+  const q = logic.statusQueue([tab('a', 'needs-you', 1), tab('b', 'waiting', 2), tab('c', 'waiting', 3), tab('d', 'working', 4)])
+  assert.equal(logic.nextInQueue(q, null), 'a')
+  assert.equal(logic.nextInQueue(q, 'a'), 'b')
+  assert.equal(logic.nextInQueue(q, 'c'), 'a')                   // round again
+  assert.equal(logic.nextInQueue(q, 'd'), 'a')                   // a working tab is not in the walk: from the top
+  assert.equal(logic.nextInQueue(logic.statusQueue([tab('a', 'waiting', 1)]), 'a'), null)   // only this one: nowhere to go
+  assert.equal(logic.nextInQueue(logic.statusQueue([tab('d', 'working', 1)]), null), null)
+})
+
 test('header and rooms take counts only from sessionCounts or agentLoad', () => {
   for (const file of ['views/header.js', 'views/rooms.js']) {
     const src = read(file)

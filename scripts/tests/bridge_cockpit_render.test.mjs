@@ -327,16 +327,43 @@ test('a click on the order toggle reorders at once, though the pointer is inside
   assert.equal(titles(el)[0], 'Ops')
 })
 
-test('the sidebar order toggle flips between the terminal order and the most urgent first', () => {
+test('the sidebar order picks the terminal order, the most urgent first or by status', () => {
   const c = recorder()
   const s = cockpitState(NOW)
   const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
-  const toggle = el.button(en.rooms.sortUrgency)
-  assert.equal(toggle.getAttribute('aria-pressed'), 'false')
-  toggle.click()
-  assert.deepEqual(c.calls, [['toggleRoomsSort']])
-  const on = cockpitState(NOW, { ui: { roomsSort: 'urgency' } })
-  assert.equal(renderSide(on).button(en.rooms.sortUrgency).getAttribute('aria-pressed'), 'true')
+  assert.equal(el.button(en.rooms.sortTerminal).getAttribute('aria-pressed'), 'true')
+  assert.equal(el.button(en.rooms.sortUrgency).getAttribute('aria-pressed'), 'false')
+  el.button(en.rooms.sortUrgency).click()
+  el.button(en.rooms.sortStatus).click()
+  assert.deepEqual(c.calls, [['setRoomsSort', 'urgency'], ['setRoomsSort', 'status']])
+  const on = cockpitState(NOW, { ui: { roomsSort: 'status' } })
+  assert.equal(renderSide(on).button(en.rooms.sortStatus).getAttribute('aria-pressed'), 'true')
+})
+
+test('by status the sidebar lists every tab under its status, the longest waiting first, with its workspace', () => {
+  const s = cockpitState(NOW, { ui: { roomsSort: 'status' } })
+  const el = renderSide(s)
+  const groups = el.$$('section.room-status')
+  // each heading: the status word and how many tabs stand under it
+  assert.deepEqual(groups.map(g => g.$('h3').text()), [`${en.rooms.status['needs-you']} 1`, `${en.rooms.status.waiting} 3`,
+    `${en.rooms.status.working} 2`, `${en.rooms.status.shell} 1`])
+  assert.deepEqual(groups.map(g => g.$$('.room-tab .room-name').map(x => x.text())),
+    [['alpha-release'], ['report-draft', 'demo-task research', 'changelog'], ['docs-refresh', 'notes'], ['zsh']])
+  assert.equal(groups[1].$('.room-tab .room-meta').text(), 'Demo')          // the workspace in place of the state word
+  assert.equal(el.$$('section.room-ws .room-ws-title').length, 0)           // no workspace groups in this order
+  // the control session and the quick chats stay reachable below
+  assert.ok(el.$$('.room-tab .room-name').some(x => / session$/.test(x.text())))
+})
+
+test('Next opens the tab after the one shown, among those that want you', () => {
+  const s = cockpitState(NOW, { ui: { roomsSort: 'status' } })
+  const c = recorder()
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'tab', id: 'surface:7' }} />`)
+  el.button(en.rooms.next).click()
+  assert.deepEqual(c.calls, [['pickRoom', { kind: 'tab', id: 'surface:10' }]])
+  // nothing waits: no Next
+  const calm = cockpitState(NOW, { ui: { roomsSort: 'status' }, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => ({ ...t, state: 'working' })) } })
+  assert.equal(renderSide(calm).button(en.rooms.next), null)
 })
 
 // ---------------------------------------------------------------- what a tab waits for, answered from the page

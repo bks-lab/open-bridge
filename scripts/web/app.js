@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats, TOUR_VERSION, tourIndex, tourOffered, tourSteps,
+  listedChats, nextInQueue, statusQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -142,7 +142,7 @@ const store = createStore({
     // keyboard shortcuts wait until switched on in the settings (this browser only): a stray letter acts on nothing
     shortcuts: load('bridge-cockpit.shortcuts', 'off') === 'on',
     // the order of the workspaces in the chat as cmux: the terminal's (default) or the most urgent first; kept in this browser
-    roomsSort: load('bridge-cockpit.roomsSort', 'terminal') === 'urgency' ? 'urgency' : 'terminal',
+    roomsSort: ['urgency', 'status'].find(v => v === load('bridge-cockpit.roomsSort', 'terminal')) ?? 'terminal',
     guideView: ['guide', 'both', 'screen'].includes(load('bridge-cockpit.guideView', 'both')) ? load('bridge-cockpit.guideView', 'both') : 'both',
     answered: {},   // per tab ref the answer the page sent last: { hash, q, ms } (views/reply.js)
     renaming: null,  // the tab or workspace whose name is being typed: { kind: 'tab' | 'ws', id: ref } (views/rooms.js)
@@ -783,10 +783,15 @@ const ctl = {
       result: r ? { applied: r.applied ?? [], skipped: r.skipped ?? [], failed: r.failed ?? [] } : ui.organize.result } } : {}))
   },
   organizeClose: () => setUi({ organize: null }),
-  toggleRoomsSort: () => {
-    const sort = store.get().ui.roomsSort === 'urgency' ? 'terminal' : 'urgency'
+  setRoomsSort: sort => {
     save('bridge-cockpit.roomsSort', sort)
     setUi({ roomsSort: sort })
+  },
+  // the chat by status: the next tab that needs you or waits, after the one shown (logic.js nextInQueue)
+  nextTab: () => {
+    const s = store.get()
+    const ref = nextInQueue(statusQueue(s.tabs?.tabs), s.ui.room?.kind === 'tab' ? s.ui.room.id : null)
+    if (ref) setUi({ room: { kind: 'tab', id: ref } })
   },
   // the task and inbox pages: filter by the triage, sort again on a click (scripts/web/triage.js)
   // the day column's height, measured by the column itself: how many rows its sections fill up to
@@ -1219,6 +1224,10 @@ function onKey(e) {
     gPending = true
     gTimer = setTimeout(() => { gPending = false }, 1500)
     return
+  }
+  if (key === 'n' && s.ui.page === CHAT_PAGE) {
+    e.preventDefault()
+    return ctl.nextTab()
   }
   if (s.ui.page !== 'briefing') return
   if (key === 'j' || key === 'k') {

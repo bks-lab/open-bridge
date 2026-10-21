@@ -511,6 +511,30 @@ export function attentionTabs(tabs) {
     .sort((a, b) => (STATE_ORDER[a.state] ?? 4) - (STATE_ORDER[b.state] ?? 4) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
 }
 
+const STATUS_GROUPS = ['needs-you', 'waiting', 'working', 'shell']
+
+/** Every tab under its status, in the order you walk them (ui.roomsSort: status): needs you, waiting,
+ *  working, terminal, each the longest in its state first, then by name. A state the list does not know
+ *  stands with the terminals; the control tab, which never waits for you, is left out. [{ state, tabs }],
+ *  no group for a status without tabs */
+export function statusQueue(tabs) {
+  const by = new Map(STATUS_GROUPS.map(x => [x, []]))
+  for (const t of tabs ?? []) {
+    if (!t.is_control) by.get(by.has(t.state) ? t.state : 'shell').push(t)
+  }
+  const since = t => (Number.isFinite(t.since_ms) ? t.since_ms : Infinity)
+  return STATUS_GROUPS.map(state => ({ state, tabs: by.get(state).sort((a, b) => since(a) - since(b) || String(a.name).localeCompare(String(b.name))) }))
+    .filter(g => g.tabs.length)
+}
+
+/** The tab Next opens: the one after `ref` among those that need you or wait, from the top when `ref`
+ *  is not among them, round again after the last; null when no other tab wants you */
+export function nextInQueue(groups, ref) {
+  const walk = (groups ?? []).filter(g => g.state === 'needs-you' || g.state === 'waiting').flatMap(g => g.tabs.map(t => t.ref))
+  const next = walk[(walk.indexOf(ref) + 1) % (walk.length || 1)]
+  return next != null && next !== ref ? next : null
+}
+
 /** The two numbers of the running Claude sessions, one source for the Sessions tab and the start station:
  *  how many sessions there are, and how many subagents and workflows run in them */
 export function sessionCounts(sessions) {

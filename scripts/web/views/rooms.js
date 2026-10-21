@@ -8,7 +8,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, roomsOf, screenLines, shellQuote, short, stateToken } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, nextInQueue, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -89,7 +89,7 @@ function LoadChip({ load }) {
     ${part(load.subagents, 'subagent', t.rooms.subagents)}${part(load.workflows, 'workflow', t.rooms.workflows)}</span>`
 }
 
-function TabItem({ tab, on, s, c }) {
+function TabItem({ tab, on, s, c, where = false }) {
   const t = T()
   if (renaming(s, 'tab', tab.ref)) {
     return html`<${RenameField} value=${tab.name} label=${t.rooms.renameTab}
@@ -100,7 +100,7 @@ function TabItem({ tab, on, s, c }) {
     <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
     <span class="room-name">${tab.is_control ? t.controlSession : tab.name}</span>
     <${LoadChip} load=${tab.load} />
-    <span class="room-meta muted small">${t.state[tab.state] ?? tab.state}</span>
+    <span class="room-meta muted small">${where ? tab.workspace : t.state[tab.state] ?? tab.state}</span>
   <//>`
 }
 
@@ -224,25 +224,51 @@ function useHeldOrder(list, mode, keyOf = w => w.key) {
   return { list: out, hold, release }
 }
 
+/** The tabs by status (logic.js statusQueue), each row with its workspace, so you walk them top to bottom:
+ *  answer or close what needs you or waits, then the rest. Next opens the tab after the one shown among
+ *  those that want you. Below stand the control session and the quick chats, which have no status of
+ *  that kind. A tab that changes its status starts its time again, so it goes last in its new group and
+ *  the rows above it stay where they were */
+function StatusGroups({ s, c, here }) {
+  const t = T()
+  const groups = statusQueue(s.tabs?.tabs)
+  const next = nextInQueue(groups, here.kind === 'tab' ? here.id : null)
+  const control = (s.tabs?.tabs ?? []).find(x => x.is_control)
+  const chats = listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)
+  return html`<div class="room-status-list">
+    ${next ? html`<${Btn} size="xs" variant="primary" title=${t.rooms.nextTitle} onClick=${() => c.pickRoom({ kind: 'tab', id: next })}>${t.rooms.next}<//>` : null}
+    ${groups.map(g => html`<section class="room-status" key=${g.state}>
+      <h3 class="label-caps room-group"><${StateLine} token=${stateToken(g.state)} word=${t.rooms.status[g.state]} /> <span class="mono muted">${g.tabs.length}</span></h3>
+      ${g.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} where />`)}
+    </section>`)}
+    ${!groups.length ? html`<${Empty}>${t.tabsEmpty}<//>` : null}
+    ${control || chats.length ? html`<section class="room-ws">
+      ${control ? html`<${TabItem} tab=${control} on=${here.kind === 'tab' && here.id === control.ref} s=${s} c=${c} />` : null}
+      <${Chats} convs=${chats} s=${s} c=${c} here=${here} />
+    </section>` : null}
+  </div>`
+}
+
 export function Sidebar({ s, c, rooms, here }) {
   const t = T()
-  const urgency = s.ui?.roomsSort === 'urgency'
-  const order = useHeldOrder(rooms.workspaces, urgency ? 'urgency' : 'terminal')
+  const sort = ['urgency', 'status'].includes(s.ui?.roomsSort) ? s.ui.roomsSort : 'terminal'
+  const order = useHeldOrder(rooms.workspaces, sort === 'urgency' ? 'urgency' : 'terminal')
   return html`<nav class="panel rooms-side" aria-label=${t.rooms.side}
     onPointerEnter=${order.hold} onPointerLeave=${order.release} onFocusIn=${order.hold}
     onFocusOut=${e => { if (!e.currentTarget.contains(e.relatedTarget)) order.release() }}>
     <${WaitingGroup} s=${s} c=${c} />
-    ${rooms.chats.length ? html`<section class="room-ws"><h3 class="label-caps">${t.rooms.chats}</h3>
+    ${rooms.chats.length && sort !== 'status' ? html`<section class="room-ws"><h3 class="label-caps">${t.rooms.chats}</h3>
       <${Chats} convs=${rooms.chats} s=${s} c=${c} here=${here} /></section>` : null}
     <div class="room-group-head">
       <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
-      <${Btn} size="xs" variant="ghost" icon="sort" pressed=${urgency} title=${urgency ? t.rooms.sortUrgency : t.rooms.sortTerminal}
-        onClick=${() => c.toggleRoomsSort()}>${t.rooms.sortUrgency}<//>
+      <${Segmented} label=${t.rooms.sortLabel} current=${sort} onPick=${v => c.setRoomsSort(v)}
+        values=${[['terminal', t.rooms.sortTerminal], ['urgency', t.rooms.sortUrgency], ['status', t.rooms.sortStatus]]} />
       ${canTab(s, 'rename') ? html`<${Btn} size="xs" variant="ghost" title=${t.organize.buttonTitle} busy=${!!s.ui?.organize?.busy}
         onClick=${() => c.organizePropose()}>${t.organize.button}<//>` : null}
     </div>
     ${s.tabs?.workspaces == null ? html`<p class="muted small">${t.rooms.noList}</p>` : null}
-    ${order.list.length ? order.list.map(w => html`<${WorkspaceGroup} key=${w.key} w=${w} s=${s} c=${c} here=${here} />`)
+    ${sort === 'status' ? html`<${StatusGroups} s=${s} c=${c} here=${here} />`
+      : order.list.length ? order.list.map(w => html`<${WorkspaceGroup} key=${w.key} w=${w} s=${s} c=${c} here=${here} />`)
       : html`<${Empty}>${t.tabsEmpty}<//>`}
     ${rooms.bridges.length ? html`<h3 class="label-caps room-group">${t.rooms.bridges}</h3>
       ${rooms.bridges.map(b => html`<${Item} key=${b.id} on=${here.kind === 'bridge' && here.id === b.id} title=${b.purpose}
