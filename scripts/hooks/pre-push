@@ -71,7 +71,7 @@ ZERO="0000000000000000000000000000000000000000"
 # rule below is the primary guard; this content net is the backstop that catches
 # USER instance files smuggled onto ANY other branch name (main, feature/*, a
 # renamed user branch, …) — names are not trusted, content is.
-USER_PATHS='^(work/(log\.md|board\.md|inbox\.md|onboarding-state\.yaml|bridge-preview\.html|tasks/|streams/|done/|archive/|memory/|drafts/|inbox/|_learning/(proposals|postmortems|audit-history)/((accepted|rejected)/)?[^._/][^/]*$|\.gitignore$)|(identity|infra|workflow)/([^/]+/[^_]|\.gitignore$)|agents/[^_]|skills/[^/]+/(LEARNINGS\.md|references/provenance\.md)$|ecosystem(\.[^/]+)?\.yaml$|(overlays|workspaces)\.lock\.yaml$|(bridge-config|bridge-deck\.config|edges|reachability-scenarios|context-budget\.user)\.yaml$)'
+USER_PATHS='^(work/(log\.md|board\.md|inbox\.md|onboarding-state\.yaml|bridge-preview\.html|tasks/|streams/|done/|archive/|memory/|drafts/|inbox/|_learning/(proposals|postmortems|audit-history|provenance)/((accepted|rejected)/)?[^._/][^/]*$|\.gitignore$)|(identity|infra|workflow)/([^/]+/[^_]|\.gitignore$)|agents/[^_]|skills/[^/]+/(LEARNINGS\.md|references/provenance\.md)$|ecosystem(\.[^/]+)?\.yaml$|(overlays|workspaces)\.lock\.yaml$|(bridge-config|bridge-deck\.config|edges|reachability-scenarios|context-budget\.user)\.yaml$)'
 
 # CORE companions that live INSIDE the USER_PATHS prefixes and must keep flowing
 # upstream. Stripped before the match, so this list is the only thing standing

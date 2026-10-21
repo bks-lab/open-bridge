@@ -21,7 +21,8 @@ heavy for "note this before it is forgotten".
 **Tier: the journal is USER, always.** It holds this instance's lessons, even
 inside a `scope: core` skill folder, so it never promotes or syncs upstream
 (`scripts/categorize-commits.py` and the pre-push guard both treat
-`skills/*/LEARNINGS.md` and `skills/*/references/provenance.md` as USER). A
+`skills/*/LEARNINGS.md` as USER; the provenance record lives under
+`work/_learning/provenance/`, USER by folder). A
 lesson reaches other instances only by maturing into `references/`, which
 ships with the skill's tier.
 
@@ -88,7 +89,7 @@ a fresh entry from one that has held up.
   [`LEARNINGS.md`](LEARNINGS.md), dated.
 - A lesson that has held up: the matching `references/*.md`, promoted by
   `/bridge-curator --pass learnings <this skill>`, accepted in `/bridge-learn`.
-- Which accepted proposal put a rule here: `references/provenance.md`
+- Which accepted proposal put a rule here: `work/_learning/provenance/<this skill>.md`
   (written by `scripts/learning-ledger.py`).
 - Anything beyond this skill: memory for a fact, a `/bridge-learn` proposal for
   a behaviour change.

@@ -95,7 +95,7 @@ What the script fills in and where from:
 | Commit | `implemented`: HEAD's short SHA and diffstat, `4f3a2b1 (2 files, +5/-1)`; otherwise `—` |
 
 For a `target.type: skill` proposal, `--to implemented` also appends one line
-to `skills/<name>/references/provenance.md`, in the format `SKILL.md` accept
+to `work/_learning/provenance/<name>.md`, in the format `SKILL.md` accept
 step 8 defines. That is the skill's own record of which proposal put a rule there and why,
 readable without the trail. A skill that keeps a lesson journal points at this
 file from its routing block ([`docs/skill-learnings.md`](../../../docs/skill-learnings.md)).

@@ -85,7 +85,9 @@ USER_PATTERNS = [
     # A skill's lesson journal and provenance record hold THIS instance's
     # lessons, proposal ids and reasons, even inside a scope:core skill folder
     # (docs/skill-learnings.md). A lesson that matured is promoted into
-    # references/, which ships; the journal and the record never do.
+    # references/, which ships; the journal never does. The provenance record
+    # lives under work/_learning/provenance/ (USER by folder); the old in-skill
+    # path stays listed so a stray one is still never promoted.
     r"^skills/[^/]+/LEARNINGS\.md$",
     r"^skills/[^/]+/references/provenance\.md$",
     # themes/ is whole-folder CORE, so an instance theme is a structural exception.

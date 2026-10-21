@@ -745,6 +745,7 @@ def test_the_core_budget_itself_stays_core():
 @pytest.mark.parametrize("path", [
     "skills/bridge-learn/LEARNINGS.md",
     "skills/bridge-audit/references/provenance.md",
+    "work/_learning/provenance/bridge-audit.md",
 ])
 def test_skill_lessons_and_provenance_are_user(path: str):
     assert tier(path) == "user", f"{path} classifies {tier(path)!r}, expected user"

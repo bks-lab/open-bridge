@@ -163,7 +163,7 @@ does not accept or reject anything on its own (`rules/learning-autonomy.md`).
    placeholder. The same call stores `implemented_commit` and
    `recurrence_fingerprint` (`<target.path>#<gap slug>`, which trends mode
    checks against later evidence). For `target.type: skill` it also appends
-   one line, `- <date> · <id> · <why>`, to `skills/<name>/references/provenance.md`
+   one line, `- <date> · <id> · <why>`, to `work/_learning/provenance/<name>.md`
    (created on first use, `SKILL.md` untouched), the why being the accept
    reason from step 5, else the first prose line of the proposal body. Rejecting never writes provenance. Commit that bookkeeping as a follow-up
    (`chore(learning): record <id>`); never amend, since amending changes the
