@@ -8,7 +8,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, nextInQueue, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, nextTabByStatus, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -226,13 +226,13 @@ function useHeldOrder(list, mode, keyOf = w => w.key) {
 
 /** The tabs by status (logic.js statusQueue), each row with its workspace, so you walk them top to bottom:
  *  answer or close what needs you or waits, then the rest. Next opens the tab after the one shown among
- *  those that want you. Below stand the control session and the quick chats, which have no status of
+ *  those that want you (logic.js nextTabByStatus). Below stand the control session and the quick chats, which have no status of
  *  that kind. A tab that changes its status starts its time again, so it goes last in its new group and
  *  the rows above it stay where they were */
 function StatusGroups({ s, c, here }) {
   const t = T()
   const groups = statusQueue(s.tabs?.tabs)
-  const next = nextInQueue(groups, here.kind === 'tab' ? here.id : null)
+  const next = nextTabByStatus(groups, here.kind === 'tab' ? here.id : null)
   const control = (s.tabs?.tabs ?? []).find(x => x.is_control)
   const chats = listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)
   return html`<div class="room-status-list">
@@ -249,6 +249,9 @@ function StatusGroups({ s, c, here }) {
   </div>`
 }
 
+/** The sidebar: the order of the tabs on top, where it is reached without scrolling past the asks; then
+ *  Waiting for you (left out by status, whose first groups hold the same tabs), the workspaces or the
+ *  status groups, the Bridges on this machine and the agents */
 export function Sidebar({ s, c, rooms, here }) {
   const t = T()
   const sort = ['urgency', 'status'].includes(s.ui?.roomsSort) ? s.ui.roomsSort : 'terminal'
@@ -256,13 +259,15 @@ export function Sidebar({ s, c, rooms, here }) {
   return html`<nav class="panel rooms-side" aria-label=${t.rooms.side}
     onPointerEnter=${order.hold} onPointerLeave=${order.release} onFocusIn=${order.hold}
     onFocusOut=${e => { if (!e.currentTarget.contains(e.relatedTarget)) order.release() }}>
-    <${WaitingGroup} s=${s} c=${c} />
+    <div class="room-order">
+      <${Segmented} label=${t.rooms.sortLabel} current=${sort} onPick=${v => c.setRoomsSort(v)}
+        values=${[['terminal', t.rooms.sortTerminal], ['urgency', t.rooms.sortUrgency], ['status', t.rooms.sortStatus]]} />
+    </div>
+    ${sort === 'status' ? null : html`<${WaitingGroup} s=${s} c=${c} />`}
     ${rooms.chats.length && sort !== 'status' ? html`<section class="room-ws"><h3 class="label-caps">${t.rooms.chats}</h3>
       <${Chats} convs=${rooms.chats} s=${s} c=${c} here=${here} /></section>` : null}
     <div class="room-group-head">
       <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
-      <${Segmented} label=${t.rooms.sortLabel} current=${sort} onPick=${v => c.setRoomsSort(v)}
-        values=${[['terminal', t.rooms.sortTerminal], ['urgency', t.rooms.sortUrgency], ['status', t.rooms.sortStatus]]} />
       ${canTab(s, 'rename') ? html`<${Btn} size="xs" variant="ghost" title=${t.organize.buttonTitle} busy=${!!s.ui?.organize?.busy}
         onClick=${() => c.organizePropose()}>${t.organize.button}<//>` : null}
     </div>

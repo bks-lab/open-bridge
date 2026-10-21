@@ -1021,8 +1021,10 @@ kbd {
    not fit beside it, and the buttons wrap, never cut */
 .room-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 12px 4px 4px 10px; }
 .room-group-head > .room-group { margin: 0; flex: 1 1 auto; }
-/* the order of the tabs, three ways: the choice wraps inside the narrow sidebar rather than being cut */
-.room-group-head > .seg { flex-wrap: wrap; max-width: 100%; }
+/* the order of the tabs, three ways, on top of the sidebar: the choice wraps inside the narrow sidebar
+   rather than being cut */
+.room-order { margin: 10px 10px 4px; }
+.room-order > .seg { max-width: 100%; }
 /* by status: each group under its status word with its count, Next on top */
 .room-status-list > .btn { margin: 8px 10px 0; }
 .room-status > .room-group { display: flex; align-items: center; gap: 6px; }

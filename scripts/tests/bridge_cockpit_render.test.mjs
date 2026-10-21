@@ -355,6 +355,17 @@ test('by status the sidebar lists every tab under its status, the longest waitin
   assert.ok(el.$$('.room-tab .room-name').some(x => / session$/.test(x.text())))
 })
 
+test('the order choice stands on top of the sidebar, and by status Waiting for you gives way to the groups', () => {
+  const s = cockpitState(NOW, { guide: null })
+  const el = renderSide(s)
+  const side = el.$('nav')
+  const at = node => side.childNodes.indexOf(node)
+  assert.ok(at(el.$('.room-order')) < at(el.$('.reply-group')))               // reachable without scrolling past the asks
+  const byStatus = renderSide(cockpitState(NOW, { guide: null, ui: { roomsSort: 'status' } }))
+  assert.equal(byStatus.$('.reply-group'), null)                               // the same tabs stand under Needs you and Done
+  assert.ok(byStatus.$('section.room-status'))
+})
+
 test('Next opens the tab after the one shown, among those that want you', () => {
   const s = cockpitState(NOW, { ui: { roomsSort: 'status' } })
   const c = recorder()

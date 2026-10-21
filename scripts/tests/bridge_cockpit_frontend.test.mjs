@@ -3160,15 +3160,15 @@ test('statusQueue lays every tab out by status, the longest waiting first, the c
   assert.deepEqual(logic.statusQueue(null), [])
 })
 
-test('nextInQueue walks the tabs that want you in order and starts over at the end', () => {
+test('nextTabByStatus walks the tabs that want you in order and starts over at the end', () => {
   const tab = (ref, state, since) => ({ ref, state, since_ms: since, name: ref })
   const q = logic.statusQueue([tab('a', 'needs-you', 1), tab('b', 'waiting', 2), tab('c', 'waiting', 3), tab('d', 'working', 4)])
-  assert.equal(logic.nextInQueue(q, null), 'a')
-  assert.equal(logic.nextInQueue(q, 'a'), 'b')
-  assert.equal(logic.nextInQueue(q, 'c'), 'a')                   // round again
-  assert.equal(logic.nextInQueue(q, 'd'), 'a')                   // a working tab is not in the walk: from the top
-  assert.equal(logic.nextInQueue(logic.statusQueue([tab('a', 'waiting', 1)]), 'a'), null)   // only this one: nowhere to go
-  assert.equal(logic.nextInQueue(logic.statusQueue([tab('d', 'working', 1)]), null), null)
+  assert.equal(logic.nextTabByStatus(q, null), 'a')
+  assert.equal(logic.nextTabByStatus(q, 'a'), 'b')
+  assert.equal(logic.nextTabByStatus(q, 'c'), 'a')                   // round again
+  assert.equal(logic.nextTabByStatus(q, 'd'), 'a')                   // a working tab is not in the walk: from the top
+  assert.equal(logic.nextTabByStatus(logic.statusQueue([tab('a', 'waiting', 1)]), 'a'), null)   // only this one: nowhere to go
+  assert.equal(logic.nextTabByStatus(logic.statusQueue([tab('d', 'working', 1)]), null), null)
 })
 
 test('header and rooms take counts only from sessionCounts or agentLoad', () => {

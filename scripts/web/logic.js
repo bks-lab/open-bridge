@@ -529,7 +529,7 @@ export function statusQueue(tabs) {
 
 /** The tab Next opens: the one after `ref` among those that need you or wait, from the top when `ref`
  *  is not among them, round again after the last; null when no other tab wants you */
-export function nextInQueue(groups, ref) {
+export function nextTabByStatus(groups, ref) {
   const walk = (groups ?? []).filter(g => g.state === 'needs-you' || g.state === 'waiting').flatMap(g => g.tabs.map(t => t.ref))
   const next = walk[(walk.indexOf(ref) + 1) % (walk.length || 1)]
   return next != null && next !== ref ? next : null

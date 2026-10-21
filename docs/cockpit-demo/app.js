@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats, nextInQueue, statusQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps,
+  listedChats, nextTabByStatus, statusQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -787,10 +787,10 @@ const ctl = {
     save('bridge-cockpit.roomsSort', sort)
     setUi({ roomsSort: sort })
   },
-  // the chat by status: the next tab that needs you or waits, after the one shown (logic.js nextInQueue)
+  // the chat by status: the next tab that needs you or waits, after the one shown (logic.js nextTabByStatus)
   nextTab: () => {
     const s = store.get()
-    const ref = nextInQueue(statusQueue(s.tabs?.tabs), s.ui.room?.kind === 'tab' ? s.ui.room.id : null)
+    const ref = nextTabByStatus(statusQueue(s.tabs?.tabs), s.ui.room?.kind === 'tab' ? s.ui.room.id : null)
     if (ref) setUi({ room: { kind: 'tab', id: ref } })
   },
   // the task and inbox pages: filter by the triage, sort again on a click (scripts/web/triage.js)
