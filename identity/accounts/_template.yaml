@@ -11,6 +11,8 @@ id: my-account                     # stable slug, used as reference from context
 display_name: "My Account"
 owner: my-handle                   # persona id (e.g. <persona>-company) or your handle for self
 status: active                     # active | paused | disabled
+# docs_ref: "<org>/<infra-repo> docs/<topic>/README.md"   # optional: where the human docs live;
+                                   #   this file stays the machine-readable source
 
 # ---------------------------------------------------------------------------
 # Mail configuration (optional — omit block if this is calendar-only)

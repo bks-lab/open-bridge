@@ -1,7 +1,7 @@
 ---
 summary: "Cloud-account inventory convention — read the inventory file before any cloud op"
 type: guide
-last_updated: 2026-06-19
+last_updated: 2026-10-21
 related:
   - ../identity/accounts
 ---
@@ -48,8 +48,12 @@ running anything — never reconstruct IDs from memory.
 
 `ls identity/accounts/*.yaml` is the source of truth — one file per account.
 Companion `<id>.README.md` files carry the decision matrix and setup/rotation
-recipes for the more complex accounts. Schema and field conventions live in the
-folder's `_template.yaml` and `_schema.yaml`.
+recipes for the more complex accounts. When the human documentation lives
+elsewhere instead, typically in an infrastructure repo, the optional `docs_ref:`
+field points at it (e.g. `"<org>/<infra-repo> docs/<topic>/README.md"`); the YAML
+stays the machine-readable source and the document carries the narrative.
+`infra/remotes/` machines carry the same field. Schema and field conventions live
+in the folder's `_template.yaml` and `_schema.yaml`.
 
 On a **fresh clone** the folder holds only `_template.yaml` and `_schema.yaml` —
 no account files yet. You add `<provider>-<tenant>.yaml` files as you onboard

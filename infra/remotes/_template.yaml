@@ -62,4 +62,7 @@ services: []
   #     since: 2026-06-04
   #     reason: "Superseded by the weekly report; kept listed so its absence is not rediscovered as a fault."
 
+# docs_ref: "<org>/<infra-repo> docs/<topic>/README.md"   # optional: where the human docs
+                         #   for this machine live; this file stays the machine-readable source
+
 status: pending          # online | offline | pending

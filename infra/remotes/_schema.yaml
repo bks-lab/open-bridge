@@ -362,6 +362,18 @@ properties:
   notes:
     type: string
     description: "Free-form notes — quirks, manual steps, history"
+  docs_ref:
+    type: string
+    minLength: 1
+    description: |
+      Optional pointer to where the human documentation for this machine
+      lives, e.g. a page in an infrastructure repo. This YAML stays the
+      machine-readable source (IDs, access, references); the document
+      carries the narrative (why it is set up this way, runbooks, history).
+      One pointer, as a URL, a path relative to this repo, or
+      "<owner>/<repo> <path>" for a file in another repository, e.g.
+      "<org>/<infra-repo> docs/<topic>/README.md". Further pages are
+      linked from that document, not listed here.
   quirks:
     type: array
     items: {type: string}

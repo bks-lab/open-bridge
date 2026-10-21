@@ -66,6 +66,19 @@ properties:
     type: string
     description: "Free-form provenance / decisions"
 
+  docs_ref:
+    type: string
+    minLength: 1
+    description: |
+      Optional pointer to where the human documentation for this account
+      lives, e.g. a page in an infrastructure repo. This YAML stays the
+      machine-readable source (IDs, access, references); the document
+      carries the narrative (why it is set up this way, runbooks, history).
+      One pointer, as a URL, a path relative to this repo, or
+      "<owner>/<repo> <path>" for a file in another repository, e.g.
+      "<org>/<infra-repo> docs/<topic>/README.md". Further pages are
+      linked from that document, not listed here.
+
   # Optional capability blocks — present only on accounts that have them.
   # Kept permissive (additionalProperties: true) because provider shapes
   # differ (mail/calendar vs Azure tenant vs DNS registrar vs Twilio).
