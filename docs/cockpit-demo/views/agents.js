@@ -32,6 +32,26 @@ function AgentCard({ p, on, c, s, held = 0 }) {
   </button>`
 }
 
+/** The agent above its conversation: who it is, whether it is reachable, what failed, and the button that
+ *  opens its card. It stays when the card is folded away, so a failure is seen without opening it */
+function AgentBar({ p, open, onToggle, listToggle }) {
+  const t = T()
+  const tone = REACH_TONE[p.reach] ?? 'dim'
+  const card = p.card ?? {}
+  const troubles = [p.card_error && t.agentTroubleWhere.card, p.last_error && t.agentTroubleWhere.send].filter(Boolean)
+  return html`<header class=${`agent-bar rt-${tone}`}>
+    ${listToggle}
+    <span class=${`rdot rdot-${tone}`} aria-hidden="true"></span>
+    <span class="agent-bar-who">
+      <strong class="agent-bar-name" title=${p.id}>${card.name || p.id}</strong>
+      <span class="agent-bar-sub small muted">${p.id}${p.reach !== 'ok' && !troubles.length ? ` · ${t.agentReach[p.reach] ?? p.reach}` : ''}</span>
+    </span>
+    ${troubles.map(x => html`<span key=${x} class="agent-reach is-warn small">${x}</span>`)}
+    <button type="button" class=${`btn btn-${open ? 'primary' : 'secondary'} btn-sm agent-bar-card`} aria-expanded=${String(open)}
+      aria-controls="agent-profile" onClick=${onToggle}><${Icon} name=${open ? 'chevronUp' : 'chevronDown'} /><span class="btn-label">${open ? t.agentCardHide : t.agentCardShow}</span></button>
+  </header>`
+}
+
 /** What went wrong reaching an agent, in plain words: which step (`where`: reading its card, delivering
  *  the last message), the reason (logic.js a2aTrouble), what to do about it, and the raw text folded away */
 function AgentTrouble({ p, where, err }) {
@@ -69,11 +89,13 @@ function AgentProfile({ p, onExample, c, s }) {
     setChecking(true)
     try { await c.loadAgents(true) } finally { setTimeout(() => setChecking(false), 1500) }
   }
-  return html`<div class="agent-profile row-in">
+  return html`<div class="agent-profile row-in" id="agent-profile">
     <header class="agent-profile-head">
       <div><h3 class="agent-profile-name">${card.name || p.id}</h3>
         ${card.description || p.summary ? html`<p class="agent-profile-desc">${card.description || p.summary}</p>` : null}</div>
       <span class="btn-row">
+        ${p.card_at_ms ? html`<span class="muted small">${t.agentChecked(chatStamp(p.card_at_ms, s.now, language()))}</span>` : null}
+        <${Btn} size="xs" variant="secondary" icon="reload" busy=${checking} onClick=${recheck}>${t.agentRecheck}<//>
         ${card.streaming ? html`<span class="chip">${t.agentStreaming}</span>` : null}
         ${card.docs ? html`<a class="btn btn-ghost btn-xs" href=${card.docs} target="_blank" rel="noopener noreferrer"><${Icon} name="external" size=${13} /><span class="btn-label">${t.agentDocs}</span></a>` : null}
       </span>
@@ -82,9 +104,6 @@ function AgentProfile({ p, onExample, c, s }) {
     ${p.last_error ? html`<${AgentTrouble} p=${p} where="send" err=${p.last_error} />` : null}
     ${!p.card && !p.card_error ? html`<p class="muted small">${t.agentNoCard}</p>` : null}
     <dl class="agent-facts">${facts.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd class=${mono.has(k) ? 'mono' : ''}>${v}</dd></div>`)}</dl>
-    <p class="agent-checked muted small">
-      ${p.card_at_ms ? html`<span>${t.agentChecked(chatStamp(p.card_at_ms, s.now, language()))}</span>` : null}
-      <${Btn} size="xs" variant="ghost" busy=${checking} onClick=${recheck}>${t.agentRecheck}<//></p>
     ${card.skills?.length ? html`<h4 class="label-caps">${t.agentSkills(card.skills.length)}</h4>
       <ul class="agent-skill-cards">${card.skills.map((k, i) => {
         const open = skill === i
@@ -136,13 +155,14 @@ export function AgentsPage({ s, c, embedded = false }) {
   const peer = peers.find(p => p.id === peerId) ?? peers[0]
   const mine = convs.filter(x => x.peer === peer?.id)
   const [text, setText] = useState('')
-  const [profile, setProfile] = useState(false)
+  // the card: open by itself while no conversation is open, folded under one; the bar's button decides otherwise
+  const [profile, setProfile] = useState(null)
   const [forgetArmed, setForgetArmed] = useState(null)
   const body = useStickToEnd(conv, null)
   const modeKeys = useRoving()
   useEffect(() => { c.loadAgents() }, [])
   // a draft belongs to the agent it was written for: switching agents never carries it over
-  useEffect(() => { setProfile(false); setText('') }, [peer?.id])
+  useEffect(() => { setProfile(null); setText('') }, [peer?.id])
   const mode = s.ui.agentMode
   const send = async () => {
     const v = text.trim()
@@ -150,7 +170,7 @@ export function AgentsPage({ s, c, embedded = false }) {
     if (await c.agentSend(peer.id, v, mode, conv?.id)) setText('')
   }
   const example = v => { setText(v); document.getElementById('agent-input')?.focus() }
-  const showProfile = !conv || profile
+  const showProfile = profile ?? !conv
   const listHidden = embedded || !!s.ui.agentsListHidden
   return html`<div class=${embedded ? 'agentspage is-embedded' : 'col col-page agentspage'}>
     ${embedded ? null : html`<header class="page-head"><h2 class="detail-title">${t.agentsTab}</h2>
@@ -161,18 +181,16 @@ export function AgentsPage({ s, c, embedded = false }) {
           held=${convs.filter(x => x.peer === p.id && !x.running && x.turns.at(-1)?.waiting).length} />`)}
       </nav>`}
       <section class="panel chat-main" aria-label=${peer?.card?.name || peer?.id}>
-        <header class="agent-convs">
-          ${embedded ? null : html`<button type="button" class="btn btn-ghost btn-xs agents-list-toggle" aria-expanded=${String(!listHidden)} aria-controls="agents-list"
+        ${peer ? html`<${AgentBar} p=${peer} open=${showProfile} onToggle=${() => setProfile(!showProfile)}
+          listToggle=${embedded ? null : html`<button type="button" class="btn btn-ghost btn-xs agents-list-toggle" aria-expanded=${String(!listHidden)} aria-controls="agents-list"
             title=${listHidden ? t.agentsListShow : t.agentsListHide} aria-label=${listHidden ? t.agentsListShow : t.agentsListHide}
-            onClick=${c.toggleAgentsList}><${Icon} name=${listHidden ? 'chevronRight' : 'back'} /></button>`}
-          ${listHidden && peer ? html`<span class="agent-current" title=${peer.id}>${peer.card?.name || peer.id}</span>` : null}
+            onClick=${c.toggleAgentsList}><${Icon} name=${listHidden ? 'chevronRight' : 'back'} /></button>`} />` : null}
+        <header class="agent-convs">
           <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${() => c.newAgentChat(peer.id)}>+ ${t.quickNew}</button>
           ${mine.slice(0, 8).map(x => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}
             onClick=${() => c.pickAgentConv(x.id)} title=${x.turns[0]?.q}>${x.running ? html`<${Dot} token="info" pulse /> `
               : x.turns.at(-1)?.waiting ? html`<${Dot} token="warning" /> ` : null}${short(x.turns[0]?.q ?? '', 36)}
             <span class="muted"> · ${chatStamp(x.last_ms ?? x.started_ms, s.now, lang)}</span></button>`)}
-          ${conv ? html`<button type="button" class=${`chip quick-conv agent-profile-toggle${profile ? ' is-on' : ''}`} aria-expanded=${String(profile)}
-            onClick=${() => setProfile(!profile)}>${t.agentProfile}</button>` : null}
           ${conv && !conv.running ? html`<button type="button" class=${`chip quick-conv agent-forget${forgetArmed === conv.id ? ' is-armed' : ''}`}
             title=${t.agentForgetHint} onBlur=${() => setForgetArmed(null)}
             onClick=${() => forgetArmed === conv.id ? c.agentForget(conv.id) : setForgetArmed(conv.id)}>${forgetArmed === conv.id ? t.agentForgetSure : t.agentForget}</button>` : null}

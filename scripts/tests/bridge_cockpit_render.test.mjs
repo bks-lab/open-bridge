@@ -1102,8 +1102,31 @@ test('an agent whose card cannot be read says why in plain words, what to do, an
   assert.match(el.$('.agent-facts').text(), /example\.org\/partner\//)
   assert.match(el.$('.agent-profile-desc').text(), /partner team/)
   // check again asks the server for fresh cards
-  el.$$('.agent-checked button')[0].click()
+  el.$('.agent-profile-head').$$('button').find(b => /check again/.test(b.text())).click()
   assert.ok(c.calls.some(([name, fresh]) => name === 'loadAgents' && fresh === true), JSON.stringify(c.calls))
+})
+
+
+test('the agent stands in a bar above the conversation: name, state and a real button for its card', () => {
+  const { AgentsPage } = views.agents
+  const s0 = cockpitState(NOW)
+  const p = s0.agents.peers.find(x => x.id === 'partner-bridge')
+  const conv = { id: 'g0000000009', peer: p.id, started_ms: NOW - 60000, last_ms: NOW - 60000, context_id: null, running: false,
+    turns: [{ q: 'Hello?', mode: 'question', a: 'Hi.', state: 'completed', task_id: null, waiting: false, at_ms: NOW, answered_ms: NOW, error: null }] }
+  const s = cockpitState(NOW, { agents: { ...s0.agents, convs: [conv] }, ui: { agentPeer: p.id, agentConv: conv.id } })
+  const el = mount(html`<${AgentsPage} s=${s} c=${recorder()} />`)
+  const bar = el.$('.agent-bar')
+  assert.ok(bar, 'a bar above the conversation')
+  assert.match(bar.text(), /partner-bridge/)
+  // the trouble shows in the bar too, so it is seen with the card folded away
+  assert.match(bar.text(), /card not readable/i)
+  // the card is no chip among the conversations any more
+  assert.equal(el.$$('.agent-convs .agent-profile-toggle').length, 0)
+  // with a conversation open the card is folded; the bar's button opens it
+  assert.equal(el.$('.agent-profile'), null)
+  const btn = bar.$$('button').find(b => /card/i.test(b.text()))
+  assert.ok(btn, 'a button named for the card in the bar')
+  assert.equal(btn.getAttribute('aria-expanded'), 'false')
 })
 
 

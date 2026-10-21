@@ -3101,7 +3101,7 @@ const HINTS = {
     ['sessAgents', '.sess-agent-list'], ['sessFoot', '.sess-foot']],
   '@workers': [['workerStats', '.stats'], ['wfilters', '.wfilters'], ['wgroup', '.wgroup .rgroup-head'], ['wrow', '.wrow-name'],
     ['wwhen', '.wrow-when'], ['wstrip', '.wrow-strip'], ['wstate', '.wrow-state']],
-  '@agents': [['agentList', '.agents-list'], ['agentConvs', '.agent-convs'], ['agentProfile', '.agent-facts'],
+  '@agents': [['agentList', '.agents-list'], ['agentConvs', '.agent-convs'], ['agentProfile', '.agent-bar'],
     ['agentSkills', '.agent-skill-cards'], ['agentModes', '.agent-modes'], ['agentSend', '.chat-main .tabview-send']],
   '@check': [['reviewRun', '.col-page > .page-head .btn-primary'], ['reviewFlow', '.flow'], ['reviewFilter', '.review-bar'],
     ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],

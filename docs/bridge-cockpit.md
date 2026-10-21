@@ -1458,6 +1458,11 @@ state dir, and one that leaves the list goes to the archive (see the Chat). With
 `infra/a2a-peers/` too, so it can suggest asking an agent; it sends nothing
 itself.
 
+**The agent bar.** Above the conversation stands the chosen agent: its name,
+the dot of its last check, and what failed (card not readable, last message not
+delivered), so a failure shows with the card folded away. Its button "Show
+card" opens the card: by itself while no conversation is open, folded under one.
+
 **When a card or a message fails.** An agent whose card cannot be read, or
 whose last message did not go out, says so in plain words instead of the raw
 error: which step failed (the card, or the last message), the reason (the
