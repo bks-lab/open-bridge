@@ -1105,6 +1105,11 @@ kbd {
 .rooms-main.has-reply > .reply-pane { max-height: 48vh; overflow-y: auto; }
 .rooms-main.is-guide-only { grid-template-rows: auto minmax(0, 1fr); }
 .rooms-main.is-guide-only > .reply-pane { max-height: none; }
+/* the walk bar at the foot of an open tab (TabWalk): one more row, never over the terminal */
+.rooms-main.has-reply.has-walk { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.rooms-main.is-guide-only.has-walk { grid-template-rows: auto minmax(0, 1fr) auto; }
+/* it stays in view: at the pane's foot, or at the screen's edge when the page scrolls (narrow), as in the lists */
+.rooms-main > .next-up { border-radius: 0; border-width: 1px 0 0; }
 .room-list { display: grid; gap: 6px; padding-left: 18px; }
 .rooms-agent { overflow: hidden; }
 .rooms-agent .agentspage.is-embedded, .rooms-agent .agents-grid { height: 100%; }

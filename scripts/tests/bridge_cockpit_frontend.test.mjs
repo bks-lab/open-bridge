@@ -3160,15 +3160,20 @@ test('statusQueue lays every tab out by status, the longest waiting first, the c
   assert.deepEqual(logic.statusQueue(null), [])
 })
 
-test('nextTabByStatus walks the tabs that want you in order and starts over at the end', () => {
-  const tab = (ref, state, since) => ({ ref, state, since_ms: since, name: ref })
-  const q = logic.statusQueue([tab('a', 'needs-you', 1), tab('b', 'waiting', 2), tab('c', 'waiting', 3), tab('d', 'working', 4)])
-  assert.equal(logic.nextTabByStatus(q, null), 'a')
-  assert.equal(logic.nextTabByStatus(q, 'a'), 'b')
-  assert.equal(logic.nextTabByStatus(q, 'c'), 'a')                   // round again
-  assert.equal(logic.nextTabByStatus(q, 'd'), 'a')                   // a working tab is not in the walk: from the top
-  assert.equal(logic.nextTabByStatus(logic.statusQueue([tab('a', 'waiting', 1)]), 'a'), null)   // only this one: nowhere to go
-  assert.equal(logic.nextTabByStatus(logic.statusQueue([tab('d', 'working', 1)]), null), null)
+test('tabWalkView walks the snapshot, keeps the place of a tab answered meanwhile and adds tabs that started waiting', () => {
+  const tab = (ref, state, since) => ({ ref, state, since_ms: since, name: `n-${ref}`, workspace: 'W' })
+  const tabs = [tab('a', 'needs-you', 1), tab('b', 'working', 2), tab('c', 'waiting', 3), tab('d', 'waiting', 4), tab('e', 'waiting', 9)]
+  assert.deepEqual(logic.walkRefs(tabs), ['a', 'c', 'd', 'e'])
+  // b was answered after the walk began (in the snapshot, working now): it keeps its place, the rest goes on
+  const v = logic.tabWalkView(tabs, ['a', 'b', 'c', 'd'], 'b')
+  assert.deepEqual([v.pos, v.total, v.prev.key, v.next.map(x => x.key)], [2, 5, 'a', ['c', 'd', 'e']])
+  assert.equal(v.next[0].title, 'n-c')
+  // e started waiting after the snapshot: it comes at the end; a closed tab drops out
+  const w = logic.tabWalkView(tabs.filter(t => t.ref !== 'c'), ['a', 'b', 'c', 'd'], 'a')
+  assert.deepEqual([w.pos, w.total, w.next.map(x => x.key)], [1, 3, ['d', 'e']])
+  // a tab outside the walk has no place in it
+  assert.equal(logic.tabWalkView(tabs, ['a', 'c'], 'b'), null)
+  assert.equal(logic.tabWalkView(tabs, null, 'a').total, 4)
 })
 
 test('header and rooms take counts only from sessionCounts or agentLoad', () => {

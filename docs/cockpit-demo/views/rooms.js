@@ -8,7 +8,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, nextTabByStatus, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -239,7 +239,7 @@ function useHeldOrder(list, mode, keyOf = w => w.key) {
 }
 
 /** The tabs by status (logic.js statusQueue), each row with its workspace, so you walk them top to bottom:
- *  answer or close what needs you or waits, then the rest (NextTab walks them). Below stand the control
+ *  answer or close what needs you or waits, then the rest (Work through and the tab's bar walk them). Below stand the control
  *  session and the quick chats, which have no status of
  *  that kind. A tab that changes its status starts its time again, so it goes last in its new group and
  *  the rows above it stay where they were */
@@ -261,12 +261,49 @@ function StatusGroups({ s, c, here }) {
   </div>`
 }
 
-/** Next tab: the tab after the one shown among those that need you or wait, in the order By status lists
- *  them (logic.js nextTabByStatus), whichever order the sidebar shows; nothing when no other tab wants you */
-function NextTab({ s, c, current }) {
+/** Work through: opens the first tab that wants you, in the order By status lists them, and starts the
+ *  walk the open tab's bar goes on with (TabWalk); nothing when no tab wants you */
+function WalkStart({ s, c }) {
   const t = T()
-  const next = nextTabByStatus(statusQueue(s.tabs?.tabs), current)
-  return next ? html`<${Btn} size="xs" variant="primary" title=${t.rooms.nextTitle} onClick=${() => c.pickRoom({ kind: 'tab', id: next })}>${t.rooms.next}<//>` : null
+  const n = walkRefs(s.tabs?.tabs).length
+  return n ? html`<${Btn} size="xs" variant="primary" icon="forward" title=${t.rooms.walkTitle} onClick=${() => c.startWalk()}>${t.rooms.walk(n)}<//>` : null
+}
+
+/** The foot of an open tab: the same bar the lists have under a detail (detail.js NextUp), over the tabs
+ *  that want you (logic.js tabWalkView): back, where you stand, the next tab with Next (key n), the two
+ *  after it as links. A tab outside the walk (one that works) shows only the first that wants you */
+function TabWalk({ s, c, tab }) {
+  const t = T()
+  const tabs = s.tabs?.tabs
+  const v = tabWalkView(tabs, s.ui.tabWalk, tab.ref)
+  const first = v ? null : walkRefs(tabs).find(r => r !== tab.ref)
+  const ahead = v ? v.next : first ? [{ key: first, ...tabFacts(tabs, first) }] : []
+  const [next, ...later] = ahead
+  const go = useRef(null)
+  // Next keeps the focus on Next, so Enter goes on to the one after (as in the lists)
+  useEffect(() => { if (s.ui.walkFocus) { go.current?.querySelector?.('button')?.focus?.(); c.walkFocused() } }, [tab.ref])
+  if (!v && !next) return null
+  const key = k => (s.ui.shortcuts ? ` (${k})` : '')
+  const name = e => `${e.title ?? e.key}${e.workspace ? ` · ${e.workspace}` : ''}`
+  return html`<nav class="next-up" aria-label=${t.rooms.walkLabel}>
+    <div class="next-up-bar">
+      ${v ? html`<${Btn} size="xs" variant="ghost" icon="back" label=${t.nextPrev} title=${t.nextPrev + key('p')} disabled=${!v.prev}
+        onClick=${() => c.walkTab(v.prev.key, { focus: true })} />
+        <span class="next-up-pos mono" aria-live="polite">${t.nextPos(v.pos, v.total)}</span>` : null}
+      ${next ? html`<span class="next-up-text"><span class="label-caps">${t.nextUp}</span>
+          <span class="next-up-title">${next.title ?? next.key}</span>${next.workspace ? html`<span class="muted small">${next.workspace}</span>` : null}</span>
+        <span ref=${go} class="next-up-go"><${Btn} size="xs" variant="primary" icon="forward" title=${t.nextOpen + key('n')}
+          onClick=${() => c.walkTab(next.key, { focus: true })}>${t.nextOpen}<//></span>`
+        : html`<span class="next-up-text muted small">${t.rooms.walkDone}</span>`}
+    </div>
+    ${later.length ? html`<ol class="next-up-later" start=${(v?.pos ?? 0) + 2}>${later.map(e => html`<li key=${e.key}>
+      <button type="button" class="btn-link" onClick=${() => c.walkTab(e.key, { focus: true })}>${name(e)}</button></li>`)}</ol>` : null}
+  </nav>`
+}
+
+const tabFacts = (tabs, ref) => {
+  const tab = (tabs ?? []).find(x => x.ref === ref)
+  return { title: tab?.name ?? null, workspace: tab?.workspace ?? null }
 }
 
 /** The sidebar: the order of the tabs on top, where it is reached without scrolling past the asks; then
@@ -282,7 +319,7 @@ export function Sidebar({ s, c, rooms, here }) {
     <div class="room-order">
       <${Segmented} label=${t.rooms.sortLabel} current=${sort} onPick=${v => c.setRoomsSort(v)}
         values=${[['terminal', t.rooms.sortTerminal], ['urgency', t.rooms.sortUrgency], ['status', t.rooms.sortStatus]]} />
-      <${NextTab} s=${s} c=${c} current=${here.kind === 'tab' ? here.id : null} />
+      <${WalkStart} s=${s} c=${c} />
     </div>
     ${sort === 'status' ? null : html`<${WaitingGroup} s=${s} c=${c} />`}
     ${rooms.chats.length && sort !== 'status' ? html`<section class="room-ws"><h3 class="label-caps">${t.rooms.chats}</h3>
@@ -320,7 +357,16 @@ function TabPane({ s, c, tab }) {
   const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
   const guided = replying && guideOf(s, tab).status !== 'off'
   const view = guided ? guideView(s) : 'screen'
-  return html`<section class=${`panel chat-main rooms-main${replying ? ' has-reply' : ''}${view === 'guide' ? ' is-guide-only' : ''}`} aria-labelledby="room-title">
+  // an answer that reached the tab, or its close, ends this tab's turn: the walk goes on to the next, as
+  // settling an entry does in the lists. A jump to the terminal is no answer
+  const onward = () => { const n = tabWalkView(s.tabs?.tabs, s.ui.tabWalk, tab.ref, 0)?.next[0]?.key ?? walkRefs(s.tabs?.tabs).find(r => r !== tab.ref); if (n) c.walkTab(n) }
+  const cc = { ...c, reply: async (verb, args) => {
+    const r = await c.reply(verb, args)
+    if (r?.ok && verb !== 'tab_jump') onward()
+    return r
+  } }
+  const closeTab = async () => { const r = await c.act('tab_close', { tab_ref: tab.ref }); if (r?.ok) onward() }
+  return html`<section class=${`panel chat-main rooms-main has-walk${replying ? ' has-reply' : ''}${view === 'guide' ? ' is-guide-only' : ''}`} aria-labelledby="room-title">
     <header class="tabview-head">
       <${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />
       <h2 class="sec-title tabview-title" id="room-title" title=${taskTab(tab) && !tab.is_control ? t.rooms.taskName : undefined}>
@@ -333,18 +379,20 @@ function TabPane({ s, c, tab }) {
       ${guided ? html`<span class="guide-view"><${Segmented} label=${t.guide.viewLabel} current=${view}
         values=${GUIDE_VIEWS.map(v => [v, t.guide.view[v]])} onPick=${v => c.setGuideView(v)} /></span>` : null}
       <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
-      <${NextTab} s=${s} c=${c} current=${tab.ref} />
+      ${tab.is_control || !canTab(s, 'close') || (tab.state !== 'waiting' && tab.state !== 'shell') ? null
+        : html`<${Btn} size="xs" variant="ghost" icon="close" onClick=${closeTab}>${t.btnCloseTab}<//>`}
     </header>
     ${replying ? html`<div class="reply-pane">
       ${view === 'guide' ? null : html`<${AskLine} tab=${tab} />`}
       ${view === 'screen' ? null : html`<${GuideTree} tab=${tab} s=${s} c=${c} />`}
-      <${TabReply} tab=${tab} s=${s} c=${c} />
+      <${TabReply} tab=${tab} s=${s} c=${cc} />
     </div>` : null}
     ${view === 'guide' ? null : html`<div class="tabview-body" ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
       onScroll=${e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}>
       ${lines.length ? lines.map((l, i) => html`<div key=${i} class=${`tl tl-${l.kind}`}>${l.text || ' '}</div>`)
         : html`<p class="muted">${screen ? t.tabViewEmpty : t.loading}</p>`}
     </div>`}
+    <${TabWalk} s=${s} c=${c} tab=${tab} />
   </section>`
 }
 

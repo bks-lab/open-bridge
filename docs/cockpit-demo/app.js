@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats, nextTabByStatus, statusQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
+  listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -804,12 +804,14 @@ const ctl = {
     save('bridge-cockpit.roomsSort', sort)
     setUi({ roomsSort: sort })
   },
-  // the chat by status: the next tab that needs you or waits, after the one shown (logic.js nextTabByStatus)
-  nextTab: () => {
-    const s = store.get()
-    const ref = nextTabByStatus(statusQueue(s.tabs?.tabs), s.ui.room?.kind === 'tab' ? s.ui.room.id : null)
-    if (ref) setUi({ room: { kind: 'tab', id: ref } })
+  // the walk through the tabs that want you (logic.js tabWalkView): Work through starts it on the first,
+  // a tab picked in the sidebar starts it there; the open tab's bar goes on without taking a new order
+  startWalk: () => {
+    const refs = walkRefs(store.get().tabs?.tabs)
+    if (refs.length) setUi({ room: { kind: 'tab', id: refs[0] }, tabWalk: refs })
   },
+  walkTab: (ref, { focus = false } = {}) => { if (ref) setUi({ room: { kind: 'tab', id: ref }, walkFocus: focus }) },
+  walkFocused: () => setUi({ walkFocus: false }),
   // the task and inbox pages: filter by the triage, sort again on a click (scripts/web/triage.js)
   // the day column's height, measured by the column itself: how many rows its sections fill up to
   setDayHeight: px => { if (store.get().ui.dayHeight !== px) setUi({ dayHeight: px }) },
@@ -912,7 +914,7 @@ const ctl = {
   chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi({ page: CHAT_PAGE, tabView: null, pageDetail: false }) },
   pickQuick: conv => setUi({ quickConv: conv }),
   // the chat as cmux: what the right side shows ({ kind: 'ws' | 'tab' | 'chat' | 'agent' | 'bridge', id })
-  pickRoom: room => setUi({ room }),
+  pickRoom: room => setUi(room?.kind === 'tab' ? { room, tabWalk: walkRefs(store.get().tabs?.tabs) } : { room }),
   newQuick: () => setUi({ quickConv: null }),
   // what a chat_tab start from the chat answered (inbox item and launch outcome), for its status line; the last few
   noteSent: rec => setUi(ui => ({ sent: [...(ui.sent ?? []).slice(-4), rec] })),
@@ -1256,9 +1258,14 @@ function onKey(e) {
     if (to) ctl.openNext(to)
     return
   }
-  if (key === 'n' && s.ui.page === CHAT_PAGE) {
+  // n / p on the Chat page: the walk through the tabs that want you, as the open tab's bar walks it
+  if ((key === 'n' || key === 'p') && s.ui.page === CHAT_PAGE) {
+    const cur = s.ui.room?.kind === 'tab' ? s.ui.room.id : null
+    const v = cur ? tabWalkView(s.tabs?.tabs, s.ui.tabWalk, cur) : null
     e.preventDefault()
-    return ctl.nextTab()
+    if (!cur || !v) return key === 'n' ? ctl.startWalk() : undefined
+    const to = key === 'n' ? v.next[0] : v.prev
+    return to ? ctl.walkTab(to.key, { focus: true }) : undefined
   }
   if (s.ui.page !== 'briefing') return
   if (key === 'j' || key === 'k') {

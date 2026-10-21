@@ -528,12 +528,23 @@ export function statusQueue(tabs) {
     .filter(g => g.tabs.length)
 }
 
-/** The tab Next opens: the one after `ref` among those that need you or wait, from the top when `ref`
- *  is not among them, round again after the last; null when no other tab wants you */
-export function nextTabByStatus(groups, ref) {
-  const walk = (groups ?? []).filter(g => g.state === 'needs-you' || g.state === 'waiting').flatMap(g => g.tabs.map(t => t.ref))
-  const next = walk[(walk.indexOf(ref) + 1) % (walk.length || 1)]
-  return next != null && next !== ref ? next : null
+/** Whether a tab wants you: it needs you or waits, and is not the control tab */
+export const tabWaits = tab => !!tab && !tab.is_control && (tab.state === 'needs-you' || tab.state === 'waiting')
+
+/** The tabs that want you, in the order By status lists them: the walk on the Chat page */
+export const walkRefs = tabs => statusQueue(tabs).filter(g => g.state === 'needs-you' || g.state === 'waiting')
+  .flatMap(g => g.tabs.map(t => t.ref))
+
+/** The walk through the tabs as the lists walk theirs (queueView): the order taken when the walk began
+ *  (ui.tabWalk), then every tab that started waiting since, at the end. A tab answered meanwhile keeps
+ *  its place while it is open, a closed one drops out. Entries { key: ref, title, workspace }; null when
+ *  `current` is not in the walk */
+export function tabWalkView(tabs, snapshot, current, more = 2) {
+  const byRef = new Map((tabs ?? []).map(t => [t.ref, t]))
+  const start = snapshot ?? []
+  const refs = [...start, ...walkRefs(tabs).filter(r => !start.includes(r))]
+  const queue = refs.map(ref => ({ key: ref, title: byRef.get(ref)?.name ?? null, workspace: byRef.get(ref)?.workspace ?? null }))
+  return queueView(queue, current, e => tabWaits(byRef.get(e.key)), more)
 }
 
 /** The two numbers of the running Claude sessions, one source for the Sessions tab and the start station:

@@ -366,27 +366,65 @@ test('the order choice stands on top of the sidebar, and by status Waiting for y
   assert.ok(byStatus.$('section.room-status'))
 })
 
-test('Next tab stands on top in every order and opens the tab after the one shown, among those that want you', () => {
+test('Work through on top of the sidebar opens the first tab that wants you, in every order', () => {
   for (const roomsSort of ['terminal', 'urgency', 'status']) {
     const s = cockpitState(NOW, { ui: { roomsSort } })
     const c = recorder()
-    const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'tab', id: 'surface:7' }} />`)
-    const next = el.$('.room-order').$$('button').find(b => b.text() === en.rooms.next)
-    assert.ok(next, roomsSort)
-    next.click()
-    assert.deepEqual(c.calls, [['pickRoom', { kind: 'tab', id: 'surface:10' }]], roomsSort)
+    const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+    el.$('.room-order').$$('button').find(b => b.text() === en.rooms.walk(4)).click()
+    assert.deepEqual(c.calls, [['startWalk']], roomsSort)
   }
-  // nothing waits: no Next
+  // nothing waits: no button
   const s = cockpitState(NOW)
   const calm = cockpitState(NOW, { tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => ({ ...t, state: 'working' })) } })
-  assert.equal(renderSide(calm).button(en.rooms.next), null)
+  assert.equal(renderSide(calm).$('.room-order').$$('button').some(b => b.text().startsWith(en.rooms.walk(0).split(' (')[0])), false)
 })
 
-test('the open tab carries Next tab in its head', () => {
+const WALK = ['surface:7', 'surface:10', 'surface:12', 'surface:13']
+const tabPane = (ref, c, over = {}) => mount(html`<${RoomsPage} s=${cockpitState(NOW, { ...over, ui: { room: { kind: 'tab', id: ref }, tabWalk: WALK, tabView: 'surface:99', ...(over.ui ?? {}) } })} c=${c} />`)
+
+test('the open tab ends in the same bar the lists have: back, where you stand, what comes next and Next', () => {
   const c = recorder()
-  const el = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:10' }, tabView: 'surface:99' } })} c=${c} />`)
-  el.$('.rooms-main .tabview-head').$$('button').find(b => b.text() === en.rooms.next).click()
-  assert.deepEqual(c.calls.filter(x => x[0] === 'pickRoom'), [['pickRoom', { kind: 'tab', id: 'surface:12' }]])
+  const bar = tabPane('surface:10', c).$('.rooms-main .next-up')
+  assert.equal(bar.$('.next-up-pos').text(), en.nextPos(2, 4))
+  assert.equal(bar.$('.next-up-title').text(), 'demo-task research')
+  assert.deepEqual(bar.$$('.next-up-later li').map(li => li.text()), ['changelog · Ops'])
+  bar.button(en.nextOpen).click()
+  bar.button(en.nextPrev).click()
+  bar.$('.next-up-later button').click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'walkTab'), [['walkTab', 'surface:12', { focus: true }], ['walkTab', 'surface:7', { focus: true }],
+    ['walkTab', 'surface:13', { focus: true }]])
+})
+
+test('a tab outside the walk still shows the first that wants you as next', () => {
+  const c = recorder()
+  const bar = tabPane('surface:8', c).$('.rooms-main .next-up')                 // docs-refresh works: not in the walk
+  assert.equal(bar.$('.next-up-pos'), null)
+  assert.equal(bar.$('.next-up-title').text(), 'alpha-release')
+})
+
+test('an answer sent from the open tab goes on to the next one, a jump to the terminal does not', async () => {
+  const c = recorder()
+  const cc = new Proxy(c, { get: (o, p) => (p === 'reply' ? async (...a) => { o.calls.push(['reply', ...a]); return { ok: true } } : o[p]) })
+  const el = tabPane('surface:12', cc, { guide: null })
+  el.$('.reply-pane').button(en.reply.goOn).click()
+  await tick()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'walkTab'), [['walkTab', 'surface:13']])
+})
+
+test('the open tab can be closed from its head, and the walk goes on', async () => {
+  const c = recorder()
+  const cc = new Proxy(c, { get: (o, p) => (p === 'act' ? async (...a) => { o.calls.push(['act', ...a]); return { ok: true } } : o[p]) })
+  const el = tabPane('surface:13', cc)
+  el.$('.rooms-main .tabview-head').button(en.btnCloseTab).click()
+  await tick()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'act' || x[0] === 'walkTab'), [['act', 'tab_close', { tab_ref: 'surface:13' }], ['walkTab', 'surface:7']])
+})
+
+test('the answer that tells a session to keep going says so, it is never read as the way to the next tab', () => {
+  assert.equal(en.reply.goOn, '"Keep going"')
+  assert.equal(text.TABLES.de.reply.goOn, '„Mach weiter“')
+  assert.notEqual(text.TABLES.de.reply.goOn, text.TABLES.de.nextOpen)
 })
 
 test('a click anywhere in a waiting row opens its tab, its buttons keep their own work', () => {
