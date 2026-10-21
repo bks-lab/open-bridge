@@ -1426,27 +1426,86 @@ test('hints: closed, the overlay draws nothing', () => {
 })
 
 test('hints: every placed hint has its numbered note, its ring and its arrow; Close and the tour act', () => {
-  const layout = { view: { width: 1400, height: 900 }, dropped: [], placed: [
+  const layout = { view: { width: 1400, height: 900 }, away: [], rounds: [{ group: 'page', placed: [
     { id: 'ask', n: 1, shape: 'ellipse', ring: { top: 6, left: 700, width: 100, height: 44 },
-      note: { top: 90, left: 640, width: 240, height: 80 }, arrow: { x1: 750, y1: 90, x2: 750, y2: 50 } },
-    { id: 'day', n: 2, shape: 'frame', ring: { top: 110, left: 10, width: 620, height: 770 },
-      note: { top: 150, left: 50, width: 240, height: 80 }, arrow: null },
-  ] }
+      note: { top: 90, left: 640, width: 260, height: 80 }, arrow: { x1: 750, y1: 90, x2: 750, y2: 50 } },
+    { id: 'detail', n: 2, shape: 'frame', ring: { top: 110, left: 10, width: 620, height: 770 },
+      note: { top: 150, left: 50, width: 260, height: 80 }, arrow: null },
+  ] }] }
   const c = recorder()
   const el = mount(html`<${HintsLayer} layout=${layout} c=${c} />`)
-  assert.deepEqual(el.$$('.hints-note').map(n => n.getAttribute('data-hint')), ['ask', 'day'])
+  assert.deepEqual(el.$$('.hints-note').map(n => n.getAttribute('data-hint')), ['ask', 'detail'])
   assert.deepEqual(el.$$('.hints-n').map(n => n.text()), ['1', '2'])
   assert.match(el.$('.hints-note').text(), new RegExp(en.hints.items.ask.title))
   assert.equal(el.$$('ellipse').length, 1)
   assert.equal(el.$$('rect').length, 1)
   assert.equal(el.$$('.hints-arrow').length, 1)
+  assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.groups.page))
+  assert.equal(el.$$('.hints-bar button').filter(b => b.text() === en.hints.next).length, 0)   // one round: no Next
   el.button(en.hints.close).click()
   assert.deepEqual(c.calls.at(-1), ['setHints', false])
   el.button(en.hints.tour).click()
   assert.deepEqual(c.calls.at(-1), ['tourStart'])
 })
 
+test('hints: more than one round pages on with Next, Back and the arrow keys, the header last', async () => {
+  const one = id => ({ id, n: 1, shape: 'ellipse', ring: { top: 6, left: 700, width: 100, height: 44 },
+    note: { top: 90, left: 640, width: 260, height: 80 }, arrow: null })
+  const layout = { view: { width: 1400, height: 900 }, away: ['table'],
+    rounds: [{ group: 'page', placed: [one('rowMain')] }, { group: 'page', placed: [one('rowActs')] }, { group: 'head', placed: [one('ask')] }] }
+  const went = []
+  const first = mount(html`<${HintsLayer} layout=${layout} at=${0} go=${n => went.push(n)} c=${recorder()} />`)
+  assert.deepEqual(first.$$('.hints-note').map(n => n.getAttribute('data-hint')), ['rowMain'])
+  assert.match(first.$('.hints-bar').text(), new RegExp(en.hints.round(1, 3)))
+  assert.match(first.$('.hints-bar').text(), new RegExp(en.hints.below(1).slice(0, 12)))   // one more further down
+  first.button(en.hints.next).click()
+  await tick()
+  document.dispatch('keydown', { key: 'ArrowRight' })
+  document.dispatch('keydown', { key: 'ArrowLeft' })          // nothing before the first round
+  assert.deepEqual(went, [1, 1])
+  const lastRound = mount(html`<${HintsLayer} layout=${layout} at=${2} go=${n => went.push(n)} c=${recorder()} />`)
+  assert.deepEqual(lastRound.$$('.hints-note').map(n => n.getAttribute('data-hint')), ['ask'])
+  assert.match(lastRound.$('.hints-bar').text(), new RegExp(en.hints.groups.head))
+  assert.equal(lastRound.$$('.hints-bar button').filter(b => b.text() === en.hints.next).length, 0)
+  lastRound.button(en.hints.back).click()
+  assert.deepEqual(went.at(-1), 1)
+})
+
 test('hints: nothing in view says so instead of an empty overlay', () => {
-  const el = mount(html`<${HintsLayer} layout=${{ view: { width: 800, height: 600 }, placed: [], dropped: ['ask'] }} c=${recorder()} />`)
+  const el = mount(html`<${HintsLayer} layout=${{ view: { width: 800, height: 600 }, rounds: [], away: ['ask'] }} c=${recorder()} />`)
   assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.none.slice(0, 20)))
+})
+
+// ---------------------------------------------------------------- help (views/overlays.js HelpDialog)
+
+test('help: one topic at a time, this page first; a topic tab shows its own words, the keys theirs', async () => {
+  const { HelpDialog } = views.overlays
+  const proto = Object.getPrototypeOf(document.body)
+  proto.focus ??= function focus() { document.activeElement = this }
+  proto.querySelector ??= function querySelector(sel) { return this.$(sel) }
+  // the page beneath is not mounted here: the help asks the document which parts it shows, and none are
+  const ask = Object.getOwnPropertyDescriptor(document, 'querySelector')
+  document.querySelector = () => null
+  try {
+  const c = recorder()
+  const el = mount(html`<${HelpDialog} s=${cockpitState(NOW, { ui: { page: '@sessions', drawer: 'help', shortcuts: false } })} c=${c} />`)
+  const tabs = el.$$('.help-tabs .seg-btn').map(b => b.text())
+  assert.deepEqual(tabs, ['page', 'rows', 'act', 'keys', 'trust'].map(id => en.help.tabs[id]))
+  assert.match(el.$('.help-pane').text(), new RegExp(en.help.pageLead.slice(0, 24)))
+  assert.match(el.$('.help-pane').text(), new RegExp(en.help.headTitle))
+  assert.doesNotMatch(el.$('.help-pane').text(), new RegExp(en.kindHelp))
+  el.button(en.help.tabs.rows).click()
+  await tick()
+  assert.match(el.$('.help-pane').text(), new RegExp(en.kindHelp))
+  el.button(en.help.tabs.keys).click()
+  await tick()
+  assert.match(el.$('.help-pane').text(), new RegExp(en.keysOff.slice(0, 20)))
+  el.button(en.hints.helpButton).click()
+  assert.deepEqual(c.calls.at(-1), ['setHints', true])
+  el.button(en.tour.again).click()
+  assert.deepEqual(c.calls.at(-1), ['tourStart'])
+  assert.match(el.$('.help-pane').text() + el.text(), new RegExp(en.help.tabs.keys))
+  } finally {
+    if (ask) Object.defineProperty(document, 'querySelector', ask); else delete document.querySelector
+  }
 })

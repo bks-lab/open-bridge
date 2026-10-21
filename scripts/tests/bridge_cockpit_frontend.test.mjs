@@ -4251,7 +4251,7 @@ test('the kind stands first on every row, in the detail head and in the drawer h
   for (const lang of [text.TABLES.en, text.TABLES.de]) {
     for (const k of ['task', 'stream', 'inbox', 'issue', 'other']) assert.ok(lang.kind?.[k], `kind.${k}`)
     assert.ok(lang.kindAbout && lang.kindTitle?.stream && lang.streamHint, 'about, titles, the stream hint')
-    assert.ok(lang.helpText.some(([k]) => k === lang.kindHelp), 'the help names the kinds')
+    assert.ok(lang.helpTopics.rows.some(([k]) => k === lang.kindHelp), 'the help names the kinds')
   }
   assert.equal(text.TABLES.de.kind.inbox, 'Meldung')
   assert.equal(text.TABLES.de.kind.stream, 'Stream')
@@ -4461,21 +4461,71 @@ test('tourPlace: below the area when it fits, above when not, inside a large one
 
 // ---------------------------------------------------------------- the explain overlay (views/hints.js)
 
+const HINT_PAGES = ['@start', 'briefing', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'some-profile-page']
+const WORK_AREA = { ui: { page: 'briefing', workView: 'area' }, layout: 'wide', model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }
+
 test('hintsFor: the page\'s own areas first, then the header, each once, each with its words in both languages', () => {
-  for (const page of ['@start', 'briefing', '@chat', '@sessions', '@settings', 'some-profile-page']) {
+  for (const page of HINT_PAGES) {
     const list = logic.hintsFor({ ui: { page }, layout: 'wide' })
     assert.equal(new Set(list.map(h => h.id)).size, list.length, page)
     assert.ok(list.every(h => typeof h.target === 'string' && h.target), page)
     for (const lang of ['en', 'de']) for (const h of list) assert.ok(text.TABLES[lang].hints.items[h.id]?.title, `${lang} ${h.id}`)
+    // the page's own parts stand before the header's, and every page has some of its own
+    const groups = list.map(h => h.group)
+    assert.ok(groups.indexOf('head') > 0 && groups.lastIndexOf('page') < groups.indexOf('head'), page)
+    assert.ok(list.filter(h => h.group === 'page').length >= 3, `${page} explains itself`)
     assert.equal(list.at(-1).id, 'help', page)       // the header's help comes last everywhere
   }
   const start = logic.hintsFor({ ui: { page: '@start' }, layout: 'wide' }).map(h => h.id)
   assert.equal(start[0], 'prompt')
   const day = logic.hintsFor({ ui: { page: 'briefing' }, layout: 'wide' }).map(h => h.id)
-  assert.ok(day.includes('day') && day.includes('detail') && day.includes('tabcol'))
-  // the work tab showing a page instead of the day's columns has no day list to point at
-  const view = logic.hintsFor({ ui: { page: 'briefing', workView: 'area' }, layout: 'wide', model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }).map(h => h.id)
-  assert.ok(!view.includes('day'))
+  for (const id of ['secHead', 'rowMain', 'rowActs', 'detail', 'tabcol']) assert.ok(day.includes(id), id)
+  // the work tab showing a page instead of the day's columns explains that page's parts, not the day list
+  const view = logic.hintsFor(WORK_AREA).map(h => h.id)
+  assert.ok(!view.includes('rowMain') && view.includes('workSwitch') && view.includes('table'))
+  // a page of the profile gets the parts every such page is built from
+  const prof = logic.hintsFor({ ui: { page: 'some-profile-page' }, layout: 'wide' }).map(h => h.id)
+  for (const id of ['pageBadge', 'table', 'ghFigures', 'costBars', 'calDays']) assert.ok(prof.includes(id), id)
+})
+
+test('hints: every explanation in the texts belongs to an area some page points at, in both languages alike', () => {
+  const used = new Set([...HINT_PAGES.map(page => ({ ui: { page }, layout: 'wide' })), WORK_AREA]
+    .flatMap(s => logic.hintsFor(s).map(h => h.id)))
+  for (const lang of ['en', 'de']) {
+    const items = text.TABLES[lang].hints.items
+    assert.deepEqual(Object.keys(items).filter(id => !used.has(id)), [], `${lang}: words no page uses`)
+    for (const [id, w] of Object.entries(items)) {
+      assert.ok(w.body.length >= 30 && w.body.length <= 160, `${lang} ${id}: ${w.body.length} characters`)
+    }
+  }
+  assert.deepEqual(Object.keys(text.TABLES.en.hints.items).sort(), Object.keys(text.TABLES.de.hints.items).sort())
+})
+
+test('hintRounds: the page first, the header after it, every area in one round, an area scrolled away counted', () => {
+  const view = { width: 1000, height: 700 }
+  const note = { width: 260, height: 120 }
+  const items = [
+    ...Array.from({ length: 8 }, (_, k) => ({ id: `p${k}`, group: 'page', note,
+      rect: { top: 140 + Math.floor(k / 4) * 260, left: 20 + (k % 4) * 240, width: 120, height: 30 } })),
+    { id: 'gone', group: 'page', note, rect: { top: 1600, left: 20, width: 200, height: 40 } },
+    { id: 'none', group: 'page', note, rect: null },
+    { id: 'h0', group: 'head', note, rect: { top: 10, left: 600, width: 90, height: 30 } },
+    { id: 'h1', group: 'head', note, rect: { top: 10, left: 700, width: 90, height: 30 } },
+  ]
+  const { rounds, away } = logic.hintRounds(items, view)
+  assert.deepEqual(away, ['gone'])
+  const groups = rounds.map(r => r.group)
+  assert.ok(groups.includes('page') && groups.includes('head'))
+  assert.ok(groups.lastIndexOf('page') < groups.indexOf('head'), 'the page before the header')
+  const ids = rounds.flatMap(r => r.placed.map(p => p.id))
+  assert.deepEqual([...ids].sort(), ['h0', 'h1', 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'])
+  assert.ok(rounds.length > 2, 'eight notes of this size need more than one round')
+  const meet = (a, b) => a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height
+  for (const r of rounds) {
+    assert.deepEqual(r.placed.map(p => p.n), r.placed.map((_, k) => k + 1))
+    for (const a of r.placed) for (const b of r.placed) if (a !== b) assert.ok(!meet(a.note, b.note), `${a.id} over ${b.id}`)
+  }
+  assert.deepEqual(logic.hintRounds([], view), { rounds: [], away: [] })
 })
 
 test('hintLayout: every note beside its area, no two notes over each other, an arrow from note to ring', () => {

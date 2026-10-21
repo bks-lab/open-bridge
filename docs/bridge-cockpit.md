@@ -1180,12 +1180,28 @@ still start it. In mock mode it stays closed unless the link carries `&tour=1`.
 
 "Explain" in the header (the bulb; also in Help) lays notes over the page as it
 stands: each area the page shows gets a numbered note beside it, a ring around it
-(an ellipse for a button, a frame for a column) and an arrow from the note to the
-ring. Start, Today, Chat, Sessions and Settings have their own areas; every page
-explains the header (tabs, Ask, History, Notes, Help). An area the page does not
-show right now, or one whose note finds no free room, is left out, so the notes never
-cover each other. A click anywhere or `Esc` closes it, and its bar starts the tour.
-It sends nothing and keeps nothing.
+(an ellipse for a button or a chip, a frame for a row or a column) and an arrow from
+the note to the ring. Every page explains its own parts: Start, Today, Chat,
+Sessions, Background jobs, Other Bridges, Tidy up, Jev and Settings each have their
+own list, and a page of the briefing profile explains the parts it is built from
+(the count beside its title, the overview tiles, the sorting bars, a section's
+head, its rows, the GitHub figures and boards, the quota gauges, the costs, the
+dates). The notes come in rounds so none covers another: the page first, the header
+(views, As of, Reload, Ask, History, Claude, Notes, Help) in a round of its own after
+it, read from left to right. Next, Back and the arrow keys page through the rounds,
+and the bar says which round shows and how many areas stand further down (scroll,
+and they follow). An area the page does not show right now is left out. A click
+anywhere or `Esc` closes it, and its bar starts the tour. It sends nothing and keeps
+nothing.
+
+### Help
+
+Help (`?` in the header) shows one topic at a time, in tabs: **This page** lists
+the same explanations as the notes, for the parts this page shows, and the header
+below them; **Rows** says what a row's mark and its section mean; **Acting** covers
+the panel, Let AI do it, Advise, Close and Ask; **Keys** has the shortcuts, or how
+to switch them on; **Costs and safety** says what spends tokens and what leaves the
+machine. Its title row starts the tour and shows the notes on the page.
 
 ### Keyboard
 

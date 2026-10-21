@@ -3037,26 +3037,48 @@ export function tourPlace(rect, box, view, gap = 12) {
 
 // ---------------------------------------------------------------- the explain overlay (views/hints.js)
 
-// the areas the overlay can point at, per page, in the order they matter; the header's last on every page.
-// Each id has its words in text.js hints.items.<id>; an area the page does not show is left out when drawn
+// the areas the overlay can point at, per page, in the order they matter. Each id has its words in text.js
+// hints.items.<id>; an area the page does not show is left out when drawn. The page comes first, the header
+// on every page in a round of its own after it, so its notes never take the page's room
 const HINTS = {
-  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'], ['stations', '.station'],
-    ['core', '.core-button'], ['today', '.stage-card']],
-  briefing: [['day', '.col-day'], ['detail', '.col-detail'], ['tabcol', '#tabs-column']],
-  '@chat': [['chatList', '.chat-list'], ['chatBox', '.tabview-send'], ['launch', '.launch-pick'], ['tabcol', '#tabs-column']],
-  '@sessions': [['stats', '.stats'], ['guideBoard', '.guide-board'], ['sessCards', '.sess-grid']],
-  '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body']],
+  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'], ['startTools', '.stage-tools'],
+    ['stations', '.station'], ['core', '.core-button'], ['today', '.stage-card'], ['projects', '.home-chips'],
+    ['tabCards', '.hcard:not(.hcard-row)'], ['rowCards', '.hcard-row'], ['starts', '.home-starts']],
+  briefing: [['alarm', '.col-day .alarm'], ['secHead', '.col-day .sec-head'], ['rowMain', '.col-day .row-main'],
+    ['rowActs', '.col-day .row-acts'], ['secTools', '.col-day .sec-tools'], ['hiddenRows', '.col-day .hidden-rows'],
+    ['detail', '.col-detail'], ['tabcol', '#tabs-column'], ['tabWait', '#tabs-column .tabcard.st-needs-you'], ['snap', '#tabs-column .snap']],
+  '@chat': [['chatModel', '.chatpage > .page-head .seg'], ['chatList', '.chat-list'], ['chatBox', '.tabview-send'],
+    ['launch', '.launch-pick'], ['tabcol', '#tabs-column']],
+  '@sessions': [['stats', '.stats'], ['guideBoard', '.guide-board'], ['guideRoot', '.guide-root'],
+    ['guideBranches', '.guide-branches'], ['guideFoot', '.guide-foot'], ['sessCards', '.sess-grid'],
+    ['sessAgents', '.sess-agent-list'], ['sessFoot', '.sess-foot']],
+  '@workers': [['workerStats', '.stats'], ['wfilters', '.wfilters'], ['wgroup', '.wgroup .rgroup-head'], ['wrow', '.wrow-name'],
+    ['wwhen', '.wrow-when'], ['wstrip', '.wrow-strip'], ['wstate', '.wrow-state']],
+  '@agents': [['agentList', '.agents-list'], ['agentConvs', '.agent-convs'], ['agentProfile', '.agent-facts'],
+    ['agentSkills', '.agent-skill-cards'], ['agentModes', '.agent-modes'], ['agentSend', '.chat-main .tabview-send']],
+  '@check': [['reviewRun', '.col-page > .page-head .btn-primary'], ['reviewFlow', '.flow'], ['reviewFilter', '.review-bar'],
+    ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],
+  '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
+  '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
 }
-const HEADER_HINTS = [['pages', '.pagebar'], ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['notes', '.hdr-notes'], ['help', '.hdr-help']]
+// a page of the briefing profile is built from the same parts everywhere: each part it has is explained
+const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],
+  ['triage', '.tri-sort'], ['reviewStrip', '.review-strip'], ['jorder', '.jorder'], ['sectionHead', '.psec .psec-head'],
+  ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghb-boards'],
+  ['ghPeople', '.ghb-people'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
+  ['calFigures', '.calf'], ['calBar', '.calbar'], ['calDays', '.cal-day']]
+const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['reload', '.hdr-reload'], ['tabsButton', '.hdr-tabs'],
+  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['relay', '.hdr-relay'], ['notes', '.hdr-notes'], ['help', '.hdr-help']]
 
-/** What the overlay explains on the page now: its own areas, then the header. The work tab showing a page
- *  instead of the day's columns (by source, by Jev) has no day list to point at */
+/** What the overlay explains on the page now: its own areas (group page), then the header (group head).
+ *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts */
 export function hintsFor(s) {
   const page = s?.ui?.page
   const dayColumns = page !== 'briefing' || workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'due'
-  const own = HINTS[page] ?? (page === 'briefing' ? [] : [['tabcol', '#tabs-column']])
-  return [...(dayColumns ? own : own.filter(([id]) => id === 'tabcol')), ...HEADER_HINTS]
-    .map(([id, target]) => ({ id, target }))
+  const own = !dayColumns ? [['workSwitch', '.work-switch'], ...PAGE_HINTS, ['tabcol', '#tabs-column']]
+    : HINTS[page] ?? [...PAGE_HINTS, ['tabcol', '#tabs-column']]
+  return [...own.map(([id, target]) => ({ id, target, group: 'page' })),
+    ...HEADER_HINTS.map(([id, target]) => ({ id, target, group: 'head' }))]
 }
 
 const HINT_MARGIN = 12    // the notes keep this far off the screen's edges
@@ -3067,8 +3089,8 @@ const overlaps = (a, b, pad = 0) => a.left < b.left + b.width + pad && b.left < 
   && a.top < b.top + b.height + pad && b.top < a.top + a.height + pad
 const clampTo = (v, lo, hi) => Math.max(lo, Math.min(v, hi))
 
-/** A small area is circled, a long or large one framed */
-const ringShape = r => (r.width <= 320 && r.height <= 200 && r.width / r.height < 6 ? 'ellipse' : 'frame')
+/** A small area (a button, a chip, a figure) is circled, a long or large one framed */
+const ringShape = r => (r.width <= 320 && r.height <= 110 && r.width / r.height < 6 ? 'ellipse' : 'frame')
 
 /** Where each hint's note, ring and arrow stand. `items` in order of importance, each {id, rect, note:
  *  {width, height}}; the rects as the screen shows them. A note goes below, above, right or left of its
@@ -3095,11 +3117,18 @@ export function hintLayout(items, view) {
     // a large area takes its note inside, near its top; beside it, the note would stand in the next column
     const within = big(ring) ? [fit(ring.top + HINT_GAP, ring.left + HINT_GAP), fit(ring.top + HINT_GAP, ring.left + ring.width - width - HINT_GAP),
       fit(cy - height / 2, ring.left + HINT_GAP)] : []
+    // then fanned out below it, beside the place right under it and in the rows further down, so the
+    // notes of areas that stand close together (the header's buttons) find room side by side
+    // the nearest first, so the arrows stay short and cross as little as they can
+    const step = width + 10
+    const near = n => Math.hypot(n.left + n.width / 2 - cx, n.top + n.height / 2 - cy)
+    const fan = [0, 1, 2, 3, 4].flatMap(k => [-2, -1, 0, 1, 2].filter(dx => k || dx)
+      .map(dx => fit(ring.top + ring.height + HINT_GAP + k * (height + 10), cx - width / 2 + dx * step))).sort((a, b) => near(a) - near(b))
     const tries = [...within,
       fit(ring.top + ring.height + HINT_GAP, cx - width / 2),
       fit(ring.top - HINT_GAP - height, cx - width / 2),
       fit(cy - height / 2, ring.left + ring.width + HINT_GAP),
-      fit(cy - height / 2, ring.left - HINT_GAP - width)]
+      fit(cy - height / 2, ring.left - HINT_GAP - width), ...fan]
     // the small areas the note must not cover, already drawn or still to come: first every one, then, where
     // that leaves no room (a header button above the tab bar), only those an ellipse circles
     const others = visible.filter(x => x !== it && !big(rings.get(x.id))).map(x => rings.get(x.id))
@@ -3127,4 +3156,29 @@ export function hintLayout(items, view) {
     placed.push({ id: it.id, n: placed.length + 1, ring, shape: ringShape(ring), note, arrow })
   }
   return { placed, dropped }
+}
+
+/** The hints in rounds, so every note has room: the page's areas first, then the header's, each group in as
+ *  many rounds as its notes need. `items` as for hintLayout plus their group. An area the page does not show
+ *  (no rect) is not counted; one the screen shows not (scrolled away), or that has no room even alone, is
+ *  `away`. Each round numbers its notes from 1 */
+export function hintRounds(items, view) {
+  const rounds = []
+  const away = []
+  for (const group of ['page', 'head']) {
+    // the page in the order its areas matter, the header from left to right as it reads
+    const mine = items.filter(it => (it.group ?? 'page') === group && it.rect && it.rect.width > 0 && it.rect.height > 0)
+    if (group === 'head') mine.sort((a, b) => a.rect.left - b.rect.left)
+    let rest = mine.filter(it => it.rect.top < view.height && it.rect.top + it.rect.height > 0
+      && it.rect.left < view.width && it.rect.left + it.rect.width > 0)
+    away.push(...mine.filter(it => !rest.includes(it)).map(it => it.id))
+    while (rest.length) {
+      const { placed } = hintLayout(rest, view)
+      if (!placed.length) { away.push(...rest.map(it => it.id)); break }
+      rounds.push({ group, placed })
+      const done = new Set(placed.map(p => p.id))
+      rest = rest.filter(it => !done.has(it.id))
+    }
+  }
+  return { rounds, away }
 }

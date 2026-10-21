@@ -636,7 +636,7 @@ export function KindBar({ kinds, active, c }) {
   const keys = useRoving()
   const chip = (label, n, on) => html`<button type="button" role="radio" key=${label ?? '@all'} aria-checked=${String(on)}
     class=${`fchip${on ? ' is-on' : ''}`} onClick=${() => c.setWorkKind(label)}>${label ?? t.workOrder.kindAll} <span class="mono">${n}</span></button>`
-  return html`<div class="panel panel-pad tri-bar" role="group" aria-label=${t.workOrder.kindFilter}>
+  return html`<div class="panel panel-pad tri-bar tri-kinds" role="group" aria-label=${t.workOrder.kindFilter}>
     <span class="fbar-chips" role="radiogroup" aria-label=${t.workOrder.kindFilter} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
       ${chip(null, total, !active)}${kinds.map(k => chip(k.label, k.n, active?.label === k.label))}
     </span></div>`

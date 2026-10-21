@@ -1262,7 +1262,16 @@ kbd {
 .conf { margin-left: 6px; letter-spacing: 1px; }
 .tbl-review .c-reason { min-width: 220px; }
 .tbl-review tr.is-kept td { opacity: 0.75; }
-.help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.help-dialog { width: min(760px, 100%); display: flex; flex-direction: column; overflow: hidden; }
+.help-tabs { align-self: flex-start; margin-bottom: 12px; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; flex-shrink: 0; }
+.help-tabs .seg-btn { white-space: nowrap; }
+.help-pane { overflow-y: auto; height: min(52vh, 460px); padding-right: 4px; }
+.help-pane > p { margin: 0 0 10px; }
+.help-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin: 0 0 14px; }
+.help-cards > div { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; background: var(--surface); }
+.help-cards dt { font-weight: 600; font-size: var(--text-sm); }
+.help-cards dd { margin: 2px 0 0; color: var(--on-surface-muted); font-size: var(--text-sm); }
+.help-sub { margin: 6px 0 8px; }
 .keys > div, .help-text > div {
   display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; padding: 6px 0;
   border-top: 1px solid var(--border); font-size: var(--text-sm);
@@ -2818,7 +2827,11 @@ pre.guide-read-text { font-family: var(--font-mono); }
 .tour-dot.is-on { background: var(--accent); width: 16px; }
 .tour-acts { margin-top: 14px; align-items: center; }
 .tour-gap { flex: 1; }
-.help-tour { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.help-head { flex-wrap: wrap; }
+.help-tour { margin-left: auto; }
+@media (max-width: 599px) {
+  .help-tour { order: 3; width: 100%; margin-left: 0; }
+}
 .tour-done { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .tour-spot { transition: none; }
@@ -2849,6 +2862,7 @@ pre.guide-read-text { font-family: var(--font-mono); }
   border-radius: var(--radius-full); box-shadow: var(--shadow-float); padding: 6px 8px 6px 16px;
 }
 .hints-bar .btn { white-space: nowrap; }
+.hints-where, .hints-bar-text { white-space: nowrap; }
 @media (max-width: 599px) {
   .hints-bar-text { display: none; }
   .hints-bar { padding-left: 8px; }

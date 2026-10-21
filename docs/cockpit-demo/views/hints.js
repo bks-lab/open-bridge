@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 // The explain overlay: one button lays notes over the page, each with a number, a ring around the area it
 // means and an arrow to it, so a person sees what is what without leaving the page. Which areas a page has
-// is logic.js hintsFor, where note, ring and arrow stand is logic.js hintLayout; an area the page does not
-// show right now is left out. A click anywhere or Esc closes it; it changes nothing and keeps nothing.
+// is logic.js hintsFor, where note, ring and arrow stand is logic.js hintLayout, and hintRounds splits them
+// so every note has room: the page first, the header after it, Next and the arrow keys page on. An area
+// the page does not show right now is left out. A click anywhere or Esc closes it; it changes nothing.
 
-import { html, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { hintLayout, hintsFor } from '../logic.js'
+import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { hintRounds, hintsFor } from '../logic.js'
 import { T } from '../text.js'
 import { useFocusOnOpen } from './overlays.js'
 
-const NOTE_WIDTH = 240
+const NOTE_WIDTH = 260
 const LINE = 18          // a body line of a note, at the note's font
-const CHARS = 28         // about this many characters fit on a line of it (German words run long)
+const CHARS = 31         // about this many characters fit on a line of it (German words run long)
 const BAR_ROOM = 64      // the bar at the foot and its margin
 
 /** A note's size before it is drawn: its width is fixed, its height follows the length of its words */
@@ -44,16 +45,18 @@ export function HintsOverlay({ s, c }) {
 function HintsMeasured({ s, c }) {
   const words = T().hints.items
   const [layout, setLayout] = useState(null)
+  const [at, setAt] = useState(0)
   const now = useRef(s)
   now.current = s
   useLayoutEffect(() => {
     const measure = () => {
-      const items = hintsFor(now.current).map(h => ({ id: h.id, rect: rectOf(h.target), note: noteSize(words[h.id]) }))
+      const items = hintsFor(now.current).map(h => ({ id: h.id, group: h.group, rect: rectOf(h.target), note: noteSize(words[h.id]) }))
       // the bar at the foot keeps its strip: no note is placed behind it
       const view = viewOf()
-      setLayout({ ...hintLayout(items, { width: view.width, height: view.height - BAR_ROOM }), view })
+      setLayout({ ...hintRounds(items, { width: view.width, height: view.height - BAR_ROOM }), view })
     }
     measure()
+    setAt(0)
     if (typeof window === 'undefined' || !window.addEventListener) return undefined
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)
@@ -62,7 +65,7 @@ function HintsMeasured({ s, c }) {
       window.removeEventListener('scroll', measure, true)
     }
   }, [s.ui.page, s.layout, s.model?.seq])   // new data can move or add an area: measure again
-  return html`<${HintsLayer} layout=${layout} c=${c} />`
+  return html`<${HintsLayer} layout=${layout} at=${at} go=${setAt} c=${c} />`
 }
 
 /** A gentle curve from the note to the ring: the middle pushed off to one side by a fifth of the length */
@@ -76,14 +79,32 @@ function curve({ x1, y1, x2, y2 }) {
   return `M${x1.toFixed(1)} ${y1.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`
 }
 
-/** The drawn overlay for a layout (hintLayout's placed hints and the view they were placed in) */
-export function HintsLayer({ layout, c }) {
+/** The drawn overlay for a layout (hintRounds' rounds and the view they were placed in), its round `at`;
+ *  `go(n)` shows another round */
+export function HintsLayer({ layout, at = 0, go = () => {}, c }) {
   const t = T().hints
   const ref = useFocusOnOpen(true)
-  const placed = layout?.placed ?? []
+  const rounds = layout?.rounds ?? []
+  const i = Math.max(0, Math.min(at, rounds.length - 1))
+  const round = rounds[i]
+  const placed = round?.placed ?? []
   const view = layout?.view ?? { width: 0, height: 0 }
+  const below = (layout?.away ?? []).length
   const close = () => c.setHints(false)
-  return html`<div class="hints" ref=${ref} role="dialog" aria-modal="true" aria-label=${t.bar} onClick=${close}>
+  // the arrows page on wherever the focus stands; the round's main button takes the focus once it is drawn
+  useEffect(() => {
+    ref.current?.querySelector?.('[data-autofocus]')?.focus?.()
+    if (typeof document === 'undefined' || !document.addEventListener) return undefined
+    const onKey = e => {
+      if (e.altKey || e.metaKey || e.ctrlKey) return
+      if (e.key === 'ArrowRight' && i < rounds.length - 1) { e.preventDefault(); go(i + 1) }
+      else if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); go(i - 1) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [i, rounds.length])
+  const last = i >= rounds.length - 1
+  return html`<div class="hints" ref=${ref} role="dialog" aria-modal="true" aria-label=${t.buttonTitle} onClick=${close}>
     <div class="hints-scrim" aria-hidden="true"></div>
     <svg class="hints-svg" width=${view.width} height=${view.height} viewBox=${`0 0 ${view.width} ${view.height}`} aria-hidden="true" focusable="false">
       <defs><marker id="hints-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -95,7 +116,7 @@ export function HintsLayer({ layout, c }) {
       ${placed.filter(p => p.arrow).map(p => html`<path key=${`a${p.id}`} class="hints-arrow" d=${curve(p.arrow)} marker-end="url(#hints-head)" />`)}
     </svg>
     ${placed.map(p => {
-      const words = T().hints.items[p.id]
+      const words = t.items[p.id]
       return html`<div key=${p.id} class="hints-note" data-hint=${p.id}
         style=${{ top: `${Math.round(p.note.top)}px`, left: `${Math.round(p.note.left)}px`, width: `${p.note.width}px` }}>
         <span class="hints-n mono" aria-hidden="true">${p.n}</span>
@@ -104,9 +125,14 @@ export function HintsLayer({ layout, c }) {
       </div>`
     })}
     <div class="hints-bar" role="status" onClick=${e => e.stopPropagation()}>
-      <span class="small hints-bar-text">${layout && !placed.length ? t.none : t.bar}</span>
+      ${round ? html`<span class="hints-where small"><b>${t.groups[round.group]}</b>${rounds.length > 1
+        ? html` <span class="muted mono">${t.round(i + 1, rounds.length)}</span>` : null}</span>` : null}
+      <span class="small muted hints-bar-text">${layout && !rounds.length ? t.none : below && round?.group === 'page' ? t.below(below) : t.bar}</span>
       <button type="button" class="btn btn-ghost btn-xs" onClick=${() => c.tourStart()}><span class="btn-label">${t.tour}</span></button>
-      <button type="button" class="btn btn-primary btn-xs" data-autofocus onClick=${close}><span class="btn-label">${t.close}</span></button>
+      ${i > 0 ? html`<button type="button" class="btn btn-secondary btn-xs" onClick=${() => go(i - 1)}><span class="btn-label">${t.back}</span></button>` : null}
+      ${last ? html`<button type="button" class="btn btn-primary btn-xs" data-autofocus onClick=${close}><span class="btn-label">${t.close}</span></button>`
+        : html`<button type="button" class="btn btn-secondary btn-xs" onClick=${close}><span class="btn-label">${t.close}</span></button>
+          <button type="button" class="btn btn-primary btn-xs" data-autofocus onClick=${() => go(i + 1)}><span class="btn-label">${t.next}</span></button>`}
     </div>
   </div>`
 }

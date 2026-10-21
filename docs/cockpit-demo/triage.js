@@ -49,7 +49,7 @@ export function TriageBar({ s, c, items, byKey }) {
   const running = triageRunning(s)
   const last = tr.last
   const keys = useRoving()
-  return html`<div class="panel panel-pad tri-bar" role="group" aria-label=${t.triage.label}>
+  return html`<div class="panel panel-pad tri-bar tri-sort" role="group" aria-label=${t.triage.label}>
     <span class="fbar-chips" role="radiogroup" aria-label=${t.triage.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
       ${TRIAGE_FILTERS.map(k => html`<button type="button" role="radio" key=${k} aria-checked=${String(f === k)}
         class=${`fchip${f === k ? ' is-on' : ''}`} disabled=${k !== 'all' && !counts[k]} onClick=${() => c.setTriageFilter(k)}>
