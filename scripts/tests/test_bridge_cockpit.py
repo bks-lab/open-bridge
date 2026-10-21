@@ -3912,6 +3912,39 @@ def test_peers_are_listed_with_their_card_and_never_a_token(world):
     assert "keychain" not in json.dumps(peer) and "credential_ref" not in peer
 
 
+def test_a_peer_without_a_card_still_says_where_its_card_should_be(world):
+    # the page explains an unreadable card from the peer file: the address it tried, how it is reached
+    a2a_peers(world, "alpha")
+
+    def down(url):
+        raise OSError("unreachable: [Errno 8] nodename nor servname provided, or not known")
+    world.app.agents.fetch = down
+    world.app.agents.refresh_cards(block=True)
+    peer = world.app.agents.state()["peers"][0]
+    assert peer["card"] is None and peer["card_error"].startswith("unreachable")
+    assert peer["card_url"] == "https://alpha.example/.well-known/agent-card.json"
+    assert peer["reach"] == "unreachable" and peer["card_at_ms"]
+
+
+def test_check_again_fetches_a_card_inside_its_ttl(world):
+    a2a_peers(world, "alpha")
+    calls = []
+    world.app.agents.fetch = lambda url: calls.append(url) or {"name": "Alpha"}
+    world.app.agents.refresh_cards(block=True)
+    world.app.agents.refresh_cards(block=True)
+    assert len(calls) == 1   # kept for CARD_TTL
+    world.app.agents.refresh_cards(block=True, force=True)
+    assert len(calls) == 2
+
+
+def test_api_agents_fresh_checks_the_cards_again(world, monkeypatch):
+    seen = []
+    monkeypatch.setattr(world.app.agents, "refresh_cards", lambda block=False, force=False: seen.append(force))
+    world.request("GET", "/api/agents", headers=world.cookie)
+    world.request("GET", "/api/agents?fresh=1", headers=world.cookie)
+    assert seen == [False, True]
+
+
 def test_asking_an_agent_runs_a2a_ask_and_a_follow_up_keeps_its_context(world):
     a2a_peers(world, "alpha")
     world.runner.handlers["a2a.ask"] = lambda argv: a2a_answer(text="Hello back.")

@@ -1078,6 +1078,35 @@ test('the agents section no longer lists an expired conversation', () => {
 })
 
 
+test('an agent whose card cannot be read says why in plain words, what to do, and offers to check again', () => {
+  const { AgentsPage } = views.agents
+  const s0 = cockpitState(NOW)
+  const p = s0.agents.peers.find(x => x.id === 'partner-bridge')
+  assert.ok(p, 'the demo state has a peer with an unreadable card')
+  const c = recorder()
+  const s = cockpitState(NOW, { ui: { agentPeer: p.id } })
+  const el = mount(html`<${AgentsPage} s=${s} c=${c} />`)
+  const trouble = el.$$('.agent-trouble').map(x => x.text())
+  assert.equal(trouble.length, 2, trouble.join(' | '))
+  // the card: the name does not resolve, and the hint names the tailnet, the host and its owner
+  assert.match(trouble[0], /address not found/)
+  assert.match(trouble[0], /tailnet of partner/)
+  assert.match(trouble[0], /example\.org/)
+  // the last message: refused, with the token advice
+  assert.match(trouble[1], /refused/)
+  assert.match(trouble[1], /token/)
+  // the raw text is kept, folded away, never the headline
+  assert.ok(el.$$('.agent-trouble-raw code').some(x => x.text().includes('nodename')))
+  assert.doesNotMatch(el.$('.agent-trouble-hint').text(), /Errno/)
+  // without a card the profile still shows the card address from the peer file and the summary
+  assert.match(el.$('.agent-facts').text(), /example\.org\/partner\//)
+  assert.match(el.$('.agent-profile-desc').text(), /partner team/)
+  // check again asks the server for fresh cards
+  el.$$('.agent-checked button')[0].click()
+  assert.ok(c.calls.some(([name, fresh]) => name === 'loadAgents' && fresh === true), JSON.stringify(c.calls))
+})
+
+
 // ---------------------------------------------------------------- review findings
 
 test('the demo state carries only question states the server emits and ids it accepts', () => {

@@ -985,7 +985,13 @@ function agentsState(now) {
           { id: 'docs', name: 'Docs lookup', description: 'Finds the page in the project docs that answers a question.', tags: ['docs'], examples: ['Where is the setup guide?'] }]),
         card_error: null, card_at_ms: now - 15 * MIN, last_ms: now - 2 * 3600000 },
       { id: 'docs-agent', reach: 'unknown', last_error: null, summary: 'An example agent for the public docs', owner: null, network: 'public',
-        needs_token: false, usage: { allowed: ['ask'], human_gate: null }, card: null, card_error: null, card_at_ms: null, last_ms: null },
+        needs_token: false, usage: { allowed: ['ask'], human_gate: null }, card: null, card_url: 'https://example.org/docs/.well-known/agent-card.json', card_error: null, card_at_ms: null, last_ms: null },
+      // a peer in a tailnet this machine is not in: its name does not resolve, and the last message did not go out
+      { id: 'partner-bridge', reach: 'failed', summary: 'The Bridge of a partner team, reached through their tailnet', owner: 'partner',
+        network: 'tailnet', needs_token: true, usage: { allowed: ['ask'], human_gate: 'the owner confirms every answer' },
+        card: null, card_url: 'https://example.org/partner/.well-known/agent-card.json',
+        card_error: 'unreachable: [Errno 8] nodename nor servname provided, or not known', card_at_ms: now - 4 * MIN,
+        last_error: 'peer refused the call (403): token missing, wrong, or bound to another identity', last_ms: now - 30 * MIN },
     ],
     keep_hours: 24,
     convs: [

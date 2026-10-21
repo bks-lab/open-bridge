@@ -241,8 +241,9 @@ export function triageRunning(s) {
  *  never into an empty list that reads as "nothing there" */
 export function createLoaders({ api, set, fail, withBusy }) {
   return {
-    loadAgents: async () => {
-      const res = await api.get('/api/agents')
+    // `fresh` is "check again": the server fetches every card anew, the answer comes as the agents event
+    loadAgents: async (fresh = false) => {
+      const res = await api.get(fresh ? '/api/agents?fresh=1' : '/api/agents')
       if (!res.ok) return fail(res)
       set(s => ({ ...s, agents: { peers: res.data.peers ?? [], convs: res.data.convs ?? [],
         ...(res.data.keep_hours != null ? { keep_hours: res.data.keep_hours } : {}) } }))
@@ -608,6 +609,28 @@ export function formatDay(iso, lang, withYear = false) {
 }
 
 /** Local HH:MM:SS of an epoch ms value, via Intl */
+/** Why an A2A card could not be read or a message not delivered, as one reason the page explains in
+ *  plain words (text.js agentTrouble): the name does not resolve (often: this machine is not in the
+ *  peer's tailnet), nothing answers, the token is refused, no card at that address, the far side
+ *  fails, the answer is no card, the token is not set up here, or something else (the raw text stays) */
+export function a2aTrouble(err) {
+  if (!err) return null
+  const e = String(err)
+  if (/nodename|servname|name or service not known|getaddrinfo|no address associated/i.test(e)) return 'name'
+  if (/refused the call|\b40[13]\b|token missing/i.test(e)) return 'token'
+  if (/secrets is not installed|credential|keychain/i.test(e)) return 'secret'
+  if (/\b404\b/.test(e)) return 'nocard'
+  if (/\b5\d\d\b/.test(e)) return 'server'
+  if (/^timeout$|timed out|connection refused|unreachable|host is down|no route/i.test(e)) return 'down'
+  if (/expecting value|json|no json-rpc|unsupported protocol/i.test(e)) return 'garbled'
+  return 'other'
+}
+
+/** The host of a card address, for the explanation of an unreadable card */
+export function a2aHost(url) {
+  try { return new URL(url).hostname || null } catch { return null }
+}
+
 /** When a chat was last used, short: the time today, else day and time ("14:05", "9.10. 14:05") */
 export function chatStamp(ms, nowMs, lang) {
   if (typeof ms !== 'number' || !Number.isFinite(ms)) return ''

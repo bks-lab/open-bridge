@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, chatStamp, listedChats } from '../logic.js'
+import { short, chatStamp, listedChats, a2aTrouble, a2aHost } from '../logic.js'
 import { T, language } from '../text.js'
 import { SendBox, Thinking, useStickToEnd } from './chat.js'
 import { Btn, Dot, Icon, StateLine, useRoving } from './parts.js'
@@ -32,32 +32,59 @@ function AgentCard({ p, on, c, s, held = 0 }) {
   </button>`
 }
 
+/** What went wrong reaching an agent, in plain words: which step (`where`: reading its card, delivering
+ *  the last message), the reason (logic.js a2aTrouble), what to do about it, and the raw text folded away */
+function AgentTrouble({ p, where, err }) {
+  const t = T()
+  const kind = a2aTrouble(err)
+  const why = t.agentTrouble[kind] ?? t.agentTrouble.other
+  const x = { id: p.id, host: a2aHost(p.card?.endpoint || p.card_url) || p.id, owner: p.owner || t.agentOwnerFallback, tailnet: p.network === 'tailnet' }
+  return html`<div class=${`agent-trouble is-${where === 'send' ? 'danger' : 'warning'}`} role="status">
+    <${StateLine} token=${where === 'send' ? 'danger' : 'warning'} strong word=${`${t.agentTroubleWhere[where]}: ${why.title}`} />
+    <p class="agent-trouble-hint">${why.hint(x)}</p>
+    <details class="agent-trouble-raw"><summary class="muted small">${t.agentTroubleDetail}</summary><code class="mono small">${err}</code></details>
+  </div>`
+}
+
 /** The agent's card as a profile: who and which version, where and how it is reached, what it takes
- *  and gives, its skills with their whole description and examples; an example fills the message box */
-function AgentProfile({ p, onExample }) {
+ *  and gives, its skills with their whole description and examples; an example fills the message box.
+ *  Without a readable card it still says what the peer file knows, why the card is missing, and offers
+ *  to check again */
+function AgentProfile({ p, onExample, c, s }) {
   const t = T()
   const card = p.card ?? {}
   const [skill, setSkill] = useState(null)
+  const [checking, setChecking] = useState(false)
   const facts = [
     [t.agentFact.version, card.version], [t.agentFact.protocol, [card.binding, card.protocol && `A2A ${card.protocol}`].filter(Boolean).join(' · ')],
     [t.agentFact.provider, card.provider?.name], [t.agentFact.endpoint, card.endpoint],
+    [t.agentFact.card, p.card ? null : p.card_url],
     [t.agentFact.access, [p.needs_token ? t.agentToken : t.agentOpen, p.network ? t.agentNet[p.network] ?? p.network : null].filter(Boolean).join(' · ')],
     [t.agentFact.modes, card.input?.length ? `${card.input.join(', ')} → ${(card.output ?? []).join(', ')}` : null],
     [t.agentFact.gate, p.usage?.human_gate], [t.agentFact.allowed, p.usage?.allowed?.length ? p.usage.allowed.map(x => t.agentModes[x] ?? x).join(', ') : null],
     [t.agentFact.owner, p.owner],
   ].filter(([, v]) => v)
+  const mono = new Set([t.agentFact.endpoint, t.agentFact.card])
+  const recheck = async () => {
+    setChecking(true)
+    try { await c.loadAgents(true) } finally { setTimeout(() => setChecking(false), 1500) }
+  }
   return html`<div class="agent-profile row-in">
     <header class="agent-profile-head">
       <div><h3 class="agent-profile-name">${card.name || p.id}</h3>
-        ${card.description ? html`<p class="agent-profile-desc">${card.description}</p>` : null}</div>
+        ${card.description || p.summary ? html`<p class="agent-profile-desc">${card.description || p.summary}</p>` : null}</div>
       <span class="btn-row">
         ${card.streaming ? html`<span class="chip">${t.agentStreaming}</span>` : null}
         ${card.docs ? html`<a class="btn btn-ghost btn-xs" href=${card.docs} target="_blank" rel="noopener noreferrer"><${Icon} name="external" size=${13} /><span class="btn-label">${t.agentDocs}</span></a>` : null}
       </span>
     </header>
-    ${p.card_error ? html`<p><${StateLine} token="warning" word=${t.agentCardError(p.card_error)} /></p>` : null}
-    ${p.last_error ? html`<p><${StateLine} token="danger" word=${t.agentFailed(p.last_error)} /></p>` : null}
-    <dl class="agent-facts">${facts.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd class=${k === t.agentFact.endpoint ? 'mono' : ''}>${v}</dd></div>`)}</dl>
+    ${p.card_error ? html`<${AgentTrouble} p=${p} where="card" err=${p.card_error} />` : null}
+    ${p.last_error ? html`<${AgentTrouble} p=${p} where="send" err=${p.last_error} />` : null}
+    ${!p.card && !p.card_error ? html`<p class="muted small">${t.agentNoCard}</p>` : null}
+    <dl class="agent-facts">${facts.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd class=${mono.has(k) ? 'mono' : ''}>${v}</dd></div>`)}</dl>
+    <p class="agent-checked muted small">
+      ${p.card_at_ms ? html`<span>${t.agentChecked(chatStamp(p.card_at_ms, s.now, language()))}</span>` : null}
+      <${Btn} size="xs" variant="ghost" busy=${checking} onClick=${recheck}>${t.agentRecheck}<//></p>
     ${card.skills?.length ? html`<h4 class="label-caps">${t.agentSkills(card.skills.length)}</h4>
       <ul class="agent-skill-cards">${card.skills.map((k, i) => {
         const open = skill === i
@@ -82,7 +109,8 @@ function AgentThread({ conv, peer, c, s }) {
     return html`<div class="qturn row-in" key=${i} style=${{ '--i': 0 }}>
       <div class="qq">${x.mode === 'task' ? html`<span class="chip agent-mode">${t.agentModes.task}</span> ` : null}${x.q}</div>
       ${x.a && !x.waiting ? html`<${Prose} cls="qa" text=${x.a} />` : null}
-      ${x.error ? html`<p><${StateLine} token="danger" word=${x.error === 'interrupted' ? t.quickInterrupted : t.agentFailed(x.error)} /></p>` : null}
+      ${x.error ? html`<p title=${x.error}><${StateLine} token="danger" word=${x.error === 'interrupted' ? t.quickInterrupted
+        : t.agentFailed((t.agentTrouble[a2aTrouble(x.error)] ?? t.agentTrouble.other).title)} /></p>` : null}
       ${last && conv.running ? html`<div class="qdoing"><${Thinking} label=${x.waiting ? t.agentLooking : t.agentSent} /></div>` : null}
       ${last && !conv.running && x.waiting ? html`<div class="agent-held">
         <${StateLine} token="warning" strong word=${t.agentWaiting} />
@@ -150,7 +178,7 @@ export function AgentsPage({ s, c, embedded = false }) {
             onClick=${() => forgetArmed === conv.id ? c.agentForget(conv.id) : setForgetArmed(conv.id)}>${forgetArmed === conv.id ? t.agentForgetSure : t.agentForget}</button>` : null}
         </header>
         <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
-          ${peer && showProfile ? html`<${AgentProfile} key=${peer.id} p=${peer} onExample=${example} />` : null}
+          ${peer && showProfile ? html`<${AgentProfile} key=${peer.id} p=${peer} onExample=${example} c=${c} s=${s} />` : null}
           ${conv ? html`<${AgentThread} conv=${conv} peer=${peer} c=${c} s=${s} />` : null}
         </div>
         <footer class="tabview-foot">

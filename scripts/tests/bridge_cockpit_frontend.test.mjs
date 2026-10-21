@@ -4604,3 +4604,27 @@ test('hintLayout: an area off the screen or without room for its note is left ou
   assert.equal(placed.length + dropped.length, 4)
   assert.deepEqual(logic.hintLayout([], view), { placed: [], dropped: [] })
 })
+
+test('a2aTrouble: a raw card or send error becomes one plain reason the profile can explain', () => {
+  const k = e => logic.a2aTrouble(e)
+  assert.equal(k(null), null)
+  assert.equal(k('unreachable: [Errno 8] nodename nor servname provided, or not known'), 'name')
+  assert.equal(k('<urlopen error [Errno -2] Name or service not known>'), 'name')
+  assert.equal(k('unreachable: [Errno 61] Connection refused'), 'down')
+  assert.equal(k('timeout'), 'down')
+  assert.equal(k('peer refused the call (403): token missing, wrong, or bound to another identity'), 'token')
+  assert.equal(k('HTTP 401'), 'token')
+  assert.equal(k('card at https://x.example/c.json answered 404'), 'nocard')
+  assert.equal(k('HTTP 404'), 'nocard')
+  assert.equal(k('HTTP 502'), 'server')
+  assert.equal(k('peer answered HTTP 500'), 'server')
+  assert.equal(k('Expecting value: line 1 column 1 (char 0)'), 'garbled')
+  assert.equal(k('peer needs a token and skills/secrets is not installed to resolve it'), 'secret')
+  assert.equal(k('something odd'), 'other')
+})
+
+test('a2aHost: the host of a card address, nothing for one that is not a URL', () => {
+  assert.equal(logic.a2aHost('https://box.tail0000.ts.net:8445/.well-known/agent-card.json'), 'box.tail0000.ts.net')
+  assert.equal(logic.a2aHost(null), null)
+  assert.equal(logic.a2aHost('not a url'), null)
+})

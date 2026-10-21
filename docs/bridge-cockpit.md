@@ -175,7 +175,7 @@ help, and a dot for the relay. Under it sits the page bar. In front stand the
 tabs of every day: "Start" (a new visit opens on it, a reload stays where it
 was), "Today" (the briefing), "Chat", then the profile's pages with the
 default `group: main` (Work and Operations in a typical profile). Behind them
-come Sessions, Background jobs, Other Bridges (A2A), Tidy up, Jev and every profile page
+come Sessions, Background jobs, A2A connections, Tidy up, Jev and every profile page
 with `group: more`. While the bar is wide enough every tab stands in it; when
 they would overflow, that second group folds, from the last tab forward,
 behind a last tab, "More", which carries the name of the page open behind it
@@ -1182,7 +1182,7 @@ still start it. In mock mode it stays closed unless the link carries `&tour=1`.
 stands: each area the page shows gets a numbered note beside it, a ring around it
 (an ellipse for a button or a chip, a frame for a row or a column) and an arrow from
 the note to the ring. Every page explains its own parts: Start, Today, Chat,
-Sessions, Background jobs, Other Bridges, Tidy up, Jev and Settings each have their
+Sessions, Background jobs, A2A connections, Tidy up, Jev and Settings each have their
 own list, and a page of the briefing profile explains the parts it is built from
 (the count beside its title, the overview tiles, the sorting bars, a section's
 head, its rows, the GitHub figures and boards, the quota gauges, the costs, the
@@ -1278,7 +1278,7 @@ nothing a stranger could trigger:
   output or thinking, scrubbed of the cockpit's key, in one call without tools;
   what comes back is shown as text and used only as button labels and the words
   a button types;
-- a Markdown answer (Chat, Other Bridges) is read into plain objects and drawn
+- a Markdown answer (Chat, A2A connections) is read into plain objects and drawn
   as elements, never parsed as HTML, so text in an answer cannot become markup
   or script; a link keeps only http, https and mailto and opens with
   `noopener` and no referrer;
@@ -1436,15 +1436,15 @@ Chat tab lists every kept chat (first question, when, model, cost) and opens
 one with its box ready; "As a tab" in the window moves the open chat there.
 
 **Markdown answers.** An answer in the Chat and an answer from another Bridge
-on the Other Bridges tab show as formatted text: headings, paragraphs, lists
+on the A2A connections tab show as formatted text: headings, paragraphs, lists
 (nested, numbered, ticked), code blocks, quotes, tables, bold, italic, strike,
 inline code and links. A link becomes clickable only when it is http, https
 or mailto; any other address stays plain text. Raw HTML in an answer is never
 markup, it shows as the characters it is (`scripts/web/markdown.js`, drawn by
 `views/prose.js`).
 
-**Other Bridges** (`scripts/lib/bridge_cockpit/agents.py`). Where `infra/a2a-peers/` holds
-a peer, the Other Bridges tab lists each with what its public agent card says (name,
+**A2A connections** (`scripts/lib/bridge_cockpit/agents.py`). Where `infra/a2a-peers/` holds
+a peer, the A2A connections tab lists each with what its public agent card says (name,
 skills, protocol version; fetched in the background, kept five minutes, never a
 token) and opens a conversation with it. A message goes out only on a click,
 as a question (as typed) or a task (wrapped with what is expected back),
@@ -1457,6 +1457,18 @@ without sending anything new. Conversations are kept in `agents.json` in the
 state dir, and one that leaves the list goes to the archive (see the Chat). Without a peer there is no tab. The quick chat's system text names
 `infra/a2a-peers/` too, so it can suggest asking an agent; it sends nothing
 itself.
+
+**When a card or a message fails.** An agent whose card cannot be read, or
+whose last message did not go out, says so in plain words instead of the raw
+error: which step failed (the card, or the last message), the reason (the
+address does not resolve, which on a tailnet usually means this machine is not
+in the owner's tailnet; nothing answers; the token is refused; no card at that
+address; a fault on the far side; not a card; the token is not set up here),
+and what to do about it, with the raw text folded away under "Detail". Without
+a card the profile still shows what the peer file knows: its summary, the card
+address, how it is reached and who owns it. "Check again" fetches every card
+anew, also one inside its five minutes (`/api/agents?fresh=1`); the line beside
+it says when the card was last checked.
 
 **Folding the list of agents.** The list of agents beside a conversation
 folds away with its button, so the conversation gets the whole width; the

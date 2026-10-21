@@ -149,8 +149,9 @@ class Agents:
             out[path.stem] = data
         return out
 
-    def refresh_cards(self, block: bool = False) -> None:
-        """Fetch the cards that are older than CARD_TTL, on a thread unless `block`."""
+    def refresh_cards(self, block: bool = False, force: bool = False) -> None:
+        """Fetch the cards that are older than CARD_TTL, on a thread unless `block`; `force` (the page's
+        "check again") fetches every card regardless of its age."""
         with self.lock:
             if self.refreshing:
                 return
@@ -162,7 +163,7 @@ class Agents:
                 for pid, peer in self.peers().items():
                     with self.lock:
                         old = self.cards.get(pid)
-                    if old and now - old["at"] < CARD_TTL:
+                    if old and not force and now - old["at"] < CARD_TTL:
                         continue
                     try:
                         card, err = summarize_card(self.fetch(peer["card_url"])), None
@@ -197,6 +198,8 @@ class Agents:
                 "usage": {"allowed": [str(x) for x in usage.get("allowed") or []][:6],
                           "human_gate": str(usage.get("human_gate") or "") or None},
                 "card": cached.get("card") or None, "card_error": cached.get("error"),
+                # the public address the card is fetched from, so an unreadable card can say where it looked
+                "card_url": str(peer.get("card_url") or "")[:300] or None,
                 "card_at_ms": int(cached["at"] * 1000) if cached.get("at") else None, "last_ms": last}
 
     def keep_hours(self) -> float:

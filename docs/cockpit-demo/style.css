@@ -1613,6 +1613,12 @@ kbd {
 .agent-skill-desc { margin: 0; font-size: var(--text-sm); color: var(--on-surface-muted); }
 .agent-skill-desc.is-clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .agent-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.agent-trouble { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--warning); border-radius: var(--radius-md); }
+.agent-trouble.is-danger { border-color: var(--danger); }
+.agent-trouble-hint { margin: 0; font-size: var(--text-sm); max-width: 72ch; }
+.agent-trouble-raw summary { cursor: pointer; }
+.agent-trouble-raw code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.agent-checked { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; }
 .agent-held { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--warning); border-radius: var(--radius-md); }
 .agent-held p { margin: 0; }
 

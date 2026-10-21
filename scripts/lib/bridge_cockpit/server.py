@@ -745,8 +745,9 @@ class Handler(BaseHTTPRequestHandler):
             # what the dashboard closed, dropped, settled or hid, newest first, each with its undo
             self.send_json(200, {"ok": True, "entries": app.history.state()})
         elif path == "/api/agents":
-            # the A2A peers with what their cards say (fetched in the background) and the conversations
-            app.agents.refresh_cards()
+            # the A2A peers with what their cards say (fetched in the background) and the conversations;
+            # fresh=1 is the page's "check again": every card is fetched, also one inside its CARD_TTL
+            app.agents.refresh_cards(force=one("fresh") == "1")
             self.send_json(200, {"ok": True, **app.agents.state()})
         elif path == "/api/workers":
             # the full worker view the Resources section keeps (scripts/bridge-resources.py workers), read only
