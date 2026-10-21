@@ -33,7 +33,9 @@ step 8) to `work/_learning/provenance/<name>.md`, created on first use. The
 record is instance data, so it lives under `work/`, never inside the (possibly
 CORE) skill folder; `SKILL.md` is never touched. `check --provenance` is the
 opt-in cross-check of those lines against the trail's implemented rows, in both
-directions.
+directions. A record still at the old path, `skills/<name>/references/
+provenance.md`, is named by both `record` (a warning) and `check --provenance`
+(a finding) with the path it belongs at; neither moves it.
 
 `fingerprint` stores `recurrence_fingerprint: <target.path>#<id without its
 date>` on an implemented proposal. `recurrences` lists implemented proposals
@@ -449,6 +451,14 @@ def provenance_file(root: Path, target_path: str) -> Path | None:
     return root / LEARNING / "provenance" / f"{parts[1]}.md"
 
 
+LEGACY_PROVENANCE_GLOB = "skills/*/references/provenance.md"
+
+
+def legacy_provenance_file(root: Path, record: Path) -> Path:
+    """The pre-move path of the record `record`, which may or may not exist."""
+    return root / "skills" / record.stem / "references" / "provenance.md"
+
+
 def append_provenance(root: Path, prop: Proposal, why: str) -> Path | None:
     if (prop.data.get("target") or {}).get("type") != "skill":
         return None
@@ -461,6 +471,10 @@ def append_provenance(root: Path, prop: Proposal, why: str) -> Path | None:
         text += "\n"
     line = f"- {datetime.now().strftime('%Y-%m-%d')} · {prop.id} · {why or '(no reason recorded)'}"
     record.write_text(text + line + "\n", encoding="utf-8")
+    legacy = legacy_provenance_file(root, record)
+    if legacy.is_file():
+        print(f"note: {legacy.relative_to(root)} is the old provenance path; move its lines "
+              f"to {record.relative_to(root)}", file=sys.stderr)
     return record
 
 
@@ -593,6 +607,11 @@ def build_provenance_check(root: Path) -> list[tuple[str, str]]:
         if pid not in implemented:
             problems.append((pid, f"{record.relative_to(root)} names it, but the audit "
                                   "trail has no implemented row (provenance)"))
+    for legacy in sorted(root.glob(LEGACY_PROVENANCE_GLOB)):
+        target = root / LEARNING / "provenance" / f"{legacy.parent.parent.name}.md"
+        problems.append((str(legacy.relative_to(root)),
+                         f"old provenance path; move its lines to "
+                         f"{target.relative_to(root)} (provenance)"))
     return problems
 
 

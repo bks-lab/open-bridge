@@ -512,7 +512,7 @@ def test_check_flags_a_hand_moved_proposal(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 
-def PROV(root: Path) -> Path:
+def prov_dir(root: Path) -> Path:
     """Instance provenance lives under work/, never in the skill folder."""
     return root / "work" / "_learning" / "provenance"
 
@@ -541,7 +541,7 @@ def test_implemented_skill_proposal_appends_one_provenance_line(tmp_path):
 
     assert ll.main(["--root", str(root), "record", "2026-01-02-demo-task-tighten-trigger",
                     "--to", "implemented"]) == 0
-    record = PROV(root) / "demo.md"
+    record = prov_dir(root) / "demo.md"
     lines = [l for l in record.read_text(encoding="utf-8").splitlines() if l.startswith("- ")]
     assert len(lines) == 1
     import re
@@ -560,7 +560,7 @@ def test_a_second_implemented_proposal_appends_a_second_line(tmp_path):
                                          reason="added a worked example")
     assert ll.main(["--root", str(root), "record", "2026-01-09-other-task-add-example",
                     "--to", "implemented"]) == 0
-    text = (PROV(root) / "demo.md").read_text(encoding="utf-8")
+    text = (prov_dir(root) / "demo.md").read_text(encoding="utf-8")
     assert len([l for l in text.splitlines() if l.startswith("- ")]) == 2
 
 
@@ -592,30 +592,67 @@ def test_check_provenance_flags_both_directions(tmp_path, capsys):
     _skill_accept_to_implemented(root)
     assert ll.main(["--root", str(root), "record", "2026-01-02-demo-task-tighten-trigger",
                     "--to", "implemented"]) == 0
-    record = PROV(root) / "demo.md"
+    record = prov_dir(root) / "demo.md"
     # trail row without a line: remove the line
     record.write_text("# Provenance\n", encoding="utf-8")
     # a line without a trail row
-    other = PROV(root)
+    other = prov_dir(root)
     other.mkdir(parents=True, exist_ok=True)
     (other / "other.md").write_text("- 2026-01-03 · 2026-01-03-x-task-ghost · why\n",
-                                         encoding="utf-8")
+                                    encoding="utf-8")
 
     capsys.readouterr()
     assert ll.main(["--root", str(root), "check", "--provenance"]) == 1
     out = capsys.readouterr().out
     assert "2026-01-02-demo-task-tighten-trigger" in out and "provenance" in out
     assert "2026-01-03-x-task-ghost" in out
-    assert (PROV(root) / "demo.md").read_text(
-        encoding="utf-8") == "# Provenance\n", "check never edits"
+    assert (prov_dir(root) / "demo.md").read_text(encoding="utf-8") == "# Provenance\n", \
+        "check never edits"
+
+
+def _legacy_record(root: Path, skill="demo") -> Path:
+    """A record at the pre-move path, as an instance that used it still has."""
+    legacy = root / "skills" / skill / "references" / "provenance.md"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text("# Provenance\n\n- 2026-01-01 · 2026-01-01-old-task-x · why\n",
+                      encoding="utf-8")
+    return legacy
+
+
+def test_check_provenance_names_a_record_left_in_the_skill_folder(tmp_path, capsys):
+    root = bridge_root(tmp_path)
+    legacy = _legacy_record(root)
+    before = legacy.read_text(encoding="utf-8")
+
+    capsys.readouterr()
+    assert ll.main(["--root", str(root), "check", "--provenance"]) == 1
+    out = capsys.readouterr().out
+    assert "skills/demo/references/provenance.md" in out
+    assert "work/_learning/provenance/demo.md" in out
+    assert legacy.read_text(encoding="utf-8") == before, "check never moves"
+
+
+def test_record_warns_when_the_skill_still_has_an_old_record(tmp_path, capsys):
+    root = bridge_root(tmp_path)
+    legacy = _legacy_record(root)
+    _skill_accept_to_implemented(root)
+
+    capsys.readouterr()
+    assert ll.main(["--root", str(root), "record", "2026-01-02-demo-task-tighten-trigger",
+                    "--to", "implemented"]) == 0
+    err = capsys.readouterr().err
+    assert "skills/demo/references/provenance.md" in err
+    assert "work/_learning/provenance/demo.md" in err
+    assert (prov_dir(root) / "demo.md").is_file()
+    assert "2026-01-01-old-task-x" in legacy.read_text(encoding="utf-8"), "record never moves"
 
 
 def test_check_without_the_flag_ignores_provenance(tmp_path):
     root = bridge_root(tmp_path)
-    other = PROV(root)
+    other = prov_dir(root)
     other.mkdir(parents=True, exist_ok=True)
     (other / "other.md").write_text("- 2026-01-03 · 2026-01-03-x-task-ghost · why\n",
-                                         encoding="utf-8")
+                                    encoding="utf-8")
     assert ll.main(["--root", str(root), "check"]) == 0
 
 
@@ -663,7 +700,7 @@ def test_a_repeated_implemented_record_keeps_the_first_commit_and_one_provenance
     assert ll.main(["--root", str(root), "record", "2026-01-02-demo-task-tighten-trigger",
                     "--to", "implemented"]) == 2
     assert frontmatter(path)["implemented_commit"] == first
-    text = (PROV(root) / "demo.md").read_text(encoding="utf-8")
+    text = (prov_dir(root) / "demo.md").read_text(encoding="utf-8")
     assert len([l for l in text.splitlines() if l.startswith("- ")]) == 1
 
 
@@ -797,7 +834,7 @@ def test_provenance_why_falls_back_to_the_proposal_body(tmp_path):
     skill = _skill_accept_to_implemented(root, reason="")
     assert ll.main(["--root", str(root), "record", "2026-01-02-demo-task-tighten-trigger",
                     "--to", "implemented"]) == 0
-    text = (PROV(root) / "demo.md").read_text(encoding="utf-8")
+    text = (prov_dir(root) / "demo.md").read_text(encoding="utf-8")
     assert "· Body." in text and "(no reason recorded)" not in text
 
 

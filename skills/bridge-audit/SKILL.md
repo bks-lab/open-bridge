@@ -132,9 +132,10 @@ audit never repairs them: `/bridge-learn` owns those files. Exit 0 means no
 finding.
 
 Optional, off by default: `learning-ledger.py check --provenance` also compares
-each skill's `work/_learning/provenance/<skill>.md` with the trail's implemented rows, both
-ways. Run it only when asked; it starts opt-in because the convention starts
-at zero adoption. Report its lines as P3.
+each skill's `work/_learning/provenance/<skill>.md` with the trail's
+implemented rows, both ways, and names a record still at the old in-skill path.
+Run it only when asked; it starts opt-in because the convention starts at zero
+adoption. Report its lines as P3.
 
 ## Recurring-findings auto-proposal (Phase 3)
 

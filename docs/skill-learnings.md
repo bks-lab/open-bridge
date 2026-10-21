@@ -22,9 +22,16 @@ heavy for "note this before it is forgotten".
 inside a `scope: core` skill folder, so it never promotes or syncs upstream
 (`scripts/categorize-commits.py` and the pre-push guard both treat
 `skills/*/LEARNINGS.md` as USER; the provenance record lives under
-`work/_learning/provenance/`, USER by folder). A
-lesson reaches other instances only by maturing into `references/`, which
-ships with the skill's tier.
+`work/_learning/provenance/`, USER by folder). A lesson reaches other
+instances only by maturing into `references/`, which ships with the skill's
+tier.
+
+**Moving an old provenance record.** Earlier versions wrote the record to
+`skills/<skill>/references/provenance.md`. An instance that still has one
+moves it with `git mv skills/<skill>/references/provenance.md
+work/_learning/provenance/<skill>.md`; the lines keep their format. Until then
+`learning-ledger.py record` warns and `check --provenance` reports the file
+with its new path.
 
 The convention is **opt-in per skill.** A skill without a journal is not in
 violation. A convention that sits empty in a hundred places is worse than none.
