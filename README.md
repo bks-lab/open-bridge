@@ -221,6 +221,6 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). Contribute from your private instance,
 
 ## License, trademark, acknowledgments
 
-Code and content are [MIT](LICENSE). A separate [trademark policy](TRADEMARK.md) covers the name `BKS open-bridge` and the logo, because licenses cover copyright, not brands. Copyright (c) 2026 BKS-Lab (Boiman Kupermann Solutions GmbH) and Contributors. Provided as-is, without warranty.
+Code and content are [MIT](LICENSE). A separate [trademark policy](TRADEMARK.md) covers the name `BKS open-bridge` and the logo, because licenses cover copyright, not brands. Copyright (c) 2026 BKS Lab GmbH and Contributors. Provided as-is, without warranty.
 
 BKS open-bridge draws on a large body of public work; named inspirations are in [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).

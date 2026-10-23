@@ -10,7 +10,7 @@ This policy explains what is permitted and what is not.
 ## Trademarks owned by the project
 
 The following names, marks, and identifiers are trademarks of
-**BKS-Lab (Boiman Kupermann Solutions GmbH)** (collectively, "the Marks"):
+**BKS Lab GmbH** (collectively, "the Marks"):
 
 - `open-bridge`, `OpenBridge`
 - `BKS-Lab`, `BKS`
