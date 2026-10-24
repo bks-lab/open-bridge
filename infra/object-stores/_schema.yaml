@@ -22,7 +22,7 @@
 #   # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/object-store.yaml"
+$id: "urn:open-bridge:schema:object-store"
 title: ObjectStore
 description: |
   One place content that is not configuration lives, with the placement policy

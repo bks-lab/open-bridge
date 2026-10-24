@@ -23,7 +23,7 @@
 # Related: docs/schemas/overlay-manifest.schema.yaml (the source manifest)
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/overlays-lock.yaml"
+$id: "urn:open-bridge:schema:overlays-lock"
 title: Overlays Lock
 description: |
   Generated lockfile recording every applied overlay — its resolved git SHA,

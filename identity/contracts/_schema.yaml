@@ -20,7 +20,7 @@
 #   # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/contract.yaml"
+$id: "urn:open-bridge:schema:contract"
 title: Contract
 description: |
   Recurring financial obligation. Carries provider, term, pricing,

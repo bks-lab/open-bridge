@@ -16,7 +16,7 @@
 #   # yaml-language-server: $schema=./docs/schemas/context-budget.schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/context-budget.yaml"
+$id: "urn:open-bridge:schema:context-budget"
 title: Context Budget
 description: |
   Per-item ceilings on the text every session loads before it answers: the

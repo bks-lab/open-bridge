@@ -1,7 +1,7 @@
 ---
 summary: "File-based memory model — one fact per file, MEMORY.md as a lean index"
 type: guide
-last_updated: 2026-09-25
+last_updated: 2026-10-24
 related:
   - ../rules/knowledge-growth.md
   - ../rules/operations.md
@@ -262,11 +262,55 @@ python3 scripts/memory-location.py links --json
 It reads the local disk only, no network call, and exits 0: a dead link is a
 count to watch, not an error.
 
+## Coverage
+
+A fact only works if a session can find it. The harness loads `MEMORY.md` and
+nothing else, so a fact file that no index line names exists on disk and is
+never recalled. It still costs: it shows up in searches, it can contradict a
+live fact, and nobody notices it went stale.
+
+A fact counts as **reachable** when `MEMORY.md` or `MEMORY-ARCHIVE.md` links
+it (a `#section` anchor or a `"title"` after the target still counts), or when
+a `[[wikilink]]` in a reachable file names its file stem or `name:` slug
+(`|alias` and `#section` are ignored, and a stem wins over another fact's
+slug). The walk is transitive: a fact the archive links can hand on to another
+through a wikilink, and a wikilink from a fact nobody reaches reaches nothing.
+Files whose stem has letters and all of them uppercase (`MEMORY.md`,
+`MEMORY-ARCHIVE.md`, `README.md`, `PROVENANCE.md`) are about the memory base,
+not facts in it, and are skipped. A memory base with facts but no `MEMORY.md`
+reports every fact, since nothing loads them.
+
+```bash
+python3 scripts/memory-location.py check            # lint, plus a warning per unreachable fact
+python3 scripts/memory-location.py check --strict   # the same, and exit 1 while any remain
+```
+
+By default an unreachable fact is a **warning**: the list and a count go to
+stderr and the exit code stays whatever the index lint decides. A memory base
+that grew for months before this check existed can carry dozens of orphans,
+and turning that backlog into a failing exit at once would bury the index-lint
+findings that matter more and break any script that already gates on `check`.
+`--strict` is for an instance that has cleaned up and wants to stay clean.
+
+**Cleaning up**, one orphan at a time, picks one of four homes:
+
+- **Still true and worth recalling:** add an index line, or a `[[wikilink]]`
+  from the fact it belongs next to.
+- **Cold or closed:** an archive line in `MEMORY-ARCHIVE.md`, so a grep still
+  finds it (never for a guardrail, see [Discipline](#discipline-prune-dont-accumulate)).
+- **Routing or inventory** (which host, which board, which path): the fact
+  belongs in the matching YAML under the cluster wrappers, where a skill reads
+  it, per [`../rules/knowledge-growth.md`](../rules/knowledge-growth.md). Move
+  it there, then delete the file.
+- **Wrong, obsolete or a duplicate:** delete it.
+
 ## Enforcement
 
 The ≤120-char index-line cap and the 200-line/25 KB load limit are checked by
 `python3 scripts/memory-location.py check`, which `bridge-audit`'s memory pass
 runs against whichever directory the memory base actually resolves to
-(in-repo or legacy). The same pass runs `links` and reports the unresolved
-count (see [Retention](#retention)). Treat the audit as the backstop, not a substitute for
+(in-repo or legacy). The same `check` reports unreachable facts
+([Coverage](#coverage)), and the audit turns that count into one finding. The
+pass also runs `links` and reports the unresolved count (see
+[Retention](#retention)). Treat the audit as the backstop, not a substitute for
 keeping lines lean as you write them.

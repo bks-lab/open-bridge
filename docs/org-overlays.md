@@ -174,14 +174,19 @@ The source contract above is a **flat mirror**: `tree/` plus a manifest, read by
 - **Build the mirror with [`scripts/overlay-export.py`](../scripts/overlay-export.py).**
   It copies every file the router classifies into one tier to `tree/<path>`,
   prunes mirror files that left the tier, and regenerates the manifest's
-  `files[]`. It never writes into your Bridge.
+  `files[]`. It never writes into your Bridge. It prunes only what your Bridge
+  once owned, meaning its git history holds the path and the export did not
+  skip it on purpose. A mirror file under a folder the export skips
+  (gitignored, `.git/info/exclude`, `never_promote`, its own exclusions), or
+  one your history never had (a colleague added it to `tree/` directly), is
+  listed as `foreign, kept` and deleted only with `--prune-foreign`.
 
 The authoring loop, run from the Bridge that owns the content:
 
 1. **Pull colleagues' work back first.** A teammate's PR against `tree/` lands
    only in the overlay. The next export rewrites `tree/` from your live files,
-   so a change that is not in your Bridge by then is overwritten, and a file
-   that is not in your tier is pruned. Read the overlay's own history, which
+   so a change that is not in your Bridge by then is overwritten, and a new
+   file stays behind as `foreign, kept` until somebody decides. Read the overlay's own history, which
    works whether or not this Bridge subscribes to the overlay: with `<last>`
    the overlay commit your previous export landed as,
    `git -C <overlay checkout> log --oneline <last>..HEAD -- tree/` lists what
@@ -192,8 +197,9 @@ The authoring loop, run from the Bridge that owns the content:
    second view of the same drift; a source Bridge that does not subscribe gets
    nothing from it, which is not the same as nothing to pull back.
 2. **Preview:** `python3 scripts/overlay-export.py --target <overlay checkout>
-   --scope org --dry-run` lists every `+ tree/...` copy and `- tree/...` prune.
-   An unexpected prune is usually step 1 not done.
+   --scope org --dry-run` lists every `+ tree/...` copy, `- tree/...` prune
+   and `~ tree/...` foreign file. An unexpected prune is usually step 1 not
+   done; a foreign file is step 1 still to do.
 3. **Export** with the same command minus `--dry-run`, review
    `git -C <overlay checkout> diff`, run the leak gate, and open the PR in the
    overlay repo.
@@ -495,7 +501,12 @@ load-bearing order, condensed:
 13. **Ecosystem fragment**: `ecosystem.<org>.yaml` goes through Steps 4 to 12
     like any managed file (lock entry, 3-way merge on a local edit, listed by
     `diff`), copied verbatim from the overlay root; then idempotently ensure its
-    `@import` line in `CLAUDE.md`. Never block-merge.
+    `@import` line in `CLAUDE.md`, unless `context-budget.yaml` or
+    `context-budget.user.yaml` declares the fragment as a Phase 1 `card:`
+    ([`docs/context-index.md`](context-index.md)). Then the run prints
+    `indexed, not imported: <fragment>` and adds no import, since an import
+    next to a card is what `measure-context.py` reports as a contradiction.
+    Never block-merge.
 14. **Prune** files in the lock but absent from the new plan (delete if clean,
     prompt if modified).
 15. **Write the lockfile** (resolved SHA, manifest digest, timestamp, per-file

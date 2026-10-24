@@ -23,6 +23,9 @@ Each Worklog row uses the ONE frozen format `| YYYY-MM-DD HH:MM | glyph | contex
 
 Replace every {placeholder}: {CW}, {DATE_FROM}, {DATE_TO}, the Active
 Focus areas, and today's day-block header (`date '+%a %d.%m'`).
+
+No TODO block, rolling or otherwise: an open point is filed with
+`python3 scripts/inbox.py add` (docs/inbox.md), where something closes it.
 -->
 
 # Week {CW} — {DATE_FROM} to {DATE_TO}

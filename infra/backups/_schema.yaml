@@ -14,7 +14,7 @@
 # IDE support: add to topology.yaml:  # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/backup-topology.yaml"
+$id: "urn:open-bridge:schema:backup-topology"
 title: Bridge Backup Topology
 description: |
   Backup topology — sources × targets × pipelines. Pure config in git;

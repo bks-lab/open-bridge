@@ -44,3 +44,62 @@ class BridgeCase(unittest.TestCase):
         kw.setdefault("subject", "Hello")
         kw.setdefault("body", "Body text.")
         return build(Request(**kw), self.cfg())
+
+
+class FakeMail:
+    """A stand-in for `subprocess.run` under engine.clients that answers by WHICH
+    script runs, so a test can script a whole conversation with Mail (find the
+    original, create the reply, read Drafts back) without Mail.
+
+    `answers` maps a script kind to its answers in order; the last one repeats.
+    Kinds: find, reply, create, verify, dedupe. An answer is stdout text, a
+    (returncode, stdout, stderr) tuple, or an exception to raise (a timeout).
+    Every call is kept in `calls` as (kind, argv, script) so a test can check
+    what travelled where.
+    """
+
+    def __init__(self, **answers):
+        self.answers = {k: list(v) if isinstance(v, list) else [v] for k, v in answers.items()}
+        self.calls: list[tuple[str, list, str]] = []
+
+    @staticmethod
+    def kind(script: str) -> str:
+        for marker, kind in (("-- mail-draft:find", "find"), ("-- mail-draft:reply", "reply"),
+                             ("make new outgoing message", "create"), ("delete m", "dedupe")):
+            if marker in script:
+                return kind
+        return "verify"
+
+    def __call__(self, cmd, **kw):
+        import subprocess
+        script = kw.get("input", "")
+        kind = self.kind(script)
+        self.calls.append((kind, list(cmd), script))
+        queue = self.answers.get(kind) or [""]
+        out = queue.pop(0) if len(queue) > 1 else queue[0]
+        if isinstance(out, BaseException):
+            raise out
+        if isinstance(out, tuple):
+            return subprocess.CompletedProcess(cmd, *out)
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+
+    def ran(self, kind: str) -> list[tuple[list, str]]:
+        return [(argv, script) for k, argv, script in self.calls if k == kind]
+
+
+def saved_draft(text: str, html: str = "", attachments: tuple[str, ...] = (),
+                sender: str = "alex@example.com", subject: str = "Re: Plans",
+                to: str = "Pat Example <pat@example.org>", cc: str = "") -> str:
+    """The `source` of a saved draft as Mail would hand it back."""
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["From"], msg["Subject"], msg["To"] = sender, subject, to
+    if cc:
+        msg["Cc"] = cc
+    msg["In-Reply-To"] = "<orig-1@example.org>"
+    msg.set_content(text)
+    if html:
+        msg.add_alternative(html, subtype="html")
+    for name in attachments:
+        msg.add_attachment(b"%PDF-1.4", maintype="application", subtype="pdf", filename=name)
+    return msg.as_string()

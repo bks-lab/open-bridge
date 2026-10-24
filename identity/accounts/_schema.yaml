@@ -18,7 +18,7 @@
 # Companion: _template.yaml (mail/calendar example to copy).
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/account.yaml"
+$id: "urn:open-bridge:schema:account"
 title: Account
 description: |
   A cloud/mail/calendar account inventory entry — access method, owner,

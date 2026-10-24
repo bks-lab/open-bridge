@@ -22,7 +22,7 @@
 # Model and examples: docs/mail-draft.md.
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/mail-profile.yaml"
+$id: "urn:open-bridge:schema:mail-profile"
 title: Mail profile
 description: One occasion for writing mail, and how a draft for it is built.
 
@@ -159,16 +159,20 @@ properties:
     additionalProperties: {type: string}
     description: "Extra badge words mapped to a built-in one, e.g. {finished: done}."
   heading_styles:
-    type: object
-    additionalProperties: false
-    properties:
-      callout: {type: array, items: {type: string, minLength: 1}}
-      warning: {type: array, items: {type: string, minLength: 1}}
+    oneOf:
+      - type: object
+        additionalProperties: false
+        properties:
+          callout: {type: array, items: {type: string, minLength: 1}}
+          warning: {type: array, items: {type: string, minLength: 1}}
+      - {const: false}
     description: |
       Words that dress a `##` heading: one in `callout` puts the heading on the
       accent fill ("Summary"), one in `warning` gives it the warning edge
       ("Blocked"). Whole words, any case; merged over bridge-config.yaml
-      `mail.heading_styles`.
+      `mail.heading_styles`. `false` switches them off for this occasion,
+      including the configured ones (an empty map would merge over them). The
+      `plain` theme never dresses a heading, so it needs no `false`.
   link_aliases:
     type: object
     propertyNames: {pattern: "^[a-z][a-z0-9_-]*:[A-Za-z0-9_][A-Za-z0-9_./#-]*$"}

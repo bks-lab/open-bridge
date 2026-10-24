@@ -25,7 +25,7 @@
 #          workflow/workspaces/_template.yaml (authoring template)
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/workspace.yaml"
+$id: "urn:open-bridge:schema:workspace"
 title: Workspace
 description: |
   A workspace definition — its slug identity, human label, optional working

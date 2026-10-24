@@ -17,7 +17,7 @@
 # the script collected. Model: docs/briefings.md.
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/briefing.yaml"
+$id: "urn:open-bridge:schema:briefing"
 title: Briefing profile
 description: One briefing a person can ask for, as an ordered list of sections.
 

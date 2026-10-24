@@ -1755,3 +1755,45 @@ test('the focus ends in the same bar the lists have: where you stand, Next, and 
   assert.equal(end.$('.next-up-text').text(), en.nextDone)
   assert.equal(mount(html`<${HomeFocusView} s=${s} c=${recorder()} />`).$('.fx-nav'), null, 'no buttons of its own beside the bar')
 })
+
+// ---------------------------------------------------------------- GitHub boards: hidden on the page, chosen in the settings
+
+const { GitHubBoard, BoardSettings } = views.github
+
+function ghSection(s) {
+  return s.model.pages.flatMap(p => p.sections ?? []).find(x => x.boards?.length)
+}
+
+test('github boards: a board switched off leaves the page, one line names it and opens the settings', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const section = ghSection(s)
+  const el = mount(html`<${GitHubBoard} section=${section} filter=${null} setFilter=${() => {}} c=${c} s=${s} />`)
+  assert.deepEqual(el.$$('.ghb-board-name').map(x => x.text()), ['Demo board', 'Docs board'])
+  const line = el.$('.ghb-hidden')
+  assert.match(line.text(), /Old roadmap/)
+  line.$('button').click()
+  assert.deepEqual(c.calls.at(-1), ['openSettings', 'boards'])
+})
+
+test('github boards: the settings list every board, the hidden ones too, and the default for new boards', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const section = ghSection(s)
+  const el = mount(html`<${BoardSettings} s=${s} c=${c} />`)
+  assert.deepEqual(el.$$('.board-set-name').map(x => x.text()), ['Demo board', 'Docs board', 'Old roadmap'])
+  const rows = el.$$('.board-set-row')
+  rows[2].$$('button').find(b => b.text() === en.gh.mode.mine).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'github_board', { section: section.id, slug: 'old-roadmap', mode: 'mine' }])
+  const fresh = el.$('.board-set-default')
+  assert.deepEqual(labels(fresh), [en.gh.defaultMode.profile, en.gh.mode.off, en.gh.mode.mine, en.gh.mode.all])
+  fresh.$$('button').find(b => b.text() === en.gh.mode.off).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'github_board_default', { mode: 'off' }])
+})
+
+test('github boards: without a GitHub section the settings say where boards come from', () => {
+  const s = cockpitState(NOW)
+  s.model = { ...s.model, pages: [] }
+  const el = mount(html`<${BoardSettings} s=${s} c=${recorder()} />`)
+  assert.match(el.text(), new RegExp(en.gh.noBoards.slice(0, 20)))
+})

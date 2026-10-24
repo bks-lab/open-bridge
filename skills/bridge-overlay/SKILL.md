@@ -123,7 +123,9 @@ conflict/precedence model, and 3-way base recovery live in `references/workflow.
    working tree. It never pushes your branch anywhere and never opens a PR.
 7. **Never auto-merge config.** The ecosystem fragment is wired as an
    idempotent `@ecosystem.<org>.yaml` `@import` line — never block-merged into
-   `ecosystem.yaml`. No config file is structurally merged. The fragment itself
+   `ecosystem.yaml`. A fragment the context budget declares as a Phase 1
+   `card:` is indexed instead and gets no `@import` (`indexed, not imported`).
+   No config file is structurally merged. The fragment itself
    is a managed file like any other: in the lock, 3-way merged on a local edit,
    listed by `diff`, deleted by `remove` only while clean.
 8. **Exclude the managed dests from git — by default.** At materialize, the

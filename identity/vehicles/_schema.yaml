@@ -25,7 +25,7 @@
 #   # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/vehicle.yaml"
+$id: "urn:open-bridge:schema:vehicle"
 title: Vehicle
 description: |
   A vehicle the user owns or leases. Carries identification, tax

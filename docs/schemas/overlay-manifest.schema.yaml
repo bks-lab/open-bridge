@@ -21,7 +21,7 @@
 # Related: docs/schemas/overlays-lock.schema.yaml (the generated lockfile)
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/overlay-manifest.yaml"
+$id: "urn:open-bridge:schema:overlay-manifest"
 title: Overlay Manifest
 description: |
   Root declaration of an org-overlay repository — overlay identity, mirror

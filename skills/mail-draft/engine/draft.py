@@ -43,6 +43,9 @@ class Request:
     greeting: bool = True
     recipient_name: str = ""
     today: dt.date | None = None
+    # A reply keeps the subject it was given (no profile template around
+    # "Re: ...") and has no masthead: the quote below it is the context.
+    reply: bool = False
 
 
 @dataclass
@@ -231,7 +234,8 @@ def build(req: Request, cfg: MailConfig) -> Draft:
     if req.recipient_name and single:
         ctx["first_name"] = req.recipient_name.split()[0]
 
-    d.subject = _fill(str(profile.get("subject") or "{subject}"), ctx).strip()
+    template = "{subject}" if req.reply else str(profile.get("subject") or "{subject}")
+    d.subject = _fill(template, ctx).strip()
 
     # words: snippets, greeting, sign-off
     snippets = profile.get("snippets") or {}
@@ -271,14 +275,20 @@ def build(req: Request, cfg: MailConfig) -> Draft:
     d.decisions += [f"theme {theme_name}: {n}" for n in t.notes]
     labels = {**(cfg.get("labels") or {}), **(profile.get("labels") or {})}
     aliases = {**(cfg.get("badge_aliases") or {}), **(profile.get("badge_aliases") or {})}
-    styles = {**(cfg.get("heading_styles") or {}), **(profile.get("heading_styles") or {})}
+    if profile.get("heading_styles") is False:
+        # `heading_styles: false` switches the configured words off for this
+        # occasion; an empty map could not, it merges over mail.heading_styles.
+        styles = {}
+        d.decisions.append(f"heading styles off: profile {d.profile_id}")
+    else:
+        styles = {**(cfg.get("heading_styles") or {}), **(profile.get("heading_styles") or {})}
     content = Renderer(t, labels, aliases, styles).render(body)
     recipient_for_links = ctx["first_name"]
     if fcfg:
         content += footer_mod.render_html(fcfg, t, recipient_for_links, informal, today)
     elif signature:
         content += footer_mod.render_signature_html(signature, t)
-    masthead = profile.get("masthead", t.get("card"))
+    masthead = False if req.reply else profile.get("masthead", t.get("card"))
     eyebrow = str(profile.get("eyebrow") or cfg.get("eyebrow") or "")
     preheader = _fill(req.preheader or str(profile.get("preheader") or ""), ctx)
     d.content = content

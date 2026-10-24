@@ -216,6 +216,13 @@ jobs:
       - name: Every internal link on the site resolves
         run: python3 scripts/check-site-links.py
 
+      # No build step, so the site's house rules are checked instead: canonical
+      # link and sitemap entry per page, robots and 404, og:locale on the
+      # bilingual pages, the palette equal to DESIGN.md `site:`, and no schema
+      # $id pointing at a Pages address with no file behind it.
+      - name: The site stands on the repo's rules
+        run: python3 scripts/check-site-basics.py
+
       # Refuses an order that defers without a trigger or without a summary.
       # Such a file reads as enforced in the tree and loads in no session, which
       # is a worse failure than the cost the contract removes.

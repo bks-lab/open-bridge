@@ -17,7 +17,7 @@
 # Related: trackers/README.md (normalized item schema), trackers/<tracker>.md
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/project.yaml"
+$id: "urn:open-bridge:schema:project"
 title: Project
 description: |
   Per-board configuration consumed by github-projects-manager (execution

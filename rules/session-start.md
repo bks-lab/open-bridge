@@ -296,7 +296,7 @@ claim on a public or unknown origin):
 |---|---|
 | **[1]** show me around | `cd examples/agency` + **restart the agent** (that folder's CLAUDE.md puts the runtime into a sandbox demo whose writes stay inside that folder — a live board with a P1 incident; it is cwd-scoped, so a restart there is required, not an in-chat branch). One person with several hats (company, freelance, private) plus a home server? Offer `examples/portfolio` instead, same restart. Exit-ramp loops back to [2]/[3]. |
 | **[2]** describe-purpose | `/bridge-onboard` → collapsed Phase A: the sentence becomes `purpose.statement` verbatim, identity auto-defaults, protection pre-flight, a confirm-back screen, then seed a first task + a **live** `/briefing`. **If the sentence names a resource** — a machine/device to dedicate, or several repos — the wizard connects it to what it unlocks (Phase A step 10 offer-advisory / step 9 workspace); this is confined-safe (derived from your words, not a scan). |
-| **[3]** make it private | the origin/private-home pre-flight (`rules/push-guard.md` § Remediation) — the guard is already armed; on a public/unknown origin, re-home to a private repo first, then hand back to [2]. |
+| **[3]** make it private | the private-home pre-flight; the guard is already armed. On a public/unknown origin there is one path, the re-home in `rules/push-guard.md` § Remediation: `git remote rename origin upstream`, a new private repo as `origin`, the slug-matched `.bridge-origin` written and committed, then the first push. Never suggest GitHub's template button (its fresh history breaks `git merge upstream/main`). Then hand back to [2]. |
 | **[4]** workspace / org | `skills/workspace` (`workspace create` + `subscribe … --role code`) or, for a shared org config, `skills/bridge-overlay` (`/overlay add <git-url>`) — runs a trimmed Phase A first if not yet onboarded. |
 | **[n]** not now | acknowledge in one line, stay CORE-only; the guard is already armed, so leaving is safe; the door reopens next session. |
 
@@ -304,6 +304,11 @@ Once a purpose is set (Phase A), later session greetings echo it back ("This
 Bridge is for {statement}"). On tools without a Skill tool, "route into
 `/bridge-onboard`" means: read `skills/bridge-onboard/SKILL.md`, follow its
 decision tree to `references/workflow.md`, and run the phases inline.
+
+While the wizard runs, explain the CORE/USER split, ecosystem versus cluster
+wrappers, and sub-agents as they come up, not up front. The goal is a running
+Bridge in about five minutes; afterwards point at
+[`docs/feature-tour.md`](../docs/feature-tour.md) for filling the folders.
 
 The same spirit — human sentence first, then the actionable choice —
 applies to the other non-NORMAL states (WRONG BRANCH, ORPHAN STATE,

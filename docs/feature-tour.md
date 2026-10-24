@@ -1,7 +1,7 @@
 ---
 summary: "Per-family guide: fill the identity/, infra/ and workflow/ folders on demand after onboarding."
 type: guide
-last_updated: 2026-09-24
+last_updated: 2026-10-24
 related:
   - structure.md
   - extension-model.md
@@ -24,8 +24,8 @@ Onboarding captures that purpose as a one-line north-star (`bridge-config.yaml`
 It only ORDERS what surfaces first. It never gates or hides a family, so every
 section below is available whenever you reach for it.
 
-This doc is the per-family "create your first X" guide, covering all 19
-families in [`AGENTS.md` § Layout](../AGENTS.md). Each section is
+This doc is the per-family "create your first X" guide, one section for
+every family in [`AGENTS.md` § Layout](../AGENTS.md). Each section is
 self-contained. Skim the index, jump to what you need, ignore the rest.
 
 ## Index
@@ -38,6 +38,7 @@ self-contained. Skim the index, jump to what you need, ignore the rest.
 | identity | [contracts](#identitycontracts) | a recurring obligation: utility, telco, insurance, SaaS |
 | identity | [vehicles](#identityvehicles) | a vehicle you own or lease: plate, VIN, the persona that bears it |
 | identity | [agent](#identityagent) | this orchestrator's own name, role and voice |
+| identity | [mail-footers](#identitymail-footers) | how an outgoing mail is signed |
 | infra | [remotes](#infraremotes) | physical or virtual machines, SSH, Wake-on-LAN, services |
 | infra | [channels](#infrachannels) | iMessage, email, Telegram, voice: outbound transports |
 | infra | [backups](#infrabackups) | sources × targets × pipelines, scheduled or continuous |
@@ -45,11 +46,16 @@ self-contained. Skim the index, jump to what you need, ignore the rest.
 | infra | [transcriptions](#infratranscriptions) | where the meeting-transcription pipeline runs |
 | infra | [secret-stores](#infrasecret-stores) | where a secret lives, who reaches it, which kind belongs in it |
 | infra | [object-stores](#infraobject-stores) | where content that is not configuration lives: recordings, documents, exports |
+| infra | [a2a-peers](#infraa2a-peers) | an A2A agent this Bridge may ask: card, auth, token reference |
 | infra | [utilities](#infrautilities) | a supply contract at a location: power, gas, water, heat |
+| workflow | [briefings](#workflowbriefings) | what a briefing shows, from which trackers |
+| workflow | [mail-profiles](#workflowmail-profiles) | one occasion for writing mail: footer, theme, greeting |
 | workflow | [calendars](#workflowcalendars) | scheduled outbound: emails, reports, digests, with recipients |
+| workflow | [meetings](#workflowmeetings) | a recurring meeting series: cadence, folders, protocol target |
 | workflow | [contexts](#workflowcontexts) | per-domain routing rules (document intake, mail attachments) |
 | workflow | [projects](#workflowprojects) | GitHub/ADO project-board configs (fields, governance) |
 | workflow | [workloads](#workflowworkloads) | one declared run on one machine: report, poller, daemon, watcher, agent |
+| workflow | [ai-services](#workflowai-services) | which AI CLI a service or worker uses (default Claude) |
 | workflow | [workspaces](#workflowworkspaces) | a named binding of repos and config overlays |
 
 Validation note: `scripts/validate-bridge.py` validates instances against
@@ -166,6 +172,24 @@ the live files stay on your `user/*` branch and never promote.
 `/bridge-audit`.
 
 Full doc: [`identity/agent/README.md`](../identity/agent/README.md).
+
+---
+
+## identity/mail-footers/
+
+Who wrote a mail and how to reach them: role, organisation, website, links,
+in one of four styles (`card`, `compact`, `minimal`, `text`). Keep several, a
+full one for first contact and a compact one for replies. Name, email and
+phone come from the persona in `persona_ref` unless set here. No images:
+text renders in every client.
+
+**Create:** `cp identity/mail-footers/_template.yaml identity/mail-footers/<id>.yaml`
+
+**Schema:** `identity/mail-footers/_schema.yaml`.
+
+**Used by:** the `mail-draft` skill (`mail-draft.sh signature <id>` previews
+one). A profile in [`workflow/mail-profiles/`](#workflowmail-profiles) picks
+the footer. Full doc: [`docs/mail-draft.md`](mail-draft.md).
 
 ---
 
@@ -304,6 +328,23 @@ never values.
 
 Full doc: [`docs/object-store.md`](object-store.md).
 
+## infra/a2a-peers/
+
+Another Bridge, or any A2A agent, that this Bridge may ask: its agent-card
+URL, the auth mode, the owner, and the token as a secret reference
+(`credential_ref`), never a value. You ask a peer questions; anything it
+should do goes as a request that its owner approves.
+
+**Create:** `cp infra/a2a-peers/_template.yaml infra/a2a-peers/<name>.yaml`
+(the `name:` field must equal the filename).
+
+**Schema:** `infra/a2a-peers/_schema.yaml`.
+
+**Used by:** the `a2a` skill (`a2a.sh peers`, `ask`, `request`),
+which resolves the token through `/secrets run` so it never reaches a command
+line or a log. Your own outward agent is a different thing: see
+[`agents/README.md`](../agents/README.md).
+
 ## infra/utilities/
 
 One supply contract at one location: electricity, gas, water, district
@@ -320,6 +361,40 @@ belongs in `workflow/calendars/` and points back here via `utility_ref`; the
 contract itself can live in [`identity/contracts/`](#identitycontracts).
 
 ---
+
+## workflow/briefings/
+
+A briefing profile says what ONE briefing shows and from where: its sections
+in order (inbox, calendar, trackers such as GitHub, Jira, GitLab, ADO
+or Linear), the view style, and the phrases that offer it. Several profiles
+are fine, one marked `default: true`. Without any profile the Bridge uses a
+built-in one.
+
+**Create:** `cp workflow/briefings/_template.yaml workflow/briefings/<id>.yaml`
+
+**Schema:** `workflow/briefings/_schema.yaml`; check with
+`python3 scripts/briefing.py validate`.
+
+**Used by:** the `/briefing` skill (`/briefing <id>` runs another profile)
+and `scripts/briefing.py` (`list`, `collect`, `show`). Full doc:
+[`docs/briefings.md`](briefings.md).
+
+## workflow/mail-profiles/
+
+One occasion for writing mail: everyday, application, status report, invoice.
+A profile decides everything about a draft that is not the message: footer,
+theme, greeting and sign-off, default attachments, mail client, and for which
+recipients it is picked on its own.
+
+**Create:** `cp workflow/mail-profiles/_template.yaml workflow/mail-profiles/<id>.yaml`
+
+**Schema:** `workflow/mail-profiles/_schema.yaml`; check with
+`skills/mail-draft/mail-draft.sh validate`.
+
+**Used by:** the `mail-draft` skill, which only ever drafts and never sends
+(`mail-draft.sh explain --to <who>` shows which profile a recipient gets and
+why). The signature comes from [`identity/mail-footers/`](#identitymail-footers).
+Full doc: [`docs/mail-draft.md`](mail-draft.md).
 
 ## workflow/calendars/
 
@@ -343,6 +418,23 @@ Calendar tab.
 - Multi-mandant: the same person can appear in several mandants with different roles
 
 Full doc: [`docs/calendar.md`](calendar.md).
+
+## workflow/meetings/
+
+A recurring meeting series: cadence, participants, how its meeting folders are
+named, which skill owns the follow-up, and where the protocol goes. A second
+series costs one file, not a code change. This is not
+[`workflow/calendars/`](#workflowcalendars), which holds scheduled outbound
+sends.
+
+**Create:** `cp workflow/meetings/_template.yaml workflow/meetings/<id>.yaml`
+(`id:` must equal the filename stem).
+
+**Schema:** `workflow/meetings/_schema.yaml`, which also explains each field.
+
+**Used by:** `/debrief` (matches a transcript folder to its series and
+proposes the follow-up skill) and `/briefing` (reads the deadlines due
+between two meetings).
 
 ## workflow/contexts/
 
@@ -401,6 +493,20 @@ notices something file it into the inbox under a stable key, so a repeat stays
 one item. See [`docs/workloads.md`](workloads.md#where-a-finding-lands-reports_to).
 
 Full model: [`docs/workloads.md`](workloads.md).
+
+## workflow/ai-services/
+
+Which local AI CLI one service or worker uses, Claude or Codex, and
+optionally which model. An absent file keeps Claude, so nothing changes until
+you add one. There is no automatic fallback between providers.
+
+**Create:** `cp workflow/ai-services/_template.yaml workflow/ai-services/<id>.yaml`
+
+**Schema:** `workflow/ai-services/_schema.yaml`.
+
+**Used by:** the built-in consumers `briefing-chat`, `task-review` and
+`triage`; a worker opts in with `python3 scripts/ai-run.py --service <id>`.
+Full doc: [`docs/ai-services.md`](ai-services.md).
 
 ## workflow/workspaces/
 

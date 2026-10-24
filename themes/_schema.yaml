@@ -19,7 +19,7 @@
 #   # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/theme.yaml"
+$id: "urn:open-bridge:schema:theme"
 title: Theme
 description: |
   Theme definition for The Bridge. Controls vocabulary, alert labels,

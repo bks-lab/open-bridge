@@ -10,7 +10,7 @@
 # Scope: CORE. English only (open-bridge).
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/soul-deck.yaml"
+$id: "urn:open-bridge:schema:soul-deck"
 title: SoulDeck
 description: |
   A pickable library of generic SOUL principles. Each card renders into one

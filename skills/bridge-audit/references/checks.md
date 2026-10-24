@@ -293,12 +293,22 @@ backstop for `rules/knowledge-growth.md` (where new knowledge belongs).
 
 **Algorithm:**
 0. Run `python3 scripts/memory-location.py check` against the resolved memory
-   base and report each violation it lists (index over 200 lines or 25 KB, a
-   hook longer than 120 characters, a linked file that does not exist) as its
-   own **P1** finding: an oversized or malformed index degrades recall for
-   every session. Skip this step (no finding) if the script exits 0 because
-   the directory or `MEMORY.md` is missing. This is the mechanical lint pass;
-   steps 1-4 below are the separate semantic gate-language scan.
+   base and report each lint violation it lists (index over 200 lines or
+   25 KB, a hook longer than 120 characters, a linked file that does not
+   exist) as its own **P1** finding: an oversized or malformed index degrades
+   recall for every session. The lint violations are the stderr lines that do
+   NOT start with `unreachable:` and do not belong to the coverage summary;
+   the `N finding(s)` line counts them. A missing directory or `MEMORY.md`
+   yields no lint finding. This is the mechanical lint pass; steps 1-4 below
+   are the separate semantic gate-language scan.
+   The same run prints `unreachable: <file>` lines and a closing
+   `K of M fact file(s) unreachable` line (a warning, exit unchanged). Never
+   count those as P1. Report the closing line verbatim as ONE **P2** finding
+   with the file list as its detail, not one finding per file. Report it also
+   when `MEMORY.md` is missing: then every fact is listed, correctly, since
+   nothing loads them. The fix proposal is the cleanup in
+   [`docs/memory.md`](../../../docs/memory.md) § Coverage (index or archive
+   line, routing fact to YAML, or delete).
    Then run `python3 scripts/memory-location.py links` (offline, exits 0) and report
    its first line verbatim, `N of M memory files carry a session link, X of N
    unresolved`, as one **P3** finding when X > 0, plus one **P2** finding for

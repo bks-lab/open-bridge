@@ -1395,6 +1395,15 @@ export function createMockTransport(opts = {}) {
           result.note = verb === 'ticker_settings' ? 'Mock: ticker setting saved' : 'Mock: ticker settings from the config again'
           wait(() => emit('state', state), 80)
         }
+        if (verb === 'github_board' || verb === 'github_board_default') {
+          // the switch and the default for new boards: kept on the boards of every section, nothing asked for real
+          for (const sec of state.model.pages.flatMap(p => p.sections ?? [])) {
+            sec.boards = sec.boards?.map(b => verb === 'github_board_default' ? { ...b, default: args.mode === 'profile' ? null : args.mode }
+              : b.slug === args.slug ? { ...b, mode: args.mode } : b)
+          }
+          result.note = verb === 'github_board' ? `Mock: ${args.slug}: ${args.mode}` : `Mock: new boards: ${args.mode}`
+          wait(() => emit('state', state), 80)
+        }
         if (verb === 'ticker_refresh') {
           state.ticker = tickerNext(state.ticker, { refreshing: true })
           emit('ticker', state.ticker)      // the start goes out as an event, like the server's

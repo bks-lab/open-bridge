@@ -23,7 +23,7 @@ moment an instance opts into an in-repo directory).
     python3 scripts/memory-location.py enable [--path work/memory] [--dry-run]
     python3 scripts/memory-location.py migrate [--dry-run] [--prefer-newer]
     python3 scripts/memory-location.py stub-legacy --yes
-    python3 scripts/memory-location.py check
+    python3 scripts/memory-location.py check [--strict]
     python3 scripts/memory-location.py index
     python3 scripts/memory-location.py get <name>
     python3 scripts/memory-location.py links [--json]
@@ -290,6 +290,63 @@ def lint_memory_index(memory_dir: Path) -> list[str]:
                 violations.append(f"MEMORY.md:{lineno} links to missing file: {link}")
 
     return violations
+
+
+# ---------------------------------------------------------------------------
+# check: coverage, is every fact reachable from an index?
+# ---------------------------------------------------------------------------
+
+INDEX_FILES = ("MEMORY.md", "MEMORY-ARCHIVE.md")
+WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]")
+# Coverage reads a markdown link more leniently than the index lint: a
+# `#section` anchor or a `"title"` after the target still reaches the file.
+COVERAGE_LINK_RE = re.compile(r'\[[^\]]*\]\(([^)\s#]+\.md)(?:#[^)\s]*)?(?:\s+"[^"]*")?\)')
+
+
+def _is_meta_file(name: str) -> bool:
+    """MEMORY.md, MEMORY-ARCHIVE.md, README.md, PROVENANCE.md: an all-uppercase
+    stem marks a file about the memory base, not a fact in it. A stem with no
+    letter at all (`2026-10.md`) is not uppercase, so it stays a fact."""
+    stem = name[:-3]
+    return any(c.isalpha() for c in stem) and stem == stem.upper()
+
+
+def coverage_report(memory_dir: Path) -> tuple[int, list[str]]:
+    """(fact count, unreachable fact names, sorted).
+
+    Reachability is transitive from MEMORY.md and MEMORY-ARCHIVE.md: a fact is
+    reached by a relative `[..](file.md)` link or a `[[wikilink]]` (its `name:`
+    slug or its file stem) in any file already reached. A wikilink from a fact
+    nobody reaches reaches nothing.
+    """
+    files = {
+        name: path
+        for name, path in _top_level_files(memory_dir).items()
+        if name.endswith(".md")
+    }
+    facts = {name for name in files if not _is_meta_file(name)}
+    # File stems first, then slugs, both in sorted order: a wikilink resolves
+    # the same way on every run, and a stem always wins over another fact's slug.
+    by_key: dict[str, str] = {name[:-3]: name for name in sorted(facts)}
+    for name in sorted(facts):
+        slug = _frontmatter_name(files[name])
+        if slug:
+            by_key.setdefault(slug.strip(), name)
+
+    reached: set[str] = set()
+    queue = [name for name in INDEX_FILES if name in files]
+    seen = set(queue)
+    while queue:
+        current = queue.pop()
+        text = files[current].read_text(encoding="utf-8", errors="replace")
+        targets = [link.removeprefix("./") for link in COVERAGE_LINK_RE.findall(text)]
+        targets += [by_key.get(key.strip(), "") for key in WIKILINK_RE.findall(text)]
+        for target in targets:
+            if target in facts and target not in seen:
+                seen.add(target)
+                reached.add(target)
+                queue.append(target)
+    return len(facts), sorted(facts - reached)
 
 
 # ---------------------------------------------------------------------------
@@ -588,12 +645,24 @@ STUB_LEGACY_HELP = (
 def cmd_check(args) -> int:
     memory_dir, _source, _warnings = resolve_memory_dir(args.repo)
     violations = lint_memory_index(memory_dir)
-    if not violations:
-        return 0
     for violation in violations:
         print(violation, file=sys.stderr)
-    print(f"memory-location check: {len(violations)} finding(s)", file=sys.stderr)
-    return 1
+    if violations:
+        print(f"memory-location check: {len(violations)} finding(s)", file=sys.stderr)
+
+    facts, unreachable = coverage_report(memory_dir)
+    for name in unreachable:
+        print(f"unreachable: {name}", file=sys.stderr)
+    if unreachable:
+        level = "error" if args.strict else "warning"
+        hint = "" if args.strict else ", --strict fails on it"
+        print(
+            f"memory-location check {level}: {len(unreachable)} of {facts} fact file(s) "
+            "unreachable from MEMORY.md, MEMORY-ARCHIVE.md or a [[wikilink]] "
+            f"(docs/memory.md § Coverage{hint})",
+            file=sys.stderr,
+        )
+    return 1 if violations or (args.strict and unreachable) else 0
 
 
 # ---------------------------------------------------------------------------
@@ -855,7 +924,12 @@ def build_parser() -> argparse.ArgumentParser:
     su.add_argument("--yes", action="store_true", help="required to actually write")
     su.set_defaults(func=cmd_stub_legacy)
 
-    ch = sub.add_parser("check", help="lint the resolved directory's MEMORY.md")
+    ch = sub.add_parser(
+        "check",
+        help="lint the resolved MEMORY.md and warn on fact files no index reaches",
+    )
+    ch.add_argument("--strict", action="store_true",
+                    help="exit 1 when a fact file is unreachable, not just warn")
     ch.set_defaults(func=cmd_check)
 
     ix = sub.add_parser(

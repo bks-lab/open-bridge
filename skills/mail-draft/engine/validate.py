@@ -13,7 +13,7 @@ import datetime as dt
 from pathlib import Path
 
 from . import footer as footer_mod
-from . import profiles
+from . import profiles, recipients
 from .config import ConfigError, load_yaml
 
 SCHEMAS = {
@@ -112,6 +112,7 @@ def run(root: Path) -> list[str]:
             if path.name.startswith("_"):
                 continue
             m = load_yaml(path)
+            problems += [f"identity/mandants/{path.name}: {e}" for e in recipients.group_problems(path.stem, m)]
             refs = [("mandant", m.get("mail_profile"))]
             refs += [(f"person {p.get('id')}", p.get("mail_profile")) for p in m.get("persons") or []]
             for who, ref in refs:

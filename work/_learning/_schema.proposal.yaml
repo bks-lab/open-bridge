@@ -17,7 +17,7 @@
 #   - work/_learning/audit-trail.md (logs status transitions)
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/learning-proposal.yaml"
+$id: "urn:open-bridge:schema:learning-proposal"
 title: LearningProposal
 description: |
   One candidate improvement to a Bridge file (skill, standing-order, rule,

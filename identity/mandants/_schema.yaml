@@ -21,7 +21,7 @@
 # Full docs: docs/mandants.md
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/mandant.yaml"
+$id: "urn:open-bridge:schema:mandant"
 title: Mandant
 description: |
   Recipient group for scheduled outbound messages. Persons within a
@@ -123,6 +123,21 @@ properties:
     type: array
     items: {type: string}
     description: "Free-form tags for filtering/grouping"
+
+  groups:
+    type: object
+    propertyNames: {pattern: "^[a-z][a-z0-9_-]*$"}
+    additionalProperties:
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items: {type: string, pattern: "^[a-z][a-z0-9_-]*$"}
+    description: |
+      Named parts of this mandant, each a list of persons[].id:
+      `groups: {leads: [lead], everyone: [lead, developer]}`. A recipient
+      `mandant:<id>#<group>` reaches only those persons (skills/mail-draft,
+      docs/mail-draft.md). A member that is no person here is an error in
+      `mail-draft.sh validate`, never skipped.
 
   systems:
     type: array

@@ -14,8 +14,10 @@ documents go to GitHub; only `.html` is linked relatively.
 A link to a file that is not there at all.
 
 Anchors are checked against ids in the markup AND against `id:"..."` in page
-data, because two pages build their sections at runtime from a JS array. A check
-that cries wolf on a working link gets ignored, so it stays conservative.
+data, because two pages build their sections at runtime from a JS array, and
+against the same in any local script a page loads (`<script src="assets/...">`),
+because that array now lives in one shared file. A `<base href>` is not a link.
+A check that cries wolf on a working link gets ignored, so it stays conservative.
 
 Run: python3 scripts/check-site-links.py
 """
@@ -29,14 +31,21 @@ REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 
 HREF = re.compile(r'href="([^"]+)"')
+BASE = re.compile(r'<base\s[^>]*$')
+SCRIPT_SRC = re.compile(r'<script\b[^>]*\ssrc="([^":]+\.js)"')
 STATIC_ID = re.compile(r'\sid="([^"]+)"')
 DATA_ID = re.compile(r'["\']?id["\']?\s*:\s*["\']([A-Za-z0-9_-]+)["\']')
 # hrefs assembled in JavaScript are not links, they are code
 TEMPLATED = ("'+", '"+', "${", "+ ", " +")
 
 
-def ids(text: str) -> set[str]:
-    return set(STATIC_ID.findall(text)) | set(DATA_ID.findall(text))
+def ids(text: str, docs: Path | None = None) -> set[str]:
+    found = set(STATIC_ID.findall(text)) | set(DATA_ID.findall(text))
+    for src in SCRIPT_SRC.findall(text) if docs else ():
+        script = docs / src
+        if script.is_file():
+            found |= set(DATA_ID.findall(script.read_text(encoding="utf-8")))
+    return found
 
 
 def main() -> int:
@@ -46,7 +55,7 @@ def main() -> int:
         return 1
 
     text = {p.name: p.read_text(encoding="utf-8") for p in pages}
-    anchors = {name: ids(t) for name, t in text.items()}
+    anchors = {name: ids(t, DOCS) for name, t in text.items()}
 
     problems: list[str] = []
     checked = 0
@@ -54,6 +63,8 @@ def main() -> int:
         for m in HREF.finditer(body):
             href = m.group(1)
             if any(t in href for t in TEMPLATED):
+                continue
+            if BASE.search(body[max(0, m.start() - 200): m.start()]):
                 continue
             if href.startswith(("http://", "https://", "mailto:", "tel:", "data:", "javascript:", "#/")):
                 continue

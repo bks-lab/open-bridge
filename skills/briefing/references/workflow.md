@@ -92,9 +92,6 @@ An instance with no `upstreams:` list (the OSS seed repo itself, or a fresh clon
 2. ...
 3. ...
 
-### TODO (rolling)
-- [ ] ...
-
 <details open><summary>Worklog (0)</summary>
 
 | Timestamp        | Type | Context | What |
@@ -110,8 +107,12 @@ count in the `<summary>` on each append.
 Canonical skeleton: `work/templates/day.md`.
 
 **Goals auto-populate** (3-bullet max, in priority order):
-1. Pull `### TODO (rolling)` items from the previous day-block — these
-   are explicit carry-overs the human marked open.
+1. Pull the open inbox items due today or marked `now`/`today`
+   (`python3 scripts/inbox.py list`): open points live in the inbox, filed
+   with `scripts/inbox.py add` ([`docs/inbox.md`](../../../docs/inbox.md)),
+   never in a TODO block in the log. An older log may still carry a
+   `### TODO (rolling)` block: offer to file each open line with
+   `inbox.py add` once, then drop the block.
 2. If <3 items collected, fill from `board.md` Doing lane **in two passes**
    (Pass A surfaces customer momentum, Pass B surfaces active problems):
    - **Pass A — Customer momentum:** Doing-tickets where `context.mandant`

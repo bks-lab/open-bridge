@@ -26,7 +26,7 @@
 #                    ~/.workspaces/workspaces.json
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/workspaces-registry.yaml"
+$id: "urn:open-bridge:schema:workspaces-registry"
 title: Workspaces Registry (descriptive)
 description: |
   The shared, multi-writer `workspaces.json` registry (v2) — one row per

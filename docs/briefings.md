@@ -374,9 +374,13 @@ attach to the one row.
 Each board of a `github-work` section has a switch a person sets on a
 dashboard: **off** (not asked, costs nothing), **mine** (your cards) or **all**
 (every open card). The choice is kept in `.bridge/github-boards.json`, beside the
-profile and never in it, and wins over `boards` and `cards`. The section's
-`summary` names every registered board with its mode, a board switched off
-without counts.
+profile and never in it, and wins over `boards` and `cards`. The same file may
+hold the person's `default` for boards not switched yet (a board new in the
+registry, say), which wins over the profile as well; without it the profile
+decides. The section's `summary` names every registered board with its mode and
+that default, a board switched off without counts. The cockpit hides a board
+switched off from its GitHub page and lists every board, with the default, in
+its settings (area GitHub boards).
 
 A dashboard shows figures above the rows (`metrics` of the page section: open,
 yours, wanting your review, your open pull requests with the oldest one's age,

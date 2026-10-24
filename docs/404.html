@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!-- ============================================================================
+     BKS open-bridge: 404.html
+     GitHub Pages serves this for any path under the site that has no file.
+     The <base> makes every relative URL below resolve from the site root, so
+     the stylesheet and the links work at any depth of a missing path.
+     It must equal the path of SITE in scripts/check-site-basics.py: a fork
+     served under another repo name, or at a custom domain root, changes both.
+     noindex, and not in sitemap.xml: scripts/check-site-basics.py holds both.
+     ============================================================================ -->
+<html lang="en" data-active-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base href="/open-bridge/">
+<title>BKS open-bridge: page not found</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="assets/favicon.ico" sizes="16x16 32x32 48x48">
+<script>
+(function(){
+  var r = document.documentElement;
+  var pref = "system";
+  try{
+    var t = localStorage.getItem("ob-theme");
+    if(t === "light" || t === "dark") pref = t;
+  }catch(e){}
+  if(pref === "dark" || (pref === "system" && window.matchMedia &&
+     window.matchMedia("(prefers-color-scheme: dark)").matches)){
+    r.classList.add("dark");
+  }
+  try{
+    var lang = localStorage.getItem("ob-lang") === "de" ? "de" : "en";
+    r.setAttribute("data-active-lang", lang); r.setAttribute("lang", lang);
+  }catch(e){}
+})();
+</script>
+<link rel="stylesheet" href="assets/brand.css">
+<style>
+  .nf{min-height:70vh;display:grid;place-items:center;text-align:center;padding:96px 24px}
+  .nf .eyebrow{margin-bottom:14px;color:var(--accent-text)}
+  .nf h1{font-size:clamp(34px,5vw,56px);line-height:1.08;margin:0 auto;max-width:16em}
+  .nf p{color:var(--muted);max-width:36rem;margin:18px auto 0}
+  .nf .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="index.html">open<span class="text-gradient">-bridge</span></a>
+  </div>
+</header>
+
+<main class="nf">
+  <div>
+    <p class="eyebrow">404</p>
+    <h1 data-lang="en">This page is not part of the site.</h1>
+    <h1 data-lang="de">Diese Seite gibt es auf der Site nicht.</h1>
+    <p data-lang="en">The address may be old, or it points at a file the site does not publish. The repository's documents are read on GitHub, where they render.</p>
+    <p data-lang="de">Die Adresse ist vielleicht alt, oder sie zeigt auf eine Datei, die die Site nicht veröffentlicht. Die Dokumente des Repositorys liest man auf GitHub, dort werden sie dargestellt.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="index.html"><span data-lang="en">Back to the start page</span><span data-lang="de">Zur Startseite</span></a>
+      <a class="btn btn-secondary" href="https://github.com/bks-lab/open-bridge/blob/main/docs/README.md"><span data-lang="en">Documentation index</span><span data-lang="de">Doku-Übersicht</span></a>
+    </div>
+  </div>
+</main>
+</body>
+</html>

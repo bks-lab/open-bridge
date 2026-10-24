@@ -74,20 +74,11 @@ case this gate exists for — they don't bypass it.
 hardcoded branch name has caused a real misfire before. Resolve the default at session
 start; do not assume it.
 
-**For NEW USER:** Phase 0 first **arms the push-guard** (`git config core.hooksPath
-scripts/hooks`, via `bin/setup`) and classifies the origin — unconditionally, before any
-greeting. Then open the **four-lane front door** (`[1]` see it run · `[2]` describe your
-goal → tailored setup · `[3]` make it private first · `[4]` bind a workspace), which routes
-into the `bridge-onboard` wizard (Quick Identity + Purpose → Discovery Scan (broader only —
-confined default skips it) → Smart Suggestions → Quick-Wins → Feature Catalog → Validate,
-ending on a live first briefing). Explain CORE/USER split, ecosystem vs cluster wrappers,
-and sub-agents as you go. Goal: running in 5 minutes. Then point at
-[`docs/feature-tour.md`](docs/feature-tour.md).
-
-The load-bearing detail for the NEW-USER turn lives in
-[`rules/session-start.md`](rules/session-start.md): the exact **NEW-USER greeting**, the
-**"reporting the check"** step (how to surface what Phase 0 detected before acting), and the
-**red-flags list** (what aborts onboarding). Read those sections — they are not duplicated here.
+**For NEW USER:** Phase 0 arms the push-guard and classifies the origin before any
+greeting, then opens the four-lane front door into `/bridge-onboard`. The greeting, the
+"reporting the check" step, the lanes, the one private-home path and the red-flags list
+live in [`rules/session-start.md`](rules/session-start.md); read them, they are not
+duplicated here. Afterwards: [`docs/feature-tour.md`](docs/feature-tour.md).
 
 ---
 
@@ -236,25 +227,17 @@ recipient group. Load one when a skill or routing order references it via
 
 ## Scope — structural, not declarative
 
-Every file's tier (**core** → open-bridge · **org** → your org overlay · **user**
-→ local) is decided by **where it lives**, not a tag you can forget:
-
-1. **Whole folder** — the path *is* the tier. `work/`, `imports/`,
-   `.claude/mods/` = USER; `docs/`, `themes/`, `trackers/`, `scripts/`,
-   `protocols/standing-orders/*.md` = CORE; `mods/` = CORE, enumerated (an
-   unlisted mod is USER).
-2. **`_`-prefix** inside the cluster wrappers — `_template.yaml` / `_schema.yaml`
-   = CORE, every other `*.yaml` instance = USER.
-3. **Frontmatter**, for the two things that cannot be foldered: skills carry
-   `metadata.scope`, and every `rules/*.md` carries a top-level `scope:` matching
-   its folder. Both are hard-gated in CI. An unscoped rule silently inherits
-   `core` from its path and would leak, so the field is a required backstop, not
-   an option.
-
-**Promote routes mechanically on these inputs.** The content leak-check is the
-backstop, not the primary guard: structure is what keeps PII out of the public
-upstream. Full model with schemas:
-[`docs/extension-model.md`](docs/extension-model.md).
+Every file's tier (**core** → open-bridge · **org** → your org overlay ·
+**personal** → your own overlay · **user** → local) is decided by **where it
+lives**, not a tag you can forget: whole folders (`work/`, `imports/` USER;
+`docs/`, `trackers/` CORE), the `_`-prefix inside the cluster wrappers
+(`_template`/`_schema` CORE, every instance USER), and enumerated lists where a
+folder mixes both (`scripts/`, `agents/`, `mods/`, `themes/`). Frontmatter
+re-tiers only the files the table lists; every `rules/*.md` carries a `scope:`
+matching its folder, hard-gated in CI. The one table of values, aliases, frontmatter
+precedence and path rules, tested against the router:
+[`docs/extension-model.md` § Scope model](docs/extension-model.md#scope-model).
+The leak-check is the backstop; structure keeps PII out of the public upstream.
 ---
 
 ## Skills (Universal)

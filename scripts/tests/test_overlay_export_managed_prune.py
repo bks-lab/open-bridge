@@ -22,6 +22,7 @@ in the lock as overlay-managed.
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -64,6 +65,17 @@ def pair(tmp_path: Path):
        "---\nname: acme-logging\nmetadata:\n  scope: org\n---\n\n# skill\n")
 
     subprocess.run(["git", "init", "-q"], cwd=bridge, check=True)
+    # gone.yaml was this bridge's once (its history says so), then removed: the
+    # one genuine orphan. Without that evidence it would be foreign and kept.
+    env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+    git = ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+           "-c", "commit.gpgsign=false"]
+    _w(bridge / "workflow" / "contexts" / "gone.yaml", "schema_version: 1\nscope: org\n")
+    subprocess.run([*git, "add", "workflow"], cwd=bridge, check=True, env=env)
+    subprocess.run([*git, "commit", "-q", "-m", "seed"], cwd=bridge, check=True, env=env)
+    subprocess.run([*git, "rm", "-q", "workflow/contexts/gone.yaml"], cwd=bridge,
+                   check=True, env=env)
+    subprocess.run([*git, "commit", "-q", "-m", "drop"], cwd=bridge, check=True, env=env)
     (bridge / ".git" / "info").mkdir(parents=True, exist_ok=True)
     (bridge / ".git" / "info" / "exclude").write_text(f"/{managed}\n", encoding="utf-8")
 

@@ -6,7 +6,7 @@
 # refusals at run time (raw secret, non-reference credential, plain http).
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/a2a-peer.yaml"
+$id: "urn:open-bridge:schema:a2a-peer"
 title: A2APeer
 description: |
   Another Bridge or A2A agent: where its card is and how to authenticate to it.

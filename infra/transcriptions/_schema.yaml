@@ -13,7 +13,7 @@
 # IDE support: add to topology.yaml:  # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/transcription-topology.yaml"
+$id: "urn:open-bridge:schema:transcription-topology"
 title: Bridge Transcription Topology
 description: |
   Transcription topology — WHERE the pipeline runs. `mode: remote` reaches a

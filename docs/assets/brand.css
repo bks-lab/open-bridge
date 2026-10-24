@@ -85,11 +85,12 @@ html.dark{
   --shadow-hover:0 20px 25px -5px rgba(0,0,0,.3),0 10px 10px -5px rgba(0,0,0,.1);
 }
 /* ============================================================================
-   BKS palette, layered over the tokens above (feat/site-command-bridge).
-   Values from bks-web DESIGN.md (colors / colorsDark). Depth comes from surface
-   and hairline, so the accent gradient collapses to one colour and shadows go
-   flat. Delete this block to return to the violet tokens above; DESIGN.md of
-   this repo is untouched on purpose (it is the CORE default for every fork).
+   Site palette, layered over the tokens above. Source: DESIGN.md `site:`
+   (front matter), value for value and under the same names; change both or
+   neither, scripts/check-site-basics.py holds them equal. Depth comes from
+   surface and hairline, so the accent gradient collapses to one colour and
+   shadows go flat. Delete this block to return to the violet tokens above,
+   which are the CORE default of DESIGN.md `colors:`.
    Fonts are self-hosted (OFL), no network request.
    ============================================================================ */
 @font-face{font-family:"Inter";src:url("fonts/inter-latin-wght.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}

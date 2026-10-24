@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Categorize commits by scope (core / org / user / personal) for /promote routing.
 
-Mirrors the path → scope table in rules/operations.md § CORE/USER Separation.
+The prose form of these rules is docs/extension-model.md § Scope model, held to
+classify_file() by scripts/tests/test_scope_docs.py.
 Run from repo root.
 
 Usage:
@@ -24,8 +25,8 @@ import subprocess
 import sys
 
 # ---------------------------------------------------------------------------
-# Path → scope table — MIRROR of rules/operations.md § CORE/USER Separation.
-# Keep in sync with operations.md (manual — no automated drift check yet).
+# Path → scope table. Documented in docs/extension-model.md § Scope model;
+# scripts/tests/test_scope_docs.py fails when the two disagree.
 #
 # Scope is now STRUCTURAL: tier is decided by where a file lives, not a tag.
 # Whole folders (work/, rules/user/) are user; the `_`-prefix split inside the
@@ -261,6 +262,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/check-commands-doc.py",
     "scripts/check-figure-counts.py",
     "scripts/check-inline-scripts.py",
+    "scripts/check-site-basics.py",
     "scripts/check-site-links.py",
     "scripts/check-skill-learnings.py",
     "scripts/check-where-things-live.py",
@@ -333,6 +335,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_examples_schema.py",   # validate.yml runs it against examples/*
     "scripts/tests/test_memory_location.py",
     "scripts/tests/test_okf_export.py",
+    "scripts/tests/test_onboarding_one_path.py",
     "scripts/tracker-sync.py",
     "scripts/validate-bridge.py",
     "scripts/validate-ecosystem.py",
@@ -351,6 +354,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_extract_bridge_state_locks.py",
     "scripts/tests/test_overlay_export.py",
     "scripts/tests/test_overlay_export_exclusions.py",
+    "scripts/tests/test_overlay_export_foreign.py",
     "scripts/tests/test_overlay_export_managed_prune.py",
     "scripts/tests/test_precommit_env_guard.py",
     "scripts/tests/test_push_guard_content_net.py",
@@ -375,9 +379,12 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test-gen-board.sh",
     "scripts/tests/test-inbox.sh",
     "scripts/tests/test-validate-bridge-rule-map.sh",
+    "scripts/tests/test_check_site_basics.py",
+    "scripts/tests/test_check_site_links.py",
     "scripts/tests/test_extract_frontmatter.py",
     "scripts/tests/test_figure_counts.py",
     "scripts/tests/test_gen_board.py",
+    "scripts/tests/test_scope_docs.py",
     "scripts/tests/test_scope_router.py",
     "scripts/tests/test_validate_bridge_rule_map.py",
     "scripts/upstream-monitor.sh",
@@ -824,11 +831,14 @@ def classify_file(path: str) -> str:
     if m:
         token = read_frontmatter_scope(f"skills/{m.group(1)}/SKILL.md")
         return _SCOPE_MAP.get(token or "", "user")
+    # Sub-agents: a declared `scope:` goes through _SCOPE_MAP like every other
+    # reader, so `private` is `user`, an instance alias resolves, and an unknown
+    # token fails closed instead of leaving as a raw pseudo-tier. Unset stays core.
     m = re.match(r"^\.claude/agents/([^/]+)\.md$", path)
     if m:
         scope = read_frontmatter_scope(path)
         if scope:
-            return scope
+            return _SCOPE_MAP.get(scope, "user")
     # NB: the former identity/agent/(IDENTITY|SOUL).md frontmatter branch lived
     # here and is now dead — the deny-by-default USER_PATTERNS entry claims the
     # whole directory earlier, and it missed IDENTITY-lore.md anyway. A branch

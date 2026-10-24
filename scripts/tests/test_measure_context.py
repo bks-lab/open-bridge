@@ -949,6 +949,146 @@ def test_harness_skills_stay_out_of_the_always_on_surface_the_guards_read(listed
     assert mc.always_on_parts(listed, mc.load_budget(listed)) == plain
 
 
+# ------------------------------------------ skillOverrides and the budget --
+#
+# `skillOverrides` in settings decides what the harness lists, per skill name:
+# "on" lists name and description, "name-only" the name alone,
+# "user-invocable-only" and "off" nothing. Plugin skills are not affected.
+# Sources are the user settings in the config dir, then the project's
+# `.claude/settings.json`, then `.claude/settings.local.json`, the later one
+# winning per key as in the harness. Measured on a live instance: a meter that
+# ignored the overrides counted descriptions the session never carried, and
+# counted nothing for a name-only entry it did carry.
+#
+# The truncation limit is the harness's, 1 % of the context window unless
+# `skillListingBudgetFraction` or `SLASH_COMMAND_TOOL_CHAR_BUDGET` says
+# otherwise. The meter does not guess the window, it names the setting in force.
+
+
+def _override(settings: Path, **states) -> None:
+    data = json.loads(settings.read_text()) if settings.is_file() else {}
+    data.setdefault("skillOverrides", {}).update(
+        {k.replace("_", "-"): v for k, v in states.items()}
+    )
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(data))
+
+
+def _harness_listing(tree: Path) -> str:
+    return mc.render_listing(tree, "listing:skills", include_harness=True)
+
+
+def test_an_off_skill_is_not_listed(listed):
+    _override(listed / ".claude" / "settings.local.json", remote="off")
+    text = _harness_listing(listed)
+    assert "remote" not in text and "**channel**" in text
+
+
+def test_a_user_invocable_only_skill_is_not_listed(listed):
+    _override(listed / ".claude" / "settings.json", remote="user-invocable-only")
+    assert "remote" not in _harness_listing(listed)
+
+
+def test_a_name_only_skill_is_listed_without_its_description(listed):
+    _override(listed / ".claude" / "settings.json", remote="name-only")
+    text = _harness_listing(listed)
+    assert "- **remote**\n" in text
+    assert "Wake, reach and repair" not in text
+
+
+def test_an_on_skill_and_an_unknown_value_list_in_full(listed):
+    _override(listed / ".claude" / "settings.json", remote="on", channel="bogus")
+    text = _harness_listing(listed)
+    assert "**remote** — Wake" in text and "**channel** — Outbound" in text
+
+
+def test_local_settings_win_over_project_and_user(listed, _isolated_home):
+    _override(_isolated_home / ".claude" / "settings.json", remote="off", channel="off")
+    _override(listed / ".claude" / "settings.json", remote="name-only")
+    _override(listed / ".claude" / "settings.local.json", remote="on")
+    text = _harness_listing(listed)
+    assert "**remote** — Wake" in text
+    # The user entry for channel is not overridden by anyone, so it holds.
+    assert "channel" not in text
+
+
+def test_project_settings_win_over_user_settings(listed, _isolated_home):
+    _override(_isolated_home / ".claude" / "settings.json", remote="on")
+    _override(listed / ".claude" / "settings.json", remote="off")
+    assert "remote" not in _harness_listing(listed)
+
+
+def test_user_settings_follow_the_config_dir_override(listed, tmp_path, monkeypatch):
+    cfg = tmp_path / "cfg"
+    _override(cfg / "settings.json", remote="off")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    assert "remote" not in _harness_listing(listed)
+
+
+def test_overrides_apply_to_user_level_skills(listed, _isolated_home):
+    _write(_isolated_home, ".claude/skills/helper/SKILL.md", "---\nname: helper\ndescription: A user-level helper.\n---\n")
+    _override(_isolated_home / ".claude" / "settings.json", helper="name-only")
+    text = _harness_listing(listed)
+    assert "- **helper**\n" in text and "A user-level helper." not in text
+
+
+def test_plugin_skills_ignore_overrides(listed, _isolated_home):
+    _plugin(_isolated_home, "kit@market", skills=[("draw", "Draws things.")])
+    _enable(_isolated_home / ".claude" / "settings.json", "kit@market")
+    _override(listed / ".claude" / "settings.json", draw="off", **{"kit:draw": "off"})
+    assert "**kit:draw** — Draws things." in _harness_listing(listed)
+
+
+def test_overrides_shrink_the_meter_row(listed):
+    before = {r["path"]: r for r in mc.collect_rows(listed, mc.load_budget(listed), "bytes")}
+    _override(listed / ".claude" / "settings.local.json", remote="name-only", channel="off")
+    after = {r["path"]: r for r in mc.collect_rows(listed, mc.load_budget(listed), "bytes")}
+    assert after["listing:skills"]["bytes"] < before["listing:skills"]["bytes"]
+    assert after["listing:skills"]["bytes"] == len("- **remote**\n".encode("utf-8"))
+
+
+def test_overrides_stay_out_of_the_surface_the_guards_read(listed):
+    # Settings are per machine (settings.local.json is never tracked), so the
+    # guards keep reading the tree's own listing, as for plugins.
+    plain = mc.always_on_parts(listed, mc.load_budget(listed))
+    _override(listed / ".claude" / "settings.local.json", remote="off")
+    assert mc.always_on_parts(listed, mc.load_budget(listed)) == plain
+
+
+def test_the_report_counts_the_overridden_skills(listed):
+    _override(listed / ".claude" / "settings.local.json", remote="name-only", channel="off")
+    report = mc.render_report(mc.collect_rows(listed, mc.load_budget(listed), "bytes"), "bytes", 2.4)
+    assert "skillOverrides" in report
+    assert "1 hidden" in report and "1 name-only" in report
+
+
+def test_the_report_names_the_budget_fraction_when_set(listed, monkeypatch):
+    monkeypatch.delenv("SLASH_COMMAND_TOOL_CHAR_BUDGET", raising=False)
+    _write(listed, ".claude/settings.json", json.dumps({"skillListingBudgetFraction": 0.02}))
+    report = mc.render_report(mc.collect_rows(listed, mc.load_budget(listed), "bytes"), "bytes", 2.4)
+    assert "skillListingBudgetFraction" in report and "0.02" in report
+
+
+def test_the_report_names_the_char_budget_from_the_environment(listed, monkeypatch):
+    monkeypatch.setenv("SLASH_COMMAND_TOOL_CHAR_BUDGET", "30000")
+    report = mc.render_report(mc.collect_rows(listed, mc.load_budget(listed), "bytes"), "bytes", 2.4)
+    assert "SLASH_COMMAND_TOOL_CHAR_BUDGET" in report and "30000" in report
+
+
+def test_the_report_names_the_char_budget_from_a_settings_env_block(listed, monkeypatch):
+    monkeypatch.delenv("SLASH_COMMAND_TOOL_CHAR_BUDGET", raising=False)
+    _write(listed, ".claude/settings.local.json", json.dumps({"env": {"SLASH_COMMAND_TOOL_CHAR_BUDGET": "25000"}}))
+    report = mc.render_report(mc.collect_rows(listed, mc.load_budget(listed), "bytes"), "bytes", 2.4)
+    assert "SLASH_COMMAND_TOOL_CHAR_BUDGET" in report and "25000" in report
+
+
+def test_the_report_says_nothing_about_a_budget_nobody_set(listed, monkeypatch):
+    monkeypatch.delenv("SLASH_COMMAND_TOOL_CHAR_BUDGET", raising=False)
+    report = mc.render_report(mc.collect_rows(listed, mc.load_budget(listed), "bytes"), "bytes", 2.4)
+    assert "skillListingBudgetFraction" not in report
+    assert "SLASH_COMMAND_TOOL_CHAR_BUDGET" not in report
+    assert "skillOverrides" not in report
+
 # ------------------------------------- one definition of the always-on surface --
 #
 # `always_on_parts` re-read the raw file for a `card:`-indexed source while

@@ -1,7 +1,7 @@
 ---
 summary: "Extension model: how CORE platform and USER extensions relate, plus the canonical Routing Map (where each routing domain lives in C-prime)"
 type: guide
-last_updated: 2026-09-25
+last_updated: 2026-10-24
 related:
   - CLAUDE.md
   - docs/structure.md
@@ -14,6 +14,85 @@ The Bridge has two layers: a **CORE platform** (generic, on `main`)
 and **USER extensions** (org-specific, on `user/*` branches). This document
 formalizes that split, names where each routing domain lives, and prepares
 for future Plugin extraction.
+
+## Scope model
+
+This is the one place the scope model is written down. `AGENTS.md` § Scope and
+[`structure.md`](structure.md) point here, and where another document restates
+part of it, this section wins. The executable form is `classify_file()` in
+[`scripts/categorize-commits.py`](../scripts/categorize-commits.py), which
+`/promote`, `scripts/overlay.py` and `scripts/overlay-export.py` all call.
+`scripts/tests/test_scope_docs.py` holds every table below, and the Layer
+columns of `structure.md`, to that function.
+
+**Scope values.** A frontmatter token maps to a routing bucket:
+
+| Value | Bucket | Reaches |
+|---|---|---|
+| `core` | `core` | open-bridge, and every overlay that pulls from it |
+| `org` | `org` | your org overlay only, never open-bridge |
+| `personal` | `personal` | your personal overlay only |
+| `user` | `user` | nowhere, stays in this instance |
+| `private` | `user` | alias of `user` |
+
+An instance may also tag a file with the `name` of one of its
+`bridge-config.yaml` `upstreams[]` entries; that name maps to the entry's
+`scope`. It never shadows a generic value. An unrecognised token is not the
+same everywhere: skills and sub-agents fail closed to `user`, while wrapper
+families, themes and docs treat it as undeclared and fall back to the path, so
+an unshipped wrapper file or theme routes `user` and a doc routes **`core`**.
+Check the spelling of a doc's tag before a promote.
+
+**Frontmatter beats the path.** For these files a declared tier can win over
+the path rules below. Wrapper families and themes are read before every path
+rule. Docs are read after the personal and user path rules, so a tag never
+unlocks a path those hold back. Skills and sub-agents are read after the
+personal, user and org path rules: a skill journal or an undeclared logo stays
+`user` whatever `SKILL.md` declares, and a sub-agent matched by an
+`ORG_PATTERNS` entry stays `org`. Anywhere else the router ignores a tag and
+the path decides.
+
+| Files | Read from | Unrecognised or undeclared |
+|---|---|---|
+| instance files directly in `identity/personas/`, `identity/mandants/`, `identity/accounts/`, `identity/contracts/`, `infra/channels/`, `infra/remotes/`, `infra/secret-stores/`, `infra/a2a-peers/`, `workflow/briefings/`, `workflow/contexts/`, `workflow/projects/` | top-level `scope:` | path rule, `user` |
+| `themes/<name>.yaml`, plus the logo it names in `branding.logo_ascii:` | `meta.scope` | shipped themes `core`, any other `user` |
+| `docs/**/*.md` | top-level `scope:`, which cannot unlock a `user` or `personal` path | `core` |
+| files under `skills/<name>/`, except the user paths above | `metadata.scope` in that skill's `SKILL.md` | `user` (fail closed) |
+| `.claude/agents/<name>.md`, except org path matches | top-level `scope:` | unrecognised `user`, undeclared `core` |
+
+Rules look like frontmatter but are not: every `rules/**/*.md` carries a
+top-level `scope:`, yet the **folder** routes it, and
+`scripts/validate-bridge.py` fails a rule whose tag disagrees with its folder.
+
+**Path rules, in router order.** The first match wins. The examples are
+checked with no frontmatter present.
+
+| Rule | Example paths | Tier |
+|---|---|---|
+| a schema's own `_tests/` suite, for the families in `WRAPPER_TESTS_CORE` | `infra/remotes/_tests/case.yaml`, `workflow/workloads/_tests/case.yaml` | `core` |
+| personal folders and the personal registry | `rules/personal/example.md`, `ecosystem.personal.yaml`, `ecosystem.local.yaml` | `personal` |
+| whole USER folders and files | `work/log.md`, `imports/example.pdf`, `rules/user/example.md`, `protocols/standing-orders/user/example.md`, `.claude/mods/example/hook.js`, `bridge-config.yaml`, `overlays.lock.yaml`, `edges.yaml`, `.bridge-origin`, `.gitignore` | `user` |
+| cluster-wrapper instances of the listed families | `identity/personas/example.yaml`, `identity/agent/SOUL.md`, `infra/backups/_state.yaml`, `workflow/projects/example.yaml` | `user` |
+| enumerated folders, anything not on the shipped list | `agents/example/agent.yaml`, `mods/example/hook.js`, `themes/example.yaml`, `skills/bridge-greeting/assets/logos/example.txt` | `user` |
+| skill journals | `skills/example/LEARNINGS.md` | `user` |
+| org registries and org rules | `ecosystem.yaml`, `ecosystem.acme.yaml`, `rules/org/example.md` | `org` |
+| `scripts/` outside `SCRIPTS_CORE_ALLOWLIST` | `scripts/example-tool.sh` | `user` |
+| a skill folder without a readable `SKILL.md` | `skills/example/references/notes.md` | `user` |
+| any other wrapper family, deny by default | `workflow/meetings/example.yaml`, `identity/mail-footers/example.yaml` | `user` |
+| wrapper templates and schemas | `workflow/meetings/_template.yaml`, `identity/personas/_schema.yaml` | `core` |
+| everything else | `AGENTS.md`, `docs/example.md`, `themes/professional.yaml`, `trackers/github.md`, `protocols/standing-orders/example.md`, `scripts/categorize-commits.py`, `.claude/agents/example.md`, `agents/_runtime/server.py` | `core` |
+
+**Instance data versus promote tier.** Two questions share the word USER. One
+is where a file lives in git: instance data sits on your `user/*` branch and is
+tracked only on a private origin
+([`structure.md` § gitignore policy](structure.md#gitignore-policy)). The other
+is where `/promote` may send it, which is what the tables above answer. They
+mostly agree. `ecosystem.yaml` is where they part: it is instance data, and its
+promote tier is `org`, because the router treats it as the instance-base
+registry an org overlay carries. A promote therefore offers it to the org
+overlay and never to open-bridge. Until that routing is revisited, an instance
+whose registry names private repos keeps it out of a promote by selecting
+files.
 
 ## Option C — Current Model (USER Branch = Extension)
 
@@ -47,7 +126,7 @@ your extension. This is the working model.
 | **Work** | `work/` | USER | Logs, board, active/ongoing/done tasks |
 | **Config** | `bridge-config.yaml` | USER · tracked on a private origin, excluded otherwise | Theme, language, features, identity-block, integrations |
 | **Bridge-Deck Config** | `bridge-deck.config.yaml` | USER | Daemon collector paths for the Pixel-Art Visualizer |
-| **Ecosystem** | `ecosystem.yaml` | **USER** | Repo registry, created at onboarding, absent on a fresh clone, tracked on a private origin and excluded otherwise (`scripts/user-data.py`) |
+| **Ecosystem** | `ecosystem.yaml` | USER data · promote tier `org` ([§ Scope model](#scope-model)) | Repo registry, created at onboarding, absent on a fresh clone, tracked on a private origin and excluded otherwise (`scripts/user-data.py`) |
 
 ### How it works today
 

@@ -1,6 +1,7 @@
 """mail-draft: Markdown in, a draft in a mail client out. Never a send.
 
-    compose    build the draft and hand it to the mail client (default: Apple Mail on macOS)
+    compose    build the draft and hand it to the mail client (default: Apple Mail on macOS);
+               with --reply-to, a reply in Apple Mail that keeps the quote
     preview    build it, write a light/dark preview page, open nothing in a mail client
     check      build it and report the preflight only
     explain    which profile, footer, language and sender a recipient gets, and why
@@ -55,7 +56,7 @@ def _request(args) -> Request:
         address_form="informal" if args.informal else "formal" if args.formal else "",
         client=getattr(args, "client", "") or "", priority=getattr(args, "priority", "") or "",
         preheader=args.preheader or "", greeting=not args.no_greeting,
-        recipient_name=args.recipient_name or "",
+        recipient_name=args.recipient_name or "", reply=bool(getattr(args, "reply_to", None)),
     )
 
 
@@ -118,12 +119,13 @@ def _open(path: Path) -> None:
     subprocess.run([*opener, str(path)], check=False)
 
 
-def _add_message_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--to", action="append", required=True,
-                   help="address, mandant:<id>, <mandant>/<person> or a person id (repeatable, comma ok)")
+def _add_message_args(p: argparse.ArgumentParser, reply: bool = False) -> None:
+    # compose checks --to and --subject itself: a reply takes both from the original.
+    p.add_argument("--to", action="append", required=not reply,
+                   help="address, mandant:<id>[#<group>], <mandant>/<person> or a person id (repeatable, comma ok)")
     p.add_argument("--cc", action="append")
     p.add_argument("--bcc", action="append")
-    p.add_argument("--subject", required=True)
+    p.add_argument("--subject", required=not reply)
     g = p.add_mutually_exclusive_group()
     g.add_argument("--body", help="Markdown text")
     g.add_argument("--body-file", help="a Markdown file (otherwise stdin)")
@@ -148,8 +150,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("compose", help="build the draft and hand it to the mail client")
-    _add_message_args(c)
+    _add_message_args(c, reply=True)
     c.add_argument("--client", choices=["apple-mail", "outlook", "eml", "none"])
+    c.add_argument("--reply-to", metavar="MESSAGE-ID|SUBJECT",
+                   help="answer this message in Apple Mail (Message-ID, or words of its subject)")
+    c.add_argument("--reply-all", action="store_true", help="with --reply-to: answer every recipient")
     c.add_argument("--priority", choices=["low", "normal", "high"])
     c.add_argument("--hide", action="store_true", help="save the draft without opening its window")
     c.add_argument("--force", action="store_true", help="create the draft despite preflight errors")
@@ -195,8 +200,57 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
+# Why a reply is Apple Mail only. Each client is named, never silently skipped.
+REPLY_UNSUPPORTED = {
+    "outlook": "Outlook for Mac gives scripts no reliable way to answer a message and keep its quote "
+               "and attachments (it cannot even keep a new draft without an open window)",
+    "eml": "an .eml file cannot carry the quote of a message that lives in the mail client",
+    "none": "client none hands nothing to a mail client",
+}
+
+
+def _refuse_reply(client: str) -> int:
+    why = REPLY_UNSUPPORTED.get(client, "only Apple Mail can answer a message here")
+    print(f"mail-draft: a reply draft is not supported with client {client}: {why}. "
+          f"Use --client apple-mail, or answer in {client} by hand. Nothing was created.", file=sys.stderr)
+    return 2
+
+
+def _prepare_reply(args, cfg):
+    """Find the original BEFORE anything is built: to, subject and the thread come from it.
+
+    The client is settled first as far as it can be without recipients (flag,
+    then mail.client, then the platform default), so a reply that cannot be
+    made asks Mail nothing. A profile's client needs the recipients and is
+    checked again after the build.
+    """
+    from .draft import default_client
+    client = args.client or str(cfg.get("client") or "") or default_client()
+    if client != "apple-mail":
+        return _refuse_reply(client)
+    from .clients import apple_mail
+    original = apple_mail.find_original(args.reply_to)
+    print(f"replying to: {original.describe()}")
+    # --to replaces whom Mail answers; without it Mail's own reply recipients stay.
+    args.reply_set_to = bool(args.to)
+    if not args.to:
+        args.to = [original.address]
+    if not args.subject:
+        args.subject = apple_mail.reply_subject(original.subject)
+    return original
+
+
 def cmd_compose(args, cfg) -> int:
+    original = None
+    if args.reply_to:
+        original = _prepare_reply(args, cfg)
+        if isinstance(original, int):
+            return original
+    elif not args.to or not args.subject:
+        raise ConfigError("compose needs --to and --subject (or --reply-to <message-id|subject> for a reply)")
     d = build(_request(args), cfg)
+    if original is not None and d.client != "apple-mail":
+        return _refuse_reply(d.client)
     bundle = write_bundle(d, cfg.drafts_dir)
     print(report(d))
     print(f"\nbundle:   {bundle}")
@@ -219,12 +273,16 @@ def cmd_compose(args, cfg) -> int:
         from .clients import outlook as client
     else:
         raise ConfigError(f"unknown client '{d.client}'")
-    result = client.handoff(d, bundle / ".handoff", show=show)
+    if original is not None:
+        result = client.reply_handoff(d, bundle / ".handoff", original, show=show, reply_all=args.reply_all,
+                                     set_to=getattr(args, "reply_set_to", False))
+    else:
+        result = client.handoff(d, bundle / ".handoff", show=show)
     print(f"\n{d.client}: {result.detail}")
     if not result.ok:
         print("draft: FAILED" + (", NOT in the Drafts folder" if result.verified is False else ""))
     elif result.verified:
-        print("draft: in the Drafts folder")
+        print("draft: " + ("reply " if original is not None else "") + "in the Drafts folder")
     elif result.verified is False:
         print("draft: open as a window, NOT yet in the Drafts folder (save it there)")
     else:

@@ -5048,6 +5048,33 @@ def test_github_board_switch_keeps_the_persons_choice_and_asks_the_section_again
         refused(world, code, "github_board", **{"section": "work", **bad})
 
 
+def test_the_default_for_new_boards_is_the_persons_and_asks_every_board_section_again(world):
+    """Settings: the mode a board takes until the person switches it; "profile" hands it back to the profile.
+    Every section with boards is asked again, a section without boards keeps its answer."""
+    world.app.collector.view.setdefault("pages", []).append({"id": "github", "title": "GitHub", "sections": [
+        {"id": "work", "kind": "tracker", "title": "GitHub", "status": "ok", "reason": "", "items": [], "total": 0,
+         "count": 0, "weight": 0, "bad": 0, "alarm": False, "empty": "nothing", "as_of": None,
+         "boards": [{"slug": "tool-board", "name": "Tool board", "mode": "mine"}]},
+        {"id": "plain", "kind": "tracker", "title": "Plain", "status": "ok", "reason": "", "items": [], "total": 0,
+         "count": 0, "weight": 0, "bad": 0, "alarm": False, "empty": "nothing", "as_of": None}]})
+    cache = world.app.root / ".bridge" / "briefing-cache" / "cockpit"
+    cache.mkdir(parents=True)
+    (cache / "work.json").write_text("{}")
+    (cache / "plain.json").write_text("{}")
+    world.act("github_board", section="work", slug="tool-board", mode="all")
+    world.act("github_board_default", mode="off")
+    saved = json.loads((world.app.root / ".bridge" / "github-boards.json").read_text())
+    assert saved == {"boards": {"tool-board": "all"}, "default": "off"}
+    assert not (cache / "work.json").exists() and (cache / "plain.json").exists()
+    world.act("github_board_default", mode="profile")
+    saved = json.loads((world.app.root / ".bridge" / "github-boards.json").read_text())
+    assert saved == {"boards": {"tool-board": "all"}}
+    refused(world, "invalid_argument", "github_board_default", mode="everything")
+    parsed = m.parse_boards([{"name": "Tool board", "slug": "tool-board", "mode": "mine", "default": "off"},
+                                 {"name": "Site board", "slug": "site-board", "mode": "all", "default": "bogus"}])
+    assert [b["default"] for b in parsed] == ["off", None]
+
+
 # --- chats leave the list into the archive, never into nothing ---
 
 def archived(world, name):

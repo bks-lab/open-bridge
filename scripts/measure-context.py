@@ -405,18 +405,75 @@ def _json_object(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _enabled_plugins(repo_root: Path, config_dir: Path) -> set[str]:
-    """Plugin keys enabled for this tree; later settings files win, as in the harness."""
-    state: dict[str, bool] = {}
-    for settings in (
+def _settings_files(repo_root: Path, config_dir: Path) -> tuple:
+    """User, project and local settings, lowest precedence first, as in the harness."""
+    return (
         config_dir / "settings.json",
         repo_root / ".claude" / "settings.json",
         repo_root / ".claude" / "settings.local.json",
-    ):
-        enabled = _json_object(settings).get("enabledPlugins")
-        if isinstance(enabled, dict):
-            state.update({str(k): bool(v) for k, v in enabled.items()})
-    return {key for key, on in state.items() if on}
+    )
+
+
+def _merged_mapping(repo_root: Path, config_dir: Path, key: str) -> dict:
+    """One object-valued setting merged per entry, the later settings file winning."""
+    state: dict = {}
+    for settings in _settings_files(repo_root, config_dir):
+        value = _json_object(settings).get(key)
+        if isinstance(value, dict):
+            state.update({str(k): v for k, v in value.items()})
+    return state
+
+
+def _last_scalar(repo_root: Path, config_dir: Path, key: str):
+    """One scalar setting as the highest-precedence file that sets it says."""
+    found = None
+    for settings in _settings_files(repo_root, config_dir):
+        data = _json_object(settings)
+        if key in data and isinstance(data[key], (int, float, str)):
+            found = data[key]
+    return found
+
+
+def _enabled_plugins(repo_root: Path, config_dir: Path) -> set[str]:
+    """Plugin keys enabled for this tree; later settings files win, as in the harness."""
+    state = _merged_mapping(repo_root, config_dir, "enabledPlugins")
+    return {key for key, on in state.items() if bool(on)}
+
+
+# `skillOverrides` decides, per skill NAME, what the harness lists: "on" name
+# and description, "name-only" the name alone, "user-invocable-only" and "off"
+# nothing at all. Absent, or a value the harness does not know, counts as "on".
+# Plugin skills are not affected (the harness manages those through /plugin).
+SKILL_HIDDEN = frozenset({"off", "user-invocable-only"})
+SKILL_NAME_ONLY = "name-only"
+
+
+def skill_overrides(repo_root: Path) -> dict[str, str]:
+    """skillOverrides across user, project and local settings, local winning."""
+    merged = _merged_mapping(Path(repo_root), _harness_config_dir(), "skillOverrides")
+    return {k: v for k, v in merged.items() if isinstance(v, str)}
+
+
+def listing_settings(repo_root: Path) -> list[tuple[str, str]]:
+    """The listing-budget settings in force, each named with where it came from.
+
+    The harness truncates the listing at 1 % of the context window. The meter
+    cannot know the window, so it does not compute the limit; it names what
+    changes it, and only when somebody set it.
+    """
+    root, config_dir = Path(repo_root), _harness_config_dir()
+    found = []
+    for key in ("skillListingBudgetFraction", "skillListingMaxDescChars"):
+        value = _last_scalar(root, config_dir, key)
+        if value is not None:
+            found.append((f"`{key}` (settings)", str(value)))
+    env = _merged_mapping(root, config_dir, "env").get("SLASH_COMMAND_TOOL_CHAR_BUDGET")
+    if env not in (None, ""):
+        found.append(("`SLASH_COMMAND_TOOL_CHAR_BUDGET` (settings env)", str(env)))
+    shell = os.environ.get("SLASH_COMMAND_TOOL_CHAR_BUDGET")
+    if shell:
+        found.append(("`SLASH_COMMAND_TOOL_CHAR_BUDGET` (environment)", shell))
+    return found
 
 
 def _same_path(a, b: Path) -> bool:
@@ -498,21 +555,39 @@ def harness_skill_entries(repo_root: Path):
     return user, plugin
 
 
-def _with_harness_skills(repo_root: Path, entries: list) -> list:
-    """This tree's skills plus the harness's own, a user-level name winning.
+def harness_skill_view(repo_root: Path, entries: list):
+    """(listed entries, hidden names, name-only names) as the session sees them.
 
-    The user level overrides the project level of the same name (AGENTS.md
-    § Skills), so the session carries one entry for it, the user one.
+    This tree's skills plus the harness's own, a user-level name winning: the
+    user level overrides the project level of the same name (AGENTS.md
+    § Skills), so the session carries one entry for it, the user one. Then
+    `skillOverrides` applies to everything but the plugin entries.
     """
     user, plugin = harness_skill_entries(repo_root)
-    if not user and not plugin:
-        return entries
     shadowed = {name for name, _ in user}
-    merged = [e for e in entries if e[0] not in shadowed] + user + plugin
-    return sorted(merged, key=lambda e: e[0])
+    own = [e for e in entries if e[0] not in shadowed] + user
+    overrides = skill_overrides(repo_root)
+    kept, hidden, name_only = [], [], []
+    for name, desc in own:
+        state = overrides.get(name)
+        if state in SKILL_HIDDEN:
+            hidden.append(name)
+        elif state == SKILL_NAME_ONLY:
+            name_only.append(name)
+            kept.append((name, ""))
+        else:
+            kept.append((name, desc))
+    return sorted(kept + plugin, key=lambda e: e[0]), hidden, name_only
+
+
+def _with_harness_skills(repo_root: Path, entries: list) -> list:
+    return harness_skill_view(repo_root, entries)[0]
 
 
 def _listing_line(name: str, description: str) -> str:
+    if not description:
+        # A name-only override: the harness lists the name and nothing else.
+        return f"- **{name}**\n"
     return f"- **{name}** \u2014 {description}\n"
 
 
@@ -670,6 +745,8 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
         source = discovered.get(path) or (policy or {}).get("source") or "phase1"
         body_bytes = None
         largest = None
+        overridden = None
+        settings = None
         contradiction = False
         error = None
         if path.startswith(HARNESS_PREFIX):
@@ -691,6 +768,12 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
                     ),
                     key=lambda pair: (-pair[1], pair[0]),
                 )[:5]
+            if path == LISTING_PREFIX + "skills" and exists:
+                tree_only = listing_entries(root, path) or []
+                _, hidden, name_only = harness_skill_view(root, tree_only)
+                if hidden or name_only:
+                    overridden = {"hidden": len(hidden), "name_only": len(name_only)}
+                settings = listing_settings(root)
         elif path.startswith(CMD_PREFIX):
             text = run_command_item(root, path)
             exists = text is not None
@@ -726,6 +809,8 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
             "max_bytes": (policy or {}).get("max_bytes"),
             "body_bytes": body_bytes,
             "largest": largest,
+            "overridden": overridden,
+            "listing_settings": settings or None,
             "advisory": (policy or {}).get("enforce") == "advisory",
         }
         if exists and path.startswith(HARNESS_PREFIX):
@@ -890,6 +975,24 @@ def render_report(
         for row in listings:
             entries = ", ".join(f"{n} ({_cell(b)} B)" for n, b in row["largest"])
             out.append(f"- `{row['path']}` \u2014 heaviest: {entries}")
+
+    for row in rows:
+        if row.get("overridden"):
+            o = row["overridden"]
+            out += [
+                "",
+                f"`{row['path']}` applies `skillOverrides` from settings: "
+                f"{o['hidden']} hidden, {o['name_only']} name-only. The row counts "
+                f"what the session carries, not what the tree holds.",
+            ]
+        if row.get("listing_settings"):
+            named = ", ".join(f"{k} = {v}" for k, v in row["listing_settings"])
+            out += [
+                "",
+                f"`{row['path']}` budget settings in force: {named}. The harness "
+                f"cuts descriptions beyond its listing budget (1 % of the context "
+                f"window by default); the meter does not guess the window.",
+            ]
 
     contradicted = [r for r in rows if r["state"] == "contradiction"]
     if contradicted:

@@ -28,7 +28,8 @@ Contract (public surface, mirrored by scripts/tests/test_overlay_export.py):
     discover_scoped_files(repo_root, scope="personal") -> list[str]  (sorted)
     manifest_files_entries(relpaths, scope="personal") -> list[dict]
     build_manifest(existing, files_entries, scope="personal") -> dict
-    export_overlay(repo_root, target, *, scope="personal", dry_run=False) -> dict
+    export_overlay(repo_root, target, *, scope="personal", dry_run=False,
+                   prune_foreign=False) -> dict
     flat_mirror_source_root(target) -> str | None
     flat_mirror_source_root_at_ref(ref, repo=".") -> str | None
     main(argv=None) -> int
@@ -42,6 +43,10 @@ Guarantees:
       overlay — a pattern list can only exclude the shapes someone thought of.
     - Deterministic + idempotent: re-running against unchanged input yields a
       byte-identical tree/ and manifest; stale mirror files are pruned.
+    - Prunes only what this bridge once owned (see classify_prune_candidates):
+      a mirror file the export skipped on purpose, or one this bridge's git
+      history never had, is FOREIGN and kept unless --prune-foreign is given.
+      That second question is the other read-only git call (`git log`).
     - No wall-clock / date content anywhere (so the output is reproducible).
 
 The scope→tier decision is delegated wholesale to
@@ -219,6 +224,13 @@ def is_excluded(relpath: str) -> bool:
     return False
 
 
+def _is_checkout(repo_root: str) -> bool:
+    """A git checkout, main or linked worktree. In a linked worktree `.git` is a
+    FILE pointing at the common dir; testing for a directory read every worktree
+    as "not a checkout" and switched the gitignore guard off there."""
+    return os.path.exists(os.path.join(repo_root, ".git"))
+
+
 def git_ignored(repo_root: str, relpaths: list[str]) -> set[str]:
     """The subset of `relpaths` that git refuses to track.
 
@@ -235,7 +247,7 @@ def git_ignored(repo_root: str, relpaths: list[str]) -> set[str]:
     """
     if not relpaths:
         return set()
-    if not os.path.isdir(os.path.join(repo_root, ".git")):
+    if not _is_checkout(repo_root):
         print(
             f"WARNING: {repo_root} is not a git checkout — .gitignore cannot be "
             "consulted, so only the pattern-based exclusions apply.",
@@ -435,16 +447,86 @@ def overlay_managed_paths(repo_root: str) -> set[str]:
     return managed
 
 
+def ever_tracked(repo_root: str, relpaths: list[str]) -> set[str] | None:
+    """The subset of `relpaths` that this bridge's history (HEAD) ever held, or
+    None when that cannot be known (not a checkout, no commits, git failed).
+
+    Read-only: `git log --name-only` restricted to the given paths, literal
+    pathspecs, NUL-separated so a non-ASCII name is not quoted out of a match.
+    """
+    if not relpaths:
+        return set()
+    if not _is_checkout(repo_root):
+        return None
+    env = dict(os.environ, GIT_LITERAL_PATHSPECS="1")
+    seen: set[str] = set()
+    for i in range(0, len(relpaths), 500):
+        chunk = relpaths[i:i + 500]
+        proc = subprocess.run(
+            ["git", "log", "-z", "--format=", "--name-only", "--no-renames",
+             "HEAD", "--", *chunk],
+            cwd=repo_root, capture_output=True, text=True, env=env,
+        )
+        if proc.returncode != 0:
+            return None
+        seen.update(p.strip("\n") for p in proc.stdout.split("\0"))
+    return {p for p in relpaths if p in seen}
+
+
+def classify_prune_candidates(repo_root: str, candidates: list[str]):
+    """Split mirror files the export did not write this run into (stale, foreign).
+
+    STALE means this bridge once owned the file and no longer exports it, so it
+    may go. Everything else is FOREIGN, with the reason it is kept:
+      - the export skips the path on purpose: `never_promote`, its own
+        exclusions, or git ignores it here (`.gitignore`, `.git/info/exclude`,
+        including every file under an ignored folder). The export cannot know
+        what such a folder should hold in the mirror, so it must not decide.
+      - this bridge's history never had the path: someone added it to the
+        overlay directly, a colleague's file the export never wrote.
+    Measured on a live pair: a reference file a colleague added inside an org
+    skill that the consumer excludes was planned as "stale, would prune".
+    """
+    forbidden = never_promote_paths(repo_root)
+    foreign: list[tuple[str, str]] = []
+    rest: list[str] = []
+    for rel in candidates:
+        if any(rel == f or rel.startswith(f.rstrip("/") + "/") for f in forbidden):
+            foreign.append((rel, "never_promote in this bridge"))
+        elif is_excluded(rel):
+            foreign.append((rel, "excluded by the export"))
+        else:
+            rest.append(rel)
+    ignored = git_ignored(repo_root, rest) if _is_checkout(repo_root) else set()
+    for rel in rest:
+        if rel in ignored:
+            foreign.append((rel, "gitignored in this bridge"))
+    rest = [r for r in rest if r not in ignored]
+    history = ever_tracked(repo_root, rest)
+    stale: list[str] = []
+    for rel in rest:
+        if history is None:
+            foreign.append((rel, "no git history here to prove this bridge owned it"))
+        elif rel not in history:
+            foreign.append((rel, "never tracked in this bridge"))
+        else:
+            stale.append(rel)
+    return sorted(stale), sorted(foreign)
+
+
 def export_overlay(repo_root: str, target_overlay_dir: str, *,
-                   scope: str = DEFAULT_SCOPE, dry_run: bool = False) -> dict:
+                   scope: str = DEFAULT_SCOPE, dry_run: bool = False,
+                   prune_foreign: bool = False) -> dict:
     """Export every `scope`-classified live file into `<target>/tree/<path>` and
     regenerate `<target>/overlay.manifest.yaml` files[].
 
     Returns a plan/result dict:
         {scope, repo_root, target, tree_root, manifest_path,
-         copied[list], pruned[list], files_entries[list], manifest[dict], dry_run}
+         copied[list], pruned[list], foreign[list of (path, reason)],
+         files_entries[list], manifest[dict], dry_run}
 
-    `--dry-run` computes the full plan but writes nothing.
+    `--dry-run` computes the full plan but writes nothing. `prune_foreign`
+    deletes the foreign files too; without it they are kept and reported.
     """
     repo_root = os.path.abspath(repo_root)
     target = os.path.abspath(target_overlay_dir)
@@ -460,7 +542,10 @@ def export_overlay(repo_root: str, target_overlay_dir: str, *,
     # overlay. See overlay_managed_paths() for why the second half is needed.
     managed = overlay_managed_paths(repo_root)
     existing = set(_tree_files(tree_root))
-    pruned = sorted(p for p in existing if p not in relset and p not in managed)
+    candidates = sorted(p for p in existing if p not in relset and p not in managed)
+    pruned, foreign = classify_prune_candidates(repo_root, candidates)
+    if prune_foreign:
+        pruned, foreign = sorted(pruned + [p for p, _ in foreign]), []
     # files[] describes the MIRROR AS IT WILL BE, not merely what this run
     # discovered: everything written now, plus everything already there that
     # survives the prune (the overlay-managed half). Built from the discovered set
@@ -488,6 +573,7 @@ def export_overlay(repo_root: str, target_overlay_dir: str, *,
         "manifest_path": manifest_path,
         "copied": list(relpaths),
         "pruned": pruned,
+        "foreign": foreign,
         "files_entries": files_entries,
         "manifest": manifest,
         "dry_run": dry_run,
@@ -646,6 +732,10 @@ def main(argv=None) -> int:
                     help=f"tier to export (default: {DEFAULT_SCOPE})")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the plan; write nothing")
+    ap.add_argument("--prune-foreign", action="store_true",
+                    help="also delete mirror files this bridge never exported "
+                         "(skipped on purpose, or absent from its git history); "
+                         "by default they are kept and listed as foreign")
     ap.add_argument("--check-target", action="store_true",
                     help="only report whether --target (a checkout dir or a "
                          "manifest file) is a flat-mirror overlay that "
@@ -670,7 +760,8 @@ def main(argv=None) -> int:
         return 1
 
     result = export_overlay(args.repo_root, args.target,
-                            scope=args.scope, dry_run=args.dry_run)
+                            scope=args.scope, dry_run=args.dry_run,
+                            prune_foreign=args.prune_foreign)
 
     if args.dry_run:
         print(f"overlay-export (DRY-RUN): {len(result['copied'])} {args.scope} "
@@ -679,13 +770,24 @@ def main(argv=None) -> int:
             print(f"  + tree/{rel}")
         for rel in result["pruned"]:
             print(f"  - tree/{rel} (stale, would prune)")
+        _print_foreign(result["foreign"])
         print(f"  manifest files[]: {len(result['files_entries'])} rule entr(ies)")
     else:
         print(f"overlay-export: {len(result['copied'])} {args.scope} file(s) -> "
               f"{result['tree_root']}; pruned {len(result['pruned'])}; "
+              f"kept {len(result['foreign'])} foreign; "
               f"manifest {result['manifest_path']} "
               f"(files[]={len(result['files_entries'])})")
+        _print_foreign(result["foreign"])
     return 0
+
+
+def _print_foreign(foreign) -> None:
+    for rel, reason in foreign:
+        print(f"  ~ tree/{rel} (foreign, kept: {reason})")
+    if foreign:
+        print(f"  {len(foreign)} foreign file(s) kept: this bridge never exported "
+              "them. Review them in the overlay; --prune-foreign deletes them.")
 
 
 if __name__ == "__main__":

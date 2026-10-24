@@ -30,7 +30,7 @@ from .history import REOPEN_AS
 from .store import append_log
 # every shared name stays importable from here (ActionError, SPEC, the patterns): callers never changed
 from .actions_base import *  # noqa: F401,F403
-from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
+from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
                            READ_ONLY_VERBS, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
                            TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
@@ -78,6 +78,7 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "restore_as": (REOPEN_AS, " or ".join(REOPEN_AS)),
     "account_status": (ACCOUNT_STATUSES, "unknown status"),
     "board_mode": (BOARD_MODES, "off, mine or all"),
+    "board_default": (BOARD_DEFAULTS, "off, mine, all or profile"),
     "route_by": (ROUTE_BY, f"must be one of {', '.join(ROUTE_BY)}"),
     "tab_state": (TAB_STATES, f"must be one of {', '.join(TAB_STATES)}"),
     "tour_how": (TOUR_HOW, "finished or skipped"),
