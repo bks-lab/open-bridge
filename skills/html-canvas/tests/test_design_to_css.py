@@ -33,6 +33,7 @@ def _run(*args, check=True) -> subprocess.CompletedProcess:
 def _groups(css: str) -> dict[str, dict[str, str]]:
     """Top-level `selector { --name: value; }` blocks, keyed by selector."""
     body = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    body = re.sub(r"@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}", "", body)  # the print block has its own test
     out = {}
     for sel, decls in re.findall(r"([^{}]+)\{([^{}]*)\}", body):
         out[sel.strip()] = dict(re.findall(r"--([\w-]+)\s*:\s*([^;]+);", decls))
@@ -371,3 +372,36 @@ def test_find_design_stops_at_the_project_boundary(tmp_path):
     (deep / "DESIGN.md").write_text("---\nname: local\n---\n", encoding="utf-8")
     assert find(deep) == deep / "DESIGN.md"
     assert find(deep / "deck.html") == deep / "DESIGN.md", "a file path starts at its folder"
+
+
+# --map carries the same print block as the default sheet: light values on paper,
+# the page ground dropped to the card colour.
+
+def _print_group(css: str) -> tuple[str, dict[str, str]]:
+    m = re.search(r"@media print\s*\{\s*([^{}]+)\{([^{}]*)\}\s*\}", re.sub(r"/\*.*?\*/", "", css, flags=re.S))
+    assert m, "no @media print block in:\n" + css
+    return m.group(1).strip(), dict(re.findall(r"--([\w-]+)\s*:\s*([^;]+);", m.group(2)))
+
+
+def test_map_output_has_a_light_print_block():
+    css = _run(TOKENS / "design-current.md", "--map", TOKENS / "map.yaml").stdout
+    sel, decls = _print_group(css)
+    assert sel == ":root, html.dark"
+    assert set(decls) == MAPPED
+    light = _groups(css)[":root"]
+    assert decls["text"] == light["text"] and decls["accent-dim"] == light["accent-dim"]
+    assert decls["bg"] == "#FFFFFF", "the ground drops to surface-raised on paper"
+    assert decls["green-dim"] == "color-mix(in srgb, #2E7D32 20%, #FFFFFF)"
+    assert "#121417" not in css.split("@media print", 1)[1]
+
+
+def test_map_print_block_uses_the_consumer_selectors():
+    css = _run(TOKENS / "design-legacy.md", "--map", TOKENS / "map-selectors.yaml").stdout
+    sel, decls = _print_group(css)
+    assert sel == ":root, .theme-light, .theme-dark"
+    assert decls == {"bg": "#FFFFFF", "text": "#333333"}
+
+
+def test_default_sheet_print_block_is_unchanged():
+    css = _run(TOKENS / "design-current.md").stdout
+    assert css == (TOKENS / "golden-current.css").read_text("utf-8")

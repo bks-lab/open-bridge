@@ -205,3 +205,54 @@ td.key{font-family:var(--font-mono);color:var(--accent-text)}
 .dec-open{margin:0;padding-left:22px;display:grid;gap:8px}
 .dec-open .cnote{margin-left:6px}
 
+/* @block: glossary */
+/* in the text: a[data-term] (jumps to the entry without script) and dfn[data-term] */
+a[data-term],dfn[data-term]{color:inherit;font-style:normal;text-decoration:underline dotted;text-decoration-thickness:1px;text-underline-offset:3px;cursor:help}
+a[data-term]:hover,dfn[data-term]:hover{color:var(--accent-text)}
+.glossary h2{margin-top:0}
+.gl-list{display:grid;grid-template-columns:minmax(140px,220px) 1fr;gap:10px 24px;margin:0}
+.gl-list dt{font-weight:600;color:var(--ink)}
+.gl-list dt dfn{font-style:normal}
+.gl-list dd{margin:0;color:var(--on-surface)}
+.gl-list dt:target,.gl-list dt:target+dd{background:var(--accent-soft)}
+@media(max-width:620px){.gl-list{grid-template-columns:1fr;gap:4px}.gl-list dd{margin-bottom:10px}}
+/* the popover lives in the top layer; the script places it under its trigger */
+.gl-pop{position:fixed;inset:auto;margin:0;max-width:min(360px,calc(100vw - 32px));padding:14px 16px;background:var(--raised);color:var(--on-surface);border:1px solid var(--line-strong);border-radius:var(--radius-lg);box-shadow:var(--shadow-hover);font-size:14px;line-height:1.5}
+.gl-pop-h{display:block;font-weight:600;color:var(--ink);margin-bottom:4px}
+.gl-pop-more{display:inline-block;margin-top:8px;font-size:13px}
+@media print{.gl-pop{display:none !important}a[data-term],dfn[data-term]{text-decoration:none}}
+
+/* @block: toc */
+.toc{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--raised);padding:14px 18px;max-width:420px}
+.toc-h{font-size:var(--fs-label-caps,12px);font-weight:var(--fw-label-caps,600);letter-spacing:var(--ls-label-caps,.1em);text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.toc ol{margin:0;padding-left:20px;display:grid;gap:4px}
+.toc a{color:var(--on-surface)}
+/* the section in view: a word weight and a marker, not colour alone */
+.toc a[aria-current]{color:var(--accent-text);font-weight:600}
+.toc li:has(>a[aria-current])::marker{color:var(--accent-text)}
+
+/* @block: alt-table requires: table, bar-chart */
+.alt-fig{margin:0;display:grid;gap:12px}
+.alt-fig figcaption{font-size:13px;color:var(--muted)}
+.alt-toggle{justify-self:start;font:inherit;font-size:13px;color:var(--ink);border:1px solid var(--line);background:var(--raised);border-radius:var(--radius-md);padding:6px 11px;cursor:pointer}
+.alt-toggle:hover{background:var(--accent-subtle)}
+.alt-toggle[aria-expanded="true"] .alt-show,.alt-toggle[aria-expanded="false"] .alt-hide{display:none}
+@media (pointer:coarse){.alt-toggle{min-height:44px}}
+/* the script adds .js; without it chart and table both show. Paper always gets both. */
+@media screen{.alt-fig.js:not(.as-table) .alt-table,.alt-fig.js.as-table .alt-chart{display:none}}
+@media print{.alt-toggle{display:none !important}}
+
+/* @block: print */
+/* paper: full width, no breaks inside a card or a row, external links spelled out.
+   The script opens every <details> for printing and closes them again after. */
+@media print{
+  @page{margin:16mm 14mm}
+  body{font-size:11pt;line-height:1.45}
+  .wrap{max-width:none;padding:0}
+  h1,h2,h3,h4{break-after:avoid}
+  figure,tr,pre,.term,.metric,.pbox,.box,.band,.dec-opt,.speccard,.note,.cc,.kcard,.person,.lcard,.tl-row{break-inside:avoid}
+  p,li,dd{orphans:3;widows:3}
+  main a[href^="http"]::after{content:" (" attr(href) ")";font-size:.85em;color:var(--muted);overflow-wrap:anywhere}
+  .toc,.secnav,.alt-toggle{display:none !important}
+  footer.canvas-foot{margin-top:24px;padding-left:0;padding-right:0}
+}

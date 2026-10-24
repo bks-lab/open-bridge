@@ -30,6 +30,7 @@ bundle (`scripts/bundle.py`) and the theme contract
 | Something that has to RUN (a queue, a gate, a plan step by step) | `scripts/new-simulation.py` | `references/simulation.md` |
 | Many pages that must look like one set | the parallel-builder workflow | `references/build-workflow.md` |
 | An architecture explainer from a repo or its docs | `scripts/repo-scan.py`, then the playbook | `references/repo-analysis.md` |
+| Reading aids: glossary popovers, contents with scroll spy, a chart shown as table, print rules | `new-page.py --blocks glossary,toc,alt-table,print` | `references/sections.md` § Reading aids |
 | Behaviour on a page: reveal, count-up, filter, scrollspy | paste the snippet | `references/interactivity.md` |
 | A deck to present | use `html-slides` | |
 | Send, mail, attach, download folder | `scripts/bundle.py` (Send path below) | |
@@ -47,12 +48,14 @@ python3 skills/html-canvas/scripts/new-page.py --title "Option review" --lang de
 ```
 
 That writes one offline file: the shell, the DESIGN.md tokens, the example markup
-of each requested block from the 26 blocks in `references/sections.md`, and the CSS
-of those blocks once (from `assets/sections.css`). It then runs the static gate and
+of each requested block from the 30 blocks in `references/sections.md`, and the CSS
+of those blocks once (from `assets/sections.css`). Blocks with a behaviour (glossary,
+toc, alt-table, print) also bring their script from `assets/sections.js`, in a
+`section-scripts` region that only such a page has. It then runs the static gate and
 exits non-zero on errors. Replace the example content, keep the structure.
 
 **Updating an existing page:** `new-page.py --refresh page.html` re-renders only the
-marked regions (`design-tokens`, `page-fonts`, `sections`) and normalises the DE/EN
+marked regions (`design-tokens`, `page-fonts`, `sections`, `section-scripts`) and normalises the DE/EN
 swap rules; `<main>` and every hand-written rule stay. `--blocks` on a refresh swaps
 the block set. A page from before the generator has no regions: edit it in place.
 
@@ -135,7 +138,8 @@ python3 skills/html-canvas/scripts/bundle.py page.html --out page-send.html [--p
 
 Folds everything the page loads into one file: images, stylesheets, scripts, fonts
 (always embedded), iframes as UTF-8 safe base64 payloads, and with `--pages` linked
-local pages. Remote resources are refused unless `--allow-remote`; nothing is written
+local pages. A deck's `data-back-href` back link travels as a payload with `--pages`;
+without it, or with a missing target, it is a warning. Remote resources are refused unless `--allow-remote`; nothing is written
 until every reference resolves; a sha256 per source goes to stderr or `--manifest`.
 Run the gate on the bundled copy.
 
@@ -155,7 +159,7 @@ Run the gate on the bundled copy.
 
 | File | Read it when |
 |---|---|
-| `scripts/new-page.py`, `assets/sections.css` | building or refreshing a page |
+| `scripts/new-page.py`, `assets/sections.css`, `assets/sections.js` | building or refreshing a page |
 | `references/sections.md` | composing `<main>`: the block catalog |
 | `scripts/verify-page.py` | the gate, for pages and decks |
 | `scripts/bundle.py` | the send copy |

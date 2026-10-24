@@ -38,6 +38,7 @@ are not here: they belong to the running-model layer and live in
 - Flows: [pipeline](#pipeline) · [swimlane](#swimlane) · [C4 boxes](#c4-boxes) · [ladder](#ladder) · [SVG diagram](#svg-diagram) · [message flow A→B](#message-flow)
 - Data: [KPI row](#kpi-row) · [matrix](#matrix) · [kanban](#kanban) · [table](#table) · [bar chart](#bar-chart) · [timeline](#timeline)
 - Decisions: [decision page](#decision-page)
+- Reading aids: [glossary](#glossary) · [table of contents](#toc) · [show as table](#alt-table) · [print](#print)
 - Content: [spec card](#spec-card) · [callout](#callout) · [NOT-vs-IS](#not-vs-is) · [chips](#chips) · [people](#people) · [terminal](#terminal) · [collapsible](#collapsible)
 - Chrome: [section nav](#section-nav) · [legend](#legend) · [index/launcher](#index)
 
@@ -363,6 +364,95 @@ callout and say so. Needs `matrix` and `callout` (new-page.py pulls them in).
 </div>
 ```
 *CSS: block `decision-page` in `assets/sections.css`, included by `new-page.py --blocks decision-page`.*
+
+---
+
+## <a id="glossary"></a>Glossary (terms in the text open their definition)
+A term in the running text opens a native `popover` with its definition; the list
+itself sits at the end of the page (`new-page.py` puts this block last, whatever the
+order asked for). Each entry is a `<dt id="gl-<key>">` with a `<dfn>`, followed by
+its `<dd>`. In the text, mark a term one of two ways:
+
+- `<a href="#gl-<key>" data-term="<key>">`: the preferred form. Without script, or
+  where the browser has no popover, it is a plain link that jumps to the entry.
+- `<dfn data-term="<key>">`: the defining spot of a term in the text. The script
+  makes it focusable (`tabindex="0"`, `role="button"`); Enter or Space opens it.
+
+The popover is a dialog labelled by the term, it takes the focus, Esc or a click
+outside closes it, and the focus returns to the trigger. It is cloned from the entry,
+so it follows the DE/EN switch. Print hides the popover and keeps the list.
+```html
+<section class="glossary" id="glossary" aria-labelledby="glossary-h">
+  <h2 id="glossary-h"><span data-de>Glossar</span><span data-en>Glossary</span></h2>
+  <dl class="gl-list">
+    <dt id="gl-latency"><dfn><span data-de>Latenz</span><span data-en>Latency</span></dfn></dt>
+    <dd><span data-de>Zeit zwischen Anfrage und Antwort, gemessen am Client.</span><span data-en>Time between request and response, measured at the client.</span></dd>
+    <dt id="gl-queue"><dfn><span data-de>Warteschlange</span><span data-en>Queue</span></dfn></dt>
+    <dd><span data-de>Aufträge, die auf einen freien Bearbeiter warten.</span><span data-en>Jobs waiting for a free worker.</span></dd>
+  </dl>
+</section>
+```
+In the text, anywhere above it:
+```html
+<p><span data-de>Die <a href="#gl-latency" data-term="latency">Latenz</a> hängt an der <dfn data-term="queue">Warteschlange</dfn>.</span><span data-en>The <a href="#gl-latency" data-term="latency">latency</a> depends on the <dfn data-term="queue">queue</dfn>.</span></p>
+```
+*CSS: block `glossary` in `assets/sections.css`; script: block `glossary` in `assets/sections.js`. Both included by `new-page.py --blocks glossary`.*
+
+## <a id="toc"></a>Table of contents with scroll spy
+A contents box near the top. `new-page.py` fills the list with the blocks that follow
+it; on a hand-written page, list your `section[id]`s. The script marks the link of the
+section in view with `aria-current="location"` (bold plus accent, not colour alone).
+An empty list on `<nav class="toc" data-toc="auto">` fills itself from the page's `h2`s,
+linking each to its own id or the nearest `section[id]`. Print leaves it out.
+For a bar that stays at the top while scrolling, use [section nav](#section-nav).
+```html
+<nav class="toc" aria-label="Contents" data-aria-de="Inhalt" data-aria-en="Contents">
+  <div class="toc-h"><span data-de>Inhalt</span><span data-en>Contents</span></div>
+  <ol>
+    <li><a href="#core-idea"><span data-de>Die Kernidee</span><span data-en>The core idea</span></a></li>
+  </ol>
+</nav>
+```
+*CSS: block `toc` in `assets/sections.css`; script: block `toc` in `assets/sections.js`. Both included by `new-page.py --blocks toc`.*
+
+## <a id="alt-table"></a>Show as table (a chart with its data)
+A chart or diagram plus the same data as a table, for screen readers, for people who
+read numbers better than bars, and for paper. The chart carries `class="alt-chart"`
+and `aria-describedby` naming the table, so assistive technology reads the table as
+its description even while it is hidden. The toggle button ships `hidden` and the
+script shows it; without script chart and table stand one above the other. Print
+always gives both. Any chart works (an SVG diagram, a bar chart): the sample uses
+the [bar chart](#bar-chart), so `new-page.py` pulls that block and `table` in.
+```html
+<figure class="alt-fig">
+  <div class="alt-chart barchart" role="img" aria-describedby="alt-bars" aria-label="Duration before and after" data-aria-de="Dauer vorher und nachher" data-aria-en="Duration before and after">
+    <div class="bar-l"><span data-de>Alt</span><span data-en>Old</span></div><div class="bar-track"><div class="bar-fill old" style="width:80%">12 min</div></div><div class="bar-d"></div>
+    <div class="bar-l"><span data-de>Neu</span><span data-en>New</span></div><div class="bar-track"><div class="bar-fill new" style="width:18%">2 min</div></div><div class="bar-d">−83%</div>
+  </div>
+  <button type="button" class="alt-toggle" aria-controls="alt-bars" aria-expanded="false" hidden>
+    <span class="alt-show"><span data-de>Als Tabelle zeigen</span><span data-en>Show as table</span></span>
+    <span class="alt-hide"><span data-de>Als Grafik zeigen</span><span data-en>Show as chart</span></span>
+  </button>
+  <div class="alt-table tbl-wrap" id="alt-bars"><table>
+    <thead><tr><th><span data-de>Lauf</span><span data-en>Run</span></th><th><span data-de>Dauer</span><span data-en>Duration</span></th><th><span data-de>Änderung</span><span data-en>Change</span></th></tr></thead>
+    <tbody>
+      <tr><td><span data-de>Alt</span><span data-en>Old</span></td><td>12 min</td><td></td></tr>
+      <tr><td><span data-de>Neu</span><span data-en>New</span></td><td>2 min</td><td>−83%</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><span data-de>Dauer eines Laufs vor und nach der Umstellung.</span><span data-en>Duration of one run before and after the change.</span></figcaption>
+</figure>
+```
+*CSS: block `alt-table` in `assets/sections.css`; script: block `alt-table` in `assets/sections.js`. Both included by `new-page.py --blocks alt-table`.*
+
+## <a id="print"></a>Print stylesheet (paper rules for a page)
+*Markup: none.* Rules and a small script, nothing in `<main>`. The shell already
+prints light and hides its controls; this block adds what a long page needs on paper:
+page margins, full width, no break inside a card, a table row or a code window,
+headings kept with what follows, external links spelled out after their text, the
+contents box and toggles left out. Its script opens every closed `<details>` before
+printing and closes them again afterwards.
+*CSS: block `print` in `assets/sections.css`; script: block `print` in `assets/sections.js`. Both included by `new-page.py --blocks print`.*
 
 ---
 

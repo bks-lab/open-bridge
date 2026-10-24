@@ -34,6 +34,8 @@ def block_markup(name: str) -> str:
     nxt = text.find("\n## ", start)
     body = text[start: nxt if nxt != -1 else len(text)]
     m = re.search(r"```html\n(.*?)```", body, re.S)
+    if not m and "*Markup: none.*" in body:
+        return ""   # a rules-only block (print)
     assert m, "no html fence for block %s" % name
     return m.group(1)
 
@@ -174,10 +176,13 @@ def test_all_blocks_page_defines_each_rule_set_once(tmp_path):
     out, r = build(tmp_path, "--blocks", "all")
     assert r.returncode == 0, r.stdout + r.stderr
     text = out.read_text("utf-8")
-    marks = re.findall(r"/\* @block: ([a-z0-9-]+)", text)
-    assert len(marks) == len(set(marks)), "a block's CSS is in the page twice"
     assert text.count("/* sections:begin */") == 1 and text.count("/* sections:end */") == 1
     region = text.split("/* sections:begin */", 1)[1].split("/* sections:end */", 1)[0]
+    marks = re.findall(r"/\* @block: ([a-z0-9-]+)", region)
+    assert len(marks) == len(set(marks)), "a block's CSS is in the page twice"
+    scripts = text.split("/* section-scripts:begin */", 1)[1].split("/* section-scripts:end */", 1)[0]
+    js = re.findall(r"/\* @block: ([a-z0-9-]+)", scripts)
+    assert len(js) == len(set(js)), "a block's script is in the page twice"
     assert region.count("--core-bg:") == 1  # the lens triads, once, for every block that needs them
     assert text.count("@keyframes hc-msg-fwd") == 1
 

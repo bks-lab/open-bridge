@@ -21,6 +21,14 @@ The page owns three marked regions inside its <style>, and only these are ever r
 
     python3 skills/html-canvas/scripts/new-page.py --refresh review.html
 
+Blocks with a behaviour (glossary, toc, alt-table, print) also bring their part of
+assets/sections.js, in a fourth region inside a <script> at the end of <body>:
+
+    /* section-scripts:begin */ ... /* section-scripts:end */  the script of the chosen blocks
+
+It exists only on a page that needs it. A glossary always lands at the end of <main>,
+and a toc lists the blocks that follow it.
+
 re-renders those regions (and normalises the DE/EN swap rules, old or new form, to the
 one pair the shell ships), leaves <main> and every hand-written rule alone, and does
 nothing on a page that is already current. --blocks on a refresh swaps the block set.
@@ -47,9 +55,11 @@ SECTIONS_MD = SKILL / "references" / "sections.md"
 TOKENS = "design-tokens"
 FONTS = "page-fonts"
 SECTIONS = "sections"
+SCRIPTS = "section-scripts"
 
 HEADER_BLOCKS = ("doc-header", "hero")
 UNWRAPPED = HEADER_BLOCKS + ("section-nav",)
+LAST_BLOCKS = ("glossary",)     # placed at the end of <main>, whatever the order asked for
 
 # Nav labels, de / en. Short on purpose: they name a block on a scaffold page.
 LABELS = {
@@ -64,6 +74,8 @@ LABELS = {
     "callout": ("Hinweis", "Note"), "not-vs-is": ("Abgrenzung", "Contrast"),
     "chips": ("Tags", "Tags"), "people": ("Personen", "People"), "terminal": ("Terminal", "Terminal"),
     "collapsible": ("Details", "Details"), "legend": ("Legende", "Legend"), "index": ("Index", "Index"),
+    "glossary": ("Glossar", "Glossary"), "toc": ("Inhalt", "Contents"),
+    "alt-table": ("Grafik und Tabelle", "Chart and table"), "print": ("Druck", "Print"),
 }
 
 # The shell's DE/EN swap, in the two spellings a page can carry. The pair-safe form
@@ -79,6 +91,7 @@ SWAP = {
 }
 
 CSS_BLOCK = re.compile(r"^/\* @block: ([a-z0-9-]+)(?: requires: ([a-z0-9, -]+))? \*/$", re.M)
+JS_BLOCK = re.compile(r"^/\* @block: ([a-z0-9-]+) \*/$", re.M)
 MD_HEADING = re.compile(r'^## <a id="([a-z0-9-]+)"></a>', re.M)
 BLOCKS_LINE = re.compile(r"^/\* blocks: (.*?) \*/$", re.M)
 
@@ -125,13 +138,19 @@ def catalog() -> list[str]:
     return MD_HEADING.findall(read(SECTIONS_MD))
 
 
+NO_MARKUP = "*Markup: none.*"
+
+
 def markup(name: str) -> str:
+    """The block's example markup; "" for a block that is rules only (its entry says NO_MARKUP)."""
     text = read(SECTIONS_MD)
     start = text.index('<a id="%s"></a>' % name)
     nxt = text.find("\n## ", start)
     body = text[start: nxt if nxt != -1 else len(text)]
     m = re.search(r"```html\n(.*?)```", body, re.S)
     if not m:
+        if NO_MARKUP in body:
+            return ""
         fail("sections.md has no html example for block %s" % name)
     return m.group(1).strip("\n")
 
@@ -175,6 +194,33 @@ def sections_body(blocks: list[str]) -> str:
     for name in resolve(blocks):
         parts.append(table[name][1])
     return "\n\n".join(parts)
+
+
+def js_blocks() -> dict[str, str]:
+    """{name: script text from its marker line on} from assets/sections.js."""
+    text = read(ASSETS / "sections.js")
+    marks = list(JS_BLOCK.finditer(text))
+    return {m.group(1): text[m.start(): marks[i + 1].start() if i + 1 < len(marks) else len(text)].strip("\n")
+            for i, m in enumerate(marks)}
+
+
+def scripts_body(blocks: list[str]) -> str:
+    table = js_blocks()
+    return "\n\n".join(table[n] for n in resolve(blocks) if n in table)
+
+
+def apply_scripts(text: str, blocks: list[str]) -> str:
+    """Fill the section-scripts region; add it (a <script> before </body>) only when a block needs it."""
+    body = scripts_body(blocks)
+    if not has_region(text, SCRIPTS):
+        if not body:
+            return text
+        b, e = marker_pair(SCRIPTS)
+        i = text.rfind("</body>")
+        if i == -1:
+            fail("page has no </body> to hold the %s region" % SCRIPTS)
+        text = text[:i] + "<script>\n%s\n%s\n</script>\n" % (b, e) + text[i:]
+    return set_region(text, SCRIPTS, body)
 
 
 # --- regions --------------------------------------------------------------------------
@@ -279,14 +325,33 @@ def unescape_symbols(markup_text: str) -> str:
 
 # --- building -------------------------------------------------------------------------
 
+def ordered(blocks: list[str]) -> list[str]:
+    """The order on the page: as asked, the LAST_BLOCKS moved to the end."""
+    return [b for b in blocks if b not in LAST_BLOCKS] + [b for b in blocks if b in LAST_BLOCKS]
+
+
+def linked(blocks: list[str], after: str | None = None) -> list[str]:
+    """Blocks a nav or toc links to: wrapped, with markup, and (for a toc) after it."""
+    out = [b for b in ordered(blocks) if b not in UNWRAPPED and b != "toc" and markup(b)]
+    if after and after in blocks:
+        order = ordered(blocks)
+        out = [b for b in out if order.index(b) > order.index(after)]
+    return out
+
+
+def label(b: str) -> str:
+    de, en = LABELS.get(b, (b, b))
+    return '<a href="#blk-%s"><span data-de>%s</span><span data-en>%s</span></a>' % (b, de, en)
+
+
 def nav(blocks: list[str]) -> str:
-    links = []
-    for b in blocks:
-        if b in UNWRAPPED:
-            continue
-        de, en = LABELS.get(b, (b, b))
-        links.append('  <a href="#blk-%s"><span data-de>%s</span><span data-en>%s</span></a>' % (b, de, en))
+    links = ["  " + label(b) for b in linked(blocks)]
     return '<nav class="secnav">\n%s\n</nav>' % "\n".join(links)
+
+
+def toc_list(blocks: list[str]) -> str:
+    items = ["    <li>%s</li>" % label(b) for b in linked(blocks, after="toc")]
+    return "<ol>\n%s\n  </ol>" % "\n".join(items) if items else "<ol></ol>"
 
 
 def main_html(blocks: list[str], title_de: str, title_en: str) -> str:
@@ -296,11 +361,15 @@ def main_html(blocks: list[str], title_de: str, title_en: str) -> str:
     if not headerish:
         parts.append("<h1>%s</h1>" % title_h1)
     titled = False
-    for b in blocks:
+    for b in ordered(blocks):
         body = unescape_symbols(markup(b))
+        if not body:
+            continue
         if b == "section-nav":
             parts.append(nav(blocks))
             continue
+        if b == "toc":
+            body = re.sub(r"<ol>.*?</ol>", lambda _: toc_list(blocks), body, count=1, flags=re.S)
         if b in HEADER_BLOCKS:
             if not titled:
                 body = re.sub(r"(<h1[^>]*>).*?(</h1>)", lambda m: m.group(1) + title_h1 + m.group(2), body,
@@ -332,6 +401,7 @@ def build(args, design: Path | None, d2c) -> str:
     text = apply_tokens(text, design, d2c)
     text = apply_fonts(text, design, [Path(d) for d in args.font_dir], d2c, args.embed_fonts)
     text = set_region(text, SECTIONS, sections_body(blocks))
+    text = apply_scripts(text, blocks)
 
     m = re.search(r'<main class="wrap">.*?</main>', text, re.S)
     if not m:
@@ -369,16 +439,17 @@ def refresh(args, page: Path, design: Path | None, d2c) -> tuple[str, list[str]]
             if unknown:
                 fail("the page names block(s) the catalog no longer has: %s" % ", ".join(unknown))
             text = set_region(text, SECTIONS, sections_body(blocks))
+            text = apply_scripts(text, blocks)
     else:
         note("no %s region, block CSS left alone (this page was not built by new-page.py)" % SECTIONS)
 
     text = apply_swap(text)
 
     if text != original:
-        for label, name in (("tokens", TOKENS), ("fonts", FONTS), ("sections", SECTIONS)):
+        for what, name in (("tokens", TOKENS), ("fonts", FONTS), ("sections", SECTIONS), ("scripts", SCRIPTS)):
             if has_region(text, name) and (not has_region(original, name)
                                            or region_body(text, name) != region_body(original, name)):
-                changed.append(label)
+                changed.append(what)
         if SWAP_PAIR.findall(original) != SWAP_PAIR.findall(text) or not changed:
             changed.append("language swap")
     return text, changed
