@@ -92,6 +92,15 @@ def test_the_configured_hosts_class_decides(monkeypatch):
     assert not net.host_private("example.org") and not net.host_private("93.184.216.34")
 
 
+@pytest.mark.parametrize("caller", CALLERS)
+def test_a_redirect_into_the_shared_address_space_of_a_tailnet_is_refused(monkeypatch, caller):
+    # 100.64.0.0/10 is neither private nor reserved for ipaddress, yet not global: a tailnet lives there
+    monkeypatch.setattr(net, "_addresses", lambda host: ["93.184.216.34"])
+    assert net.host_private("100.101.102.103") and not net.host_private("93.184.216.34")
+    with pytest.raises(net.FetchError, match="bad redirect"):
+        _redirect(_handler(caller), "http://100.101.102.103/")
+
+
 def test_a_url_outside_the_schemes_is_refused_before_any_connection():
     with pytest.raises(net.FetchError, match="bad address"):
         net.fetch("http://peer.example.org/card.json", **ag.CARD_FETCH)

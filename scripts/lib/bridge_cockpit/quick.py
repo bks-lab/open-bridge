@@ -468,7 +468,9 @@ class Quick:
     def live_event(self, conv: str, text: str, doing: str | None) -> dict:
         """The next `quick_live` payload of `conv`: the text added since the last one, or all of it when
         the stream started a new message. Numbered and kept under the lock, so live_state() and the
-        events agree on what a page has"""
+        events agree on what a page has. The key is filtered from the whole text before it is kept, so
+        what was sent and what comes next are measured on the same filtered text"""
+        text = self.app.scrub(text)
         with self.lock:
             self.seq += 1
             was = self.live.get(conv, {}).get("text", "")
@@ -534,7 +536,7 @@ class Quick:
                 else:
                     if session is None:
                         c["total_usd"] = 0.0      # a new session counts from zero
-                    turn["a"] = answer["text"][:20000]
+                    turn["a"] = app.scrub(answer["text"])[:20000]
                     turn["model"] = (answer["model"] or actual_model or provider).replace("claude-", "")
                     turn["usage"] = answer.get("usage")
                     if answer["total_usd"] is not None:

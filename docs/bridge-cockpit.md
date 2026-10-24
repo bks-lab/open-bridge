@@ -1329,9 +1329,14 @@ nothing a stranger could trigger:
   `noopener` and no referrer;
 - a script runs only from the Bridge's own list (`briefing.py`, `inbox.py`,
   `workplace.py`, `task.py`, `bridge-resources.py`, `triage.py` and the cmux
-  layout script), besides the read-only quick chat and the A2A shapes of
-  section 5; whatever the page does to an agent tab goes through
-  `workplace.py` and its terminal driver;
+  layout script). Besides those the server starts only these exact shapes:
+  the read-only quick chat (`claude -p` with Read, Grep and Glob), the A2A
+  shapes of section 5, `codex exec --sandbox read-only`, the Haiku judge of how
+  complex an item is (no tools, no settings, no session), "Organize with AI"
+  (one call, no tools, it keeps only tab refs and task slugs from the answer)
+  and `/bin/ps eww -o command= -p <pid>` with a pid of digits only, for the
+  Sessions page. The cmux CLI is never called directly: whatever the page does
+  to an agent tab goes through `workplace.py` and its terminal driver;
 - an answer to a tab reaches only the question you saw. It carries the hash
   of that question, the tab's name (unless that name is empty or longer than
   120 characters, which the check does not take) and the state it was in. Before anything is
@@ -1374,8 +1379,11 @@ nothing a stranger could trigger:
   `relay.key`, which lives outside the Bridge in a folder only you can open
   (`~/.local/state/bridge-cockpit/`, or `$BRIDGE_COCKPIT_KEY_DIR`). The session
   submits only questions whose signature checks out, so a program that can
-  merely write files into the repository (an agent tab, for example) cannot
-  hand the control session a prompt. The signature covers the question's
+  write files into the repository but cannot read your own files cannot
+  hand the control session a prompt. It does not stop a program that runs as
+  you: an agent tab can read `relay.key` and the cockpit's `token` like any of
+  your files, so the signature keeps out other users and sandboxed tools, not
+  your own sessions. The signature covers the question's
   expiry too, so nobody can keep it alive longer. The way back is signed
   with the same key: the session signs its heartbeat and every answer, and
   the server ignores a heartbeat or answer whose signature does not check

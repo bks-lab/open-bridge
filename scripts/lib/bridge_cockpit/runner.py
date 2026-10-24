@@ -2,9 +2,11 @@
 """Subprocess runner of the cockpit: one program allowlist, timeouts, a clean env.
 
 Every script call of the server goes through `Runner.run`. Before a process starts,
-`check` refuses any argv whose program is not one of the five Bridge scripts (run with
-this interpreter) or the cmux CLI with one of five subcommands (read-screen only reads). Tests inject a fake
-runner that overrides `_spawn` and so still passes through the same check.
+`check` refuses any argv that is not one of the seven Bridge scripts of SCRIPT_PATHS (run
+with this interpreter) or one of the exact shapes below it lets through: an A2A ask, a quick
+question, codex read-only, the Haiku judge, organize, and ps for one pid. The cmux CLI is
+never called directly; tabs go through workplace.py and its terminal driver. Tests inject a
+fake runner that overrides `_spawn` and so still passes through the same check.
 """
 from __future__ import annotations
 
@@ -26,7 +28,6 @@ from .quick import argv_ok, resolve_claude
 from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
 
 CMUX_APP = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-CMUX_SUBCOMMANDS = frozenset({"select-workspace", "focus-panel", "send-key", "close-surface", "read-screen"})
 SCRIPT_PATHS = ("scripts/briefing.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
                 "scripts/bridge-resources.py", "scripts/triage.py", "skills/cmux/scripts/cmux_layout.py")
 
@@ -79,8 +80,6 @@ class Runner:
         if any("\x00" in a for a in argv):
             raise RunnerRefused("NUL in argv")
         if argv[0] == self.python and argv[1] in self.scripts:
-            return
-        if self.cmux and argv[0] == self.cmux and argv[1] in CMUX_SUBCOMMANDS:
             return
         # a quick question: claude -p with a known model and the three read tools only (quick.py)
         # a message to an A2A agent: a2a.py ask or get in exactly their shapes (agents.py)

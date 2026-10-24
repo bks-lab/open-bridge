@@ -22,10 +22,11 @@ browser tab in the control workspace when the terminal driver can, else the defa
 answer is `{"opened": ..., "port": ..., "reused": ...}`: report in one line where it `opened` and
 the address `http://127.0.0.1:<port>/`, nothing else. Never run `url` or `start` just to show a link:
 their link carries a login code, and a login code does not belong in the conversation. Arguments after `/cockpit` pass through:
-`--via auto|cmux|system|none` picks where it opens, `status`, `url` and `stop` run that command
-instead of `open`.
-`--json` applies only to `open`, `start` and `status`; never append it to `url` or `stop`, which
-refuse it with a usage text (exit 2).
+`--via auto|cmux|system|none` picks where it opens, `status` and `stop` run that command instead of
+`open`. `/cockpit url` is never run here: tell the user to type `python3 scripts/bridge-cockpit.py
+url` in their own terminal, which prints a login link to open by hand.
+`--json` applies only to `open`, `start` and `status`; never append it to `stop`, which refuses it
+with a usage text (exit 2).
 
 After opening, run `python3 scripts/bridge-cockpit.py status --json` once. When `can_launch` is
 `false`, no terminal driver starts agent tabs, so every "Let AI do it" in the cockpit would fail:
@@ -38,7 +39,7 @@ means the driver did not answer: say nothing.
 
 | Exit | Meaning | Say |
 |---|---|---|
-| 1 | not running (from `status`, `url` or `stop`), not an error | that the cockpit is not running and that `/cockpit` (or `python3 scripts/bridge-cockpit.py start`) starts it |
+| 1 | not running (from `status` or `stop`), not an error | that the cockpit is not running and that `/cockpit` (or `python3 scripts/bridge-cockpit.py start`) starts it |
 | 2 | with a usage text on stderr: a wrong call (an unknown subcommand or flag) | nothing to the user about the config: fix the arguments and run it again |
 | 2 | without a usage text: `cockpit.enabled` is not `true` (or the config is invalid) | how to switch it on: `cockpit: {enabled: true}` in `bridge-config.yaml` |
 | 3 | the port is taken | which port (`cockpit.port`) and that another program holds it |

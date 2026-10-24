@@ -336,7 +336,8 @@ class App:
             if not isinstance(raw, str):
                 self._screens.pop(ref, None)
                 return None, "", (run.err or run.out or "the tab could not be read").strip()
-            text = "\n".join(line.rstrip() for line in raw.splitlines()).strip("\n")[-SCREEN_MAX:]
+            # the key filtered before the hash, so a reply's guard compares the same text the page saw
+            text = self.scrub("\n".join(line.rstrip() for line in raw.splitlines()).strip("\n")[-SCREEN_MAX:])
             digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
             self._screens[ref] = (self.clock(), text, digest)
             return text, digest, ""

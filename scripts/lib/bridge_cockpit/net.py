@@ -63,8 +63,9 @@ def host_private(host: str | None) -> bool:
                 candidates.append(ipaddress.ip_address(raw.split("%", 1)[0]))
             except ValueError:
                 continue
+    # not is_global catches what the flags above miss, the shared space of 100.64.0.0/10 a tailnet uses
     return any(a.is_private or a.is_loopback or a.is_link_local or a.is_multicast or a.is_reserved
-               or a.is_unspecified for a in candidates)
+               or a.is_unspecified or not a.is_global for a in candidates)
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):

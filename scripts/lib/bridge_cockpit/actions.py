@@ -205,11 +205,6 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         app = self.app
         return [sys.executable, app.runner.script("scripts/task.py"), "--root", str(app.root), *args]
 
-    def cmux(self, *args: str) -> list[str]:
-        if not self.app.runner.cmux:
-            raise ActionError(503, "cmux_unavailable", "the cmux CLI is not available")
-        return [self.app.runner.cmux, *args]
-
     def entry(self, key: str, field: str = "key") -> dict:
         found = self.app.collector.resolve(key) or self.page_entry(key)
         if not found:

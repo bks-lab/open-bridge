@@ -201,8 +201,6 @@ class FakeRunner(Runner):
                 "report": [f"started {len(items)}"]}
 
     def key(self, argv: list[str]) -> str:
-        if argv[0] == self.cmux:
-            return f"cmux.{argv[1]}"
         if argv[0] == self.claude:
             return "claude.p"
         if argv[0] == self.codex:
@@ -793,7 +791,10 @@ def test_runner_refuses_programs_outside_the_allowlist(tmp_path):
         fake.run(["/usr/bin/git", "status"], 1)
     assert fake.calls == []
     runner.check([PY, str(tmp_path / "scripts" / "briefing.py"), "collect"])
-    runner.check(["/fake/bin/cmux", "send-key", "--surface", "surface:1", "1"])
+    # the cmux CLI is reached through workplace.py and its driver, never called directly
+    for sub in ("send-key", "read-screen", "select-workspace"):
+        with pytest.raises(RunnerRefused):
+            runner.check(["/fake/bin/cmux", sub, "--surface", "surface:1", "1"])
 
 
 def test_runner_env_and_timeout(tmp_path):
@@ -1014,10 +1015,6 @@ def W(w: World, *args: str) -> list[str]:
 
 def K(w: World, *args: str) -> list[str]:
     return [PY, str(w.root / "scripts" / "task.py"), "--root", str(w.root), *args]
-
-
-def C(*args: str) -> list[str]:
-    return ["/fake/bin/cmux", *args]
 
 
 def launch_argv(w: World, items: str, mode: str, target: str = "area", *extra: str) -> list[str]:
@@ -2685,6 +2682,20 @@ def test_a_tab_screen_is_read_through_the_driver_and_only_for_a_known_tab(world)
     assert world.request("GET", "/api/tab/screen?ref=surface:7;ls", headers=world.cookie)[0] == 400
     assert world.request("GET", "/api/tab/screen?ref=surface:7")[0] == 401
     assert world.runner.calls == []
+
+
+def test_the_key_never_leaves_through_an_answer_a_live_stream_or_a_tab_screen(world, monkeypatch):
+    key = world.app.token
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer(f"The key is {key}.", 0.001)
+    status, _, body = world.post("/api/ask", {"kind": "row", "args": {"key": "task:other-task"}, "via": "quick"})
+    assert status == 202
+    turn = wait_quick(world)[0]["turns"][0]
+    assert key not in turn["a"] and "[token]" in turn["a"]
+    seen = _quick_live_run(world, monkeypatch, _text_delta("Look: "), _text_delta(key))
+    assert key not in json.dumps(seen) and "[token]" in "".join(p.get("text") or "" for p in seen)
+    world.runner.handlers["workplace.screen"] = lambda argv: ok({"text": f"export KEY={key}\n"})
+    data = json.loads(world.request("GET", "/api/tab/screen?ref=surface:7", headers=world.cookie)[2])
+    assert key not in data["text"] and data["text"] == "export KEY=[token]"
 
 
 def test_a_tab_screen_the_driver_cannot_read_says_so(world):
