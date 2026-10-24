@@ -45,8 +45,12 @@
 # (run_checks below). The merge itself runs with hooks off, and an instance whose
 # CI is off (a billing stop, Actions disabled on a fork, a tree with no remote
 # runner) meets no validator after it at all. A check that the merge turned red
-# rolls the merge back, skips the mirror and files an inbox item; a check that
-# was already red before the merge is reported and does not hold the job.
+# (green before, or red before with a finding it did not have) rolls the merge
+# back, skips the mirror and files an inbox item. A check that was already red
+# before, saying the same, is reported and does not hold the job. A checker new
+# with the merge, or changed by it, that is red keeps the merge and files an
+# item: the rule is upstream's, what it finds is local, and rolling back would
+# repeat every morning. The post-merge block sorts these three cases.
 #
 # Env (optional): UPSTREAM_REMOTE (default upstream) · UPSTREAM_REF (default
 # upstream/main) · MIRROR_REMOTE (default origin) · MIRROR_CORE=0 disables the
@@ -183,11 +187,11 @@ print("; ".join(one(x) for x in u))') \
 }
 
 # ---- the local check net ----
-# The same fast checks the pre-commit always-on gate runs, plus the two
-# validators every commit on main meets in CI. Each is skipped when absent: a
-# fork that has not taken a checker is not failing it. Measured on a live
-# instance: about 1.5 s for all six, so the job pays twice that (before and after
-# the merge) and nothing else.
+# The fast checks the pre-commit always-on gate runs (edges, standing orders,
+# card index, reachability, the context budget), plus the two validators every
+# commit on main meets in CI. Each is skipped when absent: a fork that has not
+# taken a checker is not failing it. Measured on a live instance: under 2 s for
+# all seven, so the job pays twice that (before and after the merge).
 CHECKS=(
   "validate-bridge.py"
   "validate-skill-scope.py"
@@ -195,33 +199,64 @@ CHECKS=(
   "standing-orders.py --check"
   "context-index.py --check"
   "check-reachability.py"
+  "measure-context.py"
 )
 CHECKS_LOG=/tmp/ob-autoupdate-checks.log
+CHECKS_DIR=""
 checks_ran=0
 now_s() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
 
-# run_checks: sets red (the failing checks, one per line) and checks_ran.
-# Globals, not output: a $(...) caller would lose checks_ran in its subshell.
+# run_checks <phase>: sets red (the failing checks, one per line), present (the
+# checks that exist in this tree, one per line) and checks_ran. Each check's
+# output is kept per phase under $CHECKS_DIR, so a check red on both sides can
+# be compared by what it says, not only by its exit code.
+# Globals, not output: a $(...) caller would lose them in its subshell.
 # Every check gets a 120 s alarm, so a hanging one fails rather than stalls.
-red=""
+red=""; present=""
 run_checks() {
-  local c s
-  checks_ran=0; red=""
+  local c s out
+  checks_ran=0; red=""; present=""
+  [ -n "$CHECKS_DIR" ] || CHECKS_DIR=$(mktemp -d /tmp/ob-autoupdate-checks.XXXXXX)
+  mkdir -p "$CHECKS_DIR/$1"
   for c in "${CHECKS[@]}"; do
     s=${c%% *}
     [ -f "scripts/$s" ] || continue
-    checks_ran=$((checks_ran + 1))
+    checks_ran=$((checks_ran + 1)); present="${present}${c}"$'\n'
+    out="$CHECKS_DIR/$1/${s}.out"
     # shellcheck disable=SC2086
-    if ! { echo "== $c"; perl -e 'alarm 120; exec @ARGV' python3 scripts/$c </dev/null; } >>"$CHECKS_LOG" 2>&1; then
-      red="${red}${c}"$'\n'
-    fi
+    perl -e 'alarm 120; exec @ARGV' python3 scripts/$c </dev/null >"$out" 2>&1 \
+      || red="${red}${c}"$'\n'
+    { echo "== $1: $c"; cat "$out"; } >>"$CHECKS_LOG"
   done
 }
 
-# Words in $2 that are not in $1 (both newline lists): what the merge turned red.
-newly_red() { comm -13 <(printf '%s\n' "$1" | sed '/^$/d' | sort -u) <(printf '%s\n' "$2" | sed '/^$/d' | sort -u); }
+in_list() { printf '%s\n' "$2" | grep -qxF -- "$1"; }   # $1 a line of the list $2
+words() { printf '%s' "$1" | sed '/^$/d' | tr '\n' ' ' | sed 's/ $//'; }
+
+# A check's findings, normalised: digits folded (a count, a line number or a
+# duration is not a new finding), blank lines dropped, order ignored.
+findings_of() { sed -E 's/[0-9]+/N/g' "$1" 2>/dev/null | sed '/^[[:space:]]*$/d' | sort -u; }
+has_new_findings() {  # $1 = check; true when the after-run says a line the before-run did not
+  local s=${1%% *}
+  [ -n "$(comm -13 <(findings_of "$CHECKS_DIR/before/$s.out") <(findings_of "$CHECKS_DIR/after/$s.out"))" ]
+}
+
+# closes_when for an inbox item: every named check green again, and with $1=1
+# the upstream ref on the user branch too. Pinned to refs/heads/<branch>, never
+# HEAD (an inbox check may run in a worktree on another branch), and to the
+# moving $UPSTREAM_REF, never a SHA (a repeat add keeps the first item's probe).
+probe_json() {
+  python3 - "$UPSTREAM_REF" "refs/heads/$branch" "$@" <<'PY'
+import json, sys
+up, ref, need, *checks = sys.argv[1:]
+parts = [{"command": ["git", "merge-base", "--is-ancestor", up, ref]}] if need == "1" else []
+parts += [{"command": ["python3", "scripts/" + c.split()[0], *c.split()[1:]]} for c in checks if c]
+print(json.dumps({"all": parts}))
+PY
+}
 
 INBOX_KEY="upstream-autoupdate-checks"
+RULES_KEY="upstream-autoupdate-rules"
 inbox() {  # argv for scripts/inbox.py; a missing or failing inbox never fails the run
   [ -f scripts/inbox.py ] || return 0
   python3 scripts/inbox.py "$@" >/dev/null 2>&1 || true
@@ -283,12 +318,12 @@ before_full=$(git rev-parse HEAD)
 # in work/, a half-finished config) is told apart from one the merge broke. Without
 # it, one unrelated local break would freeze this job for good, the very failure
 # the resolver above was built to end.
-red_before=""; red_after=""; checks_line=""
+red_before=""; red_after=""; present_before=""; checks_line=""
 if [ "${AUTOUPDATE_CHECKS:-1}" = 0 ]; then
   checks_line="- checks: skipped (AUTOUPDATE_CHECKS=0)"
 else
   : > "$CHECKS_LOG"
-  run_checks; red_before=$red
+  run_checks before; red_before=$red; present_before=$present
 fi
 
 # resolve_merge — finish a merge that stopped on exactly the planned conflicts by
@@ -334,10 +369,31 @@ fi
 
 if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
   t0=$(now_s)
-  echo "== after the merge" >>"$CHECKS_LOG"
-  run_checks; red_after=$red
+  run_checks after; red_after=$red
   secs=$(perl -e 'printf "%.1f", $ARGV[1] - $ARGV[0]' "$t0" "$(now_s)")
-  broke=$(newly_red "$red_before" "$red_after" | tr '\n' ' ' | sed 's/ $//')
+  # Sort every red check into one of three piles:
+  #   rules  the checker is new with the merge, or the merge changed it. What it
+  #          finds is instance content measured by a new rule; rolling back would
+  #          repeat every morning and freeze the job, so the merge is kept and the
+  #          finding filed. A rule upstream tightened in a file other than the
+  #          checker itself (a schema, a budget) is not seen here and lands in
+  #          broke: rollback plus an item, the safe side.
+  #   broke  green before and red after, or red on both sides with a finding the
+  #          before-run did not have (normalised output, see findings_of): the
+  #          merge broke it. Rolled back.
+  #   still  red on both sides, saying the same: a local break the merge did not
+  #          cause. Reported, never a reason to hold the job.
+  broke=""; rules=""; still=""
+  while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    if ! in_list "$c" "$present_before" || ! git diff --quiet "$before_full" HEAD -- "scripts/${c%% *}"; then
+      rules="${rules}${c}"$'\n'
+    elif ! in_list "$c" "$red_before" || has_new_findings "$c"; then
+      broke="${broke}${c}"$'\n'
+    else
+      still="${still}${c}"$'\n'
+    fi
+  done <<<"$red_after"
   if [ -n "$broke" ]; then
     # ROLL BACK, do not keep. A kept merge would leave the branch 0 behind, and
     # the next run would take the up-to-date exit, push the mirror and report
@@ -345,33 +401,48 @@ if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
     # the upstream commits stay in $UPSTREAM_REF, the local commits were never
     # touched, and `reset --keep` refuses rather than overwrite a local change
     # (the dirty files guard 2 let through are files the merge does not touch).
-    # The merge commit itself stays reachable through the reflog.
+    # The merge commit itself stays reachable through the reflog. If the reset
+    # is refused all the same, the item's probe still reruns the named checks,
+    # so it stays open while the merge it could not undo is red.
     merge_sha=$(git rev-parse --short HEAD)
-    up_sha=$(git rev-parse "$UPSTREAM_REF")
     if git reset -q --keep "$before_full" >>"$CHECKS_LOG" 2>&1; then
       undo="rolled back to \`$before\` (merge \`$merge_sha\` stays in the reflog)"
     else
       undo="could NOT be rolled back, merge \`$merge_sha\` left in place, do not push it"
     fi
-    report "- 🔴 auto-update merge turned check(s) red: $broke. The merge $undo." \
+    b=$(words "$broke")
+    report "- 🔴 auto-update merge turned check(s) red: $b. The merge $undo." \
            "- $behind commit(s) behind \`$UPSTREAM_REF\` · checks ran in ${secs}s · output: $CHECKS_LOG" \
            "- mirror: skipped (checks red)" \
            "- reproduce: \`git merge $UPSTREAM_REF\`, then run each named check"
+    # One argument per check line: IFS is a newline and globbing is off, in the
+    # subshell only.
+    # shellcheck disable=SC2086
+    probe=$(set -f; IFS=$'\n'; probe_json 1 $broke)
     inbox add --from upstream-autoupdate --kind finding --urgency today \
-      --summary "Upstream merge turned checks red: $broke" \
-      --detail "The daily auto-update merged $behind upstream commit(s) and then rolled the merge back, because these checks failed after it and passed before: $broke. Merge $UPSTREAM_REF by hand, fix what the checks name, then commit. Output of the run: $CHECKS_LOG" \
-      --key "$INBOX_KEY" \
-      --closes-when-json "{\"command\": [\"git\", \"merge-base\", \"--is-ancestor\", \"$up_sha\", \"HEAD\"]}"
-    notify "🔴 open-bridge auto-update: merge turned checks red ($broke), $undo. Manual merge needed."
-    echo "autoupdate: checks red after merge ($broke), $undo"; exit 1
+      --summary "Upstream merge turned checks red: $b" \
+      --detail "The daily auto-update merged $behind upstream commit(s), and these checks then failed, or gained findings, that the tree before the merge did not have: $b. The merge $undo. Merge $UPSTREAM_REF by hand, fix what the checks name, then commit. Output of the run: $CHECKS_LOG" \
+      --key "$INBOX_KEY" --closes-when-json "$probe"
+    notify "🔴 open-bridge auto-update: merge turned checks red ($b), $undo. Manual merge needed."
+    echo "autoupdate: checks red after merge ($b), $undo"; exit 1
   fi
   ran_after=$checks_ran
-  checks_line="- checks: $ran_after passed in ${secs}s"
+  n_red=$(printf '%s' "$red_after" | sed '/^$/d' | wc -l | tr -d ' ')
+  checks_line="- checks: $((ran_after - n_red)) passed in ${secs}s"
   [ "$ran_after" = 0 ] && checks_line="- checks: none present"
-  if [ -n "$red_after" ]; then
-    checks_line="- checks: $((ran_after - $(printf '%s\n' "$red_after" | sed '/^$/d' | wc -l))) passed in ${secs}s · already red before the merge: $(printf '%s' "$red_after" | tr '\n' ' ' | sed 's/ $//')"
+  [ -n "$still" ] && checks_line="$checks_line · already red before the merge: $(words "$still")"
+  if [ -n "$rules" ]; then
+    r=$(words "$rules")
+    # shellcheck disable=SC2086
+    rprobe=$(set -f; IFS=$'\n'; probe_json 0 $rules)
+    checks_line="$checks_line · ⚠ red, checker new or changed with the merge (merge kept, the finding is instance content to fix): $r"
+    inbox add --from upstream-autoupdate --kind finding --urgency today \
+      --summary "A new or changed upstream check is red on this instance: $r" \
+      --detail "The daily auto-update merged $behind upstream commit(s) that brought or changed these checkers, and they fail on this tree: $r. The merge was kept, since the rule is upstream's and what it finds is local. Run each named check and fix what it reports. Output of the run: $CHECKS_LOG" \
+      --key "$RULES_KEY" --closes-when-json "$rprobe"
   fi
   inbox close --key "$INBOX_KEY" --note "the next upstream merge passed the checks"
+  [ -z "$red_after" ] && inbox close --key "$RULES_KEY" --note "every check is green after the next upstream merge"
 fi
 
 if [ "$merged" = 1 ]; then

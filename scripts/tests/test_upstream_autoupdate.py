@@ -397,7 +397,12 @@ def test_a_merge_that_turns_a_check_red_is_rolled_back_and_filed(w, tmp_path):
     assert "check-edges.py" in status and "rolled back" in status, status
     filed = log.read_text()
     assert filed.startswith("add ") and "--key upstream-autoupdate-checks" in filed, filed
-    assert up in filed, "the probe must name the upstream commit it waits for"
+    # The probe is pinned to the user branch, not to whatever HEAD the inbox
+    # check runs in, and follows the moving upstream ref: a repeat add keeps
+    # the first item's probe, so a fixed SHA would go stale.
+    assert "refs/heads/user/me" in filed and "upstream/main" in filed, filed
+    assert '"HEAD"' not in filed, filed
+    assert "scripts/check-edges.py" in filed, "the probe must rerun the check it names"
 
 
 def test_a_red_merge_does_not_reach_the_mirror(w, tmp_path):
@@ -434,3 +439,86 @@ def test_checks_can_be_switched_off(w, tmp_path):
     p, status = _autoupdate_env(w, AUTOUPDATE_CHECKS="0", FAKE_INBOX_LOG=str(log))
     assert "auto-updated" in status, status
     assert "checks: skipped (AUTOUPDATE_CHECKS=0)" in status, status
+
+
+# --------------------------------- the edges of the baseline comparison
+LISTING_CHECK = (
+    "import pathlib, sys\n"
+    "hits = sorted(p.name for p in pathlib.Path('.').glob('broken*.txt'))\n"
+    "for h in hits: print('dead edge:', h)\n"
+    "print(len(hits), 'finding(s)')\n"
+    "sys.exit(1 if hits else 0)\n"
+)
+
+
+def test_a_new_finding_in_a_check_already_red_rolls_back(w, tmp_path):
+    # The check is red before the merge for a local reason; the merge adds a
+    # second finding to the same check. Comparing exit codes alone would let
+    # the merge through with an "already red" note.
+    log = tmp_path / "inbox.log"
+    w.write(w.inst, "scripts/check-edges.py", LISTING_CHECK)
+    w.write(w.inst, "scripts/inbox.py", FAKE_INBOX)
+    w.write(w.inst, "broken-local.txt", "x\n")
+    w.commit(w.inst, "local tree already red")
+    before = w.head()
+    w.write(w.up, "broken-up.txt", "x\n"); w.commit(w.up, "upstream adds a dead edge")
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert p.returncode != 0, p.stdout + p.stderr
+    assert w.head() == before, status
+    assert "check-edges.py" in status and "rolled back" in status, status
+
+
+def test_the_same_findings_in_a_check_already_red_do_not_block(w, tmp_path):
+    log = tmp_path / "inbox.log"
+    w.write(w.inst, "scripts/check-edges.py", LISTING_CHECK)
+    w.write(w.inst, "scripts/inbox.py", FAKE_INBOX)
+    w.write(w.inst, "broken-local.txt", "x\n")
+    w.commit(w.inst, "local tree already red")
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "already red before the merge: check-edges.py" in status, status
+
+
+def test_a_checker_new_with_the_merge_is_reported_not_rolled_back(w, tmp_path):
+    # Upstream ships a checker the instance did not have, and it finds
+    # something in instance content. Rolling back would repeat every morning
+    # and freeze the job: the rule is new, the content is the instance's.
+    log = tmp_path / "inbox.log"
+    w.write(w.inst, "scripts/inbox.py", FAKE_INBOX); w.commit(w.inst, "inbox")
+    w.write(w.up, "scripts/check-reachability.py", "import sys\nsys.exit(1)\n")
+    w.commit(w.up, "upstream ships a new checker")
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "auto-updated" in status, status
+    assert "new or changed with the merge" in status and "check-reachability.py" in status, status
+    assert (w.inst / "scripts/check-reachability.py").exists()
+    filed = log.read_text()
+    assert "--key upstream-autoupdate-rules" in filed, filed
+    assert "scripts/check-reachability.py" in filed, "the probe must rerun the check"
+
+
+def test_a_checker_made_stricter_by_the_merge_is_reported_not_rolled_back(w, tmp_path):
+    log = tmp_path / "inbox.log"
+    w.write(w.inst, "scripts/inbox.py", FAKE_INBOX); w.commit(w.inst, "inbox")
+    w.promote("scripts/check-edges.py", FAKE_CHECK, "share the check")
+    w.write(w.inst, "local.txt", "instance content\n"); w.commit(w.inst, "instance content")
+    w.write(w.up, "scripts/check-edges.py",
+            "import pathlib, sys\nsys.exit(1 if pathlib.Path('local.txt').exists() else 0)\n")
+    w.commit(w.up, "stricter check")
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "auto-updated" in status, status
+    assert "new or changed with the merge" in status and "check-edges.py" in status, status
+
+
+def test_the_budget_check_is_part_of_the_net(w, tmp_path):
+    log = tmp_path / "inbox.log"
+    w.write(w.inst, "scripts/measure-context.py", FAKE_CHECK)
+    w.write(w.inst, "scripts/inbox.py", FAKE_INBOX)
+    w.commit(w.inst, "instance carries the budget check")
+    before = w.head()
+    w.write(w.up, "broken.txt", "x\n"); w.commit(w.up, "upstream breaks the budget")
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert w.head() == before, status
+    assert "measure-context.py" in status, status
