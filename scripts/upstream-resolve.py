@@ -41,17 +41,25 @@ commit message:
                 · the file was deleted locally, or the conflict is not a plain
                   content one (rename, mode, submodule)
 
+A held file names the local commits behind it, minus every commit whose patch
+upstream already carries (`git cherry`): a promoted commit is not local work.
+A path declared in bridge-config.yaml `promote.local_adaptations` (a list of
+{path, reason}, fnmatch globs allowed) is labelled a declared local adaptation
+instead of an unpromoted change. It stays held: upstream changed a file this
+instance keeps different on purpose, and only a human merges the two.
+
 Every path not provably "take theirs" or "take ours" is unresolved: the script
 fails closed.
 
 Usage:
-  upstream-resolve.py --theirs upstream/main [--ours HEAD]   # JSON on stdout
+  upstream-resolve.py --theirs upstream/main [--ours HEAD] [--config bridge-config.yaml]
 Exit: 0 = plan printed (check "unresolved") · 2 = git could not answer.
 """
 from __future__ import annotations
 
 import argparse
 import difflib
+import fnmatch
 import json
 import os
 import subprocess
@@ -105,15 +113,62 @@ def short(c: str) -> str:
     return c[:7]
 
 
+def upstream_equivalent(theirs: str, ours: str) -> set[str]:
+    """Full SHAs of local commits whose patch upstream already carries (git cherry's "-")."""
+    out = git("cherry", theirs, ours).stdout.decode().splitlines()
+    return {line[2:].strip() for line in out if line.startswith("- ")}
+
+
+PROMOTED: set[str] = set()   # filled once per plan(), read by local_commits()
+NEVER_REACHED = "local change never reached upstream"
+ONLY_MERGES = ("local version differs from upstream, but every local commit to it is already "
+               "upstream: the difference comes from a merge resolution")
+
+
 def local_commits(base: str, ours: str, path: str) -> list[str]:
     # base..ours alone lists every user-only commit ever made to the path, back to
     # the first sync; the ones a human has to look at are those since the base.
     # An old unpromoted edit has none since the base, so fall back to the newest few.
+    # A commit upstream already carries patch for patch was promoted: it is not
+    # what keeps the file apart, and naming it sends the reader after done work.
     since = git("log", "-1", "--format=%cI", base).stdout.decode().strip()
     rng = (f"{base}..{ours}", "--", path)
-    recent = git("log", "--no-merges", f"--since={since}", "--format=%h %s", *rng).stdout
-    out = recent or git("log", "--no-merges", "-3", "--format=%h %s", *rng).stdout
-    return out.decode(errors="replace").splitlines()
+
+    def pick(*extra: str) -> list[str]:
+        out = git("log", "--no-merges", *extra, "--format=%H %s", *rng).stdout
+        rows = (r.partition(" ") for r in out.decode(errors="replace").splitlines())
+        return [f"{short(h)} {subj}" for h, _, subj in rows if h not in PROMOTED]
+
+    return pick(f"--since={since}") or pick()[:3]
+
+
+def load_adaptations(path: str) -> tuple[list[dict], list[str]]:
+    """(valid {path, reason} entries, problems) from bridge-config.yaml promote.local_adaptations."""
+    if not os.path.isfile(path):
+        return [], []
+    try:
+        import yaml
+    except ImportError:
+        return [], [f"{path}: pyyaml is not installed, local_adaptations not read"]
+    try:
+        cfg = yaml.safe_load(open(path, encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as e:
+        return [], [f"{path}: {e.__class__.__name__}, local_adaptations not read"]
+    raw = ((cfg.get("promote") or {}) if isinstance(cfg, dict) else {}).get("local_adaptations") or []
+    if not isinstance(raw, list):
+        return [], ["promote.local_adaptations must be a list of {path, reason}"]
+    good, bad = [], []
+    for i, e in enumerate(raw):
+        ok = isinstance(e, dict) and all(isinstance(e.get(k), str) and e[k].strip() for k in ("path", "reason"))
+        (good if ok else bad).append(e if ok else f"entry {i}: needs a non-empty path and reason")
+    return good, bad
+
+
+def adaptation_for(path: str, adaptations: list[dict]) -> str | None:
+    for a in adaptations:
+        if fnmatch.fnmatchcase(path, a["path"]):
+            return a["reason"].strip()
+    return None
 
 
 def last_hit(rev_range: str, path: str, want: str) -> tuple[list[str], int | None]:
@@ -181,9 +236,9 @@ def classify(path: str, stages: set[int], base: str, ours: str, theirs: str) -> 
         return {**entry, "reason": "not a plain content conflict"}
     history, hit = last_hit(f"{base}..{theirs}", path, ours_blob)
     if hit is None:
+        mine = local_commits(base, ours, path)
         return classify_ours(entry, stages, base, ours, theirs, ours_blob) or {
-            **entry, "reason": "local change never reached upstream",
-            "local_commits": local_commits(base, ours, path)}
+            **entry, "reason": NEVER_REACHED if mine else ONLY_MERGES, "local_commits": mine}
     later = history[hit + 1:]
     reverts = [c for c in later if is_revert(c)]
     if reverts:
@@ -194,31 +249,45 @@ def classify(path: str, stages: set[int], base: str, ours: str, theirs: str) -> 
             "theirs_deleted": blob(theirs, path) is None}
 
 
-def plan(ours: str, theirs: str) -> dict:
+def plan(ours: str, theirs: str, config: str = "bridge-config.yaml") -> dict:
     ours = git("rev-parse", "--verify", ours).stdout.decode().strip()
     theirs = git("rev-parse", "--verify", theirs).stdout.decode().strip()
     base = git("merge-base", ours, theirs).stdout.decode().strip()
     clean, paths = conflicts(ours, theirs)
+    PROMOTED.clear()
+    if paths:
+        PROMOTED.update(upstream_equivalent(theirs, ours))
+    adaptations, invalid = load_adaptations(config)
     take, keep, unresolved = [], [], []
     for path in sorted(paths):
         r = classify(path, paths[path], base, ours, theirs)
         if "reason" in r:
+            why = adaptation_for(path, adaptations)
+            if why is not None:
+                r["local_adaptation"] = why
+                if r["reason"] in (NEVER_REACHED, ONLY_MERGES):
+                    r["reason"] = f"declared local adaptation ({why}), upstream changed it too: merge by hand"
             unresolved.append(r)
         elif r.pop("side", None) == "theirs":
             take.append(r)
         else:
             keep.append(r)
-    return {"clean": clean, "base": short(base), "take_theirs": take, "take_ours": keep,
-            "unresolved": unresolved}
+    out = {"clean": clean, "base": short(base), "take_theirs": take, "take_ours": keep,
+           "unresolved": unresolved}
+    if invalid:
+        out["local_adaptations_invalid"] = invalid
+    return out
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--theirs", required=True)
     ap.add_argument("--ours", default="HEAD")
+    ap.add_argument("--config", default="bridge-config.yaml",
+                    help="where promote.local_adaptations is read (default: bridge-config.yaml)")
     a = ap.parse_args()
     try:
-        print(json.dumps(plan(a.ours, a.theirs), indent=2))
+        print(json.dumps(plan(a.ours, a.theirs, a.config), indent=2))
     except GitError as e:
         print(f"upstream-resolve: {e}", file=sys.stderr)
         return 2

@@ -17,6 +17,9 @@ What a machine may decide, and what it must not:
   · never promoted                    → hold
   · one held file holds the whole run, and the branch is left exactly as it was
   · a dirty file the merge does not touch is no reason to stop; one it touches is
+  · a held file names only local commits upstream lacks (git cherry), and a
+    path declared in promote.local_adaptations is labelled as such, still held
+  · a skip that has kept upstream out for AUTOUPDATE_STALE_DAYS files one item
 
 Every case runs the real script against throwaway repositories.
 
@@ -522,3 +525,146 @@ def test_the_budget_check_is_part_of_the_net(w, tmp_path):
     p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
     assert w.head() == before, status
     assert "measure-context.py" in status, status
+
+
+# ---- a held conflict names only what is really local ----
+# Measured on a live instance: the held line listed commits that had long been
+# promoted, so the reader went looking for work that was already upstream.
+
+def test_a_promoted_commit_is_not_listed_as_never_reached(w):
+    promoted = w.promote("core.txt", "a\nB\nc\n", "fix b")
+    w.write(w.inst, "core.txt", "a\nB\nC\n"); local = w.commit(w.inst, "local only on c")
+    w.write(w.up, "core.txt", "a\nB2\nc\n"); w.commit(w.up, "upstream edit on b")
+    held = w.plan()["unresolved"]
+    assert [u["path"] for u in held] == ["core.txt"], held
+    shas = [c.split()[0] for c in held[0]["local_commits"]]
+    assert local[:7] in shas, held
+    assert not any(promoted[:7] == s or s.startswith(promoted[:7]) for s in shas), held
+    inst_promoted = run(w.inst, "git", "log", "--format=%h", "--grep=^fix b$").stdout.split()
+    assert inst_promoted and not set(inst_promoted) & set(shas), held
+    p, status = w.autoupdate()
+    assert local[:7] in status and inst_promoted[0] not in status, status
+
+
+# ---- declared local adaptations ----
+
+ADAPT = (
+    "promote:\n"
+    "  local_adaptations:\n"
+    "    - path: core.txt\n"
+    "      reason: this instance keeps its own wording\n"
+)
+
+
+def test_a_declared_local_adaptation_is_labelled_not_called_unpromoted(w):
+    w.write(w.inst, "bridge-config.yaml", ADAPT); w.commit(w.inst, "declare adaptation")
+    w.write(w.inst, "core.txt", "a\nLOCAL\nc\n"); w.commit(w.inst, "local wording")
+    w.write(w.inst, "other.txt", "LOCAL\n"); w.commit(w.inst, "local only")
+    w.write(w.up, "core.txt", "a\nUP\nc\n"); w.write(w.up, "other.txt", "UP\n")
+    w.commit(w.up, "upstream edits")
+    held = {u["path"]: u for u in w.plan()["unresolved"]}
+    assert held["core.txt"]["local_adaptation"] == "this instance keeps its own wording"
+    assert "declared local adaptation" in held["core.txt"]["reason"]
+    assert "never reached upstream" not in held["core.txt"]["reason"]
+    assert "local_adaptation" not in held["other.txt"]
+    assert "never reached upstream" in held["other.txt"]["reason"]
+    before = w.head()
+    p, status = w.autoupdate()
+    assert w.head() == before, "a declared adaptation is still a conflict a human merges"
+    assert "declared local adaptation" in status, status
+
+
+def test_local_adaptation_paths_may_be_globs(w):
+    w.write(w.inst, "bridge-config.yaml", ADAPT.replace("path: core.txt", "path: '*.txt'"))
+    w.commit(w.inst, "declare adaptation")
+    w.write(w.inst, "core.txt", "a\nLOCAL\nc\n"); w.commit(w.inst, "local wording")
+    w.write(w.up, "core.txt", "a\nUP\nc\n"); w.commit(w.up, "upstream edit")
+    assert "local_adaptation" in w.plan()["unresolved"][0]
+
+
+def test_a_malformed_adaptation_entry_is_reported_not_trusted(w):
+    w.write(w.inst, "bridge-config.yaml", "promote:\n  local_adaptations:\n    - path: core.txt\n")
+    w.commit(w.inst, "adaptation without a reason")
+    w.write(w.inst, "core.txt", "a\nLOCAL\nc\n"); w.commit(w.inst, "local wording")
+    w.write(w.up, "core.txt", "a\nUP\nc\n"); w.commit(w.up, "upstream edit")
+    plan = w.plan()
+    assert "local_adaptation" not in plan["unresolved"][0]
+    assert plan.get("local_adaptations_invalid"), plan
+
+
+# ---- a skip that lasts files one inbox item ----
+
+STALE_KEY = "upstream-autoupdate-stale"
+
+
+def _with_inbox(w, tmp_path):
+    w.write(w.inst, "scripts/inbox.py", FAKE_INBOX)
+    w.commit(w.inst, "instance carries an inbox")
+    return tmp_path / "inbox.log"
+
+
+def _old_upstream_conflict(w, days):
+    w.write(w.inst, "core.txt", "a\nLOCAL\nc\n"); w.commit(w.inst, "local only")
+    w.write(w.up, "core.txt", "a\nUP\nc\n")
+    run(w.up, "git", "add", "-A")
+    stamp = f"@{int(__import__('time').time()) - days * 86400} +0000"
+    subprocess.run(["git", "commit", "-q", "-m", "upstream edit"], cwd=w.up, check=True,
+                   env={**ENV, "GIT_COMMITTER_DATE": stamp, "GIT_AUTHOR_DATE": stamp})
+
+
+def _filed(log):
+    return [l for l in (log.read_text().splitlines() if log.exists() else []) if l.startswith("add ")
+            and f"--key {STALE_KEY}" in l]
+
+
+def test_a_skip_older_than_the_threshold_files_one_item(w, tmp_path):
+    log = _with_inbox(w, tmp_path)
+    _old_upstream_conflict(w, days=5)
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert "SKIPPED" in status, status
+    filed = _filed(log)
+    assert len(filed) == 1, log.read_text()
+    assert '"merge-base", "--is-ancestor"' in filed[0] and "upstream/main" in filed[0], filed
+    assert "refs/heads/user/me" in filed[0] and '"HEAD"' not in filed[0], filed
+    assert "5 day" in status, status
+    # The repeat run files under the same key, so the inbox keeps one item.
+    _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert {l.split("--key ")[1].split()[0] for l in _filed(log)} == {STALE_KEY}
+
+
+def test_a_fresh_skip_files_nothing(w, tmp_path):
+    log = _with_inbox(w, tmp_path)
+    _old_upstream_conflict(w, days=0)
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert "SKIPPED" in status, status
+    assert _filed(log) == []
+
+
+def test_the_threshold_is_configurable(w, tmp_path):
+    log = _with_inbox(w, tmp_path)
+    _old_upstream_conflict(w, days=5)
+    _autoupdate_env(w, FAKE_INBOX_LOG=str(log), AUTOUPDATE_STALE_DAYS="10")
+    assert _filed(log) == []
+
+
+def test_a_long_skip_on_a_staged_index_files_an_item(w, tmp_path):
+    log = _with_inbox(w, tmp_path)
+    w.write(w.up, "other.txt", "x\ny\n")
+    run(w.up, "git", "add", "-A")
+    stamp = f"@{int(__import__('time').time()) - 3 * 86400} +0000"
+    subprocess.run(["git", "commit", "-q", "-m", "upstream change"], cwd=w.up, check=True,
+                   env={**ENV, "GIT_COMMITTER_DATE": stamp})
+    w.write(w.inst, "staged.txt", "s\n"); run(w.inst, "git", "add", "staged.txt")
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert "staged" in status, status
+    assert len(_filed(log)) == 1, log.read_text() if log.exists() else ""
+
+
+def test_a_merge_and_an_up_to_date_run_close_the_stale_item(w, tmp_path):
+    log = _with_inbox(w, tmp_path)
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert f"close --key {STALE_KEY}" in log.read_text()
+    log.unlink()
+    _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert f"close --key {STALE_KEY}" in log.read_text()

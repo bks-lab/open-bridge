@@ -373,6 +373,15 @@ promote:
     # Leave empty to disable auto-scrub — blocklist hits will then be
     # hard-blocks (commit must be adapted via /contribute --adapt before sync).
 
+  local_adaptations: []
+    # CORE files this instance keeps different ON PURPOSE, each with the reason.
+    # A conflict on such a path is still held for a human, but the auto-update
+    # report (scripts/upstream-resolve.py) calls it a declared local adaptation
+    # instead of a change that never reached upstream, so a deliberate
+    # divergence is told apart from a forgotten promotion. fnmatch globs work.
+    # Example:
+    #   - { path: docs/install.md, reason: "points at this org's internal mirror" }
+
   fallback_blocklist:
     # Used when no upstream-specific list matches. Catches accidental leaks
     # in any direction. Add your org/customer/personal identifiers.

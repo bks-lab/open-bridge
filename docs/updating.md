@@ -1,7 +1,7 @@
 ---
 summary: "Keeping a Bridge current: the manual CORE merge, the unattended daily auto-update and its fail-closed guards, org overlay sync, and how a CORE fix you made flows back without leaving a permanent divergence."
 type: guide
-last_updated: 2026-09-25
+last_updated: 2026-10-24
 related:
   - install.md
   - org-overlays.md
@@ -62,8 +62,23 @@ guard fails closed: an error or an unknown state skips the merge instead of
 risking a bad one. All three must pass:
 
 1. the current branch is a `user/*` branch;
-2. there are no uncommitted changes to tracked files;
-3. `git merge-tree` predicts zero conflicts (read from its exit code).
+2. nothing is staged, and no uncommitted change touches a file the merge touches;
+3. `git merge-tree` predicts zero conflicts (read from its exit code), or
+   [`scripts/upstream-resolve.py`](../scripts/upstream-resolve.py) proves each
+   predicted conflict is one a machine may decide.
+
+A held conflict is named file by file, with the local commits behind it. A
+commit whose patch upstream already carries (`git cherry`) is left out of that
+list, since it was promoted. A path you declared in `bridge-config.yaml`
+`promote.local_adaptations` (a list of `{path, reason}`) is reported as a
+*declared local adaptation*, so a deliberate divergence reads differently from a
+forgotten promotion. It is still held: you merge upstream's change into it.
+
+A skip is a guard doing its job, but a skip every morning is a merge nobody
+does. Once a skip has kept upstream out for `AUTOUPDATE_STALE_DAYS` days
+(default 2, counted from the oldest upstream commit the branch lacks), the job
+files one inbox item. It closes on its own once `upstream/main` is an ancestor
+of your branch again.
 
 It writes the outcome to `work/upstream-status.md` (up to date, merged, skipped
 with the reason, or failed and aborted). Independently of the job, `/briefing`
@@ -110,7 +125,10 @@ and the reasoning: [org-overlays.md](org-overlays.md).
 
 The conflict-free guarantee breaks the moment you edit a CORE file on your
 `user/*` branch and keep the edit: every upstream change to that file becomes a
-conflict, and the daily job starts skipping. The discipline is in
+conflict, and the daily job starts skipping. The rule that keeps it intact:
+**CORE paths are developed on a branch of open-bridge, and reach `user/*` only
+by `git merge upstream/main`.** Not by a cherry-pick: a picked commit comes back
+a second time with the merge, under another hash. The discipline is in
 [`rules/core-fix-workflow.md`](../rules/core-fix-workflow.md), in short:
 
 - **Promote and reconverge (default).** Make the fix, send it upstream with
