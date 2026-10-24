@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
 import importlib.util
 import re
 import subprocess
@@ -86,6 +87,19 @@ def file_in_inbox(items: list[tuple[str, str, str]]) -> str | None:
         if sys.path and sys.path[0] == str(HERE):
             sys.path.pop(0)
     return None
+
+
+def todo_key(line: str, today: _dt.date) -> str:
+    """Inbox key of one carried TODO line: readable slug, but unique by hash.
+
+    The slug alone collapses non-ASCII text and long shared prefixes, and
+    Inbox.add would then absorb the second item into the first. The date
+    keeps a new TODO with old wording from landing on an item dropped in an
+    earlier archive; a re-run on the same day still files nothing twice.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", line[len("- [ ] "):].lower()).strip("-")[:40]
+    digest = hashlib.sha1(line.encode("utf-8")).hexdigest()[:10]
+    return f"log-todo-{today.isoformat()}-{slug or 'item'}-{digest}"
 
 
 def git(*args: str) -> str:
@@ -180,10 +194,16 @@ def main(argv=None) -> int:
 
     kept = [b for b in plan if not b["archive"]]
     keep_keys = [k for b in kept for k in b["day_blocks"]]
+    # Only what leaves the log is filed: the preamble and the archived
+    # day-blocks. A TODO in a block that stays would be filed now and again
+    # when its period closes, reopening an item closed in between.
+    first = BLOCK_RE.search(text)
+    leaving = (text[:first.start()] if first else text) + "".join(
+        blocks[k] for b in todo for k in b["day_blocks"] if k in blocks)
     todos, seen = [], set()
-    for line in text.splitlines():
+    for line in leaving.splitlines():
         if line.startswith("- [ ] "):
-            key = re.sub(r"\W+", "", line.lower())[:60]
+            key = re.sub(r"\W+", "", line.lower())  # whole line: a prefix cap merged distinct items
             if key not in seen:
                 seen.add(key); todos.append(line)
     label = kept[0]["label"] if kept else ab.describe(ab.bucket_of(today, cadence), cadence)["label"]
@@ -195,8 +215,7 @@ def main(argv=None) -> int:
     # A rolling TODO block in the log is a sentence nobody ever closes.
     detail = f"carried from work/log.md by the scheduled archive of {today.isoformat()}"
     items = [(f"archive-autorun-owed-{today.isoformat()}", obligation[len("- [ ] "):], detail)]
-    items += [(f"log-todo-{re.sub(r'[^a-z0-9]+', '-', t[6:].lower()).strip('-')[:60]}",
-               t[len("- [ ] "):], detail) for t in carried]
+    items += [(todo_key(t, today), t[len("- [ ] "):], detail) for t in carried]
     why_not = None if a.dry_run else file_in_inbox(items)
     parts = [f"# {label} — scheduled archive {today.isoformat()}", ""]
     new_log = "\n".join(parts) + "".join(blocks[k] for k in keep_keys)

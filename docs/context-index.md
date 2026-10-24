@@ -170,8 +170,10 @@ The `listing:skills` row in `measure-context.py` counts what the harness lists,
 not what `skills/` holds: user-level and enabled plugin skills join it, and
 `skillOverrides` from user, project and local settings (local wins) applies to
 every non-plugin entry, so `"off"` and `"user-invocable-only"` drop out and
-`"name-only"` counts the name alone. The harness cuts descriptions at 1 % of the
-context window. The meter cannot know the window, so it names
+`"name-only"` counts the name alone. The meter merges those files per skill
+name, because the settings reference defines the value per name and states no
+whole-object replacement. Managed settings are not read. The harness cuts
+descriptions at 1 % of the context window. The meter cannot know the window, so it names
 `skillListingBudgetFraction`, `skillListingMaxDescChars` or
 `SLASH_COMMAND_TOOL_CHAR_BUDGET` in the report when one is set, and guesses
 nothing. The guards keep reading the tree's own listing, so their verdict never

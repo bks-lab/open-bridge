@@ -111,6 +111,43 @@ def test_a_rerun_files_no_second_item(repo):
     assert len(_inbox_summaries(repo)) == first
 
 
+def test_distinct_todos_never_share_an_inbox_key(repo):
+    # The key must tell apart every line the dedup tells apart: non-ASCII
+    # text and a long shared prefix once collapsed to one key, and the
+    # second item was absorbed by the first and lost.
+    prefix = "x" * 70
+    log = LOG.replace("- [ ] something still open\n",
+                      "- [ ] something still open\n- [ ] 確認する\n- [ ] 送信する\n"
+                      f"- [ ] {prefix} one\n- [ ] {prefix} two\n")
+    (repo / "work" / "log.md").write_text(log, encoding="utf-8")
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    summaries = _inbox_summaries(repo)
+    for text in ("確認する", "送信する", f"{prefix} one", f"{prefix} two"):
+        assert text in summaries, (text, summaries)
+
+
+def test_a_todo_in_the_open_period_stays_in_the_log_and_out_of_the_inbox(repo):
+    # Only what is archived is filed. A TODO in a day-block that stays in the
+    # log would otherwise be filed now and again when its period closes,
+    # reopening an item the person may have closed in between.
+    log = LOG + """
+## Tue 22.09
+
+- [ ] still this week
+
+| Timestamp | Glyph | Context | What |
+|---|---|---|---|
+| 2026-09-22 09:00 | 💻 | alpha | fourth |
+"""
+    (repo / "work" / "log.md").write_text(log, encoding="utf-8")
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not any("still this week" in s for s in _inbox_summaries(repo))
+    assert "- [ ] still this week" in (repo / "work" / "log.md").read_text()
+    assert any("something still open" in s for s in _inbox_summaries(repo))
+
+
 def test_without_an_inbox_the_open_items_stay_in_the_log(repo):
     # Never lose an unchecked item: no inbox, the log keeps carrying it.
     (repo / "scripts" / "inbox.py").unlink()
