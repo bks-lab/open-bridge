@@ -112,7 +112,7 @@ const store = createStore({
   history: [],
   jev: { enabled: false, ready: false, reason: 'off' },
   workers: { status: 'idle', data: null, error: null },
-  usage: { status: 'idle', data: null, error: null, days: 7 },   // days: the range the Betrieb page asked for (7, 30, 90)
+  usage: { status: 'idle', data: null, error: null, days: 7 },   // days: the range the overview page asked for (7, 30, 90)
   costs: { status: 'idle', data: null, error: null },   // the cloud costs per account (cloud-costs.py, read by bridge-resources.py costs)
   noise: { status: 'idle', data: null, error: null },   // the loud inbox sources and the mute rules (inbox.py stats)
   jevOrder: {},   // per page with `jev:`: { order, error, running }
@@ -858,7 +858,7 @@ const ctl = {
     store.set(s => ({ ...s, workers: res.ok ? { status: res.data.view ? 'ok' : 'none', data: res.data.view, error: null }
       : { status: res.status === 404 ? 'none' : 'error', data: s.workers.data, error: res.error?.message ?? null } }))
   },
-  // the tokens of the week (usage.py); the Betrieb page reads them when it opens and with each new briefing
+  // the tokens of the week (usage.py); the overview page reads them when it opens and with each new briefing
   // the order of a work page by Jev: without force only the last one (nothing leaves the machine), with force a new one
   jevRank: async (page, force) => {
     if (force) store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { ...(s.jevOrder[page] ?? {}), running: true, error: null } } }))
@@ -922,7 +922,7 @@ const ctl = {
     store.set(s => ({ ...s, costs: res.ok ? { status: res.data.view ? 'ok' : 'none', data: res.data.view ?? null, error: null }
       : { status: res.status === 404 ? 'none' : 'error', data: s.costs.data, error: res.error?.message ?? null } }))
   },
-  // the noise of the inbox (inbox.py stats + mute list); the Betrieb page reads it when it opens and with each new briefing
+  // the noise of the inbox (inbox.py stats + mute list); the overview page reads it when it opens and with each new briefing
   loadNoise: async () => {
     store.set(s => ({ ...s, noise: { ...s.noise, status: s.noise.data ? 'ok' : 'loading' } }))
     const res = await api.get('/api/inbox/noise')

@@ -65,7 +65,7 @@ calendar:
 
 # ---------------------------------------------------------------------------
 # Cloud costs (optional): scripts/cloud-costs.py, guide docs/cloud-costs.md
-# Read once a day on the always-on machine for the cockpit's Betrieb page.
+# Read once a day on the always-on machine for the cockpit's overview page.
 # azure, aws and gcp use their logged-in CLIs (az, aws, bq); openai and
 # anthropic need an ADMIN key, stored with the secrets skill and named here.
 # ---------------------------------------------------------------------------

@@ -7,7 +7,8 @@
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, focusIndex, greetingPart, homeListParts, homeQueue, previewText, projectTone, short, stateToken, untilText, upcomingEvents,
+  duration, focusIndex, homeListParts, homeQueue, previewText, projectTone, short, stateToken, untilText,
+  upcomingEvents, greetingText, dayLabel, workPageId, rowProject,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { RowBar } from './day.js'
@@ -28,7 +29,7 @@ function nowKeys(s) {
 }
 
 function projectOf(x) {
-  return x.kind === 'tab' ? x.tab.workspace : x.row.area || x.row.area_names?.[0] || x.row.mark?.label || ''
+  return x.kind === 'tab' ? x.tab.workspace : rowProject(x.row)
 }
 
 /** The last lines of a tab's screen, the way they stood */
@@ -60,7 +61,7 @@ function Hero({ x, n, tabOf, s, c }) {
         <span class="mono muted">${duration(s.now - (tab.since_ms || s.now))}</span>` : null}
       ${x.kind === 'row' ? html`<${ReturnChip} s=${s} rowKey=${x.row.key} />` : null}
     </div>
-    ${lines.length ? html`<pre class="fx-screen mono" aria-label=${t.home.openTab(tab.name)}>${lines.join('\n')}</pre>` : null}
+    ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
     ${why.length ? html`<ul class="fx-why">${why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
     <footer class="fx-acts">
       <div class="fx-do">
@@ -75,7 +76,7 @@ function Hero({ x, n, tabOf, s, c }) {
 /** Nothing waits: a calm card, the way to the tasks */
 function Calm({ s, c }) {
   const f = T().home.focus
-  const workPage = (s.model?.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'tasks'))?.id ?? 'briefing'
+  const workPage = workPageId(s.model)
   return html`<article class="fx-hero fx-calm tk-success">
     <span class="fx-calm-ring" aria-hidden="true"><${Icon} name="spark" size=${28} /></span>
     <h2 class="fx-title">${f.nothing}</h2>
@@ -167,11 +168,11 @@ export function HomeFocusView({ s, c }) {
   // held by its id: a tab that starts asking moves to the front without changing the card; once the step
   // in front is settled, the next one moves up into its place (logic.js focusIndex)
   const i = focusIndex(queue, s.ui.focusAt)
-  const day = now.toLocaleDateString(language() === 'de' ? 'de-DE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  const day = dayLabel(now, language())
   return html`<div class="col col-page home fx">
     <header class="fx-head">
       <p class="home-eyebrow">${day}</p>
-      <${StagePrompt} s=${s} c=${c} greeting=${`${h.greeting[greetingPart(now.getHours())]}${person ? `, ${person}` : ''}`} />
+      <${StagePrompt} s=${s} c=${c} greeting=${greetingText(now.getHours(), person, h.greeting)} />
     </header>
     <div class="fx-main">
       <div class="fx-work">

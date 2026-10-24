@@ -336,7 +336,7 @@ function RowDetail({ row, s, c }) {
   return html`<article class="panel panel-pad detail" aria-labelledby="detail-title">
     <${DetailBack} s=${s} c=${c} />
     <header class="detail-head">
-      <span class="detail-eyebrow">${n ? html`<span class="sec-count mono" aria-label=${t.numberLabel(n)}>${n}</span>` : null}
+      <span class="detail-eyebrow">${n ? html`<span class="sec-count mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span></span>` : null}
         <span class="eyebrow">${t.section[row.section] ?? row.section}</span></span>
       <h2 class="detail-title" id="detail-title" tabindex="-1">${row.title}</h2>
       <p class="detail-kind"><${KindTag} row=${row} s=${s} c=${c} link /></p>

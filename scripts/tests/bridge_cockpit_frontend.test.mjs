@@ -1290,20 +1290,20 @@ test('an overview tile sums up its section: count, the loudest tone, the first l
   assert.equal(logic.sectionTile({ id: 's', status: 'skipped', items: [] }).state, 'skipped')
 })
 
-test('the week of tokens as bars: each day split by source, scaled to the largest day', async () => {
+test('the week of tokens as bars (stackBars, the one the costs page draws): each day split by source, scaled to the largest day', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const src = (session, subagent, worker) => ({ session: { output: session }, subagent: { output: subagent }, worker: { output: worker } })
   const usage = { days: [{ day: '2026-10-12', output: 300, sources: src(200, 100, 0) }, { day: '2026-10-13', output: 150, sources: src(0, 0, 150) }] }
-  const bars = logic.usageBars(usage)
+  const bars = logic.stackBars(usage.days, d => logic.usageParts(d, 'source'), { order: logic.USAGE_SOURCES })
   assert.equal(bars.max, 300)
-  assert.deepEqual(bars.days[0].parts, [{ source: 'session', value: 200, frac: 200 / 300 }, { source: 'subagent', value: 100, frac: 100 / 300 }])
-  assert.deepEqual(bars.days[1].parts, [{ source: 'worker', value: 150, frac: 0.5 }])
+  assert.deepEqual(bars.days[0].parts.map(p => [p.key, p.value]), [['session', 200], ['subagent', 100]])
+  assert.deepEqual(bars.days[1].parts.map(p => [p.key, p.frac]), [['worker', 0.5]])
   // today against the usual day: the mean of the earlier days that had any use
   assert.deepEqual(logic.usageToday(usage), { today: 150, usual: 300 })
   assert.deepEqual(logic.usageToday({ days: [] }), { today: 0, usual: null })
 })
 
-test('the Betrieb words exist in both languages', () => {
+test('the words of the overview page exist in both languages', () => {
   for (const lang of ['de', 'en']) {
     const t = text.TABLES[lang]
     for (const k of ['usageTitle', 'usageWhere', 'usageSource', 'usageOutlier', 'usageUsual', 'usageLoading', 'usageNone',
@@ -2849,7 +2849,7 @@ test('mock parity: every server route has a well-formed mock answer, unless it i
     const usage = (await tr.get('/api/usage')).data.usage
     assert.equal(usage.days.length, 7)
     for (const d of usage.days) for (const k of ['session', 'subagent', 'worker']) assert.equal(typeof d.sources[k].output, 'number', `${d.day} ${k}`)
-    assert.ok(logic.usageBars(usage).max > 0, 'the usage card draws bars')
+    assert.ok(logic.stackBars(usage.days, d => logic.usageParts(d, 'source')).max > 0, 'the usage card draws bars')
     const graph = (await tr.get('/api/graph')).data
     const ids = new Set(graph.nodes.map(n => n.id))
     assert.ok(graph.nodes.length >= 8 && graph.edges.length >= 6)
@@ -2961,7 +2961,7 @@ test('drop: an inbox row asks why, from the close menu and from the c key', () =
   }
 })
 
-test('noise: the Betrieb page shows the noise card and lifts a mute through the action', () => {
+test('noise: the overview page shows the noise card and lifts a mute through the action', () => {
   // the profile places the live cards (`cards:`); a page with overview and no cards keeps usage and noise at its end
   assert.match(read('components.js'), /const cards = cardPlan\(page\)/)
   assert.match(read('views/pages.js'), /id === 'noise'\) return html`<\$\{NoiseCard\} page=\$\{page\} s=\$\{s\} c=\$\{c\} \/>`/)
@@ -4869,4 +4869,43 @@ test('mergePages: the changed pages go in by id, the others stay, the order foll
 
 test('api: the page listens to view_pages', () => {
   assert.match(fs.readFileSync(path.join(WEB, 'api.js'), 'utf8'), /'view_pages'/)
+})
+
+test('the start page helpers every view shares: project, work page, greeting, date', () => {
+  assert.equal(logic.rowProject({ area_names: ['Demo'] }), 'Demo')
+  assert.equal(logic.rowProject({ mark: { label: 'Ops' } }), 'Ops')
+  assert.equal(logic.workPageId({ pages: [{ id: 'a', sections: [{ kind: 'x' }] }, { id: 'w', sections: [{ kind: 'tasks' }] }] }), 'w')
+  assert.equal(logic.workPageId({ pages: [] }), 'briefing')
+  const g = { early: 'Good morning', day: 'Hello', evening: 'Good evening', night: 'Good night' }
+  assert.equal(logic.greetingText(9, 'Sam', g), 'Good morning, Sam')
+  assert.equal(logic.greetingText(14, null, g), 'Hello')
+  assert.equal(logic.dayLabel(new Date(2026, 9, 9), 'en'), 'Friday 9 October')
+})
+
+test('To tab and its arrow stand together as one split button', () => {
+  const src = read('views/day.js')
+  const start = src.slice(src.indexOf('export function StartMenu'), src.indexOf('export function StartMany'))
+  assert.match(start, /<span class="btn-split"><\$\{Btn\}[^]*?t\.action\.to_tab[^]*?label=\$\{t\.startMore\}[^]*?<\/span>/)
+})
+
+test('the next date says "none" in a word when there is none, never a lone dot', () => {
+  const stage = read('views/stage.js')
+  const next = stage.slice(stage.indexOf("x.id === 'c:next'"), stage.indexOf("x.id === 'c:done'"))
+  assert.match(next, /value: h\.nextNoneShort/)
+  assert.doesNotMatch(next, /value: '·'/)
+  assert.doesNotMatch(read('views/home.js'), /n="·"/)
+  assert.equal(text.TABLES.en.home.nextNoneShort, 'none')
+})
+
+test('the demo opens a task with its own front, not one fixed page (review C12)', async () => {
+  const mock = await import(pathToFileURL(path.join(WEB, 'mock.js')).href)
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
+  const st = (await tr.get('/api/state')).data
+  const tasks = [...new Map(st.model.sections.flatMap(s => s.rows ?? []).filter(r => r.task && !r.inbox_id).map(r => [r.task, r])).values()]
+  assert.ok(tasks.length >= 2)
+  const [a, b] = await Promise.all(tasks.slice(0, 2).map(r => tr.get(`/api/task?slug=${r.task}`)))
+  assert.equal(a.data.front.headline, tasks[0].title)
+  assert.equal(b.data.front.headline, tasks[1].title)
+  assert.notEqual(a.data.front.headline, b.data.front.headline)
+  for (const [res, r] of [[a, tasks[0]], [b, tasks[1]]]) if (r.priority) assert.equal(res.data.front.priority, r.priority)
 })

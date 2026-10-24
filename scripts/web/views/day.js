@@ -65,16 +65,6 @@ export function RowMeta({ row, s }) {
   return html`<span class="row-meta">${parts}${why ? html`<span class="meta-why">${why}</span>` : null}</span>`
 }
 
-export function RowActions({ row, s, c, all = false }) {
-  const t = T()
-  const busy = !!s.ui.busy[row.key]
-  const list = (row.actions ?? []).filter(a => all || a.primary || a.id === 'approved')
-  return list.map(a => a.id === 'approved'
-    ? html`<span class="chip chip-done" key=${a.id}><${Dot} token="success" /><span>${t.action.approved}</span></span>`
-    : html`<${Btn} key=${a.id} size="xs" variant=${a.primary ? 'primary' : a.dim ? 'ghost' : 'secondary'} busy=${busy}
-        onClick=${() => c.rowAction(row, a.id)}>${t.action[a.id] ?? a.id}<//>`)
-}
-
 /** What one can do with a row, in a panel behind the two doors of its bar, the same on every view. One sentence
  *  field on top; what the sentence becomes depends on the door. "Let AI do it ▾" (part start): the order for the
  *  agent, with the groups that hand the row on (start, advise, ask). "Close ▾" (part settle): a comment, with the
@@ -230,9 +220,9 @@ export function StartMenu({ row, s, c, size = 'xs' }) {
   // a click opens the panel, so a sentence can go with every start; only To tab acts at once, it starts nothing
   const word = mode === 'restart' ? t.action.restart : mode === 'approved' ? t.action.approved : t.action.do
   return html`<span class="settle start" ref=${box}>
-    ${mode === 'tab' ? html`<${Btn} size=${size} variant="primary" busy=${busy}
+    ${mode === 'tab' ? html`<span class="btn-split"><${Btn} size=${size} variant="primary" busy=${busy}
         onClick=${() => (canTab(s, 'focus') ? c.act('tab_jump', { tab_ref: row.tab.ref }) : c.openTabView(row.tab.ref))}>${t.action.to_tab}<//>
-      <${Btn} size=${size} variant="ghost" pressed=${open} label=${t.startMore} onClick=${() => setOpen(!open)}>▾<//>`
+      <${Btn} size=${size} variant="primary" pressed=${open} label=${t.startMore} onClick=${() => setOpen(!open)}>▾<//></span>`
       : mode === 'approved' ? html`<${Btn} size=${size} variant="ghost" busy=${busy} pressed=${open} onClick=${() => setOpen(!open)}>${word} ▾<//>`
       : mode === 'restart' ? html`<${Btn} size=${size} variant="primary" busy=${busy} pressed=${open} onClick=${() => setOpen(!open)}>${word} ▾<//>`
       : html`<${Btn} size=${size} variant="primary" busy=${busy} pressed=${open} title=${mode === 'note' ? t.startNeedsHint : undefined}
@@ -305,7 +295,7 @@ function RowItem({ row, s, c }) {
   const picked = s.ui.picked.includes(row.key)
   const n = s.model?.numbers?.[row.key] ?? row.number
   return html`<li class=${`row${selected ? ' is-selected' : ''}${focused ? ' is-focused' : ''}${row.tab?.waiting ? ' is-waiting' : ''}`} data-key=${row.key}>
-    <span class="row-num mono" aria-label=${t.numberLabel(n)}>${n}</span>
+    <span class="row-num mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span></span>
     ${row.selectable
       ? html`<input class="row-pick" type="checkbox" checked=${picked} aria-label=${t.select(short(row.title, 40))}
           onChange=${() => c.togglePick(row.key)} />`

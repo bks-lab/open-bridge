@@ -72,7 +72,7 @@ function TickerEntry({ it, s, c, order, smart }) {
       <span class=${`ticker-src tk-${tickerSourceToken(it.feed ?? it.source, order)}`}>${it.source}</span>
       ${fresh ? html`<span class="ticker-new">${t.ticker.fresh}</span>` : null}
       <span class="ticker-title">${it.short ?? it.title}</span>
-      ${also.length ? html`<span class="ticker-also" aria-label=${t.ticker.alsoAt(also)}>+${also.length}</span>` : null}</a></li>`
+      ${also.length ? html`<span class="ticker-also"><span class="sr-only">${t.ticker.alsoAt(also)}</span><span aria-hidden="true">+${also.length}</span></span>` : null}</a></li>`
   }
   return html`<li><${StatusItem} it=${it} s=${s} c=${c} /></li>`
 }

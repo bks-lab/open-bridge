@@ -237,7 +237,7 @@ work:
 #     auto: true             # read a tab by itself when it starts waiting with a new question; false = only on the button
 #     per_hour: 30           # the most readings auto starts in an hour (1 to 1000); the button is not counted
 #   # The settings page switches enabled and auto on top, kept in .bridge/cockpit/guide.json.
-#   usage:                   # the token card on the Betrieb page (docs/bridge-cockpit.md)
+#   usage:                   # the token card on the overview page (docs/bridge-cockpit.md)
 #     remotes: []            # infra/remotes names to read token use from; leave out: the machines of infra/instances
 #     remote_file: ~/.bridge/resources/usage.json   # what scripts/usage-export.py writes there
 #     host: my-laptop        # this machine's infra/remotes name; leave out: found by hostname or Bonjour name

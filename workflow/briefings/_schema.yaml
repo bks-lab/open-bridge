@@ -150,7 +150,7 @@ $defs:
                 Live cards a dashboard places on the page, in the listed order: costs (cloud costs per
                 account against a budget, scripts/cloud-costs.py), usage (tokens per day, model and Bridge),
                 noise (the inbox sources a person drops from). Without it, a page with overview: true shows
-                usage and noise at its end, as before. docs/bridge-cockpit.md § Betrieb.
+                usage and noise at its end, as before. docs/bridge-cockpit.md, "Overview pages and tokens".
               items:
                 type: object
                 required: [id]

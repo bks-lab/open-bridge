@@ -1014,3 +1014,10 @@ def test_a_calendar_page_row_names_its_calendar_place_people_link_and_steps():
     assert row["actions"] == [{"id": "prepare", "label": "Prepare"}] and row["row_id"] == item["id"]
     de = bv._page_row("calendar", item, {}, NOW, bv.labels_for("de"))
     assert de["tags"] == {"Kalender": "Team"}
+
+
+def test_the_date_in_the_greeting_says_coming_up_not_next():
+    # review C11: "next" in the greeting named the first date while the list under it led with another row;
+    # one screen had two different "next". The list keeps "Next up", the date says what it is
+    assert bv.LABELS["next_date"].startswith("coming up:")
+    assert bv.LABELS_DE["next_date"].startswith("demnächst:")

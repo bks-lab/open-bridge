@@ -135,10 +135,10 @@ function WorkspaceGroup({ w, s, c, here }) {
   return html`<section class="room-ws" style=${w.color ? { '--ws-color': w.color } : undefined}>
     ${head ?? html`<${Item} on=${on} cls="room-ws-head" title=${w.description || w.title} onClick=${firstClick(() => c.pickRoom({ kind: 'ws', id: w.key }))}
       onDblClick=${canRenameWorkspace(s, w) ? () => c.startRename('ws', w.ref) : undefined}>
-      <span class="room-ws-title">${w.pinned ? html`<span class="room-pin" aria-label=${t.rooms.pinned}>${t.rooms.pinMark}</span>` : null}${w.title}</span>
+      <span class="room-ws-title">${w.pinned ? html`<span class="room-pin"><span class="sr-only">${t.rooms.pinned}</span><span aria-hidden="true">${t.rooms.pinMark}</span></span>` : null}${w.title}</span>
       <${LoadChip} load=${w.load} />
       ${w.state ? html`<span class="room-meta"><${StateLine} token=${stateToken(w.state)} word=${t.state[w.state] ?? w.state} /></span>` : null}
-      ${w.unread ? html`<span class="room-badge mono" aria-label=${t.rooms.unread(w.unread)}>${w.unread}</span>` : null}
+      ${w.unread ? html`<span class="room-badge mono"><span class="sr-only">${t.rooms.unread(w.unread)}</span><span aria-hidden="true">${w.unread}</span></span>` : null}
       ${w.bridge ? html`<span class="chip room-bridge">${w.bridge.name}</span>` : null}
     <//>`}
     ${w.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} />`)}

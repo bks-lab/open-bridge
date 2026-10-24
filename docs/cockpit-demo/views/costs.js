@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the live cards of the Betrieb page: cloud costs per account and tokens per Bridge, both as stacked
+// The cockpit, the live cards of the overview page: cloud costs per account and tokens per Bridge, both as stacked
 // bars over days (at most four series), read from their endpoints when they show. The rules every component keeps
 // stand at the head of components.js.
 

@@ -1367,7 +1367,7 @@ export function previewText(text) {
   return String(text ?? '').replace(/```/g, ' ').replace(/[\u2500-\u257f\u276f\u203a]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-// ---------------------------------------------------------------- the Betrieb page: overview tiles, tokens of the week
+// ---------------------------------------------------------------- the overview page: overview tiles, tokens of the week
 
 /** A token count short in the words of text.js: 950, 340k, 1.2M, 1.6B (en), the decimal comma for de */
 export function tokenText(n, lang) {
@@ -1402,20 +1402,6 @@ export function sectionTile(section) {
 }
 
 export const USAGE_SOURCES = ['session', 'subagent', 'worker']
-
-/** The week of tokens as stacked bars: per day the written tokens of each source, as a share of the largest day */
-export function usageBars(usage) {
-  const days = usage?.days ?? []
-  const max = Math.max(0, ...days.map(d => d.output ?? 0))
-  return {
-    max,
-    days: days.map(d => ({
-      day: d.day, total: d.output ?? 0,
-      parts: USAGE_SOURCES.map(s => ({ source: s, value: d.sources?.[s]?.output ?? 0 }))
-        .filter(p => p.value > 0).map(p => ({ ...p, frac: max ? p.value / max : 0 })),
-    })),
-  }
-}
 
 /** Today's written tokens and the usual day (the mean of the earlier days with any use; null without one) */
 export function usageToday(usage) {
@@ -1593,7 +1579,7 @@ export function costBoard(costs) {
   }
 }
 
-/** The token ranges and the ways to split them on the Betrieb page */
+/** The token ranges and the ways to split them on the overview page */
 export const USAGE_RANGES = [7, 30, 90]
 export const USAGE_DIMS = ['bridge', 'model', 'source', 'project']
 /** The key of the tokens no Bridge instance claims */
@@ -1927,8 +1913,23 @@ export function greetingPart(hour) {
 }
 
 /** The project a row belongs to: its area, else its first area name, else the label of its mark */
-function rowProject(row) {
+export function rowProject(row) {
   return row?.area || row?.area_names?.[0] || row?.mark?.label || ''
+}
+
+/** The page that holds the tasks (a section of kind tasks), else the briefing: where "to the tasks" leads */
+export function workPageId(model) {
+  return (model?.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'tasks'))?.id ?? 'briefing'
+}
+
+/** The start page's greeting: the part of the day from `greetings` (text.js home.greeting), the name after it */
+export function greetingText(hours, person, greetings) {
+  return `${greetings[greetingPart(hours)]}${person ? `, ${person}` : ''}`
+}
+
+/** The date over a start page view: weekday, day and month in the page's language */
+export function dayLabel(date, lang) {
+  return date.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
 /** The project chips of the start page: the workspaces of the agent tabs and the projects of the rows,

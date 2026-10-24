@@ -72,7 +72,7 @@ def collect_fixture(root: Path) -> dict:
         "sections": [{"id": "inbox", "status": "ok"}, {"id": "github", "status": "ok"},
                      {"id": "calendar", "status": "ok"}, {"id": "tasks", "status": "ok"}],
         "view": {
-            "headline": "2 for you today, next: Review the demo report", "since": "since 08:40: 1 new",
+            "headline": "2 for you today, coming up: Review the demo report", "since": "since 08:40: 1 new",
             "clear": ["Systems: all fine"], "hygiene": [], "workplace": "Tabs: 3 suggested",
             "buckets": [
                 {"id": "do", "title": "Do", "items": [
@@ -3882,7 +3882,7 @@ def test_the_workers_view_is_served_from_the_kept_copy(world):
 
 
 def test_the_token_use_of_the_week_is_served_from_the_transcripts(world, tmp_path):
-    # the Betrieb page reads it on open; the server counts the transcripts of this machine (usage.py)
+    # the overview page reads it on open; the server counts the transcripts of this machine (usage.py)
     home = tmp_path / "claude-usage"
     (home / "projects" / "p").mkdir(parents=True)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")

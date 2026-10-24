@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Frontend tests of the Betrieb page's cost and token cards (scripts/web/logic.js), no npm dependencies.
+// Frontend tests of the overview page's cost and token cards (scripts/web/logic.js), no npm dependencies.
 //
 //   node --test scripts/tests/bridge_cockpit_costs.test.mjs
 //

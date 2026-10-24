@@ -43,7 +43,7 @@ const WORDS = {
     'quiet for 12 days': 'seit 12 Tagen ruhig',
     'asked 2 days ago': 'vor 2 Tagen gefragt',
     'Nothing waits for you': 'Nichts wartet auf dich',
-    '2 for you today, next: Review the demo report': '2 für dich heute, als Nächstes: Den Demo-Bericht prüfen',
+    '2 for you today, coming up: Review the demo report': '2 für dich heute, demnächst: Den Demo-Bericht prüfen',
     'since 08:40: 1 new': 'seit 08:40: 1 neu',
     'Team call': 'Team-Call',
     'Review of the demo project': 'Durchsicht des Demo-Projekts',
@@ -85,8 +85,8 @@ const WORDS = {
     'Find the action items': 'Die offenen Punkte finden', 'Releases and checks': 'Releases und Prüfungen',
     'A second workspace with the same title': 'Ein zweiter Workspace mit demselben Titel',
     // chat and relay
-    'My briefing state from the dashboard (09:10): 2 for you today, next: Review the demo report':
-      'Mein Briefing-Stand aus dem Dashboard (09:10): 2 für dich heute, als Nächstes: Den Demo-Bericht prüfen',
+    'My briefing state from the dashboard (09:10): 2 for you today, coming up: Review the demo report':
+      'Mein Briefing-Stand aus dem Dashboard (09:10): 2 für dich heute, demnächst: Den Demo-Bericht prüfen',
     '1. Review the demo report first, it is due tomorrow and only you can do it.\n2. Give your yes to the two label and docs items, they run alone.\n3. The flaky test can wait until after the team call.':
       '1. Prüf zuerst den Demo-Bericht, er ist morgen fällig und nur du kannst ihn machen.\n2. Gib den beiden Einträgen zu Labels und Doku dein Ja, sie laufen allein.\n3. Der wacklige Test kann bis nach dem Team-Call warten.',
     'Example answer from the mock. Seven of eleven steps are done; the next one is the yaml change in this repository.\nNothing was asked for real.':
@@ -625,7 +625,7 @@ export function buildState(now = Date.now(), opts = {}) {
     model: {
       seq: 3, stale: false, profile: 'morning', title: 'Morning',
       collected_at: hhmm(now - 2 * MIN), collected_ms: now - 2 * MIN, full_ms: now - 2 * MIN, is_full: true,
-      headline: empty ? 'Nothing waits for you' : '2 for you today, next: Review the demo report',
+      headline: empty ? 'Nothing waits for you' : '2 for you today, coming up: Review the demo report',
       since: empty ? null : 'since 08:40: 1 new', skipped: [],
       agenda: empty ? [] : [{ when: hhmm(now + 70 * MIN), title: 'Team call' }, { when: hhmm(now + 250 * MIN), title: 'Review of the demo project' }],
       status: [{ title: 'Systems', count: empty ? 0 : 1, probe: true, state: 'ok' }, { title: 'Inbox', count: empty ? 0 : 6, probe: false, state: 'ok' }],
@@ -676,7 +676,7 @@ export function buildState(now = Date.now(), opts = {}) {
       session: relayOnline ? { id_short: 'a1b2c3d4', surface_ok: true, busy: false, at_ms: now - 2000 } : null,
       records: empty ? [] : [
         { id: '20261009T071000-1a2b3c4d', kind: 'overview', created_ms: now - 30 * MIN, status: 'answered',
-          preview: 'My briefing state from the dashboard (09:10): 2 for you today, next: Review the demo report',
+          preview: 'My briefing state from the dashboard (09:10): 2 for you today, coming up: Review the demo report',
           answer: '1. Review the demo report first, it is due tomorrow and only you can do it.\n2. Give your yes to the two label and docs items, they run alone.\n3. The flaky test can wait until after the team call.',
           answered_ms: now - 29 * MIN },
         ...handedRecords(now),
@@ -757,11 +757,17 @@ function githubDetail(ref) {
   }
 }
 
-function taskDetail(slug) {
+function taskDetail(slug, state) {
+  // the front of the task the row stands for (review C12): a P0 row opens as that P0, not as one fixed page
+  const rows = [...(state?.model?.sections ?? []).flatMap(s => s.rows ?? []),
+    ...(state?.model?.pages ?? []).flatMap(p => (p.sections ?? []).flatMap(s => s.items ?? []))]
+  // the task's own row, not an inbox item that names the task
+  const row = rows.find(r => r?.task === slug && !r.inbox_id && !r.inbox) ?? rows.find(r => r?.task === slug) ?? {}
   return {
     ok: true, slug, kind: 'task', path: `work/tasks/${slug}/STATUS.md`,
-    front: { type: 'feature', status: 'doing', priority: 'P1', created: '2026-10-01', last_updated: '2026-10-08',
-      headline: 'Onboarding guide for the demo project', origin: 'team call on 2026-09-30', blocked_by: null },
+    front: { type: row.task_type ?? 'feature', status: row.state ?? 'doing', priority: row.priority ?? 'P1', created: '2026-10-01',
+      last_updated: '2026-10-08', headline: row.title ?? 'Onboarding guide for the demo project', origin: 'team call on 2026-09-30',
+      blocked_by: null },
     sections: [
       { heading: 'Goal', text: 'A new team member sets up the demo project in under an hour, with every step written down.', truncated: false },
       { heading: 'Next', text: '- Draft the first two chapters\n- Collect screenshots from the example setup', truncated: false },
@@ -1101,7 +1107,7 @@ export function createMockTransport(opts = {}) {
       }
       if (url.pathname === '/api/state') return ok(state)
       if (url.pathname === '/api/inbox') return ok(inboxDetail(url.searchParams.get('id'), state))
-      if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug')))
+      if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug'), state))
       if (url.pathname === '/api/inbox/noise') {
         // invented sources and one invented rule, in the shape of `inbox.py stats --json` and `mute list --json`
         const src = (source, filed, dropped, reasons, muted = 0) => ({ source, filed, dropped, muted, done: filed - dropped - muted - 1, open: 1,

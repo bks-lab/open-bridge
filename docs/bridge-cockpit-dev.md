@@ -339,14 +339,21 @@ the hook.
 
 The browser smoke test (`test_cockpit_demo_smoke.py`) serves `docs/` locally,
 opens `docs/cockpit-demo/` in headless Chromium, clicks every tab of the page
-bar in English and German and fails on a console error or warning, an uncaught
-exception or a failed request. It needs the `playwright` package and its
-Chromium and skips without them; CI installs both in its own job and sets
-`COCKPIT_DEMO_SMOKE=require`, so a missing browser fails there instead:
+bar in English and German, chooses each of the four start page views in
+Settings, and fails on a console error or warning, an uncaught exception or a
+failed request. It needs the `playwright` package and its Chromium and skips
+without them; CI installs both in its own job and sets
+`COCKPIT_DEMO_SMOKE=require`, so a missing browser fails there instead.
+
+Where the system Python is managed by a package manager (Homebrew refuses
+`pip install` into it), keep the two packages in a venv of their own, outside
+the repository, and run the test with it; `require` makes a skip visible:
 
 ```bash
-pip install pytest playwright && python3 -m playwright install chromium
-python3 -m pytest -q scripts/tests/test_cockpit_demo_smoke.py
+python3 -m venv ~/.venvs/cockpit-smoke
+~/.venvs/cockpit-smoke/bin/pip install pytest playwright
+~/.venvs/cockpit-smoke/bin/python -m playwright install chromium
+COCKPIT_DEMO_SMOKE=require ~/.venvs/cockpit-smoke/bin/pytest -q scripts/tests/test_cockpit_demo_smoke.py
 ```
 
 ## 7. Rules the code keeps

@@ -4,9 +4,9 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, indexRows, sessionCounts, short, stateToken, workerTone, greetingPart, homeContinue, inProject,
-  meterPace, tabOfTask, countInProject, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError,
-  pulseSpeed, MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue,
+  duration, indexRows, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
+  countInProject, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
+  MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel,
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
@@ -43,7 +43,7 @@ export function stationOf(x, s, c, chosen, project) {
   if (x.id === 'c:next') {
     const next = nextEvent(s.model, s.now || Date.now())
     return next ? { id: x.id, label: next.it.title, value: h.inTime(untilText(next.ms - (s.now || Date.now()))), sub: next.it.when, tone: 'info',
-      onClick: () => c.openInfo(next.it, next.page, next.section) } : { id: x.id, label: h.nextTitle, value: '·', sub: h.nextNone, tone: null, onClick: null }
+      onClick: () => c.openInfo(next.it, next.page, next.section) } : { id: x.id, label: h.nextTitle, value: h.nextNoneShort, sub: '', tone: null, onClick: null }
   }
   if (x.id === 'c:done') {
     const week = s.model?.week ?? { count: 0, items: [] }
@@ -553,8 +553,8 @@ export function BridgeStage({ s, c, catalog, chosen, project }) {
   const spots = stageSpots(ring.length)
   const now = new Date(s.now || Date.now())
   const person = s.server?.person
-  const greeting = `${h.greeting[greetingPart(now.getHours())]}${person ? `, ${person}` : ''}`
-  const eyebrow = [h.stageName, now.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+  const greeting = greetingText(now.getHours(), person, h.greeting)
+  const eyebrow = [h.stageName, dayLabel(now, lang),
     now.toLocaleTimeString(lang === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' })].join(' · ')
   const working = tabs.filter(x => x.state === 'working' && !x.is_control).length
   const relayDown = s.relay?.enabled && !s.relay?.online

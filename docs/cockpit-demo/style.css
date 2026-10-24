@@ -95,6 +95,10 @@ code { font-size: 12px; overflow-wrap: anywhere; }
 .btn-secondary { background: var(--surface-raised); color: var(--ink); border-color: var(--secondary); }
 .btn-secondary:hover:not(:disabled) { background: var(--accent-subtle); }
 .btn-ghost { background: transparent; color: var(--secondary); }
+/* To tab and its arrow as one split button: the arrow belongs to the button beside it (review C22) */
+.btn-split { display: inline-flex; }
+.btn-split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.btn-split > .btn + .btn { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 1px; padding-left: 6px; padding-right: 6px; }
 .btn-ghost:hover:not(:disabled) { background: var(--surface-muted); }
 .btn-danger { background: var(--surface-raised); color: var(--danger); border-color: var(--danger); }
 .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, var(--surface-raised)); }
@@ -131,7 +135,6 @@ code { font-size: 12px; overflow-wrap: anywhere; }
 .chip > span { overflow: hidden; text-overflow: ellipsis; }
 .chip-active { background: var(--accent-subtle); color: var(--ink); border-color: var(--accent-line); }
 .chip-mark { color: var(--on-surface); font-weight: 600; }
-.chip-done { border-style: dashed; }
 .chip-warn-outline { border-color: var(--warning); color: var(--on-surface); }
 .prio {
   display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
@@ -206,14 +209,14 @@ kbd {
   flex: 1 1 auto; min-width: 0; font-size: var(--text-sm); color: var(--on-surface);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.hdr-right { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.hdr-right { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: 0 1 auto; min-width: 0; justify-content: flex-end; }
 .hdr-status, .hdr-asof, .hdr-relay {
   display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; min-width: 0;
 }
 .hdr-status > span { overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
 .hdr-relay { padding: 0 4px; flex: 0 0 auto; }
 /* what works in this Bridge's tabs now; a click opens the Sessions page */
-.hdr-agents { flex: 0 0 auto; padding: 0 4px; font-size: 12.5px; white-space: nowrap; color: var(--on-surface-muted); }
+.hdr-agents { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; font-size: 12.5px; white-space: nowrap; color: var(--on-surface-muted); }
 .hdr-agents:hover { color: var(--ink); }
 /* only the loading line and the as-of time give way; buttons and the relay word never overlap */
 .hdr-right > .btn, .hdr-right > .cmd { flex: 0 0 auto; }
@@ -1340,7 +1343,7 @@ kbd {
 
 /* ---------------------------------------------------------------- widths */
 
-/* ---------------------------------------------------------------- page overview (Betrieb) */
+/* ---------------------------------------------------------------- the overview page */
 
 .oboard { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); margin-bottom: 16px; }
 .otile {
@@ -1483,6 +1486,8 @@ kbd {
   .cmd-input { padding-right: 8px; }
   .btn-sm { min-height: 34px; padding: 0 9px; }
   .pagebar-tabs { padding: 0 8px; }
+  /* More stays in view at the right edge while the tabs scroll under it (review C21) */
+  .ptab-more { position: sticky; right: 0; z-index: 1; background: var(--surface); }
   .panel-pad { padding: 14px 14px; }
   .main.layout-narrow .col-page, .main.layout-narrow .col-detail { gap: 12px; }
   .tabgrid { grid-template-columns: minmax(0, 1fr); }

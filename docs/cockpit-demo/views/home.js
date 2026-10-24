@@ -4,9 +4,10 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, greetingPart, homeCatalog,
-  homeChosen, homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
-  nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES,
+  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
+  homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
+  nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
+  rowProject,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { RowBar, RowMeta } from './day.js'
@@ -199,10 +200,10 @@ function HomeTabCard({ tab, s, c, preview }) {
 function HomeRowCard({ row, s, c, tab, big = false, queue = null }) {
   const t = T()
   const n = s.model?.numbers?.[row.key] ?? row.number
-  const project = row.area || row.area_names?.[0] || row.mark?.label || ''
+  const project = rowProject(row)
   return html`<article class=${`hcard hcard-row${big ? ' hcard-focus' : ''}`}>
     <div class="hcard-row-head">
-      ${n != null ? html`<span class="hcard-num mono" aria-label=${t.numberLabel(n)}>${n}</span>` : null}
+      ${n != null ? html`<span class="hcard-num mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span></span>` : null}
       ${project ? html`<span class=${`hcard-proj tk-${projectTone(project)}`}>${project}</span>` : null}
       <${PrioChip} priority=${row.priority} />
       <${ReturnChip} s=${s} rowKey=${row.key} />
@@ -326,7 +327,7 @@ export function pageParts(s, p) {
 function NextTile({ s, c }) {
   const h = T().home
   const next = nextEvent(s.model, s.now || Date.now())
-  if (!next) return html`<${CountTile} n="·" label=${h.nextNone} onClick=${() => {}} title=${h.nextNone} />`
+  if (!next) return html`<${CountTile} n=${h.nextNoneShort} label=${h.nextNone} onClick=${() => {}} title=${h.nextNone} />`
   return html`<button type="button" class="ktile tk-secondary" title=${next.it.title}
     onClick=${() => c.openInfo(next.it, next.page, next.section)}>
     <span class="ktile-label muted">${h.nextTitle}</span>
@@ -452,9 +453,9 @@ function HomeBoard({ s, c }) {
   const waiting = waitingAll.filter(r => inProject(r, project))
   const tasks = tasksAll.filter(r => inProject(r, project))
   const now = new Date(s.now || Date.now())
-  const day = now.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  const day = dayLabel(now, lang)
   const person = s.server?.person
-  const workPage = (s.model?.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'tasks'))?.id ?? 'briefing'
+  const workPage = workPageId(s.model)
   const relayDown = s.relay?.enabled && !s.relay?.online
   const catalog = homeCatalog(s.model, { workers: s.workers?.status !== 'none' })
   const chosen = homeChosen(s.model, s.home)
@@ -518,7 +519,7 @@ function HomeBoard({ s, c }) {
   return html`<div class="col col-page home">
     <header class="home-hero">
       <p class="home-eyebrow">${day}</p>
-      <h1 class="home-title">${h.greeting[greetingPart(now.getHours())]}${person ? `, ${person}` : ''}.</h1>
+      <h1 class="home-title">${greetingText(now.getHours(), person, h.greeting)}.</h1>
       ${s.model?.headline ? html`<p class="home-lead">${leadOf(s.model)}</p>` : null}
       <${HomeAsk} s=${s} c=${c} />
       ${(s.model?.alarms ?? []).length || relayDown ? html`<div class="home-signals">

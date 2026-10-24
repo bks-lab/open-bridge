@@ -247,7 +247,7 @@ function WorkerRow({ r, nowPct, c, i }) {
           ['program', r.program ? `${r.program}${r.program_where ? ` (${r.program_where})` : ''}` : ''], ['log', r.log]]
           .filter(([, v]) => v).map(([k, v]) => html`<div key=${k}><dt>${t.workerField[k]}</dt><dd class="mono small">${v}</dd></div>`)}
       </dl>
-      ${week.length ? html`<div class="wweek" aria-label=${t.workerWeek}>${week.map((on, k) => html`<span key=${k} class=${`wday${on ? ' is-on' : ''}`}>${days[k]}</span>`)}
+      ${week.length ? html`<div class="wweek" role="group" aria-label=${t.workerWeek}>${week.map((on, k) => html`<span key=${k} class=${`wday${on ? ' is-on' : ''}`}>${days[k]}</span>`)}
         ${(r.ran_days ?? []).length ? html`<span class="muted small">${t.workerRanDays(r.ran_days.length)}</span>` : null}</div>` : null}
       ${(r.findings ?? []).some(f => f.severity !== 'info') ? html`<ul class="wfind">${r.findings.filter(f => f.severity !== 'info').map((f, k) => html`<li key=${k}>
         <${StateLine} token=${f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${f.severity === 'high'}

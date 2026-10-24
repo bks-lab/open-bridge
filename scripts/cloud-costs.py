@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""What the cloud accounts and fixed contracts cost per day, read only, for the cockpit's Betrieb page.
+"""What the cloud accounts and fixed contracts cost per day, read only, for the cockpit's overview page.
 
     cloud-costs.py --host H --out FILE [--root R] [--days 35] [--today YYYY-MM-DD] [--inbox]
 

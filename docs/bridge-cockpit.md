@@ -87,7 +87,7 @@ their defaults:
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
 | `tour` | `true` | the first-run tour: a first visit offers a short introduction of the page; `false` never offers it by itself (Help and Settings still start it), see [The first-run tour](#the-first-run-tour) |
 | `session_guide` | off | the decision guide: Claude Haiku reads a waiting tab's session and offers its next steps as buttons, in the chat and on the Sessions page (section 3, "The decision guide") |
-| `usage.remotes` | the machines of `infra/instances` | other machines whose token use the Betrieb page adds in (`infra/remotes` names; `[]` for none), see the Betrieb page, "Tokens" |
+| `usage.remotes` | the machines of `infra/instances` | other machines whose token use the overview page adds in (`infra/remotes` names; `[]` for none), see the overview page, "Tokens" |
 | `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
 | `usage.remote_file` | `~/.bridge/resources/usage.json` | the file `scripts/usage-export.py` writes on those machines |
 
@@ -1863,7 +1863,7 @@ The cockpit serves itself from the briefing and adds to it: give it a profile
 of its own that `extends` your briefing profile ([`briefings.md`](briefings.md),
 "Which profile runs"). It takes every section of the briefing, so the Briefing
 tab shows the same rows, and adds the sections only the cockpit shows (the
-token use, the machines and accounts of a Betrieb page) and the `view.pages`.
+token use, the machines and accounts of an overview page) and the `view.pages`.
 `/briefing` in the terminal keeps the lean briefing profile and does not
 collect what only the pages need.
 

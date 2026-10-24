@@ -183,6 +183,10 @@ export function PageBar({ s, c }) {
   const tabsRef = useRef(null)
   const keys = useRoving(tabsRef)
   const [box, setBox] = useState(null)
+  // a page chosen from More or by key: its tab scrolls into the bar's view on a narrow screen (review C21)
+  useEffect(() => {
+    tabsRef.current?.querySelector('.ptab.is-active')?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' })
+  }, [s.ui.page])
   useLayoutEffect(() => {
     const el = tabsRef.current?.querySelector('.ptab.is-active')
     if (!el) { if (box) setBox(null); return }

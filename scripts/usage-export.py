@@ -4,7 +4,7 @@
 
     usage-export.py --out FILE [--root R] [--days 90] [--host H]
 
-Runs the same scan as the cockpit's Betrieb page (scripts/lib/bridge_cockpit/usage.py) over the Claude Code
+Runs the same scan as the cockpit's overview page (scripts/lib/bridge_cockpit/usage.py) over the Claude Code
 transcripts here, Bridges taken from R's infra/instances/, and writes {schema, kind: usage-export, host, at,
 ...view, rows} atomically. Declared as a workload on the machine; the other cockpit reads it as
 `ssh:<host>:<file>` (cockpit.usage.remotes, cockpit.usage.remote_file). It never reads other machines itself,

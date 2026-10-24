@@ -15,6 +15,7 @@ from __future__ import annotations
 import functools
 import http.server
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -124,4 +125,45 @@ def test_every_demo_page_opens_without_console_errors(base_url, browser, lang):
     # the mock profile carries the fixed tabs plus its pages; fewer means the bar itself broke
     assert len(labels) >= 8, labels
     assert len(set(labels)) == len(labels), labels
+    assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_every_start_page_view_mounts_without_console_errors(base_url, browser, lang):
+    # the four views of the start page (bridge, tiles, list, focus) are separate components; a view only
+    # mounts once chosen in Settings, so the walk over the tabs above never reaches three of them
+    problems: list[str] = []
+    where = ["load"]
+    ctx = browser.new_context(viewport={"width": 1440, "height": 1000})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    page.goto(f"{base_url}?lang={lang}")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    start = page.locator(".pagebar-tabs > [role=tab]").first
+    word = re.compile("Settings|Einstellungen")
+
+    def open_settings():
+        bar = page.locator(".pagebar-tabs > [role=tab]").filter(has_text=word)
+        if bar.count():
+            bar.first.click()
+            return
+        page.locator(".ptab-more > [role=tab]").click()
+        page.locator(".more-menu [role=menuitem]").filter(has_text=word).first.click()
+
+    shown = []
+    for i in range(4):
+        where[0] = f"view {i}"
+        open_settings()
+        opts = page.locator(".view-opt")
+        opts.first.wait_for()
+        assert opts.count() == 4, opts.count()
+        opts.nth(i).click()
+        page.wait_for_timeout(200)
+        start.click()
+        page.wait_for_function("() => (document.getElementById('main')?.textContent ?? '').trim().length > 0")
+        page.wait_for_timeout(250)
+        shown.append(page.locator("#main .home, #main .hl, #main .fx, #main .stage").count())
+    ctx.close()
+    assert all(shown), shown
     assert not problems, "\n".join(problems)

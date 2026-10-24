@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The Betrieb page's cost and token cards end to end: the files the collectors write are the files the cards read.
+"""The overview page's cost and token cards end to end: the files the collectors write are the files the cards read.
 
 Each part has its own tests against the shapes in its own head. This file runs the real chain once, with fakes
 only at the edges (the provider CLIs, the keychain, the ECB, ssh), and renders the cards from what comes out:

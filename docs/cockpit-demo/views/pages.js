@@ -539,7 +539,7 @@ export function PageSection({ page, section, s, c }) {
   </section>`
 }
 
-// ---------------------------------------------------------------- page overview (Betrieb): tiles, tokens of the week
+// ---------------------------------------------------------------- the overview page: tiles, tokens of the week
 
 /** Scroll to a section of the open page (the overview tiles jump there) */
 function jumpTo(id) {

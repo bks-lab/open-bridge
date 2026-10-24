@@ -177,3 +177,17 @@ test('organize checkboxes have labels', async () => {
   assert.ok(el.$$('button').every(b => (b.textContent.trim() || b.getAttribute('aria-label') || '').length > 0))
   render(null, el)
 })
+
+test('no aria-label on an element without a role: a screen reader skips it on a span, a div or a pre', () => {
+  // review C27: the name goes in a .sr-only span beside what is seen, or the element gets the role it plays
+  const files = [...fs.readdirSync(WEB).filter(f => f.endsWith('.js')).map(f => path.join(WEB, f)),
+    ...fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).map(f => path.join(WEB, 'views', f))]
+  const bad = []
+  for (const file of files) {
+    const src = fs.readFileSync(file, 'utf8')
+    for (const m of src.matchAll(/<(span|pre|div|i|p|li|small|b)\b[^>]*\baria-label=[^>]*>/g)) {
+      if (!/\brole=/.test(m[0])) bad.push(`${path.basename(file)}: ${m[0].slice(0, 80)}`)
+    }
+  }
+  assert.deepEqual(bad, [])
+})

@@ -28,7 +28,7 @@ export function TriageGist({ tri, keyRow, c, s }) {
       ${tri.verdict === 'unclear' ? html`<span class="tri-mark tri-unclear" title=${tri.reason || undefined}>${t.triage.unclear}</span>` : null}
       ${tri.doer === 'ai' || tri.doer === 'either' ? html`<span class=${`tri-mark tri-${tri.doer}`} title=${tri.why || undefined}>
         ${tri.doer === 'ai' ? t.triage.ai : t.triage.either}
-        ${dots ? html`<span class="tri-dots" aria-label=${t.triage.effort[tri.effort]}>${[1, 2, 3].map(i => html`<i key=${i} class=${i <= dots ? 'on' : ''}></i>`)}</span>` : null}</span>` : null}
+        ${dots ? html`<span class="tri-dots" role="img" aria-label=${t.triage.effort[tri.effort]}>${[1, 2, 3].map(i => html`<i key=${i} class=${i <= dots ? 'on' : ''}></i>`)}</span>` : null}</span>` : null}
       ${pick ? html`<span class="tri-mark tri-model" title=${t.launch.checkPickTitle}>${checkPickText(pick, t)}</span>` : null}
       ${tri.doer === 'you' ? html`<span class="tri-mark tri-you" title=${tri.why || undefined}>${tri.why ? `${t.triage.you}: ${tri.why}` : t.triage.you}</span>` : null}
       ${tri.doer === 'ai' && keyRow && startMode(keyRow) === 'do' ? html`<button type="button" class="btn btn-secondary btn-xs tri-do" disabled=${busy}

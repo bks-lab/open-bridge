@@ -6,8 +6,9 @@
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, greetingPart, homeCatalog, homeChosen, homeListParts, homeProjects, homeRowQueue, indexRows, inProject, previewText, projectTone,
-  short, stateToken, tickerStatusItems, untilText, upcomingEvents,
+  duration, homeCatalog, homeChosen, homeListParts, homeProjects, homeRowQueue, indexRows, inProject, previewText,
+  projectTone, short, stateToken, tickerStatusItems, untilText, upcomingEvents, greetingText, dayLabel, workPageId,
+  rowProject,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, RowBar } from './day.js'
@@ -22,14 +23,17 @@ const DATES_MAX = 4
 function Kpi({ x, st }) {
   const m = x.kind === 'quota' ? x.it.meter : null
   const fill = m ? Math.max(0, Math.min(1, m.value / m.max)) : 0
-  return html`<button type="button" class=${`hl-kpi${st.tone ? ` tk-${st.tone}` : ''}${st.onClick ? '' : ' is-static'}`}
-    onClick=${st.onClick ?? undefined} title=${[st.label, st.sub].filter(Boolean).join(' · ')}>
+  const cls = `hl-kpi${st.tone ? ` tk-${st.tone}` : ''}${st.onClick ? '' : ' is-static'}`
+  const title = [st.label, st.sub].filter(Boolean).join(' · ')
+  // a number that leads nowhere is no button (review C27)
+  const body = html`
     <span class="hl-kpi-n num">${st.value}</span>
     <span class="hl-kpi-label">${short(st.label, 30)}</span>
     ${m ? html`<span class="hl-kpi-bar" aria-hidden="true"><span style=${{ transform: `scaleX(${fill.toFixed(4)})` }}></span>
       ${m.elapsed != null ? html`<i style=${{ left: `${(m.elapsed * 100).toFixed(1)}%` }}></i>` : null}</span>`
-      : st.sub ? html`<span class="hl-kpi-sub">${short(st.sub, 34)}</span>` : null}
-  </button>`
+      : st.sub ? html`<span class="hl-kpi-sub">${short(st.sub, 34)}</span>` : null}`
+  return st.onClick ? html`<button type="button" class=${cls} onClick=${st.onClick} title=${title}>${body}</button>`
+    : html`<div class=${cls} title=${title}>${body}</div>`
 }
 
 /** A tab as one line: its state, name, project and, with the preview on, the last line of its screen */
@@ -67,7 +71,7 @@ function RowLine({ row, tab, s, c, lead = false, walk = null }) {
   const t = T()
   const w = t.home.list
   const n = s.model?.numbers?.[row.key] ?? row.number
-  const project = row.area || row.area_names?.[0] || row.mark?.label || ''
+  const project = rowProject(row)
   const why = (row.why ?? [])[0]
   const tabWord = tab ? (tab.state === 'waiting' ? w.rest : t.state[tab.state] ?? tab.state) : ''
   return html`<li class=${`hl-line${lead ? ' is-lead' : ''}`}>
@@ -154,9 +158,9 @@ export function HomeList({ s, c }) {
   const relayDown = s.relay?.enabled && !s.relay?.online
   const alarms = s.model?.alarms ?? []
   const person = s.server?.person
-  const greeting = `${h.greeting[greetingPart(now.getHours())]}${person ? `, ${person}` : ''}`
-  const day = now.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
-  const workPage = (s.model?.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'tasks'))?.id ?? 'briefing'
+  const greeting = greetingText(now.getHours(), person, h.greeting)
+  const day = dayLabel(now, lang)
+  const workPage = workPageId(s.model)
   // read on the click: the queue is built below from the same lines
   const walk = () => queue
   const row = (r, lead = false) => html`<${RowLine} key=${r.key} row=${r} tab=${parts.tabOf(r.key)} s=${s} c=${c} lead=${lead} walk=${walk} />`

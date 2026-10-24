@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The tokens Claude Code used, per Bridge and per machine, over 7, 30 or 90 days, for the Betrieb page.
+"""The tokens Claude Code used, per Bridge and per machine, over 7, 30 or 90 days, for the overview page.
 
 Every answer of the model stands in the transcript of its session (~/.claude/projects/<slug>/<session>.jsonl,
 a subagent's in <session>/subagents/agent-*.jsonl) with its model and `usage`. An answer with several content
@@ -11,7 +11,7 @@ Reading is incremental: each file is read on from where the last scan stopped, a
 for the next scan, and a file untouched for longer than the week is not opened. A file is read in blocks, so a
 large transcript never stands in memory whole. Everything here only reads.
 
-`view()` scans before it answers (the Betrieb page asks for it). `latest()` is for callers on a worker thread
+`view()` scans before it answers (the overview page asks for it). `latest()` is for callers on a worker thread
 (the collector after each pass): it answers with the last view and starts a scan on its own thread when that view
 is missing or older than MAX_AGE, so the first scan after start never holds up a collect pass.
 

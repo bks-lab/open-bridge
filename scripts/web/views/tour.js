@@ -74,7 +74,7 @@ function TourStep({ step, i, n, t, c, page }) {
       width: `${spot.width}px`, height: `${spot.height}px` }}></div>` : html`<div class="tour-scrim" aria-hidden="true"></div>`}
     <div class=${`tour-box${!place || place.side === 'center' ? ' tour-center' : ''}`} data-side=${place?.side ?? 'center'} ref=${box} style=${style}
       role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body">
-      <p class="tour-count label-caps" aria-label=${t.label}>${first || last ? t.label : t.count(i, n - 2)}</p>
+      <p class="tour-count label-caps"><span class="sr-only">${t.label}</span><span aria-hidden="true">${first || last ? t.label : t.count(i, n - 2)}</span></p>
       <h2 class="tour-title" id="tour-title">${words.title}</h2>
       <p class="tour-body" id="tour-body">${words.body}</p>
       <div class="tour-dots" aria-hidden="true">${Array.from({ length: n }, (_, k) => html`<span key=${k} class=${`tour-dot${k === i ? ' is-on' : ''}`}></span>`)}</div>

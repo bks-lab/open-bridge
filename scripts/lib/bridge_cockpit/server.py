@@ -72,7 +72,7 @@ MAX_BODY = 64 * 1024
 SSE_QUEUE = 100
 SSE_PING_S = 15
 INBOX_CACHE_S = 10
-NOISE_DAYS = 30         # how far back the Betrieb page counts what each inbox source filed and what was dropped
+NOISE_DAYS = 30         # how far back the overview page counts what each inbox source filed and what was dropped
 STATIC_RE = re.compile(r"^/[A-Za-z0-9._/-]{1,200}\Z")
 # query switches the page reads itself (scripts/web/app.js, mock.js); the token exchange keeps them
 VIEW_PARAMS = ("mock", "lang", "offline", "empty", "auth")
@@ -488,7 +488,7 @@ class App:
         return listing
 
     def inbox_noise(self, days: int = NOISE_DAYS) -> dict | None:
-        """What the Betrieb page shows about the inbox: the loudest sources of the last `days` and the
+        """What the overview page shows about the inbox: the loudest sources of the last `days` and the
         mute rules in force. None when either read fails: half a picture would read as all quiet."""
         out = {"days": days}
         for name, argv in (("sources", self.actions.inbox("stats", "--days", str(days), "--json")),

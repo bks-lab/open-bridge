@@ -1,5 +1,5 @@
 ---
-summary: "Cloud costs per day for the cockpit's Betrieb page: which accounts and contracts opt in (costs: block), what scripts/cloud-costs.py measures per provider, which login or permission each provider needs, how a missing login becomes a question with the command to run, how to declare the daily workload, and how the cockpit reads the file."
+summary: "Cloud costs per day for the cockpit's overview page: which accounts and contracts opt in (costs: block), what scripts/cloud-costs.py measures per provider, which login or permission each provider needs, how a missing login becomes a question with the command to run, how to declare the daily workload, and how the cockpit reads the file."
 type: guide
 last_updated: 2026-10-19
 related:
@@ -17,7 +17,7 @@ related:
 
 `scripts/cloud-costs.py` asks the providers what each opted-in account cost per
 day, adds the fixed contracts, converts everything to EUR and writes one stamped
-JSON file. The cockpit's Betrieb page shows it against a budget. Every number is
+JSON file. The cockpit's overview page shows it against a budget. Every number is
 measured from the provider; nothing is read from a `status:` field, and a fixed
 contract is labelled as such (`kind: fixed`), never passed off as usage.
 
@@ -130,7 +130,7 @@ schema_version: 1
 scope: user
 id: cloud-costs
 title: Cloud costs
-purpose: "What the cloud accounts and contracts cost per day, for the cockpit's Betrieb page."
+purpose: "What the cloud accounts and contracts cost per day, for the cockpit's overview page."
 system: _standalone
 reports_to: inbox
 placement:
@@ -179,7 +179,7 @@ over a failed one and then the newer report, and an account that needs a login
 offers the command for the machine that measures it. The result is kept in
 `.bridge/resources/costs-view.json` with where and when it was read and whether
 it is stale (older than 36 hours), and makes one row per account. The server
-answers `GET /api/costs` from that file, and the Betrieb page shows the cost
+answers `GET /api/costs` from that file, and the overview page shows the cost
 card: a bar per day, each account against its budget, and an account that needs
 a login with the command to copy. Which host and file: the instance's briefing
 profile, see [bridge-cockpit.md](bridge-cockpit.md).
