@@ -1,7 +1,7 @@
 ---
 summary: "Mail drafts: footers in identity/mail-footers/ (who signs, styles, language variants), occasions in workflow/mail-profiles/ (footer, theme, greeting, snippets, attachments, client, who it applies to), recipients from mandants; skills/mail-draft builds a draft in Apple Mail, Outlook or an .eml and never sends. Selection order, footer styles, theme roles, preflight checks, clients and their limits."
 type: guide
-last_updated: 2026-10-06
+last_updated: 2026-10-24
 related:
   - ../skills/mail-draft/SKILL.md
   - ../identity/mail-footers/_schema.yaml
@@ -131,6 +131,29 @@ then the mandant's `address_form`, then the profile's.
 Two profiles whose `applies_to` claim the same mandant, type or tag are
 reported by `validate`: only the first by name would ever be picked.
 
+### Section headings and short links
+
+`heading_styles` dresses a `##` heading by its words, so a status mail does not
+need alert syntax for its two recurring sections:
+
+```yaml
+heading_styles:
+  callout: [Summary, Overview]     # accent fill, like a `>` quote
+  warning: [Blocked, Critical]     # warning edge, like `> [!WARNING]`
+```
+
+`link_aliases` lets a body write `[our site](site:home)`:
+
+```yaml
+link_aliases:
+  "site:home": "https://example.com/"
+  "site:contact": "https://example.com/contact"
+```
+
+Both merge over the same keys in `bridge-config.yaml` `mail:`, the profile
+winning per key. A target shaped like an alias that no map defines stops the
+draft, and an alias may only point at an http(s), mailto or tel URL.
+
 ## Mandants
 
 Optional fields, all read-only for this skill:
@@ -141,6 +164,7 @@ language: de                      # on the mandant: the group's default language
 address_form: informal            # on the mandant: the group's default form of address
 persons:
   - id: sam
+    nicknames: [sammy]            # `--to sammy` works too; an id always wins
     mail_profile: everyday        # on one person: wins over the mandant
     defaults:
       language: de                # picks footer and profile variants
@@ -237,4 +261,17 @@ mail-draft.sh signature <footer> [--lang] [--style] [--out dir]
 mail-draft.sh list                                  footers, profiles, mandant mappings
 mail-draft.sh validate                              schemas and every reference between files
 mail-draft.sh verify    --client c --subject s      count drafts in the Drafts folder
+mail-draft.sh gallery   [--out dir] [--body-file f] [--open]   every theme and profile on one page
 ```
+
+## Gallery
+
+`gallery` answers "what can my mails look like?". It renders the same sample
+text once per built-in theme (`design`, `minimal`, `plain`) and once per
+profile, as a draft for a placeholder reader would be built (footer, greeting,
+sign-off, theme, masthead), and writes `index.html` with one tile per result:
+name, purpose, theme, footer, client, sender, and the mail in light and dark.
+The files land in `<mail.drafts_dir>/gallery/` unless `--out` says otherwise;
+the drafts directory is gitignored because a rendered footer carries contact
+data. No mail client is involved and nothing is sent. `--body-file` swaps the
+sample for your own text, for example one in your language.

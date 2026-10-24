@@ -8,6 +8,7 @@
     list       footers, profiles, and which mandants point where
     validate   check every footer, profile and the references between them
     verify     count drafts with a subject in a client's Drafts folder
+    gallery    one sample mail per theme and profile on a local page, nothing sent
 
 Arguments are named. Positional order was the trap of the script this replaces:
 a missing priority made the attachment path read as the priority, and the mail
@@ -180,6 +181,11 @@ def main(argv: list[str] | None = None) -> int:
     vf.add_argument("--client", required=True, choices=["apple-mail", "outlook"])
     vf.add_argument("--subject", required=True)
 
+    gl = sub.add_parser("gallery", help="render a sample mail per theme and profile on one local page")
+    gl.add_argument("--out", help="directory for the page (default: <mail.drafts_dir>/gallery)")
+    gl.add_argument("--body-file", help="your own sample text (Markdown) instead of the built-in one")
+    gl.add_argument("--open", action="store_true", help="open the page in the browser")
+
     args = ap.parse_args(argv)
     try:
         cfg = load()
@@ -325,9 +331,23 @@ def cmd_verify(args, cfg) -> int:
     return 0 if count else 1
 
 
+def cmd_gallery(args, cfg) -> int:
+    from . import gallery
+    body = Path(args.body_file).read_text(encoding="utf-8") if args.body_file else ""
+    index, problems = gallery.run(cfg, Path(args.out).expanduser() if args.out else None, body)
+    for p in problems:
+        print(f"  ! {p}")
+    print(f"gallery: {index}")
+    print("Nothing was sent and no mail client was touched.")
+    if args.open:
+        _open(index)
+    return 0
+
+
 COMMANDS = {
     "compose": cmd_compose, "preview": cmd_preview, "check": cmd_check, "explain": cmd_explain,
     "signature": cmd_signature, "list": cmd_list, "validate": cmd_validate, "verify": cmd_verify,
+    "gallery": cmd_gallery,
 }
 
 if __name__ == "__main__":

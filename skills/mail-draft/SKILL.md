@@ -46,7 +46,8 @@ Request about mail
 ├── "how will X be addressed?" ─────────────► mail-draft.sh explain --to X
 ├── new footer / signature / profile ───────► § Set up
 ├── paste a signature into Outlook/Mail ────► mail-draft.sh signature <footer> --out <dir>
-└── "is my mail setup ok?" ─────────────────► mail-draft.sh validate && mail-draft.sh list
+├── "is my mail setup ok?" ─────────────────► mail-draft.sh validate && mail-draft.sh list
+└── "what can my mails look like?" ─────────► mail-draft.sh gallery --open
 ```
 
 ## Draft a mail
@@ -68,7 +69,9 @@ Request about mail
    the Drafts folder counted it, and for Outlook that "From" must be switched
    by hand. Never claim a draft that was not verified.
 
-Recipients: an address, `mandant:<id>`, `<mandant>/<person>` or a person id.
+Recipients: an address, `mandant:<id>`, `<mandant>/<person>`, a person id, or
+a person's `nicknames` entry. A body may link `[text](site:home)` when the
+profile or `mail.link_aliases` defines `site:home`.
 Override anything per call: `--profile`, `--footer`/`--no-footer`,
 `--footer-style`, `--theme`, `--lang`, `--informal`/`--formal`, `--client`.
 
@@ -84,7 +87,16 @@ Read the matching `_template.yaml` and `_schema.yaml` first
   `applies_to:` to be picked by mandant, mandant type or tag, `extends:` for
   variations, `variants:` for per-language wording
 - on a mandant or person: `mail_profile: <id>` to pin an occasion
-- finish with `mail-draft.sh validate` (CI runs it too)
+- finish with `mail-draft.sh validate` (CI runs it too), then
+  `mail-draft.sh gallery --open` to see every profile side by side
+
+## Gallery
+
+`mail-draft.sh gallery [--out <dir>] [--body-file <f>] [--open]` renders one
+sample mail per built-in theme and per profile, each with its footer, greeting
+and theme, and writes a local overview page (light and dark) under
+`<mail.drafts_dir>/gallery/`. It never touches a mail client. A profile that
+cannot render is shown as a tile with the reason, not skipped.
 
 ## Clients
 
