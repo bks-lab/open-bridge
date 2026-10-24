@@ -191,6 +191,21 @@ class PageVerbs:
                                                   mode=self.tx["board_mode"][mode]))
         self.forget_section(section)
 
+    def v_github_board_default(self, ctx: Ctx, mode: str) -> None:
+        """The mode a board takes until the person switches it, from the settings; "profile" leaves it to the
+        profile again. Kept beside the switches, every section with boards is asked again."""
+        ctx.subject = "board:default"
+        try:
+            from ..briefing_providers.github_work import save_board_default
+            save_board_default(self.app.root, None if mode == "profile" else mode)
+        except (OSError, ValueError, ImportError) as exc:
+            ctx.note(self.tx["status_failed"].format(err=m.short(str(exc), 120)), bad=True)
+            return
+        ctx.note(self.tx["board_default_set"].format(mode=self.tx["board_default"][mode]))
+        for sec in {sec.get("id") for pg in (self.app.collector.view or {}).get("pages", [])
+                    for sec in pg.get("sections", []) if sec.get("boards")}:
+            self.forget_section(sec)
+
     # ------------------------------------------------------------ a command row's own steps
 
     def briefing_act(self, ctx: Ctx, section: str, row: str, action: str) -> dict | None:

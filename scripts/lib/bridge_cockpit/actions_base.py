@@ -140,8 +140,11 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "account_status": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                        "status": ("account_status", True)},
     "github_board": {"section": ("page_id", True), "slug": ("page_id", True), "mode": ("board_mode", True)},
+    # the mode a board takes until the person switches it (settings), or "profile" to leave it to the profile
+    "github_board_default": {"mode": ("board_default", True)},
 }
 BOARD_MODES = ("off", "mine", "all")
+BOARD_DEFAULTS = (*BOARD_MODES, "profile")
 ACCOUNT_STATUSES = ("active", "paused", "disabled")
 # a command row's own step and the undo token it returns (the same rules as briefing.py act)
 ROW_STEP_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}\Z")

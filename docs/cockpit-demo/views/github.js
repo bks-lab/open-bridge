@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // The cockpit's GitHub work: the figures and the boards above a github-work section, and the detail of
 // one issue or pull request (briefing.py detail, through /api/github). Everything here reads; a step on
-// a row starts an agent tab (row_action), a board's switch is the person's own choice (github_board).
+// a row starts an agent tab (row_action), a board's switch is the person's own choice (github_board), and
+// the settings list every board with the mode a new one starts with (github_board_default).
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
@@ -10,6 +11,7 @@ import { actionRow, ghSortRows, pageItemActs, rowActionKey } from '../logic.js'
 import { RowBar } from './day.js'
 import { RowSteps } from './pages.js'
 import { rowClickOpens } from './overlays.js'
+import { Card } from './settings.js'
 
 export const GH_REF = /^[\w.-]+\/[\w.-]+#\d+$/
 const BOARD_STATES = ['new', 'ready', 'in_progress', 'review', 'blocked']
@@ -38,7 +40,9 @@ function ago(iso) {
 export function GitHubBoard({ section, filter, setFilter, c, s }) {
   const t = T()
   const metrics = (section.metrics ?? []).filter(m => !['closed', 'landed'].includes(m.id) || m.n != null)
-  const boards = section.boards ?? []
+  // a board switched off leaves the page: one line names them and leads to the settings, where it comes back
+  const boards = (section.boards ?? []).filter(b => b.mode !== 'off')
+  const hidden = (section.boards ?? []).filter(b => b.mode === 'off')
   const pick = f => setFilter(filter && filter.kind === f.kind && filter.id === f.id ? null : f)
   const busy = !!s.ui.busy.github_board
   // who the rows are with, the busiest first: a chip each, a filter like the figures
@@ -60,14 +64,13 @@ export function GitHubBoard({ section, filter, setFilter, c, s }) {
     ${boards.length ? html`<ul class="ghb-boards" aria-label=${t.gh.boardsLabel}>${boards.map(b => {
       const total = BOARD_STATES.reduce((n, k) => n + (b.counts?.[k] ?? 0), 0)
       const on = filter?.kind === 'board' && filter.id === b.name
-      const off = b.mode === 'off'
-      return html`<li key=${b.slug ?? b.name} class=${`ghb-board${on ? ' is-on' : ''}${off ? ' is-off' : ''}`}>
-        <button type="button" class="ghb-board-head" aria-pressed=${String(on)} disabled=${off}
-          title=${off ? t.gh.boardOffTitle : t.gh.boardFilterTitle} onClick=${() => pick({ kind: 'board', id: b.name })}>
+      return html`<li key=${b.slug ?? b.name} class=${`ghb-board${on ? ' is-on' : ''}`}>
+        <button type="button" class="ghb-board-head" aria-pressed=${String(on)}
+          title=${t.gh.boardFilterTitle} onClick=${() => pick({ kind: 'board', id: b.name })}>
           <span class="ghb-board-name">${b.name}</span>
-          <span class="ghb-n mono">${off ? '' : b.open ?? total}</span>
+          <span class="ghb-n mono">${b.open ?? total}</span>
         </button>
-        ${off ? html`<p class="muted small ghb-off">${t.gh.boardOff}</p>` : total ? html`<div class="ghb-bar" role="img"
+        ${total ? html`<div class="ghb-bar" role="img"
             aria-label=${BOARD_STATES.filter(k => b.counts?.[k]).map(k => `${b.counts[k]} ${t.gh.state[k]}`).join(', ')}>
           ${BOARD_STATES.filter(k => b.counts?.[k]).map(k => html`<span key=${k} class=${`ghb-seg tk-${STATE_TOKEN[k]}`}
             style=${{ flexGrow: b.counts[k] }} title=${`${b.counts[k]} ${t.gh.state[k]}`}></span>`)}
@@ -76,13 +79,13 @@ export function GitHubBoard({ section, filter, setFilter, c, s }) {
           <span class=${`ghb-dot tk-${STATE_TOKEN[k]}`}></span>${b.counts[k]} ${t.gh.state[k]}</span>`)}</p>`
         : html`<p class="muted small ghb-off">${t.gh.boardEmpty}</p>`}
         ${b.capped ? html`<p class="muted small">${t.gh.capped(b.capped)}</p>` : null}
-        ${b.slug && b.mode ? html`<div class="ghb-mode" role="group" aria-label=${t.gh.modeLabel(b.name)}>
-          ${['off', 'mine', 'all'].map(m => html`<button type="button" key=${m} class=${`ghb-mode-btn${b.mode === m ? ' is-on' : ''}`}
-            aria-pressed=${String(b.mode === m)} disabled=${busy}
-            onClick=${() => b.mode !== m && c.act('github_board', { section: section.id, slug: b.slug, mode: m })}>${t.gh.mode[m]}</button>`)}
-        </div>` : null}
+        ${b.slug && b.mode ? html`<${ModeGroup} modes=${['off', 'mine', 'all']} at=${b.mode} label=${t.gh.modeLabel(b.name)} busy=${busy}
+          pick=${m => c.act('github_board', { section: section.id, slug: b.slug, mode: m })} />` : null}
       </li>`
     })}</ul>` : null}
+    ${section.boards?.length ? html`<p class="ghb-hidden muted small">
+      ${hidden.length ? html`<span>${t.gh.hiddenBoards(hidden.map(b => b.name).join(', '))}</span>` : null}
+      <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.openSettings('boards')}>${t.gh.boardsSettings}<//></p>` : null}
     ${people.length > 1 ? html`<p class="ghb-people" role="group" aria-label=${t.gh.peopleLabel}>
       <span class="muted small">${t.gh.peopleLabel}</span>
       ${people.map(([who, n]) => {
@@ -94,6 +97,40 @@ export function GitHubBoard({ section, filter, setFilter, c, s }) {
       <strong>${filter.kind === 'flag' ? t.gh.figure[filter.id] : filter.kind === 'person' ? `@${filter.id}` : filter.id}</strong>
       <${Btn} size="xs" variant="ghost" icon="close" onClick=${() => setFilter(null)}>${t.gh.filterClear}<//></p>` : null}
   </div>`
+}
+
+/** The mode buttons of one board, or of the default for new ones: a group with the one chosen pressed */
+function ModeGroup({ modes, at, label, busy, pick }) {
+  const t = T()
+  return html`<div class="ghb-mode" role="group" aria-label=${label}>
+    ${modes.map(m => html`<button type="button" key=${m} class=${`ghb-mode-btn${at === m ? ' is-on' : ''}`}
+      aria-pressed=${String(at === m)} disabled=${busy} onClick=${() => at !== m && pick(m)}>${m === 'profile' ? t.gh.defaultMode.profile : t.gh.mode[m]}</button>`)}
+  </div>`
+}
+
+/** Settings, area "GitHub boards": every board of every GitHub section, a hidden one too, each with its switch,
+ *  and the mode a board takes until it is switched (a new board on the registry, say) */
+export function BoardSettings({ s, c }) {
+  const t = T()
+  const busy = !!(s.ui.busy.github_board || s.ui.busy.github_board_default)
+  const seen = new Set()
+  const rows = (s.model?.pages ?? []).flatMap(p => p.sections ?? []).flatMap(sec => (sec.boards ?? [])
+    .filter(b => b.slug && !seen.has(b.slug) && seen.add(b.slug)).map(b => ({ ...b, section: sec.id })))
+  if (!rows.length) return html`<${Card} title=${t.gh.settingsTitle}><p class="muted small">${t.gh.noBoards}</p><//>`
+  const fresh = rows.find(b => b.default)?.default ?? 'profile'
+  return html`<${Card} title=${t.gh.settingsTitle} intro=${t.gh.settingsIntro}>
+      <ul class="board-set">${rows.map(b => html`<li key=${b.slug} class=${`board-set-row${b.mode === 'off' ? ' is-off' : ''}`}>
+        <span class="board-set-name">${b.name}</span>
+        <${ModeGroup} modes=${['off', 'mine', 'all']} at=${b.mode} label=${t.gh.modeLabel(b.name)} busy=${busy}
+          pick=${m => c.act('github_board', { section: b.section, slug: b.slug, mode: m })} />
+      </li>`)}</ul>
+    <//>
+    <${Card} title=${t.gh.defaultTitle} intro=${t.gh.defaultIntro}>
+      <div class="board-set-default">
+        <${ModeGroup} modes=${['profile', 'off', 'mine', 'all']} at=${fresh} label=${t.gh.defaultTitle} busy=${busy}
+          pick=${m => c.act('github_board_default', { mode: m })} />
+      </div>
+    <//>`
 }
 
 function Person({ login }) {

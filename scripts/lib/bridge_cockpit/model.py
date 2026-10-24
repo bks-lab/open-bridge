@@ -220,7 +220,7 @@ def parse_gh(value: Any) -> dict | None:
 
 
 def parse_boards(value: Any) -> list[dict] | None:
-    """A board summary of a GitHub section: name, slug, open cards per state, the person's switch."""
+    """A board summary of a GitHub section: name, slug, open cards per state, the person's switch and default."""
     out = []
     for b in _list(value)[:40]:
         if not isinstance(b, dict) or not isinstance(b.get("name"), str):
@@ -231,7 +231,8 @@ def parse_boards(value: Any) -> list[dict] | None:
                     "open": b.get("open") if isinstance(b.get("open"), int) else None,
                     "counts": {k: v for k, v in counts.items() if isinstance(k, str) and isinstance(v, int)},
                     "capped": b.get("capped") if isinstance(b.get("capped"), int) else None,
-                    "mode": b.get("mode") if b.get("mode") in ("off", "mine", "all") else None})
+                    "mode": b.get("mode") if b.get("mode") in ("off", "mine", "all") else None,
+                    "default": b.get("default") if b.get("default") in ("off", "mine", "all") else None})
     return out or None
 
 

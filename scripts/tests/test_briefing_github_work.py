@@ -517,6 +517,30 @@ def test_a_board_left_out_of_the_query_starts_switched_off(tmp_path):
     assert [c[3] for c in run.calls if c[:3] == ["gh", "project", "item-list"]] == ["3"]
 
 
+def test_the_persons_default_starts_every_board_not_chosen_yet(tmp_path):
+    """Boards a person never switched follow the person's default for new boards, over the profile; a board
+    switched once keeps its choice, and taking the default back hands the rest to the profile again."""
+    root = bridge(tmp_path)
+    two_boards(root)
+    gw = bf._providers().get("github-work")
+    gw.save_board_default(root, "off")
+    gw.save_board_mode(root, "tool", "mine")
+    assert gw.board_default(root) == "off" and gw.board_modes(root) == {"tool": "mine"}
+    rows, run = collect(root)
+    assert [c[3] for c in run.calls if c[:3] == ["gh", "project", "item-list"]] == ["3"]   # board 4: off by default
+    sec = bf.collect(root, {"id": "p", "sections": [dict(SECTION)]}, bf.Context(root, now=NOW, run=FakeRun(answers())))
+    summary = {b["slug"]: b for b in sec["sections"][0]["summary"]}
+    assert summary["site-board"]["mode"] == "off" and summary["tool"]["mode"] == "mine"
+    assert {b["default"] for b in summary.values()} == {"off"}
+    gw.save_board_default(root, None)
+    assert gw.board_default(root) is None and gw.board_modes(root) == {"tool": "mine"}
+    rows, run = collect(root)
+    assert [c[3] for c in run.calls if c[:3] == ["gh", "project", "item-list"]] == ["3", "4"]
+    import pytest
+    with pytest.raises(ValueError):
+        gw.save_board_default(root, "everything")
+
+
 def test_a_bad_switch_is_refused_and_a_broken_file_is_no_choice(tmp_path):
     root = bridge(tmp_path)
     gw = bf._providers().get("github-work")

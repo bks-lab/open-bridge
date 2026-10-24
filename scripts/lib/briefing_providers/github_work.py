@@ -15,6 +15,8 @@ query keys (all optional):
   cards         mine (default) | all   board cards: only yours, or every open card
                 A person switches each board on a dashboard (off, mine, all); that choice is kept
                 in .bridge/github-boards.json, beside the profile, never in it, and wins over both.
+                The same file may hold the person's default for boards not switched yet, which wins
+                over the profile too (a new board stays off until chosen, say).
   filter        the boards' own filter (default `is:open`, see github-board)
   board_limit   cards per board, default 200
   links         false: do not ask which pull requests close an issue
@@ -41,27 +43,51 @@ MODES = ("off", "mine", "all")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
 
 
-def board_modes(root: Path) -> dict:
-    """The person's own choice per board ({slug: off | mine | all}); nothing chosen is an empty choice."""
+def _read(root: Path) -> dict:
     try:
         data = json.loads((Path(root) / BOARDS_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    boards = data.get("boards") if isinstance(data, dict) else None
-    return {k: v for k, v in (boards or {}).items() if isinstance(k, str) and SLUG_RE.match(k) and v in MODES}
+    return data if isinstance(data, dict) else {}
+
+
+def board_modes(root: Path) -> dict:
+    """The person's own choice per board ({slug: off | mine | all}); nothing chosen is an empty choice."""
+    boards = _read(root).get("boards")
+    return {k: v for k, v in (boards if isinstance(boards, dict) else {}).items()
+            if isinstance(k, str) and SLUG_RE.match(k) and v in MODES}
+
+
+def board_default(root: Path) -> str | None:
+    """The person's mode for a board not switched yet; None leaves it to the profile."""
+    value = _read(root).get("default")
+    return value if value in MODES else None
+
+
+def _write(root: Path, modes: dict, default: str | None) -> None:
+    """The file is written whole and swapped in, so a reader never sees half."""
+    path = Path(root) / BOARDS_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"boards": modes, **({"default": default} if default else {})}
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    tmp.replace(path)
 
 
 def save_board_mode(root: Path, slug: str, mode: str) -> dict:
-    """Keep one board's choice; the file is written whole and swapped in, so a reader never sees half."""
+    """Keep one board's choice; the default for the others stays."""
     if not SLUG_RE.match(slug or "") or mode not in MODES:
         raise ValueError("a board slug and one of off, mine, all")
     modes = {**board_modes(root), slug: mode}
-    path = Path(root) / BOARDS_FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(f".{os.getpid()}.tmp")
-    tmp.write_text(json.dumps({"boards": modes}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    _write(root, modes, board_default(root))
     return modes
+
+
+def save_board_default(root: Path, mode: str | None) -> None:
+    """Keep the person's mode for boards not switched yet; None hands them back to the profile."""
+    if mode is not None and mode not in MODES:
+        raise ValueError("one of off, mine, all, or none")
+    _write(root, board_modes(root), mode)
 
 
 def _type(value) -> str:
@@ -79,7 +105,8 @@ def collect(section: dict, ctx) -> list:
     default = "all" if query.get("cards") == "all" else "mine"
     named = set(query.get("boards") or [])
     saved = board_modes(ctx.root)
-    mode_of = {b["slug"]: saved.get(b["slug"]) or (default if not named or b["slug"] in named else "off")
+    fresh = board_default(ctx.root)
+    mode_of = {b["slug"]: saved.get(b["slug"]) or fresh or (default if not named or b["slug"] in named else "off")
                for b in boards}
     asked = [b["slug"] for b in boards if mode_of[b["slug"]] != "off"]
     # every open card of the boards switched on, in one listing: a board's cost does not depend on whose cards
@@ -121,7 +148,7 @@ def collect(section: dict, ctx) -> list:
     by_slug = {b.get("slug"): b for b in counted}
     section["_summary"] = [{**(by_slug.get(b["slug"]) or {"name": b["name"], "number": b["number"], "org": b["org"],
                                                          "slug": b["slug"], "counts": {}, "open": None, "capped": None}),
-                            "mode": mode_of[b["slug"]]} for b in boards]
+                            "mode": mode_of[b["slug"]], "default": fresh} for b in boards]
     rows = merge(searched or [], carded)
     if query.get("links") is not False:
         _links(rows, ctx)
