@@ -19,7 +19,10 @@ When this test fails, fix the document unless the router is plainly wrong.
 
 Every example is evaluated from an empty temporary directory, so a frontmatter
 read finds nothing and the PATH rule answers. Frontmatter precedence is tested
-separately with synthetic files. Nothing here depends on an instance's tree.
+separately with synthetic files. The one walk over the real tree, the
+family-row check, looks only at families with a CORE `_template.yaml` or
+`_schema.yaml` and skips inside an instance (`bridge-config.yaml` present),
+where families of its own are expected and need no CORE row.
 
 Run: python3 -m pytest scripts/tests/test_scope_docs.py -q
 """
@@ -132,15 +135,28 @@ def test_structure_row_matches_router(doc_path, example, expected, empty_cwd):
     )
 
 
-def test_every_wrapper_family_has_a_structure_row():
-    """A family folder in the tree with no row in structure.md is undocumented."""
-    text = STRUCTURE.read_text(encoding="utf-8")
-    missing = []
+def _core_families() -> list[str]:
+    """Wrapper families that ship a CORE companion (template or schema)."""
+    fams = []
     for wrapper in WRAPPERS:
         for d in sorted((REPO / wrapper).iterdir()):
-            if d.is_dir() and not d.name.startswith((".", "_")):
-                if f"`{wrapper}/{d.name}/" not in text:
-                    missing.append(f"{wrapper}/{d.name}/")
+            if not d.is_dir() or d.name.startswith((".", "_")):
+                continue
+            companions = [f"{wrapper}/{d.name}/{n}" for n in ("_template.yaml", "_schema.yaml")]
+            if any((REPO / c).exists() and cc.classify_file(c) == "core" for c in companions):
+                fams.append(f"{wrapper}/{d.name}")
+    return fams
+
+
+def test_every_wrapper_family_has_a_structure_row(monkeypatch):
+    """A CORE family with no row in structure.md is undocumented."""
+    if (REPO / "bridge-config.yaml").exists():
+        pytest.skip("instance tree: its own families need no row in the CORE doc")
+    monkeypatch.chdir(REPO)
+    text = STRUCTURE.read_text(encoding="utf-8")
+    fams = _core_families()
+    assert fams, "no wrapper family with a CORE template or schema found"
+    missing = [f"{f}/" for f in fams if f"`{f}/" not in text]
     assert not missing, f"families without a row in docs/structure.md: {missing}"
 
 
@@ -185,20 +201,22 @@ def _documented_dispatch_families() -> set[str]:
     return fams
 
 
-def _router_dispatch_families(candidates: set[str]) -> set[str]:
-    return {f for f in candidates if cc._CLUSTER_WRAPPER_RE.search(f"{f}/example.yaml")}
+def _router_dispatch_families() -> set[str]:
+    """The families named in _CLUSTER_WRAPPER_RE, read from the pattern itself."""
+    fams = set()
+    for wrapper, alts in re.findall(r"(identity|infra|workflow)/\(\?:([^)]+)\)",
+                                    cc._CLUSTER_WRAPPER_RE.pattern):
+        fams |= {f"{wrapper}/{a}" for a in alts.split("|")}
+    assert fams, "could not read the family list out of _CLUSTER_WRAPPER_RE"
+    # The parse must agree with what the regex actually matches.
+    for f in fams:
+        assert cc._CLUSTER_WRAPPER_RE.search(f"{f}/example.yaml"), f
+    return fams
 
 
 def test_frontmatter_family_list_matches_router():
     documented = _documented_dispatch_families()
-    candidates = set(documented)
-    for wrapper in WRAPPERS:
-        for d in (REPO / wrapper).iterdir():
-            if d.is_dir():
-                candidates.add(f"{wrapper}/{d.name}")
-    # families the router knows that are not in this tree (instance-only ones)
-    candidates |= {"identity/voiceprints", "workflow/checks"}
-    router = _router_dispatch_families(candidates)
+    router = _router_dispatch_families()
     assert documented == router, (
         "families whose frontmatter `scope:` wins, docs vs _CLUSTER_WRAPPER_RE: "
         f"only in docs {sorted(documented - router)}, only in router {sorted(router - documented)}"
@@ -276,3 +294,35 @@ def test_private_is_an_alias_of_user_everywhere(path, text, empty_cwd):
 def test_unknown_subagent_scope_fails_closed(empty_cwd):
     _write(empty_cwd, ".claude/agents/example.md", "---\nname: example\nscope: bogus\n---\n")
     assert cc.classify_file(".claude/agents/example.md") == "user"
+
+
+@pytest.mark.parametrize("path,text,expected", [
+    # Fall back to the path: an unrecognised wrapper or theme tag routes like no tag.
+    ("workflow/contexts/example.yaml", "name: example\nscope: privat\n", "user"),
+    ("themes/example.yaml", "meta:\n  scope: privat\n", "user"),
+    # A doc falls back to the docs/ default, which is core. The document says so.
+    ("docs/example.md", "---\nscope: privat\n---\n# Example\n", "core"),
+    # Skills fail closed.
+    ("skills/example/SKILL.md",
+     "---\nname: example\ndescription: x\nmetadata:\n  scope: privat\n---\n", "user"),
+], ids=["wrapper", "theme", "doc", "skill"])
+def test_unrecognised_token_behaves_as_documented(path, text, expected, empty_cwd):
+    _write(empty_cwd, path, text)
+    assert cc.classify_file(path) == expected
+
+
+def test_skill_journal_stays_user_in_a_core_skill(empty_cwd):
+    _write(empty_cwd, "skills/example/SKILL.md",
+           "---\nname: example\ndescription: x\nmetadata:\n  scope: core\n---\n")
+    assert cc.classify_file("skills/example/SKILL.md") == "core"
+    assert cc.classify_file("skills/example/LEARNINGS.md") == "user"
+
+
+def test_org_path_pattern_beats_a_subagent_tag(empty_cwd):
+    prefixes = [re.match(r"\^\\\.claude/agents/([\w-]+)$", p) for p in cc.ORG_PATTERNS]
+    prefixes = [m.group(1) for m in prefixes if m]
+    if not prefixes:
+        pytest.skip("no org path pattern for sub-agents in this router")
+    path = f".claude/agents/{prefixes[0]}example.md"
+    _write(empty_cwd, path, "---\nname: example\nscope: core\n---\n")
+    assert cc.classify_file(path) == "org"

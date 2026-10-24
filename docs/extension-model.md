@@ -37,19 +37,28 @@ columns of `structure.md`, to that function.
 
 An instance may also tag a file with the `name` of one of its
 `bridge-config.yaml` `upstreams[]` entries; that name maps to the entry's
-`scope`. It never shadows a generic value. Where the router reads a tag, an
-unrecognised token routes `user`, so a typo never ships.
+`scope`. It never shadows a generic value. An unrecognised token is not the
+same everywhere: skills and sub-agents fail closed to `user`, while wrapper
+families, themes and docs treat it as undeclared and fall back to the path, so
+an unshipped wrapper file or theme routes `user` and a doc routes **`core`**.
+Check the spelling of a doc's tag before a promote.
 
-**Frontmatter beats the path.** For these files a declared tier wins over the
-path rules below. Anywhere else the router ignores a tag and the path decides.
+**Frontmatter beats the path.** For these files a declared tier can win over
+the path rules below. Wrapper families and themes are read before every path
+rule. Docs are read after the personal and user path rules, so a tag never
+unlocks a path those hold back. Skills and sub-agents are read after the
+personal, user and org path rules: a skill journal or an undeclared logo stays
+`user` whatever `SKILL.md` declares, and a sub-agent matched by an
+`ORG_PATTERNS` entry stays `org`. Anywhere else the router ignores a tag and
+the path decides.
 
-| Files | Read from | Undeclared |
+| Files | Read from | Unrecognised or undeclared |
 |---|---|---|
 | instance files directly in `identity/personas/`, `identity/mandants/`, `identity/accounts/`, `identity/contracts/`, `infra/channels/`, `infra/remotes/`, `infra/secret-stores/`, `infra/a2a-peers/`, `workflow/briefings/`, `workflow/contexts/`, `workflow/projects/` | top-level `scope:` | path rule, `user` |
 | `themes/<name>.yaml`, plus the logo it names in `branding.logo_ascii:` | `meta.scope` | shipped themes `core`, any other `user` |
 | `docs/**/*.md` | top-level `scope:`, which cannot unlock a `user` or `personal` path | `core` |
-| everything under `skills/<name>/` | `metadata.scope` in that skill's `SKILL.md` | `user` (fail closed) |
-| `.claude/agents/<name>.md` | top-level `scope:` | `core` |
+| files under `skills/<name>/`, except the user paths above | `metadata.scope` in that skill's `SKILL.md` | `user` (fail closed) |
+| `.claude/agents/<name>.md`, except org path matches | top-level `scope:` | unrecognised `user`, undeclared `core` |
 
 Rules look like frontmatter but are not: every `rules/**/*.md` carries a
 top-level `scope:`, yet the **folder** routes it, and

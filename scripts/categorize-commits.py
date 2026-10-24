@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Categorize commits by scope (core / org / user / personal) for /promote routing.
 
-Mirrors the path → scope table in rules/operations.md § CORE/USER Separation.
+The prose form of these rules is docs/extension-model.md § Scope model, held to
+classify_file() by scripts/tests/test_scope_docs.py.
 Run from repo root.
 
 Usage:
@@ -24,8 +25,8 @@ import subprocess
 import sys
 
 # ---------------------------------------------------------------------------
-# Path → scope table — MIRROR of rules/operations.md § CORE/USER Separation.
-# Keep in sync with operations.md (manual — no automated drift check yet).
+# Path → scope table. Documented in docs/extension-model.md § Scope model;
+# scripts/tests/test_scope_docs.py fails when the two disagree.
 #
 # Scope is now STRUCTURAL: tier is decided by where a file lives, not a tag.
 # Whole folders (work/, rules/user/) are user; the `_`-prefix split inside the
@@ -378,6 +379,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_extract_frontmatter.py",
     "scripts/tests/test_figure_counts.py",
     "scripts/tests/test_gen_board.py",
+    "scripts/tests/test_scope_docs.py",
     "scripts/tests/test_scope_router.py",
     "scripts/tests/test_validate_bridge_rule_map.py",
     "scripts/upstream-monitor.sh",

@@ -242,9 +242,8 @@ lives**, not a tag you can forget: whole folders (`work/`, `imports/` USER;
 `docs/`, `trackers/` CORE), the `_`-prefix inside the cluster wrappers
 (`_template`/`_schema` CORE, every instance USER), and enumerated lists where a
 folder mixes both (`scripts/`, `agents/`, `mods/`, `themes/`). Frontmatter
-decides only what cannot be foldered (skills: `metadata.scope`) and a listed
-set of wrapper families; every `rules/*.md` carries a `scope:` matching its
-folder, hard-gated in CI. The one table of values, aliases, frontmatter
+re-tiers only the files the table lists; every `rules/*.md` carries a `scope:`
+matching its folder, hard-gated in CI. The one table of values, aliases, frontmatter
 precedence and path rules, tested against the router:
 [`docs/extension-model.md` § Scope model](docs/extension-model.md#scope-model).
 The leak-check is the backstop; structure keeps PII out of the public upstream.
