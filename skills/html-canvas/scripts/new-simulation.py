@@ -58,11 +58,11 @@ ARCHETYPES = {
 # The shell defaults to English. Flipping the default language means flipping
 # this exact block, so it is matched literally and the script fails loudly if the
 # shell ever changes it.
-LANG_BLOCK_EN = """:root:not([data-lang="de"]) [data-de]{display:none}
-:root[data-lang="de"] [data-en]{display:none}"""
+LANG_BLOCK_EN = """:root:not([data-lang="de"]) [data-de]:not([data-en]){display:none}
+:root[data-lang="de"] [data-en]:not([data-de]){display:none}"""
 
-LANG_BLOCK_DE = """:root:not([data-lang="en"]) [data-en]{display:none}
-:root[data-lang="en"] [data-de]{display:none}"""
+LANG_BLOCK_DE = """:root:not([data-lang="en"]) [data-en]:not([data-de]){display:none}
+:root[data-lang="en"] [data-de]:not([data-en]){display:none}"""
 
 
 def fail(msg) -> NoReturn:

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Current page</title>
+<style>
+/* design-tokens:begin */
+:root{
+  --primary:CanvasText; --secondary:LinkText; --accent:LinkText;
+  --surface:Canvas; --raised:Canvas; --ink:CanvasText; --line:GrayText;
+}
+/* design-tokens:end */
+body{margin:0;background:var(--surface);color:var(--ink)}
+:root:not([data-lang="de"]) [data-de]:not([data-en]){display:none}
+:root[data-lang="de"] [data-en]:not([data-de]){display:none}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1><span data-de>Aktuelle Seite</span><span data-en>Current page</span></h1>
+</main>
+</body>
+</html>

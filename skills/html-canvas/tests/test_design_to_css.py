@@ -257,12 +257,12 @@ def test_embed_fonts_puts_faces_inside_the_generated_region(tmp_path):
     text = out.read_text("utf-8")
     body = _region_body(text)
     generated = body.split("generated from DESIGN.md", 1)[1]
-    assert text.count("@font-face") == generated.count("@font-face") == 2
-    assert 'font-family: "Inter"' in generated and 'font-family: "Playfair Display"' in generated
+    assert text.count("@font-face") == generated.count("@font-face")
+    for family in ("Inter", "Playfair Display", "JetBrains Mono"):   # all three are bundled
+        assert 'font-family: "%s"' % family in generated, family
     assert "data:font/woff2;base64," in generated
     assert "fonts.googleapis" not in text
-    # the fixture's mono family has no bundled file: reported, not fatal
-    assert "JetBrains Mono" in res.stderr
+    assert "JetBrains Mono" not in res.stderr, res.stderr
 
 
 def test_embed_fonts_twice_gives_identical_bytes(tmp_path):
@@ -294,3 +294,80 @@ def test_embedded_font_loads_offline_in_a_browser(tmp_path, open_page):
     loaded = page.evaluate("document.fonts.load('16px Inter').then(f => f.length)")
     assert loaded >= 1
     assert page.evaluate("document.fonts.check('16px Inter')")
+
+
+# Legacy palette: `primary` is the headline ink there, and a manifest without
+# `dark-primary` left --ink at the light value in html.dark (dark text on dark).
+
+def test_legacy_dark_ink_falls_back_to_dark_on_surface():
+    dark = _groups(_run(TOKENS / "design-legacy.md").stdout)["html.dark"]
+    assert dark["ink"] == "#DDDDDD"
+
+
+def test_legacy_dark_primary_wins_over_dark_on_surface(tmp_path):
+    design = tmp_path / "DESIGN.md"
+    text = (TOKENS / "design-legacy.md").read_text("utf-8")
+    design.write_text(text.replace('  dark-on-surface: "#DDDDDD"\n',
+                                   '  dark-on-surface: "#DDDDDD"\n  dark-primary: "#F5F5F5"\n'), "utf-8")
+    dark = _groups(_run(design).stdout)["html.dark"]
+    assert dark["ink"] == "#F5F5F5"
+    assert list(dark).count("ink") == 1
+
+
+def test_current_shape_dark_ink_is_untouched():
+    groups = _groups(_run(TOKENS / "design-current.md").stdout)
+    assert groups["html.dark"].get("ink") == _groups((TOKENS / "golden-current.css").read_text("utf-8"))["html.dark"].get("ink")
+
+
+def test_embed_fonts_on_the_repo_design_md_does_not_warn_on_a_system_mono_stack(tmp_path):
+    res = _run(REPO / "DESIGN.md", "--embed-fonts", "--shell", "--out", tmp_path / "page.html")
+    assert "SF Mono" not in res.stderr, res.stderr
+
+
+def test_legacy_dark_muted_is_derived_when_no_dark_secondary_exists():
+    dark = _groups(_run(TOKENS / "design-legacy.md").stdout)["html.dark"]
+    assert dark["muted"] == "color-mix(in srgb, var(--on-surface) 72%, var(--surface))"
+
+
+def test_legacy_primary_surface_inverts_on_dark():
+    groups = _groups(_run(TOKENS / "design-legacy.md").stdout)
+    assert groups[":root"]["primary"] == "#111111"
+    assert groups["html.dark"]["primary"] == "var(--ink)"
+    assert groups["html.dark"]["on-primary"] == "var(--surface)"
+
+
+# --- find_design: the nearest DESIGN.md, never above the project ------------------------
+
+def _d2c():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("d2c_find", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_find_design_stops_at_the_project_boundary(tmp_path):
+    find = _d2c().find_design
+    (tmp_path / "DESIGN.md").write_text("---\nname: stray\n---\n", encoding="utf-8")
+    project = tmp_path / "project"
+    deep = project / "work" / "deliverables"
+    deep.mkdir(parents=True)
+    # no boundary anywhere: only the start folder counts, a stray file above is ignored
+    assert find(deep) is None
+    for marker in (".git", "bridge-config.yaml"):
+        m = project / marker
+        if marker == ".git":
+            m.mkdir()
+        else:
+            m.write_text("", encoding="utf-8")
+        assert find(deep) is None, "the stray DESIGN.md sits above the %s boundary" % marker
+        (project / "DESIGN.md").write_text("---\nname: project\n---\n", encoding="utf-8")
+        assert find(deep) == project / "DESIGN.md"
+        (project / "DESIGN.md").unlink()
+        if marker == ".git":
+            m.rmdir()
+        else:
+            m.unlink()
+    (deep / "DESIGN.md").write_text("---\nname: local\n---\n", encoding="utf-8")
+    assert find(deep) == deep / "DESIGN.md"
+    assert find(deep / "deck.html") == deep / "DESIGN.md", "a file path starts at its folder"

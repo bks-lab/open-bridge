@@ -3,6 +3,7 @@
    change DESIGN.md and regenerate. */
 :root {
   --ink: #111111;
+  --primary: #111111;
   --muted: #666666;
   --surface: #FFFFFF;
   --surface-subtle: #F9F9F9;
@@ -21,15 +22,20 @@
 /* Dark-mode overrides (applied via the .dark class on <html>). */
 html.dark {
   --surface: #111111;
+  --ink: #DDDDDD;
   --on-surface: #DDDDDD;
+  --muted: color-mix(in srgb, var(--on-surface) 72%, var(--surface));
   --line: #333333;
   --accent: #8899FF;
+  --primary: var(--ink);
+  --on-primary: var(--surface);
 }
 
 /* Print: light palette on a white ground, whatever the screen mode. */
 @media print {
 :root, html.dark {
     --ink: #111111;
+    --primary: #111111;
     --muted: #666666;
     --surface: #FFFFFF;
     --surface-subtle: #F9F9F9;

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text over a veil in the surface colour</title>
+<style>
+:root{--ink:#1a1a1a;--surface:#fafafa;--accent:#3355aa;
+  --font-sans:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif}
+body{margin:0;background:var(--surface);color:var(--ink);font-family:var(--font-sans)}
+.spacer{height:1200px;padding:24px}
+/* the closing-slide pattern: a gradient layer and a scrim are SIBLINGS of the text,
+   not ancestors, so walking up from the text never meets them */
+.hero{position:relative;height:500px;display:flex;align-items:flex-end;background:var(--surface)}
+.hero__bg{position:absolute;inset:0;background:linear-gradient(135deg,var(--surface),var(--surface))}
+.hero__scrim{position:absolute;inset:0;background:var(--scrim)}
+.hero__content{position:relative;z-index:2;padding:32px}
+:root{--scrim:linear-gradient(to top,color-mix(in srgb,var(--surface) 85%,transparent) 0%,transparent 100%)}
+</style>
+</head>
+<body>
+<main id="main">
+  <div class="spacer"><p>Readable text above the fold.</p></div>
+  <section class="hero">
+    <div class="hero__bg"></div>
+    <div class="hero__scrim"></div>
+    <div class="hero__content"><h2>Closing words</h2><p>A subtitle under the closing words.</p></div>
+  </section>
+</main>
+</body>
+</html>

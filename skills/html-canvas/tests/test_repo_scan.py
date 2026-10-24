@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from conftest import FIXTURES, SCRIPTS
+from canvas_testlib import FIXTURES, SCRIPTS
 
 
 def scan(path, *flags):

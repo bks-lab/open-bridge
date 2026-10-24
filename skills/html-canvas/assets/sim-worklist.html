@@ -1,5 +1,5 @@
 <!--
-  html-canvas — ARCHETYPE FRAGMENT: worklist
+  html-canvas: ARCHETYPE FRAGMENT: worklist
   ============================================================================
   A fixed plan executed step by step. No stage, no geometry: the picture is the
   protocol plus a state strip that changes as the plan runs. This is the cheap
@@ -48,11 +48,16 @@
   <button class="sim-btn" type="button" data-sim-reset>
     <span data-de>Zurücksetzen</span><span data-en>Reset</span>
   </button>
-  <div class="sim-seg" data-sim-speed role="group" aria-label="Speed">
+  <div class="sim-seg" data-sim-speed role="group" aria-label="Speed" data-aria-de="Tempo" data-aria-en="Speed">
     <button type="button" data-speed="0.5" aria-pressed="false">0,5x</button>
     <button type="button" data-speed="1" aria-pressed="true">1x</button>
     <button type="button" data-speed="2" aria-pressed="false">2x</button>
   </div>
+  <!-- Only inside a slide stage: the engine removes this button on a page of
+       its own, where there is no stage to enlarge. -->
+  <button class="sim-btn" type="button" data-sim-maximize hidden>
+    <span data-de>Vollbild</span><span data-en>Full view</span>
+  </button>
   <div class="sim-clock"><span data-de>Schritt</span><span data-en>Step</span> <b id="stepNo">0 / 0</b></div>
 </div>
 

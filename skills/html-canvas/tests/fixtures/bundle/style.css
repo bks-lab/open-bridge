@@ -1,0 +1,8 @@
+@font-face {
+  font-family: "Local Face";
+  src: url("fonts/local-face.woff2") format("woff2");
+  font-weight: 400;
+}
+body { font-family: "Fixture Sans", sans-serif; }
+.hero { background: url(img/bg.png) no-repeat; width: 40px; height: 40px; }
+#note { color: rgb(0, 128, 0); }

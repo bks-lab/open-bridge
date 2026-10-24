@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theme by attribute</title>
+<style>
+:root{--ink:#1a1a1a;--surface:#fafafa;--accent:#3355aa;--info:#08c;
+  --font-sans:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif}
+[data-theme="dark"]{--ink:#1a1a1a;--surface:#1a1a1a}
+body{margin:0;padding:24px;background:var(--surface);color:var(--ink);font-family:var(--font-sans)}
+a{color:inherit}
+/* the id selector below spells a hex word; selectors are not colours */
+#face{outline:0}
+.mark{background:url(#face);border-color:#3355AA80}
+[data-de]{display:none}
+:is(span,a)[data-en]{display:inline}
+:root[data-lang="de"] [data-en]{display:none}
+:root[data-lang="de"] [data-de]{display:block}
+:root[data-lang="de"] :is(span,a)[data-de]{display:inline}
+</style>
+</head>
+<body>
+<main id="main">
+  <h1 id="face"><span data-de>Über Größe und Maß</span><span data-en>About size and measure</span></h1>
+  <p data-de>Ein Absatz in deutscher Sprache.</p><p data-en>A paragraph in English.</p>
+  <p><a href="#face"><span data-de>Nach oben</span><span data-en>Back to the heading</span></a>
+     <a href="#top">top</a> <a href="mailto:someone@example.org">mail</a> <a href="other-page.html">next page</a></p>
+  <button type="button" aria-label="Switch language" data-aria-de="Sprache wechseln" data-aria-en="Switch language">L</button>
+  <svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" fill="#3355aa"/></svg>
+  <img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
+</main>
+<script>
+  const accent = '#3355AA';
+  document.querySelector('#face');
+  document.title = document.title + '';
+</script>
+</body>
+</html>

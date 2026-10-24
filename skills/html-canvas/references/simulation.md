@@ -9,7 +9,7 @@ related:
   - skills/html-canvas/scripts/new-simulation.py
 ---
 
-# html-canvas — Simulations
+# html-canvas: Simulations
 
 A simulation is a page that **runs**: a clock advances a model, a stage shows
 where things are, and a protocol says what happened. It is a different genre from
@@ -157,11 +157,11 @@ worth reading before rather than after.
   specificity. `simulation.css` ships an explicit `[hidden]{display:none
   !important}` for that reason.
 - The language swap hides only the **inactive** language, with rules at
-  (0,3,0), so a pair keeps its native display (`li` stays a list item, `td` a
+  (0,4,0), so a pair keeps its native display (`li` stays a list item, `td` a
   cell) and a class rule that sets `display` on a pair can no longer show both
   languages at once. Do not add a rule that forces `display` back onto the
   inactive node with higher specificity or `!important`. Pages assembled before
-  this change: see "Migrating an older page" below.
+  this change: see "Migrating an older page" in `references/build-workflow.md`.
 - `getBBox()` before the webfont has landed measures the fallback face and is
   wrong in every direction. Measure inside `Sim.afterFonts()`.
 - Positions come from the **drawing**, never from arithmetic. Distributing steps
@@ -196,31 +196,41 @@ worth reading before rather than after.
 
 ---
 
-## Migrating an older page
+## Embedding in a slide: the stage contract
 
-Pages assembled earlier carry the old swap block, which forced `display:block` on
-every active `[data-de]` / `[data-en]` and then re-fixed inline tags one by one
-(`li` and `td` pairs rendered as blocks). To migrate a finished page, replace
-that whole block in its `<style>` with the two rules for its default language,
-and delete any per-tag inline override that only existed to repair it.
+A simulation can run live inside a slide. The slide side is
+`html-slides/assets/slide-stage.js` (a "stage"); the simulation side is built
+into `sim-engine.js`. The two never share code or globals: they talk through
+`postMessage`, and this section is the whole contract between them. Either side
+may be rebuilt as long as it keeps to it.
 
-English default:
+The engine speaks **only when it is framed** (`window.parent !== window`). A
+page opened on its own posts nothing, listens to nothing, and removes its
+`[data-sim-maximize]` button, because a control with no stage to enlarge is a
+dead control. Both archetypes ship that button with `hidden`.
 
-```css
-:root:not([data-lang="de"]) [data-de]{display:none}
-:root[data-lang="de"] [data-en]{display:none}
-```
+| Message | Direction | Payload | Meaning |
+|---|---|---|---|
+| `stage:ready` | simulation to slide | `contract: 1`, `title` | sent once, by `Sim.boot`, after the first frame is painted. A page with its own boot calls `Sim.stage.ready(clock)` |
+| `stage:key` | simulation to slide | `key`: `v`, `Escape`, `PageDown` or `PageUp` | a key the slide owns was pressed while focus sat inside the frame. Space, R, S and the digits stay with the simulation |
+| `stage:maximize` | simulation to slide | optional `on` (boolean) | the maximize button was pressed; without `on` it means toggle |
+| `stage:maximize` | slide to simulation | `on` (boolean) | the slide reports the resulting state; the engine mirrors it as `data-sim-maximized="yes"` or `"no"` on `<html>` and as `aria-pressed` on the button |
+| `stage:restart` | slide to simulation | none | reset the run in place and start it again (under reduced motion: compute it to the end). The slide falls back to reloading the frame when no `stage:ready` has arrived |
 
-German default:
+Every message is a plain object with a `type` string; anything else is ignored.
 
-```css
-:root:not([data-lang="en"]) [data-en]{display:none}
-:root[data-lang="en"] [data-de]{display:none}
-```
+**Check `event.source`, never the origin.** Each side accepts a message only
+when `event.source` is the window it expects: the simulation compares it with
+`window.parent`, the slide with the `contentWindow` of one of its own frames. A
+sibling frame can post to either side, and a page loaded through `srcdoc` or
+from `file://` has no origin worth comparing, so the window is the only check
+that holds. For the same reason messages go out with target origin `'*'`, and
+they carry nothing a foreign listener could misuse.
 
-Or rebuild it: `new-simulation.py --force` writes the new block. Never keep both
-blocks in one page. After migrating, run the "no element shows both languages"
-query below and look at one `li` and one `td` pair in each language.
+What the slide does with it, and why, is documented in the header of
+`slide-stage.js` (lazy loading, fit and read modes, the large stage without the
+browser's full screen interface). The tests on both sides are
+`html-canvas/tests/test_stage_child.py` and `html-slides/tests/test_stage.py`.
 
 ---
 

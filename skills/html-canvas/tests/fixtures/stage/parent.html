@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage parent probe</title>
+<style>
+body{margin:0;background:#fff}
+iframe{display:block;width:960px;height:720px;border:0}
+#foreign{width:10px;height:10px}
+</style>
+</head>
+<body>
+<!-- The smallest possible parent side of the stage contract: it embeds one
+     simulation, records what the simulation posts, and keeps a second frame
+     that plays a foreign source. The real parent is html-slides/assets/slide-stage.js. -->
+<iframe id="child" name="child" src="child.html" title="Simulation under test"></iframe>
+<iframe id="foreign" name="foreign" title="Foreign frame" srcdoc="<!doctype html><meta charset=utf-8><script>
+addEventListener('message', function (e) {
+  if (e.source !== parent || !e.data || e.data.relay === undefined) return;
+  parent.frames[0].postMessage(e.data.relay, '*');
+});
+</script>"></iframe>
+<script>
+window.received = [];
+window.ignored = 0;
+var child = document.getElementById('child');
+window.addEventListener('message', function (e) {
+  if (e.source !== child.contentWindow) { window.ignored++; return; }
+  window.received.push(e.data);
+});
+window.toChild = function (msg) { child.contentWindow.postMessage(msg, '*'); };
+window.viaForeign = function (msg) {
+  document.getElementById('foreign').contentWindow.postMessage({ relay: msg }, '*');
+};
+</script>
+</body>
+</html>

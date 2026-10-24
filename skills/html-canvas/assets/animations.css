@@ -1,15 +1,16 @@
-/* html-canvas — OPTIONAL animation layer.
+/* html-canvas: OPTIONAL animation layer.
    Paste after the shell's base styles. Every motion here is transform/opacity/
-   dashoffset (plus box-shadow on the one hover-lift) — GPU-friendly, no layout
+   dashoffset (plus box-shadow on the one hover-lift): GPU-friendly, no layout
    thrash, and DESIGN.md-disciplined: never animate colour or layout. The single
-   block at the bottom kills ALL of it under
-   prefers-reduced-motion — keep that block; it is the accessibility contract.
+   block at the bottom kills ALL of it under prefers-reduced-motion. Keep that
+   block; it is the accessibility contract.
 
-   Pair the JS that drives these (IntersectionObserver reveal, count-up, SlideEngine)
-   from references/interactivity.md. Motion is enhancement: the page must read fully
-   with JS off and animation off. */
+   Pair the JS that drives these (IntersectionObserver reveal, count-up) from
+   references/interactivity.md. Slide decks are html-slides' job and bring their
+   own CSS. Motion is enhancement: the page must read fully with JS off and
+   animation off. */
 
-/* ── Scroll reveal (staggered) — add class="reveal" to children, JS adds .visible ── */
+/* ── Scroll reveal (staggered): add class="reveal" to children, JS adds .visible ── */
 .reveal{opacity:0;transform:translateY(20px);
   transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1)}
 .reveal.visible{opacity:1;transform:none}
@@ -19,35 +20,30 @@
 .reveal:nth-child(5){transition-delay:.32s}
 .reveal:nth-child(6){transition-delay:.40s}
 
-/* ── Per-slide entrance (deck mode) — SlideEngine adds .visible to the on-screen slide ── */
-.slide{opacity:0;transform:translateY(40px) scale(.98);
-  transition:opacity .6s cubic-bezier(.16,1,.3,1),transform .6s cubic-bezier(.16,1,.3,1)}
-.slide.visible{opacity:1;transform:none}
-
 /* No script, no reveal trigger: show everything rather than leave it at opacity 0.
    (The JS side guards the missing-IntersectionObserver case, see interactivity.md.) */
 @media (scripting:none){
-  .reveal,.slide{opacity:1;transform:none}
+  .reveal{opacity:1;transform:none}
 }
 
-/* ── Card hover lift (DESIGN.md card-at-rest → hover) — transform+shadow only ── */
+/* ── Card hover lift (DESIGN.md card-at-rest → hover): transform+shadow only ── */
 .lift{box-shadow:var(--shadow-soft);transition:transform .2s ease-out,box-shadow .2s ease-out}
 .lift:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
 
-/* ── Live / alert heartbeat — status dots + overdue badges ── */
+/* ── Live / alert heartbeat: status dots + overdue badges ── */
 @keyframes hc-pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .dot-live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--info);
   animation:hc-pulse 2s ease-in-out infinite} /* no glow: DESIGN.md allows no glows */
 .badge.overdue{animation:hc-pulse 2s ease-in-out infinite}
 
-/* ── Dashed SVG connector flow — put class on a <line>/<path> with stroke-dasharray ── */
+/* ── Dashed SVG connector flow: put class on a <line>/<path> with stroke-dasharray ── */
 @keyframes hc-flow{to{stroke-dashoffset:-8}}
 .flow-line{stroke-dasharray:4 4;animation:hc-flow 2.4s linear infinite}
 
-/* ── Message flow A→B (request) + B→A (response) — a packet travels the wire. ──
+/* ── Message flow A→B (request) + B→A (response): a packet travels the wire. ──
    Put .msg-fwd on a circle sitting at A, .msg-back on one sitting at B; set
    --d to the pixel distance between the nodes (style="--d:280px"). The forward
-   packet plays in the first half of the cycle, the return in the second — reads
+   packet plays in the first half of the cycle, the return in the second: reads
    like a request/response conversation. Pair the wires with .flow-line. */
 @keyframes hc-msg-fwd{
   0%{transform:translateX(0);opacity:0} 8%{opacity:1}
@@ -62,23 +58,23 @@
 .msg-fwd{animation:hc-msg-fwd 3s ease-in-out infinite}
 .msg-back{animation:hc-msg-back 3s ease-in-out infinite}
 
-/* ── "Live" frame breathe — attention for a running-demo moment (opacity only) ── */
+/* ── "Live" frame breathe: attention for a running-demo moment (opacity only) ── */
 @keyframes hc-live{0%,100%{opacity:.25}50%{opacity:.8}}
 .live-frame{position:relative}
 .live-frame::before{content:"";position:absolute;inset:0;border:2px solid var(--accent);border-radius:inherit;animation:hc-live 2.4s ease-in-out infinite;pointer-events:none}
 
-/* ── Logo / client marquee — duplicate the rail content for a seamless loop ── */
+/* ── Logo / client marquee: duplicate the rail content for a seamless loop ── */
 @keyframes hc-ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .ticker{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,black 7%,black 93%,transparent);
   mask-image:linear-gradient(90deg,transparent,black 7%,black 93%,transparent)}
 .ticker__rail{display:flex;width:max-content;animation:hc-ticker 42s linear infinite}
 .ticker:hover .ticker__rail{animation-play-state:paused}
 
-/* ── Accessibility contract — strip ALL motion when the OS asks. Keep this last. ── */
+/* ── Accessibility contract: strip ALL motion when the OS asks. Keep this last. ── */
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{
     animation-duration:.001ms !important;animation-iteration-count:1 !important;
     transition-duration:.001ms !important;scroll-behavior:auto !important;
   }
-  .reveal,.slide{opacity:1 !important;transform:none !important}
+  .reveal{opacity:1 !important;transform:none !important}
 }

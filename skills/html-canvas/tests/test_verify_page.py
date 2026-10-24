@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO, SCRIPTS, render_shell, run_new_simulation
+from canvas_testlib import REPO, SCRIPTS, render_shell, run_new_simulation
 
 SCRIPT = SCRIPTS / "verify-page.py"
 FIX = Path(__file__).resolve().parent / "fixtures" / "verify"
@@ -205,6 +205,20 @@ def test_browser_opens_the_file_alone(browser):
     assert "request-failed" in rules(data, "error"), data
 
 
+def test_browser_reads_text_over_a_sibling_scrim_below_the_fold(browser):
+    """A closing slide paints its scrim as a sibling of the text; the ancestor walk misses it."""
+    code, data = run(str(FIX / "scrim-dark.html"), "--browser")
+    msgs = [f["message"] for f in data["pages"][0]["findings"] if f["rule"] == "contrast"]
+    assert msgs and ("Closing words" in msgs[0] or "subtitle" in msgs[0]), data
+    assert code == 1
+
+
+def test_browser_passes_text_over_a_veil_in_the_surface_colour(browser):
+    code, data = run(str(FIX / "scrim-veil.html"), "--browser")
+    assert "contrast" not in rules(data), data
+    assert code == 0, data
+
+
 def test_browser_flags_low_contrast(browser):
     code, data = run(str(FIX / "contrast.html"), "--browser")
     assert code == 1
@@ -245,3 +259,231 @@ def test_deck_without_slides_is_red(browser):
     code, data = run(str(FIX / "clean.html"), "--deck")
     assert code == 1
     assert "slide-count" in rules(data, "error")
+
+
+# --- wave 1 review fixes -------------------------------------------------------------------
+
+DESIGN_TO_CSS = SCRIPTS / "design-to-css.py"
+
+
+def _fill(html: str) -> str:
+    for key, val in (("TITLE_DE", "Titel"), ("TITLE_EN", "Title"), ("TITLE", "Title"),
+                     ("DATE", "2026-01-01"), ("SOURCE_PATH", "fixture")):
+        html = html.replace("{{%s}}" % key, val)
+    return html
+
+
+def test_shell_from_the_repo_design_md_reads_in_both_themes(browser, tmp_path):
+    # The repo DESIGN.md is in the legacy palette shape without dark-primary:
+    # dark mode once kept the light ink, headings and buttons at 1:1.
+    page = tmp_path / "page.html"
+    subprocess.run([sys.executable, str(DESIGN_TO_CSS), str(REPO / "DESIGN.md"), "--shell", "--out", str(page)],
+                   check=True, capture_output=True)
+    page.write_text(_fill(page.read_text("utf-8")).replace(
+        "</main>", "<h2><span data-de>Abschnitt</span><span data-en>Section</span></h2>"
+                   "<p data-de>Text.</p><p data-en>Text.</p></main>", 1), encoding="utf-8")
+    code, data = run(str(page), "--browser", design=REPO / "DESIGN.md")
+    assert "contrast" not in rules(data), data
+    assert rules(data, "error") == set(), data
+
+
+def test_assembled_simulation_reads_in_both_themes(browser, tmp_path):
+    out = tmp_path / "sim-flow.html"
+    r = run_new_simulation(out, "--archetype", "flow", "--title-de", "Lauf", "--title-en", "Run")
+    assert r.returncode == 0, r.stderr
+    code, data = run(str(out), "--browser", design=REPO / "DESIGN.md")
+    assert "contrast" not in rules(data), data
+
+
+def test_neutral_shell_reads_in_both_themes(browser, tmp_path):
+    # no DESIGN.md tokens at all: the system-colour fallbacks must stay legible
+    page = tmp_path / "page.html"
+    page.write_text(render_shell("<p data-de>Inhalt</p><p data-en>Content</p>"), encoding="utf-8")
+    code, data = run(str(page), "--browser", design=None)
+    assert "contrast" not in rules(data), data
+
+
+def test_flow_simulation_has_no_one_language_aria_label(tmp_path):
+    out = tmp_path / "sim-flow.html"
+    r = run_new_simulation(out, "--archetype", "flow", "--title-de", "Lauf", "--title-en", "Run")
+    assert r.returncode == 0, r.stderr
+    _, data = run(str(out), design=REPO / "DESIGN.md")
+    assert ("aria-lang", "warning") not in findings(data), data
+
+
+# Elements that carry both data-de and data-en show in both languages: the
+# value form (data-de="Start" data-en="Start") and the empty form alike.
+
+def test_dual_attribute_elements_hidden_in_both_languages_are_red(browser):
+    code, data = run(str(FIX / "dual-hidden.html"), "--browser")
+    assert code == 1
+    msgs = [f["message"] for f in data["pages"][0]["findings"] if f["rule"] == "lang-hidden"]
+    assert len(msgs) == 1, data
+    assert "2 elements" in msgs[0] and "dual-value" in msgs[0], msgs
+
+
+def test_dual_attribute_elements_shown_are_green(browser):
+    code, data = run(str(FIX / "dual-shown.html"), "--browser")
+    assert findings(data) == [], data
+    assert code == 0
+
+
+def test_dual_attribute_elements_pass_the_static_rules():
+    code, data = run(str(FIX / "dual-hidden.html"))
+    assert findings(data) == [] and code == 0, data
+
+
+# A requested browser pass that cannot run is not a pass.
+
+def _fake_no_playwright(tmp_path: Path) -> dict:
+    import os
+    pkg = tmp_path / "fake" / "playwright"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("raise ImportError('playwright hidden by the test')\n", "utf-8")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(tmp_path / "fake") + os.pathsep + env.get("PYTHONPATH", "")
+    return env
+
+
+def _run_env(env: dict, *args: str) -> tuple[int, dict]:
+    proc = subprocess.run([sys.executable, str(SCRIPT), *args, "--json", "--design", str(DESIGN)],
+                          capture_output=True, text=True, env=env)
+    assert proc.returncode in (0, 1), proc.stderr
+    return proc.returncode, json.loads(proc.stdout)
+
+
+@pytest.mark.parametrize("flag", ["--browser", "--deck"])
+def test_requested_browser_pass_without_playwright_is_an_error(tmp_path, flag):
+    code, data = _run_env(_fake_no_playwright(tmp_path), str(FIX / "clean.html"), flag)
+    assert ("browser-skipped", "error") in findings(data), data
+    assert code == 1
+
+
+def test_requested_browser_pass_without_chromium_is_an_error(tmp_path):
+    pytest.importorskip("playwright.sync_api")
+    import os
+    env = dict(os.environ, PLAYWRIGHT_BROWSERS_PATH=str(tmp_path / "no-browsers"))
+    code, data = _run_env(env, str(FIX / "clean.html"), "--browser")
+    assert ("browser-skipped", "error") in findings(data), data
+    assert code == 1
+
+
+def test_static_mode_never_needs_a_browser(tmp_path):
+    code, data = _run_env(_fake_no_playwright(tmp_path), str(FIX / "clean.html"))
+    assert findings(data) == [] and code == 0
+
+
+# Dark mode is found where the page keeps it: .theme-dark, [data-theme], or a
+# selector the caller names.
+
+@pytest.mark.parametrize("name", ["theme-class.html", "data-theme.html", "theme-light-preset.html"])
+def test_browser_detects_class_and_attribute_dark_modes(browser, name):
+    code, data = run(str(FIX / name), "--browser")
+    msgs = [f["message"] for f in data["pages"][0]["findings"] if f["rule"] == "contrast"]
+    assert msgs and all(m.startswith("dark-") for m in msgs), data
+    assert code == 1
+
+
+def test_browser_takes_a_dark_selector(browser):
+    code, data = run(str(FIX / "night.html"), "--browser")
+    assert "contrast" not in rules(data), data          # .night is nothing it can guess
+    code, data = run(str(FIX / "night.html"), "--browser", "--dark-selector", ".night")
+    msgs = [f["message"] for f in data["pages"][0]["findings"] if f["rule"] == "contrast"]
+    assert msgs and all(m.startswith("dark-") for m in msgs), data
+    assert code == 1
+
+
+@pytest.mark.parametrize("sel", ["html.night", ":root.night", '[data-mode="night"]', "[data-night]"])
+def test_dark_selector_forms_are_accepted(sel):
+    proc = subprocess.run([sys.executable, str(SCRIPT), str(FIX / "clean.html"), "--dark-selector", sel],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+
+
+@pytest.mark.parametrize("sel", ["body .night", "div", ".a .b", ""])
+def test_dark_selector_outside_the_root_is_a_usage_error(sel):
+    proc = subprocess.run([sys.executable, str(SCRIPT), str(FIX / "clean.html"), "--dark-selector", sel],
+                          capture_output=True, text=True)
+    assert proc.returncode == 2 and "--dark-selector" in proc.stderr
+
+
+# A stack that leads with a system family is a system stack by choice.
+
+@pytest.mark.parametrize("stack,warns", [
+    ('"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace', False),
+    ('"Roboto Mono", monospace', True),
+])
+def test_system_led_font_stack_does_not_warn(tmp_path, stack, warns):
+    text = (FIX / "clean.html").read_text("utf-8").replace(
+        "</style>", "code{font-family:%s}\n</style>" % stack, 1)
+    page = tmp_path / "page.html"
+    page.write_text(text, encoding="utf-8")
+    _, data = run(str(page))
+    assert (("font-face", "warning") in findings(data)) is warns, data
+
+
+# --- which DESIGN.md the gate checks against ----------------------------------------------
+
+def test_text_output_names_the_design_md_it_used():
+    proc = subprocess.run([sys.executable, str(SCRIPT), str(FIX / "clean.html"), "--design", str(DESIGN)],
+                          capture_output=True, text=True)
+    assert "note: checked against %s" % DESIGN in proc.stdout, proc.stdout
+
+
+def _built_from(tmp_path: Path, header: str) -> Path:
+    page = tmp_path / "built.html"
+    page.write_text((FIX / "clean.html").read_text("utf-8").replace("<style>", "<style>\n" + header, 1),
+                    encoding="utf-8")
+    return page
+
+
+@pytest.mark.parametrize("header, word", [
+    ("/* Generated from DESIGN.md (other-brand, 2026-01-01) by\n   design-to-css.py. */", "other-brand"),
+    ("/* Generated from DESIGN.md (verify-fixture, 2020-01-01) by\n   design-to-css.py. */", "2020-01-01"),
+])
+def test_a_page_built_from_another_design_md_warns(tmp_path, header, word):
+    design = tmp_path / "DESIGN.md"
+    design.write_text(DESIGN.read_text("utf-8").replace("name: verify-fixture", "name: verify-fixture\nlast_updated: 2026-05-01", 1),
+                      encoding="utf-8")
+    code, data = run(str(_built_from(tmp_path, header)), design=design)
+    msgs = [f["message"] for f in data["pages"][0]["findings"] if f["rule"] == "design-source"]
+    assert msgs and word in msgs[0], data
+    assert ("design-source", "warning") in findings(data)
+
+
+def test_a_page_built_from_the_same_design_md_stays_quiet(tmp_path):
+    header = "/* Generated from DESIGN.md (verify-fixture) by\n   design-to-css.py. */"
+    code, data = run(str(_built_from(tmp_path, header)))
+    assert "design-source" not in rules(data), data
+
+
+# --- catalog sample text ------------------------------------------------------------------
+
+SAMPLE_PAGE = (FIX / "clean.html").read_text("utf-8")
+
+
+def _page(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / "sample.html"
+    p.write_text(SAMPLE_PAGE.replace('<main id="main">', '<main id="main">\n' + body, 1), encoding="utf-8")
+    return p
+
+
+def test_a_block_still_marked_as_sample_fails_the_gate(tmp_path):
+    code, data = run(str(_page(tmp_path, '<div class="blk" data-sample><p>Sample</p></div>')))
+    assert ("sample", "error") in findings(data) and code == 1
+
+
+def test_a_bare_ellipsis_cell_fails_the_gate(tmp_path):
+    code, data = run(str(_page(tmp_path, "<table><tr><td>Key</td><td> … </td></tr></table>")))
+    assert ("sample", "error") in findings(data) and code == 1
+
+
+def test_an_ellipsis_inside_prose_is_fine(tmp_path):
+    code, data = run(str(_page(tmp_path, "<p>Wait for it … and then it runs.</p>")))
+    assert "sample" not in rules(data), data
+
+
+def test_allow_sample_turns_it_into_a_warning(tmp_path):
+    code, data = run(str(_page(tmp_path, '<div data-sample><p>…</p></div>')), "--allow-sample")
+    assert ("sample", "warning") in findings(data) and ("sample", "error") not in findings(data)
+    assert code == 0

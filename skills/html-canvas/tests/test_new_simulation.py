@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from conftest import ASSETS, SCRIPTS, load_script, run_new_simulation
+from canvas_testlib import ASSETS, SCRIPTS, load_script, run_new_simulation
 
 ARCHETYPES = ["flow", "worklist"]
 

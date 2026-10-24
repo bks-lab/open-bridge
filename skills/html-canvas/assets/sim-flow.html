@@ -1,5 +1,5 @@
 <!--
-  html-canvas — ARCHETYPE FRAGMENT: flow
+  html-canvas: ARCHETYPE FRAGMENT: flow
   ============================================================================
   Tokens travel a drawn route through stations that have capacity, queue in
   front of them, take a verdict at a gate, fan out to specialists and land in
@@ -25,6 +25,9 @@ main.wrap{max-width:1240px}
 .sim-panel__sub{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);
   letter-spacing:.5px;text-transform:uppercase;margin:0 0 14px}
 .sim-empty{font-size:12.8px;color:var(--muted);padding:10px 0;margin:0}
+/* "+N" under a stack that is drawn shorter than it is. */
+.sim-more__bg{fill:var(--raised);stroke:var(--line-strong);stroke-width:1}
+.sim-more__n{fill:var(--ink);font-family:var(--font-mono);font-size:10px;font-weight:600}
 
 <!--@markup-->
 <p class="sim-hint" data-de>Leertaste startet und hält an. R setzt zurück. 1 2 3 wählen das Tempo.</p>
@@ -50,13 +53,18 @@ main.wrap{max-width:1240px}
   <button class="sim-btn" type="button" data-sim-reset>
     <span data-de>Zurücksetzen</span><span data-en>Reset</span>
   </button>
-  <div class="sim-seg" data-sim-speed role="group" aria-label="Speed">
+  <div class="sim-seg" data-sim-speed role="group" aria-label="Speed" data-aria-de="Tempo" data-aria-en="Speed">
     <button type="button" data-speed="0.5" aria-pressed="false">0,5x</button>
     <button type="button" data-speed="1" aria-pressed="true">1x</button>
     <button type="button" data-speed="2" aria-pressed="false">2x</button>
   </div>
+  <!-- Only inside a slide stage: the engine removes this button on a page of
+       its own, where there is no stage to enlarge. -->
+  <button class="sim-btn" type="button" data-sim-maximize hidden>
+    <span data-de>Vollbild</span><span data-en>Full view</span>
+  </button>
   <div class="sim-clock">
-    <span data-de>Modellzeit</span><span data-en>Model time</span> <b id="clock">06:14</b>
+    <span data-de>Modellzeit</span><span data-en>Model time</span> <b id="clock">00:00</b>
   </div>
 </div>
 
@@ -79,10 +87,13 @@ main.wrap{max-width:1240px}
 
 <div class="sim-stage">
   <svg id="stage" viewBox="0 0 1220 470" preserveAspectRatio="xMidYMid meet" role="img"
-       aria-label="Route from intake through a classifier and a review gate to three specialists and two outcome fields, with items travelling along it.">
+       aria-label="Route from intake through a classifier and a review gate to three specialists and two outcome fields, with items travelling along it."
+       data-aria-en="Route from intake through a classifier and a review gate to three specialists and two outcome fields, with items travelling along it."
+       data-aria-de="Weg vom Eingang über einen Klassifizierer und eine Prüfstufe zu drei Fachstellen und zwei Ergebnisfeldern, auf dem die Vorgänge wandern.">
     <g id="routes"></g>
     <g id="stations"></g>
     <g id="tokens"></g>
+    <g id="more"></g>
   </svg>
 </div>
 <p class="sim-caption">
@@ -219,7 +230,11 @@ var TXT = {
 /* Durations in model milliseconds. One display second is one model minute. */
 var D = { in: 900, classify: 800, check: 900, review: 700, back: 1300, fan: 1000, spec: 1400, out: 900 };
 var APPROACH_MAX = 3;    /* items allowed to be heading for the classifier at once */
-var CLOCK_START = 6 * 60 + 14;
+/* Model minutes shown before the run starts. 0 means the clock reads 00:00
+   until the run moves: a clock that already shows a time of day before
+   anything happened reads as a run that started without the viewer. Set a
+   time of day only when the domain is about one, and say so in the caption. */
+var CLOCK_START = 0;
 
 /* verdict drives the gate, bin drives the outcome, follow picks the one item
    whose trail is written into the protocol panel. */
@@ -313,6 +328,21 @@ var items = ITEMS.map(function (spec) {
   var bar = Sim.svg('rect', { 'class': 'sim-token__bar', x: -32, y: 12, width: 0, height: 3, rx: 1.5 }, g);
   return { spec: spec, el: g, bar: bar, x: 0, y: 0, shown: false };
 });
+
+/* A stack shows only as many tokens as fit. The rest is not dropped silently:
+   a "+N" chip under the last drawn token says how many more wait there, so
+   drawn tokens plus N always equal the stack, and the counters agree with
+   the picture. Without it a long queue reads as a short one. */
+var gMore = document.getElementById('more');
+var chips = {};
+function chip(key) {
+  var g = Sim.svg('g', { 'class': 'sim-more', 'data-stack': key }, gMore);
+  Sim.svg('rect', { 'class': 'sim-more__bg', x: -18, y: -9, width: 36, height: 18, rx: 9 }, g);
+  var n = Sim.svg('text', { 'class': 'sim-more__n', x: 0, y: 3.5, 'text-anchor': 'middle' }, g);
+  chips[key] = { el: g, n: n };
+  Sim.show(g, false);
+}
+['in', 'cls', 'rev', 'spec0', 'spec1', 'spec2', 'bin0', 'bin1'].forEach(chip);
 
 /* ===================== STATE ===================================== */
 var T, qIn, qCls, qRev, qSpec, busyCls, busyRev, busySpec, binned, tally, verdictShown;
@@ -435,38 +465,45 @@ function step(dt) {
 }
 
 /* ===================== PAINT ===================================== */
-function place(t, x, y) { t.x = x; t.y = y; t.shown = true; }
+function place(t, x, y, at) { t.x = x; t.y = y; t.shown = true; t.at = at || ''; }
+
+/* Lay out one stack: the first `cap` items at pos(k), the rest hidden and
+   counted on the stack's chip, which sits at pos(cap), where the next token
+   would have been. */
+function stack(key, arr, cap, pos) {
+  arr.forEach(function (t, k) {
+    if (k < cap) { var p = pos(k); place(t, p[0], p[1], key); } else { t.shown = false; t.at = ''; }
+  });
+  var c = chips[key], extra = Math.max(0, arr.length - cap);
+  Sim.show(c.el, extra > 0);
+  if (!extra) return;
+  var p = pos(cap);
+  c.el.setAttribute('transform', 'translate(' + p[0].toFixed(1) + ',' + p[1].toFixed(1) + ')');
+  Sim.put(c.n, '+' + extra);
+}
 
 function render() {
   var live = {};
+  items.forEach(function (t) { t.shown = false; t.at = ''; });
 
-  qIn.forEach(function (t, k) {
-    if (k < 9) place(t, IN.x + IN.w / 2, IN.y + 96 + k * 28); else t.shown = false;
-  });
+  stack('in', qIn, 9, function (k) { return [IN.x + IN.w / 2, IN.y + 96 + k * 28]; });
   Sim.put(inCount, qIn.length);
 
-  function queue(arr, cx, cy) {
-    arr.forEach(function (t, k) {
-      if (k < 4) place(t, cx, cy + 32 + k * 28); else t.shown = false;
-    });
-  }
   /* Waiting items sit BESIDE the route, never on it: on it, an arriving token
      lands exactly on the first waiting one and the queue reads as one item. */
-  queue(qCls, CLS.x - 44, MID);
-  queue(qRev, REV.x - 44, MID);
+  stack('cls', qCls, 4, function (k) { return [CLS.x - 44, MID + 32 + k * 28]; });
+  stack('rev', qRev, 4, function (k) { return [REV.x - 44, MID + 32 + k * 28]; });
   for (var i = 0; i < 3; i++) {
-    qSpec[i].forEach(function (t, k) {
-      if (k < 2) place(t, SPEC.x - 90 - k * 72, laneY(i)); else t.shown = false;
-    });
+    (function (lane) {
+      stack('spec' + lane, qSpec[lane], 2, function (k) { return [SPEC.x - 90 - k * 72, laneY(lane)]; });
+    })(i);
   }
 
   /* Finished items are placed too. The end state is the one a printed page and
      a reduced-motion visitor see, and an empty stage there says the run failed.
      This branch was missing at first and the counters alone stayed green. */
   binned.forEach(function (arr, b) {
-    arr.forEach(function (t, k) {
-      if (k < 3) place(t, binEls[b].x, binEls[b].y + k * 28); else t.shown = false;
-    });
+    stack('bin' + b, arr, 3, function (k) { return [binEls[b].x, binEls[b].y + k * 28]; });
   });
 
   if (busyCls) place(busyCls, stCls.x, stCls.y);
@@ -493,6 +530,10 @@ function render() {
 
   items.forEach(function (t) {
     Sim.show(t.el, t.shown);
+    if (t.el.__simAt !== t.at) {            /* which stack it is drawn in, for checks */
+      t.el.__simAt = t.at;
+      if (t.at) t.el.setAttribute('data-at', t.at); else t.el.removeAttribute('data-at');
+    }
     if (!t.shown) return;
     t.el.setAttribute('transform', 'translate(' + t.x.toFixed(1) + ',' + t.y.toFixed(1) + ')');
     t.bar.setAttribute('width', (64 * t.progress).toFixed(1));

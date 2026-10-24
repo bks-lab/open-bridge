@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Bundle fixture</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="img/mark.svg">
+</head>
+<body>
+<h1>Übersicht: Größe äöüß</h1>
+<img id="dot" src="img/dot.png" width="10" height="10" alt="">
+<div class="hero" style="background-image: url(img/dot.png)"></div>
+<p id="note"></p>
+<iframe id="f-plain" src="frames/plain.html" title="plain" width="400" height="80"></iframe>
+<iframe id="f-nested" src="frames/nested.html" title="nested" width="400" height="200"></iframe>
+<iframe id="f-lazy" data-src="frames/plain.html" title="lazy" width="400" height="80"></iframe>
+<p><a href="https://example.com/out">out</a> <a href="#top">top</a></p>
+<script src="app.js"></script>
+</body>
+</html>

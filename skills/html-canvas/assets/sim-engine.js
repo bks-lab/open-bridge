@@ -1,4 +1,4 @@
-/*  html-canvas — SIMULATION ENGINE (optional layer, paste-in)
+/*  html-canvas: SIMULATION ENGINE (optional layer, paste-in)
     ============================================================================
     Turns an html-canvas page from a document into a RUNNING MODEL: a clock, a
     stage, controls, a protocol feed. Vanilla, single-file, zero dependencies,
@@ -448,6 +448,96 @@
     };
   }
 
+  /* -- Stage: the child side of the stage contract ------------------------------
+     A simulation embedded in a slide runs inside an iframe that the slide's
+     stage module owns (html-slides/assets/slide-stage.js is that parent side).
+     The two talk through postMessage, and the full contract lives in
+     references/simulation.md, "Embedding in a slide". This side:
+       posts  stage:ready     once Sim.boot has painted the first frame
+              stage:key       for the few keys the PARENT owns (see FORWARD)
+              stage:maximize  when [data-sim-maximize] is pressed
+       hears  stage:restart   reset the run in place, then start it again
+              stage:maximize  the parent reports {on: bool}; mirrored on <html>
+     A page opened on its own (window.parent === window) posts nothing, hears
+     nothing and removes its maximize button: a control without a stage to
+     enlarge would be a dead control.
+     Every incoming message is checked against window.parent. A frame next to
+     this one can post here too, and srcdoc and file:// pages have no origin to
+     compare, so the window itself is the only reliable check. The target
+     origin on the way out is '*' for the same reason; the messages carry no
+     data that a foreign listener could misuse. */
+  var stage = (function () {
+    var embedded = false;
+    try { embedded = !!global.parent && global.parent !== global; } catch (err) { embedded = false; }
+    var clock = null, readySent = false;
+    /* Keys the deck needs while focus sits inside the frame: V toggles the
+       large stage, Escape leaves it, PageDown and PageUp are what presentation
+       clickers send. Space, R, S and the digits stay with the simulation. */
+    var FORWARD = { v: 'v', V: 'v', Escape: 'Escape', PageDown: 'PageDown', PageUp: 'PageUp' };
+
+    function post(type, extra) {
+      if (!embedded) return;
+      var msg = { type: type };
+      if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) msg[k] = extra[k];
+      try { global.parent.postMessage(msg, '*'); } catch (err) { /* parent gone */ }
+    }
+
+    function reflect(on) {
+      doc.documentElement.setAttribute('data-sim-maximized', on ? 'yes' : 'no');
+      [].forEach.call(doc.querySelectorAll('[data-sim-maximize]'), function (b) {
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+
+    function wireButtons() {
+      [].forEach.call(doc.querySelectorAll('[data-sim-maximize]'), function (b) {
+        if (!embedded) { if (b.parentNode) b.parentNode.removeChild(b); return; }
+        b.hidden = false;
+        b.setAttribute('aria-pressed', 'false');
+        b.addEventListener('click', function () { post('stage:maximize'); });
+      });
+    }
+
+    if (embedded) {
+      doc.documentElement.setAttribute('data-sim-embedded', 'yes');
+      global.addEventListener('message', function (e) {
+        if (e.source !== global.parent) return;
+        var d = e.data;
+        if (!d || typeof d !== 'object') return;
+        if (d.type === 'stage:restart' && clock) {
+          clock.reset();
+          if (reduced()) clock.runToEnd(); else clock.start();
+        } else if (d.type === 'stage:maximize' && typeof d.on === 'boolean') {
+          reflect(d.on);
+        }
+      });
+      doc.addEventListener('keydown', function (e) {
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        var t = e.target || {};
+        if (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName || '')) return;
+        var key = FORWARD[e.key];
+        if (!key) return;
+        if (key === 'PageDown' || key === 'PageUp') e.preventDefault();
+        post('stage:key', { key: key });
+      });
+    }
+    if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', wireButtons);
+    else wireButtons();
+
+    return {
+      embedded: embedded,
+      post: post,
+      /* Called by Sim.boot. A page with its own boot calls it itself. */
+      ready: function (c) {
+        if (c) clock = c;
+        if (readySent) return;
+        readySent = true;
+        post('stage:ready', { contract: 1, title: doc.title || '' });
+      },
+      maximize: function () { post('stage:maximize'); }
+    };
+  })();
+
   /* -- Boot -------------------------------------------------------------------
      The three things every simulation must do at load, in one call.
        reduced motion   compute the run, show the end state, reveal the note that
@@ -462,8 +552,10 @@
     if (reduced()) {
       clock.runToEnd();
       if (note) note.hidden = false;
+      stage.ready(clock);
       return;
     }
+    stage.ready(clock);
     global.addEventListener('beforeprint', function () {
       if (!clock.finished) clock.runToEnd();
     });
@@ -495,6 +587,6 @@
     svg: svg, svgText: svgText, routeD: routeD, alongRoute: alongRoute,
     centreOf: centreOf, show: show, ease: ease,
     rng: rng, flight: flight, boot: boot, afterFonts: afterFonts,
-    reduced: reduced
+    reduced: reduced, stage: stage
   };
 })(window);

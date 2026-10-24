@@ -10,7 +10,7 @@ import re
 
 import pytest
 
-from conftest import ASSETS, FIXTURES, SKILL, md_snippet, render_shell, run_new_simulation
+from canvas_testlib import ASSETS, FIXTURES, SKILL, md_snippet, render_shell, run_new_simulation
 
 PAIR_IDS = ["pair-li", "pair-td", "pair-span", "pair-tspan", "pair-div", "pair-flex", "pair-p", "pair-legend"]
 # What each pair must compute to when it is the visible language.
@@ -56,7 +56,26 @@ def test_without_data_lang_only_the_default_language_shows(open_page):
     page = open_page(render_shell((FIXTURES / "lang-pairs.html").read_text("utf-8")))
     page.evaluate("document.documentElement.removeAttribute('data-lang')")
     for pid, kids in zip(PAIR_IDS, page.evaluate(PROBE, PAIR_IDS)):
-        assert [k["lang"] for k in kids if k["display"] != "none"] == ["en"], pid
+        shown = [k for k in kids if k["display"] != "none"]
+        assert [k["lang"] for k in shown] == ["en"], pid
+        # the old swap forced display:block here; the default language keeps its own
+        assert shown[0]["display"] == NATIVE[pid], (pid, kids)
+
+
+DUAL = ('<p id="dual-value" data-de="Start" data-en="Start">Start</p>'
+        '<p><span id="dual-empty" data-de data-en>Same in both</span></p>'
+        '<p data-de>Nur deutsch</p><p data-en>English only</p>')
+
+
+@pytest.mark.parametrize("default_lang", ["en", "de"])
+def test_elements_with_both_language_attributes_show_in_both_languages(open_page, default_lang):
+    page = open_page(render_shell(DUAL, lang=default_lang))
+    for _ in range(2):
+        for sel in ("#dual-value", "#dual-empty"):
+            assert page.evaluate("s => document.querySelector(s).getClientRects().length > 0", sel), \
+                (sel, page.evaluate("document.documentElement.getAttribute('data-lang')"))
+        page.click("#langToggle")
+    assert page.errors == []
 
 
 # --- G3: space does not fire the clock from a control that already owns it -------------
@@ -128,6 +147,59 @@ def test_aria_helper_sets_label_and_title_on_language_switch(open_page, sim_html
     assert page.errors == []
 
 
+def test_theme_button_aria_label_names_the_target_mode_after_each_toggle(open_page):
+    page = open_page(render_shell("<p data-de>Inhalt</p><p data-en>Content</p>"))
+    label = lambda: page.get_attribute("#themeToggle", "aria-label")
+    assert "dark" in label().lower()
+    page.click("#themeToggle")
+    assert page.evaluate("document.documentElement.classList.contains('dark')") is True
+    assert "light" in label().lower() and page.get_attribute("#themeToggle", "title") == label()
+    page.evaluate("document.activeElement && document.activeElement.blur()")
+    page.keyboard.press("t")
+    assert "dark" in label().lower()
+    page.click("#langToggle")                      # en -> de
+    assert "dunkel" in label().lower()
+    page.click("#themeToggle")
+    assert "hell" in label().lower()
+
+
+LABELS = """() => [...document.querySelectorAll('.topbar button')].map(b => ({
+  id: b.id, text: b.innerText, label: b.getAttribute('aria-label') || ''}))"""
+
+
+def test_every_topbar_button_name_contains_its_visible_label(open_page):
+    # WCAG 2.5.3, label in name: a voice user says what they see
+    page = open_page(render_shell("<p data-de>Inhalt</p><p data-en>Content</p>"))
+    for step in ("start", "#themeToggle", "#langToggle", "#themeToggle"):
+        if step != "start":
+            page.click(step)
+        for b in page.evaluate(LABELS):
+            words = re.findall(r"[^\W\d_]+", b["text"])
+            assert words, b
+            for w in words:
+                assert w.lower() in b["label"].lower(), (step, b)
+
+
+def test_os_theme_change_follows_without_writing_storage(open_page):
+    page = open_page(render_shell("<p data-de>Inhalt</p><p data-en>Content</p>"), color_scheme="light")
+    stored = "localStorage.getItem('html-canvas-theme')"
+    assert page.evaluate("document.documentElement.classList.contains('dark')") is False
+    page.emulate_media(color_scheme="dark")
+    page.wait_for_timeout(50)
+    assert page.evaluate("document.documentElement.classList.contains('dark')") is True
+    assert page.evaluate(stored) is None
+    assert "light" in page.get_attribute("#themeToggle", "aria-label").lower()
+    page.emulate_media(color_scheme="light")
+    page.wait_for_timeout(50)
+    assert page.evaluate("document.documentElement.classList.contains('dark')") is False
+    assert page.evaluate(stored) is None
+    page.click("#themeToggle")                     # an explicit choice is stored and wins
+    assert page.evaluate(stored) == "dark"
+    page.emulate_media(color_scheme="light")
+    page.wait_for_timeout(50)
+    assert page.evaluate("document.documentElement.classList.contains('dark')") is True
+
+
 # --- G3: 44 px targets only for coarse pointers -----------------------------------------
 
 BOX = """() => [...document.querySelectorAll('.topbar button, .sim-btn, .sim-seg button')]
@@ -151,14 +223,14 @@ def test_fine_pointers_keep_the_compact_controls(open_page, sim_html):
 
 # --- G3: content that animations.css hides is visible when IntersectionObserver is missing
 
-DECK_CSS = (ASSETS / "animations.css").read_text("utf-8")
+ANIM_CSS = (ASSETS / "animations.css").read_text("utf-8")
 NO_IO = "delete window.IntersectionObserver;"
 
 
-def deck_page(open_page, **opts):
+def reveal_page(open_page, **opts):
     interactivity = SKILL / "references" / "interactivity.md"
-    body = "\n".join([md_snippet(interactivity, "Slide-deck engine"), md_snippet(interactivity, "Scroll reveal")])
-    html = render_shell((FIXTURES / "deck.html").read_text("utf-8"), extra_css=DECK_CSS, extra_body=body)
+    body = md_snippet(interactivity, "Scroll reveal")
+    html = render_shell((FIXTURES / "reveal.html").read_text("utf-8"), extra_css=ANIM_CSS, extra_body=body)
     return open_page(html, **opts)
 
 
@@ -166,32 +238,26 @@ def visible_opacity(page, selector):
     return page.evaluate("s => [...document.querySelectorAll(s)].map(e => getComputedStyle(e).opacity)", selector)
 
 
-def test_slides_and_reveals_are_visible_without_intersection_observer(open_page):
-    page = deck_page(open_page, init_script=NO_IO)
+def test_reveals_are_visible_without_intersection_observer(open_page):
+    page = reveal_page(open_page, init_script=NO_IO)
     assert page.evaluate("'IntersectionObserver' in window") is False
-    page.wait_for_timeout(900)                      # longer than the .6s entrance transition
-    assert visible_opacity(page, ".slide") == ["1", "1", "1"]
+    page.wait_for_timeout(900)                      # longer than the .5s entrance transition
     assert visible_opacity(page, ".reveal") == ["1", "1"]
     assert page.errors == []
 
 
-def test_deck_still_reveals_through_the_observer_when_it_exists(open_page):
-    page = deck_page(open_page)
+def test_reveals_still_go_through_the_observer_when_it_exists(open_page):
+    page = reveal_page(open_page)
     page.wait_for_timeout(900)
-    assert page.evaluate("document.getElementById('s1').classList.contains('visible')") is True
+    assert page.evaluate("document.getElementById('r1').classList.contains('visible')") is True
     assert page.errors == []
 
 
-def test_space_on_a_deck_dot_does_not_also_advance_the_deck(open_page):
-    page = deck_page(open_page)
-    page.evaluate("""() => { window.__nexts = 0; const n = SlideEngine.prototype.next;
-        SlideEngine.prototype.next = function () { window.__nexts++; return n.apply(this, arguments); }; }""")
-    page.focus(".deck-dots button:nth-child(1)")
-    page.keyboard.press("Space")
-    assert page.evaluate("window.__nexts") == 0
-    page.evaluate("document.activeElement.blur()")
-    page.keyboard.press("Space")
-    assert page.evaluate("window.__nexts") == 1
+def test_animations_carry_no_deck_mode_rules():
+    """Slides belong to html-slides; nothing in html-canvas adds .visible to a .slide."""
+    assert not re.search(r"(^|[\s,}])\.slide\b", ANIM_CSS)
+    assert "SlideEngine" not in ANIM_CSS
+    assert "\u2014" not in ANIM_CSS and "\u2013" not in ANIM_CSS
 
 
 # --- hygiene of the shipped sources (no browser needed) ----------------------------------
@@ -218,3 +284,39 @@ def test_sections_reference_uses_tokens_and_no_dashes_in_example_texts():
 def test_animations_show_hidden_content_when_scripting_is_off():
     css = (ASSETS / "animations.css").read_text("utf-8")
     assert re.search(r"@media\s*\(scripting:\s*none\)\s*\{[^}]*\.reveal[^}]*opacity:1", css)
+
+
+def _swap_rules(text: str) -> list[str]:
+    return [ln for ln in text.splitlines() if ln.startswith(":root") and "{display:none}" in ln]
+
+
+def _flip(rule: str) -> str:
+    return rule.replace("de", "\0").replace("en", "de").replace("\0", "en")
+
+
+def test_migration_note_lives_in_build_workflow_and_matches_the_shell():
+    shell_rules = _swap_rules((ASSETS / "shell.html").read_text("utf-8"))
+    assert len(shell_rules) == 2 and all(":not([data-" in r for r in shell_rules)
+    workflow = SKILL / "references" / "build-workflow.md"
+    assert _swap_rules(md_snippet(workflow, "Migrating an older page")) == shell_rules
+    text = workflow.read_text("utf-8")
+    german = text.split("German default:", 1)[1].split("```", 2)[1]
+    assert _swap_rules(german) == [_flip(r) for r in shell_rules]
+    sim = (SKILL / "references" / "simulation.md").read_text("utf-8")
+    assert "## Migrating an older page" not in sim
+    assert "Or rebuild it" not in sim and "Or rebuild it" not in text
+
+
+def test_build_workflow_names_the_gate_and_scopes_touch_targets_to_coarse_pointers():
+    text = (SKILL / "references" / "build-workflow.md").read_text("utf-8")
+    assert "verify-page.py" in text and "theme-contract.md" in text and "--embed-fonts" in text
+    touch = next(ln for ln in text.splitlines() if "**Touch targets:**" in ln)
+    assert "pointer:coarse" in touch
+
+
+def test_mono_text_shows_cli_flags_without_ligatures():
+    """JetBrains Mono joins `--` into one glyph; a CLI flag must read as two hyphens."""
+    shell = (ASSETS / "shell.html").read_text("utf-8")
+    sections = (ASSETS / "sections.css").read_text("utf-8")
+    assert re.search(r"code,kbd\{[^}]*font-variant-ligatures:none", shell)
+    assert re.search(r"\.term\{[^}]*font-variant-ligatures:none", sections)

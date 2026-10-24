@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="de" class="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Altseite</title>
+<style>
+/* design-tokens:begin */
+:root{
+  --primary:CanvasText; --secondary:LinkText; --accent:LinkText;
+  --surface:Canvas; --raised:Canvas; --ink:CanvasText; --line:GrayText;
+}
+/* design-tokens:end */
+body{margin:0;background:var(--surface);color:var(--ink)}
+/* language swap in the old form: a pair with both attributes would be hidden */
+:root:not([data-lang="en"]) [data-en]{display:none}
+:root[data-lang="en"] [data-de]{display:none}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1><span data-de>Alte Seite</span><span data-en>Old page</span></h1>
+  <p data-de>Dieser Inhalt bleibt beim Auffrischen unberührt.</p><p data-en>This content stays untouched on refresh.</p>
+</main>
+</body>
+</html>

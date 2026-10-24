@@ -61,6 +61,19 @@ LATIN_RANGE = ("U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U
 VARIABLE_RANGE = (100, 900)
 GENERIC = {"serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "ui-monospace",
            "ui-sans-serif", "ui-serif", "ui-rounded", "emoji", "math", "fangsong"}
+# Families every platform resolves from its own fonts. A stack that LEADS with
+# one is a system stack by choice ("SF Mono, Monaco, ..."): there is nothing to
+# embed, and warning about a later fallback in it would be noise. Kept equal to
+# verify-page.py's SYSTEM_FAMILIES (a test holds the two together).
+SYSTEM_FAMILIES = {
+    "-apple-system", "blinkmacsystemfont", "segoe ui", "segoe ui emoji", "segoe ui symbol",
+    "roboto", "helvetica neue", "helvetica", "arial", "georgia", "times new roman", "times",
+    "menlo", "monaco", "consolas", "liberation mono", "liberation sans", "liberation serif",
+    "sfmono-regular", "sf mono", "sf pro", "sf pro text", "sf pro display", "courier new",
+    "courier", "verdana", "tahoma", "trebuchet ms", "noto sans", "noto serif",
+    "noto color emoji", "apple color emoji", "ubuntu", "cantarell", "oxygen",
+    "dejavu sans", "dejavu sans mono", "dejavu serif", "lucida grande", "cascadia code",
+}
 FILE_RE = re.compile(r"^(?P<slug>[a-z0-9][a-z0-9-]*?)-latin-(?P<w>wght|\d{3})(?:-normal)?\.woff2$")
 
 
@@ -86,10 +99,12 @@ def _weight(value) -> int | None:
 
 
 def _first_family(value) -> str | None:
+    """The family to embed: the first named one, or None for a system-led stack."""
     for part in str(value or "").split(","):
         name = part.strip().strip('"').strip("'").strip()
-        if name and name.lower() not in GENERIC and not name.startswith("-"):
-            return name
+        if not name or name.lower() in GENERIC or name.startswith("-"):
+            continue
+        return None if name.lower() in SYSTEM_FAMILIES else name
     return None
 
 

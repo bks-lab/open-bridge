@@ -178,6 +178,7 @@ def test_every_bundled_family_ships_its_license():
     fonts = SKILL / "assets" / "fonts"
     assert (fonts / "OFL-inter.txt").read_text("utf-8").count("SIL OPEN FONT LICENSE") >= 1
     assert (fonts / "OFL-playfair-display.txt").exists()
+    assert (fonts / "OFL-jetbrains-mono.txt").exists()
     for woff in fonts.glob("*.woff2"):
         assert woff.read_bytes()[:4] == b"wOF2"
 
@@ -219,3 +220,36 @@ def test_embedded_page_loads_font_from_empty_dir(tmp_path):
             assert not errors
         finally:
             browser.close()
+
+
+def test_system_led_stack_embeds_nothing_and_does_not_warn(tmp_path, capsys):
+    mod = _load()
+    design = tmp_path / "DESIGN.md"
+    design.write_text(
+        "---\nname: t\ntypography:\n"
+        "  code:\n    fontFamily: \"SF Mono, Monaco, Cascadia Code, Roboto Mono, Consolas, monospace\"\n"
+        "  body-md:\n    fontFamily: Inter\n"
+        "---\n", encoding="utf-8")
+    fams = mod.collect_families(design)
+    assert fams == {"Inter": [400]}
+    mod.build_font_face_css(fams, [])
+    assert "Mono" not in capsys.readouterr().err
+
+
+def test_system_family_list_matches_verify_page():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("verify_page", SKILL / "scripts" / "verify-page.py")
+    vp = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vp)
+    assert _load().SYSTEM_FAMILIES == vp.SYSTEM_FAMILIES
+
+
+def test_all_three_default_families_are_bundled():
+    """Inter, Playfair Display and JetBrains Mono are the shell's stacks; a page needs no --font-dir for them."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("embed_fonts_bundled", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    css = mod.build_font_face_css({"Inter": [400], "Playfair Display": [500], "JetBrains Mono": [400, 600]})
+    for family in ("Inter", "Playfair Display", "JetBrains Mono"):
+        assert 'font-family: "%s"' % family in css, family

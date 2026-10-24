@@ -134,13 +134,17 @@ COLOR_MAP = {
 }
 
 # Delta applied only to a manifest still in the PRE-2026-07 shape, so an
-# un-migrated fork regenerates byte-for-byte what it got before. There, the
+# un-migrated fork keeps the meaning its keys had (emit_colors adds the dark
+# values that shape never declared, see the legacy branch there). There, the
 # headline ramp was `primary` and the caption ramp was `secondary`; in the
 # current brand those two names mean the brand ink color and the working accent,
 # and the text ramp lives on `on-surface*`. Same key, opposite meaning: mapping
 # it by one table would quietly write brand blue into the caption variable.
 LEGACY_COLOR_MAP = {
-    "primary": ["ink"],
+    # the old `primary` is the headline ink AND the surface `on-primary` sits
+    # on; leaving --primary neutral paired a white on-primary with a system
+    # colour that turns white in dark mode (the run button read 1:1)
+    "primary": ["ink", "primary"],
     "secondary": ["muted"],
     "on-surface": ["on-surface"],
     "border": ["line"],
@@ -223,6 +227,26 @@ def emit_colors(colors: dict, dark_colors: dict) -> tuple[list[str], list[str], 
         dark = []  # colorsDark is authoritative; do not mix the two shapes
         for key, val in dark_colors.items():
             push(dark, str(key), val, "colorsDark")
+    elif is_legacy_shape(colors, dark_colors) and "dark-primary" not in (colors or {}) \
+            and "dark-on-surface" in (colors or {}):
+        # The legacy headline ink is `primary`, and a legacy manifest rarely
+        # declares a `dark-primary`. html.dark then kept the light ink, so
+        # headings and controls rendered dark on the dark ground. The dark body
+        # colour is the closest declared readable value; it stands in for the ink.
+        at = next((i for i, l in enumerate(dark) if l.startswith("  --on-surface:")), len(dark))
+        dark.insert(at, f"  --ink: {colors['dark-on-surface']};")
+        # Same gap one step down: the legacy caption colour `secondary` was tuned
+        # for the light ground and falls under 4.5:1 on a dark one. Without a
+        # declared dark value it becomes the dark body colour mixed into the dark
+        # ground, a derived value that follows both tokens.
+        if "secondary" in colors and "dark-secondary" not in colors:
+            dark.insert(min(at + 2, len(dark)),
+                        "  --muted: color-mix(in srgb, var(--on-surface) 72%, var(--surface));")
+        # A primary surface is ink-coloured in this shape, so on dark it follows
+        # the ink and its label takes the ground colour: an inverted button
+        # instead of a dark box on a dark ground.
+        if "dark-on-primary" not in colors:
+            dark += ["  --primary: var(--ink);", "  --on-primary: var(--surface);"]
 
     return root, dark, skipped
 
@@ -430,13 +454,28 @@ def markers(region: str = REGION) -> tuple[str, str, str]:
 BEGIN, END, GENERATED = markers()
 
 
-def inject(shell: str, css: str, region: str = REGION) -> str:
+LEGACY_HEADER = "/* Generated from DESIGN.md"
+
+
+def region_neutral(text: str, region: str = REGION) -> str:
+    """The neutral block of `region` in `text`: what sits before the generated comment."""
+    begin, end, generated = markers(region)
+    body = text.split(begin, 1)[1].split(end, 1)[0]
+    return body.split(generated, 1)[0].rstrip("\n")
+
+
+def inject(shell: str, css: str, region: str = REGION, neutral_default: str | None = None) -> str:
     """Return `shell` with `css` added to its token region.
 
     The shell's own neutral values stay first and `css` follows, so a token the
     DESIGN.md does not define keeps its neutral value instead of going undefined:
     a legacy manifest without warn/danger/accent-line left the run button of a
     simulation invisible (white on white) when the region was replaced whole.
+
+    A page generated before that rule holds generated tokens right after :begin,
+    with no generated comment. That block is stale brand output, not neutral
+    values, so it is replaced by `neutral_default` (for the design-tokens region,
+    the bundled shell's neutral block) instead of being kept in front of `css`.
     """
     begin, end, generated = markers(region)
     if shell.count(begin) != 1 or shell.count(end) != 1:
@@ -445,6 +484,10 @@ def inject(shell: str, css: str, region: str = REGION) -> str:
     if end not in rest:
         raise ValueError("%s comes before %s" % (end, begin))
     neutral, tail = rest.split(end, 1)
+    if generated not in neutral and neutral.lstrip().startswith(LEGACY_HEADER):
+        if neutral_default is None and region == REGION:
+            neutral_default = region_neutral(default_shell().read_text(encoding="utf-8"))
+        neutral = "\n" + (neutral_default or "").strip("\n")
     neutral = neutral.split(generated, 1)[0].rstrip("\n")
     return (head + begin + neutral + "\n" + generated + "\n" + css.rstrip("\n") + "\n"
             + end + tail)
@@ -460,6 +503,30 @@ def font_faces(design_path: Path, font_dirs: list[Path]) -> str:
     if not faces:
         return ""
     return "\n/* Embedded fonts (embed-fonts.py), so the page needs no font files. */\n" + faces
+
+
+PROJECT_MARKERS = (".git", "bridge-config.yaml")
+
+
+def find_design(start: Path) -> Path | None:
+    """The nearest DESIGN.md at or above `start` (a folder, or a file's folder).
+
+    The walk stops at the project root: the first folder holding .git or
+    bridge-config.yaml. Without such a folder above, only `start` itself counts,
+    so a stray DESIGN.md somewhere in a temp or home folder never brands a page
+    or skews the gate. Every script that looks for DESIGN.md uses this one.
+    """
+    start = Path(start).resolve()
+    if not start.is_dir():
+        start = start.parent
+    chain = [start, *start.parents]
+    root = next((d for d in chain if any((d / m).exists() for m in PROJECT_MARKERS)), None)
+    for d in chain if root else [start]:
+        if (d / "DESIGN.md").is_file():
+            return d / "DESIGN.md"
+        if d == root:
+            break
+    return None
 
 
 def default_shell() -> Path:

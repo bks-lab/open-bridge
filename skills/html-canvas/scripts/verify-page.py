@@ -11,6 +11,10 @@ Static mode (default, stdlib only):
   local-ref       a resource next to the page: it breaks once the file travels alone
   external-link   an <a href> leaving the page (warning: fine for a cited source)
   placeholder     a leftover {{TEMPLATE}} placeholder
+  sample          catalog sample text: a block new-page.py marked data-sample, or a
+                  text that is only an ellipsis (--allow-sample: warning)
+  design-source   the page names the DESIGN.md it was generated from, and the gate
+                  reads another (warning)
   entity          an HTML entity or \\u escape spelling a non-ASCII letter (error),
                   or another non-ASCII character (warning); write the character
   hex             a hex colour not declared in the DESIGN.md front matter
@@ -24,13 +28,20 @@ Static mode (default, stdlib only):
   forbidden-char  a character from --forbid-chars / --forbid-chars-from in
                   visible text (off unless the instance passes a list)
 
---browser (needs playwright + chromium; skipped with a warning without them):
+--browser (needs playwright + chromium; without them browser-skipped is an
+  ERROR, because the pass was asked for and nothing was measured):
   the file is copied ALONE into an empty temp dir and opened via file://, then
   rendered light/dark x de/en where the page supports them, under
   prefers-reduced-motion and as print. Findings: console-error, request-failed,
   network (any request leaving the file), both-languages (the inactive language
-  visible), contrast (body text under 4.5:1, 3:1 for large text), reduced-motion
+  visible), lang-hidden (an element carrying both data-de and data-en, shown in
+  neither), contrast (body text under 4.5:1, 3:1 for large text; over a gradient,
+  an image or a sibling layer such as a scrim, the ground is read from a
+  screenshot with all text hidden), reduced-motion
   (text left at opacity 0, warning). --out DIR keeps screenshots, >= 500 px wide.
+  Dark mode is found where the page keeps it: html.dark, .theme-dark (with
+  .theme-light), [data-theme="dark"], or prefers-color-scheme alone; any other
+  switch on <html> is named with --dark-selector (.night, [data-mode="night"]).
 
 --deck (implies --browser): every element matching --slide-selector is checked
   for overflow at 1280x720 and 1920x1080 (slide-overflow), the selector must
@@ -43,6 +54,7 @@ Usage:
   verify-page.py page.html [more.html ...] [--design DESIGN.md] [--json]
   verify-page.py page.html --forbid-chars "<chars>" [--forbid-chars-from FILE]
   verify-page.py page.html --browser [--out shots/] [--width 1280 --width 500]
+  verify-page.py page.html --browser --dark-selector .night
   verify-page.py deck.html --deck [--slide-selector .slide]
   # DESIGN.md: --design, else the nearest one in the page's folder or above;
   # without one the hex check is skipped and the output says so.
@@ -50,6 +62,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import base64
 import html
 import json
 import re
@@ -67,7 +80,8 @@ VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "met
         "param", "source", "track", "wbr"}
 
 # Families every platform resolves without an @font-face. A family outside this
-# list renders only where it happens to be installed.
+# list renders only where it happens to be installed. embed-fonts.py keeps the
+# same SYSTEM_FAMILIES (a test holds the two together).
 GENERIC_FAMILIES = {
     "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "ui-serif",
     "ui-sans-serif", "ui-monospace", "ui-rounded", "emoji", "math", "fangsong",
@@ -127,11 +141,23 @@ def norm_hex(digits: str) -> str | None:
 
 # --- DESIGN.md ---------------------------------------------------------------------------
 
-def find_design(page: Path) -> Path | None:
-    for folder in [page.parent, *page.parent.parents]:
-        cand = folder / "DESIGN.md"
-        if cand.is_file():
-            return cand
+def find_design(start: Path) -> Path | None:
+    """The nearest DESIGN.md at or above `start`, never above the project root.
+
+    Same rule as design-to-css.find_design (kept here so the static gate needs
+    no PyYAML): the walk stops at the first folder holding .git or
+    bridge-config.yaml, and without one only the page's own folder counts.
+    """
+    start = Path(start).resolve()
+    if not start.is_dir():
+        start = start.parent
+    chain = [start, *start.parents]
+    root = next((d for d in chain if any((d / m).exists() for m in (".git", "bridge-config.yaml"))), None)
+    for d in chain if root else [start]:
+        if (d / "DESIGN.md").is_file():
+            return d / "DESIGN.md"
+        if d == root:
+            break
     return None
 
 
@@ -154,6 +180,41 @@ def declared_hex(design: Path) -> set[str]:
         if h:
             found.add(h)
     return found
+
+
+BUILT_FROM_RE = re.compile(r"Generated from DESIGN\.md \(([^,)]+?)(?:,\s*([^)]+?))?\)")
+
+
+def design_meta(design: Path) -> dict:
+    """name and last_updated from the front matter, read without PyYAML."""
+    meta, lines = {}, design.read_text(encoding="utf-8", errors="replace").splitlines()
+    if lines and lines[0].strip() == "---":
+        for ln in lines[1:]:
+            if ln.strip() == "---":
+                break
+            m = re.match(r"(name|last_updated):\s*[\"']?([^\"'#]+?)[\"']?\s*(?:#.*)?$", ln)
+            if m:
+                meta[m.group(1)] = m.group(2).strip()
+    return meta
+
+
+def check_design_source(raw: str, rep: Report) -> None:
+    """A page names the DESIGN.md it was generated from; warn when the gate reads another.
+
+    Checking a deck against the wrong DESIGN.md reports its own tokens as stray hex
+    values, which reads like a broken deck rather than a wrong lookup.
+    """
+    m = BUILT_FROM_RE.search(raw)
+    if not m:
+        return
+    name, stamp = m.group(1).strip(), (m.group(2) or "").strip()
+    meta = design_meta(rep.design)
+    if meta.get("name") and name != meta["name"]:
+        rep.add("design-source", WARNING, "the page was generated from DESIGN.md %r, the gate checks against %r "
+                "(%s); pass --design with the one it was built from" % (name, meta["name"], rep.design))
+    elif stamp and meta.get("last_updated") and stamp != meta["last_updated"]:
+        rep.add("design-source", WARNING, "the page was generated from DESIGN.md %s of %s, the file now says %s; "
+                "refresh it (new-page.py / new-deck.py --refresh)" % (name, stamp, meta["last_updated"]))
 
 
 # --- parsing -----------------------------------------------------------------------------
@@ -304,6 +365,24 @@ def check_placeholders(raw: str, rep: Report) -> None:
         rep.add("placeholder", ERROR, "leftover template placeholder %s" % m.group(0), line_at(raw, m.start()))
 
 
+ELLIPSIS_ONLY = {"…", "...", "…."}
+
+
+def check_sample(page: Page, rep: Report, allow: bool) -> None:
+    """Catalog sample text left in the page: blocks new-page.py marked data-sample, and
+    text that is nothing but an ellipsis (the catalog's stand-in for content)."""
+    level = WARNING if allow else ERROR
+    marked = [el["line"] for el in page.elements if "data-sample" in el["attrs"]]
+    if marked:
+        rep.add("sample", level, "%d block%s still hold%s catalog sample text (data-sample); write the "
+                "content, then drop the attribute" % (len(marked), "" if len(marked) == 1 else "s",
+                                                      "s" if len(marked) == 1 else ""), marked[0])
+    bare = [line for text, line in page.texts if text.strip() in ELLIPSIS_ONLY]
+    if bare:
+        rep.add("sample", level, "%d text%s nothing but an ellipsis, the catalog's stand-in for content"
+                % (len(bare), " is" if len(bare) == 1 else "s are"), bare[0])
+
+
 def check_entities(raw: str, page: Page, rep: Report) -> None:
     letters: dict[int, list[str]] = {}
     others: dict[int, list[str]] = {}
@@ -385,7 +464,12 @@ def check_fonts(page: Page, rep: Report) -> None:
         text = blank(css, CSS_COMMENT_RE)
         text = blank(text, FONT_FACE_RE)
         for m in FONT_DECL_RE.finditer(text):
-            for fam in families(m.group(2)):
+            named = families(m.group(2))
+            # A stack that leads with a system family is a system stack by
+            # choice; a later family in it is a fallback, not a dependency.
+            if named and named[0].lower() in SYSTEM_FAMILIES | GENERIC_FAMILIES:
+                continue
+            for fam in named:
                 low = fam.lower()
                 if low in faces or low in GENERIC_FAMILIES or low in SYSTEM_FAMILIES:
                     continue
@@ -478,14 +562,17 @@ def check_forbidden(page: Page, rep: Report, chars: str) -> None:
                     min(lines))
 
 
-def static_checks(path: Path, rep: Report, allow: set[str], forbid: str) -> None:
+def static_checks(path: Path, rep: Report, allow: set[str], forbid: str, allow_sample: bool = False) -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
     page = parse(text)
     raw = blank(text, COMMENT_RE)
     check_urls(page, rep, allow)
     check_placeholders(raw, rep)
+    check_sample(page, rep, allow_sample)
     check_entities(raw, page, rep)
     if rep.design:
+        rep.notes.append("checked against %s" % rep.design)
+        check_design_source(text, rep)
         check_hex(page, rep, declared_hex(rep.design))
     else:
         rep.notes.append("no DESIGN.md found, hex check skipped (pass --design)")
@@ -503,22 +590,67 @@ JS_DESC = """const desc = el => {
   return '<' + el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + '> "' + t + '"';
 };"""
 
-JS_SUPPORT = """() => {
-  let dark = false;
+# How a page switches to dark, most specific first. `mode` is what JS_STATE
+# applies to <html>: a class (with an optional light twin), an attribute value,
+# or nothing but the emulated prefers-color-scheme.
+JS_SUPPORT = """(given) => {
+  let text = '';
   const walk = rules => { for (const r of rules) {
-    const t = r.cssText || '';
-    if (/\\.dark\\b|prefers-color-scheme:\\s*dark/.test(t)) dark = true;
+    text += (r.cssText || '') + '\\n';
     if (r.cssRules) walk(r.cssRules);
   } };
   for (const s of document.styleSheets) { try { walk(s.cssRules); } catch (e) {} }
-  return {dark, lang: !!document.querySelector('[data-de],[data-en]')};
+  const lang = !!document.querySelector('[data-de],[data-en]');
+  if (given) return {mode: given, lang};
+  let mode = null;
+  const attr = text.match(/\\[data-theme\\s*=\\s*["']?dark["']?\\s*\\]/);
+  if (/\\.theme-dark\\b/.test(text)) mode = {kind: 'class', name: 'theme-dark',
+    light: /\\.theme-light\\b/.test(text) ? 'theme-light' : null};
+  else if (attr) mode = {kind: 'attr', name: 'data-theme', value: 'dark', light: 'light'};
+  else if (/\\.dark\\b/.test(text)) mode = {kind: 'class', name: 'dark', light: null};
+  else if (/prefers-color-scheme:\\s*dark/.test(text)) mode = {kind: 'media'};
+  return {mode, lang};
 }"""
 
-JS_STATE = """([dark, lang]) => {
+JS_STATE = """([mode, dark, lang]) => {
   const r = document.documentElement;
-  r.classList.toggle('dark', dark);
+  if (mode && mode.kind === 'class') {
+    r.classList.toggle(mode.name, dark);
+    if (mode.light) r.classList.toggle(mode.light, !dark);
+  } else if (mode && mode.kind === 'attr') {
+    if (dark) r.setAttribute(mode.name, mode.value);
+    else if (mode.light) r.setAttribute(mode.name, mode.light);
+    else r.removeAttribute(mode.name);
+  }
   if (lang) { r.setAttribute('data-lang', lang); r.setAttribute('lang', lang); }
 }"""
+
+# Elements carrying both data-de and data-en are the same in both languages,
+# so the swap must leave them alone; one that renders in neither is lost.
+JS_DUAL_HIDDEN = """() => {
+  %s
+  return [...document.querySelectorAll('[data-de][data-en]')].filter(el => {
+    const p = el.parentElement;
+    return !el.getClientRects().length && (!p || p.getClientRects().length);
+  }).map(el => ({key: [...document.querySelectorAll('*')].indexOf(el), desc: desc(el)}));
+}""" % JS_DESC
+
+
+def parse_dark_selector(sel: str) -> dict:
+    """`.night`, `html.night`, `:root.night`, `[data-mode="night"]` or `[data-night]`."""
+    s = sel.strip()
+    for prefix in ("html", ":root"):
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
+    m = re.fullmatch(r"\.([A-Za-z_][\w-]*)", s)
+    if m:
+        return {"kind": "class", "name": m.group(1), "light": None}
+    m = re.fullmatch(r"""\[\s*([A-Za-z_][\w-]*)\s*(?:=\s*(["']?)([^"'\]]+)\2\s*)?\]""", s)
+    if m:
+        return {"kind": "attr", "name": m.group(1), "value": m.group(3) or "", "light": None}
+    raise ValueError(sel)
+
 
 JS_BOTH = """(lang) => {
   %s
@@ -537,6 +669,25 @@ JS_CONTRAST = """() => {
   const rgba = c => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = c;
     cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
   const over = (top, under) => [0, 1, 2].map(i => top[i] * top[3] + under[i] * (1 - top[3])).concat([1]);
+  const paints = cs => cs.backgroundImage !== 'none' || rgba(cs.backgroundColor)[3] > 0;
+  // A positioned sibling of the text or of one of its ancestors that overlaps it
+  // (a scrim, a gradient layer, a photo) paints behind the text without being an
+  // ancestor, so the colour walk below cannot see it.
+  const underlaid = el => {
+    const r = el.getBoundingClientRect();
+    for (let a = el; a && a.parentElement && a !== document.body; a = a.parentElement) {
+      for (let s = a.parentElement.firstElementChild; s; s = s.nextElementSibling) {
+        if (s === a) continue;
+        const cs = getComputedStyle(s);
+        if ((cs.position !== 'absolute' && cs.position !== 'fixed') || !paints(cs)) continue;
+        if (cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) continue;
+        const q = s.getBoundingClientRect();
+        if (q.right > r.left && q.left < r.right && q.bottom > r.top && q.top < r.bottom) return true;
+      }
+    }
+    return false;
+  };
+  // null: the ground is an image or a layer, measured from pixels (JS_LAYER_SAMPLE)
   const ground = el => {
     const layers = [];
     for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
@@ -546,6 +697,7 @@ JS_CONTRAST = """() => {
       if (c[3] > 0) layers.push(c);
       if (c[3] >= 0.99) break;
     }
+    if (underlaid(el)) return null;
     let base = [255, 255, 255, 1];
     for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i], base);
     return base;
@@ -556,18 +708,108 @@ JS_CONTRAST = """() => {
   const els = [document.body, ...document.querySelectorAll('p, li, td, th, dd, dt, figcaption, blockquote, h1, h2, h3, h4, label, small, span')]
     .filter((el, i) => i === 0 || (hasText(el) && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden'))
     .slice(0, 300);
-  const bad = [];
+  const bad = [], layered = [];
   for (const el of els) {
-    const bg = ground(el); if (!bg) continue;
     const cs = getComputedStyle(el);
-    const fg = over(rgba(cs.color), bg);
-    const a = lum(fg), b = lum(bg), ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
     const size = parseFloat(cs.fontSize), weight = parseInt(cs.fontWeight, 10) || 400;
     const need = (size >= 24 || (size >= 18.66 && weight >= 700)) ? 3 : 4.5;
+    const bg = ground(el);
+    if (!bg) {
+      if (el !== document.body) layered.push({el, color: rgba(cs.color), need, desc: desc(el), done: false});
+      continue;
+    }
+    const fg = over(rgba(cs.color), bg);
+    const a = lum(fg), b = lum(bg), ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
     if (ratio < need) bad.push({el: desc(el), ratio: Math.round(ratio * 100) / 100, need});
   }
-  return bad;
+  window.__vpLayered = layered;
+  return {bad, layered: layered.length};
 }""" % JS_DESC
+
+# Text over an image, a gradient or a sibling layer: hide all text, bring the next
+# unmeasured element into view, and read the ground from a screenshot of it.
+HIDE_TEXT = ("*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;"
+             "text-shadow:none!important;text-decoration-color:transparent!important;caret-color:transparent!important}")
+MAX_LAYER_SHOTS = 40
+
+JS_LAYER_BEGIN = """(css) => {
+  const st = document.createElement('style'); st.id = '__vp-hide-text'; st.textContent = css;
+  document.head.appendChild(st);
+  window.__vpScroll = [...document.querySelectorAll('*')].filter(e => e.scrollTop || e.scrollLeft)
+    .map(e => [e, e.scrollTop, e.scrollLeft]);
+  window.__vpScroll.push([document.scrollingElement, document.scrollingElement.scrollTop, document.scrollingElement.scrollLeft]);
+}"""
+
+JS_LAYER_END = """() => {
+  const st = document.getElementById('__vp-hide-text'); if (st) st.remove();
+  for (const [e, t, l] of (window.__vpScroll || [])) { e.scrollTop = t; e.scrollLeft = l; }
+}"""
+
+# The rects a text actually occupies: its own text nodes, not the whole block.
+JS_LAYER_NEXT = """() => {
+  const next = (window.__vpLayered || []).find(x => !x.done);
+  if (!next) return false;
+  next.el.scrollIntoView({block: 'center', inline: 'nearest', behavior: 'instant'});
+  return true;
+}"""
+
+JS_LAYER_SAMPLE = """async (url) => {
+  const img = new Image(); img.src = url; await img.decode();
+  const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+  const cx = cv.getContext('2d', {willReadFrequently: true}); cx.drawImage(img, 0, 0);
+  const sx = img.naturalWidth / innerWidth, sy = img.naturalHeight / innerHeight;
+  const px = (x, y) => { const d = cx.getImageData(Math.min(cv.width - 1, Math.max(0, Math.round(x * sx))),
+    Math.min(cv.height - 1, Math.max(0, Math.round(y * sy))), 1, 1).data; return [d[0], d[1], d[2], 1]; };
+  const over = (top, under) => [0, 1, 2].map(i => top[i] * top[3] + under[i] * (1 - top[3])).concat([1]);
+  const lum = c => { const v = c.slice(0, 3).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+  const rectsOf = el => { const out = [];
+    for (const n of el.childNodes) {
+      if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+      const rg = document.createRange(); rg.selectNodeContents(n);
+      for (const r of rg.getClientRects()) if (r.width > 1 && r.height > 1) out.push(r);
+    }
+    return out; };
+  const bad = [];
+  for (const x of window.__vpLayered || []) {
+    if (x.done) continue;
+    const rects = rectsOf(x.el);
+    if (!rects.length) { x.done = true; continue; }
+    if (!rects.every(r => r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth)) continue;
+    x.done = true;
+    let worst = Infinity;
+    for (const r of rects) for (const fx of [0.1, 0.5, 0.9]) for (const fy of [0.3, 0.7]) {
+      const bg = px(r.left + r.width * fx, r.top + r.height * fy), fg = over(x.color, bg);
+      const a = lum(fg), b = lum(bg);
+      worst = Math.min(worst, (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05));
+    }
+    if (worst < x.need) bad.push({el: x.desc, ratio: Math.round(worst * 100) / 100, need: x.need});
+  }
+  // an element that cannot come fully into view (taller than the viewport) is not measured
+  const stuck = (window.__vpLayered || []).find(x => !x.done);
+  if (stuck && stuck.tries > 1) stuck.done = true; else if (stuck) stuck.tries = (stuck.tries || 0) + 1;
+  return bad;
+}"""
+
+
+def contrast_findings(page) -> list[dict]:
+    """Low-contrast text in the current state: colour walk first, pixels where it cannot see."""
+    res = page.evaluate(JS_CONTRAST)
+    bad = list(res["bad"])
+    if not res["layered"]:
+        return bad
+    page.evaluate(JS_LAYER_BEGIN, HIDE_TEXT)
+    try:
+        for _ in range(MAX_LAYER_SHOTS):
+            if not page.evaluate(JS_LAYER_NEXT):
+                break
+            page.wait_for_timeout(60)
+            png = base64.b64encode(page.screenshot(type="png")).decode("ascii")
+            bad += page.evaluate(JS_LAYER_SAMPLE, "data:image/png;base64," + png)
+    finally:
+        page.evaluate(JS_LAYER_END)
+        page.wait_for_timeout(30)
+    return bad
 
 JS_HIDDEN = """() => {
   %s
@@ -591,7 +833,8 @@ def browser_checks(path: Path, rep: Report, args) -> None:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        rep.add("browser-skipped", WARNING, "playwright is not installed; browser checks skipped")
+        rep.add("browser-skipped", ERROR, "playwright is not installed; the browser checks that were "
+                "asked for did not run")
         return
     work = Path(tempfile.mkdtemp(prefix="verify-page-"))
     try:
@@ -601,8 +844,8 @@ def browser_checks(path: Path, rep: Report, args) -> None:
             try:
                 browser = pw.chromium.launch(headless=True)
             except Exception as exc:  # browser binary not installed
-                rep.add("browser-skipped", WARNING, "chromium not available (%s); browser checks skipped"
-                        % str(exc).splitlines()[0])
+                rep.add("browser-skipped", ERROR, "chromium not available (%s); the browser checks that "
+                        "were asked for did not run" % str(exc).splitlines()[0])
                 return
             try:
                 run_browser(browser, target, rep, args)
@@ -657,14 +900,16 @@ def run_browser(browser, target: Path, rep: Report, args) -> None:
     stem = target.stem
     for n, width in enumerate(args.width):
         ctx, page = open_page(browser, target, rep, allow, viewport={"width": width, "height": 800})
-        support = page.evaluate(JS_SUPPORT)
-        themes = (False, True) if support["dark"] else (False,)
+        support = page.evaluate(JS_SUPPORT, getattr(args, "dark_mode", None))
+        mode = support["mode"]
+        themes = (False, True) if mode else (False,)
         langs = ("en", "de") if support["lang"] else (None,)
         page.add_style_tag(content=NO_TRANSITIONS)
+        hidden_in: dict[str, dict] = {}
         for dark in themes:
             for lang in langs:
                 page.emulate_media(color_scheme="dark" if dark else "light")
-                page.evaluate(JS_STATE, [dark, lang])
+                page.evaluate(JS_STATE, [mode, dark, lang])
                 page.wait_for_timeout(50)
                 state = ("dark" if dark else "light") + ("-" + lang if lang else "")
                 if n == 0:
@@ -673,11 +918,18 @@ def run_browser(browser, target: Path, rep: Report, args) -> None:
                         if both:
                             rep.add("both-languages", ERROR, "%s: %d element%s of the other language visible, e.g. %s"
                                     % (lang, len(both), "" if len(both) == 1 else "s", both[0]))
-                    for low in page.evaluate(JS_CONTRAST)[:1]:
+                        hidden_in[lang] = {h["key"]: h["desc"] for h in page.evaluate(JS_DUAL_HIDDEN)}
+                    for low in contrast_findings(page)[:1]:
                         rep.add("contrast", ERROR, "%s: %s:1 under %s:1 for %s" % (state, low["ratio"], low["need"], low["el"]))
                 shot(page, out, stem, state, width)
+        if len(hidden_in) == 2:
+            lost = [d for k, d in hidden_in["en"].items() if k in hidden_in["de"]]
+            if lost:
+                rep.add("lang-hidden", ERROR, "%d element%s carrying both data-de and data-en show%s in neither "
+                        "language, e.g. %s; the swap must skip them (:not([data-en]) / :not([data-de]))"
+                        % (len(lost), "" if len(lost) == 1 else "s", "s" if len(lost) == 1 else "", lost[0]))
         page.emulate_media(media="print", color_scheme="light")
-        page.evaluate(JS_STATE, [False, langs[0]])
+        page.evaluate(JS_STATE, [mode, False, langs[0]])
         shot(page, out, stem, "print", width)
         ctx.close()
 
@@ -760,13 +1012,25 @@ def main() -> int:
     ap.add_argument("--browser", action="store_true", help="also render the page (playwright)")
     ap.add_argument("--deck", action="store_true", help="also check slides; implies --browser")
     ap.add_argument("--slide-selector", default=".slide", help="CSS selector of one slide (default: .slide)")
+    ap.add_argument("--dark-selector", metavar="SELECTOR",
+                    help="what puts <html> in dark mode when it is none of html.dark, .theme-dark, "
+                         "[data-theme=dark]: a class (.night) or an attribute ([data-mode=night])")
     ap.add_argument("--out", help="directory for screenshots (browser mode)")
     ap.add_argument("--width", type=int, action="append", metavar="PX",
                     help="viewport width for the browser pass, at least 500 (repeatable, default 1280)")
+    ap.add_argument("--allow-sample", action="store_true",
+                    help="report catalog sample text as a warning, not an error (a fresh skeleton)")
     ap.add_argument("--json", action="store_true", help="print JSON instead of the list")
     args = ap.parse_args()
 
     args.width = args.width or [1280]
+    args.dark_mode = None
+    if args.dark_selector is not None:
+        try:
+            args.dark_mode = parse_dark_selector(args.dark_selector)
+        except ValueError:
+            ap.error("--dark-selector takes a class or an attribute on <html>, e.g. .night or "
+                     '[data-mode="night"]; got %r' % args.dark_selector)
     if min(args.width) < 500:
         ap.error("--width must be at least 500 px: headless chromium clamps narrower viewports")
     forbid = args.forbid_chars
@@ -791,7 +1055,7 @@ def main() -> int:
     for path in paths:
         rep = Report(path)
         rep.design = design or find_design(path.resolve())
-        static_checks(path, rep, allow, forbid)
+        static_checks(path, rep, allow, forbid, args.allow_sample)
         if args.browser or args.deck:
             browser_checks(path, rep, args)
         reports.append(rep)

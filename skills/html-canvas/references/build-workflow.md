@@ -1,67 +1,94 @@
 ---
 summary: "Parallel-builder subagent workflow for multi-page html-canvas kits, plus the quality/voice/accessibility bar every deliverable must clear"
 type: reference
-last_updated: 2026-06-01
+last_updated: 2026-10-24
 related:
   - skills/html-canvas/SKILL.md
+  - skills/html-canvas/references/theme-contract.md
   - rules/promote-safety.md
 ---
 
-# html-canvas — Build Workflow & Quality Bar
+# html-canvas: Build Workflow & Quality Bar
 
 ## Single page
-Generate the shell with `scripts/design-to-css.py --shell --out page.html` (never
-copy `assets/shell.html` bare, its token region is neutral on purpose), fill the
-placeholders, compose `<main>` from
-`references/sections.md`, paste any behaviours from `interactivity.md` (+
-`animations.css` if you want motion). Render light **and** dark, **and** DE **and**
-EN before calling it done. File it under `work/tasks/<slug>/deliverables/`.
+Generate it, never copy `assets/shell.html` bare (its token region is neutral on
+purpose):
 
-## Multi-page / multi-board kit — parallel builders
+```bash
+python3 skills/html-canvas/scripts/new-page.py --title "..." --lang en \
+    --blocks doc-header,callout --out work/tasks/<slug>/deliverables/page.html
+```
+
+`new-page.py` writes the shell, the DESIGN.md tokens and the CSS of the chosen
+blocks from `assets/sections.css` into marked regions, and runs the static gate.
+Replace the example content of each block, add behaviours from `interactivity.md`
+(plus `animations.css` for motion), render light **and** dark, DE **and** EN, then
+run the gate (below). File it under `work/tasks/<slug>/deliverables/`. Later
+changes to tokens, fonts or the block set go through `new-page.py --refresh
+page.html`, which leaves `<main>` and hand-written rules alone.
+
+A page that is sent embeds its typefaces: `new-page.py --embed-fonts` (base64
+`@font-face` via `scripts/embed-fonts.py`; off by default, a family without a font
+file keeps the system stack), and the send copy comes from `scripts/bundle.py`,
+which always embeds. A consumer with its own variable names or theme selectors
+(`.theme-dark`, a deck) reads `references/theme-contract.md` for `--map`,
+`--selectors` and `--region`.
+
+**The gate.** `scripts/verify-page.py page.html --browser` checks what this file
+lists as prose: no external or sibling resource, no leftover placeholder, no
+entity for a letter, no hex outside DESIGN.md, DE/EN pairs complete, contrast in
+every theme and language, nothing left invisible under reduced motion, no
+console error, and the page opened alone from an empty folder. A deck adds
+`--deck`. Exit 0 is the definition of done; a requested browser pass that cannot
+run (no playwright or chromium) is an error, not a pass. A page whose dark mode
+is not `html.dark`, `.theme-dark` or `[data-theme="dark"]` names its switch with
+`--dark-selector`.
+
+## Multi-page / multi-board kit: parallel builders
 A kit (e.g. 8 boards, an N-section explainer split per author) builds in three
-phases with subagents sharing a **byte-identical shell** — never one serial pass.
+phases with subagents sharing a **byte-identical shell**, never one serial pass.
 This is the proven pattern from the 12-board reference set (1 audit → 6 parallel
 builders on a shared CSS contract → 1 adversarial review).
 
-**Phase 0 — Convention audit (one agent, blocking).** Read DESIGN.md (token SoT),
+**Phase 0: convention audit (one agent, blocking).** Read DESIGN.md (token SoT),
 SOUL.md (voice), and decide the per-page structure. Emit a **shared contract**
 every builder pastes verbatim: (a) the `:root` + `html.dark` + print token block
-(`design-to-css.py`, or the whole shell via `--shell`); (b) the base styles + theme/lang pre-paint + controllers from
+(`new-page.py` for a page, or `design-to-css.py --shell`); (b) the base styles + theme/lang pre-paint + controllers from
 `shell.html`; (c) the print block; (d) the CSS for the section blocks the kit uses.
-This contract is the *only* coupling between builders — it is what guarantees the
+This contract is the *only* coupling between builders: it is what guarantees the
 kit looks like one set.
 
-**Phase 1 — Parallel builders (N agents, one message).** Each agent owns exactly
+**Phase 1: parallel builders (N agents, one message).** Each agent owns exactly
 one output file and gets: the shared contract (paste-verbatim), its page's source
 data, and which section blocks to compose. Builders never edit each other and
-never re-derive tokens/toggles — they assemble blocks and author the DE/EN
-dual-span content. Spawn via the `Task` tool / cmux workspaces; emit all calls in
+never re-derive tokens/toggles: they assemble blocks and author the DE/EN
+dual-span content. Spawn them with the `Agent` tool (or one terminal tab each); emit all calls in
 one message so they run concurrently.
 
-**Phase 2 — Adversarial review (one agent, blocking).** Prompt posture:
-*"Assume NOTHING is intentional — find real mistakes."* Stratify P0/P1/P2, every
+**Phase 2: adversarial review (one agent, blocking).** Prompt posture:
+*"Assume NOTHING is intentional, find real mistakes."* Stratify P0/P1/P2, every
 finding = location + concrete fix, no praise. Check against four sources:
-1. **Factual fidelity** vs the source data — list every divergence; any field with
+1. **Factual fidelity** vs the source data: list every divergence; any field with
    no source gets an explicit caveat, never silently kept (verify-before-claim).
 2. **DESIGN.md**: no Google Fonts; every hex value in the page declared in the
    DESIGN.md front matter; type roles as DESIGN.md sets them (face, weight, size);
    no gradient unless DESIGN.md allows one; 1px hairlines; readable token contrast
    in **both** light and dark.
-3. **SOUL.md** — no hero-arc, no hype words, no marketing slogans; the user is
+3. **SOUL.md:** no hero-arc, no hype words, no marketing slogans; the user is
    the sender (recipients in 3rd person, never addressed directly).
-4. **HTML correctness** — balanced tags; `grid-template-columns` count matches
+4. **HTML correctness:** balanced tags; `grid-template-columns` count matches
    child count; theme toggle (localStorage + T) **and** lang toggle (localStorage +
    L) present and working; anchors resolve; `prefers-reduced-motion` disables motion.
 
-**Phase 3 — Integrate (orchestrator).** Fix all P0+P1; write the `index.html`
+**Phase 3: integrate (orchestrator).** Fix all P0+P1; write the `index.html`
 launcher (card grid + "which page for which meeting"); render every page light+dark
 and DE+EN; document in `work/tasks/<slug>/STATUS.md`; commit scope-split (the
 template/script are CORE/promotable; the generated per-document HTML is USER-tier
-under `work/`, kept out of any shared/upstream repo — see
+under `work/`, kept out of any shared/upstream repo, see
 [`rules/promote-safety.md`](../../../rules/promote-safety.md)).
 
-## Data-driven kits — build script, not hand-HTML
-When a dataset exists (JSON/YAML/board export), don't hand-write the HTML — fill a
+## Data-driven kits: build script, not hand-HTML
+When a dataset exists (JSON/YAML/board export), don't hand-write the HTML: fill a
 `{{placeholder}}` copy of the shell with a deterministic single-pass build script
 (`html.escape` every injected value, `ensure_ascii=False` so umlauts stay native
 UTF-8). Output is then reproducible and consistent across regenerations. Model:
@@ -83,9 +110,9 @@ UTF-8). Output is then reproducible and consistent across regenerations. Model:
 
 **Behaviour**
 - Light/dark toggle (button + T + localStorage + anti-FOUC pre-paint + OS default
-  when unset) and DE/EN toggle (button + L + localStorage) ship on every page —
+  when unset) and DE/EN toggle (button + L + localStorage) ship on every page:
   they're the shell defaults; don't reinvent them.
-- Single-file, offline, zero external dependencies — even QR/charts from bundled or
+- Single-file, offline, zero external dependencies, even QR/charts from bundled or
   inline code. Footer documents source path + regenerate command + key hints.
 - `prefers-reduced-motion` cleanly kills all motion; print/PDF is first-class (hide
   chrome, force reveals visible, force light palette regardless of theme). A page
@@ -95,7 +122,7 @@ UTF-8). Output is then reproducible and consistent across regenerations. Model:
 **Colour = meaning**
 - Page chrome stays DESIGN.md neutrals + the brand accent. Semantic
   lens/actor colours are the only "colour carries meaning" exception and always
-  ship a legend. Status reads by **shape** (`● ◐ ✗ –`), colour second.
+  ship a legend. Status reads by **shape** (`● ◐ ✗`), colour second.
 - De-emphasis = full-contrast text + a tag, never opacity-dimming.
 
 **Voice & content (SOUL.md)**
@@ -105,15 +132,15 @@ UTF-8). Output is then reproducible and consistent across regenerations. Model:
 - Verify-before-claim: every generated fact traces to a source or sits under an
   explicit caveat. Never keep an absent-from-source field silently.
 - **Language:** default to the conversation language; author DE **and** EN as
-  first-class equals. Repo/OSS-shipped artifacts must be English regardless — the
+  first-class equals. Repo/OSS-shipped artifacts must be English regardless; the
   lang toggle must never assume German is the base. **Any string JS writes at
   runtime breaks the pure-CSS swap** (it has no sibling to swap with), so emit
   both siblings instead. Punctuation conventions and the user's style rules apply
   to runtime strings exactly as they do to authored ones.
 
-**UTF-8** — native umlauts/€/—/… in all authored text; never HTML-entities or ASCII
+**UTF-8:** native umlauts, €, … in all authored text; never HTML-entities or ASCII
 substitutes for content. (The `&rarr;`/`&darr;` arrow *glyphs* are a deliberate icon
-choice, not text content — those are fine.)
+choice, not text content, so those are fine.)
 
 **Accessibility baseline**
 - `:focus-visible` ring on every interactive element; toggles are real `<button>`s
@@ -128,8 +155,13 @@ choice, not text content — those are fine.)
 Run this before handing over any page, on top of the quality bar above. Every
 item is checked in the rendered page, not inferred from the source.
 
-- **Touch targets:** every interactive element is at least 44x44 CSS px, with
-  enough spacing that neighbours are not hit by mistake.
+- **The gate is green:** `scripts/verify-page.py page.html --browser` (and
+  `--deck` for a deck) exits 0. It measures contrast, both languages and the
+  offline load; the items below are what it cannot see.
+
+- **Touch targets:** where a finger is the pointer (`@media (pointer:coarse)`),
+  every interactive element is at least 44x44 CSS px, with enough spacing that
+  neighbours are not hit by mistake. A mouse keeps the compact controls.
 - **Contrast, both themes:** body text at least 4.5:1, secondary text and large
   text at least 3:1, borders and interaction states distinguishable. Test light
   and dark separately; one theme never proves the other.
@@ -152,13 +184,48 @@ item is checked in the rendered page, not inferred from the source.
 
 ---
 
+## Migrating an older page
+
+Pages assembled before the language swap changed carry the old swap block,
+which forced `display:block` on every active `[data-de]` / `[data-en]` and then
+re-fixed inline tags one by one (`li` and `td` pairs rendered as blocks). Such a
+page is self-contained and keeps working as it is; migrate it only when it is
+edited anyway. Replace that whole block in its `<style>` with the two rules for
+its default language, and delete any per-tag inline override that only existed
+to repair it. The `:not()` keeps an element that carries both attributes (the
+value form `data-de="Start" data-en="Start"`, or the empty form) visible in
+both languages, as the old block did.
+
+English default:
+
+```css
+:root:not([data-lang="de"]) [data-de]:not([data-en]){display:none}
+:root[data-lang="de"] [data-en]:not([data-de]){display:none}
+```
+
+German default:
+
+```css
+:root:not([data-lang="en"]) [data-en]:not([data-de]){display:none}
+:root[data-lang="en"] [data-de]:not([data-en]){display:none}
+```
+
+Edit the block in place. Do not regenerate a finished page with a builder's
+`--force`: that rewrites the whole file and discards every hand edit, the
+model of a simulation included. Never keep both blocks in one page. After
+migrating, run `scripts/verify-page.py page.html --browser` (it reports
+`both-languages` and `lang-hidden`) and look at one `li` and one `td` pair in
+each language.
+
+---
+
 ## Optional: portability into a design tool (not a requirement)
 A clean, flat html-canvas page also imports reasonably into Figma via
-`html.to.design` — useful, but **not** a goal that should shape the design. If a
+`html.to.design`: useful, but **not** a goal that should shape the design. If a
 specific deliverable is *meant* to become an editable Figma frame, keep that one
 page flat: solid fills + 1px borders instead of shadows/gradients, real arrow/divider
 elements instead of `::before`/`::after`, layout via flex/grid+gap instead of
 `position:absolute`, and light as the default (the dark toggle is browser-only and
-ignored on import). That's a per-deliverable choice you make when asked — the skill
+ignored on import). That's a per-deliverable choice you make when asked; the skill
 itself optimizes for good HTML first; importability is a side benefit of clean,
 flat markup, never the deciding constraint.

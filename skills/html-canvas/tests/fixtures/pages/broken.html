@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Broken page</title>
+<script src="https://cdn.example.test/lib.js"></script>
+<style>
+/* design-tokens:begin */
+:root{ --ink:CanvasText; --surface:Canvas; }
+/* design-tokens:end */
+body{background:var(--surface);color:var(--ink)}
+:root:not([data-lang="de"]) [data-de]:not([data-en]){display:none}
+:root[data-lang="de"] [data-en]:not([data-de]){display:none}
+</style>
+</head>
+<body>
+<main class="wrap"><h1><span data-de>Kaputt</span><span data-en>Broken</span></h1></main>
+</body>
+</html>
