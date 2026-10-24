@@ -1,10 +1,11 @@
 ---
-summary: "Channels — messaging integration concept, channel types, schema overview. Operations live in the channel skill; scheduled jobs in /schedule."
+summary: "Channels — messaging integration concept, channel types, schema overview. Operations live in the channel skill; scheduled messages in /schedule, other jobs in /workload."
 type: guide
-last_updated: 2026-06-11
+last_updated: 2026-10-24
 related:
   - ../skills/channel/SKILL.md
   - ../skills/schedule/SKILL.md
+  - ../skills/workload/SKILL.md
   - ../infra/channels/_template.yaml
 ---
 
@@ -59,8 +60,11 @@ status: active               # pending | active | paused | disabled
 
 Inventory, health checks, deploy, start/stop live in the `channel` skill
 ([`skills/channel/SKILL.md`](../skills/channel/SKILL.md)). Scheduled
-messages and cron/launchd/systemd jobs are a separate concern owned by the
-`/schedule` skill ([`skills/schedule/SKILL.md`](../skills/schedule/SKILL.md)).
+messages are a separate concern owned by the `/schedule` skill
+([`skills/schedule/SKILL.md`](../skills/schedule/SKILL.md)). Any other
+cron/launchd/systemd job on a machine is a workload, owned by `/workload`
+([`skills/workload/SKILL.md`](../skills/workload/SKILL.md),
+[`docs/workloads.md`](workloads.md)).
 
 ## Setup
 
