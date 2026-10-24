@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# Contract for the pre-commit ALWAYS-ON gate (f).
+# Contract for the pre-commit ALWAYS-ON gate (f), its work/ edge surface, and the cockpit gate (i).
 #
 # The gate is a shell `&&`/`||` chain with three branches per guard: guard
 # present and passing (silent), present and failing (warn), absent (silent, and
@@ -46,10 +46,29 @@ echo "$out" | grep -q "EDGES" && fail "an absent guard produced a warning"
 # 4. the gate does not fire for a commit that touches no always-on surface
 setup
 printf 'import sys\nsys.exit(1)\n' > scripts/check-edges.py
+mkdir -p docs && echo "note" > docs/x.md
+git add docs/x.md
+out=$(GIT_DIR=.git sh "$HOOK" 2>&1 || true)
+echo "$out" | grep -q "EDGES" && fail "the gate fired for a commit outside the surface"
+
+# 4b. a deletion under work/ is an edge surface: a task dir that other entries
+# point at leaves dead edges behind, and work/ is where that happens most
+setup
+mkdir -p work/streams/s && echo "status: doing" > work/streams/s/STATUS.md
+git add -A && git commit -qm "a stream" --no-verify
+printf 'import sys\nsys.exit(1)\n' > scripts/check-edges.py
+git rm -rq work/streams/s
+out=$(GIT_DIR=.git sh "$HOOK" 2>&1 || true)
+echo "$out" | grep -q "EDGES" || fail "a deletion under work/streams/ with dead edges produced no warning"
+
+# 4c. ... but a work/ commit runs ONLY the edge check, so an ordinary work
+# commit does not pay for the whole always-on gate
+setup
+printf 'import sys\nsys.exit(1)\n' > scripts/check-reachability.py
 mkdir -p work/tasks/x && echo "note" > work/tasks/x/STATUS.md
 git add work/tasks/x/STATUS.md
 out=$(GIT_DIR=.git sh "$HOOK" 2>&1 || true)
-echo "$out" | grep -q "EDGES" && fail "the gate fired for a commit outside the surface"
+echo "$out" | grep -q "REACH" && fail "a work/ commit ran the whole always-on gate"
 
 # 5. warn-only: the hook still exits 0 with a failing guard
 setup
@@ -80,4 +99,4 @@ git add work/tasks/x/STATUS.md
 out=$(GIT_DIR=.git sh "$HOOK" 2>&1 || true)
 echo "$out" | grep -q "COCKPIT" && fail "the cockpit gate fired for a commit outside the cockpit"
 
-echo "test-precommit-guards: 7 assertions pass"
+echo "test-precommit-guards: 9 assertions pass"

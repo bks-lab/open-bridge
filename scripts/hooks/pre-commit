@@ -193,18 +193,31 @@ if echo "$STAGED" | grep -Eq '^work/(tasks|streams|done)/' && [ -f scripts/gen-b
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# (f) ALWAYS-ON gate — the four context guards, on the one branch CI never sees.
+# (f) ALWAYS-ON gate — the five context guards, where CI may never run.
 #
-# `validate.yml` triggers on `main` only. Every instance works on `user/*`, so
-# in a downstream tree these guards run when somebody types the command and
-# never otherwise. That is the difference between having a guard and running
-# one, and it went unnoticed here until an audit went looking: a whole family of
-# checks, green in upstream CI, unenforced in every tree they were written for.
+# `validate.yml` does trigger on `user/**` as well as `main`, but only where a
+# runner exists: a fork with Actions disabled, an instance whose CI is off
+# (billing, a manual disable) or a tree with no remote at all runs none of it.
+# There these guards run when somebody types the command and never otherwise.
+# That is the difference between having a guard and running one, and it went
+# unnoticed until an audit went looking: a whole family of checks, green in
+# upstream CI, unenforced in the trees they were written for.
 #
 # Warn-only like everything else in this file, and gated on the surface being
 # touched, so an ordinary work commit pays nothing. Measured on a live instance:
-# 2.6 s for all four when they do run.
+# 2.6 s for all of them when they do run.
+#
+# work/ is an EDGE surface only. Task and stream dirs are edge targets
+# (`bridge_refs:`, `*_ref:`), so moving or deleting one leaves dead references
+# behind, and that is the path where it happened. But work/ is staged by almost
+# every commit, so it buys the edge check alone (well under a second), not the
+# whole gate.
 SURFACE='^(context-budget.*\.yaml|ecosystem.*\.yaml|CLAUDE\.md|AGENTS\.md|identity/|infra/|workflow/|protocols/standing-orders/|skills/|\.claude/agents/)'
+EDGE_SURFACE='^work/(tasks|streams|done)/'
+if ! echo "$STAGED" | grep -Eq "$SURFACE" && echo "$STAGED" | grep -Eq "$EDGE_SURFACE"; then
+  [ -f scripts/check-edges.py ] && { python3 scripts/check-edges.py >/dev/null 2>&1 ||
+    warn "⚠ EDGES: a moved or deleted task/stream left a reference dangling — python3 scripts/check-edges.py (--fix rewrites a KIND move)"; }
+fi
 if echo "$STAGED" | grep -Eq "$SURFACE"; then
   # Each is skipped when absent: a fork that has not adopted one is not failing
   # a check about a file it never took.
@@ -226,10 +239,10 @@ fi
 # Same insight as (f) above: no workflow runs inside an instance, so the
 # commit seam is the only automatic gate a declaration meets.
 #
-# WHY IT IS HERE AND NOT ONLY IN CI: every workflow in this repository triggers
-# on `main` only, and instance work happens on `user/*`. A declaration that
-# drifts from the schema would therefore meet no gate at all until somebody
-# typed `workload validate` by hand. Live declarations had exactly that status
+# WHY IT IS HERE AND NOT ONLY IN CI: an instance often has no CI that runs
+# (Actions off on the fork, a disabled workflow, no remote runner), and then a
+# declaration that drifts from the schema meets no gate at all until somebody
+# types `workload validate` by hand. Live declarations had exactly that status
 # before this gate existed.
 #
 # WARN and not block, deliberately: a broken declaration does not reach a
