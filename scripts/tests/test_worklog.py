@@ -319,11 +319,19 @@ def test_rows_under_another_days_block_are_found():
     assert found == {"12.10": {"2026-10-13": 1, "2026-10-14": 1}}
 
 
-def test_check_names_misfiled_rows(tmp_path, capsys):
+def test_check_placement_names_misfiled_rows(tmp_path, capsys):
     root = _roll_tree(tmp_path, log=MISFILED)
-    assert wl.main(["--repo-root", str(root), "--check", "--today", "2026-10-14"]) == 1
+    assert wl.main(["--repo-root", str(root), "--check-placement", "--today", "2026-10-14"]) == 1
     out = capsys.readouterr().out
     assert "2 row(s)" in out and "12.10" in out
+
+
+def test_check_ignores_misfiled_rows(tmp_path, capsys):
+    """A session past midnight files tomorrow's rows under today. That is
+    cosmetic; the audit signal is the unarchived period and must not drown."""
+    root = _roll_tree(tmp_path, log=MISFILED)
+    assert wl.main(["--repo-root", str(root), "--check", "--today", "2026-10-14"]) == 0
+    assert "row(s)" not in capsys.readouterr().out
 
 
 # --------------------------------------------------------- the append path --
@@ -370,3 +378,85 @@ def test_append_creates_a_missing_log(tmp_path):
                     "--what", "first", "--at", "2026-10-12 11:00"]) == 0
     text = (tmp_path / "work" / "log.md").read_text(encoding="utf-8")
     assert "12.10" in text and "| first |" in text
+
+
+def test_append_folds_a_multiline_what_into_one_row(tmp_path):
+    """Free text from a hook must not forge a heading or break the table."""
+    root = _roll_tree(tmp_path, log=_day("Mon", "2026-10-12", "monday"))
+    wl.main(["--repo-root", str(root), "--append", "--context", "bri\ndge",
+             "--what", "first line\r\n## Fri 01.01\nlast", "--at", "2026-10-12 11:00"])
+    text = (root / "work" / "log.md").read_text(encoding="utf-8")
+    assert [ln for ln in text.splitlines() if ln.startswith("## ")] == ["## Mon 12.10"]
+    rows = [ln for ln in text.splitlines() if ln.startswith("| 2026-10-12 11:00")]
+    assert rows == ["| 2026-10-12 11:00 | 📋 | bri dge | first line ## Fri 01.01 last |"]
+
+
+PINNED = (
+    "## Mon 12.10\n\n"
+    "| 2026-10-12 10:00 | ok | ctx | monday |\n\n"
+    "## Pinned notes\n\n"
+    "| Note | Where |\n|---|---|\n| keep | here |\n"
+)
+
+
+def test_append_stays_out_of_a_pinned_section_after_the_day(tmp_path):
+    root = _roll_tree(tmp_path, log=PINNED)
+    wl.main(["--repo-root", str(root), "--append", "--context", "bridge",
+             "--what", "second", "--at", "2026-10-12 11:00"])
+    text = (root / "work" / "log.md").read_text(encoding="utf-8")
+    day, pinned = text.split("## Pinned notes")
+    assert "| second |" in day
+    assert "| second |" not in pinned
+
+
+def test_append_rejects_a_malformed_at(tmp_path, capsys):
+    root = _roll_tree(tmp_path, log=_day("Mon", "2026-10-12", "monday"))
+    with pytest.raises(SystemExit) as exc:
+        wl.main(["--repo-root", str(root), "--append", "--context", "bridge",
+                 "--what", "x", "--at", "2026-10-14"])
+    assert exc.value.code == 2
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def _with_template(root: Path) -> Path:
+    (root / "work" / "templates").mkdir(parents=True, exist_ok=True)
+    (root / "work" / "templates" / "day.md").write_text(
+        "## {Weekday} DD.MM\n\n<details open>\n<summary>Worklog (0)</summary>\n\n"
+        "| Timestamp | Glyph | Context | What |\n|---|---|---|---|\n\n</details>\n",
+        encoding="utf-8")
+    return root
+
+
+def test_a_backdated_block_opens_collapsed(tmp_path):
+    root = _with_template(_roll_tree(tmp_path, log=_day("Mon", "2026-10-12", "monday")))
+    wl.main(["--repo-root", str(root), "--append", "--context", "bridge",
+             "--what", "late", "--at", "2026-10-13 09:00", "--today", "2026-10-20"])
+    text = (root / "work" / "log.md").read_text(encoding="utf-8")
+    assert "<details>" in text and "<details open>" not in text
+
+
+def test_todays_new_block_stays_open(tmp_path):
+    root = _with_template(_roll_tree(tmp_path, log=_day("Mon", "2026-10-12", "monday")))
+    wl.main(["--repo-root", str(root), "--append", "--context", "bridge",
+             "--what", "now", "--at", "2026-10-13 09:00", "--today", "2026-10-13"])
+    assert "<details open>" in (root / "work" / "log.md").read_text(encoding="utf-8")
+
+
+def test_a_new_block_keeps_a_newest_first_log_in_order(tmp_path):
+    log = _day("Wed", "2026-10-14", "wednesday") + _day("Mon", "2026-10-12", "monday")
+    root = _roll_tree(tmp_path, log=log)
+    wl.main(["--repo-root", str(root), "--append", "--context", "bridge",
+             "--what", "tuesday", "--at", "2026-10-13 09:00"])
+    text = (root / "work" / "log.md").read_text(encoding="utf-8")
+    heads = [ln[-5:] for ln in text.splitlines() if ln.startswith("## ")]
+    assert heads == ["14.10", "13.10", "12.10"]
+
+
+def test_a_new_block_keeps_a_chronological_log_in_order(tmp_path):
+    log = _day("Mon", "2026-10-12", "monday") + _day("Wed", "2026-10-14", "wednesday")
+    root = _roll_tree(tmp_path, log=log)
+    wl.main(["--repo-root", str(root), "--append", "--context", "bridge",
+             "--what", "thursday", "--at", "2026-10-15 09:00"])
+    text = (root / "work" / "log.md").read_text(encoding="utf-8")
+    heads = [ln[-5:] for ln in text.splitlines() if ln.startswith("## ")]
+    assert heads == ["12.10", "14.10", "15.10"]

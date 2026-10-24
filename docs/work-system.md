@@ -176,6 +176,13 @@ How often that roll happens is configurable:
 The same key drives `/briefing`'s "archive overdue" warning, so the prompt and
 the archiver can never disagree. Leaving it unset behaves exactly as before.
 
+**Choosing one is a context trade, not a filing preference.** Session start
+reads only the recent slice, but `/briefing` and `/archive` read `log.md` in
+full, so the cadence sets how much history each of those runs loads. A rough
+guide: at ~13 rows on an active day and ~250 bytes a row, a month of daily work
+is ~16k tokens per full read, a year ~190k. Pick the longest cadence whose
+loaded size you are willing to pay for on every briefing.
+
 ### Rollover detection
 
 `/archive` runs on request, so a reminder that only prose carried went quiet once
@@ -188,14 +195,11 @@ Neither archives: `/archive` distils memory first and asks before it writes. The
 period arithmetic is `scripts/archive-buckets.py`'s, the plan `/archive` itself
 follows, so the warning and the archiver cannot disagree.
 
-`--check` also names rows filed under another day's block. Every row carries
-its own date, so a Tuesday row under the Monday heading is detectable.
-
-**Choosing one is a context trade, not a filing preference.** `log.md` is read
-in full at every session start, so the cadence sets how much history is loaded
-each time. A rough guide: at ~13 rows on an active day and ~250 bytes a row, a
-month of daily work is ~16k tokens per session, a year ~190k. Pick the longest
-cadence whose loaded size you are willing to pay for on every single session.
+`--check-placement` names rows filed under another day's block, with exit 1.
+Every row carries its own date, so a Tuesday row under the Monday heading is
+detectable. It stays apart from `--check`: a session past midnight files
+tomorrow's rows under today, which is cosmetic and must not drown the archive
+signal.
 
 ### Distillation — archiving is not forgetting
 
@@ -239,9 +243,10 @@ Conventions:
   — do not emit it.
 - **One write path:** `python3 scripts/worklog.py --append --context <tag> --what
   "<what + why>"` (optional `--glyph`, `--at 'YYYY-MM-DD HH:MM'`) puts the row into
-  the block of its own date and opens that block when it is missing. It places
-  rows with the same code `task.py` and `/briefing` use, so a day never ends up
-  under yesterday's heading.
+  the block of its own date and opens that block when it is missing, in the
+  log's own order. The day ends at the next `## ` heading, so a pinned section
+  never takes the row, and pipes and line breaks in the text are folded. Inside
+  the day it places rows with the code `task.py` and `/briefing` use.
 - **Header `## {Weekday} DD.MM`** (locale weekday name + `DD.MM`, no separators,
   no week suffix). `/archive` and `/briefing` parse exactly this as `^## \S+ DD.MM`
   and derive any date/CW from `DD.MM`, never from the weekday name — `## 2026-05-21 — Thursday`

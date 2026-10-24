@@ -38,14 +38,17 @@ for an audit. Neither archives: `/archive` distils memory and asks before it
 writes, so naming the debt is the whole job here. The period arithmetic is
 `scripts/archive-buckets.py`'s, never a second copy.
 
-`--check` also names rows filed under another day's block. Every row self-dates,
-so a Tuesday row under the Monday heading is detectable, and it is what a log
-written by hand turns into after a few days without a fresh block.
+`--check-placement` names rows filed under another day's block. Every row
+self-dates, so a Tuesday row under the Monday heading is detectable. It is kept
+apart from `--check` on purpose: a session past midnight files tomorrow's rows
+under today, which is cosmetic, and must not drown the archive signal.
 
 THE WRITE PATH. `--append --context C --what W` puts one row into the block of
-the row's own date and opens that block when it is missing. Row placement is
-`scripts/briefing.py`'s `log_row`, the same code `task.py` and the briefing use,
-so there is one placement rule and not three.
+the row's own date and opens that block when it is missing, in the log's own
+order. The day ends at the next `## ` heading of any kind, so a pinned section
+never takes the row. Inside the day, placement is `scripts/briefing.py`'s
+`log_row`, the same code `task.py` and the briefing use. Pipes and line breaks
+in the text are folded, so free text can never forge a heading.
 
     python3 scripts/worklog.py --check
     python3 scripts/worklog.py --append --context bridge --what "decided X, because Y"
@@ -237,18 +240,81 @@ def misfiled_notice(found: dict) -> str:
 
 # ------------------------------------------------------------- the append --
 
+def _cell(value: str) -> str:
+    """One table cell: a pipe would split it and a line break would end the row,
+    so free text from a hook can never forge a heading or a second row."""
+    return " ".join(value.replace("|", "/").splitlines()).strip()
+
+
+def _place_block(lines: list[str], block: list[str], key: tuple[int, int]) -> list[str]:
+    """Insert a new day block where its date belongs, in the log's own direction.
+
+    Newest first (the first heading is later than the last) puts it before the
+    first older day, otherwise before the first later day, and at the end when
+    there is none. Dates carry no year, so a log spanning New Year can misplace
+    one block; the row inside it is still right.
+    """
+    heads = [(i, (int(m.group(2)), int(m.group(1))))
+             for i, m in ((i, DAY_HEADING.match(ln)) for i, ln in enumerate(lines)) if m]
+    newest_first = len(heads) >= 2 and heads[0][1] > heads[-1][1]
+    at = next((i for i, k in heads if (k < key if newest_first else k > key)), None)
+    if at is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        return lines + ([""] if lines else []) + block
+    return lines[:at] + block + [""] + lines[at:]
+
+
 def append_row(root: Path, at: _dt.datetime, context: str, what: str,
-               glyph: str = DEFAULT_GLYPH) -> str:
-    """One row into the block of `at`'s day, opening that block when it is missing."""
+               glyph: str = DEFAULT_GLYPH, today: _dt.date | None = None) -> str:
+    """One row into the block of `at`'s day, opening that block when it is missing.
+
+    The day's range ends at the next `## ` heading of any kind, as in
+    `parse_blocks`, so a pinned section after the day never takes the row.
+    Inside the range, placement is `briefing.log_row`'s.
+    """
     b = _sibling("_briefing_for_worklog", "briefing.py")
     log = root / LOG_PATH
     text = log.read_text(encoding="utf-8") if log.is_file() else ""
-    row = (f"| {at:%Y-%m-%d %H:%M} | {glyph} | {context.replace('|', '/')} | "
-           f"{what.replace('|', '/')} |")
-    new = b.log_row(text, at, row, row, b._new_day_block(root, at, b._weekday(at)))
+    row = f"| {at:%Y-%m-%d %H:%M} | {_cell(glyph)} | {_cell(context)} | {_cell(what)} |"
+    lines = text.rstrip("\n").split("\n") if text.strip() else []
+    want = (f"{at:%d}", f"{at:%m}")
+
+    def find() -> int | None:
+        return next((i for i, ln in enumerate(lines)
+                     if (m := DAY_HEADING.match(ln)) and m.groups() == want), None)
+
+    hit = find()
+    if hit is None:
+        block = b._new_day_block(root, at, b._weekday(at))
+        if at.date() != (today or _dt.date.today()):
+            block = block.replace("<details open>", "<details>")
+        lines = _place_block(lines, block.split("\n"), (at.month, at.day))
+        hit = find()
+    end = next((j for j in range(hit + 1, len(lines)) if lines[j].startswith("## ")), len(lines))
+    tail = 0
+    while end - tail > hit + 1 and not lines[end - tail - 1].strip():
+        tail += 1
+    segment = "\n".join(lines[hit:end - tail])
+    placed = b.log_row(segment, at, row, row, segment).rstrip("\n").split("\n")
+    lines = lines[:hit] + placed + lines[end - tail:end] + lines[end:]
     log.parent.mkdir(parents=True, exist_ok=True)
-    log.write_text(new if text else new.lstrip("\n"), encoding="utf-8")
+    log.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
     return row
+
+
+def _minute(value: str) -> _dt.datetime:
+    try:
+        return _dt.datetime.strptime(value, "%Y-%m-%d %H:%M")
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected 'YYYY-MM-DD HH:MM', got {value!r}") from None
+
+
+def _date(value: str) -> _dt.date:
+    try:
+        return _dt.date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected 'YYYY-MM-DD', got {value!r}") from None
 
 
 def main(argv=None):
@@ -260,7 +326,12 @@ def main(argv=None):
     parser.add_argument(
         "--check",
         action="store_true",
-        help="exit 1 while a closed period is unarchived or a row sits under another day",
+        help="exit 1 while the log holds a period work.archive_cadence has closed",
+    )
+    parser.add_argument(
+        "--check-placement",
+        action="store_true",
+        help="exit 1 while a row sits under another day's block (cosmetic, kept apart)",
     )
     parser.add_argument(
         "--append",
@@ -270,8 +341,8 @@ def main(argv=None):
     parser.add_argument("--context", help="--append: the repo or area tag")
     parser.add_argument("--what", help="--append: what happened, and why")
     parser.add_argument("--glyph", default=DEFAULT_GLYPH, help="--append: activity glyph")
-    parser.add_argument("--at", help="--append: 'YYYY-MM-DD HH:MM', default now")
-    parser.add_argument("--today", help="YYYY-MM-DD, for tests")
+    parser.add_argument("--at", type=_minute, help="--append: 'YYYY-MM-DD HH:MM', default now")
+    parser.add_argument("--today", type=_date, help="YYYY-MM-DD, for tests")
     parser.add_argument(
         "--to-string",
         action="store_true",
@@ -289,9 +360,8 @@ def main(argv=None):
     if args.append:
         if not args.context or not args.what:
             parser.error("--append needs --context and --what")
-        at = (_dt.datetime.strptime(args.at, "%Y-%m-%d %H:%M") if args.at
-              else _dt.datetime.now().replace(second=0, microsecond=0))
-        sys.stdout.write(append_row(root, at, args.context, args.what, args.glyph) + "\n")
+        at = args.at or _dt.datetime.now().replace(second=0, microsecond=0)
+        sys.stdout.write(append_row(root, at, args.context, args.what, args.glyph, args.today) + "\n")
         return 0
 
     if not path.is_file():
@@ -299,13 +369,15 @@ def main(argv=None):
         return "" if args.to_string else 0
 
     text = path.read_text(encoding="utf-8", errors="replace")
-    today = _dt.date.fromisoformat(args.today) if args.today else _dt.date.today()
+    today = args.today or _dt.date.today()
 
-    if args.check:
-        status = archive_status(text, _cadence(root), today)
-        found = misfiled_rows(text)
-        report = rollover_notice(status) + misfiled_notice(found)
-        sys.stdout.write(report or "work/log.md: nothing closed left unarchived, every row under its own day\n")
+    if args.check or args.check_placement:
+        report = ""
+        if args.check:
+            report += rollover_notice(archive_status(text, _cadence(root), today))
+        if args.check_placement:
+            report += misfiled_notice(misfiled_rows(text))
+        sys.stdout.write(report or "work/log.md: nothing to report\n")
         return 1 if report else 0
 
     header, blocks = parse_blocks(text)
