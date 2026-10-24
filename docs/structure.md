@@ -157,10 +157,10 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `work/` | USER | Tasks + logs: `tasks/` (finite) · `streams/` (long-running) · `done/YYYY-MM/` · `inbox/` (items that need a person, [`docs/inbox.md`](inbox.md)) · `templates/` (CORE seeds) · `_learning/` · `archive/` · `imports/` |
 | `docs/` | CORE | Human-readable documentation, onboarding guides |
 | `rules/` | **Tiered by folder** | Always-on rules. `rules/*.md` = core (ship to all) · `rules/org/**` = org (ship to org overlay) · `rules/user/**` = user (local only). The folder *is* the promote tier. `validate-bridge.py` checks each rule declares a valid `scope:` (presence + allowed value) and fails a rule whose `scope:` disagrees with its folder (a hard gate in CI). Each bridge layers its own under `rules/org/`+`rules/user/`. See [`rules/knowledge-growth.md`](../rules/knowledge-growth.md). |
-| `themes/` | CORE | Vocabulary themes (`professional`, `professional-de`, `professional-fr`) |
+| `themes/` | CORE (shipped) · any other theme USER unless it declares `meta.scope` | Vocabulary themes (`professional`, `professional-de`, `professional-fr`) |
 | `trackers/` | CORE | Tracker-provider playbooks (`github.md`, `ado.md`, `gitlab.md`) |
 | `skills/` | CORE · `metadata.scope: core` (USER skills: `scope: user`; ORG: `scope: org`) | Skills with SKILL.md + references/. **Scope lives under `metadata:` (`metadata.scope`)** — skill-creator's validator only allows standard top-level keys; sub-agents keep top-level `scope:`. Hard-gated by `scripts/validate-skill-scope.py` (CI + pre-commit). It writes the per-instance tier map to `.bridge/skill-scope.md`, never into `AGENTS.md`: a table generated from the local skill tree cannot converge across instances. |
-| `scripts/` | CORE (`scope: user/private` for USER tools) | Validators + build/state tools (`validate-bridge.py`, `validate-skill-scope.py`, `scaffold-user.sh`, …). |
+| `scripts/` | CORE, **allowlisted** · any unlisted script USER | Validators + build/state tools (`validate-bridge.py`, `validate-skill-scope.py`, `scaffold-user.sh`, …). A new core script is registered in `SCRIPTS_CORE_ALLOWLIST` (`scripts/categorize-commits.py`); there is no per-script tag. |
 | `bin/` | CORE | Post-clone bootstrap: `setup` (bash · macOS/Linux/WSL) + `setup.ps1` (Windows) — repair the skills discovery symlinks. |
 | `imports/` | USER (scratch) | Generic drop-zone for external files (ephemeral, `/imports/*` gitignored except `.gitkeep`). The work-system-specific inbox is `work/imports/`. |
 | `examples/` | CORE | Complete reference instance `agency/` (full clone-and-read sample) + `bridge-deck.config.yaml.template`. |
@@ -192,11 +192,16 @@ def discover(type_singular: str, repo_root: Path | None = None) -> list[Path]:
 
 ## Scope is structural
 
-A file's tier is decided by **where it lives**, not by a tag you can forget. Three mechanisms:
-
-1. **Whole folder** — the path *is* the tier. `work/`, `imports/` = USER; `docs/`, `themes/`, `trackers/`, `scripts/`, `bin/`, `examples/`, `protocols/standing-orders/*.md` = CORE.
-2. **`_`-prefix** (cluster wrappers `identity/ infra/ workflow/`) — `_template.yaml`/`_schema.yaml` = CORE, every other instance `*.yaml` = USER.
-3. **Frontmatter, for what cannot be foldered.** Skills are flat under `skills/`, so tier lives in `metadata.scope`, hard-gated by `scripts/validate-skill-scope.py`; sub-agents in `.claude/agents/` carry a top-level `scope:`. Every `rules/*.md` also carries a top-level `scope:` that must match its folder, a required backstop checked by `scripts/validate-bridge.py`.
+A file's tier is decided by **where it lives**, not by a tag you can forget: whole
+folders (`work/` is USER, `trackers/` is CORE), the `_`-prefix inside the cluster
+wrappers (`_template.yaml`/`_schema.yaml` CORE, every other instance USER), and
+enumerated lists where a folder mixes both (`scripts/`, `agents/`, `mods/`,
+`themes/`). Frontmatter decides only for what cannot be foldered (skills, sub-agents,
+docs, themes) and for the cluster-wrapper families whose instances an overlay may
+share. The single table of scope values, which families a tag can re-tier,
+and every path rule in router order is [`extension-model.md` § Scope
+model](extension-model.md#scope-model); `scripts/tests/test_scope_docs.py` holds it and
+the Layer columns above to the router.
 
 **Rules are tiered by folder:** `rules/*.md` = core · `rules/org/**` = org · `rules/user/**` = user. Each bridge layers its own under `rules/org/` + `rules/user/` — additive, like nested AGENTS.md.
 
@@ -229,7 +234,7 @@ Mandant files are PII — they are not pushed to the OSS upstream (blocked by th
 
 CORE paths (developed on `main`):
 - `CLAUDE.md`, `README.md`, `AGENTS.md`, `DESIGN.md`
-- `docs/`, `rules/*.md` (core), `themes/`, `trackers/`, `skills/` (scope: core), `scripts/` (tooling), `bin/` (bootstrap), `examples/` (reference instance)
+- `docs/`, `rules/*.md` (core), `themes/` (shipped), `trackers/`, `skills/` (scope: core), `scripts/` (allowlisted tooling), `bin/` (bootstrap), `examples/` (reference instance)
 - `.claude/agents/` (scope: core)
 - `mods/README.md`, `mods/.claude-plugin/marketplace.json` and the shipped mod folders (`mods/cockpit-relay/`)
 - Templates and schemas in every wrapper folder:

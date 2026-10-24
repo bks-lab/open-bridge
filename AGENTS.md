@@ -236,25 +236,18 @@ recipient group. Load one when a skill or routing order references it via
 
 ## Scope — structural, not declarative
 
-Every file's tier (**core** → open-bridge · **org** → your org overlay · **user**
-→ local) is decided by **where it lives**, not a tag you can forget:
-
-1. **Whole folder** — the path *is* the tier. `work/`, `imports/`,
-   `.claude/mods/` = USER; `docs/`, `themes/`, `trackers/`, `scripts/`,
-   `protocols/standing-orders/*.md` = CORE; `mods/` = CORE, enumerated (an
-   unlisted mod is USER).
-2. **`_`-prefix** inside the cluster wrappers — `_template.yaml` / `_schema.yaml`
-   = CORE, every other `*.yaml` instance = USER.
-3. **Frontmatter**, for the two things that cannot be foldered: skills carry
-   `metadata.scope`, and every `rules/*.md` carries a top-level `scope:` matching
-   its folder. Both are hard-gated in CI. An unscoped rule silently inherits
-   `core` from its path and would leak, so the field is a required backstop, not
-   an option.
-
-**Promote routes mechanically on these inputs.** The content leak-check is the
-backstop, not the primary guard: structure is what keeps PII out of the public
-upstream. Full model with schemas:
-[`docs/extension-model.md`](docs/extension-model.md).
+Every file's tier (**core** → open-bridge · **org** → your org overlay ·
+**personal** → your own overlay · **user** → local) is decided by **where it
+lives**, not a tag you can forget: whole folders (`work/`, `imports/` USER;
+`docs/`, `trackers/` CORE), the `_`-prefix inside the cluster wrappers
+(`_template`/`_schema` CORE, every instance USER), and enumerated lists where a
+folder mixes both (`scripts/`, `agents/`, `mods/`, `themes/`). Frontmatter
+decides only what cannot be foldered (skills: `metadata.scope`) and a listed
+set of wrapper families; every `rules/*.md` carries a `scope:` matching its
+folder, hard-gated in CI. The one table of values, aliases, frontmatter
+precedence and path rules, tested against the router:
+[`docs/extension-model.md` § Scope model](docs/extension-model.md#scope-model).
+The leak-check is the backstop; structure keeps PII out of the public upstream.
 ---
 
 ## Skills (Universal)
