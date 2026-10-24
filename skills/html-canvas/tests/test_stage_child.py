@@ -133,15 +133,19 @@ def test_inside_a_stage_the_page_hides_its_own_toolbar(framed):
 
 
 def test_the_slide_sets_theme_and_language_and_nothing_is_stored(framed):
+    """One protocol: stage:theme and stage:lang, the names slide-stage.js sends."""
     frame = child(framed)
-    framed.evaluate("window.toChild({type: 'stage:look', dark: true, lang: 'de'})")
+    framed.evaluate("window.toChild({type: 'stage:theme', theme: 'dark'})")
+    framed.evaluate("window.toChild({type: 'stage:lang', lang: 'de'})")
     frame.wait_for_function("document.documentElement.classList.contains('dark')")
-    assert frame.evaluate("[document.documentElement.getAttribute('data-lang'), document.documentElement.lang]") == ["de", "de"]
-    framed.evaluate("window.toChild({type: 'stage:look', dark: false, lang: 'en'})")
+    frame.wait_for_function("document.documentElement.getAttribute('data-lang') === 'de'")
+    assert frame.evaluate("document.documentElement.lang") == "de"
+    framed.evaluate("window.toChild({type: 'stage:theme', theme: 'light'})")
+    framed.evaluate("window.toChild({type: 'stage:lang', lang: 'en'})")
     frame.wait_for_function("!document.documentElement.classList.contains('dark')")
-    assert frame.evaluate("document.documentElement.getAttribute('data-lang')") == "en"
+    frame.wait_for_function("document.documentElement.getAttribute('data-lang') === 'en'")
     assert frame.evaluate("[localStorage.getItem('html-canvas-theme'), localStorage.getItem('html-canvas-lang')]") == [None, None]
-    framed.evaluate("window.viaForeign({type: 'stage:look', dark: true})")
+    framed.evaluate("window.viaForeign({type: 'stage:theme', theme: 'dark'})")
     framed.wait_for_timeout(200)
     assert not frame.evaluate("document.documentElement.classList.contains('dark')"), "a sibling frame set the theme"
 
@@ -176,7 +180,7 @@ def test_engine_speaks_only_when_framed_and_checks_the_source():
 def test_simulation_reference_documents_every_message():
     text = (SKILL / "references" / "simulation.md").read_text("utf-8")
     assert "## Embedding in a slide: the stage contract" in text
-    for kind in ("stage:ready", "stage:maximize", "stage:key", "stage:restart", "stage:look", "event.source"):
+    for kind in ("stage:ready", "stage:maximize", "stage:key", "stage:restart", "stage:theme", "stage:lang", "event.source"):
         assert kind in text, kind
 
 

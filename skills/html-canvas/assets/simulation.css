@@ -249,3 +249,53 @@ html[data-sim-embedded="yes"] .topbar{display:none}
   .sim-feed{max-height:none;overflow:visible}
   .sim-msg,.sim-prov-card,.sim-feed__row{break-inside:avoid}
 }
+
+/* == Timeline, scenario, link, table =====================================
+   The transport row under the bar (back, scrubber, readout, copy link), the
+   scenario controls, and the state as a table. Every piece is optional markup;
+   sim-engine.js removes what the model cannot serve. */
+.sim-timeline{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 10px}
+.sim-timeline input[type="range"]{flex:1 1 220px;min-width:0;accent-color:var(--accent);margin:0}
+.sim-timeline__time{font-family:var(--font-mono);font-size:12px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.sim-link{font-family:var(--font-mono);font-size:12px;color:var(--ink);background:var(--raised);
+  border:1px solid var(--line);border-radius:var(--radius-md);padding:7px 10px;flex:1 1 100%;min-width:0}
+
+.sim-params{display:flex;flex-wrap:wrap;align-items:center;gap:10px 24px;margin:4px 0 12px;
+  font-size:13px;color:var(--muted)}
+.sim-param{display:inline-flex;align-items:center;gap:9px}
+.sim-param input[type="range"]{accent-color:var(--accent);width:140px;margin:0}
+.sim-param output{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--ink);
+  min-width:2ch;font-variant-numeric:tabular-nums}
+
+/* Two more stateful labels, built like the run button: one span per state. */
+[data-sim-copy-link] > [data-state-idle],
+[data-sim-copy-link] > [data-state-copied],
+[data-sim-copy-link] > [data-state-manual],
+[data-sim-table-toggle] > [data-state-off],
+[data-sim-table-toggle] > [data-state-on]{display:none}
+[data-sim-copy-link]:not([data-state]) > [data-state-idle],
+[data-sim-copy-link][data-state="idle"]   > [data-state-idle],
+[data-sim-copy-link][data-state="copied"] > [data-state-copied],
+[data-sim-copy-link][data-state="manual"] > [data-state-manual],
+[data-sim-table-toggle]:not([data-state]) > [data-state-off],
+[data-sim-table-toggle][data-state="off"] > [data-state-off],
+[data-sim-table-toggle][data-state="on"]  > [data-state-on]{display:inline}
+
+.sim-table-wrap{margin-top:14px;overflow-x:auto}
+.sim-table{width:100%;border-collapse:collapse;font-size:12.8px}
+.sim-table th,.sim-table td{text-align:left;vertical-align:baseline;padding:6px 10px;
+  border-bottom:1px solid var(--line-subtle)}
+.sim-table thead th{font-family:var(--font-mono);font-size:10.5px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.6px;color:var(--muted);border-bottom-color:var(--line)}
+.sim-table tbody th{font-family:var(--font-mono);font-weight:600;color:var(--ink);white-space:nowrap}
+.sim-table td{color:var(--on-surface)}
+
+@media (pointer:coarse){
+  .sim-timeline input[type="range"],.sim-param input[type="range"]{min-height:44px}
+}
+@media print{
+  .sim-timeline,[data-sim-table-toggle],.sim-link{display:none !important}
+  .sim-table-wrap{overflow:visible}
+  .sim-table tr{break-inside:avoid}
+}

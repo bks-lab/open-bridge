@@ -6,14 +6,17 @@
   archetype, and the right one whenever the interesting thing is the SEQUENCE of
   decisions rather than a flow through places.
 
-  It is also the archetype that wires the single-step button, because here one
-  step is a discrete thing a viewer can ask for: stepOnce advances exactly one
-  plan entry. Space runs, S steps, R resets.
+  It is also the archetype that wires the single-step buttons, because here one
+  step is a discrete thing a viewer can ask for: the clock's `marker` is the
+  plan index, so one step forward or back is exactly one plan entry, made of
+  the same ticks the run uses. Space runs, S or the right arrow steps, the left
+  arrow steps back, R resets. A plan entry tagged `only` belongs to one
+  scenario of the SCENARIO control.
 
       python3 skills/html-canvas/scripts/new-simulation.py \
         --archetype worklist --title "..." --out .../x.html
 
-  Edit PLAN and TXT; everything else is machinery.
+  Edit PLAN, PARAMS and TXT; everything else is machinery.
 -->
 
 <!--@style-->
@@ -27,10 +30,23 @@
 .wl-facts dd{margin:0;color:var(--ink)}
 .wl-meter-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin:16px 0 6px}
 .wl-actor{display:inline-flex;align-items:center;gap:7px}
+.wl-table{margin-top:20px}
 
 <!--@markup-->
-<p class="sim-hint" data-de>Leertaste läuft und hält. S geht einen Schritt weiter. R setzt zurück.</p>
-<p class="sim-hint" data-en>Space runs and pauses. S takes one step. R resets.</p>
+<p class="sim-hint" data-de>Leertaste läuft und hält. S oder Pfeil rechts geht einen Schritt weiter, Pfeil links einen zurück. R setzt zurück.</p>
+<p class="sim-hint" data-en>Space runs and pauses. S or the right arrow takes one step, the left arrow one back. R resets.</p>
+
+<!-- Scenario values: a PARAMS entry each, carried in the link when they differ
+     from the default, and a change resets the run. -->
+<div class="sim-params">
+  <span class="sim-param">
+    <span id="wlScenarioLabel"><span data-de>Szenario</span><span data-en>Scenario</span></span>
+    <span class="sim-seg" role="group" aria-labelledby="wlScenarioLabel" data-sim-param="scenario">
+      <button type="button" data-value="rework" aria-pressed="true"><span data-de>mit Nacharbeit</span><span data-en>with rework</span></button>
+      <button type="button" data-value="clean" aria-pressed="false"><span data-de>ohne Befund</span><span data-en>no finding</span></button>
+    </span>
+  </span>
+</div>
 
 <div class="sim-bar">
   <button class="sim-btn sim-btn--primary" type="button" data-sim-run data-state="idle">
@@ -38,6 +54,9 @@
     <span data-state-running><span data-de>Pause</span><span data-en>Pause</span></span>
     <span data-state-paused><span data-de>Weiter</span><span data-en>Continue</span></span>
     <span data-state-done><span data-de>Lauf beendet</span><span data-en>Run finished</span></span>
+  </button>
+  <button class="sim-btn" type="button" data-sim-back>
+    <span data-de>Ein Schritt zurück</span><span data-en>One step back</span>
   </button>
   <button class="sim-btn" type="button" data-sim-step>
     <span data-de>Ein Schritt</span><span data-en>One step</span>
@@ -59,6 +78,19 @@
     <span data-de>Vollbild</span><span data-en>Full view</span>
   </button>
   <div class="sim-clock"><span data-de>Schritt</span><span data-en>Step</span> <b id="stepNo">0 / 0</b></div>
+</div>
+
+<div class="sim-timeline" data-sim-timeline>
+  <input type="range" min="0" max="0" value="0" step="1" data-sim-scrub
+         aria-label="Timeline" data-aria-de="Zeitleiste" data-aria-en="Timeline">
+  <span class="sim-timeline__time" data-sim-scrub-time>00:00 / 00:00</span>
+  <button class="sim-btn" type="button" data-sim-copy-link>
+    <span data-state-idle><span data-de>Link kopieren</span><span data-en>Copy link</span></span>
+    <span data-state-copied><span data-de>Link kopiert</span><span data-en>Link copied</span></span>
+    <span data-state-manual><span data-de>Link unten markiert</span><span data-en>Link selected below</span></span>
+  </button>
+  <input class="sim-link" type="text" readonly data-sim-link hidden
+         aria-label="Link to this view" data-aria-de="Link auf diese Ansicht" data-aria-en="Link to this view">
 </div>
 
 <p class="sim-reduced-note" data-sim-reduced-note hidden>
@@ -99,6 +131,17 @@
   </section>
 </div>
 
+<!-- The plan as a table: every entry, who acts, and whether it already ran. -->
+<div class="wl-table">
+  <button class="sim-btn" type="button" data-sim-table-toggle aria-controls="wlTableBox">
+    <span data-state-off><span data-de>Plan als Tabelle zeigen</span><span data-en>Show plan as table</span></span>
+    <span data-state-on><span data-de>Tabelle ausblenden</span><span data-en>Hide table</span></span>
+  </button>
+  <div class="sim-table-wrap" id="wlTableBox" hidden>
+    <table class="sim-table" id="wlTable"></table>
+  </div>
+</div>
+
 <h2 style="margin-top:40px">
   <span data-de>Was hier Modell ist und was Bestand</span>
   <span data-en>What here is model and what is stock</span>
@@ -127,7 +170,12 @@
 <!--@script-->
 /* ===================== MODEL =====================================
    PLAN is the whole simulation. Each entry: how long it takes, who acts, what
-   the protocol says, which level it carries, and what it does to the state. */
+   the protocol says, which level it carries, and what it does to the state.
+   `only` ties an entry to one scenario; untagged entries run in every one. */
+
+var P = Sim.params({
+  scenario: { value: 'rework', options: ['rework', 'clean'] }
+});
 
 var TXT = {
   stages: {
@@ -145,7 +193,16 @@ var TXT = {
   },
   who: { a: { de: 'Entwurf', en: 'Drafting' },
          b: { de: 'Prüfung', en: 'Review' },
-         h: { de: 'Mensch',  en: 'Person' } }
+         h: { de: 'Mensch',  en: 'Person' } },
+  status: {
+    done:    { de: 'ausgeführt', en: 'done' },
+    next:    { de: 'als Nächstes', en: 'next' },
+    pending: { de: 'ausstehend', en: 'pending' }
+  },
+  cols: [
+    { de: 'Nr.', en: 'No.' }, { de: 'Wer', en: 'Who' }, { de: 'Schritt', en: 'Step' },
+    { de: 'Stufe', en: 'Level' }, { de: 'Stand', en: 'Status' }
+  ]
 };
 
 var PLAN = [
@@ -157,20 +214,23 @@ var PLAN = [
   { dur: 800,  who: 'b', level: 'info', what: { de: 'Entwurf zur Prüfung übernommen.',
       en: 'Draft taken up for review.' },
     set: function (z) { z.stage = 'review'; } },
-  { dur: 900,  who: 'b', level: 'warn', what: { de: 'Ein Befund: die Zusicherung misst nicht, was sie behauptet.',
+  { only: 'rework', dur: 900,  who: 'b', level: 'warn', what: { de: 'Ein Befund: die Zusicherung misst nicht, was sie behauptet.',
       en: 'One finding: the assertion does not measure what it claims.' },
     set: function (z) { z.findings = 1; } },
-  { dur: 700,  who: 'b', level: 'crit', what: { de: 'Nicht gefolgt. Zurück an den Entwurf mit Begründung.',
+  { only: 'rework', dur: 700,  who: 'b', level: 'crit', what: { de: 'Nicht gefolgt. Zurück an den Entwurf mit Begründung.',
       en: 'Not followed. Sent back to drafting with a reason.' },
     set: function (z) { z.verdict = 'rejected'; z.stage = 'rework'; } },
-  { dur: 1000, who: 'a', level: 'info', what: { de: 'Nachgebessert und die Zusicherung an der Naht gemessen.',
+  { only: 'rework', dur: 1000, who: 'a', level: 'info', what: { de: 'Nachgebessert und die Zusicherung an der Naht gemessen.',
       en: 'Reworked, and the assertion now measures at the seam.' },
     set: function (z) { z.tries = 2; } },
-  { dur: 800,  who: 'a', level: 'ok',   what: { de: 'Gegenprobe: der Fehler eingebaut, die Zusicherung fällt.',
+  { only: 'rework', dur: 800,  who: 'a', level: 'ok',   what: { de: 'Gegenprobe: der Fehler eingebaut, die Zusicherung fällt.',
       en: 'Counter-probe: defect reintroduced, the assertion fails.' } },
-  { dur: 900,  who: 'b', level: 'ok',   what: { de: 'Zweite Prüfung ohne Befund.',
+  { only: 'rework', dur: 900,  who: 'b', level: 'ok',   what: { de: 'Zweite Prüfung ohne Befund.',
       en: 'Second review with no finding.' },
     set: function (z) { z.stage = 'gate'; z.verdict = 'accepted'; z.findings = 0; } },
+  { only: 'clean', dur: 900, who: 'b', level: 'ok', what: { de: 'Prüfung ohne Befund.',
+      en: 'Review with no finding.' },
+    set: function (z) { z.stage = 'gate'; z.verdict = 'accepted'; } },
   { dur: 1100, who: 'h', level: 'info', what: { de: 'Zur menschlichen Freigabe vorgelegt, nicht selbst geschlossen.',
       en: 'Put to a person for release, not closed by itself.' } },
   { dur: 700,  who: 'h', level: 'ok',   what: { de: 'Freigegeben und abgelegt.',
@@ -179,13 +239,26 @@ var PLAN = [
 ];
 
 /* ===================== STATE ===================================== */
-var z, idx, rest;
+var z, idx, rest, plan;
 var feed = new Sim.Feed(document.getElementById('feed'), { max: PLAN.length, newestFirst: false });
 var feedEmpty = document.getElementById('feedEmpty');
 
 function blank() {
   z = { stage: 'idle', tries: 0, findings: 0, verdict: 'open' };
   idx = 0; rest = 600;
+  plan = PLAN.filter(function (e) { return !e.only || e.only === P.get('scenario'); });
+}
+
+/* A copy of the state and the way back, for the timeline's ring buffer. */
+function snapshot() {
+  return { z: { stage: z.stage, tries: z.tries, findings: z.findings, verdict: z.verdict },
+           idx: idx, rest: rest, feed: feed.snapshot() };
+}
+function restore(s) {
+  z = { stage: s.z.stage, tries: s.z.tries, findings: s.z.findings, verdict: s.z.verdict };
+  idx = s.idx; rest = s.rest;
+  feed.restore(s.feed);
+  feedEmpty.hidden = s.feed.length > 0;
 }
 
 function apply(entry) {
@@ -197,25 +270,36 @@ function apply(entry) {
 /* One discrete step. Returns true when the plan is exhausted, which is both the
    single-step button's answer and the clock's finish condition. */
 function once() {
-  if (idx >= PLAN.length) return true;
-  var entry = PLAN[idx];
+  if (idx >= plan.length) return true;
+  var entry = plan[idx];
   apply(entry);
   idx += 1;
   rest = entry.dur;
-  return idx >= PLAN.length;
+  return idx >= plan.length;
 }
 
 function step(dt) {
   rest -= dt;
   var guard = 0;
-  while (rest <= 0 && idx < PLAN.length && guard < 60) {
+  while (rest <= 0 && idx < plan.length && guard < 60) {
     var before = rest;
     if (once()) break;
     rest += before;          /* carry the overshoot, so speed stays honest */
     guard += 1;
   }
-  return idx >= PLAN.length && rest <= 0;
+  return idx >= plan.length && rest <= 0;
 }
+
+var table = new Sim.Table(document.getElementById('wlTable'), {
+  columns: TXT.cols,
+  rows: function () {
+    return plan.map(function (e, k) {
+      var lv = Sim.LEVELS[e.level] || Sim.LEVELS.info;
+      var st = k < idx ? 'done' : (k === idx ? 'next' : 'pending');
+      return [String(k + 1), TXT.who[e.who], e.what, { de: lv.de, en: lv.en }, TXT.status[st]];
+    });
+  }
+});
 
 /* ===================== PAINT ===================================== */
 function render() {
@@ -223,21 +307,25 @@ function render() {
   Sim.put(document.getElementById('fTries'), z.tries);
   Sim.put(document.getElementById('fFindings'), z.findings);
   Sim.put(document.getElementById('fVerdict'), TXT.verdict[z.verdict]);
-  Sim.put(document.getElementById('stepNo'), idx + ' / ' + PLAN.length);
-  var pct = Math.round(idx / PLAN.length * 100);
+  Sim.put(document.getElementById('stepNo'), idx + ' / ' + plan.length);
+  var pct = Math.round(idx / plan.length * 100);
   Sim.put(document.getElementById('fPct'), pct + ' %');
   document.getElementById('fBar').style.width = pct + '%';
+  table.render();
 }
 
 /* ===================== RUN ======================================= */
 blank();
 var clockEngine = new Sim.Clock({
   step: step,
-  stepOnce: once,
+  marker: function () { return idx; },
+  snapshot: snapshot,
+  restore: restore,
   render: render,
   reset: function () { blank(); feed.clear(); feedEmpty.hidden = false; },
   onState: function (s) { controls.state(s); }
 });
+P.bind(clockEngine);
 var controls = new Sim.Controls(clockEngine);
 controls.state('idle');
-Sim.boot(clockEngine, { note: '[data-sim-reduced-note]', autostart: 6000 });
+Sim.boot(clockEngine, { note: '[data-sim-reduced-note]', autostart: 6000, params: P });

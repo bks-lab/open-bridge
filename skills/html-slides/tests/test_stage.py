@@ -439,3 +439,35 @@ def test_theme_and_lang_are_sent_after_ready_and_on_change(open_deck):
     page.wait_for_timeout(150)
     assert len(child_msgs(page, "stageA", "stage:theme")) == n, "only a real change is sent"
     assert page.errors == []
+
+
+# --- one protocol end to end: a real simulation inside a real stage -------------------
+
+def test_a_real_simulation_in_a_stage_hides_its_toolbar_and_follows_the_deck(open_deck, tmp_path):
+    """slide-stage.js sends stage:theme and stage:lang, sim-engine.js applies them.
+
+    The child is a flow simulation assembled by html-canvas new-simulation.py, so the
+    toolbar rule in simulation.css and the child listener are the shipped ones."""
+    import subprocess
+    import sys
+    from urllib.parse import urlparse, unquote
+    built = tmp_path / "sim-flow-built.html"
+    tool = SKILL.parent / "html-canvas" / "scripts" / "new-simulation.py"
+    r = subprocess.run([sys.executable, str(tool), "--archetype", "flow", "--title", "Stage probe",
+                        "--out", str(built), "--force"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    page = open_deck(color_scheme="light")
+    deck_dir = Path(unquote(urlparse(page.url).path)).parent
+    (deck_dir / "child.html").write_text(built.read_text("utf-8"), encoding="utf-8")
+    go(page, 2)
+    wait_loaded(page, "stageA")
+    child = child_frame(page, "stageA")
+    assert child.evaluate("document.documentElement.getAttribute('data-sim-embedded')") == "yes"
+    assert child.evaluate("getComputedStyle(document.querySelector('.topbar')).display") == "none"
+    child.wait_for_function("() => !document.documentElement.classList.contains('dark')")
+    page.evaluate("() => document.documentElement.classList.add('theme-dark')")
+    child.wait_for_function("() => document.documentElement.classList.contains('dark')")
+    page.evaluate("() => document.documentElement.setAttribute('data-lang', 'de')")
+    child.wait_for_function("() => document.documentElement.getAttribute('data-lang') === 'de'")
+    assert child.evaluate("[localStorage.getItem('html-canvas-theme'), localStorage.getItem('html-canvas-lang')]") == [None, None]
+    assert page.errors == []

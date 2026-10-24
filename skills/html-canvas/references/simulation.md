@@ -45,9 +45,10 @@ asserts its anchor and the result is checked before it is written, because a
 quietly missed splice produces a page that opens fine and never runs.
 
 Then edit the `MODEL` block at the top of the last `<script>`. In the `flow`
-fragment that is the geometry constants, `ITEMS`, `D` and `TXT`; in `worklist` it
-is `PLAN` and `TXT`. Everything below the `STAGE` marker is machinery you rarely
-touch.
+fragment that is the geometry constants, `ITEMS`, `D`, `TXT` and the `Sim.params`
+block; in `worklist` it is `PLAN`, `TXT` and `Sim.params`. Everything below the
+`STAGE` marker is machinery you rarely touch, except `snapshot()` / `restore()`
+when the model grows a new piece of state (see "Timeline" below).
 
 ---
 
@@ -75,19 +76,26 @@ to move between stations. **exchange** uses `.sim-thread` / `.sim-msg` from
 One global, `Sim`. Full source with comments: `assets/sim-engine.js`.
 
 ```js
+var P = Sim.params({ approach: { value: 3, min: 1, max: 5 } });   // OPTIONAL, read from the hash
 var clock = new Sim.Clock({
   step:      function (dt) { /* advance the model by dt ms; return true when done */ },
   render:    function () { /* paint; called once per frame, not once per step */ },
   reset:     function () { /* back to the starting state */ },
-  stepOnce:  function () { /* OPTIONAL: one discrete step; return true when done */ },
+  marker:    function () { /* OPTIONAL: a value that changes once per discrete step */ },
+  snapshot:  function () { /* OPTIONAL: a COPY of the model state */ },
+  restore:   function (s) { /* OPTIONAL: the way back to that copy */ },
+  seed:      42,                                   // OPTIONAL: clock.random, reseeded on reset
   onState:   function (s) { controls.state(s); }   // idle | running | paused | done
 });
-var controls = new Sim.Controls(clock);            // buttons + Space/S/R/1/2/3
-Sim.boot(clock, { note: '[data-sim-reduced-note]', autostart: 6000 });
+P.bind(clock);                                     // a changed value forgets the run and resets
+var controls = new Sim.Controls(clock);            // buttons, scrubber, link, keys
+Sim.boot(clock, { note: '[data-sim-reduced-note]', autostart: 6000, params: P });
 ```
 
 `step` is **pure model work with no DOM**. That is what lets the same function
-serve the animated run, the reduced-motion fast-forward and the print path.
+serve the animated run, the reduced-motion fast-forward, the print path and every
+seek on the timeline. The clock calls it with one fixed `dt` (the `tick`, 20 ms of
+model time by default), never with the frame time.
 
 | Helper | What it is for |
 |---|---|
@@ -101,6 +109,10 @@ serve the animated run, the reduced-motion fast-forward and the print path.
 | `Sim.rng(seed)` | seeded random with `.int` `.pick` `.weighted` |
 | `Sim.flight(layer)` | a packet travelling between two DOM anchors |
 | `Sim.afterFonts(fn)` | run geometry measurement after the webfont has landed |
+| `Sim.params(defs)` | scenario and control values, kept in the URL hash |
+| `Sim.link()` | the address of exactly this view: values plus position |
+| `Sim.Table(el, opts)` | the state as a table, behind a "show as table" toggle |
+| `Sim.active` | `{clock, params}` of the booted simulation, for probes and tests |
 
 ---
 
@@ -117,7 +129,10 @@ channel.
 **2. Reduced motion means the finished run, not an empty stage.** `Sim.boot`
 computes the whole run and paints the end state, then reveals a note that says
 why the page looks finished. Printing takes the same path. Anything else prints a
-half-truth.
+half-truth. Under reduced motion the clock also **never starts by itself**: no
+autostart, not after the reader scrubs back, and `stage:restart` computes the run
+again instead of playing it. Step, back and the scrubber move through the run;
+play runs only on an explicit press.
 
 **3. Criticality rides two channels, always.** Colour plus a glyph plus a word.
 Colour alone fails in print, in a grey slide, and for a large share of readers. A
@@ -129,6 +144,100 @@ provenance block.** Three columns, not two: what is **model**, what is **stock**
 that genuinely exists today (with a path or a source), and what is **not built
 yet**. The third column is the one that gets dropped and the one that matters:
 leaving it out is the actual dishonesty, not the simulation.
+
+---
+
+## Timeline, scenario links and the table
+
+All of this is optional markup. A page without it runs as before, and the engine
+removes any control the model cannot serve rather than leaving it dead.
+
+### Timeline: fixed ticks, a seek, a snapshot ring buffer
+
+The clock advances the model in **whole ticks of one size** (`tick`, default 20 ms
+of model time). Frame time and speed only decide how many ticks run per frame. So
+the state at tick n is one state: a live run paused at n, a seek to n and a replay
+from the start to n paint the same picture. That is what makes a scrubber honest.
+
+| Clock member | What it does |
+|---|---|
+| `clock.ticks`, `clock.time()` | the position, in ticks and in model ms |
+| `clock.length()` | ticks in the whole run; a dry run computes it once and fills the ring buffer |
+| `clock.seek(n)` | go to tick n and stay paused (idle at 0, done at the end) |
+| `clock.back()` | one discrete step back: to the previous `marker` change, or one model second |
+| `clock.single()` | one discrete step forward: ticks until `marker` changes |
+| `clock.forget()` | drop the ring buffer, the markers and the length: the model changed |
+| `clock.ring()` | the snapshots held right now (for probes) |
+| `clock.on(fn)` | hear every repaint and state change (the scrubber uses it) |
+| `clock.random` | with `seed`: a `Sim.rng` reseeded on reset and restored with each snapshot |
+
+With `snapshot()` and `restore(s)` the clock keeps a **ring buffer** of the newest
+`snapKeep` (96) snapshots, one every `snapEvery` ticks (about 500 ms of model
+time). A seek restores the nearest snapshot at or before n and replays the few
+ticks after it; without the pair it replays from the start, slower and still
+right. `snapshot()` returns a **copy**: indices instead of object references, no
+DOM nodes, plus `feed.snapshot()` when the model writes a feed (`Sim.Feed` keeps
+its rows as data for exactly this). Every piece of state the model writes in
+`step` belongs in it, including attributes `step` sets on nodes; the flow
+archetype carries each token's `data-level` for that reason. A missing field does
+not throw: it shows a scrubbed position that a replay would not reach. The test
+`test_sim_timeline.py` compares both paths, with the ring switched off for the
+reference, and goes red when one field is dropped.
+
+The legacy `stepOnce` (a step outside the clock) still works, but such a run
+cannot be replayed, so it gets no scrubber and no back button. Use `marker`.
+
+Markup, inside the transport row:
+
+```html
+<div class="sim-timeline" data-sim-timeline>
+  <input type="range" min="0" max="0" value="0" step="1" data-sim-scrub
+         aria-label="Timeline" data-aria-de="Zeitleiste" data-aria-en="Timeline">
+  <span class="sim-timeline__time" data-sim-scrub-time>00:00 / 00:00</span>
+  <button class="sim-btn" type="button" data-sim-copy-link>
+    <span data-state-idle>…</span><span data-state-copied>…</span><span data-state-manual>…</span>
+  </button>
+  <input class="sim-link" type="text" readonly data-sim-link hidden aria-label="Link to this view">
+</div>
+```
+
+plus `<button data-sim-back>` in the bar. Keys: Space runs, S or the right arrow
+steps, the left arrow steps back, R resets, 1 2 3 pick the speed. The scrubber's
+`aria-valuetext` and readout come from the clock's `format(ms)` (default mm:ss of
+model time; flow passes its own model clock so both readouts agree).
+
+### Scenario and control values in the link
+
+`Sim.params(defs)` declares the values a reader may change. Each is a number
+(`min`, `max`), a choice (`options`), a boolean, or a string; `seed` also reseeds
+`clock.random`. Bind a control with `data-sim-param="name"` on a `<select>`, an
+`<input>` (range, number, checkbox) or a group of `button[data-value]` (the
+bilingual choice: an `<option>` cannot hold a DE/EN pair), and show a number with
+`data-sim-param-out="name"`.
+
+The values live in the URL hash, **only where they differ from the default**:
+`#approach=2&speed=0.5`. An untouched page keeps a clean address, and a hash
+without `=` is an ordinary anchor and is left alone. The hash is read once, when
+`Sim.params` runs, so the model's first `blank()` already sees the restored
+values; an invalid value is ignored and the default kept. `speed` (written by the
+speed buttons) and `t` are reserved. `Sim.link()`, and the copy-link button,
+adds `t=<tick>`: a page opened with it stands **paused at that tick** and never
+starts by itself, also under reduced motion (the "computed to its end" note stays
+hidden, because it is not the end). Without a clipboard the button shows the link
+selected in `[data-sim-link]` instead.
+
+### The state as a table
+
+`new Sim.Table(tableEl, {columns, rows})` renders the model's state as rows and
+columns: the text alternative to a stage, for a screen reader, for a reader who
+wants the numbers, and for a page pasted into a document. Columns are
+`{de, en}` labels, `rows()` returns arrays of plain or `{de, en}` values, the first
+cell becomes the row header. Call `table.render()` at the end of `render()`; while
+hidden it costs nothing. The toggle is a `[data-sim-table-toggle]` button whose
+`aria-controls` names the shown and hidden element, with `aria-expanded` kept in
+step and a label of one span per state (`data-state-off`, `data-state-on`). Flow
+lists one row per item (where it is, what the gate said, its outcome); worklist
+lists the plan (who, what, level, done or pending).
 
 ---
 
@@ -216,7 +325,8 @@ dead control. Both archetypes ship that button with `hidden`.
 | `stage:maximize` | simulation to slide | optional `on` (boolean) | the maximize button was pressed; without `on` it means toggle |
 | `stage:maximize` | slide to simulation | `on` (boolean) | the slide reports the resulting state; the engine mirrors it as `data-sim-maximized="yes"` or `"no"` on `<html>` and as `aria-pressed` on the button |
 | `stage:restart` | slide to simulation | none | reset the run in place and start it again (under reduced motion: compute it to the end). The slide falls back to reloading the frame when no `stage:ready` has arrived |
-| `stage:look` | slide to simulation | `dark` (boolean), `lang` (`de` or `en`) | the slide's theme and language, sent after `stage:ready` and on every change; the engine sets `.dark` and `data-lang` on `<html>` and stores nothing. A framed page carries `data-sim-embedded="yes"` and hides its own toolbar, because theme, language and print belong to the slide |
+| `stage:theme` | slide to simulation | `theme`: `dark` or `light` | the slide's theme, sent on every change and once after `stage:ready`. The frame follows it and does **not** store it, so a standalone visit keeps its own preference. A framed page carries `data-sim-embedded="yes"` and hides its own toolbar, because theme, language and print belong to the slide |
+| `stage:lang` | slide to simulation | `lang`: `de` or `en` | the slide's language, same rules. The frame relabels its T and L buttons and aria labels through the shell's own `storage` listener, without writing storage |
 
 Every message is a plain object with a `type` string; anything else is ignored.
 
@@ -247,6 +357,10 @@ measure these against the rendered page rather than the source:
       protocol is complete.
 - [ ] `beforeprint` reaches the same end state. Controls are hidden on paper.
 - [ ] Reset returns every counter, the clock and the protocol to the start.
+- [ ] A scrubbed position equals a replay to the same tick (the timeline test
+      does this; a new piece of model state needs a line in `snapshot()`).
+- [ ] A copied link reopens the same values and the same position, paused.
+- [ ] "Show as table" lists the state, and no cell shows both languages.
 - [ ] **No element shows both languages at once.** This one is a query, so run it
       rather than eyeballing it:
       ```js
