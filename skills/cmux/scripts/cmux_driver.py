@@ -859,7 +859,9 @@ def screen(req: dict) -> str:
 
 def close(req: dict) -> list[str]:
     surface = req["tab"]
-    cl.cmux_checked("close-surface", "--surface", surface, *_where(surface))
+    # --force: cmux (0.65+) refuses a surface with a live process, and a waiting agent is one;
+    # the caller already decided (workplace.py close runs only when asked, the cockpit only on settled tabs)
+    cl.cmux_checked("close-surface", "--surface", surface, "--force", *_where(surface))
     return [f"{surface} closed"]
 
 

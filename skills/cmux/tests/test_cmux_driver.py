@@ -791,7 +791,8 @@ def test_focus_key_screen_and_close_address_the_tab_in_its_workspace(fake):
     assert ["send-key", "--workspace", "workspace:3", "--surface", "surface:91", "1"] in argv
     assert ["send-key", "--workspace", "workspace:3", "--surface", "surface:91", "escape"] in argv
     assert ["read-screen", "--workspace", "workspace:3", "--surface", "surface:91", "--lines", "40"] in argv
-    assert ["close-surface", "--surface", "surface:91", "--workspace", "workspace:3"] in argv
+    # --force: cmux refuses a surface with a live process otherwise, and a waiting agent is one
+    assert ["close-surface", "--surface", "surface:91", "--force", "--workspace", "workspace:3"] in argv
 
 
 def test_a_key_outside_the_fixed_set_is_refused(fake):
