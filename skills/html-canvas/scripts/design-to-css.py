@@ -41,10 +41,32 @@ Usage:
   # defaults: DESIGN.md resolved from the repo root; CSS printed to stdout.
   # --shell fills the marked token region of the html-canvas shell and writes
   # the page, so nobody pastes values by hand.
+
+Serving another consumer (references/theme-contract.md):
+  design-to-css.py DESIGN.md --map consumer.map.yaml \
+      --selectors light=:root,.theme-light dark=.theme-dark \
+      --region deck-tokens --shell deck.html --out deck.html
+  # --map       emits only the consumer's variables, named as it names them,
+  #             each resolved from a DESIGN.md color role in both modes; a
+  #             derived variant (e.g. accent-dim) is a color-mix() of a role.
+  # --selectors renames the light and dark groups (default :root, html.dark),
+  #             with or without --map. A map file may declare them too.
+  # --region    fills /* <name>:begin */ ... /* <name>:end */ in any file
+  #             instead of the shell's design-tokens region. Idempotent, and
+  #             --out may name the input file to rewrite it in place.
+  # Under --strict a role the map names and DESIGN.md lacks exits non-zero.
+
+Embedding the typefaces (optional, for a page that is sent or bundled):
+  design-to-css.py DESIGN.md --embed-fonts [--font-dir DIR ...] --shell --out page.html
+  # adds base64 @font-face rules for the DESIGN.md families (embed-fonts.py)
+  # after the tokens, inside the same generated region. Off by default; a
+  # family with no font file is reported on stderr and keeps the system stack.
 """
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -233,7 +255,22 @@ def emit_scale(prefix: str, scale: dict) -> list[str]:
     return [f"  --{prefix}-{k}: {v};" for k, v in scale.items()]
 
 
-def build_css(design: dict) -> tuple[str, list[str]]:
+# The shell's theme contract. A consumer with other selectors passes its own.
+DEFAULT_SELECTORS = {"light": ":root", "dark": "html.dark"}
+
+
+def css_header(design: dict) -> str:
+    name = design.get("name", "design")
+    stamp = design.get("last_updated", "")
+    return (
+        f"/* Generated from DESIGN.md ({name}{', ' + str(stamp) if stamp else ''}) by\n"
+        f"   html-canvas/scripts/design-to-css.py. Do not hand-edit colors here:\n"
+        f"   change DESIGN.md and regenerate. */\n"
+    )
+
+
+def build_css(design: dict, selectors: dict | None = None) -> tuple[str, list[str]]:
+    light_sel, dark_sel = _selectors(selectors)
     root_lines: list[str] = []
     dark_lines: list[str] = []
 
@@ -264,39 +301,136 @@ def build_css(design: dict) -> tuple[str, list[str]]:
         print_lines = [l for l in print_lines if not l.lstrip().startswith("--surface:")]
         print_lines.append(f"  --surface: {raised};")
 
-    name = design.get("name", "design")
-    stamp = design.get("last_updated", "")
-    header = (
-        f"/* Generated from DESIGN.md ({name}{', ' + str(stamp) if stamp else ''}) by\n"
-        f"   html-canvas/scripts/design-to-css.py. Do not hand-edit colors here:\n"
-        f"   change DESIGN.md and regenerate. */\n"
-    )
-    css = header + ":root {\n" + "\n".join(root_lines) + "\n}\n"
+    css = css_header(design) + light_sel + " {\n" + "\n".join(root_lines) + "\n}\n"
     if dark_lines:
+        how = ("applied via the .dark class on <html>" if dark_sel == DEFAULT_SELECTORS["dark"]
+               else "applied via " + dark_sel)
         css += (
-            "\n/* Dark-mode overrides (applied via the .dark class on <html>). */\n"
-            "html.dark {\n" + "\n".join(dark_lines) + "\n}\n"
+            f"\n/* Dark-mode overrides ({how}). */\n"
+            + dark_sel + " {\n" + "\n".join(dark_lines) + "\n}\n"
         )
     if print_lines:
         css += (
             "\n/* Print: light palette on a white ground, whatever the screen mode. */\n"
-            "@media print {\n:root, html.dark {\n"
+            "@media print {\n" + light_sel + ", " + dark_sel + " {\n"
             + "\n".join("  " + l for l in print_lines)
             + "\n}\n}\n"
         )
     return css, skipped
 
 
+def _selectors(selectors: dict | None) -> tuple[str, str]:
+    sel = dict(DEFAULT_SELECTORS)
+    sel.update({k: v for k, v in (selectors or {}).items() if v})
+    return sel["light"], sel["dark"]
+
+
+def parse_selectors(items: list[str]) -> dict:
+    """`light=<selector>` / `dark=<selector>` pairs from the command line."""
+    out = {}
+    for item in items:
+        key, sep, val = item.partition("=")
+        if not sep or key not in DEFAULT_SELECTORS or not val.strip():
+            raise ValueError("--selectors takes light=<selector> and/or dark=<selector>, got %r" % item)
+        out[key] = val.strip()
+    return out
+
+
+# A consumer map names its own variables and says which DESIGN.md color role
+# feeds each one. It is data the consumer owns, so this script knows nothing
+# about any consumer:
+#
+#   selectors: {light: ":root", dark: ".theme-dark"}   # optional
+#   vars:
+#     bg: surface                                      # --bg from colors.surface
+#     accent-dim: {role: accent, mix: 15}              # 15 % accent over transparent
+#     ok-dim: {role: success, mix: 20, with: surface}  # 20 % success over the surface
+#
+# A role resolves per mode: light from `colors:`, dark from `colorsDark:` or a
+# legacy `dark-<role>` key, falling back to the light value when the manifest
+# has no dark one (the dark group then repeats it, so both groups stay whole).
+def load_map(path: Path) -> tuple[dict, dict]:
+    """Return (vars, selectors) from a map file, or raise ValueError."""
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict) or not isinstance(data.get("vars"), dict) or not data["vars"]:
+        raise ValueError(f"{path}: needs a non-empty 'vars:' mapping")
+    entries = {}
+    for name, spec in data["vars"].items():
+        name = str(name).lstrip("-")
+        if isinstance(spec, str):
+            spec = {"role": spec}
+        if not isinstance(spec, dict) or not isinstance(spec.get("role"), str):
+            raise ValueError(f"{path}: {name} needs a role name or {{role: ..., mix: ...}}")
+        if "mix" in spec:
+            mix = spec["mix"]
+            if isinstance(mix, bool) or not isinstance(mix, (int, float)) or not 0 <= mix <= 100:
+                raise ValueError(f"{path}: {name} mix must be a percentage from 0 to 100")
+        elif "with" in spec:
+            raise ValueError(f"{path}: {name} sets 'with' but no 'mix' percentage")
+        if not isinstance(spec.get("with", ""), str):
+            raise ValueError(f"{path}: {name} 'with' must be a role name or transparent")
+        entries[name] = spec
+    selectors = data.get("selectors") or {}
+    if not isinstance(selectors, dict) or set(selectors) - set(DEFAULT_SELECTORS):
+        raise ValueError(f"{path}: 'selectors:' takes only light and dark")
+    return entries, {k: str(v) for k, v in selectors.items()}
+
+
+def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None) -> tuple[str, list[str]]:
+    """Return (css, missing roles) holding exactly the mapped variables per mode."""
+    light_sel, dark_sel = _selectors(selectors)
+    colors = design.get("colors") or {}
+    dark_colors = design.get("colorsDark") or {}
+
+    def resolve(role: str, dark: bool):
+        if role not in colors:
+            return None
+        if dark:
+            if dark_colors:
+                return dark_colors.get(role, colors[role])
+            return colors.get("dark-" + role, colors[role])
+        return colors[role]
+
+    light, darks, missing = [], [], []
+    for name, spec in entries.items():
+        roles = [spec["role"]] + ([spec["with"]] if spec.get("with") not in (None, "transparent") else [])
+        absent = [r for r in roles if r not in colors]
+        if absent:
+            missing += [f"{name} <- {r}" for r in absent]
+            continue
+        for target, dark in ((light, False), (darks, True)):
+            val = resolve(spec["role"], dark)
+            if "mix" in spec:
+                ground = resolve(spec["with"], dark) if spec.get("with") not in (None, "transparent") else "transparent"
+                val = f"color-mix(in srgb, {val} {spec['mix']:g}%, {ground})"
+            target.append(f"  --{name}: {val};")
+
+    css = css_header(design) + light_sel + " {\n" + "\n".join(light) + "\n}\n"
+    css += "\n" + dark_sel + " {\n" + "\n".join(darks) + "\n}\n"
+    return css, missing
+
+
 # The shell marks the one region this script owns. Everything between the two
 # markers is replaced; everything outside stays byte for byte. The committed
 # shell carries brand neutral system colours there, so a copy that was never
 # generated is plain but legible, and the core file never holds a brand value.
-BEGIN = "/* design-tokens:begin */"
-END = "/* design-tokens:end */"
-GENERATED = "/* design-tokens: generated from DESIGN.md, overrides the neutral values above */"
+# Any other file can carry its own region under its own name (--region).
+REGION = "design-tokens"
+REGION_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
-def inject(shell: str, css: str) -> str:
+def markers(region: str = REGION) -> tuple[str, str, str]:
+    """The begin, end and generated-block comments of a named region."""
+    if not REGION_NAME.match(region):
+        raise ValueError("region name %r must be letters, digits, '.', '_' or '-'" % region)
+    return (f"/* {region}:begin */", f"/* {region}:end */",
+            f"/* {region}: generated from DESIGN.md, overrides the neutral values above */")
+
+
+BEGIN, END, GENERATED = markers()
+
+
+def inject(shell: str, css: str, region: str = REGION) -> str:
     """Return `shell` with `css` added to its token region.
 
     The shell's own neutral values stay first and `css` follows, so a token the
@@ -304,13 +438,28 @@ def inject(shell: str, css: str) -> str:
     a legacy manifest without warn/danger/accent-line left the run button of a
     simulation invisible (white on white) when the region was replaced whole.
     """
-    if shell.count(BEGIN) != 1 or shell.count(END) != 1:
-        raise ValueError("shell needs exactly one %s and one %s marker" % (BEGIN, END))
-    head, rest = shell.split(BEGIN, 1)
-    neutral, tail = rest.split(END, 1)
-    neutral = neutral.split(GENERATED, 1)[0].rstrip("\n")
-    return (head + BEGIN + neutral + "\n" + GENERATED + "\n" + css.rstrip("\n") + "\n"
-            + END + tail)
+    begin, end, generated = markers(region)
+    if shell.count(begin) != 1 or shell.count(end) != 1:
+        raise ValueError("shell needs exactly one %s and one %s marker" % (begin, end))
+    head, rest = shell.split(begin, 1)
+    if end not in rest:
+        raise ValueError("%s comes before %s" % (end, begin))
+    neutral, tail = rest.split(end, 1)
+    neutral = neutral.split(generated, 1)[0].rstrip("\n")
+    return (head + begin + neutral + "\n" + generated + "\n" + css.rstrip("\n") + "\n"
+            + end + tail)
+
+
+def font_faces(design_path: Path, font_dirs: list[Path]) -> str:
+    """base64 @font-face rules for the DESIGN.md families, via embed-fonts.py."""
+    path = Path(__file__).resolve().parent / "embed-fonts.py"
+    spec = importlib.util.spec_from_file_location("embed_fonts", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    faces = mod.build_font_face_css(mod.collect_families(design_path), font_dirs)
+    if not faces:
+        return ""
+    return "\n/* Embedded fonts (embed-fonts.py), so the page needs no font files. */\n" + faces
 
 
 def default_shell() -> Path:
@@ -327,15 +476,58 @@ def main() -> int:
                     help="write a filled copy of the html-canvas shell (default: the bundled "
                          "assets/shell.html) to --out instead of bare CSS")
     ap.add_argument("--strict", action="store_true",
-                    help="exit non-zero when a color key was skipped")
+                    help="exit non-zero when a color key was skipped, or with --map "
+                         "when a mapped role is missing from DESIGN.md")
+    ap.add_argument("--map", metavar="YAML",
+                    help="emit only the variables this consumer map names, each from a "
+                         "DESIGN.md color role (see references/theme-contract.md)")
+    ap.add_argument("--selectors", nargs="+", metavar="MODE=SELECTOR",
+                    help="light=<selector> and/or dark=<selector> for the two groups "
+                         "(default light=:root dark=html.dark)")
+    ap.add_argument("--region", metavar="NAME",
+                    help="with --shell: fill the /* NAME:begin */ ... /* NAME:end */ region "
+                         "of that file instead of design-tokens")
+    ap.add_argument("--embed-fonts", action="store_true",
+                    help="also emit base64 @font-face rules for the DESIGN.md font families "
+                         "(off by default; for pages that are sent or bundled)")
+    ap.add_argument("--font-dir", action="append", default=[], metavar="DIR",
+                    help="with --embed-fonts: extra directory of <family>-latin-<weight>.woff2 "
+                         "files, searched before the bundled assets/fonts/")
     args = ap.parse_args()
 
-    css, skipped = build_css(frontmatter(Path(args.design)))
+    selectors: dict = {}
+    entries = None
+    try:
+        if args.map:
+            entries, selectors = load_map(Path(args.map))
+        if args.selectors:
+            selectors.update(parse_selectors(args.selectors))
+        region = args.region or REGION
+        markers(region)
+    except (ValueError, OSError, yaml.YAMLError) as e:
+        sys.exit("design-to-css: %s" % e)
+    if args.region and not args.shell:
+        sys.exit("design-to-css: --region needs --shell <file> (the file holding the region)")
+    if args.font_dir and not args.embed_fonts:
+        sys.exit("design-to-css: --font-dir needs --embed-fonts")
+
+    design = frontmatter(Path(args.design))
+    if entries is not None:
+        css, missing = build_mapped_css(design, entries, selectors)
+        skipped = []
+    else:
+        css, skipped = build_css(design, selectors)
+        missing = []
+    if missing and args.strict:
+        sys.exit("design-to-css: %d mapped role(s) not in DESIGN.md colors: %s"
+                 % (len(missing), ", ".join(missing)))
+    if args.embed_fonts:
+        css += font_faces(Path(args.design), [Path(d) for d in args.font_dir])
     if args.shell:
         if not args.out:
             sys.exit("design-to-css: --shell needs --out (the page to write)")
         try:
-            page = inject(Path(args.shell).read_text(encoding="utf-8"), css)
+            page = inject(Path(args.shell).read_text(encoding="utf-8"), css, region)
         except ValueError as e:
             sys.exit("design-to-css: %s" % e)
         Path(args.out).write_text(page, encoding="utf-8")
@@ -345,6 +537,11 @@ def main() -> int:
         print(f"wrote {args.out} ({css.count(chr(10))} lines)")
     else:
         sys.stdout.write(css)
+
+    if missing:
+        print("design-to-css: %d mapped role(s) not in DESIGN.md colors, skipped: %s"
+              % (len(missing), ", ".join(missing)), file=sys.stderr)
+        print("  -> add the role to DESIGN.md or fix the map", file=sys.stderr)
 
     # Reported, never silent: an unknown key produces no variable, so a
     # deliverable would fall back to nothing and look plausible while being

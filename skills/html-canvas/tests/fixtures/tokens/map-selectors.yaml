@@ -1,0 +1,7 @@
+# Selectors may live in the map, so the consumer owns its whole contract.
+selectors:
+  light: ":root, .theme-light"
+  dark: ".theme-dark"
+vars:
+  bg: surface
+  text: on-surface

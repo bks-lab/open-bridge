@@ -1,0 +1,41 @@
+/* Generated from DESIGN.md (fixture-legacy) by
+   html-canvas/scripts/design-to-css.py. Do not hand-edit colors here:
+   change DESIGN.md and regenerate. */
+:root {
+  --ink: #111111;
+  --muted: #666666;
+  --surface: #FFFFFF;
+  --surface-subtle: #F9F9F9;
+  --on-surface: #333333;
+  --line: #E0E0E0;
+  --accent: #4455EE;
+  --ok: #10A060;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --fs-body-md: 16px;
+  --space-md: 16px;
+  --raised: var(--surface);
+}
+
+/* Dark-mode overrides (applied via the .dark class on <html>). */
+html.dark {
+  --surface: #111111;
+  --on-surface: #DDDDDD;
+  --line: #333333;
+  --accent: #8899FF;
+}
+
+/* Print: light palette on a white ground, whatever the screen mode. */
+@media print {
+:root, html.dark {
+    --ink: #111111;
+    --muted: #666666;
+    --surface: #FFFFFF;
+    --surface-subtle: #F9F9F9;
+    --on-surface: #333333;
+    --line: #E0E0E0;
+    --accent: #4455EE;
+    --ok: #10A060;
+}
+}

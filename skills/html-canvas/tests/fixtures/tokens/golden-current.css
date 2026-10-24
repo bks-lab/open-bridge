@@ -1,0 +1,67 @@
+/* Generated from DESIGN.md (fixture-current, 2026-01-01) by
+   html-canvas/scripts/design-to-css.py. Do not hand-edit colors here:
+   change DESIGN.md and regenerate. */
+:root {
+  --primary: #102030;
+  --secondary: #205080;
+  --accent: #3060C0;
+  --surface: #F8F6F2;
+  --raised: #FFFFFF;
+  --surface-subtle: #FFFFFF;
+  --surface-muted: #EEEAE4;
+  --ink: #1A1A1A;
+  --on-surface: #1A1A1A;
+  --muted: #5A5A5A;
+  --line: #DDD8D0;
+  --line-subtle: #DDD8D0;
+  --ok: #2E7D32;
+  --danger: #C62828;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --fs-display: 48px;
+  --fw-display: 500;
+  --fs-body-md: 16px;
+  --lh-body-md: 1.6;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --radius-md: 6px;
+}
+
+/* Dark-mode overrides (applied via the .dark class on <html>). */
+html.dark {
+  --primary: #102030;
+  --secondary: #80A8E0;
+  --accent: #80A8E0;
+  --surface: #121417;
+  --raised: #1C1F24;
+  --surface-subtle: #1C1F24;
+  --surface-muted: #24282E;
+  --ink: #ECECEC;
+  --on-surface: #ECECEC;
+  --muted: #A8A8A8;
+  --line: #30343A;
+  --line-subtle: #30343A;
+  --ok: #66BB6A;
+  --danger: #EF5350;
+}
+
+/* Print: light palette on a white ground, whatever the screen mode. */
+@media print {
+:root, html.dark {
+    --primary: #102030;
+    --secondary: #205080;
+    --accent: #3060C0;
+    --raised: #FFFFFF;
+    --surface-subtle: #FFFFFF;
+    --surface-muted: #EEEAE4;
+    --ink: #1A1A1A;
+    --on-surface: #1A1A1A;
+    --muted: #5A5A5A;
+    --line: #DDD8D0;
+    --line-subtle: #DDD8D0;
+    --ok: #2E7D32;
+    --danger: #C62828;
+    --surface: #FFFFFF;
+}
+}

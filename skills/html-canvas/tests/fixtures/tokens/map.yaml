@@ -1,0 +1,11 @@
+# A consumer map: target variable name -> DESIGN.md color role.
+# A plain string maps one role; a mapping derives a variant with color-mix().
+vars:
+  bg: surface
+  surface: surface-raised
+  text: on-surface
+  text-dim: on-surface-muted
+  accent: accent
+  accent-dim: {role: accent, mix: 15}
+  green: success
+  green-dim: {role: success, mix: 20, with: surface}
