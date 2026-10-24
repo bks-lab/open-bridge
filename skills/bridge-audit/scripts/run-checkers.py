@@ -8,7 +8,10 @@ An instance whose CI never runs meets them only when somebody types them, and
 the audit, the one pass meant to find drift, re-derived parts of what they
 measure by hand instead of running them. This runner is the audit's Check 16:
 discover, run each bare (exactly as CI does), and turn a non-zero exit into a
-finding with the checker's own last line as its text.
+finding. The summary is the stable "<checker> exited <rc>", and the
+checker's own last line goes into `detail`: the history fingerprint hashes the
+summary, and a last line that carries a count would give a persistently red
+checker a new fingerprint on every run.
 
 Discovery is a glob, never a list, so a checker added tomorrow is audited
 tomorrow. A checker that does not finish within --timeout is a finding too.
@@ -68,9 +71,9 @@ def finding(r: dict, timeout: float) -> dict:
     if r["rc"] is None:
         summary = f"{name} did not finish within {timeout:g} s"
     else:
-        summary = f"{name} exited {r['rc']}" + (f": {r['tail']}" if r["tail"] else "")
+        summary = f"{name} exited {r['rc']}"
     return {"check_name": f"checker:{name}", "target_path": f"scripts/{name}",
-            "severity": severity(name), "summary": summary,
+            "severity": severity(name), "summary": summary, "detail": r["tail"],
             "fix": f"run `python3 scripts/{name}` and follow its output"}
 
 
@@ -101,7 +104,10 @@ def main(argv=None) -> int:
             if hits:
                 print(f"\n{sev}: checkers ({len(hits)} finding(s))")
                 for f in hits:
-                    print(f"  {f['summary']}\n  → {f['fix']}")
+                    print(f"  {f['summary']}")
+                    if f["detail"]:
+                        print(f"    {f['detail']}")
+                    print(f"  → {f['fix']}")
     return 1 if findings else 0
 
 

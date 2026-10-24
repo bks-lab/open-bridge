@@ -51,7 +51,8 @@ def test_a_red_checker_becomes_a_finding_with_its_last_line(tmp_path):
     assert f["check_name"] == "checker:validate-red.py"
     assert f["target_path"] == "scripts/validate-red.py"
     assert f["severity"] == "P1"                    # a validator guards a contract
-    assert "2 entries lack scope" in f["summary"]
+    assert f["summary"] == "validate-red.py exited 1"
+    assert f["detail"] == "2 entries lack scope"
     assert "python3 scripts/validate-red.py" in f["fix"]
 
 
@@ -74,3 +75,22 @@ def test_text_report_groups_by_severity(tmp_path):
     root = _tree(tmp_path)
     p = run(root, "--skip", "check-slow.py")
     assert "P1" in p.stdout and "validate-red.py" in p.stdout, p.stdout
+
+
+def test_the_summary_is_stable_when_the_count_in_the_output_moves(tmp_path):
+    # The history fingerprint hashes the summary. A checker whose last line
+    # carries a count would get a new fingerprint every time the count moved,
+    # and a persistently red checker would never count as recurring.
+    root = _tree(tmp_path)
+    first = json.loads(run(root, "--json", "--skip", "check-slow.py").stdout)["findings"][0]
+    (root / "scripts" / "validate-red.py").write_text(
+        "import sys\nprint('3 entries lack scope')\nsys.exit(1)\n")
+    second = json.loads(run(root, "--json", "--skip", "check-slow.py").stdout)["findings"][0]
+    assert first["summary"] == second["summary"]
+    assert first["detail"] != second["detail"]
+
+
+def test_text_report_shows_the_detail_line(tmp_path):
+    root = _tree(tmp_path)
+    p = run(root, "--skip", "check-slow.py")
+    assert "2 entries lack scope" in p.stdout, p.stdout

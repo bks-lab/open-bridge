@@ -639,9 +639,13 @@ The runner globs `scripts/check-*.py`, `scripts/validate-*.py` and
 the day it lands), runs each bare from the repo root with a 120 s alarm, and
 returns `results` (every run, with exit code and seconds) and `findings` (one
 per non-zero exit or timeout). Each finding already carries `check_name`
-(`checker:<file>`), `target_path`, `severity`, `summary` (the checker's own
-last line) and `fix`, so it goes into the report and the history JSON as is;
-the fingerprint is computed from those fields like any other finding.
+(`checker:<file>`), `target_path`, `severity`, `summary` (`<file> exited
+<rc>`), `detail` (the checker's own last line) and `fix`, so it goes into the
+report and the history JSON as is; the fingerprint is computed from those
+fields like any other finding. The summary is kept free of the checker's
+output on purpose: a last line that carries a count would change the
+fingerprint every run, and a checker that stays red would never be seen as
+recurring.
 
 Severity: P1 for `validate-*`, `measure-context` and `check-secret-*` (a
 contract other files are written against, a ceiling the harness enforces by
