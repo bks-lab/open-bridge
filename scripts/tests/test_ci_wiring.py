@@ -12,6 +12,11 @@ a dry run of the jobs, so it needs no runner, no dependency and no network,
 and it errs on the side of reporting: a file it cannot prove is reached counts
 as unreached.
 
+"Reached" means some workflow runs the file, not that it gates anything. A
+suite reached only by a path-filtered workflow (agents-tests.yml) runs on the
+changes that touch it, and neither feeds Validate's all-green nor blocks a
+release.
+
 Two layers, as elsewhere in this directory. The live test walks the real tree.
 The fixture tests build small fake repos, one per way a suite is actually
 wired here, and assert the reading finds it, so a green live run is not the
@@ -24,7 +29,6 @@ import glob
 import os
 import re
 import textwrap
-import tomllib
 from pathlib import Path
 
 import yaml
@@ -81,16 +85,30 @@ def _logical_lines(text: str, shell: bool) -> list[str]:
 
 
 def _testpaths(repo: Path, wd: Path) -> list[Path]:
+    """Where a bare `pytest` in `wd` collects, as far as the text proves it.
+
+    Never the repo root: "the current directory" would claim every test in
+    the tree, and the guard would pass without reading anything.
+    """
+    out = [wd]
     pp = repo / wd / "pyproject.toml"
     if pp.is_file():
         try:
-            data = tomllib.loads(pp.read_text())
-        except (tomllib.TOMLDecodeError, UnicodeDecodeError):
-            data = {}
-        paths = data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths")
-        if paths:
-            return [wd / p for p in paths]
-    return [wd]
+            # Imported here, not at the top: tomllib is 3.11+, and a module
+            # level import would break collecting the whole directory on an
+            # older local python3.
+            import tomllib
+        except ImportError:
+            tomllib = None
+        if tomllib is not None:
+            try:
+                data = tomllib.loads(pp.read_text())
+            except (tomllib.TOMLDecodeError, UnicodeDecodeError):
+                data = {}
+            paths = data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths")
+            if paths:
+                out = [wd / p for p in paths]
+    return [p for p in out if p.as_posix() not in {".", ""}]
 
 
 def _bases(repo: Path, wd: Path, here: Path | None) -> list[Path]:
@@ -121,6 +139,9 @@ def _scan(repo: Path, text: str, wd: Path, here: Path | None, shell: bool,
         if not shell and not runs_tests:
             continue
         named = False
+        # On a shell line that runs no tests (echo, ls, cat, a case arm) a
+        # test path is only a mention. Such a line may still enter a wrapper
+        # script, so scripts are followed from it and nothing else counts.
         for raw in TOKEN.findall(PREFIX.sub("", line)):
             tok = raw.strip("./") if raw.startswith("./") else raw.lstrip("/")
             if not tok or tok in {".", ".."}:
@@ -130,6 +151,8 @@ def _scan(repo: Path, text: str, wd: Path, here: Path | None, shell: bool,
                 # A glob counts when it is a test glob: a bare `*` in a case
                 # pattern would otherwise claim the directory it sits in.
                 if "*" in cand:
+                    if not runs_tests:
+                        continue
                     if not (tok.endswith(".py") or runs_tests) or not tok.replace("*", "").strip("/"):
                         continue
                     for hit in glob.glob(str(repo / cand)):
@@ -142,8 +165,9 @@ def _scan(repo: Path, text: str, wd: Path, here: Path | None, shell: bool,
                 if path.is_file():
                     rel = path.relative_to(repo).as_posix()
                     if _is_test(rel):
-                        covered_files.add(rel)
-                        named = True
+                        if runs_tests:
+                            covered_files.add(rel)
+                            named = True
                     elif _follow(rel) and rel not in visited:
                         visited.add(rel)
                         child = Path(rel)
@@ -318,6 +342,38 @@ def test_bare_pytest_in_a_working_directory_honours_its_testpaths(tmp_path):
             "agents/tests/test_a.py": "", "agents/_gateway/tests/test_b.py": ""})
     _, unreached = wiring(repo)
     assert unreached == {"agents/_gateway/tests/test_b.py"}
+
+
+def test_a_test_path_on_a_shell_line_that_runs_no_tests_reaches_nothing(tmp_path):
+    # echo, ls, cat or a case arm name a file and run nothing.
+    repo = _repo(tmp_path, """
+        jobs:
+          a:
+            steps:
+              - run: |
+                  echo other/test_never.py
+                  ls other/test_*.py
+                  bash scripts/wrap.sh
+        """, {
+            "scripts/wrap.sh": 'case "$1" in\n  other/test_never.py) cat other/test_never.py ;;\nesac\n',
+            "other/test_never.py": ""})
+    _, unreached = wiring(repo)
+    assert unreached == {"other/test_never.py"}
+
+
+def test_bare_pytest_at_the_repo_root_claims_nothing(tmp_path):
+    # Without a path or testpaths, "the current directory" proves nothing:
+    # it would count every test in the tree as reached.
+    repo = _repo(tmp_path, """
+        jobs:
+          a:
+            steps:
+              - run: bash scripts/wrap.sh
+        """, {
+            "scripts/wrap.sh": 'cd somewhere\npytest -q\n',
+            "skills/x/tests/test_a.py": ""})
+    _, unreached = wiring(repo)
+    assert unreached == {"skills/x/tests/test_a.py"}
 
 
 # ---------------------------------------------------------------- the gate

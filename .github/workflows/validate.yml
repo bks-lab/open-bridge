@@ -413,8 +413,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install pytest
-        run: pip install pytest
+      # Both suites import yaml (board-pilot's engine config, html-canvas's
+      # design-to-css), so it is installed here like in every peer job rather
+      # than left to whatever the runner image happens to ship.
+      - name: Install pytest and pyyaml
+        run: pip install pyyaml pytest
 
       # The board-driven pipeline engine. Hermetic: every gh and claude call
       # is faked, git runs in throwaway repos with a local identity.
