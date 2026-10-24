@@ -740,6 +740,30 @@ def git_show_blob(cache: str, sha: str, src: str) -> bytes | None:
     return proc.stdout
 
 
+def merge_base_blob(cache: str, old_sha: str | None, src: str,
+                    want_sha256: str | None = None) -> bytes | None:
+    """The 3-way base for one file: its source at the version last applied.
+
+    That is normally the blob at the overlay-wide pin. A file held at the
+    behavioural gate keeps its old lock entry while the pin moves on, and the
+    blob at the new pin is then the upstream side itself: merging against it
+    returns the live file as a "clean" merge and drops the upstream change.
+    The lock entry's source hash names the version that was applied, so when
+    the pinned blob does not match it, the base is looked up in history."""
+    base = git_show_blob(cache, old_sha, src) if old_sha else None
+    if not want_sha256 or (base is not None and sha256_bytes(base) == want_sha256):
+        return base
+    proc = subprocess.run(
+        ["git", "-C", cache, "log", "--format=%H", old_sha or "HEAD", "--", src],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    for sha in proc.stdout.split() if proc.returncode == 0 else []:
+        blob = git_show_blob(cache, sha, src)
+        if blob is not None and sha256_bytes(blob) == want_sha256:
+            return blob
+    return base
+
+
 # ---------------------------------------------------------------------------
 # Manifest
 # ---------------------------------------------------------------------------
@@ -1186,6 +1210,16 @@ def gated_units(items: list["PlanItem"], known: set[str]) -> dict[str, list["Pla
     return {u: m for u, m in units.items() if any(it.dest not in known for it in m)}
 
 
+def held_prune(prune: list[dict], units: dict[str, list["PlanItem"]]) -> dict[str, list[dict]]:
+    """Prune entries that belong to a gated unit, by unit: they wait with it."""
+    out: dict[str, list[dict]] = {}
+    for pr in prune:
+        u = gate_unit(pr["dest"])
+        if u in units:
+            out.setdefault(u, []).append(pr)
+    return out
+
+
 def infer_kind(dest: str) -> str:
     if dest.startswith("skills/"):
         return "skill"
@@ -1436,12 +1470,15 @@ def build_plan(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
 # ---------------------------------------------------------------------------
 
 def three_way(consumer: Consumer, cache: str, it: PlanItem,
-              old_sha: str | None, interactive: bool) -> tuple[bytes | None, str]:
-    """Resolve a locally-edited file against new upstream. Returns (bytes,state)."""
+              old_sha: str | None, interactive: bool,
+              base_source_sha: str | None = None) -> tuple[bytes | None, str]:
+    """Resolve a locally-edited file against new upstream. Returns (bytes,state).
+
+    `base_source_sha` is the file's lock-entry source hash; see merge_base_blob."""
     dest_abs = os.path.join(consumer.root, it.dest)
     with open(dest_abs, "rb") as fh:
         live = fh.read()
-    base = git_show_blob(cache, old_sha, it.src) if old_sha else None
+    base = merge_base_blob(cache, old_sha, it.src, base_source_sha)
     if base is not None:
         with tempfile.TemporaryDirectory() as td:
             p_live = os.path.join(td, "live")
@@ -1496,33 +1533,54 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
     # SKILL.md routes to a reference that was never written. A run without a
     # person withholds the whole unit; nothing of it is written and its lock
     # entries stay as they were, so the next sync (and `status`) sees it again.
+    #
+    # The one answer covers every file of the unit: a file the consumer already
+    # has (user-owned, on_conflict=prompt) is listed and overwritten on the same
+    # [y] instead of a second per-file question that could leave the folder half
+    # applied, and a file upstream removed from the folder is pruned with it, or
+    # kept with it. Only on_conflict=skip keeps a consumer's own file inside an
+    # accepted unit, because the manifest declared exactly that.
     units = gated_units(items, set(prev_files))
+    unit_prune = held_prune(prune, units)
     withheld_dests: set[str] = set()
+    withheld_units: set[str] = set()
+    overwrite_ok: set[str] = set()
     for unit, members in sorted(units.items()):
         new = [m for m in members if m.dest not in prev_files]
+        gone = unit_prune.get(unit, [])
+        owned = [m for m in members if m.state == "user-owned"
+                 and (m.on_conflict or defaults["on_conflict"]) == "prompt"]
         is_folder = unit.endswith("/")
         label = "skill folder" if is_folder else members[0].kind
         if not interactive:
             sys.stderr.write(
                 f"  WITHHELD {unit}: behavioural ({label}), {len(new)} new of "
-                f"{len(members)} changed file(s) need one explicit [y] for the "
-                f"whole unit; --yes is not valid for behavioural files\n")
+                f"{len(members) + len(gone)} changed file(s) need one explicit "
+                f"[y] for the whole unit; --yes is not valid for behavioural "
+                f"files\n")
             withheld_dests.update(m.dest for m in members)
+            withheld_units.add(unit)
             continue
         print(f"\n  Behavioural {label}: {unit}")
         for m in members:
-            print(f"    {m.state:14} {m.dest}")
+            note = "  (overwrites your file)" if m in owned else ""
+            print(f"    {m.state:14} {m.dest}{note}")
+        for pr in gone:
+            print(f"    {'removed':14} {pr['dest']}")
         shown = next((m for m in members if m.dest.endswith("/SKILL.md")), new[0])
         preview = shown.staged_bytes.decode("utf-8", errors="ignore")
         print(f"  --- preview of {shown.dest} (first 20 lines) ---")
         for ln in preview.splitlines()[:20]:
             print("   | " + ln)
-        question = (f"  Materialize skill folder {unit} ({len(members)} file(s), "
-                    f"all or none)?" if is_folder
-                    else f"  Materialize {label} {unit}?")
+        question = (f"  Materialize skill folder {unit} "
+                    f"({len(members) + len(gone)} file(s), all or none)?"
+                    if is_folder else f"  Materialize {label} {unit}?")
         if not prompt_yes(question):
             sys.stderr.write(f"  WITHHELD {unit}: declined at behavioural gate\n")
             withheld_dests.update(m.dest for m in members)
+            withheld_units.add(unit)
+            continue
+        overwrite_ok.update(m.dest for m in owned)
 
     for it in items:
         if it.state in ("core-refused", "leak-refused"):
@@ -1558,7 +1616,9 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
         record_state = "clean"
 
         if it.state == "local-edit":
-            merged, st = three_way(consumer, cache, it, old_sha, interactive)
+            merged, st = three_way(
+                consumer, cache, it, old_sha, interactive,
+                prev_files.get(it.dest, {}).get("source_sha256"))
             if merged is None:
                 # kept local / skipped — preserve live, and DO NOT launder the
                 # consumer's own bytes into `materialized_sha256`.
@@ -1611,7 +1671,8 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
                         f"  SKIP   {it.dest}: user-owned, prompt needed "
                         f"(non-interactive)\n")
                     continue
-                if not prompt_yes(f"  {it.dest} exists (user-owned). Overwrite?"):
+                if it.dest not in overwrite_ok and not prompt_yes(
+                        f"  {it.dest} exists (user-owned). Overwrite?"):
                     counts["skipped"] += 1
                     continue
             # overlay-wins or confirmed prompt → write as a clean copy.
@@ -1648,6 +1709,16 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
     # every one, which is what let a bad `select:` edit come within one
     # keystroke of deleting ~75 unrelated files in a live incident — see
     # feedback_overlay_select_narrowing_orphans_everything_else.
+    # A file upstream removed from a withheld unit stays with the unit: deleting
+    # a reference the unchanged SKILL.md still routes to is a half skill too.
+    # File and lock entry stay as they were until the unit is confirmed.
+    held = [pr for pr in prune if gate_unit(pr["dest"]) in withheld_units]
+    for pr in held:
+        counts["withheld"] += 1
+        prev = prev_files.get(pr["dest"])
+        if prev:
+            file_locks.append(dict(prev))
+    prune = [pr for pr in prune if pr not in held]
     clean_orphans = [pr for pr in prune if pr["present"] and pr["clean"]]
     large_batch = len(clean_orphans) > LARGE_PRUNE_THRESHOLD
     allow_large_prune = False
@@ -1999,7 +2070,9 @@ def unattended_due(prev: dict | None, interval: int, now: datetime) -> bool:
 
 
 def unattended_blockers(consumer: Consumer, cache: str, items: list[PlanItem],
-                        prune: list[dict], old_sha: str | None) -> list[str]:
+                        prune: list[dict], old_sha: str | None,
+                        lock_files: dict | None = None,
+                        held_units: set[str] | frozenset = frozenset()) -> list[str]:
     """What in this plan needs a person. Any of it holds the WHOLE overlay.
 
     A conflict: `sync --yes` keeps the local side AND advances the lock pin, and
@@ -2013,17 +2086,23 @@ def unattended_blockers(consumer: Consumer, cache: str, items: list[PlanItem],
     scripts/overlay-autosync.sh for the file that made this the rule).
 
     Applying the rest and holding only the conflicting file would need a pin per
-    file, and the lock has one per overlay."""
+    file, and the lock has one per overlay.
+
+    A deletion inside a unit held at the behavioural gate is no blocker: the
+    engine keeps it with the unit (see materialize) and deletes nothing."""
+    lock_files = lock_files or {}
     blockers: list[str] = []
     for it in items:
         if it.state == "error":
             blockers.append(f"error: {it.dest}")
         elif it.state == "local-edit":
-            merged, _ = three_way(consumer, cache, it, old_sha, interactive=False)
+            merged, _ = three_way(consumer, cache, it, old_sha, interactive=False,
+                                  base_source_sha=(lock_files.get(it.dest) or {})
+                                  .get("source_sha256"))
             if merged is None:
                 blockers.append(f"conflict: {it.dest}")
     for pr in prune:
-        if pr["present"]:
+        if pr["present"] and gate_unit(pr["dest"]) not in held_units:
             blockers.append(f"would delete: {pr['dest']}")
     return blockers
 
@@ -2050,18 +2129,22 @@ def _unattended_one(consumer: Consumer, name: str, prev: dict | None,
     items, prune = build_plan(consumer, cache, manifest, defaults,
                               params["select"], name, params["precedence"],
                               lock, old_sha, False)
-    blockers = unattended_blockers(consumer, cache, items, prune, old_sha)
+    lock_files = {f["dest"]: f for f in prev_entry.get("files", [])
+                  if isinstance(f, dict) and f.get("dest")}
+    units = gated_units(items, set(lock_files))
+    blockers = unattended_blockers(consumer, cache, items, prune, old_sha,
+                                   lock_files, set(units))
     if blockers:
         return "held", "; ".join(blockers)
 
     # What the engine will leave for a person without holding anything back:
     # every changed file of a behavioural unit with a first-time file in it (the
-    # [y] gate is never answered unattended, and a skill folder is held whole)
-    # and a file the consumer already has that the overlay would claim. Neither
-    # is applied to the lock, so both come up again.
-    known = {f.get("dest") for f in prev_entry.get("files", []) if isinstance(f, dict)}
+    # [y] gate is never answered unattended, and a skill folder is held whole,
+    # deletions inside it included) and a file the consumer already has that the
+    # overlay would claim. Neither is applied to the lock, so both come up again.
     pending = sorted(
-        {m.dest for ms in gated_units(items, known).values() for m in ms}
+        {m.dest for ms in units.values() for m in ms}
+        | {pr["dest"] for prs in held_prune(prune, units).values() for pr in prs}
         | {it.dest for it in items
            if it.state == "user-owned"
            and (it.on_conflict or defaults["on_conflict"]) == "prompt"})
@@ -2199,7 +2282,9 @@ def status_data(consumer: Consumer, name: str, lock: dict) -> dict:
             counts["orphan"] = len(prune)
             known = {f.get("dest") for f in entry.get("files", []) if isinstance(f, dict)}
             units = gated_units(items, known)
-            counts["pending-confirm"] = sum(len(m) for m in units.values())
+            counts["pending-confirm"] = (
+                sum(len(m) for m in units.values())
+                + sum(len(p) for p in held_prune(prune, units).values()))
             out["withheld"] = sorted(units)
         except OverlayError as exc:
             out["plan_error"] = str(exc)

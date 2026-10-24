@@ -63,7 +63,9 @@
 #   - the behavioural gate asks once per skill folder, all or none (§27): a
 #     non-interactive or declined run withholds the whole folder (no SKILL.md
 #     without its new reference), one [y] writes all of it, and `status` counts
-#     what waits as pending-confirm and never as upstream-ahead=0
+#     what waits as pending-confirm and never as upstream-ahead=0; a held local
+#     edit keeps its 3-way base, a rename inside a held folder prunes nothing,
+#     and a file the consumer already has is settled by the same answer
 #
 # Run:  bash scripts/tests/test-overlay.sh        (exits non-zero on any failure)
 set -u
@@ -1465,6 +1467,68 @@ case "$(printf '%s\n' "$OUT" | grep '^unattended example-org:')" in
 esac
 assert_absent "27f: the reference is not written" "$CON/$REF"
 assert_nogrep "27f: SKILL.md is not updated" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
+
+# 27g. a held local edit keeps its 3-way base. The lock pin moves on while the
+# unit waits; a base taken from the NEW pin equals the upstream side, so the
+# later merge returned the live file and called it clean: the upstream hunk was
+# gone without a trace.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+printf '\nLOCAL-EDIT by the consumer.\n' >> "$CON/$SK/SKILL.md"
+edit_line "$OV/tree/$SK/SKILL.md" "## Conventions" "UPSTREAM-X line.
+
+## Conventions"
+mkdir -p "$OV/tree/$SK/references"
+printf '# R\n' > "$OV/tree/$SK/references/r.md"
+commit_ov "$OV" edit-plus-ref
+run_overlay "$CON" sync example-org --yes
+assert_out "27g: the folder with the local edit is withheld" "WITHHELD $SK/"
+assert_nogrep "27g: withheld: SKILL.md is untouched" "$CON/$SK/SKILL.md" "UPSTREAM-X"
+run_overlay "$CON" sync example-org
+assert_grep "27g: confirmed: the upstream line survives the wait" "$CON/$SK/SKILL.md" "UPSTREAM-X"
+assert_grep "27g: confirmed: the local edit survives too" "$CON/$SK/SKILL.md" "LOCAL-EDIT"
+assert_file "27g: confirmed: the new reference is written" "$CON/$SK/references/r.md"
+
+# 27h. a rename inside a held folder deletes nothing: the old reference the
+# unchanged SKILL.md still routes to stays until the folder is confirmed.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+mkdir -p "$OV/tree/$SK/references"
+printf '# A\n' > "$OV/tree/$SK/references/a.md"
+printf '\nDetail: see references/a.md.\n' >> "$OV/tree/$SK/SKILL.md"
+commit_ov "$OV" with-a
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+assert_file "27h: setup: a.md is materialized" "$CON/$SK/references/a.md"
+mv "$OV/tree/$SK/references/a.md" "$OV/tree/$SK/references/b.md"
+edit_line "$OV/tree/$SK/SKILL.md" "references/a.md" "references/b.md"
+commit_ov "$OV" rename-a-to-b
+run_overlay "$CON" sync example-org --yes
+assert_out "27h: the renamed folder is withheld" "WITHHELD $SK/"
+assert_file "27h: withheld: the old reference is not pruned" "$CON/$SK/references/a.md"
+assert_absent "27h: withheld: the new reference is not written" "$CON/$SK/references/b.md"
+assert_grep "27h: withheld: SKILL.md still routes to a file that exists" "$CON/$SK/SKILL.md" "references/a.md"
+run_overlay "$CON" status example-org
+assert_out "27h: status counts the held deletion as pending too" "pending-confirm=3"
+unattended "$CON"
+assert_out "27h: unattended applies the rest, the held prune is no blocker" "unattended example-org: applied"
+assert_file "27h: unattended: a.md still there" "$CON/$SK/references/a.md"
+run_overlay "$CON" sync example-org
+assert_absent "27h: confirmed: the old reference is pruned" "$CON/$SK/references/a.md"
+assert_file "27h: confirmed: the new reference is written" "$CON/$SK/references/b.md"
+assert_grep "27h: confirmed: SKILL.md routes to b.md" "$CON/$SK/SKILL.md" "references/b.md"
+
+# 27i. a file the consumer already has in the folder is settled by the same
+# answer: no second per-file question that could leave the folder half applied.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mkdir -p "$CON/$SK/references"
+printf '# mine\n' > "$CON/$SK/references/costs.md"
+mk_ref_change "$OV"
+run_overlay "$CON" sync example-org
+n_own="$(printf '%s' "$OUT" | grep -c 'exists (user-owned). Overwrite')" || true
+assert_eq "27i: no separate overwrite question inside the unit" "$n_own" "0"
+assert_out "27i: the unit list names the overwrite" "user-owned"
+assert_grep "27i: confirmed: the reference is the overlay's" "$CON/$REF" "Read this when costs come up"
+assert_grep "27i: confirmed: SKILL.md is updated" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
 
 # ───────────────────────────────────────────────────────────────────
 echo

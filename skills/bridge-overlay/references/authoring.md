@@ -99,7 +99,8 @@ selection:
 ecosystem_fragment: ecosystem.example-org.yaml
 files:
   # A behavioural file: forces a [y] at first materialize regardless of
-  # on_conflict, asked once for the whole skill folder. Declaring kind makes the consumer's preview explicit.
+  # on_conflict, asked once for the whole skill folder. Declaring kind
+  # makes the consumer's preview explicit.
   - dest: skills/example-org-context/SKILL.md
     kind: skill
 
@@ -128,8 +129,8 @@ Notes:
   where the staged value **still equals** that placeholder — so a consumer who
   already filled it on a prior sync isn't re-asked.
 - `kind: skill|agent|standing-order` = **behavioural** → the consumer sees an
-  explicit `[y]` (one per skill folder, all or none); `--yes` can't auto-accept it. `kind: config|rule` =
-  batch-confirmable.
+  explicit `[y]` (one per skill folder, all or none); `--yes` can't
+  auto-accept it. `kind: config|rule` = batch-confirmable.
 - **Prompt-fields are for per-CONSUMER values only** (a subscription GUID, the
   consumer's own board). NEVER mark a **shared org fact** — a GitHub board number,
   an org recipient email — as a `prompt_field`: it is identical for every consumer,

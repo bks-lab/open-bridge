@@ -189,6 +189,17 @@ unit is **withheld + reported** (`WITHHELD skills/<name>/`, count `withheld=`),
 never auto-applied. Its lock entries stay as they were, so the next run and
 `status` see it again.
 
+The one answer covers the whole unit. A file upstream removed from a withheld
+folder is not pruned (Step 14 keeps it and its lock entry), since the unchanged
+SKILL.md may still route to it. A file the consumer already has inside the
+unit (`user-owned`, `on_conflict: prompt`) is listed as "overwrites your file"
+and settled by the same `[y]`, with no second per-file question. The one
+exception is `on_conflict: skip`: the manifest declared that the consumer's own
+file is kept, so an accepted unit keeps it. A local edit held in a unit keeps
+its 3-way base while the pin moves on: the base is the version whose hash its
+lock entry still carries, looked up in the cache history when the pinned blob
+differs, so the upstream change merges once the unit is confirmed.
+
 > `diff` and `--dry-run` STOP HERE. Everything above is read-only.
 
 ### 12 — Write the copy (atomic)
@@ -328,7 +339,8 @@ Read-only health, no writes:
 - Bucketed counts: `{clean · locally-modified · upstream-ahead · conflict ·
   orphan · pending-confirm · CORE-refused}`. `orphan` = in lock, gone from the
   cache's plan (an upcoming prune); `locally-modified` = Step 6(d) candidates;
-  `upstream-ahead` includes files the consumer does not have yet;
+  `upstream-ahead` includes files the consumer does not have yet (`--json`
+  used to report them under a separate `clean-new` key);
   `pending-confirm` = files the next sync holds at the Step 11 gate, listed
   under `withheld` by unit. A withheld file is never missing from the counts.
 

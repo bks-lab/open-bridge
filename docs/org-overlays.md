@@ -406,7 +406,7 @@ calls. It applies an overlay only when its whole plan needs nobody:
 | updates, new config files, clean 3-way merges | applied |
 | a behavioural file arriving for the first time | applied without its unit (the whole skill folder, updates included); listed as pending until a `[y]` in `/overlay sync` |
 | a conflict with a local edit | the overlay is **held**: nothing written, the lock pin stays |
-| a file it would delete | **held** |
+| a file it would delete | **held**, unless it sits in a withheld skill folder: then it waits with the folder |
 | nothing new, inside `pull_interval_days` | `not-due`, nothing fetched |
 
 A conflict holds the whole overlay because `sync --yes` keeps the local side
@@ -486,8 +486,10 @@ load-bearing order, condensed:
 10. **Scope tripwire** — verify or inject inline `scope: org`.
 11. **Behavioural gate** — skill / agent / standing-order require an explicit
     `[y]` at first materialize, asked once per unit: a skill folder is confirmed
-    all or none, so no half skill is written; config and rule files
-    batch-confirm.
+    all or none, so no half skill is written. The answer covers the folder's
+    files the consumer already has and the files upstream removed from it (a
+    withheld folder is not pruned); only `on_conflict: skip` keeps a consumer's
+    own file inside an accepted folder. Config and rule files batch-confirm.
 12. **Write a COPY atomically** (never a symlink); `materialized_sha256 = hash
     as written`.
 13. **Ecosystem fragment**: `ecosystem.<org>.yaml` goes through Steps 4 to 12
