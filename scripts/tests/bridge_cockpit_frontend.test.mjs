@@ -2992,32 +2992,32 @@ test('roomsOf: workspaces in the terminal order, pinned first, with their tabs, 
   const tab = (ref, state, workspace, extra = {}) => ({ ref, state, workspace, name: ref, ...extra })
   const s = {
     rooms: { layout: 'workspaces', root: '/u/bridge', control: 'Bridge', bridges: [
-      { id: 'kion', name: 'kion-bridge', path: '/u/k1/kion-bridge' }, { id: 'family', name: 'family', path: '/u/family' }] },
+      { id: 'acme', name: 'acme-bridge', path: '/u/a1/acme-bridge' }, { id: 'family', name: 'family', path: '/u/family' }] },
     tabs: {
       workspaces: [
-        { ref: 'w:2', title: 'Stepstone', cwd: '/u/bridge', unread: 2, statuses: [{ name: 'claude_code', text: 'Idle' }] },
+        { ref: 'w:2', title: 'Bigcorp', cwd: '/u/bridge', unread: 2, statuses: [{ name: 'claude_code', text: 'Idle' }] },
         { ref: 'w:1', title: 'Bridge', cwd: '/u/bridge', pinned: true, statuses: [{ name: 'claude_code', text: 'Waiting' }] },
-        { ref: 'w:3', title: 'K1', cwd: '/u/k1/kion-bridge/sub' }],
-      tabs: [tab('s:1', 'working', 'Bridge'), tab('s:2', 'needs-you', 'Bridge'), tab('s:3', 'waiting', 'Stepstone'),
+        { ref: 'w:3', title: 'A1', cwd: '/u/a1/acme-bridge/sub' }],
+      tabs: [tab('s:1', 'working', 'Bridge'), tab('s:2', 'needs-you', 'Bridge'), tab('s:3', 'waiting', 'Bigcorp'),
         tab('s:4', 'waiting', 'Gone')],
     },
     quick: { convs: [{ id: 'q1', running: false, turns: [{ q: 'hi' }] }] },
-    agents: { peers: [{ id: 'axel' }] },
+    agents: { peers: [{ id: 'peer-a' }] },
   }
   const r = logic.roomsOf(s)
-  assert.deepEqual(r.workspaces.map(w => w.title), ['Bridge', 'Stepstone', 'K1', 'Gone'])
-  const [bridge, step, k1, gone] = r.workspaces
+  assert.deepEqual(r.workspaces.map(w => w.title), ['Bridge', 'Bigcorp', 'A1', 'Gone'])
+  const [bridge, step, a1, gone] = r.workspaces
   assert.deepEqual(bridge.tabs.map(t => t.ref), ['s:2', 's:1'])        // needs-you first
   assert.equal(bridge.chats.length, 1)                                  // the chats live in the control workspace
   assert.equal(step.chats.length, 0)
   assert.equal(bridge.state, 'needs-you')                              // its most urgent tab
-  assert.equal(k1.state, null)
+  assert.equal(a1.state, null)
   assert.equal(step.unread, 2)
-  assert.equal(k1.bridge?.id, 'kion')                                   // a workspace in another Bridge says which
+  assert.equal(a1.bridge?.id, 'acme')                                   // a workspace in another Bridge says which
   assert.equal(bridge.bridge, null)
   assert.equal(gone.known, false)                                       // tabs of a workspace the list does not name still show
   assert.deepEqual(r.bridges.map(b => b.id), ['family'])                // a Bridge with a workspace is not listed twice
-  assert.deepEqual(r.agents.map(a => a.id), ['axel'])
+  assert.deepEqual(r.agents.map(a => a.id), ['peer-a'])
   assert.equal(r.waiting, 3)
 })
 

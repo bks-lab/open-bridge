@@ -1493,8 +1493,8 @@ def test_urgency_priority_note(world):
     with pytest.raises(ActionError):
         world.act("urgency", key="task:other-task", value="now")
     world.runner.calls.clear()
-    world.act("note", key="ref:example/repo#12", text="Axel looks at it")     # no place of its own: the log
-    assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Axel looks at it")]
+    world.act("note", key="ref:example/repo#12", text="Sam looks at it")     # no place of its own: the log
+    assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Sam looks at it")]
 
 
 def test_task_close_closes_through_task_py_with_the_reason(world):
@@ -7097,8 +7097,8 @@ def test_do_it_with_a_note_writes_it_on_the_task_first_and_the_agent_reads_it(wo
 
 def test_a_note_on_a_yes_item_starts_an_agent_instead_of_approving_its_action(world):
     world.runner.calls.clear()
-    world.act("do_it", keys=[f"inbox:{YES_ID}"], note="erst Axel fragen")
-    assert writes(world) == [I(world, "note", YES_ID, "--", "Start note: erst Axel fragen"),
+    world.act("do_it", keys=[f"inbox:{YES_ID}"], note="erst Sam fragen")
+    assert writes(world) == [I(world, "note", YES_ID, "--", "Start note: erst Sam fragen"),
                              launch_argv(world, YES_ID, "go", "area", "--start-note")]
 
 
@@ -7182,8 +7182,8 @@ def test_later_takes_the_sentence_to_the_task_the_inbox_item_and_the_log(world):
     world.act("later", key="task:other-task", until=TOMORROW, text="after the release")
     assert writes(world) == [K(world, "note", "other-task", "--", "Later until 2026-10-10: after the release")]
     world.runner.calls.clear()
-    world.act("later", key=f"inbox:{YES_ID}", until=TOMORROW, text="ask Axel first")
-    assert writes(world) == [I(world, "note", YES_ID, "--", "Later until 2026-10-10: ask Axel first"),
+    world.act("later", key=f"inbox:{YES_ID}", until=TOMORROW, text="ask Sam first")
+    assert writes(world) == [I(world, "note", YES_ID, "--", "Later until 2026-10-10: ask Sam first"),
                              I(world, "defer", YES_ID, "--until", TOMORROW)]
     world.runner.calls.clear()
     world.act("later", key=f"inbox:{ONLY_ID}", until=TOMORROW)        # an inbox item records its defer itself
