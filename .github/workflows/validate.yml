@@ -408,7 +408,7 @@ jobs:
   # imports its package by a short name (`engine`), and two of those in one
   # session would shadow each other.
   skill-pytest:
-    name: Skill Suites (board-pilot, html-canvas, bridge-audit)
+    name: Skill Suites (board-pilot, html-canvas, html-slides, bridge-audit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -419,6 +419,15 @@ jobs:
       - name: Install pytest and pyyaml
         run: pip install pyyaml pytest
 
+      # The html-canvas and html-slides browser tests open each page from an
+      # empty dir over file:// in headless chromium. Without it they skip, and
+      # a skipped browser test proves nothing about the offline contract.
+      # Same pin as the cockpit demo smoke job.
+      - name: Install playwright and chromium
+        run: |
+          pip install playwright==1.64.0
+          python3 -m playwright install --with-deps chromium
+
       # The board-driven pipeline engine. Hermetic: every gh and claude call
       # is faked, git runs in throwaway repos with a local identity.
       - name: Run board-pilot suite
@@ -426,6 +435,11 @@ jobs:
 
       - name: Run html-canvas suite
         run: python3 -m pytest skills/html-canvas/tests -q -rs
+
+      # Slide engine, deck assembler, stage and send checks. It consumes the
+      # html-canvas scripts by relative path, so it runs after that suite.
+      - name: Run html-slides suite
+        run: python3 -m pytest skills/html-slides/tests -q -rs
 
       # The audit's checker runner (Check 16). Hermetic: it runs fixture
       # checkers in a temp tree, never the repository's own.

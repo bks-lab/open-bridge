@@ -1,7 +1,7 @@
 ---
 summary: The slash commands each shipped CORE skill registers, and what invokes them.
 type: reference
-last_updated: 2026-09-24
+last_updated: 2026-10-24
 related:
   - AGENTS.md
   - docs/skill-distribution-architecture.md
@@ -43,6 +43,7 @@ which ones is per-instance, so the live list is the skill listing itself.
 | `/doc-system` | | `doc-system` | Document intake: scan import sources, categorise, rename, tag, file, audit |
 | `/bridge-explorer` | | `bridge-explorer` | Ecosystem, repo-layout and constellation visualizations |
 | `/bridge-greeting` | | `bridge-greeting` | Terminal greeting per instance: logo, palette, today's calendar, the Doing board |
+| `/html-slides` | `/slides` | `html-slides` | Single-file HTML slide deck: DESIGN.md or a style preset, speaker notes, tracks, live stages; PDF export and an anonymity check before sending |
 
 ## Setup and configuration
 
