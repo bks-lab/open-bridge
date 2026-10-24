@@ -61,6 +61,11 @@ persons:
       timezone: Europe/Berlin
       detail_level: full
 
+# Optional: named parts of the mandant, as person ids. `mandant:example-team#leads`
+# addresses only these (skills/mail-draft); `mandant:example-team` still reaches everyone.
+groups:
+  leads: [lead]
+
 notes: |
   Example mandant. Replace with your actual team, family, or contacts.
   The `defaults:` block is a hint for the intent-parser (Haiku) when

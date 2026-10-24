@@ -43,6 +43,7 @@ through an overlay), and the schema refuses `scope: core` for a footer.
 ```
 Request about mail
 ├── write / draft / "send" a mail ──────────► § Draft a mail
+├── answer / reply to a mail in Mail ───────► § Reply
 ├── "how will X be addressed?" ─────────────► mail-draft.sh explain --to X
 ├── new footer / signature / profile ───────► § Set up
 ├── paste a signature into Outlook/Mail ────► mail-draft.sh signature <footer> --out <dir>
@@ -69,11 +70,24 @@ Request about mail
    the Drafts folder counted it, and for Outlook that "From" must be switched
    by hand. Never claim a draft that was not verified.
 
-Recipients: an address, `mandant:<id>`, `<mandant>/<person>`, a person id, or
-a person's `nicknames` entry. A body may link `[text](site:home)` when the
+Recipients: an address, `mandant:<id>`, `mandant:<id>#<group>` (the mandant's
+`groups:` block), `<mandant>/<person>`, a person id, or a person's `nicknames` entry. A body may link `[text](site:home)` when the
 profile or `mail.link_aliases` defines `site:home`.
 Override anything per call: `--profile`, `--footer`/`--no-footer`,
 `--footer-style`, `--theme`, `--lang`, `--informal`/`--formal`, `--client`.
+
+## Reply
+
+`mail-draft.sh compose --reply-to <message-id|subject words> --body-file <f>
+[--attach <file>] [--reply-all]` answers a message in Apple Mail. `--to` and
+`--subject` default to the original's sender and `Re: <subject>`; profile,
+footer and greeting are chosen for that sender as usual. The text and footer
+are pasted above the quote and files go in by clipboard, so keep hands off the
+keyboard for those seconds: a paste only happens while the reply window is in
+front, otherwise the reply is closed unsaved and the run says so. The saved
+draft is read back and must hold text, footer, quote and every attachment.
+Outlook, eml and none are refused for replies, by name. Preview the text first
+with `preview --to <sender> --subject "Re: <subject>"`.
 
 ## Set up
 
@@ -102,8 +116,8 @@ cannot render is shown as a tile with the reason, not skipped.
 
 | client | draft | sender | notes |
 |---|---|---|---|
-| `apple-mail` | real draft, read back from Drafts (sender, attachments) | set from the footer, read back | default on macOS |
-| `outlook` | open window; counted in Drafts where Outlook lets scripts see it | NOT settable, reported | no `--hide`; the new Outlook hides account folders from scripts, so its drafts read as unverified |
+| `apple-mail` | real draft, read back from Drafts (sender, attachments); replies with `--reply-to` | set from the footer, read back | default on macOS |
+| `outlook` | open window; counted in Drafts where Outlook lets scripts see it | NOT settable, reported | no `--hide`, no replies; the new Outlook hides account folders from scripts, so its drafts read as unverified |
 | `eml` | `.eml` with `X-Unsent: 1` | in the file | any OS; opens as a draft in Outlook and Thunderbird |
 | `none` | only the bundle | n/a | for review or another tool |
 
