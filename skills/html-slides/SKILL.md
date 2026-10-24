@@ -29,6 +29,7 @@ foundation (tokens, fonts, the quality gate, the send bundle) is shared with
 | A running simulation inside a slide | `new-deck.py --with-stage`, a `.stage` element | `reference/stage.md` |
 | Presenting live: blank screen, jump to a slide number, zoom, language switch, notes handout | built in: keys B / W, digits + Enter, Alt+click, L, `data-print-notes` | `reference/slide-types.md` § Engine Contract |
 | An optional deck feature (a module) or writing one | `new-deck.py --with NAME` (or `--with all`), `SlideDeck.use()` | `reference/modules.md` |
+| Reveal points one by one, walk through code line by line, morph an element from one slide to the next | `--with steps` (`data-step`, `data-lines`), `--with morph` (`data-morph`) | `reference/modules.md` § steps, § morph |
 | Pick a look | DESIGN.md (default) or a style preset by name | `reference/deck-build.md` § Presets |
 | A deck in no house brand, or no DESIGN.md exists | `--preset <slug>` | `presets/_template.yaml`, `assets/discovery-menu.html` |
 | PDF, mail, customer, external | the send path below | `reference/output-formats.md` |

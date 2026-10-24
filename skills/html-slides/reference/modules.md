@@ -114,3 +114,63 @@ and, like `deck()`, a slide count or a list of slide markup plus `html_attrs`,
 modules by default, `MODULE_FIXTURES` (`tests/fixtures/modules/`) for test-only
 modules such as `probe.js`, which `tests/test_engine_plugins.py` uses to pin the
 API itself. `with_modules(html, modules, root)` adds modules to any spliced deck.
+
+## Module: steps (`--with steps`)
+
+Step reveals inside a slide and code walkthroughs. Forward moves (arrows, Space,
+Page keys, swipe, `next()`) reveal the next step before the slide changes; backward
+moves hide it again. Each step is written to the deep link (`#<id>.<step>`), so a
+link or a reload lands on the same step.
+
+| Markup | Effect |
+|---|---|
+| `data-step` | the element appears on the next step, in document order |
+| `data-step="2"` | the element appears on step 2; elements with the same number appear together |
+| `data-steps` on a container | each child is a step of its own (a list built up item by item) |
+| `data-step-effect="rise"` | the element slides up as it appears |
+| `data-step-effect="dim"` | the element dims once a later step is shown (the current point stands out) |
+| `data-step-effect="highlight"` | the element takes the accent colour while it is the latest step |
+| `data-lines="1-3\|5\|*"` on a `pre` or `code` | one line group per step: the first group is highlighted when the block is shown, each further group takes the next step, `*` shows every line; groups take ranges and commas (`1,4-6`) |
+
+- A code block with `data-lines` is split into one `span.code-line` per line when
+  the deck starts; highlight spans that cross a line break are copied into each
+  line, so `kw`, `str`, `cm` and `hl` keep their colours. A code block that itself
+  carries `data-step` appears first, then walks its lines.
+- `data-step-effect` on a `data-steps` container applies to all its children.
+- Moving back onto a slide (backward key, swipe, `prev()`) starts at its last step, so
+  stepping back never shows a half built slide. A jump (number, dot, `goTo`, Home,
+  End), a deep link or a wheel scroll lands on step 0, or on the step the link names.
+- A step past the slide's last one in a link shows the last step.
+- Without the module every element shows, so the same slides read complete in a deck
+  that does not load it. Print and the PDF show every step and every line undimmed.
+- Classes the module sets, for a deck's own CSS: `step-hidden`, `step-shown`,
+  `step-current`, `step-past`; lines get `is-on` or `is-dim`.
+
+## Module: morph (`--with morph`)
+
+Animated continuity between two slides: elements that carry the same
+`data-morph="name"` on the slide left and the slide reached glide from their old
+place and size to the new one, and the rest of the screen cross-fades.
+
+```html
+<section class="slide" id="before"> ... <div class="card" data-morph="pipeline">...</div></section>
+<section class="slide" id="after">  ... <div class="card wide" data-morph="pipeline">...</div></section>
+```
+
+- It uses `document.startViewTransition` around the engine's slide change
+  (`transition` hook with `apply({instant: true})`). Each shared name becomes a
+  `view-transition-name` (`morph-<name>`, other characters turned into `_`) for the
+  length of the transition only, and is cleared afterwards.
+- A name counts once per slide: when two elements on one slide share it, the first
+  one morphs. Elements in speaker notes never morph.
+- A slide pair without a shared name moves as before (smooth scroll, no view
+  transition). A jump between slides that are not neighbours morphs too, when the
+  two slides share a name.
+- Any key during a morph finishes it at once (`skipTransition()`), so fast presses
+  never queue animations.
+- No View Transitions support, or `prefers-reduced-motion: reduce`: the change is
+  instant, nothing else differs.
+- `data-morph-duration="600"` (milliseconds) on the deck or `<html>` sets the
+  duration; the default is 450 ms.
+- `steps` and `morph` work together: the steps of a slide are walked first, the
+  morph runs on the move to the next slide.

@@ -1,0 +1,23 @@
+/* deck module: steps. Classes are set by steps.js, so a deck without the module
+   (or before it runs) shows every element. Reduced motion: the engine's global rule
+   zeroes these transitions. */
+.slide .step-shown, .slide .step-hidden {
+  transition: opacity 0.35s ease, transform 0.35s ease, color 0.35s ease, visibility 0.35s;
+}
+.slide .step-hidden { visibility: hidden; opacity: 0; }
+[data-step-effect="rise"].step-hidden, [data-steps][data-step-effect="rise"] > .step-hidden { transform: translateY(0.6em); }
+[data-step-effect="dim"].step-past, [data-steps][data-step-effect="dim"] > .step-past { opacity: 0.35; }
+[data-step-effect="highlight"].step-current, [data-steps][data-step-effect="highlight"] > .step-current { color: var(--accent); }
+
+/* data-lines: one span per line */
+.code-line { display: block; transition: opacity 0.3s ease, background-color 0.3s ease; }
+.code-line:empty::before { content: "\200b"; }
+.code-line.is-dim { opacity: 0.35; }
+.code-line.is-on { background: var(--accent-dim); box-shadow: inset 3px 0 0 var(--accent); }
+
+@media print {
+  .slide .step-hidden, .slide .step-shown, .slide .step-past, .code-line {
+    visibility: visible !important; opacity: 1 !important; transform: none !important; transition: none !important;
+  }
+  .code-line.is-on { background: none; box-shadow: none; }
+}
