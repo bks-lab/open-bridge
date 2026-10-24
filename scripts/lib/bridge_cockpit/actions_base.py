@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 
 
 ACTIVE_INBOX_STATES = ("open", "approved", "waiting", "deferred")
-ROW_KEY_RE = re.compile(r"^(inbox|task|ref|title|item):.{1,240}\Z")
+# the part after the kind may hold slashes (item:systems/checks/x) but never a ".." segment: a key is a name, not a path
+ROW_KEY_RE = re.compile(r"^(inbox|task|ref|title|item):(?!(?:.*/)?\.\.(?:/|\Z)).{1,240}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 SESSION_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")

@@ -281,7 +281,7 @@ class World:
         self.port = self.app.port
         self.thread = None
         if serve:
-            self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+            self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.005}, daemon=True)
             self.thread.start()
         if prepare:
             self.app.tabs.poll()
@@ -1005,6 +1005,14 @@ def test_settled_rows_are_pruned_when_gone(world):
 
 # ---------------------------------------------------------------- actions: exact argv
 
+def refused(w: World, code: str, verb: str, **args) -> ActionError:
+    """The action is refused, and for this reason: a bare raises() passes for whichever refusal comes first."""
+    with pytest.raises(ActionError) as err:
+        w.act(verb, **args)
+    assert err.value.code == code, f"{verb} refused as {err.value.code}: {err.value.message}"
+    return err.value
+
+
 def I(w: World, *args: str) -> list[str]:
     return [PY, str(w.root / "scripts" / "inbox.py"), "--root", str(w.root), "--by", "web", *args]
 
@@ -1329,8 +1337,7 @@ def test_a_page_item_that_is_gone_or_not_actionable_is_refused(world):
     with pytest.raises(ActionError) as err:
         world.act("do_it", keys=[quiet[0]["key"]])
     assert err.value.code == "not_applicable"
-    with pytest.raises(ActionError):
-        world.act("do_it", keys=["item:../../etc/x"])
+    refused(world, "invalid_argument", "do_it", keys=["item:../../etc/x"])
 
 
 RELAY_OFF = "cockpit:\n  enabled: true\n  language: en\n  relay: false\nworkplace:\n  control:\n    name: Control\n"
@@ -1371,8 +1378,7 @@ def test_an_inbox_item_becomes_a_task_and_leaves_the_list(world):
     res = world.act("to_task", key=f"inbox:{YES_ID}")
     assert writes(world)[0] == K(world, "new", "--from-inbox", YES_ID, "--status", "backlog", "--json")
     assert res["settled"] == [f"inbox:{YES_ID}"] and "tidy-labels" in res["note"]
-    with pytest.raises(ActionError):
-        world.act("to_task", key="task:demo-task")                          # a task is a task already
+    refused(world, "not_applicable", "to_task", key="task:demo-task")                          # a task is a task already
 
 
 def test_later_defers_inbox_and_hides_the_rest(world):
@@ -1438,8 +1444,7 @@ def test_unmute_lifts_a_rule_by_id(world):
     world.runner.calls.clear()
     world.act("inbox_unmute", id="20261017-1800-mini-daily-health-ab12")
     assert writes(world) == [I(world, "unmute", "20261017-1800-mini-daily-health-ab12")]
-    with pytest.raises(ActionError):
-        world.act("inbox_unmute", id="../etc/passwd")
+    refused(world, "invalid_argument", "inbox_unmute", id="../etc/passwd")
 
 
 def test_the_noise_of_the_inbox_is_served_with_the_rules(world):
@@ -1485,10 +1490,8 @@ def test_urgency_priority_note(world):
                              I(world, "note", YES_ID, "--", "--yes; rm -rf /")]
     note = writes(world)[-1]
     assert note.index("--yes; rm -rf /") == note.index("--") + 1
-    with pytest.raises(ActionError):
-        world.act("priority", key=f"inbox:{YES_ID}", value="P1")
-    with pytest.raises(ActionError):
-        world.act("urgency", key="task:other-task", value="now")
+    refused(world, "not_applicable", "priority", key=f"inbox:{YES_ID}", value="P1")
+    refused(world, "not_applicable", "urgency", key="task:other-task", value="now")
     world.runner.calls.clear()
     world.act("note", key="ref:example/repo#12", text="Sam looks at it")     # no place of its own: the log
     assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Sam looks at it")]
@@ -1504,10 +1507,8 @@ def test_task_close_closes_through_task_py_with_the_reason(world):
     world.act("task_close", keys=["task:demo-task"], reason="superseded", text="moved into #12")
     assert writes(world) == [K(world, "close", "demo-task", "--declined", "--reason",
                                tx["close_reason"]["superseded"] + ": moved into #12")]
-    with pytest.raises(ActionError):
-        world.act("task_close", keys=[f"inbox:{YES_ID}"], reason="done")
-    with pytest.raises(ActionError):                       # a stream never closes
-        world.act("task_close", keys=["task:quiet-task"], reason="done")
+    refused(world, "not_applicable", "task_close", keys=[f"inbox:{YES_ID}"], reason="done")
+    refused(world, "not_applicable", "task_close", keys=["task:quiet-task"], reason="done")                       # a stream never closes
     assert world.row("task:quiet-task")["closable"] is False
 
 
@@ -1564,9 +1565,9 @@ def test_a_row_only_on_a_page_can_still_be_settled_and_handed_on(world):
 
 def test_a_closed_or_unknown_item_is_not_made_up(world):
     page_only_item(world, state="closed")
-    for key in (f"inbox:{PAGE_ID}", "inbox:20261005-1200-nothing-here-0000", "task:no-such-task", "task:../x"):
-        with pytest.raises(ActionError):
-            world.act("settle", keys=[key], outcome="done")
+    for key in (f"inbox:{PAGE_ID}", "inbox:20261005-1200-nothing-here-0000", "task:no-such-task"):
+        refused(world, "stale_row", "settle", keys=[key], outcome="done")
+    refused(world, "invalid_argument", "settle", keys=["task:../x"], outcome="done")        # not a row key at all
 
 
 def act_answer(**data):
@@ -1588,10 +1589,8 @@ def test_a_row_step_runs_through_briefing_act_and_can_be_taken_back(world):
     entry = next(it for e in world.app.history.state() for it in e["items"] if it["kind"] == "row")
     assert entry["undone_ms"] and entry["did"] == "turned down"
     world.runner.calls.clear()
-    with pytest.raises(ActionError):                       # taken back once, never twice
-        world.act("row_undo", **undo["args"])
-    with pytest.raises(ActionError):                       # a token the server never handed out
-        world.act("row_undo", section="apps", row="2026-10/other", action="restore:sent.1999-01-01.1999-01-01")
+    refused(world, "not_applicable", "row_undo", **undo["args"])                       # taken back once, never twice
+    refused(world, "not_applicable", "row_undo", section="apps", row="2026-10/other", action="restore:sent.1999-01-01.1999-01-01")                       # a token the server never handed out
     assert world.runner.of("briefing.act") == []
 
 
@@ -1614,11 +1613,10 @@ def test_a_row_step_that_returns_a_tab_files_it_and_starts_it(world):
 
 def test_a_row_step_the_row_does_not_offer_or_a_row_without_steps_is_refused(world):
     world.runner.calls.clear()
-    for args in ({"index": 0, "action": "won"}, {"index": 1, "action": "turned_down"}, {"index": 0, "action": "Bad"}):
-        with pytest.raises(ActionError):
-            world.act("row_action", page="tasks", section="apps", **args)
-    with pytest.raises(ActionError):
-        world.act("row_undo", section="apps", row="2026-10/acme", action="turned_down")       # only an undo token
+    for args, code in (({"index": 0, "action": "won"}, "not_applicable"), ({"index": 1, "action": "turned_down"}, "not_applicable"),
+                       ({"index": 0, "action": "Bad"}, "invalid_argument")):
+        refused(world, code, "row_action", page="tasks", section="apps", **args)
+    refused(world, "invalid_argument", "row_undo", section="apps", row="2026-10/acme", action="turned_down")       # only an undo token
     assert world.runner.of("briefing.act") == []
 
 
@@ -1667,10 +1665,8 @@ def test_undo_reopens_through_the_scripts_and_says_it_was_taken_back(world):
     assert all(x["undone_ms"] for x in items)
     assert "task:other-task" not in world.app.collector.settled and f"inbox:{YES_ID}" not in world.app.collector.settled
     for bad in ({"slug": "../x"}, {"slug": "a", "as": "done"}):
-        with pytest.raises(ActionError):
-            world.act("task_reopen", **bad)
-    with pytest.raises(ActionError):
-        world.act("inbox_reopen", id="nope")
+        refused(world, "invalid_argument", "task_reopen", **bad)
+    refused(world, "invalid_argument", "inbox_reopen", id="nope")
 
 
 def test_the_history_is_filled_once_from_the_older_audit_log(tmp_path):
@@ -1707,8 +1703,7 @@ def test_the_history_is_filled_once_from_the_older_audit_log(tmp_path):
 
 
 def test_settle_asks_before_a_stream_ends_and_rows_say_whether_they_settle(world):
-    with pytest.raises(ActionError):
-        world.act("settle", keys=["task:quiet-task"], outcome="done")
+    refused(world, "not_applicable", "settle", keys=["task:quiet-task"], outcome="done")
     assert world.row("task:quiet-task")["settle"] == ["done", "not_doing"]
     assert world.row("task:other-task")["settle"] == ["done", "not_doing"]
     assert world.row(f"inbox:{YES_ID}")["settle"] == ["done", "not_doing"]
@@ -1833,8 +1828,7 @@ def test_task_review_runs_in_the_background_one_at_a_time(world):
     with pytest.raises(ActionError) as busy:
         world.act("task_review")
     assert busy.value.code == "review_busy"
-    with pytest.raises(ActionError):                       # keep writes the same file
-        world.act("task_keep", keys=["task:demo-task"])
+    refused(world, "review_busy", "task_keep", keys=["task:demo-task"])                       # keep writes the same file
     # other verbs are not blocked while it runs
     world.act("priority", key="task:demo-task", value="P2")
     gate.set()
@@ -1853,10 +1847,8 @@ def test_task_review_names_its_tasks_and_escalates(world):
     while world.app.review.running and time.monotonic() < deadline:
         time.sleep(0.01)
     assert world.runner.of("task.review")[-1] == K(world, "review", "--json", "--escalate", "demo-task")
-    with pytest.raises(ActionError):                       # a closer check names its tasks
-        world.act("task_review", escalate=True)
-    with pytest.raises(ActionError):
-        world.act("task_review", keys=[f"inbox:{YES_ID}"])
+    refused(world, "invalid_argument", "task_review", escalate=True)                       # a closer check names its tasks
+    refused(world, "not_applicable", "task_review", keys=[f"inbox:{YES_ID}"])
 
 
 def test_check_again_goes_past_the_cache_and_a_whole_check_counts_its_tasks(world):
@@ -1957,8 +1949,7 @@ def test_approve_all_confirm_flow(world):
     res = world.act("approve_all", keys=keys, confirm=True)
     assert writes(world) == [I(world, "approve", YES_ID), I(world, "approve", YES2_ID)]
     assert res["settled"] == keys and res["confirm"] is None
-    with pytest.raises(ActionError):
-        world.act("approve_all", keys=[f"inbox:{ONLY_ID}", f"inbox:{YES_ID}"], confirm=True)
+    refused(world, "not_applicable", "approve_all", keys=[f"inbox:{ONLY_ID}", f"inbox:{YES_ID}"], confirm=True)
     # every yes stands in the history and can be taken back before the runner's next pass
     undos = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["did"] == "approved"]
     assert {"verb": "inbox_reopen", "args": {"id": YES_ID}} in undos and len(undos) == 2
@@ -1987,16 +1978,14 @@ def test_team_role_sequencing_waiting_and_rollback(world):
     with pytest.raises(ActionError) as err:
         world.act("team_role", key="task:other-task", team="nope")
     assert err.value.code == "invalid_argument"
-    with pytest.raises(ActionError):
-        world.act("team_role", key=f"inbox:{YES_ID}", team="build")
+    refused(world, "not_applicable", "team_role", key=f"inbox:{YES_ID}", team="build")
 
 
 def test_adopt(world):
     world.runner.calls.clear()
     world.act("adopt", key="task:other-task", tab_ref="surface:11")
     assert writes(world) == [W(world, "adopt", "surface:11", "other-task")]
-    with pytest.raises(ActionError):
-        world.act("adopt", key="task:other-task", tab_ref="surface:7")
+    refused(world, "not_applicable", "adopt", key="task:other-task", tab_ref="surface:7")
 
 
 def test_tab_keys_recheck_and_press(world):
@@ -2432,9 +2421,9 @@ def test_account_status_runs_set_status_and_asks_the_page_again(world):
     run = world.runner.of("bridge-resources.set-status")
     assert len(run) == 1 and run[0][-2:] == ["azure-x", "disabled"]
     assert not (cache / "accounts.json").exists() and (cache / "elsewhere.json").exists()
-    for bad in ({"index": 1, "status": "paused"}, {"index": 0, "status": "legacy"}, {"index": 0, "status": "x", "page": "../"}):
-        with pytest.raises(ActionError):
-            world.act("account_status", **{"page": "systems", "section": "accounts", **bad})
+    for bad, code in (({"index": 1, "status": "paused"}, "not_applicable"), ({"index": 0, "status": "legacy"}, "invalid_argument"),
+                      ({"index": 0, "status": "x", "page": "../"}, "invalid_argument")):
+        refused(world, code, "account_status", **{"page": "systems", "section": "accounts", **bad})
 
 
 # ---------------------------------------------------------------- details endpoints
@@ -3357,10 +3346,8 @@ def test_a_session_in_a_task_tab_links_itself_one_can_link_by_hand_and_go_on_in_
     world.act("session_link", session=SID, slug="other-task")               # by hand it wins, and stays
     world.app.tabs.poll()
     assert world.app.sessions_state()["sessions"][0]["task"] == "other-task"
-    with pytest.raises(ActionError):
-        world.act("session_resume", session=SID)                           # it still runs: go to its tab
-    with pytest.raises(ActionError):
-        world.act("session_link", session=SID, slug="no-such-task")
+    refused(world, "not_applicable", "session_resume", session=SID)                           # it still runs: go to its tab
+    refused(world, "stale_row", "session_link", session=SID, slug="no-such-task")
     world.act("session_unlink", session=SID)
     assert world.app.store.session_links() == {} or SID not in world.app.store.session_links()
     # an ended session of a task: go on in it, in the folder it ran in
@@ -3433,8 +3420,7 @@ def test_start_control_opens_a_claude_tab_in_the_control_workspace(world):
 def test_start_control_is_refused_while_a_control_session_answers(world, monkeypatch):
     monkeypatch.setattr(world.app, "relay_state", lambda with_records=True: {"online": True})
     world.runner.calls.clear()
-    with pytest.raises(ActionError):
-        world.act("start_control")
+    refused(world, "not_applicable", "start_control")
     assert writes(world) == []
 
 
@@ -3639,8 +3625,7 @@ def test_a_chat_can_be_removed_and_stays_gone_after_a_restart(world):
     again = Quick(world.app, claude=None)
     again.load()
     assert again.state()["convs"] == []
-    with pytest.raises(ActionError):
-        world.act("quick_forget", conv=conv)
+    refused(world, "stale_row", "quick_forget", conv=conv)
 
 
 @pytest.mark.parametrize("extra", [{"model": "gpt"}, {"conv": "../x"}, {"via": "shell"}, {"model": "haiku; rm"}])
@@ -3690,8 +3675,7 @@ def test_a_conversation_hands_on_to_an_agent_tab_or_the_control_session(world):
     assert any("Commit the yaml change." in a and a.rstrip().endswith("Then push it.") for a in calls[0])
     res = world.act("quick_handoff", conv=conv, to="control")
     assert res["relay"]["preview"].startswith("From a quick question") or "quick question" in res["relay"]["preview"]
-    with pytest.raises(ActionError):
-        world.act("quick_handoff", conv="q0000000000", to="tab")
+    refused(world, "stale_row", "quick_handoff", conv="q0000000000", to="tab")
     # the page sends the empty box along when nothing was typed: that is no order, not a bad argument
     world.clock.advance(20)
     world.runner.calls.clear()
@@ -3928,8 +3912,7 @@ def wait_agents(world, timeout=3.0):
 def test_without_peers_there_are_no_agents_and_nothing_to_ask(world):
     st = world.app.agents.state()
     assert st["peers"] == [] and st["convs"] == []
-    with pytest.raises(ActionError):
-        world.act("a2a_ask", peer="nobody", text="hallo")
+    refused(world, "stale_row", "a2a_ask", peer="nobody", text="hallo")
 
 
 def test_peers_are_listed_with_their_card_and_never_a_token(world):
@@ -4301,8 +4284,7 @@ def test_a_refused_handoff_leaves_no_handed_record(tmp_path):
         assert err.value.code == "stale_row" and handed_of(w, conv) is None
         # an order over the cap is refused before the claim too
         w.app.quick.convs[conv]["turns"][0]["a"] = "now answered"
-        with pytest.raises(ActionError):
-            w.act("quick_handoff", conv=conv, to="tab", text="Z" * 3001)
+        refused(w, "invalid_argument", "quick_handoff", conv=conv, to="tab", text="Z" * 3001)
         assert handed_of(w, conv) is None
     finally:
         w.close()
@@ -4470,8 +4452,7 @@ def test_the_start_page_keeps_its_own_choice_of_tiles(world, tmp_path):
     from lib.bridge_cockpit.store import WebStore
     assert WebStore(world.app.state_dir, world.app.clock).home_tiles() == []
     for bad in (["c:waiting", "c:waiting"], ["no spaces"], "c:waiting", ["x" * 81], [f"c:{i}" for i in range(61)]):
-        with pytest.raises(ActionError):
-            world.act("home_tiles", ids=bad)
+        refused(world, "invalid_argument", "home_tiles", ids=bad)
 
 
 def test_the_start_page_remembers_what_it_offered_so_new_tiles_get_their_default(world):
@@ -4486,8 +4467,7 @@ def test_a_row_can_be_pinned_to_the_start_page_and_taken_off(world):
     assert world.app.state_payload()["home"]["pins"] == ["task:alpha", "inbox:x-1"]
     world.act("pin", key="task:alpha", on=False)
     assert world.app.state_payload()["home"]["pins"] == ["inbox:x-1"]
-    with pytest.raises(ActionError):
-        world.act("pin", key="task:alpha", on="yes")
+    refused(world, "invalid_argument", "pin", key="task:alpha", on="yes")
 
 
 def test_the_model_carries_the_day_book_and_the_week(world):
@@ -4514,8 +4494,7 @@ def test_a_start_that_ran_enters_the_return_channel_and_can_be_taken_out(world):
     assert back[0]["in_briefing"] is True
     world.act("return_forget", key="task:other-task")
     assert world.app.collector.model["returns"] == []
-    with pytest.raises(ActionError):
-        world.act("return_forget", key="task:other-task")
+    refused(world, "not_applicable", "return_forget", key="task:other-task")
 
 
 def test_a_failed_start_does_not_enter_the_return_channel(world):
@@ -4974,10 +4953,9 @@ def test_github_board_switch_keeps_the_persons_choice_and_asks_the_section_again
     saved = json.loads((world.app.root / ".bridge" / "github-boards.json").read_text())
     assert saved == {"boards": {"tool-board": "off"}}
     assert not (cache / "work.json").exists()
-    for bad in ({"slug": "other-board", "mode": "all"}, {"slug": "tool-board", "mode": "everything"},
-                {"slug": "../x", "mode": "all"}):
-        with pytest.raises(ActionError):
-            world.act("github_board", **{"section": "work", **bad})
+    for bad, code in (({"slug": "other-board", "mode": "all"}, "stale_row"), ({"slug": "tool-board", "mode": "everything"}, "invalid_argument"),
+                      ({"slug": "../x", "mode": "all"}, "invalid_argument")):
+        refused(world, code, "github_board", **{"section": "work", **bad})
 
 
 # --- chats leave the list into the archive, never into nothing ---
@@ -5125,8 +5103,7 @@ def test_a_chat_that_cannot_be_archived_stays_in_the_list(world, monkeypatch):
     conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "bleib"}, "via": "quick"})[2])["conv"]
     wait_quick(world)
     (world.app.state_dir / "chats").write_text("not a folder")      # the archive cannot be written
-    with pytest.raises(ActionError):
-        world.act("quick_forget", conv=conv)
+    refused(world, "not_applicable", "quick_forget", conv=conv)
     assert [c["id"] for c in world.app.quick.state()["convs"]] == [conv]
 
 
@@ -5162,8 +5139,7 @@ def test_an_agent_conversation_still_waiting_for_its_answer_cannot_be_removed(wo
     world.runner.handlers["a2a.ask"] = lambda argv: (gate.wait(3), a2a_answer())[1]
     res = world.act("a2a_ask", peer="alpha", text="dauert")
     try:
-        with pytest.raises(ActionError):
-            world.act("a2a_forget", conv=res["conv"])
+        refused(world, "not_applicable", "a2a_forget", conv=res["conv"])
     finally:
         gate.set()
     assert wait_agents(world)[0]["turns"][0]["a"] == "Antwort."
@@ -5453,8 +5429,7 @@ def test_reopen_as_review_says_so_and_a_new_task_still_never_starts_in_review(wo
     world.act("task_close", keys=["task:other-task"], reason="done")
     res = world.act("task_reopen", slug="other-task", **{"as": "review"})
     assert res["ok"] and "review" in res["note"]
-    with pytest.raises(ActionError):
-        world.act("to_task", key=f"inbox:{YES_ID}", status="review")
+    refused(world, "invalid_argument", "to_task", key=f"inbox:{YES_ID}", status="review")
 
 
 def test_a_quick_question_without_its_cli_says_cli_unavailable_not_cmux(world, tmp_path):
@@ -7182,8 +7157,7 @@ def test_to_task_can_be_taken_back_the_task_closes_as_declined_and_the_item_open
     assert writes(world) == [K(world, "close", "tidy-labels", "--declined", "--reason", "Taken back: back to the inbox"),
                              I(world, "reopen", YES_ID)]
     # an undo the server never handed out finds nothing to take back
-    with pytest.raises(ActionError):
-        world.act("to_task_undo", id=YES_ID, slug="tidy-labels")
+    refused(world, "not_applicable", "to_task_undo", id=YES_ID, slug="tidy-labels")
 
 
 # ---------------------------------------------------------------- every decision lands where the row lives, with its sentence
