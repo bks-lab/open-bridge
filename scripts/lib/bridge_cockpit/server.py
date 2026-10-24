@@ -92,6 +92,7 @@ SCREEN_MAX = 120_000
 SCREEN_CACHE_MS = 1000      # several pages on one tab share one read of its screen within this window
 SCREEN_HASH_RE = re.compile(r"^[0-9a-f]{1,64}\Z")
 CAPS_TTL_S = 300
+CAPS_RETRY_S = 15      # a failed read is tried again this soon, the last good answer standing meanwhile
 CAPS_TIMEOUT = 20
 TAB_REF_RE = re.compile(r"^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}\Z")   # the terminal driver's name for a tab
 ERROR_STATUS = {"unauthorized": 401, "forbidden_origin": 403, "bad_host": 403, "bad_fetch_site": 403, "not_found": 404,
@@ -165,7 +166,10 @@ class App:
         self.root = Path(root).resolve()
         self.code_root = Path(code_root).resolve() if code_root else self.root   # where the page's files come from
         self._caps_lock = threading.Lock()
-        self._caps: tuple[float, list[str]] | None = None
+        self._caps: tuple[float, list[str], bool] | None = None    # (when, verbs, read ok)
+        self._caps_flight: threading.Event | None = None
+        self._colors: tuple[tuple[int, int], bytes, str] | None = None     # (DESIGN.md stamp, css, tag)
+        self._colors_lock = threading.Lock()
         self._screen_lock = threading.Lock()
         self._screens: dict[str, tuple[float, str, str]] = {}   # ref -> (read at ms, text, hash), each under its ref's lock
         self._screen_locks: dict[str, threading.Lock] = {}
@@ -298,24 +302,51 @@ class App:
     def tabs_state(self) -> dict:
         return self.tabs.state(self.collector.view)
 
+    def colors_css(self) -> tuple[bytes, str]:
+        """The stylesheet from DESIGN.md and its tag, kept until DESIGN.md changes (mtime, size)"""
+        try:
+            st = (self.root / "DESIGN.md").stat()
+            stamp = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            stamp = (0, 0)
+        with self._colors_lock:
+            if self._colors is None or self._colors[0] != stamp:
+                body = stylesheet(self.root).encode("utf-8")
+                self._colors = (stamp, body, static_etag(stamp[0], len(body) + stamp[1]))
+            return self._colors[1], self._colors[2]
+
     def driver_caps(self, fresh: bool = False) -> list[str]:
         """The verbs the terminal driver serves (workplace.py caps): what the page may offer for a tab.
-        Asked once and then every few minutes; a driver that cannot be asked serves nothing."""
-        now = time.monotonic()
+        Asked once and then every few minutes. A read that fails keeps the last good answer and is tried
+        again after CAPS_RETRY_S (one hiccup used to switch Yes, No and jump off for five minutes); only a
+        driver never read successfully serves nothing. Callers at the same moment share one read."""
         with self._caps_lock:
-            if not fresh and self._caps is not None and now - self._caps[0] < CAPS_TTL_S:
-                return list(self._caps[1])
-        run = self.run(self.workplace("caps", "--json"), CAPS_TIMEOUT)
-        caps: list[str] = []
-        if run.ok:
-            try:
-                data = json.loads(run.out)
-                caps = [c for c in data.get("caps") or [] if isinstance(c, str)]
-            except (ValueError, AttributeError):
-                caps = []
+            hit = self._caps
+            if not fresh and hit is not None and time.monotonic() - hit[0] < (CAPS_TTL_S if hit[2] else CAPS_RETRY_S):
+                return list(hit[1])
+            flight, owner = self._caps_flight, self._caps_flight is None
+            if owner:
+                flight = self._caps_flight = threading.Event()
+        if not owner:
+            flight.wait(CAPS_TIMEOUT + 1)
+            with self._caps_lock:
+                return list(self._caps[1]) if self._caps else []
+        caps: list[str] | None = None
+        try:
+            run = self.run(self.workplace("caps", "--json"), CAPS_TIMEOUT)
+            if run.ok:
+                try:
+                    caps = [c for c in json.loads(run.out).get("caps") or [] if isinstance(c, str)]
+                except (ValueError, AttributeError):
+                    caps = None
+        finally:
+            with self._caps_lock:
+                last = self._caps[1] if self._caps else []
+                self._caps = (time.monotonic(), caps, True) if caps is not None else (time.monotonic(), last, False)
+                self._caps_flight = None
+            flight.set()
         with self._caps_lock:
-            self._caps = (now, caps)
-        return list(caps)
+            return list(self._caps[1])
 
     def tab_screen(self, ref: str, fresh: bool = False) -> tuple[str | None, str, str]:
         """The last lines of a tab's terminal as (text, hash, error), read through the terminal driver.
@@ -532,6 +563,8 @@ class App:
         self.collector.shutdown()
         self.tabs.shutdown()
         self.watcher.shutdown()
+        # what still runs for the page (a quick answer, a triage, a review) ends with it (review C9)
+        self.runner.terminate_all()
 
 
 USAGE_RANGES = (7, 30, 90)
@@ -717,7 +750,7 @@ class Handler(BaseHTTPRequestHandler):
             self.get_api(path, query)
         elif path == "/colors.css":
             # the Bridge's own colours and fonts, from its DESIGN.md (design.py): every fork shows its brand
-            self.send_bytes(200, stylesheet(app.root).encode("utf-8"), "text/css; charset=utf-8")
+            self.get_colors()
         else:
             self.get_static(path)
 
@@ -899,6 +932,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_bytes(200, target.read_bytes(), CONTENT_TYPES[ext], static=True, extra={"ETag": etag})
 
+    def get_colors(self) -> None:
+        """colors.css, built once per state of DESIGN.md and revalidated like a static file (review C32)"""
+        body, etag = self.app.colors_css()
+        if etag_matches(self.headers.get("If-None-Match"), etag):
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.security_headers(static=True)
+            self.end_headers()
+            return
+        self.send_bytes(200, body, "text/css; charset=utf-8", static=True, extra={"ETag": etag})
+
     def events(self) -> None:
         app = self.app
         client = app.hub.add()
@@ -1040,7 +1084,8 @@ class WebServer(ThreadingHTTPServer):
         """A browser that drops a connection mid-read (a reload, a closed tab) is no error worth a traceback"""
         if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
             return
-        super().handle_error(request, client_address)
+        # dated and filtered in server.log like every other error, not a bare traceback on stderr (review C29)
+        self.app.log_error("request failed:\n" + traceback.format_exc())
 
 
 def default_state_dir(root: Path | str) -> Path:

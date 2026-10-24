@@ -379,6 +379,8 @@ def handle_post(handler, app, path: str, body: dict) -> None:
         handler.send_json(e.status, {"ok": False, "error": {"code": e.code, "message": e.message}})
         if e.status in (400, 404):
             return                      # refused before anything left: no line
+    if not sent["calls"]:
+        return                          # answered from the store: nothing left the machine, no line (review C31)
     page = body.get("page") if isinstance(body.get("page"), str) else "-"
     app.actions.audit_line(verb, page[:80] if verb == "jev_rank" else "-", **sent)
 

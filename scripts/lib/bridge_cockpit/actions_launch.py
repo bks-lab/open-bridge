@@ -101,12 +101,14 @@ class LaunchSteps:
         where = tx["where_area"].format(name=areas[0]) if target == "area" and len(areas) == 1 else tx["where"][target]
         app.collector.hold(items)
         app.collector.rebuild()
-        if "launch" in app.driver_caps():
+        # read once: the answer before and after the start must be the same one (review C8)
+        can_launch = "launch" in app.driver_caps()
+        if can_launch:
             # without a driver nothing starts: "starting" first and "not started" after read as two answers (18.10.)
             app.note(tx["launch_start"].format(word=word, n=len(items), where=where), "info")
         with ctx.unlocked():    # the items are held: a second start of them is refused as starting_already
             run = ctx.call("workplace.launch", ",".join(items), argv, LAUNCH_TIMEOUT)
-        if run.ok and "launch" not in app.driver_caps():
+        if run.ok and not can_launch:
             # no terminal driver: workplace.py only printed what to start, nothing runs, so nothing is recorded
             lines = []
             try:

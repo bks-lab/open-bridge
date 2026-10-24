@@ -813,6 +813,36 @@ def test_runner_env_and_timeout(tmp_path):
     assert (res.ok, res.code, res.err) == (False, -1, "timeout")
 
 
+def test_stop_ends_the_children_still_running_but_never_a_launched_agent_tab(tmp_path):
+    # review C9: claude -p, triage or a review kept running after stop, spending tokens on an answer nobody read
+    (tmp_path / "scripts").mkdir()
+    for name in ("task.py", "workplace.py"):
+        (tmp_path / "scripts" / name).write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+    runner = Runner(tmp_path, cmux=None)
+    results = {}
+
+    def run(key, argv):
+        results[key] = runner.run(argv, 60)
+    work = threading.Thread(target=run, args=("task", [PY, str(tmp_path / "scripts" / "task.py"), "x"]))
+    launch = threading.Thread(target=run, args=("launch", [PY, str(tmp_path / "scripts" / "workplace.py"), "launch"]))
+    work.start()
+    launch.start()
+    deadline = time.time() + 5
+    while len(runner.running()) < 2 and time.time() < deadline:
+        time.sleep(0.02)
+    assert len(runner.running()) == 2
+    started = time.time()
+    runner.terminate_all(grace_s=1)
+    work.join(5)
+    assert not work.is_alive() and time.time() - started < 4 and results["task"].ok is False
+    assert launch.is_alive(), "the agent tab a launch opened outlives the cockpit"
+    left = runner.running()
+    assert len(left) == 1
+    os.killpg(left[0].pid, 9)
+    launch.join(5)
+    assert runner.running() == []
+
+
 # ---------------------------------------------------------------- collector
 
 def collect_calls(w: World) -> list[list[str]]:
@@ -1593,6 +1623,25 @@ def test_a_row_step_runs_through_briefing_act_and_can_be_taken_back(world):
     with pytest.raises(ActionError):                       # a token the server never handed out
         world.act("row_undo", section="apps", row="2026-10/other", action="restore:sent.1999-01-01.1999-01-01")
     assert world.runner.of("briefing.act") == []
+
+
+def test_a_row_step_runs_without_the_write_lock_and_only_once_at_a_time(world):
+    # review C30: briefing.py act may take up to 90 s; under the write lock every other click waited for it
+    seen = {}
+
+    def act(argv):
+        lock = world.app.actions.write_lock
+        seen["lock_free"] = lock.acquire(blocking=False)
+        if seen["lock_free"]:
+            lock.release()
+        with pytest.raises(ActionError) as again:
+            world.act("row_action", page="tasks", section="apps", index=0, action="turned_down")
+        seen["again"] = again.value.code
+        return act_answer(did="turned down")(argv)
+    world.runner.handlers["briefing.act"] = act
+    world.act("row_action", page="tasks", section="apps", index=0, action="turned_down")
+    assert seen == {"lock_free": True, "again": "not_applicable"}
+    assert len(world.runner.of("briefing.act")) == 1
 
 
 def test_a_row_step_that_returns_a_tab_files_it_and_starts_it(world):
@@ -4580,6 +4629,27 @@ def test_autostart_is_a_login_item_that_restarts_only_after_a_crash(tmp_path):
     assert args[0] == "/usr/bin/python3" and args[-1] == "serve" and str(tmp_path / "bridge") in args
     assert plist["RunAtLoad"] is True and plist["KeepAlive"] == {"SuccessfulExit": False}   # `stop` stays stopped
     assert plist["EnvironmentVariables"]["PATH"] == "/usr/bin:/bin" and plist["WorkingDirectory"] == str(tmp_path / "bridge")
+    # what the process prints goes beside server.log, never into it: launchd holds that handle open, and the
+    # rotation of server.log would leave it writing into the moved file (review C29)
+    assert plist["StandardOutPath"] == plist["StandardErrorPath"] == str(tmp_path / "state" / "stdout.log")
+
+
+def test_the_start_line_is_dated(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("cockpit_cli", CLI)
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    line = cli.start_line(8797)
+    assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d bridge-cockpit \S+ on http://127.0.0.1:8797/$", line), line
+
+
+def test_a_request_that_breaks_lands_dated_in_server_log(world):
+    try:
+        raise ValueError("handler broke")
+    except ValueError:
+        world.server.handle_error(None, ("127.0.0.1", 1))
+    text = (world.state / "server.log").read_text()
+    assert "handler broke" in text and re.search(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d request failed", text, re.M)
 
 
 # ---------------------------------------------------------------- colours from the Bridge's own DESIGN.md
@@ -4682,6 +4752,26 @@ def test_colors_css_is_served_with_the_cookie_only(world):
     assert status == 200 and headers["Content-Type"].startswith("text/css") and b"--primary:" in body
     status, _, _ = world.request("GET", "/colors.css")
     assert status == 401
+
+
+def test_colors_css_is_built_once_per_design_md_and_revalidates_with_304(world, monkeypatch):
+    # review C32: every load parsed DESIGN.md again (10 to 23 ms), and no-store left the browser no copy
+    from lib.bridge_cockpit import server as srv
+    design = world.root / "DESIGN.md"
+    if not design.exists():
+        design.write_text((Path(__file__).resolve().parents[2] / "DESIGN.md").read_text(encoding="utf-8"), encoding="utf-8")
+    built = []
+    real = srv.stylesheet
+    monkeypatch.setattr(srv, "stylesheet", lambda root: built.append(1) or real(root))
+    status, headers, body = world.request("GET", "/colors.css", headers=world.cookie)
+    tag = headers["ETag"]
+    assert status == 200 and b"--primary:" in body and tag
+    status, headers, _ = world.request("GET", "/colors.css", headers={**world.cookie, "If-None-Match": tag})
+    assert status == 304 and headers["ETag"] == tag
+    assert world.request("GET", "/colors.css", headers=world.cookie)[0] == 200 and len(built) == 1
+    design.write_text(design.read_text() + "\n")
+    status, headers, _ = world.request("GET", "/colors.css", headers={**world.cookie, "If-None-Match": tag})
+    assert status == 200 and headers["ETag"] != tag and len(built) == 2
 
 
 def test_a_view_kept_in_another_language_is_not_shown_after_a_restart(tmp_path):
@@ -5510,7 +5600,7 @@ def test_start_names_the_reason_when_the_child_refuses_its_config(cli_world, mon
     args = argparse.Namespace(port=0, ignore_disabled=False, json=False)
     assert mod.cmd_start(args, root, state) == 2
     err = capsys.readouterr().err
-    assert "cockpit.enabled" in err and "server.log" in err
+    assert "cockpit.enabled" in err and "stdout.log" in err
 
 
 # ------------------------------------------------------------------ the docs name every state file and verb
@@ -7214,3 +7304,56 @@ def test_a_decision_on_a_foreign_row_keeps_its_sentence_in_the_log(world):
     world.act("runs_on", keys=["ref:example/repo#12"], until=TOMORROW, on="the vendor")
     assert writes(world) == [K(world, "log", "--", "repo",
                                "Fix the example issue (example/repo#12) · Runs on, look again 2026-10-10: the vendor")]
+
+
+# ---------------------------------------------------------------- driver caps (review C8)
+
+def _caps_world(world, monkeypatch):
+    from lib.bridge_cockpit import server as srv
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(srv.time, "monotonic", lambda: clock["t"])
+    world.app._caps = None
+    calls = []
+    return srv, clock, calls
+
+
+def test_a_failed_caps_read_keeps_the_last_good_answer_and_asks_again_soon(world, monkeypatch):
+    srv, clock, calls = _caps_world(world, monkeypatch)
+    answers = iter([ok({"caps": ["tabs", "send"]}), fail("driver busy"), ok({"caps": ["tabs", "send", "launch"]})])
+    world.runner.handlers["workplace.caps"] = lambda argv: calls.append(1) or next(answers)
+    assert world.app.driver_caps() == ["tabs", "send"]
+    clock["t"] += srv.CAPS_TTL_S + 1
+    assert world.app.driver_caps() == ["tabs", "send"], "a failed read keeps what the driver served before"
+    clock["t"] += 5
+    assert world.app.driver_caps() == ["tabs", "send"] and len(calls) == 2, "not asked again at once"
+    clock["t"] += srv.CAPS_RETRY_S
+    assert world.app.driver_caps() == ["tabs", "send", "launch"] and len(calls) == 3
+
+
+def test_without_any_good_caps_read_a_failure_serves_nothing(world, monkeypatch):
+    srv, clock, calls = _caps_world(world, monkeypatch)
+    world.runner.handlers["workplace.caps"] = lambda argv: fail("no driver")
+    assert world.app.driver_caps() == []
+
+
+def test_two_pages_asking_at_once_start_one_caps_read(world, monkeypatch):
+    srv, clock, calls = _caps_world(world, monkeypatch)
+    gate = threading.Event()
+
+    def slow(argv):
+        calls.append(1)
+        gate.wait(5)
+        return ok({"caps": ["tabs"]})
+    world.runner.handlers["workplace.caps"] = slow
+    got = []
+    threads = [threading.Thread(target=lambda: got.append(world.app.driver_caps())) for _ in range(3)]
+    for t in threads:
+        t.start()
+    deadline = time.time() + 5
+    while not calls and time.time() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.1)
+    gate.set()
+    for t in threads:
+        t.join(5)
+    assert len(calls) == 1 and got == [["tabs"]] * 3

@@ -43,5 +43,5 @@ means the driver did not answer: say nothing.
 | 2 | with a usage text on stderr: a wrong call (an unknown subcommand or flag) | nothing to the user about the config: fix the arguments and run it again |
 | 2 | without a usage text: `cockpit.enabled` is not `true` (or the config is invalid) | how to switch it on: `cockpit: {enabled: true}` in `bridge-config.yaml` |
 | 3 | the port is taken | which port (`cockpit.port`) and that another program holds it |
-| 4 | the server did not come up | the last lines of `.bridge/cockpit/server.log` |
+| 4 | the server did not come up | the last lines of `.bridge/cockpit/stdout.log`, then `server.log` |
 | 5 | the page could not be opened | that `python3 scripts/bridge-cockpit.py url` in a terminal prints a login link to open by hand (once, within a minute) |

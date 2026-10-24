@@ -70,6 +70,8 @@ class Runner:
         self.claude = resolve_claude() if claude == "auto" else claude
         self.codex = resolve("codex") if codex == "auto" else codex
         self.scripts = frozenset(str(self.code / p) for p in SCRIPT_PATHS)
+        self._live: dict[int, tuple[subprocess.Popen, bool]] = {}    # pid: (process, ends with the cockpit)
+        self._live_lock = threading.Lock()
 
     def script(self, rel: str) -> str:
         return str(self.code / rel)
@@ -117,6 +119,41 @@ class Runner:
             return self._spawn_lines(list(argv), timeout_s, on_line)
         return self._spawn(list(argv), timeout_s)
 
+    def _track(self, proc: subprocess.Popen, argv: list[str]) -> None:
+        # an agent tab a launch opened is meant to outlive the cockpit; everything else is its own work
+        launch = len(argv) > 2 and argv[1] == self.script("scripts/workplace.py") and argv[2] == "launch"
+        with self._live_lock:
+            self._live[proc.pid] = (proc, not launch)
+
+    def _untrack(self, proc: subprocess.Popen) -> None:
+        with self._live_lock:
+            self._live.pop(proc.pid, None)
+
+    def running(self) -> list[subprocess.Popen]:
+        with self._live_lock:
+            return [proc for proc, _ in self._live.values()]
+
+    def terminate_all(self, grace_s: float = 2) -> None:
+        """End what the cockpit started and still waits for (a quick answer, a triage, a review) when it
+        stops: SIGTERM to each process group, SIGKILL to what still runs after `grace_s`. A launch is left
+        alone, the tab it opens is the point of it."""
+        with self._live_lock:
+            ours = [proc for proc, ends in self._live.values() if ends]
+        for proc in ours:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except OSError:
+                pass
+        deadline = time.monotonic() + grace_s
+        for proc in ours:
+            try:
+                proc.wait(max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except OSError:
+                    proc.kill()
+
     def _spawn_lines(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None]) -> RunResult:
         start = time.monotonic()
         try:
@@ -124,6 +161,7 @@ class Runner:
                                     stderr=subprocess.PIPE, env=self.env(), start_new_session=True, shell=False)
         except OSError as error:
             return RunResult(False, -1, "", str(error), int((time.monotonic() - start) * 1000))
+        self._track(proc, argv)
         expired = threading.Event()
 
         def kill() -> None:
@@ -152,6 +190,7 @@ class Runner:
         finally:
             timer.cancel()
             reader.join(timeout=2)
+            self._untrack(proc)
         took = int((time.monotonic() - start) * 1000)
         if expired.is_set():
             return RunResult(False, -1, "".join(out_lines), "timeout", took)
@@ -165,6 +204,7 @@ class Runner:
                                     stderr=subprocess.PIPE, env=self.env(), start_new_session=True, shell=False)
         except OSError as error:
             return RunResult(False, -1, "", str(error), int((time.monotonic() - start) * 1000))
+        self._track(proc, argv)
         try:
             out, err = proc.communicate(timeout=timeout_s)
         except subprocess.TimeoutExpired:
@@ -174,6 +214,8 @@ class Runner:
                 proc.kill()
             proc.communicate()
             return RunResult(False, -1, "", "timeout", int((time.monotonic() - start) * 1000))
+        finally:
+            self._untrack(proc)
         took = int((time.monotonic() - start) * 1000)
         text_out = out.decode("utf-8", errors="replace")
         text_err = err.decode("utf-8", errors="replace")

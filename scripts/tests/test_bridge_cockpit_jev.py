@@ -551,3 +551,18 @@ def test_rank_two_daily_requests_on_a_fresh_app_call_jev_once(monkeypatch, tmp_p
     today = jev._state(app).today
     assert (today["ratings"], today["input_tokens"]) == (1, 7)
     assert jev._pages_state(app).orders["arbeit"] == out["a"]["order"]
+
+
+def test_an_audit_line_only_when_something_left_the_machine(tmp_path, monkeypatch):
+    # review C31: 357 of 362 jev_rank lines in a week said calls=0, a page asking for the order it had
+    app = work_app(tmp_path)
+    app.cfg = types.SimpleNamespace(jev_enabled=True, jev_model=None, jev_key_ref=None)
+    lines = []
+    app.actions = types.SimpleNamespace(audit_line=lambda verb, subject, **kw: lines.append((verb, kw["calls"])))
+    handler = types.SimpleNamespace(send_json=lambda status, body: None, send_error_json=lambda *a: None)
+    monkeypatch.setattr(jev, "resolve_key", lambda ref=None: "k")
+    monkeypatch.setattr(jev, "call_api", lambda payload, key: answers([{"id": t["id"]} for t in payload["state"]["tasks"]]))
+    jev.handle_post(handler, app, "/api/jev/rank", {"page": "arbeit"})
+    assert lines == [], "the last order, read from the store: nothing went out"
+    jev.handle_post(handler, app, "/api/jev/rank", {"page": "arbeit", "force": True})
+    assert lines == [("jev_rank", 1)]

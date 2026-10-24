@@ -25,6 +25,7 @@ DEBOUNCE_S = 3.0
 RELAY_SCAN_S = 1.0
 RELAY_CLEANUP_S = 600.0
 STATS_S = 10.0
+ERROR_EVERY_S = 60.0         # a step that keeps failing is logged once a minute, not twice a second
 
 
 def _mtime(path: str) -> int | None:
@@ -85,6 +86,8 @@ class Watcher:
         self.due: float | None = None
         self.day = iso_date(app.clock())
         self.stop = threading.Event()
+        self.last = {"relay": 0.0, "work": 0.0, "stats": 0.0, "cleanup": None}
+        self.logged: dict[str, float] = {}
 
     def check(self, now_s: float) -> bool:
         """One scan; True when a delta pass was requested now (after the debounce)."""
@@ -114,28 +117,41 @@ class Watcher:
         self.app.collector.request("full")
         return True
 
+    def _due(self, name: str, now: float, every: float) -> bool:
+        last = self.last[name]
+        if last is None:
+            self.last[name] = now           # the cleanup waits a whole period after the start
+            return False
+        if now - last < every:
+            return False
+        self.last[name] = now
+        return True
+
+    def _safe(self, name: str, fn: Any, now: float) -> None:
+        """One step on its own: a step that raises is logged (once a minute per step) and the next runs"""
+        try:
+            fn()
+        except Exception:  # noqa: BLE001 - the loop must outlive any one step
+            if now - self.logged.get(name, -ERROR_EVERY_S) >= ERROR_EVERY_S:
+                self.logged[name] = now
+                self.app.log_error(f"watch step {name} failed:\n" + traceback.format_exc())
+
+    def step(self, now: float) -> None:
+        """One turn of the loop at monotonic time `now`: each step that is due, each in its own try"""
+        if self._due("relay", now, RELAY_SCAN_S):
+            self._safe("relay_scan", self.app.relay_scan, now)
+        if self._due("work", now, WORK_SCAN_S):
+            self._safe("check", lambda: self.check(now), now)
+            self._safe("midnight", self.midnight, now)
+            self._safe("tick", lambda: self.app.collector.tick(self.app.client_count()), now)
+        if self._due("cleanup", now, RELAY_CLEANUP_S):
+            self._safe("relay_cleanup", self.app.relay.cleanup, now)
+        if self._due("stats", now, STATS_S):
+            self._safe("server_json", self.app.write_server_json, now)
+
     def loop(self) -> None:
-        last_work = last_relay = last_stats = 0.0
-        last_cleanup = time.monotonic()
         while not self.stop.wait(0.5):
-            now = time.monotonic()
-            try:
-                if now - last_relay >= RELAY_SCAN_S:
-                    last_relay = now
-                    self.app.relay_scan()
-                if now - last_work >= WORK_SCAN_S:
-                    last_work = now
-                    self.check(now)
-                    self.midnight()
-                    self.app.collector.tick(self.app.client_count())
-                if now - last_cleanup >= RELAY_CLEANUP_S:
-                    last_cleanup = now
-                    self.app.relay.cleanup()
-                if now - last_stats >= STATS_S:
-                    last_stats = now
-                    self.app.write_server_json()
-            except Exception:
-                self.app.log_error("watch loop failed:\n" + traceback.format_exc())
+            self.step(time.monotonic())
 
     def shutdown(self) -> None:
         self.stop.set()

@@ -184,6 +184,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
     def __init__(self, app: Any):
         self.app = app
         self.write_lock = threading.Lock()
+        self.acting: set[str] = set()      # section/row of a briefing.py act under way (actions_pages.py)
+        self.acting_lock = threading.Lock()
         self.layout_lock = threading.Lock()
         self.control_starting = False  # a control tab is being opened (start_control, outside the write lock)
         self.proposals = og.Proposals(lambda: self.app.clock())

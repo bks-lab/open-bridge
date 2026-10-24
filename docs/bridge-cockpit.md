@@ -1603,7 +1603,8 @@ share or clean up.
 |---|---|---|
 | `token` | the key, kept across restarts until `new-token` (readable by you only) | no |
 | `server.json` | the running server: pid, port, version, never the key (readable by you only) | no |
-| `server.log` | errors, never a key, cookie or request body | no |
+| `server.log` | errors, dated, never a key, cookie or request body; kept to one backup (`server.log.1`) | no |
+| `stdout.log` | what the process itself prints: the dated line of each start, and a crash before the server is up | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) | yes: the titles |
 | `state.json` | rows hidden on the page, rows marked done or not doing, team runs started from the page, the start page's tiles and pins, how the first-run tour ended | yes: the title of each row marked done or not doing |
@@ -1808,7 +1809,7 @@ to copy.
 | `/cockpit` or `open` says the cockpit is off | `cockpit.enabled` is not `true` or the `cockpit:` block has an invalid value |
 | `status` prints `warning:` lines, or the settings page shows a box "The config has keys the cockpit does not use as written" | the `cockpit:` block has a key the cockpit does not know (a typo such as `tab_seconds`) or a value it cannot use (`open_in: browser`); the cockpit runs with the fallback each line names. Fix the key in `bridge-config.yaml` and restart (`stop`, then `open`). Only a bad `port` stops the start |
 | the port is taken | another program uses it: set `cockpit.port`, then open again |
-| the server did not come up | read `.bridge/cockpit/server.log` |
+| the server did not come up | read `.bridge/cockpit/stdout.log`, then `server.log` |
 | relay offline: "no heartbeat" | no Claude Code session with the `cockpit-relay` mod runs here (section 1, `claude plugin list`), `cockpit.relay` is `false`, or the session started before you switched the cockpit on: start a new Claude Code session (`/reload-plugins` reads the config again only when the mod itself changed). A session that still runs a mod from before a pull may write heartbeats the server cannot verify (the mod signs them since version 0.2.0): run `/reload-plugins` there |
 | relay offline: "no control" or "ambiguous" | several sessions run and none is the control tab: open the control workspace (`workplace.control.name`) in your terminal, or keep one session |
 | a question stays "stuck" | the control session waits for a permission prompt or a long turn; answer it there |

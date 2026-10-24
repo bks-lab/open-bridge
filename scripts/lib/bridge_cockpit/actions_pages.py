@@ -202,7 +202,18 @@ class PageVerbs:
             raise self.not_applicable("no briefing profile to act through", None)
         argv = [app.runner.python, app.runner.script("scripts/briefing.py"), "--root", str(app.root), "act",
                 profile, section, row, action]
-        run = ctx.call("briefing.act", f"{section}/{row}", argv, SHORT_TIMEOUT * 3)
+        key = f"{section}/{row}"
+        with self.acting_lock:
+            if key in self.acting:
+                raise ActionError(409, "not_applicable", "a step of this row is already running")
+            self.acting.add(key)
+        try:
+            # up to 90 s: without the write lock, so every other click goes on meanwhile (review C30)
+            with ctx.unlocked():
+                run = ctx.call("briefing.act", key, argv, SHORT_TIMEOUT * 3)
+        finally:
+            with self.acting_lock:
+                self.acting.discard(key)
         if not run.ok:
             ctx.note(self.tx["step_failed"].format(err=m.short(run.err or run.out, 120)), bad=True)
             return None

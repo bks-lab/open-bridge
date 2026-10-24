@@ -173,7 +173,7 @@ def test_loop_logs_a_failed_iteration_and_continues(tree: Path, monkeypatch: pyt
     thread.join(5.0)
     assert not thread.is_alive()
     assert len(app.errors) == 1
-    assert "watch loop failed" in app.errors[0]
+    assert "watch step relay_scan failed" in app.errors[0]
     assert "boom in one iteration" in app.errors[0]
 
 
@@ -202,3 +202,27 @@ def test_a_watched_delta_waits_out_the_hold_of_the_last_pass(tree: Path) -> None
     assert w.check(100.0 + watch.DEBOUNCE_S + 2.5) is True
     assert app.collector.requests == ["delta"]
 
+
+
+def test_a_step_that_raises_does_not_take_the_others_with_it(tree: Path) -> None:
+    # review C28: one try around all steps meant a failing relay scan skipped the pass, the cleanup
+    # and server.json in the same turn
+    app = FakeApp(tree, local_ms(2026, 10, 18, 12, 0))
+    written = []
+    app.relay_scan = lambda: (_ for _ in ()).throw(RuntimeError("relay broke"))
+    app.write_server_json = lambda: written.append(1)
+    w = watch.Watcher(app)
+    w.step(1000.0)
+    assert app.collector.ticks == 1 and written == [1]
+    assert len(app.errors) == 1 and "relay_scan" in app.errors[0] and "relay broke" in app.errors[0]
+
+
+def test_the_same_failing_step_is_logged_at_most_once_a_minute(tree: Path) -> None:
+    app = FakeApp(tree, local_ms(2026, 10, 18, 12, 0))
+    app.relay_scan = lambda: (_ for _ in ()).throw(RuntimeError("relay broke"))
+    w = watch.Watcher(app)
+    for t in (1000.0, 1010.0, 1030.0):
+        w.step(t)
+    assert len(app.errors) == 1
+    w.step(1000.0 + watch.ERROR_EVERY_S)
+    assert len(app.errors) == 2

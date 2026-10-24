@@ -146,6 +146,11 @@ def plain(port: int) -> str:
     return f"http://127.0.0.1:{port}/"
 
 
+def start_line(port: int) -> str:
+    """The first line a serve prints, dated, so stdout.log says when each start happened"""
+    return f"{time.strftime('%Y-%m-%dT%H:%M:%S')} bridge-cockpit {VERSION} on {plain(port)}"
+
+
 ENABLE_HINT = "Set cockpit.enabled: true in bridge-config.yaml (docs/bridge-cockpit.md)."
 
 
@@ -192,7 +197,7 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     app.start()
-    print(f"bridge-cockpit {VERSION} on {plain(app.port)}", flush=True)
+    print(start_line(app.port), flush=True)
     try:
         server.serve_forever(poll_interval=0.5)
     finally:
@@ -224,20 +229,22 @@ def start(args, root: Path, state_dir: Path) -> tuple[int, dict | None]:
         argv += ["--port", str(args.port)]
     if getattr(args, "ignore_disabled", False):
         argv.append("--ignore-disabled")
-    with open(state_dir / "server.log", "ab") as log:
+    # what the process prints goes to stdout.log; server.log is written only through log_error, which rotates
+    # it, and a second open handle on it would keep writing into the moved file (review C29)
+    with open(state_dir / "stdout.log", "ab") as log:
         child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True,
                                  cwd=str(root))
     deadline = time.monotonic() + START_WAIT_S
     while time.monotonic() < deadline:
         exit_code = child.poll()
         if exit_code is not None:
-            # the child's own words went to server.log; say here what a terminal user has to change
+            # the child's own words went to stdout.log; say here what a terminal user has to change
             if exit_code == 3:
                 port = cfg.port if getattr(args, "port", None) is None else args.port
                 print(f"bridge-cockpit: port {port} is in use, set cockpit.port in bridge-config.yaml",
                       file=sys.stderr)
             elif exit_code == 2:
-                print(f"bridge-cockpit: the server refused its config, see .bridge/cockpit/server.log. {ENABLE_HINT}",
+                print(f"bridge-cockpit: the server refused its config, see .bridge/cockpit/stdout.log. {ENABLE_HINT}",
                       file=sys.stderr)
             return (exit_code if exit_code in (2, 3) else 4), None
         info = read_json(server_file(state_dir))
@@ -252,7 +259,8 @@ def cmd_start(args, root: Path, state_dir: Path) -> int:
     code, info = start(args, root, state_dir)
     if code:
         if code == 4:
-            print("bridge-cockpit: the server did not come up, see .bridge/cockpit/server.log", file=sys.stderr)
+            print("bridge-cockpit: the server did not come up, see .bridge/cockpit/stdout.log and server.log",
+                  file=sys.stderr)
         return code
     if args.json:
         print(json.dumps({"url": link(info, state_dir), "port": info["port"], "pid": info["pid"], "reused": info["reused"]}))
@@ -407,7 +415,7 @@ def launch_agent(root: Path, state_dir: Path, python: str, path_env: str) -> tup
     (KeepAlive only on an unsuccessful exit). PATH is the one of the shell that switched it on, since the
     cockpit calls cmux, gh, git and claude, and launchd starts with almost none."""
     label = "ai.open-bridge.cockpit." + hashlib.sha256(str(Path(root)).encode("utf-8")).hexdigest()[:10]
-    log = str(Path(state_dir) / "server.log")
+    log = str(Path(state_dir) / "stdout.log")    # beside server.log, see start()
     return label, {
         "Label": label,
         "ProgramArguments": [python, str(Path(__file__).resolve()), "--root", str(root), "serve"],
