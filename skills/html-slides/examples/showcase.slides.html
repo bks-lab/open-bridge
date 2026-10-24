@@ -1,36 +1,20 @@
 <!-- showcase.slides.html: the slides of the html-slides showcase deck.
-     Every capability of the engine sits on its own slide, with one line on how to
-     use it. Build it as described in README.md next to this file; new-deck.py
-     wraps this fragment in the deck and splices engine, tokens and fonts around it.
+     Every capability of the engine and of each deck module sits on a slide of its
+     own, with one line on how to use it. Build it as described in README.md next
+     to this file: new-deck.py --with-stage --with all wraps this fragment in the
+     deck and splices engine, modules, tokens and fonts around it.
 
      Bilingual: every visible text is a pair, <span data-de>...</span><span data-en>...</span>.
-     The style and the script below are deck-specific, not engine code: the swap
-     rules for the pair and the language switch (key L). The deck options (tracks,
-     counter, back link) come from new-deck.py --deck-attr, see README.md. The
-     stage reads data-srcdoc-ref first and falls
-     back to data-src: the build in README.md appends the simulation as an inert
-     base64 payload with that id, so the deck runs as one file. -->
-<script>
-/* Runs before the engine script (the slides come first in the deck), so the
-   engine reads the stored language when it starts. */
-(function () {
-  var r = document.documentElement, l = null;
-  try { l = localStorage.getItem('showcase-lang'); } catch (e) { /* storage blocked */ }
-  if (l !== 'de' && l !== 'en') l = (r.getAttribute('lang') || 'en').slice(0, 2) === 'de' ? 'de' : 'en';
-  r.setAttribute('lang', l);
-  r.setAttribute('data-lang', l);
-  /* What the track badge reads: the names stay short and full, a German reader
-     sees kurz and lang. The engine reads the attribute once at start. */
-  var d = document.querySelector('.deck');
-  if (d) d.setAttribute('data-tracks-labels', l === 'de' ? 'short=kurz full=lang' : 'short=short full=full');
-})();
-</script>
+     The engine swaps the pairs and switches the language at run time (key L,
+     data-deck="lang"), so the fragment carries no language script. The style and
+     the one small script below are deck-specific, not engine code. The deck options
+     (tracks, counter, back link, deck id) come from new-deck.py --deck-attr, see
+     README.md. Every slide carries a data-time budget for the presenter module.
+     The stage reads data-srcdoc-ref first and falls back to data-src: the build in
+     README.md appends the simulation as an inert base64 payload with that id, so
+     the deck runs as one file. -->
 <style>
-/* Language pair: only the inactive language is hidden, the active one keeps its
-   native display. German is the default of this deck. */
-:root:not([data-lang="en"]) [data-en]:not([data-de]) { display: none; }
-:root[data-lang="en"] [data-de]:not([data-en]) { display: none; }
-
+/* The fixed DE / EN button beside the theme button: an engine data-deck="lang" control. */
 .sc-lang {
   position: fixed; z-index: 101;
   top: clamp(12px, 2vh, 24px); right: calc(clamp(12px, 2vw, 24px) + 46px);
@@ -40,6 +24,7 @@
   border: 1px solid var(--border-bright); cursor: pointer;
 }
 .sc-lang:hover, .sc-lang:focus-visible { color: var(--accent); border-color: var(--accent); }
+:root.deck-read .sc-lang { display: none; }
 @media print { .sc-lang { display: none; } }
 
 /* "How to use it": an info note, the one tinted card, with a 1px line. */
@@ -76,6 +61,10 @@
 }
 .sc-track-state { font: 600 clamp(22px, 2.6vw, 32px)/1 var(--font-mono); color: var(--accent); }
 
+/* Key rows: a key, then what it does, aligned in two columns. */
+.sc-keys { display: grid; grid-template-columns: max-content 1fr; gap: 10px 16px; align-items: baseline; margin-top: clamp(14px, 2.4vh, 26px); font-size: clamp(15px, 1.35vw, 19px); }
+.sc-keys > span:nth-child(odd) { white-space: nowrap; }
+
 /* Decision page excerpt: three options; the pick is marked by a line colour AND a
    word, beside its tag, so every title starts on one line. */
 .sc-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(10px, 1.4vw, 18px); margin-top: clamp(12px, 2vh, 22px); }
@@ -105,6 +94,20 @@
 /* Eleven rows fit a 720 px slide with a tighter row. */
 #s-table .data-table th, #s-table .data-table td { padding-top: clamp(5px, 0.9vh, 10px); padding-bottom: clamp(5px, 0.9vh, 10px); }
 
+/* Rehearsal: the plan vs actual table, as the presenter window shows it. */
+#s-rehearsal .data-table td:nth-child(n+2), #s-rehearsal .data-table th:nth-child(n+2) { text-align: right; font-variant-numeric: tabular-nums; }
+.sc-over { font-weight: 600; white-space: nowrap; }
+
+/* Code walkthrough: the block takes the width the slide leaves. */
+.sc-walk { margin-top: clamp(18px, 3vh, 30px); max-width: 940px; width: 100%; }
+
+/* Morph: three boxes that change place and size between two slides. */
+.sc-morph-row { display: flex; gap: 12px; margin-top: clamp(18px, 3vh, 32px); flex-wrap: wrap; }
+.sc-morph-row .sc-card { padding: 10px 16px; border-radius: 10px; }
+.sc-morph-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(12px, 1.6vw, 20px); margin-top: clamp(18px, 3vh, 32px); }
+.sc-morph-grid .sc-card { min-height: clamp(150px, 26vh, 240px); border-color: var(--accent); }
+@media (max-width: 767px) { .sc-morph-grid { grid-template-columns: 1fr; } .sc-morph-grid .sc-card { min-height: 0; } }
+
 /* The live stage takes what the slide leaves. */
 .sc-stage-slide .stage { --stage-height: 62vh; margin-top: clamp(10px, 1.6vh, 18px); }
 .sc-stage-slide .slide__heading { font-size: clamp(22px, 3vw, 34px); }
@@ -125,11 +128,11 @@
 
 <!-- /* i18n:start */ Bilingual slide content: the German half of every pair is
      intended, see README.md. tests/test_docs.py skips this region. -->
-<button type="button" class="sc-lang" data-showcase-lang title="DE / EN (L)"><span data-de>EN</span><span data-en>DE</span></button>
+<button type="button" class="sc-lang" data-deck="lang" data-aria-de="Sprache wechseln (L)" data-aria-en="Switch language (L)"><span data-de>EN</span><span data-en>DE</span></button>
 
-<!-- 1. Title. Untagged, so it belongs to every track; "short" exists because
+<!-- Title. Untagged, so it belongs to every track; "short" exists because
      data-tracks-cycle names it, even though no slide carries it. -->
-<section class="slide slide--title" id="s-title">
+<section class="slide slide--title" id="s-title" data-time="30">
   <p class="slide__label reveal"><span data-de>html-slides und html-canvas</span><span data-en>html-slides and html-canvas</span></p>
   <h1 class="slide__display reveal"><span data-de>Alles, was ein Deck kann</span><span data-en>Everything a deck can do</span></h1>
   <div class="reveal">
@@ -141,20 +144,20 @@
       <span data-de>alle Tasten mit</span><span data-en>every key with</span> <span class="sc-kbd">?</span></p>
   </div>
   <aside class="notes">
-    <p><span data-de>Willkommen. Das ist eine Notiz: sie erscheint nur im Notizfeld (Taste N), nie auf der Folie und nie im Druck.</span><span data-en>Welcome. This is a note: it shows only in the notes panel (key N), never on the slide and never in print.</span></p>
-    <p><span data-de>Ablauf: erst Navigation, dann Aussehen und Sprache, dann die Folientypen, die Live-Bühne und der Versand.</span><span data-en>Order: navigation first, then look and language, then the slide types, the live stage and delivery.</span></p>
+    <p><span data-de>Willkommen. Das ist eine Notiz: sie erscheint nur im Notizfeld (Taste N) und in der Referentenansicht (Taste P), nie auf der Folie.</span><span data-en>Welcome. This is a note: it shows only in the notes panel (key N) and the presenter view (key P), never on the slide.</span></p>
+    <p><span data-de>Ablauf: erst Navigation, dann Aussehen und Sprache, die Folientypen, das Vortragen, die Live-Bühne und der Versand.</span><span data-en>Order: navigation first, then look and language, the slide types, presenting, the live stage and delivery.</span></p>
   </aside>
 </section>
 
-<!-- 2. Overview: agenda with goto tiles -->
-<section class="slide slide--overview" id="s-agenda">
+<!-- Overview: agenda with goto tiles -->
+<section class="slide slide--overview" id="s-agenda" data-time="30">
   <p class="slide__label reveal"><span data-de>Übersicht</span><span data-en>Overview</span></p>
   <h2 class="slide__heading reveal"><span data-de>Sechs Stationen, ein Klick je Station</span><span data-en>Six stops, one click each</span></h2>
   <nav class="overview-grid reveal">
     <button type="button" class="overview-tile" data-deck="goto:#s-nav">
       <span class="overview-tile__num">01</span>
       <span class="overview-tile__title"><span data-de>Navigation</span><span data-en>Navigation</span></span>
-      <span class="overview-tile__desc"><span data-de>Tasten, Hilfe, Deep Link, Spuren, Notizen</span><span data-en>Keys, help, deep link, tracks, notes</span></span>
+      <span class="overview-tile__desc"><span data-de>Tasten, Deep Link, Spuren, Notizen, Live-Tasten</span><span data-en>Keys, deep link, tracks, notes, live keys</span></span>
     </button>
     <button type="button" class="overview-tile" data-deck="goto:#s-look">
       <span class="overview-tile__num">02</span>
@@ -166,20 +169,20 @@
       <span class="overview-tile__title"><span data-de>Folientypen</span><span data-en>Slide types</span></span>
       <span class="overview-tile__desc"><span data-de>Tabelle, Code, Ablauf, Karten, Entscheidung</span><span data-en>Table, code, flow, cards, decision</span></span>
     </button>
-    <button type="button" class="overview-tile" data-deck="goto:#s-live">
+    <button type="button" class="overview-tile" data-deck="goto:#s-present">
       <span class="overview-tile__num">04</span>
+      <span class="overview-tile__title"><span data-de>Vortragen</span><span data-en>Presenting</span></span>
+      <span class="overview-tile__desc"><span data-de>Referentenansicht, Probe, Zeichnen, Schritte, Übergänge, Lesen</span><span data-en>Presenter view, rehearsal, drawing, steps, morph, reading</span></span>
+    </button>
+    <button type="button" class="overview-tile" data-deck="goto:#s-live">
+      <span class="overview-tile__num">05</span>
       <span class="overview-tile__title"><span data-de>Live-Bühne</span><span data-en>Live stage</span></span>
       <span class="overview-tile__desc"><span data-de>Eine laufende Simulation in der Folie</span><span data-en>A running simulation inside the slide</span></span>
     </button>
     <button type="button" class="overview-tile" data-deck="goto:#s-ship">
-      <span class="overview-tile__num">05</span>
-      <span class="overview-tile__title"><span data-de>Versand</span><span data-en>Delivery</span></span>
-      <span class="overview-tile__desc"><span data-de>PDF, eine Datei zum Mitnehmen, die Prüfung</span><span data-en>PDF, one file to take along, the gate</span></span>
-    </button>
-    <button type="button" class="overview-tile" data-deck="goto:#s-end">
       <span class="overview-tile__num">06</span>
-      <span class="overview-tile__title"><span data-de>Selbst ausprobieren</span><span data-en>Try it yourself</span></span>
-      <span class="overview-tile__desc"><span data-de>Die Tasten auf einen Blick, dann Fragen</span><span data-en>The keys at a glance, then questions</span></span>
+      <span class="overview-tile__title"><span data-de>Versand</span><span data-en>Delivery</span></span>
+      <span class="overview-tile__desc"><span data-de>PDF, Handout mit Notizen, eine Datei zum Lesen</span><span data-en>PDF, handout with notes, one file to read</span></span>
     </button>
   </nav>
   <aside class="notes">
@@ -187,8 +190,8 @@
   </aside>
 </section>
 
-<!-- 3. Divider: navigation -->
-<section class="slide slide--divider" id="s-nav">
+<!-- Divider: navigation -->
+<section class="slide slide--divider" id="s-nav" data-time="10">
   <span class="slide__number" aria-hidden="true">01</span>
   <div>
     <h2 class="slide__heading reveal">Navigation</h2>
@@ -196,8 +199,8 @@
   </div>
 </section>
 
-<!-- 4. Keys and help -->
-<section class="slide slide--content" id="s-keys">
+<!-- Keys and help -->
+<section class="slide slide--content" id="s-keys" data-time="45">
   <div class="slide__inner">
     <div>
       <p class="slide__label reveal"><span data-de>Tasten und Hilfe</span><span data-en>Keys and help</span></p>
@@ -205,7 +208,7 @@
       <ul class="slide__bullets">
         <li class="reveal"><span class="sc-kbd">→</span> <span class="sc-kbd">↓</span> <span class="sc-kbd"><span data-de>Leertaste</span><span data-en>Space</span></span> <span data-de>weiter,</span><span data-en>next,</span> <span class="sc-kbd">←</span> <span class="sc-kbd">↑</span> <span data-de>zurück</span><span data-en>back</span></li>
         <li class="reveal"><span class="sc-kbd">Home</span> <span class="sc-kbd">End</span> <span data-de>erste und letzte Folie</span><span data-en>first and last slide</span></li>
-        <li class="reveal"><span class="sc-kbd">?</span> <span data-de>Tastenhilfe,</span><span data-en>key help,</span> <span class="sc-kbd">Esc</span> <span data-de>schließt sie</span><span data-en>closes it</span></li>
+        <li class="reveal"><span class="sc-kbd">?</span> <span data-de>Tastenhilfe mit den Tasten jedes Moduls,</span><span data-en>key help with the keys of every module,</span> <span class="sc-kbd">Esc</span> <span data-de>schließt sie</span><span data-en>closes it</span></li>
       </ul>
       <div class="slide__actions reveal">
         <button type="button" class="slide__btn slide__btn--primary" data-deck="help"><span data-de>Hilfe öffnen</span><span data-en>Open the help</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
@@ -215,19 +218,19 @@
     <div class="slide__aside reveal">
       <div class="sc-card">
         <div class="sc-card__title"><span data-de>Knöpfe ohne Skript</span><span data-en>Buttons without a script</span></div>
-        <div class="sc-card__text sc-chips"><code>data-deck="next"</code><code>prev</code><code>help</code><code>theme</code><code>notes</code><code>track:short</code><code>goto:3</code><code>goto:#id</code></div>
+        <div class="sc-card__text sc-chips"><code>data-deck="next"</code><code>prev</code><code>help</code><code>theme</code><code>lang</code><code>notes</code><code>track:short</code><code>goto:#id</code><code>read</code><code>draw</code><code>laser</code></div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 5. Deep link (full track only) -->
-<section class="slide slide--content" id="s-deeplink" data-track="full">
+<!-- Deep link (full track only) -->
+<section class="slide slide--content" id="s-deeplink" data-track="full" data-time="30">
   <div class="slide__inner">
     <div>
       <p class="slide__label reveal"><span data-de>Direktlink</span><span data-en>Deep link</span></p>
       <h2 class="slide__heading reveal"><span data-de>Die Adresse kennt die Folie</span><span data-en>The address knows the slide</span></h2>
-      <p class="slide__body reveal"><span data-de>Die Adresszeile endet auf #s-deeplink, die ID dieser Folie. Neu laden oder den Link weitergeben: das Deck öffnet genau hier, in jeder Spur. Eine Folie ohne ID bekommt ihre Nummer.</span><span data-en>The address bar ends in #s-deeplink, this slide's id. Reload or pass the link on: the deck opens right here, in every track. A slide without an id gets its number.</span></p>
+      <p class="slide__body reveal"><span data-de>Die Adresszeile endet auf #s-deeplink, die ID dieser Folie. Neu laden oder den Link weitergeben: das Deck öffnet genau hier, in jeder Spur. Eine Folie ohne ID bekommt ihre Nummer, ein Schritt hängt sich an: #s-steps.2.</span><span data-en>The address bar ends in #s-deeplink, this slide's id. Reload or pass the link on: the deck opens right here, in every track. A slide without an id gets its number, a step is appended: #s-steps.2.</span></p>
       <p class="sc-how reveal"><span class="sc-how__label"><span data-de>Bedienen</span><span data-en>How</span></span>
         <code>deck.html#s-deeplink</code> <span data-de>oder</span><span data-en>or</span> <code>deck.html#5</code>. <span data-de>Abschalten mit</span><span data-en>Turn it off with</span> <code>data-deep-link="off"</code>.</p>
     </div>
@@ -240,13 +243,13 @@
   </div>
 </section>
 
-<!-- 6. Tracks -->
-<section class="slide slide--content" id="s-tracks">
+<!-- Tracks -->
+<section class="slide slide--content" id="s-tracks" data-time="45">
   <div class="slide__inner">
     <div>
       <p class="slide__label reveal"><span data-de>Spuren</span><span data-en>Tracks</span></p>
       <h2 class="slide__heading reveal"><span data-de>Ein Deck, zwei Fassungen</span><span data-en>One deck, two cuts</span></h2>
-      <p class="slide__body reveal"><span data-de>Folien mit <code>data-track="full"</code> zeigt nur die lange Fassung. Zähler, Punkte und Fortschritt zählen nur die sichtbaren Folien, der Druck zeigt immer alle.</span><span data-en>Slides with <code>data-track="full"</code> show only in the long cut. Counter, dots and progress count the visible slides only; print always shows all of them.</span></p>
+      <p class="slide__body reveal"><span data-de>Folien mit <code>data-track="full"</code> zeigt nur die lange Fassung. Zähler, Punkte, Fortschritt und der Zeitplan der Referentenansicht zählen nur die sichtbaren Folien, der Druck zeigt immer alle.</span><span data-en>Slides with <code>data-track="full"</code> show only in the long cut. Counter, dots, progress and the presenter's time plan count the visible slides only; print always shows all of them.</span></p>
       <div class="slide__actions reveal">
         <button type="button" class="slide__btn slide__btn--primary" data-deck="track"><span data-de>Spur wechseln (F)</span><span data-en>Switch track (F)</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
         <button type="button" class="slide__btn" data-deck="track:short"><span data-de>kurz</span><span data-en>short</span></button>
@@ -267,13 +270,13 @@
   </aside>
 </section>
 
-<!-- 7. Speaker notes -->
-<section class="slide slide--content" id="s-notes">
+<!-- Speaker notes -->
+<section class="slide slide--content" id="s-notes" data-time="30">
   <div class="slide__inner">
     <div>
       <p class="slide__label reveal"><span data-de>Sprechernotizen</span><span data-en>Speaker notes</span></p>
       <h2 class="slide__heading reveal"><span data-de>Auf der Folie das Ergebnis, im Notizfeld der Text</span><span data-en>The result on the slide, the words in the notes</span></h2>
-      <p class="slide__body reveal"><span data-de>Ein <code>&lt;aside class="notes"&gt;</code> in der Folie. Das Feld folgt beim Blättern mit und fehlt im Druck.</span><span data-en>An <code>&lt;aside class="notes"&gt;</code> inside the slide. The panel follows as you page and stays out of print.</span></p>
+      <p class="slide__body reveal"><span data-de>Ein <code>&lt;aside class="notes"&gt;</code> in der Folie. Das Feld folgt beim Blättern mit, die Referentenansicht zeigt dieselben Notizen.</span><span data-en>An <code>&lt;aside class="notes"&gt;</code> inside the slide. The panel follows as you page, the presenter view shows the same notes.</span></p>
       <div class="slide__actions reveal">
         <button type="button" class="slide__btn slide__btn--primary" data-deck="notes"><span data-de>Notizen zeigen (N)</span><span data-en>Show notes (N)</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
       </div>
@@ -281,12 +284,39 @@
   </div>
   <aside class="notes">
     <p><span data-de>Genau dieser Text steht im Notizfeld. Sag hier, was die Folie nicht sagt.</span><span data-en>This very text is in the notes panel. Say here what the slide does not.</span></p>
-    <p><span data-de>Zu erwartende Frage: sieht das Publikum die Notizen? Nein, nur wer N drückt.</span><span data-en>Question to expect: does the audience see the notes? No, only whoever presses N.</span></p>
+    <p><span data-de>Zu erwartende Frage: sieht das Publikum die Notizen? Nein, nur wer N drückt oder die Referentenansicht öffnet.</span><span data-en>Question to expect: does the audience see the notes? No, only whoever presses N or opens the presenter view.</span></p>
   </aside>
 </section>
 
-<!-- 8. Divider: look and language -->
-<section class="slide slide--divider" id="s-look">
+<!-- Presenting live, always on: B / W, digits + Enter, Alt+click zoom -->
+<section class="slide slide--content" id="s-livekeys" data-time="60">
+  <div class="slide__inner">
+    <div>
+      <p class="slide__label reveal"><span data-de>Live-Tasten</span><span data-en>Live keys</span></p>
+      <h2 class="slide__heading reveal"><span data-de>Abdecken, springen, vergrößern</span><span data-en>Cover, jump, zoom</span></h2>
+      <div class="sc-keys reveal">
+        <span><span class="sc-kbd">B</span> <span class="sc-kbd">W</span></span>
+        <span><span data-de>schwarzer oder weißer Bildschirm über allem; dieselbe Taste, jede andere Taste oder ein Klick hebt ihn auf</span><span data-en>a black or white screen over everything; the same key, any other key or a click lifts it</span></span>
+        <span><span class="sc-kbd">1</span> <span class="sc-kbd">4</span> <span class="sc-kbd">Enter</span></span>
+        <span><span data-de>springt zu Folie 14 der aktiven Spur, die Zahl des Zählers; Backspace korrigiert</span><span data-en>jumps to slide 14 of the active track, the counter's number; Backspace corrects</span></span>
+        <span><span class="sc-kbd">Alt</span> + <span data-de>Klick</span><span data-en>click</span></span>
+        <span><span data-de>vergrößert zweifach um den Zeiger; der nächste Klick oder Esc setzt zurück</span><span data-en>zooms 2x around the pointer; the next click or Esc resets</span></span>
+      </div>
+    </div>
+    <div class="slide__aside reveal">
+      <div class="sc-card">
+        <div class="sc-card__title"><span data-de>Immer an</span><span data-en>Always on</span></div>
+        <div class="sc-card__text"><span data-de>Kein Modul und kein Attribut nötig: jedes Deck kann das. Probieren: Alt halten und auf diese Karte klicken.</span><span data-en>No module and no attribute needed: every deck can do this. Try it: hold Alt and click this card.</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><span data-de>B vor einer Frage aus dem Publikum, damit alle Augen beim Sprecher sind. Die Zahl plus Enter für Rückfragen zu einer bestimmten Folie.</span><span data-en>B before a question from the audience, so all eyes are on the speaker. The number plus Enter for a question about one particular slide.</span></p>
+  </aside>
+</section>
+
+<!-- Divider: look and language -->
+<section class="slide slide--divider" id="s-look" data-time="10">
   <span class="slide__number" aria-hidden="true">02</span>
   <div>
     <h2 class="slide__heading reveal"><span data-de>Aussehen und Sprache</span><span data-en>Look and language</span></h2>
@@ -294,8 +324,8 @@
   </div>
 </section>
 
-<!-- 9. Split: theme and language -->
-<section class="slide slide--split" id="s-theme">
+<!-- Split: theme and language -->
+<section class="slide slide--split" id="s-theme" data-time="45">
   <div class="slide__panels">
     <div class="slide__panel slide__panel--primary">
       <p class="slide__label reveal"><span data-de>Hell und dunkel</span><span data-en>Light and dark</span></p>
@@ -313,23 +343,24 @@
       <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Jeder Text als Paar</span><span data-en>Every text as a pair</span></h2>
       <ul class="slide__bullets" style="margin-top:16px;">
         <li class="reveal"><code>&lt;span data-de&gt;</code> <span data-de>und</span><span data-en>and</span> <code>&lt;span data-en&gt;</code></li>
-        <li class="reveal"><span data-de>Bedienelemente und Hilfe folgen <code>&lt;html lang&gt;</code></span><span data-en>Controls and help follow <code>&lt;html lang&gt;</code></span></li>
+        <li class="reveal"><span data-de>L schaltet sofort, ohne Neuladen: Folien, Hilfe, Bedienelemente, Bühne</span><span data-en>L switches at once, without a reload: slides, help, controls, stage</span></li>
+        <li class="reveal"><span data-de>Die Wahl bleibt je <code>data-deck-id</code> gespeichert</span><span data-en>The choice is kept per <code>data-deck-id</code></span></li>
       </ul>
       <div class="slide__actions reveal">
-        <button type="button" class="slide__btn slide__btn--primary" data-showcase-lang><span data-de>English (L)</span><span data-en>Deutsch (L)</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
+        <button type="button" class="slide__btn slide__btn--primary" data-deck="lang"><span data-de>English (L)</span><span data-en>Deutsch (L)</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 10. Counter and back link -->
-<section class="slide slide--content" id="s-chrome">
+<!-- Counter and back link -->
+<section class="slide slide--content" id="s-chrome" data-time="30">
   <div class="slide__inner">
     <div>
       <p class="slide__label reveal"><span data-de>Zähler und Rückweg</span><span data-en>Counter and way back</span></p>
       <h2 class="slide__heading reveal"><span data-de>Unten rechts die Folie, oben links der Weg zurück</span><span data-en>The slide at the bottom right, the way back at the top left</span></h2>
       <ul class="slide__bullets">
-        <li class="reveal"><code>data-counter-format="padded"</code> <span data-de>zeigt</span><span data-en>shows</span> <code>07 / 22</code></li>
+        <li class="reveal"><code>data-counter-format="padded"</code> <span data-de>zeigt</span><span data-en>shows</span> <code>07 / 33</code></li>
         <li class="reveal"><code>data-back-href="showcase-seite.html"</code> <span data-de>setzt den Link oben links auf die Begleitseite</span><span data-en>puts the link at the top left to the companion page</span></li>
         <li class="reveal"><code>data-dots="off"</code> <span data-de>blendet die Punktleiste aus</span><span data-en>hides the dot bar</span></li>
       </ul>
@@ -343,8 +374,8 @@
   </div>
 </section>
 
-<!-- 11. Reveal and reduced motion (full track) -->
-<section class="slide slide--content" id="s-reveal" data-track="full">
+<!-- Reveal and reduced motion (full track) -->
+<section class="slide slide--content" id="s-reveal" data-track="full" data-time="30">
   <p class="slide__label reveal"><span data-de>Einlauf</span><span data-en>Reveal</span></p>
   <h2 class="slide__heading reveal"><span data-de>Eine Klasse für jede Bewegung</span><span data-en>One class for every motion</span></h2>
   <div class="sc-reveal-row">
@@ -357,8 +388,8 @@
     <span data-de>Systemeinstellung „Bewegung reduzieren“ an: alles steht still und ist trotzdem lesbar.</span><span data-en>Turn on the system setting “reduce motion”: nothing moves and all of it stays readable.</span></p>
 </section>
 
-<!-- 12. Divider: slide types -->
-<section class="slide slide--divider" id="s-types">
+<!-- Divider: slide types -->
+<section class="slide slide--divider" id="s-types" data-time="10">
   <span class="slide__number" aria-hidden="true">03</span>
   <div>
     <h2 class="slide__heading reveal"><span data-de>Folientypen</span><span data-en>Slide types</span></h2>
@@ -366,8 +397,8 @@
   </div>
 </section>
 
-<!-- 13. Table: the slide types -->
-<section class="slide slide--table" id="s-table">
+<!-- Table: the slide types -->
+<section class="slide slide--table" id="s-table" data-time="45">
   <p class="slide__label reveal"><span data-de>Tabelle</span><span data-en>Table</span></p>
   <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Die elf Folientypen und wo sie hier stehen</span><span data-en>The eleven slide types and where they are here</span></h2>
   <div class="table-wrap reveal" style="margin-top:clamp(8px,1.5vh,20px);">
@@ -395,13 +426,13 @@
   </aside>
 </section>
 
-<!-- 14. Code block -->
-<section class="slide slide--code" id="s-code">
+<!-- Code block -->
+<section class="slide slide--code" id="s-code" data-time="30">
   <p class="slide__label reveal">Code</p>
   <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Eine Folie ist ein Stück HTML</span><span data-en>A slide is a piece of HTML</span></h2>
   <div class="slide__code-block reveal" style="margin-top:clamp(24px,3.4vh,36px); max-width:900px; width:100%;">
     <span class="slide__code-filename">slides.html</span>
-    <pre><code><span class="kw">&lt;section</span> class=<span class="str">"slide slide--content"</span> data-track=<span class="str">"full"</span><span class="kw">&gt;</span>
+    <pre><code><span class="kw">&lt;section</span> class=<span class="str">"slide slide--content"</span> data-track=<span class="str">"full"</span> data-time=<span class="str">"90"</span><span class="kw">&gt;</span>
   <span class="kw">&lt;h2</span> class=<span class="str">"slide__heading reveal"</span><span class="kw">&gt;</span><span class="hl">Heading</span><span class="kw">&lt;/h2&gt;</span>
   <span class="kw">&lt;button</span> data-deck=<span class="str">"goto:#s-live"</span><span class="kw">&gt;</span>Live<span class="kw">&lt;/button&gt;</span>
   <span class="kw">&lt;aside</span> class=<span class="str">"notes"</span><span class="kw">&gt;</span><span class="cm">what to say</span><span class="kw">&lt;/aside&gt;</span>
@@ -414,8 +445,8 @@
   </div>
 </section>
 
-<!-- 15. Pipeline: how the deck was built -->
-<section class="slide" id="s-pipeline">
+<!-- Pipeline: how the deck was built -->
+<section class="slide" id="s-pipeline" data-time="30">
   <p class="slide__label reveal"><span data-de>Ablauf</span><span data-en>Flow</span></p>
   <h2 class="slide__heading reveal"><span data-de>So entstand dieses Deck</span><span data-en>How this deck was built</span></h2>
   <div class="pipeline reveal">
@@ -429,8 +460,8 @@
     <div class="pipeline__step">
       <div class="pipeline__num">02</div>
       <div class="pipeline__name">Deck</div>
-      <div class="pipeline__desc"><span data-de>Folien, Engine, Bühne, Marke</span><span data-en>Slides, engine, stage, brand</span></div>
-      <div class="pipeline__file">new-deck.py --with-stage</div>
+      <div class="pipeline__desc"><span data-de>Folien, Engine, Module, Bühne, Marke</span><span data-en>Slides, engine, modules, stage, brand</span></div>
+      <div class="pipeline__file">new-deck.py --with all</div>
     </div>
     <div class="pipeline__arrow"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M5 12h14m-4-4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div class="pipeline__step">
@@ -443,45 +474,46 @@
     <div class="pipeline__step">
       <div class="pipeline__num">04</div>
       <div class="pipeline__name"><span data-de>Versand</span><span data-en>Delivery</span></div>
-      <div class="pipeline__desc"><span data-de>Eine Datei und ein PDF</span><span data-en>One file and a PDF</span></div>
+      <div class="pipeline__desc"><span data-de>Eine Datei, ein PDF, ein Handout</span><span data-en>One file, a PDF, a handout</span></div>
       <div class="pipeline__file">bundle.py, render-pdf.cjs</div>
     </div>
   </div>
 </section>
 
-<!-- 16. Card grid: cheat sheet -->
-<section class="slide" id="s-cheat">
+<!-- Card grid: cheat sheet -->
+<section class="slide" id="s-cheat" data-time="30">
   <p class="slide__label reveal"><span data-de>Spickzettel</span><span data-en>Cheat sheet</span></p>
   <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Alles, was ein Deck lesen kann</span><span data-en>Everything a deck reads</span></h2>
   <div class="cheat-grid">
     <div class="cheat-card reveal">
       <div class="cheat-card__title"><span data-de>Auf der Folie</span><span data-en>On a slide</span></div>
-      <div class="cheat-card__item"><code>data-track="short full"</code></div>
-      <div class="cheat-card__item"><code>&lt;aside class="notes"&gt;</code></div>
-      <div class="cheat-card__item"><code>class="reveal"</code></div>
+      <div class="cheat-card__item sc-chips"><code>data-track</code><code>data-time</code></div>
+      <div class="cheat-card__item sc-chips"><code>&lt;aside class="notes"&gt;</code><code>class="reveal"</code></div>
+      <div class="cheat-card__item sc-chips"><code>data-step</code><code>data-steps</code><code>data-lines</code><code>data-morph</code></div>
     </div>
     <div class="cheat-card reveal">
       <div class="cheat-card__title"><span data-de>Auf dem Deck</span><span data-en>On the deck</span></div>
       <div class="cheat-card__item sc-chips"><code>data-tracks-default</code><code>data-tracks-cycle</code></div>
-      <div class="cheat-card__item"><code>data-counter-format="padded"</code></div>
-      <div class="cheat-card__item sc-chips"><code>data-back-href</code><code>data-dots="off"</code></div>
+      <div class="cheat-card__item sc-chips"><code>data-counter-format</code><code>data-back-href</code></div>
+      <div class="cheat-card__item sc-chips"><code>data-print-notes</code><code>data-read-default</code></div>
     </div>
     <div class="cheat-card reveal">
       <div class="cheat-card__title"><span data-de>Knöpfe</span><span data-en>Buttons</span></div>
       <div class="cheat-card__item sc-chips"><code>data-deck="goto:#id"</code><code>next</code><code>prev</code></div>
-      <div class="cheat-card__item sc-chips"><code>theme</code><code>notes</code><code>help</code><code>track:name</code></div>
-      <div class="cheat-card__item sc-chips"><code>data-stage="maximize"</code><code>restart</code></div>
+      <div class="cheat-card__item sc-chips"><code>theme</code><code>lang</code><code>notes</code><code>help</code><code>track:name</code></div>
+      <div class="cheat-card__item sc-chips"><code>read</code><code>draw</code><code>laser</code><code>data-stage="maximize"</code></div>
     </div>
     <div class="cheat-card reveal">
       <div class="cheat-card__title"><span data-de>Tasten</span><span data-en>Keys</span></div>
-      <div class="cheat-card__item"><span class="sc-kbd">T</span> <span class="sc-kbd">F</span> <span class="sc-kbd">N</span> <span class="sc-kbd">?</span> <span class="sc-kbd">V</span> <span class="sc-kbd">L</span> <span class="sc-kbd">Esc</span></div>
+      <div class="cheat-card__item"><span class="sc-kbd">T</span> <span class="sc-kbd">F</span> <span class="sc-kbd">N</span> <span class="sc-kbd">L</span> <span class="sc-kbd">?</span> <span class="sc-kbd">V</span> <span class="sc-kbd">Esc</span></div>
+      <div class="cheat-card__item"><span class="sc-kbd">P</span> <span class="sc-kbd">D</span> <span class="sc-kbd">Q</span> <span class="sc-kbd">R</span> <span class="sc-kbd">B</span> <span class="sc-kbd">W</span></div>
       <div class="cheat-card__item"><code>window.SlideDeck.goTo(i)</code></div>
     </div>
   </div>
 </section>
 
-<!-- 17. Decision page excerpt -->
-<section class="slide slide--content" id="s-decision">
+<!-- Decision page excerpt -->
+<section class="slide slide--content" id="s-decision" data-time="60">
   <p class="slide__label reveal"><span data-de>Entscheidungsseite, Auszug</span><span data-en>Decision page, excerpt</span></p>
   <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Wie liefern wir ein Deck aus?</span><span data-en>How do we deliver a deck?</span></h2>
   <div class="sc-options reveal">
@@ -508,8 +540,8 @@
   </aside>
 </section>
 
-<!-- 18. Terminal mockup (full track) -->
-<section class="slide slide--code" id="s-terminal" data-track="full">
+<!-- Terminal mockup (full track) -->
+<section class="slide slide--code" id="s-terminal" data-track="full" data-time="30">
   <p class="slide__label reveal"><span data-de>Prüfung</span><span data-en>Gate</span></p>
   <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Die Prüfung im Terminal</span><span data-en>The gate in the terminal</span></h2>
   <div class="slide__code-block sc-term reveal">
@@ -518,25 +550,212 @@
 <span class="ok">showcase-deck.html: ok</span>
 <span class="cm">  note: checked against DESIGN.md</span>
 verify-page: 0 errors, 0 warnings (1 page)
-<span class="hl">$</span> node render-pdf.cjs showcase-deck.html showcase-deck.pdf --theme light
+<span class="hl">$</span> node render-pdf.cjs showcase-deck.html handout.pdf --notes
 -> Loading file://.../showcase-deck.html
 -> Waited for 1 embedded frame
--> Rendering PDF (CSS @page size, else 297mm x 167mm, theme light)
-<span class="ok">-> Wrote showcase-deck.pdf</span></code></pre>
+-> Rendering PDF (CSS @page size, else 297mm x 167mm, with notes)
+<span class="ok">-> Wrote handout.pdf</span></code></pre>
   </div>
 </section>
 
-<!-- 19. Divider: live stage -->
-<section class="slide slide--divider" id="s-live">
+<!-- Divider: presenting -->
+<section class="slide slide--divider" id="s-present" data-time="10">
   <span class="slide__number" aria-hidden="true">04</span>
+  <div>
+    <h2 class="slide__heading reveal"><span data-de>Vortragen</span><span data-en>Presenting</span></h2>
+    <p class="slide__subtitle reveal" style="margin-top:12px;"><span data-de>Fünf Module, gebaut mit <code>--with all</code>. Ohne Taste bleibt das Deck, wie es war.</span><span data-en>Five modules, built with <code>--with all</code>. Without a key the deck stays as it was.</span></p>
+  </div>
+</section>
+
+<!-- Module presenter: presenter window and time budgets -->
+<section class="slide slide--content" id="s-presenter" data-time="75">
+  <div class="slide__inner">
+    <div>
+      <p class="slide__label reveal"><span data-de>Referentenansicht</span><span data-en>Presenter view</span></p>
+      <h2 class="slide__heading reveal"><span data-de>Ein Fenster für den zweiten Bildschirm</span><span data-en>A window for the second screen</span></h2>
+      <ul class="slide__bullets">
+        <li class="reveal"><span class="sc-kbd">P</span> <span data-de>öffnet das Fenster: diese Folie und die nächste als Live-Vorschau, Notizen, Uhr, Zeit</span><span data-en>opens the window: this slide and the next as live previews, notes, clock, time</span></li>
+        <li class="reveal"><span data-de>Jede Folie hat ein Budget:</span><span data-en>Every slide has a budget:</span> <code>data-time="75"</code> <span data-de>oder</span><span data-en>or</span> <code>data-time="1:15"</code></li>
+        <li class="reveal"><span data-de>Der Plan ist die Summe der Folien der aktiven Spur; die Zeile „Tempo“ sagt, wie weit vor oder hinter dem Plan der Vortrag liegt</span><span data-en>The plan is the sum of the slides in the active track; the pace line says how far ahead or behind the plan the talk is</span></li>
+        <li class="reveal"><span class="sc-kbd">Shift</span> + <span class="sc-kbd">P</span> <span data-de>schwebende Uhr, wo der Browser Bild im Bild für Dokumente kann</span><span data-en>floating timer, where the browser has Document Picture-in-Picture</span></li>
+      </ul>
+    </div>
+    <div class="slide__aside reveal">
+      <div class="sc-card">
+        <div class="sc-card__title"><span data-de>Budget dieser Folie</span><span data-en>Budget of this slide</span></div>
+        <div class="sc-big">1:15</div>
+        <div class="sc-card__text"><span data-de>Bleibt ein Fünftel, steht es auf „knapp“, ist es verbraucht, auf „über“. Farbe und Wort, nie Farbe allein.</span><span data-en>With a fifth left it reads “low”, used up it reads “over”. Colour and word, never colour alone.</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><span data-de>Jetzt P drücken. Das Fenster folgt dem Deck in beide Richtungen: Blättern im Fenster blättert das Deck, ein Klick auf die Vorschau rechts geht weiter.</span><span data-en>Press P now. The window follows the deck both ways: paging in the window pages the deck, a click on the next preview advances.</span></p>
+    <p><span data-de>Ein blockiertes Pop-up meldet das Deck mit einem Hinweis.</span><span data-en>A blocked pop-up is reported by a notice on the deck.</span></p>
+  </aside>
+</section>
+
+<!-- Module presenter: rehearsal -->
+<section class="slide slide--content" id="s-rehearsal" data-time="60">
+  <div class="slide__inner">
+    <div>
+      <p class="slide__label reveal"><span data-de>Probe</span><span data-en>Rehearsal</span></p>
+      <h2 class="slide__heading reveal"><span data-de>Einmal üben, dann wissen, wo die Zeit hingeht</span><span data-en>Rehearse once, then know where the time goes</span></h2>
+      <ol class="slide__bullets">
+        <li class="reveal"><span data-de>Im Referentenfenster</span><span data-en>In the presenter window</span> <span class="sc-kbd">R</span> <span data-de>setzt die Uhr zurück und nimmt auf</span><span data-en>resets the timer and records</span></li>
+        <li class="reveal"><span data-de>Jeder Folienwechsel zählt die echten Sekunden je Folie</span><span data-en>Every slide change counts the real seconds per slide</span></li>
+        <li class="reveal"><span class="sc-kbd">R</span> <span data-de>stoppt und zeigt Plan gegen Ist,</span><span data-en>stops and shows plan vs actual,</span> <span class="sc-kbd">A</span> <span data-de>holt die Tabelle zurück, „Kopieren“ legt sie als Tabulator-Text ab</span><span data-en>brings the table back, “Copy” puts it on the clipboard as tab-separated text</span></li>
+      </ol>
+      <p class="sc-how reveal"><span class="sc-how__label"><span data-de>Gespeichert</span><span data-en>Stored</span></span>
+        <code>localStorage</code> <span data-de>unter</span><span data-en>under</span> <code>deck-rehearsal:&lt;deck id&gt;</code>, <span data-de>ein Lauf je Spur</span><span data-en>one record per track</span></p>
+    </div>
+    <div class="slide__aside reveal">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th><span data-de>Folie (Beispiel)</span><span data-en>Slide (example)</span></th><th>Plan</th><th><span data-de>Ist</span><span data-en>Actual</span></th></tr></thead>
+          <tbody>
+            <tr><td><span data-de>Titel</span><span data-en>Title</span></td><td>0:30</td><td>0:24</td></tr>
+            <tr><td><span data-de>Spuren</span><span data-en>Tracks</span></td><td>0:45</td><td>0:41</td></tr>
+            <tr><td><span data-de>Referentenansicht</span><span data-en>Presenter view</span></td><td>1:15</td><td class="sc-over">1:52 <span data-de>über</span><span data-en>over</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><span data-de>Die Tabelle auf der Folie ist ein Beispiel; die echte erscheint im Referentenfenster nach dem Stoppen der Probe.</span><span data-en>The table on the slide is an example; the real one appears in the presenter window when the rehearsal stops.</span></p>
+  </aside>
+</section>
+
+<!-- Module draw: pen, marker, laser -->
+<section class="slide slide--content" id="s-draw" data-time="45">
+  <div class="slide__inner">
+    <div>
+      <p class="slide__label reveal"><span data-de>Zeichnen</span><span data-en>Drawing</span></p>
+      <h2 class="slide__heading reveal"><span data-de>Auf die Folie zeigen und sie markieren</span><span data-en>Point at the slide and mark it up</span></h2>
+      <div class="sc-keys reveal">
+        <span><span class="sc-kbd">D</span></span><span><span data-de>Stift an oder aus; die Tinte bleibt bei ihrer Folie</span><span data-en>pen on or off; the ink stays with its slide</span></span>
+        <span><span class="sc-kbd">H</span></span><span><span data-de>Stift oder Marker</span><span data-en>pen or marker</span></span>
+        <span><span class="sc-kbd">Z</span> <span class="sc-kbd">C</span></span><span><span data-de>letzten Strich zurück, Folie leeren (Shift+C: alle)</span><span data-en>undo the last stroke, clear the slide (Shift+C: all)</span></span>
+        <span><span class="sc-kbd">Q</span></span><span><span data-de>Laserpunkt mit kurzer Spur</span><span data-en>laser dot with a short trail</span></span>
+      </div>
+      <div class="slide__actions reveal">
+        <button type="button" class="slide__btn slide__btn--primary" data-deck="draw"><span data-de>Stift (D)</span><span data-en>Pen (D)</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
+        <button type="button" class="slide__btn" data-deck="laser"><span data-de>Laser (Q)</span><span data-en>Laser (Q)</span></button>
+      </div>
+    </div>
+    <div class="slide__aside reveal">
+      <div class="sc-card">
+        <div class="sc-card__title"><span data-de>Hier einkreisen</span><span data-en>Circle this</span></div>
+        <div class="sc-card__text"><span data-de>Die Tinte nimmt die Akzentfarbe des Themas und folgt hell und dunkel. Im Druck und in der Leseansicht ist sie aus.</span><span data-en>The ink takes the theme's accent colour and follows light and dark. Print and the reading view leave it out.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Module steps: fragments -->
+<section class="slide slide--content" id="s-steps" data-time="45">
+  <div class="slide__inner">
+    <div>
+      <p class="slide__label"><span data-de>Schritte</span><span data-en>Steps</span></p>
+      <h2 class="slide__heading"><span data-de>Ein Punkt nach dem anderen</span><span data-en>One point after another</span></h2>
+      <ul class="slide__bullets" data-steps data-step-effect="dim">
+        <li><span data-de>Weiter zeigt den nächsten Schritt, bevor die Folie wechselt</span><span data-en>Next shows the next step before the slide changes</span></li>
+        <li><code>data-steps</code> <span data-de>macht jedes Kind zu einem Schritt,</span><span data-en>makes each child a step,</span> <code>data-step</code> <span data-de>ein einzelnes Element</span><span data-en>a single element</span></li>
+        <li><code>data-step-effect</code>: <code>rise</code>, <code>dim</code>, <code>highlight</code></li>
+      </ul>
+      <p class="sc-how" data-step data-step-effect="highlight"><span class="sc-how__label"><span data-de>Link</span><span data-en>Link</span></span>
+        <span data-de>Die Adresse endet jetzt auf</span><span data-en>The address now ends in</span> <code>#s-steps.4</code>: <span data-de>Neu laden landet auf diesem Schritt.</span><span data-en>a reload lands on this step.</span></p>
+    </div>
+    <div class="slide__aside" data-step data-step-effect="rise">
+      <div class="sc-card">
+        <div class="sc-card__title"><span data-de>Zurück heißt zurück</span><span data-en>Back means back</span></div>
+        <div class="sc-card__text"><span data-de>Rückwärts auf eine Folie zeigt sie fertig aufgebaut. Druck, PDF und Leseansicht zeigen jeden Schritt.</span><span data-en>Moving back onto a slide shows it fully built. Print, PDF and the reading view show every step.</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><span data-de>Fünf Schritte: drei Punkte (die früheren dimmen), der Hinweis zum Link (Akzent, solange er der letzte ist), die Karte rechts (steigt auf).</span><span data-en>Five steps: three points (the earlier ones dim), the link note (accent while it is the latest), the card on the right (rises).</span></p>
+  </aside>
+</section>
+
+<!-- Module steps: code line walkthrough -->
+<section class="slide slide--code" id="s-walk" data-time="45">
+  <p class="slide__label"><span data-de>Code Zeile für Zeile</span><span data-en>Code line by line</span></p>
+  <h2 class="slide__heading" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Jeder Schritt hebt eine Zeilengruppe hervor</span><span data-en>Every step highlights a group of lines</span></h2>
+  <div class="slide__code-block sc-walk">
+    <span class="slide__code-filename">slides.html</span>
+    <pre data-lines="1|2-4|5|*"><code><span class="kw">&lt;section</span> class=<span class="str">"slide"</span> id=<span class="str">"s-walk"</span> data-time=<span class="str">"45"</span><span class="kw">&gt;</span>
+  <span class="kw">&lt;ul</span> data-steps data-step-effect=<span class="str">"dim"</span><span class="kw">&gt;</span>
+    <span class="kw">&lt;li&gt;</span><span class="hl">one step per item</span><span class="kw">&lt;/li&gt;</span>
+  <span class="kw">&lt;/ul&gt;</span>
+  <span class="kw">&lt;pre</span> data-lines=<span class="str">"1|2-4|5|*"</span><span class="kw">&gt;</span><span class="cm">the code</span><span class="kw">&lt;/pre&gt;</span>
+<span class="kw">&lt;/section&gt;</span></code></pre>
+  </div>
+  <p class="sc-how"><span class="sc-how__label"><span data-de>Bedienen</span><span data-en>How</span></span>
+    <code>data-lines="1|2-4|5|*"</code>: <span data-de>eine Gruppe je Schritt, Bereiche und Kommas, <code>*</code> zeigt alle Zeilen</span><span data-en>one group per step, ranges and commas, <code>*</code> shows every line</span></p>
+</section>
+
+<!-- Module morph: the first of two slides sharing data-morph names -->
+<section class="slide slide--content" id="s-morph-a" data-time="20">
+  <p class="slide__label"><span data-de>Übergang</span><span data-en>Morph</span></p>
+  <h2 class="slide__heading" data-morph="mo-head"><span data-de>Drei Teile, klein in einer Reihe</span><span data-en>Three parts, small in a row</span></h2>
+  <div class="sc-morph-row">
+    <div class="sc-card" data-morph="mo-sim"><span class="sc-card__title"><span data-de>Simulation</span><span data-en>Simulation</span></span></div>
+    <div class="sc-card" data-morph="mo-deck"><span class="sc-card__title">Deck</span></div>
+    <div class="sc-card" data-morph="mo-send"><span class="sc-card__title"><span data-de>Versand</span><span data-en>Delivery</span></span></div>
+  </div>
+  <p class="sc-how"><span class="sc-how__label"><span data-de>Bedienen</span><span data-en>How</span></span>
+    <span data-de>Weiter: dieselben</span><span data-en>Next: the same</span> <code>data-morph="mo-deck"</code> <span data-de>auf der nächsten Folie gleiten an ihren neuen Platz</span><span data-en>names on the next slide glide to their new place</span></p>
+</section>
+
+<!-- Module morph: the second slide, same names, new place and size -->
+<section class="slide slide--content" id="s-morph-b" data-time="30">
+  <p class="slide__label"><span data-de>Übergang</span><span data-en>Morph</span></p>
+  <h2 class="slide__heading" data-morph="mo-head"><span data-de>Dieselben Teile, groß nebeneinander</span><span data-en>The same parts, large side by side</span></h2>
+  <div class="sc-morph-grid">
+    <div class="sc-card" data-morph="mo-sim"><span class="sc-card__title"><span data-de>Simulation</span><span data-en>Simulation</span></span><span class="sc-card__text"><span data-de>Ein Modell mit Uhr, Zeitleiste und Szenario im Link</span><span data-en>A model with a clock, a timeline and the scenario in the link</span></span></div>
+    <div class="sc-card" data-morph="mo-deck"><span class="sc-card__title">Deck</span><span class="sc-card__text"><span data-de>Folien, Engine und fünf Module in einer Datei</span><span data-en>Slides, engine and five modules in one file</span></span></div>
+    <div class="sc-card" data-morph="mo-send"><span class="sc-card__title"><span data-de>Versand</span><span data-en>Delivery</span></span><span class="sc-card__text"><span data-de>PDF, Handout mit Notizen, eine Lesefassung</span><span data-en>PDF, handout with notes, a copy to read</span></span></div>
+  </div>
+  <p class="sc-how"><span class="sc-how__label"><span data-de>Technik</span><span data-en>How it works</span></span>
+    <code>document.startViewTransition</code>; <span data-de>ohne Unterstützung oder bei reduzierter Bewegung ein sofortiger Wechsel</span><span data-en>without support or under reduced motion an instant change</span></p>
+  <aside class="notes">
+    <p><span data-de>Zurück zur vorigen Folie und noch einmal vor: jede Richtung gleitet. Eine Taste während des Übergangs beendet ihn sofort.</span><span data-en>Go back and forward again: both directions glide. A key during the morph finishes it at once.</span></p>
+  </aside>
+</section>
+
+<!-- Module read: reading view -->
+<section class="slide slide--content" id="s-read" data-time="45">
+  <div class="slide__inner">
+    <div>
+      <p class="slide__label reveal"><span data-de>Leseansicht</span><span data-en>Reading view</span></p>
+      <h2 class="slide__heading reveal"><span data-de>Das Deck als Dokument</span><span data-en>The deck as a document</span></h2>
+      <ul class="slide__bullets">
+        <li class="reveal"><span class="sc-kbd">R</span> <span data-de>legt die Folien der Spur untereinander, jede mit ihren Notizen; alle Schritte sind sichtbar</span><span data-en>lays the slides of the track out one below the other, each with its notes; every step shows</span></li>
+        <li class="reveal"><span class="sc-kbd">R</span> <span data-de>oder</span><span data-en>or</span> <span class="sc-kbd">Esc</span> <span data-de>zurück an genau die Folie und den Schritt, „ab hier vortragen“ an jede andere</span><span data-en>returns to the exact slide and step, “present from here” to any other</span></li>
+        <li class="reveal"><code>data-read-default</code> <span data-de>öffnet ein Deck gleich in der Leseansicht: so ist die Versandfassung gebaut</span><span data-en>opens a deck straight in the reading view: that is how the send copy is built</span></li>
+      </ul>
+      <div class="slide__actions reveal">
+        <button type="button" class="slide__btn slide__btn--primary" data-deck="read"><span data-de>Lesen (R)</span><span data-en>Read (R)</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><span data-de>Diese Notiz steht in der Leseansicht unter der Folie.</span><span data-en>In the reading view this note sits below the slide.</span></p>
+  </aside>
+</section>
+
+<!-- Divider: live stage -->
+<section class="slide slide--divider" id="s-live" data-time="10">
+  <span class="slide__number" aria-hidden="true">05</span>
   <div>
     <h2 class="slide__heading reveal"><span data-de>Live-Bühne</span><span data-en>Live stage</span></h2>
     <p class="slide__subtitle reveal" style="margin-top:12px;"><span data-de>Kein Bild einer Simulation, sondern die Simulation.</span><span data-en>Not a picture of a simulation, the simulation itself.</span></p>
   </div>
 </section>
 
-<!-- 20. Stage -->
-<section class="slide sc-stage-slide" id="s-stage">
+<!-- Stage -->
+<section class="slide sc-stage-slide" id="s-stage" data-time="1:30">
   <p class="slide__label reveal"><span data-de>Bühne</span><span data-en>Stage</span></p>
   <h2 class="slide__heading reveal"><span data-de>Läuft, sobald die Folie aktiv ist</span><span data-en>Runs as soon as the slide is active</span></h2>
   <div class="stage" data-src="showcase-sim.html" data-srcdoc-ref="showcase-sim" data-viewport="1200x760" data-title="html-canvas simulation">
@@ -547,41 +766,64 @@ verify-page: 0 errors, 0 warnings (1 page)
     <button type="button" class="slide__btn" data-stage="restart"><span data-de>Neu starten</span><span data-en>Restart</span></button>
   </div>
   <aside class="notes">
-    <p><span data-de>In der Bühne mit der Maus Start drücken. V vergrößert auf das ganze Fenster ohne Vollbild-Schnittstelle, Esc geht zurück.</span><span data-en>Press start inside the stage. V enlarges it to the whole window without the full screen interface, Esc returns.</span></p>
-    <p><span data-de>Die Seite in der Bühne kommt aus new-simulation.py, Archetyp flow. Zwei Folien weiter wird sie wieder entladen.</span><span data-en>The page inside comes from new-simulation.py, archetype flow. Two slides away it is unloaded again.</span></p>
+    <p><span data-de>In der Bühne mit der Maus Start drücken. V vergrößert auf das ganze Fenster ohne Vollbild-Schnittstelle, Esc geht zurück. Thema und Sprache folgen dem Deck.</span><span data-en>Press start inside the stage. V enlarges it to the whole window without the full screen interface, Esc returns. Theme and language follow the deck.</span></p>
+    <p><span data-de>Die Seite in der Bühne kommt aus new-simulation.py, Archetyp flow. Zeitleiste, Szenario im Link und Tabelle zeigt die Begleitseite.</span><span data-en>The page inside comes from new-simulation.py, archetype flow. The companion page shows its timeline, the scenario in the link and the table.</span></p>
   </aside>
 </section>
 
-<!-- 21. Split: print and send -->
-<section class="slide slide--split" id="s-ship">
+<!-- Split: print and send -->
+<section class="slide slide--split" id="s-ship" data-time="45">
   <div class="slide__panels">
     <div class="slide__panel slide__panel--primary">
       <p class="slide__label reveal"><span data-de>Druck und PDF</span><span data-en>Print and PDF</span></p>
       <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Eine Seite je Folie</span><span data-en>One page per slide</span></h2>
       <ul class="slide__bullets" style="margin-top:16px;">
         <li class="reveal"><span class="sc-kbd">⌘ P</span> <span data-de>oder</span><span data-en>or</span> <code>render-pdf.cjs</code>, 297 x 167 mm</li>
-        <li class="reveal"><span data-de>Alle Folien, alle Einläufe sichtbar, keine Notizen</span><span data-en>Every slide, every reveal visible, no notes</span></li>
+        <li class="reveal"><span data-de>Alle Folien, alle Einläufe und Schritte sichtbar, keine Tinte</span><span data-en>Every slide, every reveal and step visible, no ink</span></li>
       </ul>
     </div>
     <div class="slide__panel slide__panel--secondary">
       <p class="slide__label reveal"><span data-de>Versand</span><span data-en>Sending</span></p>
-      <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Eine Datei zum Mitnehmen</span><span data-en>One file to take along</span></h2>
+      <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Eine Datei zum Lesen</span><span data-en>One file to read</span></h2>
       <ul class="slide__bullets" style="margin-top:16px;">
         <li class="reveal"><code>bundle.py</code> <span data-de>faltet alles ein, was das Deck lädt</span><span data-en>folds in everything the deck loads</span></li>
+        <li class="reveal"><span data-de>Gebaut mit</span><span data-en>Built with</span> <code>data-read-default</code>: <span data-de>öffnet als Dokument, R zeigt die Folien</span><span data-en>opens as a document, R shows the slides</span></li>
         <li class="reveal"><code>check-anonymity.py</code> <span data-de>vor jedem externen Versand</span><span data-en>before anything leaves the house</span></li>
       </ul>
     </div>
   </div>
 </section>
 
-<!-- 22. Closing -->
-<section class="slide slide--bleed" id="s-end">
+<!-- Print handout with notes -->
+<section class="slide slide--content" id="s-handout" data-time="30">
+  <div class="slide__inner">
+    <div>
+      <p class="slide__label reveal"><span data-de>Handout</span><span data-en>Handout</span></p>
+      <h2 class="slide__heading reveal"><span data-de>Nach jeder Folie ihre Notizen</span><span data-en>After every slide its notes</span></h2>
+      <p class="slide__body reveal"><span data-de>Mit <code>data-print-notes</code> am Deck fügen Druck und PDF hinter jeder Folie mit Notizen eine Notizseite ein. Für einen einzelnen Lauf setzt <code>render-pdf.cjs --notes</code> das Attribut.</span><span data-en>With <code>data-print-notes</code> on the deck, print and PDF add a notes page after every slide that has notes. For one render, <code>render-pdf.cjs --notes</code> sets the attribute.</span></p>
+      <p class="sc-how reveal"><span class="sc-how__label"><span data-de>Bedienen</span><span data-en>How</span></span>
+        <code>node render-pdf.cjs deck.html handout.pdf --notes</code></p>
+    </div>
+    <div class="slide__aside reveal">
+      <div class="sc-card">
+        <div class="sc-card__title"><span data-de>Ohne die Option</span><span data-en>Without the option</span></div>
+        <div class="sc-card__text"><span data-de>Druck und PDF zeigen nur die Folien; die Notizen bleiben im Deck.</span><span data-en>Print and PDF show the slides only; the notes stay in the deck.</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><span data-de>Im Handout steht genau dieser Text auf der Seite nach dieser Folie.</span><span data-en>In the handout this very text is on the page after this slide.</span></p>
+  </aside>
+</section>
+
+<!-- Closing -->
+<section class="slide slide--bleed" id="s-end" data-time="30">
   <div class="slide__bg slide__bg--gradient"></div>
   <div class="slide__scrim"></div>
   <div class="slide__content">
     <p class="slide__label reveal"><span data-de>Selbst ausprobieren</span><span data-en>Try it yourself</span></p>
     <h2 class="slide__heading reveal" style="font-size:clamp(32px,6vw,64px);"><span data-de>Fragen?</span><span data-en>Questions?</span></h2>
-    <p class="slide__body reveal" style="margin-top:clamp(12px,2.2vh,24px);"><span data-de>Zum Ausprobieren: <span class="sc-kbd">F</span> Spur, <span class="sc-kbd">N</span> Notizen, <span class="sc-kbd">T</span> hell und dunkel, <span class="sc-kbd">L</span> Sprache, <span class="sc-kbd">?</span> alle Tasten. Wie das Deck gebaut ist, steht auf der Begleitseite oben links.</span><span data-en>To try: <span class="sc-kbd">F</span> track, <span class="sc-kbd">N</span> notes, <span class="sc-kbd">T</span> light and dark, <span class="sc-kbd">L</span> language, <span class="sc-kbd">?</span> every key. How the deck is built is on the companion page at the top left.</span></p>
+    <p class="slide__body reveal" style="margin-top:clamp(12px,2.2vh,24px);"><span data-de>Zum Ausprobieren: <span class="sc-kbd">P</span> Referentenansicht, <span class="sc-kbd">D</span> Stift, <span class="sc-kbd">R</span> Lesen, <span class="sc-kbd">F</span> Spur, <span class="sc-kbd">L</span> Sprache, <span class="sc-kbd">?</span> alle Tasten. Wie das Deck gebaut ist, steht auf der Begleitseite oben links.</span><span data-en>To try: <span class="sc-kbd">P</span> presenter view, <span class="sc-kbd">D</span> pen, <span class="sc-kbd">R</span> read, <span class="sc-kbd">F</span> track, <span class="sc-kbd">L</span> language, <span class="sc-kbd">?</span> every key. How the deck is built is on the companion page at the top left.</span></p>
     <div class="slide__actions reveal">
       <button type="button" class="slide__btn" data-deck="goto:#s-agenda"><span data-de>Zur Übersicht</span><span data-en>To the overview</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
     </div>
@@ -590,38 +832,16 @@ verify-page: 0 errors, 0 warnings (1 page)
 
 <!-- /* i18n:end */ -->
 <script>
-/* Language switch (key L, the DE/EN buttons) and the live track label. The
-   engine reads <html lang> once at start for its controls and help, so a switch
-   stores the choice and reloads; the #n deep link keeps the slide. */
+/* The live track label on the tracks slide, in the active language. The engine
+   switches the language itself (key L); this only repaints one card. */
 (function () {
-  var KEY = 'showcase-lang';
-  function cur() { return document.documentElement.getAttribute('data-lang') === 'en' ? 'en' : 'de'; }
-  function flip() {
-    var next = cur() === 'de' ? 'en' : 'de';
-    try { localStorage.setItem(KEY, next); } catch (e) { /* storage blocked: switch for this view only */ }
-    document.documentElement.setAttribute('data-lang', next);
-    document.documentElement.setAttribute('lang', next);
-    try { location.reload(); } catch (e) { /* stay on the swapped view */ }
-  }
-  document.addEventListener('click', function (e) {
-    var b = e.target && e.target.closest ? e.target.closest('[data-showcase-lang]') : null;
-    if (b) { e.preventDefault(); flip(); }
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    var t = e.target;
-    if (t && t.closest && t.closest('input, textarea, select, [contenteditable], [data-key-ignore]')) return;
-    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); flip(); }
-  });
-  function showTrack(label) {
-    [].forEach.call(document.querySelectorAll('[data-showcase-track]'), function (el) { el.textContent = label || ''; });
-  }
-  document.addEventListener('slidedeck:ready', function () {
+  var LABELS = { de: { short: 'kurz', full: 'lang', all: 'alle' }, en: { short: 'short', full: 'full', all: 'all' } };
+  function paint() {
     var d = window.SlideDeck;
-    if (d && d.trackLabel) showTrack(d.trackLabel());
-    /* the engine lists L in the ? help of a bilingual deck; this script only takes
-       the key first, so the track labels follow the language too */
-  });
-  document.addEventListener('slidedeck:trackchange', function (e) { showTrack(e.detail && (e.detail.label || e.detail.track)); });
+    if (!d || !d.state) return;
+    var s = d.state(), m = LABELS[s.lang] || LABELS.en;
+    [].forEach.call(document.querySelectorAll('[data-showcase-track]'), function (el) { el.textContent = m[s.track] || s.track; });
+  }
+  ['ready', 'trackchange', 'langchange'].forEach(function (n) { document.addEventListener('slidedeck:' + n, paint); });
 })();
 </script>
