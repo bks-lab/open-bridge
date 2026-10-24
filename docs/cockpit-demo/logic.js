@@ -3350,3 +3350,29 @@ export function hintRounds(items, view) {
   }
   return { rounds, away }
 }
+
+/** Open the event stream; its first `state` event is the page's first state (the server sends one on every
+ *  connect), so the page asks /api/state only when the stream fails before that first state came, once.
+ *  The state used to be fetched and then sent again by the stream: twice the largest payload on every load */
+export function openStream(api, handlers, onConn, { apply, fail }) {
+  let first = false
+  let fellBack = false
+  const state = p => { first = true; handlers.state(p) }
+  return api.events({ ...handlers, state }, conn => {
+    onConn(conn)
+    if (conn !== 'down' || first || fellBack) return
+    fellBack = true
+    api.state().then(st => (st.ok ? apply(st.data) : fail(st)))
+  })
+}
+
+/** A view_pages event put into the model the page has: the pages it carries by id, every other page as it was,
+ *  in the server's order. null when it cannot be applied (no model yet, an older seq, a page the page does not
+ *  know): then the whole state is asked for */
+export function mergePages(model, ev) {
+  if (!model || !ev || !Array.isArray(ev.order) || (model.seq ?? 0) >= (ev.seq ?? 0)) return null
+  const fresh = new Map((ev.pages ?? []).map(p => [p.id, p]))
+  const had = new Map((model.pages ?? []).map(p => [p.id, p]))
+  const pages = ev.order.map(id => fresh.get(id) ?? had.get(id))
+  return pages.every(Boolean) ? { ...model, seq: ev.seq, pages } : null
+}

@@ -1046,6 +1046,9 @@ function jevOrder(page, now) {
 
 /** A transport with the same interface as the real one, backed by the example state */
 export function createMockTransport(opts = {}) {
+  // opts.latency scales every pause the demo makes to look like a server (1 by default, 0 in the tests)
+  const lag = Number.isFinite(opts.latency) ? opts.latency : 1
+  const wait = (fn, ms) => setTimeout(fn, ms * lag)
   const now = () => Date.now()
   let state = buildState(now(), opts)
   let handlers = {}
@@ -1083,7 +1086,7 @@ export function createMockTransport(opts = {}) {
     state.model.review = { ...state.model.review, keys: state.model.review.keys.filter(k => !keys.includes(k)) }
     seq += 1
     state.model = { ...state.model, seq }
-    setTimeout(() => emit('view', state.model), 300)
+    wait(() => emit('view', state.model), 300)
   }
 
   return {
@@ -1170,14 +1173,14 @@ export function createMockTransport(opts = {}) {
       return fail(404, 'not_found', 'unknown path')
     },
     async post(path, body) {
-      await new Promise(r => setTimeout(r, 250))
+      await new Promise(r => wait(r, 250))
       // the demo has no server poll to slow down: a page reporting its visibility is simply acknowledged
       if (path === '/api/presence') return { status: 200, ok: true, data: { ok: true }, error: null }
       if (path === '/api/reload') {
         const loading = { pass: 'quick', fresh: !!body?.fresh, started_ms: now(), eta_ms: 3000, queued: 'full', last_error: null }
         state.loading = loading
         emit('loading', loading)
-        setTimeout(() => {
+        wait(() => {
           state.loading = { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null }
           seq += 1
           state.model = { ...state.model, seq, collected_at: hhmm(now()), collected_ms: now(), full_ms: now() }
@@ -1203,7 +1206,7 @@ export function createMockTransport(opts = {}) {
         conv.turns.push({ q, a: null, model_asked: model, model: null, cost_usd: null, at_ms: now(), error: null })
         conv.running = true
         emit('quick', JSON.parse(JSON.stringify(state.quick)))
-        setTimeout(() => {
+        wait(() => {
           const t = conv.turns[conv.turns.length - 1]
           t.a = 'Example answer from the mock. Seven of eleven steps are done; the next one is the yaml change in this repository.\nNothing was asked for real.'
           t.model = `${model}-5-5`
@@ -1221,8 +1224,8 @@ export function createMockTransport(opts = {}) {
           return fail(409, 'relay_offline', 'relay offline', { record, fallback: { available: true, tab: { ref: 'surface:3', name: 'Control', state: 'waiting' } } })
         }
         const record = { id, kind: body?.kind, created_ms: now(), status: 'queued', preview: preview.slice(0, 200), answer: null, answered_ms: null }
-        setTimeout(() => emit('relay', { ...record, status: 'submitted' }), 900)
-        setTimeout(() => emit('relay', { ...record, status: 'answered', answered_ms: now(),
+        wait(() => emit('relay', { ...record, status: 'submitted' }), 900)
+        wait(() => emit('relay', { ...record, status: 'answered', answered_ms: now(),
           answer: 'Example answer from the mock: nothing was sent to a real session.\nThe real answer shows here as plain text.' }), 2600)
         return { status: 202, ok: true, data: { ok: true, record }, error: null }
       }
@@ -1236,7 +1239,7 @@ export function createMockTransport(opts = {}) {
         if (state.triage.running) return { status: 409, ok: false, data: { ok: false, triage: state.triage }, error: null }
         state.triage = { ...state.triage, running: { started_ms: now(), why: 'click' } }
         emit('triage', state.triage)
-        setTimeout(() => { state.triage = opts.empty ? { ...state.triage, running: null } : triageState(now()); emit('triage', state.triage) }, 3000)
+        wait(() => { state.triage = opts.empty ? { ...state.triage, running: null } : triageState(now()); emit('triage', state.triage) }, 3000)
         return { status: 202, ok: true, data: { ok: true, triage: state.triage }, error: null }
       }
       if (path.startsWith('/api/jev/') && !jev) return fail(404, 'jev_off', 'Jev is off')
@@ -1245,7 +1248,7 @@ export function createMockTransport(opts = {}) {
         if (!page) return fail(404, 'not_found', 'no page with jev: under that id')
         const day = isoIn(0, now())
         if (body.force || (body.daily && orders[page.id]?.day !== day)) {
-          await new Promise(res => setTimeout(res, 1200))
+          await new Promise(res => wait(res, 1200))
           orders[page.id] = jevOrder(page, now())
         }
         return ok({ ok: true, page: page.id, order: orders[page.id] ?? null, today: { day, ratings: 0, input_tokens: 0, output_tokens: 0, unknown: 0 } })
@@ -1253,7 +1256,7 @@ export function createMockTransport(opts = {}) {
       if (path === '/api/jev/run') {
         // the Jev tab: invented judgments from jev/logic.js, the real API is never asked
         const r = jev(state.model, { force: !!body?.force, cacheOnly: !!body?.cache_only })
-        if (r.paid) await new Promise(res => setTimeout(res, 2400))
+        if (r.paid) await new Promise(res => wait(res, 2400))
         return ok(r.result)
       }
       if (path === '/api/action') {
@@ -1378,19 +1381,19 @@ export function createMockTransport(opts = {}) {
           const next = verb === 'launch_settings' ? { ...state.launch.settings, ...(args.settings ?? {}) } : LAUNCH_CONFIG
           state.launch = launchState(next, !!createMockJev)
           result.note = verb === 'launch_settings' ? 'Mock: setting saved' : 'Mock: settings from the config again'
-          setTimeout(() => emit('state', state), 80)
+          wait(() => emit('state', state), 80)
         }
         if (verb === 'ticker_settings' || verb === 'ticker_settings_reset') {
           const next = verb === 'ticker_settings' ? { ...state.ticker.settings, ...(args.settings ?? {}) } : TICKER_CONFIG
           state.ticker = tickerState(next, now())
           result.note = verb === 'ticker_settings' ? 'Mock: ticker setting saved' : 'Mock: ticker settings from the config again'
-          setTimeout(() => emit('state', state), 80)
+          wait(() => emit('state', state), 80)
         }
         if (verb === 'ticker_refresh') {
           state.ticker = tickerNext(state.ticker, { refreshing: true })
           emit('ticker', state.ticker)      // the start goes out as an event, like the server's
           result.note = 'Mock: reading the feeds'
-          setTimeout(() => { state.ticker = tickerNext(state.ticker, { refreshing: false, fetched_ms: now() }); emit('ticker', state.ticker) }, 1500)
+          wait(() => { state.ticker = tickerNext(state.ticker, { refreshing: false, fetched_ms: now() }); emit('ticker', state.ticker) }, 1500)
         }
         if (verb === 'ticker_edit') {
           // invented picks and short titles after a moment; nothing is asked for real
@@ -1398,7 +1401,7 @@ export function createMockTransport(opts = {}) {
           state.ticker = tickerNext(state.ticker, { editor: { ...state.ticker.editor, running: { started_ms: started }, error: null } })
           emit('ticker', state.ticker)
           result.note = 'Mock: the editor is at work, nothing is asked for real'
-          setTimeout(() => {
+          wait(() => {
             const short = { r1: 'Agents that ask first make fewer mistakes', a1: 'Example model reads long texts twice as fast', t1: 'Test time cut in half' }
             const items = ['r1', 'a1', 't1'].map(id => state.ticker.items.find(x => x.id === id)).filter(Boolean).map(x => ({ ...x, short: short[x.id] }))
             state.ticker = tickerNext(state.ticker, { items, editor: { ...state.ticker.editor, running: null,
@@ -1422,7 +1425,7 @@ export function createMockTransport(opts = {}) {
               [ref]: { ...guideEntry(ref, tab, started), running: true, started_ms: started, at_ms: null, options: [], where: '' } } }
             emit('guide', state.guide)
             result.note = 'Mock: Haiku reads the session, nothing is asked for real'
-            setTimeout(() => {
+            wait(() => {
               state.guide = { ...state.guide, rev: ++guideRev, entries: { ...state.guide.entries, [ref]: { ...guideEntry(ref, tab, now()), at_ms: now() } } }
               emit('guide', state.guide)
             }, 1800)
@@ -1445,17 +1448,17 @@ export function createMockTransport(opts = {}) {
           // a check that runs for six seconds, then the same result again with a new time
           const publish = review => { seq += 1; state.model = { ...state.model, seq, review }; emit('view', state.model) }
           publish({ ...state.model.review, running: { started_ms: now(), count: keys.length, escalate: !!args.escalate } })
-          setTimeout(() => publish({ ...state.model.review, running: null,
+          wait(() => publish({ ...state.model.review, running: null,
             last: { ...state.model.review.last, reviewed_at: new Date(now()).toISOString().slice(0, 19) } }), 6000)
         }
-        setTimeout(() => note(result.note, 'ok'), 50)
+        wait(() => note(result.note, 'ok'), 50)
         return ok(result)
       }
       return fail(404, 'not_found', 'unknown path')
     },
     events(h, onConn) {
       handlers = h
-      setTimeout(() => {
+      wait(() => {
         onConn('open')
         emit('hello', { version: '0.1.0', started_ms: state.server.started_ms, language: opts.lang || 'en' })
         emit('state', state)

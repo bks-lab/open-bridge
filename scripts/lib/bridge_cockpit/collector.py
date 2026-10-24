@@ -273,7 +273,8 @@ class Collector:
         self.model: dict | None = None
         self.index: dict[str, dict] = {}
         self.seq = 0
-        self.sent: str | None = None           # the last model sent as view, without its seq
+        self.sent: str | None = None           # the last model sent, without its seq and pages
+        self.sent_pages: dict | None = None    # and its pages, each as sent, by id
         self.stale = False
         self.settled: dict[str, str] = {}
         self.starting: dict[str, float] = {}
@@ -585,10 +586,18 @@ class Collector:
             # Published under the lock: two rebuilds reach the page in the order of their seq
             # (publish only serializes and enqueues). A model equal to the last one sent but for
             # its seq is not sent again: the page would only render the same thing anew.
-            sent = json.dumps({k: v for k, v in model.items() if k != "seq"}, sort_keys=True, default=str)
-            if sent != self.sent:
-                self.sent = sent
+            # When only pages changed, only those pages go out (view_pages, put in by id on the page): the
+            # whole model is the largest event, and most changes touch one page (review C34)
+            rest = json.dumps({k: v for k, v in model.items() if k not in ("seq", "pages")}, sort_keys=True, default=str)
+            listed = model.get("pages") or []
+            pages = {p.get("id"): json.dumps(p, sort_keys=True, default=str) for p in listed}
+            whole = rest != self.sent or self.sent_pages is None or len(pages) != len(listed)
+            if whole and (rest, pages) != (self.sent, self.sent_pages):
                 app.broadcast("view", model)
+            elif not whole and pages != self.sent_pages:
+                app.broadcast("view_pages", {"seq": model["seq"], "order": [p["id"] for p in listed],
+                                             "pages": [p for p in listed if self.sent_pages.get(p["id"]) != pages[p["id"]]]})
+            self.sent, self.sent_pages = rest, pages
         for r in to_log:
             self.log_return(r)
 

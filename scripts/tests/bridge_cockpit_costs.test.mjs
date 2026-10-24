@@ -226,7 +226,7 @@ test('the cost card draws a bar per day, a row per account, and offers the login
   const { loadCockpit, mount, cockpitState, recorder } = await import('./cockpit_render.mjs')
   const { html, views, mock, text: tx } = await loadCockpit()
   tx.setLanguage('de')
-  const tr = mock.createMockTransport({ lang: 'de' })
+  const tr = mock.createMockTransport({ lang: 'de', latency: 0 })
   const view = (await tr.get('/api/costs')).data.view
   const c = recorder()
   const s = cockpitState(Date.now(), { costs: { status: 'ok', data: view, error: null } })
@@ -264,7 +264,7 @@ test('without a cost file the card says what to declare', async () => {
 test('the token card splits by Bridge, lists each Bridge with its machine and names a machine that does not answer', async () => {
   const { loadCockpit, mount, cockpitState, recorder } = await import('./cockpit_render.mjs')
   const { html, views, mock } = await loadCockpit()
-  const tr = mock.createMockTransport({ lang: 'en' })
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
   const usage = (await tr.get('/api/usage?days=30')).data.usage
   assert.equal(usage.days.length, 30)
   const c = recorder()
@@ -291,7 +291,7 @@ test('the token card splits by Bridge, lists each Bridge with its machine and na
 test('the overview board shows a cost tile when the page places the cost card', async () => {
   const { loadCockpit, mount, cockpitState, recorder } = await import('./cockpit_render.mjs')
   const { html, views, mock } = await loadCockpit()
-  const view = (await mock.createMockTransport({ lang: 'en' }).get('/api/costs')).data.view
+  const view = (await mock.createMockTransport({ lang: 'en', latency: 0 }).get('/api/costs')).data.view
   const s = cockpitState(Date.now(), { costs: { status: 'ok', data: view, error: null } })
   const page = { id: 'ops', title: 'Ops', overview: true, sections: [], cards: [{ id: 'costs', after: null }] }
   const el = mount(html`<${views.pages.OverviewBoard} page=${page} s=${s} c=${recorder()} />`)

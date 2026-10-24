@@ -7357,3 +7357,31 @@ def test_two_pages_asking_at_once_start_one_caps_read(world, monkeypatch):
     for t in threads:
         t.join(5)
     assert len(calls) == 1 and got == [["tabs"]] * 3
+
+
+# ---------------------------------------------------------------- only changed pages go out (review C34)
+
+def test_a_change_inside_one_page_sends_only_that_page(world):
+    sent = []
+    publish = world.app.broadcast
+    world.app.broadcast = lambda ev, payload: (sent.append((ev, payload)), publish(ev, payload))
+    col = world.app.collector
+    col.rebuild()
+    pages = col.view["pages"]
+    assert len(pages) >= 2, "the fixture has more than one page"
+    sent.clear()
+    # an item inside one page changes (its title is no part of the alarms, which name pages)
+    first = next(pg for pg in pages if any(sec.get("items") for sec in pg["sections"]))
+    item = next(it for sec in first["sections"] for it in sec.get("items") or [])
+    item["title"] = str(item.get("title", "")) + " (changed)"
+    col.rebuild()
+    assert [ev for ev, _ in sent] == ["view_pages"]
+    payload = sent[0][1]
+    assert [p["id"] for p in payload["pages"]] == [first["id"]] and "(changed)" in json.dumps(payload["pages"][0])
+    assert payload["order"] == [p["id"] for p in col.model["pages"]] and payload["seq"] == col.model["seq"]
+    sent.clear()
+    col.rebuild()
+    assert sent == [], "nothing changed: nothing goes out"
+    col.view["headline"] = "Something else entirely"
+    col.rebuild()
+    assert [ev for ev, _ in sent] == ["view"], "a change outside the pages still sends the whole model"

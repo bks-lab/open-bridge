@@ -2185,7 +2185,7 @@ test('settings: a page of its own behind More, always there, with the launch gro
     // the demo: the page works without a server, a save changes the settings, a reset puts the config back
     const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
     assert.equal(mock.buildState().launch.enabled, true)
-    const tr = mock.createMockTransport({ lang: 'en' })
+    const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
     let r = await tr.post('/api/action', { verb: 'launch_settings', args: { settings: { auto: false } } })
     assert.equal(r.ok, true)
     let st = (await tr.get('/api/state')).data
@@ -2738,7 +2738,7 @@ test('ticker: the demo saves and resets its settings, refreshes and edits with i
     assert.ok(st0.ticker.perf.passes.some(p => p.took_ms === 95000))
     assert.equal(typeof st0.ticker.rev, 'number')             // like the server: newerTicker compares it
     const revs = []
-    const tr = mock.createMockTransport({ lang: 'en' })
+    const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
     const events = []
     tr.events(new Proxy({}, { get: (_, name) => p => events.push([name, p]) }), () => {})
     let r = await tr.post('/api/action', { verb: 'ticker_settings', args: { settings: { speed: 'fast' } } })
@@ -2758,7 +2758,7 @@ test('ticker: the demo saves and resets its settings, refreshes and edits with i
     r = await tr.post('/api/action', { verb: 'ticker_edit', args: {} })
     assert.ok(r.data.ticker.editor.running)
     revs.push(r.data.ticker.rev)
-    await new Promise(res => setTimeout(res, 2800))
+    await new Promise(res => setTimeout(res, 50))      // the demo refreshes after 1.5 s at latency 1, at once at 0
     const last = events.filter(([n]) => n === 'ticker').at(-1)?.[1]
     assert.ok(last, 'a ticker event came')
     assert.equal(last.editor.running, null)
@@ -2821,7 +2821,7 @@ test('mock parity: every server route has a well-formed mock answer, unless it i
     fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
     fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
     const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
-    const tr = mock.createMockTransport({ lang: 'en' })
+    const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
     const st = (await tr.get('/api/state')).data
     const page = st.model.pages.find(p => p.sections.length)
     const jevPage = st.model.pages.find(p => p.jev)
@@ -3777,7 +3777,7 @@ test('the demo answers the tab screen like the server: a hash, and unchanged wit
     fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
     fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
     const mock = await import(pathToFileURL(path.join(dir, 'web', 'mock.js')).href)
-    const tr = mock.createMockTransport({ lang: 'en' })
+    const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
     const ref = encodeURIComponent((await tr.get('/api/state')).data.tabs.tabs[0].ref)
     const full = (await tr.get(`/api/tab/screen?ref=${ref}`)).data
     assert.ok(full.text && /^[0-9a-f]{8,}$/.test(full.hash), JSON.stringify(full))
@@ -4817,4 +4817,56 @@ test('focusIndex: the focus holds its entry by id, the next moves up when it is 
   assert.equal(logic.focusIndex(q(['a', 'c']), { id: 'b', i: 1 }), 1, 'b settled: c moves up into its place')
   assert.equal(logic.focusIndex(q(['a']), { id: 'c', i: 2 }), 0, 'the last settled: the one before it')
   assert.equal(logic.focusIndex([], { id: 'c', i: 2 }), 0)
+})
+
+// ---------------------------------------------------------------- one state on load (review C33)
+
+function fakeStreamApi() {
+  const api = { stateCalls: 0, opened: null }
+  api.state = async () => { api.stateCalls += 1; return { ok: true, data: { from: 'get' } } }
+  api.events = (handlers, onConn) => { api.opened = { handlers, onConn } }
+  return api
+}
+
+test('openStream: the stream brings the first state, no second GET of /api/state', async () => {
+  const api = fakeStreamApi()
+  const applied = []
+  logic.openStream(api, { state: p => applied.push(p) }, () => {}, { apply: p => applied.push(p), fail: () => {} })
+  api.opened.onConn('open')
+  api.opened.handlers.state({ from: 'stream' })
+  api.opened.onConn('down')
+  await Promise.resolve()
+  assert.deepEqual(applied, [{ from: 'stream' }])
+  assert.equal(api.stateCalls, 0)
+})
+
+test('openStream: a stream that fails before its first state falls back to one GET', async () => {
+  const api = fakeStreamApi()
+  const applied = []
+  logic.openStream(api, { state: p => applied.push(p) }, () => {}, { apply: p => applied.push(p), fail: () => {} })
+  api.opened.onConn('down')
+  api.opened.onConn('down')
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(applied, [{ from: 'get' }])
+  assert.equal(api.stateCalls, 1)
+})
+
+// ---------------------------------------------------------------- only changed pages (review C34)
+
+test('mergePages: the changed pages go in by id, the others stay, the order follows the server', () => {
+  const a = { id: 'a', title: 'A' }
+  const b = { id: 'b', title: 'B' }
+  const model = { seq: 4, headline: 'h', pages: [a, b] }
+  const next = logic.mergePages(model, { seq: 5, order: ['b', 'a'], pages: [{ id: 'a', title: 'A2' }] })
+  assert.deepEqual(next.pages.map(p => p.title), ['B', 'A2'])
+  assert.equal(next.pages[0], b, 'an unchanged page is the same object')
+  assert.equal(next.seq, 5)
+  assert.equal(next.headline, 'h')
+  assert.equal(logic.mergePages(model, { seq: 3, order: ['a', 'b'], pages: [] }), null, 'an older seq is not applied')
+  assert.equal(logic.mergePages(model, { seq: 6, order: ['a', 'c'], pages: [] }), null, 'a page it does not know: ask for all')
+  assert.equal(logic.mergePages(null, { seq: 6, order: [], pages: [] }), null)
+})
+
+test('api: the page listens to view_pages', () => {
+  assert.match(fs.readFileSync(path.join(WEB, 'api.js'), 'utf8'), /'view_pages'/)
 })

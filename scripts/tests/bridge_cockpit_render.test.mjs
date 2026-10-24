@@ -873,7 +873,7 @@ test('the tab and the workspace pane carry a pencil that opens the rename', () =
 
 test('the demo renames a free tab and a workspace and refuses what the server refuses', async () => {
   const { mock } = loadedRooms
-  const tr = mock.createMockTransport({ lang: 'en' })
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
   const events = []
   tr.events(new Proxy({}, { get: (_, name) => p => events.push([name, p]) }), () => {})
   const act = (verb, args) => tr.post('/api/action', { verb, args })
@@ -967,7 +967,7 @@ test('the sidebar offers Organize with AI with the rename cap and keeps it off w
 
 test('the demo proposes every kind and applies the ticked ones', async () => {
   const { mock } = loadedRooms
-  const tr = mock.createMockTransport({ lang: 'en' })
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
   tr.events(new Proxy({}, { get: () => () => {} }), () => {})
   const act = (verb, args) => tr.post('/api/action', { verb, args })
   const prop = (await act('organize_propose', {})).data.proposal

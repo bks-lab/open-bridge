@@ -16,7 +16,7 @@ import {
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
-  focusIndex, homeChosen, homeListParts, homeQueue, homeView,
+  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -311,6 +311,13 @@ const handlers = {
     noteFeed(feedEvents(prev.model, model, prev.tabs?.tabs, prev.tabs?.tabs, Date.now()))
     store.set(s => ({ ...s, model, more: freshMore(s.more, model) }))
     fixPage()
+  },
+  // only the pages that changed (review C34): put in by id and handled as a whole view; one that cannot be
+  // put in (an older seq, an unknown page) asks for the whole state once
+  view_pages(ev) {
+    const model = mergePages(store.get().model, ev)
+    if (model) return handlers.view(model)
+    if ((store.get().model?.seq ?? 0) < (ev?.seq ?? 0)) api.state().then(st => (st.ok ? applyState(st.data) : failNote(st)))
   },
   tabs(tabs) {
     const prev = store.get()
@@ -1355,10 +1362,7 @@ async function boot() {
     warnings: Array.isArray(b.data.config_warnings) ? b.data.config_warnings : [] } }))
   if (MOCK) pushNote({ text: T().mockNote, tone: 'info' }, { toast: false })
 
-  const st = await api.state()
-  if (st.ok) applyState(st.data)
-  else failNote(st)
-  api.events(handlers, onConn)
+  openStream(api, handlers, onConn, { apply: applyState, fail: failNote })
 
   document.addEventListener('keydown', onKey)
   // durations and "as of" ages move on without new data; a hidden tab skips the ticks and catches up
