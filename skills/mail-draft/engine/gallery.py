@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import profiles
 from .config import ConfigError, MailConfig
-from .draft import Request, build
+from .draft import Draft, Request, _resolve_link_aliases, build
 from .markdown import Renderer, document
 from .theme import load as load_theme
 
@@ -119,9 +119,10 @@ def run(cfg: MailConfig, out: Path | None = None, body: str = "") -> tuple[Path,
     labels = cfg.get("labels") or {}
     aliases = cfg.get("badge_aliases") or {}
     styles = cfg.get("heading_styles") or {}
+    builtin_sample = _resolve_link_aliases(sample, cfg.get("link_aliases") or {}, Draft())
     for name in THEMES:
         t = load_theme(name, root, cfg.get("tokens") or {})
-        content = Renderer(t, labels, aliases, styles).render(sample)
+        content = Renderer(t, labels, aliases, styles).render(builtin_sample)
         shell = {"title": f"Theme {name}", "eyebrow": "Built-in", "lang": str(cfg.get("language") or "en")}
         _write_pair(out, f"builtin-{name}", document(content, t, dark_css=False, **shell),
                     document(content, t, force_dark=True, **shell))

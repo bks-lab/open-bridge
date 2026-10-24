@@ -90,6 +90,14 @@ class Gallery(BridgeCase):
         self.assertIn("missing-footer", page)
         self.assertIn("broken", printed)
 
+    def test_builtin_tiles_resolve_configured_link_aliases(self):
+        (self.root / "bridge-config.yaml").write_text(
+            'mail:\n  link_aliases: {"site:home": "https://example.com/home"}\n', encoding="utf-8")
+        sample = self.write("sample.md", "See [home](site:home).")
+        _, _, out = self.run_gallery("--body-file", str(sample))
+        self.assertIn('href="https://example.com/home"',
+                      (out / "builtin-design.html").read_text(encoding="utf-8"))
+
     def test_prints_the_page_path(self):
         _, printed, out = self.run_gallery()
         self.assertIn(str(out / "index.html"), printed)
