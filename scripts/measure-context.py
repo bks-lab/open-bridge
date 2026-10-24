@@ -110,7 +110,16 @@ DEFAULT_MODEL = "claude-opus-5"
 # full text (on a live instance, 3 829 bytes reported for a 24 369 byte
 # import). The pair is a false statement about what loads, so it fails at any
 # size, and the full text is what gets counted.
-FAILING = {"over", "undeclared", "missing", "contradiction"}
+#
+# `error` is a harness item whose lookup raised (a renamed or broken
+# `memory-location.py`, say). Reported as "no index", that read as green; it is
+# a meter that cannot see its subject, so it fails.
+FAILING = {"over", "undeclared", "missing", "contradiction", "error"}
+
+# The failing states that are not about SIZE, so `enforce: advisory` cannot
+# excuse them: advisory covers a number driven by ongoing work, and these are
+# a false claim about what loads and a lookup that broke.
+STRUCTURAL = {"contradiction", "error"}
 
 # An item may declare `enforce: advisory` to be measured and reported without
 # failing the build. It exists for the one class the cap cannot honestly govern:
@@ -283,7 +292,9 @@ def run_command_item(repo_root: Path, key: str):
     # counted the same index as the `harness:` row, twice.
     env = dict(os.environ)
     env["CLAUDECODE"] = "1"
-    env.pop("CLAUDE_CODE_DISABLE_AUTO_MEMORY", None)
+    # CLAUDE_CODE_DISABLE_AUTO_MEMORY passes through untouched: with it set the
+    # harness row is empty and the command prints the index itself, so the
+    # index is counted once either way.
     try:
         done = subprocess.run(
             shlex.split(command),
@@ -402,19 +413,36 @@ def harness_memory_index(repo_root: Path, home: Path | None = None) -> Path | No
     not the reader fallback `work/memory/`: a directory the harness does not
     load costs a session nothing until Phase 1 reads it, and that read is
     measured as its own `cmd:` row.
+
+    Errors are NOT swallowed here. A lookup that raises is a meter that cannot
+    see its subject, and `discover_harness` turns it into the failing state
+    `error` rather than into "no index".
     """
     home = Path(home) if home is not None else Path.home()
-    try:
-        ml = _memory_location()
-        root = ml.repo_root_for(repo_root)
-        enabled, _source = ml._first_setting(root, home, "autoMemoryEnabled")
-        if enabled is False:
-            return None
-        directory, _source, _warnings = ml.resolve_memory_dir(repo_root, home)
-    except Exception:
+    if os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "").lower() in ("1", "true"):
+        return None  # the same switch the harness and memory-location.py honour
+    ml = _memory_location()
+    root = ml.repo_root_for(repo_root)
+    enabled, _source = ml._first_setting(root, home, "autoMemoryEnabled")
+    if enabled is False:
         return None
+    directory, _source, _warnings = ml.resolve_memory_dir(repo_root, home)
     index = Path(directory) / "MEMORY.md"
     return index if index.is_file() else None
+
+
+class HarnessError(str):
+    """A harness lookup that raised, carried as its message."""
+
+
+def _harness_loaded_text(text: str) -> str:
+    """What the harness actually puts into the session: MEMORY.md cut at its
+    load limit (lines, then bytes). Beyond it, the tail reaches a session only
+    through the Phase 1 read, which is measured as its own `cmd:` row."""
+    ml = _memory_location()
+    lines = text.splitlines(keepends=True)[: ml.LOAD_LIMIT_LINES]
+    data = "".join(lines).encode("utf-8")[: ml.LOAD_LIMIT_BYTES]
+    return data.decode("utf-8", errors="ignore")
 
 
 def discover_harness(repo_root: Path) -> dict[str, Path]:
@@ -423,7 +451,10 @@ def discover_harness(repo_root: Path) -> dict[str, Path]:
     Resolved once per run: the directory lookup asks git, and a meter that
     asked it once per row would pay for that on every item.
     """
-    index = harness_memory_index(repo_root)
+    try:
+        index = harness_memory_index(repo_root)
+    except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+        return {HARNESS_MEMORY_INDEX: HarnessError(f"{type(exc).__name__}: {exc}")}
     return {HARNESS_MEMORY_INDEX: index} if index else {}
 
 
@@ -435,11 +466,22 @@ def read_harness_item(key: str, found: dict[str, Path]):
             f"       Known: {HARNESS_MEMORY_INDEX}."
         )
     index = found.get(key)
-    return index.read_text(encoding="utf-8", errors="replace") if index else None
+    if not index or isinstance(index, HarnessError):
+        return None
+    return _harness_loaded_text(index.read_text(encoding="utf-8", errors="replace"))
 
 
-def item_state(row: dict, policy, exists: bool, contradiction: bool = False) -> str:
-    """ok | over | uncapped | undeclared | absent | missing | contradiction."""
+def item_state(
+    row: dict, policy, exists: bool, contradiction: bool = False, error: bool = False
+) -> str:
+    """ok | over | uncapped | undeclared | absent | missing | contradiction | error.
+
+    A row carrying `truncated_from` is a harness item cut at the harness's load
+    limit: its tail never reaches the session, so it is `over` whatever the
+    declared cap says.
+    """
+    if error:
+        return "error"
     if contradiction:
         return "contradiction"
     if policy is None:
@@ -450,6 +492,8 @@ def item_state(row: dict, policy, exists: bool, contradiction: bool = False) -> 
         return "undeclared"
     if not exists:
         return "absent" if policy.get("optional") else "missing"
+    if row.get("truncated_from"):
+        return "over"
     cap = policy.get("max_bytes")
     if cap is None:
         return "uncapped"
@@ -484,7 +528,10 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
         body_bytes = None
         largest = None
         contradiction = False
+        error = None
         if path.startswith(HARNESS_PREFIX):
+            if isinstance(harness.get(path), HarnessError):
+                error = str(harness[path])
             text = read_harness_item(path, harness)
             exists = text is not None
             source = (policy or {}).get("source") or "harness"
@@ -538,12 +585,21 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
             "largest": largest,
             "advisory": (policy or {}).get("enforce") == "advisory",
         }
+        if exists and path.startswith(HARNESS_PREFIX):
+            full = harness[path].stat().st_size
+            if full > len(text.encode("utf-8")):
+                row["truncated_from"] = full
         if exists:
             row["bytes"] = len(text.encode("utf-8"))
             row["tokens"], row["method"] = count_tokens(
                 text, method, bytes_per_token, model
             )
-        row["state"] = item_state(row, policy, exists, contradiction)
+        row["state"] = item_state(row, policy, exists, contradiction, error is not None)
+        if error is not None:
+            row["error"] = error
+        # Advisory excuses a size, never a structural failure.
+        if row["state"] in STRUCTURAL:
+            row["advisory"] = False
         rows.append(row)
 
     rows.sort(key=lambda r: (r["source"], r["path"]))
@@ -705,6 +761,33 @@ def render_report(
         ]
         for row in contradicted:
             out.append(f"- `{row['path']}` ({_cell(row['bytes'])} bytes loaded in full)")
+
+    truncated = [r for r in rows if r.get("truncated_from")]
+    if truncated:
+        out += [
+            "",
+            f"{len(truncated)} harness item(s) exceed the harness load limit, so "
+            f"their tail is silently not loaded. The row counts what loads; trim "
+            f"the file below the limit:",
+            "",
+        ]
+        for row in truncated:
+            out.append(
+                f"- `{row['path']}` ({_cell(row['truncated_from'])} bytes on disk, "
+                f"{_cell(row['bytes'])} loaded)"
+            )
+
+    errored = [r for r in rows if r["state"] == "error"]
+    if errored:
+        out += [
+            "",
+            f"{len(errored)} harness item(s) could not be resolved, so what the "
+            f"harness loads there is unknown. Fix the lookup "
+            f"(`scripts/memory-location.py`); the meter does not guess:",
+            "",
+        ]
+        for row in errored:
+            out.append(f"- `{row['path']}`: {row['error']}")
 
     outside = [r for r in rows if r["state"] in FAILING]
     failing = [r for r in outside if not r["advisory"]]

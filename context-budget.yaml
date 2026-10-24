@@ -171,10 +171,11 @@ items:
       The auto-memory `MEMORY.md` Claude Code loads into every main session,
       from the directory `scripts/memory-location.py` resolves for the harness
       (`autoMemoryDirectory`, else the per-project default). Absent in a fresh
-      clone and with auto memory off. Counted nowhere until 2026-10: one
+      clone and with auto memory off (setting or env). A lookup that raises
+      is the failing state `error`, never absent. Counted nowhere until 2026-10: one
       instance carried 20 227 bytes of it unmeasured. The cap is the harness's
-      own load limit (25 KB); past it the tail is silently not loaded, so over
-      is a defect here, not growth.
+      own load limit (25 KB); past it the tail is silently not loaded, so the
+      row counts the loaded part and reports `over`: a defect, not growth.
 
   # -------------------------------------------------------- standing orders --
   # Only the orders that are actually always-on, i.e. `load: eager`. The five

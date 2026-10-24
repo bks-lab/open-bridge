@@ -109,7 +109,9 @@ properties:
             the file stays always-on in full, which is the fail-open default.
             A card on a file that is ALSO `@`-imported is the state
             `contradiction`: the import loads the whole file, so the full text
-            is measured and the build fails at any size.
+            is measured and the build fails at any size, `enforce: advisory`
+            included: advisory excuses a size, not a false claim about what
+            loads.
           properties:
             kind:
               const: index
