@@ -16,7 +16,10 @@ Mechanical, and all of it verified:
   · the plan            scripts/archive-buckets.py, one entry per period
   · the raw backups     each holding ONLY its own period's day-blocks
   · a metrics summary   counts and pointers, marked as un-narrated
-  · the reset           open periods retained, unchecked TODOs carried
+  · the reset           open periods retained, unchecked items and the owed
+                        judgement filed in the inbox (scripts/inbox.py), not in
+                        a TODO block nothing ever closes; without an inbox they
+                        stay in the log, so nothing is lost
 Judgement, left to a human-run `/archive` over the raws, which lose nothing:
   · the narrative sections of each summary
   · Phase 5 distillation into the memory base
@@ -57,6 +60,32 @@ def day_blocks(text: str) -> dict[str, str]:
         end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
         out[f"{m.group(1)}.{m.group(2)}"] = text[m.start():end].rstrip() + "\n"
     return out
+
+
+def file_in_inbox(items: list[tuple[str, str, str]]) -> str | None:
+    """File (key, summary, detail) items in work/inbox; None on success, else why not.
+
+    Keys make a re-run file nothing twice. Any failure is reported, never
+    raised: the caller then keeps the items in the log instead.
+    """
+    path = HERE / "inbox.py"
+    if not path.is_file():
+        return "scripts/inbox.py not found"
+    try:
+        sys.path.insert(0, str(HERE))
+        spec = importlib.util.spec_from_file_location("inbox_for_archive", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        box = mod.Inbox(ROOT / "work" / "inbox", actor="archive-autorun")
+        for key, summary, detail in items:
+            box.add(source="archive-autorun", kind="finding", summary=summary,
+                    urgency="later", detail=detail, key=key, closer="person")
+    except Exception as exc:  # noqa: BLE001 - any failure keeps the items in the log
+        return f"{type(exc).__name__}: {exc}"
+    finally:
+        if sys.path and sys.path[0] == str(HERE):
+            sys.path.pop(0)
+    return None
 
 
 def git(*args: str) -> str:
@@ -161,13 +190,19 @@ def main(argv=None) -> int:
     obligation = (f"- [ ] {len(todo)} period(s) archived mechanically on "
                   f"{today.isoformat()} — narrative summaries and Phase 5 distillation "
                   f"still owed; run `/archive` over work/archive to fill them in")
+    carried = [t for t in todos if t != obligation]
+    # Open items go to the inbox, where something closes them (docs/inbox.md).
+    # A rolling TODO block in the log is a sentence nobody ever closes.
+    detail = f"carried from work/log.md by the scheduled archive of {today.isoformat()}"
+    items = [(f"archive-autorun-owed-{today.isoformat()}", obligation[len("- [ ] "):], detail)]
+    items += [(f"log-todo-{re.sub(r'[^a-z0-9]+', '-', t[6:].lower()).strip('-')[:60]}",
+               t[len("- [ ] "):], detail) for t in carried]
+    why_not = None if a.dry_run else file_in_inbox(items)
     parts = [f"# {label} — scheduled archive {today.isoformat()}", ""]
-    if not kept:
-        parts += ["### TODO (rolling)", "", obligation, *todos, ""]
     new_log = "\n".join(parts) + "".join(blocks[k] for k in keep_keys)
-    if kept:
+    if why_not is not None:
         new_log += ("\n### Carried over\n\n" + obligation + "\n"
-                    + "\n".join(t for t in todos if t != obligation) + "\n")
+                    + "\n".join(carried) + "\n")
     if not a.dry_run:
         log_path.write_text(new_log, encoding="utf-8")
 
@@ -178,7 +213,14 @@ def main(argv=None) -> int:
         print(f"  {b['label']:<14} {b['rows']:>3} rows → {b['dir']}/{b['stem']}.md")
     if kept:
         print(f"  {kept[0]['label']} stays in the log ({kept[0]['rows']} rows)")
-    print("  narrative + distillation recorded as owed")
+    if a.dry_run:
+        print(f"  would file {len(items)} open item(s) in the inbox")
+    elif why_not is None:
+        print(f"  {len(items)} open item(s) filed in the inbox, narrative + "
+              "distillation among them")
+    else:
+        print(f"  inbox unavailable ({why_not}); {len(items)} open item(s) kept "
+              "in the log under 'Carried over'")
     return 0
 
 

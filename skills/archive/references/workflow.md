@@ -86,8 +86,8 @@ Phase 4's narrative and Phase 5's selection are judgement, and a scheduled agent
 with write access to the work log is the largest unattended blast radius here.
 
 So a scheduled archive leaves behind summaries marked *"metrics only — not
-narrated"* plus a carried `- [ ]` item saying the narrative and the distillation
-are still owed. Nothing is lost by filling them in later: the per-period `-raw.md`
+narrated"* plus an inbox item (`scripts/inbox.py`) saying the narrative and the
+distillation are still owed. Nothing is lost by filling them in later: the per-period `-raw.md`
 holds every row, which is what Phase 5's evidence anchors already point at.
 
 When a human runs `/archive` and finds periods already archived that way, enrich
@@ -267,7 +267,11 @@ say plainly that nothing was distilled. Never block the archive on it.
 2. New log.md with a fresh header for the current period, **retaining the
    day-blocks of any period the plan left open** (`archive: false`) plus today's
    day-block. Only what was archived leaves the log.
-3. Carry over only unchecked `[ ]` items
+3. File every unchecked `[ ]` item in the inbox with `scripts/inbox.py add`
+   (one item each, a `--key` so a re-run files nothing twice) instead of
+   carrying it in a TODO block; open points belong there
+   ([`docs/inbox.md`](../../../docs/inbox.md)). Only when the inbox cannot be
+   written do they stay in the new log under `### Carried over`.
 4. **Regenerate the `**Active Focus:**` line** — don't keep the stale one
    from the archived period. Build it from the top 3-4 entries in
    `board.md` Doing lane (slug + 1-clause "what's running"), joined

@@ -15,7 +15,7 @@ that. The rest of the log stays where it is, and `/briefing` and `/archive` read
 it in full when that is what they are for.
 
 WHAT IS KEPT. Everything before the first day heading (the week line and the
-rolling TODO, which are session context in their own right) plus the N most
+focus line, which are session context in their own right) plus the N most
 recent day blocks, chosen by the date in the heading rather than by position in
 the file. An instance that appends day blocks at the end must get the same answer
 as one that prepends them; assuming an order is how a silently wrong week

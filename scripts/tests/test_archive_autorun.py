@@ -45,7 +45,8 @@ LOG = """# Week 27 — 2026-06-29 to 2026-07-05
 @pytest.fixture
 def repo(tmp_path):
     """A throwaway Bridge: the three scripts, a config, a log, on a user/* branch."""
-    for rel in (SCRIPT, "scripts/archive-buckets.py"):
+    for rel in (SCRIPT, "scripts/archive-buckets.py", "scripts/inbox.py",
+                "scripts/lib/inbox_verbs.py"):
         dst = tmp_path / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / rel, dst)
@@ -77,11 +78,48 @@ def test_it_archives_every_closed_period_and_resets_once(repo):
     assert "third" in (weeks / "2026-W34-raw.md").read_text()
 
 
-def test_the_open_todo_is_carried_and_the_obligation_recorded(repo):
+def _inbox_summaries(repo) -> list[str]:
+    import yaml
+    root = repo / "work" / "inbox"
+    return [yaml.safe_load(p.read_text())["summary"] for p in sorted(root.glob("*/item.yaml"))]
+
+
+def test_the_open_todo_and_the_obligation_go_to_the_inbox(repo):
+    # Open items belong in the inbox (docs/inbox.md), where something closes
+    # them. A rolling TODO block in the log is a sentence nothing ever closes.
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    summaries = _inbox_summaries(repo)
+    assert any("something still open" in s for s in summaries), summaries
+    assert any("distillation" in s for s in summaries), summaries
+
+
+def test_the_reset_log_carries_no_todo_block(repo):
     run(repo)
+    log = (repo / "work" / "log.md").read_text()
+    assert "### TODO" not in log and "### Carried over" not in log
+    assert "- [ ] " not in log
+
+
+def test_a_rerun_files_no_second_item(repo):
+    run(repo)
+    first = len(_inbox_summaries(repo))
+    assert first == 2, "the obligation and the one open item"
+    (repo / "work" / "log.md").write_text(LOG, encoding="utf-8")
+    shutil.rmtree(repo / "work" / "archive")
+    run(repo)
+    assert len(_inbox_summaries(repo)) == first
+
+
+def test_without_an_inbox_the_open_items_stay_in_the_log(repo):
+    # Never lose an unchecked item: no inbox, the log keeps carrying it.
+    (repo / "scripts" / "inbox.py").unlink()
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
     log = (repo / "work" / "log.md").read_text()
     assert "something still open" in log, "an unchecked item must survive the reset"
     assert "distillation" in log, "the owed judgement half must be recorded, not dropped"
+    assert "inbox" in r.stdout
 
 
 def test_no_rows_are_lost(repo):
@@ -98,6 +136,7 @@ def test_a_dry_run_writes_nothing(repo):
     r = run(repo, "--dry-run")
     assert r.returncode == 0
     assert not (repo / "work" / "archive").exists()
+    assert not (repo / "work" / "inbox").exists()
     assert (repo / "work" / "log.md").read_text() == before
 
 
