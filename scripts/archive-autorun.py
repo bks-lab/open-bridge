@@ -76,6 +76,9 @@ def file_in_inbox(items: list[tuple[str, str, str]]) -> str | None:
         sys.path.insert(0, str(HERE))
         spec = importlib.util.spec_from_file_location("inbox_for_archive", path)
         mod = importlib.util.module_from_spec(spec)
+        # Registered before exec: on Python 3.12 @dataclass looks its module up
+        # in sys.modules and fails on an unregistered one.
+        sys.modules[spec.name] = mod
         spec.loader.exec_module(mod)
         box = mod.Inbox(ROOT / "work" / "inbox", actor="archive-autorun")
         for key, summary, detail in items:

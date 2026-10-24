@@ -210,10 +210,14 @@ class ReplyCli(BridgeCase):
     def test_profile_that_picks_outlook_is_refused_too(self):
         self.write("workflow/mail-profiles/everyday.yaml",
                    (self.root / "workflow/mail-profiles/everyday.yaml").read_text() + "client: outlook\n")
-        code, out, _ = self.cli("compose", "--reply-to", "Plans", "--body", BODY,
-                                fake=FakeMail(find=ORIGINAL))
+        # Pin the platform default to Apple Mail: on Linux it is eml, and the early
+        # check would refuse before the profile's client is ever read.
+        from unittest import mock
+        with mock.patch("engine.draft.default_client", return_value="apple-mail"):
+            code, out, _ = self.cli("compose", "--reply-to", "Plans", "--body", BODY,
+                                    fake=FakeMail(find=ORIGINAL))
         self.assertEqual(code, 2)
-        self.assertIn("not supported", out)
+        self.assertIn("a reply draft is not supported with client outlook", out)
 
     def test_reply_defaults_to_the_original_sender_and_subject(self):
         saved = saved_draft(f"Hello,\n\n{BODY}\n\nBest,\nAlex\n\nAlex Example\n\n> Shall we meet on Friday?\n")
