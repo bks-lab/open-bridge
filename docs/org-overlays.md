@@ -1,7 +1,7 @@
 ---
 summary: "Org overlays — the downstream inverse of /promote: how a consumer Bridge subscribes to an org's scope:org content and materializes it as git-excluded copies (opt-in tracked), with a manifest, a lockfile, and per-file conflict + leak gates."
 type: guide
-last_updated: 2026-09-25
+last_updated: 2026-10-24
 related:
   - rules/org-overlays.md
   - docs/extension-model.md
@@ -27,7 +27,8 @@ what that means for backup, and the opt-in switch that changes it.
 `/promote` moves content **up and out**: it reads each commit's tier from
 where the file lives (`scripts/categorize-commits.py`) and routes `scope:core`
 to open-bridge, `scope:org` to your org overlay, `scope:user` nowhere. It is
-the *publish* direction.
+the *publish* direction. Into an overlay in the flat-mirror layout below, the
+publish step is an **export**, not a cherry-pick: see § Authoring an overlay.
 
 Overlays are the missing *subscribe* direction. `/promote` answers "how does my
 org's shared content leave my seed Bridge"; overlays answer the inverse: **"how
@@ -37,8 +38,8 @@ cloning the whole seed and without the org content leaking into OSS CORE?"**
 ```
         seed Bridge (user/*)                       org overlay repo
         ───────────────────                        ────────────────
-        scope:core ──/promote──▶ open-bridge       overlay.manifest.yaml
-        scope:org  ──/promote──▶ org overlay  ◀──┐ tree/  (every file scope:org)
+        scope:core ──/promote───────▶ open-bridge  overlay.manifest.yaml
+        scope:org  ──overlay-export─▶ org overlay ◀┐ tree/  (every file scope:org)
         scope:user   (stays local)               │ ecosystem.<org>.yaml
                                                   │
         consumer Bridge (user/*)                  │
@@ -47,7 +48,7 @@ cloning the whole seed and without the org content leaking into OSS CORE?"**
 ```
 
 The two directions share the same classifier and the same scope tripwire, so a
-file that `/promote` routes to the org overlay is exactly the file `/overlay`
+file that `overlay-export.py` puts into the org overlay is exactly the file `/overlay`
 will pull back down — and exactly the file both refuse to let reach
 open-bridge.
 
@@ -153,6 +154,46 @@ time; the consumer engine enforces them again at materialize time):
   cannot collide with a user's own flat-discovered file of the same name.
 - **Accounts carry only** `azure-keyvault://` / `keychain://` / `1password://`
   URI references. A raw-secret scan **refuses** the file otherwise.
+
+## Authoring an overlay
+
+The source contract above is a **flat mirror**: `tree/` plus a manifest, read by
+[`scripts/overlay.py`](../scripts/overlay.py) only below `defaults.source_root`
+(`tree/` when the manifest is silent). That layout decides how content gets in.
+
+- **Export, never cherry-pick.** `/bridge-promote` and `/bridge-sync` write each
+  file at the path it has in your Bridge. In a flat mirror that is the repo
+  root, which no consumer reads: the PR merges green and the file is invisible
+  everywhere, without an error. Both skills therefore check every overlay
+  destination with `python3 scripts/overlay-export.py --target <checkout or
+  manifest> --check-target` and **refuse** it on exit 3. No flag overrides the
+  refusal; only a manifest whose `source_root` is the repo root (`.`) passes.
+- **Build the mirror with [`scripts/overlay-export.py`](../scripts/overlay-export.py).**
+  It copies every file the router classifies into one tier to `tree/<path>`,
+  prunes mirror files that left the tier, and regenerates the manifest's
+  `files[]`. It never writes into your Bridge.
+
+The authoring loop, run from the Bridge that owns the content:
+
+1. **Pull colleagues' work back first.** A teammate's PR against `tree/` lands
+   only in the overlay. The next export rewrites `tree/` from your live files,
+   so a change that is not in your Bridge by then is overwritten, and a file
+   that is not in your tier is pruned. Refresh the cache with
+   `python3 scripts/overlay.py sync <name> --dry-run`, then read
+   `python3 scripts/overlay.py diff <name>` and carry every upstream change into
+   the live file in your Bridge. `git -C <overlay checkout> log -- tree/` since
+   your last export commit is the cross-check.
+2. **Preview:** `python3 scripts/overlay-export.py --target <overlay checkout>
+   --scope org --dry-run` lists every `+ tree/...` copy and `- tree/...` prune.
+   An unexpected prune is usually step 1 not done.
+3. **Export** with the same command minus `--dry-run`, review
+   `git -C <overlay checkout> diff`, run the leak gate, and open the PR in the
+   overlay repo.
+
+Hand edits to `tree/` from your Bridge and files at the overlay root other than
+the manifest, its README and the ecosystem fragment are the two other ways a
+mirror drifts from its source. The checklist in
+`skills/bridge-overlay/references/authoring.md` covers them.
 
 ## The lock model
 

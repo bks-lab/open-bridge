@@ -40,6 +40,29 @@ scrubbing and parallel PR creation.
 
 ## Workflow
 
+### Step 0a: Refuse a flat-mirror overlay (fail closed)
+
+Run this per overlay destination before anything else, because Step 0's
+drift side-PRs and Step 5's cherry-picks are both same-path writes:
+
+```bash
+M=$(mktemp)
+git show "{name}/{branch}:overlay.manifest.yaml" > "$M" 2>/dev/null || : > "$M"
+python3 scripts/overlay-export.py --target "$M" --check-target   # exit 3 = refuse
+rm -f "$M"
+```
+
+Exit 3: the overlay is a flat mirror. `scripts/overlay.py` reads it only below
+`defaults.source_root` (`tree/` when unset), so every cherry-picked file would
+land at the repo root, merge green, and stay invisible to every consumer.
+Drop that destination from the sync (no clone, no branch, no PR, not even for
+`scope: core` commits), print why, and continue with open-bridge. The overlay
+is built with `python3 scripts/overlay-export.py --target <overlay checkout>
+--scope <tier> --dry-run`, then without `--dry-run`, after `overlay.py diff`
+has pulled colleague PRs against `tree/` back here:
+[`docs/org-overlays.md`](../../../docs/org-overlays.md) § Authoring an overlay.
+No flag overrides this; only a manifest with `source_root: .` passes.
+
 ### Step 0: Pre-sync drift audit
 
 Before classifying commits, run cross-repo skill-tree drift detection
@@ -277,7 +300,7 @@ Bridge Sync — window: bridge-sync-2026-04-26 .. HEAD (12 commits)
 
 ### Step 5: Parallel cherry-pick + scrub
 
-Two independent temp clones in `/tmp` for parallel operation. Within
+Only destinations that passed Step 0a. Two independent temp clones in `/tmp` for parallel operation. Within
 each clone, walk the commits in chronological order and apply the
 right recipe per category.
 

@@ -50,6 +50,35 @@ named ref space. open-bridge typically isn't a configured `git remote`
 (only one `upstream` slot exists by convention), so this fetch-by-URL
 pattern is the safe default.
 
+### Step 0b: Refuse a flat-mirror overlay (fail closed)
+
+For every overlay destination (`scope: org` or `scope: personal`), ask the
+export tool whether the fetched branch is a flat mirror. It reads only the
+manifest, writes nothing, and exits 3 to refuse:
+
+```bash
+for each overlay {name}/{branch}:
+  M=$(mktemp)
+  git show "{name}/{branch}:overlay.manifest.yaml" > "$M" 2>/dev/null || : > "$M"
+  if ! python3 scripts/overlay-export.py --target "$M" --check-target; then
+    echo "  ⊘ {name}: flat-mirror overlay, not a cherry-pick target"
+    # drop {name} from the routing matrix; the other destinations go on
+  fi
+  rm -f "$M"
+```
+
+**Why this is a refusal and not a warning.** `scripts/overlay.py` reads an
+overlay only below `defaults.source_root` (`tree/` when the manifest is silent).
+Mode A and Mode B in Step 5 both write the source path unchanged, so every file
+lands at the overlay's repo root, CI stays green, the PR merges, and no consumer
+ever materializes it. The way into such an overlay is
+`python3 scripts/overlay-export.py --target <overlay checkout> --scope <tier>
+--dry-run`, reviewed, then run without `--dry-run`, after `overlay.py diff`
+has pulled any colleague PR against `tree/` back into this Bridge. Full
+recipe: [`docs/org-overlays.md`](../../../docs/org-overlays.md) § Authoring an
+overlay. There is no override flag: an overlay whose manifest sets
+`source_root: .` passes the check, and that is the only way to opt out.
+
 ### Step 1: Find Promotable Commits
 
 **Histories may be disjoint.** Both `bks-lab/open-bridge` and
@@ -232,7 +261,8 @@ Promote Analysis: 5 commits on user/{name}
 
 ### Step 5: Cherry-Pick (or Path-Selective Re-Apply)
 
-Two modes — pick the right one per commit:
+Only for destinations that passed Step 0b. A flat-mirror overlay never gets
+here. Two modes, pick the right one per commit:
 
 #### Mode A — `git cherry-pick` (simple commits, shared history)
 

@@ -52,6 +52,16 @@ Read the referenced file ONLY when triggered.
 - `bridge-config.yaml.upstreams[]` defines BOTH upstreams.
 - `git remote` has `origin` (your fork) + `upstream` (typically `<your-org>/<your-bridge>`).
 - For open-bridge sync: `gh` CLI authenticated with cross-fork PR rights.
+- The org overlay must be a **normal-layout** repo. An overlay that carries
+  `overlay.manifest.yaml` is a flat mirror read only below its
+  `defaults.source_root` (`tree/` when unset): `/bridge-sync` **refuses** it,
+  because a cherry-pick lands every file at the overlay's repo root where no
+  consumer reads it. Check it in workflow Step 0a with
+  `python3 scripts/overlay-export.py --target <manifest or checkout> --check-target`
+  (exit 3 = refuse) and build that overlay with
+  `python3 scripts/overlay-export.py --dry-run` instead
+  ([`docs/org-overlays.md`](../../docs/org-overlays.md) § Authoring an overlay).
+  open-bridge still syncs.
 
 ## Decision Tree
 
@@ -60,6 +70,7 @@ User wants to...
 ├── Full sync (default)                  → references/workflow.md
 ├── Dry-run / preview routing            → references/workflow.md (stop after Step 4)
 ├── Sync only one repo                   → references/workflow.md § --repo override
+├── Overlay with a manifest (flat mirror) → refuse; docs/org-overlays.md § Authoring an overlay
 ├── Configure scrub patterns             → rules/promote-safety.md per-repo blocklists
 ├── Tag the sync point                   → references/workflow.md § sync-tag
 └── PR merge fails after squash-merge    → references/pr-recovery-patterns.md

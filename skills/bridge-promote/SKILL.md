@@ -17,8 +17,8 @@ frontmatter (or path inference). See CLAUDE.md § Tier Model.
 | Commit scope | Goes to | How |
 |---|---|---|
 | `scope: core` (or unset, on CORE-allowlist path) | the upstream with **`scope: core`** (e.g. `bks-lab/open-bridge:main`) plus any org/personal overlay that also carries it | Cherry-pick to local `development`, then PR to the OSS upstream |
-| `scope: org` | the upstream with **`scope: org`** only (your org overlay, e.g. `<your-org>/<your-bridge>:development`) | Cherry-pick + PR to that repo |
-| `scope: personal` | the upstream with **`scope: personal`** only (your personal overlay) | Cherry-pick + PR to that repo |
+| `scope: org` | the upstream with **`scope: org`** only (your org overlay, e.g. `<your-org>/<your-bridge>:development`) | Cherry-pick + PR to that repo, **unless it is a flat mirror** (below): then refuse and export |
+| `scope: personal` | the upstream with **`scope: personal`** only (your personal overlay) | Same as `org`: cherry-pick + PR, or refuse and export for a flat mirror |
 | `scope: user` / `private` | **stays local** on `user/{name}` | No-op |
 
 **Destination selection is by SCOPE, never by `role:` alone.** For a
@@ -43,6 +43,24 @@ a `--dry-run` routing matrix shows **every** `scope: personal` file routed to th
 personal upstream **and every** `scope: org` file routed to the org upstream,
 with **zero cross-routes**. Until that dry-run is green, treat `scope: personal`
 files as local-only.
+
+**FLAT-MIRROR GUARD (mandatory, per overlay destination).** An overlay repo
+that carries `overlay.manifest.yaml` is read by `scripts/overlay.py` only below
+its `defaults.source_root` (`tree/` when unset). A cherry-pick writes the same
+path it had here, so the file lands at the overlay's repo root and no consumer
+ever sees it, without any error. Before routing (workflow Step 0b), per overlay destination:
+
+```bash
+git show {name}/{branch}:overlay.manifest.yaml > /tmp/{name}.manifest.yaml 2>/dev/null || : > /tmp/{name}.manifest.yaml
+python3 scripts/overlay-export.py --target /tmp/{name}.manifest.yaml --check-target
+```
+
+Exit 3 means **REFUSE that destination**: do not cherry-pick, re-apply, or open
+a PR there, not even for `scope: core` commits. Tell the user to build the mirror
+instead with `python3 scripts/overlay-export.py --target <overlay checkout>
+--scope <tier> --dry-run` (then without `--dry-run`), after pulling any
+colleague PR against `tree/` back first. Other destinations still ship. Recipe:
+`docs/org-overlays.md` § Authoring an overlay.
 
 If you don't have an org overlay configured, only `scope: core` commits
 get promoted; `scope: org` / `scope: personal` commits stay on your user branch.
@@ -81,6 +99,7 @@ User wants to...
 ├── Promote commits (auto-routed by scope)   → references/workflow.md
 ├── Dry-run analysis only                    → references/workflow.md (stop after Step 4)
 ├── Force one specific upstream              → references/workflow.md § --repo override
+├── Overlay with a manifest (flat mirror)    → refuse; docs/org-overlays.md § Authoring an overlay
 ├── Scan branch for contributions            → bridge-contribute skill (/contribute)
 ├── Adapt/generalize content                 → bridge-contribute skill § Adapt mode
 └── Questions about CORE/USER/ORG split      → Answer from CLAUDE.md § Tier Model

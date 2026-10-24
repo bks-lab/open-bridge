@@ -111,6 +111,12 @@ promote). `personal` is an optional fourth tier — a private overlay under your
    - `personal` → your personal overlay only (a private overlay under your own account)
    - `user`/`private` → stay local
 3. Mixed-scope commits are split — never push a commit with `org` (or `personal`) content to open-bridge.
+4. An overlay with `overlay.manifest.yaml` is a flat mirror, read only below its
+   `defaults.source_root` (`tree/` when unset). A cherry-pick lands at its repo
+   root, invisible to every consumer, so `/promote` and `/bridge-sync` refuse it
+   (`scripts/overlay-export.py --check-target`, exit 3). Content reaches it only
+   through `python3 scripts/overlay-export.py --target <checkout> --scope <tier>
+   --dry-run`, then the real run: [`docs/org-overlays.md`](../docs/org-overlays.md#authoring-an-overlay).
 
 Language is a parallel tier rule: CORE (`scope: core`) is authored in
 English; `org`/`user` tiers may stay in the author's language. See
