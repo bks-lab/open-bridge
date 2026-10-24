@@ -535,7 +535,8 @@ def test_the_persons_default_starts_every_board_not_chosen_yet(tmp_path):
     gw.save_board_default(root, None)
     assert gw.board_default(root) is None and gw.board_modes(root) == {"tool": "mine"}
     rows, run = collect(root)
-    assert [c[3] for c in run.calls if c[:3] == ["gh", "project", "item-list"]] == ["3", "4"]
+    # Boards are fetched in parallel (ThreadPoolExecutor), so the call order is not fixed.
+    assert sorted(c[3] for c in run.calls if c[:3] == ["gh", "project", "item-list"]) == ["3", "4"]
     import pytest
     with pytest.raises(ValueError):
         gw.save_board_default(root, "everything")
