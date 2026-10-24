@@ -273,3 +273,35 @@ def test_nested_id_is_not_a_root_id(tmp_path):
     nested = '$id: "urn:open-bridge:schema:thing"\n$defs:\n  x:\n    $id: "urn:open-bridge:schema:thing"\n'
     root = build(tmp_path, **{"infra/things/_schema.yaml": nested})
     assert problems(root) == []
+
+
+# ---- review follow-ups ------------------------------------------------------
+
+def test_later_root_override_of_a_site_token_is_reported(tmp_path):
+    # A second top-level :root after the site layer would change the rendered
+    # colour while the first block still matches DESIGN.md.
+    css = BRAND + ":root{--ink:#123456}\n"
+    root = build(tmp_path, **{"docs/assets/brand.css": css})
+    assert any("--ink" in p and "twice" in p for p in problems(root))
+
+
+def test_later_dark_override_of_a_site_token_is_reported(tmp_path):
+    css = BRAND + "html.dark{--surface:#000000}\n"
+    root = build(tmp_path, **{"docs/assets/brand.css": css})
+    assert any("--surface" in p and "twice" in p for p in problems(root))
+
+
+def test_media_scoped_override_is_allowed(tmp_path):
+    # @media print maps dark to light on paper; that is deliberate, not drift.
+    css = BRAND + "@media print{\n  html.dark{--ink:#111111;--surface:#FFFFFF}\n}\n"
+    root = build(tmp_path, **{"docs/assets/brand.css": css})
+    assert problems(root) == []
+
+
+def test_404_base_must_match_the_site_path(tmp_path):
+    root = build(tmp_path, **{"docs/404.html": NOT_FOUND.replace('<base href="/open-bridge/">', '<base href="/other-fork/">')})
+    assert any("404.html" in p and "/open-bridge/" in p for p in problems(root))
+
+
+def test_site_path_is_derived_from_site():
+    assert csb.site_path() == "/open-bridge/"

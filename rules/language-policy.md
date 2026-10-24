@@ -68,6 +68,10 @@ Everything in the `core` tier:
   - the English half is the source, and a change to it lands in the German
     half in the same commit;
   - markup, ids, class names, scripts and comments stay English;
+  - a site script under `docs/assets/` may carry the German text of its page
+    in the same shape: each string beside its English twin in one file, as a
+    `*_en` / `*_de` key pair (`concepts-data.js`), an `en` / `de` table
+    (`agent-widget.js`) or a helper taking both (`story.js`);
   - the page declares `og:locale` `en_US` and `og:locale:alternate` `de_DE`.
     No `hreflang`: it names one URL per language, and here both share one.
     `scripts/check-site-basics.py` holds the two tags.

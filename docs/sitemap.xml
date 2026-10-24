@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Every page of the site, once. scripts/check-site-basics.py fails CI when a page under docs/ is missing here or a URL here has no page. The 404 page stays out. -->
+<!-- Every page of the site, once. scripts/check-site-basics.py fails CI when a page under docs/ is missing here or a URL here has no page. The 404 page stays out. Only top-level docs/*.html pages count; docs/cockpit-demo/ is a generated copy of the cockpit, not a site page. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://bks-lab.github.io/open-bridge/</loc></url>
   <url><loc>https://bks-lab.github.io/open-bridge/demo.html</loc></url>
