@@ -335,3 +335,78 @@ def test_a_page_named_in_a_script_string_is_warned_about(tree, tmp_path):
     assert r.returncode == 0, r.stderr
     warned = [ln for ln in r.stderr.splitlines() if ln.startswith("bundle: WARNING")]
     assert len(warned) == 1 and "pages/second.html" in warned[0], r.stderr
+
+
+# ---- the deck back link (data-back-href) -------------------------------------
+
+# What slide-engine.js does with the attribute: one link in the corner.
+BACK_LINK_JS = ("<script>(function(){var d=document.querySelector('[data-back-href]');"
+                "var a=document.createElement('a');a.className='deck-back';a.id='back';"
+                "a.href=d.getAttribute('data-back-href');a.textContent='Back';document.body.appendChild(a);})();</script>")
+
+
+def _deck(tree: Path, back: str, name: str = "deck.html") -> Path:
+    page = tree / name
+    page.write_text('<!doctype html><html lang="en" data-back-href="%s"><head><meta charset="utf-8">'
+                    '<title>Deck</title></head><body><h1>Deck</h1>%s</body></html>' % (back, BACK_LINK_JS),
+                    encoding="utf-8")
+    return page
+
+
+def _warnings(r) -> list[str]:
+    return [ln for ln in r.stderr.splitlines() if ln.startswith("bundle: WARNING")]
+
+
+def test_back_link_to_a_missing_page_is_warned_about(tree, tmp_path):
+    r = run(SCRIPT, _deck(tree, "gone.html"), "--out", tmp_path / "o.html")
+    assert r.returncode == 0, r.stderr
+    warned = _warnings(r)
+    assert len(warned) == 1 and "data-back-href" in warned[0] and "gone.html" in warned[0], r.stderr
+    assert "missing" in warned[0]
+
+
+def test_back_link_to_a_local_page_without_pages_is_warned_about(tree, tmp_path):
+    out = tmp_path / "o.html"
+    r = run(SCRIPT, _deck(tree, "pages/second.html"), "--out", out)
+    assert r.returncode == 0, r.stderr
+    warned = _warnings(r)
+    assert len(warned) == 1 and "--pages" in warned[0] and "pages/second.html" in warned[0], r.stderr
+    assert 'data-back-href="pages/second.html"' in out.read_text("utf-8")
+
+
+def test_back_link_in_page_or_remote_is_left_alone(tree, tmp_path):
+    for back in ("#top", "https://example.com/deck"):
+        out = tmp_path / "o.html"
+        r = run(SCRIPT, _deck(tree, back), "--out", out)
+        assert r.returncode == 0 and not _warnings(r), r.stderr
+        assert 'data-back-href="%s"' % back in out.read_text("utf-8")
+
+
+def test_back_link_to_a_file_becomes_a_data_uri(tree, tmp_path):
+    out = tmp_path / "o.html"
+    r = run(SCRIPT, _deck(tree, "img/dot.png"), "--out", out)
+    assert r.returncode == 0 and not _warnings(r), r.stderr
+    dot = (tree / "img" / "dot.png").read_bytes()
+    assert 'data-back-href="data:image/png;base64,%s"' % base64.b64encode(dot).decode() in out.read_text("utf-8")
+
+
+def test_back_link_with_pages_travels_as_a_payload_and_opens(browser, tree, tmp_path):
+    out = tmp_path / "deck-out.html"
+    r = run(SCRIPT, _deck(tree, "pages/second.html#h"), "--out", out, "--pages")
+    assert r.returncode == 0 and not _warnings(r), r.stderr
+    text = out.read_text("utf-8")
+    tag = re.search(r"<html[^>]*>", text).group(0)
+    assert 'data-back-href="#"' in tag and 'data-back-hash="#h"' in tag
+    ref = re.search(r'data-back-bundle="([^"]+)"', tag).group(1)
+    assert payloads(text)[ref][0] == "pages/second.html"
+    ctx, page, _ = _open_alone(browser, out, tmp_path)
+    try:
+        with ctx.expect_page() as popup:
+            page.click("#back")
+        new = popup.value
+        new.wait_for_load_state()
+        assert new.inner_text("#h") == "Zweite Seite: Größe äöüß"
+        assert new.url.endswith("#h")
+        assert page.errors == []
+    finally:
+        ctx.close()

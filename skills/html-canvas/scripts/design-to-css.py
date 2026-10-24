@@ -49,6 +49,8 @@ Serving another consumer (references/theme-contract.md):
   # --map       emits only the consumer's variables, named as it names them,
   #             each resolved from a DESIGN.md color role in both modes; a
   #             derived variant (e.g. accent-dim) is a color-mix() of a role.
+  #             Like the default sheet it ends in an @media print block: the
+  #             light values, with the surface role dropped to surface-raised.
   # --selectors renames the light and dark groups (default :root, html.dark),
   #             with or without --map. A map file may declare them too.
   # --region    fills /* <name>:begin */ ... /* <name>:end */ in any file
@@ -406,31 +408,40 @@ def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None)
     colors = design.get("colors") or {}
     dark_colors = design.get("colorsDark") or {}
 
-    def resolve(role: str, dark: bool):
+    def resolve(role: str, dark: bool, paper: bool = False):
         if role not in colors:
             return None
+        if paper:
+            # print: the light value, the ground dropped to the card colour (as build_css)
+            return colors.get("surface-raised", colors[role]) if role == "surface" else colors[role]
         if dark:
             if dark_colors:
                 return dark_colors.get(role, colors[role])
             return colors.get("dark-" + role, colors[role])
         return colors[role]
 
-    light, darks, missing = [], [], []
+    light, darks, paper, missing = [], [], [], []
     for name, spec in entries.items():
         roles = [spec["role"]] + ([spec["with"]] if spec.get("with") not in (None, "transparent") else [])
         absent = [r for r in roles if r not in colors]
         if absent:
             missing += [f"{name} <- {r}" for r in absent]
             continue
-        for target, dark in ((light, False), (darks, True)):
-            val = resolve(spec["role"], dark)
+        for target, dark, on_paper in ((light, False, False), (darks, True, False), (paper, False, True)):
+            val = resolve(spec["role"], dark, on_paper)
             if "mix" in spec:
-                ground = resolve(spec["with"], dark) if spec.get("with") not in (None, "transparent") else "transparent"
+                ground = (resolve(spec["with"], dark, on_paper) if spec.get("with") not in (None, "transparent")
+                          else "transparent")
                 val = f"color-mix(in srgb, {val} {spec['mix']:g}%, {ground})"
             target.append(f"  --{name}: {val};")
 
     css = css_header(design) + light_sel + " {\n" + "\n".join(light) + "\n}\n"
     css += "\n" + dark_sel + " {\n" + "\n".join(darks) + "\n}\n"
+    if paper:
+        # the same print block the default sheet carries (build_css), in the consumer's names
+        css += ("\n/* Print: light palette on a white ground, whatever the screen mode. */\n"
+                "@media print {\n" + light_sel + ", " + dark_sel + " {\n"
+                + "\n".join("  " + l for l in paper) + "\n}\n}\n")
     return css, missing
 
 

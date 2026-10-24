@@ -24,6 +24,11 @@ What happens to each reference (paths resolve against the file that holds them):
   <a href="page.html">    -> only with --pages: payload that opens in a new tab
                              from a Blob URL; without --pages it is an error
   <a href="file.pdf">     -> data: URI with a download name
+  data-back-href="p.html" -> the html-slides back link: with --pages a payload the
+                             loader opens on a click on a.deck-back; without
+                             --pages, or when the target is missing, a WARNING
+                             (a back link is navigation, so it never fails the
+                             bundle); a local file that is no page -> data: URI
 Fonts are always embedded: an existing @font-face keeps its data, a local font
 url() is inlined, and families named by a DESIGN.md (given with --design, else the
 nearest DESIGN.md above the entry) that the page uses but does not declare are
@@ -85,7 +90,8 @@ URL_ATTRS = {
     "input": ("src",), "image": ("href", "xlink:href"), "link": ("href", "imagesrcset"),
 }
 SKIP_PREFIXES = ("data:", "blob:", "about:", "javascript:", "mailto:", "tel:", "sms:")
-LOADER_VERSION = "bundle-loader v1"
+LOADER_VERSION = "bundle-loader v2"
+LOADER_MARK = re.compile(r"bundle-loader v\d+")
 
 LOADER = """<script>
 /* %s: decodes the payload blocks above; UTF-8 safe */
@@ -103,12 +109,17 @@ LOADER = """<script>
   window.__bundle = { load: load };
   var frames = document.querySelectorAll('iframe[data-bundle]:not([data-bundle-lazy])');
   for (var i = 0; i < frames.length; i++) load(frames[i]);
+  function open(id, hash) {
+    var blob = new Blob([bytes(id)], { type: 'text/html;charset=utf-8' });
+    window.open(URL.createObjectURL(blob) + (hash || ''), '_blank');
+  }
   document.addEventListener('click', function (e) {
-    var a = e.target && e.target.closest ? e.target.closest('a[data-bundle-page]') : null;
-    if (!a) return;
-    e.preventDefault();
-    var blob = new Blob([bytes(a.getAttribute('data-bundle-page'))], { type: 'text/html;charset=utf-8' });
-    window.open(URL.createObjectURL(blob) + (a.getAttribute('data-bundle-hash') || ''), '_blank');
+    var t = e.target && e.target.closest ? e.target : null;
+    var a = t ? t.closest('a[data-bundle-page]') : null;
+    if (a) { e.preventDefault(); open(a.getAttribute('data-bundle-page'), a.getAttribute('data-bundle-hash')); return; }
+    /* the deck back link: the engine builds a.deck-back from data-back-href */
+    var owner = t && t.closest('a.deck-back') ? document.querySelector('[data-back-bundle]') : null;
+    if (owner) { e.preventDefault(); open(owner.getAttribute('data-back-bundle'), owner.getAttribute('data-back-hash')); }
   });
 })();
 </script>""" % LOADER_VERSION
@@ -333,6 +344,9 @@ class Bundler:
         if style and style.value and "url(" in style.value.lower():
             style.new = self.css(htmllib.unescape(style.value), doc.parent, doc).replace('"', "&quot;")
 
+        if "data-back-href" in by and by["data-back-href"].value is not None:
+            self._back_link(by["data-back-href"], doc, payloads, extra)
+
         if name == "link":
             rels = set((by["rel"].value or "").lower().split()) if "rel" in by else set()
             if rels & LOADING_RELS and "href" in by and by["href"].value is not None:
@@ -418,6 +432,41 @@ class Bundler:
         pieces.extend(extra)
         return "<" + m.group(1) + "".join(" " + p for p in pieces) + (" /" if m.group(3) else "") + ">"
 
+    def _back_link(self, a: Attr, doc: Path, payloads: dict, extra: list) -> None:
+        """data-back-href: resolved like a link, but a problem is a warning, never an error."""
+        ref = htmllib.unescape(a.value).strip()
+        low = ref.lower()
+        if not ref or ref.startswith("#") or low.startswith(SKIP_PREFIXES) or low.startswith("//") \
+                or re.match(r"^[a-z][a-z0-9+.-]*:", low):
+            return
+        where = f"{self.rel(doc)}: data-back-href {ref}"
+        if ref.startswith("/"):
+            self._warn(f"{where} is root-relative and cannot be resolved; the send copy's back link will not work")
+            return
+        path_part, frag = ref, ""
+        if "#" in path_part:
+            path_part, frag = path_part.split("#", 1)
+            frag = "#" + frag
+        target = (doc.parent / unquote(path_part.split("?", 1)[0])).resolve()
+        if not target.is_file():
+            self._warn(f"{where} points at a missing file; the back link will not work")
+            return
+        if target.suffix.lower() not in HTML_EXT:
+            a.new = self.data_uri(target)
+            return
+        if not self.pages:
+            self._warn(f"{where} names a local page; the send copy's back link will not find it "
+                       "(use --pages to bundle it)")
+            return
+        a.new = "#"
+        extra.append(f'data-back-bundle="{self.payload(target, doc, payloads)}"')
+        if frag:
+            extra.append(f'data-back-hash="{frag}"')
+
+    def _warn(self, msg: str) -> None:
+        if msg not in self.result.warnings:
+            self.result.warnings.append(msg)
+
     def _rewrite_url(self, a: Attr, doc: Path) -> None:
         res = self.resolve(a.value, doc.parent, doc, "resource")
         if res[0] == "local":
@@ -482,7 +531,7 @@ class Bundler:
                 f'<script type="text/plain" class="bundle-payload" id="{pid}" data-source="{self.rel(p)}" data-encoding="base64">'
                 f'{base64.b64encode(data).decode("ascii")}</script>'
                 for p, (pid, data) in payloads.items())
-            extra = blocks + ("\n" + LOADER if LOADER_VERSION not in html else "") + "\n"
+            extra = blocks + ("\n" + LOADER if not LOADER_MARK.search(html) else "") + "\n"
             idx = html.lower().rfind("</body>")
             html = html[:idx] + extra + html[idx:] if idx >= 0 else html + "\n" + extra
         return html

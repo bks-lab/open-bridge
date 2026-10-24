@@ -108,7 +108,8 @@ document.querySelectorAll('.sparkline[data-values]').forEach(function(svg){
 
 ## Section scrollspy (highlight the active ToC link)
 Pairs with the sticky `.secnav` block in `sections.md`: it adds `.active` to the link of the
-section currently in view. Pure anchor links still work with this off.
+section currently in view. Pure anchor links still work with this off. A contents box
+that spies on its own is the `toc` block (`new-page.py --blocks toc`); it needs no paste.
 ```html
 <script>
 (function(){

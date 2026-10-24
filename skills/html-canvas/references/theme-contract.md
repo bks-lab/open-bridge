@@ -42,7 +42,8 @@ reference implementation; this file is the rule it implements.
    inputs, textareas, selects and contenteditable). A `storage` event on the key
    syncs other open tabs.
 7. **Print is light.** Whatever the screen mode, paper gets the light palette.
-   The default sheet from `design-to-css.py` carries that `@media print` block.
+   The default sheet from `design-to-css.py` carries that `@media print` block,
+   and so does `--map` output, in the consumer's own variable names.
 
 A language switch, where a skill has one, mirrors the same shape with
 `<skill>-lang` and the `data-lang` attribute on `<html>`.
@@ -81,7 +82,7 @@ The values reach a page through `scripts/design-to-css.py`, never by copying:
 |---|---|---|
 | html-canvas shell | `design-to-css.py --shell --out page.html` | the full sheet in the `design-tokens` region, `:root` and `html.dark` |
 | bare CSS | `design-to-css.py --out tokens.css` | the same sheet as a file |
-| a consumer with its own variable names | `design-to-css.py --map <consumer>.map.yaml` | exactly the variables the map names, in both groups |
+| a consumer with its own variable names | `design-to-css.py --map <consumer>.map.yaml` | exactly the variables the map names, in both groups, plus the same light `@media print` block |
 | any file with a marked region | add `--region <name> --shell <file> --out <file>` | the region `/* <name>:begin */ ... /* <name>:end */` rewritten, the rest of the file untouched |
 
 `--region` keeps whatever neutral values the file holds above the generated
