@@ -409,3 +409,126 @@ def test_deck_attr_sets_engine_options_on_the_deck(plain_dir):
 def test_deck_attr_takes_only_data_attributes(plain_dir, bad):
     proc = run("--title", "x", "--out", plain_dir / "d.html", "--deck-attr", bad, check=False)
     assert proc.returncode != 0 and "--deck-attr" in proc.stderr
+
+
+# --- deck modules (--with) -----------------------------------------------------------------
+
+MODULE_FX = FIXTURES / "modules"
+
+
+@pytest.fixture(scope="module")
+def module_tree(tmp_path_factory):
+    """A copy of both skills whose assets/modules holds the probe fixture (js + css) and a
+    js-only module `beta`, so --with runs against modules this test controls."""
+    tree = tmp_path_factory.mktemp("modtree") / "skills"
+    skip = shutil.ignore_patterns("tests", "__pycache__", "examples")
+    for name in ("html-slides", "html-canvas"):
+        shutil.copytree(SKILL.parent / name, tree / name, ignore=skip)
+    mods = tree / "html-slides" / "assets" / "modules"
+    mods.mkdir(exist_ok=True)
+    for f in mods.iterdir():
+        f.unlink()
+    shutil.copyfile(MODULE_FX / "probe.js", mods / "probe.js")
+    shutil.copyfile(MODULE_FX / "probe.css", mods / "probe.css")
+    (mods / "beta.js").write_text("/* beta: js only */\nwindow.__beta = 1;\n", encoding="utf-8")
+    return tree / "html-slides"
+
+
+def run_in(tree: Path, *args, check=True):
+    proc = subprocess.run([sys.executable, str(tree / "scripts" / "new-deck.py"), *map(str, args)],
+                          capture_output=True, text=True)
+    if check and proc.returncode != 0:
+        raise AssertionError("new-deck failed (%d):\n%s\n%s" % (proc.returncode, proc.stdout, proc.stderr))
+    return proc
+
+
+def module_names(html: str) -> list[str]:
+    return re.findall(r"<!-- deck-module:([a-z0-9-]+):start -->", html)
+
+
+def test_with_inlines_a_module_after_the_engine(module_tree, plain_dir):
+    out = plain_dir / "deck.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts", "--with", "probe")
+    html = out.read_text("utf-8")
+    body = region(html, "deck-module:probe")
+    css = (module_tree / "assets" / "modules" / "probe.css").read_text("utf-8")
+    js = (module_tree / "assets" / "modules" / "probe.js").read_text("utf-8")
+    assert body == "\n<style>\n" + css + "</style>\n<script>\n" + js + "\n</script>\n"
+    assert html.index("<!-- slide-engine:js:end -->") < html.index("<!-- deck-module:probe:start -->")
+    assert html.index("<!-- deck-module:probe:end -->") < html.index("</body>")
+    assert module_names(html) == ["probe"]
+
+
+def test_with_all_and_repeated_with(module_tree, plain_dir):
+    out = plain_dir / "all.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts", "--with", "all")
+    html = out.read_text("utf-8")
+    assert module_names(html) == ["beta", "probe"]
+    assert "<style>" not in region(html, "deck-module:beta"), "no empty style for a js-only module"
+    out2 = plain_dir / "two.html"
+    run_in(module_tree, "--title", "M", "--out", out2, "--no-embed-fonts", "--with", "probe", "--with", "beta",
+           "--with", "probe")
+    assert module_names(out2.read_text("utf-8")) == ["beta", "probe"], "one region each, in a stable order"
+
+
+def test_with_stage_and_modules_keep_their_order(module_tree, plain_dir):
+    out = plain_dir / "s.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts", "--with-stage", "--with", "probe")
+    html = out.read_text("utf-8")
+    assert html.index("<!-- slide-stage:js:end -->") < html.index("<!-- deck-module:probe:start -->")
+
+
+def test_unknown_module_lists_the_available_ones(module_tree, plain_dir):
+    proc = run_in(module_tree, "--title", "M", "--out", plain_dir / "x.html", "--with", "nope", check=False)
+    assert proc.returncode != 0
+    assert "nope" in proc.stderr and "beta" in proc.stderr and "probe" in proc.stderr, proc.stderr
+    assert not (plain_dir / "x.html").exists()
+
+
+def test_refresh_keeps_the_module_set_and_refreshes_code(module_tree, plain_dir, tmp_path):
+    out = plain_dir / "r.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts", "--with", "probe")
+    html = out.read_text("utf-8")
+    stale = html.replace("window.__probe =", "window.__probe_old =")
+    out.write_text(stale, encoding="utf-8")
+    run_in(module_tree, "--refresh", out)
+    again = out.read_text("utf-8")
+    assert again == html, "the code is refreshed from the asset, nothing else changes"
+    assert module_names(again) == ["probe"], "beta is not added by a refresh"
+    run_in(module_tree, "--refresh", out)
+    assert out.read_text("utf-8") == html, "idempotent"
+
+
+def test_refresh_refuses_with(module_tree, plain_dir):
+    out = plain_dir / "rw.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts")
+    proc = run_in(module_tree, "--refresh", out, "--with", "probe", check=False)
+    assert proc.returncode != 0 and "--with" in proc.stderr
+
+
+def test_refresh_with_a_module_gone_is_an_error(module_tree, plain_dir):
+    out = plain_dir / "gone.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts", "--with", "probe")
+    html = out.read_text("utf-8").replace("deck-module:probe:", "deck-module:vanished:")
+    out.write_text(html, encoding="utf-8")
+    proc = run_in(module_tree, "--refresh", out, check=False)
+    assert proc.returncode != 0 and "vanished" in proc.stderr
+    assert out.read_text("utf-8") == html, "nothing written"
+
+
+def test_shipped_modules_are_splice_safe():
+    """Every module under assets/modules can be inlined: no closing style or script tag."""
+    mods = ASSETS / "modules"
+    for f in sorted(mods.glob("*.js")) if mods.is_dir() else []:
+        assert "</script" not in f.read_text("utf-8").lower(), f.name
+        css = f.with_suffix(".css")
+        if css.exists():
+            assert "</style" not in css.read_text("utf-8").lower(), css.name
+
+
+def test_module_deck_runs_in_the_browser(module_tree, plain_dir, open_html, page):
+    out = plain_dir / "b.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts", "--with", "all")
+    open_html(out.read_text("utf-8"))
+    page.wait_for_function("() => window.__probe && window.__probe.inits === 1 && window.__beta === 1")
+    assert page.errors == []

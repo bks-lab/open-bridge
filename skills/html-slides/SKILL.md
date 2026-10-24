@@ -27,6 +27,8 @@ foundation (tokens, fonts, the quality gate, the send bundle) is shared with
 | A different cut of one deck (prep vs. live, short vs. long) | `data-track` on slides, key F | `reference/slide-types.md` § Engine Contract |
 | Speaker notes, a clickable agenda | `<aside class="notes">`, slide type 10 (Overview) | `reference/slide-types.md` |
 | A running simulation inside a slide | `new-deck.py --with-stage`, a `.stage` element | `reference/stage.md` |
+| Presenting live: blank screen, jump to a slide number, zoom, language switch, notes handout | built in: keys B / W, digits + Enter, Alt+click, L, `data-print-notes` | `reference/slide-types.md` § Engine Contract |
+| An optional deck feature (a module) or writing one | `new-deck.py --with NAME` (or `--with all`), `SlideDeck.use()` | `reference/modules.md` |
 | Pick a look | DESIGN.md (default) or a style preset by name | `reference/deck-build.md` § Presets |
 | A deck in no house brand, or no DESIGN.md exists | `--preset <slug>` | `presets/_template.yaml`, `assets/discovery-menu.html` |
 | PDF, mail, customer, external | the send path below | `reference/output-formats.md` |
@@ -51,12 +53,13 @@ python3 skills/html-slides/scripts/new-deck.py --title "Quarterly review" --lang
 3. **Generate** with `new-deck.py`. Engine options (tracks, counter format, back
    link) go on the deck element with `--deck-attr data-NAME=VALUE`. It splices the pre-paint theme script, the
    embedded fonts, the tokens, `assets/slide-engine.css` and `assets/slide-engine.js`
-   (first line `slide-engine v2`), plus the stage module with `--with-stage`.
+   (first line `slide-engine v2`), plus the stage module with `--with-stage` and
+   each deck module named by `--with` (`reference/modules.md`).
    `--lang de` localises the controls, the help and the ARIA texts.
 4. **Run the gate** (Definition of done), then open the file in the browser.
 
 **Updating an existing deck:** `new-deck.py --refresh deck.html` rewrites only the
-marker regions the deck already carries (engine, tokens, fonts, preset CSS, stage)
+marker regions the deck already carries (engine, tokens, fonts, preset CSS, stage, modules)
 from the current assets, DESIGN.md and preset. The slides are never touched, and a
 second run gives the same bytes. A deck from before the generator has no markers:
 leave it as it is (its engine is embedded and keeps working), or move its slides
@@ -124,6 +127,7 @@ An instance names its own wordlist in `bridge-config.yaml` under
 | `reference/slide-types.md` | writing slides; the Engine Contract (options, keys, API) |
 | `reference/rules.md` | planning content: the DESIGN.md rule, anti-slop list, density limits |
 | `reference/stage.md` | a live simulation inside a slide |
+| `reference/modules.md` | deck modules: `--with`, the plugin API `SlideDeck.use()`, writing and testing one |
 | `reference/output-formats.md` | PDF, bundle, anonymity check, the package to send |
 | `presets/_template.yaml` | the preset schema, before writing one |
 | `assets/slide-engine.css`, `assets/slide-engine.js` | extending the engine (then add a test) |

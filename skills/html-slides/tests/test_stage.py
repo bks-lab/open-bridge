@@ -389,3 +389,31 @@ def test_print_hides_the_stage_buttons(open_deck):
     shown = page.evaluate("""() => [...document.querySelectorAll('[data-stage]')]
       .filter(b => getComputedStyle(b).display !== 'none').length""")
     assert shown == 0
+
+
+# --- theme and language reach the child (stage:theme, stage:lang) ---------------------
+
+def child_msgs(page, sid: str, kind: str) -> list:
+    return child_frame(page, sid).evaluate("(k) => window.__msgs.filter(m => m.type === k)", kind)
+
+
+def test_theme_and_lang_are_sent_after_ready_and_on_change(open_deck):
+    page = open_deck(color_scheme="light")
+    go(page, 2)
+    wait_loaded(page, "stageA")
+    frame_wait = "(k) => window.__msgs.some(m => m.type === k)"
+    child_frame(page, "stageA").wait_for_function(frame_wait, arg="stage:theme")
+    child_frame(page, "stageA").wait_for_function(frame_wait, arg="stage:lang")
+    assert child_msgs(page, "stageA", "stage:theme")[-1]["theme"] == "light", "no class yet: the OS decides"
+    assert child_msgs(page, "stageA", "stage:lang")[-1]["lang"] == "en"
+    page.evaluate("() => document.documentElement.classList.add('theme-dark')")
+    child_frame(page, "stageA").wait_for_function(
+        "() => window.__msgs.filter(m => m.type === 'stage:theme').slice(-1)[0].theme === 'dark'")
+    page.evaluate("() => { document.documentElement.setAttribute('data-lang', 'de'); }")
+    child_frame(page, "stageA").wait_for_function(
+        "() => window.__msgs.filter(m => m.type === 'stage:lang').slice(-1)[0].lang === 'de'")
+    n = len(child_msgs(page, "stageA", "stage:theme"))
+    page.evaluate("() => document.documentElement.classList.add('unrelated')")
+    page.wait_for_timeout(150)
+    assert len(child_msgs(page, "stageA", "stage:theme")) == n, "only a real change is sent"
+    assert page.errors == []

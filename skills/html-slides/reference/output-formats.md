@@ -63,6 +63,7 @@ about a third), nothing more.
 node scripts/render-pdf.cjs path/to/deck.html path/to/deck.pdf
 node scripts/render-pdf.cjs deck.html deck.pdf --width 210 --height 297  # A4 portrait
 node scripts/render-pdf.cjs deck.html deck-dark.pdf --theme dark
+node scripts/render-pdf.cjs deck.html handout.pdf --notes      # notes page after each noted slide
 node scripts/render-pdf.cjs --probe   # where playwright was found
 ```
 
@@ -73,6 +74,11 @@ explicit size wins over the CSS one, orientation included. Every slide is one pa
 **Theme:** `--theme light|dark` sets `.theme-light` or `.theme-dark` on `<html>`
 for the render, without touching the viewer's saved choice. Without it the deck
 renders as it opens: the saved choice, else the OS (headless reports light).
+
+**Handout:** `--notes` sets `data-print-notes` on the deck for the render, and the
+engine prints a notes page after every slide that has `<aside class="notes">`.
+Putting `data-print-notes` on the deck element (`new-deck.py --deck-attr
+data-print-notes=`) makes the browser's own print do the same.
 
 **Why not `chrome --print-to-pdf` directly?**
 The slide engine relies on an `IntersectionObserver` to add `.visible` to each

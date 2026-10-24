@@ -9,7 +9,8 @@ what it writes and why.
 ```bash
 python3 skills/html-slides/scripts/new-deck.py --title "Quarterly review" --out deck.html \
     [--slides slides.html] [--preset SLUG] [--design DESIGN.md] [--lang en|de] \
-    [--with-stage] [--deck-attr data-NAME=VALUE ...] [--no-embed-fonts] [--force]
+    [--with-stage] [--with NAME ... | --with all] [--deck-attr data-NAME=VALUE ...] \
+    [--no-embed-fonts] [--force]
 
 python3 skills/html-slides/scripts/new-deck.py --refresh deck.html [--out other.html] \
     [--preset SLUG] [--design DESIGN.md] [--embed-fonts | --no-embed-fonts]
@@ -44,6 +45,7 @@ is generated and lives in a region the tool owns,
 | `slide-stage:css` | `<style>` | `assets/slide-stage.css`, only with `--with-stage` |
 | `slide-engine:js` | `<body>` | `assets/slide-engine.js`, byte for byte |
 | `slide-stage:js` | `<body>` | `assets/slide-stage.js`, only with `--with-stage` |
+| `deck-module:NAME` | `<body>` | `assets/modules/NAME.css` in its own `<style>` (when the module has one), then `assets/modules/NAME.js`, only with `--with NAME`; one region per module, sorted by name, after the engine and the stage (`reference/modules.md`) |
 
 The engine assets carry a version stamp on their first line (`slide-engine v2`),
 so an old copy is recognisable without a diff.
@@ -58,7 +60,10 @@ never inside a region and never directly after a region's end marker.
 
 `--refresh deck.html` rewrites only the regions a deck already carries, from the
 current assets, DESIGN.md and preset. Text outside them is never touched, no
-region is added, and a second run gives the same bytes. The preset is read back
+region is added, and a second run gives the same bytes. The modules a deck carries
+stay its set: their code is refreshed, none is added or dropped, and `--with` on a
+refresh is refused (build the slides into a fresh deck to change the set). A module
+whose file is gone is an error, and nothing is written. The preset is read back
 from the `deck-preset` comment unless `--preset` names another. Use it after an
 engine update, a DESIGN.md change, or to restyle a deck.
 
