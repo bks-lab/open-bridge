@@ -501,7 +501,12 @@ load-bearing order, condensed:
 13. **Ecosystem fragment**: `ecosystem.<org>.yaml` goes through Steps 4 to 12
     like any managed file (lock entry, 3-way merge on a local edit, listed by
     `diff`), copied verbatim from the overlay root; then idempotently ensure its
-    `@import` line in `CLAUDE.md`. Never block-merge.
+    `@import` line in `CLAUDE.md`, unless `context-budget.yaml` or
+    `context-budget.user.yaml` declares the fragment as a Phase 1 `card:`
+    ([`docs/context-index.md`](context-index.md)). Then the run prints
+    `indexed, not imported: <fragment>` and adds no import, since an import
+    next to a card is what `measure-context.py` reports as a contradiction.
+    Never block-merge.
 14. **Prune** files in the lock but absent from the new plan (delete if clean,
     prompt if modified).
 15. **Write the lockfile** (resolved SHA, manifest digest, timestamp, per-file

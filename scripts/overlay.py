@@ -95,6 +95,21 @@ except Exception as exc:  # pragma: no cover - defensive
 
 NO_SCRUB_LEAK = os.path.join(SCRIPT_DIR, "no-scrub-leak.py")
 
+
+def card_declared(repo_root: str, rel_path: str) -> bool:
+    """True when the context budget declares `rel_path` as a Phase 1 card.
+
+    Read through scripts/lib/context_index.py, the same function the meter and
+    the index use, so the three cannot disagree about what is indexed. Loaded
+    lazily: a consumer without the library (or without PyYAML) falls back to
+    the old behaviour, the @import, rather than failing the sync.
+    """
+    try:
+        lib = _load_module("context_index", os.path.join("lib", "context_index.py"))
+        return bool(lib.card_for(repo_root, rel_path))
+    except Exception:  # pragma: no cover - defensive
+        return False
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -1512,6 +1527,49 @@ def three_way(consumer: Consumer, cache: str, it: PlanItem,
 # Materialize (write phase, steps 11–16)
 # ---------------------------------------------------------------------------
 
+def wire_ecosystem_import(consumer: Consumer, manifest: dict, items: list,
+                          dry: bool):
+    """Step 13: the @import for a declared ecosystem fragment, or why not.
+
+    Shared by materialize and the --dry-run plan, so the plan reports the same
+    decision the real run makes. Returns the validated fragment name (or None),
+    which the git-exclude guard after it needs.
+    """
+    # The fragment's bytes went through the plan like any managed file; what
+    # is left here is the @import wiring, and a warning
+    # for a declared fragment the plan could not carry.
+    fragment = manifest.get("ecosystem_fragment")
+    if fragment and not valid_fragment_name(fragment):
+        # Defense-in-depth: validate_manifest already rejects this at add, and
+        # build_plan never plans it, but guard the @import too so sync/apply can
+        # never wire an out-of-name fragment (traversal / arbitrary name).
+        sys.stderr.write(
+            f"  REFUSE ecosystem_fragment '{fragment}': not a valid "
+            f"ecosystem.<org>.yaml name\n")
+        fragment = None
+    if fragment:
+        # By dest, not by kind: an overlay that also ships the file under
+        # source_root plans it as a tree file, and the @import is still due.
+        frag_item = next((it for it in items if it.dest == fragment), None)
+        if frag_item is None:
+            sys.stderr.write(
+                f"  WARN   manifest declares ecosystem_fragment '{fragment}' "
+                f"but it is absent from the overlay\n")
+        elif frag_item.state not in ("core-refused", "leak-refused", "error") and (
+                dry or os.path.exists(os.path.join(consumer.root, fragment))):
+            # A fragment the context budget declares as a Phase 1 card is read
+            # as an index (docs/context-index.md). Importing it as well loads it
+            # whole and makes measure-context.py report a contradiction, so the
+            # declaration wins and the import is left out.
+            if card_declared(consumer.root, fragment):
+                print(f"  indexed, not imported: {fragment}")
+            else:
+                wired = consumer.ensure_ecosystem_import(fragment, dry)
+                if wired:
+                    print(f"  @import {fragment} → CLAUDE.md")
+    return fragment
+
+
 def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
                 items: list[PlanItem], prune: list[dict], overlay_name: str,
                 url: str, ref: str, resolved: str, manifest_sha: str,
@@ -1778,31 +1836,7 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
             else:
                 sys.stderr.write(f"  KEEP   {pr['dest']}: orphan but modified\n")
 
-    # Ecosystem fragment (step 13). Its bytes went through the plan above like
-    # any managed file; what is left here is the @import wiring, and a warning
-    # for a declared fragment the plan could not carry.
-    fragment = manifest.get("ecosystem_fragment")
-    if fragment and not valid_fragment_name(fragment):
-        # Defense-in-depth: validate_manifest already rejects this at add, and
-        # build_plan never plans it, but guard the @import too so sync/apply can
-        # never wire an out-of-name fragment (traversal / arbitrary name).
-        sys.stderr.write(
-            f"  REFUSE ecosystem_fragment '{fragment}': not a valid "
-            f"ecosystem.<org>.yaml name\n")
-        fragment = None
-    if fragment:
-        # By dest, not by kind: an overlay that also ships the file under
-        # source_root plans it as a tree file, and the @import is still due.
-        frag_item = next((it for it in items if it.dest == fragment), None)
-        if frag_item is None:
-            sys.stderr.write(
-                f"  WARN   manifest declares ecosystem_fragment '{fragment}' "
-                f"but it is absent from the overlay\n")
-        elif frag_item.state not in ("core-refused", "leak-refused", "error") and (
-                dry or os.path.exists(os.path.join(consumer.root, fragment))):
-            wired = consumer.ensure_ecosystem_import(fragment, dry)
-            if wired:
-                print(f"  @import {fragment} → CLAUDE.md")
+    fragment = wire_ecosystem_import(consumer, manifest, items, dry)
 
     # Git-exclude guard (step 14): keep overlay-materialized org content OUT of
     # git (via the LOCAL .git/info/exclude, never tracked .gitignore) so a fork
@@ -1975,6 +2009,7 @@ def cmd_add(consumer: Consumer, args) -> int:
                               name, precedence, lock, None, interactive)
     render_plan(items, prune)
     if args.dry_run:
+        wire_ecosystem_import(consumer, manifest, items, True)
         print("\n[dry-run] no files written.")
         return 0
 
@@ -2030,6 +2065,7 @@ def _sync_one(consumer: Consumer, name: str, args) -> int:
                               lock, old_sha, interactive)
     render_plan(items, prune)
     if args.dry_run:
+        wire_ecosystem_import(consumer, manifest, items, True)
         print("\n[dry-run] no files written.")
         return 0
     counts = materialize(consumer, cache, manifest, defaults, items, prune,

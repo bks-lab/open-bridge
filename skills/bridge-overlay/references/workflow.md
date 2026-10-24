@@ -224,7 +224,11 @@ lives at the overlay **root** (not under `source_root`), and it is copied
 **verbatim** (no scope tripwire, no prompt-fields) and never narrowed by
 `select:`. Then **idempotently** ensure the `@ecosystem.<org>.yaml` `@import`
 line exists in `CLAUDE.md`, also when the overlay ships the same file under
-`source_root` as well. **Never block-merge** into `ecosystem.yaml`.
+`source_root` as well. **Exception:** when `context-budget.yaml` or
+`context-budget.user.yaml` declares the fragment as a Phase 1 `card:` (read via
+`card_for()` in `scripts/lib/context_index.py`, the source the meter uses), no
+import is added and the run, `--dry-run` included, prints
+`indexed, not imported: <fragment>`. **Never block-merge** into `ecosystem.yaml`.
 
 The engine marks every lock entry it writes with `fragment_managed: true`.
 Under that marker a fragment with no `files[]` entry is the consumer's own

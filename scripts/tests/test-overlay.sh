@@ -1532,6 +1532,68 @@ assert_grep "27i: confirmed: SKILL.md is updated" "$CON/$SK/SKILL.md" "UPSTREAM-
 
 # ───────────────────────────────────────────────────────────────────
 echo
+echo "── 28. an indexed fragment is not @-imported ───────────────────"
+# A registry declared as a Phase 1 card in context-budget(.user).yaml is read
+# as an index, not resident. The sync used to add the @import back on every
+# run, which measure-context.py then reported as a contradiction. Now the
+# declaration decides, read through the same function the meter and the
+# index use (scripts/lib/context_index.py), and the run says so.
+card_budget() {  # <consumer> : declare the fragment as a card, per instance
+  cat > "$1/context-budget.user.yaml" <<YAML
+items:
+  $FRAG:
+    optional: true
+    source: phase1
+    card:
+      kind: index
+YAML
+}
+
+# 28a. add: a declared card means no @import, and the output says why.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"; card_budget "$CON"
+run_overlay "$CON" add "file://$OV" --name example-org
+assert_rc "28a: add with an indexed fragment succeeds" 0
+assert_file "28a: the fragment is still materialized" "$CON/$FRAG"
+assert_nogrep "28a: no @import wired into CLAUDE.md" "$CON/CLAUDE.md" "@$FRAG"
+assert_out "28a: the run names it indexed" "indexed, not imported: $FRAG"
+
+# 28b. a later sync does not put it back (the reported case).
+edit_line "$OV/$FRAG" "$UP_OLD" "$UP_NEW"; commit_ov "$OV" frag-v2
+run_overlay "$CON" sync example-org --yes
+assert_rc "28b: sync succeeds" 0
+assert_nogrep "28b: sync does not re-add the @import" "$CON/CLAUDE.md" "@$FRAG"
+assert_out "28b: sync names it indexed" "indexed, not imported: $FRAG"
+
+# 28c. the dry-run plan says the same and writes nothing.
+edit_line "$OV/$FRAG" "$UP_NEW" "$UP_OLD"; commit_ov "$OV" frag-v3
+OUT="$(python3 "$OVERLAY" --repo-root "$CON" sync example-org --dry-run 2>&1)"
+case "$OUT" in *"indexed, not imported: $FRAG"*) pass "28c: dry-run names it indexed" ;; *) fail "28c: dry-run does not name it indexed" "$OUT" ;; esac
+case "$OUT" in *"@import $FRAG"*) fail "28c: dry-run still plans the @import" "$OUT" ;; *) pass "28c: dry-run plans no @import" ;; esac
+
+# 28d. a declaration in the CORE budget counts the same as a per-instance one.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+python3 - "$CON/context-budget.yaml" "$FRAG" <<'PY2'
+import sys, yaml
+p, frag = sys.argv[1:3]
+d = yaml.safe_load(open(p))
+d["items"][frag] = {"optional": True, "source": "phase1", "card": {"kind": "index"}}
+open(p, "w").write(yaml.safe_dump(d, sort_keys=False))
+PY2
+run_overlay "$CON" add "file://$OV" --name example-org
+assert_nogrep "28d: a CORE-budget card also suppresses the @import" "$CON/CLAUDE.md" "@$FRAG"
+
+# 28e. an instance entry WITHOUT a card replaces the CORE one wholesale, as in
+# the meter, so the fragment is imported again.
+cat > "$CON/context-budget.user.yaml" <<YAML
+items:
+  $FRAG:
+    optional: true
+YAML
+run_overlay "$CON" sync example-org --yes
+assert_grep "28e: an entry without a card keeps the @import" "$CON/CLAUDE.md" "@$FRAG"
+
+# ───────────────────────────────────────────────────────────────────
+echo
 echo "════════════════════════════════════════════════════════════════"
 echo "RESULT: $PASS passed, $FAIL failed"
 echo "════════════════════════════════════════════════════════════════"
