@@ -597,7 +597,11 @@ details[open] .cl-chev{transform:rotate(45deg)}
 (function(){
   "use strict";
 
+  // GitHub serves at most 100 releases per request. Reading only the first page
+  // dropped every older release once the repo passed 100, including the note on
+  // the re-based version line and every deep link into it, so all pages are read.
   var API = "https://api.github.com/repos/bks-lab/open-bridge/releases?per_page=100";
+  var MAX_PAGES = 20;        // 2000 releases; a guard against a runaway loop, not a limit we expect to meet
   var RELEASES_URL = "https://github.com/bks-lab/open-bridge/releases";
   var RELEASING_DOC = "https://github.com/bks-lab/open-bridge/blob/main/docs/releasing.md";
   var OPEN_TOP = 3;          // the newest releases show their notes open
@@ -935,13 +939,33 @@ details[open] .cl-chev{transform:rotate(45deg)}
     document.getElementById("cl-root").innerHTML = stateBox(en, de, true);
   }
 
+  // Page through the releases until a short page says there are no more. A
+  // failure on the first page is a failure; a failure on a later one keeps what
+  // already arrived, which is more than the page showed before.
+  function fetchAll(){
+    var all = [];
+    function page(n){
+      return fetch(API + "&page=" + n, { headers: { "Accept": "application/vnd.github+json" } })
+        .then(function(resp){
+          if(!resp.ok){ throw new Error("HTTP " + resp.status); }
+          return resp.json();
+        })
+        .then(function(batch){
+          if(!Array.isArray(batch)){ throw new Error("not a list"); }
+          all = all.concat(batch);
+          return (batch.length === 100 && n < MAX_PAGES) ? page(n + 1) : all;
+        })
+        .catch(function(err){
+          if(n === 1){ throw err; }
+          return all;
+        });
+    }
+    return page(1);
+  }
+
   function init(){
     if(!document.getElementById("cl-root")) return;
-    fetch(API, { headers: { "Accept": "application/vnd.github+json" } })
-      .then(function(resp){
-        if(!resp.ok){ throw new Error("HTTP " + resp.status); }
-        return resp.json();
-      })
+    fetchAll()
       .then(function(releases){
         if(!Array.isArray(releases) || releases.length === 0){
           failed("No releases yet.", "Noch keine Releases.");
