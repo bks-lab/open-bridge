@@ -40,6 +40,9 @@ USER_PATTERNS = [
     r"^rules/user/",                                  # user-tier rules (applications, …) — folder = tier
     r"^docs/applications\.md$",                       # personal applications feature — user-tier
     r"^bridge-config\.yaml$",
+    r"^ecosystem\.yaml$",                              # instance-base registry: org, local_root and paths of ONE machine.
+                                                       # Was `org` until 2026-10-24; an overlay shares its own
+                                                       # ecosystem.<org>.yaml, never a member's base file.
     r"^bridge-deck\.config\.yaml$",
     r"^overlays\.lock\.yaml$",                         # generated org-overlay lockfile — local-only, never promoted
     r"^\.bridge/",                                     # sparse org-overlay cache (.bridge/overlays/<name>/) — local-only
@@ -130,7 +133,6 @@ USER_PATTERNS = [
 ]
 
 ORG_PATTERNS = [
-    r"^ecosystem\.yaml$",                             # instance-base ecosystem (org overlay carries it)
     # ANY org's registry fragment — `ecosystem.<org>.yaml`. This matched a single
     # literal filename until 2026-08-01, which failed twice over: another org's
     # fragment classified `core` and shipped to the public repo, and a CORE file

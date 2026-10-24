@@ -71,11 +71,11 @@ checked with no frontmatter present.
 |---|---|---|
 | a schema's own `_tests/` suite, for the families in `WRAPPER_TESTS_CORE` | `infra/remotes/_tests/case.yaml`, `workflow/workloads/_tests/case.yaml` | `core` |
 | personal folders and the personal registry | `rules/personal/example.md`, `ecosystem.personal.yaml`, `ecosystem.local.yaml` | `personal` |
-| whole USER folders and files | `work/log.md`, `imports/example.pdf`, `rules/user/example.md`, `protocols/standing-orders/user/example.md`, `.claude/mods/example/hook.js`, `bridge-config.yaml`, `overlays.lock.yaml`, `edges.yaml`, `.bridge-origin`, `.gitignore` | `user` |
+| whole USER folders and files | `work/log.md`, `imports/example.pdf`, `rules/user/example.md`, `protocols/standing-orders/user/example.md`, `.claude/mods/example/hook.js`, `bridge-config.yaml`, `ecosystem.yaml`, `overlays.lock.yaml`, `edges.yaml`, `.bridge-origin`, `.gitignore` | `user` |
 | cluster-wrapper instances of the listed families | `identity/personas/example.yaml`, `identity/agent/SOUL.md`, `infra/backups/_state.yaml`, `workflow/projects/example.yaml` | `user` |
 | enumerated folders, anything not on the shipped list | `agents/example/agent.yaml`, `mods/example/hook.js`, `themes/example.yaml`, `skills/bridge-greeting/assets/logos/example.txt` | `user` |
 | skill journals | `skills/example/LEARNINGS.md` | `user` |
-| org registries and org rules | `ecosystem.yaml`, `ecosystem.acme.yaml`, `rules/org/example.md` | `org` |
+| org registries and org rules | `ecosystem.acme.yaml`, `rules/org/example.md` | `org` |
 | `scripts/` outside `SCRIPTS_CORE_ALLOWLIST` | `scripts/example-tool.sh` | `user` |
 | a skill folder without a readable `SKILL.md` | `skills/example/references/notes.md` | `user` |
 | any other wrapper family, deny by default | `workflow/meetings/example.yaml`, `identity/mail-footers/example.yaml` | `user` |
@@ -86,13 +86,11 @@ checked with no frontmatter present.
 is where a file lives in git: instance data sits on your `user/*` branch and is
 tracked only on a private origin
 ([`structure.md` § gitignore policy](structure.md#gitignore-policy)). The other
-is where `/promote` may send it, which is what the tables above answer. They
-mostly agree. `ecosystem.yaml` is where they part: it is instance data, and its
-promote tier is `org`, because the router treats it as the instance-base
-registry an org overlay carries. A promote therefore offers it to the org
-overlay and never to open-bridge. Until that routing is revisited, an instance
-whose registry names private repos keeps it out of a promote by selecting
-files.
+is where `/promote` may send it, which is what the tables above answer. For the
+registry they agree: `ecosystem.yaml` is the instance base (`org`, `local_root`,
+paths of one machine) and routes `user`, so no promote offers it anywhere. What
+an org shares travels as its own fragment, `ecosystem.<org>.yaml`, which routes
+`org`.
 
 ## Option C — Current Model (USER Branch = Extension)
 
@@ -126,7 +124,7 @@ your extension. This is the working model.
 | **Work** | `work/` | USER | Logs, board, active/ongoing/done tasks |
 | **Config** | `bridge-config.yaml` | USER · tracked on a private origin, excluded otherwise | Theme, language, features, identity-block, integrations |
 | **Bridge-Deck Config** | `bridge-deck.config.yaml` | USER | Daemon collector paths for the Pixel-Art Visualizer |
-| **Ecosystem** | `ecosystem.yaml` | USER data · promote tier `org` ([§ Scope model](#scope-model)) | Repo registry, created at onboarding, absent on a fresh clone, tracked on a private origin and excluded otherwise (`scripts/user-data.py`) |
+| **Ecosystem** | `ecosystem.yaml` | USER ([§ Scope model](#scope-model)) | Repo registry, created at onboarding, absent on a fresh clone, tracked on a private origin and excluded otherwise (`scripts/user-data.py`) |
 
 ### How it works today
 

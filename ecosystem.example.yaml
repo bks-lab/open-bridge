@@ -1,21 +1,24 @@
 # ecosystem.example.yaml — copy to ecosystem.yaml and adapt at onboarding.
 #
 # The repo registry: the single source of truth for repos, infrastructure, and
-# workspaces. It is @-imported by CLAUDE.md, so it is loaded every session —
-# keep entries LEAN. One-line descriptions; push long narrative into docs/ and
-# point to it. No PII, no secrets.
+# workspaces. It is NOT @-imported: Phase 1 indexes it with
+# `python3 scripts/context-index.py ecosystem.yaml` (settings plus one line per
+# entry), and `--get <name>` fetches an entry when the work names it
+# (docs/context-index.md). Keep entries lean anyway: one-line descriptions, push
+# long narrative into docs/ and point to it. No PII, no secrets.
 #
-# Tier: this file is registry/org content. Personal entries that carry PII
-# (private clients, personal repos) belong in a separate ecosystem.local.yaml
-# (user scope, never promoted), loaded alongside via @ecosystem.local.yaml.
+# Tier: this file is the INSTANCE BASE (your org name, local_root, paths of this
+# machine) and routes `user`: no promote offers it anywhere. Personal entries that
+# carry PII (private clients, personal repos) go in ecosystem.personal.yaml, which
+# routes `personal`.
 #
-# Org-overlay fragment: when you subscribe to an org overlay (/overlay add),
-# its registry slice is materialized as a SEPARATE root file ecosystem.<org>.yaml
-# (e.g. ecosystem.example-org.yaml) and wired in via an @ecosystem.<org>.yaml
-# import appended to CLAUDE.md — it is NEVER merged into this file. That keeps
-# the overlay's entries hash-pinned and re-syncable on their own, and removable
-# cleanly on /overlay remove. Your own registry stays here; the org's plugs in
-# beside it. See docs/org-overlays.md.
+# Org-overlay fragment: when you subscribe to an org overlay (/overlay add), its
+# registry slice is materialized as a SEPARATE root file ecosystem.<org>.yaml
+# (e.g. ecosystem.example-org.yaml), NEVER merged into this file, so the overlay's
+# entries stay hash-pinned and re-syncable on their own and removable cleanly on
+# /overlay remove. The sync adds an @ecosystem.<org>.yaml import to CLAUDE.md only
+# when the context budget does not declare that fragment as a Phase 1 card. Your
+# own registry stays here; the org's plugs in beside it. See docs/org-overlays.md.
 
 org: your-org
 local_root: ~/Developer/your-org          # local clones live under <local_root>/<repo>
