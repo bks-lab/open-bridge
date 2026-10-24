@@ -274,7 +274,7 @@ html.dark .code{background:var(--code-bg)}
   padding:0 4px 8px;
 }
 
-/* README verbatim artifact block + diff gutter */
+/* quoted artifact block (data-verbatim) + diff gutter */
 .artifact{
   font-family:var(--mono);font-size:14px;line-height:1.75;
   background:var(--surface-subtle);border:1px solid var(--border);
@@ -970,7 +970,7 @@ html.story-static .story-list{display:flex;flex-wrap:wrap;gap:10px;justify-conte
       <div>
         <!-- Quoted from examples/agency/work/log.md, the same row the hero canvas types last.
              scripts/check-figure-counts.py holds every row of a data-verbatim block to its file. -->
-        <div class="code-label"><span>work/log.md</span><span>$ cat work/log.md</span></div>
+        <div class="code-label"><span>work/log.md</span><span>$ grep -e '^## Tue 24.06' -e '14:30' work/log.md</span></div>
         <div class="artifact" data-verbatim="examples/agency/work/log.md" aria-label="A work log row, diff-able plain text">
           <div class="row"><span class="gut"> </span><span class="ln"><span class="cmt">## Tue 24.06</span></span></div>
           <div class="row hl"><span class="gut"> </span><span class="ln">| <span class="tm">2026-06-24 14:30</span> | <span class="k">📝</span> | <span class="who">bigcorp</span> | logged the Stripe webhook-secret root cause + next steps in the task STATUS |</span></div>

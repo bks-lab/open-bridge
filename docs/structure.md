@@ -39,7 +39,7 @@ The detailed per-path tables below are the reference; this map is the orientatio
 
 ```
 bridge-config.yaml      USER     Main config (identity, theme, integrations)
-ecosystem.yaml          USER     Repo registry (created at onboarding; tracked on a private origin, kept out of git otherwise, see § gitignore policy). Promote routes it org: it travels to an org overlay, never to the public upstream
+ecosystem.yaml          USER→org Repo registry (created at onboarding; tracked on a private origin, kept out of git otherwise, see § gitignore policy). Promote routes it org: it travels to an org overlay, never to the public upstream
 bridge-deck.config.yaml USER     Daemon collectors for the pixel dashboard
 AGENTS.md               CORE     Canonical operating manual (all agents)
 CLAUDE.md               CORE     Thin Claude-Code wrapper — imports AGENTS.md

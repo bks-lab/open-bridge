@@ -32,11 +32,11 @@ only worth its friction if clearing it is one command, so --write exists.
 from __future__ import annotations
 
 import collections
-import html
 import importlib.util
 import re
 import subprocess
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -334,25 +334,72 @@ def rewrite_ring(src: str, census: dict[str, dict]) -> str:
 # ---------------------------------------------------------------------------
 
 VERBATIM_PAGES = ("docs/index.html", "docs/concepts.html")
-_VERBATIM_BLOCK = re.compile(
-    r'<div class="artifact"[^>]*\bdata-verbatim="(?P<path>[^"]+)"[^>]*>(?P<body>.*?)\n\s*</div>',
-    re.S,
-)
-_ROW_TEXT = re.compile(r'<span class="ln">(.*)</span></div>')
 # What a reader is told. Comments are stripped first, so a note to the next
 # author ("verbatim from the project brief") is not a claim on the page.
 # One pattern per language: a bilingual page says the same thing twice, once
 # for each reader, and that is still one quoted block.
-_CLAIMS = (re.compile(r"character-for-character|verbatim from", re.I),
-           re.compile(r"Zeichengenau|wortgetreu", re.I))
+_CLAIMS = (re.compile(r"character-for-character|verbatim from", re.IGNORECASE),
+           re.compile(r"Zeichengenau|wortgetreu", re.IGNORECASE))
+# A row that carries no `ln` span has no text the check could compare. It is
+# kept as this marker so it is reported rather than skipped.
+NO_TEXT = None
 
 
-def verbatim_blocks(src: str) -> list[tuple[str, list[str]]]:
-    out = []
-    for m in _VERBATIM_BLOCK.finditer(src):
-        rows = [html.unescape(re.sub(r"<[^>]+>", "", r)) for r in _ROW_TEXT.findall(m.group("body"))]
-        out.append((m.group("path"), rows))
-    return out
+class _Quotes(HTMLParser):
+    """Collect every data-verbatim block and the text of each of its rows.
+
+    Rows are found as elements, not as lines, so a row split over two lines or
+    closed with a space before `</div>` is still compared. A regex over lines
+    skipped those shapes, and a block of invented rows in them came back green.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.blocks: list[tuple[str, list]] = []
+        self._stack: list[str] = []   # role of each open div/span: block, row, ln, other
+        self._text: list[str] | None = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag not in ("div", "span"):
+            return
+        a = dict(attrs)
+        classes = (a.get("class") or "").split()
+        role = "other"
+        if tag == "div" and "data-verbatim" in a and "block" not in self._stack:
+            self.blocks.append((a["data-verbatim"], []))
+            role = "block"
+        elif tag == "div" and "row" in classes and self._stack[-1:] == ["block"]:
+            self.blocks[-1][1].append(NO_TEXT)
+            role = "row"
+        elif tag == "span" and "ln" in classes and "row" in self._stack and "ln" not in self._stack:
+            self._text = []
+            role = "ln"
+        self._stack.append(role)
+
+    def handle_endtag(self, tag):
+        if tag not in ("div", "span") or not self._stack:
+            return
+        role = self._stack.pop()
+        if role == "ln" and self._text is not None:
+            self.blocks[-1][1][-1] = "".join(self._text)
+            self._text = None
+
+    def handle_data(self, data):
+        if self._text is not None:
+            self._text.append(data)
+
+
+def verbatim_blocks(src: str) -> list[tuple[str, list]]:
+    """Each data-verbatim block as (source path, row texts); a row without text is NO_TEXT.
+
+    The rows must appear in the source in the order shown. They need not be
+    adjacent: a block may quote a heading and a row further down, so its label
+    should say how the lines were picked (a grep, not a cat).
+    """
+    parser = _Quotes()
+    parser.feed(src)
+    parser.close()
+    return parser.blocks
 
 
 def verbatim_problems(pages=None) -> list[str]:
@@ -361,7 +408,7 @@ def verbatim_problems(pages=None) -> list[str]:
         page = Path(page)
         src = page.read_text(encoding="utf-8")
         blocks = verbatim_blocks(src)
-        visible = re.sub(r"<!--.*?-->|/\*.*?\*/", "", src, flags=re.S)
+        visible = re.sub(r"<!--.*?-->|/\*.*?\*/", "", src, flags=re.DOTALL)
         claims = max(len(c.findall(visible)) for c in _CLAIMS)
         if claims > len(blocks):
             problems.append(
@@ -378,6 +425,9 @@ def verbatim_problems(pages=None) -> list[str]:
                 problems.append(f"{page.name}: data-verbatim block for {path} has no rows")
             at = 0
             for row in rows:
+                if row is NO_TEXT:
+                    problems.append(f"{page.name}: a row quoting {path} carries no ln span to compare")
+                    continue
                 try:
                     at = lines.index(row, at) + 1
                 except ValueError:

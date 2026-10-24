@@ -941,7 +941,8 @@ details[open] .cl-chev{transform:rotate(45deg)}
 
   // Page through the releases until a short page says there are no more. A
   // failure on the first page is a failure; a failure on a later one keeps what
-  // already arrived, which is more than the page showed before.
+  // already arrived and marks the list as cut short, so a missing deep link to
+  // an old release is explained on the page instead of vanishing quietly.
   function fetchAll(){
     var all = [];
     function page(n){
@@ -957,6 +958,7 @@ details[open] .cl-chev{transform:rotate(45deg)}
         })
         .catch(function(err){
           if(n === 1){ throw err; }
+          all.truncated = true;
           return all;
         });
     }
@@ -972,6 +974,12 @@ details[open] .cl-chev{transform:rotate(45deg)}
           return;
         }
         render(releases);
+        if(releases.truncated){
+          document.getElementById("cl-root").insertAdjacentHTML("afterbegin", stateBox(
+            "Showing the newest " + releases.length + " releases. GitHub did not answer for the older ones, see the full list there.",
+            "Hier stehen die neuesten " + releases.length + " Releases. Für die älteren hat GitHub nicht geantwortet, die volle Liste steht dort.",
+            true));
+        }
       })
       .catch(function(){
         failed(

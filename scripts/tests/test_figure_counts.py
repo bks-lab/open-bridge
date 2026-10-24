@@ -27,8 +27,8 @@ Run: python3 -m pytest scripts/tests/test_figure_counts.py -q
 from __future__ import annotations
 
 import importlib.util
-import re
 import pathlib
+import re
 
 import pytest
 
@@ -298,3 +298,41 @@ def test_a_claim_without_a_marked_source_is_reported(tmp_path):
     page = tmp_path / "p.html"
     page.write_text("<p>(Copied character-for-character from the README.)</p>\n", encoding="utf-8")
     assert cfc.verbatim_problems([page])
+
+
+# Formatting alone must not hide a row from the check: a row split over two
+# lines, or with a space before its closing tag, is still a row the reader sees.
+@pytest.mark.parametrize("row", [
+    '<div class="row"><span class="gut"> </span><span class="ln">| split invented row |</span>\n  </div>',
+    '<div class="row"><span class="gut"> </span><span class="ln">| spaced invented row |</span> </div>',
+    '<div class="row">\n  <span class="ln">| wrapped invented row |</span>\n</div>',
+])
+def test_a_row_in_any_shape_is_compared(tmp_path, row):
+    page = tmp_path / "p.html"
+    page.write_text(
+        '<div class="artifact" data-verbatim="examples/agency/work/log.md">\n'
+        f'  {row}\n'
+        '</div>\n'
+        '<p>(Copied character-for-character from examples/agency/work/log.md.)</p>\n',
+        encoding="utf-8",
+    )
+    problems = cfc.verbatim_problems([page])
+    assert any("invented row" in p for p in problems), problems
+
+
+def test_a_row_without_a_text_span_is_reported(tmp_path):
+    page = tmp_path / "p.html"
+    page.write_text(
+        '<div class="artifact" data-verbatim="examples/agency/work/log.md">\n'
+        '  <div class="row"><span class="gut"> </span><span class="txt">| no ln span |</span></div>\n'
+        '</div>\n',
+        encoding="utf-8",
+    )
+    assert any("no ln span" in p for p in cfc.verbatim_problems([page]))
+
+
+def test_the_real_rows_are_all_extracted():
+    src = (REPO / "docs" / "index.html").read_text(encoding="utf-8")
+    [(path, rows)] = cfc.verbatim_blocks(src)
+    assert path == "examples/agency/work/log.md"
+    assert len(rows) == 2 and rows[0] == "## Tue 24.06"
