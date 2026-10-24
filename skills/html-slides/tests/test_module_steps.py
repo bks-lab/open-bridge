@@ -227,3 +227,18 @@ def test_reduced_motion_still_steps(open_html, page):
         assert shown(page, "b") == [True, False, False], "no transition to wait for"
     finally:
         page.emulate_media(reduced_motion="null")
+
+
+def test_a_highlighted_line_keeps_the_block_background(open_html):
+    """The token colours are tuned against the code background. A tinted line under
+    them costs contrast: the design preset's accent keyword fell to 4.37:1 in dark on
+    accent-dim. The current group is marked by the bar and by dimming the rest."""
+    page = open_deck(open_html, steps_deck(CODE % "1|*"))
+    page.evaluate("() => window.SlideDeck.goTo(1)")
+    wait_settled(page, 1)
+    bg = page.evaluate("""() => {
+      const on = document.querySelector('#b code .code-line.is-on');
+      return [getComputedStyle(on).backgroundColor, getComputedStyle(on).boxShadow];
+    }""")
+    assert bg[0] in ("rgba(0, 0, 0, 0)", "transparent"), bg
+    assert "inset" in bg[1], bg

@@ -410,3 +410,31 @@ def test_back_link_with_pages_travels_as_a_payload_and_opens(browser, tree, tmp_
         assert page.errors == []
     finally:
         ctx.close()
+
+
+def test_a_style_tag_written_by_a_script_is_not_read_as_css(tmp_path):
+    """A script that builds a page in a string ('<style>' + css + '<\\/style>') and later
+    calls URL.revokeObjectURL(x) must not look like a CSS url(x) to the safety net:
+    the presenter module does exactly this, and the send copy was refused."""
+    page = tmp_path / "deck.html"
+    page.write_text(
+        "<!doctype html><html><head><style>body{margin:0}</style></head><body>"
+        "<script>var html = '<style>' + css + '<\\/style>';"
+        " var pageUrl = null; function f() { URL.revokeObjectURL(pageUrl); }</script>"
+        "<style>p{margin:0}</style><div style=\"color:red\">x</div></body></html>", encoding="utf-8")
+    out = tmp_path / "out.html"
+    r = run(SCRIPT, page, "--out", out)
+    assert r.returncode == 0, r.stderr
+    assert "pageUrl" not in r.stderr
+
+
+def test_a_css_url_in_a_real_style_still_counts(tmp_path):
+    from importlib import util
+    spec = util.spec_from_file_location("bundle_mod", SCRIPT)
+    mod = util.module_from_spec(spec)
+    sys.modules["bundle_mod"] = mod
+    spec.loader.exec_module(mod)
+    html = ("<style>a{background:url(missing.png)}</style>"
+            "<div style=\"background:url(other.png)\"></div>"
+            "<script>var s = 'style=\"background:url(js.png)\"';</script>")
+    assert mod.leftover_refs(html) == ["missing.png", "other.png"]

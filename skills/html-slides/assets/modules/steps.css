@@ -13,11 +13,13 @@
 .code-line { display: block; transition: opacity 0.3s ease, background-color 0.3s ease; }
 .code-line:empty::before { content: "\200b"; }
 .code-line.is-dim { opacity: 0.35; }
-.code-line.is-on { background: var(--accent-dim); box-shadow: inset 3px 0 0 var(--accent); }
+/* the current group: a bar, and the other lines dimmed. No tint under the text: the token
+   colours are tuned against the code background, and a tint costs them contrast. */
+.code-line.is-on { box-shadow: inset 3px 0 0 var(--accent); }
 
 @media print {
   .slide .step-hidden, .slide .step-shown, .slide .step-past, .code-line {
     visibility: visible !important; opacity: 1 !important; transform: none !important; transition: none !important;
   }
-  .code-line.is-on { background: none; box-shadow: none; }
+  .code-line.is-on { box-shadow: none; }
 }

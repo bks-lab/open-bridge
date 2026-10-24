@@ -650,8 +650,18 @@ def leftover_refs(html: str, allow_remote: bool = False) -> list[str]:
                             check(item.split()[0])
                 else:
                     check(a.value)
-    css_text = "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style\s*>", html, re.S | re.I))
-    css_text += "\n" + "\n".join(htmllib.unescape(v) for v in re.findall(r'\bstyle\s*=\s*"([^"]*)"', html, re.I))
+    # CSS only from real <style> elements and style attributes of real tags: a script that
+    # writes '<style>' into a string, or calls URL.revokeObjectURL(x), is not CSS.
+    css_parts = []
+    for seg in SEGMENT_RE.finditer(html):
+        text = seg.group(0)
+        if text[:6].lower() == "<style":
+            css_parts.append(text[text.index(">") + 1:re.search(r"</style\s*>$", text, re.I).start()])
+    for m in _open_tags(html):
+        for a in Bundler._attrs(m.group(2)):
+            if a.name.lower() == "style" and a.value:
+                css_parts.append(htmllib.unescape(a.value))
+    css_text = "\n".join(css_parts)
     css_text = CSS_COMMENT_RE.sub("", css_text)
     for m in CSS_URL_RE.finditer(css_text):
         check(next(g for g in m.groups() if g is not None))
