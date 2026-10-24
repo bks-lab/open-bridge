@@ -13,7 +13,9 @@
         --archetype flow --title "..." --out work/tasks/<slug>/deliverables/x.html
 
   Then edit the MODEL block at the top of the script: geometry, ITEMS, D and
-  TXT are the whole surface you need to touch for a new domain.
+  TXT are the whole surface you need to touch for a new domain. PARAMS names
+  the scenario values a reader may change (they travel in the link); TABLE says
+  how the state reads as rows.
 -->
 
 <!--@style-->
@@ -30,8 +32,18 @@ main.wrap{max-width:1240px}
 .sim-more__n{fill:var(--ink);font-family:var(--font-mono);font-size:10px;font-weight:600}
 
 <!--@markup-->
-<p class="sim-hint" data-de>Leertaste startet und hält an. R setzt zurück. 1 2 3 wählen das Tempo.</p>
-<p class="sim-hint" data-en>Space runs and pauses. R resets. 1 2 3 pick the speed.</p>
+<p class="sim-hint" data-de>Leertaste startet und hält an. Pfeil links geht eine Modellsekunde zurück. R setzt zurück. 1 2 3 wählen das Tempo.</p>
+<p class="sim-hint" data-en>Space runs and pauses. Left arrow goes back one model second. R resets. 1 2 3 pick the speed.</p>
+
+<!-- Scenario values. Each one is a PARAMS entry in the model, travels in the
+     link (#approach=2) when it differs from its default, and resets the run. -->
+<div class="sim-params">
+  <label class="sim-param">
+    <span><span data-de>Unterwegs zur Einordnung, höchstens</span><span data-en>Heading for the classifier, at most</span></span>
+    <input type="range" min="1" max="5" step="1" value="3" data-sim-param="approach">
+    <output data-sim-param-out="approach">3</output>
+  </label>
+</div>
 
 <div class="sim-bar">
   <!-- One span per state, each with its own DE/EN pair: the engine sets
@@ -44,6 +56,9 @@ main.wrap{max-width:1240px}
   </button>
   <!-- This archetype has no discrete step, so it passes no stepOnce and the
        engine removes this button rather than offering a dead control. -->
+  <button class="sim-btn" type="button" data-sim-back>
+    <span data-de>Zurück</span><span data-en>Back</span>
+  </button>
   <button class="sim-btn" type="button" data-sim-step>
     <span data-de>Ein Schritt</span><span data-en>One step</span>
   </button>
@@ -66,6 +81,22 @@ main.wrap{max-width:1240px}
   <div class="sim-clock">
     <span data-de>Modellzeit</span><span data-en>Model time</span> <b id="clock">00:00</b>
   </div>
+</div>
+
+<!-- The timeline: every position of the run, reachable by dragging. The model
+     advances in fixed ticks, so a position is one state, whichever way it was
+     reached. "Copy link" carries the scenario values and this position. -->
+<div class="sim-timeline" data-sim-timeline>
+  <input type="range" min="0" max="0" value="0" step="1" data-sim-scrub
+         aria-label="Timeline" data-aria-de="Zeitleiste" data-aria-en="Timeline">
+  <span class="sim-timeline__time" data-sim-scrub-time>00:00 / 00:00</span>
+  <button class="sim-btn" type="button" data-sim-copy-link>
+    <span data-state-idle><span data-de>Link kopieren</span><span data-en>Copy link</span></span>
+    <span data-state-copied><span data-de>Link kopiert</span><span data-en>Link copied</span></span>
+    <span data-state-manual><span data-de>Link unten markiert</span><span data-en>Link selected below</span></span>
+  </button>
+  <input class="sim-link" type="text" readonly data-sim-link hidden
+         aria-label="Link to this view" data-aria-de="Link auf diese Ansicht" data-aria-en="Link to this view">
 </div>
 
 <p class="sim-reduced-note" data-sim-reduced-note hidden>
@@ -106,6 +137,17 @@ main.wrap{max-width:1240px}
     is the way back for an item that was sent back. Whatever stands in front of a station is
     its queue.</span>
 </p>
+
+<!-- The same state as a table: the text alternative to the stage. -->
+<p style="margin:12px 0 0">
+  <button class="sim-btn" type="button" data-sim-table-toggle aria-controls="simTableBox">
+    <span data-state-off><span data-de>Als Tabelle zeigen</span><span data-en>Show as table</span></span>
+    <span data-state-on><span data-de>Tabelle ausblenden</span><span data-en>Hide table</span></span>
+  </button>
+</p>
+<div class="sim-table-wrap" id="simTableBox" hidden>
+  <table class="sim-table" id="simTable"></table>
+</div>
 
 <div class="sim-panels">
   <section class="sim-panel">
@@ -213,6 +255,32 @@ var TXT = {
     { de: 'abgeschlossen',        en: 'closed' },
     { de: 'an Menschen übergeben', en: 'handed to a person' }
   ],
+  where: {
+    pre:      { de: 'noch nicht eingegangen', en: 'not yet received' },
+    q_in:     { de: 'wartet im Eingang',      en: 'waiting in intake' },
+    q_cls:    { de: 'wartet auf die Einordnung', en: 'waiting for the classifier' },
+    q_rev:    { de: 'wartet auf die Prüfung', en: 'waiting for review' },
+    q_spec:   { de: 'wartet auf die Fachstelle', en: 'waiting for the specialist' },
+    to_rev:   { de: 'in der Einordnung',      en: 'at the classifier' },
+    to_spec:  { de: 'in der Prüfung',         en: 'at review' },
+    out:      { de: 'bei der Fachstelle',     en: 'at the specialist' },
+    in:       { de: 'unterwegs zur Einordnung', en: 'on the way to the classifier' },
+    check:    { de: 'unterwegs zur Prüfung',  en: 'on the way to review' },
+    back:     { de: 'zurück zur Einordnung',  en: 'sent back to the classifier' },
+    fan:      { de: 'unterwegs zur Fachstelle', en: 'on the way to the specialist' },
+    toOut:    { de: 'unterwegs zum Ergebnis', en: 'on the way to the outcome' },
+    binned:   { de: 'im Ergebnisfeld',        en: 'in an outcome field' }
+  },
+  review: {
+    none:     { de: 'noch nicht geprüft', en: 'not reviewed yet' },
+    ok:       { de: 'bestätigt',          en: 'confirmed' },
+    warn:     { de: 'korrigiert',         en: 'corrected' },
+    crit:     { de: 'zurückgewiesen',     en: 'sent back' }
+  },
+  cols: [
+    { de: 'Vorgang', en: 'Item' }, { de: 'Fachgebiet', en: 'Area' }, { de: 'Wo', en: 'Where' },
+    { de: 'Prüfung', en: 'Review' }, { de: 'Ergebnis', en: 'Outcome' }
+  ],
   step: {
     intake:    { de: 'Meldung aufgenommen, Eingangsnummer vergeben.',
                  en: 'Report received, intake number assigned.' },
@@ -229,7 +297,12 @@ var TXT = {
 
 /* Durations in model milliseconds. One display second is one model minute. */
 var D = { in: 900, classify: 800, check: 900, review: 700, back: 1300, fan: 1000, spec: 1400, out: 900 };
-var APPROACH_MAX = 3;    /* items allowed to be heading for the classifier at once */
+var APPROACH_MAX = 3;    /* default: items allowed to be heading for the classifier at once */
+/* Values a reader may change. Each one has a control in the markup
+   ([data-sim-param="approach"]) and travels in the link when it differs. */
+var P = Sim.params({
+  approach: { value: APPROACH_MAX, min: 1, max: 5 }
+});
 /* Model minutes shown before the run starts. 0 means the clock reads 00:00
    until the run moves: a clock that already shows a time of day before
    anything happened reads as a run that started without the viewer. Set a
@@ -315,7 +388,7 @@ for (j = 0; j < 2; j++) {
 }
 
 /* One group per item, built once and moved, never rebuilt per frame. */
-var items = ITEMS.map(function (spec) {
+var items = ITEMS.map(function (spec, k) {
   var g = Sim.svg('g', { 'class': 'sim-token' }, gTokens);
   if (spec.follow) {
     g.setAttribute('data-follow', 'yes');
@@ -326,7 +399,7 @@ var items = ITEMS.map(function (spec) {
   label.textContent = spec.id;
   Sim.svg('rect', { 'class': 'sim-token__track', x: -32, y: 12, width: 64, height: 3, rx: 1.5 }, g);
   var bar = Sim.svg('rect', { 'class': 'sim-token__bar', x: -32, y: 12, width: 0, height: 3, rx: 1.5 }, g);
-  return { spec: spec, el: g, bar: bar, x: 0, y: 0, shown: false };
+  return { k: k, spec: spec, el: g, bar: bar, x: 0, y: 0, shown: false };
 });
 
 /* A stack shows only as many tokens as fit. The rest is not dropped silently:
@@ -359,7 +432,7 @@ function blank() {
   tally = { ok: 0, corrected: 0, rejected: 0 };
   verdictShown = false;
   items.forEach(function (t) {
-    t.phase = 'pre'; t.t0 = 0; t.dur = 0; t.route = null; t.mark = null;
+    t.phase = 'pre'; t.t0 = 0; t.dur = 0; t.route = null; t.routeKey = null; t.next = null; t.mark = null;
     t.pass = 0; t.progress = 0; t.shown = false;
   });
 }
@@ -407,7 +480,7 @@ function step(dt) {
   /* Release from intake, throttled by what is already heading for the
      classifier. Without the throttle the whole intake leaves at once and no
      queue ever forms, which is the one thing the picture is meant to show. */
-  if (qIn.length && (qCls.length + (busyCls ? 1 : 0)) < APPROACH_MAX) {
+  if (qIn.length && (qCls.length + (busyCls ? 1 : 0)) < P.get('approach')) {
     move(qIn.shift(), 'in', D.in, 'q_cls');
   }
 
@@ -463,6 +536,64 @@ function step(dt) {
 
   return items.every(function (t) { return t.phase === 'binned'; });
 }
+
+/* ===================== SNAPSHOT ==================================
+   A copy of the model state and the way back to it. The clock keeps a ring
+   buffer of these, so a seek on the timeline replays a few ticks instead of
+   the whole run. Items travel as their index; DOM nodes never go in here. */
+function snapshot() {
+  function ks(a) { return a.map(function (t) { return t.k; }); }
+  function k(t) { return t ? t.k : -1; }
+  return {
+    T: T, qIn: ks(qIn), qCls: ks(qCls), qRev: ks(qRev), qSpec: qSpec.map(ks),
+    busyCls: k(busyCls), busyRev: k(busyRev), busySpec: busySpec.map(k),
+    binned: binned.map(ks), tally: { ok: tally.ok, corrected: tally.corrected, rejected: tally.rejected },
+    verdictShown: verdictShown, feed: feed.snapshot(),
+    items: items.map(function (t) {
+      return { phase: t.phase, t0: t.t0, dur: t.dur, routeKey: t.routeKey || null, next: t.next,
+               mark: t.mark, pass: t.pass, level: t.el.getAttribute('data-level') };
+    })
+  };
+}
+function restore(s) {
+  function of(a) { return a.map(function (k) { return items[k]; }); }
+  function one(k) { return k < 0 ? null : items[k]; }
+  T = s.T; qIn = of(s.qIn); qCls = of(s.qCls); qRev = of(s.qRev); qSpec = s.qSpec.map(of);
+  busyCls = one(s.busyCls); busyRev = one(s.busyRev); busySpec = s.busySpec.map(one);
+  binned = s.binned.map(of);
+  tally = { ok: s.tally.ok, corrected: s.tally.corrected, rejected: s.tally.rejected };
+  verdictShown = s.verdictShown;
+  s.items.forEach(function (x, k) {
+    var t = items[k];
+    t.phase = x.phase; t.t0 = x.t0; t.dur = x.dur; t.routeKey = x.routeKey;
+    t.route = x.routeKey ? routes[x.routeKey] : null; t.next = x.next;
+    t.mark = x.mark; t.pass = x.pass;
+    if (x.level) t.el.setAttribute('data-level', x.level); else t.el.removeAttribute('data-level');
+  });
+  feed.restore(s.feed);
+  feedEmpty.hidden = s.feed.length > 0;
+}
+
+/* ===================== TABLE =====================================
+   The state as rows: one per item, where it is and what the gate said. */
+function where(t) {
+  if (t.phase === 'move') {
+    var key = t.routeKey || '';
+    return TXT.where[key.indexOf('fan') === 0 ? 'fan' : key.indexOf('out') === 0 ? 'toOut' : key];
+  }
+  if (t.phase === 'work') return TXT.where[t.next];
+  return TXT.where[t.phase];
+}
+var table = new Sim.Table(document.getElementById('simTable'), {
+  columns: TXT.cols,
+  rows: function () {
+    return items.map(function (t) {
+      var review = t.pass === 0 ? TXT.review.none : TXT.review[t.mark || 'ok'];
+      return [t.spec.id, TXT.lanes[t.spec.lane], where(t) || '',
+              review, t.phase === 'binned' ? TXT.bins[t.spec.bin] : '·'];
+    });
+  }
+});
 
 /* ===================== PAINT ===================================== */
 function place(t, x, y, at) { t.x = x; t.y = y; t.shown = true; t.at = at || ''; }
@@ -559,6 +690,7 @@ function render() {
 
   verdictWait.hidden = verdictShown;
   verdictBody.hidden = !verdictShown;
+  table.render();
 }
 
 /* ===================== RUN ======================================= */
@@ -566,6 +698,9 @@ blank();
 var clockEngine = new Sim.Clock({
   step: step,
   render: render,
+  snapshot: snapshot,
+  restore: restore,
+  format: clock,
   reset: function () {
     blank();
     feed.clear();
@@ -574,6 +709,7 @@ var clockEngine = new Sim.Clock({
   },
   onState: function (s) { controls.state(s); }
 });
+P.bind(clockEngine);
 var controls = new Sim.Controls(clockEngine);
 controls.state('idle');
-Sim.boot(clockEngine, { note: '[data-sim-reduced-note]', autostart: 6000 });
+Sim.boot(clockEngine, { note: '[data-sim-reduced-note]', autostart: 6000, params: P });

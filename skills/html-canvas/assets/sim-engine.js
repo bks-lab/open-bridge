@@ -162,6 +162,9 @@
       t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
+    /* the generator's whole state is one integer: a snapshot carries it */
+    f.save = function () { return a; };
+    f.load = function (s) { a = s | 0; };
     f.int = function (lo, hi) { return lo + Math.floor(f() * (hi - lo + 1)); };
     f.pick = function (arr) { return arr[Math.floor(f() * arr.length)]; };
     f.weighted = function (arr, key) {
@@ -180,26 +183,57 @@
                      run is over. Pure model work, no DOM.
      opts.render()   paint the current state. Once per frame, not once per step.
      opts.reset()    return the model to its starting state.
-     opts.stepOnce() optional: advance exactly one discrete step (plan entry,
-                     message, station hop) for the single-step button.
+     opts.marker()   optional: a value that changes once per discrete step (plan
+                     entry, message, station hop). Enables single step forward
+                     and back on the timeline; the step is still made of ticks.
+     opts.snapshot() optional, with opts.restore(s): a COPY of the model state,
+                     and the way back to it. The clock keeps a ring buffer of
+                     them so a seek replays at most a few ticks.
+     opts.stepOnce() legacy single step outside the clock. Still honoured, but
+                     such a run cannot be replayed, so it gets no timeline.
+     opts.seed       optional: the clock owns `clock.random`, a Sim.rng that is
+                     reseeded on every reset and restored with every snapshot.
+     opts.tick       the fixed quantum of model time in ms (default 20).
+     opts.format(ms) the timeline readout (default mm:ss of model time).
      opts.onState(s) 'idle' | 'running' | 'paused' | 'done'
-     opts.onGuard(n) the run did not finish within `guard` steps. Never silent: a
-                     model that cannot terminate is a defect, not a long run. */
+     opts.onGuard(n) the run did not finish within `guard` ticks. Never silent: a
+                     model that cannot terminate is a defect, not a long run.
+
+     THE RULE THAT MAKES THE TIMELINE HONEST: the model only ever advances in
+     whole ticks of the same size, whatever the frame rate or the speed. The
+     state at tick n is then one state, so a scrubbed position, a replay from
+     the start and a live run paused at the same tick show the same picture. */
   function Clock(opts) {
     var self = this;
     this._step = opts.step;
     this._render = opts.render || function () {};
     this._reset = opts.reset || function () {};
     this._stepOnce = opts.stepOnce || null;
+    this._marker = opts.marker || null;
+    this._snapshot = opts.snapshot || null;
+    this._restore = opts.restore || null;
+    this._format = opts.format || mmss;
     this._onState = opts.onState || function () {};
     this._onGuard = opts.onGuard || function (n) {
       if (global.console) console.warn('[sim] run did not finish within ' + n + ' steps');
     };
-    this.slice = opts.slice || 60;          /* the model never sees a larger dt */
+    this.tick = opts.tick || opts.slice || 20;  /* `slice` is the older name */
+    this.slice = this.tick;
     this.maxCatchUp = opts.maxCatchUp || 1200;
-    this.guard = opts.guard || 8000;
+    this.guard = opts.guard || Math.ceil(480000 / this.tick);
     this.speed = opts.speed || 1;
-    this.running = false; this.started = false; this.finished = false;
+    this.seed = opts.seed;
+    this.random = (opts.seed !== undefined) ? rng(opts.seed) : null;
+    this.snapEvery = opts.snapEvery || Math.max(1, Math.round(500 / this.tick));
+    this.snapKeep = opts.snapKeep || 96;
+    this.backTicks = Math.max(1, Math.round((opts.back || 1000) / this.tick));
+    /* A model that steps outside the clock cannot be replayed tick by tick. */
+    this.replayable = !(this._stepOnce && !this._marker);
+    this.running = false; this.started = false; this.finished = false; this.touched = false;
+    this.ticks = 0; this.state = 'idle';
+    this._budget = 0; this._ring = []; this._ringAt = {}; this._marks = {}; this._length = null;
+    this._lastMark = this._marker ? this._marker() : null;
+    this._listeners = [];
     this._raf = null; this._last = 0;
     this._frame = function () {
       self._raf = null;
@@ -217,6 +251,134 @@
     }, 200);
   }
 
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function mmss(ms) {
+    var s = Math.floor(ms / 1000);
+    return pad2(Math.floor(s / 60)) + ':' + pad2(s % 60);
+  }
+
+  /* listeners hear every repaint and every state change (the timeline uses it) */
+  Clock.prototype.on = function (fn) { this._listeners.push(fn); };
+  Clock.prototype._emit = function () {
+    for (var i = 0; i < this._listeners.length; i++) this._listeners[i](this);
+  };
+  Clock.prototype.paint = function () { this._render(); this._emit(); };
+  Clock.prototype._setState = function (s) { this.state = s; this._onState(s); this._emit(); };
+  Clock.prototype.time = function () { return this.ticks * this.tick; };
+  Clock.prototype.format = function (ms) { return this._format(ms === undefined ? this.time() : ms); };
+
+  /* One tick of model time: the only place the model is advanced. */
+  Clock.prototype._advanceOne = function () {
+    var done = !!this._step(this.tick);
+    this.ticks += 1;
+    if (this._marker) {
+      var m = this._marker();
+      if (m !== this._lastMark) { this._lastMark = m; this._marks[this.ticks] = true; }
+    }
+    if (this._snapshot && this._restore && this.ticks % this.snapEvery === 0) this._remember();
+    if (done) this._length = this.ticks;
+    return done;
+  };
+
+  /* Ring buffer: the newest `snapKeep` snapshots, oldest dropped first. A seek
+     before the oldest one replays from the start, which is slower, never wrong. */
+  Clock.prototype._remember = function () {
+    if (this._ringAt[this.ticks]) return;
+    var e = { tick: this.ticks, data: this._snapshot(), mark: this._lastMark,
+              rng: this.random ? this.random.save() : null };
+    this._ring.push(e); this._ringAt[e.tick] = e;
+    while (this._ring.length > this.snapKeep) delete this._ringAt[this._ring.shift().tick];
+  };
+  Clock.prototype.ring = function () { return this._ring.slice(); };
+  /* Drop everything learned about the run: call it when the model changed
+     (a scenario or control value), never for a plain reset. */
+  Clock.prototype.forget = function () {
+    this._ring = []; this._ringAt = {}; this._marks = {}; this._length = null;
+  };
+
+  Clock.prototype._hardReset = function () {
+    this._reset();
+    this.ticks = 0; this._budget = 0; this.finished = false;
+    if (this.seed !== undefined) this.random = rng(this.seed);
+    this._lastMark = this._marker ? this._marker() : null;
+  };
+
+  /* Bring the model to tick n without painting or changing the run state. */
+  Clock.prototype._seekRaw = function (n) {
+    var best = null, i;
+    for (i = 0; i < this._ring.length; i++) {
+      var e = this._ring[i];
+      if (e.tick <= n && (!best || e.tick > best.tick)) best = e;
+    }
+    seeking = true;
+    try {
+      var forward = this.ticks <= n && (!best || best.tick <= this.ticks);
+      if (!forward) {
+        if (best) {
+          this._restore(best.data);
+          this.ticks = best.tick; this._budget = 0; this.finished = false;
+          if (this.random && best.rng !== null) this.random.load(best.rng);
+          this._lastMark = best.mark;
+        } else {
+          this._hardReset();
+        }
+      }
+      var g = 0;
+      while (this.ticks < n && !this.finished && g < this.guard) {
+        if (this._advanceOne()) this.finished = true;
+        g++;
+      }
+    } finally { seeking = false; }
+  };
+
+  /* Ticks in the whole run. Computed once by a dry run that also fills the
+     ring buffer, then the model is put back where it was. */
+  Clock.prototype.length = function () {
+    if (this._length !== null) return this._length;
+    if (!this.replayable) return null;
+    var keep = this.ticks, g = 0, done = false;
+    seeking = true;
+    try {
+      this._hardReset();
+      while (!done && g < this.guard) { done = this._advanceOne(); g++; }
+    } finally { seeking = false; }
+    if (!done) { this._onGuard(g); this._length = this.ticks; }
+    this._seekRaw(keep);
+    this._render();
+    return this._length;
+  };
+
+  /* Jump to tick n and stay there, paused. */
+  Clock.prototype.seek = function (n) {
+    if (!this.replayable) return;
+    this.touched = true;
+    var len = this.length();
+    n = Math.max(0, Math.floor(+n || 0));
+    if (len !== null && n > len) n = len;
+    this.running = false;
+    this._cancel();
+    this._seekRaw(n);
+    this.started = this.ticks > 0;
+    this._render();
+    this._setState(this.finished ? 'done' : (this.ticks ? 'paused' : 'idle'));
+  };
+
+  /* One discrete step back: to the previous marker change, or one model second. */
+  Clock.prototype.back = function () {
+    if (!this.replayable || this.ticks === 0) return;
+    var target = 0;
+    if (this._marker) {
+      this.length();                       /* the dry run has seen every marker */
+      for (var k in this._marks) if (this._marks.hasOwnProperty(k)) {
+        var t = +k;
+        if (t < this.ticks && t > target) target = t;
+      }
+    } else {
+      target = Math.max(0, this.ticks - this.backTicks);
+    }
+    this.seek(target);
+  };
+
   Clock.prototype.advance = function (ts) {
     if (!this.running) return;
     if (!this._last) { this._last = ts; return; }
@@ -226,38 +388,51 @@
     /* No catch-up leap after a long pause: a tab that sat in the background for
        two minutes must resume, not replay the whole run in a single frame. */
     if (real > this.maxCatchUp) real = this.maxCatchUp;
-    while (real > 0 && this.running) {
-      var s = Math.min(this.slice, real);
-      real -= s;
-      if (this._step(s * this.speed)) { this._finish(); break; }
+    this._budget += real * this.speed;
+    while (this._budget >= this.tick && this.running) {
+      this._budget -= this.tick;
+      if (this._advanceOne()) { this._finish(); break; }
     }
-    this._render();
+    this.paint();
   };
 
   Clock.prototype.start = function () {
     if (this.finished || this.running) return;
     this.started = true; this.running = true; this._last = 0;
-    this._onState('running');
+    this._setState('running');
     if (!this._raf) this._raf = global.requestAnimationFrame(this._frame);
   };
   Clock.prototype.pause = function () {
     if (!this.running) return;
     this.running = false;
     this._cancel();
-    this._onState('paused');
+    this._setState('paused');
   };
   Clock.prototype.toggle = function () {
     if (this.finished) return;
+    this.touched = true;
     if (this.running) this.pause(); else this.start();
   };
   Clock.prototype.setSpeed = function (v) { this.speed = v; };
 
   Clock.prototype.single = function () {
-    if (this.finished || !this._stepOnce) return;
+    if (this.finished) return;
+    if (this._marker) {
+      this.touched = true;
+      if (this.running) { this.running = false; this._cancel(); }
+      this.started = true;
+      var m0 = this._marker(), g = 0, done = false;
+      while (!done && this._marker() === m0 && g < this.guard) { done = this._advanceOne(); g++; }
+      this._render();
+      if (done) this._finish(); else this._setState('paused');
+      return;
+    }
+    if (!this._stepOnce) return;
+    this.touched = true;
     if (this.running) this.pause();
     this.started = true;
-    if (this._stepOnce()) this._finish(); else this._onState('paused');
-    this._render();
+    if (this._stepOnce()) this._finish(); else this._setState('paused');
+    this.paint();
   };
 
   /* Compute the whole run without animating it, then paint the end state.
@@ -268,24 +443,27 @@
     this._cancel();
     this.started = true;
     var g = 0, done = this.finished;
-    while (!done && g < this.guard) { done = !!this._step(this.slice); g++; }
+    seeking = true;
+    try {
+      while (!done && g < this.guard) { done = this._advanceOne(); g++; }
+    } finally { seeking = false; }
     this._render();
-    if (done) this._finish(); else this._onGuard(g);
+    if (done) this._finish(); else { this._onGuard(g); this._emit(); }
   };
 
   Clock.prototype.reset = function () {
     this.running = false;
     this._cancel();
-    this.started = false; this.finished = false; this._last = 0;
-    this._reset();
-    this._onState('idle');
+    this.started = false; this._last = 0;
+    this._hardReset();
     this._render();
+    this._setState('idle');
   };
 
   Clock.prototype._finish = function () {
     this.running = false; this.finished = true;
     this._cancel();
-    this._onState('done');
+    this._setState('done');
   };
   Clock.prototype._cancel = function () {
     if (this._raf) { global.cancelAnimationFrame(this._raf); this._raf = null; }
@@ -293,35 +471,123 @@
 
   /* -- Controls ---------------------------------------------------------------
      Wires the markup from references/simulation.md:
-       [data-sim-run] [data-sim-step] [data-sim-end] [data-sim-reset]
+       [data-sim-run] [data-sim-step] [data-sim-back] [data-sim-end] [data-sim-reset]
        [data-sim-speed] > button[data-speed]
+       [data-sim-scrub] (input type=range) + [data-sim-scrub-time]
+       [data-sim-copy-link] + [data-sim-link]
      The run button carries no JS-authored label: it holds one span per state,
-     each with its own DE/EN pair, and CSS shows the one matching data-state. */
+     each with its own DE/EN pair, and CSS shows the one matching data-state.
+     Every one of them is optional; a control the model cannot serve is removed,
+     never left dead. */
   function Controls(clock, scope) {
     scope = scope || doc;
     var runBtn = scope.querySelector('[data-sim-run]');
     var stepBtn = scope.querySelector('[data-sim-step]');
+    var backBtn = scope.querySelector('[data-sim-back]');
     var endBtn = scope.querySelector('[data-sim-end]');
     var resetBtn = scope.querySelector('[data-sim-reset]');
     var seg = scope.querySelector('[data-sim-speed]');
+    var scrub = scope.querySelector('[data-sim-scrub]');
+    var scrubTime = scope.querySelector('[data-sim-scrub-time]');
+    var copyBtn = scope.querySelector('[data-sim-copy-link]');
+    var linkOut = scope.querySelector('[data-sim-link]');
+
+    function drop(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
 
     if (runBtn) runBtn.addEventListener('click', function () { clock.toggle(); });
-    if (resetBtn) resetBtn.addEventListener('click', function () { clock.reset(); });
-    if (endBtn) endBtn.addEventListener('click', function () { clock.runToEnd(); });
+    if (resetBtn) resetBtn.addEventListener('click', function () { clock.touched = true; clock.reset(); });
+    if (endBtn) endBtn.addEventListener('click', function () { clock.touched = true; clock.runToEnd(); });
     if (stepBtn) {
-      if (clock._stepOnce) stepBtn.addEventListener('click', function () { clock.single(); });
-      else stepBtn.parentNode.removeChild(stepBtn);   /* never offer a dead control */
+      if (clock._stepOnce || clock._marker) stepBtn.addEventListener('click', function () { clock.single(); });
+      else drop(stepBtn);   /* never offer a dead control */
+    }
+    if (!clock.replayable) {
+      drop(backBtn); backBtn = null;
+      if (scrub) drop(scrub.closest ? (scrub.closest('[data-sim-timeline]') || scrub) : scrub);
+      scrub = null; scrubTime = null;
+    }
+    if (backBtn) backBtn.addEventListener('click', function () { clock.back(); });
+    if (scrub) {
+      scrub.min = '0'; scrub.step = '1';
+      scrub.addEventListener('input', function () { clock.seek(parseInt(scrub.value, 10) || 0); });
     }
 
     function speeds() { return seg ? [].slice.call(seg.querySelectorAll('button[data-speed]')) : []; }
-    function setSpeed(v) {
+    var pressed = speeds().filter(function (b) { return b.getAttribute('aria-pressed') === 'true'; })[0];
+    var defSpeed = pressed ? parseFloat(pressed.getAttribute('data-speed')) : clock.speed;
+    function setSpeed(v, quiet) {
       clock.setSpeed(v);
       speeds().forEach(function (b) {
         b.setAttribute('aria-pressed', parseFloat(b.getAttribute('data-speed')) === v ? 'true' : 'false');
       });
+      if (!quiet) url.write();
     }
     speeds().forEach(function (b) {
       b.addEventListener('click', function () { setSpeed(parseFloat(b.getAttribute('data-speed'))); });
+    });
+    if (seg) {
+      url.add(function () { return clock.speed !== defSpeed ? [['speed', String(clock.speed)]] : []; });
+      var hs = url.parse().speed;
+      if (hs !== undefined && speeds().some(function (b) { return b.getAttribute('data-speed') === hs; })) {
+        setSpeed(parseFloat(hs), true);
+      } else {
+        setSpeed(defSpeed, true);
+      }
+    }
+
+    if (copyBtn) {
+      copyBtn.setAttribute('data-state', 'idle');
+      if (linkOut) linkOut.hidden = true;
+      copyBtn.addEventListener('click', function () {
+        var href = link(clock);
+        var timer = null;
+        function copied() {
+          copyBtn.setAttribute('data-state', 'copied');
+          if (linkOut) linkOut.value = href;
+          if (timer) global.clearTimeout(timer);
+          timer = global.setTimeout(function () { copyBtn.setAttribute('data-state', 'idle'); }, 2400);
+        }
+        /* No clipboard (an old browser, a denied permission): show the link,
+           selected, so the reader can copy it by hand. */
+        function manual() {
+          copyBtn.setAttribute('data-state', 'manual');
+          if (!linkOut) return;
+          linkOut.value = href; linkOut.hidden = false;
+          try { linkOut.focus(); linkOut.select(); } catch (err) { /* not focusable */ }
+        }
+        function legacy() {
+          var ok = false;
+          try {
+            var ta = doc.createElement('textarea');
+            ta.value = href; ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed'; ta.style.opacity = '0';
+            doc.body.appendChild(ta); ta.select();
+            ok = doc.execCommand && doc.execCommand('copy');
+            doc.body.removeChild(ta);
+          } catch (err) { ok = false; }
+          if (ok) copied(); else manual();
+        }
+        try {
+          if (global.navigator && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(href).then(copied, legacy);
+          } else legacy();
+        } catch (err) { legacy(); }
+      });
+    }
+
+    var lastText = null;
+    clock.on(function () {
+      if (backBtn) backBtn.disabled = clock.ticks === 0;
+      if (!scrub) return;
+      var len = clock._length !== null ? clock._length : clock.length();
+      if (String(len) !== scrub.max) scrub.max = String(len);
+      if (String(clock.ticks) !== scrub.value) scrub.value = String(clock.ticks);
+      var text = clock.format() + ' / ' + clock.format(len * clock.tick);
+      if (text !== lastText) {
+        lastText = text;
+        scrub.setAttribute('aria-valuetext', text);
+        if (scrubTime) scrubTime.textContent = text;
+      }
     });
 
     doc.addEventListener('keydown', function (e) {
@@ -334,14 +600,16 @@
         if (t.closest && t.closest('button,a[href],summary,[role="button"]')) return;
         e.preventDefault(); clock.toggle();
       }
-      else if (e.key === 'r' || e.key === 'R') { clock.reset(); }
-      else if (e.key === 's' || e.key === 'S') { clock.single(); }
+      else if (e.key === 'r' || e.key === 'R') { clock.touched = true; clock.reset(); }
+      else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowRight') { clock.single(); }
+      else if (e.key === 'ArrowLeft') { clock.back(); }
       else if (e.key === '1' || e.key === '2' || e.key === '3') {
         var b = speeds()[parseInt(e.key, 10) - 1];
         if (b) setSpeed(parseFloat(b.getAttribute('data-speed')));
       }
     });
 
+    clock._emit();
     return {
       state: function (s) {
         if (runBtn) {
@@ -365,12 +633,15 @@
     this.max = opts.max || 40;
     this.newestFirst = opts.newestFirst !== false;
     this.levels = opts.levels || LEVELS;
+    this._log = [];
   }
   Feed.prototype.push = function (entry) {
     if (!this.el) return null;
     var lv = this.levels[entry.level] || this.levels.info;
     var li = doc.createElement('li');
-    li.className = 'sim-feed__row is-new';
+    li.className = seeking ? 'sim-feed__row' : 'sim-feed__row is-new';
+    this._log.push(entry);
+    if (this._log.length > this.max) this._log.shift();
     li.setAttribute('data-level', entry.level || 'info');
 
     var g = doc.createElement('span');
@@ -414,7 +685,16 @@
     return li;
   };
   Feed.prototype.clear = function () {
+    this._log = [];
     if (this.el) while (this.el.firstChild) this.el.removeChild(this.el.firstChild);
+  };
+  /* For a model's snapshot(): the rows as data, oldest first, and the way back. */
+  Feed.prototype.snapshot = function () { return this._log.slice(); };
+  Feed.prototype.restore = function (rows) {
+    this.clear();
+    var was = seeking;
+    seeking = true;
+    try { for (var i = 0; i < rows.length; i++) this.push(rows[i]); } finally { seeking = was; }
   };
 
   /* -- Packet flight between two DOM anchors (for non-SVG stages) ------------- */
@@ -539,23 +819,24 @@
   })();
 
   /* -- Boot -------------------------------------------------------------------
-     The three things every simulation must do at load, in one call.
-       reduced motion   compute the run, show the end state, reveal the note that
-                        says so. "No animation" is not "no content".
-       print            same code path, so paper never shows a half-finished run.
-       autostart        an unattended page starts itself after a grace period,
-                        never under reduced motion (there is nothing to start). */
+     The things every simulation must do at load, in one call.
+       a position     a link with #t=<tick> opens paused at that tick and never
+                      starts by itself: somebody wants to show exactly that moment.
+       reduced motion compute the run, show the end state, reveal the note that
+                      says so. "No animation" is not "no content". Nothing starts
+                      by itself afterwards either; step, back and the scrubber
+                      move through the run, play only on an explicit press.
+       print          same code path, so paper never shows a half-finished run.
+       autostart      an unattended page starts itself after a grace period,
+                      never under reduced motion, never once the reader has
+                      touched a control. */
   function boot(clock, opts) {
     opts = opts || {};
+    Sim.active = { clock: clock, params: opts.params || null };
     var note = opts.note ? doc.querySelector(opts.note) : null;
-    clock._render();
-    if (reduced()) {
-      clock.runToEnd();
-      if (note) note.hidden = false;
-      stage.ready(clock);
-      return;
-    }
-    stage.ready(clock);
+    var t = url.parse().t;
+    t = (t !== undefined && /^\d+$/.test(t)) ? parseInt(t, 10) : 0;
+    clock.paint();
     global.addEventListener('beforeprint', function () {
       if (!clock.finished) clock.runToEnd();
     });
@@ -565,9 +846,21 @@
         if (e.matches && !clock.finished) clock.runToEnd();
       });
     }
+    if (t > 0 && clock.replayable) {
+      clock.seek(t);
+      stage.ready(clock);
+      return;
+    }
+    if (reduced()) {
+      clock.runToEnd();
+      if (note) note.hidden = false;
+      stage.ready(clock);
+      return;
+    }
+    stage.ready(clock);
     if (opts.autostart) {
       global.setTimeout(function () {
-        if (!clock.started && !clock.finished) clock.start();
+        if (!clock.started && !clock.finished && !clock.touched && !reduced()) clock.start();
       }, opts.autostart);
     }
   }
@@ -580,9 +873,292 @@
     else global.setTimeout(fn, 0);
   }
 
-  global.Sim = {
+  /* -- Seeking flag -------------------------------------------------------------
+     True while the clock replays ticks it does not paint (a seek, a dry run, a
+     fast-forward). Decoration that only makes sense live, such as the entry
+     animation of a feed row, checks it. */
+  var seeking = false;
+
+  /* -- URL hash: scenario and control values ------------------------------------
+     A simulation is worth pointing at: "look at tick 340 with a capacity of 2".
+     Values live in the hash as #name=value&..., only where they differ from the
+     default, so an untouched page keeps a clean address. A hash without "=" is
+     an ordinary anchor and is left alone. Sources register a function that
+     returns [[name, value], ...] for whatever they own (Sim.params, the speed). */
+  var url = (function () {
+    var sources = [];
+    function parse() {
+      var out = {}, h = String(global.location && global.location.hash || '').replace(/^#/, '');
+      if (h.indexOf('=') < 0) return out;
+      h.split('&').forEach(function (kv) {
+        var i = kv.indexOf('=');
+        if (i < 1) return;
+        try { out[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)); }
+        catch (err) { /* a malformed escape is ignored, not fatal */ }
+      });
+      return out;
+    }
+    function encode(list) {
+      return list.map(function (p) {
+        return encodeURIComponent(p[0]) + '=' + encodeURIComponent(p[1]);
+      }).join('&');
+    }
+    function pairs() {
+      var all = [];
+      sources.forEach(function (f) { all = all.concat(f()); });
+      return all;
+    }
+    function base() { return String(global.location.href).split('#')[0]; }
+    function write() {
+      var h = encode(pairs());
+      try {
+        global.history.replaceState(global.history.state, '', h ? '#' + h : base());
+      } catch (err) {
+        /* srcdoc and some sandboxed frames refuse replaceState; the page still
+           works, only the address does not follow. */
+      }
+    }
+    return {
+      parse: parse, write: write, encode: encode, base: base, pairs: pairs,
+      add: function (f) { sources.push(f); }
+    };
+  })();
+
+  /* The address of exactly this view: every non-default value plus the current
+     position on the timeline. What "copy link" copies. */
+  function link(clock) {
+    clock = clock || (Sim.active && Sim.active.clock);
+    var list = url.pairs();
+    if (clock && clock.replayable && clock.ticks > 0) list.push(['t', String(clock.ticks)]);
+    var h = url.encode(list);
+    return url.base() + (h ? '#' + h : '');
+  }
+
+  /* -- Scenario and control values ----------------------------------------------
+     var P = Sim.params({
+       approach: { value: 3, min: 1, max: 5 },              // number
+       scenario: { value: 'rework', options: ['rework', 'clean'] },
+       seed:     { value: 42 }                              // reseeds clock.random
+     });
+     P.get(name)  P.set(name, v)  P.on(fn(name, v))  P.bind(clock)
+     Markup: [data-sim-param="name"] on a <select>, an <input> (range, number,
+     checkbox) or a group of button[data-value]; [data-sim-param-out="name"]
+     shows a number. The hash is read once, here, so the model's first blank()
+     already sees the restored values. An invalid value in the hash is ignored
+     and the default kept. "speed" and "t" are taken by the engine. */
+  function Params(defs) {
+    var self = this;
+    this.defs = defs; this.names = []; this.values = {}; this._fns = [];
+    var h = url.parse();
+    for (var n in defs) if (defs.hasOwnProperty(n)) {
+      if (n === 'speed' || n === 't') throw new Error('[sim] param name "' + n + '" is reserved');
+      this.names.push(n);
+      this.values[n] = defs[n].value;
+      if (h.hasOwnProperty(n)) {
+        var v = this._coerce(n, h[n]);
+        if (v !== undefined) this.values[n] = v;
+      }
+    }
+    url.add(function () {
+      return self.names.filter(function (k) { return self.values[k] !== self.defs[k].value; })
+        .map(function (k) { return [k, String(self.values[k])]; });
+    });
+    if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', function () { self._wire(); });
+    else this._wire();
+  }
+  Params.prototype._coerce = function (name, raw) {
+    var d = this.defs[name], s = String(raw);
+    if (d.options) {
+      for (var i = 0; i < d.options.length; i++) if (String(d.options[i]) === s) return d.options[i];
+      return undefined;
+    }
+    if (typeof d.value === 'boolean') {
+      if (s === '1' || s === 'true') return true;
+      if (s === '0' || s === 'false') return false;
+      return undefined;
+    }
+    if (typeof d.value === 'number') {
+      if (!/^-?\d+(\.\d+)?$/.test(s)) return undefined;
+      var x = parseFloat(s);
+      if (d.min !== undefined && x < d.min) return undefined;
+      if (d.max !== undefined && x > d.max) return undefined;
+      if (Math.floor(d.value) === d.value && d.integer !== false && Math.floor(x) !== x) return undefined;
+      return x;
+    }
+    return s;
+  };
+  Params.prototype.get = function (name) { return this.values[name]; };
+  Params.prototype.on = function (fn) { this._fns.push(fn); };
+  Params.prototype.set = function (name, raw) {
+    if (!this.defs.hasOwnProperty(name)) return false;
+    var v = this._coerce(name, raw);
+    if (v === undefined) { this._sync(); return false; }
+    if (v === this.values[name]) { this._sync(); return true; }
+    this.values[name] = v;
+    this._sync();
+    url.write();
+    for (var i = 0; i < this._fns.length; i++) this._fns[i](name, v);
+    return true;
+  };
+  /* A changed value is a different model: the run is forgotten and reset. */
+  Params.prototype.bind = function (clock) {
+    var self = this;
+    if (this.defs.seed) clock.seed = this.values.seed;
+    this.on(function (name, v) {
+      if (name === 'seed') clock.seed = v;
+      clock.forget();
+      clock.reset();
+    });
+    return this;
+  };
+  Params.prototype._els = function () {
+    return [].slice.call(doc.querySelectorAll('[data-sim-param]'));
+  };
+  Params.prototype._sync = function () {
+    var self = this;
+    this._els().forEach(function (el) {
+      var n = el.getAttribute('data-sim-param');
+      if (!self.defs.hasOwnProperty(n)) return;
+      var v = self.values[n];
+      if (/^(select|input)$/i.test(el.tagName)) {
+        if (el.type === 'checkbox') el.checked = !!v; else el.value = String(v);
+      } else {
+        [].forEach.call(el.querySelectorAll('button[data-value]'), function (b) {
+          b.setAttribute('aria-pressed', b.getAttribute('data-value') === String(v) ? 'true' : 'false');
+        });
+      }
+    });
+    [].forEach.call(doc.querySelectorAll('[data-sim-param-out]'), function (o) {
+      var n = o.getAttribute('data-sim-param-out');
+      if (self.defs.hasOwnProperty(n)) put(o, String(self.values[n]));
+    });
+  };
+  Params.prototype._wire = function () {
+    var self = this;
+    this._els().forEach(function (el) {
+      var n = el.getAttribute('data-sim-param');
+      if (!self.defs.hasOwnProperty(n)) return;
+      if (/^(select|input)$/i.test(el.tagName)) {
+        el.addEventListener('change', function () {
+          self.set(n, el.type === 'checkbox' ? el.checked : el.value);
+        });
+        /* a range shows its value while it moves, the model changes on release */
+        if (el.type === 'range') el.addEventListener('input', function () {
+          [].forEach.call(doc.querySelectorAll('[data-sim-param-out="' + n + '"]'), function (o) { put(o, el.value); });
+        });
+      } else {
+        [].forEach.call(el.querySelectorAll('button[data-value]'), function (b) {
+          b.addEventListener('click', function () { self.set(n, b.getAttribute('data-value')); });
+        });
+      }
+    });
+    this._sync();
+  };
+  function params(defs) { return new Params(defs); }
+
+  /* -- State as a table ---------------------------------------------------------
+     The text alternative for a stage: the same state as rows and columns, for a
+     screen reader, a reader who wants the numbers, and a page pasted into a
+     document. Hidden until its toggle is pressed; while hidden it costs nothing.
+       var table = new Sim.Table(document.getElementById('simTable'), {
+         columns: [{de: 'Vorgang', en: 'Item'}, ...],
+         rows: function () { return [[id, {de, en}, ...], ...]; }
+       });
+       call table.render() at the end of the model's render().
+     The toggle is a [data-sim-table-toggle] button whose aria-controls names the
+     element that is shown and hidden (the table or a wrapper around it). Its
+     label is one span per state, data-state-off and data-state-on. */
+  function Table(el, opts) {
+    var self = this;
+    this.el = el; this.rows = opts.rows; this.columns = opts.columns || [];
+    if (!el) return;
+    var thead = el.querySelector('thead') || el.insertBefore(doc.createElement('thead'), el.firstChild);
+    var tr = doc.createElement('tr');
+    this.columns.forEach(function (c) {
+      var th = doc.createElement('th');
+      th.setAttribute('scope', 'col');
+      th.appendChild(pair(c));
+      tr.appendChild(th);
+    });
+    while (thead.firstChild) thead.removeChild(thead.firstChild);
+    thead.appendChild(tr);
+    this.body = el.querySelector('tbody') || el.appendChild(doc.createElement('tbody'));
+    var box = null, btn = null;
+    [].forEach.call(doc.querySelectorAll('[data-sim-table-toggle]'), function (b) {
+      var target = doc.getElementById(b.getAttribute('aria-controls') || '');
+      if (target && (target === el || target.contains(el))) { btn = b; box = target; }
+    });
+    this.box = box || el;
+    this.box.hidden = true;
+    if (btn) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.setAttribute('data-state', 'off');
+      btn.addEventListener('click', function () { self.show(self.box.hidden); });
+    }
+    this.btn = btn;
+  }
+  Table.prototype.show = function (on) {
+    this.box.hidden = !on;
+    if (this.btn) {
+      this.btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+      this.btn.setAttribute('data-state', on ? 'on' : 'off');
+    }
+    if (on) this.render();
+  };
+  Table.prototype.render = function () {
+    if (!this.el || this.box.hidden) return;
+    var rows = this.rows() || [], body = this.body, i, j;
+    while (body.childElementCount > rows.length) body.removeChild(body.lastElementChild);
+    for (i = 0; i < rows.length; i++) {
+      var tr = body.children[i];
+      if (!tr) { tr = doc.createElement('tr'); body.appendChild(tr); }
+      for (j = 0; j < rows[i].length; j++) {
+        var td = tr.children[j];
+        if (!td) { td = doc.createElement(j === 0 ? 'th' : 'td'); if (j === 0) td.setAttribute('scope', 'row'); tr.appendChild(td); }
+        put(td, rows[i][j]);
+      }
+      while (tr.childElementCount > rows[i].length) tr.removeChild(tr.lastElementChild);
+    }
+  };
+
+  /* -- Stage look: stage:theme and stage:lang, child side -----------------------
+     The slide owns the theme and the language. It posts stage:theme {theme:
+     'dark'|'light'} and stage:lang {lang: 'de'|'en'} on every change and once
+     after stage:ready, and the frame follows. The choice is the slide's, so it
+     is NOT stored: a standalone visit to the same page keeps its own preference.
+     The shell's controllers already follow a `storage` event for cross-tab sync;
+     dispatching one (without writing storage) relabels the T and L buttons and
+     the aria labels through the shell's own code. Same source check as every
+     other stage message. */
+  (function () {
+    if (!stage.embedded) return;
+    var root = doc.documentElement;
+    function nudge(key, value) {
+      try { global.dispatchEvent(new StorageEvent('storage', { key: key, newValue: value })); }
+      catch (err) { /* no StorageEvent constructor: attributes are set anyway */ }
+    }
+    global.addEventListener('message', function (e) {
+      if (e.source !== global.parent) return;
+      var d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'stage:theme' && (d.theme === 'dark' || d.theme === 'light')) {
+        root.classList.toggle('dark', d.theme === 'dark');
+        nudge('html-canvas-theme', d.theme);
+      } else if (d.type === 'stage:lang' && (d.lang === 'de' || d.lang === 'en')) {
+        root.setAttribute('data-lang', d.lang);
+        root.setAttribute('lang', d.lang);
+        nudge('html-canvas-lang', d.lang);
+        if (typeof global.hcApplyAria === 'function') global.hcApplyAria();
+      }
+    });
+  })();
+
+  var Sim = global.Sim = {
     LEVELS: LEVELS,
-    Clock: Clock, Controls: Controls, Feed: Feed,
+    Clock: Clock, Controls: Controls, Feed: Feed, Table: Table,
+    params: params, link: link, url: url,
+    seeking: function () { return seeking; },
+    active: null,
     pair: pair, put: put,
     svg: svg, svgText: svgText, routeD: routeD, alongRoute: alongRoute,
     centreOf: centreOf, show: show, ease: ease,

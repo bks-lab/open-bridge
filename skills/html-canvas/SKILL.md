@@ -27,7 +27,7 @@ bundle (`scripts/bundle.py`) and the theme contract
 |---|---|---|
 | One page (explainer, reference, decision page) | `scripts/new-page.py` (Build path below) | `references/sections.md` |
 | Bring an existing page up to date (tokens, fonts, block CSS, language rules) | `new-page.py --refresh page.html` | Build path |
-| Something that has to RUN (a queue, a gate, a plan step by step) | `scripts/new-simulation.py` | `references/simulation.md` |
+| Something that has to RUN (a queue, a gate, a plan step by step), with a timeline, a shareable scenario link and a table view | `scripts/new-simulation.py` | `references/simulation.md` (§ Timeline) |
 | Many pages that must look like one set | the parallel-builder workflow | `references/build-workflow.md` |
 | An architecture explainer from a repo or its docs | `scripts/repo-scan.py`, then the playbook | `references/repo-analysis.md` |
 | Behaviour on a page: reveal, count-up, filter, scrollspy | paste the snippet | `references/interactivity.md` |
@@ -68,7 +68,9 @@ queues, a gate) and `worklist` (a plan executed step by step). *console*, *dossi
 and *exchange* are **not built**: `references/simulation.md` describes them as deltas
 from those two, to derive by hand when one is needed. There is no `--refresh` for a
 simulation; edit it in place. A simulation can run live inside a slide
-(`html-slides`, stage contract in `references/simulation.md`).
+(`html-slides`, stage contract in `references/simulation.md`). Both archetypes
+ship a timeline scrubber with step back, scenario values in the URL hash with a
+copy-link button, and a "show as table" view of the state.
 
 ## The controls every page ships
 
