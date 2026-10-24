@@ -200,3 +200,20 @@ zip -r package.zip deck-standalone.html deck.pdf README.md
 
 If any audit step has hits, decide per term: remove (sensitive), keep with a note
 (intentional disclosure), or improve the wordlist (false positive class).
+
+### A copy to be read, not presented
+
+A deck sent to people who will read it alone (no speaker, no keys) can open in the
+reading view of the `read` module: every slide of the active track as one scrolling
+document, with its speaker notes under each slide. Build or refresh it with the
+module and the deck attribute `data-read-default`:
+
+```bash
+python3 $SKILL/new-deck.py --with read --deck-attr data-read-default= ...   # or set it on <html>
+```
+
+The attribute works on `.deck` or `<html>`; `data-read-default="off"` (or `"false"`)
+keeps the slide view, for example in the presenting copy of the same deck. A deep
+link (`#<id>`) still picks the slide the view opens at, and R or Esc switches to the
+slide view. Print and `render-pdf.cjs` are unaffected: the PDF still has one slide per
+page. Details: `reference/modules.md` § Module: read.

@@ -1,4 +1,4 @@
-/* deck module: draw (reference/modules.md, section "draw").
+/* deck module: draw (reference/modules.md, section "Module: draw").
    Key D draws on the active slide (pen in the accent token, H marker, Z undo,
    C clears the slide, Shift+C every slide, Esc leaves), key Q shows a laser pointer.
    Strokes are kept per slide in slide coordinates while the deck is open, so they
@@ -239,6 +239,9 @@
     showBadge(m === 'draw');
   }
   function toggle(m) { setMode(mode === m ? 'off' : m); }
+  /* the read module shows the deck as a document: no drawing there (deckread:change) */
+  function reading() { return root.classList.contains('deck-read'); }
+  document.addEventListener('deckread:change', function (e) { if (e.detail && e.detail.read) setMode('off'); });
 
   window.SlideDeckDraw = {
     mode: function () { return mode; },
@@ -251,8 +254,8 @@
   D.use({
     name: 'draw',
     keys: {
-      d: function () { toggle('draw'); return true; },
-      q: function () { toggle('laser'); return true; },
+      d: function () { if (reading()) return false; toggle('draw'); return true; },
+      q: function () { if (reading()) return false; toggle('laser'); return true; },
       escape: function () { if (mode === 'off') return false; setMode('off'); return true; },
       c: function (e) { if (mode !== 'draw') return false; clear(!!(e && e.shiftKey)); return true; },
       z: function () { if (mode !== 'draw') return false; undo(); return true; },
@@ -280,7 +283,7 @@
       }, { passive: true });
       document.addEventListener('click', function (e) {
         var b = e.target && e.target.closest ? e.target.closest('[data-deck="draw"], [data-deck="laser"]') : null;
-        if (!b) return;
+        if (!b || reading()) return;
         toggle(b.getAttribute('data-deck'));
         e.preventDefault();
       });

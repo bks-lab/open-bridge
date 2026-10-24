@@ -24,6 +24,16 @@ python3 skills/html-slides/scripts/new-deck.py --title "Review" --slides slides.
   the current files; it never adds or drops one, and refuses `--with`. A module whose
   file is gone stops the refresh before anything is written.
 
+### The shipped modules
+
+| Module | What it adds | Keys | Section |
+|---|---|---|---|
+| `draw` | laser pointer and a pen or marker on the slide | Q, D (then C, Z, H) | § Module: draw |
+| `morph` | elements with the same `data-morph` glide from one slide to the next | none | § Module: morph |
+| `presenter` | presenter window, time budget per slide, rehearsal, floating timer | P, Shift+P | § Module: presenter |
+| `read` | reading view: the slides of the track as one document with notes | R | § Module: read |
+| `steps` | `data-step` reveals and `data-lines` code walkthroughs, the step in the link | none | § Module: steps |
+
 ## The plugin API
 
 A module is a plain script that registers itself once:
@@ -60,6 +70,7 @@ and the engine goes on as if the handler had returned `false`.
 | `setStep(n)` / `step()` | set or read the step of the active slide. A slide change resets it to 0; `setStep` emits `stepchange` and keeps the deep link current |
 | `setLang('de'\|'en')`, `setTheme('light'\|'dark')` | switch language or theme, as the keys L and T do |
 | `reducedMotion()` | `true` under `prefers-reduced-motion: reduce` |
+| `pauseTracking()` / `resumeTracking()` | for a module that shows the deck as a document (`read`). Paused, scroll no longer picks the active slide, the scroll keys (arrows, Space, Page Up/Down, Home, End) and swipes are left to the page, and no slide is `inert`; module keys, `goTo`, the number jump and T, L, F, B / W still work. `resumeTracking()` takes the active slide from the scroll position at once (the step stays when it is the same slide) and marks the other slides `inert` again |
 | `on(event, fn)` | `ready`, `slidechange {index, count, slide}`, `trackchange {track, count}`, `stepchange {index, step, slide}`, `themechange {theme}`, `langchange {lang}`; each is also dispatched on `document` as `slidedeck:<event>` |
 | `goTo(i)`, `next()`, `prev()`, `current()`, `count()`, `track()`, `setTrack()`, `toggleTheme()`, `toggleNotes()`, `toggleHelp()`, `strings()` | the engine API of `reference/slide-types.md` § Engine Contract |
 
@@ -192,7 +203,7 @@ the floating window is not part of the shared tab.
 presenter window and the floating timer are separate windows and never print with the
 deck. The module has no animation of its own.
 
-## draw: laser pointer and drawing overlay
+## Module: draw
 
 `--with draw`. A laser pointer and a pen on the slide, for pointing at and marking up
 a slide while presenting. Nothing is added to the page until it is used.
@@ -223,6 +234,9 @@ touch screens without a keyboard.
   slide content, so ink stays on what it marks.
 - **Reduced motion**: no laser trail, the dot alone. **Print**: canvas, laser and
   badge are hidden; slides print without ink.
+- **Reading view** (`read` module): under `:root.deck-read` canvas, laser and badge are
+  hidden, opening the view ends drawing or laser mode, and D, Q and the buttons wait
+  for the slide view. The ink is kept and shows again with the slides.
 - Keys D and Q are free in the engine and in the other shipped modules (P presenter,
   R read).
 - `window.SlideDeckDraw = {mode(), tool(), strokes(i), setMode('draw'|'laser'|'off'),
@@ -231,7 +245,7 @@ touch screens without a keyboard.
 
 Tests: `tests/test_module_draw.py`.
 
-## Module: steps (`--with steps`)
+## Module: steps
 
 Step reveals inside a slide and code walkthroughs. Forward moves (arrows, Space,
 Page keys, swipe, `next()`) reveal the next step before the slide changes; backward
@@ -262,7 +276,7 @@ link or a reload lands on the same step.
 - Classes the module sets, for a deck's own CSS: `step-hidden`, `step-shown`,
   `step-current`, `step-past`; lines get `is-on` or `is-dim`.
 
-## Module: morph (`--with morph`)
+## Module: morph
 
 Animated continuity between two slides: elements that carry the same
 `data-morph="name"` on the slide left and the slide reached glide from their old
@@ -291,7 +305,7 @@ place and size to the new one, and the rest of the screen cross-fades.
 - `steps` and `morph` work together: the steps of a slide are walked first, the
   morph runs on the move to the next slide.
 
-## read: the reading view
+## Module: read
 
 `--with read`. Key R, or any `data-deck="read"` button, lays the slides of the active
 track out as one document: each slide at its own look but growing with its content,
@@ -307,17 +321,18 @@ bar at the top shows how far the reader is.
 | "present from here" on a slide | back to the slide view at that slide |
 | digits + Enter, or a `goto` button, while reading | scrolls the document there, and that slide becomes the one to return to |
 | T, L, F, B / W, `?` while reading | work as in the slide view; F rebuilds the document for the new track |
-| `data-read-default` on the deck or `<html>` | the deck opens in the reading view: the variant for a copy that is sent to be read (`new-deck.py --with read --deck-attr data-read-default=`). A deep link still picks the slide it opens at; `data-read-default="off"` keeps the slide view |
+| `data-read-default` on the deck or `<html>` | the deck opens in the reading view: the variant for a copy that is sent to be read (`new-deck.py --with read --deck-attr data-read-default=`). A deep link still picks the slide it opens at; `data-read-default="off"` keeps the slide view. The presenter's previews of such a copy still show slides |
 | print, `render-pdf.cjs` | unchanged: the layout rules are screen only, so the slides print one per page and the reading chrome is hidden |
 
 For other modules: while reading, `<html>` has the class `deck-read`, and `document`
 gets `deckread:change` with `{read: true|false}` on every switch. The view shows every
-`[data-step]` and `[data-steps] > *` element and every `.reveal` at its end state;
-a module with its own overlay hides it under `:root.deck-read`.
+`[data-step]` and `[data-steps] > *` element (with any `data-step-effect` undone) and
+every `.reveal` at its end state, and every line of a `data-lines` block at full
+strength; the step state returns with the slide view. A module with its own overlay
+hides it under `:root.deck-read`, as `draw` does.
 
-How it stays out of the engine's way, with the public API only: the engine keeps
-counting the slide it was on while the reader scrolls, so a listener on `window` in
-the capture phase holds the navigation keys and every scroll event back from the
-engine while the view is open. A slide's own scroll listener therefore does not fire
-in the reading view. Slides are not `inert` while reading (the engine's marks are
-undone as they come), and they are again on the way back.
+How it stays out of the engine's way: opening calls `SlideDeck.pauseTracking()`, so
+the engine stops reading the document's scroll as a slide change, leaves the scroll
+keys to the page and marks no slide `inert`. Closing scrolls to the slide to return
+to and calls `SlideDeck.resumeTracking()`, which takes that slide and marks the others
+`inert` again. A slide's own scroll listener keeps firing while reading.

@@ -1,4 +1,4 @@
-"""Deck module `draw` (reference/modules.md § draw): laser pointer and drawing overlay.
+"""Deck module `draw` (reference/modules.md § Module: draw): laser pointer and drawing overlay.
 
 Every deck here is the engine probe deck with the shipped module spliced in through
 engine_testlib.module_deck, exactly as new-deck.py --with draw would splice it.

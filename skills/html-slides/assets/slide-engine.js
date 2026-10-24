@@ -23,8 +23,8 @@
      slides the track shows), plus .<step> while a module step is above 0 (#<id>.2);
      all forms are read, kept current with history.replaceState.
    - Modules (reference/modules.md): SlideDeck.use({name, keys, step, transition, help, init}),
-     plus slides(), state(), setStep(n), step(), setLang(l), setTheme(t), reducedMotion() and
-     the events stepchange, themechange, langchange.
+     plus slides(), state(), setStep(n), step(), setLang(l), setTheme(t), reducedMotion(),
+     pauseTracking() / resumeTracking() and the events stepchange, themechange, langchange.
    - Core keys: B / W cover the screen, digits + Enter jump, L switches a bilingual deck
      (data-de / data-en pairs), Alt+click zooms. data-print-notes prints a notes page
      after every slide that has notes. */
@@ -101,6 +101,7 @@
     this.total = this.slides.length;
     this.current = 0;
     this.pending = null;
+    this.paused = false;
     this.ready = false;
     this.step = 0;
     this.navSeq = 0;
@@ -368,6 +369,8 @@
       }
       if ((k === ' ' || k === 'Enter') && tg && tg.closest && tg.closest(ACTIVATES)) return;
       if (self.moduleKey(k, e)) { e.preventDefault(); self.fadeHints(); return; }
+      /* paused: the page is a document, its scroll keys scroll it natively */
+      if (self.paused && /^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End| |Spacebar)$/.test(k)) return;
       if (k === ' ' || k === 'Spacebar') { if (e.shiftKey) self.prev(); else self.next(); }
       else if (k === 'ArrowDown' || k === 'ArrowRight' || k === 'PageDown') self.next();
       else if (k === 'ArrowUp' || k === 'ArrowLeft' || k === 'PageUp') self.prev();
@@ -419,6 +422,7 @@
     var tY;
     this.deck.addEventListener('touchstart', function (e) { tY = e.touches[0].clientY; }, { passive: true });
     this.deck.addEventListener('touchend', function (e) {
+      if (self.paused) return;
       var dy = tY - e.changedTouches[0].clientY;
       if (Math.abs(dy) > 50) { if (dy > 0) self.next(); else self.prev(); }
     });
@@ -502,8 +506,14 @@
       if (!s) return false;
       i = this.visibleIndexOf(s);
     }
-    if (instant || i !== this.current) this.goTo(i, instant);
-    this.setStep(step);
+    /* one address write for slide and step: the slide alone (#b) written first and the
+       step (#b.2) a moment later left a window in which a reload lost the step */
+    this.holdHash = true;
+    try {
+      if (instant || i !== this.current) this.goTo(i, instant);
+      this.setStep(step);
+    } finally { this.holdHash = false; }
+    this.writeHash();
     return true;
   };
   SlideEngine.prototype.indexFromScroll = function () {
@@ -515,13 +525,30 @@
     });
     return best;
   };
+  /* A module that shows the deck as a document (read) pauses the engine: scroll no
+     longer picks the slide, scroll keys and swipes stay with the page, no slide is
+     inert. Resuming takes the slide from the scroll position at once. */
+  SlideEngine.prototype.pauseTracking = function () {
+    if (this.paused) return;
+    this.paused = true;
+    clearTimeout(this.settleTimer);
+    clearTimeout(this.quickTimer);
+    this.pending = null;
+    this.all.forEach(function (x) { x.removeAttribute('inert'); });
+  };
+  SlideEngine.prototype.resumeTracking = function () {
+    if (!this.paused) return;
+    this.paused = false;
+    this.settle(true);
+    this.update();
+  };
   SlideEngine.prototype.armSettle = function (ms) {
     var self = this;
     clearTimeout(this.settleTimer);
     this.settleTimer = setTimeout(function () { self.settle(true); }, ms);
   };
   SlideEngine.prototype.onScroll = function () {
-    if (!this.ready) return;
+    if (!this.ready || this.paused) return;
     var self = this;
     this.armSettle(this.pending === null ? 150 : 700);
     clearTimeout(this.quickTimer);
@@ -552,7 +579,7 @@
     /* only the active slide takes focus and clicks; the others stay in the DOM for scroll-snap */
     this.all.forEach(function (x) {
       x.classList.toggle('is-active', x === s);
-      if (x === s) x.removeAttribute('inert'); else x.setAttribute('inert', '');
+      if (x === s || self.paused) x.removeAttribute('inert'); else x.setAttribute('inert', '');
     });
     this.renderNotes();
     if (!this.ready || this.lastEmitted === s) return;
@@ -565,7 +592,7 @@
   };
   SlideEngine.prototype.writeHash = function () {
     var s = this.slides[this.current];
-    if (!this.deepLink || !s) return;
+    if (!this.deepLink || !s || this.holdHash) return;
     /* a slide id holds in every track; a number counts the slides the track shows */
     var h = '#' + (s.id ? encodeURIComponent(s.id) : String(this.current + 1)) + (this.step > 0 ? '.' + this.step : '');
     if (location.hash !== h) { try { history.replaceState(history.state, '', h); } catch (e) { /* sandboxed frame */ } }
@@ -753,6 +780,8 @@
     step: function () { return instance ? instance.step : 0; },
     slides: function () { return instance ? instance.slides.slice() : []; },
     reducedMotion: reducedMotion,
+    pauseTracking: function () { if (instance) instance.pauseTracking(); },
+    resumeTracking: function () { if (instance) instance.resumeTracking(); },
     state: function () {
       var e = instance;
       if (!e) return { index: 0, id: '', step: 0, track: 'all', theme: 'dark', lang: 'en', notes: false };

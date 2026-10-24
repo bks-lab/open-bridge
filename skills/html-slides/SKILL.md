@@ -4,7 +4,7 @@ description: >-
   Builds single-file HTML slide decks from any content: DESIGN.md brand or a style preset, light/dark, embedded fonts, tracks, speaker notes, live stages, offline; PDF export, a quality gate and an anonymity check before sending. Trigger: "create a presentation", "make slides", "slide deck", "html slides", "PowerPoint alternative", "/slides".
 metadata:
   scope: core
-  version: 2.0.0
+  version: 2.1.0
   last_updated: 2026-10-24
 ---
 
@@ -28,11 +28,12 @@ foundation (tokens, fonts, the quality gate, the send bundle) is shared with
 | Speaker notes, a clickable agenda | `<aside class="notes">`, slide type 10 (Overview) | `reference/slide-types.md` |
 | A running simulation inside a slide | `new-deck.py --with-stage`, a `.stage` element | `reference/stage.md` |
 | Presenting live: blank screen, jump to a slide number, zoom, language switch, notes handout | built in: keys B / W, digits + Enter, Alt+click, L, `data-print-notes` | `reference/slide-types.md` § Engine Contract |
-| An optional deck feature (a module) or writing one | `new-deck.py --with NAME` (or `--with all`), `SlideDeck.use()` | `reference/modules.md` |
-| A presenter view on a second screen, a time budget per slide, a rehearsal with plan vs actual | `new-deck.py --with presenter`, `data-time="90"` on slides, key P | `reference/modules.md` § Module: presenter |
-| Point at or mark up a slide while presenting: laser pointer, pen, marker | `new-deck.py --with draw`, keys Q and D | `reference/modules.md` § draw |
-| Reveal points one by one, walk through code line by line, morph an element from one slide to the next | `--with steps` (`data-step`, `data-lines`), `--with morph` (`data-morph`) | `reference/modules.md` § steps, § morph |
-| A deck handed over to be read, not presented: every slide with its notes as one document | `--with read`, key R; a send copy opens in it with `--deck-attr data-read-default=` | `reference/modules.md` § read |
+| An optional deck feature (one of the 5 modules below) or writing one | `new-deck.py --with NAME` (or `--with all`), `SlideDeck.use()` | `reference/modules.md` |
+| A presenter view on a second screen, a time budget per slide, a rehearsal with plan vs actual | `--with presenter`, `data-time="90"` on slides, key P | `reference/modules.md` § Module: presenter |
+| Point at or mark up a slide while presenting: laser pointer, pen, marker | `--with draw`, keys Q and D | `reference/modules.md` § Module: draw |
+| Reveal points one by one, walk through code line by line | `--with steps`, `data-step`, `data-lines` | `reference/modules.md` § Module: steps |
+| Morph an element from one slide to the next | `--with morph`, `data-morph="name"` | `reference/modules.md` § Module: morph |
+| A deck handed over to be read, not presented: every slide with its notes as one document | `--with read`, key R; a send copy opens in it with `--deck-attr data-read-default=` | `reference/modules.md` § Module: read |
 | Pick a look | DESIGN.md (default) or a style preset by name | `reference/deck-build.md` § Presets |
 | A deck in no house brand, or no DESIGN.md exists | `--preset <slug>` | `presets/_template.yaml`, `assets/discovery-menu.html` |
 | PDF, mail, customer, external | the send path below | `reference/output-formats.md` |
@@ -140,6 +141,7 @@ An instance names its own wordlist in `bridge-config.yaml` under
 | `presets/_template.yaml` | the preset schema, before writing one |
 | `assets/slide-engine.css`, `assets/slide-engine.js` | extending the engine (then add a test) |
 | `assets/slide-stage.css`, `assets/slide-stage.js` | extending the stage (same) |
+| `assets/modules/` | the deck modules (`draw`, `morph`, `presenter`, `read`, `steps`), one `.js` and `.css` each |
 | `assets/fonts/`, `scripts/font-face.py` | preset fonts (woff2 plus OFL licences) |
 | `scripts/check-anonymity.py`, `scripts/render-pdf.cjs`, `scripts/inline-assets.py` | the send path |
 

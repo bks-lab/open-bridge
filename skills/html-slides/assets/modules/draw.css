@@ -27,3 +27,6 @@
 @media print {
   .deck-draw, .deck-laser, .deck-laser-trail, .deck-draw-badge { display: none !important; }
 }
+/* the read module's document view: ink and pointer stand aside, the ink returns with the slides */
+:root.deck-read .deck-draw, :root.deck-read .deck-laser,
+:root.deck-read .deck-laser-trail, :root.deck-read .deck-draw-badge { display: none !important; }

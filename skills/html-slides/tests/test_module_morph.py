@@ -1,4 +1,4 @@
-"""Deck module `morph` (assets/modules/morph.js, reference/modules.md § morph).
+"""Deck module `morph` (assets/modules/morph.js, reference/modules.md § Module: morph).
 
 Elements sharing a data-morph name on the slide left and the slide reached get a
 view-transition-name for the transition and morph through

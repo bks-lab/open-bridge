@@ -1,4 +1,4 @@
-/* read: deck module, reference/modules.md § read. Everything here waits for
+/* read: deck module, reference/modules.md § Module: read. Everything here waits for
    :root.deck-read, which only the module sets; the layout rules are screen only, so a
    deck printed from the reading view still prints one slide per page. */
 @media screen {
@@ -18,7 +18,12 @@
   /* a document shows everything at once: entrances and step reveals at their end state */
   :root.deck-read .slide .reveal { opacity: 1; transform: none; transition: none; }
   :root.deck-read .slide [data-step],
-  :root.deck-read .slide [data-steps] > * { visibility: visible !important; opacity: 1 !important; }
+  :root.deck-read .slide [data-steps] > * {
+    visibility: visible !important; opacity: 1 !important; transform: none !important; transition: none !important;
+  }
+  /* the steps module's data-lines: every line at full strength, no highlight */
+  :root.deck-read .slide .code-line { opacity: 1 !important; transition: none !important; }
+  :root.deck-read .slide .code-line.is-on { background: none; box-shadow: none; }
   /* slide chrome that means nothing in a document */
   :root.deck-read .deck-progress, :root.deck-read .deck-dots, :root.deck-read .deck-counter,
   :root.deck-read .deck-hints, :root.deck-read .deck-notes { display: none !important; }

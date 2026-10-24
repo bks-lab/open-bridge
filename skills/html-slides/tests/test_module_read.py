@@ -1,4 +1,4 @@
-"""Deck module `read` (reference/modules.md § read): the reading view.
+"""Deck module `read` (reference/modules.md § Module: read): the reading view.
 
 Key R (or a data-deck="read" button) lays the slides of the active track out as one
 document with their notes under each slide; R or Esc returns to the exact slide and

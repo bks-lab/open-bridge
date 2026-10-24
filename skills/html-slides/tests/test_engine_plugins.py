@@ -94,6 +94,19 @@ def test_deep_link_with_step_is_read_on_load(open_html, page):
     page.wait_for_function("() => window.SlideDeck.step() === 1")
 
 
+def test_a_link_with_a_step_writes_the_address_once(open_html, page):
+    """#b first and #b.2 a moment later left a window in which a reload lost the step
+    (test_deep_link_with_step_is_read_on_load failed about one run in three)."""
+    open_deck(open_html, probe_deck())
+    page.evaluate("""() => { window.__writes = []; const r = history.replaceState.bind(history);
+      history.replaceState = function (a, b, c) { window.__writes.push(String(c)); return r(a, b, c); }; }""")
+    page.evaluate("() => { location.hash = '#b.2'; }")
+    page.wait_for_function("() => window.SlideDeck.step() === 2")
+    page.wait_for_timeout(100)
+    assert "#b" not in page.evaluate("() => window.__writes"), "no address without the step"
+    assert page.evaluate("() => location.hash") == "#b.2"
+
+
 def test_a_dotted_id_is_an_id_before_it_is_a_step(open_html, page):
     slides = [slide("One", ' id="a"'), slide("Two", ' id="v1.2"'), slide("Three", ' id="c"')]
     open_deck(open_html, probe_deck(slides))
@@ -179,3 +192,34 @@ def test_events_are_also_dispatched_on_document(open_html):
     wait_current(page, 1)
     page.evaluate("() => { window.SlideDeck.setStep(1); window.SlideDeck.toggleTheme(); }")
     assert page.evaluate("() => window.__doc") == ["stepchange", "themechange"]
+
+
+# --- pauseTracking / resumeTracking: a module that turns the deck into a document ------
+
+def test_pause_tracking_leaves_scroll_keys_and_inert_to_the_page(open_html):
+    page = open_deck(open_html, probe_deck())
+    page.evaluate("() => window.SlideDeck.pauseTracking()")
+    assert page.evaluate("() => document.querySelectorAll('.slide[inert]').length") == 0, \
+        "paused, every slide is content"
+    page.evaluate("""() => { const d = document.querySelector('.deck');
+      d.style.scrollSnapType = 'none'; d.scrollTop = d.querySelectorAll('.slide')[2].offsetTop; }""")
+    page.wait_for_timeout(450)
+    assert current(page) == 0, "a scroll while paused moves no slide"
+    page.evaluate("""() => { window.__navPrevented = null;
+      document.addEventListener('keydown', e => { window.__navPrevented = e.defaultPrevented; }); }""")
+    page.keyboard.press("PageDown")
+    page.wait_for_timeout(450)
+    assert page.evaluate("() => window.__navPrevented") is False, "the page scrolls natively"
+    assert current(page) == 0
+    page.evaluate("() => { const d = document.querySelector('.deck'); d.style.scrollSnapType = '';"
+                  " d.scrollTop = d.querySelectorAll('.slide')[2].offsetTop; window.SlideDeck.resumeTracking(); }")
+    wait_current(page, 2)
+    page.wait_for_function("() => document.querySelectorAll('.slide[inert]').length === 3")
+    assert page.evaluate("() => document.querySelectorAll('.slide')[2].inert") is False
+    assert page.errors == []
+
+
+def test_pause_tracking_is_documented():
+    from slides_testlib import SKILL
+    text = (SKILL / "reference" / "modules.md").read_text("utf-8")
+    assert "pauseTracking()" in text and "resumeTracking()" in text

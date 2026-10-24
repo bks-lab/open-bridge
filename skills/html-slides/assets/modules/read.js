@@ -1,4 +1,4 @@
-/* read: deck module, reference/modules.md § read.
+/* read: deck module, reference/modules.md § Module: read.
    Key R (or a data-deck="read" button) turns the deck into a reading view: the slides
    of the active track as one vertical document, each with a number and a "present
    from here" button above it and its speaker notes below, under normal page scroll.
@@ -13,6 +13,9 @@
   'use strict';
   var D = window.SlideDeck;
   if (!D || typeof D.use !== 'function') return;
+  /* a presenter preview (data-deck-preview, presenter module) is a copy that shows
+     slides: a send copy's data-read-default must not turn it into a document */
+  if (document.documentElement.hasAttribute('data-deck-preview')) return;
 
   /* i18n:start */
   var TEXT = {
@@ -26,9 +29,7 @@
   /* i18n:end */
 
   var root = document.documentElement;
-  var NAV = /^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End| |Spacebar)$/;
-  var IGNORE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-key-ignore]';
-  var reading = false, target = null, bilingual = false, built = [], bar = null, bar2 = null, live = null, watch = null;
+  var reading = false, target = null, bilingual = false, built = [], bar = null, bar2 = null, live = null;
 
   function el(tag, cls, parent) {
     var e = document.createElement(tag);
@@ -124,34 +125,21 @@
     bar2.style.width = (room > 0 ? Math.min(100, Math.max(0, d.scrollTop / room * 100)) : 100) + '%';
   }
 
-  /* Every slide is content while reading; the engine marks all but the active one
-     inert on each update, so that is undone as it happens. */
-  function wake() {
-    [].forEach.call(document.querySelectorAll('.slide[inert]'), function (s) { s.removeAttribute('inert'); });
-  }
-  function sleep(active) {
-    [].forEach.call(document.querySelectorAll('.slide'), function (s) {
-      if (s === active) s.removeAttribute('inert'); else s.setAttribute('inert', '');
-    });
-  }
-
   /* ============ open and close ============ */
   function open() {
     if (reading) return;
     var st = D.state();
     target = D.slides()[st.index] || null;
     reading = true;
+    /* the engine stops picking the slide from scroll, leaves the scroll keys to the
+       page and marks no slide inert: every slide is content while reading */
+    D.pauseTracking();
     build();
     chrome();
     root.classList.add('deck-read');
-    wake();
     var d = deck();
     if (!d.hasAttribute('tabindex')) { d.setAttribute('tabindex', '-1'); d.setAttribute('data-read-tabindex', ''); }
     if (!document.activeElement || document.activeElement === document.body) { try { d.focus({ preventScroll: true }); } catch (e) { /* old browser */ } }
-    if (window.MutationObserver) {
-      watch = new MutationObserver(function () { if (reading) wake(); });
-      [].forEach.call(document.querySelectorAll('.slide'), function (s) { watch.observe(s, { attributes: true, attributeFilter: ['inert'] }); });
-    }
     if (target && st.index > 0) jump(target.previousElementSibling || target);
     else jump();
     progress();
@@ -162,17 +150,16 @@
   function close(at) {
     if (!reading) return;
     reading = false;
-    if (watch) { watch.disconnect(); watch = null; }
     clear();
     root.classList.remove('deck-read');
     var d = deck();
     if (d.hasAttribute('data-read-tabindex')) { d.removeAttribute('tabindex'); d.removeAttribute('data-read-tabindex'); }
     var list = D.slides(), dest = at || target, i = list.indexOf(dest);
     if (i < 0) { i = D.state().index; dest = list[i]; }
-    sleep(dest);
-    /* an instant scroll the engine follows like a wheel scroll: no transition, and the
-       step stays when the slide is the same one */
+    /* an instant scroll, then the engine takes the slide from it: no transition, and
+       the step stays when the slide is the same one */
     if (dest) jump(dest);
+    D.resumeTracking();
     say('closed');
     unchrome();
     signal();
@@ -180,21 +167,8 @@
   function toggle() { if (reading) close(); else open(); }
 
   /* ============ while reading: the page scrolls, the deck stands still ============ */
-  /* Window capture runs before the engine's document listeners. The navigation keys
-     keep their native page scroll and never reach the engine; scroll events never
-     reach its slide tracking, which would otherwise read the document as a deck. */
-  window.addEventListener('keydown', function (e) {
-    if (!reading || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (root.classList.contains('deck-covered')) return;
-    var tg = e.target;
-    if (tg && tg.closest && tg.closest(IGNORE)) return;
-    if (NAV.test(e.key)) e.stopPropagation();
-  }, true);
-  window.addEventListener('scroll', function (e) {
-    if (!reading) return;
-    e.stopPropagation();
-    progress();
-  }, true);
+  /* The deck is the scroller and its scroll does not bubble, hence the capture phase. */
+  window.addEventListener('scroll', function () { if (reading) progress(); }, true);
   document.addEventListener('click', function (e) {
     var b = e.target && e.target.closest ? e.target.closest('[data-deck="read"]') : null;
     if (!b) return;
@@ -222,7 +196,6 @@
         if (!reading) return;
         target = api.slides()[api.state().index] || target;
         build();
-        wake();
       });
       var v = opt('data-read-default');
       if (v !== null && v !== 'off' && v !== 'false') open();

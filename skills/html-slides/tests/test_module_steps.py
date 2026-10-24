@@ -1,4 +1,4 @@
-"""Deck module `steps` (assets/modules/steps.js, reference/modules.md § steps).
+"""Deck module `steps` (assets/modules/steps.js, reference/modules.md § Module: steps).
 
 data-step reveals one element per forward move, data-steps makes every child of a
 container a step, data-lines walks a code block through line groups, and the deep

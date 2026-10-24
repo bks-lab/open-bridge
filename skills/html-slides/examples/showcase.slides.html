@@ -619,14 +619,8 @@ verify-page: 0 errors, 0 warnings (1 page)
   document.addEventListener('slidedeck:ready', function () {
     var d = window.SlideDeck;
     if (d && d.trackLabel) showTrack(d.trackLabel());
-    /* L is this deck's key, not the engine's: add it to the ? help. */
-    var list = document.querySelector('.deck-help__list');
-    if (list) {
-      var dt = document.createElement('dt'), k = document.createElement('kbd'), dd = document.createElement('dd');
-      k.textContent = 'L'; dt.appendChild(k);
-      dd.textContent = cur() === 'de' ? 'Sprache wechseln (DE / EN)' : 'Switch language (DE / EN)';
-      list.appendChild(dt); list.appendChild(dd);
-    }
+    /* the engine lists L in the ? help of a bilingual deck; this script only takes
+       the key first, so the track labels follow the language too */
   });
   document.addEventListener('slidedeck:trackchange', function (e) { showTrack(e.detail && (e.detail.label || e.detail.track)); });
 })();

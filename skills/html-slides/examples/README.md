@@ -28,7 +28,7 @@ neutral, it presents the html-slides and html-canvas skills themselves.
 The fragment carries one `<style>` and two small scripts of its own, all marked as
 deck-specific: the swap rules for the language pairs and the language switch (key L
 stores the choice and reloads, because the engine localises its controls once at
-start; the script also adds L to the `?` help, and sets `data-tracks-labels` for the active language before the engine reads it). The deck options come from
+start; the engine lists L in the `?` help of a bilingual deck, and the script sets `data-tracks-labels` for the active language before the engine reads it). The deck options come from
 `new-deck.py --deck-attr` in step 3. Track "short" is named only by
 `data-tracks-cycle`: no slide carries it, it shows the untagged slides.
 

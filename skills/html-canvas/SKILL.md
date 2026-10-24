@@ -4,7 +4,7 @@ description: >-
   Builds single-file HTML documents: explainers, reference pages, architecture visualizations, light/dark and DE/EN toggles, DESIGN.md tokens. Also running models: simulations with a clock. NOT marketing pages or ops dashboards (creative-design-stack), not ecosystem maps (bridge-explorer). Trigger: "create an HTML page", "explainer", "html kit", "theme toggle", "simulate this".
 metadata:
   scope: core
-  version: 1.2.0
+  version: 1.3.0
   last_updated: 2026-10-24
 ---
 
