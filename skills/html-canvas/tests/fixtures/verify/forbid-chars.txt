@@ -1,0 +1,2 @@
+# one forbidden character per line, whitespace ignored
+¶
