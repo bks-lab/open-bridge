@@ -125,6 +125,32 @@ def test_maximize_button_posts_a_request_and_reflects_the_reported_state(framed)
     assert frame.evaluate("document.documentElement.getAttribute('data-sim-maximized')") == "yes"
 
 
+def test_inside_a_stage_the_page_hides_its_own_toolbar(framed):
+    """The slide owns theme, language and print; a second toolbar inside the frame is noise."""
+    frame = child(framed)
+    assert frame.evaluate("document.documentElement.getAttribute('data-sim-embedded')") == "yes"
+    assert frame.evaluate("getComputedStyle(document.querySelector('.topbar')).display") == "none"
+
+
+def test_the_slide_sets_theme_and_language_and_nothing_is_stored(framed):
+    frame = child(framed)
+    framed.evaluate("window.toChild({type: 'stage:look', dark: true, lang: 'de'})")
+    frame.wait_for_function("document.documentElement.classList.contains('dark')")
+    assert frame.evaluate("[document.documentElement.getAttribute('data-lang'), document.documentElement.lang]") == ["de", "de"]
+    framed.evaluate("window.toChild({type: 'stage:look', dark: false, lang: 'en'})")
+    frame.wait_for_function("!document.documentElement.classList.contains('dark')")
+    assert frame.evaluate("document.documentElement.getAttribute('data-lang')") == "en"
+    assert frame.evaluate("[localStorage.getItem('html-canvas-theme'), localStorage.getItem('html-canvas-lang')]") == [None, None]
+    framed.evaluate("window.viaForeign({type: 'stage:look', dark: true})")
+    framed.wait_for_timeout(200)
+    assert not frame.evaluate("document.documentElement.classList.contains('dark')"), "a sibling frame set the theme"
+
+
+def test_a_standalone_page_keeps_its_toolbar(open_page, tmp_path):
+    page = open_page(assemble(tmp_path))
+    assert page.evaluate("getComputedStyle(document.querySelector('.topbar')).display") != "none"
+
+
 def test_a_standalone_page_posts_nothing_and_offers_no_maximize_button(open_page, tmp_path):
     page = open_page(assemble(tmp_path),
                      init_script="window.__posted = []; addEventListener('message', e => __posted.push(e.data));")
@@ -150,7 +176,7 @@ def test_engine_speaks_only_when_framed_and_checks_the_source():
 def test_simulation_reference_documents_every_message():
     text = (SKILL / "references" / "simulation.md").read_text("utf-8")
     assert "## Embedding in a slide: the stage contract" in text
-    for kind in ("stage:ready", "stage:maximize", "stage:key", "stage:restart", "event.source"):
+    for kind in ("stage:ready", "stage:maximize", "stage:key", "stage:restart", "stage:look", "event.source"):
         assert kind in text, kind
 
 

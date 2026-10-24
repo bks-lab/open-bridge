@@ -216,6 +216,7 @@ dead control. Both archetypes ship that button with `hidden`.
 | `stage:maximize` | simulation to slide | optional `on` (boolean) | the maximize button was pressed; without `on` it means toggle |
 | `stage:maximize` | slide to simulation | `on` (boolean) | the slide reports the resulting state; the engine mirrors it as `data-sim-maximized="yes"` or `"no"` on `<html>` and as `aria-pressed` on the button |
 | `stage:restart` | slide to simulation | none | reset the run in place and start it again (under reduced motion: compute it to the end). The slide falls back to reloading the frame when no `stage:ready` has arrived |
+| `stage:look` | slide to simulation | `dark` (boolean), `lang` (`de` or `en`) | the slide's theme and language, sent after `stage:ready` and on every change; the engine sets `.dark` and `data-lang` on `<html>` and stores nothing. A framed page carries `data-sim-embedded="yes"` and hides its own toolbar, because theme, language and print belong to the slide |
 
 Every message is a plain object with a `type` string; anything else is ignored.
 

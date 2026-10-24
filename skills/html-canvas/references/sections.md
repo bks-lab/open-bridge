@@ -256,6 +256,8 @@ fields with an explicit caveat (verify-before-claim), never keep them silently.
 *CSS: block `spec-card` in `assets/sections.css`, included by `new-page.py --blocks spec-card`.*
 
 ## <a id="callout"></a>Callout / note (+ warn / caveat variant)
+The plain note is the info callout, the one tinted card. `warn` is a plain card
+whose state rides on a dot before its bold word, never on a second tinted fill.
 ```html
 <div class="note"><b><span data-de>Hinweis</span><span data-en>Note</span></b> <span data-de>…</span><span data-en>…</span></div>
 <div class="note warn"><b><span data-de>Vorbehalt</span><span data-en>Caveat</span></b> <span data-de>Aus der Quelle abgeleitet, nicht bestätigt.</span><span data-en>Derived from source, unconfirmed.</span></div>
@@ -290,7 +292,7 @@ Remember SOUL.md: the user is the **sender**; recipients in 3rd person ("Recipie
 ## <a id="terminal"></a>Terminal / code-window mock
 Hand-classed syntax spans mapped to status vars.
 ```html
-<div class="term"><div class="term-bar"><span class="td r"></span><span class="td y"></span><span class="td g"></span><span class="term-label">deploy.sh</span></div>
+<div class="term"><div class="term-bar"><span class="td"></span><span class="td"></span><span class="td"></span><span class="term-label">deploy.sh</span></div>
 <pre class="term-body"><span class="pr">$</span> deploy uat
 <span class="ok">✓ running</span></pre></div>
 ```
@@ -308,7 +310,7 @@ Hand-classed syntax spans mapped to status vars.
 One page that lets a reader decide: the question as the lead, the options as cards,
 the criteria as a shape-encoded table (the matrix glyphs, never colour alone), the
 recommendation as a callout, and what is still open as a numbered list with owners.
-The recommended option carries a heavier line and the word "Recommended". State a
+The recommended option carries a stronger line colour (still 1px) and the word "Recommended", beside its tag, so every title starts on one line. State a
 recommendation only when the criteria support it; with none, drop the pick and the
 callout and say so. Needs `matrix` and `callout` (new-page.py pulls them in).
 ```html

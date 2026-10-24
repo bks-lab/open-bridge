@@ -39,18 +39,105 @@ fonts:
     fallback: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
 
 css_overrides: |
+  /* Everything below holds for any DESIGN.md of the current shape: one heading
+     colour, status colours for state only, 1px lines, code on the muted surface,
+     no shadow and no texture. Each rule names what it replaces in the engine,
+     whose defaults stay with the style presets. */
+
   /* Display type: the family is DESIGN.md's, the cut is quiet. */
   .slide__display { font-weight: 500; letter-spacing: -0.01em; }
+  /* Headings in the display family take its one cut too; the family is the hierarchy. */
+  .slide__heading { font-weight: 500; }
   /* Subtitles and taglines are body copy in DESIGN.md, not letter-spaced mono. */
   .slide__subtitle { font-family: var(--font-body); letter-spacing: 0; }
-  /* Code strings take --amber, which a brand maps to its warning fill; mixed
-     towards the text colour it keeps the hue and reads at body contrast. */
-  .slide__code-block .str { color: color-mix(in srgb, var(--amber) 70%, var(--text)); }
-  /* Decoration only behind .fx (on <html>, the .deck or one .slide): without it,
-     no gradient zones and no backdrop blur, because a flat brand stays flat. */
+
+  /* Headings take the heading colour: primary on light, the text colour on dark,
+     where a primary that stays the same in both modes is a fill, never ink. */
+  :root, .theme-light { --heading: var(--primary); }
+  .theme-dark { --heading: var(--text); }
+  .slide__display, .slide__heading { color: var(--heading); }
+
+  /* Colour carries state, never a chapter. The slide types tell chapters apart
+     with an inline colour on a heading or a label and a glow behind the slide;
+     here those give way to the heading colour and the accent, and the glow and
+     every gradient zone go (.fx on <html>, the .deck or one .slide brings them
+     back). Status colours stay with status dots and the words beside them. */
+  :root:not(.fx) .deck:not(.fx) .slide:not(.fx) :is(.slide__display, .slide__heading) { color: var(--heading) !important; }
+  :root:not(.fx) .deck:not(.fx) .slide:not(.fx) .slide__label { color: var(--accent) !important; }
   :root:not(.fx) .deck:not(.fx) .slide:not(.fx)[style*="gradient"],
   :root:not(.fx) .deck:not(.fx) .slide--title:not(.fx) { background-image: none !important; }
   :root:not(.fx) .deck:not(.fx) .slide:not(.fx) .slide__bg--gradient { background: var(--bg); }
+  /* No texture: the dot grid behind a slide is decoration. */
+  :root:not(.fx) .deck:not(.fx) .slide--with-grid:not(.fx)::before { content: none; background-image: none; }
+  /* Decoration only behind .fx: without it, no backdrop blur either. */
   :root:not(.fx) .deck-dots,
   :root:not(.fx) .theme-toggle,
   :root:not(.fx) .deck:not(.fx) .slide:not(.fx) * { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+  /* Syntax colours from the brand scale, not from the status colours. */
+  .slide__code-block .kw { color: var(--accent); }
+  .slide__code-block .str { color: color-mix(in srgb, var(--accent) 50%, var(--code-text)); }
+  .slide__code-block .hl { color: var(--heading); font-weight: 600; }
+  .slide__code-block .cm { color: var(--text-dim); }
+
+  /* The title is editorial: left-aligned, in the heading colour, on a plain ground. */
+  .slide--title { align-items: flex-start; text-align: left; }
+
+  /* Lines are never heavier than 1px: the accent bars on cards and the heavy
+     table rule become hairlines. */
+  .pipeline__step, .overview-tile { border-top-width: 1px; border-top-color: var(--border); }
+  .overview-tile:hover, .overview-tile:focus-visible { border-color: var(--accent); }
+  .scenario-card { border-left-width: 1px; border-left-color: var(--border); }
+  .data-table th { border-bottom-width: 1px; }
+  .deck-notes { border-top-width: 1px; border-top-color: var(--border-bright); }
+
+  /* Code chips sit on the muted surface in the text colour; the accent tint is for
+     active states. The file tab is a label on the block's edge, not a fill. */
+  .data-table code, .cheat-card__item code, .pipeline__file, .scenario-card__code {
+    background: var(--code-bg); color: var(--code-text); border-radius: 4px;
+  }
+  .slide__code-filename {
+    background: var(--surface); color: var(--text-dim); border: 1px solid var(--border);
+  }
+  /* A code slide reads like any other: heading and block start on the left edge. */
+  .slide--code { align-items: stretch; }
+
+  /* Chrome: no text shadow, one size and one colour for counter, track and hints,
+     and no pill behind the dots. The hints still fade once the deck is in use. */
+  .deck-counter, .deck-track, .deck-hints { text-shadow: none; font-size: 12px; color: var(--text-dim); }
+  .deck-hints { opacity: 1; }
+  .deck-dots { background: none; }
+
+  /* Split slides stand on one ground: two columns with a hairline between them,
+     their content starting at the same height. */
+  .slide--split .slide__panels { align-content: center; }
+  .slide--split .slide__panel { background: transparent; justify-content: flex-start; gap: 0; }
+  .slide--split .slide__panel--secondary { border-left: 1px solid var(--border); }
+  /* the outer edges keep the margins of every other slide */
+  @media (min-width: 769px) {
+    .slide--split .slide__panel--primary { padding-left: clamp(40px, 8vw, 120px); }
+    .slide--split .slide__panel--secondary { padding-right: clamp(40px, 8vw, 120px); }
+  }
+  @media (max-width: 768px) {
+    .slide--split .slide__panel { padding-left: 16px; padding-right: 16px; }
+    .slide--split .slide__panel--secondary { border-left: 0; border-top: 1px solid var(--border); }
+  }
+
+  /* The chapter number of a divider is a quiet display numeral beside the text
+     column, never behind it, and never in a light cut. */
+  .slide--divider .slide__number {
+    font-family: var(--font-display); font-weight: 500; letter-spacing: 0;
+    font-size: clamp(96px, 15vw, 200px); line-height: 1;
+    font-variant-numeric: lining-nums tabular-nums;
+    color: color-mix(in srgb, var(--border-bright) 60%, var(--bg)); opacity: 1;
+    left: auto; right: clamp(56px, 9vw, 140px); top: 50%; transform: translateY(-50%);
+  }
+  @media (min-width: 769px) { .slide--divider > div { max-width: 58%; } }
+  @media (max-width: 768px) {
+    .slide--divider .slide__number { position: static; transform: none; font-size: 72px; margin-bottom: 12px; }
+  }
+
+  /* A table slide keeps the margins of every other slide. */
+  @media (min-width: 769px) and (min-height: 701px) {
+    .slide--table { padding: clamp(40px, 6vh, 80px) clamp(40px, 8vw, 120px); }
+  }

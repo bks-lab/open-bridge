@@ -458,6 +458,11 @@
               stage:maximize  when [data-sim-maximize] is pressed
        hears  stage:restart   reset the run in place, then start it again
               stage:maximize  the parent reports {on: bool}; mirrored on <html>
+              stage:look      {dark: bool, lang: 'de'|'en'}: the slide's theme and
+                              language, applied without storing a choice
+     Framed, the page marks <html data-sim-embedded="yes">; simulation.css hides
+     the page's own toolbar then, because theme, language and print belong to
+     the slide around it.
      A page opened on its own (window.parent === window) posts nothing, hears
      nothing and removes its maximize button: a control without a stage to
      enlarge would be a dead control.
@@ -509,6 +514,14 @@
           if (reduced()) clock.runToEnd(); else clock.start();
         } else if (d.type === 'stage:maximize' && typeof d.on === 'boolean') {
           reflect(d.on);
+        } else if (d.type === 'stage:look') {
+          var r = doc.documentElement;
+          if (typeof d.dark === 'boolean') r.classList.toggle('dark', d.dark);
+          if (d.lang === 'de' || d.lang === 'en') {
+            r.setAttribute('data-lang', d.lang);
+            r.setAttribute('lang', d.lang);
+            if (typeof global.hcApplyAria === 'function') global.hcApplyAria();
+          }
         }
       });
       doc.addEventListener('keydown', function (e) {

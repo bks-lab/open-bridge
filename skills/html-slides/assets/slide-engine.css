@@ -247,6 +247,48 @@ body {
   letter-spacing: 1px;
 }
 
+/* A heading keeps its distance to the text below it; the label above carries its own. */
+.slide__heading + .slide__body,
+.slide__heading + .slide__bullets { margin-top: clamp(12px, 2.2vh, 24px); }
+
+/* Code is set in the mono family wherever it stands, also inline in prose. Inline
+   code does not break at its own hyphens: a flag or attribute is one token. */
+.slide code, .slide kbd, .slide samp, .slide pre, .deck-notes code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  hyphens: manual;
+}
+.slide :not(pre) > code { white-space: nowrap; }
+
+/* Buttons on a slide: data-deck / data-stage controls, or links styled as one.
+   The primary one is the brand's primary fill; a style preset without a primary
+   colour falls back to its accent. aria-pressed marks the active choice in a set
+   (the engine keeps it current on data-deck="track:<name>" buttons). */
+.slide__actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  margin-top: clamp(14px, 2.4vh, 24px);
+}
+.slide__btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 10px 20px; border-radius: 6px; cursor: pointer;
+  font: 600 clamp(14px, 1.3vw, 16px)/1.25 var(--font-body); text-decoration: none;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border-bright);
+  transition: background-color 0.2s ease-out, border-color 0.2s ease-out;
+}
+.slide__btn:hover, .slide__btn:focus-visible { border-color: var(--accent); }
+.slide__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.slide__btn[aria-pressed="true"] { background: var(--accent-dim); border-color: var(--accent); }
+.slide__btn--primary {
+  background: var(--primary, var(--accent)); border-color: var(--primary, var(--accent));
+  color: var(--on-primary, var(--bg));
+}
+.slide__btn--primary:hover, .slide__btn--primary:focus-visible {
+  background: color-mix(in srgb, var(--primary, var(--accent)) 86%, var(--text));
+  border-color: var(--primary, var(--accent));
+}
+.slide__btn-arrow { flex-shrink: 0; transition: transform 0.2s ease-out; }
+.slide__btn:hover .slide__btn-arrow { transform: translateX(3px); }
+
 .slide__label {
   font-family: var(--font-mono);
   font-size: clamp(10px, 1.2vw, 13px);
@@ -471,6 +513,7 @@ body {
   flex: 1;
 }
 .pipeline__file {
+  font-family: var(--font-mono);
   font-size: clamp(10px, 1.1vw, 12px);
   color: var(--accent);
   background: var(--accent-dim);
@@ -615,6 +658,7 @@ body {
 }
 @media (max-width: 768px) {
   .deck-dots { display: none; }
+  .slide__code-block { padding: 20px 16px; }
   .slide { padding: clamp(28px, 5vh, 48px) 16px; }
   .slide--split, .slide--bleed { padding: 0; }
   .slide--content .slide__inner { grid-template-columns: 1fr; }

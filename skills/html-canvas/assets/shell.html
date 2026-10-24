@@ -117,7 +117,8 @@ h4{font-size:var(--fs-h4,17px);font-weight:var(--fw-h4,600);line-height:var(--lh
 p{max-width:70ch}
 a{color:var(--accent-text);text-decoration:none}
 a:hover{text-decoration:underline}
-code,kbd{font-family:var(--font-mono);font-size:.92em;font-variant-ligatures:none}
+code,kbd{font-family:var(--font-mono);font-size:.92em;font-variant-ligatures:none;hyphens:manual}
+pre,samp{font-family:var(--font-mono);font-variant-ligatures:none;hyphens:manual}
 code{background:var(--surface-muted);padding:1px 6px;border-radius:var(--radius-sm)}
 kbd{border:1px solid var(--line);border-radius:var(--radius-sm);padding:1px 6px;background:var(--raised)}
 :focus-visible{outline:2px solid var(--secondary);outline-offset:2px;border-radius:var(--radius-sm)}
@@ -151,7 +152,8 @@ kbd{border:1px solid var(--line);border-radius:var(--radius-sm);padding:1px 6px;
 }
 
 /* ─── Footer ─── */
-footer.canvas-foot{max-width:1100px;margin:48px auto 32px;padding:16px 24px 0;border-top:1px solid var(--line-subtle);font-size:12px;color:var(--muted)}
+/* the rule spans the content column of .wrap (1100 minus 2 x 24), not its padding */
+footer.canvas-foot{margin:48px max(24px,calc((100% - 1052px) / 2)) 32px;padding:16px 0 0;border-top:1px solid var(--line-subtle);font-size:12px;color:var(--muted)}
 footer.canvas-foot code{background:none;padding:0}
 
 /* ─── Print ─── */
@@ -182,10 +184,10 @@ footer.canvas-foot code{background:none;padding:0}
 </main>
 
 <footer class="canvas-foot">
-  <span data-de>Generiert {{DATE}} · Quelle: <code>{{SOURCE_PATH}}</code> · </span>
-  <span data-en>Generated {{DATE}} · Source: <code>{{SOURCE_PATH}}</code> · </span>
-  <kbd>T</kbd> Theme · <kbd>L</kbd> <span data-de>Sprache</span><span data-en>Language</span> ·
-  <span data-de>Single-File, offline, keine externen Dependencies</span><span data-en>single-file, offline, no external dependencies</span>
+  <span data-de>Stand {{DATE}} · Quelle: <code>{{SOURCE_PATH}}</code> · </span>
+  <span data-en>As of {{DATE}} · Source: <code>{{SOURCE_PATH}}</code> · </span>
+  <kbd>T</kbd> <span data-de>Hell und dunkel</span><span data-en>Theme</span> · <kbd>L</kbd> <span data-de>Sprache</span><span data-en>Language</span> ·
+  <span data-de>eine Datei, offline, ohne externe Abhängigkeiten</span><span data-en>one file, offline, no external dependencies</span>
 </footer>
 
 <!-- ─── Controllers: theme (.dark class) + lang (data-lang). Structural twins. ─── -->

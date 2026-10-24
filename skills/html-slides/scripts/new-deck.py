@@ -100,6 +100,8 @@ NEUTRAL_TOKENS = """\
   --border-bright: color-mix(in srgb, var(--text) 28%, var(--bg));
   --accent: LinkText;
   --accent-dim: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  --primary: var(--text);
+  --on-primary: var(--bg);
   --code-bg: var(--surface2);
   --code-text: var(--text);
   --green: var(--accent); --green-dim: var(--accent-dim);

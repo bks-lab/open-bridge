@@ -3,15 +3,17 @@
    Contract (reference/slide-types.md, section "Engine contract"):
    - Slides are .slide inside .deck. Options sit on .deck or <html> (deck wins):
      data-tracks-default, data-tracks-cycle, data-deck-id, data-counter-format="padded",
-     data-dots="off", data-back-href, data-back-label, data-deep-link="off".
+     data-dots="off", data-back-href, data-back-label, data-deep-link="off",
+     data-tracks-labels="<name>=<label> ..." (what the track badge shows for a name).
    - API: window.SlideDeck = {goTo(i), next(), prev(), current(), count(), setTrack(name),
-     track(), on(event, fn), toggleTheme(), toggleNotes(), toggleHelp(), strings()}.
+     track(), trackLabel(), on(event, fn), toggleTheme(), toggleNotes(), toggleHelp(), strings()}.
      Indexes are 0-based positions among the slides the active track shows.
-     Events: "ready", "slidechange" {index, count, slide}, "trackchange" {track, count},
+     Events: "ready", "slidechange" {index, count, slide}, "trackchange" {track, label, count},
      also dispatched on document as "slidedeck:<event>".
      The old names window.slideEngine and window.__slideEngine point at the one engine instance.
    - Buttons: data-deck="next|prev|theme|notes|help|track|track:<name>|goto:<n>|goto:#<id>",
-     where goto:<n> is the 1-based slide number the counter shows.
+     where goto:<n> is the 1-based slide number the counter shows. A track:<name> button
+     carries aria-pressed, true while its track is the active one.
    - Tracks: data-track on a slide (old decks: data-spur), several names separated by spaces.
      A slide without one belongs to every track. Key F cycles.
    - Notes: <aside class="notes"> inside a slide, key N shows them in a panel.
@@ -120,6 +122,14 @@
     this.trackNames = names;
     if (!cycle.length) cycle = this.trackDefault ? [this.trackDefault, 'all'] : ['all'].concat(names);
     this.trackCycle = cycle;
+    /* Display names: data-tracks-labels="short=kurz full=lang". The name stays the key
+       (data-track, storage, deep links); only what a person reads changes. */
+    var labels = {};
+    (this.opt('data-tracks-labels') || '').split(/\s+/).forEach(function (pair) {
+      var i = pair.indexOf('=');
+      if (i > 0 && i < pair.length - 1) labels[pair.slice(0, i)] = pair.slice(i + 1);
+    });
+    this.trackLabels = labels;
     var stored = names.length ? storeGet(this.trackKey) : null;
     this.track = stored || this.trackDefault || 'all';
   };
@@ -148,13 +158,20 @@
     this.total = vis.length;
     this.labelSlides();
     this.buildDots();
-    if (this.trackBadge) this.trackBadge.textContent = this.t.track + ': ' + (eff === 'all' ? this.t.allTracks : eff);
+    if (this.trackBadge) this.trackBadge.textContent = this.t.track + ': ' + this.labelOf(eff);
+    [].forEach.call(document.querySelectorAll('[data-deck^="track:"]'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-deck').slice(6) === eff ? 'true' : 'false');
+    });
     if (!initial) {
       this.lastEmitted = null;
       this.goTo(keep ? this.visibleIndexOf(keep) : 0, true);
       this.say(this.trackBadge ? this.trackBadge.textContent : '');
-      emit('trackchange', { track: eff, count: this.total });
+      emit('trackchange', { track: eff, label: this.labelOf(eff), count: this.total });
     }
+  };
+  SlideEngine.prototype.labelOf = function (name) {
+    if (name === 'all') return this.t.allTracks;
+    return Object.prototype.hasOwnProperty.call(this.trackLabels, name) ? this.trackLabels[name] : name;
   };
   SlideEngine.prototype.visibleIndexOf = function (slide) {
     var a = this.all, i = a.indexOf(slide), j, k;
@@ -170,6 +187,8 @@
     this.all.forEach(function (s) {
       if (!s.getAttribute('role')) s.setAttribute('role', 'group');
       s.setAttribute('aria-roledescription', t.slide.toLowerCase());
+      /* the big chapter number is decoration: the heading beside it says the chapter */
+      [].forEach.call(s.querySelectorAll('.slide__number:not([aria-hidden])'), function (n) { n.setAttribute('aria-hidden', 'true'); });
     });
   };
   SlideEngine.prototype.labelSlides = function () {
@@ -453,6 +472,9 @@
     current: function () { return instance ? instance.current : 0; },
     count: function () { return instance ? instance.total : 0; },
     track: function () { return instance ? instance.activeTrack : 'all'; },
+    trackLabel: function (name) {
+      return instance ? instance.labelOf(name == null ? instance.activeTrack : String(name)) : (name || 'all');
+    },
     setTrack: function (name) { if (instance) instance.setTrack(name); },
     toggleTheme: function () { if (instance) instance.toggleTheme(); },
     toggleNotes: function (force) { if (instance) instance.toggleNotes(force); },

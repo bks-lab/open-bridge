@@ -412,3 +412,84 @@ def test_pipeline_stacks_cleanly_on_a_narrow_screen(open_page, tmp_path):
     assert len({round(b["w"]) for b in pboxes}) == 1, "every stage as wide as the next"
     for prev, cur in zip(boxes, boxes[1:]):
         assert cur["top"] >= prev["bottom"] - 1, "one item per row, in order: %r" % boxes
+
+
+# --- brand rules every block keeps (DESIGN.md of the current shape) --------------------
+
+HEAVY = """() => [...document.querySelectorAll('main *')].filter(e => {
+    const cs = getComputedStyle(e);
+    return ['Top', 'Right', 'Bottom', 'Left'].some(s => cs['border' + s + 'Style'] !== 'none'
+      && parseFloat(cs['border' + s + 'Width']) > 1.01);
+  }).map(e => e.tagName.toLowerCase() + '.' + e.className)"""
+
+
+def test_no_block_draws_a_line_heavier_than_1px(open_page, tmp_path):
+    out, r = build(tmp_path, "--blocks", "all")
+    assert r.returncode == 0, r.stdout + r.stderr
+    page = open_page(out.read_text("utf-8"), viewport={"width": 1280, "height": 900})
+    assert page.evaluate(HEAVY) == []
+
+
+def _tok(page, name: str) -> str:
+    return page.evaluate("""(n) => { const p = document.createElement('i'); p.style.color = 'var(--' + n + ')';
+      document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; }""", name)
+
+
+def test_callouts_are_cards_and_a_limit_says_its_state_with_a_dot(open_page, tmp_path):
+    out, r = build(tmp_path, "--blocks", "callout")
+    page = open_page(out.read_text("utf-8"), viewport={"width": 1280, "height": 900})
+    note = page.evaluate("""() => { const cs = getComputedStyle(document.querySelector('.note:not(.warn)'));
+      return {bg: cs.backgroundColor, left: cs.borderLeftColor, top: cs.borderTopColor}; }""")
+    assert note["bg"] == _tok(page, "accent-subtle") and note["left"] == note["top"], note
+    page.evaluate("""() => { const n = document.createElement('div'); n.className = 'note warn';
+      n.innerHTML = '<b>Limit</b> text'; document.querySelector('main').appendChild(n); }""")
+    warn = page.evaluate("""() => { const e = document.querySelector('.note.warn'), cs = getComputedStyle(e);
+      const dot = getComputedStyle(e.querySelector('b'), '::before');
+      return {bg: cs.backgroundColor, left: cs.borderLeftColor, top: cs.borderTopColor, dot: dot.backgroundColor}; }""")
+    assert warn["bg"] == _tok(page, "raised"), "one coloured fill in the system, and it is not the warning"
+    assert warn["left"] == warn["top"], warn
+    assert warn["dot"] == _tok(page, "warn"), "the state rides on a dot beside its word"
+
+
+@pytest.mark.parametrize("width", [600, 1280])
+def test_decision_options_line_up(open_page, tmp_path, width):
+    out, r = build(tmp_path, "--blocks", "decision-page")
+    page = open_page(out.read_text("utf-8"), viewport={"width": width, "height": 900})
+    boxes = page.evaluate("""() => [...document.querySelectorAll('.dec-opt')].map(o => {
+      const b = o.getBoundingClientRect(), h = o.querySelector('h4').getBoundingClientRect();
+      return {left: Math.round(b.left), top: Math.round(b.top), title: Math.round(h.top - b.top)}; })""")
+    if width < 700:
+        assert len({b["left"] for b in boxes}) == 1, "one column on a narrow screen: %r" % boxes
+    else:
+        assert len({b["top"] for b in boxes}) == 1, boxes
+        titles = [b["title"] for b in boxes]
+        assert max(titles) - min(titles) <= 1, "the titles share one line: %r" % boxes
+
+
+def test_terminal_keeps_lines_whole_and_its_dots_neutral(open_page, tmp_path):
+    out, r = build(tmp_path, "--blocks", "terminal")
+    page = open_page(out.read_text("utf-8"), viewport={"width": 600, "height": 900})
+    t = page.evaluate("""() => { const b = getComputedStyle(document.querySelector('.term-body'));
+      return {ws: b.whiteSpace, ox: b.overflowX, hy: b.hyphens,
+              dots: [...document.querySelectorAll('.term .td')].map(d => getComputedStyle(d).backgroundColor)}; }""")
+    assert t["ws"] == "pre" and t["ox"] == "auto" and t["hy"] == "manual", t
+    status = {_tok(page, n) for n in ("ok", "warn", "danger")}
+    assert not status & set(t["dots"]), t
+    assert page.evaluate("document.documentElement.scrollWidth") <= 600
+
+
+@pytest.mark.parametrize("width", [600, 1280])
+def test_footer_rule_spans_the_content_column(open_page, tmp_path, width):
+    out, r = build(tmp_path, "--blocks", "doc-header")
+    page = open_page(out.read_text("utf-8"), viewport={"width": width, "height": 900})
+    x = page.evaluate("""() => [document.querySelector('main h1').getBoundingClientRect().left,
+                                document.querySelector('footer.canvas-foot').getBoundingClientRect().left]""")
+    assert abs(x[0] - x[1]) < 1.5, x
+
+
+def test_footer_says_what_the_page_is_in_both_languages(tmp_path):
+    out, r = build(tmp_path, "--lang", "de", "--footer", "unit test")
+    text = out.read_text("utf-8")
+    foot = text[text.index('<footer class="canvas-foot">'):text.index("</footer>")]
+    assert "Single-File" not in foot and "Dependencies" not in foot
+    assert "Stand" in foot and "As of" in foot

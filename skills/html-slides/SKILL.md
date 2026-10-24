@@ -67,7 +67,11 @@ into a fresh `new-deck.py --slides` build. Details: `reference/deck-build.md`.
 - **DESIGN.md wins.** When one is found walking up from the output path, or given
   with `--design`, the `design` preset is the default: colours through
   `presets/design.map.yaml` and `html-canvas/scripts/design-to-css.py`, families and
-  weights from DESIGN.md typography. Nothing is hand-picked.
+  weights from DESIGN.md typography. Nothing is hand-picked. The preset also holds
+  the brand rules a slide's markup cannot break: headings in the heading colour,
+  status colours for state only (a chapter colour or glow from a snippet gives
+  way), 1px lines, code in the mono family on the muted surface, no shadow or
+  texture. `.fx` on `<html>`, the deck or a slide brings the decoration back.
 - **Style presets** (`--preset swiss-modern` and the others) are for a deck that
   should not carry the house brand, and the fallback without DESIGN.md (the one
   marked `default: true`). Offer the picker `assets/discovery-menu.html` when the

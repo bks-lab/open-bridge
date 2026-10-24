@@ -36,6 +36,10 @@ vars:
   # not reach 4.5:1 as text. Its tint behind accent text is `accent-subtle`.
   accent: secondary
   accent-dim: accent-subtle
+  # The fill of a primary button and the text on it, in both modes. A brand whose
+  # primary stays the same in dark mode keeps it a fill there, never text.
+  primary: primary
+  on-primary: on-primary
   code-bg: surface-muted
   code-text: on-surface
   green: success

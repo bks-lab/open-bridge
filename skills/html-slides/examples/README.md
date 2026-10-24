@@ -11,14 +11,14 @@ neutral, it presents the html-slides and html-canvas skills themselves.
 | 1 | Title (untagged, so in every track) | `slide--title` |
 | 2 | Agenda as an overview slide | `slide--overview`, tiles with `data-deck="goto:#id"` |
 | 3, 8, 12, 19 | Section dividers | `slide--divider` |
-| 4 | Keys and help | `?`, `data-deck="help"`, `data-deck="next"` |
+| 4 | Keys and help, buttons | `?`, `data-deck="help"`, `data-deck="next"`, `.slide__btn` in `.slide__actions` |
 | 5 | Deep link (track "full" only) | `deck.html#s-deeplink` (a slide id holds in every track), `#5`, `data-deep-link="off"` |
-| 6 | Tracks | key F, `data-track`, `data-tracks-default`, `data-tracks-cycle` |
+| 6 | Tracks, with German labels for the track names | key F, `data-track`, `data-tracks-default`, `data-tracks-cycle`, `data-tracks-labels` |
 | 7 | Speaker notes | key N, `<aside class="notes">` |
 | 9 | Theme and language | key T (light and dark from DESIGN.md), key L, `data-de` / `data-en` pairs |
 | 10 | Padded counter, back link | `data-counter-format="padded"`, `data-back-href` |
 | 11 | Reveal and reduced motion (track "full") | `class="reveal"` |
-| 13 to 16 | Table (jumps by `goto:#id`), code, pipeline, card grid | `slide--table`, `slide--code`, `.pipeline`, `.cheat-grid` |
+| 13 to 16 | Table of all eleven slide types (jumps by `goto:#id`), code with a colour legend, pipeline, card grid | `slide--table`, `slide--code`, `.pipeline`, `.cheat-grid` |
 | 17 | Decision page excerpt | the html-canvas `decision-page` block, cut to options and pick |
 | 18 | Terminal mockup (track "full") | `.slide__code-block` |
 | 20 | Live stage with a running simulation | `.stage`, key V, `data-stage="maximize"` / `restart` |
@@ -28,7 +28,7 @@ neutral, it presents the html-slides and html-canvas skills themselves.
 The fragment carries one `<style>` and two small scripts of its own, all marked as
 deck-specific: the swap rules for the language pairs and the language switch (key L
 stores the choice and reloads, because the engine localises its controls once at
-start; the script also adds L to the `?` help). The deck options come from
+start; the script also adds L to the `?` help, and sets `data-tracks-labels` for the active language before the engine reads it). The deck options come from
 `new-deck.py --deck-attr` in step 3. Track "short" is named only by
 `data-tracks-cycle`: no slide carries it, it shows the untagged slides.
 

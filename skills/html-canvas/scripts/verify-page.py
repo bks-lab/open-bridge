@@ -37,7 +37,10 @@ Static mode (default, stdlib only):
   visible), lang-hidden (an element carrying both data-de and data-en, shown in
   neither), contrast (body text under 4.5:1, 3:1 for large text; over a gradient,
   an image or a sibling layer such as a scrim, the ground is read from a
-  screenshot with all text hidden), reduced-motion
+  screenshot with all text hidden; text inside aria-hidden="true" is decoration
+  and not measured), code-font (code, kbd, pre or samp set in another family
+  than the page's --font-mono, warning; only where the page declares one),
+  reduced-motion
   (text left at opacity 0, warning). --out DIR keeps screenshots, >= 500 px wide.
   Dark mode is found where the page keeps it: html.dark, .theme-dark (with
   .theme-light), [data-theme="dark"], or prefers-color-scheme alone; any other
@@ -706,7 +709,8 @@ JS_CONTRAST = """() => {
     return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
   const hasText = el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
   const els = [document.body, ...document.querySelectorAll('p, li, td, th, dd, dt, figcaption, blockquote, h1, h2, h3, h4, label, small, span')]
-    .filter((el, i) => i === 0 || (hasText(el) && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden'))
+    .filter((el, i) => i === 0 || (hasText(el) && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden'
+      && !el.closest('[aria-hidden="true"]')))
     .slice(0, 300);
   const bad = [], layered = [];
   for (const el of els) {
@@ -724,6 +728,18 @@ JS_CONTRAST = """() => {
   }
   window.__vpLayered = layered;
   return {bad, layered: layered.length};
+}""" % JS_DESC
+
+# Code in another family than the page's own mono stack. Only pages that declare
+# --font-mono are measured: that variable is the page saying which family code takes.
+JS_CODE_FONT = """() => {
+  %s
+  const first = f => (f || '').split(',')[0].trim().replace(/^["']|["']$/g, '').toLowerCase();
+  const mono = first(getComputedStyle(document.documentElement).getPropertyValue('--font-mono'));
+  if (!mono) return [];
+  return [...document.querySelectorAll('code, kbd, pre, samp')]
+    .filter(el => el.getClientRects().length && el.textContent.trim() && first(getComputedStyle(el).fontFamily) !== mono)
+    .map(el => desc(el) + ' in ' + first(getComputedStyle(el).fontFamily));
 }""" % JS_DESC
 
 # Text over an image, a gradient or a sibling layer: hide all text, bring the next
@@ -921,6 +937,11 @@ def run_browser(browser, target: Path, rep: Report, args) -> None:
                         hidden_in[lang] = {h["key"]: h["desc"] for h in page.evaluate(JS_DUAL_HIDDEN)}
                     for low in contrast_findings(page)[:1]:
                         rep.add("contrast", ERROR, "%s: %s:1 under %s:1 for %s" % (state, low["ratio"], low["need"], low["el"]))
+                    if not dark and lang == langs[0]:
+                        off = page.evaluate(JS_CODE_FONT)
+                        if off:
+                            rep.add("code-font", WARNING, "%d code element%s outside the page's --font-mono, e.g. %s"
+                                    % (len(off), "" if len(off) == 1 else "s", off[0]))
                 shot(page, out, stem, state, width)
         if len(hidden_in) == 2:
             lost = [d for k, d in hidden_in["en"].items() if k in hidden_in["de"]]

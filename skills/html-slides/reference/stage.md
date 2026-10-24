@@ -20,7 +20,7 @@ the flag (`--refresh` never adds a region).
 |---|---|
 | `data-src` | relative path of the page to run |
 | `data-srcdoc-ref` | id of an inert `<script type="text/plain">` or `<template>` that holds the page itself; base64 when it carries `data-encoding="base64"` (UTF-8 safe). Wins over `data-src` |
-| `data-mode="fit"` (default) | the page renders in a logical window (`data-viewport`, default `1440x900`) and is scaled down to the frame, never up: for pictures |
+| `data-mode="fit"` (default) | the page renders in a logical window (`data-viewport`, default `1440x900`) and is scaled down to the frame, never up: for pictures. The window is the least the page gets: it grows along the axis the frame has to spare, so the page fills the frame instead of sitting between empty bands. Declare the size the page needs to be read, not more: a smaller viewport scales less |
 | `data-mode="read"` | no scaling, the page fills the frame and scrolls: for documents |
 | `data-title` | accessible name of the frame |
 | `data-stage="maximize"`, `data-stage="restart"` on a button in the same slide | the large stage, a fresh run |
@@ -49,10 +49,13 @@ The reasons, one test each, are in the header of `assets/slide-stage.js` and in
 ## The contract with the page inside
 
 The deck and the simulation share no code: they talk through `postMessage`
-(`stage:ready`, `stage:key`, `stage:maximize`, `stage:restart`), and each side
+(`stage:ready`, `stage:key`, `stage:maximize`, `stage:restart`, `stage:look`), and each side
 accepts a message only from the window it expects (`event.source`). The page side
 is built into html-canvas `sim-engine.js` and speaks only when it is framed. The
-whole contract: `html-canvas/references/simulation.md`, "Embedding in a slide".
+whole contract: `html-canvas/references/simulation.md`, "Embedding in a slide". Inside a stage
+the simulation hides its own toolbar; the stage hands it the deck's theme and
+language (`stage:look`) once it is ready and on every switch, so T and L on the
+deck reach the page as well.
 
 ## Sending a deck with a stage
 

@@ -10,6 +10,11 @@
    Criticality rides TWO channels everywhere in here: the colour, plus a glyph
    and a word the engine writes into the row. Remove neither. */
 
+/* == Inside a stage ======================================================= */
+/* sim-engine.js marks a framed page; the slide around it owns theme, language
+   and print, so the page's own toolbar would be a second set of the same controls. */
+html[data-sim-embedded="yes"] .topbar{display:none}
+
 /* == Control bar ========================================================== */
 .sim-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:24px 0 10px}
 .sim-btn{

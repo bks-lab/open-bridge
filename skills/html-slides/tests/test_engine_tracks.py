@@ -126,3 +126,29 @@ def test_deep_link_uses_the_slide_id_so_it_holds_in_every_track(open_html, page)
     page.wait_for_function("() => window.SlideDeck.current() === 2")
     page.wait_for_timeout(300)
     assert page.evaluate("() => location.hash") == "#s-three", "a copied #id link keeps its id form"
+
+
+def test_track_labels_change_what_is_read_not_the_name(open_html, page):
+    """data-tracks-labels gives a track a display name; data-track, storage and API keep the name."""
+    slides = [slide("Core"), slide("Extra", attrs=' data-track="full"')]
+    open_deck(open_html, deck(slides, deck_attrs='data-tracks-cycle="short full" data-tracks-default="full"'
+                                                  ' data-tracks-labels="short=kurz full=lang"'))
+    assert page.locator(".deck-track").inner_text() == "Track: lang"
+    assert page.evaluate("() => [window.SlideDeck.track(), window.SlideDeck.trackLabel()]") == ["full", "lang"]
+    page.evaluate("""() => { window.got = null;
+      document.addEventListener('slidedeck:trackchange', e => { window.got = e.detail; }); }""")
+    page.keyboard.press("f")
+    page.wait_for_function("() => window.got !== null")
+    assert page.evaluate("() => [window.got.track, window.got.label]") == ["short", "kurz"]
+    assert page.locator(".deck-track").inner_text() == "Track: kurz"
+
+
+def test_track_buttons_carry_aria_pressed(open_html, page):
+    btns = '<button id="b-run" data-deck="track:run">run</button><button id="b-prep" data-deck="track:prep">prep</button>'
+    html = fixture("tracks-7.html").replace("<p class=\"slide__body reveal\">Neutral sample text.</p>",
+                                            "<p class=\"slide__body reveal\">Neutral sample text.</p>" + btns, 1)
+    open_deck(open_html, html)
+    assert [page.get_attribute(s, "aria-pressed") for s in ("#b-run", "#b-prep")] == ["true", "false"]
+    page.click("#b-prep")
+    page.wait_for_function("() => document.querySelector('#b-prep').getAttribute('aria-pressed') === 'true'")
+    assert page.get_attribute("#b-run", "aria-pressed") == "false"

@@ -251,8 +251,12 @@ def test_n4_fit_stage_scales_down_never_up_and_stays_inside(open_deck):
     assert inner["x"] >= frame["x"] - 1 and inner["y"] >= frame["y"] - 1
     assert inner["x"] + inner["w"] <= frame["x"] + frame["w"] + 1
     assert inner["y"] + inner["h"] <= frame["y"] + frame["h"] + 1
-    # The logical viewport is what the child lays out in, whatever the frame is.
-    assert child_frame(page, "stageA").evaluate("innerWidth") == 1600
+    # The declared viewport is the least the child lays out in; it grows along the
+    # axis the frame has to spare, so the page fills the frame instead of sitting
+    # in a band of empty stage on two sides.
+    vw, vh = child_frame(page, "stageA").evaluate("[innerWidth, innerHeight]")
+    assert vw >= 1600 and vh >= 1000 and (vw == 1600 or vh == 1000), (vw, vh)
+    assert abs(inner["w"] - frame["w"]) <= 3 and abs(inner["h"] - frame["h"]) <= 3, (inner, frame)
 
 
 def test_n4_fit_follows_the_frame_without_a_window_resize(open_deck):
@@ -389,3 +393,21 @@ def test_print_hides_the_stage_buttons(open_deck):
     shown = page.evaluate("""() => [...document.querySelectorAll('[data-stage]')]
       .filter(b => getComputedStyle(b).display !== 'none').length""")
     assert shown == 0
+
+
+# --- the slide's look reaches the page inside ------------------------------------------
+
+def test_stage_hands_theme_and_language_to_the_page(open_deck):
+    """The page's own toolbar is hidden inside a stage, so the slide sets its theme and language."""
+    page = open_deck(lang="de")
+    go(page, 2)
+    wait_loaded(page, "stageA")
+    child = child_frame(page, "stageA")
+    deck_dark = page.evaluate("document.documentElement.classList.contains('theme-dark')")
+    child.wait_for_function("(d) => document.documentElement.classList.contains('dark') === d", arg=deck_dark)
+    assert child.evaluate("document.documentElement.getAttribute('data-lang')") == "de"
+    # what the engine's T key does: swap the theme class on <html>
+    page.evaluate("""() => { const r = document.documentElement, d = r.classList.contains('theme-dark');
+      r.classList.toggle('theme-dark', !d); r.classList.toggle('theme-light', d); }""")
+    child.wait_for_function("(d) => document.documentElement.classList.contains('dark') === d", arg=not deck_dark)
+    assert page.errors == []

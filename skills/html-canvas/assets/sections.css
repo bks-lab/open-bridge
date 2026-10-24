@@ -22,6 +22,7 @@
 }
 
 /* @block: doc-header */
+.eyebrow+h1,.eyebrow+h2{margin-top:6px}
 .eyebrow{font-size:var(--fs-eyebrow,12px);font-weight:var(--fw-eyebrow,600);letter-spacing:var(--ls-eyebrow,.14em);text-transform:uppercase;color:var(--accent-text)}
 .lead{font-size:var(--fs-body-xl,19px);font-weight:400;line-height:var(--lh-body-xl,1.6);color:var(--muted);max-width:68ch;margin-top:8px}
 
@@ -130,15 +131,19 @@ td.key{font-family:var(--font-mono);color:var(--accent-text)}
 @media(max-width:620px){.speccard{grid-template-columns:1fr}}
 
 /* @block: callout */
-.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 18px;border-radius:0 var(--radius-md) var(--radius-md) 0;margin:18px 0;font-size:14.5px}
-.note.warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent)}
+/* An info callout is the one tinted card: accent-subtle with its 1px accent-line.
+   A limit or warning is a plain card whose state rides on a dot beside its word,
+   never on a second tinted fill or a coloured bar (lines stay 1px). */
+.note{border:1px solid var(--accent-line);background:var(--accent-soft);padding:16px 20px;border-radius:var(--radius-lg);margin:18px 0;font-size:15px}
+.note.warn{border-color:var(--line);background:var(--raised)}
+.note.warn b::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn);margin-right:8px;vertical-align:.1em}
 .note b{color:var(--ink)}
 
 /* @block: not-vs-is */
 .contrast{display:grid;grid-template-columns:1fr 1fr;gap:24px}
 @media(max-width:760px){.contrast{grid-template-columns:1fr}}
 .cc{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:24px}
-.cc.no{border-left:3px solid var(--muted)} .cc.yes{border-left:3px solid var(--accent)}
+.cc.no{border-color:var(--line)} .cc.yes{border-color:var(--secondary)}
 .cc .tag{font-family:var(--font-mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:600}
 .cc.no .tag{color:var(--muted)} .cc.yes .tag{color:var(--accent-text)}
 
@@ -158,9 +163,10 @@ td.key{font-family:var(--font-mono);color:var(--accent-text)}
 .term{background:var(--code-bg);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;font-family:var(--font-mono);font-size:clamp(11px,1.3vw,15px);font-variant-ligatures:none}
 .term-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface-muted)}
 /* window controls in the semantic tokens: no colour outside DESIGN.md, even for chrome */
-.td{width:10px;height:10px;border-radius:50%}.td.r{background:var(--danger)}.td.y{background:var(--warn)}.td.g{background:var(--ok)}
+/* window controls are chrome, not state: neutral dots, never the status colours */
+.td{width:10px;height:10px;border-radius:50%;background:var(--line)}
 .term-label{color:var(--muted);font-size:12px;margin-left:4px}
-.term-body{margin:0;padding:14px 16px;color:var(--on-surface);white-space:pre-wrap}
+.term-body{margin:0;padding:14px 16px;color:var(--on-surface);white-space:pre;overflow-x:auto;hyphens:manual;overflow-wrap:normal}
 .term-body .pr{color:var(--accent-text)} .term-body .ok{color:color-mix(in srgb,var(--ok) 60%,var(--ink))}
 
 /* @block: collapsible */
@@ -192,16 +198,22 @@ td.key{font-family:var(--font-mono);color:var(--accent-text)}
 /* @block: decision-page requires: doc-header, matrix, callout */
 .decision{display:grid;gap:24px}
 .dec-h{margin:0}
-.dec-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-.dec-opt{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:18px 20px;display:flex;flex-direction:column;gap:8px}
+.dec-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+@media(max-width:700px){.dec-options{grid-template-columns:1fr}}
+/* the tag and the pick share the first row, so every title starts on one line */
+.dec-opt{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:18px 20px;display:grid;grid-template-columns:1fr auto;align-content:start;gap:8px 12px}
+.dec-opt>*{grid-column:1/-1}
+.dec-opt>.dec-tag{grid-column:1;grid-row:1}
+.dec-opt>.dec-pick{grid-column:2;grid-row:1;justify-self:end}
 .dec-opt h4{margin:0}
 .dec-opt p{margin:0;font-size:14px;color:var(--muted)}
-/* the pick is marked by a heavier line AND a word, never by colour alone */
-.dec-opt.recommended{border:2px solid var(--accent)}
+/* the pick is marked by a stronger line colour AND a word, never by colour alone;
+   lines stay 1px */
+.dec-opt.recommended{border-color:var(--secondary)}
 .dec-tag{font-family:var(--font-mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;color:var(--muted)}
 .dec-pick{font-size:12px;font-weight:600;color:var(--accent-text)}
 .dec-criteria td:first-child{font-weight:600;color:var(--ink)}
 .dec-reco{margin:0}
 .dec-open{margin:0;padding-left:22px;display:grid;gap:8px}
-.dec-open .cnote{margin-left:6px}
+.dec-open .cnote{display:block;margin:2px 0 0;font-size:13px}
 

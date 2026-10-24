@@ -231,6 +231,46 @@ def test_browser_warns_on_text_hidden_under_reduced_motion(browser):
     assert code == 0
 
 
+def _variant(tmp_path: Path, name: str, css: str = "", body: str = "") -> Path:
+    """clean.html with extra CSS and markup, written next to a copy of the fixture DESIGN.md."""
+    html = (FIX / "clean.html").read_text("utf-8")
+    html = html.replace("</style>", css + "\n</style>", 1).replace("</main>", body + "\n</main>", 1)
+    out = tmp_path / name
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+FAINT = "color:color-mix(in srgb,var(--ink) 6%,var(--surface))"
+
+
+def test_browser_skips_decoration_marked_aria_hidden(browser, tmp_path):
+    """A decorative numeral in a faint colour is no readable content once it says so."""
+    page = _variant(tmp_path, "faint-hidden.html", body='<span aria-hidden="true" style="%s">01</span>' % FAINT)
+    code, data = run(str(page), "--browser")
+    assert "contrast" not in rules(data), data
+    shown = _variant(tmp_path, "faint-shown.html", body='<span style="%s">01</span>' % FAINT)
+    code, data = run(str(shown), "--browser")
+    assert "contrast" in rules(data, "error"), "the same text without aria-hidden still counts"
+
+
+CODE_FONT_CSS = ":root{--font-mono:ui-monospace, Menlo, monospace}"
+
+
+def test_browser_warns_on_code_outside_the_mono_family(browser, tmp_path):
+    page = _variant(tmp_path, "code-font.html", CODE_FONT_CSS + "\ncode{font-family:var(--font-sans)}",
+                    "<p>Run <code>verify-page.py</code> first.</p>")
+    code, data = run(str(page), "--browser")
+    assert ("code-font", "warning") in findings(data), data
+    assert code == 0
+
+
+def test_browser_is_quiet_when_code_uses_the_mono_family(browser, tmp_path):
+    page = _variant(tmp_path, "code-mono.html", CODE_FONT_CSS + "\ncode{font-family:var(--font-mono)}",
+                    "<p>Run <code>verify-page.py</code> first.</p>")
+    code, data = run(str(page), "--browser")
+    assert "code-font" not in rules(data), data
+
+
 # --- deck mode -----------------------------------------------------------------------------
 
 def test_deck_clean_is_green(browser):
