@@ -158,6 +158,26 @@ properties:
     type: object
     additionalProperties: {type: string}
     description: "Extra badge words mapped to a built-in one, e.g. {finished: done}."
+  heading_styles:
+    type: object
+    additionalProperties: false
+    properties:
+      callout: {type: array, items: {type: string, minLength: 1}}
+      warning: {type: array, items: {type: string, minLength: 1}}
+    description: |
+      Words that dress a `##` heading: one in `callout` puts the heading on the
+      accent fill ("Summary"), one in `warning` gives it the warning edge
+      ("Blocked"). Whole words, any case; merged over bridge-config.yaml
+      `mail.heading_styles`.
+  link_aliases:
+    type: object
+    propertyNames: {pattern: "^[a-z][a-z0-9_-]*:[A-Za-z0-9_][A-Za-z0-9_./#-]*$"}
+    additionalProperties: {type: string, pattern: "^(https?://|mailto:|tel:)"}
+    description: |
+      Short link targets for the body: `[our site](site:home)` with
+      {"site:home": "https://example.com/"}. Merged over bridge-config.yaml
+      `mail.link_aliases`, this profile wins per key. An unknown alias stops
+      the draft.
 
   # ------------------------------------------------------------- envelope --
   cc: {$ref: "#/$defs/address_list"}

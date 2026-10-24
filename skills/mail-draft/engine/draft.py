@@ -104,6 +104,38 @@ def _signed_off(body: str, sign_off: str, sender_name: str) -> bool:
     return False
 
 
+LINK_TARGET = re.compile(r"(\]\()([^)\s]+)(\))")
+ALIAS_SHAPE = re.compile(r"^[a-z][a-z0-9_-]*:[\w][\w./#-]*$", re.I)
+URL_SCHEMES = ("http:", "https:", "mailto:", "tel:", "attachment:")
+
+
+def _resolve_link_aliases(body: str, aliases: dict, d) -> str:
+    """`[text](site:home)` to `[text](https://...)` from the alias map.
+
+    A target that looks like an alias (`word:word`) but is not a URL scheme and
+    not in the map is an error: it would reach the recipient as dead text. An
+    alias whose target is not http(s), mailto or tel is an error too, and stays
+    unresolved, so the renderer shows it as text and never as a link.
+    """
+    aliases = {str(k).lower(): str(v) for k, v in (aliases or {}).items()}
+
+    def sub(m):
+        target = m.group(2)
+        low = target.lower()
+        if low.startswith(URL_SCHEMES) or not ALIAS_SHAPE.match(target):
+            return m.group(0)
+        url = aliases.get(low)
+        if url is None:
+            d.errors.append(f"link target '{target}' is neither a URL nor a link alias "
+                            "(link_aliases in the profile or bridge-config.yaml mail:)")
+            return m.group(0)
+        if not re.match(r"^(https?://|mailto:|tel:)", url, re.I):
+            d.errors.append(f"link alias '{target}' points at '{url}', not an http(s), mailto or tel URL")
+            return m.group(0)
+        return m.group(1) + url + m.group(3)
+    return LINK_TARGET.sub(sub, body)
+
+
 def _expand_path(raw: str, root: Path) -> Path:
     text = os.path.expandvars(os.path.expanduser(raw.replace("${home}", "~")))
     p = Path(text)
@@ -211,6 +243,8 @@ def build(req: Request, cfg: MailConfig) -> Draft:
             return m.group(0)
         return str(snippets[key])
     body = SNIPPET.sub(snip, req.body.strip("\n"))
+    body = _resolve_link_aliases(body, {**(cfg.get("link_aliases") or {}),
+                                        **(profile.get("link_aliases") or {})}, d)
 
     if req.greeting:
         greet = profile.get("greeting") or {}
@@ -237,7 +271,8 @@ def build(req: Request, cfg: MailConfig) -> Draft:
     d.decisions += [f"theme {theme_name}: {n}" for n in t.notes]
     labels = {**(cfg.get("labels") or {}), **(profile.get("labels") or {})}
     aliases = {**(cfg.get("badge_aliases") or {}), **(profile.get("badge_aliases") or {})}
-    content = Renderer(t, labels, aliases).render(body)
+    styles = {**(cfg.get("heading_styles") or {}), **(profile.get("heading_styles") or {})}
+    content = Renderer(t, labels, aliases, styles).render(body)
     recipient_for_links = ctx["first_name"]
     if fcfg:
         content += footer_mod.render_html(fcfg, t, recipient_for_links, informal, today)

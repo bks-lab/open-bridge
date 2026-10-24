@@ -44,6 +44,11 @@ greeting_words: ["Hi", "Hello", "Dear", "Good morning"]
 #   mandants: [team]
 #   tags: [informal]
 
+# heading_styles:            # `## Summary` on the accent fill, `## Blocked` with the warning edge
+#   callout: [Summary]
+#   warning: [Blocked]
+# link_aliases: {"site:home": "https://example.com/"}   # [our site](site:home)
+
 # client: apple-mail         # apple-mail | outlook | eml | none
 # attachments: []
 # cc: []

@@ -34,6 +34,11 @@ DEFAULTS = {
     "max_attachment_mb": 20,
     # Per-role overrides for the design theme: {link: secondary, ...}.
     "tokens": {},
+    # Short link targets a body may use instead of a URL: {"site:home": "https://..."}.
+    # A profile's own map wins key by key.
+    "link_aliases": {},
+    # `## <word>` headings dressed as a callout or a warning: {callout: [...], warning: [...]}.
+    "heading_styles": {},
 }
 
 

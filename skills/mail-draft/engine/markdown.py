@@ -55,8 +55,14 @@ ALERTS = {
 
 
 class Renderer:
-    def __init__(self, theme: dict, labels: dict | None = None, aliases: dict | None = None):
+    def __init__(self, theme: dict, labels: dict | None = None, aliases: dict | None = None,
+                 heading_styles: dict | None = None):
         self.t = theme
+        # `## <words>` that dress a section heading: {callout: [...], warning: [...]}.
+        # A whole word, any case; warning wins when both match.
+        self.heading_styles = {
+            kind: [str(w) for w in (heading_styles or {}).get(kind) or [] if str(w).strip()]
+            for kind in ("callout", "warning")}
         self.labels = {k.lower(): str(v) for k, v in (labels or {}).items()}
         # An alias that points at no built-in badge is dropped, not a crash.
         self.aliases = {str(k).lower(): str(v).lower() for k, v in (aliases or {}).items()
@@ -168,10 +174,27 @@ class Renderer:
                     f'font-weight:{weight};line-height:1.2;color:{t["primary"]};padding-bottom:12px;'
                     f'border-bottom:1px solid {t["border"]};">{content}</h1>')
         if level == 2:
-            return (f'<h2 class="e-h" style="margin:30px 0 10px 0;font-family:{t["font_body"]};font-size:20px;'
-                    f'font-weight:600;line-height:1.35;color:{t["primary"]};">{content}</h2>')
+            base = (f'margin:30px 0 10px 0;font-family:{t["font_body"]};font-size:20px;'
+                    f'font-weight:600;line-height:1.35;color:{t["primary"]};')
+            kind = self.heading_kind(raw)
+            if kind == "warning":
+                return (f'<h2 class="e-warn" style="{base}background-color:{t["muted_bg"]};'
+                        f'border-left:3px solid {t.get("warning") or t["primary"]};'
+                        f'border-radius:0 10px 10px 0;padding:14px 18px;">{content}</h2>')
+            if kind == "callout" and t.get("accent_subtle"):
+                return (f'<h2 class="e-callout" style="{base}background-color:{t["accent_subtle"]};'
+                        f'border:1px solid {t["accent_line"]};border-radius:10px;padding:14px 18px;">'
+                        f'{content}</h2>')
+            return f'<h2 class="e-h" style="{base}">{content}</h2>'
         return (f'<h3 class="e-h" style="margin:22px 0 8px 0;font-family:{t["font_body"]};font-size:17px;'
                 f'font-weight:600;line-height:1.4;color:{t["text"]};">{content}</h3>')
+
+    def heading_kind(self, raw: str) -> str:
+        for kind in ("warning", "callout"):
+            for word in self.heading_styles.get(kind, []):
+                if re.search(rf"(?<!\w){re.escape(word)}(?!\w)", raw, re.I):
+                    return kind
+        return ""
 
     def callout(self, html_body: str, kind: str | None = None) -> str:
         t = self.t

@@ -154,6 +154,14 @@ properties:
         display_name:
           type: string
           minLength: 1
+        nicknames:
+          type: array
+          items: {type: string, minLength: 1}
+          description: |
+            Short names this person is called by ("sam", "jd"). A recipient
+            token that is no person id resolves through them (skills/mail-draft,
+            skills/termin); an id always wins, and a nickname two people share
+            is refused rather than guessed.
         role:
           type: string
           description: "Free-form role label (Lead, Developer, Brother, ...)"

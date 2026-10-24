@@ -5,7 +5,8 @@ A recipient on the command line is one of:
     anna@example.com        an address, used as written
     mandant:team            every person of that mandant who has an email
     team/anna               one person of one mandant
-    anna                    a person id, when exactly one mandant has it
+    anna                    a person id, when exactly one mandant has it,
+                            else a person's `nicknames` entry, when exactly one person has it
 
 A resolved person brings what the draft needs to address them: the display
 name (for the greeting), the language and the form of address from the
@@ -126,6 +127,11 @@ def resolve(root: Path, tokens: list[str]) -> list[Recipient]:
                 continue
             hits = [(mid, m, p) for mid, m in mandants.items() for p in m.get("persons") or []
                     if str(p.get("id")) == token]
+            if not hits:
+                # A nickname only when no person carries the token as an id:
+                # an id is exact, a nickname is a convenience and never shadows one.
+                hits = [(mid, m, p) for mid, m in mandants.items() for p in m.get("persons") or []
+                        if token.lower() in {str(n).lower() for n in (p.get("nicknames") or [])}]
             if not hits:
                 raise RecipientError(f"'{token}' is neither an address nor a person in identity/mandants/")
             if len(hits) > 1:
