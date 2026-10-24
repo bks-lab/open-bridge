@@ -299,6 +299,12 @@ backstop for `rules/knowledge-growth.md` (where new knowledge belongs).
    every session. Skip this step (no finding) if the script exits 0 because
    the directory or `MEMORY.md` is missing. This is the mechanical lint pass;
    steps 1-4 below are the separate semantic gate-language scan.
+   The same run prints `unreachable: <file>` lines and a closing
+   `K of M fact file(s) unreachable` line (a warning, exit unchanged): report
+   that closing line verbatim as ONE **P2** finding with the file list as its
+   detail, not one finding per file. The fix proposal is the cleanup in
+   [`docs/memory.md`](../../../docs/memory.md) § Coverage (index or archive
+   line, routing fact to YAML, or delete).
    Then run `python3 scripts/memory-location.py links` (offline, exits 0) and report
    its first line verbatim, `N of M memory files carry a session link, X of N
    unresolved`, as one **P3** finding when X > 0, plus one **P2** finding for
