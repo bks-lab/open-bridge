@@ -85,6 +85,7 @@ import argparse
 import datetime as dt
 import fnmatch
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -459,6 +460,80 @@ def _open_inbox_item(root: Path, name: str) -> tuple | None:
     return (item.id, item.task) if item.state in mod.ACTIVE_STATES else None
 
 
+INBOX_INDEX_CACHE = Path(".bridge") / "cache" / "workplace-inbox-index.json"
+INBOX_INDEX_CACHE_VERSION = 1
+
+
+def _inbox_entry_key(item_dir: Path) -> list | None:
+    """What changes when an item does: its item.yaml and its events folder (events are only ever added)."""
+    try:
+        events = (item_dir / "events").stat().st_mtime_ns if (item_dir / "events").is_dir() else 0
+        return [(item_dir / "item.yaml").stat().st_mtime_ns, events]
+    except OSError:
+        return None
+
+
+def _read_inbox_index_cache(path: Path) -> dict:
+    """The cached entries by item id; a missing, broken or foreign file is an empty cache."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    items = data.get("items") if isinstance(data, dict) and data.get("version") == INBOX_INDEX_CACHE_VERSION else None
+    if not isinstance(items, dict):
+        return {}
+    return {k: v for k, v in items.items()
+            if isinstance(v, dict) and isinstance(v.get("key"), list) and isinstance(v.get("state"), str)}
+
+
+def _write_inbox_index_cache(path: Path, entries: dict) -> None:
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps({"version": INBOX_INDEX_CACHE_VERSION, "items": entries}), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)   # a cache that cannot be written only costs the next call a re-read
+
+
+def _inbox_index_states(root: Path, box_dir: Path, mod) -> list:
+    """(id, state) of every readable item. Only items whose files changed since the cache are parsed.
+    A deferral is stored as its end date, since it lapses with the calendar and not with a file."""
+    cache_path = root / INBOX_INDEX_CACHE
+    cached = _read_inbox_index_cache(cache_path)
+    box = mod.Inbox(box_dir, actor="workplace")
+    today = mod._local_date(box.clock())
+    entries, rows = {}, []
+    for path in sorted(box_dir.iterdir()):
+        if path.name.startswith("_") or not (path.is_dir() and (path / "item.yaml").is_file()):
+            continue
+        key = _inbox_entry_key(path)
+        if key is None:
+            continue
+        entry = cached.get(path.name)
+        if not entry or entry["key"] != key:
+            try:
+                item = box.get(path.name)
+            except (OSError, ValueError, yaml.YAMLError):
+                continue
+            # the state as if nothing were deferred, plus the deferral itself
+            base = mod.Item(item.id, item.data, item.events, dt.date.max).state
+            entry = {"key": key, "state": base, "deferred_until": (item.deferral or {}).get("until")}
+        entries[path.name] = entry
+        state = entry["state"]
+        until = entry.get("deferred_until")
+        if until and state not in mod.TERMINAL.values():
+            try:
+                if mod._local_date(mod._parse_when(until)) > today:
+                    state = "deferred"
+            except ValueError:
+                pass
+        rows.append((path.name, state))
+    if entries != cached:
+        _write_inbox_index_cache(cache_path, entries)
+    return rows
+
+
 def inbox_tab_index(root: Path) -> dict:
     """Launch label -> id of every open inbox item, so a status row can name the item its tab works on."""
     box_dir = root / "work" / "inbox"
@@ -466,25 +541,25 @@ def inbox_tab_index(root: Path) -> dict:
         return {}
     mod = _inbox_module()
     try:
-        items = mod.Inbox(box_dir, actor="workplace").items()
+        rows = _inbox_index_states(root, box_dir, mod)
     except (OSError, yaml.YAMLError):
         return {}
-    active = [i for i in items if i.state in mod.ACTIVE_STATES]
-    settled = [i for i in items if i.state not in mod.ACTIVE_STATES]
+    active = [i for i, state in rows if state in mod.ACTIVE_STATES]
+    settled = [i for i, state in rows if state not in mod.ACTIVE_STATES]
     # A tab shows either the launch label or, once claude names its session, the slug. A settled item
     # keeps its tab named too, so the cockpit can tell the tab is done; an open item with the same
     # label wins, since that is the one a new tab works on.
     index = {}
     for group in (settled, active):
         legacy: dict = {}
-        for i in group:
-            legacy.setdefault(_legacy_inbox_slug(i.id), []).append(i.id)
+        for iid in group:
+            legacy.setdefault(_legacy_inbox_slug(iid), []).append(iid)
         for short, ids in legacy.items():
             if len(ids) == 1:   # an old name that two items share names neither
                 index[f"Inbox {short}"] = index[f"inbox-{short}"] = ids[0]
-        for i in group:
-            short = inbox_slug(i.id)
-            index[f"Inbox {short}"] = index[f"inbox-{short}"] = i.id
+        for iid in group:
+            short = inbox_slug(iid)
+            index[f"Inbox {short}"] = index[f"inbox-{short}"] = iid
     return index
 
 

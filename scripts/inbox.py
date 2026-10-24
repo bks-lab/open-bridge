@@ -132,6 +132,15 @@ def _utc(value: dt.datetime) -> dt.datetime:
     return (value if value.tzinfo else value.astimezone()).astimezone(dt.timezone.utc)
 
 
+# libyaml's loader is several times faster than the pure-Python one and reads the same
+# safe subset; a PyYAML built without libyaml simply has no CSafeLoader.
+_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def _yaml_load(text: str):
+    return yaml.load(text, Loader=_YAML_LOADER)
+
+
 def _local_date(value: dt.datetime) -> dt.date:
     return value.date() if value.tzinfo is None else value.astimezone().date()
 
@@ -407,7 +416,7 @@ class Inbox:
         events = []
         for path in sorted((item_dir / "events").glob("*.yaml")):
             try:
-                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                data = _yaml_load(path.read_text(encoding="utf-8")) or {}
             except (OSError, yaml.YAMLError) as exc:
                 _warn(f"{item_dir.name}: skipping unreadable event {path.name} ({exc})")
                 continue
@@ -421,7 +430,7 @@ class Inbox:
 
     def get(self, item_id: str) -> Item:
         item_dir = self.root / item_id
-        data = yaml.safe_load((item_dir / "item.yaml").read_text(encoding="utf-8")) or {}
+        data = _yaml_load((item_dir / "item.yaml").read_text(encoding="utf-8")) or {}
         if not isinstance(data, dict) or not data.get("kind"):
             raise ValueError(f"{item_id}: item.yaml is not an item")
         return Item(item_id, data, self._load_events(item_dir), _local_date(self.clock()))
