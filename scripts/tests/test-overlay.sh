@@ -60,6 +60,10 @@
 #     stays pending; pull_interval_days is honoured; a failure exits 1; status
 #     shows the last run; the wrapper reports and notifies on change only; the
 #     installer renders the --overlays job under --print, sandboxed
+#   - the behavioural gate asks once per skill folder, all or none (§27): a
+#     non-interactive or declined run withholds the whole folder (no SKILL.md
+#     without its new reference), one [y] writes all of it, and `status` counts
+#     what waits as pending-confirm and never as upstream-ahead=0
 #
 # Run:  bash scripts/tests/test-overlay.sh        (exits non-zero on any failure)
 set -u
@@ -1374,6 +1378,93 @@ installer --print
 assert_out "26i: without --overlays the CORE job is unchanged" "scripts/upstream-autoupdate.sh"
 assert_eq "26i: --print never calls launchctl" "$(wc -c < "$LREC" | tr -d ' ')" "0"
 assert_absent "26i: --print writes no plist" "$TMP/home/Library/LaunchAgents"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 27. the behavioural gate is one answer per skill folder ─────"
+# A skill is a folder, not a file: SKILL.md routes into its references/. The
+# gate used to ask per file, so a run without a person skipped a NEW reference
+# while it applied the SKILL.md that points at it, leaving a half skill, and
+# `status` reported upstream-ahead=0 because a never-written file is in no
+# count. Now the folder is confirmed all or none, a non-interactive run holds
+# back the WHOLE folder, and `status` counts what waits as pending-confirm.
+SK=skills/example-org-coordinator
+REF="$SK/references/costs.md"
+run_overlay_n() {  # like run_overlay, but answers every prompt with n
+  local con="$1"; shift
+  OUT="$(yes n | python3 "$OVERLAY" --repo-root "$con" "$@" 2>&1)"
+  RC=$?
+}
+mk_ref_change() {  # <overlay>: a new reference plus the SKILL.md line routing to it
+  mkdir -p "$1/tree/$SK/references"
+  printf '# Costs\n\nRead this when costs come up.\n' > "$1/tree/$REF"
+  printf '\nCosts: see references/costs.md (UPSTREAM-ROUTE).\n' >> "$1/tree/$SK/SKILL.md"
+  commit_ov "$1" ref-change
+}
+
+# 27a. non-interactive: the whole folder is withheld, the rest applies.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_ref_change "$OV"
+edit_line "$OV/tree/workflow/contexts/example-docs.yaml" "$CTX_OLD" 'description: "UPSTREAM-BESIDE-REF"'
+commit_ov "$OV" ctx-beside-ref
+run_overlay "$CON" sync example-org --yes
+assert_rc "27a: sync --yes succeeds" 0
+assert_absent "27a: the new reference is not written" "$CON/$REF"
+assert_nogrep "27a: the SKILL.md routing to it is held back too" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
+assert_out "27a: the folder is named as withheld" "WITHHELD $SK/"
+assert_out "27a: the summary counts the withheld files" "withheld=2"
+assert_grep "27a: the config change beside it is applied" "$CON/workflow/contexts/example-docs.yaml" "UPSTREAM-BESIDE-REF"
+
+# 27b. status says so: never upstream-ahead=0 while something waits.
+run_overlay "$CON" status example-org
+assert_out "27b: status counts the files waiting for [y]" "pending-confirm=2"
+assert_out "27b: and they are upstream-ahead, not invisible" "upstream-ahead=2"
+assert_out "27b: status names the withheld folder" "$SK/"
+JSON="$(python3 "$OVERLAY" --repo-root "$CON" status example-org --json 2>/dev/null)"
+case "$JSON" in
+  *'"withheld"'*"$SK/"*) pass "27b: --json carries the withheld folder" ;;
+  *) fail "27b: --json lacks the withheld folder" "$JSON" ;;
+esac
+
+# 27c. a declined folder writes none of its files.
+run_overlay_n "$CON" sync example-org
+assert_absent "27c: declined: the reference is not written" "$CON/$REF"
+assert_nogrep "27c: declined: SKILL.md is not updated either" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
+assert_out "27c: declined is reported for the folder" "declined at behavioural gate"
+
+# 27d. one [y] for the folder writes all of it, and status is clear again.
+run_overlay "$CON" sync example-org
+n_prompts="$(printf '%s' "$OUT" | grep -c 'Materialize skill folder')" || true
+assert_eq "27d: one prompt for the whole folder" "$n_prompts" "1"
+assert_file "27d: confirmed: the reference is written" "$CON/$REF"
+assert_grep "27d: confirmed: SKILL.md is updated" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
+run_overlay "$CON" status example-org
+assert_out "27d: nothing waits after the confirm" "pending-confirm=0"
+
+# 27e. the reported case: only a new reference, SKILL.md unchanged.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mkdir -p "$OV/tree/$SK/references"
+printf '# Costs\n' > "$OV/tree/$REF"; commit_ov "$OV" ref-only
+run_overlay "$CON" sync example-org --yes
+assert_absent "27e: the lone new reference is withheld" "$CON/$REF"
+run_overlay "$CON" status example-org
+assert_out "27e: status counts it" "pending-confirm=1"
+assert_out "27e: and does not claim upstream-ahead=0" "upstream-ahead=1"
+
+# 27f. unattended: the folder stays pending as a whole, SKILL.md untouched.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_ref_change "$OV"
+unattended "$CON"
+assert_out "27f: unattended still applies" "unattended example-org: applied"
+case "$(printf '%s\n' "$OUT" | grep '^unattended example-org:')" in
+  *"pending: "*"$SK/SKILL.md"*) pass "27f: the summary lists the held SKILL.md as pending" ;;
+  *) fail "27f: the summary does not list the held SKILL.md" "$OUT" ;;
+esac
+assert_absent "27f: the reference is not written" "$CON/$REF"
+assert_nogrep "27f: SKILL.md is not updated" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
 
 # ───────────────────────────────────────────────────────────────────
 echo

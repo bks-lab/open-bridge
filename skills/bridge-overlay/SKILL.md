@@ -50,8 +50,8 @@ An overlay ships an org's `scope: org` building blocks as a flat `tree/` mirror 
 | Contexts / projects / mandants / accounts | `workflow/` · `identity/` | config | batch-confirm |
 | Remotes / shared infra | `infra/` | config | batch-confirm |
 | Org rules | `rules/org/**` | rule | batch-confirm |
-| **Org skills (complete)** | `skills/<name>/**` | skill | **per-file `[y]`** |
-| **Org sub-agents** | `.claude/agents/<name>.md` | agent | **per-file `[y]`** |
+| **Org skills (complete)** | `skills/<name>/**` | skill | **one `[y]` per skill folder** |
+| **Org sub-agents** | `.claude/agents/<name>.md` | agent | **`[y]` per file** |
 | Ecosystem fragment | `ecosystem.<org>.yaml` | ecosystem-fragment | batch-confirm + `@import` |
 
 **Skills ship COMPLETE.** A skill is a directory: `SKILL.md` declares the tier in
@@ -79,10 +79,10 @@ exclude it at authoring time (the publish guard + a `user-owned` count in
 
 | Command | What it does |
 |---|---|
-| `add <git-url> [--ref main] [--name N] [--select GLOB…] [--precedence N] [--dry-run]` | Subscribe: write a `role: org-overlay` `upstreams[]` entry + `materialize:` sub-block in `bridge-config.yaml`, sparse-clone into `.bridge/overlays/<name>/`, validate the manifest, **preview the plan** with per-kind risk flags + explicit per-file `[y]` for behavioural files, first materialize, write `overlays.lock.yaml`. |
-| `sync [name] [--dry-run] [--yes] [--unattended]` | Pull the cache, recompute the sparse set + hashes, 3-way vs the lock, re-materialize clean / upstream-ahead files, **prompt** on conflict + on PII prompt-fields, prune upstream-deleted files, bump `resolved_sha`. No `name` ⇒ all overlays. `--unattended` is the daily job (`install-upstream-autoupdate.sh --overlays`): a conflict or a deletion **holds** the overlay, a new behavioural file stays pending, `pull_interval_days` is honoured. |
+| `add <git-url> [--ref main] [--name N] [--select GLOB…] [--precedence N] [--dry-run]` | Subscribe: write a `role: org-overlay` `upstreams[]` entry + `materialize:` sub-block in `bridge-config.yaml`, sparse-clone into `.bridge/overlays/<name>/`, validate the manifest, **preview the plan** with per-kind risk flags + an explicit `[y]` per skill folder or behavioural file, first materialize, write `overlays.lock.yaml`. |
+| `sync [name] [--dry-run] [--yes] [--unattended]` | Pull the cache, recompute the sparse set + hashes, 3-way vs the lock, re-materialize clean / upstream-ahead files, **prompt** on conflict + on PII prompt-fields, prune upstream-deleted files, bump `resolved_sha`. No `name` ⇒ all overlays. `--unattended` is the daily job (`install-upstream-autoupdate.sh --overlays`): a conflict or a deletion **holds** the overlay, a skill folder with a new file stays pending as a whole, `pull_interval_days` is honoured. |
 | `apply [name]` | **OFFLINE** re-materialize from cache + lock (no network). Idempotent — a clean tree reports all-clean and writes nothing. |
-| `status [name]` | `resolved_sha` vs cache HEAD; days-since-sync vs `pull_interval_days`; last unattended run + outcome; `git -C <cache>` log/blame provenance; counts `{clean·locally-modified·upstream-ahead·conflict·orphan·CORE-refused}`. |
+| `status [name]` | `resolved_sha` vs cache HEAD; days-since-sync vs `pull_interval_days`; last unattended run + outcome; `git -C <cache>` log/blame provenance; counts `{clean·locally-modified·upstream-ahead·conflict·orphan·pending-confirm·CORE-refused}` plus the `withheld` units. |
 | `diff [name]` | Preview the next `sync`/`apply` (plan + per-file before/after). **No writes.** |
 | `remove <name> [--keep-files]` | Unsubscribe: hash-verify each lock-recorded file, delete **only clean** managed files (prompt on locally-modified), drop the cache + `materialize:` block + lock entry + the ecosystem `@import`. `--keep-files` ends the subscription but leaves the files in place. |
 | `list` | Subscribed overlays from `upstreams[]` (`role: org-overlay`): name, url, ref, `resolved_sha`, precedence, file-count, `last_synced`. |
@@ -103,10 +103,13 @@ conflict/precedence model, and 3-way base recovery live in `references/workflow.
    path (`skills/`, `.claude/agents/`, `identity/agent/{IDENTITY,SOUL}`) — it can
    never smuggle a CORE file (`rules/`, `docs/`, `scripts/`, `CLAUDE.md`, …) past
    the gate. An overlay ships `scope: org` content only — it can never overwrite CORE.
-3. **Behavioural per-file `[y]`.** A `skill` / `agent` / `standing-order`
-   requires an **explicit per-file `[y]`** at first materialize (shown in the
-   preview). config / rule files batch-confirm. `--yes` is valid
-   non-interactively for **non-behavioural** files only.
+3. **Behavioural `[y]`, one per unit.** A `skill` / `agent` / `standing-order`
+   requires an **explicit `[y]`** when a file of it arrives for the first time
+   (shown in the preview). A skill folder is one unit, all or none, so a
+   SKILL.md never lands without the reference it routes to. config / rule
+   files batch-confirm. `--yes` is valid non-interactively for
+   **non-behavioural** files only; a behavioural unit is then **withheld**
+   whole, and `status` counts it as `pending-confirm`.
 4. **Leak gate BEFORE write.** Every staged file passes a **raw-secret regex**
    (accounts = `azure-keyvault://` / `keychain://` / `1password://` URI refs
    only) on the staged temp file; the `no-scrub-leak.py` CORE-boundary scan runs

@@ -284,8 +284,9 @@ garbage-collected base fall back to a 2-way diff and a prompt
 `on_conflict` is an enum the manifest sets per overlay or per file —
 `prompt` (default) · `skip` (keep the consumer's file) · `overlay-wins`
 (overlay replaces it). Behavioural kinds (skill / agent / standing-order)
-**ignore** `overlay-wins` for first materialize and force a per-file `[y]`
-regardless.
+**ignore** `overlay-wins` for first materialize and force a `[y]`
+regardless, asked once per skill folder (all or none) and once per agent or
+standing-order file.
 
 **Precedence** resolves collisions *across* overlays. Each overlay carries an
 integer `precedence`; **higher wins** a destination collision. The engine
@@ -379,8 +380,8 @@ user branch every verb is a CORE-only no-op (Gate 0).
 Subscribe to an overlay. Writes the `role: org-overlay` `upstreams[]` entry and
 its `materialize` sub-block, sparse-clones the repo into
 `.bridge/overlays/<name>/`, validates the manifest against the schema, previews
-the materialize plan with per-kind risk flags and an explicit per-file `[y]` for
-every behavioural file, does the first materialize, and writes
+the materialize plan with per-kind risk flags and an explicit `[y]` for every
+skill folder and every other behavioural file, does the first materialize, and writes
 `overlays.lock.yaml`. `--dry-run` stops after the plan. `--track-managed-dests`
 opts this overlay's dests into normal git tracking instead of the default
 `.git/info/exclude` guard (see § Git tracking of managed dests) — off by
@@ -394,7 +395,8 @@ sparse selection and hashes, runs the 3-way comparison against the lock,
 re-materializes clean and upstream-ahead files, prompts on conflict and on PII,
 prunes files the upstream deleted, and bumps `resolved_sha`. No `name` syncs all
 subscribed overlays. `--yes` is valid **only** for non-behavioural batches;
-behavioural files always prompt.
+behavioural units always prompt, and without a person they are withheld whole
+(`withheld=` in the summary).
 
 `--unattended` is the scheduled run, and what `scripts/overlay-autosync.sh`
 calls. It applies an overlay only when its whole plan needs nobody:
@@ -402,7 +404,7 @@ calls. It applies an overlay only when its whole plan needs nobody:
 | The plan contains | Unattended run |
 |---|---|
 | updates, new config files, clean 3-way merges | applied |
-| a behavioural file arriving for the first time | applied without it; listed as pending until a `[y]` in `/overlay sync` |
+| a behavioural file arriving for the first time | applied without its unit (the whole skill folder, updates included); listed as pending until a `[y]` in `/overlay sync` |
 | a conflict with a local edit | the overlay is **held**: nothing written, the lock pin stays |
 | a file it would delete | **held** |
 | nothing new, inside `pull_interval_days` | `not-due`, nothing fetched |
@@ -431,7 +433,11 @@ files after a fresh checkout without re-fetching.
 Reports `resolved_sha` vs cache `HEAD`, days-since-sync vs `pull_interval_days`,
 the last unattended run and its outcome (`applied`, `held` with the reason, or
 `failed`), git provenance (`git -C <cache> log` / `blame`), and per-file counts:
-`clean | locally-modified | upstream-ahead | conflict | orphan | CORE-refused`.
+`clean | locally-modified | upstream-ahead | conflict | orphan | pending-confirm | CORE-refused`.
+`pending-confirm` counts the files the next sync holds at the behavioural gate,
+and the `withheld` line names their units. A file the consumer does not have
+yet counts as `upstream-ahead`, so a withheld file never reads as
+`upstream-ahead=0`.
 
 ### `diff [name]`
 
@@ -479,7 +485,9 @@ load-bearing order, condensed:
    continues the rest.
 10. **Scope tripwire** — verify or inject inline `scope: org`.
 11. **Behavioural gate** — skill / agent / standing-order require an explicit
-    per-file `[y]` at first materialize; config and rule files batch-confirm.
+    `[y]` at first materialize, asked once per unit: a skill folder is confirmed
+    all or none, so no half skill is written; config and rule files
+    batch-confirm.
 12. **Write a COPY atomically** (never a symlink); `materialized_sha256 = hash
     as written`.
 13. **Ecosystem fragment**: `ecosystem.<org>.yaml` goes through Steps 4 to 12
