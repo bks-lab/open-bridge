@@ -118,10 +118,28 @@ def running_info(root: Path, state_dir: Path) -> dict | None:
     return info
 
 
-def link(info: dict) -> str:
+class NoKey(Exception):
+    """<state>/token is missing or damaged: the running server's key cannot be read."""
+
+
+def read_key(state_dir: Path) -> str:
+    """The key of the running server, from <state>/token (0600). Never made here: a new key would not
+    match the server's, so a missing one is an error, not a reason to write one (stable_token does that
+    at start)."""
+    from lib.bridge_cockpit.server import TOKEN_RE
+    try:
+        value = (state_dir / "token").read_text(encoding="utf-8").strip()
+    except OSError:
+        raise NoKey from None
+    if not TOKEN_RE.fullmatch(value):
+        raise NoKey
+    return value
+
+
+def link(info: dict, state_dir: Path) -> str:
     """A login link: a code made from the key, good once and for a minute, never the key itself."""
     from lib.bridge_cockpit.server import login_code
-    return f"http://127.0.0.1:{info['port']}/?code={login_code(info['token'], time.time() * 1000)}"
+    return f"http://127.0.0.1:{info['port']}/?code={login_code(read_key(state_dir), time.time() * 1000)}"
 
 
 def plain(port: int) -> str:
@@ -237,9 +255,9 @@ def cmd_start(args, root: Path, state_dir: Path) -> int:
             print("bridge-cockpit: the server did not come up, see .bridge/cockpit/server.log", file=sys.stderr)
         return code
     if args.json:
-        print(json.dumps({"url": link(info), "port": info["port"], "pid": info["pid"], "reused": info["reused"]}))
+        print(json.dumps({"url": link(info, state_dir), "port": info["port"], "pid": info["pid"], "reused": info["reused"]}))
     else:
-        print(link(info))
+        print(link(info, state_dir))
     return 0
 
 
@@ -253,7 +271,7 @@ def cmd_open(args, root: Path, state_dir: Path) -> int:
     via = args.via or cfg.open_in
     if via == "auto":
         via = "cmux" if os.environ.get("CMUX_SURFACE_ID") else "system"
-    url = link(info)
+    url = link(info, state_dir)
     ok = True
     if via == "cmux":
         opener = root / "skills" / "cmux" / "scripts" / "cmux-open.sh"
@@ -289,7 +307,7 @@ def cmd_url(args, root: Path, state_dir: Path) -> int:
     if not info:
         print("bridge-cockpit: not running", file=sys.stderr)
         return 1
-    print(link(info))
+    print(link(info, state_dir))
     return 0
 
 
@@ -477,7 +495,12 @@ def main(argv: list[str] | None = None) -> int:
     state_dir = Path(args.state_dir).resolve() if args.state_dir else default_state_dir(root)
     commands = {"serve": cmd_serve, "start": cmd_start, "open": cmd_open, "url": cmd_url, "status": cmd_status,
                 "stop": cmd_stop, "autostart": cmd_autostart, "new-token": cmd_new_token}
-    return commands[args.command](args, root, state_dir)
+    try:
+        return commands[args.command](args, root, state_dir)
+    except NoKey:
+        print(f"bridge-cockpit: cannot read the key in {state_dir / 'token'}; "
+              "`stop` and `start` make a new one, then open a link from `url`", file=sys.stderr)
+        return 4
 
 
 if __name__ == "__main__":

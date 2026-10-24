@@ -2571,6 +2571,24 @@ def test_login_code_works_once_and_only_for_a_minute(world):
     assert world.request("GET", f"/?code={fresh}")[0] == 303
 
 
+def test_a_login_code_from_before_a_restart_does_not_log_in(world):
+    # a code printed for the server before this one (same key, kept across restarts) is spent with it:
+    # this server never saw its nonce, so without the start line it would log in a second time
+    before = login_code(world.app.token, world.app.started_ms - 10_000)
+    status, headers, _ = world.request("GET", f"/?code={before}")
+    assert status == 401 and "Set-Cookie" not in headers
+    assert world.request("GET", f"/?code={login_code(world.app.token, world.clock())}")[0] == 303
+
+
+def test_url_without_a_key_file_says_so_instead_of_making_one(cli_world):
+    root, state, cli = cli_world
+    cli("start", "--port", "0", "--json", check=0)
+    (state / "token").unlink()
+    res = cli("url")
+    assert res.returncode != 0 and "token" in res.stderr and not (state / "token").exists()
+    cli("stop")
+
+
 def test_the_key_itself_no_longer_logs_in(world):
     token = world.app.token
     status, headers, _ = world.request("GET", f"/?token={token}")
@@ -2800,7 +2818,9 @@ def test_server_json_mode_and_bind_address(world):
     path = world.state / "server.json"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     data = json.loads(path.read_text())
-    assert data["token"] == world.app.token and data["port"] == world.port and data["instance"] == world.app.instance
+    assert data["port"] == world.port and data["instance"] == world.app.instance
+    # the key stays in <state>/token: a session that reads the status file must not carry it off
+    assert "token" not in data and world.app.token not in path.read_text()
     assert world.server.server_address[0] == "127.0.0.1"
 
 
@@ -2889,7 +2909,7 @@ def test_cli_start_reuse_status_stop(cli_world):
     first = json.loads(cli("start", "--port", "0", "--json", check=0).stdout)
     assert first["reused"] is False and first["url"].startswith(f"http://127.0.0.1:{first['port']}/?code=")
     info = json.loads((state / "server.json").read_text())
-    assert info["token"] not in first["url"]
+    assert (state / "token").read_text().strip() not in first["url"] and "token" not in info
     assert info["pid"] == first["pid"] and stat.S_IMODE((state / "server.json").stat().st_mode) == 0o600
     second = json.loads(cli("start", "--json", check=0).stdout)
     assert second["reused"] is True and second["pid"] == first["pid"]
@@ -2958,7 +2978,7 @@ def test_cli_open_none_prints_without_token_in_json(cli_world):
     res = cli("open", "--via", "none", "--json", check=0)
     data = json.loads(res.stdout)
     assert data["opened"] == "none" and data["reused"] is False and "token" not in res.stdout
-    token = json.loads((state / "server.json").read_text())["token"]
+    token = (state / "token").read_text().strip()
     assert token not in res.stdout
 
 
@@ -2968,8 +2988,9 @@ def test_cli_never_prints_the_key_and_its_code_logs_in_once(cli_world):
                cli("url", check=0).stdout, cli("status", "--json", check=0).stdout, cli("status", check=0).stdout,
                cli("open", "--via", "none", "--json", check=0).stdout, cli("open", "--via", "none", check=0).stdout]
     info = json.loads((state / "server.json").read_text())
+    key = (state / "token").read_text().strip()
     for out in outputs:
-        assert info["token"] not in out, out
+        assert key not in out, out
     link = cli("url", check=0).stdout.strip()
     path = link[len(f"http://127.0.0.1:{info['port']}"):]
     assert path.startswith("/?code=")
@@ -2983,7 +3004,7 @@ def test_cli_never_prints_the_key_and_its_code_logs_in_once(cli_world):
         return resp.status, dict(resp.getheaders())
 
     status, headers = get(path)
-    assert status == 303 and info["token"] not in headers["Set-Cookie"]
+    assert status == 303 and key not in headers["Set-Cookie"]
     assert get(path)[0] == 401
 
 

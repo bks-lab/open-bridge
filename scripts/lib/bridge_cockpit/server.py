@@ -3,8 +3,9 @@
 
 Security model (contract section 8.3): bound to 127.0.0.1 only; a key from
 secrets.token_urlsafe, kept in <state>/token (mode 0600) so it outlives a restart (a new
-one with `bridge-cockpit.py new-token`), in memory and in server.json (mode 0600). The key
-itself never leaves those places: `bridge-cockpit.py url` prints a login code made from it
+one with `bridge-cockpit.py new-token`), and in memory; server.json does not carry it, so a
+session that reads the status file does not take the key along. The key itself never leaves
+those places: `bridge-cockpit.py url` prints a login code made from it
 (login_code, good once and for CODE_AGE_S), /?code= turns that into an HttpOnly
 SameSite=Strict cookie whose value is derived from the key and dated (good for
 COOKIE_AGE_S), so the bare address works from then on in that browser. Every request must
@@ -253,6 +254,10 @@ class App:
         now = self.now_s()
         if not (-CLOCK_SKEW_S <= now - ts <= CODE_AGE_S):
             return False
+        # a code made before this server started belongs to the one before it: the key is the same
+        # across a restart, the list of spent codes is not, so it would log in a second time
+        if ts < self.started_ms // 1000 - CLOCK_SKEW_S:
+            return False
         with self._codes_lock:
             for old, at in list(self._codes_used.items()):
                 if now - at > CODE_AGE_S + CLOCK_SKEW_S:
@@ -468,7 +473,7 @@ class App:
 
     def server_json(self) -> dict:
         now = int(self.clock())
-        return {"v": 1, "pid": os.getpid(), "port": self.port, "token": self.token, "started_ms": self.started_ms,
+        return {"v": 1, "pid": os.getpid(), "port": self.port, "started_ms": self.started_ms,
                 "root": str(self.root), "instance": self.instance, "version": VERSION, "clients": self.connected_count(),
                 "relay_online": bool(self.relay_state(with_records=False)["online"]), "updated_ms": now}
 

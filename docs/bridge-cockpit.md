@@ -1387,7 +1387,7 @@ nothing a stranger could trigger:
 **Limits.** Browsers send a cookie to every server on `127.0.0.1`, whatever
 its port. Another local web server you open can therefore read the cookie and
 use it until it ends. That needs a program running on your computer, which
-could also read `server.json`; stop the dashboard (`bridge-cockpit.py stop`) when
+could also read the key in `token`; stop the dashboard (`bridge-cockpit.py stop`) when
 you test web code you do not trust on this computer.
 
 ## 5. Asking Claude: the relay
@@ -1594,7 +1594,7 @@ share or clean up.
 | File | What | Inbox or chat text |
 |---|---|---|
 | `token` | the key, kept across restarts until `new-token` (readable by you only) | no |
-| `server.json` | the running server: pid, port, key (readable by you only) | no |
+| `server.json` | the running server: pid, port, version, never the key (readable by you only) | no |
 | `server.log` | errors, never a key, cookie or request body | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) | yes: the titles |

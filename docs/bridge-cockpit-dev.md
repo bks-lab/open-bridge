@@ -340,8 +340,10 @@ python3 -m pytest -q scripts/tests/test_cockpit_demo_smoke.py
 
 ## 7. Rules the code keeps
 
-- 127.0.0.1 only, one key per start, every POST with the key header and a
-  matching `Origin`.
+- 127.0.0.1 only, one key per Bridge (`.bridge/cockpit/token`, 0600, kept
+  across restarts until `new-token`, never in `server.json`), every POST with
+  the key header and a matching `Origin`. A login code made before the server
+  started is refused, so a restart does not let a spent code in again.
 - No shell anywhere; every id checked by a regex anchored with `\Z` before it
   reaches an argv.
 - One write at a time.
