@@ -824,11 +824,14 @@ def classify_file(path: str) -> str:
     if m:
         token = read_frontmatter_scope(f"skills/{m.group(1)}/SKILL.md")
         return _SCOPE_MAP.get(token or "", "user")
+    # Sub-agents: a declared `scope:` goes through _SCOPE_MAP like every other
+    # reader, so `private` is `user`, an instance alias resolves, and an unknown
+    # token fails closed instead of leaving as a raw pseudo-tier. Unset stays core.
     m = re.match(r"^\.claude/agents/([^/]+)\.md$", path)
     if m:
         scope = read_frontmatter_scope(path)
         if scope:
-            return scope
+            return _SCOPE_MAP.get(scope, "user")
     # NB: the former identity/agent/(IDENTITY|SOUL).md frontmatter branch lived
     # here and is now dead — the deny-by-default USER_PATTERNS entry claims the
     # whole directory earlier, and it missed IDENTITY-lore.md anyway. A branch

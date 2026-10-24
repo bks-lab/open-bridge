@@ -895,3 +895,29 @@ def test_no_path_pattern_claims_a_doc():
             assert not p.startswith("^docs/"), (
                 f"path pattern {p!r} names docs by filename; declare `scope:` in the doc"
             )
+
+
+# ---------------------------------------------------------------------------
+# Sub-agent frontmatter goes through the same scope map as every other reader.
+# It used to hand back the raw token: `scope: private` came out as a pseudo-tier
+# "private" (MIXED for /promote, never matched by overlay-export), and an
+# instance alias such as the overlay's own name was not resolved to `org`.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("token,expected", [
+    ("core", "core"), ("org", "org"), ("personal", "personal"),
+    ("user", "user"), ("private", "user"), ("bogus", "user"),
+])
+def test_subagent_scope_is_mapped(token, expected, tmp_path, monkeypatch):
+    p = tmp_path / ".claude" / "agents" / "example.md"
+    p.parent.mkdir(parents=True)
+    p.write_text(f"---\nname: example\nscope: {token}\n---\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert tier(".claude/agents/example.md") == expected
+
+
+def test_unscoped_subagent_stays_core(tmp_path, monkeypatch):
+    p = tmp_path / ".claude" / "agents" / "example.md"
+    p.parent.mkdir(parents=True)
+    p.write_text("---\nname: example\n---\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert tier(".claude/agents/example.md") == "core"
