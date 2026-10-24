@@ -11,7 +11,7 @@
 schema_version: 1
 type: meeting-series
 scope: user                    # `user` whenever the exclusion lists name private items
-last_updated: YYYY-MM-DD
+last_updated: 'YYYY-MM-DD'      # keep the quotes: unquoted, YAML reads a date and the schema rejects it
 id: my-series                  # must equal the filename stem
 display_name: My Recurring Meeting
 language: en
@@ -109,5 +109,5 @@ outputs:
   distribution:
     mandant: ''                # a reference, never a plaintext address
     account_ref: ''
-    composer: ''               # declared here so the engine never names a specific skill
+    composer: ''               # declared here so the follow-up skill never names a composer
     filter: hard               # `weak` only when the audience equals the room

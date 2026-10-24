@@ -123,3 +123,82 @@ def test_nothing_owed_exits_zero(tmp_path, capsys):
     _tree(tmp_path, {})
     assert mo.main(["--root", str(tmp_path)]) == 0
     assert "nothing owed" in capsys.readouterr().out
+
+
+def _rewrite_series(tmp_path: Path, old: str, new: str) -> None:
+    path = tmp_path / "workflow" / "meetings" / "weekly.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+
+
+def test_a_repo_without_an_org_never_joins_an_empty_name(tmp_path):
+    """`repo: wiki` must find a clone named `wiki`, never an unrelated git folder."""
+    _tree(tmp_path, {})
+    base = tmp_path / "projects"
+    (base / "other-repo" / ".git").mkdir(parents=True)
+    series = {"outputs": {"wiki": {"repo": "wiki"}}}
+    config = {"identity": {"projects_root": str(base)}}
+    assert mo.wiki_root(series, config) is None
+    (base / "someorg" / "wiki" / ".git").mkdir(parents=True)
+    assert mo.wiki_root(series, config) == base / "someorg" / "wiki"
+
+
+def _scoped_config() -> dict:
+    return {"work": {"meetings": {"tracked_obligations": {
+        "wiki_protocol": {"required_for_scopes": ["org"]}}}}}
+
+
+def _context(tmp_path: Path, slug: str, scope: str) -> None:
+    folder = tmp_path / "workflow" / "contexts"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{slug}.yaml").write_text(f"schema_version: 1\nscope: {scope}\n", encoding="utf-8")
+
+
+def test_a_context_slug_is_resolved_to_its_scope(tmp_path):
+    inside, outside = f"{_day(-2)}-weekly", f"{_day(-3)}-weekly"
+    _tree(tmp_path, {inside: "context: acme", outside: "context: home"})
+    _context(tmp_path, "acme", "org")
+    _context(tmp_path, "home", "user")
+    states = {r["folder"]: r["state"] for r in mo.collect(tmp_path, _scoped_config())[0]}
+    assert states[inside] == "open"
+    assert states[outside] == "out_of_scope"
+
+
+def test_an_unresolvable_context_keeps_the_obligation(tmp_path):
+    folder = f"{_day(-2)}-weekly"
+    _tree(tmp_path, {folder: "context: unknown-slug"})
+    states = {r["folder"]: r["state"] for r in mo.collect(tmp_path, _scoped_config())[0]}
+    assert states[folder] == "open"
+
+
+def test_an_explicit_scope_outside_the_set_opts_out(tmp_path):
+    folder = f"{_day(-2)}-weekly"
+    _tree(tmp_path, {folder: "scope: user"})
+    states = {r["folder"]: r["state"] for r in mo.collect(tmp_path, _scoped_config())[0]}
+    assert states[folder] == "out_of_scope"
+
+
+def test_a_series_file_that_is_not_a_mapping_is_skipped_with_a_warning(tmp_path):
+    _tree(tmp_path, {})
+    (tmp_path / "workflow" / "meetings" / "broken.yaml").write_text("- a\n- b\n", encoding="utf-8")
+    series, warnings = mo.load_series(tmp_path)
+    assert list(series) == ["weekly"]
+    assert any("broken.yaml" in w for w in warnings)
+
+
+def test_an_invalid_folder_match_skips_only_that_series(tmp_path):
+    folder = f"{_day(-1)}-weekly"
+    _tree(tmp_path, {folder: None})
+    (tmp_path / "workflow" / "meetings" / "bad.yaml").write_text(
+        "id: bad\nfolder_match: '^(unclosed'\n", encoding="utf-8")
+    results, warnings = mo.collect(tmp_path, {})
+    assert {r["folder"]: r["state"] for r in results} == {folder: "open"}
+    assert any("bad" in w for w in warnings)
+
+
+def test_an_unknown_placeholder_in_file_pattern_is_uncheckable_not_a_crash(tmp_path):
+    folder = f"{_day(-1)}-weekly"
+    _tree(tmp_path, {folder: None})
+    _rewrite_series(tmp_path, "'{date}-weekly.md'", "'{date}-{slug}.md'")
+    results, warnings = mo.collect(tmp_path, {})
+    assert [r["state"] for r in results] == ["uncheckable"]
+    assert any("file_pattern" in w for w in warnings)

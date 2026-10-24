@@ -19,7 +19,7 @@
 # IDENTIFIERS ARE ENGLISH, VALUES FOLLOW `language`. Field names, enum keys and
 # schema keys are always English; rendered prose and domain values follow the
 # series' `language`. `labels` and `status_values` are the bridge between the
-# two: they map the engine's English concepts onto the exact strings a sheet
+# two: they map the follow-up skill's English concepts onto the exact strings a sheet
 # carries.
 #
 # `_`-prefixed files are CORE and excluded from discovery. Every `<id>.yaml`
@@ -35,15 +35,20 @@ properties:
   scope:
     enum: [user, personal, org]
     description: Instance data. A series carrying private slugs is always `user`.
-  last_updated: {type: string}
+  last_updated:
+    type: string
+    format: date
+    description: >-
+      YYYY-MM-DD, quoted. An unquoted date is read by YAML as a date object and
+      fails `type: string`.
   id:
     type: string
     pattern: '^[a-z0-9][a-z0-9-]*$'
-    description: Must equal the filename stem and the `serie:` value in the agenda frontmatter.
+    description: Must equal the filename stem.
   display_name: {type: string}
   language:
     type: string
-    description: BCP-47-ish short code. Drives which wording pack the engine renders.
+    description: BCP-47-ish short code. Drives which wording pack the follow-up skill renders.
 
   cadence:
     type: object
@@ -115,7 +120,7 @@ properties:
   labels:
     type: object
     description: >-
-      The frozen anchors in the sheet. Two scripts and the follow-up parse these
+      The frozen anchors in the sheet. The follow-up skill parses these
       literally, and every past sheet contains them verbatim. Changing a value
       makes existing sheets unreadable for the keyword comparison.
     required: [changed, question, keywords, keywords_prev, result]
@@ -274,7 +279,7 @@ properties:
           composer:
             type: string
             description: >-
-              Declared here so a generic engine never names a specific skill.
+              Declared here so the follow-up skill never names a specific composer.
           filter:
             enum: [weak, hard]
             description: >-

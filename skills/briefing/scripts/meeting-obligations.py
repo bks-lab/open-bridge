@@ -72,6 +72,9 @@ def load_series(root: pathlib.Path) -> tuple[dict, list[str]]:
         except Exception as error:  # noqa: BLE001 - one broken file must not blind the rest
             warnings.append(f"{path.name}: unreadable ({error.__class__.__name__})")
             continue
+        if not isinstance(data, dict):
+            warnings.append(f"{path.name}: not a mapping, skipped")
+            continue
         series[data.get("id") or path.stem] = data
     return series, warnings
 
@@ -127,15 +130,41 @@ def wiki_root(series: dict, config: dict) -> pathlib.Path | None:
         return None
     base = pathlib.Path(os.path.expanduser(str(
         (config.get("identity") or {}).get("projects_root") or "~/Developer")))
-    org, _, name = repo.partition("/")
+    org, _, name = str(repo).rpartition("/")
+    if not name:
+        return None
     # <projects_root>/<org>/<repo> first, then the flat form, then one level down.
-    candidates = [base / org / name, base / name]
+    # A bare `repo: wiki` has no org: never join an empty segment, which would
+    # turn the search into "any git folder under projects_root".
+    candidates = ([base / org / name] if org else []) + [base / name]
     if base.is_dir():
         candidates += [p / name for p in base.iterdir() if p.is_dir()]
     for candidate in candidates:
         if (candidate / ".git").exists():
             return candidate
     return None
+
+
+def resolve_scope(root: pathlib.Path, fm: dict) -> str:
+    """The meeting's scope: `scope:` as written, else the scope of its `context:`.
+
+    A context slug is not a scope; it resolves through `workflow/contexts/<slug>.yaml`.
+    An unresolvable context yields "", which keeps the obligation (fail-open).
+    """
+    explicit = str(fm.get("scope") or "").strip()
+    if explicit:
+        return explicit
+    slug = str(fm.get("context") or "").strip()
+    if not slug or "/" in slug or slug.startswith("."):
+        return ""
+    import yaml
+
+    path = root / "workflow" / "contexts" / f"{slug}.yaml"
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 - missing or broken context reads as unknown
+        return ""
+    return str(data.get("scope") or "").strip() if isinstance(data, dict) else ""
 
 
 def collect(root: pathlib.Path, config: dict) -> tuple[list[dict], list[str]]:
@@ -151,7 +180,11 @@ def collect(root: pathlib.Path, config: dict) -> tuple[list[dict], list[str]]:
 
     compiled = []
     for name, entry in series.items():
-        pattern = series_pattern(entry)
+        try:
+            pattern = series_pattern(entry)
+        except re.error as error:
+            warnings.append(f"series {name}: invalid folder_match ({error}), skipped")
+            continue
         if not pattern:
             warnings.append(f"series {name}: neither folder_match nor folder_pattern")
             continue
@@ -182,8 +215,8 @@ def collect(root: pathlib.Path, config: dict) -> tuple[list[dict], list[str]]:
                 # A skeleton for a meeting that has not happened yet owes nothing;
                 # the obligation starts on the day itself.
                 results.append(row(name, "upcoming"))
-            elif scopes and str(fm.get("scope") or fm.get("context") or "").strip() not in scopes | {""}:
-                # An explicit scope outside the required set opts the meeting out.
+            elif scopes and resolve_scope(root, fm) not in scopes | {""}:
+                # A known scope outside the required set opts the meeting out.
                 results.append(row(name, "out_of_scope"))
             elif declared in OPT_OUTS:
                 results.append(row(name, "opted_out"))
@@ -191,7 +224,15 @@ def collect(root: pathlib.Path, config: dict) -> tuple[list[dict], list[str]]:
                 results.append(row(name, "uncheckable"))
             else:
                 wiki = wiki_target(entry)
-                target = wroot / wiki.get("dir", "") / wiki.get("file_pattern", "{date}.md").format(date=date)
+                try:
+                    filename = str(wiki.get("file_pattern", "{date}.md")).format(date=date)
+                except (KeyError, IndexError, ValueError) as error:
+                    message = f"series {name}: file_pattern supports only {{date}} ({error!r})"
+                    if message not in warnings:
+                        warnings.append(message)
+                    results.append(row(name, "uncheckable"))
+                    break
+                target = wroot / wiki.get("dir", "") / filename
                 exists = target.exists()
                 state = "done" if exists else "open"
                 if exists and declared in {"pending", "draft", "backlog"}:

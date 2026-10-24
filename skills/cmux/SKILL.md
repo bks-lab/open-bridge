@@ -66,6 +66,8 @@ the plan in cmux, and `status`, `send`, `adopt` steer the tabs.
   cmux 0.65.0.
 - A call cmux refuses (exit 1, `Error: ...`) is an ERROR line or a driver error,
   never a success line. When the workspaces cannot be read, `open` does nothing.
+- `close` passes `close-surface --force`, since cmux refuses a tab with a live
+  process otherwise and a waiting agent is one. The flag needs cmux 0.65 or later.
 - When cmux does not answer, `tabs` is an error, not the stale session file.
 - A tab's state comes from cmux's hook file first (any tab it lists runs an
   agent); the title glyph is only a fallback, since a renamed tab loses it.

@@ -29,7 +29,9 @@ Supported formats:
 - `.mp3` / `.m4a` + `.txt` pair — recording + transcript (same base name)
 - `.mp4`, `.wav`, `.webm` — audio (requires Whisper transcription)
 
-**Skip rule:** Files in `processed/` subfolders are ignored. Files with
+**Skip rule:** Files in `processed/` and `_elsewhere/` subfolders are ignored
+(`_elsewhere/` holds transcripts answered as "another instance" or "leave it",
+see `full-workflow.md`). Files with
 base-name match in `work/archive/days/{YYYY-MM}/` (`{DD}_{HHMM}_*.txt`)
 count as already archived — do not re-process, instead mark as
 "redundant, can be cleaned up".
@@ -72,7 +74,7 @@ Scan both sources (see above):
 2. `doc_sensor.scan_paths` with `kind: recordings` (PARA tree)
 
 OR use the given path.
-Skip `processed/` subfolders and already archived files (base name in
+Skip `processed/` and `_elsewhere/` subfolders and already archived files (base name in
 `work/archive/days/{YYYY-MM}/`). Read the transcript in full and analyze.
 
 ### Phase 1.5 — Context lookup (optional)

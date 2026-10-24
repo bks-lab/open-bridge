@@ -61,8 +61,9 @@ Match patterns: `*.mp3`, `*.m4a`, `*.wav`, `*.webm`, `*.txt`, `*.md`, `*.vtt`, `
 For audio/text **pairs** (same basename, different extension): treat as one item
 (e.g. `Voice Chat 20260331 1020.mp3` + `20260331 1020 Transcription.txt`).
 
-**Skip already-processed files**: ignore anything in a `processed/` subfolder
-of any source. Cross-check filenames against `work/archive/days/{YYYY-MM}/` —
+**Skip already-processed files**: ignore anything in a `processed/` or
+`_elsewhere/` subfolder of any source (`_elsewhere/` is the latch described
+under "A find without a result" below). Cross-check filenames against `work/archive/days/{YYYY-MM}/` —
 if `{DD}_{HHMM}_*.txt` already exists with matching basename, mark as
 "already archived, original redundant" and offer cleanup instead of re-processing.
 
@@ -97,7 +98,7 @@ This prevents a redundant re-transcript of a meeting that was already archived.
 
 If path provided: use that file directly.
 
-### 1c. A find without a result is not a find without a reason
+### A find without a result is not a find without a reason
 
 A transcript sitting in the imports directory with nothing to show for it can
 mean three very different things, and today they look identical on disk:
@@ -134,6 +135,10 @@ So before reporting a transcript as unprocessed:
    | belongs here | normal run, then `_debriefed/` |
    | belongs to instance X | `_elsewhere/`, with `target: X` and the date |
    | leave it | `_elsewhere/`, with a reason and the date |
+
+   `_elsewhere/` is a subfolder of the source the file was found in, beside
+   `processed/` (for example `<imports_dir>/_elsewhere/`). The scan above skips
+   it, which is what makes the answer stick.
 
 **The latch matters as much as the question.** Without it every run asks again,
 and a question asked every time is learned as noise and stops being answered.
@@ -243,8 +248,9 @@ ls workflow/meetings/*.yaml 2>/dev/null | grep -v '/_'
 
 For each, match the meeting's folder name against `folder_match` (regex, named
 `date` group). On a hit, read `followup_skill`, `display_name` and `outputs.wiki`,
-and offer the handoff described in `SKILL.md` § Recurring series. The hit also
-tells you the wiki target, so Phase 6 does not have to guess it.
+and carry the match through the run. Do not offer the hand-off here: it is
+offered after Phase 5, see `SKILL.md` § Recurring series. The hit also tells you
+the wiki target, so Phase 6 does not have to guess it.
 
 **No match is the normal case**: continue silently. **Never** infer a series from
 the folder name itself: `folder_pattern` is a display form and the real names
