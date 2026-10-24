@@ -31,7 +31,9 @@ wall.
 
 ## Prerequisites
 
-- `git` configured (`user.name`, `user.email`) — only hard requirement
+- `git` configured (`user.name`, `user.email`)
+- Python 3 with PyYAML (`python3 -c "import yaml"`). The Bridge's own scripts
+  read YAML, so Phase 1 stops without it. `bin/setup` checks for it.
 - `gh` CLI **optional** — enables GitHub repo detection. Without it,
   ecosystem scan still works (reads local `.git` configs for remote URLs).
 - `pipx` + `check-jsonschema` **strongly recommended** — Phase F
@@ -966,10 +968,10 @@ exists" pointer, not a second survey.
 | No GitHub at all | Leave `identity.org` empty + `integrations.github.enabled: false`. Onboarding completes; GitHub-dependent skills warn at use-time. |
 | No repos found | Minimal `ecosystem.yaml` written. Add manually or `git clone` first, then `/bridge-onboard --rescan`. |
 | `osascript` permission denied (Apple Mail / finance-app scan) | Grant in System Settings → Privacy & Security → Automation, then `/bridge-onboard --rescan`. |
-| `/bridge` red | Usually missing `ecosystem.yaml` or `bridge-config.yaml` — error tells you which. |
+| `/bridge-status` red | Usually missing `ecosystem.yaml` or `bridge-config.yaml`; the error tells you which. |
 | Wrong projects root | Edit `bridge-config.yaml` → `identity.projects_root`, then `/bridge-onboard --rescan`. |
-| `validate-bridge.py` fails | `pipx install check-jsonschema` (the wrapper depends on it). |
-| `validate-bridge.py` passes suspiciously fast | It **silently skips** all schema checks when PyYAML isn't installed — it returns an empty result set, not an error. Install PyYAML (`pip install pyyaml`) and re-run to get real validation. |
+| `validate-bridge.py` prints `PyYAML not installed` and exits 2 | Install PyYAML (`python3 -m pip install --user pyyaml`; Debian or Ubuntu `sudo apt install python3-yaml`; Homebrew Python adds `--break-system-packages` to the pip line) and re-run. Any script ending in `ModuleNotFoundError: No module named 'yaml'` has the same cause. |
+| `validate-bridge.py` warns `check-jsonschema not found` | The JSON-Schema checks were skipped, the rest ran. `pipx install check-jsonschema` (or `uv tool install check-jsonschema`) and re-run to get them. |
 | Want to start over | `/bridge-onboard --reset` then `/bridge-onboard`. |
 | `feature-discovery` is too noisy | `bridge-config.yaml.feature_discovery.enabled: false` or disable individual heuristics. |
 | Phase B scan suggests a feature you don't want | `[l]` defers 30 days; decline 3× total to silence forever. |

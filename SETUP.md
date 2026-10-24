@@ -26,11 +26,21 @@ meant to be shown to them before it runs.
 ## Before you change anything
 
 1. Check that `git` is installed (`git --version`).
-2. Check whether the GitHub CLI is authenticated (`gh auth status`). If `gh` is
+2. Check that Python 3 can load PyYAML: `python3 -c "import yaml"`. The
+   Bridge's own scripts read YAML from the first session on, so this is a hard
+   requirement. If it fails, tell the user and suggest the matching line below;
+   run it only after their go:
+   - `python3 -m pip install --user pyyaml`
+   - Debian or Ubuntu: `sudo apt install python3-yaml`
+   - Homebrew Python, which refuses that with `externally-managed-environment`:
+     `python3 -m pip install --user --break-system-packages pyyaml` (installs
+     into the user's own site-packages, not into Homebrew's)
+   `bin/setup` (Step 2 below) runs the same check again.
+3. Check whether the GitHub CLI is authenticated (`gh auth status`). If `gh` is
    missing or logged out, say so; step 1 has a path without it.
-3. Ask the user what to call their private copy. Default: `my-bridge`. Below,
+4. Ask the user what to call their private copy. Default: `my-bridge`. Below,
    `<name>` is that answer and `<me>` is their GitHub account or organisation.
-4. Show the user your plan (the steps below, with their `<name>` and `<me>`
+5. Show the user your plan (the steps below, with their `<name>` and `<me>`
    filled in) and **wait for their go**. Do not run step 1 before they say go.
 
 Already cloned this repo just to read this file (because you could not open the
@@ -72,7 +82,8 @@ Everything from here on runs inside `<name>`.
 
 This points `core.hooksPath` at `scripts/hooks`, which arms the `pre-push`
 guard ([rules/push-guard.md](rules/push-guard.md)), and repairs the skill
-discovery symlinks.
+discovery symlinks. It also checks for PyYAML again and prints how to install
+it when it is missing.
 
 ## Step 3: record that the new origin is private
 

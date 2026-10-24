@@ -1,7 +1,7 @@
 ---
 summary: "Setting up your own private Bridge: the short prompt that hands your agent SETUP.md, the template-button caveat, what the first session does, and which agent tools are tested."
 type: guide
-last_updated: 2026-10-04
+last_updated: 2026-10-24
 related:
   - ../SETUP.md
   - ../README.md
@@ -18,7 +18,12 @@ one decision that matters before anything else (where your private data will
 live), the one prompt that gets you there, and what happens in the first session.
 
 Just want to see it run? The demo workspace needs no setup at all: see the
-README's *Or look first: the demo workspace*.
+README's [*Not ready to set anything up? Look at a running one first*](../README.md#not-ready-to-set-anything-up-look-at-a-running-one-first).
+
+**What you need:** `git`, and Python 3 with PyYAML (`python3 -c "import yaml"`
+must succeed). The Bridge's own scripts read YAML from the first session on;
+the system Python on macOS ships without PyYAML. SETUP.md lists the install
+commands, and `bin/setup` checks for it and prints them.
 
 ## Give your data a private home first
 

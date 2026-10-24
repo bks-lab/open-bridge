@@ -28,6 +28,8 @@ That is the shipped demo workspace answering. The clip below is the same morning
 
 Your data needs a private home before you write any of it: your own private repo becomes `origin`, BKS open-bridge stays a read-only `upstream`. The easiest way is to let your agent do it.
 
+You need `git` and Python 3 with PyYAML (`python3 -c "import yaml"` must succeed; how to install it: [SETUP.md](SETUP.md#before-you-change-anything)).
+
 <details open>
 <summary><b>Paste this into Claude Code, Codex or Copilot CLI</b></summary>
 

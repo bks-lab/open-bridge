@@ -82,6 +82,23 @@ else
     rc=1
 fi
 
+# PyYAML is a hard requirement: the Bridge's own scripts read YAML from the first
+# session on (bridge-config.py, context-index.py, validate-bridge.py), and the
+# system Python on macOS ships without it. Check and explain, never install:
+# which install path is right depends on how this Python was installed.
+if command -v python3 >/dev/null 2>&1; then
+    if python3 -c "import yaml" >/dev/null 2>&1; then
+        echo "OK  PyYAML importable"
+    else
+        echo "ERR PyYAML missing for $(command -v python3); the Bridge's scripts cannot read their YAML."
+        echo "    Install it with one of these, then re-run bin/setup:"
+        echo "      python3 -m pip install --user pyyaml"
+        echo "      sudo apt install python3-yaml                                 # Debian / Ubuntu"
+        echo "      python3 -m pip install --user --break-system-packages pyyaml  # Homebrew Python"
+        rc=1
+    fi
+fi
+
 # Optional: the tool-agnostic gh wrapper (scripts/bin/gh) reminds you to log remote
 # issue/PR/board ops. Not auto-written into your shell profile — opt in by adding it
 # to PATH yourself:
