@@ -193,7 +193,7 @@ if echo "$STAGED" | grep -Eq '^work/(tasks|streams|done)/' && [ -f scripts/gen-b
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# (f) ALWAYS-ON gate — the five context guards, where CI may never run.
+# (f) ALWAYS-ON gate: the five context guards, where CI may never run.
 #
 # `validate.yml` does trigger on `user/**` as well as `main`, but only where a
 # runner exists: a fork with Actions disabled, an instance whose CI is off
@@ -216,7 +216,7 @@ SURFACE='^(context-budget.*\.yaml|ecosystem.*\.yaml|CLAUDE\.md|AGENTS\.md|identi
 EDGE_SURFACE='^work/(tasks|streams|done)/'
 if ! echo "$STAGED" | grep -Eq "$SURFACE" && echo "$STAGED" | grep -Eq "$EDGE_SURFACE"; then
   [ -f scripts/check-edges.py ] && { python3 scripts/check-edges.py >/dev/null 2>&1 ||
-    warn "⚠ EDGES: a moved or deleted task/stream left a reference dangling — python3 scripts/check-edges.py (--fix rewrites a KIND move)"; }
+    warn "⚠ EDGES: a moved or deleted task/stream left a reference dangling: python3 scripts/check-edges.py (--fix rewrites a KIND move)"; }
 fi
 if echo "$STAGED" | grep -Eq "$SURFACE"; then
   # Each is skipped when absent: a fork that has not adopted one is not failing

@@ -200,7 +200,7 @@ CHECKS_LOG=/tmp/ob-autoupdate-checks.log
 checks_ran=0
 now_s() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
 
-# run_checks — sets red (the failing checks, one per line) and checks_ran.
+# run_checks: sets red (the failing checks, one per line) and checks_ran.
 # Globals, not output: a $(...) caller would lose checks_ran in its subshell.
 # Every check gets a 120 s alarm, so a hanging one fails rather than stalls.
 red=""
