@@ -114,3 +114,42 @@ and, like `deck()`, a slide count or a list of slide markup plus `html_attrs`,
 modules by default, `MODULE_FIXTURES` (`tests/fixtures/modules/`) for test-only
 modules such as `probe.js`, which `tests/test_engine_plugins.py` uses to pin the
 API itself. `with_modules(html, modules, root)` adds modules to any spliced deck.
+
+## draw: laser pointer and drawing overlay
+
+`--with draw`. A laser pointer and a pen on the slide, for pointing at and marking up
+a slide while presenting. Nothing is added to the page until it is used.
+
+| Key | While | Does |
+|---|---|---|
+| D | any time | drawing on or off; the active slide takes a canvas, the cursor turns to a crosshair, a badge names the tool and its keys and then dims |
+| Q | any time | laser pointer on or off: a dot in the accent colour follows the pointer, with a short fading trail; the cursor is hidden over the deck |
+| Esc | drawing or laser | leaves the mode (before the engine closes a panel) |
+| C / Shift+C | drawing | clears the active slide / every slide |
+| Z | drawing | undoes the last stroke on the active slide |
+| H | drawing | switches between pen and marker (wide, translucent) |
+
+D and Q exclude each other. C, Z and H fall through to the deck while not drawing.
+A button with `data-deck="draw"` or `data-deck="laser"` toggles the same modes, for
+touch screens without a keyboard.
+
+- **Ink stays with its slide.** Each slide drawn on gets a `canvas.deck-draw` as its
+  last child; strokes are kept in slide coordinates (shares of width and height) for
+  as long as the deck is open, so they survive navigation, a resize and a theme
+  switch, and they are not stored anywhere. Leaving the mode keeps the ink visible
+  until C clears it; only the active slide's canvas takes the pointer.
+- **Colour** is `var(--accent)` as the slide resolves it, read again on every theme
+  switch, so the ink follows light and dark. The marker is the same colour at 35 %
+  opacity. A stylus sets the pen width by pressure (Pointer Events).
+- Arrows, Space and the number jump still move the deck while drawing; a stroke on a
+  touch screen never counts as a swipe. Alt+click zoom scales the canvas with the
+  slide content, so ink stays on what it marks.
+- **Reduced motion**: no laser trail, the dot alone. **Print**: canvas, laser and
+  badge are hidden; slides print without ink.
+- Keys D and Q are free in the engine and in the other shipped modules (P presenter,
+  R read).
+- `window.SlideDeckDraw = {mode(), tool(), strokes(i), setMode('draw'|'laser'|'off'),
+  clear(all)}` for a presenter view, a stage or a test: `mode()` is `off`, `draw` or
+  `laser`, `strokes(i)` counts the strokes on slide `i` of the active track.
+
+Tests: `tests/test_module_draw.py`.
