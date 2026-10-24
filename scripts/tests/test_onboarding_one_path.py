@@ -185,3 +185,46 @@ def test_agents_new_user_paragraph_is_a_pointer_and_phase0_stays_critical():
     assert len(para.encode()) < 600, f"NEW-USER paragraph should be a pointer ({len(para.encode())} B)"
     assert text.count("**Critical:**") >= 2
     assert "before running Phase 0" in text
+
+
+# --- review round: the marker vouches only for a checked, committed truth ---
+
+
+def section(text: str, heading: str) -> str:
+    return text.split(heading, 1)[1].split("\n## ", 1)[0]
+
+
+def test_setup_checks_privacy_without_gh_before_writing_the_marker():
+    """The no-gh path takes a URL on trust; an anonymous API call that must
+    answer 404 proves the repo is not public before the marker vouches for it."""
+    text = read("SETUP.md")
+    step1 = section(text, "## Step 1")
+    assert "api.github.com/repos/<me>/<name>" in step1
+    assert "404" in step1 and "200" in step1
+    assert text.index("api.github.com/repos/") < text.index("> .bridge-origin")
+
+
+def test_push_guard_no_gh_path_checks_privacy_too():
+    block = section(read("rules/push-guard.md"), "## Remediation")
+    assert "api.github.com/repos/" in block and "404" in block
+
+
+def test_setup_preflight_checks_git_identity():
+    """Step 2 commits; on a fresh machine without an identity that commit
+    fails and the marker never reaches the private repo."""
+    pre = section(read("SETUP.md"), "## Before you change anything")
+    assert "git config user.name" in pre and "git config user.email" in pre
+
+
+def test_marker_write_keeps_the_shipped_comment_header():
+    """Replacing only the two key lines keeps later upstream edits of the
+    header mergeable."""
+    for rel, block in (
+        ("SETUP.md", read("SETUP.md")),
+        ("rules/push-guard.md", section(read("rules/push-guard.md"), "## Remediation")),
+    ):
+        lines = code_lines(block)
+        write = first_index(lines, "> .bridge-origin")
+        assert "grep '^#' .bridge-origin" in " ".join(lines[: write + 1]), (
+            f"{rel}: the marker write drops the shipped comment header"
+        )

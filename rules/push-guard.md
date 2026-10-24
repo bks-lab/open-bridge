@@ -128,7 +128,8 @@ gh repo create <you>/my-bridge --private --source=. --remote=origin   # no push 
 
 # Record the new origin as private and commit the marker, so every push
 # classifies PRIVATE even offline (gh absent or unauthenticated):
-printf 'repo: <you>/my-bridge\nis_public: false\n' > .bridge-origin
+{ grep '^#' .bridge-origin; printf 'repo: <you>/my-bridge\nis_public: false\n'; } > .bridge-origin.new
+mv .bridge-origin.new .bridge-origin          # keeps the shipped comment header
 git add .bridge-origin && git commit -m "Record the private origin for the push guard"
 
 git config core.hooksPath scripts/hooks      # armed already if Phase 0 or bin/setup ran
@@ -137,7 +138,11 @@ git fetch upstream && git merge upstream/main   # pull CORE updates anytime
 ```
 
 No `gh`: create an empty private repo by hand and `git remote add origin <url>`
-in place of `gh repo create`. A fresh setup from nothing follows the same order
+in place of `gh repo create`. Nothing then confirms the repo is private, so check
+before writing the marker: `curl -s -o /dev/null -w '%{http_code}'
+https://api.github.com/repos/<you>/my-bridge` must answer `404` (anonymous requests
+cannot see a private repo; `200` means public, stop), and `git ls-remote origin` must
+succeed. A fresh setup from nothing follows the same order
 in [`SETUP.md`](../SETUP.md).
 
 **Write `.bridge-origin` (`is_public: false`) ONLY after the origin is confirmed
