@@ -1,0 +1,67 @@
+# Startup Pitch: Confident and metric-driven
+# Amber highlights say "pay attention to this number". Investor-ready.
+
+name: Startup Pitch
+slug: startup-pitch
+default: false
+use_for: "Investor pitches, metric reviews and business cases built on numbers"
+personality: "Confident and metric-driven, amber highlights say 'pay attention to this number'"
+mood: [confident, metric-driven, investor-ready]
+
+fonts:
+  display:
+    family: "Outfit"
+    weights: [400, 600, 700, 800]
+    fallback: "system-ui, sans-serif"
+  body:
+    family: "Outfit"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    family: "Space Mono"
+    weights: [400, 700]
+    fallback: "'Courier New', monospace"
+
+colors:
+  dark:
+    bg: "#111827"
+    surface: "#1a2235"
+    surface2: "#232d42"
+    surface-elevated: "#2c3850"
+    border: "rgba(245, 158, 11, 0.06)"
+    border-bright: "rgba(245, 158, 11, 0.12)"
+    text: "#f0f4fa"
+    text-dim: "#6b7a96"
+    accent: "#f59e0b"
+    accent-dim: "rgba(245, 158, 11, 0.09)"
+    code-bg: "#0a0f1e"
+    code-text: "#f0f4fa"
+    green: "#34d399"
+    green-dim: "rgba(52, 211, 153, 0.1)"
+    red: "#f87171"
+    red-dim: "rgba(248, 113, 113, 0.1)"
+    amber: "#f59e0b"
+    amber-dim: "rgba(245, 158, 11, 0.1)"
+    cyan: "#22d3ee"
+    cyan-dim: "rgba(34, 211, 238, 0.1)"
+  light:
+    bg: "#ffffff"
+    surface: "#f5f7fa"
+    surface2: "#e8ecf2"
+    surface-elevated: "#ffffff"
+    border: "rgba(217, 119, 6, 0.08)"
+    border-bright: "rgba(217, 119, 6, 0.15)"
+    text: "#111827"
+    text-dim: "#6b7280"
+    accent: "#d97706"
+    accent-dim: "rgba(217, 119, 6, 0.08)"
+    code-bg: "#edf0f5"
+    code-text: "#111827"
+    green: "#059669"
+    green-dim: "rgba(5, 150, 105, 0.1)"
+    red: "#dc2626"
+    red-dim: "rgba(220, 38, 38, 0.1)"
+    amber: "#d97706"
+    amber-dim: "rgba(217, 119, 6, 0.1)"
+    cyan: "#0891b2"
+    cyan-dim: "rgba(8, 145, 178, 0.1)"

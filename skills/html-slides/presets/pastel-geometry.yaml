@@ -1,0 +1,67 @@
+# Pastel Geometry: Soft and approachable
+# Rounded shapes, pastel tones, friendly SaaS feel.
+
+name: Pastel Geometry
+slug: pastel-geometry
+default: false
+use_for: "Onboarding, product walkthroughs and friendly internal updates"
+personality: "Soft and approachable, rounded shapes, pastel tones, friendly SaaS feel"
+mood: [friendly, soft, approachable]
+
+fonts:
+  display:
+    family: "Plus Jakarta Sans"
+    weights: [400, 600, 700, 800]
+    fallback: "system-ui, sans-serif"
+  body:
+    family: "Plus Jakarta Sans"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    family: "Fira Code"
+    weights: [400, 600]
+    fallback: "'Courier New', monospace"
+
+colors:
+  dark:
+    bg: "#141220"
+    surface: "#1e1b30"
+    surface2: "#28253e"
+    surface-elevated: "#322e4c"
+    border: "rgba(124, 92, 191, 0.06)"
+    border-bright: "rgba(124, 92, 191, 0.12)"
+    text: "#ece8ff"
+    text-dim: "#7d72a8"
+    accent: "#7c5cbf"
+    accent-dim: "rgba(124, 92, 191, 0.09)"
+    code-bg: "#0e0c1a"
+    code-text: "#ece8ff"
+    green: "#86efac"
+    green-dim: "rgba(134, 239, 172, 0.1)"
+    red: "#fca5a5"
+    red-dim: "rgba(252, 165, 165, 0.1)"
+    amber: "#fcd34d"
+    amber-dim: "rgba(252, 211, 77, 0.1)"
+    cyan: "#a5f3fc"
+    cyan-dim: "rgba(165, 243, 252, 0.1)"
+  light:
+    bg: "#f8f6ff"
+    surface: "#eeebfa"
+    surface2: "#e4e0f4"
+    surface-elevated: "#ffffff"
+    border: "rgba(109, 40, 217, 0.08)"
+    border-bright: "rgba(109, 40, 217, 0.15)"
+    text: "#1a1530"
+    text-dim: "#6e6290"
+    accent: "#6d28d9"
+    accent-dim: "rgba(109, 40, 217, 0.08)"
+    code-bg: "#e8e4f5"
+    code-text: "#1a1530"
+    green: "#15803d"
+    green-dim: "rgba(21, 128, 61, 0.1)"
+    red: "#dc2626"
+    red-dim: "rgba(220, 38, 38, 0.1)"
+    amber: "#d97706"
+    amber-dim: "rgba(217, 119, 6, 0.1)"
+    cyan: "#0891b2"
+    cyan-dim: "rgba(8, 145, 178, 0.1)"

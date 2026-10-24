@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en" data-fixture-html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Engine fixture</title>
+<!-- Engine test base. The tests replace data-fixture-html, data-fixture-deck and the slides marker. -->
+<style>
+:root { --font-display: system-ui, sans-serif; --font-body: system-ui, sans-serif; --font-mono: monospace;
+  --bg: #101010; --surface: #1c1c1c; --surface2: #262626; --surface-elevated: #2e2e2e;
+  --border: rgba(255, 255, 255, 0.08); --border-bright: rgba(255, 255, 255, 0.16);
+  --text: #eeeeee; --text-dim: #9a9a9a; --accent: #3a7bd5; --accent-dim: rgba(58, 123, 213, 0.1);
+  --code-bg: #0a0a0a; --code-text: #eeeeee; --green: #2e9e5b; --green-dim: rgba(46, 158, 91, 0.1);
+  --red: #d64545; --red-dim: rgba(214, 69, 69, 0.1); --amber: #d9a028; --amber-dim: rgba(217, 160, 40, 0.1);
+  --cyan: #2aa3b8; --cyan-dim: rgba(42, 163, 184, 0.1); }
+:root.theme-light { --bg: #fafafa; --surface: #ffffff; --text: #111111; --text-dim: #555555; --accent: #1f5fb8; }
+@media (prefers-color-scheme: light) {
+  :root:not(.theme-dark):not(.theme-light) { --bg: #fafafa; --surface: #ffffff; --text: #111111; --text-dim: #555555; --accent: #1f5fb8; }
+}
+<!-- slide-engine:css:start --><!-- slide-engine:css:end -->
+</style>
+</head>
+<body>
+<div class="deck" data-fixture-deck>
+<!-- fixture:slides -->
+</div>
+<!-- slide-engine:js:start --><!-- slide-engine:js:end -->
+</body>
+</html>

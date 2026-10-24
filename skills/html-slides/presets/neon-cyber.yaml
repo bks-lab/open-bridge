@@ -1,0 +1,70 @@
+# Neon Cyber: Cyberpunk edge
+# Neon glow on void, futuristic without being childish.
+# NOTE: Clash Display is a commercial font with no free self-hostable build, so the
+# display role uses its fallback stack only.
+
+name: Neon Cyber
+slug: neon-cyber
+default: false
+use_for: "Futuristic tech talks, security topics and developer conference sessions"
+personality: "Cyberpunk edge, neon glow on void, futuristic without being childish"
+mood: [futuristic, edgy, cyberpunk]
+
+fonts:
+  display:
+    family: "Clash Display"
+    weights: [400, 600, 700]
+    fallback: "'Space Grotesk', system-ui, sans-serif"
+    system_only: true  # commercial font, not self-hostable, fallback stack only
+  body:
+    family: "Space Grotesk"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    family: "Space Mono"
+    weights: [400, 700]
+    fallback: "'Courier New', monospace"
+
+colors:
+  dark:
+    bg: "#0d0d12"
+    surface: "#16161f"
+    surface2: "#1f1f2c"
+    surface-elevated: "#272738"
+    border: "rgba(0, 255, 200, 0.06)"
+    border-bright: "rgba(0, 255, 200, 0.12)"
+    text: "#e0fff5"
+    text-dim: "#5a7a72"
+    accent: "#00ffc8"
+    accent-dim: "rgba(0, 255, 200, 0.08)"
+    code-bg: "#08080e"
+    code-text: "#e0fff5"
+    green: "#00ffc8"
+    green-dim: "rgba(0, 255, 200, 0.1)"
+    red: "#ff4070"
+    red-dim: "rgba(255, 64, 112, 0.1)"
+    amber: "#ffe14d"
+    amber-dim: "rgba(255, 225, 77, 0.1)"
+    cyan: "#00d4ff"
+    cyan-dim: "rgba(0, 212, 255, 0.1)"
+  light:
+    bg: "#f5faf9"
+    surface: "#e8f4f0"
+    surface2: "#dceee8"
+    surface-elevated: "#ffffff"
+    border: "rgba(5, 150, 105, 0.08)"
+    border-bright: "rgba(5, 150, 105, 0.15)"
+    text: "#0d1a16"
+    text-dim: "#4a6b62"
+    accent: "#059669"
+    accent-dim: "rgba(5, 150, 105, 0.08)"
+    code-bg: "#e0f0ea"
+    code-text: "#0d1a16"
+    green: "#059669"
+    green-dim: "rgba(5, 150, 105, 0.1)"
+    red: "#e11d48"
+    red-dim: "rgba(225, 29, 72, 0.1)"
+    amber: "#ca8a04"
+    amber-dim: "rgba(202, 138, 4, 0.1)"
+    cyan: "#0284c7"
+    cyan-dim: "rgba(2, 132, 199, 0.1)"

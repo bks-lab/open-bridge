@@ -1,0 +1,106 @@
+/* slide-engine v2: slide-stage (optional module, new-deck.py --with-stage) */
+/* SLIDE STAGE: live simulations inside slides. Mechanics in slide-stage.js;
+   colours come from the deck tokens, with a neutral fallback for each. */
+
+.stage {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: var(--stage-height, 60vh);
+  min-height: 0;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.4));
+  border-radius: 10px;
+  background: var(--surface, transparent);
+}
+
+/* N4. The resting state is "fill the frame". In fit mode slide-stage.js gives
+   the iframe the logical viewport and a scale; in read mode it removes every
+   inline size, and this rule is what remains. */
+.stage iframe,
+.buehne__rahmen iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  transform-origin: 0 0;
+}
+.stage[data-mode="read"] iframe,
+.buehne__rahmen[data-mode="read"] iframe {
+  position: static;
+  transform: none;
+}
+
+/* N1. Two bolts, not one. The placeholder lies absolutely over the whole
+   frame, and a positioned element paints over a static one: in read mode the
+   iframe is static, so without the first bolt every click lands on the
+   placeholder while everything still looks right. The second bolt removes it
+   once the frame is loaded. */
+.stage__placeholder,
+.buehne__platzhalter {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim, inherit);
+  font-size: 13px;
+}
+.stage[data-loaded] .stage__placeholder,
+.buehne__rahmen[data-loaded] .buehne__platzhalter { display: none; }
+
+/* N3. Large means window-filling CSS. */
+.stage.is-max,
+.buehne__rahmen.is-max {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  width: auto;
+  height: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg, Canvas);
+}
+
+/* N2. A transform, filter, perspective, contain or will-change on ANY
+   ancestor makes that ancestor the box position:fixed resolves against, so
+   the large stage would fill its slide instead of the window, offset by the
+   slide's border. slide-stage.js marks every ancestor while a stage is large.
+   The !important is load-bearing: it also beats a running reveal animation
+   and a non-important inline style. */
+.stage-max-host {
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  perspective: none !important;
+  contain: none !important;
+  will-change: auto !important;
+  content-visibility: visible !important;
+  transition: none !important;
+}
+.stage-max-on .deck { overflow: hidden; }
+
+.stage-close {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 9001;
+  padding: 9px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font: 600 12px/1 var(--font-body, system-ui, sans-serif);
+  color: var(--text, CanvasText);
+  background: var(--surface, Canvas);
+  border: 1px solid var(--border-bright, var(--border, GrayText));
+}
+.stage-close:hover { border-color: var(--accent, Highlight); }
+.stage-close:focus-visible { outline: 2px solid var(--accent, Highlight); outline-offset: 2px; }
+
+@media print {
+  .stage.is-max,
+  .buehne__rahmen.is-max { position: relative; inset: auto; z-index: auto; }
+  .stage-close { display: none !important; }
+  /* paper cannot enlarge or restart a run */
+  [data-stage="maximize"], [data-stage="restart"] { display: none !important; }
+}

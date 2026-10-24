@@ -1,0 +1,67 @@
+# Electric Studio: Vibrant and creative
+# Gradients and movement signal energy and innovation.
+
+name: Electric Studio
+slug: electric-studio
+default: false
+use_for: "Creative pitches, product launches and innovation workshops"
+personality: "Vibrant and creative, gradients and movement signal energy and innovation"
+mood: [creative, vibrant, energetic]
+
+fonts:
+  display:
+    family: "Syne"
+    weights: [400, 600, 700, 800]
+    fallback: "system-ui, sans-serif"
+  body:
+    family: "DM Sans"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    family: "DM Mono"
+    weights: [400]
+    fallback: "'Courier New', monospace"
+
+colors:
+  dark:
+    bg: "#0a0a1a"
+    surface: "#141428"
+    surface2: "#1e1e36"
+    surface-elevated: "#262644"
+    border: "rgba(167, 139, 250, 0.06)"
+    border-bright: "rgba(167, 139, 250, 0.12)"
+    text: "#eee8ff"
+    text-dim: "#7a72a0"
+    accent: "#a78bfa"
+    accent-dim: "rgba(167, 139, 250, 0.09)"
+    code-bg: "#06061a"
+    code-text: "#eee8ff"
+    green: "#34d399"
+    green-dim: "rgba(52, 211, 153, 0.1)"
+    red: "#f87171"
+    red-dim: "rgba(248, 113, 113, 0.1)"
+    amber: "#fbbf24"
+    amber-dim: "rgba(251, 191, 36, 0.1)"
+    cyan: "#67e8f9"
+    cyan-dim: "rgba(103, 232, 249, 0.1)"
+  light:
+    bg: "#faf8ff"
+    surface: "#f0ecf9"
+    surface2: "#e6e0f3"
+    surface-elevated: "#ffffff"
+    border: "rgba(124, 58, 237, 0.08)"
+    border-bright: "rgba(124, 58, 237, 0.15)"
+    text: "#1a1033"
+    text-dim: "#6e6290"
+    accent: "#7c3aed"
+    accent-dim: "rgba(124, 58, 237, 0.08)"
+    code-bg: "#ede8f7"
+    code-text: "#1a1033"
+    green: "#059669"
+    green-dim: "rgba(5, 150, 105, 0.1)"
+    red: "#dc2626"
+    red-dim: "rgba(220, 38, 38, 0.1)"
+    amber: "#d97706"
+    amber-dim: "rgba(217, 119, 6, 0.1)"
+    cyan: "#0891b2"
+    cyan-dim: "rgba(8, 145, 178, 0.1)"

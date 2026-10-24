@@ -1,0 +1,56 @@
+# The Bridge's own brand as a deck preset.
+#
+# Unlike a style preset, this file holds no colour and names no typeface:
+# both come from the Bridge's DESIGN.md. scripts/new-deck.py picks this preset
+# by default whenever it finds a DESIGN.md (walking up from the output path, or
+# given with --design); a style preset is chosen by name, and the preset marked
+# `default: true` is the fallback for a Bridge without DESIGN.md.
+#
+#   colours   presets/design.map.yaml through html-canvas/scripts/design-to-css.py
+#   families  DESIGN.md typography, per role below (a missing role falls back
+#             along `roles`, then to the neutral stack)
+#   files     html-canvas/scripts/embed-fonts.py, from this skill's assets/fonts/
+#             and html-canvas's bundled fonts
+#
+# The anti-slop font rule in reference/rules.md does not apply here: DESIGN.md
+# wins, whatever family it names.
+
+name: "Design system"
+slug: design
+default: false
+source: design                        # tokens and fonts come from DESIGN.md
+map: design.map.yaml                  # relative to this folder
+mood: [brand, consistent, house-style]
+use_for: "Any deck in the Bridge's own brand: the colours, typefaces and weights DESIGN.md declares"
+personality: "The house voice of DESIGN.md: calm and typographic, decoration only where the brand asks for it"
+
+fonts:
+  display:
+    roles: [display, h1, h2]          # DESIGN.md typography roles, first one present wins
+    weights: [500]                    # embedded on top of the weights DESIGN.md names
+    fallback: "system-ui, sans-serif"
+  body:
+    roles: [body-md, body-lg, body]
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    roles: [code, mono-label, mono]
+    weights: [400, 600]
+    fallback: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+
+css_overrides: |
+  /* Display type: the family is DESIGN.md's, the cut is quiet. */
+  .slide__display { font-weight: 500; letter-spacing: -0.01em; }
+  /* Subtitles and taglines are body copy in DESIGN.md, not letter-spaced mono. */
+  .slide__subtitle { font-family: var(--font-body); letter-spacing: 0; }
+  /* Code strings take --amber, which a brand maps to its warning fill; mixed
+     towards the text colour it keeps the hue and reads at body contrast. */
+  .slide__code-block .str { color: color-mix(in srgb, var(--amber) 70%, var(--text)); }
+  /* Decoration only behind .fx (on <html>, the .deck or one .slide): without it,
+     no gradient zones and no backdrop blur, because a flat brand stays flat. */
+  :root:not(.fx) .deck:not(.fx) .slide:not(.fx)[style*="gradient"],
+  :root:not(.fx) .deck:not(.fx) .slide--title:not(.fx) { background-image: none !important; }
+  :root:not(.fx) .deck:not(.fx) .slide:not(.fx) .slide__bg--gradient { background: var(--bg); }
+  :root:not(.fx) .deck-dots,
+  :root:not(.fx) .theme-toggle,
+  :root:not(.fx) .deck:not(.fx) .slide:not(.fx) * { -webkit-backdrop-filter: none; backdrop-filter: none; }

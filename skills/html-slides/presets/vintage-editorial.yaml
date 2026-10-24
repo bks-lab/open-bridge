@@ -1,0 +1,67 @@
+# Vintage Editorial: Witty, confident, editorial
+# Like a well-designed magazine spread. Warm tones, serif elegance.
+
+name: Vintage Editorial
+slug: vintage-editorial
+default: false
+use_for: "Narrative talks, editorial reviews and opinionated storytelling"
+personality: "Witty, confident, editorial, like a well-designed magazine spread"
+mood: [editorial, warm, confident]
+
+fonts:
+  display:
+    family: "Fraunces"
+    weights: [400, 600, 700]
+    fallback: "Georgia, serif"
+  body:
+    family: "Work Sans"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    family: "IBM Plex Mono"
+    weights: [400, 600]
+    fallback: "'Courier New', monospace"
+
+colors:
+  dark:
+    bg: "#1a1510"
+    surface: "#25201a"
+    surface2: "#302a22"
+    surface-elevated: "#3a332a"
+    border: "rgba(180, 83, 9, 0.06)"
+    border-bright: "rgba(180, 83, 9, 0.12)"
+    text: "#f0e8d8"
+    text-dim: "#8a7e6a"
+    accent: "#b45309"
+    accent-dim: "rgba(180, 83, 9, 0.09)"
+    code-bg: "#120e0a"
+    code-text: "#f0e8d8"
+    green: "#86efac"
+    green-dim: "rgba(134, 239, 172, 0.1)"
+    red: "#fca5a5"
+    red-dim: "rgba(252, 165, 165, 0.1)"
+    amber: "#fcd34d"
+    amber-dim: "rgba(252, 211, 77, 0.1)"
+    cyan: "#67e8f9"
+    cyan-dim: "rgba(103, 232, 249, 0.1)"
+  light:
+    bg: "#faf7f2"
+    surface: "#f0ebe2"
+    surface2: "#e5dfd4"
+    surface-elevated: "#ffffff"
+    border: "rgba(146, 64, 14, 0.08)"
+    border-bright: "rgba(146, 64, 14, 0.15)"
+    text: "#2a2118"
+    text-dim: "#7a6e5c"
+    accent: "#92400e"
+    accent-dim: "rgba(146, 64, 14, 0.08)"
+    code-bg: "#ede7db"
+    code-text: "#2a2118"
+    green: "#15803d"
+    green-dim: "rgba(21, 128, 61, 0.1)"
+    red: "#b91c1c"
+    red-dim: "rgba(185, 28, 28, 0.1)"
+    amber: "#a16207"
+    amber-dim: "rgba(161, 98, 7, 0.1)"
+    cyan: "#0e7490"
+    cyan-dim: "rgba(14, 116, 144, 0.1)"

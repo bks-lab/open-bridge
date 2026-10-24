@@ -1,0 +1,105 @@
+# ============================================================
+# Preset Template: Schema + Instructions
+# ============================================================
+# Copy this file, rename to {slug}.yaml, fill in all fields.
+#
+# How to create a preset from a design reference:
+# 1. Analyze the reference (website, PDF, Figma, screenshot)
+# 2. Extract font pairing: display (headlines), body (text), mono (code)
+# 3. Extract color palette: background, accent, text, semantics
+# 4. Derive dark + light variants (if reference is only one mode)
+# 5. Define mood tags (2-4 keywords) and use cases
+# 6. Fill this schema, save as {slug}.yaml
+#
+# Font origin:
+#   NEVER a font CDN (neither fonts.googleapis.com nor fonts.bunny.net).
+#   Fonts are self-hosted under assets/fonts/ as woff2 (see assets/fonts.css for
+#   the full list). A new family needs its woff2 files and its LICENSE file
+#   added there first (@fontsource is a good source of OFL builds). A family
+#   with no free web build (a commercial font, for example) sets
+#   system_only: true on its role and relies on the fallback stack.
+#
+# Style presets and the design preset:
+#   This template is the schema for STYLE presets: a look of their own, with
+#   hand-picked colours and self-hosted typefaces. presets/design.yaml is the
+#   one exception: `source: design` and `map: design.map.yaml` instead of
+#   `colors:`, and per font role a list of DESIGN.md typography `roles:`
+#   instead of a `family:`. Its colours and families come from the Bridge's
+#   DESIGN.md (scripts/new-deck.py defaults to it whenever one exists), so it
+#   never holds a colour value. Do not copy it to make a style preset.
+#   Files named *.map.yaml are token maps for design-to-css.py, not presets.
+#
+# Semantic color dim variants:
+#   Derive *-dim from the base color at ~8-10% opacity.
+#   Example: accent "#0066ff" gives accent-dim "rgba(0, 102, 255, 0.08)"
+# ============================================================
+
+name: "Human-Readable Name"
+slug: "kebab-case"                    # Must match filename (without .yaml)
+default: false                        # Only ONE preset can be default: true
+mood: [keyword1, keyword2]            # 2-4 keywords for discovery filtering
+use_for: "When to use this preset"    # One sentence
+personality: "Design voice"           # One sentence; slides must match this tone
+
+fonts:                                # One entry per role: display, body, mono
+  display:                            # Headlines, .slide__display, .slide__heading
+    family: "Font Name"
+    weights: [400, 600, 700]          # Each weight needs assets/fonts/<family>-latin-<w>-normal.woff2
+    fallback: "system-ui, sans-serif" # CSS stack used before the font loads, or instead of it
+    # system_only: true               # Set when no free web font exists; nothing is embedded
+  body:                               # Body text, bullets, paragraphs
+    family: "Font Name"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:                               # Code blocks, labels, counters
+    family: "Font Name"
+    weights: [400]
+    fallback: "'SF Mono', Consolas, monospace"
+
+colors:
+  dark:
+    bg: "#hex"                        # Deepest background
+    surface: "#hex"                   # Card/panel background
+    surface2: "#hex"                  # Secondary panels, table stripes
+    surface-elevated: "#hex"          # Elevated surfaces (dropdowns, tooltips)
+    border: "rgba(r, g, b, 0.06)"    # Default borders
+    border-bright: "rgba(r, g, b, 0.12)"  # Emphasized borders
+    text: "#hex"                      # Primary text
+    text-dim: "#hex"                  # Secondary text, labels
+    accent: "#hex"                    # Signature color: headings, bullets, highlights
+    accent-dim: "rgba(r, g, b, 0.08)"  # Subtle accent backgrounds
+    code-bg: "#hex"                   # Code block background
+    code-text: "#hex"                 # Code block text
+    green: "#hex"                     # Success, positive, new
+    green-dim: "rgba(r, g, b, 0.1)"
+    red: "#hex"                       # Error, warning, "before" state
+    red-dim: "rgba(r, g, b, 0.1)"
+    amber: "#hex"                     # Caution, strings, config
+    amber-dim: "rgba(r, g, b, 0.1)"
+    cyan: "#hex"                      # Info, keywords, technical
+    cyan-dim: "rgba(r, g, b, 0.1)"
+  light:
+    bg: "#hex"
+    surface: "#hex"
+    surface2: "#hex"
+    surface-elevated: "#hex"
+    border: "rgba(r, g, b, 0.08)"
+    border-bright: "rgba(r, g, b, 0.16)"
+    text: "#hex"
+    text-dim: "#hex"
+    accent: "#hex"
+    accent-dim: "rgba(r, g, b, 0.08)"
+    code-bg: "#hex"
+    code-text: "#hex"
+    green: "#hex"
+    green-dim: "rgba(r, g, b, 0.08)"
+    red: "#hex"
+    red-dim: "rgba(r, g, b, 0.08)"
+    amber: "#hex"
+    amber-dim: "rgba(r, g, b, 0.08)"
+    cyan: "#hex"
+    cyan-dim: "rgba(r, g, b, 0.08)"
+
+# Optional: CSS overrides injected AFTER engine CSS and :root block
+# css_overrides: |
+#   .slide__display { letter-spacing: -2px; }

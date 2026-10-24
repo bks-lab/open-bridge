@@ -1,0 +1,38 @@
+# Default wordlist for check-anonymity.py: generic leak and placeholder markers.
+#
+# One entry per line, matched case-insensitively as a whole word: `todo` hits
+# "TODO:", not "mastodon". Lines starting with `re:` are regular expressions.
+# Blank lines and `#` comments are ignored.
+#
+# This list is deliberately generic: it catches text that should never leave
+# in a finished deck (placeholders, drafting markers, classification labels).
+# It names no customer, vendor or person, because it ships with CORE.
+#
+# An instance brings its own names and identifiers in its own file, outside
+# this skill. Every list adds to this default:
+#   --wordlist <file>          repeatable (alias --extra-wordlist)
+#   bridge-config.yaml         html_slides.anonymity_wordlist, a path or a list of
+#                              paths, picked up without a flag (--no-config skips it)
+# Only --no-default-wordlist drops this file.
+
+# Placeholder text
+lorem ipsum
+dolor sit amet
+
+# Drafting markers
+todo
+fixme
+tbd
+
+# Classification labels
+confidential
+internal only
+do not distribute
+
+# Placeholder domains and addresses
+example.com
+example.org
+re:\b[A-Za-z0-9._%+-]+@example\.(?:com|org|net)\b
+
+# Account numbers that look real (IBAN shape)
+re:\b[A-Z]{2}\d{2}\s?(?:[A-Z0-9]{4}\s?){3,7}[A-Z0-9]{1,4}\b

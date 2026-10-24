@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-tracks-default="live">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compat: data-spur tracks</title>
+<!-- Old pattern: slides name their track in data-spur instead of data-track. Two slides
+     belong to every track, two only to "setup", two only to "live"; the default is "live". -->
+<style>
+:root { --font-display: system-ui, sans-serif; --font-body: system-ui, sans-serif; --font-mono: monospace;
+  --bg: #101010; --surface: #1c1c1c; --surface2: #262626; --surface-elevated: #2e2e2e;
+  --border: rgba(255, 255, 255, 0.08); --border-bright: rgba(255, 255, 255, 0.16);
+  --text: #eeeeee; --text-dim: #9a9a9a; --accent: #3a7bd5; --accent-dim: rgba(58, 123, 213, 0.1);
+  --code-bg: #0a0a0a; --code-text: #eeeeee; --green: #2e9e5b; --green-dim: rgba(46, 158, 91, 0.1);
+  --red: #d64545; --red-dim: rgba(214, 69, 69, 0.1); --amber: #d9a028; --amber-dim: rgba(217, 160, 40, 0.1);
+  --cyan: #2aa3b8; --cyan-dim: rgba(42, 163, 184, 0.1); }
+:root.theme-light { --bg: #fafafa; --surface: #ffffff; --text: #111111; --text-dim: #555555; --accent: #1f5fb8; }
+@media (prefers-color-scheme: light) {
+  :root:not(.theme-dark):not(.theme-light) { --bg: #fafafa; --surface: #ffffff; --text: #111111; --text-dim: #555555; --accent: #1f5fb8; }
+}
+<!-- slide-engine:css:start --><!-- slide-engine:css:end -->
+</style>
+</head>
+<body>
+<div class="deck">
+<section class="slide slide--content"><div class="slide__inner"><div><h2 class="slide__heading reveal">Shared 1</h2><p class="reveal">Neutral sample text.</p></div></div></section>
+<section class="slide slide--content"><div class="slide__inner"><div><h2 class="slide__heading reveal">Shared 2</h2><p class="reveal">Neutral sample text.</p></div></div></section>
+<section class="slide slide--content" data-spur="setup"><div class="slide__inner"><div><h2 class="slide__heading reveal">Setup 1</h2><p class="reveal">Neutral sample text.</p></div></div></section>
+<section class="slide slide--content" data-spur="setup"><div class="slide__inner"><div><h2 class="slide__heading reveal">Setup 2</h2><p class="reveal">Neutral sample text.</p></div></div></section>
+<section class="slide slide--content" data-spur="live"><div class="slide__inner"><div><h2 class="slide__heading reveal">Live 1</h2><p class="reveal">Neutral sample text.</p></div></div></section>
+<section class="slide slide--content" data-spur="live"><div class="slide__inner"><div><h2 class="slide__heading reveal">Live 2</h2><p class="reveal">Neutral sample text.</p></div></div></section>
+</div>
+<!-- slide-engine:js:start --><!-- slide-engine:js:end -->
+</body>
+</html>

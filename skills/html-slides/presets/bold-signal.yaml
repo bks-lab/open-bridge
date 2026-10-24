@@ -1,0 +1,67 @@
+# Bold Signal: High contrast, editorial authority
+# The slide equivalent of a bold headline. Heavy display type on void.
+
+name: Bold Signal
+slug: bold-signal
+default: false
+use_for: "Keynotes, launches and statements that need one strong message per slide"
+personality: "High contrast, editorial authority, the slide equivalent of a bold headline"
+mood: [bold, authoritative, high-contrast]
+
+fonts:
+  display:
+    family: "Archivo Black"
+    weights: [400]
+    fallback: "'Arial Black', sans-serif"
+  body:
+    family: "Space Grotesk"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    family: "Space Mono"
+    weights: [400, 700]
+    fallback: "'Courier New', monospace"
+
+colors:
+  dark:
+    bg: "#0c0c0c"
+    surface: "#1a1a1a"
+    surface2: "#242424"
+    surface-elevated: "#2a2a2a"
+    border: "rgba(255, 77, 77, 0.06)"
+    border-bright: "rgba(255, 77, 77, 0.12)"
+    text: "#f0f0f0"
+    text-dim: "#808080"
+    accent: "#ff4d4d"
+    accent-dim: "rgba(255, 77, 77, 0.08)"
+    code-bg: "#060606"
+    code-text: "#f0f0f0"
+    green: "#4ade80"
+    green-dim: "rgba(74, 222, 128, 0.1)"
+    red: "#ff4d4d"
+    red-dim: "rgba(255, 77, 77, 0.1)"
+    amber: "#fbbf24"
+    amber-dim: "rgba(251, 191, 36, 0.1)"
+    cyan: "#22d3ee"
+    cyan-dim: "rgba(34, 211, 238, 0.1)"
+  light:
+    bg: "#ffffff"
+    surface: "#f5f5f5"
+    surface2: "#ebebeb"
+    surface-elevated: "#ffffff"
+    border: "rgba(220, 38, 38, 0.08)"
+    border-bright: "rgba(220, 38, 38, 0.15)"
+    text: "#1a1a1a"
+    text-dim: "#6b6b6b"
+    accent: "#dc2626"
+    accent-dim: "rgba(220, 38, 38, 0.08)"
+    code-bg: "#f0f0f0"
+    code-text: "#1a1a1a"
+    green: "#16a34a"
+    green-dim: "rgba(22, 163, 74, 0.1)"
+    red: "#dc2626"
+    red-dim: "rgba(220, 38, 38, 0.1)"
+    amber: "#d97706"
+    amber-dim: "rgba(217, 119, 6, 0.1)"
+    cyan: "#0891b2"
+    cyan-dim: "rgba(8, 145, 178, 0.1)"

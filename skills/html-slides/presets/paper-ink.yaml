@@ -1,0 +1,67 @@
+# Paper & Ink: Stripped to essentials
+# Ink on paper, monochrome with one deliberate accent.
+
+name: "Paper & Ink"
+slug: paper-ink
+default: false
+use_for: "Research summaries, academic talks and text-led argumentation"
+personality: "Stripped to essentials, ink on paper, monochrome with one deliberate accent"
+mood: [minimal, academic, monochrome]
+
+fonts:
+  display:
+    family: "Bodoni Moda"
+    weights: [400, 600, 700]
+    fallback: "'Times New Roman', serif"
+  body:
+    family: "DM Sans"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    family: "DM Mono"
+    weights: [400]
+    fallback: "'Courier New', monospace"
+
+colors:
+  dark:
+    bg: "#141210"
+    surface: "#1e1c18"
+    surface2: "#282622"
+    surface-elevated: "#32302a"
+    border: "rgba(197, 48, 48, 0.06)"
+    border-bright: "rgba(197, 48, 48, 0.12)"
+    text: "#e8e4dc"
+    text-dim: "#8a8478"
+    accent: "#c53030"
+    accent-dim: "rgba(197, 48, 48, 0.09)"
+    code-bg: "#0c0b08"
+    code-text: "#e8e4dc"
+    green: "#86efac"
+    green-dim: "rgba(134, 239, 172, 0.1)"
+    red: "#c53030"
+    red-dim: "rgba(197, 48, 48, 0.1)"
+    amber: "#fbbf24"
+    amber-dim: "rgba(251, 191, 36, 0.1)"
+    cyan: "#a5f3fc"
+    cyan-dim: "rgba(165, 243, 252, 0.1)"
+  light:
+    bg: "#f5f1eb"
+    surface: "#ebe5dc"
+    surface2: "#e0d9ce"
+    surface-elevated: "#ffffff"
+    border: "rgba(153, 27, 27, 0.08)"
+    border-bright: "rgba(153, 27, 27, 0.15)"
+    text: "#1a1814"
+    text-dim: "#706a5e"
+    accent: "#991b1b"
+    accent-dim: "rgba(153, 27, 27, 0.08)"
+    code-bg: "#e5dfd5"
+    code-text: "#1a1814"
+    green: "#15803d"
+    green-dim: "rgba(21, 128, 61, 0.1)"
+    red: "#991b1b"
+    red-dim: "rgba(153, 27, 27, 0.1)"
+    amber: "#a16207"
+    amber-dim: "rgba(161, 98, 7, 0.1)"
+    cyan: "#0e7490"
+    cyan-dim: "rgba(14, 116, 144, 0.1)"

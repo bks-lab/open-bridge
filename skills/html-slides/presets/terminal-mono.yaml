@@ -1,0 +1,69 @@
+name: Terminal Mono
+slug: terminal-mono
+default: false
+mood: [hacker, technical, developer, terminal]
+use_for: "Dev talks, technical deep-dives, CLI demos, architecture walkthroughs"
+personality: "Hacker aesthetic, monospace everywhere, green-on-dark, no corporate polish"
+
+fonts:
+  # Geist Mono is not shipped in assets/fonts/, so every role uses the system
+  # monospace stack that follows it.
+  display:
+    family: "Geist Mono"
+    weights: [400, 600, 700]
+    fallback: "'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace"
+    system_only: true
+  body:
+    family: "Geist Mono"
+    weights: [400, 600, 700]
+    fallback: "'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace"
+    system_only: true
+  mono:
+    family: "Geist Mono"
+    weights: [400, 600, 700]
+    fallback: "'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace"
+    system_only: true
+
+colors:
+  dark:
+    bg: "#0a0e14"
+    surface: "#12161e"
+    surface2: "#1a1f2a"
+    surface-elevated: "#222836"
+    border: "rgba(80, 250, 123, 0.06)"
+    border-bright: "rgba(80, 250, 123, 0.12)"
+    text: "#c8d6e5"
+    text-dim: "#5a6a7a"
+    accent: "#50fa7b"
+    accent-dim: "rgba(80, 250, 123, 0.08)"
+    code-bg: "#060a10"
+    code-text: "#c8d6e5"
+    green: "#50fa7b"
+    green-dim: "rgba(80, 250, 123, 0.1)"
+    red: "#ff5555"
+    red-dim: "rgba(255, 85, 85, 0.1)"
+    amber: "#f1fa8c"
+    amber-dim: "rgba(241, 250, 140, 0.1)"
+    cyan: "#8be9fd"
+    cyan-dim: "rgba(139, 233, 253, 0.1)"
+  light:
+    bg: "#f4f6f8"
+    surface: "#ffffff"
+    surface2: "#eaecf0"
+    surface-elevated: "#f8f9fa"
+    border: "rgba(0, 80, 40, 0.08)"
+    border-bright: "rgba(0, 80, 40, 0.16)"
+    text: "#1a2332"
+    text-dim: "#5a6a7a"
+    accent: "#0d7a3e"
+    accent-dim: "rgba(13, 122, 62, 0.08)"
+    code-bg: "#1a2332"
+    code-text: "#c8d6e5"
+    green: "#0d7a3e"
+    green-dim: "rgba(13, 122, 62, 0.08)"
+    red: "#dc2626"
+    red-dim: "rgba(220, 38, 38, 0.08)"
+    amber: "#a16207"
+    amber-dim: "rgba(161, 98, 7, 0.08)"
+    cyan: "#0369a1"
+    cyan-dim: "rgba(3, 105, 161, 0.08)"

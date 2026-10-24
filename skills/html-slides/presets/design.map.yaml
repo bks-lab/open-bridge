@@ -1,0 +1,48 @@
+# DESIGN.md colour roles -> the variables assets/slide-engine.css reads.
+#
+# Read by html-canvas/scripts/design-to-css.py --map (see
+# html-canvas/references/theme-contract.md). The map is this skill's data: the
+# generator knows nothing about decks. scripts/new-deck.py passes it for the
+# `design` preset and writes the result into the deck's deck-tokens region.
+#
+# Keys are engine variable names without the leading dashes; values are colour
+# keys of a DESIGN.md `colors:` block, resolved per mode (light from `colors:`,
+# dark from `colorsDark:` or a legacy `dark-<role>` key). A `*-dim` variant is
+# a color-mix of its role over the surface, never a literal colour, so it
+# follows DESIGN.md when the brand changes.
+#
+# A role a DESIGN.md lacks is reported and left out; the deck then keeps the
+# neutral value new-deck.py writes above the generated block (derived from the
+# text and ground colours), so an older manifest still gives a legible deck.
+
+selectors:
+  # :root joins the light group so a deck without scripts is legible and light;
+  # the pre-paint script sets .theme-light or .theme-dark before the first paint.
+  light: ":root, .theme-light"
+  dark: ".theme-dark"
+
+vars:
+  bg: surface
+  surface: surface-raised
+  surface2: surface-muted
+  surface-elevated: surface-raised
+  border: border
+  border-bright: border-strong
+  text: on-surface
+  text-dim: on-surface-muted
+  # The engine sets labels, numbers and title type in --accent, so it takes the
+  # brand's text-safe accent: `secondary` (links, eyebrows, step numbers) in the
+  # current DESIGN.md shape. `accent` there is a fill and chart colour that need
+  # not reach 4.5:1 as text. Its tint behind accent text is `accent-subtle`.
+  accent: secondary
+  accent-dim: accent-subtle
+  code-bg: surface-muted
+  code-text: on-surface
+  green: success
+  green-dim: {role: success, mix: 14, with: surface}
+  red: danger
+  red-dim: {role: danger, mix: 14, with: surface}
+  amber: warning
+  amber-dim: {role: warning, mix: 14, with: surface}
+  cyan: info
+  cyan-dim: {role: info, mix: 14, with: surface}

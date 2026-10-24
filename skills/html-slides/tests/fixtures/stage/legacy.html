@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legacy stage markup</title>
+<style>
+html,body{margin:0;height:100%;background:#fff}
+.deck{height:100vh;overflow-y:scroll;scroll-snap-type:y mandatory}
+.slide{height:100vh;box-sizing:border-box;padding:16px;scroll-snap-align:start;display:flex;flex-direction:column}
+.buehne__rahmen{flex:1 1 auto;min-height:0;position:relative;overflow:hidden}
+.slide .stage{flex:1 1 auto;min-height:0;height:auto}
+/*STAGE_CSS*/
+</style>
+</head>
+<body>
+<div class="deck">
+  <!-- The older attribute names: the slide names its simulation, the frame
+       inside it is the stage, and the mode words are the old ones. -->
+  <section class="slide" id="old" data-buehne="child.html" data-buehne-modus="lesen">
+    <div class="buehne__rahmen"><div class="buehne__platzhalter">loading</div></div>
+  </section>
+  <section class="slide" id="mixed">
+    <div class="stage" id="aliased" data-buehne="child.html" data-buehne-viewport="1200x800"></div>
+  </section>
+</div>
+<script>
+/*STAGE_JS*/
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stage child probe</title>
+<style>
+html,body{margin:0;height:100%}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;background:#eef;font:18px sans-serif}
+#hit{width:70%;height:60%;font:inherit}
+</style>
+</head>
+<body>
+<button id="hit" type="button">hit</button>
+<p><span id="greeting">Café déjà vu, 5 €</span> <span id="state"></span></p>
+<button type="button" data-sim-maximize hidden>full view</button>
+<script>
+/*SIM_ENGINE*/
+</script>
+<script>
+window.clicks = 0; window.resets = 0;
+document.getElementById('hit').addEventListener('click', function () { window.clicks++; });
+var clock = new Sim.Clock({
+  step: function () { return false; },
+  render: function () {},
+  reset: function () { window.resets++; },
+  onState: function (s) { document.getElementById('state').textContent = s; }
+});
+Sim.boot(clock, {});
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+# Dark Botanical: Earthy and premium
+# Nature-inspired palette, serif elegance on dark earth.
+
+name: Dark Botanical
+slug: dark-botanical
+default: false
+use_for: "Premium proposals, sustainability topics and calm, high-end storytelling"
+personality: "Earthy and premium, nature-inspired palette, serif elegance on dark earth"
+mood: [organic, premium, nature]
+
+fonts:
+  display:
+    family: "Cormorant Garamond"
+    weights: [400, 600, 700]
+    fallback: "Georgia, serif"
+  body:
+    family: "IBM Plex Sans"
+    weights: [400, 600, 700]
+    fallback: "system-ui, sans-serif"
+  mono:
+    family: "IBM Plex Mono"
+    weights: [400, 600]
+    fallback: "'Courier New', monospace"
+
+colors:
+  dark:
+    bg: "#0b1a0f"
+    surface: "#152218"
+    surface2: "#1f2c22"
+    surface-elevated: "#28362b"
+    border: "rgba(106, 191, 105, 0.06)"
+    border-bright: "rgba(106, 191, 105, 0.12)"
+    text: "#e0f0e2"
+    text-dim: "#6a8a6c"
+    accent: "#6abf69"
+    accent-dim: "rgba(106, 191, 105, 0.09)"
+    code-bg: "#06120a"
+    code-text: "#e0f0e2"
+    green: "#6abf69"
+    green-dim: "rgba(106, 191, 105, 0.1)"
+    red: "#f87171"
+    red-dim: "rgba(248, 113, 113, 0.1)"
+    amber: "#fbbf24"
+    amber-dim: "rgba(251, 191, 36, 0.1)"
+    cyan: "#67e8f9"
+    cyan-dim: "rgba(103, 232, 249, 0.1)"
+  light:
+    bg: "#f5faf6"
+    surface: "#e8f2ea"
+    surface2: "#dce8de"
+    surface-elevated: "#ffffff"
+    border: "rgba(21, 128, 61, 0.08)"
+    border-bright: "rgba(21, 128, 61, 0.15)"
+    text: "#0f2012"
+    text-dim: "#4a6b4e"
+    accent: "#15803d"
+    accent-dim: "rgba(21, 128, 61, 0.08)"
+    code-bg: "#dfe8e0"
+    code-text: "#0f2012"
+    green: "#15803d"
+    green-dim: "rgba(21, 128, 61, 0.1)"
+    red: "#b91c1c"
+    red-dim: "rgba(185, 28, 28, 0.1)"
+    amber: "#a16207"
+    amber-dim: "rgba(161, 98, 7, 0.1)"
+    cyan: "#0e7490"
+    cyan-dim: "rgba(14, 116, 144, 0.1)"
