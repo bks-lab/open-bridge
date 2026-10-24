@@ -328,7 +328,12 @@
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       var t = e.target || {};
       if (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName || '')) return;
-      if (e.code === 'Space') { e.preventDefault(); clock.toggle(); }
+      /* Space already activates a focused button, link or summary. Taking it here
+         would run the clock AND press the control, so those keep the key. */
+      if (e.code === 'Space') {
+        if (t.closest && t.closest('button,a[href],summary,[role="button"]')) return;
+        e.preventDefault(); clock.toggle();
+      }
       else if (e.key === 'r' || e.key === 'R') { clock.reset(); }
       else if (e.key === 's' || e.key === 'S') { clock.single(); }
       else if (e.key === '1' || e.key === '2' || e.key === '3') {

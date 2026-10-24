@@ -1,0 +1,3 @@
+[project]
+name = "widget-service"
+dependencies = ["requests>=2.0", "pyyaml", "click[extra]==8.1"]

@@ -24,6 +24,12 @@
   transition:opacity .6s cubic-bezier(.16,1,.3,1),transform .6s cubic-bezier(.16,1,.3,1)}
 .slide.visible{opacity:1;transform:none}
 
+/* No script, no reveal trigger: show everything rather than leave it at opacity 0.
+   (The JS side guards the missing-IntersectionObserver case, see interactivity.md.) */
+@media (scripting:none){
+  .reveal,.slide{opacity:1;transform:none}
+}
+
 /* ── Card hover lift (DESIGN.md card-at-rest → hover) — transform+shadow only ── */
 .lift{box-shadow:var(--shadow-soft);transition:transform .2s ease-out,box-shadow .2s ease-out}
 .lift:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover)}

@@ -58,19 +58,11 @@ ARCHETYPES = {
 # The shell defaults to English. Flipping the default language means flipping
 # this exact block, so it is matched literally and the script fails loudly if the
 # shell ever changes it.
-LANG_BLOCK_EN = """[data-de]{display:none}
-[data-en]{display:block}
-:is(span,tspan,a,b,em,strong,code,kbd,i,small,mark)[data-en]{display:inline}
-:root[data-lang="de"] [data-en]{display:none}
-:root[data-lang="de"] [data-de]{display:block}
-:root[data-lang="de"] :is(span,tspan,a,b,em,strong,code,kbd,i,small,mark)[data-de]{display:inline}"""
+LANG_BLOCK_EN = """:root:not([data-lang="de"]) [data-de]{display:none}
+:root[data-lang="de"] [data-en]{display:none}"""
 
-LANG_BLOCK_DE = """[data-en]{display:none}
-[data-de]{display:block}
-:is(span,tspan,a,b,em,strong,code,kbd,i,small,mark)[data-de]{display:inline}
-:root[data-lang="en"] [data-de]{display:none}
-:root[data-lang="en"] [data-en]{display:block}
-:root[data-lang="en"] :is(span,tspan,a,b,em,strong,code,kbd,i,small,mark)[data-en]{display:inline}"""
+LANG_BLOCK_DE = """:root:not([data-lang="en"]) [data-en]{display:none}
+:root[data-lang="en"] [data-de]{display:none}"""
 
 
 def fail(msg) -> NoReturn:

@@ -52,6 +52,10 @@
 }
 .sim-clock b{color:var(--ink);font-weight:600}
 .sim-hint{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+/* 44 px targets where a finger is the pointer; a mouse keeps the compact bar */
+@media (pointer:coarse){
+  .sim-btn,.sim-seg button{min-height:44px;min-width:44px}
+}
 
 /* Shown only under prefers-reduced-motion, where the run is computed instead of
    animated. Without it the page silently looks finished for no stated reason. */
@@ -183,11 +187,10 @@
 
 /* == Legend swatches ====================================================== */
 .sim-legend-row{display:flex;flex-wrap:wrap;gap:8px 22px;margin:14px 0 18px;font-size:13px;color:var(--muted)}
-/* Direct children ONLY. `.sim-legend-row span` has specificity (0,1,1) and would
-   beat the shell's [data-en]{display:none} at (0,1,0), so every legend entry
-   would show BOTH languages at once. Any rule that sets `display` on a selector
-   which can also match a data-de/data-en node has this bug; it was measured on
-   this very file. Reach for the child combinator, or a class on the wrapper. */
+/* The language swap only hides the inactive language (shell.html, specificity
+   (0,3,0)), so a `display` set here on a pair survives in the active language and
+   cannot resurrect the hidden one. Direct children still keep the rule from
+   reaching spans nested deeper in an entry. */
 .sim-legend-row > span{display:inline-flex;align-items:center;gap:7px}
 .sim-swatch{width:15px;height:11px;border-radius:3px;border:1.5px solid var(--muted);
   background:var(--surface-muted);flex-shrink:0}

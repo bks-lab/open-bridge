@@ -1,7 +1,7 @@
 ---
 summary: "Copy-paste section building blocks for html-canvas deliverables — headers, flows, data, content, chrome"
 type: reference
-last_updated: 2026-09-26
+last_updated: 2026-10-24
 related:
   - skills/html-canvas/SKILL.md
   - skills/html-canvas/assets/shell.html
@@ -340,7 +340,7 @@ fields with an explicit caveat (verify-before-claim) — never keep them silentl
 ```
 ```css
 .note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 18px;border-radius:0 var(--radius-md) var(--radius-md) 0;margin:18px 0;font-size:14.5px}
-.note.warn{border-left-color:var(--warn);background:rgba(180,83,9,.08)}
+.note.warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent)}
 .note b{color:var(--ink)}
 ```
 
@@ -420,8 +420,8 @@ Hand-classed syntax spans mapped to status vars.
 Needs the optional lens/actor triads (uncomment in the shell).
 ```html
 <div class="legend"><span class="lg-label"><span data-de>Legende</span><span data-en>Legend</span></span>
-  <span class="chip core"><span class="dot"></span><span data-de>grau — Kern</span><span data-en>grey — core</span></span>
-  <span class="chip doc"><span class="dot"></span><span data-de>teal — Linse B</span><span data-en>teal — lens B</span></span>
+  <span class="chip core"><span class="dot"></span><span data-de>grau: Kern</span><span data-en>grey: core</span></span>
+  <span class="chip doc"><span class="dot"></span><span data-de>teal: Linse B</span><span data-en>teal: lens B</span></span>
 </div>
 ```
 ```css

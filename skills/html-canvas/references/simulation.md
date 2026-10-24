@@ -1,7 +1,7 @@
 ---
 summary: "Running models for html-canvas: five archetypes, the clock engine, and the traps that make a simulation lie"
 type: reference
-last_updated: 2026-08-30
+last_updated: 2026-10-24
 related:
   - skills/html-canvas/SKILL.md
   - skills/html-canvas/assets/sim-engine.js
@@ -156,11 +156,12 @@ worth reading before rather than after.
 - A class rule carrying its own `display` beats the `[hidden]` attribute on
   specificity. `simulation.css` ships an explicit `[hidden]{display:none
   !important}` for that reason.
-- **A selector that sets `display` and can also match a `data-de` / `data-en`
-  node breaks the language toggle**, and the page then shows both languages at
-  once. `.sim-legend-row span` at (0,1,1) beat `[data-en]` at (0,1,0) and it was
-  measured on this very skill. Use the child combinator, or a class on the
-  wrapper.
+- The language swap hides only the **inactive** language, with rules at
+  (0,3,0), so a pair keeps its native display (`li` stays a list item, `td` a
+  cell) and a class rule that sets `display` on a pair can no longer show both
+  languages at once. Do not add a rule that forces `display` back onto the
+  inactive node with higher specificity or `!important`. Pages assembled before
+  this change: see "Migrating an older page" below.
 - `getBBox()` before the webfont has landed measures the fallback face and is
   wrong in every direction. Measure inside `Sim.afterFonts()`.
 - Positions come from the **drawing**, never from arithmetic. Distributing steps
@@ -192,6 +193,34 @@ worth reading before rather than after.
   cannot be repeated. One seed constant at the top.
 - Never offer a control that does nothing. `Sim.Controls` removes the single-step
   button when the model passes no `stepOnce`.
+
+---
+
+## Migrating an older page
+
+Pages assembled earlier carry the old swap block, which forced `display:block` on
+every active `[data-de]` / `[data-en]` and then re-fixed inline tags one by one
+(`li` and `td` pairs rendered as blocks). To migrate a finished page, replace
+that whole block in its `<style>` with the two rules for its default language,
+and delete any per-tag inline override that only existed to repair it.
+
+English default:
+
+```css
+:root:not([data-lang="de"]) [data-de]{display:none}
+:root[data-lang="de"] [data-en]{display:none}
+```
+
+German default:
+
+```css
+:root:not([data-lang="en"]) [data-en]{display:none}
+:root[data-lang="en"] [data-de]{display:none}
+```
+
+Or rebuild it: `new-simulation.py --force` writes the new block. Never keep both
+blocks in one page. After migrating, run the "no element shows both languages"
+query below and look at one `li` and one `td` pair in each language.
 
 ---
 

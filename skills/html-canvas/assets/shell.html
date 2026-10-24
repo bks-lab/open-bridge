@@ -123,17 +123,14 @@ kbd{border:1px solid var(--line);border-radius:var(--radius-sm);padding:1px 6px;
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 /* ─── DE/EN swap — pure CSS, no JS touches text nodes ─── */
-/* Block-level pairs swap as blocks; inline elements (span/tspan + bare a/b/em/strong/code…)
-   stay inline. The :root[data-lang="de"] rules are specificity (0,3,0); the inline overrides
-   use :is()+attr to reach (0,3,1) so they win — without this, DE inline spans inside a heading
-   or paragraph would each stack on their own line (it renders fine in EN, so it hides easily).
-   English is the default (matches lang="en" above); flip both if you default to German. */
-[data-de]{display:none}
-[data-en]{display:block}
-:is(span,tspan,a,b,em,strong,code,kbd,i,small,mark)[data-en]{display:inline}
+/* Only the INACTIVE language is hidden. The active one keeps whatever display its
+   element has (li stays list-item, td table-cell, span inline, a flex card stays flex),
+   so there is no per-tag override list and no specificity trap: the hiding rules
+   are (0,3,0), which beats any class rule that sets display on a pair.
+   English is the default (matches lang="en" above); flip both rules if you default
+   to German. Without a data-lang attribute (JS off) the default language shows. */
+:root:not([data-lang="de"]) [data-de]{display:none}
 :root[data-lang="de"] [data-en]{display:none}
-:root[data-lang="de"] [data-de]{display:block}
-:root[data-lang="de"] :is(span,tspan,a,b,em,strong,code,kbd,i,small,mark)[data-de]{display:inline}
 
 /* ─── Topbar (theme · lang · print) ─── */
 .topbar{max-width:1100px;margin:18px auto 0;padding:0 24px;display:flex;justify-content:flex-end;gap:8px}
@@ -143,6 +140,10 @@ kbd{border:1px solid var(--line);border-radius:var(--radius-sm);padding:1px 6px;
   padding:6px 11px;cursor:pointer;
 }
 .topbar button:hover{background:var(--accent-subtle)}
+/* 44 px targets where a finger is the pointer; a mouse keeps the compact bar */
+@media (pointer:coarse){
+  .topbar button{min-height:44px;min-width:44px}
+}
 
 /* ─── Footer ─── */
 footer.canvas-foot{max-width:1100px;margin:48px auto 32px;padding:16px 24px 0;border-top:1px solid var(--line-subtle);font-size:12px;color:var(--muted)}
@@ -162,9 +163,9 @@ footer.canvas-foot code{background:none;padding:0}
 <body>
 
 <div class="topbar">
-  <button id="langToggle" title="DE/EN (L)">DE</button>
-  <button id="printBtn" title="Print as PDF" onclick="window.print()">&#10515; PDF</button>
-  <button id="themeToggle" title="Light/Dark (T)">&#9680; Dark</button>
+  <button id="langToggle" data-aria-de="Zu Englisch wechseln (L)" data-aria-en="Switch to German (L)">DE</button>
+  <button id="printBtn" data-aria-de="Als PDF drucken" data-aria-en="Print as PDF" onclick="window.print()">⤓ PDF</button>
+  <button id="themeToggle"><span class="tt-glyph" aria-hidden="true">◐</span> <span data-de>Dunkel</span><span data-en>Dark</span></button>
 </div>
 
 <main class="wrap">
@@ -184,11 +185,29 @@ footer.canvas-foot code{background:none;padding:0}
 
 <!-- ─── Controllers — theme (.dark class) + lang (data-lang). Structural twins. ─── -->
 <script>
+/* Labels for assistive tech are attributes, so the CSS swap cannot reach them.
+   Any element with data-aria-de / data-aria-en gets aria-label and title in the
+   active language. The lang controller calls this on every switch; call it
+   yourself after adding such an element at runtime. */
+window.hcApplyAria=function(scope){
+  var l=document.documentElement.getAttribute('data-lang')==='de'?'de':'en';
+  [].forEach.call((scope||document).querySelectorAll('[data-aria-de],[data-aria-en]'),function(el){
+    var v=el.getAttribute('data-aria-'+l)||el.getAttribute('data-aria-'+(l==='de'?'en':'de'));
+    if(v){el.setAttribute('aria-label',v);el.setAttribute('title',v);}
+  });
+};
 (function(){
   var root=document.documentElement, KEY='html-canvas-theme', btn=document.getElementById('themeToggle');
   function dark(){return root.classList.contains('dark');}
-  function render(){ if(btn){btn.innerHTML=dark()?'&#9728; Light':'&#9680; Dark';
-    btn.setAttribute('aria-label',dark()?'Switch to light theme':'Switch to dark theme');} }
+  /* the button label is the existing DE/EN span pair plus a glyph, set with textContent only */
+  function render(){ if(!btn) return;
+    var d=dark(), de=btn.querySelector('[data-de]'), en=btn.querySelector('[data-en]'), g=btn.querySelector('.tt-glyph');
+    if(g) g.textContent=d?'☀':'◐';
+    if(de) de.textContent=d?'Hell':'Dunkel';
+    if(en) en.textContent=d?'Light':'Dark';
+    btn.setAttribute('data-aria-de',d?'Zum hellen Design wechseln (T)':'Zum dunklen Design wechseln (T)');
+    btn.setAttribute('data-aria-en',d?'Switch to light theme (T)':'Switch to dark theme (T)');
+    window.hcApplyAria(btn); }
   function apply(d){ root.classList.toggle('dark',d); try{localStorage.setItem(KEY,d?'dark':'light');}catch(e){} render(); }
   render();
   if(btn) btn.addEventListener('click',function(){apply(!dark());});
@@ -205,8 +224,7 @@ footer.canvas-foot code{background:none;padding:0}
 (function(){
   var root=document.documentElement, KEY='html-canvas-lang', btn=document.getElementById('langToggle');
   function cur(){return root.getAttribute('data-lang')==='de'?'de':'en';}
-  function render(){ if(btn){btn.textContent=cur()==='en'?'DE':'EN';
-    btn.setAttribute('aria-label',cur()==='en'?'Zu Deutsch wechseln':'Switch to English');} }
+  function render(){ if(btn){btn.textContent=cur()==='en'?'DE':'EN';} window.hcApplyAria(); }
   function apply(l){ root.setAttribute('data-lang',l); root.setAttribute('lang',l); try{localStorage.setItem(KEY,l);}catch(e){} render(); }
   render();
   if(btn) btn.addEventListener('click',function(){apply(cur()==='en'?'de':'en');});

@@ -1,7 +1,7 @@
 ---
 summary: "Optional vanilla-JS behaviours for html-canvas — scroll reveal, slide deck, count-up, filtering, data hydration"
 type: reference
-last_updated: 2026-06-01
+last_updated: 2026-10-24
 related:
   - skills/html-canvas/SKILL.md
   - skills/html-canvas/assets/animations.css
@@ -140,10 +140,13 @@ function SlideEngine(){this.slides=[].slice.call(document.querySelectorAll('.sli
 SlideEngine.prototype.buildChrome=function(){var b=document.createElement('div');b.className='deck-progress';this.bar=document.createElement('span');b.appendChild(this.bar);document.body.appendChild(b);
   var c=document.createElement('div');c.className='deck-counter';this.counter=c;document.body.appendChild(c);
   var r=document.createElement('div');r.className='deck-dots';var self=this;this.dots=this.slides.map(function(s,i){var d=document.createElement('button');d.setAttribute('aria-label','Slide '+(i+1));d.addEventListener('click',function(){self.goTo(i);});r.appendChild(d);return d;});document.body.appendChild(r);};
-SlideEngine.prototype.bind=function(){var self=this;document.addEventListener('keydown',function(e){var _t=e.target||{};if(_t.isContentEditable||/^(input|textarea|select)$/i.test(_t.tagName||''))return;if(e.key==='ArrowDown'||e.key==='PageDown'||e.key===' '){e.preventDefault();self.next();}else if(e.key==='ArrowUp'||e.key==='PageUp'){e.preventDefault();self.prev();}else if(e.key==='Home'){self.goTo(0);}else if(e.key==='End'){self.goTo(self.total-1);}});
+SlideEngine.prototype.bind=function(){var self=this;document.addEventListener('keydown',function(e){var _t=e.target||{};if(_t.isContentEditable||/^(input|textarea|select)$/i.test(_t.tagName||''))return;if(e.key===' '&&_t.closest&&_t.closest('button,a[href],summary,[role="button"]'))return;if(e.key==='ArrowDown'||e.key==='PageDown'||e.key===' '){e.preventDefault();self.next();}else if(e.key==='ArrowUp'||e.key==='PageUp'){e.preventDefault();self.prev();}else if(e.key==='Home'){self.goTo(0);}else if(e.key==='End'){self.goTo(self.total-1);}});
   var y0=null;document.addEventListener('touchstart',function(e){y0=e.touches[0].clientY;},{passive:true});document.addEventListener('touchend',function(e){if(y0==null)return;var dy=e.changedTouches[0].clientY-y0;if(Math.abs(dy)>50){dy<0?self.next():self.prev();}y0=null;});};
-SlideEngine.prototype.observe=function(){var self=this;var obs=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');self.current=self.slides.indexOf(e.target);self.update();if(typeof animateCounters==='function')animateCounters(e.target);}});},{threshold:0.5});this.slides.forEach(function(s){obs.observe(s);});
-  var fv=function(){self.slides.forEach(function(s){s.classList.add('visible');});};window.addEventListener('beforeprint',fv);if(window.matchMedia){var mq=matchMedia('print');if(mq.matches)fv();if(mq.addEventListener)mq.addEventListener('change',function(e){if(e.matches)fv();});}};
+SlideEngine.prototype.observe=function(){var self=this;
+  var fv=function(){self.slides.forEach(function(s){s.classList.add('visible');});};
+  if(!('IntersectionObserver' in window)){fv();return;} /* animations.css hides .slide until .visible; without an observer nothing would ever show it */
+  var obs=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');self.current=self.slides.indexOf(e.target);self.update();if(typeof animateCounters==='function')animateCounters(e.target);}});},{threshold:0.5});this.slides.forEach(function(s){obs.observe(s);});
+  window.addEventListener('beforeprint',fv);if(window.matchMedia){var mq=matchMedia('print');if(mq.matches)fv();if(mq.addEventListener)mq.addEventListener('change',function(e){if(e.matches)fv();});}};
 SlideEngine.prototype.goTo=function(i){this.slides[Math.max(0,Math.min(i,this.total-1))].scrollIntoView({behavior:'smooth'});};
 SlideEngine.prototype.next=function(){if(this.current<this.total-1)this.goTo(this.current+1);};
 SlideEngine.prototype.prev=function(){if(this.current>0)this.goTo(this.current-1);};
