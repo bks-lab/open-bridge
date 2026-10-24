@@ -41,11 +41,19 @@
 # user branch LOOK enormous — 161 commits ahead, of which 6 were the user's — and
 # that reading has cost real debugging time twice.
 #
+# After the merge, and before the mirror push, it runs a fast LOCAL CHECK NET
+# (run_checks below). The merge itself runs with hooks off, and an instance whose
+# CI is off (a billing stop, Actions disabled on a fork, a tree with no remote
+# runner) meets no validator after it at all. A check that the merge turned red
+# rolls the merge back, skips the mirror and files an inbox item; a check that
+# was already red before the merge is reported and does not hold the job.
+#
 # Env (optional): UPSTREAM_REMOTE (default upstream) · UPSTREAM_REF (default
 # upstream/main) · MIRROR_REMOTE (default origin) · MIRROR_CORE=0 disables the
 # mirror step · SIGNAL_ACCOUNT + SIGNAL_RECIPIENT (both set → Signal push) ·
 # AUTOUPDATE_NOTIFY_CMD (an argv string, e.g. "/path/notify.sh --quiet": run with
 # the notification text on stdin, in addition to Signal; its failure is ignored).
+# AUTOUPDATE_CHECKS=0 disables the check net (an escape hatch, reported as such).
 set -uo pipefail
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)" || exit 1
 
@@ -174,6 +182,51 @@ print("; ".join(one(x) for x in u))') \
     || { reason="conflict resolver output unreadable, failing closed"; return; }
 }
 
+# ---- the local check net ----
+# The same fast checks the pre-commit always-on gate runs, plus the two
+# validators every commit on main meets in CI. Each is skipped when absent: a
+# fork that has not taken a checker is not failing it. Measured on a live
+# instance: about 1.5 s for all six, so the job pays twice that (before and after
+# the merge) and nothing else.
+CHECKS=(
+  "validate-bridge.py"
+  "validate-skill-scope.py"
+  "check-edges.py"
+  "standing-orders.py --check"
+  "context-index.py --check"
+  "check-reachability.py"
+)
+CHECKS_LOG=/tmp/ob-autoupdate-checks.log
+checks_ran=0
+now_s() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+
+# run_checks — sets red (the failing checks, one per line) and checks_ran.
+# Globals, not output: a $(...) caller would lose checks_ran in its subshell.
+# Every check gets a 120 s alarm, so a hanging one fails rather than stalls.
+red=""
+run_checks() {
+  local c s
+  checks_ran=0; red=""
+  for c in "${CHECKS[@]}"; do
+    s=${c%% *}
+    [ -f "scripts/$s" ] || continue
+    checks_ran=$((checks_ran + 1))
+    # shellcheck disable=SC2086
+    if ! { echo "== $c"; perl -e 'alarm 120; exec @ARGV' python3 scripts/$c </dev/null; } >>"$CHECKS_LOG" 2>&1; then
+      red="${red}${c}"$'\n'
+    fi
+  done
+}
+
+# Words in $2 that are not in $1 (both newline lists): what the merge turned red.
+newly_red() { comm -13 <(printf '%s\n' "$1" | sed '/^$/d' | sort -u) <(printf '%s\n' "$2" | sed '/^$/d' | sort -u); }
+
+INBOX_KEY="upstream-autoupdate-checks"
+inbox() {  # argv for scripts/inbox.py; a missing or failing inbox never fails the run
+  [ -f scripts/inbox.py ] || return 0
+  python3 scripts/inbox.py "$@" >/dev/null 2>&1 || true
+}
+
 # ---- GUARDS (fail closed) ----
 reason=""
 branch=$(git branch --show-current 2>/dev/null || echo "")
@@ -224,6 +277,19 @@ fi
 
 # ---- SAFE → auto-merge (skip the local pre-commit hook for the headless merge) ----
 before=$(git rev-parse --short HEAD)
+before_full=$(git rev-parse HEAD)
+
+# Baseline BEFORE the merge, so a check that is already red locally (a dead edge
+# in work/, a half-finished config) is told apart from one the merge broke. Without
+# it, one unrelated local break would freeze this job for good, the very failure
+# the resolver above was built to end.
+red_before=""; red_after=""; checks_line=""
+if [ "${AUTOUPDATE_CHECKS:-1}" = 0 ]; then
+  checks_line="- checks: skipped (AUTOUPDATE_CHECKS=0)"
+else
+  : > "$CHECKS_LOG"
+  run_checks; red_before=$red
+fi
 
 # resolve_merge — finish a merge that stopped on exactly the planned conflicts by
 # taking upstream's side of each take_theirs path and the local side of each
@@ -266,6 +332,48 @@ elif [ -n "$take_theirs$take_ours" ] && resolve_merge >>/tmp/ob-autoupdate-merge
   merged=1
 fi
 
+if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
+  t0=$(now_s)
+  echo "== after the merge" >>"$CHECKS_LOG"
+  run_checks; red_after=$red
+  secs=$(perl -e 'printf "%.1f", $ARGV[1] - $ARGV[0]' "$t0" "$(now_s)")
+  broke=$(newly_red "$red_before" "$red_after" | tr '\n' ' ' | sed 's/ $//')
+  if [ -n "$broke" ]; then
+    # ROLL BACK, do not keep. A kept merge would leave the branch 0 behind, and
+    # the next run would take the up-to-date exit, push the mirror and report
+    # green: the red would vanish from every report. Rolling back loses nothing:
+    # the upstream commits stay in $UPSTREAM_REF, the local commits were never
+    # touched, and `reset --keep` refuses rather than overwrite a local change
+    # (the dirty files guard 2 let through are files the merge does not touch).
+    # The merge commit itself stays reachable through the reflog.
+    merge_sha=$(git rev-parse --short HEAD)
+    up_sha=$(git rev-parse "$UPSTREAM_REF")
+    if git reset -q --keep "$before_full" >>"$CHECKS_LOG" 2>&1; then
+      undo="rolled back to \`$before\` (merge \`$merge_sha\` stays in the reflog)"
+    else
+      undo="could NOT be rolled back, merge \`$merge_sha\` left in place, do not push it"
+    fi
+    report "- 🔴 auto-update merge turned check(s) red: $broke. The merge $undo." \
+           "- $behind commit(s) behind \`$UPSTREAM_REF\` · checks ran in ${secs}s · output: $CHECKS_LOG" \
+           "- mirror: skipped (checks red)" \
+           "- reproduce: \`git merge $UPSTREAM_REF\`, then run each named check"
+    inbox add --from upstream-autoupdate --kind finding --urgency today \
+      --summary "Upstream merge turned checks red: $broke" \
+      --detail "The daily auto-update merged $behind upstream commit(s) and then rolled the merge back, because these checks failed after it and passed before: $broke. Merge $UPSTREAM_REF by hand, fix what the checks name, then commit. Output of the run: $CHECKS_LOG" \
+      --key "$INBOX_KEY" \
+      --closes-when-json "{\"command\": [\"git\", \"merge-base\", \"--is-ancestor\", \"$up_sha\", \"HEAD\"]}"
+    notify "🔴 open-bridge auto-update: merge turned checks red ($broke), $undo. Manual merge needed."
+    echo "autoupdate: checks red after merge ($broke), $undo"; exit 1
+  fi
+  ran_after=$checks_ran
+  checks_line="- checks: $ran_after passed in ${secs}s"
+  [ "$ran_after" = 0 ] && checks_line="- checks: none present"
+  if [ -n "$red_after" ]; then
+    checks_line="- checks: $((ran_after - $(printf '%s\n' "$red_after" | sed '/^$/d' | wc -l))) passed in ${secs}s · already red before the merge: $(printf '%s' "$red_after" | tr '\n' ' ' | sed 's/ $//')"
+  fi
+  inbox close --key "$INBOX_KEY" --note "the next upstream merge passed the checks"
+fi
+
 if [ "$merged" = 1 ]; then
   after=$(git rev-parse --short HEAD)
   mirror_line=$(mirror_core_branch)
@@ -274,7 +382,7 @@ if [ "$merged" = 1 ]; then
   kept_line=""
   [ -n "$take_ours" ] && kept_line="- kept local: $(printf '%s' "$take_ours" | tr '\n' ' ')"
   report "- ✅ auto-updated \`$before\` → \`$after\` ($behind commit(s) merged from \`$UPSTREAM_REF\`)" \
-         ${resolved_line:+"$resolved_line"} ${kept_line:+"$kept_line"} "$mirror_line"
+         ${resolved_line:+"$resolved_line"} ${kept_line:+"$kept_line"} "$checks_line" "$mirror_line"
   notify "✅ open-bridge auto-updated: $behind commit(s) merged ($before→$after)"
   echo "autoupdate: merged $behind commit(s) ($before→$after)"
   echo "autoupdate: mirror — ${mirror_line#- }"
