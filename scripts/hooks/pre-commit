@@ -245,5 +245,25 @@ if echo "$STAGED" | grep -Eq '^workflow/workloads/[^_/]+\.yaml$' && [ -f scripts
   fi
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# (i) COCKPIT gate: the two cockpit checks that catch what a local tree hides.
+#
+# A view that imports a file missing from the CORE allowlist
+# (scripts/categorize-commits.py) loads fine here and breaks the page in every
+# tree that receives only CORE; the demo copy (docs/cockpit-demo/) drifts the
+# moment scripts/web changes. Both are green in upstream CI and nowhere else,
+# for the reason (f) gives. Warn only, gated on the cockpit being staged:
+# about 2 s when it runs. The bare `pytest` binary, because on some machines
+# python3 has no pytest module while `pytest` runs under one that does.
+if echo "$STAGED" | grep -Eq '^scripts/(web|lib/bridge_cockpit)/|^scripts/categorize-commits\.py$'; then
+  PYTEST=$(command -v pytest || true)
+  if [ -n "$PYTEST" ] && [ -f scripts/tests/test_bridge_cockpit_core.py ]; then
+    "$PYTEST" -q scripts/tests/test_bridge_cockpit_core.py >/dev/null 2>&1 ||
+      warn "⚠ COCKPIT: a dashboard file is outside the CORE allowlist: pytest -q scripts/tests/test_bridge_cockpit_core.py"
+  fi
+  [ -f scripts/build-cockpit-demo.py ] && { python3 scripts/build-cockpit-demo.py --check >/dev/null 2>&1 ||
+    warn "⚠ COCKPIT: docs/cockpit-demo/ drifted from scripts/web: python3 scripts/build-cockpit-demo.py --write"; }
+fi
+
 warn "───────────────────────────────────────────────────────────────────"
 exit 0

@@ -58,4 +58,26 @@ printf 'a: 1\n' > ecosystem.yaml
 git add ecosystem.yaml scripts/check-edges.py
 sh "$HOOK" >/dev/null 2>&1 || fail "the hook blocked; this gate is warn-only"
 
-echo "test-precommit-guards: 5 assertions pass"
+# 6. the cockpit gate (i): a drifted demo copy warns when the page's code is staged
+setup
+printf 'import sys\nsys.exit(1)\n' > scripts/build-cockpit-demo.py
+mkdir -p scripts/web && echo "x" > scripts/web/x.js
+git add scripts/web/x.js scripts/build-cockpit-demo.py
+out=$(GIT_DIR=.git sh "$HOOK" 2>&1 || true)
+echo "$out" | grep -q "COCKPIT" || fail "a failing cockpit check produced no warning"
+
+# 7. ... and stays silent when the checks pass or the cockpit is not staged
+setup
+printf 'import sys\nsys.exit(0)\n' > scripts/build-cockpit-demo.py
+mkdir -p scripts/web && echo "x" > scripts/web/x.js
+git add scripts/web/x.js scripts/build-cockpit-demo.py
+out=$(GIT_DIR=.git sh "$HOOK" 2>&1 || true)
+echo "$out" | grep -q "COCKPIT" && fail "a passing cockpit check still warned"
+setup
+printf 'import sys\nsys.exit(1)\n' > scripts/build-cockpit-demo.py
+mkdir -p work/tasks/x && echo "note" > work/tasks/x/STATUS.md
+git add work/tasks/x/STATUS.md
+out=$(GIT_DIR=.git sh "$HOOK" 2>&1 || true)
+echo "$out" | grep -q "COCKPIT" && fail "the cockpit gate fired for a commit outside the cockpit"
+
+echo "test-precommit-guards: 7 assertions pass"

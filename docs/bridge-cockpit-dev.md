@@ -106,7 +106,7 @@ layout now").
 
 Free to change without touching anything else:
 `scripts/bridge-cockpit.py`, `scripts/lib/bridge_cockpit/`, `scripts/web/`, this page,
-`bridge-cockpit.md` and the two test files.
+`bridge-cockpit.md` and the cockpit tests (`scripts/tests/*cockpit*`).
 
 Shared with the rest of the Bridge, so a change there reaches more than the page:
 
@@ -284,16 +284,22 @@ missing in one language, an empty value, an em or en dash, or an emoji.
 ## 6. Tests
 
 ```bash
-pytest -q scripts/tests/test_bridge_cockpit*.py scripts/tests/test_task.py scripts/tests/test_task_review.py
-pytest -q scripts/tests/test_bridge_cockpit_ticker.py scripts/tests/test_bridge_cockpit_guide.py scripts/tests/test_bridge_cockpit_core.py scripts/tests/test_bridge_cockpit_demo.py
-node --test scripts/tests/bridge_cockpit_frontend.test.mjs scripts/tests/bridge_cockpit_jev.test.mjs scripts/tests/bridge_cockpit_markdown.test.mjs scripts/tests/bridge_cockpit_render.test.mjs
+pytest -q scripts/tests/test_bridge_cockpit*.py scripts/tests/test_cockpit_costs_contract.py scripts/tests/test_task.py scripts/tests/test_task_review.py
+node --test scripts/tests/bridge_cockpit_*.test.mjs
 python3 scripts/build-cockpit-demo.py --check
 npx -y -p typescript@5.6.3 -c 'node mods/cockpit-relay/tests/pure.test.mjs'
 claude plugin test mods/cockpit-relay        # engine tests, local only
 ```
 
-Use the bare `pytest` binary: on some machines `python3` has no pytest module
-while the `pytest` command runs under the interpreter that does.
+These are the commands CI runs (`.github/workflows/validate.yml`). Use the bare
+`pytest` binary: on some machines `python3` has no pytest module while the
+`pytest` command runs under the interpreter that does.
+
+CI runs on `main` only, so on a `user/*` branch the pre-commit hook stands in:
+a commit that stages `scripts/web/`, `scripts/lib/bridge_cockpit/` or
+`scripts/categorize-commits.py` runs the CORE allowlist test and the demo
+check (about 2 s) and warns when either fails. A page that imports a file the
+allowlist does not name would load in your tree and break in every other one.
 
 The server tests are hermetic: a fake Bridge in a temp folder, a fake runner
 that records every argv, the relay key in a temp folder. The frontend test also
