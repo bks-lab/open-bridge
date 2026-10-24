@@ -173,3 +173,35 @@ corrections:
 ```
 
 When a new correction is discovered during processing, offer to add it.
+
+### Three outcomes, not two
+
+A proper noun coming out of a transcript ends in exactly one of three states.
+The third one is the one that gets skipped, and skipping it destroys evidence:
+
+| Outcome | Condition | What reaches the summary |
+|---|---|---|
+| corrected | misrecognition established, target spelling found in the repo | the corrected form, plus an entry in the correction map |
+| taken as heard | spelling plausible and uncontested | the form from the transcript |
+| **uncertain** | present in the transcript, **not** findable in the repo | the heard form **with a mark**: `"ChromaX" (heard, unverified)` |
+
+**Leaving it out is not the cautious version of uncertainty, it is its
+destruction.** The mark invites the one person who knows to fix it in a
+sentence; the blank space asks nobody, and the only trace left is the audio.
+
+An uncertain name does **not** go into the correction map. That file carries
+what has been verified against a source; it is the reason the map can be
+trusted. The mark lives in the summary, next to the sentence it belongs to.
+
+This does not loosen the search rule. A name heard from audio is still never
+used as a search key and a non-match still proves nothing; see
+`work/name-corrections.yaml` and the reasoning behind it. Uncertain names are
+written down, not looked up.
+
+> **The case behind this.** Reading a weekly transcript in full
+> surfaced four proper nouns that were in the transcript and in no artefact:
+> a billing portal and a storage-bucket sensor in a customer's document
+> pipeline, the professor who decided to dismantle a research installation, and
+> the person at a customer who has to flip the switch before anything ships.
+> None was documented wrongly. All four were simply absent. The pipeline itself
+> was described, which made it re-readable and impossible to ask about.

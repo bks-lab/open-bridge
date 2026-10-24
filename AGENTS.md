@@ -104,11 +104,10 @@ agents. Built-in: `professional` (default, en) plus locale variants; set via
 Two different things share the word, and confusing them is the usual mistake.
 
 **Sub-agents** (`.claude/agents/*.md`) are *inward*: ephemeral, spawned inside
-your session, they exist so heavy or parallel work (log dumps, file trees, API
-results) never fills the main context, and they return a structured summary. Add
-one by dropping in another `{name}.md`; no registration. On platforms without a
-delegation API the same logic runs inline
-([`docs/tool-mapping.md`](docs/tool-mapping.md)).
+your session so heavy or parallel work (log dumps, file trees, API
+results) never fills the main context, and return a structured summary. Add one
+by dropping in a `{name}.md`; no registration. Without a delegation API it runs
+inline (§ Tool Mapping).
 
 **Bridge-Agents** (`agents/`) are *outward*: persistent, addressable A2A
 endpoints that front a persona to the world and to peer bridges, under a human
@@ -205,6 +204,7 @@ one hop both ways, `--fix` rewrites a reference whose task merely moved KIND).
 | `workflow/briefings/` | what a briefing shows, from which trackers |
 | `workflow/mail-profiles/`, `identity/mail-footers/` | drafting a mail: the occasion, and how it is signed |
 | `workflow/calendars/` | a scheduled outbound action |
+| `workflow/meetings/` | a recurring meeting series, its wiki protocol |
 | `workflow/contexts/` | where a piece of work gets documented |
 | `workflow/projects/` | a board's field values and state map, before ANY tracker call |
 | `workflow/workloads/` | one declared run on one machine |

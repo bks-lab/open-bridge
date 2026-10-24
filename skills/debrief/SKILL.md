@@ -60,6 +60,66 @@ Updates **before** protocol (so wiki has real URLs). Protocol **before** email
 (so email links to real issue updates AND the written wiki page). Email
 **before** archive (so transcript is still next to the workflow).
 
+**A hand-off to a successor skill happens after Phase 5, never earlier.** The
+series is usually recognisable at Phase 1, and handing over there feels
+efficient. It is not: phases 1.5, 2 and 5 are then simply never run by anyone.
+The successor's follow-up starts further downstream and *assumes* they are done.
+See § Recurring series for the positive definition and the hand-over list.
+
+## Recurring series: recognise and hand off (do not make the user guess)
+
+A transcript that belongs to a **recurring meeting series** does not end with a
+protocol; the series has its own cycle (a run sheet before, keyword memory after,
+board operations, a distribution draft, next week's skeleton). Debrief does not own
+any of that and must not reimplement it. It **recognises** the series and **names
+the successor**, so the user triggers one thing instead of four.
+
+Purely config-driven, so this stays a generic core skill:
+
+1. Read every `workflow/meetings/*.yaml` (skip `_`-prefixed files: those are the
+   template and schema).
+2. Match the meeting folder name against each series' `folder_match` (a regex with
+   a named `date` group). `folder_match` wins over `folder_pattern`; real folder
+   names diverge, and a prefix guess picks the wrong series.
+3. On a match, read that series' `followup_skill`. **Finish phases 1.5 through 5
+   first**, then hand over. The point is defined positively, as "after 5", not
+   as "somewhere before 6":
+
+   > This transcript belongs to *{display_name}* ({date}). That series' cycle is
+   > owned by `{followup_skill}`: it fills the run sheet, writes the summary, the
+   > wiki protocol, the board operations and the distribution draft, and seeds the
+   > next meeting.
+   >
+   > Done here and handed over:
+   > - classification: {type}, {n} speakers
+   > - name corrections: {n} applied, `name_corrections: applied` set in the
+   >   transcript frontmatter
+   > - extraction: {n} action items
+   > - task reconciliation: {n} matched to existing work, {n} newly created
+   >   ({slugs})
+   >
+   > Hand over now? `[y]` · `[n]` continue with the generic flow
+
+   **Every line of that list is a claim, so every line is checked before it is
+   printed.** A hand-over that says "name corrections applied" when they were not
+   is worse than no hand-over: the successor believes it and never looks.
+
+   > **Why the point is defined positively.** In the case behind this rule, the hand-over was
+   > offered right after Phase 1, because the series was already recognisable.
+   > Phases 1.5, 2 and 5 were then run by nobody: `debrief` was out, and the
+   > successor's follow-up begins at "fill in the keywords" and only *assumes*
+   > classification, name corrections and reconciliation happened. Eighteen name
+   > corrections (one colleague's first name misheard three times, which would have
+   > reached a distribution mail) and two due work items were caught by the user, not by
+   > the flow. The failure is silent by construction: an uncorrected transcript
+   > reads perfectly fluently, and a missing work item is only noticed by someone
+   > looking for it.
+
+4. No match, or no `followup_skill`: continue with the normal flow, silently. Most
+   meetings are not part of a series and a prompt would be noise.
+
+Debrief never names a series or a skill in its own text. It reads the key.
+
 ## Flow selector
 
 | Flag | Flow | When to use |

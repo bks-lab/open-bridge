@@ -432,6 +432,11 @@ jobs:
       - name: Run bridge-audit suite
         run: python3 -m pytest skills/bridge-audit/tests -q -rs
 
+      # The briefing's meeting-obligation check (Stream A 5b). Hermetic: a temp
+      # Bridge with a local wiki directory, no clone, no network.
+      - name: Run briefing meeting-obligations suite
+        run: python3 -m pytest skills/briefing/tests/test_meeting_obligations.py -q -rs
+
   # The cockpit demo (docs/cockpit-demo/) in a real browser: every page of the
   # page bar opens, in en and de, without a console error. Its own job, so the
   # browser download stays out of the script-suites job.

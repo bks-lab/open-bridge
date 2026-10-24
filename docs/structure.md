@@ -130,6 +130,9 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `workflow/calendars/_template.yaml` | CORE | Calendar template |
 | `workflow/calendars/_schema.yaml` | CORE | Calendar schema |
 | `workflow/calendars/entries.yaml` | USER | Master calendar (all scheduled outbound) |
+| `workflow/meetings/_schema.yaml` | CORE | Meeting series schema |
+| `workflow/meetings/_template.yaml` | CORE | Meeting series template |
+| `workflow/meetings/<id>.yaml` | USER | One recurring series: folder match, follow-up skill, wiki protocol target |
 | `workflow/contexts/_template.yaml` | CORE | Context template |
 | `workflow/contexts/<id>.yaml` | USER | Context bundle (routing rules, persona refs) |
 | `workflow/contexts/<id>.README.md` | USER | Optional: context maintenance doc (companion) |

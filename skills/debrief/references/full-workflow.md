@@ -97,6 +97,55 @@ This prevents a redundant re-transcript of a meeting that was already archived.
 
 If path provided: use that file directly.
 
+### 1c. A find without a result is not a find without a reason
+
+A transcript sitting in the imports directory with nothing to show for it can
+mean three very different things, and today they look identical on disk:
+
+| Reality | How it looks in imports/ |
+|---|---|
+| not processed yet, belongs here | file with no result |
+| belongs to another Bridge instance, already handled there | file with no result |
+| deliberately left alone | file with no result |
+
+`_debriefed/` is the only state store and it carries a single bit: processed by
+**this** instance, yes or no. Everything else has no way to be expressed. This
+bites hardest where recordings are routed by a single default context, which is
+the normal configuration: every recording lands in one imports directory
+regardless of which instance will actually work on it, and the transcript
+frontmatter (`type`, `date`, `recorded_at`, `duration_min`, `language`,
+`participants`, `source`) says nothing about ownership.
+
+**Both readings are expensive.** Take the files at face value and you process
+someone else's meeting, against `rules/multi-instance-isolation.md`. Ignore them
+and you lose your own. Both fail silently, and both fail exactly when nobody is
+watching.
+
+So before reporting a transcript as unprocessed:
+
+1. **Form a suspicion, do not answer.** Participants, the mandates named in the
+   text, and `infra/instances/*.yaml` (each entry names its purpose, contexts
+   and readers) give an indication. They do not give an answer.
+2. **Ask the human once**, presenting the suspicion and its grounds.
+3. **Keep the answer**, so the question is never asked twice:
+
+   | Answer | Where the file goes |
+   |---|---|
+   | belongs here | normal run, then `_debriefed/` |
+   | belongs to instance X | `_elsewhere/`, with `target: X` and the date |
+   | leave it | `_elsewhere/`, with a reason and the date |
+
+**The latch matters as much as the question.** Without it every run asks again,
+and a question asked every time is learned as noise and stops being answered.
+
+> **The case behind this.** Asked whether anything had been missed,
+> the flow counted the imports directory, found two transcripts from that
+> evening with no result, and reported them as a gap, offering to process a
+> twenty-minute three-party meeting. The user's answer was that both are handled
+> in a different instance. The finding was a false alarm, and the false alarm is
+> the point: nothing in the flow would have stopped the foreign content from
+> being debriefed here. One sentence from the user did.
+
 ## Phase 1.5: Context Lookup (optional, capability-based)
 
 `/debrief` declares the capabilities it needs:
@@ -180,6 +229,26 @@ Read `classification.md` for the full classification rules, workshop signals
 regex, and participant detection logic.
 
 Present **Checkpoint 1** (classification review) before proceeding.
+
+### 2b. Series lookup (config-driven, no hardcoded names)
+
+Before extraction, check whether this meeting belongs to a declared recurring
+series. This is what turns "which of the four things do I trigger now?" into one
+question with a proposed answer.
+
+```bash
+# Every declared series; `_`-prefixed files are the template and schema.
+ls workflow/meetings/*.yaml 2>/dev/null | grep -v '/_'
+```
+
+For each, match the meeting's folder name against `folder_match` (regex, named
+`date` group). On a hit, read `followup_skill`, `display_name` and `outputs.wiki`,
+and offer the handoff described in `SKILL.md` § Recurring series. The hit also
+tells you the wiki target, so Phase 6 does not have to guess it.
+
+**No match is the normal case**: continue silently. **Never** infer a series from
+the folder name itself: `folder_pattern` is a display form and the real names
+diverge (`-team-weekly` vs `-team-lead-weekly`, often with a free suffix).
 
 ## Phase 3: Apply Name Corrections
 
@@ -389,7 +458,7 @@ discussion topics — NOT the full transcript), written to the context's wiki
 - **Track + don't force:** writing to the shared wiki is **gated** (`write_is_gated`)
   — a deliberate push, never an auto-flood. If you write it now, set the summary.md
   frontmatter `wiki: { status: done, repo: …, path: … }`. If there's **no time**
-  (capture-only debrief), set `wiki: { status: pending }` — the **/briefing** then
+  (capture-only debrief) **and a protocol is actually owed**, set `wiki: { status: pending }`; a meeting that owes none (internal 1:1 sync, no series) stays `n/a`, because a `pending` nobody closes only trains the briefing to be ignored. The **/briefing** then
   surfaces it as a missing org protocol (workflow Stream A 5b) so it is never lost.
   Same model for tasks: extracted now (Phase 5) → `tasks: { status: done }`, deferred
   → `tasks: { status: pending }` + a `triage.md`, which /briefing also surfaces.
@@ -555,6 +624,8 @@ Summary:
      (audio) + `…{slug}.md` (naked transcript, frontmatter `type:
      work.meetings.transcript_type`). **Always RENAME descriptively** — never the
      raw source name (`Voice Chat 20260603 1506.mp3`). `processed/` is scanner-skipped.
+     Whether the **audio** is archived at all is decided by `audio_retention`
+     (step 4b); the naked transcript is archived either way.
    - **Context-aware summary → `{home_dir}/{YYYY-MM-DD}-{slug}/{summary_file}`**
      (`work.meetings.home_dir` + `summary_file`, i.e. `…/summary.md`), in the
      **`themen-toc` format** (`work.meetings.summary_format`): a topic
@@ -570,12 +641,41 @@ Summary:
      `status: triaged` straight away. A debrief CAPTURES; the **/briefing** surfaces
      the open points and is where you DECIDE them. Do not force task decisions here.
      Every decided point becomes `- [x]`; the last one flips the file to `triaged`.
-   **Never trash the source audio**: always MOVE the mp3/m4a
-   into the PARA archive, even when the worker holds a copy. The naked transcript
+   **Never trash the source audio on your own judgement**: MOVE the mp3/m4a into
+   the PARA archive, even when the worker holds a copy. The one thing that may
+   remove a recording is an explicit `audio_retention` policy (step 4b), and
+   only after its transcript is verified. The naked transcript
    often survives only on the worker bundle (`transcript-raw.md`) — `scp` it into
    PARA alongside the audio. The `~/.Trash/` route is for worthless voice memos
    only (<60s, no speaker change), never for meetings. Use Python + collision-check
    for bulk moves (zsh-regex trap), never overwrite an existing target.
+4b. **Audio retention: `work.meetings.audio_retention`.** A recording is raw
+   material for a transcript; some instances keep it, some do not. Read the block
+   and obey it. **Absent block = `policy: keep`**, i.e. today's behaviour: archive
+   the audio next to the transcript and change nothing else. Never infer the
+   policy from what a neighbouring file happens to look like; read the key.
+
+   | Key | Meaning |
+   |---|---|
+   | `policy: keep` | Audio stays everywhere. Default when the block is absent. |
+   | `policy: drop_after_transcript` | Once the transcript is written and verified, the audio is removed. |
+   | `require_transcript: true` | **Hard stop.** Never remove a recording that has no transcript, it would be gone without trace. Verify the transcript exists and is non-empty *at its target path* first. |
+   | `drop_from: [imports, archive, worker]` | Where to remove it: the import dir (incl. the processed-marker dir), the PARA archive, and the transcription worker's bundle. |
+   | `method: trash` | Always the machine's own trash, local and remote, never `rm`. A wrong call stays recoverable until the trash is emptied. |
+
+   Three rules that make this safe, each one paid for once:
+
+   - **Prove before you delete.** Compare the copies by **hash**, not by size or
+     by filename, and only then remove. Two recordings of the same meeting can
+     share a byte count and still differ.
+   - **The worker keeps its evidence.** Remove only `meeting.mp3` from a bundle.
+     `manifest.yaml` and the raw transcript stay: the pre-push duplicate check
+     reads the manifests (`recorded_at` + `duration_s`), and deleting them makes
+     the same recording transcribable twice, silently.
+   - **A skipped file is a finding, not a footnote.** Report every recording the
+     policy could not remove (no transcript, hash mismatch, trash refused) with
+     its reason. Silence here reads as success.
+
 5. Update the **daily insights file** at `{target_repo}/{work.meetings.insights_dir}/{YYYY-MM}/{DD}_insights.md`
    (append the per-meeting insights block from Phase 4) — small, in-repo, what
    `/briefing` + `/archive` parse. Its `source:` line points at the archived naked

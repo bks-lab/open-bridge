@@ -20,6 +20,12 @@ three fragmented new ones.
 | Available assignees | `gh api repos/{repo}/assignees` |
 | Mandant-to-GitHub handle map | optional `identity/mandants/{id}.yaml` `github:` field (fallback: ask user) |
 
+> **This file is the single home of the matching heuristic.** A second copy
+> once lived in a meeting-series skill. Both carried the same weights
+> (50/20/20/10) and the same thresholds (70/40), but their middle two signals had
+> already drifted apart in wording. A skill that needs the heuristic (a series'
+> `followup_skill`, for one) points here instead of restating it.
+
 ## Minimum Principle (hard rule)
 
 **Aim for 1–5 issue operations per meeting, not per action item.**

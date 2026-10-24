@@ -1,0 +1,113 @@
+# yaml-language-server: $schema=./_schema.yaml
+---
+# Template for a recurring meeting series. Copy to `<id>.yaml`, fill in, delete
+# what you do not use. Full field reference and the reasoning behind each rule:
+# `_schema.yaml`.
+#
+# /debrief and /briefing need only the first part (id, folder_match,
+# followup_skill, files, outputs.wiki). Everything from `labels` on is read by
+# the series' follow-up skill, if it has one. No skill knows these values: a
+# second series costs one file, not one code change.
+schema_version: 1
+type: meeting-series
+scope: user                    # `user` whenever the exclusion lists name private items
+last_updated: YYYY-MM-DD
+id: my-series                  # must equal the filename stem
+display_name: My Recurring Meeting
+language: en
+
+cadence:
+  weekday: thursday
+  start: '18:00'
+  duration_min: 45             # measure it, do not estimate it: the tier budgets rest on it
+  topics_avg: 10
+
+participants:
+  - name: Alice
+    github: alice-dev          # resolves a board assignee to this name
+  - name: Bob
+
+folder_pattern: '{date}-my-series'
+folder_match: '^(?P<date>\d{4}-\d{2}-\d{2})-my-series(?:$|-)'
+followup_skill: ''            # which skill owns this cycle; /debrief proposes it after the meeting
+
+files:
+  agenda: agenda.md
+  summary: summary.md
+  triage: triage.md
+  # Due between this meeting and the next. Derived and short-lived; /briefing
+  # reads it on the days in between, when nobody opens the meeting folder.
+  deadlines: deadlines.md
+  # variants: an alternative rendering of the SAME preparation, for comparison.
+  # It never carries fillable keyword fields. Only the agenda file is filled,
+  # or next week's comparison has two possible sources and picks one silently.
+
+# The frozen anchors in the sheet. English identifiers above, rendered strings
+# here. Change a value and every past sheet becomes unreadable for the comparison.
+labels:
+  changed: Changed
+  question: Question
+  keywords: Keywords
+  keywords_prev: Keywords last time
+  result: Result
+  owner: Who
+  kind: Type
+  priority: Prio
+
+status_values:
+  prepared: prepared
+  held: held
+  documented: documented
+  cancelled: cancelled         # a cancelled meeting is a state, not a gap
+
+# Cut by decision need, never by topic or customer.
+tiers:
+  - {level: 1, title: 'Tier 1, decision needed', budget_min: 16}
+  - {level: 2, title: 'Tier 2, discuss if time', budget_min: 12}
+  - {level: 3, title: 'Tier 3, info on request', budget_min: 0}
+open_block:
+  title: Open
+  budget_min: 10               # deliberately empty. Not a buffer, a promise.
+
+# FAIL-CLOSED. Anything matching no rule is counted, never rendered.
+admission:
+  contexts: []
+  mandants: []
+  boards: []
+  kinds: [lead]
+  repo_orgs: []                # a board seat is not a credential
+  lead_path: ''
+  slugs: {}                    # explicit admission for items without a context; value = reason
+
+# Second net. Sits ABOVE admission and always wins. A wrongly blocked business
+# item is a missing topic, visible and counted. A leaked private item is an incident.
+exclusion:
+  private_slugs: []
+  private_contexts: []
+  private_mandants: []
+  confidential_high: {}        # slug: reason
+  patterns: []                 # {pattern: '<regex on word boundaries>', reason: '...'}
+  pattern_exceptions: []       # explicit and individual, never itself a pattern
+
+ownership:
+  by_slug: {}
+  by_kind: {}
+  by_context: {}
+  unknown: 'open (clarify in the meeting)'   # never guess a name
+
+sources:
+  board: {owner: '', project: 0}
+  wiki: {repo: '', leads_dir: ''}
+
+outputs:
+  wiki:
+    repo: ''                   # <org>/<repo>, cloned under identity.projects_root
+    local_path: ''             # or the clone's path, when it lives elsewhere
+    dir: ''
+    file_pattern: '{date}-my-series.md'
+    mocs: []                   # every index that must be bumped, not just the nearest one
+  distribution:
+    mandant: ''                # a reference, never a plaintext address
+    account_ref: ''
+    composer: ''               # declared here so the engine never names a specific skill
+    filter: hard               # `weak` only when the audience equals the room

@@ -1,0 +1,282 @@
+# yaml-language-server: $schema=https://json-schema.org/draft-07/schema
+---
+# Schema for `workflow/meetings/<id>.yaml`: one recurring meeting series.
+#
+# WHO READS IT. Two CORE skills read the generic part, and only that: /debrief
+# matches a meeting folder against `folder_match` and proposes the series'
+# `followup_skill` after its Phase 5, and /briefing checks the wiki target in
+# `outputs.wiki` (skills/briefing/scripts/meeting-obligations.py) and reads
+# `files.deadlines` between two meetings. Neither knows a series by name.
+#
+# THE REST BELONGS TO THE FOLLOW-UP SKILL. A skill that owns a series' cycle
+# (run sheet before, keyword memory after, board operations, distribution
+# draft) must not know a single instance value either: no board number, no
+# participant, no wiki repo, no budget, no confidentiality list. Its blocks
+# (`labels`, `status_values`, `tiers`, `admission`, `exclusion`, `ownership`,
+# `sources`, `outputs.distribution`) are typed here and optional, so a series
+# that only wants the briefing check needs none of them.
+#
+# IDENTIFIERS ARE ENGLISH, VALUES FOLLOW `language`. Field names, enum keys and
+# schema keys are always English; rendered prose and domain values follow the
+# series' `language`. `labels` and `status_values` are the bridge between the
+# two: they map the engine's English concepts onto the exact strings a sheet
+# carries.
+#
+# `_`-prefixed files are CORE and excluded from discovery. Every `<id>.yaml`
+# beside them is USER data and carries a non-core `scope`.
+$schema: http://json-schema.org/draft-07/schema#
+title: Meeting series
+type: object
+required: [schema_version, type, scope, id, display_name]
+additionalProperties: false
+properties:
+  schema_version: {const: 1}
+  type: {const: meeting-series}
+  scope:
+    enum: [user, personal, org]
+    description: Instance data. A series carrying private slugs is always `user`.
+  last_updated: {type: string}
+  id:
+    type: string
+    pattern: '^[a-z0-9][a-z0-9-]*$'
+    description: Must equal the filename stem and the `serie:` value in the agenda frontmatter.
+  display_name: {type: string}
+  language:
+    type: string
+    description: BCP-47-ish short code. Drives which wording pack the engine renders.
+
+  cadence:
+    type: object
+    additionalProperties: false
+    properties:
+      weekday: {enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]}
+      start: {type: string, pattern: '^[0-2][0-9]:[0-5][0-9]$'}
+      duration_min: {type: integer, minimum: 1}
+      topics_avg: {type: integer, minimum: 1}
+
+  participants:
+    type: array
+    items:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: {type: string}
+        github: {type: string, description: Login used to resolve a board assignee to this name.}
+
+  folder_pattern:
+    type: string
+    description: Display form only. `{date}` is the meeting date.
+  folder_match:
+    type: string
+    description: >-
+      The binding assignment, a regex with a named `date` group. Wins over
+      folder_pattern, because real folder names diverge.
+  followup_skill:
+    type: string
+    description: >-
+      Which skill owns this series' cycle. `/debrief` reads it after matching a
+      meeting folder against `folder_match` and proposes that skill once its own
+      Phase 5 is done, so a generic core skill needs to know neither the series nor the
+      skill by name.
+
+  files:
+    type: object
+    additionalProperties: false
+    properties:
+      agenda: {type: string}
+      summary: {type: string}
+      triage: {type: string}
+      deadlines:
+        type: string
+        description: >-
+          Everything due BETWEEN this meeting and the next one. Derived,
+          short-lived, overwritten at the next meeting. The skeleton for the
+          following meeting is the store for THAT meeting, not for the week
+          before it: a deadline falling tomorrow is, by the next meeting,
+          either done or missed. Read by /briefing between the two dates.
+      variants:
+        type: array
+        description: >-
+          Additional renderings of the SAME preparation, for comparison only.
+          A variant never carries fillable keyword fields: two fillable files
+          would give next week's comparison two possible sources.
+        items:
+          type: object
+          required: [id, file, style]
+          additionalProperties: false
+          properties:
+            id: {type: string}
+            file: {type: string}
+            style: {enum: [tabular, prose]}
+            until: {type: string, description: Date after which the variant is dropped.}
+            note: {type: string}
+
+  labels:
+    type: object
+    description: >-
+      The frozen anchors in the sheet. Two scripts and the follow-up parse these
+      literally, and every past sheet contains them verbatim. Changing a value
+      makes existing sheets unreadable for the keyword comparison.
+    required: [changed, question, keywords, keywords_prev, result]
+    additionalProperties: {type: string}
+    properties:
+      changed: {type: string}
+      question: {type: string}
+      keywords: {type: string}
+      keywords_prev: {type: string}
+      result: {type: string}
+      owner: {type: string}
+      kind: {type: string}
+      priority: {type: string}
+
+  status_values:
+    type: object
+    required: [prepared, held, documented]
+    additionalProperties: false
+    properties:
+      prepared: {type: string}
+      held: {type: string}
+      documented: {type: string}
+      cancelled:
+        type: string
+        description: >-
+          A cancelled meeting is a valid state, not a gap. Without it the sheet
+          has to express the case in a comment beside the field.
+
+  tiers:
+    type: array
+    minItems: 1
+    description: Cut by decision need, never by topic or customer.
+    items:
+      type: object
+      required: [level, title]
+      additionalProperties: false
+      properties:
+        level: {type: integer, minimum: 1}
+        title: {type: string}
+        budget_min: {type: integer, minimum: 0}
+  open_block:
+    type: object
+    description: Deliberately empty slot. Not a buffer, a promise.
+    additionalProperties: false
+    properties:
+      title: {type: string}
+      budget_min: {type: integer, minimum: 0}
+
+  admission:
+    type: object
+    description: >-
+      FAIL-CLOSED. An item matching no rule here lands in an unsorted bucket and
+      is counted only. Never an exclusion list at this layer: one forgotten
+      exclusion line would carry private material in front of the audience.
+    additionalProperties: false
+    properties:
+      contexts: {type: array, items: {type: string}}
+      mandants: {type: array, items: {type: string}}
+      boards: {type: array, items: {type: integer}}
+      kinds: {type: array, items: {type: string}}
+      repo_orgs:
+        type: array
+        items: {type: string}
+        description: A board seat is not a credential; a client-owned repo can sit on it.
+      lead_path: {type: string}
+      slugs:
+        type: object
+        description: Explicit admission for items with no context field. Value is the reason.
+        additionalProperties: {type: string}
+
+  exclusion:
+    type: object
+    description: Second net. Sits ABOVE admission and always wins.
+    required: [private_slugs, private_contexts, private_mandants, patterns]
+    additionalProperties: false
+    properties:
+      private_slugs: {type: array, items: {type: string}}
+      private_contexts: {type: array, items: {type: string}}
+      private_mandants: {type: array, items: {type: string}}
+      confidential_high:
+        type: object
+        additionalProperties: {type: string}
+      patterns:
+        type: array
+        items:
+          type: object
+          required: [pattern, reason]
+          additionalProperties: false
+          properties:
+            pattern: {type: string}
+            reason: {type: string}
+      pattern_exceptions:
+        type: array
+        description: >-
+          Explicit and individual, never itself a pattern: an exception that is a
+          pattern disables the net again.
+        items: {type: string}
+
+  ownership:
+    type: object
+    additionalProperties: false
+    properties:
+      by_slug: {type: object, additionalProperties: {type: string}}
+      by_kind: {type: object, additionalProperties: {type: string}}
+      by_context: {type: object, additionalProperties: {type: string}}
+      unknown: {type: string, description: Honest fallback. Never guess a name.}
+
+  overrides:
+    type: object
+    description: Dated day-decisions, deliberately named so they can be found and removed.
+    additionalProperties: false
+    properties:
+      info_tier3: {type: object}
+      prefilled_question: {type: object}
+
+  sources:
+    type: object
+    additionalProperties: false
+    properties:
+      board:
+        type: object
+        additionalProperties: false
+        properties:
+          owner: {type: string}
+          project: {type: integer}
+      wiki:
+        type: object
+        additionalProperties: false
+        properties:
+          repo: {type: string}
+          leads_dir: {type: string}
+
+  outputs:
+    type: object
+    additionalProperties: false
+    properties:
+      wiki:
+        type: object
+        additionalProperties: false
+        properties:
+          repo: {type: string, description: '<org>/<repo>; its clone is found under identity.projects_root.'}
+          local_path:
+            type: string
+            description: The wiki clone on this machine, when it is not under projects_root.
+          dir: {type: string}
+          file_pattern:
+            type: string
+            description: The protocol file inside `dir`. `{date}` is the meeting date.
+          mocs: {type: array, items: {type: string}}
+      distribution:
+        type: object
+        additionalProperties: false
+        properties:
+          mandant: {type: string, description: Reference, never a plaintext address.}
+          account_ref: {type: string}
+          composer:
+            type: string
+            description: >-
+              Declared here so a generic engine never names a specific skill.
+          filter:
+            enum: [weak, hard]
+            description: >-
+              `weak` when the audience equals the room, `hard` when the
+              organisation reads along.
