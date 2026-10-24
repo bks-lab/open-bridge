@@ -215,7 +215,7 @@ def main() -> int:
             print(f"   - {e}", file=sys.stderr)
         return 1
 
-    # Job 1b — advisory size warnings. Printed, never fatal.
+    # Job 1b: advisory size warnings. Printed, never fatal.
     warnings = size_warnings()
     if warnings:
         print(f"! {len(warnings)} skill size warning(s), advisory:", file=sys.stderr)

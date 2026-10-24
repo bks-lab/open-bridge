@@ -326,6 +326,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test-workspace.sh",
     "scripts/tests/test_learning_ledger.py",
     "scripts/tests/test_skill_learnings.py",
+    "scripts/tests/test_skill_size_warnings.py",
     "scripts/tests/test_skill_trigger_collisions.py",
     "scripts/tests/test_where_things_live.py",
     "scripts/tests/test_commands_doc.py",
