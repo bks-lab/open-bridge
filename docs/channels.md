@@ -1,5 +1,5 @@
 ---
-summary: "Channels — messaging integration concept, channel types, schema overview. Operations live in the channel skill; scheduled messages in /schedule, other jobs in /workload."
+summary: "Channels: messaging integration concept, channel types, schema overview. Operations live in the channel skill; scheduled messages in /schedule, other jobs in /workload."
 type: guide
 last_updated: 2026-10-24
 related:

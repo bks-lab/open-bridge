@@ -115,10 +115,9 @@ remote-inventory battery states in `infra/remotes/_tests/run.sh --mutate`.
 """
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
-
-import json
 
 import pytest
 
@@ -857,19 +856,19 @@ def _enable(settings: Path, key: str, on: bool = True) -> None:
 
 def test_user_level_skills_join_the_listing(listed, _isolated_home):
     _write(_isolated_home, ".claude/skills/helper/SKILL.md", "---\nname: helper\ndescription: A user-level helper.\n---\n")
-    assert "**helper** — A user-level helper." in mc.render_listing(listed, "listing:skills")
+    assert "**helper** — A user-level helper." in mc.render_listing(listed, "listing:skills", include_harness=True)
 
 
 def test_a_user_level_skill_shadows_the_project_skill_of_the_same_name(listed, _isolated_home):
     _write(_isolated_home, ".claude/skills/remote/SKILL.md", "---\nname: remote\ndescription: The user copy.\n---\n")
-    text = mc.render_listing(listed, "listing:skills")
+    text = mc.render_listing(listed, "listing:skills", include_harness=True)
     assert text.count("**remote**") == 1 and "The user copy." in text
 
 
 def test_an_enabled_plugin_lists_its_skills_and_commands_namespaced(listed, _isolated_home):
     _plugin(_isolated_home, "kit@market", skills=[("draw", "Draws things.")], commands=[("help", "Explains kit.")])
     _enable(_isolated_home / ".claude" / "settings.json", "kit@market")
-    text = mc.render_listing(listed, "listing:skills")
+    text = mc.render_listing(listed, "listing:skills", include_harness=True)
     assert "**kit:draw** — Draws things." in text
     assert "**kit:help** — Explains kit." in text
 
@@ -878,7 +877,7 @@ def test_a_disabled_or_unlisted_plugin_is_not_counted(listed, _isolated_home):
     _plugin(_isolated_home, "off@market", skills=[("x", "Disabled one.")])
     _plugin(_isolated_home, "quiet@market", skills=[("y", "Never enabled.")])
     _enable(_isolated_home / ".claude" / "settings.json", "off@market", on=False)
-    text = mc.render_listing(listed, "listing:skills")
+    text = mc.render_listing(listed, "listing:skills", include_harness=True)
     assert "Disabled one." not in text and "Never enabled." not in text
 
 
@@ -886,7 +885,7 @@ def test_project_settings_enable_a_plugin_for_this_tree(listed, _isolated_home):
     _plugin(_isolated_home, "kit@market", skills=[("draw", "Draws things.")])
     _enable(_isolated_home / ".claude" / "settings.json", "kit@market", on=False)
     _enable(listed / ".claude" / "settings.local.json", "kit@market")
-    assert "Draws things." in mc.render_listing(listed, "listing:skills")
+    assert "Draws things." in mc.render_listing(listed, "listing:skills", include_harness=True)
 
 
 def test_a_local_install_counts_only_for_its_own_project(listed, _isolated_home, tmp_path):
@@ -894,7 +893,7 @@ def test_a_local_install_counts_only_for_its_own_project(listed, _isolated_home,
     _plugin(_isolated_home, "theirs@market", skills=[("t", "Elsewhere.")], scope="local", project=tmp_path / "other")
     _enable(_isolated_home / ".claude" / "settings.json", "mine@market")
     _enable(_isolated_home / ".claude" / "settings.json", "theirs@market")
-    text = mc.render_listing(listed, "listing:skills")
+    text = mc.render_listing(listed, "listing:skills", include_harness=True)
     assert "Mine here." in text and "Elsewhere." not in text
 
 
@@ -902,18 +901,52 @@ def test_the_config_dir_override_is_honoured(listed, tmp_path, monkeypatch):
     cfg = tmp_path / "cfg"
     _write(cfg, "skills/elsewhere/SKILL.md", "---\nname: elsewhere\ndescription: From the override.\n---\n")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
-    assert "From the override." in mc.render_listing(listed, "listing:skills")
+    assert "From the override." in mc.render_listing(listed, "listing:skills", include_harness=True)
 
 
 def test_a_broken_plugin_registry_is_nothing_not_an_error(listed, _isolated_home):
     _write(_isolated_home, ".claude/plugins/installed_plugins.json", "{not json")
     _write(_isolated_home, ".claude/settings.json", "[]")
-    assert "**remote**" in mc.render_listing(listed, "listing:skills")
+    assert "**remote**" in mc.render_listing(listed, "listing:skills", include_harness=True)
 
 
 def test_harness_skills_never_enter_the_agents_listing(listed, _isolated_home):
     _write(_isolated_home, ".claude/skills/helper/SKILL.md", "---\nname: helper\ndescription: A user-level helper.\n---\n")
-    assert "helper" not in mc.render_listing(listed, "listing:agents")
+    assert "helper" not in mc.render_listing(listed, "listing:agents", include_harness=True)
+
+
+def test_user_level_commands_join_the_listing(listed, _isolated_home):
+    _write(_isolated_home, ".claude/commands/tidy.md", "---\ndescription: Tidies the tree.\n---\nbody\n")
+    assert "**tidy** — Tidies the tree." in mc.render_listing(listed, "listing:skills", include_harness=True)
+
+
+def test_a_plugin_manifest_can_point_at_its_own_skill_and_command_dirs(listed, _isolated_home):
+    install = _plugin(_isolated_home, "kit@market")
+    _write(install, "extra/paint/SKILL.md", "---\nname: paint\ndescription: Paints things.\n---\n")
+    _write(install, "cmds/hint.md", "---\ndescription: Gives a hint.\n---\nbody\n")
+    _write(install, ".claude-plugin/plugin.json", json.dumps({"name": "kit", "skills": "./extra", "commands": ["./cmds"]}))
+    _enable(_isolated_home / ".claude" / "settings.json", "kit@market")
+    text = mc.render_listing(listed, "listing:skills", include_harness=True)
+    assert "**kit:paint** — Paints things." in text
+    assert "**kit:hint** — Gives a hint." in text
+
+
+def test_harness_skills_count_in_the_meter_row(listed, _isolated_home):
+    before = {r["path"]: r for r in mc.collect_rows(listed, mc.load_budget(listed), "bytes")}
+    _write(_isolated_home, ".claude/skills/helper/SKILL.md", "---\nname: helper\ndescription: A user-level helper.\n---\n")
+    after = {r["path"]: r for r in mc.collect_rows(listed, mc.load_budget(listed), "bytes")}
+    assert after["listing:skills"]["bytes"] > before["listing:skills"]["bytes"]
+
+
+def test_harness_skills_stay_out_of_the_always_on_surface_the_guards_read(listed, _isolated_home):
+    # check-reachability and check-object-grammar read always_on_parts. A
+    # private plugin naming a family would make it reachable on one machine
+    # and not in CI, so the guards see the tree's own listing only.
+    plain = mc.always_on_parts(listed, mc.load_budget(listed))
+    _write(_isolated_home, ".claude/skills/helper/SKILL.md", "---\nname: helper\ndescription: Names infra/secret-stores/.\n---\n")
+    _plugin(_isolated_home, "kit@market", skills=[("draw", "Names workflow/meetings/.")])
+    _enable(_isolated_home / ".claude" / "settings.json", "kit@market")
+    assert mc.always_on_parts(listed, mc.load_budget(listed)) == plain
 
 
 # ------------------------------------- one definition of the always-on surface --
