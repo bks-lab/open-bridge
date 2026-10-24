@@ -290,3 +290,34 @@ place and size to the new one, and the rest of the screen cross-fades.
   duration; the default is 450 ms.
 - `steps` and `morph` work together: the steps of a slide are walked first, the
   morph runs on the move to the next slide.
+
+## read: the reading view
+
+`--with read`. Key R, or any `data-deck="read"` button, lays the slides of the active
+track out as one document: each slide at its own look but growing with its content,
+a head above it with its number and a "present from here" button, its speaker notes
+below it. The deck scrolls freely (no snap), and the arrows, Space, Page keys, Home
+and End scroll it instead of changing slides. A bar at the bottom right names the
+view and holds a Present button, plus a DE / EN switch in a bilingual deck; a thin
+bar at the top shows how far the reader is.
+
+| Situation | What happens |
+|---|---|
+| R or Esc while reading | back to the slide view at the exact slide and step the deck was on; Esc closes the help or a zoom first |
+| "present from here" on a slide | back to the slide view at that slide |
+| digits + Enter, or a `goto` button, while reading | scrolls the document there, and that slide becomes the one to return to |
+| T, L, F, B / W, `?` while reading | work as in the slide view; F rebuilds the document for the new track |
+| `data-read-default` on the deck or `<html>` | the deck opens in the reading view: the variant for a copy that is sent to be read (`new-deck.py --with read --deck-attr data-read-default=`). A deep link still picks the slide it opens at; `data-read-default="off"` keeps the slide view |
+| print, `render-pdf.cjs` | unchanged: the layout rules are screen only, so the slides print one per page and the reading chrome is hidden |
+
+For other modules: while reading, `<html>` has the class `deck-read`, and `document`
+gets `deckread:change` with `{read: true|false}` on every switch. The view shows every
+`[data-step]` and `[data-steps] > *` element and every `.reveal` at its end state;
+a module with its own overlay hides it under `:root.deck-read`.
+
+How it stays out of the engine's way, with the public API only: the engine keeps
+counting the slide it was on while the reader scrolls, so a listener on `window` in
+the capture phase holds the navigation keys and every scroll event back from the
+engine while the view is open. A slide's own scroll listener therefore does not fire
+in the reading view. Slides are not `inert` while reading (the engine's marks are
+undone as they come), and they are again on the way back.
