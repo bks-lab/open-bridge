@@ -12,13 +12,17 @@ metadata:
 # Bridge Audit — Drift Detection
 
 `bridge-audit` is the systematic version of "let me re-read the README
-and see what doesn't match anymore". It runs 15 categorical checks
+and see what doesn't match anymore". It runs 16 categorical checks
 against the current repo state and returns a stratified report.
+Check 16 runs the repository's own checkers (`scripts/check-*.py`,
+`validate-*.py`, `measure-context.py`) through
+`scripts/run-checkers.py` and carries every red one into the report:
+an instance whose CI never runs meets those checkers nowhere else.
 Check 9 only runs with `--cross-repo` (it fetches sister-repo trunks);
 Check 10 (agent-identity health), Check 11 (gate-shaped memory),
 Check 12 (config-driven CORE skills), Check 13 (user-level skill
-shadowing), Check 14 (skill learnings pairing) and Check 15 (question
-map) always run.
+shadowing), Check 14 (skill learnings pairing), Check 15 (question
+map) and Check 16 (checkers) always run.
 
 Read the referenced file ONLY when triggered.
 
@@ -27,14 +31,14 @@ Read the referenced file ONLY when triggered.
 | Argument | Effect | Default |
 |----------|--------|---------|
 | `(none)` | Full audit, all checks | — |
-| `--check <name>` | Run only one check (license / skill-tree / protocol-count / renames / xrefs / scopes / routing-sot / typos / agent-identity / memory-gate / config-driven / skill-shadowing / skill-learnings) | all |
+| `--check <name>` | Run only one check (license / skill-tree / protocol-count / renames / xrefs / scopes / routing-sot / typos / agent-identity / memory-gate / config-driven / skill-shadowing / skill-learnings / question-map / checkers) | all |
 | `--cross-repo` | Also clone configured upstreams and compare README/AGENTS for divergence | false |
 | `--strict-oss` | When run on an OSS variant: flag hardcoded internal vocabulary (delegates to `bridge-leak-check`) | false |
 | `--fix` | Where unambiguous, apply the suggested fix | false (advisory only) |
 | `--no-history` | Skip writing the post-run JSON to `work/_learning/audit-history/` | history written by default if `learning.enabled` |
 | `--no-recurring-scan` | Skip the trend-detection step that auto-generates proposals for recurring findings | scan runs by default |
 
-## The 13 Checks
+## The Checks
 
 | # | Check | What it compares | Severity hint |
 |---|---|---|---|
@@ -53,6 +57,7 @@ Read the referenced file ONLY when triggered.
 | 13 | User-level skill shadowing | `~/.claude/skills/` (resolved) ↔ this repo's `skills/` — the user level overrides the project level, so a pointer at a Bridge repo silently serves one instance's skills to every other instance (AGENTS.md § Skills). Both directions: this instance shadowing others, and others shadowing this one (with `diff -rq` drift per colliding name). Also reports scripts that resolve the path as a filesystem location | P0 if own skills are shadowed or instance-bound skills (scope org or user) leak machine-wide, else P1 |
 | 14 | Skill learnings pairing | `python3 scripts/check-skill-learnings.py`: a skill with `LEARNINGS.md` but no routing block in SKILL.md, a routing block without a journal, or an undated journal heading (`docs/skill-learnings.md`) | P2 |
 | 15 | Question map | `python3 scripts/check-where-things-live.py`: a row of `docs/where-things-live.md` or the instance's `work/where-things-live.md` that is a topic instead of a question, a link or `#section` that does not resolve, or a question asked twice | P2 |
+| 16 | Checkers | `python3 skills/bridge-audit/scripts/run-checkers.py --json`: every `scripts/check-*.py`, `scripts/validate-*.py` and `scripts/measure-context.py` the tree carries, run bare as CI runs them; each non-zero exit or timeout is one finding with the checker's last line as text | P1 for validators, the budget and secret checks, else P2 |
 
 ## Decision Tree
 

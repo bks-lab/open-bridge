@@ -624,6 +624,35 @@ instance file is not a finding: it is created the first time it is needed.
 **Fix mode:** none. Rephrasing a topic as the question somebody asks, and
 finding where a moved answer went, are both content decisions.
 
+## Check 16: Checkers
+
+The repository ships deterministic checkers, each green in upstream CI. In a
+tree where no CI runs (Actions off on a fork, a disabled workflow, a local-only
+instance) nothing calls them, so the audit does:
+
+```bash
+python3 skills/bridge-audit/scripts/run-checkers.py --json
+```
+
+The runner globs `scripts/check-*.py`, `scripts/validate-*.py` and
+`scripts/measure-context.py` (a glob, never a list, so a new checker is audited
+the day it lands), runs each bare from the repo root with a 120 s alarm, and
+returns `results` (every run, with exit code and seconds) and `findings` (one
+per non-zero exit or timeout). Each finding already carries `check_name`
+(`checker:<file>`), `target_path`, `severity`, `summary` (the checker's own
+last line) and `fix`, so it goes into the report and the history JSON as is;
+the fingerprint is computed from those fields like any other finding.
+
+Severity: P1 for `validate-*`, `measure-context` and `check-secret-*` (a
+contract other files are written against, a ceiling the harness enforces by
+dropping content, or a leak guard). P2 for every other checker.
+
+Do not repeat what a checker already reports: when Check 5 (cross-references)
+or Check 6 (scope coverage) finds the same defect a checker names, keep the
+checker's finding and drop the hand-derived one. `--skip <file>` leaves out a
+checker that needs the network or is known slow on this machine; say so in the
+report rather than skipping silently. `--check checkers` runs only this check.
+
 ## --cross-repo mode
 
 **Prerequisites:** `bridge-config.yaml.upstreams[]` defines targets and `gh` is authenticated.
