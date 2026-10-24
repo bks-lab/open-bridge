@@ -18,7 +18,7 @@
 # IDE support: add to an instance file:  # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/instance.yaml"
+$id: "urn:open-bridge:schema:instance"
 title: Bridge Instance
 description: |
   One sibling/upstream/downstream Bridge instance — where it lives, what it is

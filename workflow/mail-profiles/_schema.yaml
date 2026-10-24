@@ -22,7 +22,7 @@
 # Model and examples: docs/mail-draft.md.
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/mail-profile.yaml"
+$id: "urn:open-bridge:schema:mail-profile"
 title: Mail profile
 description: One occasion for writing mail, and how a draft for it is built.
 

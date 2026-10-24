@@ -19,7 +19,7 @@
 # Model and examples: docs/mail-draft.md.
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/mail-footer.yaml"
+$id: "urn:open-bridge:schema:mail-footer"
 title: Mail footer
 description: The block under a drafted mail that says who wrote it and how to reach them.
 

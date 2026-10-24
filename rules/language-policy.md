@@ -36,7 +36,8 @@ touch the others.
 Everything in the `core` tier:
 
 - `rules/*.md` (top-level only — **not** `rules/org/**` or `rules/user/**`)
-- `docs/**` and `docs/examples/**`
+- `docs/**` and `docs/examples/**` (the German half of the site pages is
+  the one exception, § 3)
 - `protocols/*.md` and CORE standing orders (`protocols/standing-orders/*.md`)
 - `trackers/*.md`
 - `scripts/**` — both comments and any help/UI strings
@@ -58,6 +59,18 @@ Everything in the `core` tier:
 - **Locale themes**: `professional-de.yaml` and any other locale theme.
   Their non-English *vocabulary values* are the entire point; the theme's
   structural keys and comments stay English.
+- **The German half of the site pages** (`docs/*.html`, served by GitHub
+  Pages). Each page carries its text twice, side by side, as
+  `data-lang="en"` and `data-lang="de"` elements, and the language toggle
+  shows one. Allowed only in this shape:
+  - both languages in the same file, under one URL; English is the default
+    and what a page shows without script or stored choice;
+  - the English half is the source, and a change to it lands in the German
+    half in the same commit;
+  - markup, ids, class names, scripts and comments stay English;
+  - the page declares `og:locale` `en_US` and `og:locale:alternate` `de_DE`.
+    No `hreflang`: it names one URL per language, and here both share one.
+    `scripts/check-site-basics.py` holds the two tags.
 - **Per-language UI string tables** inside a CORE program that has its own
   user-facing words (today: the cockpit, `scripts/web/text.js`,
   `scripts/web/jev/page.js` and `scripts/lib/bridge_cockpit/text.py`, the

@@ -11,7 +11,7 @@
 #   # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/persona.yaml"
+$id: "urn:open-bridge:schema:persona"
 title: Persona
 description: |
   Identity that the user holds (vs. mandant = recipient group).

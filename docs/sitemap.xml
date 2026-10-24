@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Every page of the site, once. scripts/check-site-basics.py fails CI when a page under docs/ is missing here or a URL here has no page. The 404 page stays out. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://bks-lab.github.io/open-bridge/</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/demo.html</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/use-cases.html</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/concepts.html</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/workspaces.html</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/workloads.html</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/agents.html</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/cockpit.html</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/explore.html</loc></url>
+  <url><loc>https://bks-lab.github.io/open-bridge/changelog.html</loc></url>
+</urlset>

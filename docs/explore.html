@@ -27,7 +27,10 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Explore the concepts (BKS open-bridge)">
 <meta property="og:description" content="An interactive constellation of BKS open-bridge's core concepts. Click any node to learn what it does: plain language, then a deep dive.">
+<link rel="canonical" href="https://bks-lab.github.io/open-bridge/explore.html">
 <meta property="og:url" content="https://bks-lab.github.io/open-bridge/explore.html">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="de_DE">
 <meta property="og:image" content="https://bks-lab.github.io/open-bridge/social-preview.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
@@ -378,6 +381,7 @@ html:not(.dark) .viz-hint{backdrop-filter:none;-webkit-backdrop-filter:none}
       </div>
       <a href="explore.html" class="active" aria-current="page"><span data-lang="en">Explore</span><span data-lang="de">Erkunden</span></a>
       <a href="changelog.html"><span data-lang="en">Changelog</span><span data-lang="de">Changelog</span></a>
+      <a href="https://github.com/bks-lab/open-bridge/blob/main/docs/README.md"><span data-lang="en">Docs</span><span data-lang="de">Doku</span></a>
     </nav>
     <div class="nav-spacer"></div>
     <div class="nav-chips">
@@ -688,6 +692,7 @@ html:not(.dark) .viz-hint{backdrop-filter:none;-webkit-backdrop-filter:none}
 </script>
 
 <!-- ===================== EXPLORE: page-specific script ===================== -->
+<script src="assets/concepts-data.js"></script>
 <script>
 (function(){
   "use strict";
@@ -695,35 +700,12 @@ html:not(.dark) .viz-hint{backdrop-filter:none;-webkit-backdrop-filter:none}
   var root = document.documentElement;
   function L(){ return root.getAttribute("data-active-lang") === "de" ? "de" : "en"; }
 
-  /* ---- Concept inventory (PII-free; verbatim from the project brief) ---- */
-  var GROUPS = [
-    {id:"foundation", label_en:"Foundation",            label_de:"Fundament",               color:"var(--g-foundation)"},
-    {id:"method",     label_en:"Method & Promises",     label_de:"Methode & Versprechen",   color:"var(--g-method)"},
-    {id:"behaviour",  label_en:"Behaviour Layer",       label_de:"Verhaltensschicht",       color:"var(--g-behaviour)"},
-    {id:"identity",   label_en:"Identity & Recipients", label_de:"Identität & Empfänger",   color:"var(--g-identity)"},
-    {id:"infra",      label_en:"Infrastructure",        label_de:"Infrastruktur",           color:"var(--g-infra)"},
-    {id:"scale",      label_en:"Scale & Sharing",       label_de:"Skalierung & Teilen",     color:"var(--g-scale)"}
-  ];
-  var CONCEPTS = [
-    {id:"bridge",label_en:"Bridge",label_de:"Bridge",group:"foundation",status:"proven",short_en:"A bridge is your agent's memory of your world: a plain folder of markdown and YAML in git that the agent reads at the start of every session.",short_de:"Eine Bridge ist das Gedächtnis deines Agenten für deine Welt: ein schlichter Ordner aus Markdown und YAML in Git, den der Agent zu Beginn jeder Session liest.",connects:["substrate","context-booster","chaos-tamer","core-user-split","multi-bridge","skills","standing-orders","ecosystem-registry"]},
-    {id:"substrate",label_en:"Substrate (plain files in git)",label_de:"Substrat (schlichte Dateien in Git)",group:"foundation",status:"proven",short_en:"Everything is plain text: markdown and YAML in a git repo. No database, no SaaS. Agents can read a file but can't hold an API key.",short_de:"Alles ist Klartext: Markdown und YAML in einem Git-Repo. Keine Datenbank, kein SaaS. Agenten können eine Datei lesen, aber keinen API-Key halten.",connects:["bridge","core-user-split","memory","scope-promote"]},
-    {id:"context-booster",label_en:"Context Booster",label_de:"Context Booster",group:"method",status:"proven",short_en:"An independent layer of context the agent always reads (a third side beside your model and your tool), so it stops asking who you are and which client you're on.",short_de:"Eine unabhängige Kontextschicht, die der Agent stets liest (eine dritte Seite neben deinem Modell und deinem Tool), damit er nicht mehr fragt, wer du bist und welcher Kunde gerade dran ist.",connects:["bridge","standing-orders","ecosystem-registry","chaos-tamer","skills"]},
-    {id:"chaos-tamer",label_en:"Chaos Tamer (work-system)",label_de:"Chaos Tamer (Work-System)",group:"method",status:"proven",short_en:"Tames the My-Documents chaos of AI work: it holds a structure (board, daily log, per-task status), files knowledge as you go, and keeps the work from drifting.",short_de:"Bändigt das My-Documents-Chaos der KI-Arbeit: hält eine Struktur (Board, Tageslog, Status pro Task), legt Wissen laufend ab und verhindert, dass die Arbeit abdriftet.",connects:["bridge","work-system","memory","context-booster","workspace-separation"]},
-    {id:"work-system",label_en:"Work-System (board, log, tasks)",label_de:"Work-System (Board, Log, Tasks)",group:"method",status:"proven",short_en:"A generated board, a daily log, and per-task STATUS files. Status is a closed enum (backlog → doing → review → done); the folder encodes finite vs long-running.",short_de:"Ein generiertes Board, ein Tageslog und STATUS-Dateien pro Task. Der Status ist ein geschlossenes Enum (backlog → doing → review → done); der Ordner kodiert endlich vs. Dauerläufer.",connects:["chaos-tamer","bridge","standing-orders","ecosystem-registry"]},
-    {id:"core-user-split",label_en:"CORE/USER split",label_de:"CORE/USER-Trennung",group:"foundation",status:"proven",short_en:"Two branches split shipped templates from your private data. They touch different paths, so merges never conflict and your credentials never land on the shared branch.",short_de:"Zwei Branches trennen ausgelieferte Templates von deinen privaten Daten. Sie berühren verschiedene Pfade: Merges kollidieren nie, deine Credentials landen nie im geteilten Branch.",connects:["bridge","substrate","scope-promote","multi-bridge","skills"]},
-    {id:"scope-promote",label_en:"Scope & promote",label_de:"Scope & Promote",group:"foundation",status:"proven",short_en:"Every file's tier (core / org / user) is decided by where it lives, not a tag you can forget. /bridge-promote reads the scope and routes changes to the right upstream.",short_de:"Die Stufe jeder Datei (core / org / user) ergibt sich daraus, wo sie liegt, nicht aus einem Tag, das man vergessen kann. /bridge-promote liest den Scope und routet Änderungen zum richtigen Upstream.",connects:["core-user-split","substrate","skills","multi-bridge","ecosystem-registry"]},
-    {id:"skills",label_en:"Skills",label_de:"Skills",group:"behaviour",status:"proven",short_en:"The model-agnostic verbs over the substrate. One skills tree, symlinked into the paths Claude Code, Codex, Copilot CLI, and Cursor each scan, so the same skill loads in any tool.",short_de:"Die modell-agnostischen Verben über dem Substrat. Ein Skills-Baum, per Symlink in die Pfade gelegt, die Claude Code, Codex, Copilot CLI und Cursor scannen. Derselbe Skill lädt in jedem Tool.",connects:["bridge","sub-agents","standing-orders","scope-promote","context-booster"]},
-    {id:"sub-agents",label_en:"Sub-agents",label_de:"Sub-Agenten",group:"behaviour",status:"proven",short_en:"Ephemeral helpers that offload heavy or parallel work into an isolated context and return a structured summary, so raw output never fills the main session.",short_de:"Ephemere Helfer, die schwere oder parallele Arbeit in einen isolierten Kontext auslagern und eine strukturierte Zusammenfassung zurückgeben. Roh-Output füllt nie die Hauptsession.",connects:["skills","bridge","personas","standing-orders"]},
-    {id:"standing-orders",label_en:"Standing orders",label_de:"Standing Orders",group:"behaviour",status:"proven",short_en:"Always-on rules that ride into every prompt (code-style rules, security baselines, logging habits) with per-context scoping a static CLAUDE.md can't offer.",short_de:"Stets aktive Regeln, die in jeden Prompt einfließen (Code-Stil, Security-Baselines, Logging-Gewohnheiten), was eine statische CLAUDE.md kontextabhängig nicht leisten kann.",connects:["context-booster","skills","sub-agents","work-system","bridge"]},
-    {id:"personas",label_en:"Personas",label_de:"Personas",group:"identity",status:"proven",short_en:"Self-identities you hold: freelancer, company director, private citizen. Each carries tax data, signatures, and document-filing destinations. Personas are who I AM.",short_de:"Selbst-Identitäten, die du innehast: Freelancer, Geschäftsführer, Privatperson. Jede trägt Steuerdaten, Signaturen und Ablageziele für Dokumente. Personas sind, wer ich BIN.",connects:["mandants","sub-agents","bridge","scope-promote"]},
-    {id:"mandants",label_en:"Mandants (recipient groups)",label_de:"Mandanten (Empfängergruppen)",group:"identity",status:"proven",short_en:"Named groups of people who receive scheduled messages: your team, family, friends, clients. An addressbook organised by relationship type. Mandants are who I SEND TO.",short_de:"Benannte Personengruppen, die geplante Nachrichten erhalten: Team, Familie, Freunde, Kunden. Ein Adressbuch nach Beziehungstyp. Mandanten sind, an wen ich SENDE.",connects:["personas","channels","bridge"]},
-    {id:"channels",label_en:"Channels",label_de:"Channels (Kanäle)",group:"infra",status:"proven",short_en:"Outbound messaging transports: email, Telegram, Signal, iMessage. A USER-scope capability you turn on when you want it; each channel's runtime usually sits on a remote.",short_de:"Ausgehende Nachrichten-Transporte: E-Mail, Telegram, Signal, iMessage. Eine USER-Capability, die du bei Bedarf aktivierst; die Laufzeit jedes Channels liegt meist auf einem Remote.",connects:["remotes","mandants","bridge"]},
-    {id:"remotes",label_en:"Remotes",label_de:"Remotes (Maschinen)",group:"infra",status:"proven",short_en:"Your machine inventory: physical or virtual boxes reachable over SSH that run services for your bridge. In BKS open-bridge terms, a remote is a machine, not a git remote.",short_de:"Dein Maschinen-Inventar: physische oder virtuelle Rechner über SSH erreichbar, die Dienste für deine Bridge betreiben. In open-bridge-Sprache ist ein Remote eine Maschine, kein Git-Remote.",connects:["channels","bridge"]},
-    {id:"ecosystem-registry",label_en:"Ecosystem registry",label_de:"Ecosystem-Registry",group:"method",status:"proven",short_en:"The single source of truth for your repos, infrastructure, and workspaces: one lean YAML the agent reads every session so it knows your world without being told.",short_de:"Die einzige Wahrheitsquelle für deine Repos, Infrastruktur und Workspaces: eine schlanke YAML, die der Agent jede Session liest. So kennt er deine Welt, ohne dass du sie erklären musst.",connects:["context-booster","bridge","scope-promote","work-system"]},
-    {id:"multi-bridge",label_en:"Multi-bridge / instances",label_de:"Multi-Bridge / Instanzen",group:"scale",status:"proven",short_en:"Run several bridges side by side, one per client, team, or context. All share one CORE foundation that updates once for everyone; each keeps its private data separate.",short_de:"Mehrere Bridges nebeneinander betreiben, eine pro Kunde, Team oder Kontext. Alle teilen ein CORE-Fundament, das einmal für alle aktualisiert; jede hält ihre privaten Daten getrennt.",connects:["bridge","core-user-split","scope-promote","workspace-separation"]},
-    {id:"workspace-separation",label_en:"Workspace separation (default)",label_de:"Workspace-Trennung (Default)",group:"scale",status:"bet",short_en:"The intended default: tasks kept separate per context, no information bleeding between engagements, with the rule “if you can't place it into your known world-models, ask.”",short_de:"Der angestrebte Default: Tasks pro Kontext getrennt, kein Durchsickern von Information zwischen Engagements, mit der Regel “wenn du es keinem bekannten Weltmodell zuordnen kannst, frag.”",connects:["chaos-tamer","multi-bridge","work-system"]},
-    {id:"memory",label_en:"Memory",label_de:"Memory (Gedächtnis)",group:"method",status:"proven",short_en:"A persistent, file-based experience store: one durable fact per file, with a lean MEMORY.md index loaded every session. Durable facts the agent recalls later, not a session log.",short_de:"Ein persistenter, dateibasierter Erfahrungsspeicher: ein dauerhafter Fakt pro Datei, mit einem schlanken MEMORY.md-Index, der jede Session geladen wird. Dauerfakten, kein Session-Log.",connects:["substrate","chaos-tamer","work-system","bridge"]}
-  ];
+  /* ---- Concept inventory: one shared source, docs/assets/concepts-data.js.
+     The map adds only a colour per group, from the --g-<group> tokens. ---- */
+  var GROUPS = window.OB_CONCEPTS.groups.map(function(g){
+    return {id:g.id, label_en:g.label_en, label_de:g.label_de, color:"var(--g-" + g.id + ")"};
+  });
+  var CONCEPTS = window.OB_CONCEPTS.concepts;
 
   var byId = {};
   CONCEPTS.forEach(function(c){ byId[c.id] = c; });

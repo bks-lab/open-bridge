@@ -22,7 +22,7 @@
 #   - protocols/standing-orders/task-sync.md  (Phase 3 — consumes this)
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/status.yaml"
+$id: "urn:open-bridge:schema:status"
 title: TaskStatus
 description: |
   Frontmatter of work/tasks/<slug>/STATUS.md — the single record of

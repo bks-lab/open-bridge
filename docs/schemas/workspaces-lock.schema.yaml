@@ -21,7 +21,7 @@
 # Related: docs/schemas/workspace.schema.yaml (the source definition)
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/workspaces-lock.yaml"
+$id: "urn:open-bridge:schema:workspaces-lock"
 title: Workspaces Lock
 description: |
   Generated lockfile recording every workspace's resolved `role: code` members —

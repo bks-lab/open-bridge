@@ -11,7 +11,7 @@
 #   - work/templates/_schema.status.yaml  (sibling schema, task frontmatter)
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/inbox-item.yaml"
+$id: "urn:open-bridge:schema:inbox-item"
 title: InboxItem
 description: |
   One thing that needs a person, waiting until it is done. Its state (open,

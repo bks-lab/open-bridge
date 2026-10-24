@@ -19,7 +19,7 @@
 #   # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/channel.yaml"
+$id: "urn:open-bridge:schema:channel"
 title: Channel
 description: |
   Messaging or outbound-transport integration. Heterogeneous: bots,

@@ -19,7 +19,7 @@
 #   # yaml-language-server: $schema=./_schema.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/context.yaml"
+$id: "urn:open-bridge:schema:context"
 title: Context
 description: |
   A domain-bundle describing one workspace, customer, or area —

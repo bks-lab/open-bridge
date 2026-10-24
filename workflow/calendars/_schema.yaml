@@ -22,7 +22,7 @@
 # Full docs: docs/calendar.md
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/calendar.yaml"
+$id: "urn:open-bridge:schema:calendar"
 title: CalendarEntries
 description: |
   Top-level container for calendar entries — every scheduled outbound

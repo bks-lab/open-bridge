@@ -1,0 +1,10 @@
+# Crawlers read robots.txt at the root of a host only. Served from a project
+# path such as /open-bridge/, this file takes effect once the site has a host
+# of its own; until then the sitemap URL below is the one to hand to a search
+# console. The markdown under docs/ is served raw (.nojekyll): its readable
+# copy is on GitHub, so the raw files stay out of an index.
+User-agent: *
+Disallow: /*.md$
+Allow: /
+
+Sitemap: https://bks-lab.github.io/open-bridge/sitemap.xml

@@ -210,6 +210,76 @@ components:
     textColor: "{colors.primary}"
     rounded: "{rounded.md}"
     padding: 12px 16px
+
+# Site layer: the palette and fonts of the GitHub Pages site under docs/ (open-bridge's
+# own site, not a token set for generated output). docs/assets/brand.css copies these
+# values as custom properties of the same names; scripts/check-site-basics.py holds the
+# two equal. A fork with its own site replaces this block or deletes it with the layer.
+site:
+  stylesheet: docs/assets/brand.css
+  fonts:
+    display: Playfair Display     # h1, h2, wordmark; self-hosted, OFL
+    body: Inter                   # everything else; self-hosted, OFL
+  colors:
+    ink: "#0F2A4A"
+    muted: "#475569"
+    surface: "#FAF7F3"
+    surface-subtle: "#FFFFFF"
+    surface-muted: "#F1F5F9"
+    on-surface: "#1A2433"
+    line: "#E2E8F0"
+    line-subtle: "#F1F5F9"
+    accent-from: "#2D5B8F"
+    accent-to: "#2D5B8F"
+    accent: "#2D5B8F"
+    accent-secondary: "#5FA0D9"
+    ok: "#2D7A5F"
+    info: "#2D5B8F"
+    accent-text: "#2D5B8F"
+    accent-soft: "#E6F0FA"
+    ok-text: "#2D7A5F"
+    info-text: "#2D5B8F"
+    attention-text: "#2D5B8F"
+    code-bg: "#F1F5F9"
+    feature-indigo-from: "#2D5B8F"
+    feature-indigo-to: "#2D5B8F"
+    stage-surface: "#FAF7F3"
+    stage-raised: "#FFFFFF"
+    stage-line: "#94A3B8"
+    stage-link: "#2D5B8F"
+    stage-hi: "#5FA0D9"
+    stage-core: "#E6F0FA"
+    stage-dust: "#E2E8F0"
+  colorsDark:
+    ink: "#E7EAEE"
+    muted: "#A8B1BD"
+    surface: "#101419"
+    surface-subtle: "#191E24"
+    surface-muted: "#20252C"
+    on-surface: "#E7EAEE"
+    line: "#333E4C"
+    line-subtle: "#20252C"
+    accent-from: "#5FA0D9"
+    accent-to: "#5FA0D9"
+    accent: "#5690D2"
+    accent-secondary: "#5FA0D9"
+    ok: "#43A37B"
+    info: "#5690D2"
+    accent-text: "#5FA0D9"
+    accent-soft: "#182A40"
+    ok-text: "#43A37B"
+    info-text: "#5FA0D9"
+    attention-text: "#5FA0D9"
+    code-bg: "#191E24"
+    feature-indigo-from: "#5690D2"
+    feature-indigo-to: "#5690D2"
+    stage-surface: "#101419"
+    stage-raised: "#191E24"
+    stage-line: "#345373"
+    stage-link: "#5690D2"
+    stage-hi: "#5FA0D9"
+    stage-core: "#182A40"
+    stage-dust: "#333E4C"
 ---
 
 ## Overview
@@ -275,6 +345,19 @@ editorial.
 Gradient text must always sit on solid `surface` or `surface-subtle` — never
 over imagery or color. The accent gradient is not a guaranteed-contrast color
 and must not be used for interactive text targets without a solid fallback.
+
+### Site layer
+
+The GitHub Pages site under `docs/` wears a second palette of its own: ink
+`#0F2A4A` on a warm `#FAF7F3` surface, one blue accent `#2D5B8F` (dark:
+`#5690D2` on `#101419`), flat shadows, and Playfair Display for `h1`, `h2` and
+the wordmark beside Inter for everything else. Its tokens are the `site:` block
+in the front matter, named after the custom properties in
+`docs/assets/brand.css` that carry them. It describes this repo's own site and
+nothing a skill generates: mail, slides, PDFs and dashboards keep reading
+`colors:` and `typography:`. `scripts/check-site-basics.py` fails CI when a
+value in one file differs from the other, so a change lands in both or not at
+all. Both fonts are self-hosted under `docs/assets/fonts/`.
 
 ## Typography
 

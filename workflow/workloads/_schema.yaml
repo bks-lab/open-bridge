@@ -26,7 +26,7 @@
 # the other without inventing times that never existed.
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/workload.yaml"
+$id: "urn:open-bridge:schema:workload"
 title: Workload
 description: |
   One declared unit of work on one host. Provisioned from this file, never the

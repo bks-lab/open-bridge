@@ -21,7 +21,7 @@
 # Full docs: docs/mandants.md
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://bks-lab.github.io/open-bridge/schemas/mandant.yaml"
+$id: "urn:open-bridge:schema:mandant"
 title: Mandant
 description: |
   Recipient group for scheduled outbound messages. Persons within a
