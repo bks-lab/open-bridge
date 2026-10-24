@@ -31,6 +31,7 @@ foundation (tokens, fonts, the quality gate, the send bundle) is shared with
 | An optional deck feature (a module) or writing one | `new-deck.py --with NAME` (or `--with all`), `SlideDeck.use()` | `reference/modules.md` |
 | A presenter view on a second screen, a time budget per slide, a rehearsal with plan vs actual | `new-deck.py --with presenter`, `data-time="90"` on slides, key P | `reference/modules.md` § Module: presenter |
 | Point at or mark up a slide while presenting: laser pointer, pen, marker | `new-deck.py --with draw`, keys Q and D | `reference/modules.md` § draw |
+| Reveal points one by one, walk through code line by line, morph an element from one slide to the next | `--with steps` (`data-step`, `data-lines`), `--with morph` (`data-morph`) | `reference/modules.md` § steps, § morph |
 | Pick a look | DESIGN.md (default) or a style preset by name | `reference/deck-build.md` § Presets |
 | A deck in no house brand, or no DESIGN.md exists | `--preset <slug>` | `presets/_template.yaml`, `assets/discovery-menu.html` |
 | PDF, mail, customer, external | the send path below | `reference/output-formats.md` |
