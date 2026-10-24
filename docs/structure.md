@@ -1,7 +1,7 @@
 ---
 summary: "Directory structure: where everything lives, what format, what it does — the cluster-wrapper layout in prose (mirrors AGENTS.md)."
 type: reference
-last_updated: 2026-10-13
+last_updated: 2026-10-24
 related:
   - AGENTS.md
   - docs/extension-model.md
@@ -39,7 +39,7 @@ The detailed per-path tables below are the reference; this map is the orientatio
 
 ```
 bridge-config.yaml      USER     Main config (identity, theme, integrations)
-ecosystem.yaml          USER     Repo registry (created at onboarding; tracked on a private origin, kept out of git otherwise, see § gitignore policy)
+ecosystem.yaml          USER     Repo registry (created at onboarding; tracked on a private origin, kept out of git otherwise, see § gitignore policy). Promote routes it org: it travels to an org overlay, never to the public upstream
 bridge-deck.config.yaml USER     Daemon collectors for the pixel dashboard
 AGENTS.md               CORE     Canonical operating manual (all agents)
 CLAUDE.md               CORE     Thin Claude-Code wrapper — imports AGENTS.md
@@ -114,6 +114,8 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `infra/transcriptions/_template.yaml` | CORE | Transcription topology template |
 | `infra/transcriptions/_schema.yaml` | CORE | Transcription topology schema |
 | `infra/transcriptions/topology.yaml` | USER | Pipeline placement (mode local/remote, worker host) |
+| `infra/utilities/_template.yaml` | CORE | Utility template |
+| `infra/utilities/<id>.yaml` | USER | One supply contract at a location (power, gas, water, heat): meter, readings, instalment |
 
 ### `workflow/` — What happens when
 
@@ -137,15 +139,21 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `workflow/workloads/_tests/**` | CORE | The contract's own regression suite (see docs/workloads.md) |
 | `workflow/workloads/<id>.yaml` | USER | One declared run: host, kind, runtime, owner, schedule, command |
 | `workflow/projects/<slug>.yaml` | USER | GitHub/ADO project config (fields, governance, state mappings) |
+| `workflow/ai-services/_schema.yaml` | CORE | AI service schema |
+| `workflow/ai-services/_template.yaml` | CORE | AI service template |
+| `workflow/ai-services/<id>.yaml` | USER | Which AI model one service or worker uses (default Claude) |
+| `workflow/workspaces/_schema.yaml` | CORE | Workspace schema |
+| `workflow/workspaces/_template.yaml` | CORE | Workspace template |
+| `workflow/workspaces/<name>.yaml` | USER | A named binding of repos and config overlays (`scripts/workspace.py`) |
 
 ## Top-level (own lifecycle, no cluster wrapper)
 
 | Path | Layer | Purpose |
 |------|-------|---------|
-| `protocols/` | CORE | `standing-orders/` always-on rules (CORE defaults; user orders in `standing-orders/user/`) |
+| `protocols/` | CORE · `standing-orders/user/` USER | `standing-orders/*.md` = shipped always-on rules (CORE) · `standing-orders/user/*.md` = an instance's own orders (USER, never promoted) |
 | `work/` | USER | Tasks + logs: `tasks/` (finite) · `streams/` (long-running) · `done/YYYY-MM/` · `inbox/` (items that need a person, [`docs/inbox.md`](inbox.md)) · `templates/` (CORE seeds) · `_learning/` · `archive/` · `imports/` |
 | `docs/` | CORE | Human-readable documentation, onboarding guides |
-| `rules/` | **Tiered by folder** | Always-on rules. `rules/*.md` = core (ship to all) · `rules/org/**` = org (ship to org overlay) · `rules/user/**` = user (local only). The folder *is* the promote tier. `validate-bridge.py` checks each rule declares a valid `scope:` (presence + allowed value); folder↔scope consistency itself is an advisory `bridge-audit` check, not a hard gate. Each bridge layers its own under `rules/org/`+`rules/user/`. See [`rules/knowledge-growth.md`](../rules/knowledge-growth.md). |
+| `rules/` | **Tiered by folder** | Always-on rules. `rules/*.md` = core (ship to all) · `rules/org/**` = org (ship to org overlay) · `rules/user/**` = user (local only). The folder *is* the promote tier. `validate-bridge.py` checks each rule declares a valid `scope:` (presence + allowed value) and fails a rule whose `scope:` disagrees with its folder (a hard gate in CI). Each bridge layers its own under `rules/org/`+`rules/user/`. See [`rules/knowledge-growth.md`](../rules/knowledge-growth.md). |
 | `themes/` | CORE | Vocabulary themes (`professional`, `professional-de`, `professional-fr`) |
 | `trackers/` | CORE | Tracker-provider playbooks (`github.md`, `ado.md`, `gitlab.md`) |
 | `skills/` | CORE · `metadata.scope: core` (USER skills: `scope: user`; ORG: `scope: org`) | Skills with SKILL.md + references/. **Scope lives under `metadata:` (`metadata.scope`)** — skill-creator's validator only allows standard top-level keys; sub-agents keep top-level `scope:`. Hard-gated by `scripts/validate-skill-scope.py` (CI + pre-commit). It writes the per-instance tier map to `.bridge/skill-scope.md`, never into `AGENTS.md`: a table generated from the local skill tree cannot converge across instances. |
@@ -185,7 +193,7 @@ A file's tier is decided by **where it lives**, not by a tag you can forget. Thr
 
 1. **Whole folder** — the path *is* the tier. `work/`, `imports/` = USER; `docs/`, `themes/`, `trackers/`, `scripts/`, `bin/`, `examples/`, `protocols/standing-orders/*.md` = CORE.
 2. **`_`-prefix** (cluster wrappers `identity/ infra/ workflow/`) — `_template.yaml`/`_schema.yaml` = CORE, every other instance `*.yaml` = USER.
-3. **Frontmatter — skills only.** Skills are flat under `skills/`, so tier lives in `metadata.scope`, hard-gated by `scripts/validate-skill-scope.py`.
+3. **Frontmatter, for what cannot be foldered.** Skills are flat under `skills/`, so tier lives in `metadata.scope`, hard-gated by `scripts/validate-skill-scope.py`; sub-agents in `.claude/agents/` carry a top-level `scope:`. Every `rules/*.md` also carries a top-level `scope:` that must match its folder, a required backstop checked by `scripts/validate-bridge.py`.
 
 **Rules are tiered by folder:** `rules/*.md` = core · `rules/org/**` = org · `rules/user/**` = user. Each bridge layers its own under `rules/org/` + `rules/user/` — additive, like nested AGENTS.md.
 
@@ -222,20 +230,14 @@ CORE paths (developed on `main`):
 - `.claude/agents/` (scope: core)
 - `mods/README.md`, `mods/.claude-plugin/marketplace.json` and the shipped mod folders (`mods/cockpit-relay/`)
 - Templates and schemas in every wrapper folder:
-  - `identity/{personas,accounts,mandants}/{_template.yaml,_schema.yaml}`
-  - `infra/{remotes,channels,backups,transcriptions}/{_template.yaml,_schema.yaml}`
-  - `workflow/{calendars,contexts,projects}/{_template.yaml,_schema.yaml}`
+  - every `_template.yaml` / `_schema.yaml` (and `_tests/`) under `identity/<family>/`, `infra/<family>/` and `workflow/<family>/`, see the per-family tables above
 - `protocols/standing-orders/*.md` (shipped always-on rules)
 - `docs/examples/` (example configs for personas, projects)
 
 USER paths (`user/{name}` branch):
 - `bridge-config.yaml`, `bridge-deck.config.yaml`
-- `identity/{personas,accounts,mandants}/<id>.yaml` (excluding templates/schemas)
-- `infra/remotes/<name>.yaml + setup.md`, `infra/channels/<name>.yaml`,
-  `infra/backups/topology.yaml + _state.yaml`, `infra/transcriptions/topology.yaml`
-- `workflow/calendars/entries.yaml`, `workflow/contexts/<id>.yaml`,
-  `workflow/projects/<slug>.yaml`
-- `protocols/standing-orders/*.md` (own always-on rules)
+- every instance file under `identity/<family>/`, `infra/<family>/` and `workflow/<family>/` (every non-`_` file, e.g. `identity/mandants/<id>.yaml`, `infra/remotes/<name>.yaml`, `workflow/projects/<slug>.yaml`, plus the skill-written `infra/backups/_state.yaml`)
+- `protocols/standing-orders/user/*.md` (own always-on rules)
 - `work/`
 - personal user-scope features (`scope: user`, never upstream) live in `rules/user/` + `work/streams/<stream>/` — such as a job-application pipeline
 - `.claude/agents/<name>.md` (scope: org/user)

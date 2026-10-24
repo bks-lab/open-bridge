@@ -30,8 +30,8 @@ mode this rule exists to block.
 ## When to run
 
 Run this rule **before** any of these actions, whether invoked via
-`/promote`, `/contribute` (both backed by `skills/bridge-promote/SKILL.md`),
-or a raw `git cherry-pick` / `git merge`:
+`/bridge-promote` (`skills/bridge-promote/SKILL.md`), `/contribute`
+(`skills/bridge-contribute/SKILL.md`), or a raw `git cherry-pick` / `git merge`:
 
 | Action | Gate |
 |---|---|
@@ -448,6 +448,6 @@ When fixing an Example block, use these neutral placeholders:
 
 - `rules/operations.md` — CORE/USER path allowlist (separate
   layer; works together with this rule, not instead of it)
-- `skills/bridge-promote/SKILL.md` — backs the `/promote` and
-  `/contribute` commands that trigger this rule (and the same rule
-  applies to upstream PRs)
+- `skills/bridge-promote/SKILL.md` backs `/bridge-promote` and
+  `skills/bridge-contribute/SKILL.md` backs `/contribute`; both trigger
+  this rule (and the same rule applies to upstream PRs)
