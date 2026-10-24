@@ -14,6 +14,8 @@ Why an export step (not /promote): `/promote` and `/bridge-sync` cherry-pick
 SAME-PATH commits onto a normal-layout branch, which would land files at the
 overlay's repo ROOT — not under `tree/` — producing a mirror overlay.py cannot
 read. A `tree/`-prefixed flat mirror must be BUILT, which is this script.
+Both skills therefore run `--check-target` against each overlay destination
+first and refuse it when this returns 3 (flat_mirror_source_root below).
 
 Single-owner => VERBATIM. A personal overlay carries no per-consumer
 placeholders: files are copied byte-for-byte with NO scrubbing and the manifest
@@ -26,6 +28,7 @@ Contract (public surface, mirrored by scripts/tests/test_overlay_export.py):
     manifest_files_entries(relpaths, scope="personal") -> list[dict]
     build_manifest(existing, files_entries, scope="personal") -> dict
     export_overlay(repo_root, target, *, scope="personal", dry_run=False) -> dict
+    flat_mirror_source_root(target) -> str | None
     main(argv=None) -> int
 
 Guarantees:
@@ -46,6 +49,7 @@ its hyphenated filename — the same pattern scripts/overlay.py uses.
 
 Exit codes:
     0 — success        1 — bad --repo-root
+    3 = --check-target found a flat mirror: refuse a cherry-pick into it
 
 Design: work/tasks/personal-overlay-separation/deliverables/DESIGN.md §2.3–2.4.
 """
@@ -507,6 +511,74 @@ def export_overlay(repo_root: str, target_overlay_dir: str, *,
 
 
 # ---------------------------------------------------------------------------
+# Cherry-pick gate (used by /promote and /bridge-sync)
+# ---------------------------------------------------------------------------
+
+#: source_root spellings that mean "the repo root": a same-path write lands
+#: where the consumer engine reads, so a cherry-pick is harmless there.
+_REPO_ROOT_SPELLINGS = ("", ".", "./")
+
+
+def flat_mirror_source_root(target: str) -> str | None:
+    """The source_root a flat-mirror overlay reads from, or None.
+
+    `target` is an overlay checkout directory or a manifest file (the gate in
+    /promote checks a fetched ref via `git show <ref>:overlay.manifest.yaml`).
+    None means a same-path cherry-pick into `target` lands where a consumer
+    looks: there is no manifest, or its source_root is the repo root. Anything
+    else is a flat mirror, and a cherry-pick would put files at the repo root
+    where scripts/overlay.py never reads them, without any error.
+
+    A manifest that is silent on source_root resolves to SOURCE_ROOT, because
+    that is what scripts/overlay.py falls back to. A manifest that cannot be
+    parsed fails CLOSED: refusing a cherry-pick costs nothing, an invisible
+    file costs a silent loss.
+    """
+    path = target
+    if os.path.isdir(target):
+        path = os.path.join(target, MANIFEST_FILE)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return SOURCE_ROOT
+    if not text.strip():
+        return None
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return SOURCE_ROOT
+    if not isinstance(data, dict):
+        return SOURCE_ROOT
+    defaults = data.get("defaults") or {}
+    if not isinstance(defaults, dict):
+        return SOURCE_ROOT
+    root = defaults.get("source_root", SOURCE_ROOT)
+    root = "" if root is None else str(root).strip()
+    if root in _REPO_ROOT_SPELLINGS:
+        return None
+    return root.rstrip("/") + "/"
+
+
+def _check_target(target: str) -> int:
+    root = flat_mirror_source_root(target)
+    if root is None:
+        print(f"overlay-export --check-target: OK, {target} is not a flat-mirror "
+              "overlay; a same-path cherry-pick lands where a consumer reads")
+        return 0
+    sys.stderr.write(
+        f"REFUSE: {target} is a flat-mirror overlay (source_root {root}). "
+        f"scripts/overlay.py reads only below {root}, so a cherry-picked file "
+        "lands at the repo root and is invisible to every consumer. Build the "
+        "mirror instead: python3 scripts/overlay-export.py --target <overlay "
+        "checkout> --scope <tier> --dry-run, then run it without --dry-run. "
+        "See docs/org-overlays.md, Authoring an overlay.\n")
+    return 3
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -523,7 +595,15 @@ def main(argv=None) -> int:
                     help=f"tier to export (default: {DEFAULT_SCOPE})")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the plan; write nothing")
+    ap.add_argument("--check-target", action="store_true",
+                    help="only report whether --target (a checkout dir or a "
+                         "manifest file) is a flat-mirror overlay that "
+                         "/promote and /bridge-sync must not cherry-pick into; "
+                         "exit 3 if so; write nothing")
     args = ap.parse_args(argv)
+
+    if args.check_target:
+        return _check_target(args.target)
 
     if not os.path.isdir(args.repo_root):
         sys.stderr.write(f"ERROR: --repo-root {args.repo_root} is not a directory\n")

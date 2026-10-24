@@ -543,3 +543,110 @@ def test_main_scope_flag(oe, mini_repo, tmp_path):
     keys = set(_tree_bytes(target).keys())
     assert "identity/mandants/acme.yaml" in keys
     assert "identity/personas/freelancer.yaml" not in keys
+
+
+# ---------------------------------------------------------------------------
+# Cherry-pick gate: /promote and /bridge-sync refuse a flat-mirror overlay
+# ---------------------------------------------------------------------------
+#
+#   flat_mirror_source_root(target) -> str | None
+#       The source_root a flat-mirror overlay reads from, or None when a
+#       same-path cherry-pick into <target> would land where a consumer looks.
+#       <target> is an overlay checkout dir or a manifest file. No manifest (or
+#       an empty one) => None. A manifest without defaults.source_root resolves
+#       to scripts/overlay.py's default (tree/). source_root "", "." or "./"
+#       => None. An unreadable manifest fails CLOSED (refuse).
+#
+#   main(["--target", T, "--check-target"]) -> 0 (cherry-pick is safe) or
+#       3 (refuse), writing nothing and naming `overlay-export.py --dry-run`.
+
+OVERLAY_PATH = REPO_ROOT / "scripts" / "overlay.py"
+
+
+def _manifest(target: Path, body: str) -> Path:
+    target.mkdir(parents=True, exist_ok=True)
+    p = target / "overlay.manifest.yaml"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+_MANIFEST_HEAD = "schema_version: 1\noverlay: {name: example-org, org: example-org}\n"
+
+
+def test_gate_no_manifest_allows_cherry_pick(oe, tmp_path):
+    target = tmp_path / "plain"
+    target.mkdir()
+    assert oe.flat_mirror_source_root(str(target)) is None
+
+
+def test_gate_explicit_source_root_refuses(oe, tmp_path):
+    target = tmp_path / "ov"
+    _manifest(target, _MANIFEST_HEAD + "defaults: {source_root: tree/}\n")
+    assert oe.flat_mirror_source_root(str(target)) == "tree/"
+
+
+def test_gate_custom_source_root_refuses(oe, tmp_path):
+    target = tmp_path / "ov"
+    _manifest(target, _MANIFEST_HEAD + "defaults: {source_root: mirror}\n")
+    assert oe.flat_mirror_source_root(str(target)) == "mirror/"
+
+
+def test_gate_missing_source_root_uses_engine_default(oe, tmp_path):
+    # overlay.py reads tree/ when the manifest is silent, so the gate must too
+    target = tmp_path / "ov"
+    _manifest(target, _MANIFEST_HEAD + "defaults: {scope: org}\n")
+    assert oe.flat_mirror_source_root(str(target)) == "tree/"
+
+
+@pytest.mark.parametrize("root", ['""', '"."', '"./"'])
+def test_gate_repo_root_source_root_allows(oe, tmp_path, root):
+    target = tmp_path / "ov"
+    _manifest(target, _MANIFEST_HEAD + f"defaults: {{source_root: {root}}}\n")
+    assert oe.flat_mirror_source_root(str(target)) is None
+
+
+def test_gate_accepts_a_manifest_file(oe, tmp_path):
+    # /promote checks a fetched ref via `git show <ref>:overlay.manifest.yaml > f`
+    m = _manifest(tmp_path / "ov", _MANIFEST_HEAD + "defaults: {source_root: tree/}\n")
+    assert oe.flat_mirror_source_root(str(m)) == "tree/"
+
+
+def test_gate_empty_manifest_file_allows(oe, tmp_path):
+    # `git show` of a ref without a manifest leaves an empty file behind
+    m = _manifest(tmp_path / "ov", "")
+    assert oe.flat_mirror_source_root(str(m)) is None
+
+
+def test_gate_unreadable_manifest_fails_closed(oe, tmp_path):
+    target = tmp_path / "ov"
+    _manifest(target, "defaults: [unclosed\n")
+    assert oe.flat_mirror_source_root(str(target)) == "tree/"
+
+
+def test_gate_default_matches_the_consumer_engine(oe):
+    spec = importlib.util.spec_from_file_location("overlay_engine", OVERLAY_PATH)
+    assert spec and spec.loader
+    engine = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(engine)
+    assert oe.SOURCE_ROOT == engine.DEFAULT_SOURCE_ROOT
+
+
+def test_main_check_target_refuses_flat_mirror(oe, tmp_path, capsys):
+    target = tmp_path / "ov"
+    _manifest(target, _MANIFEST_HEAD + "defaults: {source_root: tree/}\n")
+    before = sorted(p.name for p in target.iterdir())
+    rc = oe.main(["--target", str(target), "--check-target"])
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "REFUSE" in err
+    assert "overlay-export.py" in err and "--dry-run" in err
+    assert sorted(p.name for p in target.iterdir()) == before  # wrote nothing
+
+
+def test_main_check_target_allows_normal_layout(oe, tmp_path, capsys):
+    target = tmp_path / "plain"
+    target.mkdir()
+    rc = oe.main(["--target", str(target), "--check-target"])
+    assert rc == 0
+    assert list(target.iterdir()) == []  # no tree/, no manifest, no .gitignore
+    assert "OK" in capsys.readouterr().out
