@@ -183,8 +183,10 @@ A group is a named list of person ids on the mandant, not a tag on each person.
 The list says in one place who a group mail reaches, which is what a sender
 checks before writing to it, and a member that is no person of the mandant is
 an error in `validate` and at draft time. Tags spread over persons would fail
-quietly: a misspelt tag just leaves someone out. `mandant:<id>` without a group
-still reaches everyone with an email.
+quietly: a misspelt tag just leaves someone out. For the same reason a group
+member without an email is named as an error, and `mandant:<id>#` with an
+empty group name is refused rather than read as the whole mandant.
+`mandant:<id>` without a group still reaches everyone with an email.
 
 ## Theme
 
@@ -260,7 +262,9 @@ mailbox) or words of a subject (the newest inbox match; the run names it and
 how many matched). Without `--to` and `--subject` the reply goes to the
 original's sender with `Re: <subject>`; the profile's `subject` template is not
 applied and there is no masthead, so the thread stays intact. `--reply-all`
-answers every recipient. Nothing is ever sent.
+answers every recipient. A given `--to` replaces the recipients Mail chose,
+`--cc` and `--bcc` are added, and the run reads them back from the reply and
+from the saved draft; a difference fails the run. Nothing is ever sent.
 
 A reply cannot be built the way a new draft is, measured on real replies:
 setting the reply's content replaces the quote, and `make new attachment ... at
@@ -268,17 +272,28 @@ after the last paragraph of content` deleted the inserted text together with the
 quote. So the HTML body with its footer is put on the clipboard and pasted
 above the quote, then each file is pasted the same way (`set the clipboard to
 (POSIX file ...)`). A paste lands wherever the focus is, so before every paste
-the run checks that Mail is the frontmost app and the reply is its front
-window; if not, it closes the reply without saving and reports that nothing was
-saved, rather than leaving half a reply. The person's clipboard is restored
-afterwards when it held text.
+the run checks that Mail is the frontmost app and this reply (by window id,
+not by subject) is its front window; if not, it closes the reply without saving
+and reports that nothing was saved, rather than leaving half a reply. Any
+script error takes the same way out (a missing Accessibility permission for
+System Events is the usual one on a first run, and the message says where to
+grant it), and a timeout is reported with what may still be open. The person's
+clipboard is restored afterwards when it held text.
 
-Afterwards the saved draft is read from Drafts and must contain the text, the
-footer (its name), the quote of the original and every attachment; anything
-missing is reported by name and the run fails. Plain new drafts are not
-affected by any of this.
+Afterwards the saved draft is read from Drafts. It is split where the quote
+starts (the first `<blockquote>`, or the first `>` line, with the attribution
+line above it): the text and the footer's name must be above that point, and
+the quote below it. In a thread the quote already holds the sender's own
+signature, so a check of the whole body would pass a lost footer. The first,
+the last and every line of prose (three words or more) are probed, so a paste
+cut off half way fails too. Every attachment must be there; anything missing is
+reported by name and the run fails. When Mail's autosave left an extra copy
+during the run, the extra copies from this run are removed and counted, as for
+a new draft. Plain new drafts are not affected by any of this.
 
-`outlook`, `eml` and `none` refuse a reply by name, before anything is created:
+`outlook`, `eml` and `none` refuse a reply by name, before anything is created
+(a flag, `mail.client` or the platform default is checked before Mail is asked
+anything; a profile's client is checked after the build):
 Outlook for Mac offers scripts no reliable way to answer with the quote and
 attachments intact, and an .eml cannot carry a quote that lives in the mail
 client.

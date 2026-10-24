@@ -140,10 +140,21 @@ def resolve(root: Path, tokens: list[str]) -> list[Recipient]:
             if mandants is None:
                 mandants = _mandants(root)
             if token.startswith("mandant:"):
-                mid, _, group = token.split(":", 1)[1].partition("#")
+                mid, hashed, group = token.split(":", 1)[1].partition("#")
                 if mid not in mandants:
                     raise RecipientError(f"mandant '{mid}' is not defined in identity/mandants/")
-                persons = group_members(mid, mandants[mid], group) if group else mandants[mid].get("persons") or []
+                if hashed and not group.strip():
+                    # `mandant:acme#` (a cut-off variable) must not widen to everyone.
+                    raise RecipientError(f"'{token}' names an empty group; write mandant:{mid} for the whole "
+                                         f"mandant or mandant:{mid}#<group>")
+                persons = group_members(mid, mandants[mid], group) if hashed else mandants[mid].get("persons") or []
+                if hashed:
+                    # A group is a list someone wrote on purpose: a member who cannot
+                    # be reached is named, never dropped.
+                    unreachable = [str(x.get("id")) for x in persons if _person(mid, mandants[mid], x) is None]
+                    if unreachable:
+                        raise RecipientError(f"group '{group}' of mandant '{mid}' lists "
+                                             f"{', '.join(repr(x) for x in unreachable)} without an email")
                 people = [r for r in (_person(mid, mandants[mid], p) for p in persons) if r]
                 if not people:
                     what = f"group '{group}' of mandant '{mid}'" if group else f"mandant '{mid}'"

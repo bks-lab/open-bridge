@@ -39,9 +39,16 @@ def answer_fields(out: str) -> dict[str, str]:
 
 
 def osascript(script: str, args: list[str], timeout: int = 60) -> subprocess.CompletedProcess:
-    """Run AppleScript text with PATHS as arguments. Never message content."""
-    return subprocess.run(["osascript", "-", *args], input=script, capture_output=True,
-                          text=True, timeout=timeout)
+    """Run AppleScript text with PATHS as arguments. Never message content.
+
+    No osascript (not a Mac) is an answer with a reason, not a traceback.
+    """
+    try:
+        return subprocess.run(["osascript", "-", *args], input=script, capture_output=True,
+                              text=True, timeout=timeout)
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(["osascript"], 127, "",
+                                           "osascript is not available here (Apple Mail needs macOS)")
 
 
 def write_inputs(d, workdir: Path, html: str | None = None) -> dict[str, str]:

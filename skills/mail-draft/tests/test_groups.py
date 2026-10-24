@@ -37,6 +37,21 @@ class Groups(BridgeCase):
         with self.assertRaisesRegex(ConfigError, "'zed'"):
             self.resolve("mandant:acme#leads")
 
+    def test_empty_group_name_is_an_error_not_everyone(self):
+        """`mandant:acme#` (a cut-off variable) must not widen to the whole mandant."""
+        from engine.config import ConfigError
+        with self.assertRaisesRegex(ConfigError, "empty group"):
+            self.resolve("mandant:acme#")
+
+    def test_member_without_email_is_named_not_dropped(self):
+        from engine.config import ConfigError
+        path = self.root / "identity/mandants/acme.yaml"
+        path.write_text(path.read_text().replace("    channels: {email: ben@acme.example}\n", ""),
+                        encoding="utf-8")
+        with self.assertRaisesRegex(ConfigError, "'ben' without an email"):
+            self.resolve("mandant:acme#everyone")
+        self.assertEqual(len(self.resolve("mandant:acme")), 1, "the whole mandant still skips them")
+
     def test_validate_reports_a_member_that_is_no_person(self):
         from engine import validate
         path = self.root / "identity/mandants/acme.yaml"

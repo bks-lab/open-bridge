@@ -52,12 +52,14 @@ class FakeMail:
     original, create the reply, read Drafts back) without Mail.
 
     `answers` maps a script kind to its answers in order; the last one repeats.
-    Kinds: find, reply, create, verify, dedupe. Every call is kept in `calls`
-    as (kind, argv, script) so a test can check what travelled where.
+    Kinds: find, reply, create, verify, dedupe. An answer is stdout text, a
+    (returncode, stdout, stderr) tuple, or an exception to raise (a timeout).
+    Every call is kept in `calls` as (kind, argv, script) so a test can check
+    what travelled where.
     """
 
     def __init__(self, **answers):
-        self.answers = {k: list(v) if isinstance(v, (list, tuple)) else [v] for k, v in answers.items()}
+        self.answers = {k: list(v) if isinstance(v, list) else [v] for k, v in answers.items()}
         self.calls: list[tuple[str, list, str]] = []
 
     @staticmethod
@@ -75,6 +77,10 @@ class FakeMail:
         self.calls.append((kind, list(cmd), script))
         queue = self.answers.get(kind) or [""]
         out = queue.pop(0) if len(queue) > 1 else queue[0]
+        if isinstance(out, BaseException):
+            raise out
+        if isinstance(out, tuple):
+            return subprocess.CompletedProcess(cmd, *out)
         return subprocess.CompletedProcess(cmd, 0, out, "")
 
     def ran(self, kind: str) -> list[tuple[list, str]]:
@@ -82,11 +88,14 @@ class FakeMail:
 
 
 def saved_draft(text: str, html: str = "", attachments: tuple[str, ...] = (),
-                sender: str = "alex@example.com", subject: str = "Re: Plans") -> str:
+                sender: str = "alex@example.com", subject: str = "Re: Plans",
+                to: str = "Pat Example <pat@example.org>", cc: str = "") -> str:
     """The `source` of a saved draft as Mail would hand it back."""
     from email.message import EmailMessage
     msg = EmailMessage()
-    msg["From"], msg["Subject"] = sender, subject
+    msg["From"], msg["Subject"], msg["To"] = sender, subject, to
+    if cc:
+        msg["Cc"] = cc
     msg["In-Reply-To"] = "<orig-1@example.org>"
     msg.set_content(text)
     if html:

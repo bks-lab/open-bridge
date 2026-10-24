@@ -81,11 +81,14 @@ Override anything per call: `--profile`, `--footer`/`--no-footer`,
 `mail-draft.sh compose --reply-to <message-id|subject words> --body-file <f>
 [--attach <file>] [--reply-all]` answers a message in Apple Mail. `--to` and
 `--subject` default to the original's sender and `Re: <subject>`; profile,
-footer and greeting are chosen for that sender as usual. The text and footer
+footer and greeting are chosen for that sender as usual. A given `--to`
+replaces whom Mail answers, `--cc`/`--bcc` add to it, and all are read back.
+The text and footer
 are pasted above the quote and files go in by clipboard, so keep hands off the
 keyboard for those seconds: a paste only happens while the reply window is in
-front, otherwise the reply is closed unsaved and the run says so. The saved
-draft is read back and must hold text, footer, quote and every attachment.
+front, otherwise (or on any script error or timeout) the reply is closed
+unsaved and the run says what is left. The saved draft is read back: text and
+footer above the quote, the quote below it, every attachment.
 Outlook, eml and none are refused for replies, by name. Preview the text first
 with `preview --to <sender> --subject "Re: <subject>"`.
 

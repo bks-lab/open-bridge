@@ -217,12 +217,22 @@ def _refuse_reply(client: str) -> int:
 
 
 def _prepare_reply(args, cfg):
-    """Find the original BEFORE anything is built: to, subject and the thread come from it."""
-    if args.client and args.client != "apple-mail":
-        return _refuse_reply(args.client)
+    """Find the original BEFORE anything is built: to, subject and the thread come from it.
+
+    The client is settled first as far as it can be without recipients (flag,
+    then mail.client, then the platform default), so a reply that cannot be
+    made asks Mail nothing. A profile's client needs the recipients and is
+    checked again after the build.
+    """
+    from .draft import default_client
+    client = args.client or str(cfg.get("client") or "") or default_client()
+    if client != "apple-mail":
+        return _refuse_reply(client)
     from .clients import apple_mail
     original = apple_mail.find_original(args.reply_to)
     print(f"replying to: {original.describe()}")
+    # --to replaces whom Mail answers; without it Mail's own reply recipients stay.
+    args.reply_set_to = bool(args.to)
     if not args.to:
         args.to = [original.address]
     if not args.subject:
@@ -264,7 +274,8 @@ def cmd_compose(args, cfg) -> int:
     else:
         raise ConfigError(f"unknown client '{d.client}'")
     if original is not None:
-        result = client.reply_handoff(d, bundle / ".handoff", original, show=show, reply_all=args.reply_all)
+        result = client.reply_handoff(d, bundle / ".handoff", original, show=show, reply_all=args.reply_all,
+                                     set_to=getattr(args, "reply_set_to", False))
     else:
         result = client.handoff(d, bundle / ".handoff", show=show)
     print(f"\n{d.client}: {result.detail}")
