@@ -147,7 +147,9 @@ ORG_PATTERNS = [
     r"^\.claude/agents/customer-a-",
     r"^workflow/contexts/customer-a\.yaml$",          # CORE example context stays org (doc-system is now frontmatter-driven — see classify_file)
     r"^identity/mandants/org\.yaml$",
-    r"^docs/(public-release-cleanup|three-tier-architecture|wiki-architecture)\.md$",
+    # docs/ is NOT path-matched either: a doc declares its own top-level
+    # `scope:` in its frontmatter (see _DOCS_RE / classify_file). A filename
+    # here put one instance's private document names inside a CORE file.
 ]
 
 # Personal tier — the operator's own private overlay (a `role: org-overlay` upstream
@@ -764,6 +766,9 @@ def _unquote(path: str) -> str:
     return path
 
 
+_DOCS_RE = re.compile(r"^docs/.+\.md$")
+
+
 def classify_file(path: str) -> str:
     path = _unquote(path)
     # Before everything, including the frontmatter dispatch below: see
@@ -790,6 +795,14 @@ def classify_file(path: str) -> str:
     for p in USER_PATTERNS:
         if re.search(p, path):
             return "user"
+    # A doc's own top-level `scope:` WINS over the whole-folder CORE default.
+    # After the personal/user guards, so a declaration never unlocks a path
+    # those lists hold back.
+    # Undeclared (or unrecognised) falls through and stays core, as before.
+    if _DOCS_RE.search(path):
+        mapped = _SCOPE_MAP.get(read_frontmatter_scope(path) or "")
+        if mapped:
+            return mapped
     for p in ORG_PATTERNS:
         if re.search(p, path):
             return "org"

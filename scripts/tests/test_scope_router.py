@@ -841,3 +841,57 @@ def test_instance_mods_folder_is_user(path: str):
         f"{path} classifies {tier(path)!r}. .claude/mods/ is the instance's own folder "
         "marketplace; shipped mods live in mods/."
     )
+
+
+# ---------------------------------------------------------------------------
+# docs/ routes by its own frontmatter `scope:`. The router used to carry three
+# instance document names as a literal ORG_PATTERNS entry, so a CORE file that
+# ships to the public repo named one instance's private docs by filename, and a fourth such
+# doc on any other instance classified `core` and shipped. A doc now declares
+# its tier the way a rule or a sub-agent does; an undeclared doc stays core.
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def docs_repo(tmp_path, monkeypatch):
+    def write(rel: str, content: str) -> None:
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+
+    write("docs/landscape.md", "---\nsummary: x\nscope: org\n---\n# Landscape\n")
+    write("docs/own-notes.md", "---\nsummary: x\nscope: personal\n---\n# Notes\n")
+    write("docs/scratch.md", "---\nsummary: x\nscope: user\n---\n# Scratch\n")
+    write("docs/guide.md", "---\nsummary: x\nscope: core\n---\n# Guide\n")
+    write("docs/plain.md", "---\nsummary: x\ntype: guide\n---\n# Plain\n")
+    write("docs/sub/deep.md", "---\nscope: org\n---\n# Deep\n")
+    write(
+        "docs/example-in-fence.md",
+        "---\nsummary: x\n---\n# Example\n\n```yaml\n---\nscope: org\n---\n```\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+
+@pytest.mark.parametrize("path,expected", [
+    ("docs/landscape.md", "org"),
+    ("docs/own-notes.md", "personal"),
+    ("docs/scratch.md", "user"),
+    ("docs/guide.md", "core"),
+    ("docs/plain.md", "core"),
+    ("docs/sub/deep.md", "org"),
+    ("docs/example-in-fence.md", "core"),
+    ("docs/missing.md", "core"),
+])
+def test_docs_route_by_their_frontmatter_scope(docs_repo, path, expected):
+    assert tier(path) == expected, f"{path} classifies {tier(path)!r}, expected {expected}"
+
+
+def test_no_path_pattern_claims_a_doc():
+    """A doc's tier is its frontmatter, never a filename baked into this CORE file.
+
+    USER_PATTERNS may still hold a doc back (a guard, it names a feature, not an
+    instance); only the org list, which ships a file outward, is held to this.
+    """
+    for patterns in (cc.ORG_PATTERNS,):
+        for p in patterns:
+            assert not p.startswith("^docs/"), (
+                f"path pattern {p!r} names docs by filename; declare `scope:` in the doc"
+            )
