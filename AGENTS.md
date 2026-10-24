@@ -74,20 +74,11 @@ case this gate exists for — they don't bypass it.
 hardcoded branch name has caused a real misfire before. Resolve the default at session
 start; do not assume it.
 
-**For NEW USER:** Phase 0 first **arms the push-guard** (`git config core.hooksPath
-scripts/hooks`, via `bin/setup`) and classifies the origin — unconditionally, before any
-greeting. Then open the **four-lane front door** (`[1]` see it run · `[2]` describe your
-goal → tailored setup · `[3]` make it private first · `[4]` bind a workspace), which routes
-into the `bridge-onboard` wizard (Quick Identity + Purpose → Discovery Scan (broader only —
-confined default skips it) → Smart Suggestions → Quick-Wins → Feature Catalog → Validate,
-ending on a live first briefing). Explain CORE/USER split, ecosystem vs cluster wrappers,
-and sub-agents as you go. Goal: running in 5 minutes. Then point at
-[`docs/feature-tour.md`](docs/feature-tour.md).
-
-The load-bearing detail for the NEW-USER turn lives in
-[`rules/session-start.md`](rules/session-start.md): the exact **NEW-USER greeting**, the
-**"reporting the check"** step (how to surface what Phase 0 detected before acting), and the
-**red-flags list** (what aborts onboarding). Read those sections — they are not duplicated here.
+**For NEW USER:** Phase 0 arms the push-guard and classifies the origin before any
+greeting, then opens the four-lane front door into `/bridge-onboard`. The greeting, the
+"reporting the check" step, the lanes, the one private-home path and the red-flags list
+live in [`rules/session-start.md`](rules/session-start.md); read them, they are not
+duplicated here. Afterwards: [`docs/feature-tour.md`](docs/feature-tour.md).
 
 ---
 

@@ -68,8 +68,8 @@ greets you by itself; if it does not, run `/bridge-onboard`.
 
 ## The "Use this template" button
 
-It works, with one caveat. A template copy is private from the first second,
-which is why the button exists. But GitHub gives it a fresh, single-commit
+SETUP.md does not use it, for one reason. A template copy is private from the
+first second, which is why the button exists. But GitHub gives it a fresh, single-commit
 history that shares no ancestor with this repo, so the update path aborts with
 `fatal: refusing to merge unrelated histories`. Your **first** CORE update then
 needs `git merge --allow-unrelated-histories upstream/main` once; every merge

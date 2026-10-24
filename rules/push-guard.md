@@ -121,26 +121,38 @@ The newcomer should end up with **their own private repo as `origin`** and
 open-bridge as a read-only `upstream`:
 
 ```bash
-# Cleanest: GitHub "Use this template" → create a PRIVATE repo, clone THAT.
-# (A fork of a public repo is itself public — it cannot hold your data privately.)
-
-# Or re-home an existing clone:
+# Re-home the clone you already have. (A fork of a public repo is itself
+# public, so it cannot hold your data privately.)
 git remote rename origin upstream            # public open-bridge becomes read-only
-gh repo create <you>/my-bridge --private --source=. --remote=origin --push
-git fetch upstream && git merge upstream/main   # pull CORE updates anytime
+gh repo create <you>/my-bridge --private --source=. --remote=origin   # no push yet
 
-# Then record the new origin as private, so the first user/* push classifies
-# PRIVATE even offline (gh absent/unauthenticated) instead of fail-closing:
+# Record the new origin as private and commit the marker, so every push
+# classifies PRIVATE even offline (gh absent or unauthenticated):
 printf 'repo: <you>/my-bridge\nis_public: false\n' > .bridge-origin
+git add .bridge-origin && git commit -m "Record the private origin for the push guard"
+
+git config core.hooksPath scripts/hooks      # armed already if Phase 0 or bin/setup ran
+git push -u origin main                      # first push, through the armed guard
+git fetch upstream && git merge upstream/main   # pull CORE updates anytime
 ```
+
+No `gh`: create an empty private repo by hand and `git remote add origin <url>`
+in place of `gh repo create`. A fresh setup from nothing follows the same order
+in [`SETUP.md`](../SETUP.md).
 
 **Write `.bridge-origin` (`is_public: false`) ONLY after the origin is confirmed
 private** — never for a still-public origin. The marker vouches only for its matching
 `repo:` slug; the public upstream still BLOCKs. Without it, a re-homed clone whose slug no
 longer matches the CORE-shipped marker falls through to `gh repo view`, and offline/
 unauthenticated that resolves **unknown → fail-closed**, refusing a legitimate first push
-to the user's own brand-new private repo. Onboarding writes this marker automatically as
-part of the re-home (see `skills/bridge-onboard/references/workflow.md` Phase A step 6).
+to the user's own brand-new private repo. Committing it before the first push means the
+guard already knows the origin when it first runs, and a second clone of the private repo
+inherits the marker. Onboarding runs this sequence as part of the re-home (see
+`skills/bridge-onboard/references/workflow.md` Phase A step 6).
+
+GitHub's "Use this template" button is not part of this path: its copy starts a fresh
+history, so the first `git merge upstream/main` stops with `refusing to merge unrelated
+histories` ([`docs/install.md`](../docs/install.md#the-use-this-template-button)).
 
 Just evaluating? Keep `user/*` local and never push.
 

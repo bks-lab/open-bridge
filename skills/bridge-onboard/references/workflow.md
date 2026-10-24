@@ -126,15 +126,20 @@ advisories) fire only after `[go]`, once the branch exists.
    upstream (e.g. `bks-lab/open-bridge`) — or `.bridge-origin` says `is_public: true` —
    the user's data must not live there.** Decide the path with the user, but do **not**
    execute it here — it runs on `[go]` at step 8:
-   - **Re-home** to a new private repo (GitHub *Use this template → Private*, or the
-     two-step `git remote rename origin upstream` then `gh repo create <you>/my-bridge
-     --private --source=. --remote=origin --push`), **or**
+   - **Re-home** to a new private repo, the one recommended path:
+     `git remote rename origin upstream`, then `gh repo create <you>/my-bridge
+     --private --source=. --remote=origin` (no push yet; without `gh`, an empty
+     private repo made by hand plus `git remote add origin <url>`), **or**
    - **local-only** — the user explicitly keeps it local and never pushes.
 
-   On `[go]`, a confirmed re-home also writes a slug-matched
+   On `[go]`, a confirmed re-home writes a slug-matched
    [`.bridge-origin`](../../../.bridge-origin) (`repo: <new private slug>`,
-   `is_public: false`) so the first legitimate `user/*` push classifies PRIVATE even
-   offline, instead of the guard fail-closing on an unverifiable remote. **Only ever
+   `is_public: false`), commits it on the core branch, and only then makes the
+   first push (`git push -u origin <core branch>`) through the already armed guard.
+   The marker makes that push and every later `user/*` push classify PRIVATE even
+   offline, instead of the guard fail-closing on an unverifiable remote; the commit
+   carries it to every other clone of the private repo. Full sequence:
+   [`rules/push-guard.md`](../../../rules/push-guard.md) § Remediation. **Only ever
    write `is_public: false` for an origin confirmed private — never for a still-public
    origin** (that would make a leak easier, not harder).
 
@@ -198,9 +203,11 @@ upstream repos are not public yet.
      [go]  [adjust]  [d] show me the demo first
    ```
    **On `[go]`, execute in this order** (nothing above has run — steps 1–7 only gathered):
-   1. re-home to the private repo if the user chose it (+ write the slug-matched
-      `.bridge-origin`), or confirm local-only — the private-home gate;
-   2. re-arm the guard (`git config core.hooksPath scripts/hooks`, belt-and-suspenders to Step 0);
+   1. re-arm the guard (`git config core.hooksPath scripts/hooks`, belt-and-suspenders
+      to Step 0), so the re-home push below already runs through it;
+   2. re-home to the private repo if the user chose it (write and commit the
+      slug-matched `.bridge-origin`, then the first push), or confirm local-only:
+      the private-home gate;
    3. `git checkout -b user/{name}` from the core/default branch;
    4. write the `bridge-config.yaml` skeleton (identity, `purpose.*`, `discovery.mode`);
    5. only when the private-home decision from step 6 above ("Resolve the private

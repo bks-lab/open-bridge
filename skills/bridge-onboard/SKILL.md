@@ -98,9 +98,10 @@ origin` (and `gh repo view --json visibility,nameWithOwner` if unsure). **If
 `origin` is a PUBLIC repo or a known upstream (e.g. `bks-lab/open-bridge`) — or
 [`.bridge-origin`](../../.bridge-origin) says `is_public: true` — STOP and advise,
 do not proceed silently.** The user's private data must not live on a public
-origin. Offer to set them up on their **own private** repo first (GitHub *Use this
-template → Private*, or re-home `origin` to a new private repo with open-bridge as
-a read-only `upstream`), then continue. Never push the `user/*` branch to a public
+origin. Offer the one path: re-home `origin` to a new **private** repo with
+open-bridge as a read-only `upstream`, write and commit the slug-matched
+`.bridge-origin` before the first push, then continue (sequence: push-guard
+§ Remediation). Never push the `user/*` branch to a public
 origin; CORE reaches a public upstream only via `/promote`. Canonical rule:
 [`../../rules/push-guard.md`](../../rules/push-guard.md).
 

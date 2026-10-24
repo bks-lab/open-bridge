@@ -35,7 +35,7 @@ meant to be shown to them before it runs.
    - Homebrew Python, which refuses that with `externally-managed-environment`:
      `python3 -m pip install --user --break-system-packages pyyaml` (installs
      into the user's own site-packages, not into Homebrew's)
-   `bin/setup` (Step 2 below) runs the same check again.
+   `bin/setup` (step 3 below) runs the same check again.
 3. Check whether the GitHub CLI is authenticated (`gh auth status`). If `gh` is
    missing or logged out, say so; step 1 has a path without it.
 4. Ask the user what to call their private copy. Default: `my-bridge`. Below,
@@ -48,54 +48,53 @@ link)? Then that clone is the one to keep. Skip the `git clone` line in step 1
 and run the rest of step 1 inside it; if the user picked a different name than
 the folder has, rename the folder to `<name>` first.
 
-## Step 1: clone it and give it a private home
+## Step 1: clone it and create the private home
 
 ```bash
 git clone https://github.com/bks-lab/open-bridge.git <name>
 cd <name>
 git remote rename origin upstream
-gh repo create <me>/<name> --private --source=. --remote=origin --push
+gh repo create <me>/<name> --private --source=. --remote=origin
 ```
 
 The public repo is now the read-only `upstream`, the user's own private repo is
-`origin`.
-
-Use this order rather than GitHub's "Use this template" button: a template copy
-starts a fresh history, and the documented update path
-(`git merge upstream/main`) then refuses to run. Background:
-[docs/install.md](docs/install.md#the-use-this-template-button).
+`origin`. Nothing is pushed yet: the first push waits until the guard is armed
+in step 3.
 
 **No `gh`?** Stop and ask the user to create an empty **private** repo on
-github.com and give you its URL. Then continue inside `<name>` with:
+github.com and give you its URL. Then continue inside `<name>` with
+`git remote add origin <url>`, and read `<me>/<name>` off that URL for step 2.
 
-```bash
-git remote add origin <url> && git push -u origin main
-```
+## Step 2: record that the new origin is private, and commit it
 
-## Step 2: arm the safety hooks
-
-Everything from here on runs inside `<name>`.
-
-```bash
-./bin/setup              # native Windows: bin/setup.ps1
-```
-
-This points `core.hooksPath` at `scripts/hooks`, which arms the `pre-push`
-guard ([rules/push-guard.md](rules/push-guard.md)), and repairs the skill
-discovery symlinks. It also checks for PyYAML again and prints how to install
-it when it is missing.
-
-## Step 3: record that the new origin is private
-
-Without this marker the push guard cannot classify the new origin offline, and
-it refuses the user's first legitimate push:
+Everything from here on runs inside `<name>`. The push guard reads this marker
+to classify the new origin offline. Without it the guard cannot tell the new
+repo is private and refuses the user's first legitimate push:
 
 ```bash
 printf 'repo: <me>/<name>\nis_public: false\n' > .bridge-origin
+git add .bridge-origin
+git commit -m "Record the private origin for the push guard"
 ```
 
 Do this **only because** the repo you created in step 1 is private. Never write
-`is_public: false` for a public origin.
+`is_public: false` for a public origin. The commit makes the marker part of the
+private repo, so a second clone of it on another machine knows the same thing.
+Upstream ships its own `.bridge-origin`; if a later `git merge upstream/main`
+ever conflicts on it, keep the user's version.
+
+## Step 3: arm the safety hooks, then push
+
+```bash
+./bin/setup              # native Windows: bin/setup.ps1
+git push -u origin main
+```
+
+`bin/setup` points `core.hooksPath` at `scripts/hooks`, which arms the
+`pre-push` guard ([rules/push-guard.md](rules/push-guard.md)), and repairs the
+skill discovery symlinks. It also checks for PyYAML again and prints how to
+install it when it is missing. The push then runs through the armed guard,
+which finds the marker and lets it through to the private origin.
 
 ## Step 4: show the user all three proofs
 
@@ -126,3 +125,12 @@ and run the phases with the user inline.
 
 The setup is done when onboarding has created the user's `user/{name}` branch.
 The hard rules above still apply to every session after this one.
+
+## Footnote: the "Use this template" button
+
+Do not use GitHub's "Use this template" button for this setup. Its copy is
+private from the first second, but it starts a fresh history that shares no
+ancestor with this repo, so the update path (`git merge upstream/main`) stops
+with `refusing to merge unrelated histories` until the user runs it once with
+`--allow-unrelated-histories`. The clone in step 1 keeps the full history.
+Background: [docs/install.md](docs/install.md#the-use-this-template-button).
