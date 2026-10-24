@@ -283,7 +283,7 @@ def cmd_open(args, root: Path, state_dir: Path) -> int:
     ok = True
     if via == "cmux":
         opener = root / "skills" / "cmux" / "scripts" / "cmux-open.sh"
-        argv = [str(opener), "browser", "--name", "Briefing", url]
+        argv = [str(opener), "browser", "--name", "Cockpit", url]
     elif via == "system":
         tool = "open" if sys.platform == "darwin" else "xdg-open"
         argv = [shutil.which(tool) or tool, url]

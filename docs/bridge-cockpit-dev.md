@@ -1,7 +1,7 @@
 ---
 summary: "Working on the cockpit: which files make up the server, the page and the mod relay, which of them are shared with the rest of the Bridge, the edit and test loop (mock mode, a second instance beside the live one), recipes for a new verb, a new model field and new text, the rules the tests hold, and what has to travel together when it moves to open-bridge."
 type: guide
-last_updated: 2026-10-20
+last_updated: 2026-10-24
 related:
   - bridge-cockpit.md
   - ai-services.md
@@ -79,6 +79,17 @@ layout now").
 | `scripts/lib/bridge_cockpit/store.py` | `state.json` (hidden rows, team runs) and `view.json` (last view) |
 | `scripts/lib/bridge_cockpit/server.py` | HTTP: routes, auth, static files, SSE |
 | `scripts/lib/bridge_cockpit/text.py` | server texts (notes, prompts to Claude), de and en |
+| `scripts/lib/bridge_cockpit/agents.py` | A2A agents: the peers of `infra/a2a-peers/`, their public cards fetched through `net.py`, a conversation with each kept in `agents.json`, and the `a2a.py ask` and `get` shapes the runner lets through |
+| `scripts/lib/bridge_cockpit/bridges.py` | the other Bridges on this machine for the chat: siblings and downstream instances of `infra/instances/` that have a clone here, neither read-only, dormant nor archived |
+| `scripts/lib/bridge_cockpit/daybook.py` | the day book of the start page, `days.json`: each quota's use per day (rises add up, a fall is a reset) and the counts of each day, two weeks |
+| `scripts/lib/bridge_cockpit/design.py` | the page's colours and fonts from the Bridge's own `DESIGN.md`, served as `/colors.css` |
+| `scripts/lib/bridge_cockpit/graph.py` | the knowledge graph of the inner room: which config entry names which, with the open tasks and streams as nodes |
+| `scripts/lib/bridge_cockpit/history.py` | `history.json`: every close, drop, settle or hide with its items and the inverse that takes it back |
+| `scripts/lib/bridge_cockpit/jev.py` | Jev (TypeSafe): the rows sent for a rating or a page's order, the cache, the day's token total, the audit line only when a request left the machine |
+| `scripts/lib/bridge_cockpit/launch.py` | the model and effort an agent tab starts with: `cockpit.launch_model` plus `launch.json`, the choice per start and the route |
+| `scripts/lib/bridge_cockpit/returns.py` | the return channel: each start in `launches.json`, where it stands now (working, result, lost, done) and the one line written to its item when it ends |
+| `scripts/lib/bridge_cockpit/triage.py` | the triage: `scripts/triage.py run` on its own thread and its last run for the page |
+| `scripts/lib/bridge_cockpit/usage.py` | the tokens Claude Code used, per Bridge and per machine, over 7, 30 or 90 days, read from the session transcripts |
 | `scripts/web/index.html`, `theme.js` | page shell, light or dark before first paint |
 | `scripts/web/app.js` | store, controller (`ctl`), event stream, keyboard |
 | `scripts/web/components.js` | the root (`App`) and the page router; the rules every component keeps |

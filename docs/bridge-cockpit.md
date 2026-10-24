@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the news ticker, the status pages, the task check, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-21
+last_updated: 2026-10-24
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -70,7 +70,7 @@ their defaults:
 |---|---|---|
 | `enabled` | `false` | `bridge-cockpit.py` refuses to start until this is `true` |
 | `port` | `8797` | the page answers on `http://127.0.0.1:<port>/` |
-| `open_in` | `auto` | `auto`: a cmux browser tab inside cmux, else your default browser; `cmux`, `system`, or `none` (print the address only) |
+| `open_in` | `auto` | `auto`: a cmux browser tab inside cmux, else your default browser; `cmux`, `system`, or `none` (print a login link, good once within a minute; with `--json` only the port) |
 | `relay` | `false` | `true`: the control session takes questions from the page as prompts; needs the `cockpit-relay` mod (below), so it stays off unless asked for |
 | `profile` | `briefing.default` | which briefing profile the page shows |
 | `tabs_seconds` | `10` | how often the agent tabs are re-read while a page is shown; below 5 counts as 5. A page left in a background browser tab stops the full pass and the ticker, and the tabs are re-read only once a minute until it is shown again |
@@ -510,7 +510,8 @@ On a wide screen the Today tab has three columns:
 - **center, the detail** of the row you clicked: its link, its facts, every
   action the row allows (later with a date, hide, drop, urgency, priority, a
   note, a start as a tab, in its area or in its own workspace, team roles,
-  assigning a running tab, and for a task its check and Close, see below), the inbox entry with the exact command a yes
+  assigning a running tab, and for a task its check and Close, see below), the
+  inbox entry with the exact command a yes
   would run (shown before any approve button), the task with its STATUS
   sections and log rows, and the tab with Yes, No, Go on, Close, a message
   and "Go to tab". Asking Claude opens its own window (section 5).
@@ -526,7 +527,8 @@ Narrower, the tabs move into a drawer ("Tabs (n waiting)"); on a phone width
 one column with Day, Detail and Tabs to switch between.
 
 A page tab (Status, Dates, Trackers, your own) replaces the left and center
-columns with its sections (which section lands on which tab: section 8): when, title, detail, a link,
+columns with its sections (which section lands on which tab: section 8): when,
+title, detail, a link,
 "ask" for findings, and "start agent" (or "go to tab" when one runs) for a task.
 Clicking a task's title opens its full detail beside the page, with every
 action of the center column as buttons (the keyboard shortcuts work on the
@@ -900,7 +902,8 @@ start block shows (`POST /api/route`) and sends the concrete model with the
 click. The click itself never waits for a judge: Auto without a fetched
 recommendation starts with the default. With `manual` off a model the page
 sends counts as Auto's recommendation and stays under `max_model`. The effort
-"Standard" adds no flag and leaves Claude Code's own. Only an item's title, kind and priority go to the
+"Standard" adds no flag and leaves Claude Code's own. Only an item's title, kind
+and priority go to the
 judge, never its detail or a path.
 
 The page **Settings** (behind More) has three areas: Start page, Appearance
@@ -910,7 +913,13 @@ Auto's details show only while Auto is on, and the Jev and Haiku tables carry
 a scale from 0 to 3 that shows which model each rating gets. A change is kept
 in `.bridge/cockpit/launch.json`, marked as changed on the page, and a banner
 with "Reset" goes back to the config. The page never
-writes `bridge-config.yaml`. A fourth area, News ticker, carries the news band and the live status of the start page (above): the switch, speed and amounts, the status kinds, the editor's interests, and the feed list, where rows are added, removed or switched off and saved as a whole. A feed that failed at its last read shows its error there. Those changes go to `.bridge/cockpit/ticker.json`, with their own "Reset". Every start records its model, effort and who
+writes `bridge-config.yaml`. A fourth area, News ticker, carries the news band
+and the live status of the start page (above): the switch, speed and amounts,
+the status kinds, the editor's interests, and the feed list, where rows are
+added, removed or switched off and saved as a whole. A feed that failed at its
+last read shows its error there. Those changes go to
+`.bridge/cockpit/ticker.json`, with their own "Reset". Every start records its
+model, effort and who
 chose it (`chosen`, `recommended`, `status`, `check`, `jev`, `haiku`, `default`) in
 `launches.json`, the data to tune the bands with later.
 
@@ -1123,28 +1132,107 @@ whose command returned an undo token is in the history and in the toast with
 
 With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the terminal you work in.
 
-- **On top of the left side**, "Waiting for you" lists the tabs that wait for you or need you, the most urgent first (the control tab never), each with its workspace, its question and the answers, see [Answering a tab from here](#answering-a-tab-from-here). A click anywhere in a row opens its tab on the right; a click on one of its answers or its text field does only that. A tab that has been in one state unusually long (`long`: working for an hour, or a filed result waiting a long time) stands there too, without a question and without answer buttons, so it is not forgotten. While the pointer or the focus is in the group its rows keep their order, and a tab that starts asking is added at the end; the sorted order comes back when the pointer leaves, so a click never lands on a row that was pushed under it.
-- **Below it** stand the workspaces in the terminal's order, pinned ones first. Each shows its colour, its state, its unread count and, when its folder is another Bridge's clone, that Bridge's name. Below each workspace are its tabs, most urgent first. The quick chats sit in the control workspace (`workplace.control`), the newest six and "all" for the rest.
-- **Below the workspaces** come the other Bridges on this machine that have no workspace ("Bridges on this machine"), and the A2A agents.
+- **On top of the left side**, "Waiting for you" lists the tabs that wait for
+  you or need you, the most urgent first (the control tab never), each with its
+  workspace, its question and the answers, see [Answering a tab from
+  here](#answering-a-tab-from-here). A click anywhere in a row opens its tab on
+  the right; a click on one of its answers or its text field does only that. A
+  tab that has been in one state unusually long (`long`: working for an hour, or
+  a filed result waiting a long time) stands there too, without a question and
+  without answer buttons, so it is not forgotten. While the pointer or the focus
+  is in the group its rows keep their order, and a tab that starts asking is
+  added at the end; the sorted order comes back when the pointer leaves, so a
+  click never lands on a row that was pushed under it.
+- **Below it** stand the workspaces in the terminal's order, pinned ones first.
+  Each shows its colour, its state, its unread count and, when its folder is
+  another Bridge's clone, that Bridge's name. Below each workspace are its tabs,
+  most urgent first. The quick chats sit in the control workspace
+  (`workplace.control`), the newest six and "all" for the rest.
+- **Below the workspaces** come the other Bridges on this machine that have no
+  workspace ("Bridges on this machine"), and the A2A agents.
 - **On the right** is what you picked:
-  - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same), with "Write" to open it in its window with the message box and keys;
-  - a quick chat with its box. The box is one input: a chip under it says where Enter goes, "Asks here, read only" or "Starts an agent tab". The guess reads the first words: a trailing `?` or a question word (what, how, which, ... / was, wie, welche, ...) asks, an order word (fix, create, set up, ... / mach, erstelle, leg an, ...) starts a tab, anything unclear asks. A leading `?` or `!` decides it and is dropped from the text. A click on the chip picks the other route and holds it until the box is empty again, however the guess changes while you type on. Cmd or Ctrl Enter starts a tab at once, whatever the chip says. Once the chat is handed on, the chip gives way to a status line (see [5. Asking Claude](#5-asking-claude-the-relay)). There is no countdown and no timer;
+  - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same),
+    with "Write" to open it in its window with the message box and keys;
+  - a quick chat with its box. The box is one input: a chip under it says where
+    Enter goes, "Asks here, read only" or "Starts an agent tab". The guess reads
+    the first words: a trailing `?` or a question word (what, how, which, ... /
+    was, wie, welche, ...) asks, an order word (fix, create, set up, ... / mach,
+    erstelle, leg an, ...) starts a tab, anything unclear asks. A leading `?` or
+    `!` decides it and is dropped from the text. A click on the chip picks the
+    other route and holds it until the box is empty again, however the guess
+    changes while you type on. Cmd or Ctrl Enter starts a tab at once, whatever
+    the chip says. Once the chat is handed on, the chip gives way to a status
+    line (see [5. Asking Claude](#5-asking-claude-the-relay)). There is no
+    countdown and no timer;
   - an agent with its conversations;
   - a Bridge's folder and how to work in it.
 
-**Chats leave on their own.** A chat started from a briefing row or handed to a tab leaves when its item closes, once it has been quiet for 10 minutes. The chat keeps what it is about (`about`: the row, and the inbox item or task behind it, or the inbox item it was handed on as). On the tab poll, at most once a minute and at once after a verb that closes, drops or reopens an item, the cockpit looks whether that item has ended after the chat started: an inbox item closed, executed, dropped or rejected and not reopened since, or a task moved to `work/done/`. Such a chat goes to the archive with `why: settled`. Never one that is still answering, one without an item (a free question), one that was touched in the last 10 minutes, or one whose item was closed before the chat began or at a time its event does not name. A chat that changes while the files are read stays. When the archive cannot be written the chat stays, and the next try comes an hour later. A2A conversations follow `chat_keep_hours` like the quick chats, except one still sending or one whose task waits for the other Bridge's owner.
+**Chats leave on their own.** A chat started from a briefing row or handed to a
+tab leaves when its item closes, once it has been quiet for 10 minutes. The chat
+keeps what it is about (`about`: the row, and the inbox item or task behind it,
+or the inbox item it was handed on as). On the tab poll, at most once a minute
+and at once after a verb that closes, drops or reopens an item, the cockpit
+looks whether that item has ended after the chat started: an inbox item closed,
+executed, dropped or rejected and not reopened since, or a task moved to
+`work/done/`. Such a chat goes to the archive with `why: settled`. Never one
+that is still answering, one without an item (a free question), one that was
+touched in the last 10 minutes, or one whose item was closed before the chat
+began or at a time its event does not name. A chat that changes while the files
+are read stays. When the archive cannot be written the chat stays, and the next
+try comes an hour later. A2A conversations follow `chat_keep_hours` like the
+quick chats, except one still sending or one whose task waits for the other
+Bridge's owner.
 
-The workspaces come from the terminal driver's optional verb `workspaces` (cmux: `workspace list`, `sidebar-state`, `list-notifications`, all read only), asked with each tab poll. A driver without the verb still shows the workspaces, grouped from the tabs.
+The workspaces come from the terminal driver's optional verb `workspaces` (cmux:
+`workspace list`, `sidebar-state`, `list-notifications`, all read only), asked
+with each tab poll. A driver without the verb still shows the workspaces,
+grouped from the tabs.
 
-**What works where.** A tab and a workspace show a small count when something runs in them: the subagents with one icon, the workflows with another, and in the tooltip the busy sessions too. Three numbers count:
+**What works where.** A tab and a workspace show a small count when something
+runs in them: the subagents with one icon, the workflows with another, and in
+the tooltip the busy sessions too. Three numbers count:
 
 - a session that is busy;
 - a subagent whose transcript changed within the last 120 s;
 - a workflow that is not paused.
 
-The counts come from the Sessions scan, which reads every Claude session on this machine. A session is joined to its tab by the tab's id and to its workspace by the workspace ref (`ws_ref`, carried on the session's tab), so two workspaces with the same title never share a count. A session that sits in no tab of this Bridge (another folder, another Bridge here) counts nowhere in the sidebar; the header names it only in its tooltip ("elsewhere on this machine"). The header chip ("3 working · 5 subagents · 2 workflows") adds up this Bridge's tabs and opens the Sessions page on a click.
+The counts come from the Sessions scan, which reads every Claude session on this
+machine. A session is joined to its tab by the tab's id and to its workspace by
+the workspace ref (`ws_ref`, carried on the session's tab), so two workspaces
+with the same title never share a count. A session that sits in no tab of this
+Bridge (another folder, another Bridge here) counts nowhere in the sidebar; the
+header names it only in its tooltip ("elsewhere on this machine"). The header
+chip ("3 working · 5 subagents · 2 workflows") adds up this Bridge's tabs and
+opens the Sessions page on a click.
 
-**Order.** Three ways, picked at the top of the sidebar and kept in this browser. "Terminal order" keeps the terminal's order. "Most urgent first" orders the workspaces by their most urgent tab (needs you, waiting, working), then pinned, then the terminal's order, then the title; a workspace with only shells or no tabs comes last, and the control tab does not count. "By status" drops the workspaces and lists every tab under its status, so you can walk them top to bottom: "Needs you", "Done, answer or close", "Working", "Terminal", each with its count, and inside each the tab that has been in that state longest first; each row names its workspace. The control session and the quick chats stand below. "Waiting for you" is left out in this order, since its tabs head the first two groups. **Working through the tabs.** "Work through (n)" beside the order choice (in every order) opens the first tab that needs you or waits, in the order By status lists them; a tab picked in the sidebar starts the walk there. At the foot of the open tab stands the same bar the lists have under a detail: back, "2 of 5", the next tab with its workspace and Next, the two after it as links (keys `n` and `p` on the Chat page, when shortcuts are on). An answer that reached the tab, or "Close tab" in its head (for a tab that waits or is a bare terminal), goes on to the next tab by itself, as settling an entry does in the lists. The walk keeps the order it began with: a tab answered meanwhile keeps its place while it is open, a closed one drops out, and a tab that starts waiting later comes at the end. A tab that changes its status starts its time again, so it goes last in its new group. While the pointer or the keyboard focus is inside the sidebar the order holds still, so a row never moves away under the hand; counts and states still update, and the new order applies when the pointer leaves. Only a click on the toggle itself reorders at once, since that change is the one the hand asked for.
+**Order.** Three ways, picked at the top of the sidebar and kept in this
+browser. "Terminal order" keeps the terminal's order. "Most urgent first" orders
+the workspaces by their most urgent tab (needs you, waiting, working), then
+pinned, then the terminal's order, then the title; a workspace with only shells
+or no tabs comes last, and the control tab does not count. "By status" drops the
+workspaces and lists every tab under its status, so you can walk them top to
+bottom: "Needs you", "Done, answer or close", "Working", "Terminal", each with
+its count, and inside each the tab that has been in that state longest first;
+each row names its workspace. The control session and the quick chats stand
+below. "Waiting for you" is left out in this order, since its tabs head the
+first two groups.
+
+**Working through the tabs.** "Work through (n)" beside the order choice (in
+every order) opens the first tab that needs you or waits, in the order By status
+lists them; a tab picked in the sidebar starts the walk there. At the foot of
+the open tab stands the same bar the lists have under a detail: back, "2 of 5",
+the next tab with its workspace and Next, the two after it as links (keys `n`
+and `p` on the Chat page, when shortcuts are on). An answer that reached the
+tab, or "Close tab" in its head (for a tab that waits or is a bare terminal),
+goes on to the next tab by itself, as settling an entry does in the lists. The
+walk keeps the order it began with: a tab answered meanwhile keeps its place
+while it is open, a closed one drops out, and a tab that starts waiting later
+comes at the end. A tab that changes its status starts its time again, so it
+goes last in its new group. While the pointer or the keyboard focus is inside
+the sidebar the order holds still, so a row never moves away under the hand;
+counts and states still update, and the new order applies when the pointer
+leaves. Only a click on the toggle itself reorders at once, since that change is
+the one the hand asked for.
 
 The other Bridges are the entries in `infra/instances/` that meet four conditions:
 
@@ -1153,45 +1241,151 @@ The other Bridges are the entries in `infra/instances/` that meet four condition
 - they are not `dormant` or `archived`;
 - one of `location.path`, `location.mac_clone` or `location.local_clone` exists as a folder here.
 
-Only the registry and that the folder exists are read, nothing inside the other Bridge (`rules/multi-instance-isolation.md`).
+Only the registry and that the folder exists are read, nothing inside the other
+Bridge (`rules/multi-instance-isolation.md`).
 
-**Renaming.** A tab or a workspace of your own gets a new name from here: the pencil beside its title on the right, or a double click on it in the sidebar, puts a field in its place in the sidebar (Enter or Save takes it, Esc or Cancel keeps the old one, an empty name is not taken). The terminal driver renames it (`workplace.py rename` and `rename-workspace`; renaming a workspace needs the driver's optional verb `rename_workspace`, without it no pencil shows). The cockpit refuses, and says why:
+**Renaming.** A tab or a workspace of your own gets a new name from here: the
+pencil beside its title on the right, or a double click on it in the sidebar,
+puts a field in its place in the sidebar (Enter or Save takes it, Esc or Cancel
+keeps the old one, an empty name is not taken). The terminal driver renames it
+(`workplace.py rename` and `rename-workspace`; renaming a workspace needs the
+driver's optional verb `rename_workspace`, without it no pencil shows). The
+cockpit refuses, and says why:
 
 - the control session, and the control workspace;
-- a tab of a task, an inbox item or a team role: the workplace knows it by that name, so it keeps it;
-- an agent tab whose state the terminal reads off its title glyph (cmux without a hook): with a name of its own it would read as a shell from then on;
-- a name another tab or workspace already has, a configured workspace (`workplace.workspaces`) and the name of one, an empty name and one over 80 characters. A name is refused, never cut.
+- a tab of a task, an inbox item or a team role: the workplace knows it by that
+  name, so it keeps it;
+- an agent tab whose state the terminal reads off its title glyph (cmux without
+  a hook): with a name of its own it would read as a shell from then on;
+- a name another tab or workspace already has, a configured workspace
+  (`workplace.workspaces`) and the name of one, an empty name and one over 80
+  characters. A name is refused, never cut.
 
-The audit line names the tab or workspace ref only, never the name. With the workspace list on, a renamed workspace is read again at the next poll.
+The audit line names the tab or workspace ref only, never the name. With the
+workspace list on, a renamed workspace is read again at the next poll.
 
-**Organize with AI.** "Organize with AI" in the head of the sidebar (shown when the driver renames tabs) asks the model once for a tidier order: shorter names for tabs and workspaces, which tab belongs in which workspace, a colour and a one-line description per workspace. It is one call without tools, settings or session, Haiku unless `workflow/ai-services/cockpit-organize.yaml` picks another Claude model (Codex is not offered). The proposal comes back grouped by workspace, each item with its old value struck through, the new one and why; nothing is ticked, and nothing changes until you tick items and press "Apply". Afterwards it lists what was applied, what was skipped because it changed meanwhile, and what failed.
+**Organize with AI.** "Organize with AI" in the head of the sidebar (shown when
+the driver renames tabs) asks the model once for a tidier order: shorter names
+for tabs and workspaces, which tab belongs in which workspace, a colour and a
+one-line description per workspace. It is one call without tools, settings or
+session, Haiku unless `workflow/ai-services/cockpit-organize.yaml` picks another
+Claude model (Codex is not offered). The proposal comes back grouped by
+workspace, each item with its old value struck through, the new one and why;
+nothing is ticked, and nothing changes until you tick items and press "Apply".
+Afterwards it lists what was applied, what was skipped because it changed
+meanwhile, and what failed.
 
-- **This Bridge only.** The model sees only the workspaces whose folder lies in this Bridge or in a repo it registers (`ecosystem*.yaml`), by the longest matching folder, so a workspace in another Bridge's clone stays out, and only their tabs; never the control session or its workspace. It reads titles, task slugs, states, 90 characters of a tab's last line, 200 of its question and the last two folder names, all scrubbed: no screen, no full path (a home folder in a name or a line is shown as `~`), no key.
-- **Left alone.** Tabs of a task, an inbox item or a team role keep their names and their places (the plan moves them back), configured workspaces (`workplace.workspaces`) keep name, colour and description, a name that is managed or in use is never proposed, an agent tab whose state is read off its title glyph is not renamed, and the last tab of a workspace is never moved. Items the driver cannot carry out (`move_tab`, `set_color`, `set_description` are optional verbs; tmux has no colours or descriptions) are not offered. Reordering workspaces is not part of it.
+- **This Bridge only.** The model sees only the workspaces whose folder lies in
+  this Bridge or in a repo it registers (`ecosystem*.yaml`), by the longest
+  matching folder, so a workspace in another Bridge's clone stays out, and only
+  their tabs; never the control session or its workspace. It reads titles, task
+  slugs, states, 90 characters of a tab's last line, 200 of its question and the
+  last two folder names, all scrubbed: no screen, no full path (a home folder in
+  a name or a line is shown as `~`), no key.
+- **Left alone.** Tabs of a task, an inbox item or a team role keep their names
+  and their places (the plan moves them back), configured workspaces
+  (`workplace.workspaces`) keep name, colour and description, a name that is
+  managed or in use is never proposed, an agent tab whose state is read off its
+  title glyph is not renamed, and the last tab of a workspace is never moved.
+  Items the driver cannot carry out (`move_tab`, `set_color`, `set_description`
+  are optional verbs; tmux has no colours or descriptions) are not offered.
+  Reordering workspaces is not part of it.
 - One proposal at a time, kept for 15 minutes in memory; the audit log gets counts only.
 
 #### Answering a tab from here
 
 A tab that waits shows what it asks, read off its screen, so it can be answered without opening it:
 
-- **A dialog** (needs you) shows one button per option it offers, labelled with that option's own words ("Yes", "Yes, allow all edits during this session", "No, keep planning"), and the button presses that option's number. "Yes" is never a bare "press 1" on a choice or a plan approval. A dialog takes no free text from here; "Open tab" goes to the tab. A dialog that could not be read (a driver without `screen`, a screen that reads as nothing) offers "Open tab" and the plain Yes and No.
-- **A tab that waits** with a yes or no question (its last words end with `?`) shows Yes and No, which type those words. Every waiting tab offers "Go on" (not when its result is filed) and a field to type an answer, behind one click in the sidebar.
-- **What a tab asks** is read by the tab poll through the driver's optional verb `screen`: only for the tabs that wait or need you, again only when a tab's state, last line or since-time changed or its question is a minute old, at most four screens and three seconds per poll, the tabs that need you first. A poll without such a tab asks the driver nothing. The question goes out with the tabs (`tabs.tabs[].ask`: text, options, a hash, whether it reads as yes or no, whether something is typed in the tab) and never rebuilds the briefing.
-- **After an answer** the row stays where it stood for one more poll, greyed, with what was answered, or "Moved on" when the tab went on by itself, so a click never lands on the row that slid up into its place. The tab's pane on the right and its window show the same question and buttons.
+- **A dialog** (needs you) shows one button per option it offers, labelled with
+  that option's own words ("Yes", "Yes, allow all edits during this session",
+  "No, keep planning"), and the button presses that option's number. "Yes" is
+  never a bare "press 1" on a choice or a plan approval. A dialog takes no free
+  text from here; "Open tab" goes to the tab. A dialog that could not be read (a
+  driver without `screen`, a screen that reads as nothing) offers "Open tab" and
+  the plain Yes and No.
+- **A tab that waits** with a yes or no question (its last words end with `?`)
+  shows Yes and No, which type those words. Every waiting tab offers "Go on"
+  (not when its result is filed) and a field to type an answer, behind one click
+  in the sidebar.
+- **What a tab asks** is read by the tab poll through the driver's optional verb
+  `screen`: only for the tabs that wait or need you, again only when a tab's
+  state, last line or since-time changed or its question is a minute old, at
+  most four screens and three seconds per poll, the tabs that need you first. A
+  poll without such a tab asks the driver nothing. The question goes out with
+  the tabs (`tabs.tabs[].ask`: text, options, a hash, whether it reads as yes or
+  no, whether something is typed in the tab) and never rebuilds the briefing.
+- **After an answer** the row stays where it stood for one more poll, greyed,
+  with what was answered, or "Moved on" when the tab went on by itself, so a
+  click never lands on the row that slid up into its place. The tab's pane on
+  the right and its window show the same question and buttons.
 
 #### The decision guide
 
-Off until `cockpit.session_guide.enabled` (or the switch under Settings, "Decision guide") turns it on. Then a tab that waits for you gets a short reading by Claude Haiku: what the session is about, where it stands, what exactly it waits for, and two to four next steps, the recommended one marked. The page draws that as a small tree, the reading on the left and one branch per step on the right. A click on a branch never sends: it puts the step's words in a box under the tree, where they can be read and edited, and Send types them into the tab (a dialog's step: Press presses its number). Cancel or a second click on the branch leaves it. Cmd or Ctrl Enter in the box sends as well.
+Off until `cockpit.session_guide.enabled` (or the switch under Settings,
+"Decision guide") turns it on. Then a tab that waits for you gets a short
+reading by Claude Haiku: what the session is about, where it stands, what
+exactly it waits for, and two to four next steps, the recommended one marked.
+The page draws that as a small tree, the reading on the left and one branch per
+step on the right. A click on a branch never sends: it puts the step's words in
+a box under the tree, where they can be read and edited, and Send types them
+into the tab (a dialog's step: Press presses its number). Cancel or a second
+click on the branch leaves it. Cmd or Ctrl Enter in the box sends as well.
 
-- **What it is about** heads the reading: one line Haiku writes from the session's first ask, its title, the task it belongs to and the latest turns, so a tab named only "Claude Code" is recognised at a glance. Beside it stand the session's folder and its task's headline (a task tab's own, or the task linked on the Sessions page); the ask the session was started with shows on hover. While Haiku still reads, the session's title, its task's headline or its first ask stand in. The sidebar and the session cards show this line first, then where the session stands.
-- **A waiting tab**: each step carries the words it types into the tab, shown under it ("Sends: ..."). The click goes through `tab_send` with the question's hash, the tab's state and its name, so it reaches the tab only while it still asks what was read (the same guard as the answers above).
-- **A dialog** (needs you): each step names one of the dialog's own numbered options and presses it through `tab_option`; Haiku cannot add an option the dialog does not show.
-- **A step that reaches beyond the session** (push, merge, delete, deploy, send, publish and their German words in the words it sends, not where they are negated as in "commit, but do not push", or one Haiku marks so) is marked, and its box says so before it is sent. The last branch, "Answer yourself", opens an empty box (on a dialog, which takes no words, it opens the tab).
-- **Into the session**: beside every reading, "To tab" makes the terminal jump to the tab (driver verb `focus`), "Watch" opens the tab's live screen with its message box here, and "What was read" unfolds what Haiku read: the ask the session was started with, the ask before the last, the last ask and the agent's words after it (drawn as text from Markdown), or the end of the screen.
-- **In the chat as cmux** a switch in the tab pane's head picks what a waiting tab shows: "Reading" (the reading takes the pane), "Both" (the reading above the terminal, scrolling in a row of its own; the default) or "Terminal" (the question off the screen and the terminal, as without the guide). The sidebar's "Waiting for you" follows it: with "Terminal" its rows show the screen's words. The choice is kept in this browser.
-- **Where it shows**: in the chat as cmux, the reading's first sentence under each row of "Waiting for you" and the whole tree in a tab's pane on the right; in the classic chat, the sentence on a slim tab card and the tree once "more" opens it; on the Sessions page, "Where you are needed" on top lists every waiting tab with its tree (a tab whose result is filed stays out, "With AI" offers it), and each session card carries the sentence.
-- **When it reads**: with `auto` (the default once on) a tab is read as soon as it waits with a question the tab poll has read and no reading answers yet, at most `per_hour` such readings an hour (30 by default); never the control tab, never a tab whose result is filed. "Read with Haiku" and "Read again" read any waiting tab at once and do not count. One reading runs at a time. A reading made for another question than the tab asks now shows greyed as stale, without steps; a failed one says why and is not retried by itself.
-- **What Haiku reads**: the session's transcript (`~/.claude/projects/<folder>/<session id>.jsonl`, found through the Sessions scan), of which only the session's title, its first ask, the last ask, the one before it and the agent's words after the last ask are kept, plus the headline of the task it belongs to: no tool calls, tool output, thinking, reminders, meta lines or subagents, at most about 5000 characters. A tab without a transcript gives the end of its screen instead. The cockpit's key is taken out before and after. The call is one `claude -p` with Haiku, no tools, no settings, no session (`model_route.haiku_argv`). The footer names the source, the cost and the age of the reading.
+- **What it is about** heads the reading: one line Haiku writes from the
+  session's first ask, its title, the task it belongs to and the latest turns,
+  so a tab named only "Claude Code" is recognised at a glance. Beside it stand
+  the session's folder and its task's headline (a task tab's own, or the task
+  linked on the Sessions page); the ask the session was started with shows on
+  hover. While Haiku still reads, the session's title, its task's headline or
+  its first ask stand in. The sidebar and the session cards show this line
+  first, then where the session stands.
+- **A waiting tab**: each step carries the words it types into the tab, shown
+  under it ("Sends: ..."). The click goes through `tab_send` with the question's
+  hash, the tab's state and its name, so it reaches the tab only while it still
+  asks what was read (the same guard as the answers above).
+- **A dialog** (needs you): each step names one of the dialog's own numbered
+  options and presses it through `tab_option`; Haiku cannot add an option the
+  dialog does not show.
+- **A step that reaches beyond the session** (push, merge, delete, deploy, send,
+  publish and their German words in the words it sends, not where they are
+  negated as in "commit, but do not push", or one Haiku marks so) is marked, and
+  its box says so before it is sent. The last branch, "Answer yourself", opens
+  an empty box (on a dialog, which takes no words, it opens the tab).
+- **Into the session**: beside every reading, "To tab" makes the terminal jump
+  to the tab (driver verb `focus`), "Watch" opens the tab's live screen with its
+  message box here, and "What was read" unfolds what Haiku read: the ask the
+  session was started with, the ask before the last, the last ask and the
+  agent's words after it (drawn as text from Markdown), or the end of the
+  screen.
+- **In the chat as cmux** a switch in the tab pane's head picks what a waiting
+  tab shows: "Reading" (the reading takes the pane), "Both" (the reading above
+  the terminal, scrolling in a row of its own; the default) or "Terminal" (the
+  question off the screen and the terminal, as without the guide). The sidebar's
+  "Waiting for you" follows it: with "Terminal" its rows show the screen's
+  words. The choice is kept in this browser.
+- **Where it shows**: in the chat as cmux, the reading's first sentence under
+  each row of "Waiting for you" and the whole tree in a tab's pane on the right;
+  in the classic chat, the sentence on a slim tab card and the tree once "more"
+  opens it; on the Sessions page, "Where you are needed" on top lists every
+  waiting tab with its tree (a tab whose result is filed stays out, "With AI"
+  offers it), and each session card carries the sentence.
+- **When it reads**: with `auto` (the default once on) a tab is read as soon as
+  it waits with a question the tab poll has read and no reading answers yet, at
+  most `per_hour` such readings an hour (30 by default); never the control tab,
+  never a tab whose result is filed. "Read with Haiku" and "Read again" read any
+  waiting tab at once and do not count. One reading runs at a time. A reading
+  made for another question than the tab asks now shows greyed as stale, without
+  steps; a failed one says why and is not retried by itself.
+- **What Haiku reads**: the session's transcript
+  (`~/.claude/projects/<folder>/<session id>.jsonl`, found through the Sessions
+  scan), of which only the session's title, its first ask, the last ask, the one
+  before it and the agent's words after the last ask are kept, plus the headline
+  of the task it belongs to: no tool calls, tool output, thinking, reminders,
+  meta lines or subagents, at most about 5000 characters. A tab without a
+  transcript gives the end of its screen instead. The cockpit's key is taken out
+  before and after. The call is one `claude -p` with Haiku, no tools, no
+  settings, no session (`model_route.haiku_argv`). The footer names the source,
+  the cost and the age of the reading.
 
 | Key | Default | What |
 |---|---|---|
@@ -1199,7 +1393,8 @@ Off until `cockpit.session_guide.enabled` (or the switch under Settings, "Decisi
 | `session_guide.auto` | `true` | read a tab by itself when it starts waiting with a new question; `false`: only on the button |
 | `session_guide.per_hour` | `30` | the most readings `auto` starts in an hour (1 to 1000) |
 
-The settings page switches `enabled` and `auto` on top of the config, kept in `.bridge/cockpit/guide.json`, with its own "Reset to config".
+The settings page switches `enabled` and `auto` on top of the config, kept in
+`.bridge/cockpit/guide.json`, with its own "Reset to config".
 
 ### The first-run tour
 
@@ -1212,7 +1407,7 @@ back to the page where it began. Skip or `Esc` ends it at any step.
 
 How it ended (finished or skipped, with the date) is kept on the server in
 `state.json`, key `tour`, so another browser does not offer it again. Help ("Start
-the tour") and Settings, Look, Introduction start it again at any time; Settings
+the tour") and Settings, Appearance, Introduction start it again at any time; Settings
 can also offer it again on the next visit (verb `tour_reset`). `cockpit.tour:
 false` switches the offer off for a Bridge whose people know the page; the buttons
 still start it. In mock mode it stays closed unless the link carries `&tour=1`.
@@ -1246,7 +1441,7 @@ machine. Its title row starts the tour and shows the notes on the page.
 
 ### Keyboard
 
-The shortcuts are off until switched on under Settings, Look, Keyboard
+The shortcuts are off until switched on under Settings, Appearance, Keyboard
 shortcuts (kept in this browser only). Off, no key acts on the page and the
 command box is not in the header; `Esc` still closes a dialog or a drawer, and
 `Cmd` or `Ctrl` with `Enter` in the panel's sentence still starts. On, when
@@ -1300,8 +1495,10 @@ nothing a stranger could trigger:
   derived from the key in a header, `Sec-Fetch-Site`), and the page allows no frames,
   no scripts from elsewhere and no external addresses at all;
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,
-  close, settle (done or not doing), urgency, priority, note, check tasks, keep open, close task, launch, adopt, send, key,
-  close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker profile, guide read, guide settings), every id
+  close, settle (done or not doing), urgency, priority, note, check tasks, keep
+  open, close task, launch, adopt, send, key,
+  close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker
+  profile, guide read, guide settings), every id
   checked again before it reaches a script, every argument a separate word,
   texts after `--`;
 - the news ticker reads only the feed addresses you wrote into
@@ -1309,7 +1506,8 @@ nothing a stranger could trigger:
   own network is allowed because you chose it), only over http or https, with
   no user name in the address, at most three redirects, eight seconds and 2 MB
   per feed (a gzip body sent unasked is unpacked to the same 2 MB). A feed
-  that declares a DOCTYPE or an entity is refused before it is parsed. The server never opens an item's link. Titles are stripped of markup
+  that declares a DOCTYPE or an entity is refused before it is parsed. The
+  server never opens an item's link. Titles are stripped of markup
   and control characters and shown as text; a link becomes an anchor only when
   it is http or https, and opens with `noopener` and no referrer. Feed text
   reaches Claude only as the one prompt of the Editor button, a read-only Haiku
@@ -1357,7 +1555,8 @@ nothing a stranger could trigger:
   proposed from is skipped, never forced. Moves go first and the tabs of a
   workspace are counted again before each, so the last tab of a workspace never
   leaves it. A tab that has meanwhile become a task, inbox or team tab is
-  skipped too, neither renamed nor moved. Each item goes through its own `workplace.py` command (live refs
+  skipped too, neither renamed nor moved. Each item goes through its own
+  `workplace.py` command (live refs
   only, the driver's verb checked again), outside the write lock so other
   actions are not held up, within two minutes for the whole apply. One apply
   runs at a time; a second one meanwhile is refused. Nothing is closed;
@@ -1403,7 +1602,8 @@ you test web code you do not trust on this computer.
 "Ask Claude", "Follow up" and the free question need a model. There are no
 canned prompts in the window: you ask straight away, the box has the cursor.
 "Ask Claude" (in the header, on a row, on a page item) opens the chat window,
-and each chat is a short Claude session of its own (`scripts/lib/bridge_cockpit/quick.py`): `claude -p` in this Bridge's
+and each chat is a short Claude session of its own
+(`scripts/lib/bridge_cockpit/quick.py`): `claude -p` in this Bridge's
 folder with Haiku 5.5 by default (Sonnet or Opus picked in the window, the
 choice kept in the browser), only the tools Read, Grep and Glob and none of
 the user's settings, so it can read tasks, board and log and change nothing.
@@ -1419,7 +1619,8 @@ never kept: not in the turns, not in `quick.json`, not in a handed on
 transcript. The start page's core asks without it. Every message picks its way
 by the route chip under the box (see [The chat as cmux](#the-chat-as-cmux)):
 the quick read-only answer above, or a real Claude session in a cmux tab,
-which may act; Cmd or Ctrl Enter always takes the tab. A new problem goes there at once (verb `chat_tab`:
+which may act; Cmd or Ctrl Enter always takes the tab. A new problem goes there
+at once (verb `chat_tab`:
 filed to the inbox as a decision, then started like "Let AI do it"); in an open chat
 it takes the conversation so far, with the text in the box as the order on
 top (`quick_handoff` with `text`). Either way the tab runs on the workplace's
@@ -1433,7 +1634,8 @@ as `starting` only once every check passed (an empty transcript, a relay that
 is off or an order over the cap leave no record), and a second click is
 refused (`handoff_running`) only while it is starting; a finished handoff, of
 any outcome, may be followed by another. A claim still `starting` when the server
-stopped reads as `failed` after the restart, so it never blocks the chat. To a tab, the launch outcome is
+stopped reads as `failed` after the restart, so it never blocks the chat. To a
+tab, the launch outcome is
 recorded as it came: "Arrived in tab <name>" once a tab carries the new inbox
 item (with "Open the tab" where the driver can focus), "Started, its tab is
 opening" before that, "Already running in its tab" (`running`, `busy`), "Could
@@ -1479,7 +1681,8 @@ No chat is ever dropped: the 31st pushes the oldest, a chat untouched for
 "remove chat" (or the × beside a chat in the sidebar of the chat as cmux) takes
 one, into the archive `chats/quick-YYYY-MM.jsonl` in the state dir (one line
 per chat, whole, with `why`: `overflow`, `expired`, `replaced` or `removed`; A2A
-conversations go to `chats/agents-YYYY-MM.jsonl`, `expired` past `chat_keep_hours` like a chat, unless
+conversations go to `chats/agents-YYYY-MM.jsonl`, `expired` past
+`chat_keep_hours` like a chat, unless
 one still sends or waits for the peer's owner; a chat about an item also leaves as `settled`, see
 [The chat as cmux](#the-chat-as-cmux)). When the archive cannot be
 written, the chat stays in its list, and an expiry is tried again an hour later.
@@ -1507,7 +1710,8 @@ follow up continues the peer's A2A context. A peer that holds a task for its
 owner's approval answers with a state that is not final: the turn shows as
 held, the tab wears a dot, and "look again" reads the task with `a2a.py get`
 without sending anything new. Conversations are kept in `agents.json` in the
-state dir, and one that leaves the list goes to the archive (see the Chat). Without a peer there is no tab. The quick chat's system text names
+state dir, and one that leaves the list goes to the archive (see the Chat).
+Without a peer there is no tab. The quick chat's system text names
 `infra/a2a-peers/` too, so it can suggest asking an agent; it sends nothing
 itself.
 
@@ -1616,6 +1820,7 @@ share or clean up.
 | `guide.json` | the settings page's switches of `cockpit.session_guide` (only those that differ from the config) | no |
 | `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start | no: news items only |
 | `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |
+| `chats/` | every chat and agent conversation that left its list, whole, one file a month (`quick-YYYY-MM.jsonl`, `agents-YYYY-MM.jsonl`), never deleted (folder and files readable by you only) | yes: the chats |
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
 | `jev-pages.json` | Jev's order per page | yes: the titles |
