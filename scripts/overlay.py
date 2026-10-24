@@ -102,12 +102,16 @@ def card_declared(repo_root: str, rel_path: str) -> bool:
     Read through scripts/lib/context_index.py, the same function the meter and
     the index use, so the three cannot disagree about what is indexed. Loaded
     lazily: a consumer without the library (or without PyYAML) falls back to
-    the old behaviour, the @import, rather than failing the sync.
+    the old behaviour, the @import, rather than failing the sync, and says so:
+    a silent fallback would re-add an import the instance removed on purpose.
     """
     try:
         lib = _load_module("context_index", os.path.join("lib", "context_index.py"))
         return bool(lib.card_for(repo_root, rel_path))
-    except Exception:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive
+        sys.stderr.write(
+            f"  WARN   cannot read the context budget ({type(exc).__name__}: {exc}); "
+            f"treating {rel_path} as not indexed, the @import may be added\n")
         return False
 
 # ---------------------------------------------------------------------------
