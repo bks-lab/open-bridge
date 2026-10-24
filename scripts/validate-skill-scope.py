@@ -18,6 +18,8 @@ What it does:
      choice cannot be reproduced. Org and user skills may still shadow a CORE
      trigger on purpose.
   3. Refreshes the per-instance tier map at `.bridge/skill-scope.md`.
+  4. WARNS (never fails) on a SKILL.md over SKILL_MD_MAX_LINES lines and on a
+     description over DESCRIPTION_MAX_BYTES bytes. See the constants below.
 
 Why the map is NOT in AGENTS.md any more (changed 2026-08-19):
   Every instance has a different skill tree by design (org skills, personal
@@ -60,6 +62,24 @@ SHIPS_TO = {
     "personal": "your personal overlay + local",
     "user": "local only",
 }
+# Size warnings. Advisory on purpose: both are judgement calls, and a gate that
+# failed on them would be answered by raising the number, not by the edit.
+#
+# The DESCRIPTION is resident. The harness lists `name` + `description` of
+# every skill in every session and every sub-agent dispatch, and the sum is
+# capped as `listing:skills` in context-budget.yaml. Above about 380 bytes a
+# description is no longer a trigger line but a summary of the skill, and it
+# was the heaviest entries that pushed one instance's listing over its cap.
+# Measured in UTF-8 bytes after folding to one line, exactly as the listing
+# carries it, so a German description is not undercounted by half.
+DESCRIPTION_MAX_BYTES = 380
+# The BODY loads whenever the skill runs. A SKILL.md is meant to be a decision
+# tree that routes to `references/` files read only when triggered; two CORE
+# skills had grown to 600+ lines by inlining their full command reference,
+# paid on every trigger. 300 lines is about twice a typical routing SKILL.md.
+SKILL_MD_MAX_LINES = 300
+
+
 def frontmatter(path: Path) -> dict | None:
     """Return the parsed YAML frontmatter of a markdown file, or None."""
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -138,6 +158,32 @@ def collect() -> tuple[dict[str, list[str]], list[str]]:
     return by_scope, errors
 
 
+def size_warnings() -> list[str]:
+    """One advisory line per skill over a size limit. Never an error."""
+    warnings: list[str] = []
+    for skill_md in sorted(SKILLS_DIR.glob("*/SKILL.md")):
+        if skill_md.parent.name.startswith("_"):
+            continue
+        name = skill_md.parent.name
+        text = skill_md.read_text(encoding="utf-8", errors="replace")
+        lines = len(text.splitlines())
+        if lines > SKILL_MD_MAX_LINES:
+            warnings.append(
+                f"{name}: SKILL.md has {lines} lines (> {SKILL_MD_MAX_LINES}); "
+                f"move command detail into references/ and keep the decision tree"
+            )
+        fm = frontmatter(skill_md) or {}
+        desc = fm.get("description")
+        if isinstance(desc, str):
+            size = len(" ".join(desc.split()).encode("utf-8"))
+            if size > DESCRIPTION_MAX_BYTES:
+                warnings.append(
+                    f"{name}: description is {size} bytes (> {DESCRIPTION_MAX_BYTES}); "
+                    f"it is listed in every session, shorten it to the trigger line"
+                )
+    return warnings
+
+
 def render_map(by_scope: dict[str, list[str]]) -> str:
     """The per-instance tier map. Derived from frontmatter, never authoritative."""
     lines = [
@@ -168,6 +214,13 @@ def main() -> int:
         for e in errors:
             print(f"   - {e}", file=sys.stderr)
         return 1
+
+    # Job 1b — advisory size warnings. Printed, never fatal.
+    warnings = size_warnings()
+    if warnings:
+        print(f"! {len(warnings)} skill size warning(s), advisory:", file=sys.stderr)
+        for w in warnings:
+            print(f"   - warning: {w}", file=sys.stderr)
 
     total = sum(len(v) for v in by_scope.values())
     tally = " · ".join(f"{k}:{len(v)}" for k, v in by_scope.items())
