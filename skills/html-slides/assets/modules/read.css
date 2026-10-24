@@ -1,0 +1,77 @@
+/* read: deck module, reference/modules.md § read. Everything here waits for
+   :root.deck-read, which only the module sets; the layout rules are screen only, so a
+   deck printed from the reading view still prints one slide per page. */
+@media screen {
+  /* the deck stays the scroller (the engine measures slides against it), without snap */
+  :root.deck-read .deck {
+    scroll-snap-type: none; scroll-behavior: auto;
+    padding-bottom: clamp(72px, 12vh, 120px);
+  }
+  /* a slide keeps its look and grows with its content instead of clipping it */
+  :root.deck-read .slide {
+    height: auto; min-height: min(100dvh, 56.25vw);
+    scroll-snap-align: none;
+    border-block: 1px solid var(--border);
+  }
+  :root.deck-read .deck:focus { outline: none; }
+  :root.deck-read .slide--split .slide__panels { height: auto; min-height: min(100dvh, 56.25vw); }
+  /* a document shows everything at once: entrances and step reveals at their end state */
+  :root.deck-read .slide .reveal { opacity: 1; transform: none; transition: none; }
+  :root.deck-read .slide [data-step],
+  :root.deck-read .slide [data-steps] > * { visibility: visible !important; opacity: 1 !important; }
+  /* slide chrome that means nothing in a document */
+  :root.deck-read .deck-progress, :root.deck-read .deck-dots, :root.deck-read .deck-counter,
+  :root.deck-read .deck-hints, :root.deck-read .deck-notes { display: none !important; }
+}
+
+.deck-read-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 72ch; margin: 0 auto; padding: clamp(28px, 5vh, 48px) 16px 12px;
+  font-family: var(--font-mono); font-size: 13px; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.deck-read-go, .deck-read-bar button {
+  font: inherit; color: var(--text); background: transparent; cursor: pointer;
+  padding: 4px 12px; border-radius: 16px; border: 1px solid var(--border-bright);
+}
+.deck-read-go:hover, .deck-read-go:focus-visible,
+.deck-read-bar button:hover, .deck-read-bar button:focus-visible {
+  color: var(--accent); border-color: var(--accent); outline: none;
+}
+.deck-read-sr, .deck-read-live {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.deck-read-notes {
+  max-width: 72ch; margin: clamp(16px, 3vh, 28px) auto 0; padding: 16px 20px;
+  background: var(--surface); color: var(--text);
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  font-family: var(--font-body); font-size: clamp(16px, 1.4vw, 19px); line-height: 1.6;
+}
+.deck-read-notes__title {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1px; color: var(--text); margin-bottom: 6px;
+}
+.deck-read-notes__body p + p { margin-top: 0.6em; }
+
+.deck-read-bar {
+  position: fixed; bottom: clamp(12px, 2vh, 24px); right: clamp(12px, 2vw, 24px); z-index: 101;
+  display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border-bright); border-radius: 22px;
+}
+.deck-read-bar .deck-read-present { border-color: var(--accent); }
+.deck-read-progress {
+  position: fixed; top: 0; left: 0; width: 0; height: 3px; z-index: 100;
+  background: var(--accent); pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .deck-read-label { display: none; }
+}
+
+@media print {
+  .deck-read-head, .deck-read-notes, .deck-read-bar, .deck-read-progress, .deck-read-live { display: none !important; }
+}
