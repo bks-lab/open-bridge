@@ -118,6 +118,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import json
+
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -814,6 +816,104 @@ def test_the_report_names_the_largest_entries(listed):
     _skill(listed, "huge", "H" * 400)
     rows = mc.collect_rows(listed, mc.load_budget(listed), "bytes")
     assert "huge" in mc.render_report(rows, "bytes", 2.4)
+
+
+# ------------------------------------- skills the harness adds on its own --
+#
+# The harness lists more than this tree's skills/: the user-level skills in
+# the config dir and the skills and commands of every ENABLED plugin. Measured
+# on a live instance at 5 420 bytes on top of a listing already at its cap,
+# counted nowhere. Where they live is read from the harness's own files
+# (`CLAUDE_CONFIG_DIR` or ~/.claude, `plugins/installed_plugins.json`,
+# `enabledPlugins` in settings), never a hardcoded install path, and a missing
+# piece is simply nothing to count.
+
+
+def _plugin(home: Path, key: str, skills=(), commands=(), scope="user", project=None):
+    """Install a synthetic plugin under the isolated config dir."""
+    name, _, market = key.partition("@")
+    install = home / ".claude" / "plugins" / "cache" / market / name / "1.0.0"
+    for slug, desc in skills:
+        _write(install, f"skills/{slug}/SKILL.md", f"---\nname: {slug}\ndescription: {desc}\n---\n")
+    for slug, desc in commands:
+        _write(install, f"commands/{slug}.md", f"---\ndescription: {desc}\n---\nbody\n")
+    registry = home / ".claude" / "plugins" / "installed_plugins.json"
+    data = json.loads(registry.read_text()) if registry.is_file() else {"version": 2, "plugins": {}}
+    entry = {"scope": scope, "installPath": str(install)}
+    if project is not None:
+        entry["projectPath"] = str(project)
+    data["plugins"].setdefault(key, []).append(entry)
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(json.dumps(data))
+    return install
+
+
+def _enable(settings: Path, key: str, on: bool = True) -> None:
+    data = json.loads(settings.read_text()) if settings.is_file() else {}
+    data.setdefault("enabledPlugins", {})[key] = on
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(data))
+
+
+def test_user_level_skills_join_the_listing(listed, _isolated_home):
+    _write(_isolated_home, ".claude/skills/helper/SKILL.md", "---\nname: helper\ndescription: A user-level helper.\n---\n")
+    assert "**helper** — A user-level helper." in mc.render_listing(listed, "listing:skills")
+
+
+def test_a_user_level_skill_shadows_the_project_skill_of_the_same_name(listed, _isolated_home):
+    _write(_isolated_home, ".claude/skills/remote/SKILL.md", "---\nname: remote\ndescription: The user copy.\n---\n")
+    text = mc.render_listing(listed, "listing:skills")
+    assert text.count("**remote**") == 1 and "The user copy." in text
+
+
+def test_an_enabled_plugin_lists_its_skills_and_commands_namespaced(listed, _isolated_home):
+    _plugin(_isolated_home, "kit@market", skills=[("draw", "Draws things.")], commands=[("help", "Explains kit.")])
+    _enable(_isolated_home / ".claude" / "settings.json", "kit@market")
+    text = mc.render_listing(listed, "listing:skills")
+    assert "**kit:draw** — Draws things." in text
+    assert "**kit:help** — Explains kit." in text
+
+
+def test_a_disabled_or_unlisted_plugin_is_not_counted(listed, _isolated_home):
+    _plugin(_isolated_home, "off@market", skills=[("x", "Disabled one.")])
+    _plugin(_isolated_home, "quiet@market", skills=[("y", "Never enabled.")])
+    _enable(_isolated_home / ".claude" / "settings.json", "off@market", on=False)
+    text = mc.render_listing(listed, "listing:skills")
+    assert "Disabled one." not in text and "Never enabled." not in text
+
+
+def test_project_settings_enable_a_plugin_for_this_tree(listed, _isolated_home):
+    _plugin(_isolated_home, "kit@market", skills=[("draw", "Draws things.")])
+    _enable(_isolated_home / ".claude" / "settings.json", "kit@market", on=False)
+    _enable(listed / ".claude" / "settings.local.json", "kit@market")
+    assert "Draws things." in mc.render_listing(listed, "listing:skills")
+
+
+def test_a_local_install_counts_only_for_its_own_project(listed, _isolated_home, tmp_path):
+    _plugin(_isolated_home, "mine@market", skills=[("m", "Mine here.")], scope="local", project=listed)
+    _plugin(_isolated_home, "theirs@market", skills=[("t", "Elsewhere.")], scope="local", project=tmp_path / "other")
+    _enable(_isolated_home / ".claude" / "settings.json", "mine@market")
+    _enable(_isolated_home / ".claude" / "settings.json", "theirs@market")
+    text = mc.render_listing(listed, "listing:skills")
+    assert "Mine here." in text and "Elsewhere." not in text
+
+
+def test_the_config_dir_override_is_honoured(listed, tmp_path, monkeypatch):
+    cfg = tmp_path / "cfg"
+    _write(cfg, "skills/elsewhere/SKILL.md", "---\nname: elsewhere\ndescription: From the override.\n---\n")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    assert "From the override." in mc.render_listing(listed, "listing:skills")
+
+
+def test_a_broken_plugin_registry_is_nothing_not_an_error(listed, _isolated_home):
+    _write(_isolated_home, ".claude/plugins/installed_plugins.json", "{not json")
+    _write(_isolated_home, ".claude/settings.json", "[]")
+    assert "**remote**" in mc.render_listing(listed, "listing:skills")
+
+
+def test_harness_skills_never_enter_the_agents_listing(listed, _isolated_home):
+    _write(_isolated_home, ".claude/skills/helper/SKILL.md", "---\nname: helper\ndescription: A user-level helper.\n---\n")
+    assert "helper" not in mc.render_listing(listed, "listing:agents")
 
 
 # ------------------------------------- one definition of the always-on surface --

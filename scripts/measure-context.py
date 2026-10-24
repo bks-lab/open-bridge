@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import functools
 import importlib.util
+import json
 import os
 import re
 import shlex
@@ -366,7 +367,113 @@ def listing_entries(repo_root: Path, key: str):
         entry = _described(path)
         if entry:
             entries.append(entry)
+    if family == "skills":
+        entries = _with_harness_skills(root, entries)
     return entries
+
+
+# --------------------------------------- skills the harness adds on its own --
+#
+# The harness lists more than this tree's skills/: the user-level skills in its
+# config dir, and the skills and commands of every ENABLED plugin. Measured on
+# a live instance at 5 420 bytes on top of a listing already at its cap, and
+# counted nowhere, so the meter reported headroom the session did not have.
+#
+# Every location is read from the harness's own files, never a hardcoded path:
+# the config dir (`CLAUDE_CONFIG_DIR`, else ~/.claude), its
+# `plugins/installed_plugins.json` for where each plugin is installed, and
+# `enabledPlugins` across user, project and local settings for which ones load.
+# Anything missing or unreadable is nothing to count, never an error: CI has
+# no config dir, and a meter that crashed there would gate nothing.
+
+def _harness_config_dir() -> Path:
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    return Path(override).expanduser() if override else Path.home() / ".claude"
+
+
+def _json_object(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _enabled_plugins(repo_root: Path, config_dir: Path) -> set[str]:
+    """Plugin keys enabled for this tree; later settings files win, as in the harness."""
+    state: dict[str, bool] = {}
+    for settings in (
+        config_dir / "settings.json",
+        repo_root / ".claude" / "settings.json",
+        repo_root / ".claude" / "settings.local.json",
+    ):
+        enabled = _json_object(settings).get("enabledPlugins")
+        if isinstance(enabled, dict):
+            state.update({str(k): bool(v) for k, v in enabled.items()})
+    return {key for key, on in state.items() if on}
+
+
+def _same_path(a, b: Path) -> bool:
+    try:
+        return Path(str(a)).expanduser().resolve() == b.resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _plugin_installs(repo_root: Path, config_dir: Path):
+    """(plugin name, install dir) for every enabled plugin installed for this tree."""
+    plugins = _json_object(config_dir / "plugins" / "installed_plugins.json").get("plugins")
+    if not isinstance(plugins, dict):
+        return []
+    enabled = _enabled_plugins(repo_root, config_dir)
+    found = []
+    for key in sorted(plugins):
+        if key not in enabled:
+            continue
+        installs = plugins[key]
+        installs = installs if isinstance(installs, list) else [installs]
+        for install in installs:
+            if not isinstance(install, dict) or not install.get("installPath"):
+                continue
+            scope = install.get("scope", "user")
+            # A project or local install loads only inside the project it names.
+            if scope != "user" and not _same_path(install.get("projectPath", ""), repo_root):
+                continue
+            found.append((key.partition("@")[0], Path(str(install["installPath"]))))
+            break
+    return found
+
+
+def harness_skill_entries(repo_root: Path):
+    """(user-level entries, plugin entries) the harness lists beside this tree's."""
+    config_dir = _harness_config_dir()
+    user = []
+    for path in sorted((config_dir / "skills").glob("*/SKILL.md")):
+        entry = _described(path)
+        if entry:
+            user.append(entry)
+    plugin = []
+    for name, install in _plugin_installs(Path(repo_root), config_dir):
+        paths = sorted(install.glob("skills/*/SKILL.md")) + sorted(install.glob("commands/*.md"))
+        for path in paths:
+            entry = _described(path)
+            if entry:
+                plugin.append((f"{name}:{entry[0]}", entry[1]))
+    return user, plugin
+
+
+def _with_harness_skills(repo_root: Path, entries: list) -> list:
+    """This tree's skills plus the harness's own, a user-level name winning.
+
+    The user level overrides the project level of the same name (AGENTS.md
+    § Skills), so the session carries one entry for it, the user one.
+    """
+    user, plugin = harness_skill_entries(repo_root)
+    if not user and not plugin:
+        return entries
+    shadowed = {name for name, _ in user}
+    merged = [e for e in entries if e[0] not in shadowed] + user + plugin
+    return sorted(merged, key=lambda e: e[0])
 
 
 def _listing_line(name: str, description: str) -> str:
