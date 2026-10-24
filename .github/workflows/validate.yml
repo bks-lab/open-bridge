@@ -408,7 +408,7 @@ jobs:
   # imports its package by a short name (`engine`), and two of those in one
   # session would shadow each other.
   skill-pytest:
-    name: Skill Suites (board-pilot, html-canvas)
+    name: Skill Suites (board-pilot, html-canvas, bridge-audit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -426,6 +426,11 @@ jobs:
 
       - name: Run html-canvas suite
         run: python3 -m pytest skills/html-canvas/tests -q -rs
+
+      # The audit's checker runner (Check 16). Hermetic: it runs fixture
+      # checkers in a temp tree, never the repository's own.
+      - name: Run bridge-audit suite
+        run: python3 -m pytest skills/bridge-audit/tests -q -rs
 
   # The cockpit demo (docs/cockpit-demo/) in a real browser: every page of the
   # page bar opens, in en and de, without a console error. Its own job, so the
