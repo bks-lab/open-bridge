@@ -294,6 +294,7 @@ html.dark .artifact{background:var(--code-bg)}
 .artifact .who{color:var(--accent-secondary)}
 .artifact .tm{color:var(--accent-text);font-weight:500}
 .artifact .cmt{color:var(--secondary)}
+.artifact[data-verbatim] .row{white-space:pre-wrap;overflow-wrap:anywhere}
 .verbatim-note{margin-top:10px;font-size:12.5px;color:var(--secondary);padding-left:2px}
 
 /* ---- Split visual (My Documents) ---- */
@@ -929,15 +930,15 @@ html.story-static .story-list{display:flex;flex-wrap:wrap;gap:10px;justify-conte
             <div class="hn-stage" id="hn-stage">
               <canvas class="hn-canvas" id="hn-ring" aria-hidden="true"></canvas>
               <p class="hn-sr">
-                <span data-lang="en">The shipped demo workspace drawn as a containment ring: 27 files in six folders around a centre, with one dot in the outer band for each of their 1162 lines, so a folder that holds more shows denser. identity holds who you are and who you send to, workflow holds what happens when, infra holds where things run, work holds the task board and the log, protocols holds the standing orders, and .claude holds the agents. At session start the agent reads only what it needs before its first answer and opens the rest when the work names it (the figure in the concept section shows what is read when), then writes one line back into work/log.md. Clone examples/agency and the same tree is on your disk.</span>
-                <span data-lang="de">Der mitgelieferte Demo-Workspace als Ring gezeichnet: 27 Dateien in sechs Ordnern um eine Mitte, im Außenband ein Punkt je Zeile ihrer 1162 Zeilen, ein Ordner mit mehr Inhalt ist also dichter. identity hält, wer du bist und an wen du sendest, workflow, was wann passiert, infra, wo was läuft, work das Aufgabenbrett und das Protokoll, protocols die Standing Orders und .claude die Agenten. Zum Session-Start liest der Agent nur, was er vor der ersten Antwort braucht, und öffnet den Rest, wenn die Arbeit ihn nennt (das Bild im Konzept-Abschnitt zeigt, was wann gelesen wird), danach schreibt er eine Zeile zurück in work/log.md. Klone examples/agency, dann liegt derselbe Baum auf deiner Platte.</span>
+                <span data-lang="en">The shipped demo workspace drawn as a containment ring: 27 files in six folders around a centre, with one dot in the outer band for each of their 1168 lines, so a folder that holds more shows denser. identity holds who you are and who you send to, workflow holds what happens when, infra holds where things run, work holds the task board and the log, protocols holds the standing orders, and .claude holds the agents. At session start the agent reads only what it needs before its first answer and opens the rest when the work names it (the figure in the concept section shows what is read when), then writes one line back into work/log.md. Clone examples/agency and the same tree is on your disk.</span>
+                <span data-lang="de">Der mitgelieferte Demo-Workspace als Ring gezeichnet: 27 Dateien in sechs Ordnern um eine Mitte, im Außenband ein Punkt je Zeile ihrer 1168 Zeilen, ein Ordner mit mehr Inhalt ist also dichter. identity hält, wer du bist und an wen du sendest, workflow, was wann passiert, infra, wo was läuft, work das Aufgabenbrett und das Protokoll, protocols die Standing Orders und .claude die Agenten. Zum Session-Start liest der Agent nur, was er vor der ersten Antwort braucht, und öffnet den Rest, wenn die Arbeit ihn nennt (das Bild im Konzept-Abschnitt zeigt, was wann gelesen wird), danach schreibt er eine Zeile zurück in work/log.md. Klone examples/agency, dann liegt derselbe Baum auf deiner Platte.</span>
               </p>
             </div>
             <figcaption class="hn-cap" id="hn-cap-text">
               <span>
-                <span data-lang="en"><b>examples/agency</b>: 27 files, 1162 lines, one dot each.</span>
+                <span data-lang="en"><b>examples/agency</b>: 27 files, 1168 lines, one dot each.</span>
 
-                <span data-lang="de"><b>examples/agency</b>: 27 Dateien, 1162 Zeilen, je Zeile ein Punkt.</span>
+                <span data-lang="de"><b>examples/agency</b>: 27 Dateien, 1168 Zeilen, je Zeile ein Punkt.</span>
               </span>
               <a href="#substrate">
                 <span data-lang="en">Look inside it →</span>
@@ -967,13 +968,14 @@ html.story-static .story-list{display:flex;flex-wrap:wrap;gap:10px;justify-conte
   <div class="container">
     <div class="split reveal">
       <div>
-        <!-- Verbatim README log row (README line 211), the same row the hero canvas types -->
+        <!-- Quoted from examples/agency/work/log.md, the same row the hero canvas types last.
+             scripts/check-figure-counts.py holds every row of a data-verbatim block to its file. -->
         <div class="code-label"><span>work/log.md</span><span>$ cat work/log.md</span></div>
-        <div class="artifact" aria-label="A work log row, diff-able plain text">
-          <div class="row"><span class="gut"> </span><span class="ln"><span class="cmt">## Fri 20.06</span></span></div>
-          <div class="row hl"><span class="gut"> </span><span class="ln">| <span class="tm">14:22</span> | <span class="k">Decision</span> | <span class="who">bigcorp</span> | Pinned the schema to v2: v3 breaks the old exports. |</span></div>
+        <div class="artifact" data-verbatim="examples/agency/work/log.md" aria-label="A work log row, diff-able plain text">
+          <div class="row"><span class="gut"> </span><span class="ln"><span class="cmt">## Tue 24.06</span></span></div>
+          <div class="row hl"><span class="gut"> </span><span class="ln">| <span class="tm">2026-06-24 14:30</span> | <span class="k">📝</span> | <span class="who">bigcorp</span> | logged the Stripe webhook-secret root cause + next steps in the task STATUS |</span></div>
         </div>
-        <p class="verbatim-note"><span data-lang="en">That row is in the repo six months from now, in a diff, readable by any agent. (Copied character-for-character from the README.)</span><span data-lang="de">Diese Zeile steht in sechs Monaten noch im Repo, in einem Diff, lesbar von jedem Agenten. (Zeichengenau aus dem README.)</span></p>
+        <p class="verbatim-note"><span data-lang="en">That row is in the repo six months from now, in a diff, readable by any agent. (Copied character-for-character from examples/agency/work/log.md.)</span><span data-lang="de">Diese Zeile steht in sechs Monaten noch im Repo, in einem Diff, lesbar von jedem Agenten. (Zeichengenau aus examples/agency/work/log.md.)</span></p>
       </div>
 
       <div class="card" style="display:flex;flex-direction:column;justify-content:center">
@@ -1052,15 +1054,16 @@ html.story-static .story-list{display:flex;flex-wrap:wrap;gap:10px;justify-conte
               <span data-lang="en">work/log.md · written back</span><span data-lang="de">work/log.md · zurückgeschrieben</span>
             </div>
             <div class="mv-log">
+              <!-- three rows of examples/agency/work/log.md (24.06), shortened to fit the panel -->
               <div class="mv-row" style="--d:0">
-                <span class="t">| 09:14 |</span> <span class="k">Decision</span> <span class="who">bigcorp</span> | scoped the inbound pipeline
+                <span class="t">| 10:18 |</span> <span class="k">💻</span> <span class="who">startupxyz</span> | wired the email-verification step, 6 tests green
               </div>
               <div class="mv-row" style="--d:1">
-                <span class="t">| 11:02 |</span> <span class="k">Fix</span> <span class="who">startupxyz</span> | retry on 429, backoff added
+                <span class="t">| 11:47 |</span> <span class="k">🐛</span> <span class="who">bigcorp</span> | payment webhooks failing in prod
               </div>
-              <!-- the verbatim README row, re-read on day two -->
+              <!-- the row quoted in full above, re-read on day two -->
               <div class="mv-row fresh" style="--d:2">
-                <span class="t">| 14:22 |</span> <span class="k">Decision</span> <span class="who">bigcorp</span> | Pinned the schema to v2: v3 breaks the old exports.
+                <span class="t">| 14:30 |</span> <span class="k">📝</span> <span class="who">bigcorp</span> | logged the Stripe webhook-secret root cause + next steps in the task STATUS
               </div>
             </div>
 
@@ -2677,12 +2680,12 @@ claude        <span class="cmt"># or: codex, copilot</span></div>
   var TREE = [
     // f = files, l = lines of content in them. Both counted on disk:
     //   find . -type f -not -path './.git/*' | wc -l        -> 27
-    //   find . -type f -not -path './.git/*' -exec cat {} + | wc -l  -> 1162
-    { key:'root',      label:'./',          l:306, kids:[ {n:'',           f:5} ] },
+    //   find . -type f -not -path './.git/*' -exec cat {} + | wc -l  -> 1168
+    { key:'root',      label:'./',          l:308, kids:[ {n:'',           f:5} ] },
     { key:'identity',  label:'identity/',   l:113, kids:[ {n:'accounts/',  f:1}, {n:'mandants/', f:1} ] },
     { key:'workflow',  label:'workflow/',   l:129, kids:[ {n:'calendars/', f:1}, {n:'contexts/', f:1} ] },
     { key:'infra',     label:'infra/',      l:279, kids:[ {n:'backups/',   f:1}, {n:'channels/', f:4}, {n:'remotes/', f:2} ] },
-    { key:'work',      label:'work/',       l:222, kids:[ {n:'',           f:2}, {n:'tasks/',    f:3}, {n:'streams/', f:1}, {n:'done/', f:1} ] },
+    { key:'work',      label:'work/',       l:226, kids:[ {n:'',           f:2}, {n:'tasks/',    f:3}, {n:'streams/', f:1}, {n:'done/', f:1} ] },
     { key:'protocols', label:'protocols/',  l:37,  kids:[ {n:'standing-orders/', f:1} ] },
     { key:'claude',    label:'.claude/',    l:76,  kids:[ {n:'agents/',    f:3} ] }
   ];
@@ -2704,11 +2707,11 @@ claude        <span class="cmt"># or: codex, copilot</span></div>
   var W,H,DPR,C={},tick=0,raf=null,running=false,dots=null;
   var TAU = Math.PI*2, GAP = 0.016;
 
-  /* The outer band is one dot per LINE of content, 1162 of them, not a decorative
+  /* The outer band is one dot per LINE of content, 1168 of them, not a decorative
      scatter. Density is therefore the real weight of each folder, which is the
      same truth claim the file counts make. Positions are built once per size from
      a seeded generator so a resize or a theme flip never reshuffles the field,
-     and each frame fills two batched paths rather than 1162 separate arcs. */
+     and each frame fills two batched paths rather than 1168 separate arcs. */
   function buildDots(cx,cy,r0,r1){
     dots=[]; var seg=TAU/TREE.length, seed=1;
     function rnd(){ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; }
@@ -2793,7 +2796,7 @@ claude        <span class="cmt"># or: codex, copilot</span></div>
       a+=seg;
     }
 
-    // the dot field, two batched fills instead of 1162 arcs
+    // the dot field, two batched fills instead of 1168 arcs
     var dr=W<380?0.7:0.9;
     for(var pass=0;pass<2;pass++){
       ctx.beginPath();

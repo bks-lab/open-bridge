@@ -229,6 +229,7 @@ html.dark .artifact{background:var(--code-bg)}
 .artifact .gut{flex:0 0 26px;text-align:center;color:var(--secondary);
   user-select:none;padding:2px 0;}
 .artifact .ln{padding:2px 14px 2px 4px;flex:1;min-width:0}
+.artifact[data-verbatim] .row{white-space:pre-wrap;overflow-wrap:anywhere}
 .artifact .row.add{background:color-mix(in srgb,var(--ok) 10%, transparent)}
 .artifact .row.add .gut{color:var(--ok-text);font-weight:600}
 .artifact .row.hl{background:color-mix(in srgb,var(--accent) 9%, transparent)}
@@ -638,14 +639,25 @@ html.dark .tile .demo{background:var(--code-bg)}
       </div>
       <div>
 
-        <!-- Verbatim README STATUS.md (README lines 203-207) -->
-        <div class="code-label"><span>work/tasks/bigcorp-migration/STATUS.md</span><span data-lang="en">verbatim from the README</span><span data-lang="de">wortgetreu aus dem README</span></div>
-        <div class="artifact" aria-label="STATUS.md, the shape a task takes">
-          <div class="row add"><span class="gut">+</span><span class="ln"><span class="cmt"># STATUS: bigcorp-migration</span></span></div>
-          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">status:</span> doing</span></div>
-          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">context:</span> bigcorp</span></div>
-          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">last:</span> Migrated the invoice pipeline to the new schema; one test still red.</span></div>
-          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">next:</span> Fix the failing UBL-validation case, then open the PR.</span></div>
+        <!-- The frontmatter of a shipped example task, quoted line for line.
+             scripts/check-figure-counts.py holds every row of a data-verbatim block to its file. -->
+        <div class="code-label"><span>work/tasks/cart-a11y-pass/STATUS.md</span><span data-lang="en">verbatim from examples/agency</span><span data-lang="de">wortgetreu aus examples/agency</span></div>
+        <div class="artifact" data-verbatim="examples/agency/work/tasks/cart-a11y-pass/STATUS.md" aria-label="STATUS.md, the shape a task takes">
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="cmt">---</span></span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">slug:</span> cart-a11y-pass</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">type:</span> bug</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">status:</span> review</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">priority:</span> P2</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">created:</span> 2026-06-19</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">last_updated:</span> 2026-06-23</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">headline:</span> "BigCorp cart a11y fixes (focus-trap, Escape, aria-labels) in review as PR #214"</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="k">sync:</span></span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln">  <span class="k">bridge_only:</span> false</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln">  <span class="k">github:</span></span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln">    <span class="k">repo:</span> acme-dev/bigcorp-frontend</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln">    <span class="k">issues:</span> [208]</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln">    <span class="k">project:</span> { org: acme-dev, number: 1 }</span></div>
+          <div class="row add"><span class="gut">+</span><span class="ln"><span class="cmt">---</span></span></div>
         </div>
       </div>
     </div>

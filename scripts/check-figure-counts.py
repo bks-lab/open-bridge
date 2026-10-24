@@ -11,6 +11,17 @@ page has drifted.
 It checks the totals, the per folder counts inside both JS arrays, and the two
 numbers spelled out in the visible captions.
 
+It holds two more claims on the pages to the same tree:
+
+  * the containment ring on docs/index.html, which draws the shipped demo
+    workspace examples/agency/ as files per folder and one dot per line, and
+    spells both totals out in its caption;
+  * every quoted artifact. A block marked `data-verbatim="<path>"` must consist
+    of lines that file actually carries, in order, and a page that tells the
+    reader something is copied "character-for-character" or "verbatim" has to
+    carry such a block. index.html quoted a README row for months after the
+    README dropped it, which is the drift this closes.
+
     python3 scripts/check-figure-counts.py            # report drift, exit 1
     python3 scripts/check-figure-counts.py --write     # rewrite the page to match
 
@@ -21,6 +32,7 @@ only worth its friction if clearing it is one command, so --write exists.
 from __future__ import annotations
 
 import collections
+import html
 import importlib.util
 import re
 import subprocess
@@ -29,6 +41,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PAGE = REPO / "docs/explore.html"
+RING_PAGE = REPO / "docs/index.html"
 USER_PREFIX = "examples/agency/"
 
 # The example instance keeps three sub-agent definitions under .claude/agents/.
@@ -193,6 +206,185 @@ def rewrite(src: str, real_core: dict, real_user: dict, core_total: int, user_to
     return src
 
 
+# ---------------------------------------------------------------------------
+# The containment ring on docs/index.html
+# ---------------------------------------------------------------------------
+
+def _read_tracked(path: str) -> bytes:
+    return (REPO / path).read_bytes()
+
+
+def ring_census(files: list[str], read=_read_tracked) -> dict[str, dict]:
+    """examples/agency/ per top level folder: lines (as `wc -l` counts them)
+    and files per second level folder, "" for files directly in the folder."""
+    census: dict[str, dict] = {}
+    for path in files:
+        if not path.startswith(USER_PREFIX):
+            continue
+        rel = path[len(USER_PREFIX):]
+        top, _, rest = rel.partition("/")
+        if rest:
+            label = top + "/"
+            sub, _, deeper = rest.partition("/")
+            kid = sub + "/" if deeper else ""
+        else:
+            label, kid = "./", ""
+        entry = census.setdefault(label, {"lines": 0, "kids": {}})
+        entry["lines"] += read(path).count(b"\n")
+        entry["kids"][kid] = entry["kids"].get(kid, 0) + 1
+    return census
+
+
+_RING_ENTRY = re.compile(
+    r"\{\s*key:'[^']*',\s*label:'(?P<label>[^']*)',\s*l:(?P<l>\d+),\s*kids:\[(?P<kids>[^\]]*)\]\s*\}"
+)
+_RING_KID = re.compile(r"\{n:'(?P<n>[^']*)',\s*f:(?P<f>\d+)\}")
+
+# Every place the page spells out a ring total. Each must match at least once:
+# a sentence reworded out of reach of its pattern would otherwise go unchecked.
+# Group `f` is the file total, group `l` the line total.
+RING_PROSE = (
+    r"(?P<f>\d+) files in six folders",
+    r"each of their (?P<l>\d+) lines",
+    r"(?P<f>\d+) Dateien in sechs Ordnern",
+    r"ihrer (?P<l>\d+) Zeilen",
+    r"examples/agency</b>: (?P<f>\d+) files, (?P<l>\d+) lines",
+    r"examples/agency</b>: (?P<f>\d+) Dateien, (?P<l>\d+) Zeilen",
+    r"counted on disk\. (?P<f>\d+) files",
+    r"-not -path '\./\.git/\*' \| wc -l\s+-> (?P<f>\d+)",
+    r"\{\} \+ \| wc -l\s+-> (?P<l>\d+)",
+    r"one dot per LINE of content, (?P<l>\d+) of them",
+    r"rather than (?P<l>\d+) separate arcs",
+    r"instead of (?P<l>\d+) arcs",
+)
+
+
+def _ring_section(src: str) -> str:
+    start = src.index("var TREE = [")
+    return src[start:src.index("\n  ];", start)]
+
+
+def ring_problems(src: str, census: dict[str, dict]) -> list[str]:
+    problems: list[str] = []
+    drawn: dict[str, tuple[int, dict]] = {}
+    for m in _RING_ENTRY.finditer(_ring_section(src)):
+        kids = {k.group("n"): int(k.group("f")) for k in _RING_KID.finditer(m.group("kids"))}
+        drawn[m.group("label")] = (int(m.group("l")), kids)
+    for label, (lines, kids) in sorted(drawn.items()):
+        real = census.get(label, {"lines": 0, "kids": {}})
+        if real["lines"] != lines:
+            problems.append(f"index.html ring {label}: draws {lines} lines, tree has {real['lines']}")
+        for kid in sorted(set(kids) | set(real["kids"])):
+            if kids.get(kid) != real["kids"].get(kid):
+                problems.append(
+                    f"index.html ring {label}{kid}: draws {kids.get(kid, 0)} files, "
+                    f"tree has {real['kids'].get(kid, 0)}"
+                )
+    for label in sorted(set(census) - set(drawn)):
+        problems.append(f"index.html ring {label}: in the tree, not drawn")
+    want = {"f": sum(sum(v["kids"].values()) for v in census.values()),
+            "l": sum(v["lines"] for v in census.values())}
+    for pattern in RING_PROSE:
+        hits = list(re.finditer(pattern, src))
+        if not hits:
+            problems.append(f"index.html ring caption not found: {pattern!r}")
+        for hit in hits:
+            for key, value in hit.groupdict().items():
+                if value is not None and int(value) != want[key]:
+                    what = "files" if key == "f" else "lines"
+                    problems.append(
+                        f"index.html ring caption says {value} {what}, tree has {want[key]}: "
+                        f"{hit.group(0)!r}"
+                    )
+    return problems
+
+
+def rewrite_ring(src: str, census: dict[str, dict]) -> str:
+    block = _ring_section(src)
+
+    def one(m: re.Match) -> str:
+        real = census.get(m.group("label"))
+        if not real:
+            return m.group(0)
+        text = re.sub(r"(\bl:)\d+", rf"\g<1>{real['lines']}", m.group(0), count=1)
+
+        def kid(k: re.Match) -> str:
+            n = real["kids"].get(k.group("n"))
+            return k.group(0) if n is None else re.sub(r"(f:)\d+", rf"\g<1>{n}", k.group(0))
+        return _RING_KID.sub(kid, text)
+
+    src = src.replace(block, _RING_ENTRY.sub(one, block), 1)
+    want = {"f": sum(sum(v["kids"].values()) for v in census.values()),
+            "l": sum(v["lines"] for v in census.values())}
+    for pattern in RING_PROSE:
+        def fix(m: re.Match) -> str:
+            text, base = m.group(0), m.start()
+            for key in sorted(m.groupdict(), key=lambda k: -m.start(k)):
+                if m.group(key) is None:
+                    continue
+                a, b = m.start(key) - base, m.end(key) - base
+                text = text[:a] + str(want[key]) + text[b:]
+            return text
+        src = re.sub(pattern, fix, src)
+    return src
+
+
+# ---------------------------------------------------------------------------
+# Quoted artifacts
+# ---------------------------------------------------------------------------
+
+VERBATIM_PAGES = ("docs/index.html", "docs/concepts.html")
+_VERBATIM_BLOCK = re.compile(
+    r'<div class="artifact"[^>]*\bdata-verbatim="(?P<path>[^"]+)"[^>]*>(?P<body>.*?)\n\s*</div>',
+    re.S,
+)
+_ROW_TEXT = re.compile(r'<span class="ln">(.*)</span></div>')
+# What a reader is told. Comments are stripped first, so a note to the next
+# author ("verbatim from the project brief") is not a claim on the page.
+# One pattern per language: a bilingual page says the same thing twice, once
+# for each reader, and that is still one quoted block.
+_CLAIMS = (re.compile(r"character-for-character|verbatim from", re.I),
+           re.compile(r"Zeichengenau|wortgetreu", re.I))
+
+
+def verbatim_blocks(src: str) -> list[tuple[str, list[str]]]:
+    out = []
+    for m in _VERBATIM_BLOCK.finditer(src):
+        rows = [html.unescape(re.sub(r"<[^>]+>", "", r)) for r in _ROW_TEXT.findall(m.group("body"))]
+        out.append((m.group("path"), rows))
+    return out
+
+
+def verbatim_problems(pages=None) -> list[str]:
+    problems: list[str] = []
+    for page in pages or [REPO / p for p in VERBATIM_PAGES]:
+        page = Path(page)
+        src = page.read_text(encoding="utf-8")
+        blocks = verbatim_blocks(src)
+        visible = re.sub(r"<!--.*?-->|/\*.*?\*/", "", src, flags=re.S)
+        claims = max(len(c.findall(visible)) for c in _CLAIMS)
+        if claims > len(blocks):
+            problems.append(
+                f"{page.name}: {claims} verbatim claim(s), {len(blocks)} block(s) naming "
+                f"their source with data-verbatim"
+            )
+        for path, rows in blocks:
+            source = REPO / path
+            if not source.is_file():
+                problems.append(f"{page.name}: data-verbatim names {path}, not in the tree")
+                continue
+            lines = source.read_text(encoding="utf-8").splitlines()
+            if not rows:
+                problems.append(f"{page.name}: data-verbatim block for {path} has no rows")
+            at = 0
+            for row in rows:
+                try:
+                    at = lines.index(row, at) + 1
+                except ValueError:
+                    problems.append(f"{page.name}: quotes {path}, which has no line {row!r} (in this order)")
+    return problems
+
+
 def is_instance() -> bool:
     """A configured Bridge (it carries its own bridge-config.yaml), not open-bridge itself."""
     return (REPO / "bridge-config.yaml").is_file()
@@ -292,6 +484,13 @@ def main() -> int:
         if phrase not in src:
             problems.append(f"caption missing or stale: {phrase!r}")
 
+    explore_problems = problems
+    ring_src = RING_PAGE.read_text(encoding="utf-8")
+    ring = ring_census(files)
+    ring_drift = ring_problems(ring_src, ring)
+    quoted = verbatim_problems()
+    problems = explore_problems + ring_drift + quoted
+
     # A configured instance that carries core files of its own (docs, scripts
     # it added) differs from what open-bridge ships BY DESIGN, and the page
     # describes open-bridge. Failing there made the check red in every
@@ -303,30 +502,42 @@ def main() -> int:
                   "describes what open-bridge ships, rewriting it here would make a CORE "
                   "file diverge from upstream.", file=sys.stderr)
             return 2
-        print(f"docs/explore.html describes open-bridge; this instance differs in "
-              f"{len(problems)} number(s), expected where it carries core files of its own:")
+        print(f"docs/explore.html and docs/index.html describe open-bridge; this instance "
+              f"differs in {len(problems)} number(s), expected where it carries core files "
+              f"of its own:")
         for p in problems[:5]:
             print(f"  {p}")
         return 0
 
-    if problems and write:
-        PAGE.write_text(
-            rewrite(src, dict(core_real), dict(user_real), core_total, user_total),
-            encoding="utf-8",
-        )
-        print(f"docs/explore.html rewritten: {len(problems)} number(s) brought back to the tree.")
+    if (explore_problems or ring_drift) and write:
+        if explore_problems:
+            PAGE.write_text(
+                rewrite(src, dict(core_real), dict(user_real), core_total, user_total),
+                encoding="utf-8",
+            )
+            print(f"docs/explore.html rewritten: {len(explore_problems)} number(s) brought back to the tree.")
+        if ring_drift:
+            RING_PAGE.write_text(rewrite_ring(ring_src, ring), encoding="utf-8")
+            print(f"docs/index.html rewritten: {len(ring_drift)} ring number(s) brought back to the tree.")
         print("Re-run without --write to confirm, and read the diff before committing:")
-        for p in problems:
+        for p in explore_problems + ring_drift:
             print(f"  {p}")
+        if quoted:
+            # a quote is text, not a count; no rewrite can know what was meant
+            print("\nQuoted blocks that --write cannot fix, edit them by hand:", file=sys.stderr)
+            for p in quoted:
+                print(f"  {p}", file=sys.stderr)
+            return 1
         return 0
 
     if problems:
-        print("docs/explore.html has drifted from the tree:\n", file=sys.stderr)
+        print("The docs pages have drifted from the tree:\n", file=sys.stderr)
         for p in problems:
             print(f"  {p}", file=sys.stderr)
         print(
-            "\nRun `python3 scripts/check-figure-counts.py --write` to bring the page "
-            "back to the tree, then read the diff.",
+            "\nRun `python3 scripts/check-figure-counts.py --write` to bring the counts "
+            "back to the tree, then read the diff. A quoted block (data-verbatim) is "
+            "fixed by hand.",
             file=sys.stderr,
         )
         return 1
@@ -336,6 +547,10 @@ def main() -> int:
         f"{len(drawn_core)} folders, USER {user_total} in {len(drawn_user)}, "
         f"{len(re.findall(chr(34), src))//2 and sum(len(re.findall(chr(34)+'([^'+chr(34)+']+)'+chr(34), m.group(1))) for m in re.finditer(r'\b(?:ex|cex|uex)\s*:\s*\[([^\]]*)\]', src))} example paths all present."
     )
+    n_ring = sum(sum(v["kids"].values()) for v in ring.values())
+    l_ring = sum(v["lines"] for v in ring.values())
+    print(f"docs/index.html ring matches examples/agency: {n_ring} files, {l_ring} lines; "
+          f"quoted blocks match their sources.")
     return 0
 
 

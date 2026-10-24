@@ -27,6 +27,7 @@ Run: python3 -m pytest scripts/tests/test_figure_counts.py -q
 from __future__ import annotations
 
 import importlib.util
+import re
 import pathlib
 
 import pytest
@@ -194,3 +195,106 @@ def test_write_is_refused_in_a_configured_instance(monkeypatch, tmp_path):
 def test_drift_upstream_still_fails(monkeypatch, tmp_path):
     _drifting(monkeypatch, tmp_path, instance=False)
     assert cfc.main() == 1
+
+
+# ---------------------------------------------------------------------------
+# The containment ring on docs/index.html (2026-10-24). It draws the shipped
+# demo workspace examples/agency/ as files per folder and one dot per line, and
+# its caption spells both totals out. Nothing held it to the tree, so the page
+# said 1162 lines while the folder had 1168. The same census now covers it.
+# ---------------------------------------------------------------------------
+
+def _fake_reader(contents):
+    return lambda path: contents[path]
+
+
+def test_ring_census_counts_files_kids_and_lines():
+    files = [
+        "examples/agency/AGENTS.md",
+        "examples/agency/work/log.md",
+        "examples/agency/work/tasks/a/STATUS.md",
+        "examples/agency/work/tasks/b/STATUS.md",
+        "examples/agency/.claude/agents/x.md",
+        "docs/not-in-the-example.md",
+    ]
+    contents = {
+        "examples/agency/AGENTS.md": b"one\ntwo\n",
+        "examples/agency/work/log.md": b"a\n",
+        "examples/agency/work/tasks/a/STATUS.md": b"x\ny\nz\n",
+        "examples/agency/work/tasks/b/STATUS.md": b"",
+        "examples/agency/.claude/agents/x.md": b"q\n",
+    }
+    census = cfc.ring_census(files, read=_fake_reader(contents))
+    assert census["./"] == {"lines": 2, "kids": {"": 1}}
+    assert census["work/"] == {"lines": 4, "kids": {"": 1, "tasks/": 2}}
+    assert census[".claude/"] == {"lines": 1, "kids": {"agents/": 1}}
+    assert "docs/" not in census
+
+
+def test_index_ring_matches_the_tree():
+    src = cfc.RING_PAGE.read_text(encoding="utf-8")
+    census = cfc.ring_census(cfc.tracked())
+    assert cfc.ring_problems(src, census) == []
+
+
+def test_ring_drift_in_a_folder_is_reported():
+    src = cfc.RING_PAGE.read_text(encoding="utf-8")
+    census = cfc.ring_census(cfc.tracked())
+    stale = src.replace("label:'work/',       l:", "label:'work/',       l:9", 1)
+    assert stale != src
+    assert any("work/" in p for p in cfc.ring_problems(stale, census))
+
+
+def test_ring_caption_drift_is_reported():
+    src = cfc.RING_PAGE.read_text(encoding="utf-8")
+    census = cfc.ring_census(cfc.tracked())
+    total = sum(v["lines"] for v in census.values())
+    stale = src.replace(f", {total} Zeilen, je Zeile", ", 7 Zeilen, je Zeile", 1)
+    assert stale != src
+    assert cfc.ring_problems(stale, census)
+
+
+def test_ring_rewrite_brings_the_page_back():
+    src = cfc.RING_PAGE.read_text(encoding="utf-8")
+    census = cfc.ring_census(cfc.tracked())
+    stale = src.replace("label:'work/',       l:", "label:'work/',       l:9", 1)
+    stale = re.sub(r"examples/agency</b>: \d+ files, \d+ lines",
+                   "examples/agency</b>: 3 files, 4 lines", stale)
+    fixed = cfc.rewrite_ring(stale, census)
+    assert cfc.ring_problems(fixed, census) == []
+
+
+# ---------------------------------------------------------------------------
+# Quoted artifacts. A block on a page that says it is copied from a file must
+# be copied from that file. index.html called a log row "character-for-character
+# from the README" for months after the README stopped carrying it, and
+# concepts.html quoted a STATUS.md for a task that never existed.
+# ---------------------------------------------------------------------------
+
+def test_every_verbatim_block_quotes_the_tree():
+    assert cfc.verbatim_problems() == []
+
+
+@pytest.mark.parametrize("page", ["index.html", "concepts.html"])
+def test_the_quoting_pages_mark_their_source(page):
+    src = (REPO / "docs" / page).read_text(encoding="utf-8")
+    assert cfc.verbatim_blocks(src), f"docs/{page} quotes a file but names no data-verbatim source"
+
+
+def test_a_row_the_source_does_not_carry_is_reported(tmp_path):
+    page = tmp_path / "p.html"
+    page.write_text(
+        '<div class="artifact" data-verbatim="examples/agency/work/log.md">\n'
+        '  <div class="row"><span class="gut"> </span><span class="ln">| invented row |</span></div>\n'
+        '</div>\n'
+        '<p>(Copied character-for-character from examples/agency/work/log.md.)</p>\n',
+        encoding="utf-8",
+    )
+    problems = cfc.verbatim_problems([page])
+    assert any("invented row" in p for p in problems)
+
+
+def test_a_claim_without_a_marked_source_is_reported(tmp_path):
+    page = tmp_path / "p.html"
+    page.write_text("<p>(Copied character-for-character from the README.)</p>\n", encoding="utf-8")
+    assert cfc.verbatim_problems([page])

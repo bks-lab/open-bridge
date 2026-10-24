@@ -85,7 +85,8 @@
   var CHAOS = ["chat-export-final.txt", "notes (3).md", "prompt that worked.txt", "todo-maybe.md", "client stuff.docx", "chat-export-final-v2.txt", "untitled.md"];
   var LAYERS = ["identity/", "workflow/", "infra/", "work/"];
   var READ = ["AGENTS.md", "ecosystem.yaml", "work/board.md", "work/log.md"];
-  var LOG = [["09:14", "Decision", "bigcorp", "scoped the inbound pipeline"], ["11:02", "Fix", "startupxyz", "retry on 429, backoff added"], ["14:22", "Decision", "bigcorp", "Pinned the schema to v2"]];
+  // three rows of examples/agency/work/log.md (24.06), shortened to fit; the last is quoted in full on index.html
+  var LOG = [["10:18", "💻", "startupxyz", "wired the email-verification step, 6 tests green"], ["11:47", "🐛", "bigcorp", "payment webhooks failing in prod"], ["14:30", "📝", "bigcorp", "logged the Stripe webhook-secret root cause"]];
 
   import("./vendor/three.module.min.js").then(build).catch(function (e) {
     console.error(e); story.destroy(); root.classList.remove("story-live"); root.classList.add("story-static");
@@ -230,7 +231,7 @@
     var chaos = CHAOS.map(function (txt, i) { var a = (i / CHAOS.length) * Math.PI * 2 + .4, r = 2.4 + (i % 3) * .7;
       return { from: new THREE.Vector3(Math.cos(a) * r * (mobile ? .5 : 1.25) + (mobile ? 1.1 : 0), Math.sin(a) * r * .8, .4), lb: addLabel(txt, "fl", new THREE.Vector3()), seed: i * 1.7 }; });
     var readLbs = READ.map(function (txt) { return addLabel(txt, "fl rd", new THREE.Vector3()); });
-    var writeLb = addLabel("+ 14:22 · Decision · bigcorp", "fl wr", new THREE.Vector3());
+    var writeLb = addLabel("+ 14:30 · 📝 · bigcorp", "fl wr", new THREE.Vector3());
     var logLb = addLabel('<div class="log"><div class="h">work/log.md · ' + EN("written back", "zurückgeschrieben") + "</div>" +
       LOG.map(function (r) { return '<div class="r">| ' + r[0] + " | <em>" + r[1] + "</em> " + r[2] + " | " + r[3] + "</div>"; }).join("") + "</div>", "", new THREE.Vector3(), mobile ? "c" : "l");
     var logRows = [].slice.call(logLb.el.querySelectorAll(".r"));
