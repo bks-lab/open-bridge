@@ -30,11 +30,14 @@ produces the tree/ + overlay.manifest.yaml shape scripts/overlay.py consumes.
         files[]. Absent/empty existing => a schema-valid bootstrap scaffold
         (defaults.scope=scope, source_root=tree/, on_conflict=prompt).
 
-    export_overlay(repo_root, target, *, scope="personal", dry_run=False) -> dict
+    export_overlay(repo_root, target, *, scope="personal", dry_run=False,
+                   prune_foreign=False) -> dict
         (1) copy each discovered file VERBATIM to <target>/tree/<relpath>,
-        (2) prune stale files under tree/, (3) regenerate
-        <target>/overlay.manifest.yaml files[]. Deterministic + idempotent.
-        Never runs git. NEVER modifies the live repo. --dry-run writes nothing.
+        (2) prune stale files under tree/ (only what this bridge once owned;
+        the rest is reported as foreign, test_overlay_export_foreign.py),
+        (3) regenerate <target>/overlay.manifest.yaml files[]. Deterministic +
+        idempotent. Runs git read-only, and only in a git checkout. NEVER
+        modifies the live repo. --dry-run writes nothing.
 
     main(argv) -> int
         argparse CLI (--repo-root default '.', --target required, --scope
@@ -42,12 +45,13 @@ produces the tree/ + overlay.manifest.yaml shape scripts/overlay.py consumes.
         traceback. Success => 0.
 
 Hermetic: every test builds a synthetic mini-repo + a separate overlay target
-under tmp_path, never the real repo. Only the --check-ref tests run git, in a
+under tmp_path, never the real repo. Only the --check-ref and prune tests run git, in a
 throwaway repo under tmp_path with global config switched off.
 """
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -424,8 +428,28 @@ def test_export_idempotent(oe, mini_repo, tmp_path):
     assert result2["copied"] == EXPECTED_PERSONAL
 
 
+def _owned_once(repo: Path, relpaths: list[str]) -> None:
+    """Give `repo` a git history that once held `relpaths` and then dropped them.
+
+    The prune deletes only what this bridge once owned, and its git history is
+    the evidence (test_overlay_export_foreign.py). Without it a mirror file is
+    foreign and kept.
+    """
+    env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+    git = ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+           "-c", "commit.gpgsign=false"]
+    subprocess.run([*git, "init", "-q"], cwd=repo, check=True, env=env)
+    for rel in relpaths:
+        _write(repo, rel)
+    subprocess.run([*git, "add", "-A"], cwd=repo, check=True, env=env)
+    subprocess.run([*git, "commit", "-q", "-m", "seed"], cwd=repo, check=True, env=env)
+    subprocess.run([*git, "rm", "-q", *relpaths], cwd=repo, check=True, env=env)
+    subprocess.run([*git, "commit", "-q", "-m", "drop"], cwd=repo, check=True, env=env)
+
+
 def test_export_prunes_stale_tree_files(oe, mini_repo, tmp_path):
     target = _target(tmp_path)
+    _owned_once(mini_repo, ["identity/personas/GONE.yaml", "oldstuff/removed.yaml"])
     # seed a prior tree/ with files that are no longer personal
     stale1 = target / "tree/identity/personas/GONE.yaml"
     stale2 = target / "tree/oldstuff/removed.yaml"
