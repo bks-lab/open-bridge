@@ -108,7 +108,8 @@ work:
                              # `memory-location.py links` warns when it differs
                              # from the live setting. Raising it keeps more
                              # plaintext on disk (docs/memory.md § Retention).
-  max_active: 5              # max concurrent active tasks (0 = unlimited)
+  max_active: 10             # WIP warning: warns when doing+review in work/tasks/ EXCEEDS it,
+                             # never blocks. Unset = 10 (scripts/gen-board.py WIP_WARN), 0 = no cap.
   max_daily_goals: 3
   import_rules: false        # enable work/import-rules.yaml
   imports_dir: imports       # where /debrief picks up transcripts

@@ -29,9 +29,15 @@ what the slice exists to stop:
    `work/tasks/` finite, `work/streams/` long-running). Reading the whole log to
    reach the last activity is what the slice exists to stop: on one live
    instance that file was 405,076 bytes. `/briefing` and `/archive` still read
-   it in full, which is what they are for
+   it in full, which is what they are for.
+   When the log still holds a period `work.archive_cadence` has closed, the
+   slice LEADS with a `> ⚠` line naming those periods, their rows and size.
+   Pass it on and offer `/archive`; never archive unasked, since it distils
+   memory and asks first. `worklog.py --check` exits 1 on the same condition
 2. Create today's day-block if missing (from `work/templates/day.md`;
-   header `## {Weekday} DD.MM`)
+   header `## {Weekday} DD.MM`). A row written with
+   `python3 scripts/worklog.py --append --context <tag> --what "<what, why>"`
+   lands in its own day's block and opens that block when it is missing
 3. Read the registry index: `python3 scripts/context-index.py ecosystem.yaml`
    (settings verbatim, one line per repo/customer/workspace). Fetch an entry
    with `--get <name>` when the work names one. Skip silently when the file is
@@ -209,7 +215,7 @@ Mechanics under this gate:
 **Triggers:** Log to `work/log.md` after git commits, command invocations, repo switches, significant findings, end of work blocks.
 **30-minute rule:** If >30 min without logging, catch up immediately.
 **Board sync:** `work/board.md` is **generated** from the task dirs — edit STATUS.md and regenerate; never hand-curate the board.
-**WIP warning:** If `doing + review` tasks in `work/tasks/` >= max_active, **warn only** (never blocks) and suggest closing, reprioritising, or reclassifying. Long-running streams live in `work/streams/` and do **not** count toward the limit.
+**WIP warning:** If `doing + review` tasks in `work/tasks/` exceed `work.max_active` (default 10, 0 = no cap), **warn only** (never blocks) and suggest closing, reprioritising, or reclassifying. Long-running streams live in `work/streams/` and do **not** count toward the limit.
 
 Full work-system semantics — log format, logging levels, and the task lifecycle — live in [`docs/work-system.md`](../docs/work-system.md).
 

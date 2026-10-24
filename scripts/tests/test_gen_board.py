@@ -504,3 +504,28 @@ def test_a_task_whose_headline_carries_a_pipe_does_not_break_the_table(board_tre
     delimiters = re.sub(r"\\.", "", data_row).count("|")
     assert delimiters == 7, f"cell count broken by an unescaped pipe: {data_row}"
     assert "a \\| b" in data_row
+
+
+# --------------------------------------------------- one WIP default --
+#
+# The template shipped `max_active: 5`, the generator defaulted to 10, and the
+# operations rule warned at `>=` while every script warned at `>`. Three
+# answers to one question. The number lives in gen-board.py as WIP_WARN; every
+# other place that states it must agree, and the comparison is "exceeds".
+
+def test_the_template_ships_the_generators_default():
+    import yaml
+    tmpl = yaml.safe_load((REPO_ROOT / "bridge-config.yaml.template").read_text(encoding="utf-8"))
+    assert tmpl["work"]["max_active"] == gb.WIP_WARN
+
+
+def test_the_pre_commit_hook_falls_back_to_the_same_default():
+    hook = (REPO_ROOT / "scripts" / "hooks" / "pre-commit").read_text(encoding="utf-8")
+    assert f"max=${{max:-{gb.WIP_WARN}}}" in hook
+
+
+def test_the_docs_state_the_default_and_the_comparison():
+    doc = (REPO_ROOT / "docs" / "work-system.md").read_text(encoding="utf-8")
+    assert f"default {gb.WIP_WARN}" in doc
+    rule = (REPO_ROOT / "rules" / "operations.md").read_text(encoding="utf-8")
+    assert ">= max_active" not in rule
