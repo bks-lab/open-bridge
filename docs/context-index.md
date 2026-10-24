@@ -1,7 +1,7 @@
 ---
 summary: A table of contents for a large declared source, and one block on demand — the progressive disclosure skills always had, applied to registries and config maps.
 type: reference
-last_updated: 2026-08-30
+last_updated: 2026-10-24
 related:
   - AGENTS.md
   - rules/operations.md
@@ -63,6 +63,14 @@ on its own, so declaring only `keep:` does not silently switch indexing off.
 CORE ships the bare form, because naming sections there would fail the
 `--check` guard on the first instance whose registry legitimately has no
 `partners:`.
+
+**A card replaces the import; it never sits beside it.** An `@`-import loads
+the whole file into every session, whatever the budget declares, so a file that
+carries a `card:` and is still `@`-imported (from `CLAUDE.md` or any file it
+imports) is reported `contradiction` by `scripts/measure-context.py`: measured by
+its full text, and failing at any size. Measuring the card there would report
+green for bytes nobody pays while the session pays for the rest. If sub-agents
+need the registry, import a generated card file, not the source.
 
 Everything else present in the file is named under **"also present"**. Kept,
 indexed, or merely named — but never absent. A card that silently omits a key

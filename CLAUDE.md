@@ -2,9 +2,11 @@
 
 # Claude Code specifics
 
-The canonical, tool-agnostic operating manual for this repo is the **~800-line
-[`AGENTS.md`](AGENTS.md)**
-(Linux-Foundation convention, read natively by Codex/Cursor/Copilot/Gemini). It is inlined
+The canonical, tool-agnostic operating manual for this repo is
+**[`AGENTS.md`](AGENTS.md)**
+(Linux-Foundation convention, read natively by Codex/Cursor/Copilot/Gemini). Its size, and
+that of everything else a session loads, is reported by `python3 scripts/measure-context.py`
+rather than written down here, where it would go stale. It is inlined
 above via `@AGENTS.md`, so the full manual — session-start gate, rules, task management, agents,
 standing orders, commands — is already in your context. This file only adds the
 Claude-Code-specific bits.
@@ -16,6 +18,8 @@ line per repo, customer and workspace; the entry itself arrives with `--get <nam
 somebody names one. The registry is the always-on file that grows with the instance rather
 than with this repo, and reading it whole meant carrying a paragraph about every project in
 order to know that the project exists. Details: [`docs/context-index.md`](docs/context-index.md).
+A file that declares a `card:` and is still `@`-imported here fails `measure-context.py` as
+`contradiction`: the import loads it whole, whatever the card says.
 
 That trade has a real cost worth naming: an `@`-import is resident for the whole session,
 while a Phase 1 read is ordinary conversation and can be compacted away later. The card is

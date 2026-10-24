@@ -159,6 +159,23 @@ items:
       SECOND one is measured the day it lands, rather than the day somebody
       wonders where the context went.
 
+  # ---------------------------------------------------------------- harness --
+  # Loaded by the harness itself, named in no file of this tree. Discovered by
+  # `measure-context.py` the way the harness resolves it, so an instance that
+  # never declares it is still measured (and reported `undeclared`).
+  "harness:memory-index":
+    source: harness
+    optional: true
+    max_bytes: 25600
+    note: >-
+      The auto-memory `MEMORY.md` Claude Code loads into every main session,
+      from the directory `scripts/memory-location.py` resolves for the harness
+      (`autoMemoryDirectory`, else the per-project default). Absent in a fresh
+      clone and with auto memory off. Counted nowhere until 2026-10: one
+      instance carried 20 227 bytes of it unmeasured. The cap is the harness's
+      own load limit (25 KB); past it the tail is silently not loaded, so over
+      is a defect here, not growth.
+
   # -------------------------------------------------------- standing orders --
   # Only the orders that are actually always-on, i.e. `load: eager`. The five
   # carrying `load: on-trigger` are fetched by their vocabulary and left this
@@ -220,7 +237,9 @@ items:
     note: >-
       The memory index for a harness that reads only AGENTS.md. Empty in a
       fresh clone, and one line inside Claude Code with auto memory on, since
-      the harness already loaded the same file. The cap is the harness's own
+      the harness already loaded the same file (counted under
+      `harness:memory-index`). The meter runs every command as Claude Code
+      would, so the same index is never counted twice. The cap is the harness's own
       load limit for MEMORY.md (25 KB), which `memory-location.py check`
       enforces on the file itself.
   "cmd:python3 scripts/worklog.py --recent 3":

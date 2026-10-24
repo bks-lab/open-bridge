@@ -83,14 +83,17 @@ properties:
             (instance data). Absent-and-optional passes; absent-and-required
             fails, because a declared file that vanished is a finding.
         source:
-          enum: [import, standing-order, phase1, listing]
+          enum: [import, standing-order, phase1, listing, harness]
           description: >-
             Only needed for items no discovery can find — the Phase 1 reads.
             Imports, standing orders and listings are discovered from the tree.
             `listing` marks the derived surface: `listing:skills` and
             `listing:agents` are not files but the name-plus-description block
             the harness injects into every session and every sub-agent
-            dispatch, one line per entry.
+            dispatch, one line per entry. `harness` marks what the harness
+            loads on its own from outside the tree: `harness:memory-index` is
+            the auto-memory `MEMORY.md`, resolved by
+            `scripts/memory-location.py`.
         note:
           type: string
           minLength: 1
@@ -104,6 +107,9 @@ properties:
             decision in one place. `scripts/context-index.py` renders it and
             `measure-context.py` measures what it renders. Omit the block and
             the file stays always-on in full, which is the fail-open default.
+            A card on a file that is ALSO `@`-imported is the state
+            `contradiction`: the import loads the whole file, so the full text
+            is measured and the build fails at any size.
           properties:
             kind:
               const: index
