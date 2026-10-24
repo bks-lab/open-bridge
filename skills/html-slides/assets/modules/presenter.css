@@ -1,0 +1,15 @@
+/* presenter: the one element the module adds to the deck itself, a notice when the
+   browser blocks the presenter window (reference/modules.md § Module: presenter).
+   The presenter window and the floating timer carry their own styles. */
+.deck-presenter-toast {
+  position: fixed; left: 50%; top: clamp(12px, 2vh, 24px); transform: translateX(-50%);
+  z-index: 104; max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 16px; border-radius: 8px;
+  background: var(--surface-elevated, var(--surface)); color: var(--text);
+  border: 1px solid var(--border-bright, var(--border));
+  font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+}
+.deck-presenter-toast[hidden] { display: none; }
+@media print {
+  .deck-presenter-toast { display: none !important; }
+}
