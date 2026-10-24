@@ -457,3 +457,66 @@ def test_generator_checks_the_transport_bar(archetype, tmp_path):
     text = assemble(tmp_path, archetype).read_text("utf-8")
     for needle in ("data-sim-scrub", "data-sim-back", "data-sim-copy-link", "data-sim-table-toggle", "Sim.params("):
         assert needle in text, needle
+
+
+# --- review wave 4: the end of a run, and hostile hash names ---------------------------
+
+END_MODEL = """<!doctype html><meta charset=utf-8><main>
+  <button data-sim-run></button><button data-sim-step></button><button data-sim-back></button>
+  <div data-sim-timeline><input type=range data-sim-scrub><span data-sim-scrub-time></span></div>
+  <select data-sim-param="cap"><option>1</option><option>2</option></select></main>
+  <script>%s</script><script>
+  window.__err = null;
+  try {
+    var P = Sim.params({ cap: { value: 1, min: 1, max: 2 } });
+    var n = 0;
+    var clock = new Sim.Clock({ snapEvery: 25, step: function () { n++; return n >= 100; },
+      render: function () {}, reset: function () { n = 0; },
+      snapshot: function () { return n; }, restore: function (s) { n = s; } });
+    P.bind(clock); Sim.Controls(clock); Sim.boot(clock, {});
+  } catch (e) { window.__err = String(e); }
+  </script>""" % ENGINE
+
+
+@pytest.mark.parametrize("how", ["seek", "scrub"])
+def test_a_seek_to_the_end_is_done_and_play_never_steps_past_it(open_page, how):
+    page = open_page(END_MODEL)
+    assert page.evaluate("clock.length()") == 100
+    if how == "seek":
+        page.evaluate("clock.seek(100)")
+    else:
+        page.evaluate("var r = document.querySelector('[data-sim-scrub]'); r.value = r.max;"
+                      " r.dispatchEvent(new Event('input'))")
+    assert page.evaluate("[clock.ticks, clock.finished, clock.state]") == [100, True, "done"]
+    page.evaluate("clock.start()")
+    page.wait_for_timeout(200)
+    assert page.evaluate("[clock.ticks, n]") == [100, 100], "Play stepped a finished model past its end"
+    assert page.errors == []
+
+
+@pytest.mark.parametrize("hash_", ["#t=100", "#t=9999"])
+def test_a_link_to_the_end_opens_done(open_page, hash_):
+    page = open_page(END_MODEL)
+    page.evaluate("(h) => { location.hash = h; location.reload(); }", hash_)
+    page.wait_for_function("window.clock && clock.ticks > 0")
+    assert page.evaluate("[window.__err, clock.ticks, clock.finished, clock.state]") == [None, 100, True, "done"]
+
+
+@pytest.mark.parametrize("name", ["hasOwnProperty", "constructor", "__proto__", "toString"])
+def test_a_hash_named_like_an_object_builtin_breaks_nothing(open_page, name):
+    page = open_page(END_MODEL)
+    page.evaluate("(h) => { location.hash = h; location.reload(); }", "#%s=1&cap=2" % name)
+    page.wait_for_function("window.clock !== undefined || window.__err !== null")
+    assert page.evaluate("window.__err") is None
+    assert page.evaluate("P.get('cap')") == 2
+    assert page.errors == []
+
+
+@pytest.mark.parametrize("lang,name", [("en", "Review"), ("de", "Prüfung")])
+def test_flow_names_every_station(sim, lang, name):
+    """TXT carried `review` twice: the verdict labels overwrote the station name, and the
+    gate station drew no title."""
+    page = sim("flow", lang=lang)
+    titles = page.evaluate("""() => [...document.querySelectorAll('.sim-t-title')]
+      .filter(t => t.getClientRects().length).map(t => t.textContent.trim())""")
+    assert "" not in titles and any(name in t for t in titles), titles

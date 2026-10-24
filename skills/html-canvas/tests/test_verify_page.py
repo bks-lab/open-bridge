@@ -527,3 +527,15 @@ def test_allow_sample_turns_it_into_a_warning(tmp_path):
     code, data = run(str(_page(tmp_path, '<div data-sample><p>…</p></div>')), "--allow-sample")
     assert ("sample", "warning") in findings(data) and ("sample", "error") not in findings(data)
     assert code == 0
+
+
+def test_browser_leaves_steps_not_yet_reached_to_the_steps_module(browser, tmp_path):
+    """A step at opacity 0 is a step not yet reached (html-slides steps module): print, PDF and
+    the reading view show it, so it is no reduced-motion finding. Other hidden text still is."""
+    css = ".step-hidden{visibility:visible;opacity:0}"
+    page = _variant(tmp_path, "steps.html", css, body='<ul><li class="step-hidden">Later step</li></ul>')
+    code, data = run(str(page), "--browser")
+    assert "reduced-motion" not in rules(data), data
+    page = _variant(tmp_path, "faded.html", css + ".faded{opacity:0}", body='<p class="faded">Gone</p>')
+    code, data = run(str(page), "--browser")
+    assert ("reduced-motion", "warning") in findings(data), data

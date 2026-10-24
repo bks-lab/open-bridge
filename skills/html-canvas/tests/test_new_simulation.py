@@ -95,3 +95,22 @@ def test_existing_output_is_not_overwritten_without_force(tmp_path):
     r = run_new_simulation(out, "--archetype", "worklist", "--force")
     assert r.returncode == 0, r.stderr
     assert "global.Sim = {" in out.read_text("utf-8")
+
+
+# --- fonts (review wave 4): a simulation in a stage or sent alone needs its own -------
+
+def test_embed_fonts_is_opt_in(tmp_path):
+    plain, fonts = tmp_path / "plain.html", tmp_path / "fonts.html"
+    r1 = run_new_simulation(plain, "--archetype", "flow")
+    r2 = run_new_simulation(fonts, "--archetype", "flow", "--embed-fonts")
+    assert r1.returncode == 0 and r2.returncode == 0, r2.stderr
+    assert "@font-face" not in plain.read_text("utf-8")
+    text = fonts.read_text("utf-8")
+    assert "@font-face" in text and "font/woff2;base64," in text
+    assert text.count("/* page-fonts:begin */") == 1
+    assert text.index("/* page-fonts:end */") < text.index("</head>")
+
+
+def test_font_dir_needs_embed_fonts(tmp_path):
+    r = run_new_simulation(tmp_path / "x.html", "--archetype", "flow", "--font-dir", str(tmp_path))
+    assert r.returncode != 0 and "--embed-fonts" in r.stderr

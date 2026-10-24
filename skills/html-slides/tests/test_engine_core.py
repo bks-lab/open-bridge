@@ -113,6 +113,29 @@ def test_alt_click_zooms_and_click_or_esc_resets(open_html):
     assert page.errors == []
 
 
+def test_zoom_gives_back_the_inline_transform_it_found(open_html):
+    page = open_deck(open_html, deck(3))
+    inline = "() => { const c = document.querySelector('.slide.is-active > *');" \
+             " return [c.style.transform, c.style.transformOrigin, c.style.transition]; }"
+    page.evaluate("""() => { const c = document.querySelector('.slide.is-active > *');
+      c.style.transform = 'translateX(10px)'; c.style.transformOrigin = '0px 0px'; c.style.transition = 'opacity 1s'; }""")
+    for close in ("click", "Escape"):
+        page.mouse.move(400, 300)
+        page.keyboard.down("Alt")
+        page.mouse.click(400, 300)
+        page.keyboard.up("Alt")
+        assert zoomed(page)
+        assert "scale(2)" in page.evaluate(inline)[0]
+        if close == "click":
+            page.mouse.click(400, 300)
+        else:
+            page.keyboard.press("Escape")
+        assert not zoomed(page)
+        page.wait_for_timeout(450)
+        assert page.evaluate(inline) == ["translateX(10px)", "0px 0px", "opacity 1s"], close
+    assert page.errors == []
+
+
 # --- a11y -----------------------------------------------------------------------------------
 
 def test_slide_labels_count_n_of_total(open_html):
@@ -264,3 +287,28 @@ def test_help_lists_the_core_keys(open_html):
     kbds = page.evaluate("() => [...document.querySelectorAll('.deck-help kbd')].map(k => k.textContent)")
     for k in ("B", "W", "Enter", "L", "Alt+click"):
         assert k in kbds, (k, kbds)
+
+
+def test_german_help_names_the_keys_in_german(open_html):
+    page = open_deck(open_html, deck(BILINGUAL, lang="de", deck_attrs='data-deck-id="lang-k"'))
+    page.keyboard.press("?")
+    kbds = page.evaluate("() => [...document.querySelectorAll('.deck-help kbd')].map(k => k.textContent)")
+    for k in ("Leertaste", "Bild↓", "Alt+Klick"):
+        assert k in kbds, (k, kbds)
+    for k in ("Space", "PgDn", "Alt+click"):
+        assert k not in kbds, (k, kbds)
+
+
+def test_help_with_every_module_fits_a_laptop_screen(open_html, page):
+    from engine_testlib import SHIPPED_MODULES, module_deck
+    page.set_viewport_size({"width": 1440, "height": 810})
+    names = sorted(p.stem for p in SHIPPED_MODULES.glob("*.js"))
+    slides = BILINGUAL + [slide("Tracked", ' data-track="b"', '<div data-buehne hidden></div>')]
+    open_deck(open_html, module_deck(names, slides, lang="de", deck_attrs='data-deck-id="help-fit"'))
+    rows = page.evaluate("() => document.querySelectorAll('.deck-help__list dt').length")
+    page.keyboard.press("?")
+    fit = page.evaluate("""() => { const c = document.querySelector('.deck-help__card');
+      return [c.scrollHeight, c.clientHeight]; }""")
+    assert fit[0] <= fit[1] + 1, "the help list needs a scroll at 1440 x 810: %s" % fit
+    keys = page.evaluate("() => [...document.querySelectorAll('.deck-help kbd')].map(k => k.textContent)")
+    assert "F" in keys and "V" in keys and rows >= 18, (rows, keys)

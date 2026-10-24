@@ -271,7 +271,7 @@ var TXT = {
     toOut:    { de: 'unterwegs zum Ergebnis', en: 'on the way to the outcome' },
     binned:   { de: 'im Ergebnisfeld',        en: 'in an outcome field' }
   },
-  review: {
+  verdict: {
     none:     { de: 'noch nicht geprüft', en: 'not reviewed yet' },
     ok:       { de: 'bestätigt',          en: 'confirmed' },
     warn:     { de: 'korrigiert',         en: 'corrected' },
@@ -588,7 +588,7 @@ var table = new Sim.Table(document.getElementById('simTable'), {
   columns: TXT.cols,
   rows: function () {
     return items.map(function (t) {
-      var review = t.pass === 0 ? TXT.review.none : TXT.review[t.mark || 'ok'];
+      var review = t.pass === 0 ? TXT.verdict.none : TXT.verdict[t.mark || 'ok'];
       return [t.spec.id, TXT.lanes[t.spec.lane], where(t) || '',
               review, t.phase === 'binned' ? TXT.bins[t.spec.bin] : '·'];
     });

@@ -133,8 +133,9 @@ kbd{border:1px solid var(--line);border-radius:var(--radius-sm);padding:1px 6px;
    display off such selectors.
    An element carrying BOTH attributes (data-de="Start" data-en="Start", or the
    empty form) is the same in both languages and is never hidden.
-   English is the default (matches lang="en" above); flip both rules if you default
-   to German. Without a data-lang attribute (JS off) the default language shows. */
+   The two rules below name the default language: without a data-lang attribute
+   (JS off) it is the one that shows. new-page.py and new-simulation.py write the
+   pair for the --lang they are given, together with <html lang>. */
 :root:not([data-lang="de"]) [data-de]:not([data-en]){display:none}
 :root[data-lang="de"] [data-en]:not([data-de]){display:none}
 

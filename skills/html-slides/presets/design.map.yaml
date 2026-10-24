@@ -15,6 +15,10 @@
 # neutral value new-deck.py writes above the generated block (derived from the
 # text and ground colours), so an older manifest still gives a legible deck.
 
+# A deck prints the mode it shows: render-pdf.cjs --theme light|dark picks it,
+# so the generator's light-on-paper print block stays out of the deck.
+print: false
+
 selectors:
   # :root joins the light group so a deck without scripts is legible and light;
   # the pre-paint script sets .theme-light or .theme-dark before the first paint.

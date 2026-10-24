@@ -412,6 +412,21 @@ def test_back_link_with_pages_travels_as_a_payload_and_opens(browser, tree, tmp_
         ctx.close()
 
 
+def test_a_fragment_with_quotes_stays_inside_its_attribute(tree, tmp_path):
+    """An escaped quote in a link or back link fragment must not become a live attribute."""
+    evil = "#x&quot; onmouseover=&quot;alert(1)"
+    page = _deck(tree, "pages/second.html" + evil)
+    page.write_text(page.read_text("utf-8").replace(
+        "<h1>Deck</h1>", '<h1>Deck</h1><a id="l" href="pages/second.html%s&amp;b">l</a>' % evil), encoding="utf-8")
+    out = tmp_path / "o.html"
+    r = run(SCRIPT, page, "--out", out, "--pages")
+    assert r.returncode == 0, r.stderr
+    text = out.read_text("utf-8")
+    assert "onmouseover=" not in text.replace("onmouseover=&quot;", ""), "a quote in the fragment broke out"
+    assert 'data-back-hash="#x&quot; onmouseover=&quot;alert(1)"' in text
+    assert 'data-bundle-hash="#x&quot; onmouseover=&quot;alert(1)&amp;b"' in text
+
+
 def test_a_style_tag_written_by_a_script_is_not_read_as_css(tmp_path):
     """A script that builds a page in a string ('<style>' + css + '<\\/style>') and later
     calls URL.revokeObjectURL(x) must not look like a CSS url(x) to the safety net:
@@ -438,3 +453,36 @@ def test_a_css_url_in_a_real_style_still_counts(tmp_path):
             "<div style=\"background:url(other.png)\"></div>"
             "<script>var s = 'style=\"background:url(js.png)\"';</script>")
     assert mod.leftover_refs(html) == ["missing.png", "other.png"]
+
+
+def test_no_design_md_for_a_page_without_faces_is_said(tmp_path):
+    """A page naming a font family, with no @font-face and no DESIGN.md to embed from,
+    renders in a fallback: the bundle says so instead of staying quiet."""
+    d = tmp_path / "alone"
+    d.mkdir()
+    (d / "p.html").write_text('<!doctype html><html><head><meta charset="utf-8"><title>p</title>'
+                              '<style>body{font-family:"Fixture Sans",sans-serif}</style></head>'
+                              '<body>x</body></html>', encoding="utf-8")
+    r = run(SCRIPT, d / "p.html", "--out", tmp_path / "o.html")
+    assert r.returncode == 0, r.stderr
+    assert "no DESIGN.md" in r.stderr and "--design" in r.stderr, r.stderr
+
+
+def test_a_linked_page_gets_its_fonts_in_its_payload(tree, tmp_path):
+    """--pages: each bundled page embeds its own faces, not only the entry."""
+    out = tmp_path / "o.html"
+    shutil.copyfile(FONT_FIXTURES / "fixture-sans-latin-400.woff2", tree / "fixture-sans-latin-400.woff2")
+    design = tree / "DESIGN.md"
+    design.write_text("---\nname: fx\ntypography:\n  body:\n    fontFamily: Fixture Sans\n    fontWeight: 400\n---\n",
+                      encoding="utf-8")
+    second = tree / "pages" / "second.html"
+    second.write_text(second.read_text("utf-8").replace("</head>", "<style>body{font-family:'Fixture Sans'}</style></head>", 1),
+                      encoding="utf-8")
+    entry = tree / "linked.html"
+    entry.write_text((tree / "index.html").read_text("utf-8").replace(
+        '<script src="app.js">', '<a href="pages/second.html">2</a>\n<script src="app.js">'), encoding="utf-8")
+    r = run(SCRIPT, entry, "--out", out, "--pages", "--design", design, "--font-dir", tree)
+    assert r.returncode == 0, r.stderr
+    pays = payloads(out.read_text("utf-8"))
+    page = [data for src, data in pays.values() if src == "pages/second.html"]
+    assert page and b"@font-face" in page[0], r.stderr

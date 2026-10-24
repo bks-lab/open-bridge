@@ -175,3 +175,33 @@ def test_code_shows_cli_flags_without_ligatures():
     css = (ASSETS / "slide-engine.css").read_text("utf-8")
     block = css[css.index(".slide__code-block {"):]
     assert "font-variant-ligatures: none" in block[:block.index("}")]
+
+
+def test_print_draws_no_focus_ring(open_html, page):
+    """A focused deck or control printed its focus ring as a thin frame round every page."""
+    open_deck(open_html, deck(3))
+    page.evaluate("""() => { const d = document.querySelector('.deck'); d.tabIndex = -1;
+      d.style.outline = '2px solid rgb(0, 0, 255)'; d.focus(); }""")
+    page.emulate_media(media="print")
+    assert page.evaluate("() => getComputedStyle(document.activeElement).outlineStyle") == "none"
+
+
+GAP = """([a, b]) => { const r1 = document.querySelector(a).getBoundingClientRect(),
+  r2 = document.querySelector(b).getBoundingClientRect(); return r2.top - r1.bottom; }"""
+
+
+def test_title_and_code_keep_their_distance_without_inline_margins(open_html, page):
+    """The engine carries the spacing the snippets used to set inline: a tagline under the
+    display line, a subtitle over it, a code block (and its filename badge) under a heading."""
+    title = ('<section class="slide slide--title" id="t"><div class="reveal"><p class="slide__subtitle" id="sub">Eyebrow line</p></div>'
+             '<h1 class="slide__display reveal" id="disp">Typography gap</h1>'
+             '<div class="reveal" id="tagwrap"><p class="slide__subtitle" id="tag">Tagline under it</p></div></section>')
+    code = ('<section class="slide slide--code" id="c"><h2 class="slide__heading reveal" id="ch">Code heading</h2>'
+            '<div class="slide__code-block reveal" id="cb"><span class="slide__code-filename" id="cf">deck.py</span>'
+            '<pre><code>print("x")</code></pre></div></section>')
+    open_deck(open_html, deck([title, code]))
+    assert page.evaluate(GAP, ["#disp", "#tagwrap"]) >= 12
+    assert page.evaluate(GAP, ["#sub", "#disp"]) >= 12
+    page.evaluate("() => window.SlideDeck.goTo(1)")
+    page.wait_for_timeout(400)
+    assert page.evaluate(GAP, ["#ch", "#cf"]) >= 4, "the filename badge touches the heading"

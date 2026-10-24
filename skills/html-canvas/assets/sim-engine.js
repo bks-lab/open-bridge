@@ -19,6 +19,8 @@
     ========================================================================== */
 (function (global) {
   'use strict';
+  /* Own-key test that a key named like an Object builtin cannot shadow. */
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
 
   var doc = global.document;
   var SVGNS = 'http://www.w3.org/2000/svg';
@@ -79,7 +81,7 @@
   /* -- SVG helpers ----------------------------------------------------------- */
   function svg(tag, attrs, parent) {
     var n = doc.createElementNS(SVGNS, tag);
-    if (attrs) for (var k in attrs) if (attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]);
+    if (attrs) for (var k in attrs) if (has(attrs, k)) n.setAttribute(k, attrs[k]);
     if (parent) parent.appendChild(n);
     return n;
   }
@@ -328,6 +330,9 @@
         if (this._advanceOne()) this.finished = true;
         g++;
       }
+      /* A snapshot taken at the last tick restores an unfinished run: the end
+         is known from the dry run, so Play never steps the model past it. */
+      if (!this.finished && this._length !== null && this.ticks >= this._length) this.finished = true;
     } finally { seeking = false; }
   };
 
@@ -369,7 +374,7 @@
     var target = 0;
     if (this._marker) {
       this.length();                       /* the dry run has seen every marker */
-      for (var k in this._marks) if (this._marks.hasOwnProperty(k)) {
+      for (var k in this._marks) if (has(this._marks, k)) {
         var t = +k;
         if (t < this.ticks && t > target) target = t;
       }
@@ -758,13 +763,16 @@
     var clock = null, readySent = false;
     /* Keys the deck needs while focus sits inside the frame: V toggles the
        large stage, Escape leaves it, PageDown and PageUp are what presentation
-       clickers send. Space, R, S and the digits stay with the simulation. */
-    var FORWARD = { v: 'v', V: 'v', Escape: 'Escape', PageDown: 'PageDown', PageUp: 'PageUp' };
+       clickers send, T and L are the slide's theme and language (the frame
+       follows the slide and stores no choice of its own). Space, R, S and the
+       digits stay with the simulation. */
+    var FORWARD = { v: 'v', V: 'v', Escape: 'Escape', PageDown: 'PageDown', PageUp: 'PageUp',
+                    t: 't', T: 't', l: 'l', L: 'l' };
 
     function post(type, extra) {
       if (!embedded) return;
       var msg = { type: type };
-      if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) msg[k] = extra[k];
+      if (extra) for (var k in extra) if (has(extra, k)) msg[k] = extra[k];
       try { global.parent.postMessage(msg, '*'); } catch (err) { /* parent gone */ }
     }
 
@@ -797,15 +805,18 @@
           reflect(d.on);
         }
       });
-      doc.addEventListener('keydown', function (e) {
+      /* Capture on the window, so the page's own T and L handlers (the shell's,
+         which would flip only the frame and store the choice) never see them. */
+      global.addEventListener('keydown', function (e) {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
         var t = e.target || {};
         if (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName || '')) return;
         var key = FORWARD[e.key];
         if (!key) return;
         if (key === 'PageDown' || key === 'PageUp') e.preventDefault();
+        if (key === 't' || key === 'l') { e.preventDefault(); e.stopPropagation(); }
         post('stage:key', { key: key });
-      });
+      }, true);
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', wireButtons);
     else wireButtons();
@@ -894,7 +905,9 @@
   var url = (function () {
     var sources = [];
     function parse() {
-      var out = {}, h = String(global.location && global.location.hash || '').replace(/^#/, '');
+      /* No prototype: a name such as hasOwnProperty or __proto__ in a link is
+         a plain key here, never a builtin. */
+      var out = Object.create(null), h = String(global.location && global.location.hash || '').replace(/^#/, '');
       if (h.indexOf('=') < 0) return out;
       h.split('&').forEach(function (kv) {
         var i = kv.indexOf('=');
@@ -956,11 +969,11 @@
     var self = this;
     this.defs = defs; this.names = []; this.values = {}; this._fns = [];
     var h = url.parse();
-    for (var n in defs) if (defs.hasOwnProperty(n)) {
+    for (var n in defs) if (has(defs, n)) {
       if (n === 'speed' || n === 't') throw new Error('[sim] param name "' + n + '" is reserved');
       this.names.push(n);
       this.values[n] = defs[n].value;
-      if (h.hasOwnProperty(n)) {
+      if (has(h, n)) {
         var v = this._coerce(n, h[n]);
         if (v !== undefined) this.values[n] = v;
       }
@@ -996,7 +1009,7 @@
   Params.prototype.get = function (name) { return this.values[name]; };
   Params.prototype.on = function (fn) { this._fns.push(fn); };
   Params.prototype.set = function (name, raw) {
-    if (!this.defs.hasOwnProperty(name)) return false;
+    if (!has(this.defs, name)) return false;
     var v = this._coerce(name, raw);
     if (v === undefined) { this._sync(); return false; }
     if (v === this.values[name]) { this._sync(); return true; }
@@ -1024,7 +1037,7 @@
     var self = this;
     this._els().forEach(function (el) {
       var n = el.getAttribute('data-sim-param');
-      if (!self.defs.hasOwnProperty(n)) return;
+      if (!has(self.defs, n)) return;
       var v = self.values[n];
       if (/^(select|input)$/i.test(el.tagName)) {
         if (el.type === 'checkbox') el.checked = !!v; else el.value = String(v);
@@ -1036,14 +1049,14 @@
     });
     [].forEach.call(doc.querySelectorAll('[data-sim-param-out]'), function (o) {
       var n = o.getAttribute('data-sim-param-out');
-      if (self.defs.hasOwnProperty(n)) put(o, String(self.values[n]));
+      if (has(self.defs, n)) put(o, String(self.values[n]));
     });
   };
   Params.prototype._wire = function () {
     var self = this;
     this._els().forEach(function (el) {
       var n = el.getAttribute('data-sim-param');
-      if (!self.defs.hasOwnProperty(n)) return;
+      if (!has(self.defs, n)) return;
       if (/^(select|input)$/i.test(el.tagName)) {
         el.addEventListener('change', function () {
           self.set(n, el.type === 'checkbox' ? el.checked : el.value);

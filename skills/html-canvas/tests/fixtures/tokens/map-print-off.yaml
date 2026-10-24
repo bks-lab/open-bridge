@@ -1,0 +1,9 @@
+# A consumer that prints the mode it shows (a slide deck: render-pdf --theme
+# picks it) turns the light print block off.
+print: false
+selectors:
+  light: ":root, .theme-light"
+  dark: ".theme-dark"
+vars:
+  bg: surface
+  text: on-surface

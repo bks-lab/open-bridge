@@ -79,7 +79,8 @@ def test_preset_file_declares_its_source():
 
 
 def test_map_loads_and_covers_every_engine_colour():
-    entries, selectors = canvas_module("design-to-css").load_map(MAP)
+    entries, selectors, print_block = canvas_module("design-to-css").load_map(MAP)
+    assert print_block is False, "a deck prints the mode it shows"
     wanted = {v for v in engine_vars() if not v.startswith("font-")}
     assert wanted, "no variables found in slide-engine.css"
     assert wanted <= set(entries), "engine variables without a map entry: %s" % sorted(wanted - set(entries))
@@ -171,3 +172,38 @@ def test_rules_say_design_md_wins_and_limit_the_font_ban():
     assert re.search(r"style presets?", text, re.I)
     ban = next(ln for ln in text.splitlines() if ln.startswith("| Fonts"))
     assert "style preset" in ban.lower(), "the Inter ban names its scope: style presets only"
+
+
+def test_design_deck_prints_the_theme_it_shows(open_html, page, tmp_path):
+    """render-pdf --theme dark must give a dark PDF: print keeps the deck's mode."""
+    open_html(build(tmp_path).read_text("utf-8"))
+    page.wait_for_selector(".theme-toggle", state="attached")
+    bg = "() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()"
+    page.evaluate("() => { const r = document.documentElement; r.classList.remove('theme-light'); r.classList.add('theme-dark'); }")
+    dark_screen = page.evaluate(bg)
+    page.emulate_media(media="print")
+    assert page.evaluate(bg) == dark_screen, "print turned the dark deck light"
+    page.evaluate("() => { const r = document.documentElement; r.classList.remove('theme-dark'); r.classList.add('theme-light'); }")
+    light_print = page.evaluate(bg)
+    assert light_print != dark_screen
+
+
+def test_slide_label_takes_the_eyebrow_role_of_design_md(open_html, page, tmp_path):
+    """DESIGN.md's eyebrow (or label) role sets the slide label: family and tracking; a
+    DESIGN.md without one keeps the engine's mono label."""
+    out = build(tmp_path)
+    open_html(out.read_text("utf-8"))
+    mono = page.evaluate("() => getComputedStyle(document.querySelector('.slide__label')).fontFamily")
+    assert "JetBrains Mono" in mono, mono
+    design = (tmp_path / "DESIGN.md").read_text("utf-8")
+    design = design.replace("  code:\n", "  eyebrow:\n    fontFamily: Inter\n    fontSize: 12px\n    fontWeight: 600\n"
+                                          "    letterSpacing: 0.14em\n  code:\n", 1)
+    (tmp_path / "DESIGN.md").write_text(design, encoding="utf-8")
+    out2 = tmp_path / "eyebrow.html"
+    subprocess.run([sys.executable, str(NEW_DECK), "--title", "Eyebrow", "--slides", all_types_fragment(tmp_path),
+                    "--out", out2, "--force"], check=True, capture_output=True)
+    open_html(out2.read_text("utf-8"))
+    got = page.evaluate("""() => { const cs = getComputedStyle(document.querySelector('.slide__label'));
+      return [cs.fontFamily, parseFloat(cs.letterSpacing) / parseFloat(cs.fontSize)]; }""")
+    assert got[0].startswith('Inter') or got[0].startswith('"Inter"'), got
+    assert abs(got[1] - 0.14) < 0.01, got

@@ -281,19 +281,29 @@ def design_font_stack(typography: dict, spec: dict) -> str:
 def design_tokens(preset: dict, design: Path) -> str:
     d2c = design_to_css()
     try:
-        entries, selectors = d2c.load_map(PRESETS / preset.get("map", "design.map.yaml"))
+        entries, selectors, print_block = d2c.load_map(PRESETS / preset.get("map", "design.map.yaml"))
     except (OSError, ValueError, yaml.YAMLError) as e:
         raise DeckError("design map: %s" % e)
     data = d2c.frontmatter(design)
-    css, missing = d2c.build_mapped_css(data, entries, selectors)
+    css, missing = d2c.build_mapped_css(data, entries, selectors, print_block)
     if missing:
         print("new-deck: %d mapped role(s) not in %s, the neutral value stays: %s"
               % (len(missing), design, ", ".join(missing)), file=sys.stderr)
     typography = data.get("typography") or {}
     fonts = preset.get("fonts") or {}
-    css += "\n:root {\n%s\n}\n" % "\n".join(
-        "  --font-%s: %s;" % (var, design_font_stack(typography, fonts.get(role) or {}))
-        for var, role in (("display", "display"), ("body", "body"), ("mono", "mono")))
+    lines = ["  --font-%s: %s;" % (var, design_font_stack(typography, fonts.get(role) or {}))
+             for var, role in (("display", "display"), ("body", "body"), ("mono", "mono"))]
+    label = fonts.get("label")
+    if isinstance(label, dict):
+        lines.append("  --font-label: %s;" % design_font_stack(typography, label))
+        for role in label.get("roles") or []:
+            spec = typography.get(role) or {}
+            if spec.get("fontFamily"):
+                track = str(spec.get("letterSpacing") or "").strip()
+                if re.match(r"^-?\d+(\.\d+)?(em|px|rem)$", track):
+                    lines.append("  --label-tracking: %s;" % track)
+                break
+    css += "\n:root {\n%s\n}\n" % "\n".join(lines)
     begin, end, _ = d2c.markers("deck-tokens")
     filled = d2c.inject(begin + "\n" + NEUTRAL_TOKENS + "\n" + end, css, "deck-tokens")
     return css_region("/* deck-preset: design */\n" + filled)
@@ -430,10 +440,13 @@ def splice(html: str, contents: dict[str, str]) -> str:
     return html
 
 
-def verify(html: str, contents: dict[str, str]) -> None:
-    """Read every splice back: present once, in order, holding exactly what was meant."""
+def verify(html: str, contents: dict[str, str], order: list[str] | None = None) -> None:
+    """Read every splice back: present once, in order, holding exactly what was meant.
+
+    A build checks the order it writes; a refresh passes the order the deck already
+    has, since module order is behaviour (key priority, transition nesting)."""
     last = -1
-    for name in region_order(contents):
+    for name in (order or region_order(contents)):
         pos = span(html, name)
         if pos is None:
             raise DeckError("verify: region %s is missing after the splice" % name)
@@ -551,12 +564,16 @@ def refresh(args) -> int:
     if args.with_modules:
         raise DeckError("--with is for a new build; --refresh keeps the modules the deck has "
                         "(add one by building the slides into a fresh deck)")
+    if args.deck_attr:
+        raise DeckError("--deck-attr is for a new build; --refresh keeps the deck element as it is "
+                        "(build the slides again with --deck-attr for a copy with other options)")
     html = src.read_text(encoding="utf-8")
     present = [name for name, _ in REGIONS if span(html, name) is not None]
     present += [module_region_name(m) for m in sorted(set(MODULE_MARK_RE.findall(html)))
                 if span(html, module_region_name(m)) is not None]
     if not present:
         raise DeckError("%s carries no marker region; nothing to refresh" % src)
+    present.sort(key=lambda n: span(html, n)[0])   # the deck's own order, kept
 
     tokens = span(html, "deck-tokens")
     found = PRESET_RE.search(html[tokens[0]:tokens[1]]) if tokens else None
@@ -581,7 +598,7 @@ def refresh(args) -> int:
 
     contents = region_contents(present, slug, preset, design, embed)
     updated = splice(html, contents)
-    verify(updated, contents)
+    verify(updated, contents, [n for n in present if n in contents])
     out = Path(args.out) if args.out else src
     out.write_text(updated, encoding="utf-8")
     report(out, slug, design, updated, refreshed=present)
@@ -593,8 +610,10 @@ def report(out: Path, slug: str | None, design: Path | None, html: str, refreshe
     engine = "engine v%s" % (stamp.group(1) if stamp else "1")
     what = ("refreshed %s" % ", ".join(refreshed)) if refreshed is not None else "built"
     source = (" from %s" % design) if (slug == "design" and design) else ""
-    print("new-deck: %s %s (preset %s%s, %s, %d slides)"
-          % (what, out, slug or "unknown", source, engine, len(SLIDE_RE.findall(html))))
+    mods = [m for m in MODULE_MARK_RE.findall(html)]
+    modules = (", modules %s" % ", ".join(dict.fromkeys(mods))) if mods else ""
+    print("new-deck: %s %s (preset %s%s, %s, %d slides%s)"
+          % (what, out, slug or "unknown", source, engine, len(SLIDE_RE.findall(html)), modules))
 
 
 def main() -> int:

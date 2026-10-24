@@ -21,7 +21,10 @@ python3 skills/html-slides/scripts/new-deck.py --refresh deck.html [--out other.
 `--deck-attr` puts an engine option on the deck element (`data-tracks-default=short`,
 `data-back-href=page.html`, `data-counter-format=padded`; the list is the Engine
 Contract in `reference/slide-types.md`). It is a build flag: the deck element lies
-outside the marker regions, so a refresh keeps whatever it carries.
+outside the marker regions, so a refresh keeps whatever it carries, and `--refresh`
+with `--deck-attr` is refused rather than writing a copy without the option. A refresh
+keeps the order of the module regions the deck already has (module order decides which
+key wins and how transitions nest). The report line names the modules the deck carries.
 
 The DESIGN.md lookup stops at the project root (the first folder above the output
 with `.git` or `bridge-config.yaml`); without one only the output folder counts, so

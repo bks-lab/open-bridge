@@ -7,8 +7,8 @@
    has it; elsewhere the key does nothing.
    The deck owns the timer and the state; the window only renders what the deck sends and
    sends commands back. Messages go by postMessage on the window reference (source and
-   origin checked; file:// pages send origin "null") and by BroadcastChannel where it
-   exists. Each message carries sender id and sequence number, so one that arrives on both
+   origin checked; file:// pages send origin "null") and, only with the per-tab secret
+   the presenter page carries, by BroadcastChannel where it exists. Each message carries sender id and sequence number, so one that arrives on both
    paths counts once. Nothing happens and nothing is added to the deck until a key asks. */
 (function () {
   'use strict';
@@ -84,7 +84,7 @@
     de: {
       presenter: 'Referent', current: 'Jetzt', next: 'Als Nächstes', end: 'Ende der Präsentation',
       notes: 'Notizen', noNotes: 'Zu dieser Folie gibt es keine Notizen.', elapsed: 'Verstrichen',
-      start: 'Start', pause: 'Pause', resume: 'Weiter', reset: 'Zurücksetzen', prev: 'Zurück',
+      start: 'Start', pause: 'Pause', resume: 'Fortsetzen', reset: 'Zurücksetzen', prev: 'Zurück',
       fwd: 'Weiter', slideBudget: 'Diese Folie', total: 'Plan', left: 'noch {t}', over: '{t} drüber',
       noBudget: 'kein Zeitbudget', ahead: '{t} voraus', behind: '{t} hinterher', onTime: 'im Plan',
       rehearse: 'Probelauf', stop: 'Probelauf beenden', recording: 'Aufnahme', table: 'Plan und Ist',
@@ -119,6 +119,20 @@
      reference plus that handshake is what keeps the notes from reaching another page. */
   function open_(win) { try { return !!win && !win.closed; } catch (e) { return false; } }
   var nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  /* A BroadcastChannel reaches every page of the origin, and under file:// every
+     local file. So the presenter page carries a secret in its own source, and the
+     deck accepts a message on that channel only when it holds the secret. It is
+     kept in sessionStorage, so a presenter window outlives a reload of the deck tab. */
+  var secret = (function () {
+    var k = 'deck-presenter-secret:' + deckKey, v = null;
+    try { v = sessionStorage.getItem(k); } catch (e) { v = null; }
+    if (!v) {
+      v = '';
+      for (var i = 0; i < 3; i++) v += Math.random().toString(36).slice(2);
+      try { sessionStorage.setItem(k, v); } catch (e) { /* storage blocked: this tab only */ }
+    }
+    return v;
+  })();
 
   /* The document as loaded, for the previews: taken before the engine adds its chrome. */
   var SOURCE = '', FP = '';
@@ -145,12 +159,31 @@
     var n = parseFloat(v);
     return n > 0 ? n : 0;
   }
+  /* A bilingual deck hides the other language with CSS; the presenter gets text, so the
+     same rule is applied to a copy (the engine's: [data-de]:not([data-en]) and back). */
+  function otherLang() {
+    if (!root.hasAttribute('data-lang') || !document.querySelector('[data-de], [data-en]')) return null;
+    return D.state().lang === 'de' ? '[data-en]:not([data-de])' : '[data-de]:not([data-en])';
+  }
+  function shown(list, other) {
+    for (var i = 0; i < list.length; i++) if (!other || !list[i].matches(other)) return list[i];
+    return null;
+  }
+  function inLang(el, other) {
+    if (!other) return el;
+    var c = el.cloneNode(true);
+    [].forEach.call(c.querySelectorAll(other), function (n) { n.parentNode.removeChild(n); });
+    return c;
+  }
   function titleOf(s, i) {
-    var h = s.querySelector('h1, h2, h3, .slide__heading');
-    var t = h ? h.textContent.replace(/\s+/g, ' ').trim() : '';
+    var other = otherLang(), h = shown(s.querySelectorAll('h1, h2, h3, .slide__heading'), other);
+    var t = h ? inLang(h, other).textContent.replace(/\s+/g, ' ').trim() : '';
     return t.slice(0, 90) || (str().slide + ' ' + (i + 1));
   }
-  function notesOf(s) { var a = s && s.querySelector('aside.notes'); return a ? a.innerHTML : ''; }
+  function notesOf(s) {
+    var other = otherLang(), a = s && shown(s.querySelectorAll('aside.notes'), other);
+    return a ? inLang(a, other).innerHTML : '';
+  }
   var TOKENS = ['bg', 'surface', 'surface2', 'surface-elevated', 'text', 'text-dim', 'accent', 'border',
                 'border-bright', 'green', 'amber', 'red', 'font-body', 'font-mono', 'font-display'];
   function tokens() {
@@ -223,6 +256,7 @@
     });
     return {
       type: 'state', index: s.index, count: list.length, step: s.step, track: s.track,
+      trackLabel: typeof D.trackLabel === 'function' ? D.trackLabel() : s.track,
       tracks: root.hasAttribute('data-track-active'), theme: s.theme, lang: s.lang, title: document.title,
       notes: notesOf(cur), plan: plan, tokens: tokens(), vw: window.innerWidth, vh: window.innerHeight,
       fp: FP, at: t,
@@ -237,7 +271,10 @@
     msg[KEY] = 1; msg.role = 'deck'; msg.deck = deckKey; msg.from = nonce; msg.seq = ++seq;
     var sent = false;
     if (linked()) { try { w.postMessage(msg, opaque ? '*' : location.origin); sent = true; } catch (e) { /* closed meanwhile */ } }
-    if (bc && (!big || !sent)) { try { bc.postMessage(msg); } catch (e) { /* channel closed */ } }
+    /* The channel is heard by every page of the origin: it carries deck content only
+       while a presenter that proved the secret listens there and the window path is
+       not open. */
+    if (bc && peer && !sent) { try { bc.postMessage(msg); } catch (e) { /* channel closed */ } }
   }
   function push() {
     if (!ready) return;
@@ -289,7 +326,7 @@
     bc = new BroadcastChannel(KEY + ':' + deckKey);
     bc.onmessage = function (e) {
       var m = e.data;
-      if (!ready || !mine(m)) return;
+      if (!ready || !mine(m) || m.secret !== secret) return;
       /* Commands name this deck instance; a hello may come from a presenter whose deck was
          reloaded, unless this deck already has its own presenter. */
       if (m.to !== nonce && (m.type !== 'hello' || linked())) return;
@@ -321,7 +358,7 @@
   var pageUrl = null;
   function makePage() {
     var lang = D.state().lang, t = STR[lang] || STR.en;
-    var cfg = { deck: deckKey, lang: lang, strings: STR };
+    var cfg = { deck: deckKey, lang: lang, strings: STR, secret: secret };
     var json = JSON.stringify(cfg).replace(/</g, '\\u003c');
     var html = '<!DOCTYPE html><html data-deck-presenter="" lang="' + esc(lang) + '"><head><meta charset="utf-8">'
       + '<meta name="viewport" content="width=device-width, initial-scale=1"><title>' + esc(t.presenter + ': ' + document.title)
@@ -464,6 +501,7 @@
     function okOrigin(o) { return o === location.origin || (o === 'null' && opaque); }
     function send(m) {
       m[KEY] = 1; m.role = 'presenter'; m.deck = cfg.deck; m.from = nonce; m.seq = ++seq; m.to = deckNonce;
+      m.secret = cfg.secret;
       /* only commands and hellos go this way, never deck content */
       var o = opener();
       if (o) { try { o.postMessage(m, opaque ? '*' : location.origin); } catch (e) { /* gone */ } }
@@ -553,7 +591,7 @@
       $('title').textContent = s.title;
       $('count').textContent = (s.index + 1) + ' / ' + s.count;
       $('track').hidden = !s.tracks;
-      $('track').textContent = t.track + ': ' + (s.track === 'all' ? t.allTracks : s.track);
+      $('track').textContent = t.track + ': ' + (s.track === 'all' ? t.allTracks : (s.trackLabel || s.track));
       if (notesHtml !== s.notes + '|' + s.lang) {
         notesHtml = s.notes + '|' + s.lang;
         var nb = $('notes');
@@ -610,14 +648,15 @@
         var actual = s.rehearsal.on
           ? Math.round(((s.timer.spent[p.key] || 0) + (p.key === ck ? dt : 0)) / 1000)
           : by[p.key];
-        return { n: i + 1, title: p.title, plan: p.time || 0, actual: actual == null ? null : actual };
+        /* 0 s is a slide the rehearsal never reached: no actual, never "under budget" */
+        return { n: i + 1, title: p.title, plan: p.time || 0, actual: actual ? actual : null };
       });
     }
     function diff(d) { return d > 0 ? '+' + fmt(d * 1000) : (d < 0 ? '-' + fmt(-d * 1000) : '0:00'); }
     function renderTable() {
       if (!st) return;
       var list = rows(), body = doc.querySelector('[data-pp=table] tbody'), foot = doc.querySelector('[data-pp=table] tfoot');
-      var has = st.rehearsal.on || list.some(function (r) { return r.actual != null; });
+      var has = st.rehearsal.on || !!st.rehearsal.record || list.some(function (r) { return r.actual != null; });
       $('table-empty').hidden = has;
       body.textContent = '';
       foot.textContent = '';
@@ -635,8 +674,7 @@
       };
       list.forEach(function (r) {
         var d = r.plan && r.actual != null ? r.actual - r.plan : null;
-        sp += r.plan;
-        sa += r.actual || 0;
+        if (r.actual != null) { sp += r.plan; sa += r.actual; }   /* the sums count the slides reached */
         row(body, [String(r.n), r.title, r.plan ? fmt(r.plan * 1000) : '', r.actual == null ? '' : fmt(r.actual * 1000),
                    d == null ? '' : diff(d)], d == null ? 'none' : (d > 0 ? 'over' : 'ok'));
       });

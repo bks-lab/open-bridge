@@ -37,6 +37,10 @@ fonts:
     roles: [code, mono-label, mono]
     weights: [400, 600]
     fallback: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+  label:                              # the slide label above a heading: DESIGN.md's eyebrow
+    roles: [eyebrow, label-caps, label, code, mono-label, mono]
+    weights: [600]
+    fallback: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
 
 css_overrides: |
   /* Everything below holds for any DESIGN.md of the current shape: one heading
@@ -50,6 +54,9 @@ css_overrides: |
   .slide__heading { font-weight: 500; }
   /* Subtitles and taglines are body copy in DESIGN.md, not letter-spaced mono. */
   .slide__subtitle { font-family: var(--font-body); letter-spacing: 0; }
+  /* The label above a heading is DESIGN.md's eyebrow: its family and its tracking
+     (--font-label, --label-tracking); without such a role it stays the mono label. */
+  .slide__label { font-family: var(--font-label, var(--font-mono)); letter-spacing: var(--label-tracking, 1.5px); }
 
   /* Headings take the heading colour: primary on light, the text colour on dark,
      where a primary that stays the same in both modes is a fill, never ink. */

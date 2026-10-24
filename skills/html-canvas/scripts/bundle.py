@@ -404,7 +404,7 @@ class Bundler:
                         a.new = "#"
                         extra.append(f'data-bundle-page="{self.payload(target, doc, payloads)}"')
                         if frag:
-                            extra.append(f'data-bundle-hash="{frag}"')
+                            extra.append(f'data-bundle-hash="{htmllib.escape(frag, quote=True)}"')
                 else:
                     a.new = self.data_uri(target)
                     if "download" not in by:
@@ -461,7 +461,7 @@ class Bundler:
         a.new = "#"
         extra.append(f'data-back-bundle="{self.payload(target, doc, payloads)}"')
         if frag:
-            extra.append(f'data-back-hash="{frag}"')
+            extra.append(f'data-back-hash="{htmllib.escape(frag, quote=True)}"')
 
     def _warn(self, msg: str) -> None:
         if msg not in self.result.warnings:
@@ -552,6 +552,9 @@ class Bundler:
     def embed_fonts(self, html: str, path: Path) -> str:
         design = self.find_design(path)
         if design is None:
+            if not FONT_FACE_RE.search(html) and re.search(r"font-family\s*:", html, re.I):
+                self.result.notes.append(f"fonts not embedded for {path.name}: no DESIGN.md found above it "
+                                         "(pass --design); it renders in fallback faces")
             return html
         embed = self._load_embed()
         if design not in self._families:

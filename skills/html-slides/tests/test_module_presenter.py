@@ -211,6 +211,38 @@ def test_messages_from_anyone_else_are_ignored(ctx, load):
     assert ctx.errors == []
 
 
+LISTEN = """(deck) => new Promise(res => {
+  window.__heard = [];
+  const bc = new BroadcastChannel('deck-presenter:' + deck);
+  bc.onmessage = e => window.__heard.push(e.data.type + ':' + JSON.stringify(e.data).length);
+  bc.postMessage({'deck-presenter': 1, role: 'presenter', deck: deck, from: 'x', seq: 1, type: 'hello', fp: ''});
+  setTimeout(() => bc.postMessage({'deck-presenter': 1, role: 'presenter', deck: deck, from: 'x', seq: 2,
+    type: 'cmd', action: 'next', to: null}), 300);
+  setTimeout(() => res(window.__heard), 1200);
+})"""
+
+
+@pytest.mark.parametrize("with_presenter", [False, True])
+def test_another_page_of_the_origin_hears_no_notes(ctx, load, tmp_path, with_presenter):
+    """A page on the same origin (under file:// any local file) can open the deck's
+    BroadcastChannel. A forged hello must get neither the source nor the notes, and
+    while a real presenter window is linked nothing is broadcast at all."""
+    pg = load(presenter_deck())
+    if with_presenter:
+        pop = open_presenter(pg)
+    (tmp_path / "other.html").write_text("<!doctype html><title>other</title>", encoding="utf-8")
+    other = ctx.new_page()
+    other.goto((tmp_path / "other.html").as_uri())
+    heard = other.evaluate(LISTEN, DECK_ID)
+    assert heard == [], "a page the deck never opened heard: %s" % heard
+    if with_presenter:
+        pg.bring_to_front()
+        pg.keyboard.press("ArrowRight")
+        wait_text(pop, "count", r"^\s*2 / 5")
+        assert other.evaluate("window.__heard") == []
+    assert ctx.errors == []
+
+
 def test_lang_and_theme_follow_the_deck(ctx, load):
     pg = load(presenter_deck(lang="de"))
     pop = open_presenter(pg)
@@ -223,6 +255,31 @@ def test_lang_and_theme_follow_the_deck(ctx, load):
     assert want != before
     pg.evaluate("() => SlideDeck.setLang('en')")
     wf(pop, "() => /Notes/.test(document.querySelector('.pp-notes .pp-label').textContent)")
+    assert ctx.errors == []
+
+
+BILINGUAL = [
+    slide('<span data-de>Erste</span><span data-en>First</span>', ' id="a"',
+          '<aside class="notes"><p data-de>Begrüßen</p><p data-en>Greet</p></aside>'),
+    slide('<span data-de>Zweite</span><span data-en>Second</span>', ' id="b" data-track="long"'),
+]
+
+
+def test_a_bilingual_deck_shows_one_language_in_the_presenter(ctx, load):
+    """Notes, the next title and the plan show the deck's language only, and follow L;
+    the track badge shows the display name, per language."""
+    pg = load(presenter_deck(BILINGUAL, lang="de", deck_attrs=' data-deck-id="%s" data-tracks-default="long"'
+                             ' data-tracks-labels="long=ausführlich" data-tracks-labels-en="long=complete"' % DECK_ID))
+    pop = open_presenter(pg)
+    wait_text(pop, "notes", "Begrüßen")
+    assert text(pop, "notes") == "Begrüßen"
+    assert text(pop, "next-title") == "2 · Zweite"
+    assert text(pop, "track") == "Spur: ausführlich"
+    pg.bring_to_front()
+    pg.keyboard.press("l")
+    wait_text(pop, "notes", "^Greet$")
+    assert text(pop, "next-title") == "2 · Second"
+    assert text(pop, "track") == "Track: complete"
     assert ctx.errors == []
 
 
@@ -325,6 +382,11 @@ def test_rehearsal_records_actual_time_per_slide(ctx, load):
     assert rows[0][1:3] == ["Opening", "1:00"] and re.match(r"0:4\d$", rows[0][3]) and rows[0][4].startswith("-0:")
     assert rows[1][1:3] == ["Problem", "1:30"] and re.match(r"1:4\d$", rows[1][3]) and rows[1][4].startswith("+0:1")
     assert pop.get_attribute("[data-pp=table] tbody tr:nth-child(2)", "data-state") == "over"
+    # a slide the rehearsal never reached is not "under budget": no actual, no difference
+    assert rows[2][1:] == ["Plan", "2:00", "", ""], rows[2]
+    assert pop.get_attribute("[data-pp=table] tbody tr:nth-child(3)", "data-state") == "none"
+    foot = pop.evaluate("() => [...document.querySelector('[data-pp=table] tfoot tr').cells].map(c => c.textContent.trim())")
+    assert foot[2] == "2:30", "the plan sum counts the slides that were reached"
     stored = json.loads(pg.evaluate("(k) => localStorage.getItem(k)", "deck-rehearsal:" + DECK_ID))
     rec = stored["all"]
     got = [r["actual"] for r in rec["rows"][:2]]
@@ -460,3 +522,27 @@ def test_documented_in_modules_md_and_skill_md():
         assert word in body, word
     skill = (SKILL / "SKILL.md").read_text("utf-8")
     assert "--with presenter" in skill
+
+
+def test_timer_resume_and_next_slide_never_share_a_label():
+    """Two buttons side by side: "Weiter" for both the paused timer and the next slide misled."""
+    import re as _re
+    src = (SKILL / "assets" / "modules" / "presenter.js").read_text("utf-8")
+    for lang in ("en", "de"):
+        block = _re.search(r"\b%s: \{(.*?)\n    \}" % lang, src, _re.S).group(1)
+        resume = _re.search(r"resume: '([^']+)'", block).group(1)
+        fwd = _re.search(r"fwd: '([^']+)'", block).group(1)
+        assert resume != fwd, (lang, resume)
+
+
+def test_a_rehearsal_too_short_to_count_still_shows_its_table(ctx, load):
+    pg = load(presenter_deck())
+    pop = open_presenter(pg)
+    pop.keyboard.press("r")
+    wf(pop, "() => document.documentElement.classList.contains('pp-recording')")
+    pop.keyboard.press("r")
+    wf(pop, "() => !document.documentElement.classList.contains('pp-recording')"
+            " && !document.querySelector('[data-pp=table]').hidden")
+    assert pop.evaluate("() => document.querySelector('[data-pp=table-empty]').hidden")
+    assert pop.evaluate("() => document.querySelectorAll('[data-pp=table] tfoot tr').length") == 1
+    assert ctx.errors == []

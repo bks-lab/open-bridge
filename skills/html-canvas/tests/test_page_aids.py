@@ -261,3 +261,35 @@ def test_print_spells_out_external_links_and_hides_popovers(open_page, tmp_path)
     assert "https://example.com/x" in after
     assert not page.locator(".gl-pop").is_visible()
     assert page.locator(".glossary").is_visible()
+
+
+# --- review wave 4: a link inside a callout ----------------------------------------------
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_link_in_a_callout_reads_in_the_ink_colour(open_page, tmp_path, theme):
+    """The accent text colour on the callout's accent tint fell under 4.5:1 in dark mode
+    for a real brand; the ink colour is what the callout guarantees, the underline marks
+    the link."""
+    page_file = build(tmp_path, "--blocks", "callout")
+    text = page_file.read_text("utf-8").replace(
+        "</main>", '<div class="note" id="n"><b>Hinweis</b> mit <a id="l" href="#n">Verweis</a></div></main>', 1)
+    page = open_page(text)
+    page.evaluate("(d) => document.documentElement.classList.toggle('dark', d)", theme == "dark")
+    got = page.evaluate("""() => { const a = getComputedStyle(document.getElementById('l')),
+      b = getComputedStyle(document.querySelector('#n b'));
+      return [a.color === b.color, a.textDecorationLine]; }""")
+    assert got == [True, "underline"], got
+
+
+def test_toc_marks_the_section_a_link_went_to_on_a_short_page(open_page, tmp_path):
+    """A page that cannot scroll its second-to-last section to the top: following the
+    contents link to it marks it, not the last section the bottom rule picks."""
+    html = build(tmp_path, "--blocks", "doc-header,toc,table,callout,timeline,glossary").read_text("utf-8")
+    page = open_page(html, viewport={"width": 1280, "height": 1400})
+    targets = page.evaluate("[...document.querySelectorAll('.toc a')].map(a => a.getAttribute('href'))")
+    second_last = targets[-2]
+    page.click(".toc a[href='%s']" % second_last)
+    page.wait_for_timeout(400)
+    at_bottom = page.evaluate("innerHeight + scrollY >= document.documentElement.scrollHeight - 2")
+    assert at_bottom, "the fixture page must be short enough to reach the bottom"
+    assert page.evaluate("(document.querySelector('.toc a[aria-current]') || {}).hash") == second_last

@@ -128,13 +128,25 @@
       if (el) targets.push({ a: a, el: el });
     });
     if (!targets.length) return;
-    var current = null, queued = false;
+    var current = null, queued = false, wanted = null;
+    /* the section a link or the address went to: on a page too short to bring it to
+       the top it still counts while it is in view */
+    function fromHash() {
+      var h = location.hash ? decodeURIComponent(location.hash.slice(1)) : '';
+      wanted = null;
+      targets.forEach(function (t) { if (t.el.id === h) wanted = t; });
+    }
     function spy() {
       queued = false;
       var line = window.innerHeight * 0.3, pick = targets[0];
       targets.forEach(function (t) { if (t.el.getBoundingClientRect().top <= line) pick = t; });
       /* at the very bottom the last section counts, however short it is */
       if (window.innerHeight + window.scrollY >= doc.documentElement.scrollHeight - 2) pick = targets[targets.length - 1];
+      if (wanted) {
+        var r = wanted.el.getBoundingClientRect();
+        if (r.top >= -1 && r.top < window.innerHeight) pick = wanted;
+        else wanted = null;
+      }
       if (pick === current) return;
       if (current) current.a.removeAttribute('aria-current');
       current = pick;
@@ -144,6 +156,8 @@
       if (!queued) { queued = true; requestAnimationFrame(spy); }
     }, { passive: true });
     window.addEventListener('resize', spy);
+    window.addEventListener('hashchange', function () { fromHash(); spy(); });
+    fromHash();
     spy();
   });
 })();

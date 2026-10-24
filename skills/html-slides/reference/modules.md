@@ -188,9 +188,13 @@ after its own reload, a window whose `opener` is this tab saying hello), the win
 only its `opener`; the origin must be the page's own, or `"null"` when the page itself
 is opaque (`file://` sends `"null"`, and cannot be named as a target, so `*` is used).
 The deck sends deck content only between that window's hello and its bye. A
-`BroadcastChannel` named `deck-presenter:<deck id>` carries the same messages where it
-exists, which keeps the link when the opener reference is lost; there commands must
-name the deck instance. Every message carries sender id and sequence number, so one
+`BroadcastChannel` named `deck-presenter:<deck id>` keeps the link when the opener
+reference is lost. Every page of the origin can open that channel (under `file://`
+every local file), so the presenter page carries a secret the deck made for its tab
+(kept in `sessionStorage`, so it survives a reload of the deck), the deck ignores any
+message there without it, commands must name the deck instance, and deck content goes
+on the channel only while such a presenter listens there and the window path is
+closed. Every message carries sender id and sequence number, so one
 that arrives on both paths counts once. When the deck reloads, the window waits and
 says hello every 2 s until the new deck answers.
 

@@ -506,6 +506,38 @@ def test_refresh_refuses_with(module_tree, plain_dir):
     assert proc.returncode != 0 and "--with" in proc.stderr
 
 
+def test_refresh_keeps_a_hand_chosen_module_order(module_tree, plain_dir):
+    """Module order is behaviour (key priority, transition nesting): a deck whose author
+    moved one module region before another refreshes as it stands."""
+    out = plain_dir / "order.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts", "--with", "all")
+    html = out.read_text("utf-8")
+    beta = html[html.index("<!-- deck-module:beta:start -->"):html.index("<!-- deck-module:beta:end -->")
+                + len("<!-- deck-module:beta:end -->")]
+    moved = html.replace(beta + "\n", "", 1) if beta + "\n" in html else html.replace(beta, "", 1)
+    moved = moved.replace("<!-- deck-module:probe:end -->", "<!-- deck-module:probe:end -->\n" + beta, 1)
+    assert module_names(moved) == ["probe", "beta"]
+    out.write_text(moved, encoding="utf-8")
+    proc = run_in(module_tree, "--refresh", out, check=False)
+    assert proc.returncode == 0, proc.stderr
+    assert out.read_text("utf-8") == moved
+
+
+def test_refresh_refuses_deck_attr(module_tree, plain_dir):
+    """--deck-attr is a build flag: a refresh that silently dropped it wrote a copy without it."""
+    out = plain_dir / "ra.html"
+    run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts")
+    proc = run_in(module_tree, "--refresh", out, "--out", plain_dir / "copy.html",
+                  "--deck-attr", "data-read-default=", check=False)
+    assert proc.returncode != 0 and "--deck-attr" in proc.stderr
+    assert not (plain_dir / "copy.html").exists()
+
+
+def test_build_report_names_the_modules(module_tree, plain_dir):
+    proc = run_in(module_tree, "--title", "M", "--out", plain_dir / "rep.html", "--no-embed-fonts", "--with", "all")
+    assert "modules beta, probe" in proc.stdout, proc.stdout
+
+
 def test_refresh_with_a_module_gone_is_an_error(module_tree, plain_dir):
     out = plain_dir / "gone.html"
     run_in(module_tree, "--title", "M", "--out", out, "--no-embed-fonts", "--with", "probe")

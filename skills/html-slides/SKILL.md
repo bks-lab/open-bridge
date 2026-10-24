@@ -122,6 +122,7 @@ exception; every other finding gets fixed.
 | "as PDF", "print", "attachment" | `node scripts/render-pdf.cjs deck.html deck.pdf [--theme light]`, one 16:9 page per slide |
 | The deck loads local files (images, a stage page next to it) | `scripts/inline-assets.py deck.html deck-send.html`, which runs the shared `html-canvas/scripts/bundle.py` |
 | Mail the deck | anonymity check, gate, bundle, PDF, then check the bundled copy again |
+| Send it to readers, not an audience | build a reading copy from the same slides (`--with read --deck-attr data-read-default=`), then the same path |
 
 An instance names its own wordlist in `bridge-config.yaml` under
 `html_slides.anonymity_wordlist`, never in this skill. Order and options:

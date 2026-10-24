@@ -832,8 +832,11 @@ JS_HIDDEN = """() => {
   return [...document.querySelectorAll('body *')].filter(el => {
     if (!el.getClientRects().length) return false;
     if (![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) return false;
-    for (let e = el; e && e.nodeType === 1; e = e.parentElement)
+    for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
+      /* a step not yet reached (html-slides steps): its module shows it in print, PDF and read */
+      if (e.classList.contains('step-hidden')) return false;
       if (parseFloat(getComputedStyle(e).opacity) === 0) return true;
+    }
     return false;
   }).map(desc);
 }""" % JS_DESC

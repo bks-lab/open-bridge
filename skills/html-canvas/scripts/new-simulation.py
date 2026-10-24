@@ -125,6 +125,17 @@ def build(args):
     else:
         sys.stderr.write("new-simulation: no DESIGN.md at %s, page keeps neutral system colours\n" % design)
 
+    # 0b. fonts, opt in: a simulation runs inside a stage or is sent alone, where no
+    #     page around it carries the brand's faces (same region as new-page.py).
+    fonts = ""
+    if args.embed_fonts:
+        if not design.exists():
+            fail("--embed-fonts needs a DESIGN.md (pass --design)")
+        faces = load_design_to_css().font_faces(design, [pathlib.Path(d) for d in args.font_dir])
+        if not faces:
+            sys.stderr.write("new-simulation: no font file found for the DESIGN.md families\n")
+        fonts = "\n/* page-fonts:begin */\n" + faces.strip("\n") + "\n/* page-fonts:end */\n"
+
     # 1. default language
     if args.lang == "de":
         out = replace_once(out, '<html lang="en" class="">',
@@ -135,7 +146,8 @@ def build(args):
 
     # 2. styles: the simulation layer, then whatever the archetype adds
     style_add = (
-        "\n/* --- simulation layer (skills/html-canvas/assets/simulation.css) --- */\n"
+        fonts
+        + "\n/* --- simulation layer (skills/html-canvas/assets/simulation.css) --- */\n"
         + sim_css.rstrip()
         + "\n\n/* --- page-specific (archetype: %s) --- */\n" % args.archetype
         + frag["style"].rstrip()
@@ -215,9 +227,16 @@ def main():
     p.add_argument("--date", help="footer date (default: today)")
     p.add_argument("--design", help="DESIGN.md to take the tokens from (default: the instance root)")
     p.add_argument("--source", help="footer source note")
+    p.add_argument("--embed-fonts", action="store_true",
+                   help="embed the DESIGN.md font families as base64 @font-face (off by default; "
+                        "for a simulation in a slide stage or sent on its own)")
+    p.add_argument("--font-dir", action="append", default=[], metavar="DIR",
+                   help="with --embed-fonts: extra directory of <family>-latin-<weight>.woff2 files")
     p.add_argument("--list", action="store_true", help="list the archetypes and exit")
     p.add_argument("--force", action="store_true", help="overwrite an existing output file")
     args = p.parse_args()
+    if args.font_dir and not args.embed_fonts:
+        p.error("--font-dir needs --embed-fonts")
 
     if args.list or not args.archetype:
         print("archetypes:")

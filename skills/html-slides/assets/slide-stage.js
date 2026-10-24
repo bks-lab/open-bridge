@@ -62,6 +62,7 @@
   var DECK_KEYS = ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'PageDown', 'PageUp',
                    ' ', 'Home', 'End', 'f', 'F', 'n', 'N',
                    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'Enter'];
+  var LOOK_KEYS = ['t', 'T', 'l', 'L'];
   var LABELS = {
     en: { close: 'Exit full view', closeTitle: 'Back to the slide (Escape)', frame: 'Embedded simulation' },
     de: { close: 'Vollbild beenden', closeTitle: 'Zurück (Escape)', frame: 'Eingebettete Simulation' }
@@ -327,6 +328,17 @@
     if (api && typeof api[dir] === 'function') api[dir]();
   }
 
+  /* T or L pressed inside a frame: the slide owns theme and language, so the
+     deck switches and the frame follows through stage:theme / stage:lang. */
+  function lookKey(k) {
+    var api = window.SlideDeck || window.slideEngine || window.__slideEngine;
+    if (!api) return;
+    if (k === 't' && typeof api.toggleTheme === 'function') api.toggleTheme();
+    else if (k === 'l' && typeof api.setLang === 'function' && doc.querySelector('[data-de], [data-en]')) {
+      api.setLang(lang() === 'de' ? 'en' : 'de');
+    }
+  }
+
   /* ===== Wiring ===== */
 
   function typing(t) {
@@ -339,13 +351,16 @@
     if (maxed) {
       if (k === 'Escape' || k === 'v' || k === 'V') {
         e.preventDefault(); e.stopPropagation(); exitMax();
-      } else if (DECK_KEYS.indexOf(k) > -1) {
+      } else if (DECK_KEYS.indexOf(k) > -1 || (k.length === 1 && LOOK_KEYS.indexOf(k) < 0)) {
         /* Capture phase, so this runs before the deck: while a stage fills the
-           window, an arrow key must not move the slide behind it unseen. */
+           window, no key may act on the deck behind it unseen. That covers the
+           arrows and every single-key shortcut of the engine and its modules
+           (draw, read, cover, presenter). Only the look keys T and L pass: the
+           stage follows them. */
         e.stopPropagation();
-        /* No scrolling behind it either. Space keeps its job on a button. */
+        /* No scrolling behind it either. Space and Enter keep their job on a button. */
         var onButton = e.target && e.target.closest && e.target.closest('button,a[href],summary');
-        if (!(k === ' ' && onButton)) e.preventDefault();
+        if (!((k === ' ' || k === 'Enter') && onButton)) e.preventDefault();
       }
       return;
     }
@@ -374,6 +389,7 @@
     } else if (d.type === 'stage:key') {
       if (d.key === 'v') toggleMax(st);
       else if (d.key === 'Escape') { if (maxed === st) exitMax(); }
+      else if (d.key === 't' || d.key === 'l') lookKey(d.key);
       else if (!maxed && d.key === 'PageDown') deckStep('next');
       else if (!maxed && d.key === 'PageUp') deckStep('prev');
     }

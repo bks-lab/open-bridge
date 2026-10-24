@@ -70,9 +70,10 @@ def test_back_link(open_html):
     link = page.locator("a.deck-back")
     assert link.count() == 1
     assert link.get_attribute("href") == "../index.html"
-    assert "Back" in link.inner_text()
+    # "Back" alone read as "previous slide" in a deck where the left arrow goes back
+    assert link.inner_text().strip() == "← Back to page"
     page = open_deck(open_html, deck(2, lang="de", html_attrs='data-back-href="../index.html"'))
-    assert "Zurück" in page.locator("a.deck-back").inner_text()
+    assert page.locator("a.deck-back").inner_text().strip() == "← Zurück zur Seite"
     page = open_deck(open_html, deck(2, html_attrs='data-back-href="#top" data-back-label="Overview page"'))
     assert "Overview page" in page.locator("a.deck-back").inner_text()
 

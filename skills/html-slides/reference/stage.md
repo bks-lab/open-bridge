@@ -29,8 +29,12 @@ Keys: V toggles the large stage of the active slide, Escape leaves it. The large
 stage fills the window with CSS, not the browser's full screen interface, so it
 works from `file://` and inside frames. Once a click puts focus inside the frame, the
 simulation keeps its own keys (arrows, Space, its shortcuts); it hands V, Escape,
-Page Up and Page Down back to the deck. Click outside the frame for T, F, N and
-the arrows.
+Page Up, Page Down, T and L back to the deck, so the theme and the language stay the
+slide's. Click outside the frame for F, N and the arrows. While the stage fills the
+window, the deck behind it takes no key but T, L, V and Escape: arrows, digits,
+Enter and the single-key shortcuts of the engine and its modules (draw, read, the
+B / W cover, presenter) wait until the stage is back in its slide. Enter and Space
+still press a focused button.
 
 ## Behaviour
 
@@ -74,4 +78,6 @@ copy from an empty folder to prove it runs.
 
 On paper every stage is loaded (print loads them all), `render-pdf.cjs` waits for
 each frame before it writes the PDF, and the `data-stage` buttons are hidden. The
-simulation prints its end state.
+simulation prints its end state. The browser's own print dialog does not wait: a
+stage that was not loaded yet (one more than a slide away) can print empty, so make
+a PDF of a deck with stages with `render-pdf.cjs`.

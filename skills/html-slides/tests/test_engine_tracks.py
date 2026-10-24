@@ -143,6 +143,32 @@ def test_track_labels_change_what_is_read_not_the_name(open_html, page):
     assert page.locator(".deck-track").inner_text() == "Track: kurz"
 
 
+def test_track_label_survives_a_language_switch(open_html, page):
+    """The badge keeps the display name after L, and a per-language label wins."""
+    slides = [slide("Core", extra='<p data-de>Kern</p><p data-en>Core</p>'), slide("Extra", attrs=' data-track="full"')]
+    open_deck(open_html, deck(slides, lang="de", deck_attrs='data-tracks-cycle="short full" data-tracks-default="full"'
+                                                 ' data-tracks-labels="short=kurz full=ausführlich"'))
+    assert page.locator(".deck-track").inner_text() == "Spur: ausführlich"
+    page.keyboard.press("l")
+    page.wait_for_function("() => document.documentElement.getAttribute('data-lang') === 'en'")
+    assert page.locator(".deck-track").inner_text() == "Track: ausführlich", "the badge fell back to the bare name"
+    page.keyboard.press("l")
+    page.wait_for_function("() => document.documentElement.getAttribute('data-lang') === 'de'")
+    assert page.locator(".deck-track").inner_text() == "Spur: ausführlich"
+
+
+def test_per_language_track_labels(open_html, page):
+    slides = [slide("Core", extra='<p data-de>Kern</p><p data-en>Core</p>'), slide("Extra", attrs=' data-track="full"')]
+    open_deck(open_html, deck(slides, lang="de", deck_attrs='data-tracks-cycle="short full" data-tracks-default="full"'
+                                                 ' data-tracks-labels="short=kurz full=ausführlich"'
+                                                 ' data-tracks-labels-en="short=brief full=complete"'))
+    assert page.locator(".deck-track").inner_text() == "Spur: ausführlich"
+    page.keyboard.press("l")
+    page.wait_for_function("() => document.documentElement.getAttribute('data-lang') === 'en'")
+    assert page.locator(".deck-track").inner_text() == "Track: complete"
+    assert page.evaluate("() => window.SlideDeck.trackLabel('short')") == "brief"
+
+
 def test_track_buttons_carry_aria_pressed(open_html, page):
     btns = '<button id="b-run" data-deck="track:run">run</button><button id="b-prep" data-deck="track:prep">prep</button>'
     html = fixture("tracks-7.html").replace("<p class=\"slide__body reveal\">Neutral sample text.</p>",

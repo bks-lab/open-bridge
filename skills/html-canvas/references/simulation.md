@@ -44,6 +44,14 @@ That splices `shell.html` (tokens, light/dark, DE/EN, print), `simulation.css`,
 asserts its anchor and the result is checked before it is written, because a
 quietly missed splice produces a page that opens fine and never runs.
 
+`--embed-fonts` (with `--design`, and `--font-dir` for extra font files) adds the
+DESIGN.md families as base64 `@font-face` in a `page-fonts` region. It is off by
+default; use it for a simulation that runs in a slide stage or is sent on its own,
+where no page around it carries the brand's faces and the title would fall back to
+a system serif. `bundle.py` embeds fonts in every page it bundles, linked pages
+included, when it finds a DESIGN.md (or gets `--design`), and says so when it finds
+none.
+
 Then edit the `MODEL` block at the top of the last `<script>`. In the `flow`
 fragment that is the geometry constants, `ITEMS`, `D`, `TXT` and the `Sim.params`
 block; in `worklist` it is `PLAN`, `TXT` and `Sim.params`. Everything below the
@@ -219,11 +227,16 @@ The values live in the URL hash, **only where they differ from the default**:
 `#approach=2&speed=0.5`. An untouched page keeps a clean address, and a hash
 without `=` is an ordinary anchor and is left alone. The hash is read once, when
 `Sim.params` runs, so the model's first `blank()` already sees the restored
-values; an invalid value is ignored and the default kept. `speed` (written by the
-speed buttons) and `t` are reserved. `Sim.link()`, and the copy-link button,
+values; an invalid value is ignored and the default kept. A name such as
+`hasOwnProperty` or `__proto__` in a link is a plain key, never a builtin. `speed`
+(written by the speed buttons) and `t` are reserved. The archetypes bring one
+parameter each: `flow` has `approach` (1 to 5, default 3: items allowed to head
+for the gate at once), `worklist` has `scenario` (`rework` or `clean`). `Sim.link()`, and the copy-link button,
 adds `t=<tick>`: a page opened with it stands **paused at that tick** and never
 starts by itself, also under reduced motion (the "computed to its end" note stays
-hidden, because it is not the end). Without a clipboard the button shows the link
+hidden, because it is not the end). A tick at or past the end of the run opens the
+run done (Play and Step are disabled, so the model never runs past its end), the same
+as a scrub to the end of the timeline. Without a clipboard the button shows the link
 selected in `[data-sim-link]` instead.
 
 ### The state as a table
@@ -321,7 +334,7 @@ dead control. Both archetypes ship that button with `hidden`.
 | Message | Direction | Payload | Meaning |
 |---|---|---|---|
 | `stage:ready` | simulation to slide | `contract: 1`, `title` | sent once, by `Sim.boot`, after the first frame is painted. A page with its own boot calls `Sim.stage.ready(clock)` |
-| `stage:key` | simulation to slide | `key`: `v`, `Escape`, `PageDown` or `PageUp` | a key the slide owns was pressed while focus sat inside the frame. Space, R, S and the digits stay with the simulation |
+| `stage:key` | simulation to slide | `key`: `v`, `Escape`, `PageDown`, `PageUp`, `t` or `l` | a key the slide owns was pressed while focus sat inside the frame. T and L switch the slide's theme and language, and the frame follows; the page's own T and L handlers never see them, so nothing is stored. Space, R, S and the digits stay with the simulation |
 | `stage:maximize` | simulation to slide | optional `on` (boolean) | the maximize button was pressed; without `on` it means toggle |
 | `stage:maximize` | slide to simulation | `on` (boolean) | the slide reports the resulting state; the engine mirrors it as `data-sim-maximized="yes"` or `"no"` on `<html>` and as `aria-pressed` on the button |
 | `stage:restart` | slide to simulation | none | reset the run in place and start it again (under reduced motion: compute it to the end). The slide falls back to reloading the frame when no `stage:ready` has arrived |

@@ -371,12 +371,16 @@ def parse_selectors(items: list[str]) -> dict:
 #     bg: surface                                      # --bg from colors.surface
 #     accent-dim: {role: accent, mix: 15}              # 15 % accent over transparent
 #     ok-dim: {role: success, mix: 20, with: surface}  # 20 % success over the surface
+#   print: false                                       # optional, default true
+#
+# `print: false` leaves out the light @media print block, for a consumer that
+# prints the mode it shows (a slide deck, whose PDF mode render-pdf picks).
 #
 # A role resolves per mode: light from `colors:`, dark from `colorsDark:` or a
 # legacy `dark-<role>` key, falling back to the light value when the manifest
 # has no dark one (the dark group then repeats it, so both groups stay whole).
-def load_map(path: Path) -> tuple[dict, dict]:
-    """Return (vars, selectors) from a map file, or raise ValueError."""
+def load_map(path: Path) -> tuple[dict, dict, bool]:
+    """Return (vars, selectors, print block) from a map file, or raise ValueError."""
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict) or not isinstance(data.get("vars"), dict) or not data["vars"]:
         raise ValueError(f"{path}: needs a non-empty 'vars:' mapping")
@@ -399,10 +403,14 @@ def load_map(path: Path) -> tuple[dict, dict]:
     selectors = data.get("selectors") or {}
     if not isinstance(selectors, dict) or set(selectors) - set(DEFAULT_SELECTORS):
         raise ValueError(f"{path}: 'selectors:' takes only light and dark")
-    return entries, {k: str(v) for k, v in selectors.items()}
+    print_block = data.get("print", True)
+    if not isinstance(print_block, bool):
+        raise ValueError(f"{path}: 'print:' takes true or false")
+    return entries, {k: str(v) for k, v in selectors.items()}, print_block
 
 
-def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None) -> tuple[str, list[str]]:
+def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None,
+                     print_block: bool = True) -> tuple[str, list[str]]:
     """Return (css, missing roles) holding exactly the mapped variables per mode."""
     light_sel, dark_sel = _selectors(selectors)
     colors = design.get("colors") or {}
@@ -437,7 +445,7 @@ def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None)
 
     css = css_header(design) + light_sel + " {\n" + "\n".join(light) + "\n}\n"
     css += "\n" + dark_sel + " {\n" + "\n".join(darks) + "\n}\n"
-    if paper:
+    if paper and print_block:
         # the same print block the default sheet carries (build_css), in the consumer's names
         css += ("\n/* Print: light palette on a white ground, whatever the screen mode. */\n"
                 "@media print {\n" + light_sel + ", " + dark_sel + " {\n"
@@ -575,9 +583,10 @@ def main() -> int:
 
     selectors: dict = {}
     entries = None
+    print_block = True
     try:
         if args.map:
-            entries, selectors = load_map(Path(args.map))
+            entries, selectors, print_block = load_map(Path(args.map))
         if args.selectors:
             selectors.update(parse_selectors(args.selectors))
         region = args.region or REGION
@@ -591,7 +600,7 @@ def main() -> int:
 
     design = frontmatter(Path(args.design))
     if entries is not None:
-        css, missing = build_mapped_css(design, entries, selectors)
+        css, missing = build_mapped_css(design, entries, selectors, print_block)
         skipped = []
     else:
         css, skipped = build_css(design, selectors)

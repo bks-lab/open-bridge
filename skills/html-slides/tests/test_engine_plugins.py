@@ -153,6 +153,21 @@ def test_a_transition_that_never_applies_does_not_strand_the_deck(open_html):
     wait_settled(page, 1, timeout=5000)
 
 
+def test_an_instant_apply_survives_a_later_transition_in_the_chain(open_html):
+    """Module a asks for an instant move, module b nested inside it calls apply() plainly:
+    the engine must still place the slide without the smooth scroll."""
+    page = open_deck(open_html, deck(4))
+    page.evaluate("""() => {
+      window.__behaviors = [];
+      const orig = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (o) { window.__behaviors.push(o && o.behavior); return orig.call(this, o); };
+      window.SlideDeck.use({ name: 'a', transition: (f, t, apply) => apply({ instant: true }) });
+      window.SlideDeck.use({ name: 'b', transition: (f, t, apply) => apply() }); }""")
+    page.keyboard.press("ArrowRight")
+    wait_settled(page, 1, timeout=5000)
+    assert page.evaluate("window.__behaviors")[-1] == "instant"
+
+
 def test_help_lists_module_rows_in_the_deck_language(open_html):
     page = open_deck(open_html, probe_deck())
     page.keyboard.press("?")

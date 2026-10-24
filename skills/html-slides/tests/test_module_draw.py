@@ -176,6 +176,18 @@ def test_escape_leaves_drawing_and_the_ink_stays(open_html):
     assert mode(page) == "off", "D toggles"
 
 
+def test_escape_closes_the_help_first_then_the_drawing(open_html):
+    page = open_deck(open_html, draw_deck())
+    page.keyboard.press("d")
+    page.evaluate("() => window.SlideDeck.toggleHelp(true)")
+    assert page.locator(".deck-help").is_visible()
+    page.keyboard.press("Escape")
+    assert not page.locator(".deck-help").is_visible(), "Esc left the help open"
+    assert mode(page) == "draw", "Esc closed the drawing behind the help"
+    page.keyboard.press("Escape")
+    assert mode(page) == "off"
+
+
 def test_ink_follows_a_theme_switch_and_a_resize(open_html, page):
     open_deck(open_html, draw_deck())
     page.keyboard.press("d")

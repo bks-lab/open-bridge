@@ -4,7 +4,8 @@
    - Slides are .slide inside .deck. Options sit on .deck or <html> (deck wins):
      data-tracks-default, data-tracks-cycle, data-deck-id, data-counter-format="padded",
      data-dots="off", data-back-href, data-back-label, data-deep-link="off",
-     data-tracks-labels="<name>=<label> ..." (what the track badge shows for a name).
+     data-tracks-labels="<name>=<label> ..." (what the track badge shows for a name;
+     data-tracks-labels-de / -en win in that language).
    - API: window.SlideDeck = {goTo(i), next(), prev(), current(), count(), setTrack(name),
      track(), trackLabel(), on(event, fn), toggleTheme(), toggleNotes(), toggleHelp(), strings()}.
      Indexes are 0-based positions among the slides the active track shows.
@@ -36,7 +37,7 @@
     en: {
       slide: 'Slide', status: 'Slide {n} of {m}', goTo: 'Go to slide {n}',
       theme: 'Toggle light or dark theme', themeTitle: 'Toggle theme (T)',
-      back: 'Back', notes: 'Speaker notes', noNotes: 'No notes on this slide.',
+      back: 'Back to page', notes: 'Speaker notes', noNotes: 'No notes on this slide.',
       track: 'Track', allTracks: 'all slides', help: 'Keyboard shortcuts',
       hint: 'arrows, space or scroll · ? help',
       keyNext: 'Next slide', keyPrev: 'Previous slide', keyEnds: 'First or last slide',
@@ -50,7 +51,7 @@
     de: {
       slide: 'Folie', status: 'Folie {n} von {m}', goTo: 'Zu Folie {n}',
       theme: 'Hell oder dunkel umschalten', themeTitle: 'Darstellung umschalten (T)',
-      back: 'Zurück', notes: 'Sprechernotizen', noNotes: 'Zu dieser Folie gibt es keine Notizen.',
+      back: 'Zurück zur Seite', notes: 'Sprechernotizen', noNotes: 'Zu dieser Folie gibt es keine Notizen.',
       track: 'Spur', allTracks: 'alle Folien', help: 'Tastenkürzel',
       hint: 'Pfeile, Leertaste oder Scrollen · ? Hilfe',
       keyNext: 'Nächste Folie', keyPrev: 'Vorige Folie', keyEnds: 'Erste oder letzte Folie',
@@ -63,6 +64,11 @@
     }
   };
   /* i18n:end */
+  /* Key names as a German keyboard prints them; a name without an entry stays as it is. */
+  var KEY_NAMES = {
+    de: { 'Space': 'Leertaste', 'Shift+Space': 'Umschalt+Leertaste', 'PgDn': 'Bild↓', 'PgUp': 'Bild↑',
+          'Home': 'Pos1', 'End': 'Ende', 'Alt+click': 'Alt+Klick' }
+  };
 
   var root = document.documentElement;
   var instance = null;
@@ -141,14 +147,21 @@
     this.trackNames = names;
     if (!cycle.length) cycle = this.trackDefault ? [this.trackDefault, 'all'] : ['all'].concat(names);
     this.trackCycle = cycle;
-    /* Display names: data-tracks-labels="short=kurz full=lang". The name stays the key
-       (data-track, storage, deep links); only what a person reads changes. */
-    var labels = {};
-    (this.opt('data-tracks-labels') || '').split(/\s+/).forEach(function (pair) {
-      var i = pair.indexOf('=');
-      if (i > 0 && i < pair.length - 1) labels[pair.slice(0, i)] = pair.slice(i + 1);
-    });
-    this.trackLabels = labels;
+    /* Display names: data-tracks-labels="short=kurz full=lang", and per language
+       data-tracks-labels-de / data-tracks-labels-en, which win in that language. The
+       name stays the key (data-track, storage, deep links); only what a person reads
+       changes. */
+    var self = this;
+    function parseLabels(attr) {
+      var labels = {};
+      (self.opt(attr) || '').split(/\s+/).forEach(function (pair) {
+        var i = pair.indexOf('=');
+        if (i > 0 && i < pair.length - 1) labels[pair.slice(0, i)] = pair.slice(i + 1);
+      });
+      return labels;
+    }
+    this.trackLabels = parseLabels('data-tracks-labels');
+    this.trackLabelsByLang = { de: parseLabels('data-tracks-labels-de'), en: parseLabels('data-tracks-labels-en') };
     var stored = names.length ? storeGet(this.trackKey) : null;
     this.track = stored || this.trackDefault || 'all';
   };
@@ -190,7 +203,9 @@
   };
   SlideEngine.prototype.labelOf = function (name) {
     if (name === 'all') return this.t.allTracks;
-    return Object.prototype.hasOwnProperty.call(this.trackLabels, name) ? this.trackLabels[name] : name;
+    var own = Object.prototype.hasOwnProperty, byLang = (this.trackLabelsByLang || {})[this.lang] || {};
+    if (own.call(byLang, name)) return byLang[name];
+    return own.call(this.trackLabels, name) ? this.trackLabels[name] : name;
   };
   SlideEngine.prototype.visibleIndexOf = function (slide) {
     var a = this.all, i = a.indexOf(slide), j, k;
@@ -289,7 +304,10 @@
     dl.textContent = '';
     rows.forEach(function (r) {
       var dt = el('dt', '', dl);
-      r[0].split(' ').forEach(function (k) { el('kbd', '', dt).textContent = k; });
+      var names = KEY_NAMES[lang] || {};
+      r[0].split(' ').forEach(function (k) {
+        el('kbd', '', dt).textContent = Object.prototype.hasOwnProperty.call(names, k) ? names[k] : k;
+      });
       el('dd', '', dl).textContent = r[1];
     });
   };
@@ -481,9 +499,12 @@
     var chain = (instant || !from || s === from || reducedMotion()) ? [] : modules.filter(function (m) { return typeof m.transition === 'function'; });
     if (!chain.length) return apply();
     timer = setTimeout(apply, 1500); /* a transition that never applies must not strand the deck */
+    /* Each module's options travel inward: an instant asked for by an outer module
+       still holds when a module nested inside it calls apply() without one. */
     chain.reduceRight(function (next, m) {
       return function (o) {
-        try { m.transition(from, s, next); } catch (err) { next(o); later(err); }
+        var pass = function (o2) { next((o && o.instant) || (o2 && o2.instant) ? { instant: true } : (o2 || o)); };
+        try { m.transition(from, s, pass); } catch (err) { pass(); later(err); }
       };
     }, apply)();
   };
@@ -640,7 +661,7 @@
     this.helpBox.querySelector('.deck-help__title').textContent = t.help;
     this.hints.textContent = this.hintKeys + ' · ' + t.hint;
     if (back && !this.opt('data-back-label')) back.textContent = '← ' + t.back;
-    if (this.trackBadge) this.trackBadge.textContent = t.track + ': ' + (this.activeTrack === 'all' ? t.allTracks : this.activeTrack);
+    if (this.trackBadge) this.trackBadge.textContent = t.track + ': ' + this.labelOf(this.activeTrack);
     this.renderHelp();
     this.buildDots();
     this.lastEmitted = this.slides[this.current];
@@ -677,17 +698,27 @@
     if (n > 0) this.goTo(n - 1);
   };
   /* Zoom scales the slide's children, never the slide: the slide clips them, so the
-     scroll-snap deck behind keeps its geometry. */
+     scroll-snap deck behind keeps its geometry. The inline transform, origin and
+     transition a child had are kept and given back on unzoom. */
   SlideEngine.prototype.zoomAt = function (s, x, y) {
     this.unzoom(true);
     var ease = reducedMotion() ? '' : 'transform 0.3s ease';
+    var gen = this.zoomGen = (this.zoomGen || 0) + 1;
     [].forEach.call(s.children, function (c) {
       if (c.matches('aside.notes')) return;
+      /* still set while an unzoom eases out: that is the value from before the zoom */
+      if (!c.__deckZoomPrev) {
+        c.__deckZoomPrev = { t: c.style.transform, o: c.style.transformOrigin, tr: c.style.transition };
+      }
+      var prev = c.__deckZoomPrev;
+      c.__deckZoomGen = gen;
+      c.style.transition = '';
+      c.style.transform = prev.t;
       var r = c.getBoundingClientRect(), z = parseFloat(getComputedStyle(c).zoom) || 1;
       c.setAttribute('data-deck-zoom', '');
       c.style.transition = ease;
       c.style.transformOrigin = ((x - r.left) / z) + 'px ' + ((y - r.top) / z) + 'px';
-      c.style.transform = 'scale(2)';
+      c.style.transform = (prev.t ? prev.t + ' ' : '') + 'scale(2)';
     });
     this.zoomed = s;
     root.classList.add('deck-zoomed');
@@ -697,16 +728,23 @@
     if (!s) return;
     this.zoomed = null;
     root.classList.remove('deck-zoomed');
+    var gen = this.zoomGen;
     var kids = [].filter.call(s.children, function (c) { return c.hasAttribute('data-deck-zoom'); });
     var clear = function () {
       kids.forEach(function (c) {
-        if (c.style.transform) return; /* zoomed again meanwhile */
+        if (c.__deckZoomGen !== gen || !c.__deckZoomPrev) return; /* zoomed again meanwhile */
+        var p = c.__deckZoomPrev;
         c.removeAttribute('data-deck-zoom');
-        c.style.transition = '';
-        c.style.transformOrigin = '';
+        c.style.transition = p.tr;
+        c.style.transformOrigin = p.o;
+        c.__deckZoomPrev = null;
       });
     };
-    kids.forEach(function (c) { if (instant) c.style.transition = ''; c.style.transform = ''; });
+    kids.forEach(function (c) {
+      var p = c.__deckZoomPrev || { t: '' };
+      if (instant) c.style.transition = '';
+      c.style.transform = p.t;
+    });
     if (instant || reducedMotion()) clear(); else setTimeout(clear, 350);
   };
 

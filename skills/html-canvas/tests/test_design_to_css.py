@@ -402,6 +402,20 @@ def test_map_print_block_uses_the_consumer_selectors():
     assert decls == {"bg": "#FFFFFF", "text": "#333333"}
 
 
+def test_map_print_false_leaves_the_print_block_out():
+    css = _run(TOKENS / "design-legacy.md", "--map", TOKENS / "map-print-off.yaml").stdout
+    assert "@media print" not in css
+    assert ".theme-dark" in css, "the screen groups stay"
+
+
+def test_map_print_takes_only_a_boolean(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("print: maybe\nvars:\n  bg: surface\n", encoding="utf-8")
+    proc = subprocess.run([sys.executable, str(SCRIPT), str(TOKENS / "design-legacy.md"), "--map", str(bad)],
+                          capture_output=True, text=True)
+    assert proc.returncode != 0 and "print" in proc.stderr
+
+
 def test_default_sheet_print_block_is_unchanged():
     css = _run(TOKENS / "design-current.md").stdout
     assert css == (TOKENS / "golden-current.css").read_text("utf-8")

@@ -78,6 +78,13 @@
   will-change: auto !important;
   content-visibility: visible !important;
   transition: none !important;
+  /* N2b. A stacking context on an ancestor (the engine isolates every slide, a
+     positioned z-index or an opacity does the same) keeps the stage's z-index inside
+     it, under the deck's fixed chrome. */
+  isolation: auto !important;
+  z-index: auto !important;
+  opacity: 1 !important;
+  mix-blend-mode: normal !important;
 }
 .stage-max-on .deck { overflow: hidden; }
 

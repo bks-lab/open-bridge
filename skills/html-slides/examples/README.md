@@ -21,7 +21,7 @@ three slides tagged `full`.
 | 3, 9, 13, 20, 29 | `s-nav`, `s-look`, `s-types`, `s-present`, `s-live` | Section dividers | `slide--divider` |
 | 4 | `s-keys` | Keys, help with the module rows, buttons | `?`, `data-deck="help"`, `data-deck="next"` |
 | 5 | `s-deeplink` | Deep link, with a step (track "full") | `deck.html#s-deeplink`, `#s-steps.2`, `data-deep-link="off"` |
-| 6 | `s-tracks` | Tracks, with labels for the track names | key F, `data-track`, `data-tracks-default`, `data-tracks-cycle`, `data-tracks-labels` |
+| 6 | `s-tracks` | Tracks, with labels for the track names | key F, `data-track`, `data-tracks-default`, `data-tracks-cycle`, `data-tracks-labels-de` / `-en` |
 | 7 | `s-notes` | Speaker notes | key N, `<aside class="notes">` |
 | 8 | `s-livekeys` | Cover, number jump, zoom (engine, always on) | B / W, digits + Enter, Alt+click |
 | 10 | `s-theme` | Theme, and the language switched at run time by the engine | key T, key L or `data-deck="lang"`, `data-de` / `data-en` pairs |
@@ -70,9 +70,10 @@ default style preset applies.
 ```bash
 OUT=work/showcase; mkdir -p $OUT/build
 
-# 1. the simulation for the stage (archetype flow: scenario values, timeline, table)
+# 1. the simulation for the stage (archetype flow: scenario values, timeline, table),
+#    with its own fonts: inside the stage no page around it carries the brand's faces
 python3 skills/html-canvas/scripts/new-simulation.py --archetype flow --lang de \
-    --out $OUT/build/showcase-sim.html
+    --embed-fonts --out $OUT/build/showcase-sim.html
 cp $OUT/build/showcase-sim.html $OUT/
 
 # 2. the slides plus the simulation as an inert base64 payload; the stage reads
@@ -85,7 +86,8 @@ cp $OUT/build/showcase-sim.html $OUT/
 # 3. the deck, with the stage and every module
 ATTRS=(--deck-attr data-counter-format=padded --deck-attr data-tracks-default=full
   --deck-attr "data-tracks-cycle=short full" --deck-attr data-deck-id=html-slides-showcase
-  --deck-attr data-back-href=showcase-seite.html --deck-attr "data-tracks-labels=short=kurz full=lang")
+  --deck-attr data-back-href=showcase-seite.html --deck-attr "data-tracks-labels-de=short=Kurzfassung full=ausführlich"
+  --deck-attr "data-tracks-labels-en=short=brief full=complete")
 python3 skills/html-slides/scripts/new-deck.py --title "html-slides Showcase" --lang de \
     --with-stage --with all --slides $OUT/build/slides.html --out $OUT/showcase-deck.html "${ATTRS[@]}"
 
@@ -123,10 +125,5 @@ it as `request-failed`, because it opens the deck alone.
   deck itself alone, so step 2 carries the simulation inside the deck as well.
 - The back link is built by the engine at run time, so the bundler does not see
   it: in a send copy it points to a page that is not there.
-- `data-tracks-labels` holds one label per track name, not one per language. The
-  deck carries the German labels; the card on the tracks slide follows the
-  language, while the engine's track badge shows the bare track name after a
-  language switch.
-- The gate warns that the hidden steps of `s-steps` stay at opacity 0 under
-  reduced motion: they are steps not yet reached, and print, PDF and the reading
-  view show them.
+- A stage that is more than a slide away is not loaded yet, so the browser's own
+  print dialog can print it empty; `render-pdf.cjs` waits for every frame.

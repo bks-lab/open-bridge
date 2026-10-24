@@ -164,6 +164,11 @@ html_slides:
   # or a list: [protocols/names.txt, protocols/ids.txt]
 ```
 
+The script finds `bridge-config.yaml` by walking up from the deck. A copy outside the
+instance repo (a temp or export folder) has none above it, so the instance list is not
+read and a clean run only means the default list found nothing: the report names the
+lists it used. Check such a copy with `--config <path to bridge-config.yaml>`.
+
 The check finds that file walking up from the deck (or takes `--config FILE`) and
 adds the lists to the default without a flag; `--no-config` skips it. The older key
 `html_slides.wordlist` is still read. `--extra-wordlist` is the older spelling of `--wordlist`
@@ -205,11 +210,15 @@ If any audit step has hits, decide per term: remove (sensitive), keep with a not
 
 A deck sent to people who will read it alone (no speaker, no keys) can open in the
 reading view of the `read` module: every slide of the active track as one scrolling
-document, with its speaker notes under each slide. Build or refresh it with the
-module and the deck attribute `data-read-default`:
+document, with its speaker notes under each slide. Build it with the module and the
+deck attribute `data-read-default`. `--deck-attr` is a build flag, so `--refresh`
+refuses it; build the presenting deck and the reading copy from the same `--slides`
+fragment instead:
 
 ```bash
-python3 $SKILL/new-deck.py --with read --deck-attr data-read-default= ...   # or set it on <html>
+python3 $SKILL/new-deck.py --with read --slides slides.html --out deck.html ...
+python3 $SKILL/new-deck.py --with read --slides slides.html --out deck-read.html ... \
+    --deck-attr data-read-default=              # or set the attribute on <html> by hand
 ```
 
 The attribute works on `.deck` or `<html>`; `data-read-default="off"` (or `"false"`)

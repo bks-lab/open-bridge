@@ -138,6 +138,8 @@ td.key{font-family:var(--font-mono);color:var(--accent-text)}
 .note.warn{border-color:var(--line);background:var(--raised)}
 .note.warn b::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn);margin-right:8px;vertical-align:.1em}
 .note b{color:var(--ink)}
+/* a link on the accent tint: ink, which the tint is checked against, marked by its underline */
+.note a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
 
 /* @block: not-vs-is */
 .contrast{display:grid;grid-template-columns:1fr 1fr;gap:24px}

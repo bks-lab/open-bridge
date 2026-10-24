@@ -256,7 +256,14 @@
     keys: {
       d: function () { if (reading()) return false; toggle('draw'); return true; },
       q: function () { if (reading()) return false; toggle('laser'); return true; },
-      escape: function () { if (mode === 'off') return false; setMode('off'); return true; },
+      escape: function () {
+        if (mode === 'off') return false;
+        /* the engine's Esc closes what lies on top first: the help, a zoom */
+        var help = document.querySelector('.deck-help');
+        if ((help && !help.hidden) || document.documentElement.classList.contains('deck-zoomed')) return false;
+        setMode('off');
+        return true;
+      },
       c: function (e) { if (mode !== 'draw') return false; clear(!!(e && e.shiftKey)); return true; },
       z: function () { if (mode !== 'draw') return false; undo(); return true; },
       h: function () { if (mode !== 'draw') return false; tool = tool === 'pen' ? 'marker' : 'pen'; showBadge(true); return true; }
