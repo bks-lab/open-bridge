@@ -41,11 +41,15 @@ commit message:
                 · the file was deleted locally, or the conflict is not a plain
                   content one (rename, mode, submodule)
 
-A held file names the local commits behind it, minus every commit whose patch
-upstream already carries (`git cherry`): a promoted commit is not local work.
+A held file names the local commits behind it, minus every commit whose change to
+that file upstream already carries: its patch-id for the path (`git patch-id
+--stable`) matches a commit anywhere in upstream's history of the path, whether
+that twin is still pending or came down with an earlier merge. A promoted commit
+is not local work. A promote squashed together with other changes has no twin of
+its own and is still named.
 A path declared in bridge-config.yaml `promote.local_adaptations` (a list of
-{path, reason}, fnmatch globs allowed) is labelled a declared local adaptation
-instead of an unpromoted change. It stays held: upstream changed a file this
+{path, reason}, fnmatch globs allowed, where `*` also matches `/`) is labelled a
+declared local adaptation instead of an unpromoted change. It stays held: upstream changed a file this
 instance keeps different on purpose, and only a human merges the two.
 
 Every path not provably "take theirs" or "take ours" is unresolved: the script
@@ -113,31 +117,51 @@ def short(c: str) -> str:
     return c[:7]
 
 
-def upstream_equivalent(theirs: str, ours: str) -> set[str]:
-    """Full SHAs of local commits whose patch upstream already carries (git cherry's "-")."""
-    out = git("cherry", theirs, ours).stdout.decode().splitlines()
-    return {line[2:].strip() for line in out if line.startswith("- ")}
+def patch_ids(rev_range: str, path: str) -> dict[str, str]:
+    """{commit: patch-id of its change to path} for the non-merge commits in rev_range."""
+    log = git("log", "--no-merges", "-p", "--format=commit %H", rev_range, "--", path).stdout
+    if not log.strip():
+        return {}
+    p = subprocess.run(["git", "patch-id", "--stable"], input=log, capture_output=True, env=ENV)
+    if p.returncode:
+        raise GitError(f"git patch-id → {p.returncode}: {p.stderr.decode(errors='replace').strip()}")
+    out = {}
+    for row in p.stdout.decode().splitlines():
+        pid, _, commit = row.partition(" ")
+        out[commit.strip()] = pid
+    return out
 
 
-PROMOTED: set[str] = set()   # filled once per plan(), read by local_commits()
+def promoted(base: str, ours: str, theirs: str, path: str) -> set[str]:
+    """Local commits in base..ours whose change to path upstream carries, in ANY of its
+    history of the path. `git cherry` would see only twins still in ours..theirs; a twin
+    that came down with an earlier merge is in neither range it compares."""
+    mine = patch_ids(f"{base}..{ours}", path)
+    if not mine:
+        return set()
+    upstream = set(patch_ids(theirs, path).values())
+    return {c for c, pid in mine.items() if pid in upstream}
+
+
 NEVER_REACHED = "local change never reached upstream"
 ONLY_MERGES = ("local version differs from upstream, but every local commit to it is already "
                "upstream: the difference comes from a merge resolution")
 
 
-def local_commits(base: str, ours: str, path: str) -> list[str]:
+def local_commits(base: str, ours: str, theirs: str, path: str) -> list[str]:
     # base..ours alone lists every user-only commit ever made to the path, back to
     # the first sync; the ones a human has to look at are those since the base.
     # An old unpromoted edit has none since the base, so fall back to the newest few.
     # A commit upstream already carries patch for patch was promoted: it is not
     # what keeps the file apart, and naming it sends the reader after done work.
     since = git("log", "-1", "--format=%cI", base).stdout.decode().strip()
+    done = promoted(base, ours, theirs, path)
     rng = (f"{base}..{ours}", "--", path)
 
     def pick(*extra: str) -> list[str]:
         out = git("log", "--no-merges", *extra, "--format=%H %s", *rng).stdout
         rows = (r.partition(" ") for r in out.decode(errors="replace").splitlines())
-        return [f"{short(h)} {subj}" for h, _, subj in rows if h not in PROMOTED]
+        return [f"{short(h)} {subj}" for h, _, subj in rows if h not in done]
 
     return pick(f"--since={since}") or pick()[:3]
 
@@ -220,7 +244,7 @@ def classify_ours(entry: dict, stages: set[int], base: str, ours: str, theirs: s
         if reverts:
             return {**entry, "reason": f"this branch had upstream's version at {short(history[hit])}, then reverted "
                     "it in " + ", ".join(short(c) for c in reverts),
-                    "local_commits": local_commits(base, ours, path)}
+                    "local_commits": local_commits(base, ours, theirs, path)}
         return {**entry, "rule": "seen_locally", "seen_locally_at": short(history[hit])}
     if additions_held(blob(base, path), ours_blob, theirs_blob):
         return {**entry, "rule": "contained"}
@@ -236,7 +260,7 @@ def classify(path: str, stages: set[int], base: str, ours: str, theirs: str) -> 
         return {**entry, "reason": "not a plain content conflict"}
     history, hit = last_hit(f"{base}..{theirs}", path, ours_blob)
     if hit is None:
-        mine = local_commits(base, ours, path)
+        mine = local_commits(base, ours, theirs, path)
         return classify_ours(entry, stages, base, ours, theirs, ours_blob) or {
             **entry, "reason": NEVER_REACHED if mine else ONLY_MERGES, "local_commits": mine}
     later = history[hit + 1:]
@@ -244,7 +268,7 @@ def classify(path: str, stages: set[int], base: str, ours: str, theirs: str) -> 
     if reverts:
         return {**entry, "reason": f"upstream had it at {short(history[hit])}, then reverted it in "
                 + ", ".join(short(c) for c in reverts),
-                "local_commits": local_commits(base, ours, path)}
+                "local_commits": local_commits(base, ours, theirs, path)}
     return {**entry, "side": "theirs", "seen_upstream_at": short(history[hit]),
             "theirs_deleted": blob(theirs, path) is None}
 
@@ -254,9 +278,6 @@ def plan(ours: str, theirs: str, config: str = "bridge-config.yaml") -> dict:
     theirs = git("rev-parse", "--verify", theirs).stdout.decode().strip()
     base = git("merge-base", ours, theirs).stdout.decode().strip()
     clean, paths = conflicts(ours, theirs)
-    PROMOTED.clear()
-    if paths:
-        PROMOTED.update(upstream_equivalent(theirs, ours))
     adaptations, invalid = load_adaptations(config)
     take, keep, unresolved = [], [], []
     for path in sorted(paths):

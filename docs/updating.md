@@ -68,16 +68,19 @@ risking a bad one. All three must pass:
    predicted conflict is one a machine may decide.
 
 A held conflict is named file by file, with the local commits behind it. A
-commit whose patch upstream already carries (`git cherry`) is left out of that
-list, since it was promoted. A path you declared in `bridge-config.yaml`
-`promote.local_adaptations` (a list of `{path, reason}`) is reported as a
+commit whose change to that file upstream already carries is left out of that
+list, since it was promoted: its patch-id for the file matches a commit in
+upstream's history of the file, still pending or merged down long ago. A promote
+squashed together with other changes has no such twin and is still named. A path
+you declared in `bridge-config.yaml` `promote.local_adaptations` (a list of
+`{path, reason}`, fnmatch globs, where `*` also matches `/`) is reported as a
 *declared local adaptation*, so a deliberate divergence reads differently from a
 forgotten promotion. It is still held: you merge upstream's change into it.
 
 A skip is a guard doing its job, but a skip every morning is a merge nobody
-does. Once a skip has kept upstream out for `AUTOUPDATE_STALE_DAYS` days
-(default 2, counted from the oldest upstream commit the branch lacks), the job
-files one inbox item. It closes on its own once `upstream/main` is an ancestor
+does. Once a skip, or a merge that failed and was aborted, has kept upstream out
+for `AUTOUPDATE_STALE_DAYS` days (default 2, counted from the oldest upstream
+commit the branch lacks), the job files one inbox item. It closes on its own once `upstream/main` is an ancestor
 of your branch again.
 
 It writes the outcome to `work/upstream-status.md` (up to date, merged, skipped

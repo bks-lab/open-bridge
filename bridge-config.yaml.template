@@ -378,7 +378,8 @@ promote:
     # A conflict on such a path is still held for a human, but the auto-update
     # report (scripts/upstream-resolve.py) calls it a declared local adaptation
     # instead of a change that never reached upstream, so a deliberate
-    # divergence is told apart from a forgotten promotion. fnmatch globs work.
+    # divergence is told apart from a forgotten promotion. fnmatch globs work,
+    # and `*` also matches `/`: `docs/*` covers docs/a/b.md as well.
     # Example:
     #   - { path: docs/install.md, reason: "points at this org's internal mirror" }
 
