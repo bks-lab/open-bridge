@@ -42,7 +42,8 @@ produces the tree/ + overlay.manifest.yaml shape scripts/overlay.py consumes.
         traceback. Success => 0.
 
 Hermetic: every test builds a synthetic mini-repo + a separate overlay target
-under tmp_path — never the real repo, never a git checkout.
+under tmp_path, never the real repo. Only the --check-ref tests run git, in a
+throwaway repo under tmp_path with global config switched off.
 """
 from __future__ import annotations
 
@@ -552,13 +553,16 @@ def test_main_scope_flag(oe, mini_repo, tmp_path):
 #   flat_mirror_source_root(target) -> str | None
 #       The source_root a flat-mirror overlay reads from, or None when a
 #       same-path cherry-pick into <target> would land where a consumer looks.
-#       <target> is an overlay checkout dir or a manifest file. No manifest (or
-#       an empty one) => None. A manifest without defaults.source_root resolves
-#       to scripts/overlay.py's default (tree/). source_root "", "." or "./"
-#       => None. An unreadable manifest fails CLOSED (refuse).
+#       <target> is an overlay checkout dir or a manifest file. A checkout
+#       without a manifest => None. A manifest without defaults.source_root
+#       resolves to scripts/overlay.py's default (tree/). source_root "", "."
+#       or "./" => None. An empty or unreadable manifest, or source_root null,
+#       fails CLOSED (refuse). A target that does not exist raises
+#       TargetUnverifiable.
 #
-#   main(["--target", T, "--check-target"]) -> 0 (cherry-pick is safe) or
-#       3 (refuse), writing nothing and naming `overlay-export.py --dry-run`.
+#   main(["--target", T, "--check-target"]) -> 0 (cherry-pick is safe),
+#       3 (refuse: flat mirror) or 2 (refuse: cannot verify), writing nothing
+#       and naming `overlay-export.py --dry-run`.
 
 OVERLAY_PATH = REPO_ROOT / "scripts" / "overlay.py"
 
@@ -611,10 +615,29 @@ def test_gate_accepts_a_manifest_file(oe, tmp_path):
     assert oe.flat_mirror_source_root(str(m)) == "tree/"
 
 
-def test_gate_empty_manifest_file_allows(oe, tmp_path):
-    # `git show` of a ref without a manifest leaves an empty file behind
+def test_gate_empty_manifest_file_fails_closed(oe, tmp_path):
+    # an empty manifest is a broken overlay, not "no manifest": refuse
     m = _manifest(tmp_path / "ov", "")
-    assert oe.flat_mirror_source_root(str(m)) is None
+    assert oe.flat_mirror_source_root(str(m)) == "tree/"
+
+
+def test_gate_null_source_root_fails_closed(oe, tmp_path):
+    # overlay.py would crash on None.rstrip: a broken overlay, not a repo root
+    target = tmp_path / "ov"
+    _manifest(target, _MANIFEST_HEAD + "defaults: {source_root: null}\n")
+    assert oe.flat_mirror_source_root(str(target)) == "tree/"
+
+
+def test_gate_missing_target_is_unverifiable(oe, tmp_path):
+    # a typo in the checkout path must never read as "safe to cherry-pick"
+    with pytest.raises(oe.TargetUnverifiable):
+        oe.flat_mirror_source_root(str(tmp_path / "no-such-checkout"))
+
+
+def test_main_check_target_missing_target_refuses(oe, tmp_path, capsys):
+    rc = oe.main(["--target", str(tmp_path / "typo"), "--check-target"])
+    assert rc == 2
+    assert "REFUSE" in capsys.readouterr().err
 
 
 def test_gate_unreadable_manifest_fails_closed(oe, tmp_path):
@@ -650,3 +673,64 @@ def test_main_check_target_allows_normal_layout(oe, tmp_path, capsys):
     assert rc == 0
     assert list(target.iterdir()) == []  # no tree/, no manifest, no .gitignore
     assert "OK" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Cherry-pick gate against a fetched ref: --check-ref
+# ---------------------------------------------------------------------------
+#
+#   flat_mirror_source_root_at_ref(ref, repo=".") -> str | None
+#       Same answer as flat_mirror_source_root, read from <ref> in the git repo
+#       <repo>. A ref that does not resolve to a commit (fetch failed, typo)
+#       raises TargetUnverifiable: it fails CLOSED. A resolved ref without
+#       overlay.manifest.yaml => None.
+#
+#   main(["--repo-root", R, "--check-ref", REF]) -> 0 / 3 / 2 (unverifiable).
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True,
+                   env={"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
+                        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.org",
+                        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.org",
+                        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"})
+
+
+@pytest.fixture
+def ref_repo(tmp_path):
+    """A git repo with branch `flat` (manifest, source_root tree/) and branch
+    `plain` (no manifest), standing in for fetched overlay refs."""
+    repo = tmp_path / "bridge"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "plain")
+    (repo / "README.md").write_text("x\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-q", "-m", "plain")
+    _git(repo, "checkout", "-q", "-b", "flat")
+    _manifest(repo, _MANIFEST_HEAD + "defaults: {source_root: tree/}\n")
+    _git(repo, "add", "overlay.manifest.yaml")
+    _git(repo, "commit", "-q", "-m", "flat")
+    return repo
+
+
+def test_ref_gate_flat_mirror_refuses(oe, ref_repo):
+    assert oe.flat_mirror_source_root_at_ref("flat", str(ref_repo)) == "tree/"
+
+
+def test_ref_gate_no_manifest_allows(oe, ref_repo):
+    assert oe.flat_mirror_source_root_at_ref("plain", str(ref_repo)) is None
+
+
+def test_ref_gate_missing_ref_is_unverifiable(oe, ref_repo):
+    # the fetch never ran, or the remote name is mistyped
+    with pytest.raises(oe.TargetUnverifiable):
+        oe.flat_mirror_source_root_at_ref("nosuch/branch", str(ref_repo))
+
+
+def test_main_check_ref_exit_codes(oe, ref_repo, capsys):
+    root = ["--repo-root", str(ref_repo)]
+    assert oe.main(root + ["--check-ref", "flat"]) == 3
+    assert oe.main(root + ["--check-ref", "plain"]) == 0
+    assert oe.main(root + ["--check-ref", "nosuch/branch"]) == 2
+    err = capsys.readouterr().err
+    assert err.count("REFUSE") == 2

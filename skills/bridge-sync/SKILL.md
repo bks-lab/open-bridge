@@ -56,10 +56,11 @@ Read the referenced file ONLY when triggered.
   `overlay.manifest.yaml` is a flat mirror read only below its
   `defaults.source_root` (`tree/` when unset): `/bridge-sync` **refuses** it,
   because a cherry-pick lands every file at the overlay's repo root where no
-  consumer reads it. Check it in workflow Step 0a with
-  `python3 scripts/overlay-export.py --target <manifest or checkout> --check-target`
-  (exit 3 = refuse) and build that overlay with
-  `python3 scripts/overlay-export.py --dry-run` instead
+  consumer reads it. Workflow Step 0a fetches each overlay and runs
+  `python3 scripts/overlay-export.py --check-ref {name}/{branch}` (any non-zero
+  exit refuses, an unfetched ref included). Build that overlay instead with
+  `python3 scripts/overlay-export.py --target <overlay checkout> --scope <tier> --dry-run`,
+  then the same command without `--dry-run`
   ([`docs/org-overlays.md`](../../docs/org-overlays.md) § Authoring an overlay).
   open-bridge still syncs.
 

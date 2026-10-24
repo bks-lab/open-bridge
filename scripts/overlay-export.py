@@ -14,8 +14,9 @@ Why an export step (not /promote): `/promote` and `/bridge-sync` cherry-pick
 SAME-PATH commits onto a normal-layout branch, which would land files at the
 overlay's repo ROOT — not under `tree/` — producing a mirror overlay.py cannot
 read. A `tree/`-prefixed flat mirror must be BUILT, which is this script.
-Both skills therefore run `--check-target` against each overlay destination
-first and refuse it when this returns 3 (flat_mirror_source_root below).
+Both skills therefore run `--check-ref` against each fetched overlay
+destination first and refuse it on any non-zero exit (flat_mirror_source_root
+below).
 
 Single-owner => VERBATIM. A personal overlay carries no per-consumer
 placeholders: files are copied byte-for-byte with NO scrubbing and the manifest
@@ -29,6 +30,7 @@ Contract (public surface, mirrored by scripts/tests/test_overlay_export.py):
     build_manifest(existing, files_entries, scope="personal") -> dict
     export_overlay(repo_root, target, *, scope="personal", dry_run=False) -> dict
     flat_mirror_source_root(target) -> str | None
+    flat_mirror_source_root_at_ref(ref, repo=".") -> str | None
     main(argv=None) -> int
 
 Guarantees:
@@ -48,8 +50,10 @@ rules/operations.md § CORE/USER Separation), imported via importlib because of
 its hyphenated filename — the same pattern scripts/overlay.py uses.
 
 Exit codes:
-    0 — success        1 — bad --repo-root
-    3 = --check-target found a flat mirror: refuse a cherry-pick into it
+    0: success
+    1: bad --repo-root
+    2: --check-target / --check-ref could not verify the target: refuse
+    3: --check-target / --check-ref found a flat mirror: refuse a cherry-pick
 
 Design: work/tasks/personal-overlay-separation/deliverables/DESIGN.md §2.3–2.4.
 """
@@ -519,33 +523,17 @@ def export_overlay(repo_root: str, target_overlay_dir: str, *,
 _REPO_ROOT_SPELLINGS = ("", ".", "./")
 
 
-def flat_mirror_source_root(target: str) -> str | None:
-    """The source_root a flat-mirror overlay reads from, or None.
+class TargetUnverifiable(Exception):
+    """The gate could not look at the target: a missing path, an unresolved
+    ref, a git error. Callers refuse, exactly as for a flat mirror."""
 
-    `target` is an overlay checkout directory or a manifest file (the gate in
-    /promote checks a fetched ref via `git show <ref>:overlay.manifest.yaml`).
-    None means a same-path cherry-pick into `target` lands where a consumer
-    looks: there is no manifest, or its source_root is the repo root. Anything
-    else is a flat mirror, and a cherry-pick would put files at the repo root
-    where scripts/overlay.py never reads them, without any error.
 
-    A manifest that is silent on source_root resolves to SOURCE_ROOT, because
-    that is what scripts/overlay.py falls back to. A manifest that cannot be
-    parsed fails CLOSED: refusing a cherry-pick costs nothing, an invisible
-    file costs a silent loss.
-    """
-    path = target
-    if os.path.isdir(target):
-        path = os.path.join(target, MANIFEST_FILE)
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path, encoding="utf-8") as fh:
-            text = fh.read()
-    except OSError:
-        return SOURCE_ROOT
-    if not text.strip():
-        return None
+def _source_root_from_text(text: str) -> str | None:
+    """The flat-mirror source_root a manifest text declares, or None when its
+    source_root is the repo root. Anything overlay.py could not read as a
+    manifest (empty, unparsable, not a mapping, a source_root that is not a
+    string, null included) fails CLOSED to SOURCE_ROOT: refusing a cherry-pick
+    costs nothing, an invisible file costs a silent loss."""
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError:
@@ -556,20 +544,82 @@ def flat_mirror_source_root(target: str) -> str | None:
     if not isinstance(defaults, dict):
         return SOURCE_ROOT
     root = defaults.get("source_root", SOURCE_ROOT)
-    root = "" if root is None else str(root).strip()
-    if root in _REPO_ROOT_SPELLINGS:
+    if not isinstance(root, str):   # null included: overlay.py would crash on it
+        return SOURCE_ROOT
+    if root.strip() in _REPO_ROOT_SPELLINGS:
         return None
-    return root.rstrip("/") + "/"
+    return root.strip().rstrip("/") + "/"
 
 
-def _check_target(target: str) -> int:
-    root = flat_mirror_source_root(target)
+def flat_mirror_source_root(target: str) -> str | None:
+    """The source_root a flat-mirror overlay reads from, or None.
+
+    `target` is an overlay checkout directory or a manifest file. None means a
+    same-path cherry-pick into `target` lands where a consumer looks: the
+    checkout has no manifest, or its source_root is the repo root. Anything
+    else is a flat mirror, and a cherry-pick would put files at the repo root
+    where scripts/overlay.py never reads them, without any error.
+
+    A manifest that is silent on source_root resolves to SOURCE_ROOT, because
+    that is what scripts/overlay.py falls back to. A target that does not
+    exist raises TargetUnverifiable, so a mistyped path never reads as safe.
+    """
+    if os.path.isdir(target):
+        path = os.path.join(target, MANIFEST_FILE)
+        if not os.path.lexists(path):
+            return None
+    elif os.path.isfile(target):
+        path = target
+    else:
+        raise TargetUnverifiable(f"{target} is neither a directory nor a file")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except (OSError, UnicodeDecodeError):
+        return SOURCE_ROOT
+    return _source_root_from_text(text)
+
+
+def flat_mirror_source_root_at_ref(ref: str, repo: str = ".") -> str | None:
+    """flat_mirror_source_root for a fetched ref in the git repo `repo`.
+
+    The ref must resolve to a commit, otherwise TargetUnverifiable: a fetch
+    that failed or a mistyped remote name refuses, it never allows. A commit
+    without overlay.manifest.yaml at its root is a normal-layout overlay
+    (None)."""
+    def git(*args: str) -> subprocess.CompletedProcess:
+        try:
+            return subprocess.run(["git", "-C", repo, *args],
+                                  capture_output=True, text=True)
+        except OSError as exc:
+            raise TargetUnverifiable(f"git could not run: {exc}") from exc
+
+    if git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode != 0:
+        raise TargetUnverifiable(
+            f"ref {ref} does not resolve to a commit in {repo}; fetch it first")
+    blob = f"{ref}:{MANIFEST_FILE}"
+    if git("cat-file", "-e", blob).returncode != 0:
+        return None
+    shown = git("show", blob)
+    if shown.returncode != 0:
+        raise TargetUnverifiable(f"git show {blob} failed: {shown.stderr.strip()}")
+    return _source_root_from_text(shown.stdout)
+
+
+def _check(label: str, resolve) -> int:
+    try:
+        root = resolve()
+    except TargetUnverifiable as exc:
+        sys.stderr.write(
+            f"REFUSE: cannot verify {label} ({exc}). Treat it as a flat-mirror "
+            "overlay: no cherry-pick, no PR there.\n")
+        return 2
     if root is None:
-        print(f"overlay-export --check-target: OK, {target} is not a flat-mirror "
-              "overlay; a same-path cherry-pick lands where a consumer reads")
+        print(f"overlay-export: OK, {label} is not a flat-mirror overlay; a "
+              "same-path cherry-pick lands where a consumer reads")
         return 0
     sys.stderr.write(
-        f"REFUSE: {target} is a flat-mirror overlay (source_root {root}). "
+        f"REFUSE: {label} is a flat-mirror overlay (source_root {root}). "
         f"scripts/overlay.py reads only below {root}, so a cherry-picked file "
         "lands at the repo root and is invisible to every consumer. Build the "
         "mirror instead: python3 scripts/overlay-export.py --target <overlay "
@@ -589,8 +639,9 @@ def main(argv=None) -> int:
                     "and regenerate its manifest files[].",
     )
     ap.add_argument("--repo-root", default=".", help="Bridge instance root (default: .)")
-    ap.add_argument("--target", required=True,
-                    help="overlay repo dir to write (tree/ + overlay.manifest.yaml)")
+    ap.add_argument("--target",
+                    help="overlay repo dir to write (tree/ + overlay.manifest.yaml); "
+                         "required unless --check-ref")
     ap.add_argument("--scope", default=DEFAULT_SCOPE,
                     help=f"tier to export (default: {DEFAULT_SCOPE})")
     ap.add_argument("--dry-run", action="store_true",
@@ -599,11 +650,20 @@ def main(argv=None) -> int:
                     help="only report whether --target (a checkout dir or a "
                          "manifest file) is a flat-mirror overlay that "
                          "/promote and /bridge-sync must not cherry-pick into; "
-                         "exit 3 if so; write nothing")
+                         "exit 3 if so, 2 if it cannot be checked; write nothing")
+    ap.add_argument("--check-ref", metavar="REF",
+                    help="same check against a fetched ref (e.g. "
+                         "<name>/<branch>) in the git repo --repo-root; exit 3 "
+                         "for a flat mirror, 2 if the ref does not resolve")
     args = ap.parse_args(argv)
 
+    if args.check_ref:
+        return _check(f"ref {args.check_ref}", lambda: flat_mirror_source_root_at_ref(
+            args.check_ref, args.repo_root))
+    if not args.target:
+        ap.error("--target is required unless --check-ref is given")
     if args.check_target:
-        return _check_target(args.target)
+        return _check(args.target, lambda: flat_mirror_source_root(args.target))
 
     if not os.path.isdir(args.repo_root):
         sys.stderr.write(f"ERROR: --repo-root {args.repo_root} is not a directory\n")

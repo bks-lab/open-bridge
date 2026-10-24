@@ -164,10 +164,13 @@ The source contract above is a **flat mirror**: `tree/` plus a manifest, read by
 - **Export, never cherry-pick.** `/bridge-promote` and `/bridge-sync` write each
   file at the path it has in your Bridge. In a flat mirror that is the repo
   root, which no consumer reads: the PR merges green and the file is invisible
-  everywhere, without an error. Both skills therefore check every overlay
-  destination with `python3 scripts/overlay-export.py --target <checkout or
-  manifest> --check-target` and **refuse** it on exit 3. No flag overrides the
-  refusal; only a manifest whose `source_root` is the repo root (`.`) passes.
+  everywhere, without an error. Both skills therefore fetch every overlay
+  destination and check it with `python3 scripts/overlay-export.py --check-ref
+  <name>/<branch>` (or `--target <checkout or manifest> --check-target` for a
+  local checkout), and **refuse** it on any non-zero exit: 3 for a flat mirror,
+  2 when the ref or path cannot be verified. No flag overrides the refusal.
+  Only an overlay without a manifest, or one whose `source_root` is the repo
+  root (`.`), passes.
 - **Build the mirror with [`scripts/overlay-export.py`](../scripts/overlay-export.py).**
   It copies every file the router classifies into one tier to `tree/<path>`,
   prunes mirror files that left the tier, and regenerates the manifest's
@@ -178,11 +181,16 @@ The authoring loop, run from the Bridge that owns the content:
 1. **Pull colleagues' work back first.** A teammate's PR against `tree/` lands
    only in the overlay. The next export rewrites `tree/` from your live files,
    so a change that is not in your Bridge by then is overwritten, and a file
-   that is not in your tier is pruned. Refresh the cache with
-   `python3 scripts/overlay.py sync <name> --dry-run`, then read
-   `python3 scripts/overlay.py diff <name>` and carry every upstream change into
-   the live file in your Bridge. `git -C <overlay checkout> log -- tree/` since
-   your last export commit is the cross-check.
+   that is not in your tier is pruned. Read the overlay's own history, which
+   works whether or not this Bridge subscribes to the overlay: with `<last>`
+   the overlay commit your previous export landed as,
+   `git -C <overlay checkout> log --oneline <last>..HEAD -- tree/` lists what
+   others changed and `git -C <overlay checkout> diff <last>..HEAD -- tree/`
+   shows it. Carry every change into the live file in your Bridge. If this
+   Bridge also subscribes to the overlay, `python3 scripts/overlay.py sync
+   <name> --dry-run` followed by `python3 scripts/overlay.py diff <name>` is a
+   second view of the same drift; a source Bridge that does not subscribe gets
+   nothing from it, which is not the same as nothing to pull back.
 2. **Preview:** `python3 scripts/overlay-export.py --target <overlay checkout>
    --scope org --dry-run` lists every `+ tree/...` copy and `- tree/...` prune.
    An unexpected prune is usually step 1 not done.

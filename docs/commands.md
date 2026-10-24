@@ -71,7 +71,7 @@ which ones is per-instance, so the live list is the skill listing itself.
 
 | Command | Short form | Backing skill | Action |
 |---------|------------|---------------|--------|
-| `/bridge-promote` | | `bridge-promote` | Promote CORE changes upstream (`scope: core` to `bks-lab/open-bridge`, `scope: org` to your optional org overlay). Refuses a flat-mirror overlay (one with `overlay.manifest.yaml`): build that with `scripts/overlay-export.py --dry-run` instead ([org-overlays.md](org-overlays.md#authoring-an-overlay)) |
+| `/bridge-promote` | | `bridge-promote` | Promote CORE changes upstream (`scope: core` to `bks-lab/open-bridge`, `scope: org` to your optional org overlay). Refuses a flat-mirror overlay (a manifest whose `source_root` is not the repo root): preview with `scripts/overlay-export.py --target <checkout> --scope <tier> --dry-run`, then run it without `--dry-run` ([org-overlays.md](org-overlays.md#authoring-an-overlay)) |
 | `/bridge-contribute` | `/contribute` | `bridge-contribute` | Scan the user branch for upstream-worthy files and open a fork-based PR behind the content-safety gate |
 | `/bridge-sync` | | `bridge-sync` | End-of-sprint batch sync of all pending `scope: core` and `scope: org` commits to both upstreams. Same flat-mirror refusal as `/bridge-promote`; open-bridge still syncs |
 | `/bridge-leak-check` | | `bridge-leak-check` | Content-leak scan with every hit classified (self-reference, sister repo, personal data, internal vocabulary) |

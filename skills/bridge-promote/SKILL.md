@@ -48,15 +48,16 @@ files as local-only.
 that carries `overlay.manifest.yaml` is read by `scripts/overlay.py` only below
 its `defaults.source_root` (`tree/` when unset). A cherry-pick writes the same
 path it had here, so the file lands at the overlay's repo root and no consumer
-ever sees it, without any error. Before routing (workflow Step 0b), per overlay destination:
+ever sees it, without any error. Before routing (workflow Step 0b), per overlay
+destination, against the ref Step 0 fetched:
 
 ```bash
-git show {name}/{branch}:overlay.manifest.yaml > /tmp/{name}.manifest.yaml 2>/dev/null || : > /tmp/{name}.manifest.yaml
-python3 scripts/overlay-export.py --target /tmp/{name}.manifest.yaml --check-target
+python3 scripts/overlay-export.py --check-ref {name}/{branch}
 ```
 
-Exit 3 means **REFUSE that destination**: do not cherry-pick, re-apply, or open
-a PR there, not even for `scope: core` commits. Tell the user to build the mirror
+**Any non-zero exit means REFUSE that destination** (3: flat mirror, 2: the ref
+does not resolve, so the fetch failed or the name is wrong): do not
+cherry-pick, re-apply, or open a PR there, not even for `scope: core` commits. Tell the user to build the mirror
 instead with `python3 scripts/overlay-export.py --target <overlay checkout>
 --scope <tier> --dry-run` (then without `--dry-run`), after pulling any
 colleague PR against `tree/` back first. Other destinations still ship. Recipe:
