@@ -14,7 +14,7 @@ import { KindTag, RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
 import { START_PAGE } from './nav.js'
 import { PageSection } from './pages.js'
-import { Btn, SkipFix, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine } from './parts.js'
+import { Btn, SkipFix, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine, WalkBar } from './parts.js'
 import { TaskSessions } from './sessions.js'
 
 // ---------------------------------------------------------------- center: overview and detail
@@ -370,23 +370,11 @@ export function NextUp({ s, c, byKey, current, queue = s.ui.queue }) {
   const live = queueLiveKeys(s.model, s.more)
   const v = current ? queueView(queue, current, e => live.has(e.key)) : null
   if (!v || v.total < 2) return null
-  const [next, ...later] = v.next
-  const name = e => e.title || byKey.get(e.key)?.title || e.key
   const look = e => s.triage?.items?.[e.key]?.gist || (byKey.get(e.key)?.why ?? [])[0] || undefined
-  // the keys only when single-key shortcuts are on (settings); otherwise n and p do nothing
-  const key = k => (s.ui.shortcuts ? ` (${k})` : '')
-  return html`<nav class="next-up" aria-label=${t.nextLabel}>
-    <div class="next-up-bar">
-      <${Btn} size="xs" variant="ghost" icon="back" label=${t.nextPrev} title=${t.nextPrev + key('p')} disabled=${!v.prev} onClick=${() => c.openNext(v.prev)} />
-      <span class="next-up-pos mono" aria-live="polite">${t.nextPos(v.pos, v.total)}</span>
-      ${next ? html`<span class="next-up-text" title=${look(next)}><span class="label-caps">${t.nextUp}</span>
-          <span class="next-up-title">${short(name(next), 90)}</span></span>
-        <${Btn} size="xs" variant="primary" icon="forward" title=${t.nextOpen + key('n')} onClick=${() => c.openNext(next)}>${t.nextOpen}<//>`
-        : html`<span class="next-up-text muted small">${t.nextDone}</span>`}
-    </div>
-    ${later.length ? html`<ol class="next-up-later" start=${v.pos + 2}>${later.map(e => html`<li key=${e.key}>
-      <button type="button" class="btn-link" title=${look(e)} onClick=${() => c.openNext(e)}>${short(name(e), 80)}</button></li>`)}</ol>` : null}
-  </nav>`
+  const entry = (e, max) => ({ key: e.key, title: short(e.title || byKey.get(e.key)?.title || e.key, max), look: look(e), onOpen: () => c.openNext(e) })
+  const [next, ...later] = v.next
+  return html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[v.pos, v.total]} onPrev=${v.prev ? () => c.openNext(v.prev) : null}
+    next=${next ? entry(next, 90) : null} later=${later.map(e => entry(e, 80))} done=${t.nextDone} />`
 }
 
 /** Back to the list: "close details" beside a page, "back" on a phone, nothing on a wide briefing */

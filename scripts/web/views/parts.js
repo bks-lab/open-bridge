@@ -270,3 +270,28 @@ export function LinkView({ link, c, onOpenTask }) {
     <${Btn} variant="ghost" size="xs" icon="copy" label=${t.copyPath} title=${t.copyPath} onClick=${() => c.copy(link.path)} />
   </span>`
 }
+
+// ---------------------------------------------------------------- the walk bar
+
+/** The one bar every walk through a list ends in: under a detail opened from a list (detail.js NextUp),
+ *  under an open tab (rooms.js TabWalk) and under the focus of the start page (focus.js). Back, where
+ *  you stand, the next entry with Next (key n), the two after it as links; at the end `done` stands
+ *  where Next was. Without `pos` back and the place are left out (a tab outside the walk). `next` and
+ *  each of `later` are { key, title, sub?, look?, onOpen }; `goRef` holds the span around Next, for
+ *  the walks that keep the focus on it */
+export function WalkBar({ label, shortcuts = false, pos = null, onPrev = null, next = null, later = [], done, goRef = null }) {
+  const t = T()
+  const key = k => (shortcuts ? ` (${k})` : '')
+  return html`<nav class="next-up" aria-label=${label}>
+    <div class="next-up-bar">
+      ${pos ? html`<${Btn} size="xs" variant="ghost" icon="back" label=${t.nextPrev} title=${t.nextPrev + key('p')} disabled=${!onPrev} onClick=${onPrev ?? undefined} />
+        <span class="next-up-pos mono" aria-live="polite">${t.nextPos(pos[0], pos[1])}</span>` : null}
+      ${next ? html`<span class="next-up-text" title=${next.look}><span class="label-caps">${t.nextUp}</span>
+          <span class="next-up-title">${next.title}</span>${next.sub ? html`<span class="muted small">${next.sub}</span>` : null}</span>
+        <span ref=${goRef} class="next-up-go"><${Btn} size="xs" variant="primary" icon="forward" title=${t.nextOpen + key('n')} onClick=${next.onOpen}>${t.nextOpen}<//></span>`
+        : html`<span class="next-up-text muted small">${done}</span>`}
+    </div>
+    ${later.length ? html`<ol class="next-up-later" start=${(pos?.[0] ?? 0) + 2}>${later.map(e => html`<li key=${e.key}>
+      <button type="button" class="btn-link" title=${e.look} onClick=${e.onOpen}>${e.title}</button></li>`)}</ol>` : null}
+  </nav>`
+}

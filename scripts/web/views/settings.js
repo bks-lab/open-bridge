@@ -5,8 +5,8 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, homeCatalog, homeChosen, jevModelValid,
-  launchPatch, moveAmong,
+  LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, homeCatalog, homeChosen, homeView, homeViewSet,
+  jevModelValid, launchPatch, moveAmong,
 } from '../logic.js'
 import { T } from '../text.js'
 import { Segmented } from './detail.js'
@@ -57,24 +57,27 @@ function useHome(s, c) {
   const chosen = homeChosen(s.model, s.home)
   const save = list => c.setHomeTiles(list, catalog.map(x => x.id))
   const flip = (id, on) => save(on ? (chosen.includes(id) ? chosen : [...chosen, id]) : chosen.filter(x => x !== id))
-  return { catalog, chosen, on: new Set(chosen), save, flip }
+  return { catalog, chosen, on: new Set(chosen), save, flip, view: homeView(chosen), pick: v => save(homeViewSet(chosen, v)) }
 }
 
-/** The start page's view, bridge or tiles, as the first choice of the area */
+/** The start page's view, bridge, tiles or list, as the first choice of the area */
 function ViewCard({ home }) {
   const w = T().settings
-  const view = home.on.has('o:classic') ? 'tiles' : 'stage'
+  const view = home.view
   const keys = useRoving()
   return html`<${Card} title=${w.viewTitle} intro=${w.viewIntro}>
     <div class="view-pick" role="radiogroup" aria-label=${w.viewTitle} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
-      ${['stage', 'tiles'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
-        class=${`view-opt${view === v ? ' is-on' : ''}`} onClick=${() => view !== v && home.flip('o:classic', v === 'tiles')}>
+      ${['stage', 'tiles', 'list', 'focus'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
+        class=${`view-opt${view === v ? ' is-on' : ''}`} onClick=${() => view !== v && home.pick(v)}>
         <span class=${`view-thumb view-thumb-${v}`} aria-hidden="true">${v === 'stage'
-          ? html`<b></b><i></i><i></i><i></i><i></i><i></i><i></i>` : html`<em></em><i></i><i></i><i></i><i></i>`}</span>
+          ? html`<b></b><i></i><i></i><i></i><i></i><i></i><i></i>`
+          : v === 'tiles' ? html`<em></em><i></i><i></i><i></i><i></i>`
+          : v === 'list' ? html`<em></em><u></u><i></i><i></i><i></i><i></i>` : html`<em></em><b></b><u></u><i></i><i></i><i></i>`}</span>
         <span class="view-name">${w.view[v]}</span>
         <span class="muted small">${w.viewExplain[v]}</span>
       </button>`)}
     </div>
+    ${view === 'focus' ? html`<p class="muted small view-note">${w.focusNote}</p>` : null}
   <//>`
 }
 
@@ -83,7 +86,8 @@ function ViewCard({ home }) {
  *  MAX_STATIONS - 1 of them, Today takes the last */
 function StationsCard({ home }) {
   const w = T().settings
-  const tiles = home.on.has('o:classic')
+  // the bridge has room for a few; the tiles and the list take as many as are chosen
+  const tiles = home.view !== 'stage'
   const byId = new Map(home.catalog.map(x => [x.id, x]))
   const isStation = id => STATION_KINDS.includes(byId.get(id)?.kind)
   const shown = home.chosen.filter(isStation)
@@ -118,7 +122,8 @@ function StationsCard({ home }) {
     </li>`
   }
   const count = tiles ? null : html`<span class=${`set-count num${shown.length > room ? ' is-over' : ''}`}>${w.stationsCount(Math.min(shown.length, room), room)}</span>`
-  return html`<${Card} title=${tiles ? w.stationsTitleTiles : w.stationsTitle} intro=${w.stationsIntro} head=${count}>
+  const title = { stage: w.stationsTitle, tiles: w.stationsTitleTiles, list: w.stationsTitleList }[home.view]
+  return html`<${Card} title=${title} intro=${home.view === 'list' ? w.stationsIntroList : w.stationsIntro} head=${count}>
     <h4 class="label-caps st-group">${w.stationsShown}</h4>
     ${shown.length ? html`<ol class="st-list">${shown.map(row)}</ol>` : html`<${Empty}>${w.stationsNone}<//>`}
     <h4 class="label-caps st-group">${w.stationsHidden}</h4>
@@ -145,17 +150,17 @@ function SwitchRows({ home, ids, note }) {
 
 function ShelvesCard({ home }) {
   const w = T().settings
-  const tiles = home.on.has('o:classic')
-  return html`<${Card} title=${w.shelvesTitle} intro=${w.shelvesIntro}>
-    <${SwitchRows} home=${home} ids=${home.catalog.filter(x => x.kind === 'shelf').map(x => x.id)}
-      note=${id => (id === 's:focus' && !tiles ? w.onlyTiles : null)} />
+  const list = home.view === 'list'
+  const note = id => (id === 's:focus' && home.view === 'stage' ? w.onlyTiles : id === 's:starts' && list ? w.notList : null)
+  return html`<${Card} title=${w.shelvesTitle} intro=${list ? w.shelvesIntroList : w.shelvesIntro}>
+    <${SwitchRows} home=${home} ids=${home.catalog.filter(x => x.kind === 'shelf').map(x => x.id)} note=${note} />
   <//>`
 }
 
 /** What a click on the bridge's core does besides the picture of the day; the tiles view has no core */
 function CoreCard({ home }) {
   const w = T().settings
-  if (home.on.has('o:classic')) return null
+  if (home.view !== 'stage') return null
   return html`<${Card} title=${w.coreTitle} intro=${w.coreIntro}>
     <${SwitchRows} home=${home} ids=${home.catalog.filter(x => x.kind === 'core').map(x => x.id)} />
   <//>`
@@ -163,6 +168,8 @@ function CoreCard({ home }) {
 
 function StartArea({ s, c }) {
   const home = useHome(s, c)
+  // the focus view shows what needs you and nothing to choose: no stations, no sections
+  if (home.view === 'focus') return html`<${ViewCard} home=${home} />`
   return html`<${ViewCard} home=${home} />
     <${StationsCard} home=${home} />
     <${ShelvesCard} home=${home} />

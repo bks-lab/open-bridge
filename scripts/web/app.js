@@ -16,6 +16,7 @@ import {
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
+  focusIndex, homeChosen, homeListParts, homeQueue, homeView,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -135,7 +136,7 @@ const store = createStore({
     // the view of the work tab (due, area, jev); a page with jev: outside it reads area and jev the same way
     workView: load('bridge-cockpit.workTab', 'due'),
     workKind: load('bridge-cockpit.workKind', null),
-    theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false, queue: null,
+    theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false, queue: null, focusAt: null,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
@@ -227,6 +228,18 @@ function updateLayout() {
 }
 wideQuery.addEventListener('change', updateLayout)
 mediumQuery.addEventListener('change', updateLayout)
+
+// Safari on macOS in full screen reports a viewport that starts below its toolbar but draws the toolbar
+// lower than that, over the top of the header. Full screen here is the window filling the screen with
+// browser chrome still above the page; the page's own fullscreen API is not involved.
+const IS_SAFARI = /Safari\//.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)
+
+function updateChromeGap() {
+  const full = IS_SAFARI && window.screenY === 0 && window.outerHeight === screen.height && window.innerHeight < window.outerHeight
+  document.documentElement.classList.toggle('safari-fullscreen', full)
+}
+window.addEventListener('resize', updateChromeGap)
+updateChromeGap()
 
 // ---------------------------------------------------------------- live events
 
@@ -813,6 +826,8 @@ const ctl = {
   },
   walkTab: (ref, { focus = false } = {}) => { if (ref) setUi({ room: { kind: 'tab', id: ref }, walkFocus: focus }) },
   walkFocused: () => setUi({ walkFocus: false }),
+  // the focus of the start page moves to this entry of its queue (views/focus.js, logic.js focusIndex)
+  focusWalk: (id, i) => setUi({ focusAt: { id, i } }),
   // the task and inbox pages: filter by the triage, sort again on a click (scripts/web/triage.js)
   // the day column's height, measured by the column itself: how many rows its sections fill up to
   setDayHeight: px => { if (store.get().ui.dayHeight !== px) setUi({ dayHeight: px }) },
@@ -1267,6 +1282,14 @@ function onKey(e) {
     if (!cur || !v) return key === 'n' ? ctl.startWalk() : undefined
     const to = key === 'n' ? v.next[0] : v.prev
     return to ? ctl.walkTab(to.key, { focus: true }) : undefined
+  }
+  // n / p on the start page in the focus view: the same walk its bar takes
+  if ((key === 'n' || key === 'p') && s.ui.page === START_PAGE && !s.ui.drawer && !s.ui.pageDetail
+    && homeView(homeChosen(s.model, s.home)) === 'focus') {
+    const queue = homeQueue(homeListParts(s.tabs?.tabs ?? [], s.model, { pins: s.home?.pins ?? [] }))
+    const to = focusIndex(queue, s.ui.focusAt) + (key === 'n' ? 1 : -1)
+    e.preventDefault()
+    return queue[to] ? ctl.focusWalk(queue[to].id, to) : undefined
   }
   if (s.ui.page !== 'briefing') return
   if (key === 'j' || key === 'k') {

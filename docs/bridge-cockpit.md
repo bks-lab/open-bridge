@@ -341,15 +341,16 @@ they are). A click opens the page.
 
 What stands on the start page is your choice. "Customise" beside the
 bridge opens a drawer that leaves the page in view, so every change shows at
-once: the view (bridge or tiles, two pictures to pick from), the stations as
+once: the view (bridge, tiles, list or focus, four pictures to pick from), the stations as
 one list in their order (a switch each, a grip to drag, arrows for the
 keyboard; the bridge has room for 13, Today takes the 14th place), the
 sections below, what a click on the core does, and the small details. Every
 row says in one line what it does. "All settings" leads to the same editors
 on the settings page. The choice lives on the server (`state.json`, key
 `home_tiles`, action `home_tiles`), so every browser shows the same. Until
-one is made the page keeps lean: the weekly quota, what waits on you, the
-page with the tasks, and every shelf.
+one is made the page shows the bridge with the first quota of a window of a
+day or more, what waits on you, With the AI, the agent tabs, the background
+jobs, the next date, the page with the tasks, every shelf and every option.
 
 More it can show, each one switched in "Customise":
 
@@ -371,7 +372,7 @@ More it can show, each one switched in "Customise":
   the numbers.
 - **Order**: drag a station in the list, or move it one place up or down.
 
-**The bridge.** Unless the tiles view is chosen, the start page draws the
+**The bridge.** Unless the tiles, the list or the focus view is chosen, the start page draws the
 picture of the explainer films: the terminal line (it asks the chat), the
 core with its rings, the chosen tiles as stations on curved links, the card
 "Today" with the next step. A station's heart line beats by its state (red
@@ -382,6 +383,31 @@ the state of the bridge itself), assessment (the AI, in the core's
 panel), focus 25 min (all but the next step steps back) and speak (the
 browser's speech recognition; which service hears it depends on the
 browser).
+
+**The list.** The third view (Settings, Start page, View: List) draws no
+stage. Under the greeting the chosen stations stand as a strip of numbers;
+below them one list of what needs you, each thing once: the next step leads
+(a tab that asks for a task's work leads as that task, the tab on it), then
+the tabs that ask, the rows waiting on you, "With the AI", the tabs at work,
+pinned rows, tasks, and folded at the end the tabs that rest. A tab that
+belongs to a shown row stands on that row and is not listed again. An empty
+block is not drawn. Beside the list: the dates of today and tomorrow and the
+live feed. The section switches apply to the blocks; Quick access has no
+place there. A row opens with the rows the list shows as its queue, so the
+bar under its detail walks on through them, as on the other lists; the tiles
+and the bridge do the same with the rows they show.
+
+**Focus.** The fourth view shows only the one next step, large: its kind,
+title, project, the last lines of its tab's screen or why it waits, and its
+actions. Under it the same bar as the lists: back, where you stand ("2 of 5"),
+the next one with Next, keys `n` and `p`; at the end it says so instead of
+starting over. The step in front is held by what it is, not by its place: a
+tab that starts asking moves to the front without changing the card, and once
+the step is settled the next one moves up into its place. Below it the queue
+(the tabs that ask, the rows waiting on you, the P0 and P1 tasks) as small
+cards, a click brings one forward. Beside it today as a timeline from now to midnight and what
+the AI does (tabs working, resting, results in). It has no stations and no
+sections to choose.
 
 **The assessment.** It is read first from the page's own data and
 laid out as a board, at once and without cost: first (what `focusPick`
@@ -1235,13 +1261,15 @@ the focus is not in a text field:
 | `r` | reload, fresh |
 | `/` | the command box |
 | `g` then `t` | the agent tabs |
-| `n` / `p` | in a detail opened from a list: its next / previous entry |
+| `n` / `p` | the next / previous entry of the walk you are in: a detail opened from a list, the Today list, the Chat page's tabs, the focus on the start page |
 | `Alt` + `1` to `9` | the page tabs |
 | `?` | help |
 
 The row keys (`j` `k` `Enter` `x` and the five letters) act on the Briefing
-page only; `n` and `p` act while a detail opened from a list is open, the item
-drawer included; the others work on every page. A text field keeps every key,
+page only; `n` and `p` act while a detail opened from a list is open (the item
+drawer included), on the Today list with a row open in the center, on the
+Chat page (where `n` starts the walk through the tabs that want you) and on
+the start page in the focus view; the others work on every page. A text field keeps every key,
 `Alt` + a digit included, because on many keyboards that is how a bracket
 or a pipe is typed: leave the field with `Esc` first, for instance after
 the Chat page put the cursor in its box.

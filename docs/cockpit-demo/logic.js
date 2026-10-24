@@ -1999,9 +1999,9 @@ export function tileSlug(text) {
 }
 
 const HOME_SHELVES = ['focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
-const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'classic']
+const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'classic', 'list', 'focusview']
 const HOME_CORE = ['scan', 'brief']   // what a click on the bridge's core does; several combine
-const OFF_BY_DEFAULT = new Set(['o:classic', 'k:brief'])   // the bridge stage is the start page; the tiles of before are a choice
+const OFF_BY_DEFAULT = new Set(['o:classic', 'o:list', 'o:focusview', 'k:brief'])   // the bridge stage is the start page; tiles, list and focus are a choice
 
 /** Everything the start page can show, in the order it offers it: each gauge in percent of a page (a quota),
  *  the counts of the day, every page of the profile, the shelves, and the options that change how things
@@ -2079,6 +2079,74 @@ export function dropAmong(list, among, id, target) {
   const next = order.filter(x => x !== id)
   next.splice(to, 0, id)
   return refill(list, among, next)
+}
+
+const HOME_VIEWS = { list: 'o:list', focus: 'o:focusview', tiles: 'o:classic' }   // in the order one wins over the next
+
+/** The start page's view from what is chosen: the list, the focus, the tiles of before, else the bridge */
+export function homeView(chosen) {
+  const on = new Set(chosen ?? [])
+  return Object.keys(HOME_VIEWS).find(v => on.has(HOME_VIEWS[v])) ?? 'stage'
+}
+
+/** The chosen list with one view picked: every view option out, the picked one at the end */
+export function homeViewSet(chosen, view) {
+  const all = Object.values(HOME_VIEWS)
+  const rest = (chosen ?? []).filter(id => !all.includes(id))
+  return HOME_VIEWS[view] ? [...rest, HOME_VIEWS[view]] : rest
+}
+
+/** The parts of the list view, each thing once in the order the page reads: the one next step, the tabs
+ *  that ask you, the rows that wait on you, the pinned rows, the tasks, then the tabs that work and the
+ *  ones that rest. A tab that belongs to a shown row stands on that row (`tabOf`), not again on its own */
+export function homeListParts(tabs, model, { project = null, pins = [] } = {}) {
+  const live = (tabs ?? []).filter(x => !x.is_control && x.state !== 'shell' && inProject(x, project))
+  const rows = id => ((model?.sections ?? []).find(x => x.id === id)?.rows ?? []).filter(r => inProject(r, project))
+  const pick = focusPick(live, { ...model, sections: [{ id: 'now', rows: rows('now') }, { id: 'work', rows: rows('work') }] })
+  // a tab that asks for a row's work leads as that row, the tab on it
+  const owner = pick?.kind === 'tab' && pick.tab.slug ? [...rows('now'), ...rows('work')].find(r => r.task === pick.tab.slug) : null
+  const lead = owner ? { kind: 'row', row: owner } : pick
+  const seenRows = new Set(lead?.kind === 'row' ? [lead.row.key] : [])
+  const take = list => list.filter(r => !seenRows.has(r.key) && seenRows.add(r.key))
+  const waiting = take(rows('now'))
+  const byKey = new Map([...rows('now'), ...rows('work')].map(r => [r.key, r]))
+  const pinned = take((pins ?? []).map(k => byKey.get(k)).filter(Boolean))
+  const tasks = take(rows('work').filter(r => r.task))
+  const shown = [...(lead?.kind === 'row' ? [lead.row] : []), ...waiting, ...pinned, ...tasks]
+  const bound = new Map(shown.map(r => [r.key, tabOfTask(live, r.task)]).filter(([, tb]) => tb))
+  const seenTabs = new Set([...(lead?.kind === 'tab' ? [lead.tab.ref] : []), ...[...bound.values()].map(tb => tb.ref)])
+  const free = state => live.filter(x => x.state === state && !seenTabs.has(x.ref))
+  return { lead, asking: free('needs-you'), waiting, pinned, tasks, running: free('working'), resting: free('waiting'),
+    tabOf: key => bound.get(key) ?? null }
+}
+
+/** The queue of the focus view, from the parts of the list: the lead, the tabs that ask, the rows that
+ *  wait on you, then the P0 and P1 tasks; what merely runs or rests is not yours to take */
+export function homeQueue(parts) {
+  const tab = x => ({ kind: 'tab', id: x.ref, tab: x })
+  const row = r => ({ kind: 'row', id: r.key, row: r })
+  const lead = parts?.lead ? [parts.lead.kind === 'tab' ? tab(parts.lead.tab) : row(parts.lead.row)] : []
+  return [...lead, ...(parts?.asking ?? []).map(tab), ...(parts?.waiting ?? []).map(row),
+    ...(parts?.tasks ?? []).filter(r => /^P[01]$/.test(r.priority ?? '')).map(row)]
+}
+
+/** The rows of a start-page list in the order it shows them, as the queue a detail opened there walks
+ *  through (ui.queue): an inbox item or task opens in its drawer, any other row beside the page, the way
+ *  the start page opens them (views/home.js openWhole); a row listed twice counts once */
+export function homeRowQueue(rows) {
+  const seen = new Set()
+  return (rows ?? []).filter(r => r?.key && !seen.has(r.key) && seen.add(r.key))
+    .map(r => ({ how: /^(inbox|task):/.test(r.key) ? 'item' : 'peek', key: r.key, title: r.title, it: r, where: {} }))
+}
+
+/** Where the focus view stands in its queue (homeQueue): on the entry it was moved to (`at`, from
+ *  ui.focusAt) wherever that entry stands now; once that entry is settled, on the place it held, so the
+ *  next moves up into it; at the start on the first */
+export function focusIndex(queue, at) {
+  const n = (queue ?? []).length
+  if (!n || !at) return 0
+  const i = queue.findIndex(x => x.id === at.id)
+  return i >= 0 ? i : Math.min(Math.max(0, at.i ?? 0), n - 1)
 }
 
 /** The one next step of the start page: a tab that asks you, else the first row waiting on you, else the

@@ -5,8 +5,8 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, greetingPart, homeCatalog,
-  homeChosen, homeContinue, homeProjects, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
-  nextEvent, untilText, liveStage, stageTone, RETURN_STAGES,
+  homeChosen, homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
+  nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { RowBar, RowMeta } from './day.js'
@@ -16,6 +16,8 @@ import {
   AGENTS_PAGE, ASK_MAX, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle,
   pageOrder,
 } from './nav.js'
+import { HomeFocusView } from './focus.js'
+import { HomeList } from './list.js'
 import { Btn, Dot, Empty, Icon, PrioChip, StateLine } from './parts.js'
 import { BridgeStage, leadOf, stationOf } from './stage.js'
 import { TickerBand, TickerStatusList } from './ticker.js'
@@ -32,9 +34,10 @@ export function pageTitleOf(s, id) {
 
 /** On the start page an object opens whole: an inbox item or a task in the wide drawer with every detail
  *  and action, over the page instead of beside it, so nothing on the page gets squeezed. Other rows have
- *  only the detail column */
-export function openWhole(c, row, el) {
-  return /^(inbox|task):/.test(row.key) ? c.openItem(row.key, row) : c.peek(row.key, el)
+ *  only the detail column. `queue` is the list it was opened from (logic.js homeRowQueue), so the foot of
+ *  the detail walks on through it as the lists do */
+export function openWhole(c, row, el, queue = null) {
+  return /^(inbox|task):/.test(row.key) ? c.openItem(row.key, row, {}, null, queue) : c.peek(row.key, el, queue)
 }
 
 /** The starts handed to a tab, each with where it stands now */
@@ -191,8 +194,9 @@ function HomeTabCard({ tab, s, c, preview }) {
 }
 
 /** A row as a card (waiting on you, a task): its number, title and meta; a click shows its detail beside
- *  the page, and a task with an agent tab leads straight into that tab */
-function HomeRowCard({ row, s, c, tab, big = false }) {
+ *  the page, and a task with an agent tab leads straight into that tab; `queue` is the shelves' rows, so
+ *  its detail walks on through them */
+function HomeRowCard({ row, s, c, tab, big = false, queue = null }) {
   const t = T()
   const n = s.model?.numbers?.[row.key] ?? row.number
   const project = row.area || row.area_names?.[0] || row.mark?.label || ''
@@ -205,7 +209,7 @@ function HomeRowCard({ row, s, c, tab, big = false }) {
       <span class="hcard-head-end"><${PinStar} rowKey=${row.key} s=${s} c=${c} /></span>
     </div>
     <button type="button" class="hcard-row-main" title=${t.home.openRow(short(row.title, 60))}
-      onClick=${e => openWhole(c, row, e.currentTarget)}>
+      onClick=${e => openWhole(c, row, e.currentTarget, queue)}>
       <span class=${`hcard-title ${big ? 'clamp2' : 'clamp3'}`}>${row.title}</span>
     </button>
     <${RowMeta} row=${row} s=${s} />
@@ -351,7 +355,7 @@ export function catalogLabel(x) {
   return { 'c:waiting': h.waitingNow, 'c:tabs': h.tabsWaiting, 'c:next': h.nextTitle, 'c:done': h.doneTitle,
     's:focus': h.focusTitle, 's:pinned': h.pinnedTitle, 's:continue': h.continueTitle, 's:waiting': h.waitingTitle,
     's:tasks': h.tasksTitle, 's:starts': h.startTitle, 'o:today': h.optToday, 'o:preview': h.optPreview,
-    'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:pulse': h.optPulse,
+    'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:list': h.optList, 'o:focusview': h.optFocusView, 'o:pulse': h.optPulse,
     'c:agents': h.agentsTitle, 'c:returns': h.returnsTitle, 's:returns': h.returnsTitle, 'c:workers': T().workersTab, 'k:scan': h.coreScan, 'k:brief': h.briefTitle }[x.id] ?? x.id
 }
 
@@ -426,7 +430,15 @@ export function useHomeTitle(s) {
   }, [on, n])
 }
 
+/** The start page in the view chosen: list and focus are pages of their own, the bridge and the tiles share one */
 export function HomePage({ s, c }) {
+  const view = homeView(homeChosen(s.model, s.home))
+  if (view === 'list') return html`<${HomeList} s=${s} c=${c} />`
+  if (view === 'focus') return html`<${HomeFocusView} s=${s} c=${c} />`
+  return html`<${HomeBoard} s=${s} c=${c} />`
+}
+
+function HomeBoard({ s, c }) {
   const t = T()
   const h = t.home
   const lang = language()
@@ -457,6 +469,9 @@ export function HomePage({ s, c }) {
         onClick=${() => c.setHomeProject(project === p ? null : p)}><span class=${`home-chip-dot tk-${projectTone(p)}`} aria-hidden="true"></span>${p}</button>`)}
     </div>` : null
   const backs = returnsOf(s).filter(r => inProject(byKey.get(r.key) ?? {}, project) || !project)
+  // the row cards in the order the shelves show them: a card opened here walks on through them
+  const queue = homeRowQueue([...(on.has('s:pinned') ? pinned : []), ...(on.has('s:waiting') ? waiting.slice(0, 6) : []),
+    ...(on.has('s:tasks') ? tasks.slice(0, 8) : [])])
   // with a work tab the day lives here: dates, status, what happened today
   const daily = workPageOf(s.model?.pages) ? html`<${HomeShelf} id="home-day" title=${h.dayTitle} empty="">
       ${DayView({ s, c, cards: true })}
@@ -468,7 +483,7 @@ export function HomePage({ s, c }) {
       ${backs.slice(0, 8).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
     <//>` : null}
     ${on.has('s:pinned') ? html`<${HomeShelf} id="home-pinned" title=${h.pinnedTitle} count=${pinned.length} empty=${h.pinnedEmpty}>
-      ${pinned.map(row => html`<${HomeRowCard} key=${row.key} row=${row} s=${s} c=${c} tab=${tabOfTask(tabs, row.task)} />`)}
+      ${pinned.map(row => html`<${HomeRowCard} key=${row.key} row=${row} s=${s} c=${c} tab=${tabOfTask(tabs, row.task)} queue=${queue} />`)}
     <//>` : null}
     ${on.has('s:continue') ? html`<${HomeShelf} id="home-continue" title=${h.continueTitle} count=${cont.length} empty=${h.continueEmpty}
       more=${h.seeAll(cont.length)} onMore=${cont.length > 8 ? () => c.setDrawer('tabs') : null}>
@@ -476,11 +491,11 @@ export function HomePage({ s, c }) {
     <//>` : null}
     ${on.has('s:waiting') ? html`<${HomeShelf} id="home-waiting" title=${h.waitingTitle} count=${waiting.length} empty=${h.waitingEmpty}
       more=${h.seeAll(waiting.length)} onMore=${waiting.length > 6 ? () => c.setPage('briefing') : null}>
-      ${waiting.slice(0, 6).map(row => html`<${HomeRowCard} key=${row.key} row=${row} s=${s} c=${c} tab=${tabOfTask(tabs, row.task)} />`)}
+      ${waiting.slice(0, 6).map(row => html`<${HomeRowCard} key=${row.key} row=${row} s=${s} c=${c} tab=${tabOfTask(tabs, row.task)} queue=${queue} />`)}
     <//>` : null}
     ${on.has('s:tasks') ? html`<${HomeShelf} id="home-tasks" title=${h.tasksTitle} count=${tasks.length} empty=${h.tasksEmpty}
       more=${h.seeAll(tasks.length)} onMore=${tasks.length > 8 ? () => c.setPage(workPage) : null}>
-      ${tasks.slice(0, 8).map(row => html`<${HomeRowCard} key=${row.key} row=${row} s=${s} c=${c} tab=${tabOfTask(tabs, row.task)} />`)}
+      ${tasks.slice(0, 8).map(row => html`<${HomeRowCard} key=${row.key} row=${row} s=${s} c=${c} tab=${tabOfTask(tabs, row.task)} queue=${queue} />`)}
     <//>` : null}
     ${on.has('s:starts') && starts.length ? html`<section class="home-shelf" aria-labelledby="home-starts">
       <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-starts">${h.startTitle}</h2></header>
@@ -491,7 +506,7 @@ export function HomePage({ s, c }) {
       </nav>
     </section>` : null}`
   // the bridge stage of the films is the start page; the tiles of before stay a choice ("classic")
-  if (!on.has('o:classic')) {
+  if (homeView(chosen) === 'stage') {
     return html`<div class=${`col col-page home bridge-home`}>
       <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} />
       ${daily}

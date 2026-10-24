@@ -13,7 +13,7 @@ import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented } from './detail.js'
-import { Btn, Dot, Empty, Icon, StateLine } from './parts.js'
+import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { GuideLine, GuideTree } from './guide.js'
 import { AskLine, TabReply } from './reply.js'
 import { useTabScreen } from './tabs.js'
@@ -283,22 +283,11 @@ function TabWalk({ s, c, tab }) {
   // Next keeps the focus on Next, so Enter goes on to the one after (as in the lists)
   useEffect(() => { if (s.ui.walkFocus) { go.current?.querySelector?.('button')?.focus?.(); c.walkFocused() } }, [tab.ref])
   if (!v && !next) return null
-  const key = k => (s.ui.shortcuts ? ` (${k})` : '')
-  const name = e => `${e.title ?? e.key}${e.workspace ? ` · ${e.workspace}` : ''}`
-  return html`<nav class="next-up" aria-label=${t.rooms.walkLabel}>
-    <div class="next-up-bar">
-      ${v ? html`<${Btn} size="xs" variant="ghost" icon="back" label=${t.nextPrev} title=${t.nextPrev + key('p')} disabled=${!v.prev}
-        onClick=${() => c.walkTab(v.prev.key, { focus: true })} />
-        <span class="next-up-pos mono" aria-live="polite">${t.nextPos(v.pos, v.total)}</span>` : null}
-      ${next ? html`<span class="next-up-text"><span class="label-caps">${t.nextUp}</span>
-          <span class="next-up-title">${next.title ?? next.key}</span>${next.workspace ? html`<span class="muted small">${next.workspace}</span>` : null}</span>
-        <span ref=${go} class="next-up-go"><${Btn} size="xs" variant="primary" icon="forward" title=${t.nextOpen + key('n')}
-          onClick=${() => c.walkTab(next.key, { focus: true })}>${t.nextOpen}<//></span>`
-        : html`<span class="next-up-text muted small">${t.rooms.walkDone}</span>`}
-    </div>
-    ${later.length ? html`<ol class="next-up-later" start=${(v?.pos ?? 0) + 2}>${later.map(e => html`<li key=${e.key}>
-      <button type="button" class="btn-link" onClick=${() => c.walkTab(e.key, { focus: true })}>${name(e)}</button></li>`)}</ol>` : null}
-  </nav>`
+  const open = e => () => c.walkTab(e.key, { focus: true })
+  return html`<${WalkBar} label=${t.rooms.walkLabel} shortcuts=${s.ui.shortcuts} pos=${v ? [v.pos, v.total] : null}
+    onPrev=${v?.prev ? open(v.prev) : null} goRef=${go} done=${t.rooms.walkDone}
+    next=${next ? { key: next.key, title: next.title ?? next.key, sub: next.workspace, onOpen: open(next) } : null}
+    later=${later.map(e => ({ key: e.key, title: `${e.title ?? e.key}${e.workspace ? ` · ${e.workspace}` : ''}`, onOpen: open(e) }))} />`
 }
 
 const tabFacts = (tabs, ref) => {

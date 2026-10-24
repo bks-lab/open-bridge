@@ -1715,3 +1715,43 @@ test('next up: a small bar under a detail opened from a list: back, where you st
   s.ui = { ...s.ui, queue: null }
   assert.equal(mount(html`<${NextUp} s=${s} c=${recorder()} byKey=${byKey} current=${rows[1].key} />`).$('nav.next-up'), null)
 })
+
+// ---------------------------------------------------------------- the start page walks like the lists
+
+const { HomeList } = views.list
+const { HomeFocusView } = views.focus
+const homeOn = over => cockpitState(NOW, { ...over, home: { tiles: null, seen: null, pins: [] } })
+
+test('the list on the start page opens a row with the rows it shows as the queue, so the bar under it walks on', () => {
+  const c = recorder()
+  const el = mount(html`<${HomeList} s=${homeOn()} c=${c} />`)
+  const btn = el.$$('li.hl-line').find(li => li.$('.hl-num'))?.$('.hl-line-main')
+  assert.ok(btn, 'the list shows an inbox row')
+  const li = el.$$('li.hl-line').find(x => x.$('.hl-num'))
+  assert.match(li.$('.hl-num').text(), /#\d+/, 'the number stands as a reference')
+  assert.ok(Object.values(en.kind).some(k => li.$('.kind').text().includes(k)), 'what it is, in the words of Today')
+  btn.click()
+  const call = c.calls.find(x => x[0] === 'openItem' || x[0] === 'peek')
+  assert.ok(call, 'a click opens the row')
+  const queue = call[0] === 'openItem' ? call[5] : call[3]
+  assert.ok(Array.isArray(queue) && queue.length > 1, 'it hands the queue over')
+  assert.ok(queue.some(e => e.key === call[1]), 'the opened row stands in it')
+})
+
+test('the focus ends in the same bar the lists have: where you stand, Next, and at the end no circle', () => {
+  const s = homeOn()
+  const queue = views.focus.focusQueue(s)
+  assert.ok(queue.length > 2, 'the demo has a queue')
+  const c = recorder()
+  const bar = mount(html`<${HomeFocusView} s=${s} c=${c} />`).$('.fx-work .next-up')
+  assert.ok(bar, 'the bar stands under the step')
+  assert.equal(bar.$('.next-up-pos').text(), en.nextPos(1, queue.length))
+  bar.button(en.nextOpen).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'focusWalk'), [['focusWalk', queue[1].id, 1]])
+  const last = queue.length - 1
+  const end = mount(html`<${HomeFocusView} s=${homeOn({ ui: { focusAt: { id: queue[last].id, i: last } } })} c=${recorder()} />`).$('.fx-work .next-up')
+  assert.equal(end.$('.next-up-pos').text(), en.nextPos(queue.length, queue.length))
+  assert.equal(end.$$('button').some(b => b.text() === en.nextOpen), false, 'no Next at the end')
+  assert.equal(end.$('.next-up-text').text(), en.nextDone)
+  assert.equal(mount(html`<${HomeFocusView} s=${s} c=${recorder()} />`).$('.fx-nav'), null, 'no buttons of its own beside the bar')
+})

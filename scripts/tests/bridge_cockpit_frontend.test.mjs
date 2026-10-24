@@ -1542,7 +1542,7 @@ test('the start page offers every tile to choose, and without a choice only a le
   const ids = logic.homeCatalog(model).map(x => x.id)
   assert.deepEqual(ids, ['q:quota:session-5-h', 'q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done',
     'p:dates', 'p:work', 'p:ops', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
-    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:classic', 'k:scan', 'k:brief'])
+    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief'])
   // a Bridge without a worker view offers no Workers station: it would lead to a tab that is not there
   assert.equal(logic.homeCatalog(model, { workers: false }).some(x => x.id === 'c:workers'), false)
   // no choice yet: the weekly quota, what waits on you, the next date, the work page, every shelf and option
@@ -2907,7 +2907,7 @@ test('settings: Customise opens a drawer beside the start page, every choice the
   for (const lang of ['en', 'de']) {
     const w = text.TABLES[lang].settings
     for (const id of ['start', 'look', 'launch']) assert.ok(w.section[id].title && w.section[id].sub, `${lang} ${id}`)
-    for (const id of ids.filter(x => x !== 'o:classic')) assert.ok(w.explainOption[id], `${lang} ${id}`)
+    for (const id of ids.filter(x => !['o:classic', 'o:list', 'o:focusview'].includes(x))) assert.ok(w.explainOption[id], `${lang} ${id}`)
     for (const k of ['quota', 'count', 'page']) assert.ok(w.kind[k], `${lang} ${k}`)
   }
 })
@@ -4162,7 +4162,7 @@ test('startMode: one start button per row, its word follows the row state', () =
 })
 
 test('one row bar everywhere: every view shows RowBar, none builds its own start and close pair', () => {
-  for (const f of ['views/day.js', 'views/home.js', 'views/stage.js', 'views/overlays.js', 'views/pages.js', 'views/detail.js']) {
+  for (const f of ['views/day.js', 'views/home.js', 'views/stage.js', 'views/overlays.js', 'views/pages.js', 'views/detail.js', 'views/list.js', 'views/focus.js']) {
     const src = read(f)
     assert.match(src, /<\$\{RowBar\}/, `${f} renders RowBar`)
     assert.doesNotMatch(src, /act\('start_agent'/, `${f}: one start verb, do_it`)
@@ -4705,4 +4705,116 @@ test('dayQueue: the Today list walks every row in section order, also the ones f
   assert.deepEqual(q.map(e => e.key), ['n1', 'n2', 'w1', 'l1'])
   assert.deepEqual(q[0], { how: 'select', key: 'n1', title: 'N1' })
   assert.deepEqual(logic.dayQueue(null), [])
+})
+
+test('start page: three views to choose, the list shows each thing once', () => {
+  // the view is read from two options; the bridge is what nobody chose
+  assert.equal(logic.homeView(['c:waiting']), 'stage')
+  assert.equal(logic.homeView(['o:classic']), 'tiles')
+  assert.equal(logic.homeView(['o:list']), 'list')
+  assert.equal(logic.homeView(['o:list', 'o:classic']), 'list')
+  // a pick sets one view and keeps everything else in its place
+  assert.deepEqual(logic.homeViewSet(['c:waiting', 'o:classic', 's:tasks'], 'list'), ['c:waiting', 's:tasks', 'o:list'])
+  assert.deepEqual(logic.homeViewSet(['c:waiting', 'o:list'], 'tiles'), ['c:waiting', 'o:classic'])
+  assert.deepEqual(logic.homeViewSet(['o:classic', 'o:list'], 'stage'), [])
+  assert.deepEqual(logic.homeViewSet(['o:list'], 'list'), ['o:list'])
+  assert.equal(logic.homeView(['o:focusview']), 'focus')
+  assert.equal(logic.homeView(['o:classic', 'o:focusview']), 'focus')
+  assert.deepEqual(logic.homeViewSet(['o:list', 'c:next'], 'focus'), ['c:next', 'o:focusview'])
+  assert.deepEqual(logic.homeViewSet(['o:focusview'], 'stage'), [])
+
+  const tabs = [
+    { ref: 'ctl', name: 'control', is_control: true, state: 'needs-you' },
+    { ref: 'sh', name: 'zsh', state: 'shell' },
+    { ref: 'ask', name: 'ask', state: 'needs-you', workspace: 'Ops' },
+    { ref: 'run', name: 'run', state: 'working', workspace: 'Docs' },
+    { ref: 'job', name: 'job', state: 'working', slug: 'guide', workspace: 'Demo' },
+    { ref: 'idle', name: 'idle', state: 'waiting', workspace: 'Ops' },
+    { ref: 'rep', name: 'rep', state: 'waiting', slug: 'report', workspace: 'Demo' },
+  ]
+  const model = { sections: [
+    { id: 'now', rows: [{ key: 'n1', title: 'Review the report', task: 'report', area: 'Demo' }, { key: 'n2', title: 'Answer', area: 'Ops' }] },
+    { id: 'work', rows: [{ key: 't1', title: 'Guide', task: 'guide', priority: 'P1', area: 'Demo' },
+      { key: 't2', title: 'Index', task: 'index', area: 'Docs' }, { key: 'n1', title: 'Review the report', task: 'report', area: 'Demo' },
+      { key: 't3', title: 'Pinned one', task: 'pin', area: 'Ops' }] },
+  ] }
+  const keys = xs => xs.map(x => x.key ?? x.ref)
+  const p = logic.homeListParts(tabs, model, { pins: ['t3', 'gone'] })
+  // the tab that asks leads; the control tab and bare shells never show
+  assert.equal(p.lead.kind, 'tab')
+  assert.equal(p.lead.tab.ref, 'ask')
+  assert.deepEqual(keys(p.asking), [])
+  assert.deepEqual(keys(p.waiting), ['n1', 'n2'])
+  // a pinned row stands under Pinned, not again under Tasks; a row already waiting is not a task again
+  assert.deepEqual(keys(p.pinned), ['t3'])
+  assert.deepEqual(keys(p.tasks), ['t1', 't2'])
+  // a tab that belongs to a shown row stands on that row, not again under Running or Resting
+  assert.deepEqual(keys(p.running), ['run'])
+  assert.deepEqual(keys(p.resting), ['idle'])
+  assert.equal(p.tabOf('t1').ref, 'job')
+  assert.equal(p.tabOf('n1').ref, 'rep')
+  assert.equal(p.tabOf('t2'), null)
+  // a project narrows every part
+  const ops = logic.homeListParts(tabs, model, { project: 'Ops', pins: ['t3'] })
+  assert.equal(ops.lead.tab.ref, 'ask')
+  assert.deepEqual(keys(ops.waiting), ['n2'])
+  assert.deepEqual(keys(ops.running), [])
+  assert.deepEqual(keys(ops.resting), ['idle'])
+  assert.deepEqual(keys(ops.tasks), [])
+  // with no tab asking, the first waiting row leads and is not listed twice
+  const calm = logic.homeListParts(tabs.filter(x => x.ref !== 'ask'), model, {})
+  assert.equal(calm.lead.kind, 'row')
+  assert.equal(calm.lead.row.key, 'n1')
+  assert.deepEqual(keys(calm.waiting), ['n2'])
+  assert.deepEqual(keys(calm.resting), ['idle'])
+  // a tab that asks for a row's work leads as that row, with the tab on it, and neither shows twice
+  const bound = logic.homeListParts(tabs.map(x => (x.ref === 'ask' ? { ...x, slug: 'index' } : x)), model, { pins: ['t3'] })
+  assert.equal(bound.lead.kind, 'row')
+  assert.equal(bound.lead.row.key, 't2')
+  assert.equal(bound.tabOf('t2').ref, 'ask')
+  assert.deepEqual(keys(bound.asking), [])
+  assert.deepEqual(keys(bound.tasks), ['t1'])
+  // nothing at all: no lead, every part empty
+  const none = logic.homeListParts([], {}, {})
+  assert.equal(none.lead, null)
+  for (const k of ['asking', 'waiting', 'running', 'resting', 'tasks', 'pinned']) assert.deepEqual(none[k], [])
+})
+
+test('start page, focus view: one queue of what needs you, the next step first', () => {
+  const tabs = [
+    { ref: 'ask', name: 'ask', state: 'needs-you' },
+    { ref: 'ask2', name: 'ask2', state: 'needs-you' },
+    { ref: 'run', name: 'run', state: 'working' },
+  ]
+  const model = { sections: [
+    { id: 'now', rows: [{ key: 'n1', title: 'Answer' }] },
+    { id: 'work', rows: [{ key: 't0', title: 'Urgent', task: 'u', priority: 'P0' }, { key: 't1', title: 'Later', task: 'l', priority: 'P2' }] },
+  ] }
+  const q = logic.homeQueue(logic.homeListParts(tabs, model, {}))
+  // the lead, the other tabs that ask, the rows waiting, then the urgent tasks; nothing that merely runs
+  assert.deepEqual(q.map(x => x.id), ['ask', 'ask2', 'n1', 't0'])
+  assert.deepEqual(q.map(x => x.kind), ['tab', 'tab', 'row', 'row'])
+  // with nothing asking, an urgent task still leads; nothing at all is an empty queue
+  assert.deepEqual(logic.homeQueue(logic.homeListParts([], { sections: [model.sections[1]] }, {})).map(x => x.id), ['t0'])
+  assert.deepEqual(logic.homeQueue(logic.homeListParts([], {}, {})), [])
+})
+
+// ---------------------------------------------------------------- the start page walks like the lists
+
+test('homeRowQueue: an inbox item or task opens in its drawer, any other row beside the page, in the order given', () => {
+  const q = logic.homeRowQueue([{ key: 'inbox:a', title: 'A' }, { key: 'task:b', title: 'B' }, { key: 'ref:o/r#1', title: 'C' }])
+  assert.deepEqual(q.map(e => [e.how, e.key, e.title]), [['item', 'inbox:a', 'A'], ['item', 'task:b', 'B'], ['peek', 'ref:o/r#1', 'C']])
+  assert.deepEqual(q[0].where, {})
+  assert.equal(q[0].it.key, 'inbox:a')
+  assert.deepEqual(logic.homeRowQueue([{ key: 'inbox:a' }, { key: 'inbox:a' }]).map(e => e.key), ['inbox:a'])
+})
+
+test('focusIndex: the focus holds its entry by id, the next moves up when it is settled, the start is the first', () => {
+  const q = ids => ids.map(id => ({ id }))
+  assert.equal(logic.focusIndex(q(['a', 'b', 'c']), null), 0)
+  assert.equal(logic.focusIndex(q(['a', 'b', 'c']), { id: 'b', i: 1 }), 1)
+  assert.equal(logic.focusIndex(q(['x', 'a', 'b', 'c']), { id: 'b', i: 1 }), 2, 'a tab that asks moves to the front: the card stays')
+  assert.equal(logic.focusIndex(q(['a', 'c']), { id: 'b', i: 1 }), 1, 'b settled: c moves up into its place')
+  assert.equal(logic.focusIndex(q(['a']), { id: 'c', i: 2 }), 0, 'the last settled: the one before it')
+  assert.equal(logic.focusIndex([], { id: 'c', i: 2 }), 0)
 })

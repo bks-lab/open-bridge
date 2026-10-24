@@ -6,7 +6,7 @@ import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.mo
 import {
   duration, indexRows, sessionCounts, short, stateToken, workerTone, greetingPart, homeContinue, inProject,
   meterPace, tabOfTask, countInProject, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError,
-  pulseSpeed, MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems,
+  pulseSpeed, MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue,
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
@@ -100,7 +100,7 @@ export function leadOf(m) {
 
 /** The terminal line of the films, as the field that asks the Bridge: the greeting stands where the
  *  cursor waits, until you type */
-function StagePrompt({ s, c, greeting }) {
+export function StagePrompt({ s, c, greeting }) {
   const t = T()
   const h = t.home
   const [text, setText] = useState('')
@@ -133,7 +133,7 @@ function StagePrompt({ s, c, greeting }) {
 
 /** The card on the right of the films: today's next step first, then what waits on you */
 /** How an event of the live feed reads, its tone, and where a click on it leads */
-function FeedLine({ e, s, c }) {
+export function FeedLine({ e, s, c }) {
   const h = T().home
   const byKey = indexRows(s.model)
   const row = e.key ? byKey.get(e.key) : null
@@ -164,9 +164,11 @@ function StageCard({ s, c, tabs, onWeigh }) {
   const dot = r => r.priority === 'P0' || r.urgency === 'now' ? 'danger' : r.urgency === 'today' ? 'warning' : 'info'
   const sub = r => [r.area || r.mark?.label, ...(r.why ?? []).slice(0, 1)].filter(Boolean).join(' · ')
   const fresh = freshKeys(s)
+  // the rows in the order they stand here: a row opened here walks on through them, as the lists do
+  const queue = homeRowQueue([...(pick?.kind === 'row' ? [pick.row] : []), ...rest])
   const row = (r, lead) => html`<div class=${`stage-row${lead ? ' is-lead' : ''}${fresh.has(r.key) ? ' is-new' : ''}`} key=${r.key}>
     <span class=${`stage-dot tk-${dot(r)}`} aria-hidden="true"></span>
-    <button type="button" class="stage-row-main" onClick=${e => openWhole(c, r, e.currentTarget)} title=${h.openRow(short(r.title, 60))}>
+    <button type="button" class="stage-row-main" onClick=${e => openWhole(c, r, e.currentTarget, queue)} title=${h.openRow(short(r.title, 60))}>
       <span class="stage-row-title">${fresh.has(r.key) ? html`<span class="new-tag">${h.isNew}</span>` : null}${r.priority ? html`<em class=${`tk-${dot(r)}`}>${r.priority} </em>` : null}${short(r.title, lead ? 120 : 80)}</span>
       <span class="stage-row-sub"><${KindTag} row=${r} s=${s} />${sub(r) ? html` ${sub(r)}` : null}</span>
       <${ReturnChip} s=${s} rowKey=${r.key} />
@@ -247,9 +249,10 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
     // the morning round from the start page: the first row carries its buttons, and once it is settled
     // the next one moves up and carries them; a row whose task already has a tab leads to that tab
     const acts = r => html`<${RowBar} row=${r} s=${s} c=${c} tab=${tabOfTask(tabs, r.task)} />`
+    const queue = homeRowQueue(rows.slice(0, 8))
     body = html`${head(h.waitingNow, String(rows.length))}
       ${rows.slice(0, 8).map((r, i) => html`<${InspectRow} key=${r.key} tone=${r.urgency === 'now' ? 'danger' : r.urgency === 'today' ? 'warning' : 'info'}
-        title=${short(r.title, i ? 90 : 140)} sub=${r.area || r.mark?.label || ''} onClick=${e => openWhole(c, r, e.currentTarget)}>${i === 0 ? acts(r) : null}<//>`)}
+        title=${short(r.title, i ? 90 : 140)} sub=${r.area || r.mark?.label || ''} onClick=${e => openWhole(c, r, e.currentTarget, queue)}>${i === 0 ? acts(r) : null}<//>`)}
       ${!rows.length ? html`<p class="stage-row-sub">${h.focusEmpty}</p>` : null}
       ${foot(h.openPage(briefingTitle(s)), () => c.setPage('briefing'))}`
   } else if (x.id === 'c:returns') {
