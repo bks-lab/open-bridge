@@ -14,6 +14,11 @@ body{display:flex;flex-direction:column;align-items:center;justify-content:cente
 <p><span id="greeting">Café déjà vu, 5 €</span> <span id="state"></span></p>
 <button type="button" data-sim-maximize hidden>full view</button>
 <script>
+/* every stage message the parent sends, for tests/test_stage.py */
+window.__msgs = [];
+addEventListener('message', function (e) { if (e.data && typeof e.data.type === 'string') window.__msgs.push(e.data); });
+</script>
+<script>
 /*SIM_ENGINE*/
 </script>
 <script>

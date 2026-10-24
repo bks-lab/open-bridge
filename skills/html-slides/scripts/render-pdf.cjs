@@ -20,9 +20,12 @@
  * Without the flag the deck renders as it would open: saved choice, else the OS
  * (headless Chromium reports light).
  *
+ * Handout: --notes sets data-print-notes on the deck, so the engine prints a notes
+ * page after every slide that has speaker notes (reference/slide-types.md).
+ *
  * Usage:
  *     node render-pdf.cjs <input.html> <output.pdf> [--width 297] [--height 167]
- *                         [--theme light|dark]
+ *                         [--theme light|dark] [--notes]
  *     node render-pdf.cjs --probe        # print where playwright was found
  *
  * Requires: playwright (npm i -g playwright; npx playwright install chromium).
@@ -34,7 +37,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const USAGE = 'Usage: render-pdf.cjs <input.html> <output.pdf> [--width MM] [--height MM] [--theme light|dark]';
+const USAGE = 'Usage: render-pdf.cjs <input.html> <output.pdf> [--width MM] [--height MM] [--theme light|dark] [--notes]';
 const DEFAULT_SIZE = { width: '297mm', height: '167mm' };
 
 function searchPaths() {
@@ -84,11 +87,12 @@ function usage(message) {
 }
 
 function parseArgs(argv) {
-  const args = { input: null, output: null, width: null, height: null, theme: null, probe: false };
+  const args = { input: null, output: null, width: null, height: null, theme: null, probe: false, notes: false };
   const positional = [];
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--probe') args.probe = true;
+    else if (a === '--notes') args.notes = true;
     else if (a === '--width' || a === '--height') {
       const v = mm(argv[++i]);
       if (!v) usage(a + ' takes a size in mm');
@@ -143,8 +147,10 @@ async function main() {
     await page.goto('file://' + inputPath, { waitUntil: 'load' });
     await page.emulateMedia({ media: 'print', colorScheme: args.theme || 'light' });
 
-    await page.evaluate(async (theme) => {
+    await page.evaluate(async ({ theme, notes }) => {
       const root = document.documentElement;
+      // 0. Handout: the engine builds its notes pages on beforeprint, sent below
+      if (notes) (document.querySelector('.deck') || root).setAttribute('data-print-notes', '');
       if (theme) {
         root.classList.remove('theme-light', 'theme-dark');
         root.classList.add('theme-' + theme);
@@ -159,7 +165,7 @@ async function main() {
       // 3. Web fonts in, then two frames so layout reflects them
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
       await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-    }, args.theme);
+    }, { theme: args.theme, notes: args.notes });
 
     // 4. Live stages (slide-stage.js) add their frames when print starts; a PDF
     //    written before they load shows empty boxes. Wait for every frame's load
@@ -197,7 +203,8 @@ async function main() {
       await page.addStyleTag({ content: '@page { size: ' + opts.width + ' ' + opts.height + '; margin: 0; }' });
     }
     console.log('-> Rendering PDF (' + (opts.preferCSSPageSize ? 'CSS @page size, else ' : '')
-      + opts.width + ' x ' + opts.height + (args.theme ? ', theme ' + args.theme : '') + ')');
+      + opts.width + ' x ' + opts.height + (args.theme ? ', theme ' + args.theme : '')
+      + (args.notes ? ', with notes' : '') + ')');
     await page.pdf(opts);
     console.log('-> Wrote ' + outputPath);
   } finally {

@@ -729,3 +729,66 @@ body {
     visibility: visible !important;
   }
 }
+
+/* ============ CORE TOOLS: cover, number jump, zoom, language, handout ============ */
+/* B / W: a plain black or white screen over everything (a blank projector). */
+.deck-cover { position: fixed; inset: 0; z-index: 200; background: black; cursor: none; }
+.deck-cover[data-cover="white"] { background: white; }
+.deck-cover[hidden] { display: none; }
+
+/* Digits typed before Enter. */
+.deck-jump {
+  position: fixed; bottom: clamp(12px, 2vh, 24px); left: 50%; transform: translateX(-50%);
+  z-index: 104; padding: 6px 12px; border-radius: 18px;
+  font-family: var(--font-mono); font-size: 14px; font-variant-numeric: tabular-nums;
+  color: var(--text); background: var(--surface-elevated, var(--surface));
+  border: 1px solid var(--accent);
+}
+.deck-jump[hidden] { display: none; }
+
+/* Alt+click zoom: the engine scales the active slide's children inline. */
+:root.deck-zoomed .slide.is-active { cursor: zoom-out; }
+
+/* Language pairs (key L, data-de / data-en): only the inactive language is hidden.
+   Before the engine sets data-lang, <html lang> decides, so a deck without script
+   shows one language too. An element carrying both attributes is never hidden. */
+:root[data-lang="de"] [data-en]:not([data-de]),
+:root[data-lang="en"] [data-de]:not([data-en]),
+:root:not([data-lang]):lang(de) [data-en]:not([data-de]),
+:root:not([data-lang]):not(:lang(de)) [data-de]:not([data-en]) { display: none; }
+
+/* Print handout (data-print-notes): a notes page after each slide that has notes. */
+.deck-print-notes { display: none; }
+
+@media print {
+  .deck-cover, .deck-jump { display: none !important; }
+  .deck-print-notes {
+    display: block !important;
+    width: 297mm; height: 167mm; box-sizing: border-box; overflow: hidden;
+    padding: 16mm 20mm;
+    break-before: page; page-break-before: always;
+    break-after: page; page-break-after: always;
+    font-family: var(--font-body); font-size: 15pt; line-height: 1.5;
+    color: var(--text); background: var(--bg);
+  }
+  .deck-print-notes:last-child { break-after: auto; page-break-after: auto; }
+  .deck-print-notes__title {
+    font-family: var(--font-mono); font-size: 10pt; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin-bottom: 6mm;
+  }
+  .deck-print-notes__body p + p { margin-top: 0.6em; }
+}
+
+/* reduced motion: every animation */
+/* Applies to the engine, the slides and every deck module alike: a module never needs
+   its own rule, and an animation still ends at its final frame. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

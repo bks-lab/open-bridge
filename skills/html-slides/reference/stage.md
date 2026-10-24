@@ -49,12 +49,16 @@ The reasons, one test each, are in the header of `assets/slide-stage.js` and in
 ## The contract with the page inside
 
 The deck and the simulation share no code: they talk through `postMessage`
-(`stage:ready`, `stage:key`, `stage:maximize`, `stage:restart`, `stage:look`), and each side
-accepts a message only from the window it expects (`event.source`). The page side
+(`stage:ready`, `stage:key`, `stage:maximize`, `stage:restart`, and from the deck
+`stage:theme {theme: "light"|"dark"}` and `stage:lang {lang: "de"|"en"}`, each sent
+after `stage:ready` and again on every real change of the deck's theme or language),
+and each side accepts a message only from the window it expects (`event.source`).
+The deck reads theme and language from `<html>` (theme class, else the OS;
+`data-lang`, else `lang`), so the stage works with any engine version. The page side
 is built into html-canvas `sim-engine.js` and speaks only when it is framed. The
 whole contract: `html-canvas/references/simulation.md`, "Embedding in a slide". Inside a stage
 the simulation hides its own toolbar; the stage hands it the deck's theme and
-language (`stage:look`) once it is ready and on every switch, so T and L on the
+language (`stage:theme`, `stage:lang`) once it is ready and on every switch, so T and L on the
 deck reach the page as well.
 
 ## Sending a deck with a stage

@@ -47,7 +47,7 @@
           loaded stage is never reloaded by a second load call, only by restart
 
     The contract with the page inside (stage:ready, stage:key, stage:maximize,
-    stage:restart, stage:look) is documented in html-canvas references/simulation.md,
+    stage:restart, stage:theme, stage:lang) is documented in html-canvas references/simulation.md,
     "Embedding in a slide". A message counts only when its source is the
     window of one of our own frames: srcdoc and file:// pages have no origin
     worth comparing, so the window is the only reliable check.
@@ -60,15 +60,22 @@
   var maxed = null;
   var closer = null;
   var DECK_KEYS = ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'PageDown', 'PageUp',
-                   ' ', 'Home', 'End', 'f', 'F', 'n', 'N'];
+                   ' ', 'Home', 'End', 'f', 'F', 'n', 'N',
+                   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'Enter'];
   var LABELS = {
     en: { close: 'Exit full view', closeTitle: 'Back to the slide (Escape)', frame: 'Embedded simulation' },
     de: { close: 'Vollbild beenden', closeTitle: 'Zurück (Escape)', frame: 'Eingebettete Simulation' }
   };
 
   function lang() {
-    var l = (root.getAttribute('lang') || 'en').toLowerCase().slice(0, 2);
+    var l = (root.getAttribute('data-lang') || root.getAttribute('lang') || 'en').toLowerCase().slice(0, 2);
     return LABELS[l] ? l : 'en';
+  }
+  /* The theme the deck shows: its class, else the OS (dark is the deck default). */
+  function theme() {
+    if (root.classList.contains('theme-light')) return 'light';
+    if (root.classList.contains('theme-dark')) return 'dark';
+    return window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   }
   function reduced() {
     return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -183,17 +190,6 @@
     var w = st.iframe && st.iframe.contentWindow;
     if (w) try { w.postMessage(msg, '*'); } catch (err) { /* frame gone */ }
   }
-
-  /* The slide's theme and language, for the page inside: framed, it hides its own
-     toolbar, so the deck is where both are switched. */
-  function look() {
-    var dark = root.classList.contains('theme-dark') ||
-      (!root.classList.contains('theme-light') && !!window.matchMedia &&
-       matchMedia('(prefers-color-scheme: dark)').matches);
-    var lang = (root.getAttribute('data-lang') || root.getAttribute('lang') || '').slice(0, 2).toLowerCase();
-    return { type: 'stage:look', dark: dark, lang: (lang === 'de' || lang === 'en') ? lang : null };
-  }
-  function tellLook() { stages.forEach(function (st) { if (st.ready) tell(st, look()); }); }
 
   /* ===== Which slide is active ===== */
 
@@ -369,7 +365,8 @@
       st.frame.setAttribute('data-ready', 'yes');
       fit(st);
       tell(st, { type: 'stage:maximize', on: maxed === st });
-      tell(st, look());
+      st.sentTheme = st.sentLang = null;
+      sendLook(st);
     } else if (d.type === 'stage:maximize') {
       if (d.on === true) enterMax(st);
       else if (d.on === false) { if (maxed === st) exitMax(); }
@@ -379,6 +376,32 @@
       else if (d.key === 'Escape') { if (maxed === st) exitMax(); }
       else if (!maxed && d.key === 'PageDown') deckStep('next');
       else if (!maxed && d.key === 'PageUp') deckStep('prev');
+    }
+  }
+
+  /* ===== Theme and language reach the page (stage:theme, stage:lang) =====
+     Sent after stage:ready and on every real change. Read from <html>, not from
+     the engine, so any engine version or none works; the page may ignore them. */
+
+  function sendLook(st) {
+    if (!st.iframe || !st.ready) return;
+    var t = theme(), l = lang();
+    if (st.sentTheme !== t) { st.sentTheme = t; tell(st, { type: 'stage:theme', theme: t }); }
+    if (st.sentLang !== l) { st.sentLang = l; tell(st, { type: 'stage:lang', lang: l }); }
+  }
+
+  function lookChanged() {
+    stages.forEach(sendLook);
+    if (closer) { closer.textContent = LABELS[lang()].close; closer.title = LABELS[lang()].closeTitle; }
+  }
+
+  function watchLook() {
+    if (window.MutationObserver) {
+      new MutationObserver(lookChanged).observe(root, { attributes: true, attributeFilter: ['class', 'data-lang', 'lang'] });
+    }
+    if (window.matchMedia) {
+      var mq = matchMedia('(prefers-color-scheme: light)');
+      if (mq.addEventListener) mq.addEventListener('change', lookChanged);
     }
   }
 
@@ -401,12 +424,10 @@
     discover();
     if (!stages.length) return;
     bindButtons();
+    watchLook();
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('message', onMessage);
     window.addEventListener('resize', fitAll);
-    if (window.MutationObserver) {
-      new MutationObserver(tellLook).observe(root, { attributes: true, attributeFilter: ['class', 'lang', 'data-lang'] });
-    }
     if (window.ResizeObserver) {
       var ro = new ResizeObserver(function (entries) {
         entries.forEach(function (en) {

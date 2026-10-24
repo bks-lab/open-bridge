@@ -173,9 +173,13 @@ def test_ecosystem_personal_is_personal(cc, in_tmp_repo):
     assert cc.classify_file("ecosystem.personal.yaml") == "personal"
 
 
-def test_ecosystem_base_stays_org(cc, in_tmp_repo):
-    _write(in_tmp_repo, "ecosystem.yaml", scope=None, body="org: acme\n")
-    assert cc.classify_file("ecosystem.yaml") == "org"
+def test_ecosystem_base_is_user(cc, in_tmp_repo):
+    # The instance base carries one machine's local_root and paths; an org
+    # shares its own ecosystem.<org>.yaml instead.
+    _write(in_tmp_repo, "ecosystem.yaml", scope=None, body="org: acme\nlocal_root: ~/src\n")
+    assert cc.classify_file("ecosystem.yaml") == "user"
+    _write(in_tmp_repo, "ecosystem.acme.yaml", scope=None, body="org: acme\n")
+    assert cc.classify_file("ecosystem.acme.yaml") == "org"
 
 
 # --- unchanged core / skill routing -----------------------------------------

@@ -127,7 +127,10 @@ def test_secondary_button_is_a_surface_with_a_line(deck):
 def test_track_buttons_mark_the_active_track(deck):
     assert deck.get_attribute('[data-deck="track:full"]', "aria-pressed") == "true"
     assert deck.get_attribute('[data-deck="track:short"]', "aria-pressed") == "false"
-    deck.click('[data-deck="track:short"]', force=True)
+    # inactive slides are inert, so the buttons are used on their own slide
+    deck.evaluate("() => SlideDeck.goTo(SlideDeck.slides().findIndex(s => s.id === 'probe-controls'))")
+    deck.wait_for_function("() => !document.getElementById('probe-controls').inert")
+    deck.click('[data-deck="track:short"]')
     deck.wait_for_function("() => document.querySelector('[data-deck=\"track:short\"]').getAttribute('aria-pressed') === 'true'")
     assert deck.get_attribute('[data-deck="track:full"]', "aria-pressed") == "false"
 

@@ -404,7 +404,7 @@ def test_any_org_ecosystem_fragment_is_org(path: str):
     ("ecosystem.example.yaml", "core"),      # the CORE template, ships upstream
     ("ecosystem.personal.yaml", "personal"),
     ("ecosystem.local.yaml", "personal"),    # pre-rename name of the same file
-    ("ecosystem.yaml", "org"),               # instance base, carried by the overlay
+    ("ecosystem.yaml", "user"),              # instance base: local_root and paths of one machine, never shared
 ])
 def test_the_non_org_ecosystem_files_keep_their_tier(path: str, expected: str):
     """The generalisation must not swallow the template or the personal fragments."""

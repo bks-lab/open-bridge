@@ -127,3 +127,15 @@ def test_live_stages_are_loaded_before_the_pdf_is_written(renderer, tmp_path):
     fixture = (FIXTURES / "stage" / "deck.html").read_text("utf-8")
     frames = fixture.count('class="stage"') + fixture.count("<iframe")   # every stage plus a plain frame
     assert ("-> Waited for %d embedded frames" % frames) in proc.stdout, proc.stdout
+
+
+NOTED = """
+<section class="slide slide--content"><div class="slide__inner"><p>Has notes.</p></div>
+<aside class="notes"><p>Say this.</p></aside></section>
+"""
+
+
+def test_notes_flag_prints_a_handout(renderer, tmp_path):
+    src = deck(tmp_path, NOTED)
+    assert pages(to_pdf(src)) == 4
+    assert pages(to_pdf(src, "--notes")) == 5, "one notes page after the slide that has notes"

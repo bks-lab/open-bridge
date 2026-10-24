@@ -238,6 +238,8 @@ What `assets/slide-engine.js` (first line `slide-engine v2`) reads from the mark
 | Markup | Effect |
 |---|---|
 | `<html lang="de">` | Controls, help, ARIA texts in German; any other language falls back to English |
+| `<span data-de>…</span><span data-en>…</span>` pairs | A bilingual deck: only the active language shows (before the engine runs, `<html lang>` decides). Key L and `data-deck="lang"` switch, the choice is kept per deck id, and `data-aria-de` / `data-aria-en` give `aria-label` and `title` per language. A deck without a pair has no L key; `SlideDeck.setLang()` still relabels the controls. An element with both attributes shows in both languages |
+| `data-print-notes` | Print and PDF add a notes page after every slide that has `<aside class="notes">` (`render-pdf.cjs --notes` sets it for one render) |
 | `data-counter-format="padded"` | Counter reads `01 / 09` |
 | `data-dots="off"` | No dot navigation |
 | `data-back-href="{url}"` plus optional `data-back-label` | A back link in the top left corner |
@@ -248,16 +250,26 @@ What `assets/slide-engine.js` (first line `slide-engine v2`) reads from the mark
 | `data-deck-id="{id}"` | Storage key for the chosen track; defaults to the file path |
 | `data-tracks-labels="{name}={label} ..."` | What the track badge and `SlideDeck.trackLabel()` show for a track name, for a deck in another language than its track names; `data-track`, storage and links keep the name |
 | `data-key-ignore` on any element | Keys pressed inside it are left alone (also inputs, text areas, editable regions) |
-| `data-deck="next"`, `prev`, `theme`, `notes`, `help`, `track`, `track:{name}`, `goto:{n}`, `goto:#{id}` on a button | Declarative controls, no script needed. `goto:{n}` counts the slides the active track shows, so in a deck with tracks prefer `goto:#{id}`. A `track:{name}` button carries `aria-pressed`, true while its track is active |
+| `data-deck="next"`, `prev`, `theme`, `notes`, `help`, `lang`, `track`, `track:{name}`, `goto:{n}`, `goto:#{id}` on a button | Declarative controls, no script needed. `goto:{n}` counts the slides the active track shows, so in a deck with tracks prefer `goto:#{id}`. A `track:{name}` button carries `aria-pressed`, true while its track is active |
 | `class="reveal"` | The only entrance class: it starts hidden and appears when its slide is entered; print shows it at once |
 | `<aside class="notes">` in a slide | Speaker notes for key N |
 
-Keys: arrows, Space and Shift+Space, Page Up and Down, Home, End, T (theme), F (track), N (notes), ? (help), Esc (close); the `?` help lists them, with V when the deck has a stage. Keys with Ctrl, Cmd or Alt are ignored.
+Keys: arrows, Space and Shift+Space, Page Up and Down, Home, End, T (theme), F (track), N (notes), L (language, bilingual decks only), ? (help), Esc (close); the `?` help lists them, with V when the deck has a stage and the rows of every deck module. Keys with Ctrl, Cmd or Alt are ignored.
 
-Deep link: the address keeps `#<id>` when the active slide has an id, else `#<n>`, the 1-based position among the slides the active track shows. Both forms are read on load and on a hash change. Give the slides people link to an id: `#<n>` depends on the track a viewer has stored, `#<id>` does not.
+Presenting live, always on:
+
+| Input | Effect |
+|---|---|
+| B, W | A black or white screen over everything; B on black or W on white lifts it, so does any other key, which then does nothing else, or a click |
+| digits, then Enter | Jump to slide n of the active track (the counter's number); Backspace corrects, Esc or any other key drops the number, three seconds without a key too |
+| Alt+click | Zoom 2x around the pointer on the active slide; the next click, Esc or a slide change resets |
+
+Accessibility: every slide is `role="group"` with `aria-roledescription` "slide" and `aria-label` "n / total"; every slide but the active one is `inert` (all stay in the DOM for scroll-snap, print shows them all); a polite live region announces each slide change. Under `prefers-reduced-motion` every animation and transition of the deck, its modules included, ends at once, scrolling jumps and module transitions are skipped.
+
+Deep link: the address keeps `#<id>` when the active slide has an id, else `#<n>`, the 1-based position among the slides the active track shows; while a deck module reports a step above 0 it adds `.<step>` (`#<id>.2`). Every form is read on load and on a hash change. Give the slides people link to an id: `#<n>` depends on the track a viewer has stored, `#<id>` does not.
 
 With the stage module (`new-deck.py --with-stage`) a slide can run a live page: key V, `data-stage` buttons and the `.stage` element are documented in `reference/stage.md`. While focus is inside the stage frame, only V, Esc, Page Up and Page Down reach the deck; click outside the frame to use the other keys.
 
-Script API: `window.SlideDeck` with `goTo(i)`, `next()`, `prev()`, `current()`, `count()`, `setTrack(name)`, `track()`, `trackLabel(name?)`, `toggleTheme()`, `toggleNotes()`, `toggleHelp()`, `strings()` and `on(event, fn)` for `ready`, `slidechange` and `trackchange` (detail `{track, label, count}`). Indexes are 0-based among the slides the active track shows. Old decks reaching for `window.slideEngine` or `window.__slideEngine`, or calling `new SlideEngine()`, get the same single instance.
+Script API: `window.SlideDeck` with `goTo(i)`, `next()`, `prev()`, `current()`, `count()`, `setTrack(name)`, `track()`, `trackLabel(name?)`, `toggleTheme()`, `setTheme(t)`, `setLang(l)`, `toggleNotes()`, `toggleHelp()`, `strings()`, `slides()`, `state()`, `setStep(n)`, `step()`, `reducedMotion()`, `use(module)` and `on(event, fn)` for `ready`, `slidechange`, `trackchange` (detail `{track, label, count}`), `stepchange`, `themechange` and `langchange`. `next()` and `prev()` first offer the move to the deck modules as a step. Modules and the plugin API: `reference/modules.md`. Indexes are 0-based among the slides the active track shows. Old decks reaching for `window.slideEngine` or `window.__slideEngine`, or calling `new SlideEngine()`, get the same single instance.
 
 A filter that would leave no slide shows all of them. Print and PDF always show every slide, one per 297 x 167 mm page. Screens of at least 1500 x 880 and 2200 x 1200 zoom slide content; under 700 px height or 768 px width a slide grows with its content.
