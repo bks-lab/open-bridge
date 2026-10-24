@@ -7,8 +7,9 @@ on:
     branches: [main, 'user/**']
   pull_request:
     branches: [main, 'user/**']
-  # Reusable: release.yml calls this suite on tag pushes so a release
-  # runs the exact same checks as a PR — no duplicated steps.
+  # Reusable: release.yml calls this suite as a job and its release job
+  # needs it, so no release is cut from a commit these checks did not pass.
+  # Same checks as a PR, no duplicated steps.
   workflow_call:
   # Manual re-run on any ref (e.g. before cutting a tag).
   workflow_dispatch:
@@ -310,8 +311,10 @@ jobs:
       - name: Every declared reference between entries resolves
         run: python3 scripts/check-edges.py
 
-      # The hook is the only enforcement a `user/*` branch ever gets, because
-      # this workflow triggers on `main` and no instance works there. Its gate
+      # The hook is the enforcement that runs before a commit exists, on every
+      # branch, and the only one an instance gets where this workflow never
+      # runs: a private fork with Actions off, or a clone with no CI at all.
+      # (The workflow itself triggers on `main` and `user/**` alike.) Its gate
       # is a shell &&/|| chain, which is the kind that reads correct and
       # behaves otherwise, so its three branches per guard are asserted.
       - name: The pre-commit always-on gate keeps its contract
@@ -378,6 +381,48 @@ jobs:
           scripts/tests/test_precommit_env_guard.py
           scripts/tests/test_push_guard_content_net.py
           scripts/tests/test_validators_coverage.py
+
+  # Every suite in scripts/tests, by directory. The steps above name their
+  # suites one by one, next to the check each one guards, and a list kept by
+  # hand leaves out the suite nobody remembered: twelve of them ran in no
+  # job until this one existed. The glob cannot forget a file. It does run
+  # the named suites a second time, which costs minutes and buys a list that
+  # stays complete. scripts/tests/test_ci_wiring.py holds every test_*.py in
+  # the tree to SOME job, this one or another.
+  script-tests:
+    name: Every scripts/tests Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install test dependencies
+        run: |
+          pip install pyyaml pytest "jsonschema>=4.18"
+          pipx install check-jsonschema
+
+      - name: Run every suite in scripts/tests
+        run: python3 -m pytest scripts/tests -q -rs
+
+  # Skill suites that are plain pytest and had no job. Their own job, and one
+  # pytest run per skill: each skill puts its own directory on sys.path and
+  # imports its package by a short name (`engine`), and two of those in one
+  # session would shadow each other.
+  skill-pytest:
+    name: Skill Suites (board-pilot, html-canvas)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pytest
+        run: pip install pytest
+
+      # The board-driven pipeline engine. Hermetic: every gh and claude call
+      # is faked, git runs in throwaway repos with a local identity.
+      - name: Run board-pilot suite
+        run: python3 -m pytest skills/board-pilot/tests -q -rs
+
+      - name: Run html-canvas suite
+        run: python3 -m pytest skills/html-canvas/tests -q -rs
 
   # The cockpit demo (docs/cockpit-demo/) in a real browser: every page of the
   # page bar opens, in en and de, without a console error. Its own job, so the
@@ -768,3 +813,45 @@ jobs:
           # the scripted newcomer's push SHOULD be rejected by the guard (non-zero exit)
           bash skills/onboard-sim/assets/run-scripted-newcomer.sh "$SBX/newcomer" || true
           bash skills/onboard-sim/assets/assert-no-leak.sh "$SBX"
+
+  # One check that stands for all of them, so branch protection has a single
+  # name to require and a job added later cannot be forgotten there. It runs
+  # even when a dependency failed (a failed need would otherwise SKIP it, and
+  # a skipped required check counts as passed). A job that is skipped by its
+  # own `if:`, like the leak-roster guard on a private repo, is not a failure.
+  # scripts/tests/test_ci_wiring.py fails when a job is missing from `needs`.
+  all-green:
+    name: All green
+    if: ${{ always() }}
+    needs:
+      - yaml-lint
+      - ecosystem-validation
+      - schema-validation
+      - okf-export
+      - script-suites
+      - script-tests
+      - skill-pytest
+      - cockpit-demo-smoke
+      - workload-suites
+      - secrets-suites
+      - object-store-suites
+      - a2a-suite
+      - workspace-tests
+      - content-leak
+      - skill-scope
+      - frontmatter-check
+      - leak-roster-guard
+      - onboard-safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every needed job passed or was skipped by its own condition
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              failure|cancelled) echo "::error::a required job ended with $r"; exit 1 ;;
+            esac
+          done
+          echo "All required jobs green."

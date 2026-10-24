@@ -12,20 +12,34 @@ name: Release
 #   from 1.0.0:  breaking -> major  ·  feat: -> minor  ·  fix: -> patch
 # This keeps the middle (minor) digit moving only on feat/breaking; ordinary
 # fixes bump the patch; docs/ci/chore/refactor/test/style/build cut no release.
+#
+# Gate: the full Validate suite runs first, as a job of THIS run on THIS
+# commit, and the release job needs it. Without that the two workflows ran
+# side by side on the same push, and a release was cut while validation was
+# still running on a commit it later failed.
 
 on:
   push:
     branches: [main]
 
 permissions:
-  contents: write   # create tags + GitHub releases
+  contents: read    # the default for every job; only the release job writes
 
 concurrency: release   # never cut two releases at once
 
 jobs:
+  validate:
+    name: Validate
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+
   release:
     name: Auto Release
+    needs: validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create tags + GitHub releases
     steps:
       - uses: actions/checkout@v7
         with:
