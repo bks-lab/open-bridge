@@ -40,8 +40,7 @@ raises on a missing git binary, a missing settings file, or invalid JSON, and
 returns `(Path, source, warnings)` where `source` is one of `setting:local`,
 `setting:project`, `setting:user` or `legacy`.
 
-Contract: `scripts/tests/test_memory_location.py`, coverage in
-`scripts/tests/test_memory_location_coverage.py`.
+Contract: `scripts/tests/test_memory_location.py`.
 """
 
 from __future__ import annotations
@@ -299,13 +298,17 @@ def lint_memory_index(memory_dir: Path) -> list[str]:
 
 INDEX_FILES = ("MEMORY.md", "MEMORY-ARCHIVE.md")
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]")
+# Coverage reads a markdown link more leniently than the index lint: a
+# `#section` anchor or a `"title"` after the target still reaches the file.
+COVERAGE_LINK_RE = re.compile(r'\[[^\]]*\]\(([^)\s#]+\.md)(?:#[^)\s]*)?(?:\s+"[^"]*")?\)')
 
 
 def _is_meta_file(name: str) -> bool:
     """MEMORY.md, MEMORY-ARCHIVE.md, README.md, PROVENANCE.md: an all-uppercase
-    stem marks a file about the memory base, not a fact in it."""
+    stem marks a file about the memory base, not a fact in it. A stem with no
+    letter at all (`2026-10.md`) is not uppercase, so it stays a fact."""
     stem = name[:-3]
-    return stem == stem.upper()
+    return any(c.isalpha() for c in stem) and stem == stem.upper()
 
 
 def coverage_report(memory_dir: Path) -> tuple[int, list[str]]:
@@ -322,9 +325,10 @@ def coverage_report(memory_dir: Path) -> tuple[int, list[str]]:
         if name.endswith(".md")
     }
     facts = {name for name in files if not _is_meta_file(name)}
-    by_key: dict[str, str] = {}
-    for name in facts:
-        by_key.setdefault(name[:-3], name)
+    # File stems first, then slugs, both in sorted order: a wikilink resolves
+    # the same way on every run, and a stem always wins over another fact's slug.
+    by_key: dict[str, str] = {name[:-3]: name for name in sorted(facts)}
+    for name in sorted(facts):
         slug = _frontmatter_name(files[name])
         if slug:
             by_key.setdefault(slug.strip(), name)
@@ -335,7 +339,7 @@ def coverage_report(memory_dir: Path) -> tuple[int, list[str]]:
     while queue:
         current = queue.pop()
         text = files[current].read_text(encoding="utf-8", errors="replace")
-        targets = [link.removeprefix("./") for link in LINK_RE.findall(text)]
+        targets = [link.removeprefix("./") for link in COVERAGE_LINK_RE.findall(text)]
         targets += [by_key.get(key.strip(), "") for key in WIKILINK_RE.findall(text)]
         for target in targets:
             if target in facts and target not in seen:

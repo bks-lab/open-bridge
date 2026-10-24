@@ -270,12 +270,15 @@ never recalled. It still costs: it shows up in searches, it can contradict a
 live fact, and nobody notices it went stale.
 
 A fact counts as **reachable** when `MEMORY.md` or `MEMORY-ARCHIVE.md` links
-it, or when a `[[wikilink]]` in a reachable file names its `name:` slug or file
-stem (`|alias` and `#section` are ignored). The walk is transitive: a fact the
-archive links can hand on to another through a wikilink, and a wikilink from a
-fact nobody reaches reaches nothing. Files with an all-uppercase stem
-(`MEMORY.md`, `MEMORY-ARCHIVE.md`, `README.md`, `PROVENANCE.md`) are about the
-memory base, not facts in it, and are skipped.
+it (a `#section` anchor or a `"title"` after the target still counts), or when
+a `[[wikilink]]` in a reachable file names its file stem or `name:` slug
+(`|alias` and `#section` are ignored, and a stem wins over another fact's
+slug). The walk is transitive: a fact the archive links can hand on to another
+through a wikilink, and a wikilink from a fact nobody reaches reaches nothing.
+Files whose stem has letters and all of them uppercase (`MEMORY.md`,
+`MEMORY-ARCHIVE.md`, `README.md`, `PROVENANCE.md`) are about the memory base,
+not facts in it, and are skipped. A memory base with facts but no `MEMORY.md`
+reports every fact, since nothing loads them.
 
 ```bash
 python3 scripts/memory-location.py check            # lint, plus a warning per unreachable fact

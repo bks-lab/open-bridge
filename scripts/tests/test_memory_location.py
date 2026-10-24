@@ -60,7 +60,9 @@ CLI subcommands, each covered below:
                          25 KB (25 * 1024 bytes), an index-line hook over 120
                          characters, or a linked `*.md` file that does not
                          exist. Exit 0 when the directory or MEMORY.md itself
-                         is missing (nothing to lint yet).
+                         is missing (nothing to lint yet). Also warns on fact
+                         files no index or reachable wikilink reaches;
+                         `--strict` makes that exit 1 (section at the end).
 
 Tests build real git repos under `tmp_path` and pass an explicit, throwaway
 `home` directory (never the real one) either directly to `resolve_memory_dir`
@@ -1148,3 +1150,221 @@ def test_links_reads_the_declared_retention_only_from_the_work_block(
     data = json.loads(capsys.readouterr().out)
     assert data["declared_retention_days"] == 30
     assert data["warnings"] == []
+
+# ---------------------------------------------------------------------------
+# check: coverage (docs/memory.md § Coverage)
+#
+# A fact file nothing reaches is invisible to every session: the index is the
+# only thing the harness loads, so a fact that MEMORY.md, MEMORY-ARCHIVE.md and
+# every reachable fact's `[[wikilink]]` all miss exists on disk and is never
+# recalled. The pass walks links transitively from the two index files and
+# names every fact it never reached.
+#
+#     default   warning on stderr with the count and each unreachable file,
+#               exit code unchanged (0 when the index lint is clean)
+#     --strict  the same list, exit 1
+#
+# Meta files with an all-uppercase stem that has letters (MEMORY.md,
+# MEMORY-ARCHIVE.md, README.md, PROVENANCE.md) are not facts. A markdown link
+# reaches its target with or without a `#section` or `"title"`. A `[[wikilink]]`
+# resolves to a fact's file stem first, then its `name:` slug, with `|alias` and
+# `#section` stripped, the same way on every run.
+# ---------------------------------------------------------------------------
+
+
+def _repo_with_memory(tmp_path, monkeypatch) -> tuple[Path, Path]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / ".gitignore").write_text(".claude/settings.local.json\n", encoding="utf-8")
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    assert ml.main(["--repo", str(repo), "enable"]) == 0
+    memory = repo / "work" / "memory"
+    memory.mkdir(parents=True)
+    return repo, memory
+
+
+def _fact(memory: Path, filename: str, name: str, body: str = "") -> None:
+    (memory / filename).write_text(
+        f"---\nname: {name}\ndescription: d\nmetadata:\n  type: feedback\n---\n\n{body}\n",
+        encoding="utf-8",
+    )
+
+
+def _index(memory: Path, *lines: str, archive: tuple[str, ...] = ()) -> None:
+    (memory / "MEMORY.md").write_text("# Memory\n\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    if archive:
+        (memory / "MEMORY-ARCHIVE.md").write_text(
+            "# Archive\n\n" + "\n".join(archive) + "\n", encoding="utf-8"
+        )
+
+
+# ---------------------------------------------------------------------------
+# library: coverage_report
+# ---------------------------------------------------------------------------
+
+
+def test_every_fact_reached_by_index_archive_or_wikilink(tmp_path, monkeypatch):
+    _repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a", "see [[b]]")
+    _fact(memory, "feedback_b.md", "b", "and [[c-slug|alias]] plus [[feedback_d#part]]")
+    _fact(memory, "reference_c.md", "c-slug")
+    _fact(memory, "feedback_d.md", "d")
+    _fact(memory, "project_e.md", "e")
+    _index(memory, "- [A](feedback_a.md) - hook", archive=("- [E](project_e.md) - hook",))
+
+    facts, unreachable = ml.coverage_report(memory)
+    assert facts == 5
+    assert unreachable == []
+
+
+def test_unreachable_facts_are_named(tmp_path, monkeypatch):
+    _repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a")
+    _fact(memory, "feedback_orphan.md", "orphan")
+    _fact(memory, "reference_island.md", "island", "points at [[orphan]]")
+    _index(memory, "- [A](feedback_a.md) - hook")
+
+    facts, unreachable = ml.coverage_report(memory)
+    assert facts == 3
+    # a wikilink only counts from a REACHABLE file: island links orphan, nobody links island
+    assert unreachable == ["feedback_orphan.md", "reference_island.md"]
+
+
+def test_wikilink_cycle_terminates(tmp_path, monkeypatch):
+    _repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a", "[[b]]")
+    _fact(memory, "feedback_b.md", "b", "[[a]]")
+    _index(memory, "- [A](feedback_a.md) - hook")
+
+    assert ml.coverage_report(memory) == (2, [])
+
+
+def test_meta_files_are_not_facts(tmp_path, monkeypatch):
+    _repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a")
+    (memory / "PROVENANCE.md").write_text("# where facts came from\n", encoding="utf-8")
+    (memory / "README.md").write_text("# readme\n", encoding="utf-8")
+    (memory / "feedback_a.md.bak").write_text("old\n", encoding="utf-8")
+    _index(memory, "- [A](feedback_a.md) - hook")
+
+    assert ml.coverage_report(memory) == (1, [])
+
+
+def test_no_index_at_all_leaves_every_fact_unreachable(tmp_path, monkeypatch):
+    _repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a")
+
+    assert ml.coverage_report(memory) == (1, ["feedback_a.md"])
+
+
+def test_markdown_link_with_section_or_title_still_reaches(tmp_path, monkeypatch):
+    _repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a")
+    _fact(memory, "feedback_b.md", "b")
+    _fact(memory, "feedback_c.md", "c")
+    _index(
+        memory,
+        "- [A](feedback_a.md#detail) - hook",
+        '- [B](feedback_b.md "title") - hook',
+        '- [C](./feedback_c.md#part "title") - hook',
+    )
+
+    assert ml.coverage_report(memory) == (3, [])
+
+
+def test_a_stem_without_letters_is_a_fact_not_a_meta_file(tmp_path, monkeypatch):
+    _repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a")
+    (memory / "2026-10.md").write_text("a fact named by date\n", encoding="utf-8")
+    _index(memory, "- [A](feedback_a.md) - hook")
+
+    assert ml.coverage_report(memory) == (2, ["2026-10.md"])
+
+
+def test_wikilink_prefers_a_file_stem_over_another_facts_slug(tmp_path, monkeypatch):
+    # feedback_b's slug equals feedback_a's stem: [[feedback_a]] must resolve to
+    # the file feedback_a.md on every run, never to whichever the set yields first.
+    _repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_hub.md", "hub", "[[feedback_a]]")
+    _fact(memory, "feedback_a.md", "a")
+    _fact(memory, "feedback_b.md", "feedback_a")
+    _index(memory, "- [H](feedback_hub.md) - hook")
+
+    assert ml.coverage_report(memory) == (3, ["feedback_b.md"])
+    # set order follows the string hash seed, so prove it across processes
+    probe = (
+        "import importlib.util, sys\n"
+        f"spec = importlib.util.spec_from_file_location('ml', {str(SCRIPT)!r})\n"
+        "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+        f"print(m.coverage_report(__import__('pathlib').Path({str(memory)!r}))[1])\n"
+    )
+    for seed in range(8):
+        out = subprocess.run(
+            [sys.executable, "-B", "-c", probe],
+            env={"PYTHONHASHSEED": str(seed), "PATH": "/usr/bin:/bin"},
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert out == "['feedback_b.md']", f"seed {seed}: {out}"
+
+
+def test_missing_directory_reports_nothing(tmp_path):
+    assert ml.coverage_report(tmp_path / "absent") == (0, [])
+
+
+# ---------------------------------------------------------------------------
+# CLI: check, default warns, --strict fails
+# ---------------------------------------------------------------------------
+
+
+def test_check_default_warns_with_count_and_keeps_exit_zero(tmp_path, monkeypatch, capsys):
+    repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a")
+    _fact(memory, "feedback_orphan.md", "orphan")
+    _index(memory, "- [A](feedback_a.md) - hook")
+
+    capsys.readouterr()
+    rc = ml.main(["--repo", str(repo), "check"])
+    err = capsys.readouterr().err
+    assert rc == 0
+    assert "1 of 2 fact file(s) unreachable" in err
+    assert "feedback_orphan.md" in err
+
+
+def test_check_strict_fails_on_an_unreachable_fact(tmp_path, monkeypatch, capsys):
+    repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a")
+    _fact(memory, "feedback_orphan.md", "orphan")
+    _index(memory, "- [A](feedback_a.md) - hook")
+
+    capsys.readouterr()
+    rc = ml.main(["--repo", str(repo), "check", "--strict"])
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "feedback_orphan.md" in err
+
+
+def test_check_strict_passes_full_coverage_silently(tmp_path, monkeypatch, capsys):
+    repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_a.md", "a")
+    _index(memory, "- [A](feedback_a.md) - hook")
+
+    capsys.readouterr()
+    rc = ml.main(["--repo", str(repo), "check", "--strict"])
+    assert rc == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_check_lint_failure_still_exits_one_without_strict(tmp_path, monkeypatch, capsys):
+    repo, memory = _repo_with_memory(tmp_path, monkeypatch)
+    _fact(memory, "feedback_orphan.md", "orphan")
+    _index(memory, "- [Ghost](feedback_ghost.md) - hook")
+
+    capsys.readouterr()
+    rc = ml.main(["--repo", str(repo), "check"])
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "feedback_ghost.md" in err
+    assert "feedback_orphan.md" in err
