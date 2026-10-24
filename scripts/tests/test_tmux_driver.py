@@ -115,6 +115,16 @@ def test_last_line_and_shells():
     assert not td.is_shell("claude") and not td.is_shell("2.1.3")
 
 
+def test_rows_split_on_the_separator_raw_or_escaped():
+    # tmux 3.4 (Ubuntu 24.04) prints the unit separator in -F output as the four
+    # characters \037; newer tmux passes the byte through. Both must parse.
+    raw = "Work" + td.SEP + "one"
+    escaped = "Work\\037one"
+    assert td.split_row(raw) == ["Work", "one"]
+    assert td.split_row(escaped) == ["Work", "one"]
+    assert td.split_row("a\\037b\\037c", 1) == ["a", "b" + td.SEP + "c"]
+
+
 @pytest.mark.parametrize("args,agent", [
     ("claude --resume 1b4e28ba-2fa1-11d2-883f-0016d3cca427", True),
     ("/opt/tools/bin/claude -n task", True),

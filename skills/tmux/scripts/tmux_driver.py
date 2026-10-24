@@ -62,6 +62,7 @@ KEYS = {"enter": ("Enter", False), "escape": ("Escape", False),
 REF_RE = re.compile(r"%\d+")
 WS_REF_RE = re.compile(r"\$\d+")
 SEP = "\x1f"
+SEP_ESCAPED = "\\037"     # how tmux 3.4 prints SEP in -F output; newer tmux passes the byte
 SEND_CHUNK = 2000          # tmux carries a command in one IPC message (16 KB); long text goes in parts
 INLINE_MAX = 1000          # a longer launch command goes into a private launcher file
 LAUNCHER_DAYS = 7
@@ -238,6 +239,11 @@ PANE_FIELDS = ["session_name", "session_id", "window_id", "window_name", "window
                "pane_current_command", "pane_pid", "window_active"]
 
 
+def split_row(line: str, maxsplit: int = -1) -> list[str]:
+    """One -F output line split on SEP, whether tmux printed the byte or its escape."""
+    return line.replace(SEP_ESCAPED, SEP).split(SEP, maxsplit)
+
+
 def list_panes() -> list[dict]:
     """Every pane on the server; [] when no server runs (then no tab is open, truly)."""
     fmt = SEP.join("#{%s}" % f for f in PANE_FIELDS)
@@ -247,7 +253,7 @@ def list_panes() -> list[dict]:
         return []
     rows = []
     for ln in out.splitlines():
-        vals = ln.split(SEP)
+        vals = split_row(ln)
         if len(vals) == len(PANE_FIELDS):
             rows.append(dict(zip(PANE_FIELDS, vals)))
     return rows
@@ -305,7 +311,8 @@ def session_ids() -> dict[str, str]:
         out = tmux("list-sessions", "-F", "#{session_id}" + SEP + "#{session_name}")
     except NoServer:
         return {}
-    return dict(ln.split(SEP, 1) for ln in out.splitlines() if SEP in ln)
+    rows = (split_row(ln, 1) for ln in out.splitlines())
+    return dict(r for r in rows if len(r) == 2)
 
 
 def check_ws_ref(ref) -> str:
