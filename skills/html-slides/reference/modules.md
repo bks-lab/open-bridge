@@ -114,3 +114,80 @@ and, like `deck()`, a slide count or a list of slide markup plus `html_attrs`,
 modules by default, `MODULE_FIXTURES` (`tests/fixtures/modules/`) for test-only
 modules such as `probe.js`, which `tests/test_engine_plugins.py` uses to pin the
 API itself. `with_modules(html, modules, root)` adds modules to any spliced deck.
+
+## Module: presenter
+
+A presenter window for a second screen, a time budget per slide and per track, a
+rehearsal that records how long each slide really took, and an optional floating
+timer. Build with `new-deck.py --with presenter`; nothing changes in the deck until
+P is pressed.
+
+```html
+<section class="slide" id="problem" data-time="90"> ... <aside class="notes">...</aside></section>
+```
+
+| Attribute | Effect |
+|---|---|
+| `data-time` on a slide | its budget in seconds (`90`) or as `m:ss` (`1:30`). A slide without one has no budget and adds nothing to the plan. |
+| `data-deck-id` on the deck | names the deck for the stored rehearsals (else the file path), as for tracks and language |
+
+**Keys in the deck.** `P` opens the presenter window, or brings it to the front when it
+is open. `Shift+P` opens or closes the floating timer; the row appears in the `?` help
+only where the browser has Document Picture-in-Picture, and elsewhere the key does
+nothing. A blocked pop-up is reported in a notice on the deck (`.deck-presenter-toast`).
+
+**The presenter window** shows the current slide and what comes next as live previews,
+the notes of the current slide, the clock, the elapsed time, the budget of this slide
+and the plan of the active track. Its keys: `→ ↓ Space PgDn` next, `← ↑ PgUp` back,
+`Home End`, digits + `Enter` jump, `S` start or pause, `X` reset, `R` start or stop a
+rehearsal, `A` plan vs actual, `+ -` notes size (kept per browser), `Esc` closes the
+table. A click on the next preview advances. Labels follow the deck language, colours
+and fonts are the deck tokens (`--bg`, `--text`, `--accent`, `--green`, `--amber`,
+`--red`, ...) sent with every update, so a theme switch in the deck repaints the window.
+
+**Next means next:** the next preview is a copy of the deck moved to the current slide
+and step and then sent `next()`, so with the `steps` module it shows the next step of
+the same slide, and at the end of the deck it says so. The previews are two copies of
+the document as it was loaded (`srcdoc`, marked `data-deck-preview`, which turns this
+module into a preview helper: no chrome, no smooth scroll). A live stage on a slide
+therefore runs in the previews too.
+
+**Timer and budget.** The deck owns the timer, so a presenter window opened in the
+middle of a talk shows the true elapsed time. It starts with the first slide change
+(not with a track switch) or `S`. Time is charged to the slide on screen while the
+timer runs, across visits. A budget reads `ok`, `low` once a fifth or less of it is
+left, and `over` when it is used up (`data-state` on `[data-pp=slide-budget]` and
+`[data-pp=total-budget]`, green, amber, red from the tokens). The plan is the sum of
+the budgets of the slides the active track shows, recomputed on every track change,
+and the pace line says how far ahead or behind the plan the talk is at this slide
+(within 5 s reads "on time").
+
+**Rehearsal.** `R` resets the timer and records: every slide change and the stop save
+the actual seconds per slide for the active track to `localStorage` under
+`deck-rehearsal:<deck id>`, one record per track (`{at, track, rows: [{key, title,
+plan, actual}]}`, the key is the slide id, else `n<position>`). Stopping opens the
+plan vs actual table (`A` brings it back); a row is `over` when the slide took longer
+than its budget. Copy puts the table on the clipboard as tab-separated text. Blocked
+storage keeps the record for the session only.
+
+**Sync.** The presenter page is a Blob URL opened with `window.open`, so it works
+offline and survives a reload of its window. Both sides use `postMessage` on the
+window reference and check the sender: the deck accepts only the window it opened (or,
+after its own reload, a window whose `opener` is this tab saying hello), the window
+only its `opener`; the origin must be the page's own, or `"null"` when the page itself
+is opaque (`file://` sends `"null"`, and cannot be named as a target, so `*` is used).
+The deck sends deck content only between that window's hello and its bye. A
+`BroadcastChannel` named `deck-presenter:<deck id>` carries the same messages where it
+exists, which keeps the link when the opener reference is lost; there commands must
+name the deck instance. Every message carries sender id and sequence number, so one
+that arrives on both paths counts once. When the deck reloads, the window waits and
+says hello every 2 s until the new deck answers.
+
+**Floating timer.** `Shift+P` asks `documentPictureInPicture.requestWindow()` for a
+small always-on-top window with the elapsed time, the slide budget and a pause button.
+It suits presenting from one screen, for example sharing only the deck tab in a call:
+the floating window is not part of the shared tab.
+
+**Off and print.** Without P nothing is added. The notice is hidden in print; the
+presenter window and the floating timer are separate windows and never print with the
+deck. The module has no animation of its own.
