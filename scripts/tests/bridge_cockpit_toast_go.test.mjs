@@ -233,3 +233,26 @@ test('dismissState: the "+N more" count stays while others are up and goes with 
   assert.deepEqual(logic.dismissState({ toasts: [toast(2)], toastsMore: 3 }, 2), { toasts: [], toastsMore: 0 })
   assert.deepEqual(logic.notesOpenedState({ toasts: [toast(2)], toastsMore: 3 }), { toastsMore: 0 })
 })
+
+// ---------------------------------------------------------------- an agent toast in the Chat as cmux (#509)
+
+test('as cmux an agent toast and an @agents page target land on the Chat in its A2A area', () => {
+  const nav = views.nav
+  const base = cockpitState(NOW, { rooms: { layout: 'workspaces' } })
+  const convs = [{ id: 'g0123456789', peer: 'team-bridge', started_ms: NOW - 60000, last_ms: NOW - 60000, context_id: null,
+    running: false, turns: [{ q: 'Hello?', mode: 'question', a: null, waiting: false, at_ms: NOW, error: null }] }]
+  /** The controller's way to an agent as app.js wires it: chatAreaActions, and setPage asking pageFor */
+  const controller = s0 => {
+    let s = s0
+    const setUi = p => { s = { ...s, ui: { ...s.ui, ...(typeof p === 'function' ? p(s.ui) : p) } } }
+    const acts = nav.chatAreaActions({ get: () => s, setUi, save: () => {}, now: () => NOW })
+    return { get: () => s, c: { ...acts, dismissToast: () => {}, setPage: id => setUi({ page: acts.pageFor(id) }) } }
+  }
+  for (const go of [{ kind: 'conv', id: 'g0123456789' }, { kind: 'page', id: nav.AGENTS_PAGE }]) {
+    const h = controller({ ...base, agents: { ...base.agents, convs }, toasts: [toast(1, { go })], ui: { ...base.ui, page: 'briefing' } })
+    const el = mount(html`<${Toasts} s=${h.get()} c=${h.c} />`)
+    el.$('button.toast-go').click()
+    assert.equal(h.get().ui.page, nav.CHAT_PAGE, JSON.stringify(go))
+    assert.equal(nav.chatAreaOf(h.get()), 'a2a', JSON.stringify(go))
+  }
+})
