@@ -5,14 +5,13 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
-  stateToken, canTab, settledRefs, statusSplit, tabNextStep, workPageOf,
-  skipFixable, skipText, queueLiveKeys, queueView, dayQueue,
+  stateToken, canTab, settledRefs, statusSplit, tabNextStep, areaScope, homeAreas,
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
 import { KindTag, RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
-import { START_PAGE } from './nav.js'
 import { PageSection } from './pages.js'
 import { Btn, SkipFix, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine, WalkBar } from './parts.js'
 import { TaskSessions } from './sessions.js'
@@ -23,20 +22,20 @@ function Overview({ s, c }) {
   const t = T()
   const m = s.model
   if (!m) return html`<div class="panel panel-pad"><${Skeleton} lines=${6} /></div>`
+  // under an area filter the count is the area's, as its line on the overview has it; the rest of the
+  // headline (free time, what comes) is the day's
+  const area = s.ui.area ? homeAreas(s.tabs?.tabs, m.sections, [], s.now || Date.now())
+    .find(a => !a.none && a.name.toLowerCase() === s.ui.area.trim().toLowerCase()) : null
+  const waiting = s.ui.area ? area?.waiting ?? 0 : m.briefing_badge ?? 0
   const head = html`
     <span class="eyebrow">${t.overviewTitle}</span>
-    <h2 class="detail-title">${t.forYouNow(m.briefing_badge ?? 0)}${m.headline_rest ? ` · ${m.headline_rest}` : ''}</h2>
+    <h2 class="detail-title">${t.forYouNow(waiting)}${m.headline_rest ? ` · ${m.headline_rest}` : ''}</h2>
     ${m.since ? html`<p class="muted">${m.since}</p>` : null}`
-  // with a work tab the day (dates, status, what happened) stands on Start; here only the headline and the way there
-  if (workPageOf(m.pages)) {
-    return html`<div class="panel panel-pad overview">${head}
-      <p class="row-in muted">${t.dayOnStart}
-        <${Btn} size="xs" variant="secondary" onClick=${() => c.setPage(START_PAGE)}>${t.dayOnStartOpen}<//></p>
-      <p class="hint muted">${t.detailEmpty}</p>
-    </div>`
-  }
+  // the day (dates, status, what happened) stands here, with a work tab too: the overview on Start has none.
+  // Under an area filter it keeps to the area as the rows beside it do (the star is the rows' own filter)
+  const day = areaScope({ ...s, ui: { ...s.ui, pinnedOnly: false } })
   return html`<div class="panel panel-pad overview">${head}
-    <${DayView} s=${s} c=${c} />
+    <${DayView} s=${day} c=${c} />
     <p class="hint muted">${t.detailEmpty}</p>
   </div>`
 }
@@ -71,6 +70,7 @@ export function DayView({ s, c, cards = false }) {
   }
   const [agenda, status, ...rest] = blocks
   return html`<div class="day-view">
+    ${s.ui?.area ? html`<p class="muted small">${t.allAreas}</p>` : null}
     <div class="ov-grid">
       <div class="ov-block"><h3 class="label-caps">${agenda.title}</h3>${agenda.body}</div>
       <div class="ov-block"><h3 class="label-caps">${status.title}</h3>${status.body}</div>
@@ -239,7 +239,7 @@ function TabInfo({ row, s, c }) {
   return html`<div class="block tab-info">
     <h3 class="label-caps">${t.tabsTitle}</h3>
     <div class="tab-info-line">
-      <${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />
+      <${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />
       <span class="muted">${tab.workspace ? `${tab.workspace} / ` : ''}${tab.name}</span>
       ${tab.since_ms ? html`<span class="mono muted">${t.sinceFor(duration(s.now - tab.since_ms))}</span>` : null}
     </div>
@@ -342,7 +342,7 @@ function RowDetail({ row, s, c }) {
       <p class="detail-kind"><${KindTag} row=${row} s=${s} c=${c} link /></p>
       <div class="detail-chips">
         <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
-        ${row.tab ? html`<${Chip} token=${stateToken(row.tab.state)}>${t.state[row.tab.state]}<//>` : null}
+        ${row.tab ? html`<${Chip} token=${stateToken(tabStateKey(row.tab))}>${t.state[tabStateKey(row.tab)] ?? row.tab.state}<//>` : null}
         <${MarkChip} mark=${row.mark} /><${PrioChip} priority=${row.priority} />
         ${row.hidden_until ? html`<span class="chip">${t.hiddenUntil(formatDay(row.hidden_until, language()))}</span>` : null}
       </div>

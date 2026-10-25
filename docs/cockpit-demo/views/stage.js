@@ -6,7 +6,7 @@ import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.mo
 import {
   duration, indexRows, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
   countInProject, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
-  MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel,
+  MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel, tabStateKey
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
@@ -184,7 +184,7 @@ function StageCard({ s, c, tabs, onWeigh }) {
     ${pick?.kind === 'tab' ? html`<div class="stage-row is-lead">
       <span class="stage-dot tk-warning dot-pulse" aria-hidden="true"></span>
       <button type="button" class="stage-row-main" onClick=${() => jumpToTab(s, c, pick.tab.ref)} title=${h.openTab(pick.tab.name)}>
-        <span class="stage-row-title">${pick.tab.name}</span><span class="stage-row-sub">${pick.tab.workspace} · ${t.state[pick.tab.state] ?? pick.tab.state}</span>
+        <span class="stage-row-title">${pick.tab.name}</span><span class="stage-row-sub">${pick.tab.workspace} · ${t.state[tabStateKey(pick.tab)] ?? pick.tab.state}</span>
       </button>
       <span class="stage-pill">${h.focusTitle}</span>
       <div class="stage-row-acts"><${Btn} size="xs" variant="primary" onClick=${() => jumpToTab(s, c, pick.tab.ref)}>${h.toTab}<//>
@@ -279,8 +279,8 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
   } else if (x.id === 'c:tabs') {
     const list = homeContinue(tabs, null)
     body = html`${head(t.tabsTitle, String(list.length))}
-      ${list.slice(0, 8).map(tb => html`<${InspectRow} key=${tb.ref} tone=${stateToken(tb.state)} title=${tb.name}
-        sub=${`${tb.workspace || '·'} · ${t.state[tb.state] ?? tb.state}`} side=${duration(s.now - (tb.since_ms || s.now))}
+      ${list.slice(0, 8).map(tb => html`<${InspectRow} key=${tb.ref} tone=${stateToken(tabStateKey(tb))} title=${tb.name}
+        sub=${`${tb.workspace || '·'} · ${t.state[tabStateKey(tb)] ?? tb.state}`} side=${duration(s.now - (tb.since_ms || s.now))}
         onClick=${() => c.openTabView(tb.ref)}><${Btn} size="xs" variant="primary" onClick=${() => jumpToTab(s, c, tb.ref)}>${h.toTab}<//><//>`)}
       ${foot(t.tabsTitle, () => c.setDrawer('tabs'))}`
   } else if (x.id === 'c:next') {
@@ -579,7 +579,7 @@ export function BridgeStage({ s, c, catalog, chosen, project }) {
             <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
         </div>` : null}
       </div>
-      <${TickerBand} s=${s} c=${c} only="news" />
+      ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
       <div class="stage-tools">
         <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${h.choose}<//>
       </div>

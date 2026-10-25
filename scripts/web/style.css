@@ -1807,27 +1807,54 @@ kbd {
 
 .home-shelf { display: flex; flex-direction: column; gap: 14px; }
 
-/* the areas: a line per area, its four numbers wrap below the name on a narrow screen */
-.home-area-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.home-area-list > li { padding: 0; }
-.home-area {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; width: 100%;
-  padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised);
-  color: var(--on-surface); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
-  transition: background-color var(--motion), border-color var(--motion);
+/* the areas: a table, the column heads once; on a narrow screen each line is a card whose numbers wrap
+   and carry their label (data-label) */
+.home-area-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--text-sm); }
+.home-area-table th, .home-area-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: right; }
+.home-area-table th:first-child { text-align: left; width: 40%; }
+.home-area-table thead th { color: var(--on-surface-muted); font-size: var(--text-label); font-weight: 500; }
+.home-area.is-on > * { background: var(--surface-muted); }
+.home-area-pick {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 6px; margin: -4px -6px;
+  border: 0; border-radius: var(--radius-md); background: transparent; color: var(--on-surface);
+  font: inherit; font-weight: 600; text-align: left; cursor: pointer;
 }
-.home-area:hover { border-color: var(--border-strong); }
-.home-area:focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; }
-.home-area.is-on { background: var(--surface-muted); border-color: var(--on-surface); }
-.home-area-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.home-area-pick:hover { background: var(--surface-muted); }
+.home-area-pick[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--on-surface); }
+.home-area-pick:focus-visible, .home-area-n:focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; }
+.home-area-name { min-width: 0; overflow-wrap: anywhere; }
 .home-area-dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--tk); }
-.home-area-figs { display: flex; flex-wrap: wrap; gap: 4px 16px; }
-.home-area-fig { display: inline-flex; align-items: baseline; gap: 5px; }
 .home-area-n { font-weight: 600; color: var(--on-surface); }
-.home-area-label { color: var(--on-surface-muted); font-size: var(--text-label); }
-.home-area-fig.is-zero .home-area-n, .home-area-fig.is-zero .home-area-label { color: var(--on-surface-muted); opacity: 0.55; }
-.home-area.is-quiet { background: var(--surface); }
-.home-area.is-quiet .home-area-name { font-weight: 500; color: var(--on-surface-muted); }
+button.home-area-n { padding: 2px 6px; margin: -2px -6px; border: 0; border-radius: var(--radius-md); background: transparent; font: inherit; font-weight: 600; cursor: pointer; }
+button.home-area-n:hover { background: var(--surface-muted); text-decoration: underline; }
+.home-area-fig.is-zero .home-area-n { color: var(--on-surface-muted); opacity: 0.55; font-weight: 400; }
+.home-area.is-quiet .home-area-pick { font-weight: 500; color: var(--on-surface-muted); }
+@media (max-width: 640px) {
+  .home-area-table thead { display: none; }
+  .home-area-table, .home-area-table tbody, .home-area-table tr { display: block; }
+  .home-area-table tr { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .home-area-table th, .home-area-table td { padding: 0; border: 0; text-align: left; }
+  .home-area-table th:first-child { width: 100%; }
+  .home-area-table td { display: inline-flex; align-items: baseline; gap: 5px; }
+  .home-area-table td::after { content: attr(data-label); color: var(--on-surface-muted); font-size: var(--text-label); }
+}
+
+/* the overview: one head line, the areas, next up */
+.desk { gap: 18px; }
+.desk-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: var(--text-sm); }
+.desk-day { color: var(--on-surface-muted); }
+.desk-waiting {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius-full); background: var(--surface-raised); color: var(--on-surface); font: inherit; font-weight: 600; cursor: pointer;
+}
+.desk-waiting.tk-warning { border-color: var(--tk); }
+.desk-tools { margin-left: auto; }
+.desk-next { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 0; font-size: var(--text-sm); }
+
+/* over Work, Chat and Sessions: the area they show, and on Work the star filter */
+.area-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.area-bar-chip { display: inline-flex; align-items: center; gap: 8px; }
+.area-bar-x { padding: 0 2px; font-size: var(--text-sm); }
 .home-shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .home-shelf-title { margin: 0; font-size: var(--text-h3); font-weight: 600; color: var(--on-surface); }
 .home-more { display: inline-flex; align-items: center; gap: 2px; font-size: var(--text-sm); }
@@ -2667,6 +2694,14 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .view-thumb-focus i:nth-of-type(1) { left: 10px; }
 .view-thumb-focus i:nth-of-type(2) { left: calc(16px + (66% - 26px) / 3); }
 .view-thumb-focus i:nth-of-type(3) { left: calc(22px + 2 * (66% - 26px) / 3); }
+
+.view-thumb-areas u { left: 10px; width: 50%; height: 7px; border-radius: 4px; background: var(--border-strong); }
+.view-thumb-areas u:nth-of-type(1) { top: 10px; }
+.view-thumb-areas u:nth-of-type(2) { top: 70px; width: 36%; opacity: 0.6; }
+.view-thumb-areas i { left: 10px; width: calc(100% - 20px); height: 10px; border-radius: 3px; background: var(--border-strong); opacity: 0.7; }
+.view-thumb-areas i:nth-of-type(1) { top: 26px; background: var(--accent); opacity: 0.8; }
+.view-thumb-areas i:nth-of-type(2) { top: 40px; }
+.view-thumb-areas i:nth-of-type(3) { top: 54px; }
 
 /* the stations: one list in their order, a grip to drag, two arrows, a switch */
 .st-group { margin: 14px 0 8px; }

@@ -8,7 +8,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentsPage } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -97,10 +97,10 @@ function TabItem({ tab, on, s, c, where = false }) {
   }
   return html`<${Item} on=${on} cls="room-tab" title=${tab.ask?.text || tab.last || tab.name} onClick=${firstClick(() => c.pickRoom({ kind: 'tab', id: tab.ref }))}
     onDblClick=${canRename(s, tab) ? () => c.startRename('tab', tab.ref) : undefined}>
-    <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
+    <${Dot} token=${stateToken(tabStateKey(tab))} pulse=${tab.state === 'working'} />
     <span class="room-name">${tab.is_control ? t.controlSession : tab.name}</span>
     <${LoadChip} load=${tab.load} />
-    <span class="room-meta muted small">${where ? tab.workspace : t.state[tab.state] ?? tab.state}</span>
+    <span class="room-meta muted small">${where ? tab.workspace : t.state[tabStateKey(tab)] ?? tab.state}</span>
   <//>`
 }
 
@@ -188,7 +188,7 @@ function AskRow({ tab, left, s, c }) {
   const onRow = e => { if (!fromControl(e.target, e.currentTarget)) pick() }
   return html`<div class=${`reply-row is-pickable${done ? ' is-left' : ''}`} onClick=${onRow}>
     <button type="button" class="reply-head" onClick=${pick}>
-      <${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'working'} />
+      <${Dot} token=${stateToken(tabStateKey(tab))} pulse=${tab.state === 'working'} />
       <span class="reply-name">${tab.name}</span>
       <span class="room-meta muted small">${tab.workspace}</span>
     </button>
@@ -358,7 +358,7 @@ function TabPane({ s, c, tab }) {
   const closeTab = async () => { const r = await c.act('tab_close', { tab_ref: tab.ref }); if (r?.ok) onward() }
   return html`<section class=${`panel chat-main rooms-main has-walk${replying ? ' has-reply' : ''}${view === 'guide' ? ' is-guide-only' : ''}`} aria-labelledby="room-title">
     <header class="tabview-head">
-      <${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />
+      <${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />
       <h2 class="sec-title tabview-title" id="room-title" title=${taskTab(tab) && !tab.is_control ? t.rooms.taskName : undefined}>
         ${tab.is_control ? t.controlSession : tab.name}</h2>
       ${canRename(s, tab) ? html`<${Btn} size="xs" variant="ghost" icon="pencil" label=${t.rooms.rename} title=${t.rooms.rename}
@@ -416,7 +416,7 @@ function WorkspacePane({ s, c, w }) {
       ${(w.statuses ?? []).length ? html`<p class="small">${w.statuses.map(x => html`<span key=${x.name} class="chip">${x.text}</span> `)}</p>` : null}
       ${w.tabs.length ? html`<ul class="room-list">${w.tabs.map(tab => html`<li key=${tab.ref}><button type="button" class="btn-link"
         onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>${tab.name}</button>
-        <span class="muted small"> ${t.state[tab.state] ?? tab.state}</span></li>`)}</ul>` : html`<${Empty}>${t.rooms.noTabs}<//>`}
+        <span class="muted small"> ${t.state[tabStateKey(tab)] ?? tab.state}</span></li>`)}</ul>` : html`<${Empty}>${t.rooms.noTabs}<//>`}
     </div>
   </section>`
 }

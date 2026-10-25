@@ -68,9 +68,9 @@ function ViewCard({ home }) {
   const keys = useRoving()
   return html`<${Card} title=${w.viewTitle} intro=${w.viewIntro}>
     <div class="view-pick" role="radiogroup" aria-label=${w.viewTitle} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
-      ${['stage', 'tiles', 'list', 'focus'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
+      ${['areas', 'stage', 'tiles', 'list', 'focus'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
         class=${`view-opt${view === v ? ' is-on' : ''}`} onClick=${() => view !== v && home.pick(v)}>
-        <span class=${`view-thumb view-thumb-${v}`} aria-hidden="true">${v === 'stage'
+        <span class=${`view-thumb view-thumb-${v}`} aria-hidden="true">${v === 'areas' ? html`<u></u><i></i><i></i><i></i><u></u>` : v === 'stage'
           ? html`<b></b><i></i><i></i><i></i><i></i><i></i><i></i>`
           : v === 'tiles' ? html`<em></em><i></i><i></i><i></i><i></i>`
           : v === 'list' ? html`<em></em><u></u><i></i><i></i><i></i><i></i>` : html`<em></em><b></b><u></u><i></i><i></i><i></i>`}</span>
@@ -152,7 +152,9 @@ function SwitchRows({ home, ids, note }) {
 function ShelvesCard({ home }) {
   const w = T().settings
   const list = home.view === 'list'
-  const note = id => (id === 's:focus' && home.view === 'stage' ? w.onlyTiles : id === 's:starts' && list ? w.notList : null)
+  // the overview shows the areas and nothing else of the shelves
+  const note = id => (home.view === 'areas' ? (id === 's:areas' ? null : w.notDesk)
+    : id === 's:focus' && home.view === 'stage' ? w.onlyTiles : id === 's:starts' && list ? w.notList : null)
   return html`<${Card} title=${w.shelvesTitle} intro=${list ? w.shelvesIntroList : w.shelvesIntro}>
     <${SwitchRows} home=${home} ids=${home.catalog.filter(x => x.kind === 'shelf').map(x => x.id)} note=${note} />
   <//>`
@@ -171,6 +173,8 @@ function StartArea({ s, c }) {
   const home = useHome(s, c)
   // the focus view shows what needs you and nothing to choose: no stations, no sections
   if (home.view === 'focus') return html`<${ViewCard} home=${home} />`
+  // the overview has no stations: its shelves say which of them it shows
+  if (home.view === 'areas') return html`<${ViewCard} home=${home} /><${ShelvesCard} home=${home} />`
   return html`<${ViewCard} home=${home} />
     <${StationsCard} home=${home} />
     <${ShelvesCard} home=${home} />

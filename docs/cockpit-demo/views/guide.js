@@ -13,7 +13,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { answerMark, canTab, centsText, duration, errorText, guideChoices, guideOf, replySend, short, stateToken } from '../logic.js'
+import { answerMark, canTab, centsText, duration, errorText, guideChoices, guideOf, replySend, short, stateToken, tabStateKey } from '../logic.js'
 import { T, language } from '../text.js'
 import { Thinking } from './chat.js'
 import { TAB_MSG_MAX } from './nav.js'
@@ -217,11 +217,11 @@ export function GuideBoard({ s, c }) {
     <p class="muted small guide-board-intro">${t.guide.boardIntro}</p>
     <div class="guide-board-list">${tabs.map(tab => html`<article key=${tab.ref} class="guide-card">
       <header class="guide-card-head">
-        <${Dot} token=${stateToken(tab.state)} />
+        <${Dot} token=${stateToken(tabStateKey(tab))} />
         ${jump ? html`<button type="button" class="btn-link guide-card-name" onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${short(tab.name, 60)}</button>`
           : html`<span class="guide-card-name">${short(tab.name, 60)}</span>`}
         <span class="muted small">${tab.workspace}</span>
-        <span class="muted small">${t.state[tab.state] ?? tab.state}</span>
+        <span class="muted small">${t.state[tabStateKey(tab)] ?? tab.state}</span>
       </header>
       <${GuideTree} tab=${tab} s=${s} c=${c} />
     </article>`)}</div>

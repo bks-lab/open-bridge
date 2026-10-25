@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
+  listedChats, tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
   focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -131,7 +131,11 @@ const store = createStore({
   layout: 'wide',
   ui: {
     // a new visit opens on the start page, a reload stays where it was; the project chip chosen there is kept
-    page: reloaded() ? load('bridge-cockpit.page', START_PAGE) : START_PAGE, homeProject: load('bridge-cockpit.homeProject', null), selectedKey: null,
+    page: reloaded() ? load('bridge-cockpit.page', START_PAGE) : START_PAGE, selectedKey: null,
+    // the area Work, Chat and Sessions show (logic.js areaScope), Work's star filter, the news on the start page
+    // one area filter: the project chosen on the start page before it was one carries over
+    area: load('bridge-cockpit.area', '') || load('bridge-cockpit.homeProject', '') || null, pinnedOnly: load('bridge-cockpit.pinnedOnly', '0') === '1',
+    tickerOnStart: load('bridge-cockpit.tickerOnStart', '0') === '1',
     coreConv: null, coreBrief: false, focusKey: null, picked: [], expanded: {}, sent: [],
     // the view of the work tab (due, area, jev); a page with jev: outside it reads area and jev the same way
     workView: load('bridge-cockpit.workTab', 'due'),
@@ -827,8 +831,9 @@ const ctl = {
   },
   // the walk through the tabs that want you (logic.js tabWalkView): Work through starts it on the first,
   // a tab picked in the sidebar starts it there; the open tab's bar goes on without taking a new order
+  // the walk through the tabs that want you, of the area only when one is chosen
   startWalk: () => {
-    const refs = walkRefs(store.get().tabs?.tabs)
+    const refs = walkRefs(areaScope(store.get()).tabs?.tabs)
     if (refs.length) setUi({ room: { kind: 'tab', id: refs[0] }, tabWalk: refs })
   },
   walkTab: (ref, { focus = false } = {}) => { if (ref) setUi({ room: { kind: 'tab', id: ref }, walkFocus: focus }) },
@@ -903,7 +908,32 @@ const ctl = {
   closeInner: () => setUi({ inner: false, innerFocus: null }),
   graph: () => api.get('/api/graph'),
   graphNode: id => api.get(`/api/graph/node?id=${encodeURIComponent(id)}`),
-  setHomeProject: p => { save('bridge-cockpit.homeProject', p ?? ''); setUi({ homeProject: p }) },
+  // a new filter empties the picks and lets go of a focus or a selection it hides (logic.js scopeKeep)
+  setArea: a => {
+    save('bridge-cockpit.area', a ?? '')
+    save('bridge-cockpit.homeProject', '')
+    const s = store.get()
+    const ui = { ...s.ui, area: a || null, picked: [] }
+    setUi({ area: ui.area, ...scopeKeep({ ...s, ui }) })
+  },
+  setPinnedOnly: on => {
+    save('bridge-cockpit.pinnedOnly', on ? '1' : '0')
+    const s = store.get()
+    const ui = { ...s.ui, pinnedOnly: !!on, picked: [] }
+    setUi({ pinnedOnly: ui.pinnedOnly, ...scopeKeep({ ...s, ui }) })
+  },
+  setTickerOnStart: on => { save('bridge-cockpit.tickerOnStart', on ? '1' : '0'); setUi({ tickerOnStart: !!on }) },
+  // a number of the areas (logic.js areaJump): the area as the filter, then its page, Work in the view
+  // asked for; the tabs that want you are walked from the first, the area's only
+  goArea: (area, to) => {
+    ctl.setArea(area)
+    if (to?.view) ctl.setWorkView(to.view)
+    ctl.setPage(to?.page ?? 'briefing')
+    if (to?.walk) {
+      const refs = walkRefs((store.get().tabs?.tabs ?? []).filter(t => inProject(t, area)))
+      if (refs.length) setUi({ room: { kind: 'tab', id: refs[0] }, tabWalk: refs })
+    }
+  },
   // days: 7, 30 or 90; without it the range asked for last
   loadUsage: async days => {
     const n = [7, 30, 90].includes(days) ? days : store.get().usage.days ?? 7
@@ -1133,7 +1163,7 @@ const ctl = {
       return false
     }
     const s = store.get()
-    const byNumber = rowByNumber(s.model, rowIndex())
+    const byNumber = rowByNumber(s.model, indexRows(areaScope(s).model))   // a number of a hidden row finds nothing
     await runPlan(planShortcut(codes, n => byNumber.get(n)))
     return true
   },
@@ -1180,8 +1210,9 @@ function focusRowElement(key) {
 }
 
 function moveFocus(step) {
-  const s = store.get()
-  const rows = displayedRows(s.model, s.ui.expanded, rowIndex(), s.ui.dayHeight ?? 0)
+  // the rows the page shows under its filters, never one they hide
+  const s = areaScope(store.get())
+  const rows = displayedRows(s.model, s.ui.expanded, indexRows(s.model), s.ui.dayHeight ?? 0)
   if (!rows.length) return
   const at = rows.findIndex(r => r.key === s.ui.focusKey)
   const next = at < 0 ? (step > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, at + step))
@@ -1204,7 +1235,7 @@ function focusAreas() {
   if (store.get().ui.page !== START_PAGE) ctl.setPage(START_PAGE)
   const go = () => {
     const list = document.getElementById('home-areas-list')
-    ;(list?.querySelector('button[aria-pressed="true"]') ?? list?.querySelector('button'))?.focus()
+    ;(list?.querySelector('button.home-area-pick[aria-pressed="true"]') ?? list?.querySelector('button.home-area-pick'))?.focus()
   }
   requestAnimationFrame(() => requestAnimationFrame(go))
 }
@@ -1234,6 +1265,11 @@ function onKey(e) {
     if (s.ui.tabView) return setUi({ tabView: null })
     if (s.ui.drawer) return setUi({ drawer: null, item: null, queue: s.ui.pageDetail ? s.ui.queue : null })
     if (s.ui.pageDetail && !isTypingTarget(e.target)) return ctl.closePeek()
+    // with nothing open over it, Escape on Work, Chat or Sessions closes an open row or the picks first,
+    // then lifts the area filter
+    const step = isTypingTarget(e.target) ? null : escapeStep(s.ui)
+    if (step === 'selection') return setUi({ selectedKey: null, picked: [] })
+    if (step === 'area') return ctl.setArea(null)
     if (isTypingTarget(e.target)) e.target.blur()
     return
   }
@@ -1290,8 +1326,9 @@ function onKey(e) {
   const walking = today || (s.ui.queue?.length && (s.ui.drawer === 'item' || (s.ui.pageDetail && !s.ui.drawer)))
   if ((key === 'n' || key === 'p') && walking) {
     const cur = s.ui.drawer === 'item' ? s.ui.item?.key : s.ui.selectedKey
-    const live = queueLiveKeys(s.model, s.more)
-    const v = queueView(today ? dayQueue(s.model) : s.ui.queue, cur, x => live.has(x.key))
+    const shown = areaScope(s)   // the walk keeps to what the filters show
+    const live = queueLiveKeys(shown.model, shown.more)
+    const v = queueView(today ? dayQueue(shown.model) : s.ui.queue, cur, x => live.has(x.key))
     const to = key === 'n' ? v?.next[0] : v?.prev
     e.preventDefault()
     if (to) ctl.openNext(to)
@@ -1300,7 +1337,7 @@ function onKey(e) {
   // n / p on the Chat page: the walk through the tabs that want you, as the open tab's bar walks it
   if ((key === 'n' || key === 'p') && s.ui.page === CHAT_PAGE) {
     const cur = s.ui.room?.kind === 'tab' ? s.ui.room.id : null
-    const v = cur ? tabWalkView(s.tabs?.tabs, s.ui.tabWalk, cur) : null
+    const v = cur ? tabWalkView(areaScope(s).tabs?.tabs, s.ui.tabWalk, cur) : null
     e.preventDefault()
     if (!cur || !v) return key === 'n' ? ctl.startWalk() : undefined
     const to = key === 'n' ? v.next[0] : v.prev
@@ -1317,7 +1354,7 @@ function onKey(e) {
   // j / k in the areas of the start page walk its lines; Enter is the button's own click
   const areas = document.activeElement?.closest?.('#home-areas-list')
   if (areas && (key === 'j' || key === 'k')) {
-    const lines = [...areas.querySelectorAll('button')]
+    const lines = [...areas.querySelectorAll('button.home-area-pick')]
     const at = lines.indexOf(document.activeElement)
     e.preventDefault()
     return lines[Math.min(lines.length - 1, Math.max(0, at + (key === 'j' ? 1 : -1)))]?.focus()
@@ -1327,7 +1364,8 @@ function onKey(e) {
     e.preventDefault()
     return moveFocus(key === 'j' ? 1 : -1)
   }
-  const focused = s.ui.focusKey ? rowIndex().get(s.ui.focusKey) : null
+  // a row the filters hide is not there for the keys (scopeRow)
+  const focused = scopeRow(s, s.ui.focusKey)
   if (key === 'Enter') {
     const active = document.activeElement
     if (focused && (!active || active === document.body)) {
@@ -1345,7 +1383,7 @@ function onKey(e) {
     e.preventDefault()
     // a held key repeats its keydown: only the first press acts
     const letter = letterShortcut(e)
-    if (letter) ctl.letter(focused ?? (s.ui.selectedKey ? rowIndex().get(s.ui.selectedKey) : null), letter)
+    if (letter) ctl.letter(focused ?? scopeRow(s, s.ui.selectedKey), letter)
   }
 }
 
