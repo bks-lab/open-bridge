@@ -308,9 +308,11 @@ FILE_STATES = (*ACTIVE, "backlog")
 
 def files_of(tasks: list[dict], index: dict) -> list[dict]:
     """Every task and stream as a file of the files view (cockpit.files_scope all), flat and small, in the order
-    workplace.py lists them: what its cover and its chip need, the bucket of the row that stands for it (None for
-    one with no row, a backlog task) and whether it is put off (deferred, until the day it comes back, None for
-    one put away until shown again). A closed task never comes in."""
+    workplace.py lists them: only what its shelf and its reason chip read (files.js fileShelves, fileReason), the
+    bucket of the row that stands for it (None for one with no row, a backlog task) and whether it is put off
+    (deferred, until the day it comes back, None for one put away until shown again). The cover reads the rest
+    from the task's detail, so headline, next and progress stay out of a list that goes out with every poll. A
+    closed task never comes in."""
     out = []
     for t in tasks:
         if t.get("status") not in FILE_STATES:
@@ -319,12 +321,10 @@ def files_of(tasks: list[dict], index: dict) -> list[dict]:
         row = entry.get("out") or {}
         deferred = entry.get("hidden") is True
         out.append({"slug": t["slug"], "kind": "stream" if t.get("kind") == "streams" else "task",
-                    "status": t["status"], "area": t.get("area") or None, "area_names": [a for a in t.get("area_names") or [] if a],
+                    "status": t["status"], "area_names": [a for a in t.get("area_names") or [] if a],
                     "priority": t.get("priority"), "title": t.get("title") or t.get("label") or t["slug"],
-                    "headline": t.get("headline"), "next": t.get("next"), "next_who": t.get("next_who"),
-                    "next_due": t.get("next_due"), "updated": t.get("updated"), "blocked_by": t.get("blocked_by"),
-                    "progress": t.get("progress"), "bucket": row.get("bucket"), "deferred": deferred,
-                    "deferred_until": row.get("hidden_until") if deferred else None})
+                    "updated": t.get("updated"), "blocked_by": t.get("blocked_by"), "bucket": row.get("bucket"),
+                    "deferred": deferred, "deferred_until": row.get("hidden_until") if deferred else None})
     return out
 
 

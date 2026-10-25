@@ -69,7 +69,7 @@ export const LEFT_OUT = ['resting', 'drop', 'waiting', 'deferred', 'area', 'unpi
 
 /** The active tasks and streams (doing or review) the files queue leaves out, by why: under the filters of Work
  *  of another area (area) or not pinned (unpinned), put off (deferred, the day it comes back as `until`, null for
- *  one put away until shown again), resting or dropped by its bucket, else waiting with nothing that asks about it
+ *  one put away until shown again), dropped by its bucket, resting by its bucket or a block, else waiting with nothing that asks about it
  *  (a row of a later section with no tab, result or open item). Read from the whole model, so the filter's own
  *  share shows; backlog tasks stand in no section and count nowhere here (with cockpit.files_scope all they stand on
  *  their chip behind the queue, fileShelves). `s` the state the view sees (areaScope),
@@ -87,7 +87,7 @@ export function queueLeftOut(s, queue) {
     seen.add(r.task)
     if (inQueue.has(r.task)) continue
     const why = area && !inProject(r, area) ? 'area' : pins && !pins.has(r.key) ? 'unpinned'
-      : hidden.has(r.key) ? 'deferred' : r.bucket === 'resting' ? 'resting' : r.bucket === 'drop' ? 'drop' : 'waiting'
+      : hidden.has(r.key) ? 'deferred' : r.bucket === 'drop' ? 'drop' : r.bucket === 'resting' || r.blocked_by ? 'resting' : 'waiting'
     by[why].push({ slug: r.task, row: r, until: why === 'deferred' ? r.hidden_until ?? null : null })
   }
   const groups = LEFT_OUT.filter(k => by[k].length).map(reason => ({ reason, rows: by[reason] }))
@@ -112,22 +112,24 @@ export function fileOf(s, slug) {
   return ((s?.wholeModel ?? s?.model)?.files ?? []).find(f => f.slug === slug) ?? null
 }
 
-/** Why a file stands beside the queue, as the chip on its cover: put off (deferred), dropped by its bucket,
- *  resting (its bucket, or blocked), waiting on someone else; null for none */
-export function fileReason(f) {
-  if (!f) return null
+/** Why an active file stands beside the queue, as the chip on its cover, by the same rule as the line of what the
+ *  queue leaves out (queueLeftOut): put off (deferred), dropped by its bucket, resting (its bucket, or blocked),
+ *  else waiting with nothing that asks about it. Null for a file of the queue (`queued`: a tab, a result or an item
+ *  asks about it, so no reason contradicts its place) and for a backlog file, whose status says it */
+export function fileReason(f, queued = false) {
+  if (!f || queued || f.status === 'backlog') return null
   if (f.deferred) return 'deferred'
   if (f.bucket === 'drop') return 'drop'
   if (f.bucket === 'resting' || f.blocked_by) return 'resting'
-  if (f.bucket === 'waiting') return 'waiting'
-  return null
+  return 'waiting'
 }
 
-/** The shelf a file stands on: backlog by its status, else waiting, resting (resting, dropped or put off) or active */
-export function fileShelf(f) {
+/** The shelf a file stands on: backlog by its status, active for a file of the queue (`queued`), else waiting or
+ *  resting (resting, dropped or put off) by its reason */
+export function fileShelf(f, queued = false) {
   if (f?.status === 'backlog') return 'backlog'
-  const why = fileReason(f)
-  return why === 'waiting' ? 'waiting' : why ? 'resting' : 'active'
+  if (queued) return 'active'
+  return fileReason(f) === 'waiting' ? 'waiting' : 'resting'
 }
 
 const byFile = (a, b) => (STATUS_RANK[a.status] ?? 3) - (STATUS_RANK[b.status] ?? 3)
@@ -135,12 +137,16 @@ const byFile = (a, b) => (STATUS_RANK[a.status] ?? 3) - (STATUS_RANK[b.status] ?
   || String(b.updated ?? '').localeCompare(String(a.updated ?? '')) || a.slug.localeCompare(b.slug)
 
 /** Every file behind the queue (model.files) under the area filter of Work, by shelf, each sorted by status,
- *  priority and last change; `elsewhere` how many the area filter leaves out. {lists: {shelf: [file]}, elsewhere} */
-export function fileShelves(s) {
+ *  priority and last change. The shelves split by the queue the view walks (`queue`, its files): Active holds the
+ *  files of the queue, Waiting and Resting the active ones it leaves out, so they count what the line of what the
+ *  queue leaves out names. `elsewhere` how many the area filter leaves out. {lists: {shelf: [file]}, elsewhere} */
+export function fileShelves(s, queue = []) {
   const every = (s?.wholeModel ?? s?.model)?.files ?? []
   const area = s?.ui?.area || null
+  const queued = new Set((queue ?? []).map(x => x.slug))
   const files = every.filter(f => inProject(f, area)).sort(byFile)
-  const lists = Object.fromEntries(FILE_SHELVES.map(k => [k, k === 'all' ? files : files.filter(f => fileShelf(f) === k)]))
+  const lists = Object.fromEntries(FILE_SHELVES.map(k => [k, k === 'all' ? files
+    : files.filter(f => fileShelf(f, queued.has(f.slug)) === k)]))
   return { lists, elsewhere: every.length - files.length }
 }
 

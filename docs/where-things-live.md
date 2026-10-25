@@ -107,7 +107,7 @@ searches again.
 | How does a machine that is always on become the arm of my Bridge? | [`docs/always-on-machine.md`](always-on-machine.md) |
 | How do I close a task? | [`docs/work-system.md`](work-system.md#3-step-close) |
 | Which task, open or closed, mentioned a word, and in which file? | [`docs/work-system.md`](work-system.md#finding-work) (`scripts/work-find.py`), in the cockpit the search of [the files view](cockpit-files.md) |
-| Which view does the cockpit's work tab open on, and how do I switch it? | [`docs/cockpit-files.md`](cockpit-files.md) (`cockpit.work_view`, `cockpit.focus_to_files`) |
+| Which view does the cockpit's work tab open on, and how do I switch it? | [`docs/cockpit-files.md`](cockpit-files.md) (`cockpit.work_view`, `cockpit.focus_to_files`, `cockpit.files_scope`) |
 | Why does the cockpit call a row Bot, Session, Skill or Other source, and how do I name my own sources? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) "Where a row comes from" (`cockpit.origin_map`) |
 | What does a row of the work log look like? | [`AGENTS.md`](../AGENTS.md#logging), [`docs/work-system.md`](work-system.md#log-format--one-file-per-period-daily-blocks) |
 | Which always-on orders apply to every session? | [`protocols/standing-orders/README.md`](../protocols/standing-orders/README.md) |

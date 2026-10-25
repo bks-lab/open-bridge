@@ -184,15 +184,23 @@ With `cockpit.files_scope: all` every task and stream is a file, and the queue
 is only the order the view walks them in. The queue stays on top, as above.
 Behind it stand five chips with their counts, "Active (n) | Waiting (n) |
 Resting (n) | Backlog (n) | All (n)"; a click on one lists its files, a second
-click folds the list again. **Active** holds the `doing` and `review` files
-that wait on nothing, **Waiting** the ones that wait on someone else (bucket
-`waiting`), **Resting** the blocked or quiet ones, the dropped ones and the
-ones put off, **Backlog** the `backlog` ones, and **All** every one. A list is
-sorted by status (`doing`, `review`, `backlog`), then priority, then the
-latest change first. A click on a file opens it the way the queue does: one in
-the queue is walked to, any other opens beside it with "Back to the queue" at
-its foot. A file that rests, is dropped, is put off (with the day it comes
-back) or waits says so as a chip on its cover and in the lists. The chips keep
+click folds the list again. The chips split by the queue, not by the bucket
+alone: **Active** holds the files of the queue (a tab, a result or an open item
+asks about them, or they stand in the work), whatever their bucket. The
+`doing` and `review` files the queue leaves out stand on **Waiting** (nothing
+asks about them) or **Resting** (blocked or quiet, dropped, or put off), by the
+same rule as the line of what the queue leaves out, so the two show the same
+numbers; only a file the star filter hides counts there as not pinned and here
+by its bucket. **Backlog** holds the `backlog` ones and **All** every one. A
+list is sorted by status (`doing`, `review`, `backlog`), then priority, then
+the latest change first. A click on a file opens it the way the queue does: one
+in the queue is walked to, any other opens beside it with "Back to the queue"
+at its foot. A file outside the queue that rests (its tooltip names what blocks
+it), is dropped, is put off (with the day it comes back) or waits says so as a
+chip on its cover and in the lists; a file of the queue never does, since its
+place says why it is there. A reason of the line of what the queue leaves out,
+or its backlog count, picks the chip, brings the chips into view and puts the
+focus on it. The chips keep
 to the area filter like the queue: under an area they hold that area's files,
 and one line says how many stand in the other areas, with **Show every area**
 beside it. Closed tasks never become files here; the search finds them.
@@ -200,13 +208,16 @@ beside it. Closed tasks never become files here; the search finds them.
 The server sends the list apart from the rows (`model.files`), so nothing that
 reads the rows changes: one read of `workplace.py tasks --all --json` per pass
 that reads the tasks, of which the rows, the WIP count and the focus keep the
-`doing` and `review` ones they always had. Each file is small and flat:
-`slug`, `kind` (`task` or `stream`), `status`, `area` and `area_names` (the
-workspace the task maps to, as the rows have it), `priority`, `title`,
-`headline`, `next`, `next_who`, `next_due`, `updated`, `blocked_by`,
-`progress`, `bucket` (of the row that stands for it, none for a backlog task),
-`deferred` and `deferred_until`. With `active` the argv stays `tasks --json`
-and `model.files` is `null`. In the demo page `?files_scope=all` shows it.
+`doing` and `review` ones they always had. The list goes out with every poll,
+so each file carries only what the chips and the reason chip read: `slug`,
+`kind` (`task` or `stream`), `status`, `area_names` (the workspace the task
+maps to and its aliases, as the rows have them), `priority`, `title`,
+`updated`, `blocked_by`, `bucket` (of the row that stands for it, none for a
+backlog task), `deferred` and `deferred_until`. The cover of an opened file
+reads its headline, next step and progress from the task itself
+(`/api/task`), so they stay out of the list until something on the chips
+needs them. With `active` the argv stays `tasks --json` and `model.files` is
+`null`. In the demo page `?files_scope=all` shows it.
 
 **Files and areas.** The files view keeps to the area filter like the rest of
 Work: the queue, its count ("2 of 5"), Previous and Next (and `n`/`p`), and with

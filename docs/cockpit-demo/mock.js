@@ -525,25 +525,22 @@ export function buildState(now = Date.now(), opts = {}) {
   })]
 
   // every task and stream as a file (collector.files_of, cockpit.files_scope all): the ones a row stands for with
-  // that row's bucket, a deferred one, and the backlog the queue never shows
+  // that row's bucket, a deferred one, and the backlog the queue never shows; only the keys the page reads
   const fileOfRow = (r, extra = {}) => ({ slug: r.task, kind: r.stream || r.work_kind === 'stream' ? 'stream' : 'task',
-    status: r.status ?? 'doing', area: r.area ?? null, area_names: r.area_names ?? [], priority: r.priority ?? null, title: r.title,
-    headline: null, next: r.next?.from === 'status' ? r.next.what : null, next_who: null, next_due: null, updated: isoIn(-3, now),
-    blocked_by: null, progress: null, bucket: r.bucket ?? null, deferred: false, deferred_until: null, ...extra })
-  const backlog = (slug, title, area, priority, days, extra = {}) => ({ slug, kind: 'task', status: 'backlog', area, area_names: [area],
-    priority, title, headline: null, next: null, next_who: null, next_due: null, updated: isoIn(-days, now), blocked_by: null,
-    progress: null, bucket: null, deferred: false, deferred_until: null, ...extra })
+    status: r.status ?? 'doing', area_names: r.area_names ?? [], priority: r.priority ?? null, title: r.title,
+    updated: isoIn(-3, now), blocked_by: null, bucket: r.bucket ?? null, deferred: false, deferred_until: null, ...extra })
+  const backlog = (slug, title, area, priority, days) => ({ slug, kind: 'task', status: 'backlog', area_names: [area],
+    priority, title, updated: isoIn(-days, now), blocked_by: null, bucket: null, deferred: false, deferred_until: null })
   const files = empty ? [] : [
-    fileOfRow(rows.release, { headline: 'The alpha ships with notes every reader understands', progress: { done: 2, total: 5 }, updated: isoIn(0, now) }),
-    fileOfRow(rows.demo, { next_who: 'me', next_due: isoIn(2, now), progress: { done: 1, total: 4 }, updated: isoIn(-1, now) }),
-    fileOfRow(rows.quiet, { updated: isoIn(-34, now) }), fileOfRow(rows.waits, { bucket: 'waiting', next_who: 'the vendor', updated: isoIn(-8, now) }),
+    fileOfRow(rows.release, { updated: isoIn(0, now) }), fileOfRow(rows.demo, { updated: isoIn(-1, now) }),
+    fileOfRow(rows.quiet, { updated: isoIn(-34, now) }), fileOfRow(rows.waits, { bucket: 'waiting', updated: isoIn(-8, now) }),
     fileOfRow(rows.index), fileOfRow(rows.cleanup, { updated: isoIn(-5, now) }), fileOfRow(rows.onboarding, { updated: isoIn(-2, now) }),
     fileOfRow(rows.idea, { blocked_by: 'a decision on the report layout', updated: isoIn(-12, now) }),
     fileOfRow({ task: 'license-audit', title: 'Audit the licenses of the example dependencies', area: 'Ops', area_names: ['Ops'], priority: 'P2',
       bucket: 'tasks' }, { deferred: true, deferred_until: isoIn(12, now), updated: isoIn(-6, now) }),
     backlog('docs-search', 'Add a search to the docs site', 'Docs', 'P2', 9),
     backlog('metrics-export', 'Export the weekly metrics as CSV', 'Ops', 'P3', 21),
-    backlog('customer-faq', 'Collect the questions of the first customers into an FAQ', 'Demo', 'P1', 4, { headline: 'Answers before anyone asks twice' }),
+    backlog('customer-faq', 'Collect the questions of the first customers into an FAQ', 'Demo', 'P1', 4),
     backlog('mobile-layout', 'Check the report on a phone', 'Docs', 'P3', 40),
   ]
 

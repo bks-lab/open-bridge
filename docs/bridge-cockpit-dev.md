@@ -168,8 +168,9 @@ python3 scripts/bridge-cockpit.py status --json
   renders invented data and sends no request. Add `&lang=de`,
   `&offline=1`, `&empty=1`, `&auth=0`, `&theme=light` or `&theme=dark` (forces
   the mode for this load and saves nothing), `&tour=1` (a first visit), or
-  `&work=files` and `&focus_to_files=1` (the page as `cockpit.work_view: files`
-  and `cockpit.focus_to_files: true` set it; the work view is taken once per
+  `&work=files`, `&focus_to_files=1` and `&files_scope=all` (the page as
+  `cockpit.work_view: files`, `cockpit.focus_to_files: true` and
+  `cockpit.files_scope: all` set it; the work view is taken once per
   change, so clear the site's storage to see it again). Good for layout work;
   it does not exercise the server.
 - **The demo on the website** (`docs/cockpit-demo/`) is a generated copy of

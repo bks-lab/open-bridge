@@ -26,8 +26,10 @@ from lib.bridge_cockpit.config import load_web_config  # noqa: E402
 
 BASE = "cockpit:\n  enabled: true\n  language: en\n"
 
-FILE_KEYS = {"slug", "kind", "status", "area", "area_names", "priority", "title", "headline", "next", "next_who",
-             "next_due", "updated", "blocked_by", "progress", "bucket", "deferred", "deferred_until"}
+# what the page reads of a file (files.js fileShelves, fileReason, views/dossier.js Shelves), and nothing more:
+# the cover reads its facts from the task's detail, so headline, next and progress stay out of every poll
+FILE_KEYS = {"slug", "kind", "status", "area_names", "priority", "title", "updated", "blocked_by", "bucket",
+             "deferred", "deferred_until"}
 
 ALL = [
     {**TASKS[0], "kind": "tasks", "next": "Ship the demo", "next_who": "me", "next_due": "2026-10-30",
@@ -80,9 +82,7 @@ def test_files_of_lists_every_task_flat_with_its_bucket_and_whether_it_is_put_of
     assert all(set(f) == FILE_KEYS for f in files)
     demo, parked, river = files
     assert demo["kind"] == "task" and demo["bucket"] == "do" and demo["deferred"] is False
-    assert demo["next"] == "Ship the demo" and demo["next_who"] == "me" and demo["next_due"] == "2026-10-30"
-    assert demo["progress"] == {"done": 1, "total": 3} and demo["headline"] == "The demo ships"
-    assert demo["area"] == "Demo" and demo["area_names"] == ["Demo", "DemoArea"]
+    assert demo["area_names"] == ["Demo", "DemoArea"] and demo["updated"] == "2026-10-20"
     # a backlog task stands in no section: no bucket, never put off
     assert parked["status"] == "backlog" and parked["bucket"] is None and parked["title"] == "A parked idea"
     assert river["kind"] == "stream" and river["deferred"] is True and river["deferred_until"] == "2026-11-01"
@@ -110,6 +110,29 @@ def test_with_all_the_collector_reads_every_task_but_keeps_its_consumers_on_the_
         assert files["parked"]["status"] == "backlog"
         # demo-task has its row in a section: the bucket comes from there
         assert files["demo-task"]["bucket"] == w.row("task:demo-task")["bucket"]
+    finally:
+        w.close()
+
+
+def test_a_task_put_off_through_the_store_comes_out_deferred_with_its_day(tmp_path):
+    w = World(tmp_path, config=BASE + "  files_scope: all\n", serve=False, prepare=False)
+    try:
+        w.runner.handlers["workplace.tasks"] = lambda argv: ok(ALL)
+        w.app.tabs.poll()
+        w.app.collector.request("both")
+        w.app.collector.drain()
+        files = {f["slug"]: f for f in w.app.collector.model["files"]}
+        assert files["demo-task"]["deferred"] is False and files["demo-task"]["deferred_until"] is None
+        # put off to a day, and put away until shown again (dismissed), through the store as the verbs do
+        w.app.store.hide("task:demo-task", "2099-01-05")
+        w.app.store.dismiss("task:river", "later", "River")
+        w.app.collector.request("both")
+        w.app.collector.drain()
+        files = {f["slug"]: f for f in w.app.collector.model["files"]}
+        assert files["demo-task"]["deferred"] is True and files["demo-task"]["deferred_until"] == "2099-01-05"
+        assert files["river"]["deferred"] is True and files["river"]["deferred_until"] is None
+        # a backlog task stands in no section and is never put off
+        assert files["parked"]["deferred"] is False and files["parked"]["bucket"] is None
     finally:
         w.close()
 

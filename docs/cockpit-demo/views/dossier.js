@@ -21,8 +21,10 @@
 // of another area, not pinned); a click lists them, each opens beside the queue, and the empty view names the same.
 // With cockpit.files_scope all every task and stream is a file (model.files): behind the queue the chips Active,
 // Waiting, Resting, Backlog and All with their counts list them (logic.js fileShelves), each opening as a file of the
-// queue does; a file that rests, is dropped, put off or waits names why as a chip on its cover, and the line of what
-// the queue leaves out leads to the chips instead of saying the backlog is not shown.
+// queue does. The shelves split by the queue (Active is the queue, Waiting and Resting what it leaves out, by the
+// same rule as the line), and a file outside the queue that rests, is dropped, put off or waits names why as a chip
+// on its cover. The line of what the queue leaves out leads to the chips, scrolled into view and focused, instead
+// of saying the backlog is not shown.
 // The search field of the view (/api/find) puts what it found above the file: by file, best first, a click
 // opens a file, a closed one too, beside the queue (ui.dossierOpen) on the same surface with the way back at
 // its foot, the results then folded to their head. A question asked in a file carries its folder and cover as
@@ -98,22 +100,25 @@ function AreaChip({ name, s, c, cls = 'dz-area' }) {
     <span class=${`home-area-dot tk-${projectTone(name)}`} aria-hidden="true"></span>${name}</button>`
 }
 
-/** Why a file stands beside the queue, as a chip (cockpit.files_scope all): resting, dropped, waiting, or put off
- *  with the day it comes back; none for a file that waits on nothing */
+/** Why an active file stands beside the queue, as a chip (cockpit.files_scope all): resting (its title names what
+ *  blocks it), dropped, waiting, or put off with the day it comes back; none for a file of the queue (`queued`)
+ *  or of the backlog */
 const REASON_CLASS = { resting: 'dz-reason-resting', drop: 'dz-reason-drop', deferred: 'dz-reason-deferred', waiting: 'dz-reason-waiting' }
 
-function ReasonChip({ f }) {
+function ReasonChip({ f, queued = false }) {
   const d = T().dossier
-  const why = fileReason(f)
+  const why = fileReason(f, queued)
   if (!why) return null
   const word = why === 'deferred' ? (f.deferred_until ? d.reasonUntil(formatDay(f.deferred_until, language())) : d.reason.deferred) : d.reason[why]
-  return html`<span class=${`chip dz-reason ${REASON_CLASS[why]}`} title=${d.left.why[why] ?? ''}>${word}</span>`
+  const title = why === 'resting' && f.blocked_by ? d.reasonBlocked(f.blocked_by) : d.left.why[why] ?? ''
+  return html`<span class=${`chip dz-reason ${REASON_CLASS[why]}`} title=${title}>${word}</span>`
 }
 
 /** The head of a file: an eyebrow (what it is, where it stands, its status, kind and priority, its area and its
  *  slug on the right), its title as the one heading of the view, and the situation. `where` names its place in the eyebrow:
- *  "2 of 16" in the queue, "Opened from the search" and "closed" for a file found beside it */
-function Cover({ x, s, c, data, where = [] }) {
+ *  "2 of 16" in the queue, "Opened from the search" and "closed" for a file found beside it. `file` is the file
+ *  the server lists for it (cockpit.files_scope all), whose reason chip it shows unless it is `queued` */
+function Cover({ x, s, c, data, where = [], file = null, queued = false }) {
   const t = T()
   const r = x.row
   const kind = data?.front?.type ?? r.task_type
@@ -122,7 +127,7 @@ function Cover({ x, s, c, data, where = [] }) {
     <p class="dz-eyebrow">
       <span class="dz-eyebrow-what"><${Dot} token=${prioToken(r.priority)} /><${KindTag} row=${{ key: `task:${x.slug}`, task: x.slug, stream: r.stream, work_kind: data?.work_kind ?? r.work_kind }} s=${s} />
         <${OriginTag} row=${r} origin=${data?.origin ?? r.origin ?? null} />${parts.map((w, k) => html`${k ? html`<span class="dz-sep" aria-hidden="true">·</span>` : null}<span key=${k}>${w}</span>`)}
-        ${filesAll(s) ? html`<${ReasonChip} f=${fileOf(s, x.slug)} />` : null}</span>
+        ${file ? html`<${ReasonChip} f=${file} queued=${queued} />` : null}</span>
       <span class="dz-eyebrow-end"><${AreaChip} name=${rowProject(r)} s=${s} c=${c} /><span class="dz-slug mono">${x.slug}</span></span>
     </p>
     <h2 id="dz-title" class="dz-title">${r.title}</h2>
@@ -347,7 +352,7 @@ function Suggest({ x, s, c, context }) {
  *  drawers, a question to it, and the way back at its foot. `open` is its slug, or the folder of a closed copy
  *  (work/done/<month>/<slug>), which borrows nothing from a row of its slug. A closed file is never named as the
  *  task of a question (quick.py would archive the chat at once); none of the verbs, it is not in the queue */
-function OpenFile({ open, s, c }) {
+function OpenFile({ open, s, c, queued = false }) {
   const d = T().dossier
   const slug = open.split('/').pop()
   const entry = s.details?.task?.[open]
@@ -372,7 +377,8 @@ function OpenFile({ open, s, c }) {
     <${Btn} variant="secondary" size="sm" icon="back" cls="dz-walk-btn" onClick=${() => c.closeFile()}>${d.back}<//></div></footer>`
   return html`<article ref=${top} class="dz-file dz-open" aria-labelledby="dz-title">
     ${entry?.status === 'error' ? html`<p class="muted" role="status">${d.noFile}</p>` : html`
-      <${Cover} x=${x} s=${s} c=${c} data=${data} where=${[d.opened, facts.kind === 'task' ? null : d.find.kind[facts.kind]]} />
+      <${Cover} x=${x} s=${s} c=${c} data=${data} where=${[d.opened, facts.kind === 'task' ? null : d.find.kind[facts.kind]]}
+        file=${filesAll(s) && !open.includes('/') ? fileOf(s, slug) : null} queued=${queued} />
       ${facts.next ? html`<section class="dz-step"><p class="dz-step-kind">${d.next}</p><p class="dz-step-title">${facts.next}</p></section>` : null}
       ${suggest ? html`<${Suggest} x=${x} s=${s} c=${c} context=${context} />` : null}
       <${Drawers} data=${data} folder=${open.includes('/') ? open : null}
@@ -448,14 +454,14 @@ function LeftOut({ gaps, s, c, pos = null, areaButton = true }) {
     ${open ? html`<div id="dz-left-list" class="dz-left-list">
       ${gaps.groups.map(g => html`<section key=${g.reason} class="dz-left-group">
         <p class="dz-left-why muted small">${why(g)}${shelves && LEFT_SHELF[g.reason] ? html` <button type="button" class="btn-link dz-left-shelf"
-          onClick=${() => c.setFileShelf(LEFT_SHELF[g.reason])}>${d.toShelf(t.dossier.shelf.chip[LEFT_SHELF[g.reason]])}</button>` : null}</p>
+          onClick=${() => c.setFileShelf(LEFT_SHELF[g.reason], true)}>${d.toShelf(t.dossier.shelf.chip[LEFT_SHELF[g.reason]])}</button>` : null}</p>
         <ul class="entries">${g.rows.map(x => html`<li key=${x.slug} class="entry">
           <button type="button" class="btn-link dz-left-open" onClick=${() => c.openFile(x.slug, folder(x))}>${x.row.title || x.slug}</button>
           <span class="entry-tags"><${KindTag} row=${x.row} s=${s} />${detail(g, x) ? html`<span class="muted small">${detail(g, x)}</span>` : null}</span>
         </li>`)}</ul>
       </section>`)}
       ${shelves ? (backlog ? html`<p class="dz-left-backlog muted small"><button type="button" class="btn-link dz-left-shelf"
-          onClick=${() => c.setFileShelf('backlog')}>${d.toBacklog(backlog)}</button></p>` : null)
+          onClick=${() => c.setFileShelf('backlog', true)}>${d.toBacklog(backlog)}</button></p>` : null)
         : html`<p class="dz-left-backlog muted small">${d.backlog}</p>`}
     </div>` : null}
   </div>`
@@ -464,19 +470,32 @@ function LeftOut({ gaps, s, c, pos = null, areaButton = true }) {
 /** Every task and stream behind the queue (cockpit.files_scope all, model.files): the chips Active, Waiting,
  *  Resting, Backlog and All, each with its count; a click lists the files of one (ui.fileShelf), sorted by
  *  status, priority and last change, a second click folds it. A file opens as one of the queue does
- *  (c.openFile: at its place in the queue, else beside it). Under an area filter it holds that area, and
- *  names how many stand in the others with the way back to every area */
-function Shelves({ s, c }) {
+ *  (c.openFile: at its place in the queue, else beside it). They split by the queue (`queue`, the files it walks):
+ *  Active is the queue, the rest by why it is left out. Under an area filter it holds that area, and names how
+ *  many stand in the others with the way back to every area. A chip picked from the line of what the queue leaves
+ *  out (ui.fileShelfReveal) brings the shelves into view and takes the focus, once */
+function Shelves({ s, c, queue = [] }) {
   const t = T()
   const d = t.dossier
-  const sh = fileShelves(s)
+  const sh = fileShelves(s, queue)
+  const queued = new Set(queue.map(x => x.slug))
   const at = FILE_SHELVES.includes(s.ui.fileShelf) ? s.ui.fileShelf : null
   const files = at ? sh.lists[at] : []
   const lang = language()
-  return html`<section class="dz-shelves" aria-label=${d.shelf.label}>
-    <div class="dz-shelf-chips" role="group" aria-label=${d.shelf.label}>
-      ${FILE_SHELVES.map(k => html`<button key=${k} type="button" class="chip dz-shelf-chip" aria-pressed=${String(at === k)}
-        aria-controls="dz-shelf-list" onClick=${() => c.setFileShelf(at === k ? null : k)}>${`${d.shelf.chip[k]} (${sh.lists[k].length})`}</button>`)}
+  const box = useRef(null)
+  const chips = useRef({})
+  const reveal = Boolean(s.ui.fileShelfReveal && at)
+  useEffect(() => {
+    if (!reveal) return
+    box.current?.scrollIntoView?.({ block: 'start' })
+    chips.current[at]?.focus?.()
+    c.fileShelfShown()
+  }, [reveal, at])
+  return html`<section ref=${box} class="dz-shelves" aria-label=${d.shelf.label}>
+    <div class="dz-shelf-chips">
+      ${FILE_SHELVES.map(k => html`<button key=${k} ref=${el => { chips.current[k] = el }} type="button" class="chip dz-shelf-chip"
+        aria-pressed=${String(at === k)} aria-controls=${at === k ? 'dz-shelf-list' : undefined}
+        onClick=${() => c.setFileShelf(at === k ? null : k)}>${`${d.shelf.chip[k]} (${sh.lists[k].length})`}</button>`)}
     </div>
     ${s.ui.area && sh.elsewhere ? html`<p class="dz-shelf-elsewhere muted small">${d.shelf.elsewhere(sh.elsewhere, s.ui.area)}
       <${Btn} variant="ghost" size="xs" onClick=${() => c.setArea(null)}>${t.home.areaClear}<//></p>` : null}
@@ -484,7 +503,7 @@ function Shelves({ s, c }) {
         <button type="button" class="btn-link dz-shelf-open" onClick=${() => c.openFile(f.slug, fileFolder(f))}>${f.title || f.slug}</button>
         <span class="entry-tags"><${Dot} token=${prioToken(f.priority)} /><${KindTag} row=${{ key: `task:${f.slug}`, task: f.slug, work_kind: f.kind }} s=${s} />
           <span class="muted small">${[t.taskState[f.status] ?? f.status, f.priority].filter(Boolean).join(' · ')}</span>
-          <${ReasonChip} f=${f} />
+          <${ReasonChip} f=${f} queued=${queued.has(f.slug)} />
           ${f.updated ? html`<span class="muted small">${d.shelf.updated(formatDay(String(f.updated).slice(0, 10), lang))}</span>` : null}</span>
       </li>`)}</ul>` : html`<p id="dz-shelf-list" class="muted small">${d.shelf.none}</p>` : null}
   </section>`
@@ -514,7 +533,7 @@ export function DossierView({ s, c }) {
     <div class="dz-page">
       <header class="page-head dz-head"><${WorkSwitch} s=${s} c=${c} /><${FindField} s=${s} c=${c} /></header>
       <${FindResults} s=${s} c=${c} open=${open} />
-      ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} />` : x ? html`<article class="dz-file" aria-labelledby="dz-title">
+      ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} queued=${queue.some(q => q.slug === open)} />` : x ? html`<article class="dz-file" aria-labelledby="dz-title">
         <${Cover} key=${`c${x.id}`} x=${x} s=${s} c=${c} data=${data} where=${[d.label, t.nextPos(i + 1, queue.length)]} />
         <${LeftOut} gaps=${gaps} s=${s} c=${c} pos=${t.nextPos(i + 1, queue.length)} />
         <${Hero} key=${x.id} x=${heroEntry(x)} n=${1} tabOf=${() => fileTab(x, s)} s=${s} c=${c}
@@ -532,7 +551,7 @@ export function DossierView({ s, c }) {
           <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setArea(null)}>${d.allAreas}<//></div>
           <${LeftOut} gaps=${gaps} s=${s} c=${c} areaButton=${false} />`
         : html`<${Calm} s=${s} c=${c} title=${d.empty} sub=${why(d.emptySub)} action=${false} /><${LeftOut} gaps=${gaps} s=${s} c=${c} />`}
-      ${filesAll(s) ? html`<${Shelves} s=${s} c=${c} />` : null}
+      ${filesAll(s) ? html`<${Shelves} s=${s} c=${c} queue=${queue} />` : null}
     </div>
   </div>`
 }

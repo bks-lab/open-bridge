@@ -45,7 +45,7 @@ export const FILES = {
       updated: day => `changed ${day}`,
     },
     reason: { resting: 'resting', drop: 'dropped', deferred: 'deferred', waiting: 'waiting' },
-    reasonUntil: day => `deferred until ${day}`,
+    reasonUntil: day => `deferred until ${day}`, reasonBlocked: by => `Resting: blocked by ${by}.`,
     find: {
       label: 'Search the files, closed ones too', placeholder: 'Search the files', title: 'Search results', show: 'Show results', hide: 'Fold results', button: 'Search', clear: 'Clear',
       loading: 'Searching', none: q => `Nothing found for "${q}".`, failed: e => `The search failed: ${e}`,
@@ -113,7 +113,7 @@ export const FILES = {
       updated: day => `geändert ${day}`,
     },
     reason: { resting: 'ruhend', drop: 'verworfen', deferred: 'zurückgestellt', waiting: 'wartend' },
-    reasonUntil: day => `zurückgestellt bis ${day}`,
+    reasonUntil: day => `zurückgestellt bis ${day}`, reasonBlocked: by => `Ruhend: blockiert durch ${by}.`,
     find: {
       label: 'Akten durchsuchen, auch erledigte', placeholder: 'Akten durchsuchen', title: 'Suchtreffer', show: 'Treffer zeigen', hide: 'Treffer einklappen', button: 'Suchen', clear: 'Leeren',
       loading: 'Suche läuft', none: q => `Nichts gefunden für „${q}“.`, failed: e => `Die Suche ging nicht: ${e}`,

@@ -146,8 +146,9 @@ const store = createStore({
     dossierAt: null,
     // a file opened from the search beside that queue (its slug), and the suggested next step asked in one: { slug, conv }
     dossierOpen: null, suggest: null,
-    // the shelf of every file behind the queue that lists its files (cockpit.files_scope all), null: none picked
-    fileShelf: null,
+    // the shelf of every file behind the queue that lists its files (cockpit.files_scope all), null: none picked;
+    // fileShelfReveal: picked from the line of what the queue leaves out, so the shelves come into view once
+    fileShelf: null, fileShelfReveal: false,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
@@ -931,8 +932,10 @@ const ctl = {
     ctl.setPage('briefing')   // measures the page view, the files view already set
   },
   dossierWalk: (id, i) => setUi({ dossierAt: { id, i }, dossierOpen: null }),
-  // a chip behind the queue lists its files (views/dossier.js Shelves); null folds the list
-  setFileShelf: k => setUi({ fileShelf: k ?? null }),
+  // a chip behind the queue lists its files (views/dossier.js Shelves); null folds the list. `reveal`: picked from
+  // the line of what the queue leaves out, far above, so the shelves scroll into view and the chip takes the focus
+  setFileShelf: (k, reveal = false) => setUi({ fileShelf: k ?? null, fileShelfReveal: Boolean(reveal && k) }),
+  fileShelfShown: () => setUi({ fileShelfReveal: false }),
   // the search of the files view: an answer for words no longer asked is dropped
   async findFiles(q) {
     const words = String(q ?? '').replace(/\s+/g, ' ').trim()
