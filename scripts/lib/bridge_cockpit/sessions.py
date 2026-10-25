@@ -11,11 +11,15 @@ ref of a tab), read once per pid with `ps` and matched to the tab list, so the p
 that one variable is kept; the rest of the environment is dropped.
 
 The workflow runs of the last week, of every session (ended ones too), are bound to the open task they belong
-to, for the task's file in the files view (`runs`): a run belongs to a task only where every sign names the same
-one, never by a guess. The signs are a mention (`task:<slug>`, `work/tasks/<slug>/`, `work/streams/<slug>/` in
-its name, summary, arguments or script, or a name that is the slug), the session it ran in being linked to the
-task, and the folder it ran in ending in the slug (a worktree; never the Bridge's own folder). Two tasks named
-make no binding. Only what the page shows leaves the server: never the script.
+to, for the task's file in the files view (`runs`): a run belongs to a task only where it names exactly one, never
+by a guess. A mention is `task:<slug>`, `work/tasks/<slug>/` or `work/streams/<slug>/` in its name, summary,
+arguments or script (an absolute path only under this Bridge's root), or a name that is the slug; two tasks named
+make no binding. The session it ran in being linked to the task, and the folder it ran in ending in the slug,
+only confirm a mention: alone they bind nothing, and a session linked to another task undoes it. A run belongs to
+this Bridge only where the folder it ran in (from the session's own file) is the Bridge, a folder in it, one of
+its git worktrees, or a folder that is no Bridge at all; a run of another Bridge on the machine, or of a session
+whose folder is unknown, is never read (rules/multi-instance-isolation.md). Only what the page shows leaves the
+server: never the script.
 Everything here only reads; a file that does not parse is skipped.
 """
 from __future__ import annotations
@@ -119,28 +123,89 @@ def workflows(folder: Path) -> list[dict]:
     return out
 
 
-def _mention_re(slug: str) -> re.Pattern:
+def _mention_re(slug: str, roots: tuple = ()) -> re.Pattern:
+    """A mention of a slug: `task:<slug>`, or `work/tasks|streams/<slug>` as a relative path or under one of
+    `roots` (this Bridge's root as written and as resolved); a path under any other folder names nothing"""
     tail = r"(?![A-Za-z0-9_-])"
-    return re.compile(rf"(?<![A-Za-z0-9_-])task:{re.escape(slug)}{tail}|(?<![A-Za-z0-9_.-])work/(?:tasks|streams)/{re.escape(slug)}{tail}")
+    under = "".join(f"|{re.escape(r.rstrip('/'))}/" for r in roots if r)
+    return re.compile(rf"(?<![A-Za-z0-9_-])task:{re.escape(slug)}{tail}"
+                      rf"|(?:(?<![A-Za-z0-9_./~-]){under})work/(?:tasks|streams)/{re.escape(slug)}{tail}")
 
 
-def run_task(text: str, name: str, project: str, sid: str, slugs: set, links: dict,
-             home_project: str = "") -> tuple[str | None, list]:
-    """(task, signs) of a workflow run: the one open task every sign names, with the signs that named it
-    ("named", "session", "place"); (None, []) when none names one, or two different tasks are named"""
-    found: dict[str, set] = {}
-    for slug in slugs:
-        if name == slug or (slug in text and _mention_re(slug).search(text)):
-            found.setdefault(slug, set()).add("named")
-        if project != home_project and project.endswith("-" + slug):
-            found.setdefault(slug, set()).add("place")
+def run_task(text: str, name: str, sid: str, slugs: set, links: dict, root: str | tuple = "",
+             place: str = "") -> tuple[str | None, list]:
+    """(task, signs) of a workflow run: the one open task it names, with the signs that agree ("named",
+    "session", "place"); (None, []) when it names none or two, or its session is linked to another task.
+    `place` is the name of the folder it ran in where that is not the Bridge's root."""
+    roots = (root,) if isinstance(root, str) else tuple(root)
+    named = [slug for slug in slugs if name == slug or (slug in text and _mention_re(slug, roots).search(text))]
+    if len(named) != 1:
+        return None, []
+    slug, signs = named[0], ["named"]
     linked = (links.get(sid) or {}).get("task") if sid else None
     if isinstance(linked, str) and linked in slugs:
-        found.setdefault(linked, set()).add("session")
-    if len(found) != 1:
-        return None, []
-    slug, signs = next(iter(found.items()))
-    return slug, [x for x in ("named", "session", "place") if x in signs]
+        if linked != slug:
+            return None, []
+        signs.append("session")
+    if place and (place == slug or place.endswith("-" + slug)):
+        signs.append("place")
+    return slug, signs
+
+
+def own_folders(root: Path) -> list[Path]:
+    """This Bridge's root and every git worktree of its repository (read from the git folder, no git run)"""
+    try:
+        root = root.resolve()
+    except OSError:
+        return [root]
+    out = [root]
+    try:
+        git = root / ".git"
+        if git.is_file():
+            m = re.match(r"gitdir:\s*(.+)", git.read_text(encoding="utf-8").strip())
+            gitdir = (root / m.group(1).strip()).resolve() if m else None
+            common_file = gitdir / "commondir" if gitdir else None
+            common = ((gitdir / common_file.read_text(encoding="utf-8").strip()).resolve()
+                      if common_file and common_file.is_file() else gitdir)
+        else:
+            common = git if git.is_dir() else None
+        if common is not None:
+            if common.name == ".git":
+                out.append(common.parent)
+            for entry in sorted((common / "worktrees").glob("*/gitdir")):
+                out.append(Path(entry.read_text(encoding="utf-8").strip()).parent.resolve())
+    except (OSError, ValueError):
+        pass
+    return list(dict.fromkeys(out))
+
+
+def is_bridge(folder: Path) -> bool:
+    """A folder that holds a Bridge of its own: its config, or a work/tasks folder"""
+    return (folder / "bridge-config.yaml").is_file() or (folder / "work" / "tasks").is_dir()
+
+
+CWD_RE = re.compile(r'"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"')
+CWD_LINES = 40
+
+
+def session_cwd(transcript: Path) -> str | None:
+    """The folder a session ran in, from the first lines of its own file (<project>/<session id>.jsonl)"""
+    try:
+        with transcript.open(encoding="utf-8", errors="replace") as fh:
+            for _ in range(CWD_LINES):
+                line = fh.readline(1 << 20)
+                if not line:
+                    break
+                m = CWD_RE.search(line)
+                if m:
+                    try:
+                        cwd = json.loads(f'"{m.group(1)}"')
+                    except ValueError:
+                        return None
+                    return cwd if isinstance(cwd, str) and cwd.startswith("/") else None
+    except OSError:
+        return None
+    return None
 
 
 def _answer(result: Any) -> str | None:
@@ -186,6 +251,7 @@ class Sessions:
         self.runs: list[dict] = []
         self.runs_key: tuple = ()
         self.runs_at = None
+        self.cwd_cache: dict[str, str | None] = {}   # <project>/<session id> -> the folder it ran in
 
     def env_of(self, pid: int) -> tuple[str | None, str | None]:
         """(terminal tab: cmux surface or tmux pane, task slug of the tab) from the process environment;
@@ -252,10 +318,31 @@ class Sessions:
         with self.lock:
             return list(self.last)
 
+    def run_place(self, project: Path, sid: str, home: Path | None, own: list[Path]) -> tuple[bool, str]:
+        """(this Bridge's, folder name) of the session a run ran in: its folder from the session's own file,
+        the Bridge's root where the project is the root's and that file is gone; never another Bridge's"""
+        key = f"{project.name}/{sid}"
+        if key not in self.cwd_cache:
+            self.cwd_cache[key] = session_cwd(project / f"{sid}.jsonl")
+        cwd = self.cwd_cache[key]
+        if cwd is None:
+            return (home is not None and project.name == project_slug(str(home))), ""
+        try:
+            folder = Path(cwd).resolve()
+        except OSError:
+            return False, ""
+        for mine in own:
+            if folder == mine or folder.is_relative_to(mine):
+                return True, ("" if folder == own[0] else folder.name)
+        if any(is_bridge(p) for p in (folder, *folder.parents)):
+            return False, ""
+        return True, folder.name
+
     def scan_runs(self, now_ms: float, slugs: set, links: dict, home: Path | None = None) -> list[dict]:
         """The workflow runs of the last week that belong to one of these open tasks, newest first"""
         base = self.base or claude_dir()
-        home_project = project_slug(str(home)) if home else ""
+        own = own_folders(Path(home)) if home else []
+        roots = tuple(dict.fromkeys(str(x) for x in ((home, own[0]) if home else ())))
         found, seen = [], set()
         try:
             files = list((base / "projects").glob("*/*/workflows/wf_*.json"))
@@ -276,11 +363,16 @@ class Sessions:
             if run is None:
                 continue
             sid = path.parent.parent.name
-            task, how = run_task(run["_text"], run["name"], path.parent.parent.parent.name, sid, slugs, links, home_project)
+            mine, place = self.run_place(path.parent.parent.parent, sid, home, own)
+            if not mine:
+                continue
+            task, how = run_task(run["_text"], run["name"], sid, slugs, links, roots, place)
             if task:
                 found.append({**{k: v for k, v in run.items() if k != "_text"}, "task": task, "how": how,
                               "sid": sid, "at_ms": int(st.st_mtime * 1000)})
         self.run_cache = {k: v for k, v in self.run_cache.items() if k in seen}
+        sessions_seen = {f"{Path(k).parent.parent.parent.name}/{Path(k).parent.parent.name}" for k in seen}
+        self.cwd_cache = {k: v for k, v in self.cwd_cache.items() if k in sessions_seen}
         found.sort(key=lambda r: -r["at_ms"])
         return found[:RUNS_MAX]
 

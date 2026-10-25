@@ -6,8 +6,10 @@ work/done/<month>/<slug>/ (the resolved path must stay inside work/); with `path
 folders (the search finds an open and a closed file of one slug apart): front matter, every `## ` section (body
 cut to 6000 characters), and the last 15 rows of work/log.md that name the slug.
 It also lists the open inbox items that name the slug as their task, and the files of its folder besides
-STATUS.md (`files`: every *.md and *.yaml, at any depth, never in a video/ or deliverables/ folder, never a hidden
-one or a link); `file=` reads one of exactly those (task_file), cut to 40000 characters.
+STATUS.md (`files`: every *.md and *.yaml, at most eight folders deep, never in a video/, deliverables/ or
+node_modules/ folder, never a hidden one or a link, and never walked into such a folder); `file=` reads one of
+exactly those (task_file), at most 40000 characters of it. A name is any text without a slash, backslash or
+control character that does not start with a dot (FILE_RE), so whatever the list shows can be read.
 /api/inbox reads work/inbox/<id>/item.yaml and events/*.yaml (the last 50), with how the item
 ends (`closer`, `closes_when` as plain data, nested at most four deep). Headings are never
 matched by language: the sections come back in the order they stand in the file.
@@ -15,6 +17,7 @@ matched by language: the sections come back in the order they stand in the file.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -32,10 +35,13 @@ RELATED_MAX = 20
 FRONT_KEYS = ("type", "status", "priority", "created", "last_updated", "headline", "origin", "blocked_by", "next")
 ACTIVE = ("open", "approved", "waiting")
 FILE_SUFFIXES = (".md", ".yaml", ".yml")
-FILE_SKIP_DIRS = ("video", "deliverables")
+FILE_SKIP_DIRS = ("video", "deliverables", "node_modules")
 FILES_MAX = 60
 FILE_TEXT_MAX = 40000
-FILE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.@+ -]*(?:/[A-Za-z0-9_][A-Za-z0-9_.@+ -]*){0,7}\Z")
+FILE_DEPTH = 8
+# one part of a file's path inside its folder: no slash, backslash or control character, never a leading dot
+_FILE_PART = r"(?!\.)[^/\\\x00-\x1f\x7f]+"
+FILE_RE = re.compile(rf"^{_FILE_PART}(?:/{_FILE_PART}){{0,{FILE_DEPTH - 1}}}\Z")
 
 
 def _scalar(value):
@@ -126,29 +132,31 @@ def log_rows(root: Path, slug: str) -> list[dict]:
 
 
 def folder_files(folder: Path) -> list[dict]:
-    """The files of a task's folder besides its STATUS.md: {path (inside the folder), size}, by path"""
-    out = []
+    """The files of a task's folder besides its STATUS.md: {path (inside the folder), size}, by path. The walk
+    never enters a hidden, skipped or linked folder, nor one deeper than FILE_DEPTH; every path matches FILE_RE."""
+    found = []
     try:
         base = folder.resolve()
-        found = sorted(folder.rglob("*"))
     except OSError:
         return []
-    for path in found:
-        rel = path.relative_to(folder)
-        parts = rel.parts
-        if path.suffix.lower() not in FILE_SUFFIXES or rel.as_posix() == "STATUS.md" or path.is_symlink():
-            continue
-        if any(x.startswith(".") for x in parts) or any(x in FILE_SKIP_DIRS for x in parts[:-1]):
-            continue
-        try:
-            if not path.is_file() or not path.resolve().is_relative_to(base):
+    for top, dirs, files in os.walk(folder, followlinks=False):
+        rel_top = Path(top).relative_to(folder)
+        depth = len(rel_top.parts)
+        dirs[:] = [] if depth >= FILE_DEPTH - 1 else sorted(
+            d for d in dirs if not d.startswith(".") and d not in FILE_SKIP_DIRS and not (Path(top) / d).is_symlink())
+        for name in files:
+            rel = (rel_top / name).as_posix()
+            if Path(name).suffix.lower() not in FILE_SUFFIXES or rel == "STATUS.md" or not FILE_RE.match(rel):
                 continue
-            out.append({"path": rel.as_posix(), "size": path.stat().st_size})
-        except OSError:
-            continue
-        if len(out) >= FILES_MAX:
-            break
-    return out
+            path = Path(top) / name
+            try:
+                if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(base):
+                    continue
+                found.append({"path": rel, "size": path.stat().st_size})
+            except OSError:
+                continue
+    found.sort(key=lambda f: f["path"].split("/"))
+    return found[:FILES_MAX]
 
 
 def _place(root: Path, slug: str, folder: str | None) -> tuple[str, Path] | None:
@@ -178,7 +186,8 @@ def task_file(root: Path, slug: str, rel: str, folder: str | None = None) -> dic
     if rel not in {f["path"] for f in folder_files(found[1].parent)}:
         return None
     try:
-        text = (found[1].parent / rel).read_text(encoding="utf-8", errors="replace")
+        with (found[1].parent / rel).open(encoding="utf-8", errors="replace") as fh:
+            text = fh.read(FILE_TEXT_MAX + 1)    # never more than the cut and one character to tell it was cut
     except OSError:
         return None
     return {"ok": True, "slug": slug, "file": rel, "text": text[:FILE_TEXT_MAX], "cut": len(text) > FILE_TEXT_MAX}

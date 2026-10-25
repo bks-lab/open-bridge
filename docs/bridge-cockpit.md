@@ -229,12 +229,18 @@ carries `status` and `next` for it (`model.task_next`).
 The Result drawer holds what came back for the task: the starts of the
 return channel for the task or its inbox items, as the start page shows them
 (with their ways on and their forget), and the workflow runs of the last week
-that belong to it. A run belongs to a task only where every sign names the
-same open task: a mention (`task:<slug>`, `work/tasks/<slug>/` or
-`work/streams/<slug>/` in the run's name, summary, arguments or script, or a
-name that is the slug), the session it ran in being linked to the task, or
-the folder it ran in ending in the slug (a worktree, never the Bridge's own
-folder). A run that names two tasks belongs to neither. Each run says how it
+that belong to it. A run belongs to a task only where it names exactly one
+open task: `task:<slug>`, `work/tasks/<slug>/` or `work/streams/<slug>/` in
+the run's name, summary, arguments or script (an absolute path counts only
+under this Bridge's own root), or a name that is the slug. A run that names
+two tasks belongs to neither. The session it ran in being linked to the task,
+and the folder it ran in ending in the slug, only confirm a mention: alone
+they bind nothing, and a session linked to another task undoes it. Only the
+runs of this Bridge are read: those whose session ran in the Bridge, a folder
+inside it, one of its git worktrees, or a folder that holds no Bridge of its
+own (the folder comes from the session's own file). The runs of another
+Bridge on the machine, and of a session whose folder is unknown, never reach
+this page. Each run says how it
 stands, since when, why it belongs here and what it left. A finished run
 whose result is not checked yet is a result that waits: it puts the file in
 the second place of the queue, its step reads "Check the result of ...", and
@@ -244,8 +250,12 @@ the drawer stands open until **Checked** (the verb `run_seen`, kept in
 a run never leaves the server.
 
 The Files drawer lists the files of the task's folder besides STATUS.md:
-every `*.md` and `*.yaml` at any depth, never in a `video/` or
-`deliverables/` folder, never a hidden file or a link. A click reads one in
+every `*.md` and `*.yaml` up to eight folders deep, never in a `video/`,
+`deliverables/` or `node_modules/` folder, never a hidden file or a link; the
+listing never walks into such a folder. Any name can be read, umlauts and
+brackets too, as long as it has no slash, backslash or control character and
+does not start with a dot. A long file is read up to its first 40000
+characters and says it was cut. A click reads one in
 place, Markdown as formatted text and anything else as it stands, with its
 path (`GET /api/task?slug=&file=`, which reads only a file that list names).
 A folder with only STATUS.md shows no Files drawer.

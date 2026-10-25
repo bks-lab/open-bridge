@@ -227,7 +227,7 @@ three ways out, each covered by a test (`Ctx.unlocked` and `LAYOUT_VERBS` in
 - **`LAYOUT_VERBS`** (`snapshot`) write nothing of the Bridge: they run one at
   a time on `layout_lock`, never on the write lock.
 - **`LOCAL_VERBS`** (`pin`, `hide`, `home_tiles`, the launch and ticker
-  settings, `session_link`) only touch stores with their own locks and never
+  settings, `session_link`, `run_seen`) only touch stores with their own locks and never
   take the write lock. A new verb joins this set only when that holds for
   everything its handler calls.
 

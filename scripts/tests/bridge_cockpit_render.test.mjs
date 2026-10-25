@@ -2190,6 +2190,26 @@ test('a file whose workflow result waits: its step says so, the Result drawer st
   assert.deepEqual(c.calls.filter(x => x[0] === 'act'), [['act', 'run_seen', { id: 'wf_plan' }]])
 })
 
+test('a failed workflow run waits as a result with a red mark; a running or stopped one waits for nothing', () => {
+  const { DossierView } = views.dossier
+  const { s, slug } = fileWithResult()
+  const runs = [{ ...s.sessions.runs[0], id: 'wf_fail', status: 'failed', answer: null },
+    { ...s.sessions.runs[0], id: 'wf_live', status: 'running', ended_ms: null },
+    { ...s.sessions.runs[0], id: 'wf_stop', status: 'killed' }]
+  assert.deepEqual(loadedLogic.runResults(runs).map(r => r.key), ['wf:wf_fail'])
+  const failed = { ...s, sessions: { ...s.sessions, runs } }
+  const queue = views.dossier.dossierQueue(failed)
+  const k = queue.findIndex(x => x.slug === slug)
+  assert.equal(queue[k].reason, 'result')
+  const el = mount(html`<${DossierView} s=${{ ...failed, ui: { ...failed.ui, dossierAt: { id: queue[k].id, i: k } } }} c=${recorder()} />`)
+  const cards = el.$$('.dz-run')
+  const card = id => cards.find(x => x.text().includes(en.dossier.run.status[runs.find(r => r.id === id).status]))
+  assert.ok(card('wf_fail').$('.dot.tk-danger'), 'a failed run is marked as a danger, a token the stylesheet knows')
+  assert.ok(card('wf_fail').button(en.dossier.run.check), 'its result waits to be checked')
+  assert.ok(card('wf_live').$('.dot.tk-info') && !card('wf_live').$('button'))
+  assert.ok(!card('wf_stop').$('button'))
+})
+
 test('a file without a waiting result keeps its Result drawer folded; a file of only STATUS.md has no Files drawer', () => {
   const { DossierView } = views.dossier
   const { s, slug } = fileWithResult()

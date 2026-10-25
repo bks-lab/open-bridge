@@ -7614,9 +7614,9 @@ def workflow(home: Path, project: str, sid: str, run: str, age_s: float = 60, **
 
 def test_a_workflow_run_binds_to_its_task_only_where_one_task_is_named(world, tmp_path):
     from lib.bridge_cockpit import sessions as sess
-    slugs = {"demo-task", "other-task", "release-notes"}
-    bind = lambda text, name="x", project="-elsewhere", sid="s", links=None: sess.run_task(  # noqa: E731
-        text, name, project, sid, slugs, links or {}, home_project="-bridge")
+    slugs = {"demo-task", "other-task", "release-notes", "open-bridge"}
+    bind = lambda text, name="x", place="", sid="s", links=None: sess.run_task(  # noqa: E731
+        text, name, sid, slugs, links or {}, root="/home/me/bridge", place=place)
     assert bind("read work/tasks/demo-task/STATUS.md first") == ("demo-task", ["named"])
     assert bind("the key task:other-task") == ("other-task", ["named"])
     assert bind("see work/streams/release-notes/") == ("release-notes", ["named"])
@@ -7626,14 +7626,80 @@ def test_a_workflow_run_binds_to_its_task_only_where_one_task_is_named(world, tm
     # a longer slug is not the shorter one, a word in prose is no mention
     assert bind("work/tasks/demo-task-two/STATUS.md") == (None, [])
     assert bind("the demo-task is mentioned in passing") == (None, [])
-    # the session it ran in is linked to a task; the folder it ran in ends in a slug (never the Bridge itself)
-    assert bind("", sid="s1", links={"s1": {"task": "other-task"}}) == ("other-task", ["session"])
-    assert bind("", project="-Users-me-dev-wt-release-notes") == ("release-notes", ["place"])
-    assert bind("", project="-bridge-release-notes", ) == ("release-notes", ["place"])
-    assert bind("", project="-bridge") == (None, [])
-    # every signal agrees: bound; they disagree: none
+    # an absolute path names a task only under this Bridge's own root, never under another one
+    assert bind("read /home/me/bridge/work/tasks/demo-task/STATUS.md") == ("demo-task", ["named"])
+    assert bind("read /home/me/other-bridge/work/tasks/demo-task/STATUS.md") == (None, [])
+    assert bind("read ~/other/work/streams/demo-task/") == (None, [])
+    # the session link and the folder only confirm a mention: alone they bind nothing
+    assert bind("", sid="s1", links={"s1": {"task": "other-task"}}) == (None, [])
+    assert bind("", place="wt-release-notes") == (None, [])
+    assert bind("see work/streams/release-notes/", place="wt-release-notes") == ("release-notes", ["named", "place"])
+    # a folder that happens to end in a slug never wins over the task the run names
+    assert bind("work/tasks/demo-task/", place="dev-open-bridge") == ("demo-task", ["named"])
+    # every sign agrees: bound; the session is linked to another task: none
     assert bind("work/tasks/demo-task/", sid="s1", links={"s1": {"task": "demo-task"}}) == ("demo-task", ["named", "session"])
     assert bind("work/tasks/demo-task/", sid="s1", links={"s1": {"task": "other-task"}}) == (None, [])
+
+
+def transcript(home: Path, project: str, sid: str, cwd: Path) -> None:
+    """The session file beside a session's folder, whose lines carry the folder it ran in"""
+    folder = home / "projects" / project
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{sid}.jsonl").write_text(json.dumps({"type": "summary"}) + "\n"
+                                        + json.dumps({"type": "user", "cwd": str(cwd)}) + "\n", encoding="utf-8")
+
+
+def test_a_workflow_run_of_another_bridge_never_reaches_this_one(world, tmp_path):
+    """Another instance on the machine with an open task of the same slug: its runs stay its own"""
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    other = tmp_path / "other-bridge"
+    (other / "work" / "tasks" / "demo-task").mkdir(parents=True)
+    (other / "bridge-config.yaml").write_text("identity: {}\n", encoding="utf-8")
+    proj = re.sub(r"[^A-Za-z0-9]", "-", str(other))
+    transcript(home, proj, SID2, other)
+    workflow(home, proj, SID2, "wf_foreign", script="Read work/tasks/demo-task/STATUS.md")
+    workflow(home, proj, SID2, "wf_foreign_abs", script=f"Read {other}/work/tasks/demo-task/STATUS.md")
+    # a run in a folder below the other Bridge is the other Bridge's too
+    sub = other / "tools"
+    sub.mkdir()
+    sub_proj = re.sub(r"[^A-Za-z0-9]", "-", str(sub))
+    transcript(home, sub_proj, SID2, sub)
+    workflow(home, sub_proj, SID2, "wf_foreign_sub", script="work/tasks/demo-task/")
+    # a session whose folder is unknown (no session file) is never read
+    workflow(home, "-somewhere-unknown", SID2, "wf_unknown", script="work/tasks/demo-task/")
+    # a plain repository the Bridge works in (no Bridge of its own) may name a task of this one
+    repo = tmp_path / "plain-repo"
+    repo.mkdir()
+    repo_proj = re.sub(r"[^A-Za-z0-9]", "-", str(repo))
+    transcript(home, repo_proj, SID2, repo)
+    workflow(home, repo_proj, SID2, "wf_repo", script="work/tasks/demo-task/")
+    # a run of this Bridge that names the other Bridge's folder by its absolute path
+    workflow(home, re.sub(r"[^A-Za-z0-9]", "-", str(world.root)), SID2, "wf_here_abs",
+             script=f"compare with {other}/work/tasks/demo-task/STATUS.md")
+    world.app.tabs.poll()
+    assert sorted(r["id"] for r in world.app.sessions_state()["runs"]) == ["wf_repo"]
+
+
+def test_a_workflow_run_in_a_folder_that_ends_in_a_slug_binds_nothing_by_that_alone(world, tmp_path):
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    stream = world.root / "work" / "streams" / "open-bridge"
+    stream.mkdir(parents=True, exist_ok=True)
+    (stream / "STATUS.md").write_text("---\nstatus: doing\n---\n", encoding="utf-8")
+    clone = tmp_path / "dev" / "open-bridge"
+    clone.mkdir(parents=True)
+    proj = re.sub(r"[^A-Za-z0-9]", "-", str(clone))
+    transcript(home, proj, SID2, clone)
+    workflow(home, proj, SID2, "wf_topic", script="refactor the parser")
+    workflow(home, proj, SID2, "wf_demo", script="work/tasks/demo-task/ is the plan")
+    world.app.tabs.poll()
+    runs = {r["id"]: r for r in world.app.sessions_state()["runs"]}
+    assert sorted(runs) == ["wf_demo"] and runs["wf_demo"]["task"] == "demo-task" and runs["wf_demo"]["how"] == ["named"]
 
 
 def test_workflow_runs_of_the_last_week_reach_the_page_bound_to_their_task(world, tmp_path):
@@ -7664,6 +7730,27 @@ def test_workflow_runs_of_the_last_week_reach_the_page_bound_to_their_task(world
     # a run of a task that closed since drops out
     (other / "STATUS.md").unlink()
     assert [x["id"] for x in world.app.sessions_state()["runs"]] == ["wf_named"]
+
+
+def test_a_workflow_run_in_a_worktree_of_this_bridge_is_its_own(world, tmp_path):
+    """A worktree of the Bridge's repository carries a Bridge of its own (the user branch): it is this one"""
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    wt = tmp_path / "bridge-wt-demo-task"
+    (wt / "work" / "tasks").mkdir(parents=True)
+    (wt / "bridge-config.yaml").write_text("identity: {}\n", encoding="utf-8")
+    meta = world.root / ".git" / "worktrees" / "bridge-wt-demo-task"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "gitdir").write_text(f"{wt}/.git\n", encoding="utf-8")
+    (wt / ".git").write_text(f"gitdir: {meta}\n", encoding="utf-8")
+    proj = re.sub(r"[^A-Za-z0-9]", "-", str(wt))
+    transcript(home, proj, SID2, wt)
+    workflow(home, proj, SID2, "wf_wt", script="work/tasks/demo-task/")
+    world.app.tabs.poll()
+    runs = world.app.sessions_state()["runs"]
+    assert [(r["id"], r["task"], r["how"]) for r in runs] == [("wf_wt", "demo-task", ["named", "place"])]
 
 
 def test_a_workflow_run_is_marked_checked_once_and_the_mark_is_kept(world, tmp_path):
@@ -7703,6 +7790,60 @@ def test_task_detail_lists_the_files_of_its_folder(world):
         assert world.request("GET", f"/api/task?slug=demo-task&file={bad}", headers=world.cookie)[0] == 404, bad
     for bad in ("../other-task/STATUS.md", "/etc/passwd", "a\\b.md"):
         assert world.request("GET", f"/api/task?slug=demo-task&file={urllib.parse.quote(bad)}", headers=world.cookie)[0] == 400, bad
+
+
+def test_every_listed_file_can_be_read_whatever_its_name(world):
+    folder = world.root / "work" / "tasks" / "demo-task"
+    for rel in ("Übergabe.md", "notes (v2).md", "a, b.yaml", "café/plan.md"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_text(f"# {rel}\n", encoding="utf-8")
+    data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    listed = [f["path"] for f in data["files"]]
+    assert sorted(listed) == sorted(["Übergabe.md", "notes (v2).md", "a, b.yaml", "café/plan.md"])
+    for rel in listed:
+        status, _, raw = world.request("GET", f"/api/task?slug=demo-task&file={urllib.parse.quote(rel)}", headers=world.cookie)
+        assert status == 200 and json.loads(raw)["text"] == f"# {rel}\n", rel
+    for bad in ("..", "./notes.md", "x/../../other-task/STATUS.md", ".hidden.md", "a\x00b.md", "a\nb.md"):
+        assert world.request("GET", f"/api/task?slug=demo-task&file={urllib.parse.quote(bad)}", headers=world.cookie)[0] == 400, bad
+
+
+def test_the_file_list_never_walks_into_hidden_or_dependency_folders(world, monkeypatch):
+    from lib.bridge_cockpit import details
+    folder = world.root / "work" / "tasks" / "demo-task"
+    for rel in ("repo/node_modules/pkg/README.md", "repo/.git/x.md", "a/README.md", "notes.md"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_text("x\n", encoding="utf-8")
+    walked = []
+    real = details.os.walk
+    def spy(top, *a, **k):
+        for entry in real(top, *a, **k):
+            walked.append(Path(entry[0]))
+            yield entry
+    monkeypatch.setattr(details.os, "walk", spy)
+    assert [f["path"] for f in details.folder_files(folder)] == ["a/README.md", "notes.md"]
+    assert not any(p.name in ("node_modules", ".git") for p in walked)
+
+
+def test_a_long_file_is_read_only_up_to_its_cut(world, monkeypatch):
+    from lib.bridge_cockpit import details
+    folder = world.root / "work" / "tasks" / "demo-task"
+    (folder / "long.md").write_text("x" * (details.FILE_TEXT_MAX * 3), encoding="utf-8")
+    one = details.task_file(world.root, "demo-task", "long.md")
+    assert one["cut"] is True and len(one["text"]) == details.FILE_TEXT_MAX
+    (folder / "exact.md").write_text("y" * details.FILE_TEXT_MAX, encoding="utf-8")
+    assert details.task_file(world.root, "demo-task", "exact.md")["cut"] is False
+
+
+def test_a_file_of_a_closed_task_is_read_from_its_folder(world):
+    closed = world.root / "work" / "done" / "2026-01" / "old-task"
+    closed.mkdir(parents=True)
+    (closed / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+    (closed / "notes.md").write_text("# kept\n", encoding="utf-8")
+    q = "slug=old-task&path=work/done/2026-01/old-task"
+    data = json.loads(world.request("GET", f"/api/task?{q}", headers=world.cookie)[2])
+    assert data["kind"] == "done" and [f["path"] for f in data["files"]] == ["notes.md"]
+    status, _, raw = world.request("GET", f"/api/task?{q}&file=notes.md", headers=world.cookie)
+    assert status == 200 and json.loads(raw)["text"] == "# kept\n"
 
 
 def test_task_detail_has_no_files_where_its_folder_holds_only_status(world):

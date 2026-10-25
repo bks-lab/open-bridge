@@ -36,6 +36,12 @@ globalThis.window ??= { addEventListener() {}, removeEventListener() {}, innerWi
 // and measures its tabs: a DOM without layout says 0, so it neither folds nor moves its marker
 for (const k of ['offsetLeft', 'offsetWidth', 'scrollWidth', 'clientWidth']) Object.defineProperty(Element.prototype, k, { get: () => 0, configurable: true })
 const settle = () => new Promise(r => setTimeout(r, 30))
+/** Waits until `ready()` holds, at most two seconds: Preact runs its effects on a timer, which a busy machine
+ *  (the suites run in parallel) can push past one settle. The assertions that follow say what was missing. */
+async function until(ready, ms = 2000) {
+  const end = Date.now() + ms
+  do { await settle() } while (!ready() && Date.now() < end)
+}
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
 
 function mountOwn(vnode) {
@@ -57,7 +63,7 @@ test('radio group: the chosen chip is the one tab stop, arrows move the choice, 
   const c = recorder()
   const kinds = [{ label: 'inbox', n: 2 }, { label: 'task', n: 3 }, { label: 'stream', n: 1 }]
   const el = mountOwn(html`<${pages.KindBar} kinds=${kinds} active=${kinds[0]} c=${c} />`)
-  await settle()
+  await until(() => el.$$('[role="radio"]').every(r => r.getAttribute('tabindex') !== null))
   const radios = el.$$('[role="radio"]')
   assert.deepEqual(radios.map(r => r.getAttribute('tabindex')), ['-1', '0', '-1', '-1'])
   radios[1].focus()
@@ -78,7 +84,7 @@ test('tab list: arrows switch the page, every tab but the active one is out of t
   const c = recorder()
   const s = cockpitState(NOW)
   const el = mountOwn(html`<${header.PageBar} s=${s} c=${c} />`)
-  await settle()
+  await until(() => el.$$('[role="tab"]').some(x => x.getAttribute('tabindex') !== null))
   const tabs = el.$$('[role="tab"]')
   assert.ok(tabs.length > 2)
   const on = tabs.findIndex(x => x.getAttribute('aria-selected') === 'true')
@@ -98,7 +104,7 @@ test('menu: opening focuses the first item, arrows move between items, Escape cl
   const trigger = el.$('button')
   trigger.focus()
   trigger.click()
-  await settle()
+  await until(() => { const first = el.$('[role="menuitem"]'); return !!first && document.activeElement === first })
   const items = el.$$('[role="menuitem"]')
   assert.equal(items.length, 2)
   assert.ok(document.activeElement === items[0], 'the menu takes the focus')
@@ -109,7 +115,7 @@ test('menu: opening focuses the first item, arrows move between items, Escape cl
   pressDoc('End')
   assert.ok(document.activeElement === items[1])
   pressDoc('Escape')
-  await settle()
+  await until(() => el.$('[role="menu"]') === null && document.activeElement === el.$('button'))
   assert.ok(el.$('[role="menu"]') === null, 'Escape closes the menu')
   assert.ok(document.activeElement === el.$('button'), 'and the focus is back on the button that opened it')
 })
@@ -119,10 +125,10 @@ test('menu: a pick closes it and the focus returns to its button instead of fall
   const it = { index: 0, actions: [{ id: 'follow', label: 'Followed up' }] }
   const el = mountOwn(html`<${pages.RowSteps} it=${it} page="p" section="x" s=${cockpitState(NOW)} c=${c} />`)
   el.$('button').click()
-  await settle()
+  await until(() => !!el.$('[role="menuitem"]'))
   el.$('[role="menuitem"]').click()
   document.activeElement = document.body   // the item is gone, a browser drops the focus to the body
-  await settle()
+  await until(() => document.activeElement === el.$('button'))
   assert.deepEqual(c.calls.at(-1), ['act', 'row_action', { page: 'p', section: 'x', index: 0, action: 'follow' }])
   assert.ok(document.activeElement === el.$('button'))
 })
@@ -149,7 +155,7 @@ test('reply buttons and the text field have accessible names', async () => {
         assert.ok(opener, `${ref}: no opener`)
         assert.equal(opener.getAttribute('aria-expanded'), 'false')
         opener.click()
-        await settle()
+        await until(() => el.$$('textarea').length === 1 && document.activeElement === el.$('textarea'))
         assert.equal(el.$$('textarea').length, 1)
         assert.ok(document.activeElement === el.$('textarea'), 'the opened field takes the focus')
       }

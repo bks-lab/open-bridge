@@ -101,7 +101,7 @@ function Drawer({ title, n, open = false, children }) {
   return html`<details class="dz-drawer" open=${open || undefined}><summary>${title} <span class="sec-count mono">${n}</span></summary>${children}</details>`
 }
 
-const RUN_TOKEN = { completed: 'success', failed: 'error', running: 'info', killed: 'on-surface-muted' }
+const RUN_TOKEN = { completed: 'success', failed: 'danger', running: 'info', killed: 'on-surface-muted' }
 
 /** One workflow run bound to the file: its name, how it stands and since when, why it belongs here, what it
  *  left, and Checked while its result waits */
