@@ -315,6 +315,13 @@ command to start by hand. The relay mod `mods/cockpit-relay` reads `BRIDGE_TAB_S
 itself: in a launched tab it never heartbeats, so an agent tab never takes the
 cockpit's questions.
 
+The same router places inbox items: `workplace.py place --items <id>[,<id>]` or
+`place --unplaced` (every open item with neither a task nor an area) asks it once which
+workspace each item belongs to and writes the answer as the item's `area`
+([`inbox.md`](inbox.md)); `--dry-run` writes nothing. `inbox.py add` starts it for a new
+item when `inbox.place_on_add` is true. An inbox item without a task then launches into
+its area's workspace instead of the default one.
+
 `workplace.py tasks [--json]` lists every active task flat, sorted by priority and then
 activity: label, area, priority, score, `blocked_by`, and `stale` (no activity for longer
 than `limits.stale_days`). `propose` decides which of them get a tab today; `tasks` is the

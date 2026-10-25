@@ -11,6 +11,7 @@ summary: "PR #70 in contoso/portal is green and waits for a merge"
 urgency: today                       # now | today | later
 gate: your-yes                       # free | your-yes | only-you
 task: portal-relaunch                # optional: the task slug it belongs to
+# area: Platform                     # optional, for an item without a task: its workspace (workplace.workspaces)
 due: "2026-10-06"                    # optional: YYYY-MM-DD or YYYY-MM-DDTHH:MM
 detail: "Checks passed at 09:12, no review comments open."   # optional
 key: pr-contoso-portal-70            # optional: a repeated finding with this key adds no second item

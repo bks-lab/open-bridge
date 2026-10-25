@@ -755,7 +755,8 @@ def sec_inbox(section: dict, ctx: Context) -> list:
     for item in filter(wanted, () if runs_only else box.open_items()):
         items.append({"id": item.id, "title": item.summary, "state": item.state, "urgency": item.urgency,
                       "kind": item.kind, "gate": item.gate, "task": item.task, "due": item.due,
-                      "key": item.key, "changed_at": str(item.created or ""), "has_action": bool(item.action)})
+                      "key": item.key, "changed_at": str(item.created or ""), "has_action": bool(item.action),
+                      "area": item.area})
     if runs_only:
         # "runs on" (inbox.py defer --on): every put-off item that names what it waits on, whatever its day
         for item in filter(wanted, box.items()):
@@ -765,7 +766,7 @@ def sec_inbox(section: dict, ctx: Context) -> list:
             items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(deferral["until"]),
                           "waiting_on": deferral["on"], "urgency": item.urgency, "kind": item.kind, "gate": item.gate,
                           "task": item.task, "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
-                          "has_action": bool(item.action)})
+                          "has_action": bool(item.action), "area": item.area})
     elif ctx.lookahead is not None or section.get("deferred") == "all":
         # A view that looks ahead also shows what was put off and comes back within
         # its window: "decide tomorrow" must not vanish until tomorrow. `deferred: all`
@@ -783,7 +784,7 @@ def sec_inbox(section: dict, ctx: Context) -> list:
                 items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(until),
                               "urgency": item.urgency, "kind": item.kind, "gate": item.gate, "task": item.task,
                               "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
-                              "has_action": bool(item.action)})
+                              "has_action": bool(item.action), "area": item.area})
     items.sort(key=lambda i: (order.get(i["urgency"], 3), i["id"]))
     return items
 

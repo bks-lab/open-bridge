@@ -862,7 +862,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             have["rank"] = min(have["rank"], row["rank"])
             have["why"] += [w for w in row["why"] if w not in have["why"]]
             for k in ("due", "nudge", "estimate", "inbox_id", "inbox_state", "inbox_key", "created", "gate", "urgency", "priority",
-                      "has_action", "mark"):
+                      "has_action", "mark", "area"):
                 if row.get(k) and not have.get(k):
                     have[k] = row[k]
             if have.get("filed") and not row.get("filed"):
@@ -982,6 +982,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                              filed=key != f"inbox:{iid}", inbox_id=iid, gate=item.get("gate"),
                              urgency=item.get("urgency"), has_action=bool(item.get("has_action")),
                              inbox_state=item.get("state"), inbox_key=item.get("key"),
+                             # the area it was given (inbox.py area, or the router on add); a task's area wins later
+                             area=item.get("area") or None,
                              # an inbox item's changed_at is when it was filed (briefing.py sec_inbox: item.created)
                              created=item.get("changed_at") or None))
             elif kind == "advise":

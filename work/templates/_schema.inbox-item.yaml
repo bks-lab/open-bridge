@@ -50,6 +50,9 @@ properties:
     type: string
     pattern: "^[a-z][a-z0-9-]*$"
     description: "Slug of the task or stream it belongs to"
+  area:
+    type: string
+    description: "The area (a workplace.workspaces name) of an item without a task; a later `area` event replaces it. With a task, the task's area counts"
   due:
     type: string
     description: "YYYY-MM-DD or YYYY-MM-DDTHH:MM"

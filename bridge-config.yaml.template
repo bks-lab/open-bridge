@@ -138,6 +138,8 @@ work:
 #   runner: homebox          # actor (--by / $BRIDGE_ACTOR / host name) that runs actions
 #   all_clear: []            # close texts beginning with these words count as the reporter's
 #                            # all-clear, besides "All clear" (add the words your reporters write)
+#   place_on_add: false      # true: an item filed with neither a task nor an area asks workplace.router
+#                            # for its area, detached (one small model call per item; docs/inbox.md)
 
 # ─── Workplace ────────────────────────────────────────────────────────
 # Plan the day as workspaces with one agent tab per task, and steer the tabs

@@ -39,13 +39,13 @@ work/inbox.md                      GENERATED view (python3 scripts/inbox.py rend
 ```
 
 `item.yaml` carries `schema_version`, `created`, `from`, `kind`, `summary`,
-`urgency`, `gate` and optionally `task`, `due`, `detail`, `key`, `action`
+`urgency`, `gate` and optionally `task`, `area`, `due`, `detail`, `key`, `action`
 (`argv` and `label`, no shell) and `closes_when`. Schema:
 [`work/templates/_schema.inbox-item.yaml`](../work/templates/_schema.inbox-item.yaml),
 annotated example: [`work/templates/inbox-item.yaml`](../work/templates/inbox-item.yaml).
 
 Every change is a **new event file**, never an edit. Verbs: `seen`, `note`,
-`approve`, `reject`, `drop`, `defer`, `urgency`, `close`, `executed`, `failed`, `reopen`. Two machines
+`approve`, `reject`, `drop`, `defer`, `urgency`, `area`, `close`, `executed`, `failed`, `reopen`. Two machines
 writing the same inbox through git therefore never touch the same file, and an
 item id ends in a random tail, so two machines filing the same thing in the same
 minute still create two folders. This is the property the task folders already have, and
@@ -56,6 +56,19 @@ Kinds: `decision`, `question`, `finding`, `draft`, `result`, `idea`. An `idea`
 waits on nobody: it ranks after every other kind and a briefing section can list
 ideas apart (`kinds: [idea]`) or leave them out (`skip_kinds: [idea]`). Urgency: `now`,
 `today`, `later`.
+
+**Area.** An item linked to a task belongs to that task's area. One without a task may
+carry an `area` of its own: the name of a workspace in `workplace.workspaces`
+([`workplace.md`](workplace.md)), given with `add --area`, changed with `inbox.py area`
+(the last `area` event wins, `--clear` takes it back). The cockpit counts it under that
+area instead of "No area", and a tab started for it opens in that workspace. With
+`inbox.place_on_add: true` in `bridge-config.yaml`, an item filed with neither a task nor an
+area places itself: `add` starts `workplace.py place --items <id>` detached, the filer
+never waits, and the configured `workplace.router` answers with one area, written as an
+`area` event by `router` with its reason. Without a router, or when it fails or names no
+configured workspace, the item stays without an area. `workplace.py place --unplaced`
+places every open item that has none yet, in one call (`--dry-run` shows the answer and
+writes nothing).
 
 ## States
 
@@ -182,6 +195,7 @@ python3 scripts/inbox.py reopen <id> [--note "why"]           # take a close, dr
 python3 scripts/inbox.py close --key <key> [--note "why"]     # every live item filed under that key
 python3 scripts/inbox.py defer <id> --until 2026-10-08
 python3 scripts/inbox.py urgency <id> now|today|later       # re-rank; the latest urgency event wins
+python3 scripts/inbox.py area <id> <workspace> | --clear    # the area of an item without a task
 python3 scripts/inbox.py note <id> "Sam will answer on Monday"
 python3 scripts/inbox.py check                             # close what the live source says is done
 python3 scripts/inbox.py run [--dry-run]                   # execute what a person released
@@ -191,7 +205,7 @@ python3 scripts/inbox.py sync [--no-push]
 ```
 
 `--by` (or `$BRIDGE_ACTOR`, default the host name) sets who an event is
-attributed to. `add` takes `--due`, `--detail`, `--key`, `--urgency` (default
+attributed to. `add` takes `--area`, `--due`, `--detail`, `--key`, `--urgency` (default
 `today`) and `--gate` (default `your-yes`). Items are `from` a machine and job
 (`homebox/issue-radar`), not a person.
 

@@ -454,7 +454,8 @@ def _inbox_module():
 
 
 def _open_inbox_item(root: Path, name: str) -> tuple | None:
-    """(full id, linked task or None) of an open inbox item, or None when there is none (closed, dropped, unknown)."""
+    """(full id, linked task or None, area or None) of an open inbox item, or None when there is none (closed,
+    dropped, unknown)."""
     box_dir = root / "work" / "inbox"
     if not box_dir.is_dir():
         return None
@@ -464,7 +465,7 @@ def _open_inbox_item(root: Path, name: str) -> tuple | None:
         item = box.get(box.resolve(name))
     except (KeyError, ValueError, OSError, yaml.YAMLError):
         return None
-    return (item.id, item.task) if item.state in mod.ACTIVE_STATES else None
+    return (item.id, item.task, item.area) if item.state in mod.ACTIVE_STATES else None
 
 
 INBOX_INDEX_CACHE = Path(".bridge") / "cache" / "workplace-inbox-index.json"
@@ -635,14 +636,14 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
             if not item:
                 out.append({"item": name, "kind": "unknown", "error": f"no active task and no open inbox item {name!r}"})
                 continue
-            full, linked = item
+            full, linked, placed = item
             short = inbox_slug(full)
             kind, slug, label = "inbox", f"inbox-{short}", f"Inbox {short}"
             name = env_slug = full
-            # an item follows its task; an unlinked one goes to the default workspace (its
-            # summary words are no area: "platform broke" must not match a platform-* pattern)
+            # an item follows its task; an unlinked one goes to the area it was given (place), else to the
+            # default workspace (its summary words are no area: "platform broke" must not match platform-*)
             area = (_task_area(root, linked, cfg) if linked and _task_dir(root, linked)
-                    else workspace_for({"slug": "", "context": None}, cfg))
+                    else workspace_for({"slug": "", "context": None, "area": placed}, cfg))
             prompt = launch_prompt("inbox", mode, full, start_note=start_note)
         base, n = label, 1
         while label in used:
@@ -707,23 +708,12 @@ def route(root: Path, cfg: dict, entries: list) -> list:
     configured rules stand and nothing gets its own workspace.
     """
     out = [{**e, "own": False} for e in entries]
-    command = (cfg.get("router") or {}).get("command")
     spaces = {ws["name"]: ws for ws in cfg.get("workspaces") or [] if ws.get("name")}
     todo = [e for e in out if "command" in e]
-    if not command or not spaces or not todo:
+    if not spaces or not todo:
         return out
-    prompt = ROUTER_PROMPT.format(
-        areas="\n".join(f"- {n}: {ws.get('description') or ''}".rstrip(": ") for n, ws in spaces.items()),
-        items="\n".join(f"- {e['item']}: {_describe(root, e['item'])}" for e in todo))
-    argv = shlex.split(command) if isinstance(command, str) else [str(c) for c in command]
-    try:
-        run = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=ROUTER_TIMEOUT_SEC)
-        text = run.stdout if run.returncode == 0 else ""
-        start, end = text.find("["), text.rfind("]")
-        answer = json.loads(text[start:end + 1]) if 0 <= start < end else []
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        answer = []
-    picks = {str(a.get("item")): a for a in answer if isinstance(a, dict)}
+    picks = _ask_router(cfg, ROUTER_PROMPT.format(
+        areas=_area_lines(spaces), items="\n".join(f"- {e['item']}: {_describe(root, e['item'])}" for e in todo)))
     for e in todo:
         pick = picks.get(e["item"]) or {}
         ws = spaces.get(str(pick.get("workspace") or ""))
@@ -732,6 +722,88 @@ def route(root: Path, cfg: dict, entries: list) -> list:
         e.update({"workspace": ws["name"], "aliases": list(ws.get("aliases") or []),
                   "own": pick.get("own") is True, "why": str(pick.get("why") or "")[:80] or "no reason given"})
     return out
+
+
+def _area_lines(spaces: dict) -> str:
+    return "\n".join(f"- {n}: {ws.get('description') or ''}".rstrip(": ") for n, ws in spaces.items())
+
+
+def _ask_router(cfg: dict, prompt: str) -> dict:
+    """The configured router's answer, by item id: {item: {"workspace", "why", ...}}. Empty when there is no
+    router, or it fails, times out or answers no JSON array; the caller then keeps what it had."""
+    command = (cfg.get("router") or {}).get("command")
+    if not command:
+        return {}
+    argv = shlex.split(command) if isinstance(command, str) else [str(c) for c in command]
+    try:
+        run = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=ROUTER_TIMEOUT_SEC)
+        text = run.stdout if run.returncode == 0 else ""
+        start, end = text.find("["), text.rfind("]")
+        answer = json.loads(text[start:end + 1]) if 0 <= start < end else []
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        answer = []
+    return {str(a.get("item")): a for a in answer if isinstance(a, dict)}
+
+
+# ---------------------------------------------------------------- placing inbox items in an area
+
+PLACE_PROMPT = """Give each inbox item the one area it belongs to.
+
+Areas:
+{areas}
+
+Items:
+{items}
+
+Answer with a JSON array only, one object per item:
+[{{"item": "<item id>", "workspace": "<a name from the list>", "why": "<at most eight words>"}}]
+Pick the area whose description fits the item's subject; when none fits, pick the one for everything else."""
+
+
+def _placeable(root: Path) -> tuple:
+    """(the inbox module, the box, the open items that have neither a task nor an area)"""
+    mod = _inbox_module()
+    box = mod.Inbox(root / "work" / "inbox", actor="router")
+    return mod, box, [i for i in box.items() if i.state in mod.ACTIVE_STATES and not i.task and not i.area]
+
+
+def unplaced(root: Path) -> list:
+    """The ids of every open inbox item with neither a task nor an area."""
+    return [i.id for i in _placeable(root)[2]]
+
+
+def place(root: Path, cfg: dict, items: list, write: bool = True) -> list:
+    """Ask the router once where the given inbox items belong and write each answer as an `area` event by
+    `router` ([{item, area, why}]). Items with a task or an area already, closed ones and unknown ids are
+    left out; an answer naming no configured workspace is dropped, so a failing router writes nothing."""
+    spaces = {ws["name"]: ws for ws in cfg.get("workspaces") or [] if ws.get("name")}
+    if not spaces or not (cfg.get("router") or {}).get("command"):
+        return []
+    _mod, box, open_items = _placeable(root)
+    wanted = {box_id for box_id in (_resolve(box, name) for name in items) if box_id}
+    todo = [i for i in open_items if i.id in wanted]
+    if not todo:
+        return []
+    picks = _ask_router(cfg, PLACE_PROMPT.format(
+        areas=_area_lines(spaces), items="\n".join(f"- {i.id}: {i.summary}" for i in todo)))
+    placed = []
+    for i in todo:
+        pick = picks.get(i.id) or {}
+        ws = spaces.get(str(pick.get("workspace") or ""))
+        if not ws:
+            continue
+        why = str(pick.get("why") or "")[:80] or None
+        if write:
+            box.set_area(i.id, ws["name"], by="router", why=why)
+        placed.append({"item": i.id, "area": ws["name"], "why": why})
+    return placed
+
+
+def _resolve(box, name: str) -> str | None:
+    try:
+        return box.resolve(name.strip())
+    except (KeyError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------- the plan
@@ -1265,6 +1337,13 @@ def main(argv=None) -> int:
     ap.add_argument("--root", type=Path, default=ROOT)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("propose").add_argument("--json", action="store_true")
+    pl = sub.add_parser("place", help="give inbox items without a task or an area their area (the router, one call)")
+    which = pl.add_mutually_exclusive_group(required=True)
+    which.add_argument("--items", help="inbox ids, comma separated")
+    which.add_argument("--unplaced", action="store_true", help="every open item with neither a task nor an area")
+    pl.add_argument("--dry-run", action="store_true", help="show the answer, write nothing")
+    pl.add_argument("--quiet", action="store_true", help="print nothing (inbox.py add starts it this way)")
+    pl.add_argument("--json", action="store_true")
     op = sub.add_parser("open")
     op.add_argument("--only", help="only these workspaces, comma separated")
     op.add_argument("--yes", action="store_true", help="hand the plan to the driver (default: dry run)")
@@ -1341,6 +1420,16 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     cfg = load_cfg(args.root)
+    if args.cmd == "place":
+        items = unplaced(args.root) if args.unplaced else [x for x in args.items.split(",") if x.strip()]
+        placed = place(args.root, cfg, items, write=not args.dry_run)
+        if args.json:
+            print(json.dumps(placed, ensure_ascii=False, indent=1))
+        elif not args.quiet:
+            for p in placed:
+                print(f"{p['item']}  -> {p['area']}" + (f"  ({p['why']})" if p["why"] else ""))
+            print(f"{len(placed)} of {len(items)} placed" + (" (dry run, nothing written)" if args.dry_run else ""))
+        return 0
     try:
         driver = driver_from(cfg.get("driver"))
     except ValueError as exc:

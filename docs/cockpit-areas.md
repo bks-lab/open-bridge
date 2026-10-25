@@ -35,7 +35,9 @@ shows everything again. With the shelf on and a line for every chip, the lines
 replace the chips. In the overview a name opens the area's files instead (Work,
 view Files, the filter set, for this visit: the view the work tab opens on stays).
 What has no area stands last as **No area**; its name and numbers lead to the
-same pages without a filter. There is one area filter in the whole cockpit:
+same pages without a filter. An inbox item counts under its task's area, else under
+the area it was given ([`inbox.md`](inbox.md): `--area`, or the router when it is
+filed); only one with neither is *No area*. There is one area filter in the whole cockpit:
 the name, a chip or a jump set it, the start page views, Work, Chat and
 Sessions all show it, and a project chosen on the start page before carries
 over.

@@ -990,6 +990,14 @@ def test_an_inbox_row_carries_its_key_so_a_dashboard_sees_which_tab_filed_it():
     assert rows["i9"]["inbox_key"] == "tab-alpha-result"
 
 
+def test_an_inbox_row_carries_the_area_it_was_given():
+    placed, plain = inbox_item("i1", "The sink drips"), inbox_item("i2", "Something else")
+    placed["area"] = "Home"
+    r = result(sec("inbox", "inbox", [placed, plain]))
+    rows = {i["inbox_id"]: i for b in bv.build(r, profile(view={"style": "triage"}))["buckets"] for i in b["items"]}
+    assert rows["i1"]["area"] == "Home" and rows["i2"]["area"] is None
+
+
 def test_a_shortened_title_gives_way_to_the_full_one_of_the_same_thing():
     # one source names a thing by its short tab label ("A2A: Anfragen an den…"), another by its full title:
     # the row keeps the full one, whichever source came first

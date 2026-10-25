@@ -391,6 +391,8 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 due=as_text_or_null(i.get("due")), is_new=i.get("new") is True, is_changed=i.get("changed") is True,
                 # when an inbox item was filed: the age of a next step taken from it
                 created=as_text_or_null(i.get("created")),
+                # an inbox item's own area; with_tasks replaces it by its task's, which wins
+                area=as_text_or_null(i.get("area")), area_names=[as_text(i.get("area"))] if i.get("area") else [],
             )
             # Same key twice (same number from two trackers): the second gets the block added.
             key = row_key(base)

@@ -558,6 +558,17 @@ def test_with_tasks_keeps_a_task_row_with_inbox_count():
     assert resting[0]["why"] == ["quiet for 4 days"]
 
 
+def test_an_inbox_row_keeps_its_own_area_unless_its_task_has_one():
+    v = m.parse_view({"view": {"buckets": [{"id": "do", "items": [
+        {"title": "sink", "sources": ["inbox"], "inbox_id": "1", "area": "Home"},
+        {"title": "fix", "sources": ["inbox"], "inbox_id": "2", "area": "Home", "task": "alpha"},
+        {"title": "bare", "sources": ["inbox"], "inbox_id": "3"}]}]}, "sections": []}, True, NOW)
+    rows = {r["inbox_id"]: r for r in m.with_tasks(v, [tinfo("alpha")])["buckets"][0]["rows"]}
+    assert (rows["1"]["area"], rows["1"]["area_names"]) == ("Home", ["Home"])
+    assert rows["2"]["area"] == "Area"                     # the task's area wins
+    assert (rows["3"]["area"], rows["3"]["area_names"]) == (None, [])
+
+
 def test_with_tasks_does_not_add_a_listed_task_twice():
     v = view(buckets=[{"id": "do", "title": "Do", "rows": [row("task:alpha", ["tasks"], task="alpha")]}])
     out = m.with_tasks(v, [tinfo("alpha")])
