@@ -9,7 +9,7 @@
 
 import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
-import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, pageOrder, quickLive } from './components.js'
+import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAsWorkspaces, pageOrder, quickLive } from './components.js'
 import {
   CONN_GRACE_MS, DAY, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
@@ -148,6 +148,8 @@ const store = createStore({
     dossierOpen: null, suggest: null,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
+    // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
+    chatArea: load('bridge-cockpit.chatArea', 'work') === 'a2a' ? 'a2a' : 'work',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
     // keyboard shortcuts wait until switched on in the settings (this browser only): a stray letter acts on nothing
     shortcuts: load('bridge-cockpit.shortcuts', 'off') === 'on',
@@ -320,6 +322,7 @@ function offerTour() {
 function fixPage() {
   const s = store.get()
   if (s.model && s.ui.page === CHECK_PAGE && !pageOrder(s).includes(CHECK_PAGE)) ctl.openReview()   // the check moved onto a page
+  else if (s.ui.page === AGENTS_PAGE && chatAsWorkspaces(s)) ctl.setPage(AGENTS_PAGE)   // as cmux the agents live in the Chat
   else if (s.model && !pageOrder(s).includes(s.ui.page)) setUi({ page: 'briefing' })
 }
 
@@ -381,7 +384,8 @@ const handlers = {
     for (const c of a?.convs ?? []) {
       const was = before.find(b => b.id === c.id)
       const last = c.turns?.[c.turns.length - 1]
-      const inView = ui.page === AGENTS_PAGE && !ui.tabView && ui.agentConv === c.id
+      const page = agentsLanding(store.get())
+      const inView = ui.page === page.page && (!page.chatArea || ui.chatArea === page.chatArea) && !ui.tabView && ui.agentConv === c.id
       if (was?.running && !c.running && (last?.a || last?.waiting) && !inView) {
         pushNote({ text: T().agentAnswered(c.peer, last.waiting), tone: last.waiting ? 'info' : 'ok', action: 'agent', conv: c.id }, { linger: 20000 })
       }
@@ -735,6 +739,11 @@ const ctl = {
   jevRun: (force, cacheOnly) => api.post('/api/jev/run', { force: !!force, ...(cacheOnly ? { cache_only: true } : {}) }),   // Jev tab, scripts/web/jev/page.js
   setPage(id) {
     const s = store.get()
+    // as cmux the agents have no page: their way (the band, a card, a stored page) opens the Chat on its A2A area
+    if (id === AGENTS_PAGE && chatAsWorkspaces(s)) {
+      ctl.setChatArea('a2a')
+      id = CHAT_PAGE
+    }
     // a page of group day has no tab: a tile or link to it opens Today, where its sections stand
     if ((s.model?.pages ?? []).some(p => p.id === id && p.group === 'day')) id = 'briefing'
     // the work page and the Jev tab are views of the work tab where a page of group work exists
@@ -812,7 +821,15 @@ const ctl = {
     const a = store.get().agents ?? {}
     const latest = listedChats(a.convs, a.keep_hours, Date.now()).filter(x => x.peer === peer)
       .sort((a, b) => (b.last_ms ?? 0) - (a.last_ms ?? 0))[0]
-    setUi({ agentPeer: peer, agentConv: latest?.id ?? null })
+    // as cmux the pick of an agent (a card, a row on the start page) opens the Chat's A2A area, where its card stands
+    const area = chatAsWorkspaces(store.get()) ? { chatArea: 'a2a' } : {}
+    if (area.chatArea) save('bridge-cockpit.chatArea', area.chatArea)
+    setUi({ agentPeer: peer, agentConv: latest?.id ?? null, ...area })
+  },
+  // one agent, from wherever it is named (the start page's agents): its latest conversation where agents stand
+  openAgent: peer => {
+    ctl.pickAgent(peer)
+    ctl.setPage(AGENTS_PAGE)
   },
   newAgentChat: peer => setUi({ agentPeer: peer, agentConv: null }),
   pickAgentConv: conv => {
@@ -821,8 +838,17 @@ const ctl = {
   },
   openAgentConv: conv => {
     const c = (store.get().agents?.convs ?? []).find(x => x.id === conv)
-    save('bridge-cockpit.page', AGENTS_PAGE)
-    setUi({ page: AGENTS_PAGE, tabView: null, agentConv: conv, agentPeer: c?.peer ?? null })
+    // the Agents page, or as cmux the Chat on its A2A area (views/nav.js agentsLanding)
+    const to = agentsLanding(store.get())
+    save('bridge-cockpit.page', to.page)
+    if (to.chatArea) save('bridge-cockpit.chatArea', to.chatArea)
+    setUi({ ...to, tabView: null, agentConv: conv, agentPeer: c?.peer ?? null })
+  },
+  // the area the Chat as cmux shows: its work or the A2A agents; kept in this browser
+  setChatArea: area => {
+    const v = area === 'a2a' ? 'a2a' : 'work'
+    save('bridge-cockpit.chatArea', v)
+    setUi({ chatArea: v })
   },
   setAgentMode: mode => setUi({ agentMode: mode }),
   // the list of agents beside the conversation folds away for more room; kept in this browser

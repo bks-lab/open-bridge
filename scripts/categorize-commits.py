@@ -668,6 +668,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/text.js",
     "scripts/web/text-areas.js",              # the start page's texts, taken in by text.js
     "scripts/web/text-files.js",              # the files view's texts, taken in by text.js
+    "scripts/web/text-chat.js",               # the chat's area switch texts, taken in by text.js
     "scripts/web/mock.js",
     "scripts/web/tokens.css",
     "scripts/web/style.css",

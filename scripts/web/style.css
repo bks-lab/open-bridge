@@ -1044,7 +1044,13 @@ kbd {
 
 /* the chat as cmux (chat_layout: workspaces): the sidebar of workspaces, tabs, Bridges, agents; the pane on the right */
 .rooms-grid { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 16px; align-items: start; }
-.rooms-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px; max-height: calc(100dvh - 180px); overflow-y: auto; align-content: start; }
+/* the left side: the area switch (Work, A2A) on top, under it the sidebar of the area */
+.rooms-left { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; min-width: 0; }
+.rooms-area > .seg { display: flex; width: 100%; }
+.rooms-area .seg-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.rooms-agents { padding: 8px; max-height: calc(100dvh - 220px); }
+.agent-mark { display: inline-flex; align-items: center; }
+.rooms-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px; max-height: calc(100dvh - 220px); overflow-y: auto; align-content: start; }
 .rooms-side > .room-item { padding-left: 12px; }
 .room-group { margin: 12px 10px 4px; }
 /* the workspaces heading with the order toggle (terminal order or the most urgent first) */

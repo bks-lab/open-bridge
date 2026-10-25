@@ -38,13 +38,13 @@ const VENDOR_BYTES = 13194
 const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
   ? fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).sort().map(f => `views/${f}`) : []
 const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
-const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'motion.js', 'text.js', 'text-areas.js', 'text-files.js', 'theme.js', 'mock.js', ...VIEW_FILES]
+const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'motion.js', 'text.js', 'text-areas.js', 'text-files.js', 'text-chat.js', 'theme.js', 'mock.js', ...VIEW_FILES]
 // the page's styles: style.css and the parts index.html loads right after it, in this order
 const STYLE_FILES = ['style.css', 'areas.css', 'files.css']
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
-for (const name of ['logic', 'areas', 'files', 'text', 'text-areas', 'text-files', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
+for (const name of ['logic', 'areas', 'files', 'text', 'text-areas', 'text-files', 'text-chat', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }
@@ -955,6 +955,9 @@ test('agents: the Agents tab only where the Bridge knows a peer, and a message o
     assert.ok(!comp.pageOrder({}).includes('@agents'))
     assert.deepEqual(comp.pageOrder({ agents: { peers: [{ id: 'a' }] } }).slice(3, 6), ['@sessions', '@workers', '@agents'])
     assert.ok(comp.morePages({ agents: { peers: [{ id: 'a' }] } }).has('@agents'))
+    // the Chat as cmux carries the agents as its A2A area: no tab of their own there (bridge_cockpit_chat_a2a.test.mjs)
+    assert.ok(!comp.pageOrder({ agents: { peers: [{ id: 'a' }] }, rooms: { layout: 'workspaces' } }).includes('@agents'))
+    assert.ok(comp.pageOrder({ agents: { peers: [{ id: 'a' }] }, rooms: { layout: 'classic' } }).includes('@agents'))
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -979,7 +982,9 @@ test('agents: a draft never travels to another agent, held answers show on the c
   const src = readComponents()
   const page = src.match(/function AgentsPage\(\{ s, c(?:, embedded = false)? \}\) \{[\s\S]*?\n\}/)[0]
   assert.match(page, /useEffect\(\(\) => \{[^}]*setText\(''\)[^}]*\}, \[peer\?\.id\]\)/)
-  assert.match(page, /held=\$\{convs\.filter\(x => x\.peer === p\.id && !x\.running && x\.turns\.at\(-1\)\?\.waiting\)\.length\}/)
+  // the page's list and the Chat's A2A list count the held answers the same way
+  assert.match(page, /held=\$\{heldOf\(convs, p\.id\)\}/)
+  assert.match(src, /const heldOf = \(convs, id\) => convs\.filter\(x => x\.peer === id && !x\.running && x\.turns\.at\(-1\)\?\.waiting\)\.length/)
 })
 
 test('history: a close offers undo at once and later; a task comes back open or as still to be done', () => {
@@ -2410,6 +2415,12 @@ test('ticker: each status rule names its kind, tone and where a click leads', ()
   check(mk({ triage: { running: null, error: 'boom' } }), 'triageFailed', 'failing', 'bad')
   // 19 and 20 the agents
   check(mk({ agents: { peers: [{ id: 'peer-a', name: 'Peer A', reach: 'unreachable' }], convs: [] } }), 'peerDown', 'offline', 'warn', { kind: 'page', id: '@agents' })
+  // the target stays @agents in either layout: it is a known page wherever a peer is, and the controller's
+  // setPage opens the Chat's A2A area for it in the workspaces layout
+  for (const rooms of [null, { layout: 'workspaces' }]) {
+    const down = mk({ rooms, agents: { peers: [{ id: 'peer-a', reach: 'unreachable' }], convs: [] } })
+    assert.equal(logic.tickerPage(down, '@agents', []), '@agents')
+  }
   assert.equal(statusOf(mk({ agents: { peers: [{ id: 'peer-a', reach: 'ok' }], convs: [] } }), 'peerDown').length, 0)
   check(mk({ agents: { peers: [], convs: [{ id: 'c1', peer: 'peer-a', running: true, started_ms: NOW - 200000, turns: [{ q: 'x', at_ms: NOW - 200000 }] }] } }),
     'convSlow', 'slow', 'warn', { kind: 'conv', id: 'c1' })

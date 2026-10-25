@@ -9,6 +9,7 @@
 
 import { HOME } from './text-areas.js'
 import { FILES } from './text-files.js'
+import { CHAT } from './text-chat.js'
 
 /** The CLI an error names ("the claude CLI is not available"), or null */
 const cliName = e => /\bthe (\S+) CLI\b/.exec(String(e?.message ?? ''))?.[1] ?? null
@@ -692,11 +693,10 @@ const en = {
   chatSolveTitle: 'A real Claude session in its own terminal tab takes it on and may act (Cmd Enter)',
   chatSolveHint: 'Ask: a quick answer that only reads. Let AI do it: a real Claude session in its own tab, which may change things; you follow it in the agent tabs.',
   rooms: {
-    side: 'Workspaces, Bridges and agents',
+    side: 'Workspaces and Bridges',
     workspaces: 'Workspaces',
     chats: 'Questions',
     bridges: 'Bridges on this machine',
-    agents: 'Agents (A2A)',
     pinned: 'pinned',
     pinMark: '◆ ',
     unread: n => `${n} unread in the terminal`,
@@ -1486,6 +1486,7 @@ const en = {
     },
   },
   dossier: FILES.en,
+  chatArea: CHAT.en,
   logic: {
     days: { MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat', SU: 'Sun' },
     sched: { every: 'every', daily: 'daily', to: 'to', continuous: 'runs continuously', watched: n => `watches ${n} ${n === 1 ? 'path' : 'paths'}` },
@@ -2163,11 +2164,10 @@ const de = {
   chatSolveTitle: 'Eine echte Claude-Sitzung in einem eigenen Terminal-Tab übernimmt und darf handeln (Cmd Enter)',
   chatSolveHint: 'Fragen: eine schnelle Antwort, die nur liest. AI machen lassen: eine echte Claude-Sitzung im eigenen Tab, die etwas ändern darf; du verfolgst sie bei den Agenten-Tabs.',
   rooms: {
-    side: 'Workspaces, Bridges und Agenten',
+    side: 'Workspaces und Bridges',
     workspaces: 'Workspaces',
     chats: 'Fragen',
     bridges: 'Bridges auf diesem Rechner',
-    agents: 'Agenten (A2A)',
     pinned: 'angepinnt',
     pinMark: '◆ ',
     unread: n => `${n} ungelesen im Terminal`,
@@ -2948,6 +2948,7 @@ const de = {
     },
   },
   dossier: FILES.de,
+  chatArea: CHAT.de,
   logic: {
     days: { MO: 'Mo', TU: 'Di', WE: 'Mi', TH: 'Do', FR: 'Fr', SA: 'Sa', SU: 'So' },
     sched: { every: 'alle', daily: 'täglich', to: 'bis', continuous: 'läuft dauernd', watched: n => `beobachtet ${n} ${n === 1 ? 'Pfad' : 'Pfade'}` },

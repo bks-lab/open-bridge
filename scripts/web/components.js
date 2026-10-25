@@ -39,8 +39,8 @@ import { HintsOverlay } from './views/hints.js'
 export { useHomeTitle } from './views/home.js'
 export { quickLive } from './views/chat.js'
 export {
-  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, morePages, pageOrder,
-  workViewNow,
+  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAsWorkspaces,
+  morePages, pageOrder, workViewNow,
 } from './views/nav.js'
 
 // Jev is an optional integration (integrations.typesafe): its page and stylesheet load only once it is
@@ -69,7 +69,8 @@ function PageView({ s, c }) {
   if (s.ui.page === WORKERS_PAGE) return html`<${WorkersPage} s=${s} c=${c} />`
   if (s.ui.page === CHAT_PAGE) return s.rooms?.layout === 'workspaces' ? html`<${RoomsPage} s=${s} c=${c} />` : html`<${ChatPage} s=${s} c=${c} />`
   if (s.ui.page === SETTINGS_PAGE) return html`<${SettingsPage} s=${s} c=${c} />`
-  if (s.ui.page === AGENTS_PAGE && (s.agents?.peers ?? []).length) return html`<${AgentsPage} s=${s} c=${c} />`
+  // as cmux the agents live in the Chat (its A2A area): a stored or stray @agents shows the Chat until the controller moves it there
+  if (s.ui.page === AGENTS_PAGE && (s.agents?.peers ?? []).length) return s.rooms?.layout === 'workspaces' ? html`<${RoomsPage} s=${s} c=${c} />` : html`<${AgentsPage} s=${s} c=${c} />`
   const view = workViewNow(s)
   // the files view (one task at a time) needs no work page: it walks the tasks of the model
   if (view === 'dossier') return html`<${DossierView} s=${s} c=${c} />`

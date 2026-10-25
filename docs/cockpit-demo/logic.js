@@ -3009,9 +3009,11 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
 }
 
 /** Where a page target of the band leads: every page the controller routes itself (the tab row, a page
- *  of group work or day, Jev wherever it lives); Today only for a name that exists nowhere */
+ *  of group work or day, Jev wherever it lives, the agents wherever a peer is: as cmux they are the Chat's
+ *  A2A area, app.js setPage); Today only for a name that exists nowhere */
 export function tickerPage(s, id, order = []) {
-  const known = order.includes(id) || id === '@jev' || (s?.model?.pages ?? []).some(p => p.id === id)
+  const known = order.includes(id) || id === '@jev' || (id === '@agents' && (s?.agents?.peers ?? []).length > 0)
+    || (s?.model?.pages ?? []).some(p => p.id === id)
   return known ? id : 'briefing'
 }
 

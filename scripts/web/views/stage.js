@@ -16,7 +16,7 @@ import { KindTag, OriginTag, RowBar } from './day.js'
 import {
   DayBars, PinStar, ReturnCard, ReturnChip, jumpToTab, openWhole, pageParts, pageTitleOf, pct, returnsOf, shownTiles,
 } from './home.js'
-import { AGENTS_PAGE, ASK_MAX, SESSIONS_PAGE, WORKERS_PAGE, briefingTitle } from './nav.js'
+import { ASK_MAX, SESSIONS_PAGE, WORKERS_PAGE, briefingTitle } from './nav.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
 import { TickerBand, TickerStatusList } from './ticker.js'
 
@@ -270,7 +270,7 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
         title=${y.tab?.name ?? y.name ?? y.project} sub=${[y.project, y.status, (y.agents?.running_count ?? 0) ? h.agentsLine(y.agents.running_count) : null].filter(Boolean).join(' · ')}
         side=${duration(s.now - (y.since_ms || s.now))} onClick=${() => c.setPage(SESSIONS_PAGE)} />`)}
       ${(s.agents?.peers ?? []).map(pe => html`<${InspectRow} key=${pe.id} tone=${pe.reach === 'ok' ? 'success' : 'muted'} title=${pe.id}
-        sub=${pe.summary ? short(pe.summary, 80) : ''} onClick=${() => c.setPage(AGENTS_PAGE)} />`)}
+        sub=${pe.summary ? short(pe.summary, 80) : ''} onClick=${() => c.openAgent(pe.id)} />`)}
       ${foot(h.openPage(t.sessionsTab), () => c.setPage(SESSIONS_PAGE))}`
   } else if (x.id === 'c:workers') {
     const runs = (s.workers?.data?.runs ?? []).filter(r => !['ok', 'dim'].includes(workerTone(r)))

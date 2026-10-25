@@ -181,8 +181,9 @@ help, and a dot for the relay. Under it sits the page bar. In front stand the
 tabs of every day: "Start" (a new visit opens on it, a reload stays where it
 was), "Today" (the briefing), "Chat", then the profile's pages with the
 default `group: main` (Work and Operations in a typical profile). Behind them
-come Sessions, Background jobs, A2A connections, Tidy up, Jev and every profile page
-with `group: more`. While the bar is wide enough every tab stands in it; when
+come Sessions, Background jobs, A2A connections (only with the classic chat: with
+`chat_layout: workspaces` the agents are an area of the Chat, see [The chat as
+cmux](#the-chat-as-cmux)), Tidy up, Jev and every profile page with `group: more`. While the bar is wide enough every tab stands in it; when
 they would overflow, that second group folds, from the last tab forward,
 behind a last tab, "More", which carries the name of the page open behind it
 and a dot when one of them has something. Alt 1 to Alt 9 follow the same
@@ -1239,7 +1240,19 @@ whose command returned an undo token is in the history and in the toast with
 
 With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the terminal you work in.
 
-- **On top of the left side**, "Waiting for you" lists the tabs that wait for
+- **On top of the left side** stands a switch between two areas, "Work" and
+  "A2A (n)", where n is the number of A2A peers. Work is everything below; A2A
+  lists the agents as cards (reach dot, held answers, when the last call was) and
+  shows the picked agent's conversation on the right, with its bar, its card and
+  its box, as the A2A connections tab does in the classic chat. The choice is kept
+  in this browser (`bridge-cockpit.chatArea`). Without a peer there is no switch
+  and the Chat shows Work. There is then no A2A connections tab: every way to an
+  agent (a toast "an agent answered", the band's "agent not reachable", an agent
+  on the start page, a stored page) opens the Chat on its A2A area with that agent
+  or conversation picked. So the signal is not lost with the tab, the Chat tab and
+  the A2A switch wear it: a spinner while an agent answers, a dot while an answer
+  is held for its owner.
+- **In Work, on top**, "Waiting for you" lists the tabs that wait for
   you or need you, the most urgent first (the control tab never), each with its
   workspace, its question and the answers, see [Answering a tab from
   here](#answering-a-tab-from-here). A click anywhere in a row opens its tab on
@@ -1256,7 +1269,7 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   most urgent first. The quick chats sit in the control workspace
   (`workplace.control`), the newest six and "all" for the rest.
 - **Below the workspaces** come the other Bridges on this machine that have no
-  workspace ("Bridges on this machine"), and the A2A agents.
+  workspace ("Bridges on this machine"). The A2A agents stand in their own area.
 - **On the right** is what you picked:
   - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same),
     with "Write" to open it in its window with the message box and keys;
@@ -1833,7 +1846,9 @@ owner's approval answers with a state that is not final: the turn shows as
 held, the tab wears a dot, and "look again" reads the task with `a2a.py get`
 without sending anything new. Conversations are kept in `agents.json` in the
 state dir, and one that leaves the list goes to the archive (see the Chat).
-Without a peer there is no tab. The quick chat's system text names
+Without a peer there is no tab. With `chat_layout: workspaces` there is no tab
+either: the same page stands in the Chat as its A2A area (see [The chat as
+cmux](#the-chat-as-cmux)). The quick chat's system text names
 `infra/a2a-peers/` too, so it can suggest asking an agent; it sends nothing
 itself.
 

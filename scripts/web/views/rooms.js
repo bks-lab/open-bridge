@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the chat as cmux shows it (cockpit.chat_layout: workspaces): on the left the
-// workspaces in the terminal's order with their tabs, the other Bridges on this machine and the A2A
-// agents; on the right whatever is picked. Reading only: a tab is written to in its window ("Write"),
-// the quick chat and the agents keep their own boxes. A tab or a workspace of its own may get a name
+// The cockpit, the chat as cmux shows it (cockpit.chat_layout: workspaces): a switch on top of the left
+// side picks the area, Work or A2A. Work lists the workspaces in the terminal's order with their tabs and
+// the other Bridges on this machine, A2A the agents as cards (views/agents.js); on the right whatever is
+// picked. Reading only: a tab is written to in its window ("Write"), the quick chat and the agents keep their
+// own boxes. A tab or a workspace of its own may get a name
 // here (RenameField); task tabs and the control session keep theirs (logic.js canRename). "Organize with AI"
 // in the sidebar's head asks the model for a tidier order of this Bridge's workspaces (views/organize.js).
 // The rules every component keeps stand at the head of components.js.
@@ -10,11 +11,12 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
 import { T, language } from '../text.js'
-import { AgentsPage } from './agents.js'
+import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented } from './detail.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { GuideLine, GuideTree } from './guide.js'
+import { chatAreaOf } from './nav.js'
 import { AskLine, TabReply } from './reply.js'
 import { useTabScreen } from './tabs.js'
 
@@ -295,9 +297,9 @@ const tabFacts = (tabs, ref) => {
   return { title: tab?.name ?? null, workspace: tab?.workspace ?? null }
 }
 
-/** The sidebar: the order of the tabs on top, where it is reached without scrolling past the asks; then
- *  Waiting for you (left out by status, whose first groups hold the same tabs), the workspaces or the
- *  status groups, the Bridges on this machine and the agents */
+/** The sidebar of the Work area: the order of the tabs on top, where it is reached without scrolling past
+ *  the asks; then Waiting for you (left out by status, whose first groups hold the same tabs), the
+ *  workspaces or the status groups, and the Bridges on this machine. The A2A agents have an area of their own */
 export function Sidebar({ s, c, rooms, here }) {
   const t = T()
   const sort = ['urgency', 'status'].includes(s.ui?.roomsSort) ? s.ui.roomsSort : 'terminal'
@@ -326,10 +328,6 @@ export function Sidebar({ s, c, rooms, here }) {
       ${rooms.bridges.map(b => html`<${Item} key=${b.id} on=${here.kind === 'bridge' && here.id === b.id} title=${b.purpose}
         onClick=${() => c.pickRoom({ kind: 'bridge', id: b.id })}><span class="room-name">${b.name}</span>
         <span class="room-meta muted small mono">${b.branch ?? ''}</span><//>`)}` : null}
-    ${rooms.agents.length ? html`<h3 class="label-caps room-group">${t.rooms.agents}</h3>
-      ${rooms.agents.map(p => html`<${Item} key=${p.id} on=${here.kind === 'agent' && here.id === p.id} title=${p.card?.description}
-        onClick=${() => { c.pickAgent(p.id); c.pickRoom({ kind: 'agent', id: p.id }) }}>
-        <span class="room-name">${p.card?.name || p.id}</span><span class="room-meta muted small mono">${p.id}</span><//>`)}` : null}
   </nav>`
 }
 
@@ -438,11 +436,32 @@ function BridgePane({ c, b }) {
   </section>`
 }
 
+/** Above the sidebar: Work (the workspaces, tabs and chats) or A2A (the agents, with how many and what
+ *  they signal, agents.js agentBadge). Only where this Bridge knows a peer */
+function AreaSwitch({ s, c, area }) {
+  const t = T()
+  const peers = s.agents?.peers ?? []
+  if (!peers.length) return null
+  return html`<div class="rooms-area">
+    <${Segmented} label=${t.chatArea.label} current=${area} onPick=${v => c.setChatArea(v)}
+      values=${[['work', t.chatArea.work], ['a2a', html`${t.chatArea.a2a(peers.length)}<${AgentMark} kind=${agentBadge(s)} />`]]} />
+  </div>`
+}
+
 export function RoomsPage({ s, c }) {
   const t = T()
   const rooms = roomsOf(s)
   const here = pickedRoom(s)
+  const area = chatAreaOf(s)
   useEffect(() => { c.loadAgents() }, [])
+  if (area === 'a2a') {
+    return html`<div class="col col-page roomspage">
+      <div class="rooms-grid">
+        <div class="rooms-left"><${AreaSwitch} s=${s} c=${c} area=${area} /><${AgentList} s=${s} c=${c} /></div>
+        <section class="panel chat-main rooms-main rooms-agent"><${AgentsPage} s=${s} c=${c} embedded /></section>
+      </div>
+    </div>`
+  }
   let pane = null
   if (here.kind === 'tab') {
     const tab = (s.tabs?.tabs ?? []).find(x => x.ref === here.id)
@@ -453,13 +472,11 @@ export function RoomsPage({ s, c }) {
   } else if (here.kind === 'bridge') {
     const b = (s.rooms?.bridges ?? []).find(x => x.id === here.id)
     pane = b ? html`<${BridgePane} c=${c} b=${b} />` : null
-  } else if (here.kind === 'agent') {
-    pane = html`<section class="panel chat-main rooms-main rooms-agent"><${AgentsPage} s=${s} c=${c} embedded /></section>`
   }
   pane = pane ?? html`<${ChatPane} s=${s} c=${c} />`
   return html`<div class="col col-page roomspage">
     <div class="rooms-grid">
-      <${Sidebar} s=${s} c=${c} rooms=${rooms} here=${here} />
+      <div class="rooms-left"><${AreaSwitch} s=${s} c=${c} area=${area} /><${Sidebar} s=${s} c=${c} rooms=${rooms} here=${here} /></div>
       ${pane}
     </div>
   </div>`
