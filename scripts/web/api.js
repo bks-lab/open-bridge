@@ -127,6 +127,8 @@ export function createApi(transport = httpTransport()) {
     inbox: id => transport.get(`/api/inbox?id=${encodeURIComponent(id)}`),
     // path: one folder of the slug (work/done/<month>/<slug>, a closed copy the search found), else the open one first
     task: (slug, path) => transport.get(`/api/task?slug=${encodeURIComponent(slug)}${path ? `&path=${encodeURIComponent(path)}` : ''}`),
+    // one file of a task's folder as /api/task lists it (files), read in place in the files view
+    taskFile: (slug, file, path) => transport.get(`/api/task?slug=${encodeURIComponent(slug)}&file=${encodeURIComponent(file)}${path ? `&path=${encodeURIComponent(path)}` : ''}`),
     // the files view's search over every task, stream and closed task, the log and its archive (work-find.py)
     find: q => transport.get(`/api/find?q=${encodeURIComponent(q)}`),
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),

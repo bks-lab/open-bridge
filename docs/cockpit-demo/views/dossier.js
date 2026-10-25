@@ -2,8 +2,14 @@
 // The cockpit, the files view of the work tab (logic.js workViews 'dossier'): one task at a time, large, as a
 // file. On top its cover (kind, status, priority, the situation in one sentence with where it comes from and
 // its date), under it the next step in the hero of the start page focus with the four verbs, then the file's
-// drawers, folded (inbox, history, sections, references, from /api/task), the bar every list walks with
+// drawers, folded (result, inbox, history, files, references, sections), the bar every list walks with
 // (back, "2 of 9", Next, keys n and p) and the next files after it, at most six.
+// The Result drawer holds what came back for the task (logic.js fileResults): the starts of the return channel
+// as the start page shows them (ReturnCard, with its ways on and its forget), and the workflow runs the server
+// bound to the task (sessions state `runs`), each with why it belongs here; a finished run not yet checked
+// waits as the file's result until Checked (verb run_seen), and the drawer stands open while anything waits.
+// The Files drawer lists the folder besides STATUS.md (/api/task `files`) and reads a file in place on a click
+// (/api/task?file=), Markdown as prose, anything else as it stands.
 // The queue is the one every walk takes (logic.js queueOf, scope 'dossier'): a tab that asks, a result that
 // waits, an open inbox item, then the doing and review tasks of every priority. The next step is derived on
 // every render and never stored.
@@ -17,16 +23,18 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  detailNeedsLoad, dossierStep, fileContext, fileFacts, fileQueue, findContext, focusIndex, formatDay, prioToken,
-  stepAge, suggestedStep, tabOfTask,
+  detailNeedsLoad, dossierStep, duration, fileContext, fileFacts, fileQueue, fileResults, findContext, focusIndex, formatDay,
+  prioToken, short, stepAge, suggestedStep, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
 import { After, Calm, FocusWalk, Hero } from './focus.js'
-import { Btn, Dot, PrioChip } from './parts.js'
+import { ReturnCard } from './home.js'
+import { Btn, Dot, PrioChip, StateLine } from './parts.js'
+import { Prose } from './prose.js'
 
 /** The files the view walks: the one queue in its files scope, from the tabs, the model and the returns */
-export const dossierQueue = s => fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now())
+export const dossierQueue = s => fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now(), s.sessions?.runs)
 
 /** A queue entry as the hero of the focus reads it: always its task row, so a file keeps the verbs of every row;
  *  a tab that asks stands beside them as the row's tab (Hero tabOf) */
@@ -43,6 +51,13 @@ function stepLine(step, nowMs) {
   const d = T().dossier
   const age = stepAge(step.since, nowMs)
   return [d.from[step.from] ?? step.from, age == null ? null : d.age(age)].filter(Boolean).join(', ')
+}
+
+/** The words of a step: a workflow run's is a check of its result, any other its own words */
+function stepTitle(step) {
+  const d = T().dossier
+  if (!step) return d.noNext
+  return step.from === 'run' ? d.runStep(step.what) : step.what
 }
 
 /** The situation of a file in one sentence, always with where it comes from and its date: the headline of
@@ -80,30 +95,96 @@ function Cover({ x, s, data, place = null }) {
   </header>`
 }
 
-/** One drawer of the file, folded, its count in its head; none when it has nothing */
-function Drawer({ title, n, children }) {
+/** One drawer of the file, folded unless `open`, its count in its head; none when it has nothing */
+function Drawer({ title, n, open = false, children }) {
   if (!n) return null
-  return html`<details class="dz-drawer"><summary>${title} <span class="sec-count mono">${n}</span></summary>${children}</details>`
+  return html`<details class="dz-drawer" open=${open || undefined}><summary>${title} <span class="sec-count mono">${n}</span></summary>${children}</details>`
 }
 
-/** The drawers of a file, from what /api/task holds: its inbox items, its history (log rows), the sections of
- *  STATUS.md and the paths it names as related */
-function Drawers({ data }) {
+const RUN_TOKEN = { completed: 'success', failed: 'error', running: 'info', killed: 'on-surface-muted' }
+
+/** One workflow run bound to the file: its name, how it stands and since when, why it belongs here, what it
+ *  left, and Checked while its result waits */
+function RunCard({ r, s, c }) {
   const d = T().dossier
-  if (!data) return null
-  const inbox = data.inbox ?? []
-  const log = data.log ?? []
-  const sections = data.sections ?? []
-  const refs = data.related ?? []
+  const w = d.run
+  const now = s.now || Date.now()
+  const at = r.ended_ms ?? r.since_ms ?? r.at_ms
+  const waits = !r.seen && (r.status === 'completed' || r.status === 'failed')
+  return html`<li class="dz-run">
+    <p class="dz-run-head">
+      <${StateLine} token=${RUN_TOKEN[r.status] ?? 'on-surface-muted'} word=${w.status[r.status] ?? r.status} />
+      <span class="mono">${r.name}</span>
+      ${at ? html`<span class="muted small">${T().home.returnAgo(duration(now - at))}</span>` : null}
+      ${r.agents ? html`<span class="muted small">${w.agents(r.agents)}</span>` : null}
+      <span class="muted small">${(r.how ?? []).map(h => w.how[h] ?? h).join(', ')}</span>
+    </p>
+    ${r.summary ? html`<p class="dz-run-summary">${r.summary}</p>` : null}
+    ${r.answer ? html`<p class="rcard-answer"><span class="label-caps">${w.answer}</span> ${short(r.answer, 400)}</p>` : null}
+    ${waits ? html`<div class="btn-row"><${Btn} size="xs" variant="primary" busy=${!!s.ui.busy?.run_seen}
+        onClick=${() => c.act('run_seen', { id: r.id })}>${w.check}<//></div>`
+      : r.seen ? html`<p class="small"><${StateLine} token="success" word=${w.checked} /></p>` : null}
+  </li>`
+}
+
+/** What came back for the file: the starts of the return channel and the workflow runs, open while one waits */
+function ResultDrawer({ res, s, c }) {
+  const d = T().dossier
+  return html`<${Drawer} title=${d.drawers.result} n=${res.returns.length + res.runs.length} open=${res.waiting > 0}>
+    ${res.returns.length ? html`<div class="ai-cards">${res.returns.map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}</div>` : null}
+    ${res.runs.length ? html`<ul class="entries dz-runs">${res.runs.map(r => html`<${RunCard} key=${r.id} r=${r} s=${s} c=${c} />`)}</ul>` : null}
+  <//>`
+}
+
+/** The folder's files besides STATUS.md; a click reads one in place (/api/task?file=), again closes it */
+function FilesDrawer({ data, folder, c }) {
+  const d = T().dossier
+  const files = data?.files ?? []
+  const [shown, setShown] = useState(null)
+  const base = String(data?.path ?? '').replace(/\/STATUS\.md$/, '')
+  const pick = async rel => {
+    if (shown?.file === rel) return setShown(null)
+    setShown({ file: rel, status: 'loading' })
+    const res = await c.taskFile(data.slug, rel, folder)
+    setShown(cur => (cur?.file !== rel ? cur : res?.ok ? { file: rel, status: 'ok', ...res.data } : { file: rel, status: 'error' }))
+  }
+  return html`<${Drawer} title=${d.drawers.files} n=${files.length}>
+    <ul class="entries dz-files">${files.map(f => html`<li key=${f.path} class="entry">
+      <button type="button" class="btn-link dz-file-open mono" aria-expanded=${shown?.file === f.path} onClick=${() => pick(f.path)}>${f.path}</button>
+    </li>`)}</ul>
+    ${shown ? html`<section class="dz-file panel panel-pad" aria-live="polite">
+      <p class="dz-file-path muted small"><code>${base}/${shown.file}</code>
+        <${Btn} variant="ghost" size="xs" onClick=${() => setShown(null)}>${d.file.close}<//></p>
+      ${shown.status === 'loading' ? html`<p class="muted small" role="status">${d.file.loading}</p>`
+        : shown.status === 'error' ? html`<p class="muted small" role="status">${d.file.failed}</p>`
+        : /\.md$/i.test(shown.file) ? html`<${Prose} cls="dz-file-text" text=${shown.text ?? ''} />`
+        : html`<pre class="pre dz-file-text">${shown.text ?? ''}</pre>`}
+      ${shown.cut ? html`<p class="muted small">${d.file.cut}</p>` : null}
+    </section>` : null}
+  <//>`
+}
+
+/** The drawers of a file: what came back for it (when `res` is given), and from what /api/task holds its inbox
+ *  items, its history (log rows), the files of its folder, the paths it names as related and the sections of
+ *  STATUS.md. `folder` the folder of a closed copy, or null */
+function Drawers({ data, res = null, folder = null, s, c }) {
+  const d = T().dossier
+  if (!data && !res) return null
+  const inbox = data?.inbox ?? []
+  const log = data?.log ?? []
+  const sections = data?.sections ?? []
+  const refs = data?.related ?? []
   return html`<div class="dz-drawers">
+    ${res ? html`<${ResultDrawer} res=${res} s=${s} c=${c} />` : null}
     <${Drawer} title=${d.drawers.inbox} n=${inbox.length}>
       <ul class="entries">${inbox.map(e => html`<li key=${e.id} class="entry">${e.summary}</li>`)}</ul><//>
     <${Drawer} title=${d.drawers.history} n=${log.length}>
       <ol class="log-rows">${log.map((l, i) => html`<li key=${i}><span class="mono muted">${l.at}</span><span>${l.text}</span></li>`)}</ol><//>
-    <${Drawer} title=${d.drawers.sections} n=${sections.length}>
-      ${sections.map((x, i) => html`<details key=${i}><summary>${x.heading}</summary><p class="pre">${x.text}</p></details>`)}<//>
+    ${data ? html`<${FilesDrawer} key=${data.path} data=${data} folder=${folder} c=${c} />` : null}
     <${Drawer} title=${d.drawers.refs} n=${refs.length}>
       <ul class="entries">${refs.map(p => html`<li key=${p} class="entry"><code>${p}</code></li>`)}</ul><//>
+    <${Drawer} title=${d.drawers.sections} n=${sections.length}>
+      ${sections.map((x, i) => html`<details key=${i}><summary>${x.heading}</summary><p class="pre">${x.text}</p></details>`)}<//>
   </div>`
 }
 
@@ -224,7 +305,8 @@ function OpenFile({ open, s, c }) {
       <${Cover} x=${x} s=${s} data=${data} place=${facts.kind === 'task' ? null : d.find.kind[facts.kind]} />
       ${facts.next ? html`<p class="dz-next"><span class="eyebrow">${d.next}</span> ${facts.next}</p>` : null}
       ${suggest ? html`<${Suggest} x=${x} s=${s} c=${c} context=${context} />` : null}
-      <${Drawers} data=${data} />
+      <${Drawers} data=${data} folder=${open.includes('/') ? open : null}
+        res=${open.includes('/') ? null : fileResults(slug, s.model, s.tabs?.tabs, s.now || Date.now(), s.sessions?.runs)} s=${s} c=${c} />
       <${AskBox} cls="dz-ask" label=${d.ask.label} placeholder=${d.ask.placeholder} context=${context}
         task=${facts.kind === 'done' ? null : slug} s=${s} c=${c} />`}
   </div>`
@@ -257,9 +339,9 @@ export function DossierView({ s, c }) {
     ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} />` : x ? html`
       <${Cover} key=${`c${x.id}`} x=${x} s=${s} data=${data} />
       <${Hero} key=${x.id} x=${hero} n=${queue.length} tabOf=${() => fileTab(x, s)} s=${s} c=${c}
-        title=${step?.what ?? d.noNext} kindWord=${d.next} sub=${stepLine(step, nowMs)} />
+        title=${stepTitle(step)} kindWord=${d.next} sub=${stepLine(step, nowMs)} />
       ${step ? null : html`<${Suggest} key=${`s${x.id}`} x=${x} s=${s} c=${c} context=${context} />`}
-      <${Drawers} data=${data} />
+      <${Drawers} key=${`d${x.id}`} data=${data} res=${fileResults(x.slug, s.model, s.tabs?.tabs, nowMs, s.sessions?.runs)} s=${s} c=${c} />
       <${AskBox} key=${`a${x.id}`} cls="dz-ask" label=${d.ask.label} placeholder=${d.ask.placeholder} context=${context}
         task=${x.slug} s=${s} c=${c} />
       <${FocusWalk} queue=${queue} i=${i} s=${s} c=${c} walk=${c.dossierWalk} />

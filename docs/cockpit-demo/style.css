@@ -3136,6 +3136,18 @@ details.hl-block:not([open]) > summary > svg { transform: rotate(-90deg); }
 .dz-drawer[open] { flex-basis: 100%; }
 .dz-drawer > summary { cursor: pointer; font-weight: 600; color: var(--on-surface); }
 .dz-drawer .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dz-drawer .ai-cards { margin-top: 8px; }
+.dz-runs { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.dz-run { padding: 8px 0; border-top: 1px solid var(--border); min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dz-run:first-child { border-top: 0; padding-top: 0; }
+.dz-run > p { margin: 0; overflow-wrap: anywhere; }
+.dz-run-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.dz-run-summary { color: var(--ink); }
+.dz-files { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.dz-file-open { text-align: left; overflow-wrap: anywhere; }
+.dz-file { margin-top: 8px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.dz-file-path { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.dz-file-text { max-height: 60vh; overflow: auto; min-width: 0; }
 /* the search of the files view, its results by file, a question to a file or the results, a suggested step */
 .dz-search { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .dz-find, .dz-askbox { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }

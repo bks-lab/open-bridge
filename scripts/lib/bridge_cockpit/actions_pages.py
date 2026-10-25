@@ -140,6 +140,16 @@ class PageVerbs:
             raise self.not_applicable("no start of that row in the return channel")
         self.app.collector.rebuild()
 
+    def v_run_seen(self, ctx: Ctx, id: str) -> None:
+        """A workflow run's result checked in the files view: it no longer waits in its task's file. Only a run
+        the page was shown (bound to an open task) can be marked"""
+        run = next((r for r in self.app.sessions_state()["runs"] if r["id"] == id), None)
+        if run is None:
+            raise ActionError(409, "stale_row", "no such workflow run of an open task", "id")
+        self.app.store.run_seen(id)
+        ctx.note(self.tx["run_seen"].format(name=m.short(run["name"], 40), slug=run["task"]))
+        self.app.broadcast("sessions", self.app.sessions_state())
+
     def v_pin(self, ctx: Ctx, key: str, on: bool) -> None:
         """A row on the start page's pinned shelf; it stays until taken off, whatever the briefing says"""
         self.app.store.pin(key, on)

@@ -2162,15 +2162,28 @@ export function homeQueue(parts) {
 }
 
 const FILE_STATES = ['doing', 'review']
+// a workflow run whose result is there to check: finished, or failed (a killed one was stopped on purpose)
+const RUN_RESULTS = ['completed', 'failed']
 
-/** The parts of the files view (queueOf scope 'dossier'): the tabs that ask about a task, the starts whose
- *  result waits (model.returns, where they stand now), the open inbox items that name a task, and the task
- *  rows. A file opens only for a task doing or in review (a row without a status, of a backlog section or a
- *  task closed since, opens none). `files` are those rows in every section but the blocked, quiet or dropped
- *  ones (bucket resting, drop): a tab, a result or an item opens them wherever they stand, a task waiting on
- *  someone else too. `tasks` are those of what waits on you and of the work: they stand in the queue on their
- *  own. An item put off counts as not open */
-export function dossierParts(tabs, model, nowMs) {
+/** The task a start of the return channel belongs to: the task of its row, else its own task key */
+const returnSlug = (r, taskOf) => taskOf.get(r.key) ?? (String(r.key ?? '').startsWith('task:') ? r.key.slice(5) : null)
+
+/** The workflow runs whose result waits on you (sessions state `runs`, bound to a task by the server and not
+ *  marked checked), as results of the files queue: {key: wf:<id>, kind: 'run', slug, title, at_ms, result, run} */
+export function runResults(runs) {
+  return (runs ?? []).filter(r => r?.task && !r.seen && RUN_RESULTS.includes(r.status))
+    .map(r => ({ key: `wf:${r.id}`, kind: 'run', slug: r.task, title: r.name, at_ms: r.ended_ms ?? r.at_ms ?? null,
+      result: { text: r.summary || r.answer || null }, run: r }))
+}
+
+/** The parts of the files view (queueOf scope 'dossier'): the tabs that ask about a task, the results that wait
+ *  (the starts of model.returns where they stand now, then the finished workflow runs not yet checked), the open
+ *  inbox items that name a task, and the task rows. A file opens only for a task doing or in review (a row
+ *  without a status, of a backlog section or a task closed since, opens none). `files` are those rows in every
+ *  section but the blocked, quiet or dropped ones (bucket resting, drop): a tab, a result or an item opens them
+ *  wherever they stand, a task waiting on someone else too. `tasks` are those of what waits on you and of the
+ *  work: they stand in the queue on their own. An item put off counts as not open */
+export function dossierParts(tabs, model, nowMs, runs = []) {
   const sec = id => (model?.sections ?? []).find(x => x.id === id)?.rows ?? []
   const all = ['now', 'give', 'work', 'track', 'later'].flatMap(sec)
   const isFile = r => r.task && !r.inbox_id && FILE_STATES.includes(r.status) && !['resting', 'drop'].includes(r.bucket)
@@ -2178,15 +2191,26 @@ export function dossierParts(tabs, model, nowMs) {
   const tasks = [...sec('now'), ...sec('work')].filter(isFile)
   const waiting = all.filter(r => r.inbox_id && r.task && r.inbox_state !== 'deferred')
   const taskOf = new Map(all.filter(r => r.task).map(r => [r.key, r.task]))
-  const results = (model?.returns ?? []).filter(r => liveStage(r, tabs, nowMs) === 'result')
-    .map(r => ({ ...r, slug: taskOf.get(r.key) ?? (String(r.key ?? '').startsWith('task:') ? r.key.slice(5) : null) }))
+  const results = [...(model?.returns ?? []).filter(r => liveStage(r, tabs, nowMs) === 'result')
+    .map(r => ({ ...r, slug: returnSlug(r, taskOf) })), ...runResults(runs)]
   const asking = (tabs ?? []).filter(t => !t.is_control && t.state === 'needs-you' && t.slug)
   return { asking, results, waiting, files, tasks }
 }
 
 /** The files the files view walks, and its keys n and p: the one queue in its files scope */
-export function fileQueue(tabs, model, nowMs) {
-  return queueOf(dossierParts(tabs, model, nowMs), { scope: 'dossier' })
+export function fileQueue(tabs, model, nowMs, runs = []) {
+  return queueOf(dossierParts(tabs, model, nowMs, runs), { scope: 'dossier' })
+}
+
+/** What a file's Result drawer holds: the starts of the return channel for its task or its inbox items (each
+ *  with where it stands now, `live`), the workflow runs bound to it, and how many of them wait on you (a start
+ *  with its result, a finished run not yet checked) */
+export function fileResults(slug, model, tabs, nowMs, runs = []) {
+  const taskOf = new Map([...indexRows(model).values()].filter(r => r.task).map(r => [r.key, r.task]))
+  const returns = (model?.returns ?? []).filter(r => returnSlug(r, taskOf) === slug).map(r => ({ ...r, live: liveStage(r, tabs, nowMs) }))
+  const mine = (runs ?? []).filter(r => r?.task === slug)
+  const waiting = returns.filter(r => r.live === 'result').length + runResults(mine).length
+  return { returns, runs: mine, waiting }
 }
 
 /** The next step of a file, derived and never stored: the tab's question, the result to check, the inbox item
@@ -2194,6 +2218,8 @@ export function fileQueue(tabs, model, nowMs) {
  *  (model.py task_next); {what, from, since} or null when nothing names one. `since` is ms or an ISO date */
 export function dossierStep(x) {
   if (x?.reason === 'tab') return { what: x.tab.name, from: 'tab', since: x.tab.since_ms ?? null }
+  // a workflow run: its name, the view words it as a check of its result
+  if (x?.reason === 'result' && x.result.kind === 'run') return { what: x.result.title, from: 'run', since: x.result.at_ms ?? null }
   if (x?.reason === 'result') return { what: x.result.result?.text || x.result.title, from: 'result', since: x.result.at_ms ?? null }
   const next = x?.row?.next
   if (x?.reason === 'inbox' && (!next || next.from !== 'inbox' || next.key !== x.item.key)) {

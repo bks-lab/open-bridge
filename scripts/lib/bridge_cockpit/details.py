@@ -5,7 +5,9 @@
 work/done/<month>/<slug>/ (the resolved path must stay inside work/); with `path` exactly that one of these
 folders (the search finds an open and a closed file of one slug apart): front matter, every `## ` section (body
 cut to 6000 characters), and the last 15 rows of work/log.md that name the slug.
-It also lists the open inbox items that name the slug as their task.
+It also lists the open inbox items that name the slug as their task, and the files of its folder besides
+STATUS.md (`files`: every *.md and *.yaml, at any depth, never in a video/ or deliverables/ folder, never a hidden
+one or a link); `file=` reads one of exactly those (task_file), cut to 40000 characters.
 /api/inbox reads work/inbox/<id>/item.yaml and events/*.yaml (the last 50), with how the item
 ends (`closer`, `closes_when` as plain data, nested at most four deep). Headings are never
 matched by language: the sections come back in the order they stand in the file.
@@ -29,6 +31,11 @@ EVENTS_MAX = 50
 RELATED_MAX = 20
 FRONT_KEYS = ("type", "status", "priority", "created", "last_updated", "headline", "origin", "blocked_by", "next")
 ACTIVE = ("open", "approved", "waiting")
+FILE_SUFFIXES = (".md", ".yaml", ".yml")
+FILE_SKIP_DIRS = ("video", "deliverables")
+FILES_MAX = 60
+FILE_TEXT_MAX = 40000
+FILE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.@+ -]*(?:/[A-Za-z0-9_][A-Za-z0-9_.@+ -]*){0,7}\Z")
 
 
 def _scalar(value):
@@ -118,13 +125,35 @@ def log_rows(root: Path, slug: str) -> list[dict]:
     return rows[-LOG_ROWS:]
 
 
-def task_detail(root: Path, slug: str, listing: list | None = None, folder: str | None = None) -> dict | None:
-    """The file of a slug, the open one first; `folder` (`work/done/<month>/<slug>`) picks one of its places,
-    compared with the places as they are, so a folder that is none of them is never read."""
-    if not isinstance(slug, str) or not SLUG_RE.match(slug):
-        return None
-    root = Path(root)
-    # open first, then a stream, then a closed task (an inbox item can outlive it), newest month first
+def folder_files(folder: Path) -> list[dict]:
+    """The files of a task's folder besides its STATUS.md: {path (inside the folder), size}, by path"""
+    out = []
+    try:
+        base = folder.resolve()
+        found = sorted(folder.rglob("*"))
+    except OSError:
+        return []
+    for path in found:
+        rel = path.relative_to(folder)
+        parts = rel.parts
+        if path.suffix.lower() not in FILE_SUFFIXES or rel.as_posix() == "STATUS.md" or path.is_symlink():
+            continue
+        if any(x.startswith(".") for x in parts) or any(x in FILE_SKIP_DIRS for x in parts[:-1]):
+            continue
+        try:
+            if not path.is_file() or not path.resolve().is_relative_to(base):
+                continue
+            out.append({"path": rel.as_posix(), "size": path.stat().st_size})
+        except OSError:
+            continue
+        if len(out) >= FILES_MAX:
+            break
+    return out
+
+
+def _place(root: Path, slug: str, folder: str | None) -> tuple[str, Path] | None:
+    """(kind, STATUS.md) of a slug: the open one first, then a stream, then the newest closed one; `folder`
+    picks exactly that one of these places"""
     done = root / "work" / "done"
     places = [("task", root / "work" / "tasks"), ("stream", root / "work" / "streams")]
     if done.is_dir():
@@ -134,9 +163,37 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
         if folder is not None and (base / slug).relative_to(root).as_posix() != folder:
             continue
         if path.is_file() and _inside(path, root / "work"):
-            break
-    else:
+            return kind, path
+    return None
+
+
+def task_file(root: Path, slug: str, rel: str, folder: str | None = None) -> dict | None:
+    """One of the files task_detail lists for a slug (never another), its text cut to FILE_TEXT_MAX"""
+    if not isinstance(slug, str) or not SLUG_RE.match(slug) or not isinstance(rel, str):
         return None
+    root = Path(root)
+    found = _place(root, slug, folder)
+    if found is None:
+        return None
+    if rel not in {f["path"] for f in folder_files(found[1].parent)}:
+        return None
+    try:
+        text = (found[1].parent / rel).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return {"ok": True, "slug": slug, "file": rel, "text": text[:FILE_TEXT_MAX], "cut": len(text) > FILE_TEXT_MAX}
+
+
+def task_detail(root: Path, slug: str, listing: list | None = None, folder: str | None = None) -> dict | None:
+    """The file of a slug, the open one first; `folder` (`work/done/<month>/<slug>`) picks one of its places,
+    compared with the places as they are, so a folder that is none of them is never read."""
+    if not isinstance(slug, str) or not SLUG_RE.match(slug):
+        return None
+    root = Path(root)
+    found = _place(root, slug, folder)
+    if found is None:
+        return None
+    kind, path = found
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -151,6 +208,7 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
               # the paths STATUS.md names as related, as written: the files view lists them as references
               "related": [str(x)[:300] for x in related if isinstance(x, (str, int, float))][:RELATED_MAX],
               "log": log_rows(root, slug),
+              "files": folder_files(path.parent),
               "inbox": [{"id": e.get("id"), "summary": _scalar(e.get("summary")), "state": e.get("state"),
                          "urgency": _scalar(e.get("urgency")), "gate": _scalar(e.get("gate"))}
                         for e in listing or [] if isinstance(e, dict) and e.get("task") == slug

@@ -1580,10 +1580,18 @@ const en = {
   },
   dossier: {
     label: 'File', next: 'Next step', noNext: 'No next step known',
-    from: { tab: 'an agent tab asks', result: 'a result waits', inbox: 'from the inbox', status: 'from STATUS.md' },
+    from: { tab: 'an agent tab asks', result: 'a result waits', run: 'a workflow finished', inbox: 'from the inbox', status: 'from STATUS.md' },
+    runStep: name => `Check the result of ${name}`,
     age: d => (d === 0 ? 'today' : d === 1 ? 'for 1 day' : `for ${d} days`),
     situationFrom: { status: 'STATUS.md', triage: 'triage' },
-    drawers: { inbox: 'Inbox', history: 'History', sections: 'Sections', refs: 'References' },
+    drawers: { result: 'Result', inbox: 'Inbox', history: 'History', files: 'Files', sections: 'Sections', refs: 'References' },
+    run: {
+      status: { running: 'running', pending: 'waiting to start', completed: 'finished', failed: 'failed', killed: 'stopped', unknown: 'unknown' },
+      agents: n => (n === 1 ? '1 agent' : `${n} agents`), answer: 'It left',
+      how: { named: 'names this file', session: 'ran in its session', place: 'ran in its folder' },
+      check: 'Checked', checked: 'checked',
+    },
+    file: { loading: 'Reading the file', failed: 'This file cannot be read.', cut: 'Shown in part: the file is longer.', close: 'Close' },
     empty: 'No file waits for you.', emptySub: 'Nothing is doing or in review. Backlog and resting tasks stay out of this queue.',
     after: 'Next', loading: 'Reading the file',
     find: {
@@ -3172,10 +3180,18 @@ const de = {
   },
   dossier: {
     label: 'Akte', next: 'Nächster Schritt', noNext: 'Kein nächster Schritt bekannt',
-    from: { tab: 'ein Agenten-Tab fragt', result: 'ein Ergebnis wartet', inbox: 'aus dem Eingang', status: 'aus STATUS.md' },
+    from: { tab: 'ein Agenten-Tab fragt', result: 'ein Ergebnis wartet', run: 'ein Workflow ist fertig', inbox: 'aus dem Eingang', status: 'aus STATUS.md' },
+    runStep: name => `Ergebnis von ${name} prüfen`,
     age: d => (d === 0 ? 'heute' : d === 1 ? 'seit 1 Tag' : `seit ${d} Tagen`),
     situationFrom: { status: 'STATUS.md', triage: 'Triage' },
-    drawers: { inbox: 'Eingang', history: 'Verlauf', sections: 'Abschnitte', refs: 'Verweise' },
+    drawers: { result: 'Ergebnis', inbox: 'Eingang', history: 'Verlauf', files: 'Dateien', sections: 'Abschnitte', refs: 'Verweise' },
+    run: {
+      status: { running: 'läuft', pending: 'wartet auf den Start', completed: 'fertig', failed: 'fehlgeschlagen', killed: 'abgebrochen', unknown: 'unbekannt' },
+      agents: n => (n === 1 ? '1 Agent' : `${n} Agenten`), answer: 'Hinterlassen',
+      how: { named: 'nennt diese Akte', session: 'lief in ihrer Sitzung', place: 'lief in ihrem Ordner' },
+      check: 'Geprüft', checked: 'geprüft',
+    },
+    file: { loading: 'Datei wird gelesen', failed: 'Diese Datei lässt sich nicht lesen.', cut: 'Nur ein Teil: die Datei ist länger.', close: 'Schließen' },
     empty: 'Keine Akte wartet auf dich.', emptySub: 'Nichts ist in Arbeit oder im Review. Backlog und ruhende Aufgaben bleiben aus dieser Schlange.',
     after: 'Als Nächstes', loading: 'Akte wird gelesen',
     find: {

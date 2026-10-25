@@ -204,8 +204,8 @@ a file: on top the cover (its slug, kind, priority, status and area, and the
 situation in one sentence: the `headline` of its STATUS.md, else what the
 triage made of it, always with where that comes from and its date), under it
 the next step large with the four verbs, then the file's drawers, folded:
-Inbox, History, Sections and References (the `related:` paths of STATUS.md),
-each only when it holds something. Under them stands the bar every list walks
+Result, Inbox, History, Files, References (the `related:` paths of STATUS.md)
+and Sections, each only when it holds something. Under them stands the bar every list walks
 with ("2 of 9", Next, keys `n` and `p`) and the next files, at most six.
 The queue is the one the focus on the start page walks, in one function
 (`queueOf` in logic.js), only wider: a tab that asks about a task comes first,
@@ -225,6 +225,30 @@ with where it comes from and since when; with none of these the file says "No
 next step known" rather than making one up. A file a tab asks about keeps the
 verbs of its task, the tab named beside them. Every task row of the model
 carries `status` and `next` for it (`model.task_next`).
+
+The Result drawer holds what came back for the task: the starts of the
+return channel for the task or its inbox items, as the start page shows them
+(with their ways on and their forget), and the workflow runs of the last week
+that belong to it. A run belongs to a task only where every sign names the
+same open task: a mention (`task:<slug>`, `work/tasks/<slug>/` or
+`work/streams/<slug>/` in the run's name, summary, arguments or script, or a
+name that is the slug), the session it ran in being linked to the task, or
+the folder it ran in ending in the slug (a worktree, never the Bridge's own
+folder). A run that names two tasks belongs to neither. Each run says how it
+stands, since when, why it belongs here and what it left. A finished run
+whose result is not checked yet is a result that waits: it puts the file in
+the second place of the queue, its step reads "Check the result of ...", and
+the drawer stands open until **Checked** (the verb `run_seen`, kept in
+`state.json`, key `runs_seen`). The runs reach the page with the sessions
+(`runs` of the `sessions` event), read again every 30 seconds; the script of
+a run never leaves the server.
+
+The Files drawer lists the files of the task's folder besides STATUS.md:
+every `*.md` and `*.yaml` at any depth, never in a `video/` or
+`deliverables/` folder, never a hidden file or a link. A click reads one in
+place, Markdown as formatted text and anything else as it stands, with its
+path (`GET /api/task?slug=&file=`, which reads only a file that list names).
+A folder with only STATUS.md shows no Files drawer.
 
 On top of the Files view stands a search field of its own. It searches every
 task, stream and closed task (`work/tasks/`, `work/streams/`, `work/done/`),
@@ -1886,7 +1910,7 @@ share or clean up.
 | `stdout.log` | what the process itself prints: the dated line of each start, and a crash before the server is up | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) | yes: the titles |
-| `state.json` | rows hidden on the page, rows marked done or not doing, team runs started from the page, the start page's tiles and pins, how the first-run tour ended | yes: the title of each row marked done or not doing |
+| `state.json` | rows hidden on the page, rows marked done or not doing, team runs started from the page, the start page's tiles and pins, how the first-run tour ended, the workflow runs marked as checked | yes: the title of each row marked done or not doing |
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
 | `days.json` | the day book: each quota's use per day and the counts of each day (section 3), two weeks | no: numbers under ids |
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |

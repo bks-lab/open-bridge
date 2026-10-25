@@ -20,6 +20,7 @@ from typing import Any, Callable
 from .model import SETTLE_OUTCOMES, iso_date
 
 LOG_MAX_BYTES = 1024 * 1024
+RUNS_SEEN_MAX = 300         # the newest workflow runs marked as checked; an older run has long left the files view
 SESSION_LINKS_MAX = 300      # the newest links of sessions to tasks; an older one has long been resumed or forgotten
 
 
@@ -123,6 +124,9 @@ class WebStore:
         # session ends, so the task can go on in it (claude --resume, only on this machine).
         self._links = {k: v for k, v in links.items()
                        if isinstance(k, str) and isinstance(v, dict) and isinstance(v.get("task"), str)}
+        # the workflow runs whose result was checked in the files view: {run id: at_ms}
+        seen_runs = data.get("runs_seen") if isinstance(data.get("runs_seen"), dict) else {}
+        self._runs_seen = {k: v for k, v in seen_runs.items() if isinstance(k, str) and isinstance(v, (int, float))}
         self.prune()
 
     def today(self) -> str:
@@ -131,7 +135,8 @@ class WebStore:
     def _save(self) -> None:
         atomic_write_json(self.path, {"v": 1, "hidden": self._hidden, "dismissed": self._dismissed,
                                       "team_runs": self._runs, "home_tiles": self._home, "home_seen": self._seen,
-                                      "pins": self._pins, "session_links": self._links, "tour": self._tour})
+                                      "pins": self._pins, "session_links": self._links, "tour": self._tour,
+                                      "runs_seen": self._runs_seen})
 
     def prune(self) -> bool:
         """Drop hidden entries whose date has come (hidden while date > today)."""
@@ -240,6 +245,18 @@ class WebStore:
                 del self._links[drop]
             self._save()
             return True
+
+    def runs_seen(self) -> dict:
+        with self.lock:
+            return dict(self._runs_seen)
+
+    def run_seen(self, run: str) -> None:
+        """Mark a workflow run as checked: its result no longer waits in the files view"""
+        with self.lock:
+            self._runs_seen[run] = int(self.clock())
+            for drop in sorted(self._runs_seen, key=lambda k: self._runs_seen[k])[:-RUNS_SEEN_MAX]:
+                del self._runs_seen[drop]
+            self._save()
 
     def unlink_session(self, sid: str) -> bool:
         with self.lock:

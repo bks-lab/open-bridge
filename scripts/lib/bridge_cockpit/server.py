@@ -410,6 +410,16 @@ class App:
     def task_open(self, slug: str) -> bool:
         return bool(slug) and (self.root / "work" / "tasks" / slug / "STATUS.md").is_file()
 
+    def open_slugs(self) -> set:
+        """The open tasks and streams by slug: what a workflow run can belong to (sessions.run_task)"""
+        out = set()
+        for kind in ("tasks", "streams"):
+            try:
+                out |= {p.parent.name for p in (self.root / "work" / kind).glob("*/STATUS.md") if details.SLUG_RE.match(p.parent.name)}
+            except OSError:
+                pass
+        return out
+
     def link_tab_sessions(self) -> bool:
         """A session in a task tab (BRIDGE_TAB_SLUG names an open task) is linked to that task by itself;
         True when a link is new. A team tab names its task too; an inbox tab names no task."""
@@ -429,7 +439,10 @@ class App:
         sids = {x.get("sid") for x in live}
         kept = [{"sid": sid, **v, "live": sid in sids} for sid, v in links.items() if self.task_open(v.get("task", ""))]
         kept.sort(key=lambda v: -v.get("at_ms", 0))
-        return {"at_ms": self.tabs.at_ms, "sessions": live, "links": kept}
+        # the workflow runs bound to an open task (sessions.run_task), each with whether it was checked
+        seen, slugs = self.store.runs_seen(), self.open_slugs()
+        runs = [{**r, "seen": r["id"] in seen} for r in self.sessions.run_state() if r["task"] in slugs]
+        return {"at_ms": self.tabs.at_ms, "sessions": live, "links": kept, "runs": self.scrub_tree(runs)}
 
     def on_tabs(self, alerts: list[dict]) -> None:
         state = self.tabs_state()
@@ -451,7 +464,9 @@ class App:
         try:
             relay = frozenset(h["session"] for h in self.relay.heartbeats(self.clock()))
             changed = self.sessions.refresh(self.tabs.tab_list(), self.clock(), self.tabs.control_ref(), relay)
-            if self.link_tab_sessions() or changed:
+            linked = self.link_tab_sessions()
+            ran = self.sessions.refresh_runs(self.clock(), self.open_slugs(), self.store.session_links(), self.root)
+            if linked or changed or ran:
                 self.broadcast("sessions", self.sessions_state())
         except Exception as exc:  # noqa: BLE001 - the sessions page is an extra, never a reason for the tabs to stop
             self.log_error(f"sessions: {exc!r}")
@@ -859,9 +874,15 @@ class Handler(BaseHTTPRequestHandler):
             if folder is not None and (len(folder) > 200 or folder.split("/")[-1] != slug):
                 self.send_error_json("invalid_argument", "not a folder of this task", "path")
                 return
-            result = details.task_detail(app.root, slug, app.inbox_listing(), folder)
+            # file: one file of the folder, as the listing names it (the files view reads it in place)
+            rel = one("file") or None
+            if rel is not None and (len(rel) > 300 or not details.FILE_RE.match(rel)):
+                self.send_error_json("invalid_argument", "not a file of this task", "file")
+                return
+            result = details.task_file(app.root, slug, rel, folder) if rel is not None \
+                else details.task_detail(app.root, slug, app.inbox_listing(), folder)
             if result is None:
-                self.send_error_json("not_found", "no such task")
+                self.send_error_json("not_found", "no such file" if rel is not None else "no such task")
             else:
                 self.send_json(200, app.scrub_tree(result))
         elif path == "/api/find":

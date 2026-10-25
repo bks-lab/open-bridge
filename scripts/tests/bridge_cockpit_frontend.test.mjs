@@ -4996,7 +4996,7 @@ test('n and p walk the files view the way its bar does, the one files queue', ()
   const app = read('app.js')
   const body = app.match(/\/\/ n \/ p in the files view[\s\S]*?\n  \}/)[0]
   assert.match(body, /workViewOf\(s\.ui\.workView, workPageOf\(s\.model\?\.pages\), s\.jev\) === 'dossier'/)
-  assert.match(body, /fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\)\)/)
+  assert.match(body, /fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\), s\.sessions\?\.runs\)/)
   assert.match(body, /focusIndex\(queue, s\.ui\.dossierAt\) \+ \(key === 'n' \? 1 : -1\)/)
   assert.match(body, /ctl\.dossierWalk\(queue\[to\]\.id, to\)/)
 })
@@ -5139,4 +5139,50 @@ test('files: the command box searches before it parses codes, and a suggestion s
   const header = read('views/header.js')
   assert.equal((header.match(/\(s\.quick\?\.convs \?\? \[\]\)\.some\(chatRunning\)/g) ?? []).length, 2)
   assert.doesNotMatch(header, /\(s\.quick\?\.convs \?\? \[\]\)\.some\(x => x\.running\)/)
+})
+
+// ---------------------------------------------------------------- the files view: workflow runs and results (E3)
+
+test('a workflow run bound to a task: a finished one not yet checked waits as its result, a running or checked one does not', () => {
+  const model = { sections: [{ id: 'work', rows: [fileTask('alpha', 'P2'), fileTask('beta', 'P3'), fileTask('gamma', 'P1'),
+    fileTask('parked', 'P1', { status: 'backlog' })] }], returns: [] }
+  const runs = [
+    { id: 'wf_a', task: 'beta', name: 'plan-beta', status: 'completed', seen: false, ended_ms: 5, summary: 'Plan it' },
+    { id: 'wf_b', task: 'gamma', name: 'g', status: 'running', seen: false, ended_ms: null },
+    { id: 'wf_c', task: 'alpha', name: 'a', status: 'completed', seen: true, ended_ms: 4 },
+    { id: 'wf_d', task: 'parked', name: 'p', status: 'completed', seen: false, ended_ms: 3 },
+    { id: 'wf_e', task: 'alpha', name: 'k', status: 'killed', seen: false, ended_ms: 3 },
+  ]
+  const q = logic.fileQueue([], model, 10, runs)
+  assert.deepEqual(q.map(x => [x.slug, x.reason]), [['beta', 'result'], ['alpha', 'task'], ['gamma', 'task']])
+  assert.equal(q[0].result.key, 'wf:wf_a')
+  assert.equal(q[0].result.kind, 'run')
+  assert.deepEqual(logic.dossierStep(q[0]), { what: 'plan-beta', from: 'run', since: 5 })
+  // a start's result still comes first: it is the person's own hand-over
+  const both = logic.fileQueue([], { ...model, returns: [{ key: 'task:alpha', item: 'alpha', stage: 'result', at_ms: 1 }] }, 10, runs)
+  assert.deepEqual(both.map(x => [x.slug, x.reason]).slice(0, 2), [['alpha', 'result'], ['beta', 'result']])
+  // without runs the queue is as before
+  assert.deepEqual(logic.fileQueue([], model, 10).map(x => x.reason), ['task', 'task', 'task'])
+})
+
+test('the results of a file: the starts of its task and of its inbox items, and its workflow runs', () => {
+  const model = {
+    sections: [{ id: 'now', rows: [{ key: 'inbox:1', inbox_id: '1', task: 'alpha', title: 'x' }] }, { id: 'work', rows: [fileTask('alpha', 'P2')] }],
+    returns: [{ key: 'task:alpha', item: 'alpha', stage: 'result', at_ms: 1, title: 'A' }, { key: 'inbox:1', item: '1', stage: 'done', at_ms: 2 },
+      { key: 'task:beta', item: 'beta', stage: 'result', at_ms: 1 }],
+  }
+  const runs = [{ id: 'wf_a', task: 'alpha', status: 'completed', seen: false }, { id: 'wf_b', task: 'beta', status: 'completed', seen: false },
+    { id: 'wf_c', task: 'alpha', status: 'running', seen: false }]
+  const r = logic.fileResults('alpha', model, [], 10, runs)
+  assert.deepEqual(r.returns.map(x => [x.key, x.live]), [['task:alpha', 'result'], ['inbox:1', 'done']])
+  assert.deepEqual(r.runs.map(x => x.id), ['wf_a', 'wf_c'])
+  assert.equal(r.waiting, 2, 'a result and a finished run not yet checked')
+  assert.deepEqual(logic.fileResults('none', model, [], 10, runs), { returns: [], runs: [], waiting: 0 })
+})
+
+test('every walk of the files view reads the workflow runs of the sessions state', () => {
+  const app = read('app.js')
+  assert.equal((app.match(/fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\), s\.sessions\?\.runs\)/g) ?? []).length, 2)
+  assert.match(read('views/dossier.js'), /fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\), s\.sessions\?\.runs\)/)
+  assert.match(read('api.js'), /file=\$\{encodeURIComponent\(file\)\}/)
 })

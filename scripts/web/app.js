@@ -910,11 +910,13 @@ const ctl = {
   openFile(slug, path) {
     const closed = typeof path === 'string' && path.startsWith('work/done/')
     const s = store.get()
-    const queue = closed ? [] : fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now())
+    const queue = closed ? [] : fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now(), s.sessions?.runs)
     const i = queue.findIndex(x => x.slug === slug)
     setUi(i >= 0 ? { dossierAt: { id: queue[i].id, i }, dossierOpen: null } : { dossierOpen: closed ? path : slug })
   },
   closeFile: () => setUi({ dossierOpen: null }),
+  // one file of a task's folder (the Files drawer), read in place; `path` the folder of a closed copy, or null
+  taskFile: (slug, file, path) => api.taskFile(slug, file, path),
   // a question in a file or about the results: a quick read-only chat with the file (or the list) as data;
   // `task` names an open task only (dossier.js), the server checks it again
   askFile: (text, context, task) => withBusy('ask:free', 'free', async () => {
@@ -1381,7 +1383,7 @@ function onKey(e) {
   // n / p in the files view of the work tab: the same walk its bar takes (views/dossier.js)
   if ((key === 'n' || key === 'p') && s.ui.page === 'briefing' && !s.ui.drawer && !s.ui.pageDetail
     && workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'dossier') {
-    const queue = fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now())
+    const queue = fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now(), s.sessions?.runs)
     const to = focusIndex(queue, s.ui.dossierAt) + (key === 'n' ? 1 : -1)
     e.preventDefault()
     return queue[to] ? ctl.dossierWalk(queue[to].id, to) : undefined

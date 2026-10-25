@@ -1435,7 +1435,8 @@ def test_hide_persists_in_state_json(world):
     world.act("hide", key="ref:example/repo#12", until="2026-10-12")
     data = json.loads((world.state / "state.json").read_text())
     assert data == {"v": 1, "hidden": {"ref:example/repo#12": "2026-10-12"}, "dismissed": {}, "team_runs": {},
-                    "home_tiles": None, "home_seen": None, "pins": [], "session_links": {}, "tour": None}
+                    "home_tiles": None, "home_seen": None, "pins": [], "session_links": {}, "tour": None,
+                    "runs_seen": {}}
 
 
 def test_drop_on_an_inbox_item_drops_it_and_on_any_other_row_discards_it_for_good(world):
@@ -7595,3 +7596,115 @@ def test_taking_over_a_next_step_writes_it_through_task_py_and_leaves_an_audit_l
     world.runner.handlers["task.next"] = lambda argv: fail("no such task")
     res = world.act("task_set_next", key="task:demo-task", text="Call")
     assert res["ok"] is False
+
+
+# ---------------------------------------------------------------- the files view: workflow runs and the folder's files (E3)
+
+def workflow(home: Path, project: str, sid: str, run: str, age_s: float = 60, **data) -> Path:
+    """One wf_*.json of a session, written `age_s` seconds ago"""
+    folder = home / "projects" / project / sid / "workflows"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{run}.json"
+    path.write_text(json.dumps({"runId": run, "status": "completed", "agentCount": 3, "startTime": 1, "durationMs": 1000,
+                                "workflowName": run, "summary": "", "script": "", **data}), encoding="utf-8")
+    t = time.time() - age_s
+    os.utime(path, (t, t))
+    return path
+
+
+def test_a_workflow_run_binds_to_its_task_only_where_one_task_is_named(world, tmp_path):
+    from lib.bridge_cockpit import sessions as sess
+    slugs = {"demo-task", "other-task", "release-notes"}
+    bind = lambda text, name="x", project="-elsewhere", sid="s", links=None: sess.run_task(  # noqa: E731
+        text, name, project, sid, slugs, links or {}, home_project="-bridge")
+    assert bind("read work/tasks/demo-task/STATUS.md first") == ("demo-task", ["named"])
+    assert bind("the key task:other-task") == ("other-task", ["named"])
+    assert bind("see work/streams/release-notes/") == ("release-notes", ["named"])
+    assert bind("", name="demo-task") == ("demo-task", ["named"])
+    # two tasks named: no file, rather than the wrong one
+    assert bind("work/tasks/demo-task/ and work/tasks/other-task/") == (None, [])
+    # a longer slug is not the shorter one, a word in prose is no mention
+    assert bind("work/tasks/demo-task-two/STATUS.md") == (None, [])
+    assert bind("the demo-task is mentioned in passing") == (None, [])
+    # the session it ran in is linked to a task; the folder it ran in ends in a slug (never the Bridge itself)
+    assert bind("", sid="s1", links={"s1": {"task": "other-task"}}) == ("other-task", ["session"])
+    assert bind("", project="-Users-me-dev-wt-release-notes") == ("release-notes", ["place"])
+    assert bind("", project="-bridge-release-notes", ) == ("release-notes", ["place"])
+    assert bind("", project="-bridge") == (None, [])
+    # every signal agrees: bound; they disagree: none
+    assert bind("work/tasks/demo-task/", sid="s1", links={"s1": {"task": "demo-task"}}) == ("demo-task", ["named", "session"])
+    assert bind("work/tasks/demo-task/", sid="s1", links={"s1": {"task": "other-task"}}) == (None, [])
+
+
+def test_workflow_runs_of_the_last_week_reach_the_page_bound_to_their_task(world, tmp_path):
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    other = world.root / "work" / "tasks" / "other-task"
+    other.mkdir(parents=True, exist_ok=True)
+    (other / "STATUS.md").write_text("---\nstatus: doing\n---\n", encoding="utf-8")
+    proj = re.sub(r"[^A-Za-z0-9]", "-", str(world.root))
+    workflow(home, proj, SID2, "wf_named", script="Read work/tasks/demo-task/STATUS.md", summary="Plan the demo",
+             durationMs=5000, startTime=int(now_ms - 600_000), result={"final": "All done, see notes.md"})
+    workflow(home, proj, SID2, "wf_both", script="work/tasks/demo-task/ and work/tasks/other-task/")
+    workflow(home, proj, SID2, "wf_none", script="nothing to see")
+    workflow(home, proj, SID2, "wf_old", age_s=8 * 86400, script="work/tasks/demo-task/")
+    workflow(home, proj, SID2, "wf_broken").write_text("{nope", encoding="utf-8")
+    workflow(home, proj, SID2, "wf_running", status="running", args="task:other-task", durationMs=None)
+    world.app.tabs.poll()
+    runs = {r["id"]: r for r in world.app.sessions_state()["runs"]}
+    assert sorted(runs) == ["wf_named", "wf_running"]
+    r = runs["wf_named"]
+    assert r["task"] == "demo-task" and r["name"] == "wf_named" and r["summary"] == "Plan the demo"
+    assert r["status"] == "completed" and r["agents"] == 3 and r["how"] == ["named"] and r["seen"] is False
+    assert r["answer"] == "All done, see notes.md" and r["ended_ms"] == int(now_ms - 600_000) + 5000
+    assert "script" not in r                                            # the prompt never leaves the server
+    assert runs["wf_running"]["task"] == "other-task" and runs["wf_running"]["ended_ms"] is None
+    # a run of a task that closed since drops out
+    (other / "STATUS.md").unlink()
+    assert [x["id"] for x in world.app.sessions_state()["runs"]] == ["wf_named"]
+
+
+def test_a_workflow_run_is_marked_checked_once_and_the_mark_is_kept(world, tmp_path):
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    workflow(home, re.sub(r"[^A-Za-z0-9]", "-", str(world.root)), SID2, "wf_named", script="work/tasks/demo-task/")
+    world.app.tabs.poll()
+    sent = []
+    world.app.broadcast = lambda ev, payload: sent.append((ev, payload))
+    res = world.act("run_seen", id="wf_named")
+    assert res["ok"] is True
+    assert [r["seen"] for r in world.app.sessions_state()["runs"]] == [True]
+    assert any(ev == "sessions" and p["runs"][0]["seen"] for ev, p in sent)
+    line = (world.state / "audit.log").read_text().splitlines()[-1].split()
+    assert line[1:3] == ["run_seen", "wf_named"]
+    assert "wf_named" in json.loads((world.state / "state.json").read_text())["runs_seen"]
+    refused(world, "stale_row", "run_seen", id="wf_nothing")
+    refused(world, "invalid_argument", "run_seen", id="../etc")
+
+
+def test_task_detail_lists_the_files_of_its_folder(world):
+    folder = world.root / "work" / "tasks" / "demo-task"
+    for rel in ("notes.md", "research/a.md", "plan.yaml", "video/x.md", "deliverables/y.md", ".hidden/z.md",
+                "research/deliverables/q.md", "image.png"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_text(f"# {rel}\n", encoding="utf-8")
+    data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    assert [f["path"] for f in data["files"]] == ["notes.md", "plan.yaml", "research/a.md"]
+    assert data["files"][0]["size"] == len("# notes.md\n")
+    # one of them, to read
+    status, _, raw = world.request("GET", "/api/task?slug=demo-task&file=research/a.md", headers=world.cookie)
+    one = json.loads(raw)
+    assert status == 200 and one["file"] == "research/a.md" and one["text"] == "# research/a.md\n" and one["cut"] is False
+    for bad in ("video/x.md", "image.png", "STATUS.md", "nope.md"):
+        assert world.request("GET", f"/api/task?slug=demo-task&file={bad}", headers=world.cookie)[0] == 404, bad
+    for bad in ("../other-task/STATUS.md", "/etc/passwd", "a\\b.md"):
+        assert world.request("GET", f"/api/task?slug=demo-task&file={urllib.parse.quote(bad)}", headers=world.cookie)[0] == 400, bad
+
+
+def test_task_detail_has_no_files_where_its_folder_holds_only_status(world):
+    data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    assert data["files"] == []

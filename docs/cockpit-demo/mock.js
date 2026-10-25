@@ -718,6 +718,16 @@ export function buildState(now = Date.now(), opts = {}) {
         tab: null, agents: { running_count: 1, done_recent: 0, running: [
           { id: 'c03f9aa', type: 'general-purpose', description: 'Run the migration tests', since_ms: now - 6 * MIN, background: true }] },
         workflows: [] },
+    ],
+    // the workflow runs the server bound to an open task (sessions.py run_task): one whose result waits, one checked
+    runs: empty ? [] : [
+      { id: 'wf_3fa1c2d4-a01', task: 'alpha-release', name: 'release-check', status: 'completed', seen: false, agents: 5,
+        since_ms: now - 50 * MIN, ended_ms: now - 35 * MIN, at_ms: now - 35 * MIN, sid: '7a16c7b2-0000-4000-8000-000000000001',
+        how: ['named'], summary: 'Check the release candidate against the checklist',
+        answer: 'Two items open: the changelog misses the fix for the export, and the upgrade note names the old flag.' },
+      { id: 'wf_9b0e7f12-c33', task: 'docs-refresh', name: 'docs-outline', status: 'completed', seen: true, agents: 3,
+        since_ms: now - 26 * 60 * MIN, ended_ms: now - 25 * 60 * MIN, at_ms: now - 25 * 60 * MIN,
+        sid: 'd8db96ad-0000-4000-8000-000000000002', how: ['session'], summary: 'Outline the new getting-started page', answer: null },
     ] },
   }, WORDS[opts.lang])
 }
@@ -808,7 +818,20 @@ function taskDetail(slug, state) {
       { at: '2026-10-08 16:20', glyph: 'n', context: slug, text: 'Outline written, examples collected' },
       { at: '2026-10-03 11:05', glyph: 'n', context: slug, text: 'Task opened after the team call' },
     ],
+    // the files of its folder besides STATUS.md (details.py folder_files)
+    files: MOCK_FILES.map(f => ({ path: f.path, size: f.text.length })),
   }
+}
+
+// the files of a task folder, read in place in the files view (/api/task?file=)
+const MOCK_FILES = [
+  { path: 'notes.md', text: '# Notes\n\nThe outline is agreed. **Open:** who reviews the second chapter.\n\n- Draft chapter one\n- Collect screenshots' },
+  { path: 'research/options.yaml', text: 'options:\n  - name: one page\n    effort: small\n  - name: a guide in chapters\n    effort: medium\n' },
+]
+
+function taskFile(slug, file) {
+  const f = MOCK_FILES.find(x => x.path === file)
+  return f ? { ok: true, slug, file, text: f.text, cut: false } : null
 }
 
 // the tokens of 7, 30 or 90 days (usage.py view(days=n)): invented counts per day and source, today a little loud;
@@ -1138,6 +1161,10 @@ export function createMockTransport(opts = {}) {
       }
       if (url.pathname === '/api/state') return ok(state)
       if (url.pathname === '/api/inbox') return ok(inboxDetail(url.searchParams.get('id'), state))
+      if (url.pathname === '/api/task' && url.searchParams.get('file')) {
+        const found = taskFile(url.searchParams.get('slug'), url.searchParams.get('file'))
+        return found ? ok(found) : fail(404, 'not_found', 'no such file')
+      }
       if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug'), state))
       if (url.pathname === '/api/find') {
         const q = String(url.searchParams.get('q') ?? '')
@@ -1417,6 +1444,12 @@ export function createMockTransport(opts = {}) {
           result.muted = `20261010-1200-mock-${mockMutes.length}`
           mockMutes.push({ id: result.muted, source: 'homebox/health', scope: args.reason,
             ...(args.reason === 'source' ? { until: '2026-11-09' } : { key_prefix: 'health:crash:' }) })
+        }
+        if (verb === 'run_seen') {
+          // a workflow run's result checked: it no longer waits in its task's file (the server's sessions event)
+          state.sessions = { ...state.sessions, runs: (state.sessions?.runs ?? []).map(r => (r.id === args.id ? { ...r, seen: true } : r)) }
+          result.note = 'Mock: result checked'
+          wait(() => emit('sessions', state.sessions), 80)
         }
         if (verb === 'inbox_unmute') mockMutes.splice(0, mockMutes.length, ...mockMutes.filter(r => r.id !== args.id))
         if (verb === 'snapshot_list') result.note = 'Mock: 3 snapshots, latest 09:00'

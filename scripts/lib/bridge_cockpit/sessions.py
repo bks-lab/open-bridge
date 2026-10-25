@@ -9,6 +9,13 @@ workflows/wf_*.json per run with its status and agent count. The cmux tab of a s
 CMUX_SURFACE_ID in the process environment, the tmux tab from TMUX_PANE (%3, the tmux driver's id and
 ref of a tab), read once per pid with `ps` and matched to the tab list, so the page can jump to it. Only
 that one variable is kept; the rest of the environment is dropped.
+
+The workflow runs of the last week, of every session (ended ones too), are bound to the open task they belong
+to, for the task's file in the files view (`runs`): a run belongs to a task only where every sign names the same
+one, never by a guess. The signs are a mention (`task:<slug>`, `work/tasks/<slug>/`, `work/streams/<slug>/` in
+its name, summary, arguments or script, or a name that is the slug), the session it ran in being linked to the
+task, and the folder it ran in ending in the slug (a worktree; never the Bridge's own folder). Two tasks named
+make no binding. Only what the page shows leaves the server: never the script.
 Everything here only reads; a file that does not parse is skipped.
 """
 from __future__ import annotations
@@ -29,6 +36,10 @@ PANE_RE = re.compile(r"(?:^|\s)TMUX_PANE=(%\d+)(?:\s|$)")    # a tab of the tmux
 TAB_SLUG_RE = re.compile(r"(?:^|\s)BRIDGE_TAB_SLUG=([A-Za-z0-9][A-Za-z0-9._-]*)(?:\s|$)")
 PS = "/bin/ps"
 WF_ACTIVE = frozenset({"running", "pending", "started", "in_progress", "paused"})
+RUN_KEEP_MS = 7 * 24 * 3600 * 1000   # a workflow run older than a week is no longer the file's
+RUNS_MAX = 40                        # the newest bound runs the page gets
+RUN_SCAN_MS = 30_000                 # the runs are read again at most this often (and when the open tasks change)
+ANSWER_MAX = 600
 
 
 def claude_dir() -> Path:
@@ -108,6 +119,59 @@ def workflows(folder: Path) -> list[dict]:
     return out
 
 
+def _mention_re(slug: str) -> re.Pattern:
+    tail = r"(?![A-Za-z0-9_-])"
+    return re.compile(rf"(?<![A-Za-z0-9_-])task:{re.escape(slug)}{tail}|(?<![A-Za-z0-9_.-])work/(?:tasks|streams)/{re.escape(slug)}{tail}")
+
+
+def run_task(text: str, name: str, project: str, sid: str, slugs: set, links: dict,
+             home_project: str = "") -> tuple[str | None, list]:
+    """(task, signs) of a workflow run: the one open task every sign names, with the signs that named it
+    ("named", "session", "place"); (None, []) when none names one, or two different tasks are named"""
+    found: dict[str, set] = {}
+    for slug in slugs:
+        if name == slug or (slug in text and _mention_re(slug).search(text)):
+            found.setdefault(slug, set()).add("named")
+        if project != home_project and project.endswith("-" + slug):
+            found.setdefault(slug, set()).add("place")
+    linked = (links.get(sid) or {}).get("task") if sid else None
+    if isinstance(linked, str) and linked in slugs:
+        found.setdefault(linked, set()).add("session")
+    if len(found) != 1:
+        return None, []
+    slug, signs = next(iter(found.items()))
+    return slug, [x for x in ("named", "session", "place") if x in signs]
+
+
+def _answer(result: Any) -> str | None:
+    """What a run left as its result, as a few lines: a text, else its `final`, else its first text"""
+    if isinstance(result, dict):
+        result = result.get("final") if isinstance(result.get("final"), str) else next(
+            (v for v in result.values() if isinstance(v, str)), None)
+    elif isinstance(result, list):
+        result = next((v for v in result if isinstance(v, str)), None)
+    return result.strip()[:ANSWER_MAX] if isinstance(result, str) and result.strip() else None
+
+
+def read_run(path: Path) -> dict | None:
+    """One wf_*.json as the page knows it, with the text its task is found in (kept here, never sent)"""
+    wf = _json(path)
+    if not isinstance(wf, dict):
+        return None
+    args = wf.get("args")
+    start = wf.get("startTime") if isinstance(wf.get("startTime"), (int, float)) else None
+    took = wf.get("durationMs") if isinstance(wf.get("durationMs"), (int, float)) else None
+    status = str(wf.get("status") or "").lower() or "unknown"
+    name = _text(wf.get("workflowName"), 80) or path.stem
+    return {"id": path.stem, "name": name, "status": status, "summary": _text(wf.get("summary"), 300),
+            "agents": wf.get("agentCount") if isinstance(wf.get("agentCount"), int) else None,
+            "since_ms": int(start) if start is not None else None,
+            "ended_ms": int(start + took) if start is not None and took is not None and status not in WF_ACTIVE else None,
+            "answer": _answer(wf.get("result")),
+            "_text": " ".join(x if isinstance(x, str) else json.dumps(x) for x in
+                              (wf.get("workflowName"), wf.get("summary"), args, wf.get("script")) if x)}
+
+
 class Sessions:
     """Scans on demand (after each tab poll); keeps the surface of a pid, which never changes."""
 
@@ -118,6 +182,10 @@ class Sessions:
         self.lock = threading.Lock()
         self.surfaces: dict[int, tuple[str | None, str | None]] = {}
         self.last: list[dict] = []
+        self.run_cache: dict[str, tuple[tuple, dict | None]] = {}   # path -> ((mtime, size), read_run)
+        self.runs: list[dict] = []
+        self.runs_key: tuple = ()
+        self.runs_at = None
 
     def env_of(self, pid: int) -> tuple[str | None, str | None]:
         """(terminal tab: cmux surface or tmux pane, task slug of the tab) from the process environment;
@@ -183,6 +251,53 @@ class Sessions:
     def state(self) -> list[dict]:
         with self.lock:
             return list(self.last)
+
+    def scan_runs(self, now_ms: float, slugs: set, links: dict, home: Path | None = None) -> list[dict]:
+        """The workflow runs of the last week that belong to one of these open tasks, newest first"""
+        base = self.base or claude_dir()
+        home_project = project_slug(str(home)) if home else ""
+        found, seen = [], set()
+        try:
+            files = list((base / "projects").glob("*/*/workflows/wf_*.json"))
+        except OSError:
+            files = []
+        for path in files:
+            try:
+                st = path.stat()
+            except OSError:
+                continue
+            if now_ms - st.st_mtime * 1000 > RUN_KEEP_MS:
+                continue
+            key, stamp = str(path), (st.st_mtime_ns, st.st_size)
+            seen.add(key)
+            cached = self.run_cache.get(key)
+            run = cached[1] if cached and cached[0] == stamp else read_run(path)
+            self.run_cache[key] = (stamp, run)
+            if run is None:
+                continue
+            sid = path.parent.parent.name
+            task, how = run_task(run["_text"], run["name"], path.parent.parent.parent.name, sid, slugs, links, home_project)
+            if task:
+                found.append({**{k: v for k, v in run.items() if k != "_text"}, "task": task, "how": how,
+                              "sid": sid, "at_ms": int(st.st_mtime * 1000)})
+        self.run_cache = {k: v for k, v in self.run_cache.items() if k in seen}
+        found.sort(key=lambda r: -r["at_ms"])
+        return found[:RUNS_MAX]
+
+    def refresh_runs(self, now_ms: float, slugs: set, links: dict, home: Path | None = None) -> bool:
+        """Read the runs again when a while has passed or the open tasks or links changed; True on a change"""
+        key = (tuple(sorted(slugs)), json.dumps({k: (v or {}).get("task") for k, v in links.items()}, sort_keys=True))
+        if self.runs_at is not None and key == self.runs_key and now_ms - self.runs_at < RUN_SCAN_MS:
+            return False
+        new = self.scan_runs(now_ms, slugs, links, home)
+        with self.lock:
+            changed = new != self.runs
+            self.runs, self.runs_key, self.runs_at = new, key, now_ms
+        return changed
+
+    def run_state(self) -> list[dict]:
+        with self.lock:
+            return [dict(r) for r in self.runs]
 
     def refresh(self, tabs: list[dict], now_ms: float, control_ref: str | None,
                 relay_sessions: frozenset = frozenset()) -> bool:
