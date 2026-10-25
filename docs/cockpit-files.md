@@ -1,5 +1,5 @@
 ---
-summary: "The cockpit's files view: one task at a time as a file on the work tab, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, and the switches cockpit.work_view and cockpit.focus_to_files."
+summary: "The cockpit's files view: one task at a time as a file on the work tab, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file behind the queue, and the switches cockpit.work_view, cockpit.focus_to_files and cockpit.files_scope."
 type: guide
 last_updated: 2026-10-25
 related:
@@ -14,8 +14,10 @@ related:
 
 > Part of [the Bridge cockpit](bridge-cockpit.md). The code is `scripts/web/files.js`,
 > `views/dossier.js`, `text-files.js` and `files.css`; the tests are
-> `scripts/tests/bridge_cockpit_files.test.mjs` and
-> `scripts/tests/bridge_cockpit_files_count.test.mjs`.
+> `scripts/tests/bridge_cockpit_files.test.mjs`,
+> `scripts/tests/bridge_cockpit_files_count.test.mjs` and
+> `scripts/tests/bridge_cockpit_files_all.test.mjs` (the list on the server:
+> `scripts/tests/test_bridge_cockpit_files_all.py`).
 
 **Files** is one more view of the work tab, on every Bridge, with or without a
 work page, beside Due and never in its place: Due stays, and stays the view the
@@ -71,7 +73,10 @@ a filter reason wins over the rest: a deferred task of another area counts as
 in other areas. A click on the line lists those tasks by why, each
 opening beside the queue like a found file, and ends with one sentence that
 backlog tasks are not in the files at all: they never reach the model, so the
-page cannot count them. Under an area that hides some, **Show every area**
+page cannot count them. With `cockpit.files_scope: all` (below) that sentence
+goes: each reason of the list leads to its chip behind the queue ("Show them
+under Resting"), and the backlog has a count of its own that opens the Backlog
+chip. Under an area that hides some, **Show every area**
 beside the line lets the filter go. With nothing in the queue, the empty view
 names the same reasons and offers the same list; with nothing left out there
 is no line.
@@ -161,7 +166,10 @@ sets neither sees the work tab as before:
   "That was the last one in this list"; `n` on the last step goes there too.
   The focus itself keeps what it walks (P0 and P1 of the tasks).
 
-Both take effect with the next start of the cockpit (`bridge-cockpit.py stop`,
+- `files_scope: all` makes every task and stream a file (below). The default
+  `active` keeps the queue alone, as it always was.
+
+All three take effect with the next start of the cockpit (`bridge-cockpit.py stop`,
 then `open`) and a reload of the page. The page says which view it opened: every opening of the work
 tab, its view switch, the search of the command box and the focus's way on
 leave one `page_view` line in the audit log with `view=` (`due`, `area`, `jev`
@@ -169,6 +177,36 @@ or `dossier`, the page's ids for Due, By source, By Jev and Files; [section 4 of
 so how often each view is used can be counted before the default changes, for
 instance with
 `grep -c ' page_view briefing view=dossier' .bridge/cockpit/audit.log`.
+
+## Every task as a file
+
+With `cockpit.files_scope: all` every task and stream is a file, and the queue
+is only the order the view walks them in. The queue stays on top, as above.
+Behind it stand five chips with their counts, "Active (n) | Waiting (n) |
+Resting (n) | Backlog (n) | All (n)"; a click on one lists its files, a second
+click folds the list again. **Active** holds the `doing` and `review` files
+that wait on nothing, **Waiting** the ones that wait on someone else (bucket
+`waiting`), **Resting** the blocked or quiet ones, the dropped ones and the
+ones put off, **Backlog** the `backlog` ones, and **All** every one. A list is
+sorted by status (`doing`, `review`, `backlog`), then priority, then the
+latest change first. A click on a file opens it the way the queue does: one in
+the queue is walked to, any other opens beside it with "Back to the queue" at
+its foot. A file that rests, is dropped, is put off (with the day it comes
+back) or waits says so as a chip on its cover and in the lists. The chips keep
+to the area filter like the queue: under an area they hold that area's files,
+and one line says how many stand in the other areas, with **Show every area**
+beside it. Closed tasks never become files here; the search finds them.
+
+The server sends the list apart from the rows (`model.files`), so nothing that
+reads the rows changes: one read of `workplace.py tasks --all --json` per pass
+that reads the tasks, of which the rows, the WIP count and the focus keep the
+`doing` and `review` ones they always had. Each file is small and flat:
+`slug`, `kind` (`task` or `stream`), `status`, `area` and `area_names` (the
+workspace the task maps to, as the rows have it), `priority`, `title`,
+`headline`, `next`, `next_who`, `next_due`, `updated`, `blocked_by`,
+`progress`, `bucket` (of the row that stands for it, none for a backlog task),
+`deferred` and `deferred_until`. With `active` the argv stays `tasks --json`
+and `model.files` is `null`. In the demo page `?files_scope=all` shows it.
 
 **Files and areas.** The files view keeps to the area filter like the rest of
 Work: the queue, its count ("2 of 5"), Previous and Next (and `n`/`p`), and with

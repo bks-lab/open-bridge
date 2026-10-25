@@ -524,6 +524,29 @@ export function buildState(now = Date.now(), opts = {}) {
     hidden_until: isoIn(5, now), actions: [A('ask')],
   })]
 
+  // every task and stream as a file (collector.files_of, cockpit.files_scope all): the ones a row stands for with
+  // that row's bucket, a deferred one, and the backlog the queue never shows
+  const fileOfRow = (r, extra = {}) => ({ slug: r.task, kind: r.stream || r.work_kind === 'stream' ? 'stream' : 'task',
+    status: r.status ?? 'doing', area: r.area ?? null, area_names: r.area_names ?? [], priority: r.priority ?? null, title: r.title,
+    headline: null, next: r.next?.from === 'status' ? r.next.what : null, next_who: null, next_due: null, updated: isoIn(-3, now),
+    blocked_by: null, progress: null, bucket: r.bucket ?? null, deferred: false, deferred_until: null, ...extra })
+  const backlog = (slug, title, area, priority, days, extra = {}) => ({ slug, kind: 'task', status: 'backlog', area, area_names: [area],
+    priority, title, headline: null, next: null, next_who: null, next_due: null, updated: isoIn(-days, now), blocked_by: null,
+    progress: null, bucket: null, deferred: false, deferred_until: null, ...extra })
+  const files = empty ? [] : [
+    fileOfRow(rows.release, { headline: 'The alpha ships with notes every reader understands', progress: { done: 2, total: 5 }, updated: isoIn(0, now) }),
+    fileOfRow(rows.demo, { next_who: 'me', next_due: isoIn(2, now), progress: { done: 1, total: 4 }, updated: isoIn(-1, now) }),
+    fileOfRow(rows.quiet, { updated: isoIn(-34, now) }), fileOfRow(rows.waits, { bucket: 'waiting', next_who: 'the vendor', updated: isoIn(-8, now) }),
+    fileOfRow(rows.index), fileOfRow(rows.cleanup, { updated: isoIn(-5, now) }), fileOfRow(rows.onboarding, { updated: isoIn(-2, now) }),
+    fileOfRow(rows.idea, { blocked_by: 'a decision on the report layout', updated: isoIn(-12, now) }),
+    fileOfRow({ task: 'license-audit', title: 'Audit the licenses of the example dependencies', area: 'Ops', area_names: ['Ops'], priority: 'P2',
+      bucket: 'tasks' }, { deferred: true, deferred_until: isoIn(12, now), updated: isoIn(-6, now) }),
+    backlog('docs-search', 'Add a search to the docs site', 'Docs', 'P2', 9),
+    backlog('metrics-export', 'Export the weekly metrics as CSV', 'Ops', 'P3', 21),
+    backlog('customer-faq', 'Collect the questions of the first customers into an FAQ', 'Demo', 'P1', 4, { headline: 'Answers before anyone asks twice' }),
+    backlog('mobile-layout', 'Check the report on a phone', 'Docs', 'P3', 40),
+  ]
+
   const item = (index, over) => ({
     index, title: '', detail: '', when: '', tone: null, link: null, task: null, ask: false, mark: null,
     priority: null, state: null, lines: [], meter: null, starting: false, tab: null, origin: null, work_kind: null, about_kind: null, ...over,
@@ -702,6 +725,7 @@ export function buildState(now = Date.now(), opts = {}) {
       },
       pages,
       alarms: empty ? [] : [{ page_id: 'systems', page_title: 'Systems', section_title: 'Checks', count: 1 }],
+      files,
       teams: [
         { id: 'build', label: 'Build', for_types: ['feature'], roles: [{ id: 'implement', name: 'Implement', mode: 'go' }, { id: 'review', name: 'Review', mode: 'report' }] },
         { id: 'research', label: 'Research', for_types: ['research'], roles: [{ id: 'evidence', name: 'Evidence', mode: 'report' }, { id: 'counter', name: 'Counter', mode: 'report' }, { id: 'summary', name: 'Summary', mode: 'report' }] },
@@ -728,7 +752,9 @@ export function buildState(now = Date.now(), opts = {}) {
     // the first-run tour: ended in the demo unless ?tour=1 asks for a first visit
     tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
     // the work tab as the config sets it (cockpit.work_view, cockpit.focus_to_files): ?work=files and ?focus_to_files=1
-    work: { view: ['due', 'source', 'jev', 'files'].includes(opts.work) ? opts.work : 'due', focus_to_files: opts.focusToFiles === true },
+    // and which tasks are files (cockpit.files_scope): the queue alone as the default config, ?files_scope=all for every one
+    work: { view: ['due', 'source', 'jev', 'files'].includes(opts.work) ? opts.work : 'due', focus_to_files: opts.focusToFiles === true,
+      files_scope: opts.filesScope === 'all' ? 'all' : 'active' },
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
       { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
@@ -863,7 +889,9 @@ function taskDetail(slug, state) {
   const rows = [...(state?.model?.sections ?? []).flatMap(s => s.rows ?? []),
     ...(state?.model?.pages ?? []).flatMap(p => (p.sections ?? []).flatMap(s => s.items ?? []))]
   // the task's own row, not an inbox item that names the task
-  const row = rows.find(r => r?.task === slug && !r.inbox_id && !r.inbox) ?? rows.find(r => r?.task === slug) ?? {}
+  const listed = (state?.model?.files ?? []).find(f => f.slug === slug)
+  const row = rows.find(r => r?.task === slug && !r.inbox_id && !r.inbox) ?? rows.find(r => r?.task === slug)
+    ?? (listed ? { title: listed.title, priority: listed.priority, state: listed.status, stream: listed.kind === 'stream' } : {})
   const done = slug === DONE_FILE.slug
   // what the server sends (details.py task_detail): the four kinds by the folder, the origin as origin.py names it,
   // and the open inbox items that name the task, each with who filed it
@@ -1205,7 +1233,13 @@ export function createMockTransport(opts = {}) {
     })
     history.unshift({ id: `h${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, at_ms: now(), verb, items, backfilled: false })
   }
-  const removeRows = keys => {
+  const removeRows = (keys, verb) => {
+    // a file put off stays a file, deferred; one closed or dropped leaves the list
+    if (state.model.files) {
+      const put = ['later', 'hide'].includes(verb)
+      state.model.files = state.model.files.flatMap(f => (!keys.includes(`task:${f.slug}`) ? [f]
+        : put ? [{ ...f, deferred: true, deferred_until: isoIn(3, now()) }] : []))
+    }
     for (const s of state.model.sections) {
       s.rows = s.rows.filter(r => !keys.includes(r.key))
       s.compact = s.compact.filter(k => !keys.includes(k))
@@ -1502,7 +1536,7 @@ export function createMockTransport(opts = {}) {
         if (['drop', 'done', 'later', 'hide', 'task_close', 'settle'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
           result.settled = keys
           remember(verb, keys)
-          removeRows(keys)
+          removeRows(keys, verb)
         }
         if (['task_reopen', 'inbox_reopen', 'unhide'].includes(verb)) {
           // the undo of the history drawer: the newest item that hands out exactly this undo is taken back

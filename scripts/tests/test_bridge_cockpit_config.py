@@ -249,12 +249,12 @@ def test_the_state_hands_the_work_view_and_the_focus_switch_to_the_page(tmp_path
     base = "cockpit:\n  enabled: true\n  language: en\n"
     w = World(tmp_path / "a", config=base, serve=False, prepare=False)
     try:
-        assert w.app.state_payload()["work"] == {"view": "due", "focus_to_files": False}
+        assert w.app.state_payload()["work"] == {"view": "due", "focus_to_files": False, "files_scope": "active"}
     finally:
         w.close()
     w = World(tmp_path / "b", config=base + "  work_view: files\n  focus_to_files: true\n", serve=False, prepare=False)
     try:
-        assert w.app.state_payload()["work"] == {"view": "files", "focus_to_files": True}
+        assert w.app.state_payload()["work"] == {"view": "files", "focus_to_files": True, "files_scope": "active"}
     finally:
         w.close()
 

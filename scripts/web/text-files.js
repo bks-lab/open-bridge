@@ -36,7 +36,16 @@ export const FILES = {
       },
       until: day => `until ${day}`, untilShown: 'until you show it again',
       backlog: 'Backlog tasks are not in the files at all.',
+      toShelf: name => `Show them under ${name}`, toBacklog: n => (n === 1 ? '1 more in the backlog' : `${n} more in the backlog`),
     },
+    shelf: {
+      label: 'Every file behind the queue',
+      chip: { active: 'Active', waiting: 'Waiting', resting: 'Resting', backlog: 'Backlog', all: 'All' },
+      none: 'No file stands here.', elsewhere: (n, area) => `${n} more in other areas than ${area}.`,
+      updated: day => `changed ${day}`,
+    },
+    reason: { resting: 'resting', drop: 'dropped', deferred: 'deferred', waiting: 'waiting' },
+    reasonUntil: day => `deferred until ${day}`,
     find: {
       label: 'Search the files, closed ones too', placeholder: 'Search the files', title: 'Search results', show: 'Show results', hide: 'Fold results', button: 'Search', clear: 'Clear',
       loading: 'Searching', none: q => `Nothing found for "${q}".`, failed: e => `The search failed: ${e}`,
@@ -95,7 +104,16 @@ export const FILES = {
       },
       until: day => `bis ${day}`, untilShown: 'bis du sie wieder zeigst',
       backlog: 'Backlog-Aufgaben stehen gar nicht in den Akten.',
+      toShelf: name => `Unter ${name} zeigen`, toBacklog: n => (n === 1 ? '1 weitere im Backlog' : `${n} weitere im Backlog`),
     },
+    shelf: {
+      label: 'Alle Akten hinter der Schlange',
+      chip: { active: 'Aktiv', waiting: 'Wartet', resting: 'Ruhend', backlog: 'Backlog', all: 'Alle' },
+      none: 'Hier steht keine Akte.', elsewhere: (n, area) => `${n} weitere in anderen Bereichen als ${area}.`,
+      updated: day => `geändert ${day}`,
+    },
+    reason: { resting: 'ruhend', drop: 'verworfen', deferred: 'zurückgestellt', waiting: 'wartend' },
+    reasonUntil: day => `zurückgestellt bis ${day}`,
     find: {
       label: 'Akten durchsuchen, auch erledigte', placeholder: 'Akten durchsuchen', title: 'Suchtreffer', show: 'Treffer zeigen', hide: 'Treffer einklappen', button: 'Suchen', clear: 'Leeren',
       loading: 'Suche läuft', none: q => `Nichts gefunden für „${q}“.`, failed: e => `Die Suche ging nicht: ${e}`,

@@ -602,6 +602,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/work-find.py",                               # the search over work/ (files view, chat sessions)
     "scripts/lib/work_find.py",
     "scripts/tests/test_bridge_cockpit_find.py",
+    "scripts/tests/test_bridge_cockpit_files_all.py",
     "scripts/tests/test_bridge_cockpit_triage.py",
     "scripts/tests/test_bridge_cockpit_ticker.py",
     "scripts/tests/test_bridge_cockpit_guide.py",
@@ -704,6 +705,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_chat_a2a.test.mjs",
     "scripts/tests/bridge_cockpit_toast_go.test.mjs",   # a toast that names its place leads there
     "scripts/tests/test_bridge_cockpit_note_go.py",
+    "scripts/tests/bridge_cockpit_files_all.test.mjs",
     # Registered with the scheduled archive. It runs DAILY and does only the
     # mechanical half; the judgement half is recorded as owed. lib/bridge-python.sh
     # is the one interpreter resolver the currency jobs share, so a fix lands once.

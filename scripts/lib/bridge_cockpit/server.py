@@ -419,8 +419,9 @@ class App:
 
     def work_state(self) -> dict:
         """The work tab as the config sets it: the view it opens on (cockpit.work_view) and whether the start
-        page's focus leads on into the files view (cockpit.focus_to_files)"""
-        return {"view": getattr(self.cfg, "work_view", "due"), "focus_to_files": bool(getattr(self.cfg, "focus_to_files", False))}
+        page's focus leads on into the files view (cockpit.focus_to_files) and which tasks are files (cockpit.files_scope)"""
+        return {"view": getattr(self.cfg, "work_view", "due"), "focus_to_files": bool(getattr(self.cfg, "focus_to_files", False)),
+                "files_scope": getattr(self.cfg, "files_scope", "active")}
 
     def tour_state(self) -> dict:
         """The first-run tour: whether a first visit offers it (cockpit.tour) and how it ended, if it did"""

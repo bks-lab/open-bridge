@@ -27,6 +27,8 @@ TARGETS = ("tab", "workspace", "area", "auto")
 CHAT_LAYOUTS = ("classic", "workspaces")   # workspaces: the chat as cmux shows it (workspaces, tabs, Bridges, agents)
 # the view the work tab opens on (cockpit.work_view): Due, By source, By Jev or Files; the page maps each to its own id
 WORK_VIEWS = ("due", "source", "jev", "files")
+# which tasks the files view holds (cockpit.files_scope): the doing and review ones, or every task and stream
+FILES_SCOPES = ("active", "all")
 
 
 JEV_MODEL_RE = re.compile(r"^jev-[0-9]+(\.[0-9]+){1,2}\Z")
@@ -95,6 +97,9 @@ class WebConfig:
     work_view: str = "due"
     # the calm card of the start page's focus, and its last step, lead on into the files view (cockpit.focus_to_files)
     focus_to_files: bool = False
+    # which tasks are files (cockpit.files_scope): "active" the doing and review ones, as the view always had;
+    # "all" every task and stream but the closed ones, the queue first and the rest behind it on chips
+    files_scope: str = "active"
     # how the work tab names a source the built-in rules cannot tell (cockpit.origin_map, origin.py): pairs of
     # (pattern lower-cased, category) in file order, a tuple since the config is frozen and order matters
     origin_map: tuple = ()
@@ -176,6 +181,7 @@ BLOCK = {
     "launch_model": ("launch_model",), "ticker": ("ticker",), "usage": ("usage",),
     "session_guide": ("session_guide",), "tour": ("bool", "tour"),
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
+    "files_scope": ("choice", "files_scope", FILES_SCOPES),
     "origin_map": ("origin_map",), "describe": ("describe",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
@@ -421,6 +427,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
                     work_view=w["work_view"] if w.get("work_view") in WORK_VIEWS else "due",
                     focus_to_files=w.get("focus_to_files") is True,
+                    files_scope=w["files_scope"] if w.get("files_scope") in FILES_SCOPES else "active",
                     origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",

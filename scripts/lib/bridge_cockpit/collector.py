@@ -116,7 +116,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 runs: dict, teams: list[dict], tasks: list[dict], settled: set, starting: set, now: float,
                 seq: int, stale: bool, profile: str | None, tx: dict,
                 review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
-                describe: dict | None = None) -> tuple[dict, dict]:
+                describe: dict | None = None, files: list[dict] | None = None) -> tuple[dict, dict]:
     """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
     triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py)."""
     today = m.iso_date(now)
@@ -296,8 +296,36 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         # the one coloured number of the page bar (14.10.): what waits for you, the same count as the station
         # "waits for you" and the lead line of the start page; the approvals stand in their own section
         "briefing_badge": totals["now"],
+        # every task and stream as a file (cockpit.files_scope all), None while the files view walks the active ones
+        "files": None if files is None else files_of(files, index),
     }
     return model, index
+
+
+ACTIVE = ("doing", "review")     # the tasks every consumer but the files view reads (workplace.py ACTIVE)
+FILE_STATES = (*ACTIVE, "backlog")
+
+
+def files_of(tasks: list[dict], index: dict) -> list[dict]:
+    """Every task and stream as a file of the files view (cockpit.files_scope all), flat and small, in the order
+    workplace.py lists them: what its cover and its chip need, the bucket of the row that stands for it (None for
+    one with no row, a backlog task) and whether it is put off (deferred, until the day it comes back, None for
+    one put away until shown again). A closed task never comes in."""
+    out = []
+    for t in tasks:
+        if t.get("status") not in FILE_STATES:
+            continue
+        entry = index.get(f"task:{t['slug']}") or {}
+        row = entry.get("out") or {}
+        deferred = entry.get("hidden") is True
+        out.append({"slug": t["slug"], "kind": "stream" if t.get("kind") == "streams" else "task",
+                    "status": t["status"], "area": t.get("area") or None, "area_names": [a for a in t.get("area_names") or [] if a],
+                    "priority": t.get("priority"), "title": t.get("title") or t.get("label") or t["slug"],
+                    "headline": t.get("headline"), "next": t.get("next"), "next_who": t.get("next_who"),
+                    "next_due": t.get("next_due"), "updated": t.get("updated"), "blocked_by": t.get("blocked_by"),
+                    "progress": t.get("progress"), "bucket": row.get("bucket"), "deferred": deferred,
+                    "deferred_until": row.get("hidden_until") if deferred else None})
+    return out
 
 
 class Collector:
@@ -319,6 +347,8 @@ class Collector:
         self.ask_triage = False
         self.view: dict | None = None
         self.tasks: list[dict] = []
+        # every task and stream but the closed ones (cockpit.files_scope all), else None: model.files
+        self.all_tasks: list[dict] | None = None
         self.teams: list[dict] = []
         self.model: dict | None = None
         self.index: dict[str, dict] = {}
@@ -438,14 +468,18 @@ class Collector:
 
     def refresh_tasks(self) -> None:
         seen = task_snapshot(self.app.root)     # before the read: a change during it is read next time
-        run = self.app.run(self.app.workplace("tasks", "--json"), LIST_TIMEOUT)
+        # cockpit.files_scope all: one read of every task (the backlog too) for model.files, and every other
+        # consumer (rows, WIP, focus) keeps the doing and review ones it always had
+        every = getattr(self.app.cfg, "files_scope", "active") == "all"
+        run = self.app.run(self.app.workplace("tasks", *(["--all"] if every else []), "--json"), LIST_TIMEOUT)
         if run.ok:
             try:
                 tasks = m.parse_tasks(run.out)
             except (ValueError, TypeError):
                 return
             with self.lock:
-                self.tasks = tasks
+                self.tasks = [t for t in tasks if t["status"] in ACTIVE] if every else tasks
+                self.all_tasks = tasks if every else None
                 self.tasks_seen = seen
 
     def refresh_teams(self) -> None:
@@ -612,7 +646,7 @@ class Collector:
                 hidden=app.store.hidden(), dismissed=app.store.dismissed(), runs=app.store.team_runs(), teams=self.teams, tasks=self.tasks,
                 settled=set(self.settled), starting=self.starting_items(), now=app.clock(), seq=self.seq,
                 stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
-                origin_map=getattr(app.cfg, "origin_map", ()), **app.card_sources())
+                origin_map=getattr(app.cfg, "origin_map", ()), files=self.all_tasks, **app.card_sources())
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)

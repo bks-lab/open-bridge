@@ -71,7 +71,8 @@ export const LEFT_OUT = ['resting', 'drop', 'waiting', 'deferred', 'area', 'unpi
  *  of another area (area) or not pinned (unpinned), put off (deferred, the day it comes back as `until`, null for
  *  one put away until shown again), resting or dropped by its bucket, else waiting with nothing that asks about it
  *  (a row of a later section with no tab, result or open item). Read from the whole model, so the filter's own
- *  share shows; backlog tasks never reach the model and count nowhere. `s` the state the view sees (areaScope),
+ *  share shows; backlog tasks stand in no section and count nowhere here (with cockpit.files_scope all they stand on
+ *  their chip behind the queue, fileShelves). `s` the state the view sees (areaScope),
  *  `queue` its files. {total, groups: [{reason, rows: [{slug, row, until}]}]}, in LEFT_OUT order, none empty */
 export function queueLeftOut(s, queue) {
   const whole = s?.wholeModel ?? s?.model
@@ -92,6 +93,59 @@ export function queueLeftOut(s, queue) {
   const groups = LEFT_OUT.filter(k => by[k].length).map(reason => ({ reason, rows: by[reason] }))
   return { total: groups.reduce((n, g) => n + g.rows.length, 0), groups }
 }
+
+// the chips of every file behind the queue (cockpit.files_scope all), in the order the view shows them
+export const FILE_SHELVES = ['active', 'waiting', 'resting', 'backlog', 'all']
+
+// how the shelves sort: by status, then priority, then the latest change first
+const STATUS_RANK = { doing: 0, review: 1, backlog: 2 }
+const PRIO_RANK = { P0: 0, P1: 1, P2: 2, P3: 3 }
+
+/** Does the files view show every task and stream behind its queue? cockpit.files_scope all, and a server that
+ *  sends the list (model.files); an older server or the default `active` keeps the view as it was */
+export function filesAll(s) {
+  return s?.work?.files_scope === 'all' && Array.isArray((s?.wholeModel ?? s?.model)?.files)
+}
+
+/** The file the server lists for a slug (model.files, across every area), or null */
+export function fileOf(s, slug) {
+  return ((s?.wholeModel ?? s?.model)?.files ?? []).find(f => f.slug === slug) ?? null
+}
+
+/** Why a file stands beside the queue, as the chip on its cover: put off (deferred), dropped by its bucket,
+ *  resting (its bucket, or blocked), waiting on someone else; null for none */
+export function fileReason(f) {
+  if (!f) return null
+  if (f.deferred) return 'deferred'
+  if (f.bucket === 'drop') return 'drop'
+  if (f.bucket === 'resting' || f.blocked_by) return 'resting'
+  if (f.bucket === 'waiting') return 'waiting'
+  return null
+}
+
+/** The shelf a file stands on: backlog by its status, else waiting, resting (resting, dropped or put off) or active */
+export function fileShelf(f) {
+  if (f?.status === 'backlog') return 'backlog'
+  const why = fileReason(f)
+  return why === 'waiting' ? 'waiting' : why ? 'resting' : 'active'
+}
+
+const byFile = (a, b) => (STATUS_RANK[a.status] ?? 3) - (STATUS_RANK[b.status] ?? 3)
+  || (PRIO_RANK[a.priority] ?? 4) - (PRIO_RANK[b.priority] ?? 4)
+  || String(b.updated ?? '').localeCompare(String(a.updated ?? '')) || a.slug.localeCompare(b.slug)
+
+/** Every file behind the queue (model.files) under the area filter of Work, by shelf, each sorted by status,
+ *  priority and last change; `elsewhere` how many the area filter leaves out. {lists: {shelf: [file]}, elsewhere} */
+export function fileShelves(s) {
+  const every = (s?.wholeModel ?? s?.model)?.files ?? []
+  const area = s?.ui?.area || null
+  const files = every.filter(f => inProject(f, area)).sort(byFile)
+  const lists = Object.fromEntries(FILE_SHELVES.map(k => [k, k === 'all' ? files : files.filter(f => fileShelf(f) === k)]))
+  return { lists, elsewhere: every.length - files.length }
+}
+
+/** The folder a file opens by: its stream or task folder */
+export const fileFolder = f => `work/${f.kind === 'stream' ? 'streams' : 'tasks'}/${f.slug}`
 
 /** What a file's Result drawer holds: the starts of the return channel for its task or its inbox items (each
  *  with where it stands now, `live`), the workflow runs bound to it, and how many of them wait on you (a start
