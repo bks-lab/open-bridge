@@ -792,7 +792,8 @@ class Handler(BaseHTTPRequestHandler):
                                  "config_warnings": list(getattr(cfg, "config_warnings", ())),
                                  "config": {"port": app.port, "relay": cfg.relay, "tabs_seconds": cfg.tabs_seconds,
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
-                                            "control": cfg.control, "profile": cfg.profile}})
+                                            "control": cfg.control, "profile": cfg.profile,
+                                            "areas": list(cfg.areas)}})
         elif path == "/api/state":
             self.send_json(200, app.state_payload())
         elif path == "/api/events":

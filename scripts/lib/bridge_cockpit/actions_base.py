@@ -74,6 +74,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "inbox_unmute": {"id": ("inbox_id", True)},
     "done": {"key": ("key", True)},
     "urgency": {"key": ("key", True), "value": ("urgency", True)},
+    "area": {"key": ("key", True), "value": ("text", False)},
     "priority": {"key": ("key", True), "value": ("priority", True)},
     # stream: the page asked, and a stream among the keys ends (task.py close --stream)
     "task_close": {"keys": ("keys", True), "reason": ("close_reason", True), "text": ("text", False), "stream": ("bool", False)},

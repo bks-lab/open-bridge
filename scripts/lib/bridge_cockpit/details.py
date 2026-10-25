@@ -257,6 +257,10 @@ def inbox_detail(root: Path, item_id: str, listing: list | None) -> dict | None:
             for extra in ("until", "note", "text"):   # text: what a tab noted or closed with
                 if extra in ev:
                     entry[extra] = _scalar(ev.get(extra))
+            if entry["verb"] == "area" and ev.get("value"):
+                # the area it was given, and the router's reason when the router gave it
+                why = _scalar(ev.get("why"))
+                entry["text"] = f"{_scalar(ev.get('value'))} ({why})" if why else _scalar(ev.get("value"))
             events.append(entry)
     events = events[-EVENTS_MAX:]
     state = None

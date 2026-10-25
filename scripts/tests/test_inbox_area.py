@@ -137,9 +137,10 @@ def test_an_item_without_task_or_area_starts_place_for_itself(tmp_path, spawned,
     root = _repo(tmp_path, True)
     assert _add(root) == 0
     item_id = capsys.readouterr().out.strip()
+    assert item_id
     (argv, kw), = spawned
-    assert argv[-4:] == ["place", "--items", item_id, "--quiet"]
-    assert str(root) in argv
+    assert argv[-3:] == ["place", "--pending", "--quiet"]
+    assert str(root) in argv and kw.get("cwd") == str(root)
     assert kw.get("start_new_session") is True       # detached: the filer never waits on a model
 
 
@@ -225,3 +226,77 @@ def test_a_launched_item_without_task_goes_to_its_area(tmp_path, box):
     plain = add(box, summary="another")
     entry, = workplace.build_launch(tmp_path, cfg, [plain], "go")
     assert entry["workspace"] == "Home"                      # no area: the default, as before
+
+
+def test_a_muted_new_item_is_not_placed(tmp_path, spawned):
+    root = _repo(tmp_path, True)
+    box = inbox.Inbox(root / "work" / "inbox", actor="t")
+    first = box.add(source="cli", kind="idea", summary="noise", key="loud:1")
+    box.drop(first, reason="family")
+    _add(root, "--key", "loud:2")
+    assert spawned == []
+
+
+def _with_spaces(root):
+    (root / "bridge-config.yaml").write_text(yaml.safe_dump({"workplace": {"workspaces": SPACES}}))
+    return root
+
+
+def test_an_area_is_stored_under_its_workspace_name_whatever_alias_or_case(tmp_path, capsys):
+    root = _with_spaces(tmp_path)
+    (root / "work" / "inbox").mkdir(parents=True)
+    assert inbox.main(["--root", str(root), "add", "--from", "cli", "--kind", "idea", "--summary", "x",
+                       "--area", "OPEN-BRIDGE"]) == 0
+    item_id = capsys.readouterr().out.strip()
+    box = inbox.Inbox(root / "work" / "inbox", actor="t")
+    assert box.get(item_id).area == "Bridge"
+    assert inbox.main(["--root", str(root), "area", item_id, "home"]) == 0
+    assert box.get(item_id).area == "Home"
+
+
+def test_an_unknown_area_is_refused_by_area_and_left_out_by_add(tmp_path, capsys):
+    root = _with_spaces(tmp_path)
+    (root / "work" / "inbox").mkdir(parents=True)
+    assert inbox.main(["--root", str(root), "add", "--from", "cli", "--kind", "idea", "--summary", "x",
+                       "--area", "Hom"]) == 0
+    out = capsys.readouterr()
+    item_id = out.out.strip()
+    assert "no area here" in out.err
+    box = inbox.Inbox(root / "work" / "inbox", actor="t")
+    assert box.get(item_id).area is None
+    assert inbox.main(["--root", str(root), "area", item_id, "Mars"]) == 1
+    assert inbox.main(["--root", str(root), "area", item_id, "  "]) == 1     # blank is not a clear
+    assert box.get(item_id).area is None
+
+
+def test_place_does_not_overwrite_an_area_a_person_set_while_the_router_thought(tmp_path, box, monkeypatch):
+    a, b = add(box), add(box, summary="second")
+    answer = json.dumps([{"item": a, "workspace": "Bridge"}, {"item": b, "workspace": "Bridge"}])
+    cfg = {"workspaces": SPACES, "router": {"command": _router(tmp_path, answer)}}
+    real = workplace._ask_router
+
+    def slow(*args, **kw):
+        out = real(*args, **kw)
+        box.set_area(a, "Home")         # a person, meanwhile
+        box.close(b)                    # and a check closed the other one
+        return out
+    monkeypatch.setattr(workplace, "_ask_router", slow)
+    assert workplace.place(tmp_path, cfg, [a, b]) == []
+    assert box.get(a).area == "Home"
+
+
+def test_pending_places_everything_once_and_a_second_placer_leaves(tmp_path, box):
+    a = add(box)
+    answer = json.dumps([{"item": a, "workspace": "Home"}])
+    cfg = {"workspaces": SPACES, "router": {"command": _router(tmp_path, answer)}}
+    import fcntl
+    lock = tmp_path / workplace.PLACE_LOCK
+    lock.parent.mkdir(parents=True)
+    with open(lock, "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert workplace.place_pending(tmp_path, cfg, settle=0) == []
+    b = add(box, summary="the router does not know this one")
+    placed = workplace.place_pending(tmp_path, cfg, settle=0)
+    assert [p["item"] for p in placed] == [a]          # b was asked about once, and not again
+    assert box.get(b).area is None
+

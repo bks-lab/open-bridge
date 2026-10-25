@@ -57,6 +57,8 @@ class WebConfig:
     voice: bool
     target: str
     control: str | None
+    # the names of workplace.workspaces, in their order: the areas an inbox item can be given (detail page)
+    areas: tuple = ()
     # Jev (TypeSafe): off unless integrations.typesafe.enabled; the key only ever as a keychain reference
     jev_enabled: bool = False
     jev_key_ref: str | None = None
@@ -354,6 +356,9 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
 
     control_block = _dict(_dict(raw.get("workplace")).get("control"))
     control = control_block.get("name") if isinstance(control_block.get("name"), str) and control_block.get("name") else None
+    names = (ws.get("name") for ws in _dict(raw.get("workplace")).get("workspaces") or ()
+             if isinstance(ws, dict))
+    areas = tuple(dict.fromkeys(n.strip() for n in names if isinstance(n, str) and n.strip()))
 
     ts = _dict(_dict(raw.get("integrations")).get("typesafe"))
     ref = ts.get("key_ref")
@@ -366,7 +371,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
 
     cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
-                    voice=voice, target=target, control=control, jev_enabled=ts.get("enabled") is True,
+                    voice=voice, target=target, control=control, areas=areas, jev_enabled=ts.get("enabled") is True,
                     jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
                     jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),

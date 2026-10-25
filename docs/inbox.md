@@ -60,15 +60,22 @@ ideas apart (`kinds: [idea]`) or leave them out (`skip_kinds: [idea]`). Urgency:
 **Area.** An item linked to a task belongs to that task's area. One without a task may
 carry an `area` of its own: the name of a workspace in `workplace.workspaces`
 ([`workplace.md`](workplace.md)), given with `add --area`, changed with `inbox.py area`
-(the last `area` event wins, `--clear` takes it back). The cockpit counts it under that
-area instead of "No area", and a tab started for it opens in that workspace. With
-`inbox.place_on_add: true` in `bridge-config.yaml`, an item filed with neither a task nor an
-area places itself: `add` starts `workplace.py place --items <id>` detached, the filer
-never waits, and the configured `workplace.router` answers with one area, written as an
-`area` event by `router` with its reason. Without a router, or when it fails or names no
-configured workspace, the item stays without an area. `workplace.py place --unplaced`
-places every open item that has none yet, in one call (`--dry-run` shows the answer and
-writes nothing).
+(the last `area` event wins, `--clear` takes it back). A name or alias in any case is stored
+as the workspace's name; `area` refuses one that names no workspace, `add` warns and files
+the item without it. The cockpit counts the item under that area instead of "No area", its
+detail page has a picker to put it right, and a tab started for it opens in that workspace.
+
+With `inbox.place_on_add: true` in `bridge-config.yaml`, an item filed through the CLI
+(`inbox.py add`) with neither a task nor an area is placed by the router: `add` starts
+`workplace.py place --pending` detached, so the filer never waits. That waits two seconds
+for a burst to arrive, takes a lock so only one placer runs, and asks the configured
+`workplace.router` once about every open item without a task or an area, each item once
+per run; the answer is written as an `area` event by `router` with its reason. An item a
+person gave an area meanwhile, or one that closed, is left as it is. Without a router, or
+when it fails or names no configured workspace, the item stays without an area. Code that
+files through the `Inbox` class (the briefing's own items, which mostly name a task) places
+nothing; `workplace.py place --unplaced` catches up on every open item that has none yet
+(`--dry-run` shows the answer and writes nothing).
 
 ## States
 

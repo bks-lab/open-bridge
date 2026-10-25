@@ -159,6 +159,25 @@ function TeamBlock({ row, s, c }) {
   </div>`
 }
 
+/** The area of an inbox item without a task: one of the configured areas (workplace.workspaces), or none.
+ *  The router gives it one when it is filed; this is where a person puts it right. An item with a task
+ *  shows the task's area and has no picker */
+function AreaPick({ row, s, c, busy }) {
+  const t = T()
+  const areas = s.boot?.config?.areas ?? []
+  if (!row.inbox_id || row.task || !areas.length) return null
+  const current = row.area ?? ''
+  const names = current && !areas.includes(current) ? [...areas, current] : areas
+  return html`<div class="sub-block">
+    <h4 class="sub-title">${t.areaPrefix}</h4>
+    <select class="input input-sm area-pick" aria-label=${t.areaPrefix} disabled=${busy} value=${current}
+      onChange=${e => { const v = e.currentTarget.value; if (v !== current) c.act('area', v ? { key: row.key, value: v } : { key: row.key }) }}>
+      <option value="">${t.areaNone}</option>
+      ${names.map(a => html`<option key=${a} value=${a}>${a}</option>`)}
+    </select>
+  </div>`
+}
+
 function ActionsBlock({ row, s, c }) {
   const t = T()
   const busy = !!s.ui.busy[row.key]
@@ -171,7 +190,8 @@ function ActionsBlock({ row, s, c }) {
       <h4 class="sub-title">${t.urgencyPrefix}</h4>
       <${Segmented} label=${t.urgencyPrefix} busy=${busy} current=${row.urgency}
         values=${['now', 'today', 'later'].map(v => [v, t.urgency[v]])} onPick=${v => c.act('urgency', { key: row.key, value: v })} />
-    </div>` : row.task ? html`<div class="sub-block">
+    </div>
+    <${AreaPick} row=${row} s=${s} c=${c} busy=${busy} />` : row.task ? html`<div class="sub-block">
       <h4 class="sub-title">${t.prioPrefix}</h4>
       <${Segmented} label=${t.prioPrefix} busy=${busy} current=${row.priority}
         values=${['P0', 'P1', 'P2', 'P3'].map(v => [v, v])} onPick=${v => c.act('priority', { key: row.key, value: v })} />

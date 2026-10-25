@@ -218,6 +218,7 @@ def s_to_task(w: World) -> None:
 
 def s_inbox_edits(w: World) -> None:
     w.act("urgency", key=f"inbox:{YES_ID}", value="now")
+    w.act("area", key=f"inbox:{YES_ID}")          # no areas configured here: taking it back still runs inbox.py
     w.act("note", key=f"inbox:{YES_ID}", text="--yes; a note that looks like a flag")
     w.act("drop", key=f"inbox:{YES_ID}", reason="family")
     w.act("inbox_unmute", id="20261017-1800-mini-daily-health-ab12")
@@ -365,7 +366,7 @@ SCENARIOS = {
     "filed": Scenario(s_filed, {"inbox.add", "workplace.launch"}),
     "waits": Scenario(s_waits, {"inbox.defer", "task.wait"}),
     "to_task": Scenario(s_to_task, {"task.new"}),
-    "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
+    "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.area", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
     "task_edits": Scenario(s_task_edits, {"task.priority", "task.note", "task.next", "task.close"}),
     "settle": Scenario(s_settle, {"inbox.close", "inbox.drop", "task.close", "task.log"}),
     "reopen": Scenario(s_reopen, {"task.reopen", "inbox.reopen"}),

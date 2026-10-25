@@ -257,3 +257,11 @@ def test_the_state_hands_the_work_view_and_the_focus_switch_to_the_page(tmp_path
         assert w.app.state_payload()["work"] == {"view": "files", "focus_to_files": True}
     finally:
         w.close()
+
+
+def test_the_areas_are_the_names_of_the_configured_workspaces(tmp_path):
+    spaces = [{"name": "Bridge"}, {"name": " Home "}, {"name": ""}, {"slugs": ["x-*"]}, "junk", {"name": "Bridge"}]
+    cfg = load_web_config(tmp_path, {"workplace": {"workspaces": spaces}})
+    assert cfg.areas == ("Bridge", "Home")
+    assert load_web_config(tmp_path, {}).areas == ()
+

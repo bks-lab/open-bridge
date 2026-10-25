@@ -289,6 +289,23 @@ class WorkVerbs:
         else:
             ctx.note(self.tx["urgency_failed"].format(err=m.short(run.err, 100)), bad=True)
 
+    def v_area(self, ctx: Ctx, key: str, value: str | None = None) -> None:
+        """Give an inbox item one of the configured areas, or take its area back (no value). An item with a task
+        shows the task's area, so only one without gets one here."""
+        row = self.entry(key)["row"]
+        if not row.get("inbox_id") or row.get("task"):
+            raise self.not_applicable("an area is for inbox items without a task")
+        if value and value not in self.app.cfg.areas:
+            raise bad_arg("value", "not a configured area (workplace.workspaces)")
+        item = self.inbox_id(row)
+        run = ctx.call("inbox.area", item, self.inbox("area", item, value or "--clear"), SHORT_TIMEOUT)
+        if run.ok:
+            ctx.note((self.tx["area_set"].format(area=value, title=m.short(row["title"], 60)) if value
+                      else self.tx["area_cleared"].format(title=m.short(row["title"], 60))))
+            ctx.delta()
+        else:
+            ctx.note(self.tx["area_failed"].format(err=m.short(run.err, 100)), bad=True)
+
     def v_priority(self, ctx: Ctx, key: str, value: str) -> None:
         row = self.entry(key)["row"]
         # an inbox row names the task it came from; its priority is not that task's to change from here

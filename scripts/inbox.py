@@ -565,11 +565,12 @@ class Inbox:
                   f"it stays open until a person closes it")
         _dump(self.root / item_id / "item.yaml", data)
         (self.root / item_id / "events").mkdir(exist_ok=True)
-        self.last_new = item_id         # a new item, not a repeat of one (main() places only those)
         rule = self.muted_by(source, kind, key) if urgency != "now" else None
         if rule is not None:
             # filed and dropped at once: the noise stays countable and a reopen brings it back
             self.event(item_id, "drop", by=MUTE_ACTOR, reason="muted", rule=rule["id"])
+        else:
+            self.last_new = item_id     # a new open item, not a repeat (main() places only those)
         return item_id
 
     def event(self, item_id: str, verb: str, *, by: str | None = None, **data) -> None:
@@ -1052,12 +1053,34 @@ def _place_later(root: Path, item_id: str) -> None:
     """Start `workplace.py place` for a new item, detached: a filer (a watcher, a hook) must never wait
     on a model, and a router that fails or is not configured leaves the item as it was, without an area."""
     argv = [sys.executable, str(ROOT / "scripts" / "workplace.py"), "--root", str(root),
-            "place", "--items", item_id, "--quiet"]
+            "place", "--pending", "--quiet"]
     try:
-        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+        # --pending: a burst of new items (a watcher filing twenty) still makes one placer and one router call
+        subprocess.Popen(argv, cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
     except OSError as exc:
         _warn(f"{item_id}: could not start placing it in an area ({exc})")
+
+
+def area_name(root: Path, value: str | None) -> str | None:
+    """The workspace name an area means (name or alias, whatever its case), as the task areas resolve. Without
+    configured workspaces the value stands as written; one that names none of them raises ValueError."""
+    want = str(value or "").strip()
+    if not want:
+        return None
+    path = root / "bridge-config.yaml"
+    try:
+        data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.is_file() else {}
+    except (OSError, yaml.YAMLError):
+        data = {}
+    spaces = [ws for ws in ((data.get("workplace") or {}) if isinstance(data, dict) else {}).get("workspaces") or ()
+              if isinstance(ws, dict) and isinstance(ws.get("name"), str) and ws["name"].strip()]
+    if not spaces:
+        return want
+    for ws in spaces:
+        if want.casefold() in [str(n).strip().casefold() for n in [ws["name"], *(ws.get("aliases") or [])] if n]:
+            return ws["name"].strip()
+    raise ValueError(f"{want!r} is no area here (workplace.workspaces: {', '.join(w['name'] for w in spaces)})")
 
 
 def _runner(root: Path) -> str | None:
@@ -1080,6 +1103,12 @@ def main(argv=None) -> int:
             box.event(item.id, "seen", summary=args.summary)
             print(f"quiet {item.id} {closed.by} {closed.at}")
         elif args.cmd == "add":
+            try:
+                args.area = area_name(args.root, args.area)
+            except ValueError as exc:
+                # a filer runs unattended: an unknown area is warned about and left out, never a lost item
+                _warn(f"{exc}; filed without an area")
+                args.area = None
             print(box.add(source=args.source, kind=args.kind, summary=args.summary, task=args.task,
                           gate=args.gate, urgency=args.urgency, detail=args.detail, key=args.key, due=args.due,
                           action=_json_arg(args.action_json), closes_when=_json_arg(args.closes_when_json),
@@ -1144,9 +1173,9 @@ def main(argv=None) -> int:
             box.set_urgency(box.resolve(args.id), args.value)
             (args.root / "work" / "inbox.md").write_text(box.render(), encoding="utf-8")
         elif args.cmd == "area":
-            if args.clear == bool(args.value):
+            if args.clear == bool((args.value or "").strip()):
                 raise ValueError("give an area or --clear, not both and not neither")
-            box.set_area(box.resolve(args.id), "" if args.clear else args.value)
+            box.set_area(box.resolve(args.id), "" if args.clear else area_name(args.root, args.value))
         elif args.cmd == "note":
             box.note(box.resolve(args.id), args.text)
         elif args.cmd == "check":

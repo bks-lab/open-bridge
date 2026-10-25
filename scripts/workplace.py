@@ -90,6 +90,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -710,10 +711,11 @@ def route(root: Path, cfg: dict, entries: list) -> list:
     out = [{**e, "own": False} for e in entries]
     spaces = {ws["name"]: ws for ws in cfg.get("workspaces") or [] if ws.get("name")}
     todo = [e for e in out if "command" in e]
-    if not spaces or not todo:
+    if not spaces or not todo or not (cfg.get("router") or {}).get("command"):
         return out
     picks = _ask_router(cfg, ROUTER_PROMPT.format(
-        areas=_area_lines(spaces), items="\n".join(f"- {e['item']}: {_describe(root, e['item'])}" for e in todo)))
+        areas=_area_lines(spaces), items="\n".join(f"- {e['item']}: {_describe(root, e['item'])}" for e in todo)),
+        cwd=root)
     for e in todo:
         pick = picks.get(e["item"]) or {}
         ws = spaces.get(str(pick.get("workspace") or ""))
@@ -728,7 +730,7 @@ def _area_lines(spaces: dict) -> str:
     return "\n".join(f"- {n}: {ws.get('description') or ''}".rstrip(": ") for n, ws in spaces.items())
 
 
-def _ask_router(cfg: dict, prompt: str) -> dict:
+def _ask_router(cfg: dict, prompt: str, cwd: Path | None = None) -> dict:
     """The configured router's answer, by item id: {item: {"workspace", "why", ...}}. Empty when there is no
     router, or it fails, times out or answers no JSON array; the caller then keeps what it had."""
     command = (cfg.get("router") or {}).get("command")
@@ -736,7 +738,8 @@ def _ask_router(cfg: dict, prompt: str) -> dict:
         return {}
     argv = shlex.split(command) if isinstance(command, str) else [str(c) for c in command]
     try:
-        run = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=ROUTER_TIMEOUT_SEC)
+        run = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=ROUTER_TIMEOUT_SEC,
+                             cwd=str(cwd) if cwd else None)
         text = run.stdout if run.returncode == 0 else ""
         start, end = text.find("["), text.rfind("]")
         answer = json.loads(text[start:end + 1]) if 0 <= start < end else []
@@ -779,13 +782,13 @@ def place(root: Path, cfg: dict, items: list, write: bool = True) -> list:
     spaces = {ws["name"]: ws for ws in cfg.get("workspaces") or [] if ws.get("name")}
     if not spaces or not (cfg.get("router") or {}).get("command"):
         return []
-    _mod, box, open_items = _placeable(root)
+    mod, box, open_items = _placeable(root)
     wanted = {box_id for box_id in (_resolve(box, name) for name in items) if box_id}
     todo = [i for i in open_items if i.id in wanted]
     if not todo:
         return []
     picks = _ask_router(cfg, PLACE_PROMPT.format(
-        areas=_area_lines(spaces), items="\n".join(f"- {i.id}: {i.summary}" for i in todo)))
+        areas=_area_lines(spaces), items="\n".join(f"- {i.id}: {i.summary}" for i in todo)), cwd=root)
     placed = []
     for i in todo:
         pick = picks.get(i.id) or {}
@@ -794,9 +797,44 @@ def place(root: Path, cfg: dict, items: list, write: bool = True) -> list:
             continue
         why = str(pick.get("why") or "")[:80] or None
         if write:
-            box.set_area(i.id, ws["name"], by="router", why=why)
+            # the router took its time: a person may have set an area meanwhile, or the item closed
+            try:
+                now = box.get(i.id)
+                if now.task or now.area or now.state not in mod.ACTIVE_STATES:
+                    continue
+                box.set_area(i.id, ws["name"], by="router", why=why)
+            except (KeyError, ValueError, OSError):
+                continue
         placed.append({"item": i.id, "area": ws["name"], "why": why})
     return placed
+
+
+PLACE_LOCK = Path(".bridge") / "cache" / "inbox-place.lock"
+PLACE_SETTLE_SEC = 2.0
+
+
+def place_pending(root: Path, cfg: dict, settle: float = PLACE_SETTLE_SEC) -> list:
+    """What `inbox.py add` starts for a new item: wait a moment so a burst of items arrives, then place every
+    open item that has neither a task nor an area, one placer at a time. A second placer that finds the lock
+    taken leaves: the one holding it looks again before it lets go, and asks about each item once."""
+    time.sleep(settle)
+    lock_path = root / PLACE_LOCK
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import fcntl
+    except ImportError:                       # no flock (Windows): one placer per item, as without a lock
+        fcntl = None
+    with open(lock_path, "a") as lock:
+        if fcntl is not None:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return []
+        placed, asked = [], set()
+        while todo := [i for i in unplaced(root) if i not in asked]:
+            asked.update(todo)
+            placed += place(root, cfg, todo)
+        return placed
 
 
 def _resolve(box, name: str) -> str | None:
@@ -1341,6 +1379,8 @@ def main(argv=None) -> int:
     which = pl.add_mutually_exclusive_group(required=True)
     which.add_argument("--items", help="inbox ids, comma separated")
     which.add_argument("--unplaced", action="store_true", help="every open item with neither a task nor an area")
+    which.add_argument("--pending", action="store_true",
+                       help="as --unplaced, after a short wait and one placer at a time (inbox.py add starts it)")
     pl.add_argument("--dry-run", action="store_true", help="show the answer, write nothing")
     pl.add_argument("--quiet", action="store_true", help="print nothing (inbox.py add starts it this way)")
     pl.add_argument("--json", action="store_true")
@@ -1421,8 +1461,12 @@ def main(argv=None) -> int:
 
     cfg = load_cfg(args.root)
     if args.cmd == "place":
-        items = unplaced(args.root) if args.unplaced else [x for x in args.items.split(",") if x.strip()]
-        placed = place(args.root, cfg, items, write=not args.dry_run)
+        if args.pending:
+            placed = place_pending(args.root, cfg)
+            items = placed
+        else:
+            items = unplaced(args.root) if args.unplaced else [x for x in args.items.split(",") if x.strip()]
+            placed = place(args.root, cfg, items, write=not args.dry_run)
         if args.json:
             print(json.dumps(placed, ensure_ascii=False, indent=1))
         elif not args.quiet:

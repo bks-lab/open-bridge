@@ -318,8 +318,9 @@ cockpit's questions.
 The same router places inbox items: `workplace.py place --items <id>[,<id>]` or
 `place --unplaced` (every open item with neither a task nor an area) asks it once which
 workspace each item belongs to and writes the answer as the item's `area`
-([`inbox.md`](inbox.md)); `--dry-run` writes nothing. `inbox.py add` starts it for a new
-item when `inbox.place_on_add` is true. An inbox item without a task then launches into
+([`inbox.md`](inbox.md)); `--dry-run` writes nothing. `inbox.py add` starts
+`place --pending` for a new item when `inbox.place_on_add` is true: after a short wait, one
+placer at a time (a lock in `.bridge/cache/`). The router runs in the repository root. An inbox item without a task then launches into
 its area's workspace instead of the default one.
 
 `workplace.py tasks [--json]` lists every active task flat, sorted by priority and then

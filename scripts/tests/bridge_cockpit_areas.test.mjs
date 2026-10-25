@@ -644,3 +644,32 @@ test('the overview\'s day holds dates, status and tidying; commits and the log o
   assert.equal(el.$('#desk-day .day-more'), null)
   assert.doesNotMatch(el.$('#desk-day').text(), /a long log line/)
 })
+
+// ---------------------------------------------------------------- the area of an inbox item (detail page)
+
+test('area: an inbox item without a task picks one of the configured areas in its detail, or none', () => {
+  const { DetailColumn } = views.detail
+  const s = cockpitState(NOW)
+  s.boot = { ...s.boot, config: { areas: ['Bridge', 'Home'] } }
+  const item = { ...s.model.sections.flatMap(sec => sec.rows ?? []).find(r => r.inbox_id), task: null, area: 'Home' }
+  s.ui = { ...s.ui, selectedKey: item.key }
+  const c = recorder()
+  const el = mount(html`<${DetailColumn} s=${s} c=${c} byKey=${new Map([[item.key, item]])} />`)
+  const pick = el.$('select.area-pick')
+  assert.ok(pick, 'the detail has an area picker')
+  assert.deepEqual(pick.$$('option').map(o => o.text()), [en.areaNone, 'Bridge', 'Home'])
+  assert.equal(pick.value ?? pick.getAttribute('value'), 'Home')
+  pick.value = 'Bridge'
+  pick.dispatch('change')
+  assert.deepEqual(c.calls.at(-1), ['act', 'area', { key: item.key, value: 'Bridge' }])
+  pick.value = ''
+  pick.dispatch('change')
+  assert.deepEqual(c.calls.at(-1), ['act', 'area', { key: item.key }])
+  // an item with a task shows its task's area and has no picker; without configured areas there is none either
+  const linked = { ...item, task: 'alpha' }
+  s.ui = { ...s.ui, selectedKey: linked.key }
+  assert.equal(mount(html`<${DetailColumn} s=${s} c=${c} byKey=${new Map([[linked.key, linked]])} />`).$('select.area-pick'), null)
+  s.boot = { ...s.boot, config: {} }
+  s.ui = { ...s.ui, selectedKey: item.key }
+  assert.equal(mount(html`<${DetailColumn} s=${s} c=${c} byKey=${new Map([[item.key, item]])} />`).$('select.area-pick'), null)
+})
