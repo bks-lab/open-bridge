@@ -106,6 +106,11 @@ there), `default`, `color`, `description` (one line a router reads to place work
 and `aliases` (other titles under which the terminal may already show that
 workspace, so an existing one is reused rather than opened twice).
 
+A task can name its workspace itself with `area:` in its STATUS.md head (a
+workspace's `name` or one of its `aliases`, any case). That wins over `slugs` and
+`contexts`; an `area:` that names no workspace is ignored and the rules decide.
+The cockpit's start page groups its areas by the same match.
+
 `agent.new` gets `{slug}` and `{prompt}` (a short instruction to read the task's
 STATUS.md, log rows, commits and open inbox items, report in eight lines and wait),
 `agent.resume` gets `{session}`. Any agent CLI that takes a prompt fits.
@@ -250,7 +255,7 @@ it reaches the briefing and every other reader.
 |---|---|
 | `tab` (default) | the workspace of the calling tab (`--here`, else the caller the driver reports); the cmux driver refuses when it cannot find one and never falls back to the selected workspace |
 | `workspace` | one new workspace per item, named after its label |
-| `area` | the workspace of the item's area, the same one `open` would choose (`workspaces:` by slug, then context, then the default): a task by its own STATUS, an inbox item by the task it is linked to, an unlinked inbox item into the default workspace. A missing area workspace is created once, found by `name` or any of its `aliases`, and the tab goes into it as a named tab |
+| `area` | the workspace of the item's area, the same one `open` would choose (`workspaces:` by the task's `area:`, then slug, then context, then the default): a task by its own STATUS, an inbox item by the task it is linked to, an unlinked inbox item into the default workspace. A missing area workspace is created once, found by `name` or any of its `aliases`, and the tab goes into it as a named tab |
 | `auto` | a router decides area and own workspace per item (below); the driver then gets `workspace` for the items that get their own and `area` for the rest |
 
 The driver receives, per tab, `label` (the tab title), `slug` (the agent session

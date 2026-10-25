@@ -1197,6 +1197,18 @@ function focusTabs() {
   requestAnimationFrame(() => document.getElementById('tabs-column')?.focus())
 }
 
+// g a: to the start page, the focus on its areas (the chosen one, else the first line); a drawer open
+// over the page closes, and with the shelf switched off the start page shows without a focus
+function focusAreas() {
+  if (store.get().ui.drawer) setUi({ drawer: null, item: null })
+  if (store.get().ui.page !== START_PAGE) ctl.setPage(START_PAGE)
+  const go = () => {
+    const list = document.getElementById('home-areas-list')
+    ;(list?.querySelector('button[aria-pressed="true"]') ?? list?.querySelector('button'))?.focus()
+  }
+  requestAnimationFrame(() => requestAnimationFrame(go))
+}
+
 function onKey(e) {
   const s = store.get()
   // the inner room keeps its own keys (inner.js)
@@ -1246,6 +1258,10 @@ function onKey(e) {
     if (e.key === 't') {
       e.preventDefault()
       focusTabs()
+    }
+    if (e.key === 'a') {
+      e.preventDefault()
+      focusAreas()
     }
     return
   }
@@ -1297,6 +1313,14 @@ function onKey(e) {
     const to = focusIndex(queue, s.ui.focusAt) + (key === 'n' ? 1 : -1)
     e.preventDefault()
     return queue[to] ? ctl.focusWalk(queue[to].id, to) : undefined
+  }
+  // j / k in the areas of the start page walk its lines; Enter is the button's own click
+  const areas = document.activeElement?.closest?.('#home-areas-list')
+  if (areas && (key === 'j' || key === 'k')) {
+    const lines = [...areas.querySelectorAll('button')]
+    const at = lines.indexOf(document.activeElement)
+    e.preventDefault()
+    return lines[Math.min(lines.length - 1, Math.max(0, at + (key === 'j' ? 1 : -1)))]?.focus()
   }
   if (s.ui.page !== 'briefing') return
   if (key === 'j' || key === 'k') {

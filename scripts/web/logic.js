@@ -502,7 +502,7 @@ export function roomsOf(s) {
     chats: placed ? [] : chats,
     bridges: bridges.filter(b => !out.some(w => w.bridge?.id === b.id)),
     agents: s.agents?.peers ?? [],
-    waiting: tabs.filter(t => !t.is_control && (t.state === 'needs-you' || t.state === 'waiting')).length,
+    waiting: tabs.filter(wantsYou).length,
   }
 }
 
@@ -512,28 +512,33 @@ export function attentionTabs(tabs) {
     .sort((a, b) => (STATE_ORDER[a.state] ?? 4) - (STATE_ORDER[b.state] ?? 4) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
 }
 
-const STATUS_GROUPS = ['needs-you', 'waiting', 'working', 'shell']
+const STATUS_GROUPS = ['needs-you', 'waiting', 'working', 'idle', 'shell']
+
+/** Whether a tab wants you: it needs you, or waits and has not gone idle (finished, nothing asked; the
+ *  server's `idle`), and is not the control tab. Its state stays 'waiting' when idle, so a test on the
+ *  state alone counts finished tabs as waiting */
+export const wantsYou = t => !!t && !t.is_control && (t.state === 'needs-you' || (t.state === 'waiting' && !t.idle))
 
 /** Every tab under its status, in the order you walk them (ui.roomsSort: status): needs you, waiting,
- *  working, terminal, each the longest in its state first, then by name. A state the list does not know
+ *  working, idle (waiting but finished), terminal, each the longest in its state first, then by name. A state the list does not know
  *  stands with the terminals; the control tab, which never waits for you, is left out. [{ state, tabs }],
  *  no group for a status without tabs */
 export function statusQueue(tabs) {
   const by = new Map(STATUS_GROUPS.map(x => [x, []]))
   for (const t of tabs ?? []) {
-    if (!t.is_control) by.get(by.has(t.state) ? t.state : 'shell').push(t)
+    if (!t.is_control) by.get(t.state === 'waiting' && t.idle ? 'idle' : by.has(t.state) ? t.state : 'shell').push(t)
   }
   const since = t => (Number.isFinite(t.since_ms) ? t.since_ms : Infinity)
   return STATUS_GROUPS.map(state => ({ state, tabs: by.get(state).sort((a, b) => since(a) - since(b) || String(a.name).localeCompare(String(b.name))) }))
     .filter(g => g.tabs.length)
 }
 
-/** Whether a tab wants you: it needs you or waits, and is not the control tab */
-export const tabWaits = tab => !!tab && !tab.is_control && (tab.state === 'needs-you' || tab.state === 'waiting')
+/** Whether a tab wants you (wantsYou), under the name the views know */
+export const tabWaits = wantsYou
 
 /** The tabs that want you, in the order By status lists them: the walk on the Chat page */
 export const walkRefs = tabs => statusQueue(tabs).filter(g => g.state === 'needs-you' || g.state === 'waiting')
-  .flatMap(g => g.tabs.map(t => t.ref))
+  .flatMap(g => g.tabs.filter(wantsYou).map(t => t.ref))
 
 /** The walk through the tabs as the lists walk theirs (queueView): the order taken when the walk began
  *  (ui.tabWalk), then every tab that started waiting since, at the end. A tab answered meanwhile keeps
@@ -770,7 +775,7 @@ export function modalKeyAllowed(ui, key, gPending) {
   if (!ui?.drawer) return true
   // n and p act on the item drawer itself: they walk the list it was opened from
   if (ui.drawer === 'item' && ui.queue?.length && (key === 'n' || key === 'p')) return true
-  return key === 'g' || (gPending && key === 't')
+  return key === 'g' || (gPending && (key === 't' || key === 'a'))
 }
 
 /** The list a detail was opened from (ui.queue), seen from its open entry: where it stands (pos of
@@ -1857,6 +1862,7 @@ export function guideKey(tab) {
  *  now; fresh: its options answer what the tab asks now */
 export function guideOf(s, tab) {
   const g = s?.guide
+  // by state on purpose: an idle tab can still be answered, so the guide reads it too
   if (!g?.enabled || !tab || tab.is_control || (tab.state !== 'needs-you' && tab.state !== 'waiting')) return { status: 'off', entry: null }
   const entry = g.entries?.[tab.ref] ?? null
   if (!entry) return { status: 'none', entry }
@@ -1952,9 +1958,9 @@ export function homeProjects(tabs, rows) {
 /** Does a tab or a row belong to the chosen project? No project chosen: everything does */
 export function inProject(x, project) {
   if (!project) return true
-  const want = String(project).toLowerCase()
+  const want = String(project).trim().toLowerCase()
   const names = [x?.workspace, x?.area, ...(x?.area_names ?? []), x?.mark?.label]
-  return names.some(n => n && String(n).toLowerCase() === want)
+  return names.some(n => n && String(n).trim().toLowerCase() === want)
 }
 
 /** The cards of "continue": the agent tabs of the project without the control tab and bare shells,
@@ -1972,6 +1978,74 @@ export function projectTone(name) {
   let h = 0
   for (const ch of String(name ?? '').toLowerCase()) h = (h * 31 + ch.codePointAt(0)) >>> 0
   return PROJECT_TONES[h % PROJECT_TONES.length]
+}
+
+/** Is a row past its date? `due_at` or `due`, a day (YYYY-MM-DD, the server's form) or milliseconds;
+ *  due today is not overdue */
+function rowOverdue(row, nowMs) {
+  const due = row?.due_at ?? row?.due
+  if (typeof due === 'number') return due < nowMs
+  return dueWhen(due, nowMs)?.kind === 'overdue'
+}
+
+/** The areas of the start page, each with what it holds for you: rows of "now" and tabs that wait on you,
+ *  tabs at work, tabs that went idle and answered starts to review, rows past their date, and the open
+ *  tasks (`tasks`, not in `total`: it keeps an area there to pick when nothing else is). Names and order as
+ *  the project chips have them (homeProjects); an area with no number at all drops out. The control tab
+ *  and bare shells count for nothing, and each thing counts once: a row in several sections, a row of
+ *  "now" and the tab waiting on its work (as model.tab_for pairs them), an answered start and its idle tab */
+export function homeAreas(tabs, sections, returns, nowMs) {
+  const live = (tabs ?? []).filter(t => !t.is_control && t.state !== 'shell')
+  const byKey = new Map()
+  for (const sec of sections ?? []) for (const r of sec.rows ?? []) if (!byKey.has(r.key)) byKey.set(r.key, r)
+  const rows = [...byKey.values()]
+  const section = id => (sections ?? []).find(x => x.id === id)?.rows ?? []
+  const counts = new Map()
+  const zero = () => ({ waiting: 0, running: 0, review: 0, overdue: 0, tasks: 0 })
+  const bump = (name, what) => {
+    const key = String(name ?? '').trim().toLowerCase()
+    if (!key) return
+    const x = counts.get(key) ?? zero()
+    x[what] += 1
+    counts.set(key, x)
+  }
+  // a row of "now" stands for the tab that waits on its work
+  const paired = new Set()
+  for (const r of section('now')) {
+    bump(rowProject(r), 'waiting')
+    for (const t of live) if ((r.task && t.slug === r.task) || (r.inbox_id && t.item === r.inbox_id)) paired.add(t.ref)
+  }
+  // an answered start stands for its tab gone idle
+  const answered = new Set()
+  for (const r of returns ?? []) {
+    const row = byKey.get(r.key)
+    if (!row || (r.live ?? r.stage) !== 'result') continue
+    bump(rowProject(row), 'review')
+    for (const t of live) if (t.ref === r.tab?.ref || (r.item && (t.slug === r.item || t.item === r.item))) answered.add(t.ref)
+  }
+  for (const t of live) {
+    if (t.waiting === true && !paired.has(t.ref)) bump(t.workspace, 'waiting')
+    if (t.state === 'working') bump(t.workspace, 'running')
+    if (t.idle === true && !answered.has(t.ref)) bump(t.workspace, 'review')
+  }
+  for (const r of rows) if (rowOverdue(r, nowMs)) bump(rowProject(r), 'overdue')
+  const slugs = new Set()
+  for (const r of section('work')) {
+    if (!r.task || slugs.has(r.task)) continue
+    slugs.add(r.task)
+    bump(rowProject(r), 'tasks')
+  }
+  return homeProjects(tabs, rows).map(name => {
+    const x = counts.get(name.toLowerCase()) ?? zero()
+    return { name, tone: projectTone(name), ...x, total: x.waiting + x.running + x.review + x.overdue }
+  }).filter(a => a.total > 0 || a.tasks > 0)
+}
+
+/** Whether the area lines can stand in for the project chips: every chip has a line, else a project
+ *  without one could no longer be picked */
+export function areasCoverProjects(projects, areas) {
+  const have = new Set((areas ?? []).map(a => a.name.trim().toLowerCase()))
+  return (projects ?? []).every(p => have.has(String(p).trim().toLowerCase()))
 }
 
 /** The agent tab that works on a task, by the task's slug */
@@ -1999,7 +2073,7 @@ export function tileSlug(text) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
 }
 
-const HOME_SHELVES = ['focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
+const HOME_SHELVES = ['areas', 'focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
 const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'classic', 'list', 'focusview']
 const HOME_CORE = ['scan', 'brief']   // what a click on the bridge's core does; several combine
 const OFF_BY_DEFAULT = new Set(['o:classic', 'o:list', 'o:focusview', 'k:brief'])   // the bridge stage is the start page; tiles, list and focus are a choice
@@ -2117,6 +2191,7 @@ export function homeListParts(tabs, model, { project = null, pins = [] } = {}) {
   const bound = new Map(shown.map(r => [r.key, tabOfTask(live, r.task)]).filter(([, tb]) => tb))
   const seenTabs = new Set([...(lead?.kind === 'tab' ? [lead.tab.ref] : []), ...[...bound.values()].map(tb => tb.ref)])
   const free = state => live.filter(x => x.state === state && !seenTabs.has(x.ref))
+  // resting by state on purpose: a tab gone idle rests there too, it asks nothing
   return { lead, asking: free('needs-you'), waiting, pinned, tasks, running: free('working'), resting: free('waiting'),
     tabOf: key => bound.get(key) ?? null }
 }
@@ -2489,7 +2564,8 @@ export function situation(model, tabs, nowMs) {
     work: rows('work'),
     later: rows('later'),
     asking: live.filter(t => t.state === 'needs-you'),
-    waiting: live.filter(t => t.state === 'waiting'),
+    waiting: live.filter(t => t.state === 'waiting' && wantsYou(t)),
+    idle: live.filter(t => t.state === 'waiting' && t.idle),
     working: live.filter(t => t.state === 'working'),
     answers: returns.filter(r => r.stage === 'result'),
     lost: returns.filter(r => r.stage === 'lost'),
@@ -2621,7 +2697,8 @@ export function graphLive(g, tabs, returns, runs) {
   const task = slug => slug ? g.index.get(`work/tasks/${slug}/STATUS.md`) ?? g.index.get(`work/streams/${slug}/STATUS.md`) : undefined
   for (const t of tabs ?? []) {
     if (t.is_control || !t.slug) continue
-    if (t.state === 'needs-you' || t.state === 'waiting') put(task(t.slug), { tone: 'asks', text: t.name, ref: t.ref })
+    if (wantsYou(t)) put(task(t.slug), { tone: 'asks', text: t.name, ref: t.ref })
+    else if (t.state === 'waiting' && t.idle) put(task(t.slug), { tone: 'answer', text: t.name, ref: t.ref })   // finished: to check
     else if (t.state === 'working') put(task(t.slug), { tone: 'working', text: t.name, ref: t.ref })
   }
   for (const r of returns ?? []) {

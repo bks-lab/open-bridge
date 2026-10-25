@@ -160,6 +160,13 @@ properties:
 
   # ---- Three-axis routing ----------------------------------------------
 
+  area:
+    type: string
+    minLength: 1
+    description: |
+      The workplace area (a `workplace.workspaces` name or alias, any case) this task belongs to.
+      Wins over slug patterns and contexts; one that names no workspace is ignored.
+      The cockpit groups the start page by it (docs/workplace.md).
   context:
     type: string
     pattern: "^[a-z][a-z0-9-]*$"

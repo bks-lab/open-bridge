@@ -592,6 +592,9 @@ test('FE-2: single-key shortcuts do nothing while a drawer or a confirmation is 
   }
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'g', false), true)
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 't', true), true)
+  // g a (to the areas of the start page) works over a drawer as g t does; a alone still does not
+  assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'a', true), true)
+  assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'a', false), false)
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: null }, 'c', false), true)
   assert.match(read('app.js'), /modalKeyAllowed\(/)
 })
@@ -1382,7 +1385,7 @@ test('with a work tab the day view stands on Start, the middle of Due only point
   // there it looks like the other shelves: one card per block; on the stage above the project chips, which do not filter it
   const cards = day.slice(day.indexOf('if (cards)'), day.indexOf('const [agenda, status'))
   assert.match(cards, /class=\$\{`hcard day-card day-\$\{b\.id\}`\}/)
-  assert.match(home, /\$\{daily\}\s*\$\{chips\}/)
+  assert.match(home, /\$\{daily\}\s*\$\{areasShelf\}\s*\$\{chips\}/)
   // what happened today is long and read last: on Start a shelf of its own at the end, not one of the day cards
   assert.doesNotMatch(cards, /DayPages/)
   assert.match(day.slice(day.indexOf('const [agenda, status')), /<\$\{DayPages\} s=\$\{s\} c=\$\{c\} \/>/)
@@ -1511,6 +1514,86 @@ test('the start page: greeting by hour, project chips from tabs and rows, cards 
   assert.equal(logic.tabOfTask([{ ref: 'x', slug: 'foo' }], null), null)
 })
 
+test('the start page counts per area what waits, runs, is to review, is overdue and its tasks, each thing once', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const now = new Date(2026, 9, 13, 12, 0).getTime()
+  const tabs = [
+    { ref: 'c', workspace: 'ACME', state: 'working', waiting: true, idle: true, is_control: true },   // the control tab: never
+    { ref: 's', workspace: 'ACME', state: 'shell', waiting: true },                                  // a bare shell: never
+    { ref: 'a', workspace: 'acme', state: 'working' },
+    { ref: 'b', workspace: 'ACME', state: 'needs-you', waiting: true },
+    { ref: 'i', workspace: ' ACME ', state: 'waiting', waiting: true, item: 'inbox-1' },            // the tab of the row inbox:1
+    { ref: 'd', workspace: 'ORBIT', state: 'waiting', idle: true },
+    { ref: 'g', workspace: 'ORBIT', state: 'waiting', idle: true, slug: 'a' },                       // its start answered: counted there
+    { ref: 'e', workspace: 'ORBIT', state: 'waiting' },                                              // no idle field: not to review
+    { ref: 'f', workspace: 'Quiet', state: 'waiting' },                                              // counts for nothing
+  ]
+  const sections = [
+    { id: 'now', rows: [{ key: 'inbox:1', inbox_id: 'inbox-1', area: 'Acme' }, { key: 'inbox:2', area: 'Privat', due: '2026-10-12' }] },
+    { id: 'work', rows: [
+      { key: 'task:a', task: 'a', area: 'ORBIT', due: '2026-10-01' },
+      { key: 'task:b', task: 'b', area: 'ORBIT', due: '2026-10-13' },      // due today: not overdue
+      { key: 'task:b2', task: 'b', area: 'ORBIT' },                        // the same task again: one task
+      { key: 'task:c', task: 'c', area: 'ACME', due_at: '2026-10-10' },
+      { key: 'task:d', task: 'd', area: 'Still', due: '2026-12-01' },      // only a task: the area stays, damped
+      { key: 'gh:1', area: 'Board' }] },                                   // no task, no number: no line
+  ]
+  const returns = [
+    { key: 'task:a', item: 'a', stage: 'result', live: 'result', tab: { ref: 'g' } },
+    { key: 'task:c', stage: 'working', live: 'working' },                 // still at work: not to review
+    { key: 'inbox:gone', stage: 'result', live: 'result' },               // its row is gone: no area
+  ]
+  const areas = logic.homeAreas(tabs, sections, returns, now)
+  const rows = sections.flatMap(x => x.rows)
+  // the order of the project chips, names merged without regard to case or spaces, an area without a number left out
+  assert.deepEqual(areas.map(a => a.name), logic.homeProjects(tabs, rows).filter(n => !['Quiet', 'Board'].includes(n)))
+  const by = Object.fromEntries(areas.map(a => [a.name.toLowerCase(), a]))
+  assert.deepEqual(Object.keys(by).sort(), ['acme', 'orbit', 'privat', 'still'])
+  const figs = a => [a.waiting, a.running, a.review, a.overdue, a.tasks, a.total]
+  // the row inbox:1 and its waiting tab are one thing: 2 waiting (that one and tab b), not 3
+  assert.equal(by.acme.tone, logic.projectTone('ACME'))
+  assert.deepEqual(figs(by.acme), [2, 1, 0, 1, 1, 4])
+  // the idle tab g is the start whose answer came: to review once, with d beside it
+  assert.deepEqual(figs(by.orbit), [0, 0, 2, 1, 2, 3])
+  assert.deepEqual(figs(by.privat), [1, 0, 0, 1, 0, 2])
+  // tasks only: total 0, but the line stays so the area can still be picked
+  assert.deepEqual(figs(by.still), [0, 0, 0, 0, 1, 0])
+  assert.deepEqual(logic.homeAreas([], [], [], now), [])
+  assert.deepEqual(logic.homeAreas(null, null, null, now), [])
+  // the lines stand in for the chips only when every chip has a line
+  assert.equal(logic.areasCoverProjects(['ACME', 'ORBIT'], areas), true)
+  assert.equal(logic.areasCoverProjects(['ACME', 'Board'], areas), false)
+  assert.equal(logic.areasCoverProjects(['acme '], areas), true)
+  // inProject compares as the chips do: no case, no surrounding spaces
+  assert.equal(logic.inProject({ workspace: ' ACME ' }, 'acme'), true)
+  assert.equal(logic.inProject({ area: 'Acme' }, ' ACME'), true)
+})
+
+test('a tab that went idle is done, not waiting on you: walks, groups, counts and the picture leave it out', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const tab = (ref, state, over = {}) => ({ ref, state, name: ref, workspace: 'W', since_ms: 1, ...over })
+  const tabs = [tab('n', 'needs-you'), tab('w', 'waiting', { waiting: true }), tab('i', 'waiting', { idle: true, waiting: false }),
+    tab('k', 'working'), { ...tab('c', 'waiting'), is_control: true }]
+  assert.equal(logic.wantsYou(tabs[0]), true)
+  assert.equal(logic.wantsYou(tabs[1]), true)
+  assert.equal(logic.wantsYou(tabs[2]), false)
+  assert.equal(logic.wantsYou(tabs[3]), false)
+  assert.equal(logic.wantsYou(tabs[4]), false)
+  assert.equal(logic.tabWaits(tabs[2]), false)
+  assert.deepEqual(logic.walkRefs(tabs), ['n', 'w'])
+  // an idle tab stands in a group of its own, after the ones at work
+  const q = logic.statusQueue(tabs)
+  assert.deepEqual(q.map(g => g.state), ['needs-you', 'waiting', 'working', 'idle'])
+  assert.deepEqual(q.find(g => g.state === 'idle').tabs.map(t => t.ref), ['i'])
+  assert.deepEqual(logic.situation({ sections: [], returns: [] }, tabs, 0).waiting.map(t => t.ref), ['w'])
+  assert.deepEqual(logic.situation({ sections: [], returns: [] }, tabs, 0).idle.map(t => t.ref), ['i'])
+  // the graph: an idle tab reads as an answer to check, not as a question
+  const g = { index: new Map([['work/tasks/x/STATUS.md', 0], ['work/tasks/y/STATUS.md', 1]]) }
+  const live = logic.graphLive(g, [tab('i', 'waiting', { idle: true, slug: 'x' }), tab('w', 'waiting', { slug: 'y' })], [], [])
+  assert.equal(live.get(0).tone, 'answer')
+  assert.equal(live.get(1).tone, 'asks')
+})
+
 test('the start page reckons a quota per day and where it ends at the reset', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   // a week with 19 % used after 24.5 % of it: 11.1 a day against a budget of 14.3, 77.6 at the reset
@@ -1541,13 +1624,13 @@ test('the start page offers every tile to choose, and without a choice only a le
   assert.equal(logic.tileSlug('Week, all Modelle: Ä'), 'week-all-modelle-a')
   const ids = logic.homeCatalog(model).map(x => x.id)
   assert.deepEqual(ids, ['q:quota:session-5-h', 'q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done',
-    'p:dates', 'p:work', 'p:ops', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
+    'p:dates', 'p:work', 'p:ops', 's:areas', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
     'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief'])
   // a Bridge without a worker view offers no Workers station: it would lead to a tab that is not there
   assert.equal(logic.homeCatalog(model, { workers: false }).some(x => x.id === 'c:workers'), false)
   // no choice yet: the weekly quota, what waits on you, the next date, the work page, every shelf and option
   assert.deepEqual(logic.homeChosen(model, null),
-    ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:focus', 's:returns', 's:pinned', 's:continue',
+    ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:areas', 's:focus', 's:returns', 's:pinned', 's:continue',
       's:waiting', 's:tasks', 's:starts', 'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'k:scan'])
   // a choice keeps its order, an empty one too; what the chooser had offered is never added back
   const all = ids
@@ -2678,7 +2761,7 @@ test('ticker: wired into both start page layouts, the store, the events; links o
     assert.doesNotMatch(q, /^(Quiet|Ruhig)/, lang)
   }
   // the tiles view: the news under the greeting, the status under the news
-  assert.match(home, /<\/header>\n\s+<\$\{TickerBand\} s=\$\{s\} c=\$\{c\} only="news" \/>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{chips\}/)
+  assert.match(home, /<\/header>\n\s+<\$\{TickerBand\} s=\$\{s\} c=\$\{c\} only="news" \/>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{areasShelf\}\n\s+\$\{chips\}/)
   assert.doesNotMatch(home, /home bridge-home`\}>\n\s+<\$\{TickerBand\}/)
   const tk = read('views/ticker.js')
   assert.match(tk, /export function TickerBand\(\{ s, c, only \}\)/)

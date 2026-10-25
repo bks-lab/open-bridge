@@ -82,6 +82,7 @@ their defaults:
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
 | `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
+| `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
@@ -468,7 +469,24 @@ the bars and the trend fill in over the following days.
 
 Below sit project chips, made from the workspaces of the agent tabs and the
 projects of the rows (area, else the mark), most frequent first. A chip
-filters every shelf, and the choice is kept in the browser. The shelves:
+filters every shelf, and the choice is kept in the browser.
+
+The **Areas** shelf (on by default, first among the shelves) stands above the
+chips: one line per area, in the order of the chips, with five numbers.
+*Waiting on you* counts the area's rows in "now" and its agent tabs that wait
+(a row and the tab working on it count once); *running* its tabs at work; *to
+review* its tabs that went idle and the starts handed to an agent whose answer
+came (a start and its idle tab count once); *overdue* its rows past their due
+day; *tasks* its open task rows, each task once. The control tab and bare
+shells count for nothing. An area with every number at zero is left out; one
+with nothing but tasks stays, damped, so it can still be picked. A line is a
+button: it picks that area as the chips do, a second click (or the line "All")
+shows everything again. With the shelf on and a line for every chip, the lines
+replace the chips. A tab that went idle is finished, not waiting on you: the
+walk through the tabs skips it, and By status lists it under "Finished, to
+review". `g` then `a` jumps to the
+start page and puts the focus on the lines; `j` and `k` move there, `Enter`
+picks. The shelves:
 
 - **Continue**: the agent tabs as cards, the ones that need you first. The
   band names the project and shows the last lines of the screen. One click
@@ -1456,6 +1474,7 @@ the focus is not in a text field:
 | `r` | reload, fresh |
 | `/` | the command box |
 | `g` then `t` | the agent tabs |
+| `g` then `a` | the start page, the focus on its Areas; there `j` / `k` move and `Enter` picks |
 | `n` / `p` | the next / previous entry of the walk you are in: a detail opened from a list, the Today list, the Chat page's tabs, the focus on the start page |
 | `Alt` + `1` to `9` | the page tabs |
 | `?` | help |

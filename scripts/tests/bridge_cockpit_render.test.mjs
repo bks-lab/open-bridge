@@ -1797,3 +1797,50 @@ test('github boards: without a GitHub section the settings say where boards come
   const el = mount(html`<${BoardSettings} s=${s} c=${recorder()} />`)
   assert.match(el.text(), new RegExp(en.gh.noBoards.slice(0, 20)))
 })
+
+// ---------------------------------------------------------------- the areas on the start page
+
+const { HomeAreas } = views.home
+
+test('areas: one row per area with its four numbers, the chosen one pressed; a click picks it, again lets go', () => {
+  const areas = [
+    { name: 'ACME', tone: 'accent', waiting: 2, running: 1, review: 0, overdue: 1, tasks: 3, total: 4 },
+    { name: 'ORBIT', tone: 'info', waiting: 0, running: 0, review: 2, overdue: 0, tasks: 0, total: 2 },
+    { name: 'Still', tone: 'success', waiting: 0, running: 0, review: 0, overdue: 0, tasks: 1, total: 0 },
+  ]
+  const c = recorder()
+  const el = mount(html`<${HomeAreas} areas=${areas} project="ACME" c=${c} />`)
+  assert.equal(el.$('h2').text(), en.home.areasTitle)
+  const rows = el.$$('button.home-area')
+  // "All" first, then the areas in their order; a list for the screen reader too
+  assert.equal(el.$('ul.home-area-list').getAttribute('role'), 'list')
+  assert.equal(rows.length, 4)
+  // a line with nothing but tasks is damped
+  assert.ok(rows[3].hasClass('is-quiet'))
+  assert.ok(!rows[1].hasClass('is-quiet'))
+  assert.match(rows[0].text(), new RegExp(en.home.all))
+  assert.equal(rows[0].getAttribute('aria-pressed'), 'false')
+  assert.match(rows[1].text(), /ACME/)
+  assert.equal(rows[1].getAttribute('aria-pressed'), 'true')
+  assert.ok(rows[1].$('.home-area-dot').hasClass('tk-accent'))
+  assert.equal(rows[2].getAttribute('aria-pressed'), 'false')
+  // the four numbers with their labels, a zero damped
+  const figs = rows[1].$$('.home-area-fig')
+  assert.deepEqual(figs.map(f => f.$('.home-area-n').text()), ['2', '1', '0', '1', '3'])
+  assert.deepEqual(figs.map(f => f.$('.home-area-label').text()),
+    [en.home.areaWaiting, en.home.areaRunning, en.home.areaReview, en.home.areaOverdue, en.home.areaTasks])
+  assert.ok(figs[2].hasClass('is-zero'))
+  assert.ok(!figs[0].hasClass('is-zero'))
+  // "All" sums them up
+  assert.deepEqual(rows[0].$$('.home-area-n').map(n => n.text()), ['2', '1', '2', '1', '4'])
+  rows[1].click()
+  rows[2].click()
+  rows[0].click()
+  assert.deepEqual(c.calls, [['setHomeProject', null], ['setHomeProject', 'ORBIT'], ['setHomeProject', null]])
+})
+
+test('areas: with nothing in any area a short line says so', () => {
+  const el = mount(html`<${HomeAreas} areas=${[]} project=${null} c=${recorder()} />`)
+  assert.equal(el.$$('button.home-area').length, 0)
+  assert.match(el.text(), new RegExp(en.home.areasEmpty.slice(0, 20)))
+})

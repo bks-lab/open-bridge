@@ -82,7 +82,8 @@ def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | No
 def tab_summary(tab: dict | None, view: dict | None) -> dict | None:
     if not tab:
         return None
-    return {"ref": tab["ref"], "state": tab["state"], "live": m.is_live(tab), "waiting": m.is_waiting(tab, view)}
+    return {"ref": tab["ref"], "state": tab["state"], "live": m.is_live(tab), "waiting": m.is_waiting(tab, view),
+            "idle": tab.get("idle") is True}
 
 
 def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control_ref: str | None, hidden: dict,

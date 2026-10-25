@@ -66,6 +66,7 @@ class WebConfig:
     jev_model: str | None = None         # integrations.typesafe.model: a versioned Jev id, else jev.MODEL
     # how often the cmux layout is saved while the cockpit runs, only on change (0: only on Save); was the mod's
     snapshot_minutes: float = 60
+    idle_minutes: float = 10      # a waiting tab still this long that asks nothing is done, not waiting (0 = off)
     # the triage sorts every task and inbox item once a day by itself (a model call): only when asked for
     triage_daily: bool = False
     chat_layout: str = "classic"
@@ -150,7 +151,8 @@ BLOCK = {
     "enabled": ("bool", "enabled"), "port": ("port", "port"), "open_in": ("choice", "open_in", OPEN_IN),
     "relay": ("bool", "relay"), "person_name": ("text", "person_name"), "profile": ("text", "profile"),
     "tabs_seconds": ("int", "tabs_seconds", 5), "full_minutes": ("number", "full_minutes", 1),
-    "snapshot_minutes": ("number", "snapshot_minutes", 0), "voice": ("bool", "voice"),
+    "snapshot_minutes": ("number", "snapshot_minutes", 0), "idle_minutes": ("number", "idle_minutes", 0),
+    "voice": ("bool", "voice"),
     "triage_daily": ("bool", "triage_daily"), "language": ("text", "language"),
     "chat_layout": ("choice", "chat_layout", CHAT_LAYOUTS), "chat_keep_hours": ("number", "chat_keep_hours", 0),
     "launch": ("block", {"target": ("choice", "target", TARGETS)}),
@@ -336,6 +338,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
 
     full_minutes = max(1, w["full_minutes"]) if _is_number(w.get("full_minutes")) else 10
     snapshot_minutes = max(0, w["snapshot_minutes"]) if _is_number(w.get("snapshot_minutes")) else 60
+    idle_minutes = max(0, w["idle_minutes"]) if _is_number(w.get("idle_minutes")) else 10
     voice = w["voice"] if isinstance(w.get("voice"), bool) else False
     target = _dict(w.get("launch")).get("target", "area")
     if target not in TARGETS:
@@ -361,7 +364,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
                     session_guide=gd.guide_of(w.get("session_guide")),
                     tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
-                    snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True,
+                    snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)
     return replace(cfg, config_warnings=check_block(raw.get("cockpit"), cfg))

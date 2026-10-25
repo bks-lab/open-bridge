@@ -343,6 +343,7 @@ function TabPane({ s, c, tab }) {
   useLayoutEffect(() => { const el = body.current; if (el && stick.current) el.scrollTop = el.scrollHeight }, [screen?.text])
   useEffect(() => { stick.current = true }, [tab.ref])
   const lines = screenLines(screen?.text)
+  // by state on purpose: a tab gone idle (finished) can still be answered
   const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
   const guided = replying && guideOf(s, tab).status !== 'off'
   const view = guided ? guideView(s) : 'screen'

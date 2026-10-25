@@ -136,6 +136,7 @@ class TabPoller:
                     "ref": t["ref"], "ws_ref": t["ws_ref"], "name": t["name"], "workspace": t["workspace"],
                     "state": t["state"], "last": t["last"], "slug": t["slug"], "item": t["item"], "team": t["team"],
                     "role": t["role"], "state_source": t.get("state_source"), "live": m.is_live(t), "waiting": m.is_waiting(t, view) and not is_control,
+                    "idle": t.get("idle") is True and not is_control,
                     "is_control": is_control, "filed_by": filed["key"] if filed else None,
                     "settled": None if is_control else ret.tab_settled(self.app.root, t),
                     "since_ms": int(seen.get("since_ms", 0)), "long": None if is_control else m.long_state(t, self.seen, now),
@@ -184,6 +185,12 @@ class TabPoller:
                 self.error = None
                 new = [m.to_tab(t) for t in raw if isinstance(t, dict)]
                 control = self.pick_control(new, now)
+                # the idle mark lives as long as the state it was given in, never on the control tab; the next
+                # read of questions renews it
+                before = {t["ref"]: t for t in self.tabs}
+                for t in new:
+                    old = before.get(t["ref"])
+                    t["idle"] = bool(t["ref"] != control and old and old.get("idle") and old["state"] == t["state"])
                 known = {t["ref"]: t["state"] for t in self.tabs}
                 if self.polled_once:
                     for t in new:
@@ -218,6 +225,7 @@ class TabPoller:
                     self.workspaces_ms = now
         if asks and raw is not None:
             self._refresh_asks(now)
+            self._mark_idle(now)
         app.on_tabs(alerts)
 
     def _refresh_asks(self, now: float) -> None:
@@ -234,7 +242,8 @@ class TabPoller:
             seen = {k: dict(v) for k, v in self.seen.items()}
             control = self.control
             held = dict(self.asks)
-        candidates = [t for t in tabs if t["ref"] != control and m.is_waiting(t, view)]
+        # an idle tab is read too: a question that comes later brings it back
+        candidates = [t for t in tabs if t["ref"] != control and m.waits(t, view)]
         if not candidates or "screen" not in app.driver_caps():
             with self.lock:
                 self.asks = {}
@@ -260,6 +269,20 @@ class TabPoller:
             kept[ref] = (key, ask, now)
         with self.lock:
             self.asks = kept
+
+    def _mark_idle(self, now: float) -> None:
+        """Which waiting tabs are done rather than asking (model.is_idle), from the questions just read"""
+        after_ms = float(getattr(self.app.cfg, "idle_minutes", 10)) * 60 * 1000
+        with self.lock:
+            waiting = [dict(t) for t in self.tabs if t["state"] == "waiting"]
+        # the disk is read outside the lock, so a reader of state() never waits on it
+        settled = {t["ref"]: ret.tab_settled(self.app.root, t) for t in waiting}
+        with self.lock:
+            for t in self.tabs:
+                held = self.asks.get(t["ref"])
+                ask = held[1] if held and held[0][0] == t["state"] else None
+                since = self.seen.get(t["ref"], {}).get("since_ms", now)
+                t["idle"] = t["ref"] != self.control and m.is_idle(t, ask, since, settled.get(t["ref"]), now, after_ms)
 
     def _workspaces(self) -> list[dict] | None:
         run = self.app.run(self.app.workplace("workspaces", "--json"), WORKSPACES_TIMEOUT)
