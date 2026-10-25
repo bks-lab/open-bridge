@@ -63,6 +63,7 @@ layout now").
 | `scripts/lib/bridge_cockpit/collector.py` | collect pipeline (quick, full, delta), and `build_model`: the JSON the page gets |
 | `scripts/lib/bridge_cockpit/origin.py` | where a work row comes from and whether it is a task or a stream: `classify_from` (an inbox item's free `from`), `classify_row` (a row), `work_kind`, `known_from_root` (the skills, declared runs, machines and work slugs of the tree, cached 30 s); pure, never raises |
 | `scripts/lib/bridge_cockpit/card_fields.py` | the one contract of a card and of the `brief` it is written from: `CARD_FIELDS` (the wire shape), `BRIEF_LIMITS`, `validate_brief` (the gate every writer passes, and `validate-status.py` for a STATUS.md), `brief_basis` (when a brief is stale); pure. Its inputs come from `workplace.py tasks` (`--all` adds the backlog: brief, headline, `next_who`, `next_due`, progress) and the task detail payload of `details.py`, which carries the brief as a mapping |
+| `scripts/lib/bridge_cockpit/card.py` | one card for every item: `card_of(raw, ctx)` maps a model row, a page item, a task or inbox detail and a tab that asks to exactly `CARD_FIELDS`, one adapter per kind; `probe_text` (a `closes_when` in words), `progress` and `placeholder_steps` (the checklist of a STATUS.md, `workplace.py` uses them too); pure, never raises |
 | `scripts/lib/bridge_cockpit/model.py` | pure domain functions, first ported from the retired briefing card's `logic.ts` (buckets, layout, tab matching) |
 | `scripts/lib/bridge_cockpit/actions.py` | `Actions`: the argument checks (`validate`), `execute`, the audit line, `finish`; it re-exports every name of `actions_base.py` |
 | `scripts/lib/bridge_cockpit/actions_base.py` | the verb table `SPEC`, the patterns and word lists, `ActionError`, `Ctx` |
@@ -339,6 +340,45 @@ the inspector (work page items) and `FeedLine` in `views/stage.js`, `ReturnCard`
 `views/home.js`, and `ReviewBody` in `views/check.js`. A new renderer of a work row
 draws both: the frontend test "the kind stands first on every row" fails on a view file without them. After the
 change run `python3 scripts/build-cockpit-demo.py --write` so the demo mirror follows.
+
+### One card for every item
+
+A task, a stream, a closed task, an inbox item, a GitHub issue, pull request or draft, a calendar event, a check,
+a command or info row and a tab that asks reach the page with their own raw fields, and each view used to pick its
+own. Beside them every one now carries a `card` of one shape, built on the server by `card.card_of(raw, ctx)` and
+attached in the same four places as `origin`: `collector.row_out` (every row, hidden ones and `task_rows` too),
+`collector.info_out` (every page item), `details.task_detail` and `details.inbox_detail`. Its keys are exactly
+`card_fields.CARD_FIELDS`, every value may be None, and all old fields stay as they were: the card is additive.
+
+What goes where, per kind (`card.py` names the rest):
+
+| Field | Task, stream, closed task | Inbox item | GitHub row | Event, check, info row, tab that asks |
+|---|---|---|---|---|
+| `title` | the H1 (the row's title) | its summary | the issue title | the item's title, the tab's name |
+| `summary` | story as one sentence, else `headline` (clipped to 140), else the triage gist | story, else the first sentence of `detail`, else the gist | note, else labels, else the gist | where and who; the detail; the question |
+| `goal`, `story`, `acceptance` | the STATUS.md `brief:` | the latest `describe` event | none | none |
+| `next` | the row's derived next, `who` and `due` from `next:` | from kind and gate ("decide", "your yes"), or "closes by itself when ..." for a `free` item with a `closes_when` | "review it" (`ask_review`), "make it a task" (`untasked`) | the tab's options |
+| `owner` | `next.who`, else the triage doer (`ai` bridge, `you` me, `either` bridge_then_me) | by gate (`only-you` me, `your-yes` bridge_then_me, `free` bridge) | `who`, else the first person | the person for a tab |
+
+`source` is the `origin` the row already has (never classified again). `links` holds `{kind, href | path | key,
+label}`, and a task link carries `closed: true` when the task lives under `work/done/`. `written` says who wrote the
+text: `human` (a brief a person edited), `ai` (a brief with a model id and not edited, a describe proposal, or the
+triage gist as summary), `status` or `item` (the STATUS.md or the item's own text), `title` (nothing beyond the
+title). `gaps` lists what the card misses: `no_goal`, `no_next`, `placeholder_next` (the template's "First step"
+in `next:` or still open in the checklist, `workplace.py tasks` reports it as `placeholder`), `task_closed`,
+`no_content` (a detail that adds fewer than 60 characters to the title). A closed task has no gaps.
+
+The inputs: `build_model(..., triage=, describe=)` gets the triage items (`Triage.state()["items"]`) and the brief
+proposals by key from `App.card_sources()`; `App.describe_items()` is the hook for the describe run and gives
+nothing yet. The detail endpoints build the same context with `App.card_ctx()`. An inbox row's detail, gate, probe
+and brief come from `details.inbox_facts`, read once per item and kept until `item.yaml` or its `events/` folder
+changes, so a rebuild costs two stats per item. The words a card says (the story sentence, the next steps, the
+probe) live in `text.py` under `card`, English and German; `card.probe_text` says a `closes_when` the way
+`logic.js probeText` does.
+
+To add a kind: one adapter in `card.py` returning `_new(...)`, one branch in `card_of`, a case in
+`scripts/tests/test_bridge_cockpit_card.py`. The contract test asserts that every row and page item of a pass and
+both detail payloads carry a card of exactly `CARD_FIELDS`. Jev gets none of it (`jev.ROW_FIELDS` is unchanged).
 
 ### New page text
 

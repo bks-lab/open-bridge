@@ -329,8 +329,9 @@ than `limits.stale_days`). `propose` decides which of them get a tab today; `tas
 whole list, for any UI or script that drives `workplace.py`. Each row also carries what a
 card is written from: the `brief:` block as a mapping, the `headline`, `next_who` and
 `next_due` of a `next:` mapping, and `progress` {done, total} counted from the `- [x]` and
-`- [ ]` lines of the body (none without a checklist). `--all` adds the backlog; the day
-plan never sees it.
+`- [ ]` lines of the body (none without a checklist), and `placeholder`, true while an open line
+still reads as the template's first step ("First step", "First action"). `--all` adds the
+backlog; the day plan never sees it.
 
 ## Teams: several role tabs on one task
 

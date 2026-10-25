@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import VERSION
+from . import card as cd
 from . import details
 from .. import work_find
 from . import model as m
@@ -498,6 +499,27 @@ class App:
         self.tabs.schedule(0)
         self.collector.on_connect()
 
+    def describe_items(self) -> dict:
+        """The brief proposals a describe run keeps, by key (`task:<slug>`, `inbox:<id>`): none yet. A card shows
+        a proposal as written by `ai` until a person takes it into the STATUS.md or the inbox item."""
+        return {}
+
+    def card_sources(self) -> dict:
+        """What every card is built with besides its item (card.py): the triage items and the brief proposals,
+        by key. A failure here never stops the page: the cards are built without them."""
+        try:
+            triage = self.triage.state().get("items") or {}
+        except Exception as exc:  # noqa: BLE001 - a damaged triage file degrades to no gist
+            self.log_error(f"card sources: {exc!r}")
+            triage = {}
+        return {"triage": triage, "describe": self.describe_items()}
+
+    def card_ctx(self) -> "cd.Ctx":
+        """The card context of the detail endpoints: the same text table and sources as the model's cards"""
+        src = self.card_sources()
+        return cd.Ctx(tx=self.tx.get("card"), triage=src["triage"], describe=src["describe"],
+                      tasks={t["slug"]: t for t in self.collector.tasks})
+
     def inbox_listing(self) -> list | None:
         at, cached = self.inbox_cache
         if cached is not None and time.monotonic() - at < INBOX_CACHE_S:
@@ -886,7 +908,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error_json("invalid_argument", "not a file of this task", "file")
                 return
             result = details.task_file(app.root, slug, rel, folder) if rel is not None \
-                else details.task_detail(app.root, slug, app.inbox_listing(), folder, app.cfg.origin_map)
+                else details.task_detail(app.root, slug, app.inbox_listing(), folder, app.cfg.origin_map,
+                                         ctx=app.card_ctx())
             if result is None:
                 self.send_error_json("not_found", "no such file" if rel is not None else "no such task")
             else:
@@ -914,7 +937,8 @@ class Handler(BaseHTTPRequestHandler):
             if not details.INBOX_ID_RE.match(item_id):
                 self.send_error_json("invalid_argument", "not an inbox id", "id")
                 return
-            result = details.inbox_detail(app.root, item_id, app.inbox_listing(), app.cfg.origin_map)
+            result = details.inbox_detail(app.root, item_id, app.inbox_listing(), app.cfg.origin_map,
+                                          ctx=app.card_ctx())
             if result is None:
                 self.send_error_json("not_found", "no such inbox item")
             else:

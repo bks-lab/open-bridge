@@ -704,3 +704,42 @@ def test_state_a_handed_chat_carries_its_handoff_record(tmp_path):
         assert {k: type(handed[k]) for k in HANDED_FIELDS} == HANDED_FIELDS and handed["status"] in HANDED_STATUSES
     assert isinstance(tab["inbox_id"], str) and tab["to"] == "tab"
     assert isinstance(control["relay_id"], str) and control["to"] == "control"
+
+
+# ---------------------------------------------------------------- one card for every item
+
+def _cards_of(model: dict) -> list[tuple[str, object]]:
+    rows = [r for sec in model["sections"] for r in sec["rows"]] + model["hidden"] + model["task_rows"]
+    items = [it for pg in model["pages"] for sec in pg["sections"] for it in sec["items"]]
+    return [(r["key"], r.get("card")) for r in rows] + [(it["key"], it.get("card")) for it in items]
+
+
+def test_every_row_and_page_item_carries_a_card_of_the_one_shape(tmp_path):
+    """card.py: every row of the model and every page item reaches the page with `card`, exactly CARD_FIELDS"""
+    from lib.bridge_cockpit.card_fields import CARD_FIELDS
+    w = World(tmp_path)
+    try:
+        cards = _cards_of(w.app.collector.model)
+        out = w.app.collector.resolve("task:demo-task")["out"]
+        task = out["card"]
+        detail = json.loads(w.request("GET", "/api/task?slug=demo-task", headers=w.cookie)[2])["card"]
+        item = json.loads(w.request("GET", f"/api/inbox?id={YES_ID}", headers=w.cookie)[2])["card"]
+    finally:
+        w.close()
+    assert cards and {key for key, _ in cards} >= {"task:demo-task", f"inbox:{YES_ID}"}
+    for key, card in cards + [("detail", detail), ("item", item)]:
+        assert isinstance(card, dict) and tuple(card) == CARD_FIELDS, key
+    # the row's title (the task list's H1) and the detail's H1: the fixture's task list names it differently
+    assert task["kind"] == detail["kind"] == "task" and task["title"] == out["title"] and detail["title"] == "Demo task"
+    assert (item["kind"], item["subkind"], item["owner"]) == ("inbox", "decision", "bridge_then_me")
+
+
+def test_a_real_pass_gives_every_row_a_card(real):
+    from lib.bridge_cockpit.card_fields import CARD_FIELDS
+    app, item = real
+    app.tabs.poll()
+    app.collector.request("both")
+    app.collector.drain()
+    cards = _cards_of(app.collector.model)
+    assert (f"inbox:{item}") in {key for key, _ in cards}
+    assert all(isinstance(c, dict) and tuple(c) == CARD_FIELDS for _, c in cards), cards

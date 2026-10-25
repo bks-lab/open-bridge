@@ -253,24 +253,9 @@ def tab_label(task: dict, cfg: dict) -> str:
     return text[:LABEL_MAX].rsplit(" ", 1)[0].rstrip(",:;") + "…"
 
 
-CHECK_RE = re.compile(r"^\s*[-*] \[([ xX])\]")
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
-
-
-def progress(text: str) -> dict | None:
-    """{done, total} from the `- [x]` and `- [ ]` lines of the body (nested ones too, none inside a ``` or ~~~
-    code fence, where they are examples); None without any."""
-    parts = re.split(r"^---\s*$", text, maxsplit=2, flags=re.MULTILINE)
-    marks, fence = [], None
-    for line in (parts[2] if len(parts) == 3 else text).splitlines():
-        opener = FENCE_RE.match(line)
-        if opener:
-            fence = None if fence == opener.group(1) else (fence or opener.group(1))
-            continue
-        mark = None if fence else CHECK_RE.match(line)
-        if mark:
-            marks.append(mark.group(1))
-    return {"done": sum(m != " " for m in marks), "total": len(marks)} if marks else None
+# the checklist of a body: done and open boxes, and whether the template's first step still stands
+# (lib/bridge_cockpit/card.py, the one reading the cockpit's detail uses too)
+from lib.bridge_cockpit.card import placeholder_steps, progress  # noqa: E402,F401
 
 
 def _plain(value):
@@ -306,7 +291,7 @@ def collect_tasks(root: Path, include_all: bool = False) -> list:
                 # run where the card is built), the one-line headline and the checklist of the body
                 "brief": _plain(fm["brief"]) if isinstance(fm.get("brief"), dict) else None,
                 "headline": fm.get("headline") if isinstance(fm.get("headline"), str) else None,
-                "progress": progress(text),
+                "progress": progress(text), "placeholder": placeholder_steps(text),
             })
     return tasks
 
@@ -954,7 +939,7 @@ def _next_part(value, key: str) -> str | None:
 
 def task_rows(root: Path, cfg: dict, today: dt.date, include_all: bool = False) -> list:
     """Every active task, flat: label, area (its workspace), priority, score, blocked_by, stale, plus what a
-    card is written from (brief, headline, next_who, next_due, progress). The whole list, for any UI or
+    card is written from (brief, headline, next_who, next_due, progress, placeholder). The whole list, for any UI or
     script that drives workplace.py; propose decides which of them get a tab today. `include_all` adds
     the backlog."""
     limits = {**DEFAULT_LIMITS, **(cfg.get("limits") or {})}
@@ -978,6 +963,7 @@ def task_rows(root: Path, cfg: dict, today: dt.date, include_all: bool = False) 
                      # how it began (STATUS.md origin, free text): the cockpit says where it comes from
                      "origin": (t.get("origin") or "")[:300] or None,
                      "headline": t.get("headline"), "brief": t.get("brief"), "progress": t.get("progress"),
+                     "placeholder": t.get("placeholder") is True,
                      "next_who": _next_part(t.get("next"), "who"), "next_due": _next_part(t.get("next"), "due")})
     rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     return sorted(rows, key=lambda r: (rank.get(r["priority"] or "", 4), -r["score"], r["slug"]))

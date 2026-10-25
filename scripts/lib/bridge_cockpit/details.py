@@ -13,17 +13,25 @@ control character that does not start with a dot (FILE_RE), so whatever the list
 /api/inbox reads work/inbox/<id>/item.yaml and events/*.yaml (the last 50), with how the item
 ends (`closer`, `closes_when` as plain data, nested at most four deep). Headings are never
 matched by language: the sections come back in the order they stand in the file.
+Both carry a `card` (card.py), built from what they read and the triage and describe entries the server
+hands in; `inbox_facts` is the same reading of one inbox item for the rows of the model, kept until the
+item or its events change.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import re
+import threading
+from dataclasses import replace
 from pathlib import Path
 
 import yaml
 
+from . import card as cd
 from . import origin as og
+from .card_fields import validate_brief
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
@@ -50,6 +58,20 @@ def _scalar(value):
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     return str(value)
+
+
+def _text(value):
+    """A front matter value as the card reads it: a date as its ISO text, a text as it is, anything else None"""
+    if isinstance(value, (dt.date, dt.datetime)):
+        return value.isoformat()
+    return value if isinstance(value, (str, int, float)) and not isinstance(value, bool) else None
+
+
+def _heading(body: str) -> str | None:
+    for line in body.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip() or None
+    return None
 
 
 def _inside(path: Path, base: Path) -> bool:
@@ -196,7 +218,7 @@ def task_file(root: Path, slug: str, rel: str, folder: str | None = None) -> dic
 
 
 def task_detail(root: Path, slug: str, listing: list | None = None, folder: str | None = None,
-                origin_map: tuple = ()) -> dict | None:
+                origin_map: tuple = (), ctx: cd.Ctx | None = None) -> dict | None:
     """The file of a slug, the open one first; `folder` (`work/done/<month>/<slug>`) picks one of its places,
     compared with the places as they are, so a folder that is none of them is never read."""
     if not isinstance(slug, str) or not SLUG_RE.match(slug):
@@ -212,6 +234,15 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
         return None
     front, body = split_front(text)
     nxt = front.get("next")
+    # what the card reads (card.task_card): the next step with who and by when, the checklist, the brief
+    facts = {"title": _heading(body), "status": _text(front.get("status")), "priority": _text(front.get("priority")),
+             "blocked_by": _text(front.get("blocked_by")), "updated": _text(front.get("last_updated")),
+             "area": _text(front.get("area")), "headline": _text(front.get("headline")),
+             "brief": _plain(front["brief"]) if isinstance(front.get("brief"), dict) else None,
+             "next": _text(nxt.get("what") if isinstance(nxt, dict) else nxt),
+             "next_who": _text(nxt.get("who")) if isinstance(nxt, dict) else None,
+             "next_due": _text(nxt.get("due")) if isinstance(nxt, dict) else None,
+             "progress": cd.progress(text), "placeholder": cd.placeholder_steps(text)}
     if isinstance(nxt, dict):     # `next: {what, who}` reads as its words
         front = {**front, "next": nxt.get("what")}
     related = front.get("related") if isinstance(front.get("related"), list) else []
@@ -235,6 +266,8 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
                                                     "origin_raw": _scalar(e.get("from")), "sources": ["inbox"]}, known)}
                         for e in listing or [] if isinstance(e, dict) and e.get("task") == slug
                         and e.get("state") in ACTIVE and isinstance(e.get("id"), str) and INBOX_ID_RE.match(e["id"])][:20]}
+    # the one card of the task (card.py), read before any section is dropped for size
+    result["card"] = cd.card_of({**result, "facts": facts}, _with_work(ctx, known))
     # total response max 80 KB: drop sections from the end, marking the last kept one truncated
     while len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > TOTAL_MAX and result["sections"]:
         result["sections"].pop()
@@ -243,7 +276,8 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
     return result
 
 
-def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tuple = ()) -> dict | None:
+def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tuple = (),
+                 ctx: cd.Ctx | None = None) -> dict | None:
     if not isinstance(item_id, str) or not INBOX_ID_RE.match(item_id):
         return None
     base = Path(root) / "work" / "inbox"
@@ -257,6 +291,7 @@ def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tup
         item = None
     item = item if isinstance(item, dict) else {}
     events = []
+    briefs = []
     events_dir = folder / "events"
     if events_dir.is_dir() and _inside(events_dir, base):
         for path in sorted(events_dir.glob("*.yaml")):
@@ -266,6 +301,8 @@ def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tup
                 continue
             if not isinstance(ev, dict):
                 continue
+            if ev.get("verb") == "describe":
+                briefs.append(ev.get("brief"))
             entry = {"verb": _scalar(ev.get("verb")), "by": _scalar(ev.get("by")), "at": _scalar(ev.get("at"))}
             for extra in ("until", "note", "text"):   # text: what a tab noted or closed with
                 if extra in ev:
@@ -286,7 +323,7 @@ def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tup
     action_display = " ".join(str(a) for a in argv) if isinstance(argv, list) and argv else None
     detail = _scalar(item.get("detail"))
     cut = isinstance(detail, str) and len(detail) > DETAIL_MAX
-    return {"ok": True, "id": item_id, "item": {
+    result = {"ok": True, "id": item_id, "item": {
         "summary": _scalar(item.get("summary")), "detail": detail[:DETAIL_MAX] if cut else detail,
         "detail_truncated": cut, "kind": _scalar(item.get("kind")),
         "gate": _scalar(item.get("gate")), "urgency": _scalar(item.get("urgency")), "state": _scalar(state),
@@ -298,3 +335,71 @@ def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tup
         "origin": og.classify_row({"inbox_id": item_id, "inbox_key": _scalar(item.get("key")),
                                    "origin_raw": _scalar(item.get("from")) if isinstance(item.get("from"), str) else None,
                                    "sources": ["inbox"]}, og.known_from_root(root, origin_map))}
+    facts = _facts(item, briefs, events[-1]["at"] if events else None)
+    result["card"] = cd.card_of({**result, "facts": facts}, _with_work(ctx, og.known_from_root(root, origin_map)))
+    return result
+
+
+def _with_work(ctx: cd.Ctx | None, known: og.Known) -> cd.Ctx:
+    """The card context with the work kinds of this Bridge's tree under the ones it was handed"""
+    ctx = ctx if isinstance(ctx, cd.Ctx) else cd.Ctx()
+    return replace(ctx, work={**known.work, **ctx.work})
+
+
+def _facts(item: dict, briefs: list, updated) -> dict:
+    """What card.inbox_card reads of an item: its detail and how it closes, and its brief (the latest
+    `describe` event, None when that one took the brief back), through the gate it was written through"""
+    brief = validate_brief(briefs[-1])[0] if briefs and isinstance(briefs[-1], dict) else None
+    return {"detail": _text(item.get("detail")), "kind": _text(item.get("kind")), "gate": _text(item.get("gate")),
+            "due": _text(item.get("due")), "created": _text(item.get("created")), "task": _text(item.get("task")),
+            "area": _text(item.get("area")), "closes_when": _plain(item.get("closes_when")),
+            "closer": _text(item.get("closer")), "brief": brief, "updated": _text(updated)}
+
+
+_FACTS: dict = {}
+_FACTS_LOCK = threading.Lock()
+FACTS_CAP = 1000
+
+
+def inbox_facts(root: Path, item_id: str) -> dict | None:
+    """card.inbox_card's facts of one item (see _facts), read from work/inbox/<id>/ and kept until the
+    item file or its events folder changes, so a rebuild of the model costs two stats per item"""
+    if not isinstance(item_id, str) or not INBOX_ID_RE.match(item_id):
+        return None
+    base = Path(root) / "work" / "inbox"
+    folder = base / item_id
+    item_path, events_dir = folder / "item.yaml", folder / "events"
+    try:
+        stamp = (item_path.stat().st_mtime_ns,
+                 events_dir.stat().st_mtime_ns if events_dir.is_dir() else 0)
+    except OSError:
+        return None
+    key = (str(base), item_id)
+    with _FACTS_LOCK:
+        held = _FACTS.get(key)
+        if held and held[0] == stamp:
+            return held[1]
+    if not _inside(item_path, base):
+        return None
+    try:
+        item = yaml.safe_load(item_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        item = None
+    item = item if isinstance(item, dict) else {}
+    briefs, last = [], None
+    if events_dir.is_dir() and _inside(events_dir, base):
+        for path in sorted(events_dir.glob("*.yaml")):
+            try:
+                ev = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except (OSError, yaml.YAMLError):
+                continue
+            if isinstance(ev, dict):
+                last = ev.get("at") or last
+                if ev.get("verb") == "describe":
+                    briefs.append(ev.get("brief"))
+    facts = _facts(item, briefs, last)
+    with _FACTS_LOCK:
+        if len(_FACTS) >= FACTS_CAP:
+            _FACTS.clear()
+        _FACTS[key] = (stamp, facts)
+    return facts

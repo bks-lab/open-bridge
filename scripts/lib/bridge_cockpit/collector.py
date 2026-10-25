@@ -24,10 +24,13 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
+from dataclasses import replace
+
+from . import card as cd
 from . import model as m
 from . import origin as og
 from .daybook import week_done
-from .details import INBOX_ID_RE
+from .details import INBOX_ID_RE, inbox_facts
 from .watch import task_snapshot
 from . import returns as ret
 
@@ -66,11 +69,12 @@ def make_link(url: str | None, root: Path) -> dict | None:
 
 
 def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | None, starting: set,
-             page_id: str = "", section_id: str = "", known: og.Known | None = None) -> dict:
+             page_id: str = "", section_id: str = "", known: og.Known | None = None,
+             card_ctx: cd.Ctx | None = None) -> dict:
     # a task row, or a row an agent was started on (its inbox item): either way the tab shows on the row
     tab = m.tab_for({"task": it.get("task"), "inbox_id": None if it.get("task") else it.get("inbox")}, tabs) \
         if it.get("task") or it.get("inbox") else None
-    return {"index": index, "key": m.item_key(page_id, section_id, it), "actionable": it.get("actionable") is True, "title": it["title"], "detail": it["detail"], "when": it["when"], "tone": it["tone"],
+    out = {"index": index, "key": m.item_key(page_id, section_id, it), "actionable": it.get("actionable") is True, "title": it["title"], "detail": it["detail"], "when": it["when"], "tone": it["tone"],
             "link": make_link(it.get("url"), root), "task": it.get("task"), "ask": it["ask"], "mark": it["mark"],
             "priority": it.get("priority"), "state": it.get("state"), "lines": it.get("lines", []),
             "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"),
@@ -79,6 +83,9 @@ def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | No
             "cal": it.get("cal"), "due_at": it.get("due_at"),
             "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view),
             **page_origin(it, section_id, known)}
+    # the one card of the item (card.py), from what the row carries and the section it stands in
+    out["card"] = cd.card_of(out, card_ctx)
+    return out
 
 
 def page_origin(it: dict, section_id: str, known: og.Known | None) -> dict:
@@ -108,8 +115,10 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 dismissed: dict | None = None,
                 runs: dict, teams: list[dict], tasks: list[dict], settled: set, starting: set, now: float,
                 seq: int, stale: bool, profile: str | None, tx: dict,
-                review: dict | None = None, origin_map: tuple = ()) -> tuple[dict, dict]:
-    """The page model (contract section 3.3) and an index row_key -> internal row for the verbs."""
+                review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
+                describe: dict | None = None) -> tuple[dict, dict]:
+    """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
+    triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py)."""
     today = m.iso_date(now)
     dismissed = dismissed or {}
     hidden = {**hidden, **{k: "9999-12-31" for k in dismissed}}     # out until "show again"
@@ -139,6 +148,11 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
 
     review = review or {"running": None, "error": None, "last": None, "tasks": {}}
     verdicts = review["tasks"]
+    # what every card is built with (card.py): the text table, the triage and describe entries, the tasks as
+    # listed, the work kinds of this Bridge and the inbox items as read from disk (kept until they change)
+    card_ctx = cd.Ctx(tx=tx.get("card") if isinstance(tx, dict) else None, triage=triage or {},
+                      describe=describe or {}, tasks={t["slug"]: t for t in tasks}, work=dict(known.work),
+                      inbox=lambda item_id: inbox_facts(root, item_id))
 
     def row_out(row: dict, section: str) -> dict:
         tab = m.tab_for(row, tabs)
@@ -189,6 +203,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "about_kind": row.get("about_kind"),
             "inbox_kind": row.get("inbox_kind"),
         }
+        # the one card of the row (card.py), from the row as it goes out (and when its item was filed)
+        out["card"] = cd.card_of({**out, "created": row.get("created")}, card_ctx)
         index[row["key"]] = {"row": row, "section": section, "tab": tab, "out": out, "hidden": False}
         return out
 
@@ -228,7 +244,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         secs = []
         for s in pg["sections"]:
             cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups") else ITEM_CAP    # drawn views filter every row
-            shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known) for i, it in enumerate(s["items"][:cap])]
+            sec_ctx = replace(card_ctx, section_kind=s.get("kind"))
+            shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known, sec_ctx)
+                     for i, it in enumerate(s["items"][:cap])]
             items = [i for i in shown if not (i["actionable"] and (i["key"] in settled or (hidden.get(i["key"]) or "") > today))]
             # a row put off or settled leaves the table, and its count and finding go with it, so the tab badge,
             # the section head and the alarm never count a row the page does not show
@@ -593,7 +611,7 @@ class Collector:
                 hidden=app.store.hidden(), dismissed=app.store.dismissed(), runs=app.store.team_runs(), teams=self.teams, tasks=self.tasks,
                 settled=set(self.settled), starting=self.starting_items(), now=app.clock(), seq=self.seq,
                 stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
-                origin_map=getattr(app.cfg, "origin_map", ()))
+                origin_map=getattr(app.cfg, "origin_map", ()), **app.card_sources())
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)

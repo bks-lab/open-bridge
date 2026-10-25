@@ -270,6 +270,18 @@ EN: dict = {
     "returns": {"head": "With AI", "start": "agent started from the cockpit ({mode})",
            "mode": {"go": "let AI do it", "report": "advise", "context": "collect context"},
            "filed": "answer filed, {text} ({key})", "lost": "the tab ended without a word"},
+    # the words of a card (card.py): a user story as one sentence, the next step an inbox item or a row asks
+    # for, and how an item closes on its own (its closes_when probe, the same words as text.js `probe`)
+    "card": {"story": "As {as}, I want {want}, so that {so_that}.",
+             "next": {"decide": "decide", "answer": "answer", "yes": "give your yes", "read": "read",
+                      "check": "check the result", "closes": "closes by itself when {probe}",
+                      "review": "review it", "task": "make it a task"},
+             "probe": {"and": "and", "or": "or", "unknown": "a check the page cannot describe",
+                       "gh_pr": "pull request {ref} is {state}", "gh_issue": "issue {ref} is {state}",
+                       "task_status": "task {slug} reaches {status}", "path_exists": "{path} exists",
+                       "after": "after {when}", "unseen_for": "its reporter has not seen it for {hours} hours",
+                       "command": "the command {cmd} succeeds",
+                       "states": {"merged": "merged", "green": "green", "closed": "closed"}}},
 }
 
 DE: dict = {
@@ -531,6 +543,16 @@ DE: dict = {
     "returns": {"head": "Bei der AI", "start": "Agent gestartet aus dem Cockpit ({mode})",
            "mode": {"go": "AI machen lassen", "report": "Beraten", "context": "Infos sammeln"},
            "filed": "Antwort abgelegt, {text} ({key})", "lost": "Tab beendet ohne Rückmeldung"},
+    "card": {"story": "Als {as} möchte ich {want}, damit {so_that}.",
+             "next": {"decide": "entscheiden", "answer": "beantworten", "yes": "dein Ja geben", "read": "lesen",
+                      "check": "Ergebnis prüfen", "closes": "schließt sich selbst, wenn {probe}",
+                      "review": "prüfen", "task": "zur Aufgabe machen"},
+             "probe": {"and": "und", "or": "oder", "unknown": "eine Prüfung, die die Seite nicht beschreiben kann",
+                       "gh_pr": "Pull Request {ref} ist {state}", "gh_issue": "Issue {ref} ist {state}",
+                       "task_status": "Aufgabe {slug} steht auf {status}", "path_exists": "{path} existiert",
+                       "after": "nach dem {when}", "unseen_for": "der Melder hat es {hours} Stunden nicht mehr gesehen",
+                       "command": "der Befehl {cmd} gelingt",
+                       "states": {"merged": "gemergt", "green": "grün", "closed": "geschlossen"}}},
 }
 
 TABLES: dict = {"en": EN, "de": DE}

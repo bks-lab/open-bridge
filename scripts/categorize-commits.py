@@ -590,6 +590,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_card_fields.py",
     "scripts/tests/test_workplace_brief.py",
     "scripts/tests/test_validate_status_brief.py",
+    "scripts/lib/bridge_cockpit/card.py",                 # one card for every item: card_of and its adapters
+    "scripts/tests/test_bridge_cockpit_card.py",
     "scripts/tests/test_bridge_cockpit_origin.py",
     "scripts/tests/test_bridge_cockpit_origin_flow.py",
     "scripts/triage.py",

@@ -484,6 +484,8 @@ def parse_tasks(out: Any) -> list[dict]:
             "headline": as_text_or_null(t.get("headline")),
             "next_who": as_text_or_null(t.get("next_who")), "next_due": as_text_or_null(t.get("next_due")),
             "progress": _progress(t.get("progress")),
+            # the template's first step still stands in its checklist (card.py gap placeholder_next)
+            "placeholder": t.get("placeholder") is True,
         })
     return result
 
