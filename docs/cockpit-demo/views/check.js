@@ -151,7 +151,6 @@ export function ReviewBlock({ row, s, c }) {
       </div>`
       : html`<p class="muted small">${t.reviewNone}</p>`}
     <div class="btn-row">
-      <${SettleMenu} rows=${[row]} s=${s} c=${c} seed=${rv && (rv.verdict === 'close' || rv.resolved) ? (rv.reason ?? '').slice(0, 400) : ''} />
       ${rv && rv.verdict !== 'continue' && !rv.kept ? html`<${Btn} size="xs" variant="secondary" busy=${busy} disabled=${running}
         onClick=${() => c.keep([row.key])}>${t.btnKeep}<//>` : null}
       <${Btn} size="xs" variant="secondary" disabled=${running} busy=${busy} onClick=${() => c.review([row.key], false, !!rv)}>

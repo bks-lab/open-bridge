@@ -4375,7 +4375,7 @@ test('the check uses the panel: no own close dialog, no start button that only a
   assert.doesNotMatch(check, /<\$\{LaunchPick\}/)
   assert.match(check, /<\$\{StartMany\} rows=\$\{pickedRows\}/)
   assert.match(check, /<\$\{SettleMenu\} rows=\$\{pickedRows\}/)
-  assert.match(check, /<\$\{SettleMenu\} rows=\$\{\[row\]\}[^>]*seed=/, 'a close verdict hands its reason to the sentence')
+  assert.doesNotMatch(check, /<\$\{SettleMenu\} rows=\$\{\[row\]\}/, 'a task detail has one close door, in its actions (bridge_cockpit_settle.test.mjs)')
   assert.doesNotMatch(read('app.js'), /askClose/)
   assert.doesNotMatch(read('views/overlays.js'), /function CloseDialog/)
   const day = read('views/day.js')
