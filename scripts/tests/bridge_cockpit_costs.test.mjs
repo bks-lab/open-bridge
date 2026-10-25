@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const WEB = path.join(here, '..', 'web')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-costs-'))
-for (const name of ['logic', 'text']) {
+for (const name of ['logic', 'areas', 'files', 'text']) {
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }

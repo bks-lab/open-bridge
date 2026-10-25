@@ -42,7 +42,7 @@ const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js'
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
-for (const name of ['logic', 'text', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
+for (const name of ['logic', 'areas', 'files', 'text', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }
@@ -443,10 +443,12 @@ test('vendor bundle: pinned size and sha256, exports what the page imports', () 
 })
 
 test('every relative import names an export that exists', () => {
+  // `export * from` passes on every name of that file (logic.js passes on areas.js and files.js)
   const exportsOf = file => {
     const src = read(file)
     return new Set([...[...src.matchAll(/export (?:async )?(?:function|const|let|class) ([A-Za-z_$][\w$]*)/g)].map(m => m[1]),
-      ...[...src.matchAll(/^export \{([^}]*)\}/gm)].flatMap(m => m[1].split(',').map(x => x.trim().split(/\s+as\s+/).pop()).filter(Boolean))])
+      ...[...src.matchAll(/^export \{([^}]*)\}/gm)].flatMap(m => m[1].split(',').map(x => x.trim().split(/\s+as\s+/).pop()).filter(Boolean)),
+      ...[...src.matchAll(/^export \* from '(\.\.?\/[\w./-]+\.js)'/gm)].flatMap(m => [...exportsOf(path.posix.join(path.posix.dirname(file), m[1]))])])
   }
   for (const file of AUTHORED_JS) {
     for (const m of read(file).matchAll(/(?:import|export) \{([^}]*)\} from '(\.\.?\/[\w./-]+\.js)'/g)) {

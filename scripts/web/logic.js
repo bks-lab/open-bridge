@@ -6,6 +6,11 @@
 // The server decides everything about the domain (which section a row is in, which
 // actions apply, whether a tab waits). These helpers only format and look things up.
 import { TABLES } from './text.js'
+import { inProject } from './areas.js'
+
+// the areas and the files view live in files of their own; every name passes on from here
+export * from './areas.js'
+export * from './files.js'
 
 /** The words of one language (text.js, rules/language-policy.md section 3); English for any other */
 const tableOf = lang => (TABLES[lang] ?? TABLES.en).logic
@@ -1321,7 +1326,6 @@ export function scheduleText(when, lang = 'en') {
   return out.map(o => `${o.head} ${o.times.join(', ')}`).join('; ')
 }
 
-
 /** The note under a run's day axis (`workload view`) in words, the last run in local time */
 export function dayNoteText(note, lang = 'en') {
   const L = tableOf(lang).notes
@@ -1955,11 +1959,6 @@ export function greetingPart(hour) {
   return 'evening'
 }
 
-/** The project a row belongs to: its area, else its first area name, else the label of its mark */
-export function rowProject(row) {
-  return row?.area || row?.area_names?.[0] || row?.mark?.label || ''
-}
-
 /** The page that holds the tasks (a section of kind tasks), else the briefing: where "to the tasks" leads */
 export function workPageId(model) {
   return (model?.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'tasks'))?.id ?? 'briefing'
@@ -1975,259 +1974,12 @@ export function dayLabel(date, lang) {
   return date.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-/** The project chips of the start page: the workspaces of the agent tabs and the projects of the rows,
- *  the most frequent first (ties by name), each name once whatever its case; the spelling seen first wins,
- *  tabs before rows. The control tab and nameless entries count for nothing */
-export function homeProjects(tabs, rows) {
-  const seen = new Map()
-  const add = name => {
-    const key = String(name ?? '').trim().toLowerCase()
-    if (!key) return
-    const x = seen.get(key) ?? { name: String(name).trim(), n: 0 }
-    x.n += 1
-    seen.set(key, x)
-  }
-  for (const t of tabs ?? []) if (!t.is_control) add(t.workspace)
-  for (const r of rows ?? []) add(rowProject(r))
-  return [...seen.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).map(x => x.name)
-}
-
-/** Does a tab or a row belong to the chosen project? No project chosen: everything does */
-export function inProject(x, project) {
-  if (!project) return true
-  const want = String(project).trim().toLowerCase()
-  const names = [x?.workspace, x?.area, ...(x?.area_names ?? []), x?.mark?.label]
-  return names.some(n => n && String(n).trim().toLowerCase() === want)
-}
-
 /** The cards of "continue": the agent tabs of the project without the control tab and bare shells,
  *  the ones that need you first, then waiting, then working; within a state the longest first */
 export function homeContinue(tabs, project) {
   const rank = t => STATE_ORDER[t.state] ?? 4
   return (tabs ?? []).filter(t => !t.is_control && t.state !== 'shell' && inProject(t, project))
     .sort((a, b) => rank(a) - rank(b) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
-}
-
-const PROJECT_TONES = ['secondary', 'accent', 'success', 'warning', 'info']
-
-/** A project's tone for its card band: the same name always the same DESIGN.md token, whatever its case */
-export function projectTone(name) {
-  let h = 0
-  for (const ch of String(name ?? '').toLowerCase()) h = (h * 31 + ch.codePointAt(0)) >>> 0
-  return PROJECT_TONES[h % PROJECT_TONES.length]
-}
-
-/** Is a row past its date? `due_at` or `due`, a day (YYYY-MM-DD, the server's form) or milliseconds;
- *  due today is not overdue */
-function rowOverdue(row, nowMs) {
-  const due = row?.due_at ?? row?.due
-  if (typeof due === 'number') return due < nowMs
-  return dueWhen(due, nowMs)?.kind === 'overdue'
-}
-
-/** The areas of the start page, each with what it holds for you: rows of "now" and tabs that wait on you,
- *  tabs at work, tabs that went idle and answered starts to review, rows past their date, and the open
- *  tasks (`tasks`, not in `total`: it keeps an area there to pick when nothing else is). Names and order as
- *  the project chips have them (homeProjects); an area with no number at all drops out. The control tab
- *  and bare shells count for nothing, and each thing counts once: a row in several sections, a row of
- *  "now" and the tab waiting on its work (as model.tab_for pairs them), an answered start and its idle tab */
-export function homeAreas(tabs, sections, returns, nowMs) {
-  const live = (tabs ?? []).filter(t => !t.is_control && t.state !== 'shell')
-  const byKey = new Map()
-  for (const sec of sections ?? []) for (const r of sec.rows ?? []) if (!byKey.has(r.key)) byKey.set(r.key, r)
-  const rows = [...byKey.values()]
-  const section = id => (sections ?? []).find(x => x.id === id)?.rows ?? []
-  const counts = new Map()
-  const zero = () => ({ waiting: 0, waitingTabs: 0, waitingRows: 0, running: 0, review: 0, overdue: 0, tasks: 0 })
-  // what has no area counts under NONE, the line "No area" at the end
-  const bump = (name, what) => {
-    const key = String(name ?? '').trim().toLowerCase() || NONE
-    const x = counts.get(key) ?? zero()
-    x[what] += 1
-    counts.set(key, x)
-  }
-  // a row of "now" stands for the tab that waits on its work
-  const paired = new Set()
-  for (const r of section('now')) {
-    bump(rowProject(r), 'waiting')
-    bump(rowProject(r), 'waitingRows')
-    for (const t of live) if ((r.task && t.slug === r.task) || (r.inbox_id && t.item === r.inbox_id)) paired.add(t.ref)
-  }
-  // an answered start stands for its tab gone idle
-  const answered = new Set()
-  for (const r of returns ?? []) {
-    const row = byKey.get(r.key)
-    if (!row || (r.live ?? r.stage) !== 'result') continue
-    bump(rowProject(row), 'review')
-    for (const t of live) if (t.ref === r.tab?.ref || (r.item && (t.slug === r.item || t.item === r.item))) answered.add(t.ref)
-  }
-  for (const t of live) {
-    // one rule for the number and its jump: the tab wants you (wantsYou), and no row of "now" stands for it
-    if (wantsYou(t) && !paired.has(t.ref)) {
-      bump(t.workspace, 'waiting')
-      bump(t.workspace, 'waitingTabs')
-    }
-    if (t.state === 'working') bump(t.workspace, 'running')
-    if (t.idle === true && !answered.has(t.ref)) bump(t.workspace, 'review')
-  }
-  for (const r of rows) if (rowOverdue(r, nowMs)) bump(rowProject(r), 'overdue')
-  const slugs = new Set()
-  for (const r of section('work')) {
-    if (!r.task || slugs.has(r.task)) continue
-    slugs.add(r.task)
-    bump(rowProject(r), 'tasks')
-  }
-  const line = (name, x, extra = {}) => ({ name, tone: projectTone(name), ...x, total: x.waiting + x.running + x.review + x.overdue, ...extra })
-  const out = homeProjects(tabs, rows).map(name => line(name, counts.get(name.toLowerCase()) ?? zero()))
-  if (counts.has(NONE)) out.push(line('', counts.get(NONE), { none: true, tone: 'muted' }))
-  return out.filter(a => a.total > 0 || a.tasks > 0)
-}
-
-const NONE = '\u0000none'   // no area name can be this
-
-/** Where a number of the areas leads, the area as the filter there (ui.area): tabs alone that want you
- *  are answered in the chat, one after the other (its walk); rows, or rows and tabs, wait in Work, what is due first, as do
- *  overdue rows; what runs and what is to review are the sessions and the starts of the Sessions page;
- *  the tasks open Work in the view it was left in, the area's name the files view */
-export function areaJump(kind, area) {
-  if (kind === 'waiting') return area?.waitingTabs && !area.waitingRows ? { page: '@chat', walk: true } : { page: 'briefing', view: 'due' }
-  if (kind === 'running' || kind === 'review') return { page: '@sessions' }
-  if (kind === 'overdue') return { page: 'briefing', view: 'due' }
-  // the area's name opens its files (one task at a time; the files view stands on every Bridge)
-  if (kind === 'name') return { page: 'briefing', view: 'dossier' }
-  return { page: 'briefing' }
-}
-
-// the pages the area filter (ui.area) acts on
-export const AREA_PAGES = new Set(['briefing', '@chat', '@sessions'])
-
-/** The row behind a page item: by its key, its task or its inbox item */
-function itemRow(it, byKey) {
-  return byKey.get(it.key) ?? (it.task ? byKey.get(`task:${it.task}`) : null) ?? (it.inbox ? byKey.get(`inbox:${it.inbox}`) : null) ?? null
-}
-
-/** The state a page sees under the area filter (ui.area) and Work's star (ui.pinnedOnly): Work keeps the
- *  rows and page items of the area (or pinned) and the area's tabs beside them, Chat the tabs of the area, Sessions its sessions (by
- *  their tab, else their folder) and its starts. Every other page, and the header with its badges, gets
- *  the state as it is; so does a page without a filter (the same object back) */
-export function areaScope(s) {
-  const page = s?.ui?.page
-  const area = AREA_PAGES.has(page) ? s.ui.area || null : null
-  const pins = page === 'briefing' && s.ui.pinnedOnly ? new Set(s.home?.pins ?? []) : null
-  if (!area && !pins) return s
-  const byKey = indexRows(s.model)
-  const tabs = s.tabs?.tabs ?? []
-  // a tab stays with the area by its workspace, or by the task or inbox item of a row of the area it works on
-  // (a tab of an area's task may run in a workspace named otherwise)
-  const areaRows = area ? (s.model?.sections ?? []).flatMap(sec => sec.rows ?? []).filter(r => inProject(r, area)) : []
-  const slugs = new Set(areaRows.map(r => r.task).filter(Boolean))
-  const items = new Set(areaRows.map(r => r.inbox_id).filter(Boolean))
-  const keepTab = t => t.is_control || inProject(t, area) || (!!t.slug && slugs.has(t.slug)) || (!!t.item && items.has(t.item))
-  if (page === 'briefing') {
-    const keepRow = r => !!r && inProject(r, area) && (!pins || pins.has(r.key))
-    const keepItem = it => {
-      const row = itemRow(it, byKey)
-      return (inProject(it, area) || (!!row && inProject(row, area))) && (!pins || (!!row && pins.has(row.key)))
-    }
-    const model = s.model && {
-      ...s.model,
-      sections: (s.model.sections ?? []).map(sec => {
-        const rows = (sec.rows ?? []).filter(keepRow)
-        const shown = new Set(rows.map(r => r.key))
-        return { ...sec, rows, total: rows.length, ...(sec.compact ? { compact: sec.compact.filter(k => shown.has(k)) } : {}) }
-      }),
-      hidden: (s.model.hidden ?? []).filter(keepRow),
-      // a page section counts what it shows; `scoped` says the rows still to load are not filtered yet
-      pages: (s.model.pages ?? []).map(p => ({ ...p, sections: (p.sections ?? []).map(sec => {
-        if (!sec.items) return sec
-        const items = sec.items.filter(keepItem)
-        return { ...sec, items, total: items.length, count: items.length, scoped: true }
-      }) })),
-    }
-    const more = Object.fromEntries(Object.entries(s.more ?? {}).map(([k, v]) => [k, v?.items ? { ...v, items: v.items.filter(keepItem) } : v]))
-    // the tab column beside Work shows and counts the area's tabs too
-    // wholeModel: what a search across every area looks its hits up in (the files view's search stays global)
-    return { ...s, model, more, tabs: area ? { ...s.tabs, tabs: tabs.filter(keepTab) } : s.tabs, wholeModel: s.model, wholeTabs: s.tabs }
-  }
-  if (page === '@chat') return { ...s, tabs: { ...s.tabs, tabs: tabs.filter(keepTab) } }
-  // the Sessions page
-  const tabOf = new Map(tabs.map(t => [t.ref, t]))
-  const keepSession = x => {
-    const tab = x.tab?.ref ? tabOf.get(x.tab.ref) : null
-    return tab ? inProject(tab, area) : inProject({ workspace: x.project }, area)
-  }
-  const keepReturn = r => inProject(byKey.get(r.key) ?? {}, area) || (!!r.tab?.ref && !!tabOf.get(r.tab.ref) && inProject(tabOf.get(r.tab.ref), area))
-  return {
-    ...s,
-    tabs: { ...s.tabs, tabs: tabs.filter(keepTab) },
-    sessions: s.sessions && { ...s.sessions, sessions: (s.sessions.sessions ?? []).filter(keepSession) },
-    model: s.model && { ...s.model, returns: (s.model.returns ?? []).filter(keepReturn) },
-  }
-}
-
-/** The state the keys act on, or null where they act on no rows: Work under its filters, and the overview
- *  of the start page while its part "Waiting on you" is on (its rows only, of the area, folded as shown:
- *  `desk` marks it, a pick there would not show) */
-export function keyScope(s) {
-  const page = s?.ui?.page
-  if (page === 'briefing') return areaScope(s)
-  if (page !== '@start') return null
-  const chosen = homeChosen(s.model, s.home)
-  if (homeView(chosen) !== 'areas' || !chosen.includes('d:waiting')) return null
-  const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', pinnedOnly: false } })
-  return { ...v, desk: true, ui: { ...s.ui, dayHeight: 0 },
-    model: v.model && { ...v.model, sections: (v.model.sections ?? []).filter(x => x.id === 'now'), hidden: [] } }
-}
-
-/** A row as the page shows it under its filters (keyScope, else areaScope), or null when they hide it:
- *  what a key may act on */
-export function scopeRow(s, key) {
-  if (!key) return null
-  const v = keyScope(s) ?? areaScope(s)
-  return indexRows(v.model).get(key) ?? null
-}
-
-/** What leaves the ui once a filter hides it: picks, the focus and the selection on rows no longer shown,
- *  so nothing can act on a row unseen. A patch for setUi */
-export function scopeKeep(s) {
-  const shown = indexRows(areaScope(s).model)
-  const keep = k => (k && shown.has(k) ? k : null)
-  // the place in the files: kept where its file stands in the queue the filter leaves, else the walk starts over
-  const at = s.ui?.dossierAt
-  const files = at ? scopedFileQueue(s) : []
-  const i = at ? files.findIndex(x => x.id === at.id) : -1
-  return { picked: (s.ui?.picked ?? []).filter(k => shown.has(k)), focusKey: keep(s.ui?.focusKey), selectedKey: keep(s.ui?.selectedKey),
-    dossierAt: i >= 0 ? { id: at.id, i } : null }
-}
-
-/** The files the files view walks under the filters of Work (areaScope as on Work, whatever page is open):
- *  what Next and Previous, n and p and a found file see */
-export function scopedFileQueue(s) {
-  const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing' } })
-  return fileQueue(v.tabs?.tabs ?? [], v.model, s.now || Date.now(), s.sessions?.runs)
-}
-
-/** Where a found file opens: at its place in the filtered queue, else beside the queue (a file of another area,
- *  a backlog task); a closed one always beside it, by its folder, since a slug can be open and closed at once */
-export function fileOpen(s, slug, path) {
-  const closed = typeof path === 'string' && path.startsWith('work/done/')
-  const queue = closed ? [] : scopedFileQueue(s)
-  const i = queue.findIndex(x => x.slug === slug)
-  return i >= 0 ? { dossierAt: { id: queue[i].id, i }, dossierOpen: null } : { dossierOpen: closed ? path : slug }
-}
-
-/** What Escape does on a page the area filter acts on: a selection (an open row or picks) closes first,
- *  then the filter goes; null when neither applies */
-export function escapeStep(ui) {
-  if (!ui?.area || !AREA_PAGES.has(ui.page)) return null
-  return ui.selectedKey || ui.picked?.length ? 'selection' : 'area'
-}
-
-/** Whether the area lines can stand in for the project chips: every chip has a line, else a project
- *  without one could no longer be picked */
-export function areasCoverProjects(projects, areas) {
-  const have = new Set((areas ?? []).map(a => a.name.trim().toLowerCase()))
-  return (projects ?? []).every(p => have.has(String(p).trim().toLowerCase()))
 }
 
 /** The agent tab that works on a task, by the task's slug */
@@ -2430,85 +2182,6 @@ export function queueOf(parts, { scope = 'focus' } = {}) {
 /** The queue of the focus view, from the parts of the list: the one queue in its focus scope */
 export function homeQueue(parts) {
   return queueOf(parts, { scope: 'focus' })
-}
-
-const FILE_STATES = ['doing', 'review']
-// a workflow run whose result is there to check: finished, or failed (a killed one was stopped on purpose)
-const RUN_RESULTS = ['completed', 'failed']
-
-/** The task a start of the return channel belongs to: the task of its row, else its own task key */
-const returnSlug = (r, taskOf) => taskOf.get(r.key) ?? (String(r.key ?? '').startsWith('task:') ? r.key.slice(5) : null)
-
-/** The workflow runs whose result waits on you (sessions state `runs`, bound to a task by the server and not
- *  marked checked), as results of the files queue: {key: wf:<id>, kind: 'run', slug, title, at_ms, result, run} */
-export function runResults(runs) {
-  return (runs ?? []).filter(r => r?.task && !r.seen && RUN_RESULTS.includes(r.status))
-    .map(r => ({ key: `wf:${r.id}`, kind: 'run', slug: r.task, title: r.name, at_ms: r.ended_ms ?? r.at_ms ?? null,
-      result: { text: r.summary || r.answer || null }, run: r }))
-}
-
-/** The parts of the files view (queueOf scope 'dossier'): the tabs that ask about a task, the results that wait
- *  (the starts of model.returns where they stand now, then the finished workflow runs not yet checked), the open
- *  inbox items that name a task, and the task rows. A file opens only for a task doing or in review (a row
- *  without a status, of a backlog section or a task closed since, opens none). `files` are those rows in every
- *  section but the blocked, quiet or dropped ones (bucket resting, drop): a tab, a result or an item opens them
- *  wherever they stand, a task waiting on someone else too. `tasks` are those of what waits on you and of the
- *  work: they stand in the queue on their own. An item put off counts as not open */
-export function dossierParts(tabs, model, nowMs, runs = []) {
-  const sec = id => (model?.sections ?? []).find(x => x.id === id)?.rows ?? []
-  const all = ['now', 'give', 'work', 'track', 'later'].flatMap(sec)
-  const isFile = r => r.task && !r.inbox_id && FILE_STATES.includes(r.status) && !['resting', 'drop'].includes(r.bucket)
-  const files = all.filter(isFile)
-  const tasks = [...sec('now'), ...sec('work')].filter(isFile)
-  const waiting = all.filter(r => r.inbox_id && r.task && r.inbox_state !== 'deferred')
-  const taskOf = new Map(all.filter(r => r.task).map(r => [r.key, r.task]))
-  const results = [...(model?.returns ?? []).filter(r => liveStage(r, tabs, nowMs) === 'result')
-    .map(r => ({ ...r, slug: returnSlug(r, taskOf) })), ...runResults(runs)]
-  const asking = (tabs ?? []).filter(t => !t.is_control && t.state === 'needs-you' && t.slug)
-  return { asking, results, waiting, files, tasks }
-}
-
-/** The files the files view walks, and its keys n and p: the one queue in its files scope */
-export function fileQueue(tabs, model, nowMs, runs = []) {
-  return queueOf(dossierParts(tabs, model, nowMs, runs), { scope: 'dossier' })
-}
-
-/** What a file's Result drawer holds: the starts of the return channel for its task or its inbox items (each
- *  with where it stands now, `live`), the workflow runs bound to it, and how many of them wait on you (a start
- *  with its result, a finished run not yet checked) */
-export function fileResults(slug, model, tabs, nowMs, runs = []) {
-  const taskOf = new Map([...indexRows(model).values()].filter(r => r.task).map(r => [r.key, r.task]))
-  const returns = (model?.returns ?? []).filter(r => returnSlug(r, taskOf) === slug).map(r => ({ ...r, live: liveStage(r, tabs, nowMs) }))
-  const mine = (runs ?? []).filter(r => r?.task === slug)
-  const waiting = returns.filter(r => r.live === 'result').length + runResults(mine).length
-  return { returns, runs: mine, waiting }
-}
-
-/** The next step of a file, derived and never stored: the tab's question, the result to check, the oldest open
- *  inbox item of the task (the server's, with its date; the item that put the file in the queue where the server
- *  names none), else what STATUS.md names as next (model.py task_next); {what, from, since} or null when nothing
- *  names one. `since` is ms or an ISO date */
-export function dossierStep(x) {
-  if (x?.reason === 'tab') return { what: x.tab.name, from: 'tab', since: x.tab.since_ms ?? null }
-  // a workflow run: its name, the view words it as a check of its result
-  if (x?.reason === 'result' && x.result.kind === 'run') return { what: x.result.title, from: 'run', since: x.result.at_ms ?? null }
-  if (x?.reason === 'result') return { what: x.result.result?.text || x.result.title, from: 'result', since: x.result.at_ms ?? null }
-  const next = x?.row?.next
-  // the queue meets a task's items in the order of the page, not by age: the server's oldest one names the step
-  if (x?.reason === 'inbox' && (!next || next.from !== 'inbox')) {
-    return { what: x.item.title, from: 'inbox', since: null }
-  }
-  return next?.what ? { what: next.what, from: next.from, since: next.since ?? null } : null
-}
-
-/** How many whole days lie between `since` (ms, an ISO date or date and time, read as local) and now; null
- *  for no date or one that does not read */
-export function stepAge(since, nowMs) {
-  if (since == null || since === '') return null
-  const ms = typeof since === 'number' ? since : new Date(/^\d{4}-\d{2}-\d{2}$/.test(since) ? `${since}T00:00` : since).getTime()
-  if (!Number.isFinite(ms)) return null
-  const day = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime() }
-  return Math.max(0, Math.round((day(nowMs) - day(ms)) / 86400000))
 }
 
 /** The rows of a start-page list in the order it shows them, as the queue a detail opened there walks
@@ -2923,75 +2596,6 @@ export function askContext(s, lang = 'de') {
 }
 
 // ---------------------------------------------------------------- the files view: find, ask a file, next step
-
-/** "?words" in the command box is a search of the files (/api/find), never a code: the words ('' for a bare ?),
- *  null for anything else, so every code parses as it always has */
-export function commandSearch(raw) {
-  const text = String(raw ?? '').trim()
-  return text.startsWith('?') ? text.slice(1).trim() : null
-}
-
-/** The facts of one file for its cover and its questions: what /api/task holds, the row (when the model has one)
- *  filling what the detail lacks. `path` is the file's folder, `kind` task, stream or done */
-export function fileFacts(slug, data, row) {
-  const f = data?.front ?? {}
-  const kind = data?.kind ?? 'task'
-  const path = typeof data?.path === 'string' ? data.path.replace(/\/STATUS\.md$/, '')
-    : `work/${kind === 'stream' ? 'streams' : 'tasks'}/${slug}`
-  return { slug, kind, path, title: row?.title ?? f.headline ?? slug, status: f.status ?? row?.status ?? null,
-    priority: f.priority ?? row?.priority ?? null, type: f.type ?? row?.task_type ?? null, headline: f.headline ?? null,
-    next: f.next ?? row?.next?.what ?? null }
-}
-
-const filesWords = lang => (TABLES[lang] ?? TABLES.en).dossier
-
-/** What a question asked in a file carries along as data (actions.py ask `context`): where the file lies and its
- *  cover, and that the answer comes from that folder. Cut to CONTEXT_MAX, never refused */
-export function fileContext(file, lang = 'en') {
-  const d = filesWords(lang)
-  const w = d.ctx
-  const lines = [`${w.file}: ${file.slug} (${d.find.kind[file.kind] ?? file.kind})`, `${w.folder}: ${file.path}/`,
-    file.title ? `${w.title}: ${file.title}` : null, file.status ? `${w.status}: ${file.status}` : null,
-    file.priority ? `${w.priority}: ${file.priority}` : null,
-    file.headline && file.headline !== file.title ? `${w.situation}: ${file.headline}` : null,
-    file.next ? `${w.next}: ${file.next}` : null, w.read(file.path)].filter(Boolean)
-  const out = lines.join('\n')
-  return out.length <= CONTEXT_MAX ? out : out.slice(0, CONTEXT_MAX)
-}
-
-/** What a question about the search results carries along, with no file open: the found files best first, each
- *  with its first hits, as many as fit in CONTEXT_MAX and the count of those that did not; '' without results */
-export function findContext(result, lang = 'en') {
-  const groups = result?.groups ?? []
-  if (!groups.length) return ''
-  const d = filesWords(lang)
-  let out = d.ctx.results(result.query ?? '')
-  for (let i = 0; i < groups.length; i++) {
-    const g = groups[i]
-    const block = [`- ${g.slug ?? g.path} (${d.find.kind[g.kind] ?? g.kind}): ${g.title} [${g.path}]`,
-      ...(g.hits ?? []).slice(0, 2).map(h => `  ${h.path}:${h.line}: ${h.text}`)].join('\n')
-    const rest = Math.max(result.total ?? groups.length, groups.length) - i
-    const tail = `\n${d.ctx.more(rest)}`
-    if (out.length + 1 + block.length + tail.length > CONTEXT_MAX) return out + tail
-    out += `\n${block}`
-  }
-  const left = (result.total ?? groups.length) - groups.length
-  const tail = left > 0 ? `\n${d.ctx.more(left)}` : ''
-  return out.length + tail.length <= CONTEXT_MAX ? out + tail : out
-}
-
-/** The step a suggestion names: the first line of the answer, without list marks, emphasis, quotes or a leading
- *  "Next step:" in either language; one line of at most 300 characters (actions.py STEP_MAX), null for none */
-export function suggestedStep(answer) {
-  const first = String(answer ?? '').split('\n').map(x => x.trim()).find(Boolean)
-  if (!first) return null
-  const labels = Object.values(TABLES).map(t => t.dossier.next.toLowerCase())
-  let text = first.replace(/^(?:[-*>#•]+|\d+[.)])\s*/, '').replace(/\*\*|__|`/g, '').trim()
-  const label = labels.find(l => text.toLowerCase().startsWith(`${l}:`))
-  if (label) text = text.slice(label.length + 1).trim()
-  text = text.replace(/^["'“„«]+|["'”“»]+$/g, '').replace(/\s+/g, ' ').trim()
-  return text ? text.slice(0, 300) : null
-}
 
 // ---------------------------------------------------------------- the chat's one input: where Enter goes
 
