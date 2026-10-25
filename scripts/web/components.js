@@ -31,7 +31,7 @@ import {
 import { JevList, KindBar, OverviewBoard, PageCard, PageSection, WorkOrder } from './views/pages.js'
 import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
-import { CustomizeDrawer, SettingsPage } from './views/settings.js'
+import { SettingsPage } from './views/settings.js'
 import { TabView, TabsColumn } from './views/tabs.js'
 import { Tour } from './views/tour.js'
 import { HintsOverlay } from './views/hints.js'
@@ -173,7 +173,6 @@ export function App({ store, ctl }) {
     </main>
     ${tabsDrawer && s.ui.drawer === 'tabs' ? html`<${TabsDrawer} s=${v} c=${ctl} byKey=${shownKey} />` : null}
     ${s.ui.drawer === 'notes' ? html`<${NotesDrawer} s=${s} c=${ctl} />` : null}
-    ${s.ui.drawer === 'customize' ? html`<${CustomizeDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'history' ? html`<${HistoryDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'help' ? html`<${HelpDialog} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'item' && s.ui.item ? html`<${ItemDrawer} s=${s} c=${ctl} byKey=${byKey} />` : null}

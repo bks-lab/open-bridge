@@ -2015,3 +2015,87 @@ test('Work under an area filter: the tab column shows and counts that area, the 
   assert.match(whole.$('.detail-title').text(), new RegExp(en.forYouNow(11)))
   assert.doesNotMatch(whole.text(), new RegExp(en.allAreas))
 })
+
+// ---------------------------------------------------------------- the parts of the overview
+
+function deskState(parts, over = {}) {
+  const { logic } = loadedRooms
+  const base = cockpitState(NOW, { ui: { page: '@start', ...(over.ui ?? {}) } })
+  const tiles = [...logic.homeChosen(base.model, null), ...parts]
+  return { ...base, home: { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] } }
+}
+
+test('overview parts: none by default; each one shows only when chosen, in the chosen order, under the table', () => {
+  const off = mount(html`<${HomePage} s=${deskState([])} c=${recorder()} />`)
+  for (const id of ['desk-waiting', 'desk-guide', 'desk-tabs', 'desk-day']) assert.equal(off.$(`#${id}`), null, id)
+  const s = deskState(['d:waiting', 'd:tabs', 'd:day'])
+  const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  const desk = el.$('.desk')
+  const kids = desk.childNodes.filter(x => x.nodeType === 1).map(x => x.getAttribute('class').split(' ')[0])
+  // the head, the table, the parts, then next up
+  assert.equal(kids[0], 'desk-head')
+  assert.equal(kids.at(-1), 'desk-next')
+  assert.ok(el.$('.desk-parts'))
+  // waiting on you: the rows of the Work section, the same component (its rows, their actions)
+  const waiting = el.$('#desk-waiting')
+  assert.ok(waiting, 'waiting on you')
+  assert.ok(waiting.$$('li.row').length > 0)
+  assert.ok(waiting.$('.row-acts'))
+  // the agent tabs: the same cards as beside Work
+  assert.ok(el.$('#desk-tabs .tabcard'))
+  // the day: the blocks of the middle of Work
+  assert.ok(el.$('#desk-day .day-view'))
+  // the guide was not chosen
+  assert.equal(el.$('#desk-guide'), null)
+  // the order of the choice is the order on the page
+  const s2 = deskState(['d:day', 'd:waiting'])
+  const el2 = mount(html`<${HomePage} s=${s2} c=${recorder()} />`)
+  const ids = el2.$('.desk-parts').childNodes.filter(x => x.nodeType === 1).map(x => x.getAttribute('id'))
+  assert.deepEqual(ids, ['desk-day', 'desk-waiting'])
+})
+
+test('overview parts follow the area filter, and with one on the bar names the filter', () => {
+  const { AreaBar } = views.home
+  const s = deskState(['d:waiting', 'd:tabs'], { ui: { area: 'zzz-no-such-area' } })
+  const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  // nothing of the area: the parts stay small or away, no big empty cards
+  assert.equal(el.$$('#desk-waiting li.row').length, 0)
+  assert.equal(el.$('#desk-tabs .tabcard'), null)
+  assert.match(mount(html`<${AreaBar} s=${s} c=${recorder()} />`).text(), /zzz-no-such-area/)
+  // without a part the overview has no filter, so no bar
+  assert.equal(mount(html`<${AreaBar} s=${deskState([], { ui: { area: 'ACME' } })} c=${recorder()} />`).$('.area-bar'), null)
+})
+
+test('overview: the decision guide shows the next tab that wants you, with next and previous when there are more', async () => {
+  const s = deskState(['d:guide'])
+  const tabs = [{ ref: 'g1', name: 'first', workspace: 'W', state: 'needs-you', since_ms: NOW - 9000 },
+    { ref: 'g2', name: 'second', workspace: 'W', state: 'waiting', since_ms: NOW - 5000 }]
+  const st = { ...s, tabs: { ...s.tabs, tabs }, guide: { enabled: true, auto: true, entries: {} } }
+  const c = recorder()
+  const el = mount(html`<${HomePage} s=${st} c=${c} />`)
+  const box = el.$('#desk-guide')
+  assert.ok(box)
+  assert.match(box.text(), /first/)
+  assert.doesNotMatch(box.text(), /second/)
+  box.button(en.home.deskNext).click()
+  await new Promise(r => setTimeout(r, 0))     // Preact draws a state change on the next tick
+  assert.match(el.$('#desk-guide').text(), /second/)
+  // the guide off: the part says nothing
+  const none = mount(html`<${HomePage} s=${{ ...st, guide: { enabled: false } }} c=${recorder()} />`)
+  assert.equal(none.$('#desk-guide'), null)
+})
+
+test('no Customise anywhere: the overview, the tiles and the bridge lead to Settings, Start page', () => {
+  const { logic } = loadedRooms
+  for (const view of ['areas', 'tiles', 'stage', 'list']) {
+    const base = cockpitState(NOW, { ui: { page: '@start' } })
+    const tiles = logic.homeViewSet(logic.homeChosen(base.model, null), view)
+    const c = recorder()
+    const el = mount(html`<${HomePage} s=${{ ...base, home: { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] } }} c=${c} />`)
+    const link = el.button(en.home.choose)
+    assert.ok(link, view)
+    link.click()
+    assert.deepEqual(c.calls.at(-1), ['openSettings', 'start'], view)
+    assert.equal(c.calls.some(x => x[0] === 'setDrawer' && x[1] === 'customize'), false, view)
+  }
+})

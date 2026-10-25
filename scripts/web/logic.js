@@ -2126,10 +2126,26 @@ export function areaScope(s) {
   }
 }
 
-/** A row as the page shows it under its filters (areaScope), or null when the filter hides it: what a key
- *  may act on */
+/** The state the keys act on, or null where they act on no rows: Work under its filters, and the overview
+ *  of the start page while its part "Waiting on you" is on (its rows only, of the area, folded as shown:
+ *  `desk` marks it, a pick there would not show) */
+export function keyScope(s) {
+  const page = s?.ui?.page
+  if (page === 'briefing') return areaScope(s)
+  if (page !== '@start') return null
+  const chosen = homeChosen(s.model, s.home)
+  if (homeView(chosen) !== 'areas' || !chosen.includes('d:waiting')) return null
+  const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', pinnedOnly: false } })
+  return { ...v, desk: true, ui: { ...s.ui, dayHeight: 0 },
+    model: v.model && { ...v.model, sections: (v.model.sections ?? []).filter(x => x.id === 'now'), hidden: [] } }
+}
+
+/** A row as the page shows it under its filters (keyScope, else areaScope), or null when they hide it:
+ *  what a key may act on */
 export function scopeRow(s, key) {
-  return key ? indexRows(areaScope(s).model).get(key) ?? null : null
+  if (!key) return null
+  const v = keyScope(s) ?? areaScope(s)
+  return indexRows(v.model).get(key) ?? null
 }
 
 /** What leaves the ui once a filter hides it: picks, the focus and the selection on rows no longer shown,
@@ -2182,6 +2198,8 @@ export function tileSlug(text) {
 const HOME_SHELVES = ['areas', 'focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
 const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'stage', 'classic', 'list', 'focusview']
 const HOME_CORE = ['scan', 'brief']   // what a click on the bridge's core does; several combine
+// the parts the overview can show under its table, each off until chosen (Settings, Start page)
+export const DESK_PARTS = ['waiting', 'guide', 'tabs', 'day']
 // the control view (areas) is the start page; the bridge, tiles, list and focus are a choice, the pinned shelf too
 // (Work filters by the star). A choice saved before o:stage existed has no view option and so gets the control view
 const OFF_BY_DEFAULT = new Set(['o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:brief', 's:pinned'])
@@ -2207,6 +2225,7 @@ export function homeCatalog(model, { workers = true } = {}) {
   for (const x of HOME_SHELVES) out.push({ id: `s:${x}`, kind: 'shelf' })
   for (const x of HOME_OPTIONS) out.push({ id: `o:${x}`, kind: 'option' })
   for (const x of HOME_CORE) out.push({ id: `k:${x}`, kind: 'core' })
+  for (const x of DESK_PARTS) out.push({ id: `d:${x}`, kind: 'desk' })
   return out
 }
 

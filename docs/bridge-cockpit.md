@@ -222,7 +222,7 @@ parts and nothing else:
    first number of the line All, so what has no area counts too; a click
    leads where that number leads, without a filter), the findings of a status page
    and a control session that is not listening as signals (each opens its
-   place), and Customise.
+   place), and a small link to Settings, Start page.
 2. The **Areas** as a table (below): the column heads once on top; on a
    narrow screen each line wraps and every number carries its label (the
    table keeps its table roles for screen readers). With the shelf switched
@@ -231,10 +231,24 @@ parts and nothing else:
    quota the defaults take (the first with a window of a day or more), each a
    link to its detail.
 
+Between the table and Next up the overview can show four **parts**, each off
+until switched on under Settings, Start page, "Parts of the overview" (saved
+with the rest of the start page, `home_tiles` ids `d:waiting`, `d:guide`,
+`d:tabs`, `d:day`; a choice made before they existed does not get them):
+*Waiting on you* (the section of Work, with its actions and the star),
+*Decision guide* (the reading of the next tab that waits on you, the chat's
+own card with its guards, Next and Previous through the others), *Agent
+tabs* (the cards beside Work) and *The day* (the middle of Work). They stand
+in the order chosen there (arrows move one); on a wide screen the guide and
+the tabs stand side by side. Each follows the area filter as Work does, the
+bar over the page then names the filter, and a part with nothing in it
+stays away. With Waiting on you on, the row keys (`j` `k` `Enter` and the
+letters) act on its rows, only those it shows; `x` does not pick there.
+
 Everything else lives on its own page. The other views (bridge, tiles,
-list, focus) and every shelf stay a choice under Customise; a shelf chosen
-shows only in those views, and Customise says so beside it ("not in the
-overview"). A choice saved before the overview existed has no view option
+list, focus) and every shelf stay a choice under Settings, Start page; a
+shelf chosen shows only in those views, and Settings says so beside it
+("not in the overview"). A choice saved before the overview existed has no view option
 set and so shows the overview; one that picked tiles, list or focus keeps
 it. The bridge is now the option `o:stage`, off by default, and the Pinned
 shelf is no longer among the defaults (Work filters by the star instead).
@@ -370,20 +384,20 @@ follow: what waits on you, the agent tabs that wait, and every page with a
 count, its largest sections underneath (a page with findings names where
 they are). A click opens the page.
 
-What stands on the start page is your choice. "Customise" beside the
-bridge opens a drawer that leaves the page in view, so every change shows at
-once: the view (overview, bridge, tiles, list or focus, five pictures to pick from), the stations as
-one list in their order (a switch each, a grip to drag, arrows for the
-keyboard; the bridge has room for 13, Today takes the 14th place), the
-sections below, what a click on the core does, and the small details. Every
-row says in one line what it does. "All settings" leads to the same editors
-on the settings page. The choice lives on the server (`state.json`, key
+What stands on the start page is your choice, all of it in one place:
+Settings, Start page (the small "Settings" link on every start view leads
+there). In this order: the view (overview, bridge, tiles, list or focus, five
+pictures to pick from), the parts of the overview, then the tiles and
+sections of the other views: the stations as one list in their order (a
+switch each, a grip to drag, arrows for the keyboard; the bridge has room for
+13, Today takes the 14th place), the sections below, what a click on the
+core does; last the options. Every row says in one line what it does. The choice lives on the server (`state.json`, key
 `home_tiles`, action `home_tiles`), so every browser shows the same. Until
 one is made the page shows the overview; the other views then show the first quota of a window of a
 day or more, what waits on you, With the AI, the agent tabs, the background
 jobs, the next date, the page with the tasks, every shelf but Pinned and every option but the views.
 
-More it can show, each one switched in "Customise":
+More it can show, each one switched in Settings, Start page:
 
 - **Next up**: one step, large. A tab that asks you, else the first row
   waiting on you, else the first P0 or P1 task.

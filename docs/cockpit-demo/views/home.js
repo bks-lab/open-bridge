@@ -7,10 +7,12 @@ import {
   attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
-  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES,
+  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope,
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { RowBar, RowMeta } from './day.js'
+import { RowBar, RowMeta, Section } from './day.js'
+import { GuideCard, guideTabs } from './guide.js'
+import { TabCard } from './tabs.js'
 import { DayPages, DayView } from './detail.js'
 import { PageBadge } from './header.js'
 import {
@@ -356,7 +358,8 @@ export function catalogLabel(x) {
   return { 'c:waiting': h.waitingNow, 'c:tabs': h.tabsWaiting, 'c:next': h.nextTitle, 'c:done': h.doneTitle,
     's:areas': h.areasTitle, 's:focus': h.focusTitle, 's:pinned': h.pinnedTitle, 's:continue': h.continueTitle, 's:waiting': h.waitingTitle,
     's:tasks': h.tasksTitle, 's:starts': h.startTitle, 'o:today': h.optToday, 'o:preview': h.optPreview,
-    'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:stage': h.optStage, 'o:list': h.optList, 'o:focusview': h.optFocusView, 'o:pulse': h.optPulse,
+    'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:stage': h.optStage,
+    'd:waiting': h.deskPart.waiting, 'd:guide': h.deskPart.guide, 'd:tabs': h.deskPart.tabs, 'd:day': h.deskPart.day, 'o:list': h.optList, 'o:focusview': h.optFocusView, 'o:pulse': h.optPulse,
     'c:agents': h.agentsTitle, 'c:returns': h.returnsTitle, 's:returns': h.returnsTitle, 'c:workers': T().workersTab, 'k:scan': h.coreScan, 'k:brief': h.briefTitle }[x.id] ?? x.id
 }
 
@@ -413,7 +416,7 @@ function HomeOverview({ s, c, catalog, chosen, project }) {
   const tile = tileMaker(s, c, chosen, project)
   return html`<section class="home-shelf" aria-labelledby="home-overview">
     <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-overview">${h.overviewTitle}</h2>
-      <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${h.choose}<//></header>
+      <button type="button" class="btn-link small" onClick=${() => c.openSettings('start')}>${h.choose}</button></header>
     ${shown.length ? html`<div class="kgrid">${shown.map(tile)}</div>` : html`<${Empty}>${h.chooseEmpty}<//>`}
   </section>`
 }
@@ -472,6 +475,54 @@ export function HomeAreas({ areas, project, c, desk = false }) {
   </section>`
 }
 
+/** The decision guide on the overview: the reading of the next tab that wants you (GuideCard, the
+ *  guards of the chat's: the question's hash, the draft), Next and Previous through the others */
+function DeskGuide({ s, c }) {
+  const h = T().home
+  const tabs = guideTabs(s)
+  const [at, setAt] = useState(0)
+  if (!tabs.length) return null
+  const i = Math.min(at, tabs.length - 1)
+  return html`<section class="home-shelf desk-part desk-half" id="desk-guide" aria-labelledby="desk-guide-title">
+    <header class="home-shelf-head"><h2 class="home-shelf-title" id="desk-guide-title">${h.deskPart.guide}
+      ${tabs.length > 1 ? html` <span class="sec-count mono">${i + 1} / ${tabs.length}</span>` : null}</h2>
+      ${tabs.length > 1 ? html`<span class="btn-row">
+        <button type="button" class="btn-link small" disabled=${i === 0} onClick=${() => setAt(i - 1)}>${h.deskPrev}</button>
+        <button type="button" class="btn-link small" disabled=${i === tabs.length - 1} onClick=${() => setAt(i + 1)}>${h.deskNext}</button>
+      </span>` : null}</header>
+    <${GuideCard} key=${tabs[i].ref} tab=${tabs[i]} s=${s} c=${c} />
+  </section>`
+}
+
+/** The parts the overview shows under its table when chosen (Settings, Start page), in the chosen order:
+ *  the rows waiting on you (the section of Work), the decision guide, the agent tabs (the cards beside
+ *  Work), the day (the middle of Work). Each follows the area filter as Work does; one with nothing in it
+ *  stays away instead of drawing an empty card */
+function DeskParts({ s, c, chosen }) {
+  const h = T().home
+  const parts = chosen.filter(id => id.startsWith('d:'))
+  if (!parts.length) return null
+  // the state Work's filters make, the star aside: the parts show the area as Work would
+  const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', pinnedOnly: false } })
+  const byKey = indexRows(v.model)
+  const now = (v.model?.sections ?? []).find(x => x.id === 'now')
+  const tabs = homeContinue(v.tabs?.tabs ?? [], null)
+  const part = {
+    'd:waiting': () => now?.total ? html`<div class="desk-part desk-sec" id="desk-waiting" key="w">
+      <${Section} section=${now} s=${v} c=${c} byKey=${byKey} /></div>` : null,
+    'd:guide': () => html`<${DeskGuide} key="g" s=${v} c=${c} />`,
+    'd:tabs': () => tabs.length ? html`<section class="home-shelf desk-part desk-half" id="desk-tabs" key="t" aria-labelledby="desk-tabs-title">
+      <header class="home-shelf-head"><h2 class="home-shelf-title" id="desk-tabs-title">${h.deskPart.tabs} <span class="sec-count mono">${tabs.length}</span></h2></header>
+      <div class="tabgrid">${tabs.map(tab => html`<${TabCard} key=${tab.ref} tab=${tab} s=${v} c=${c} byKey=${byKey} slim />`)}</div>
+    </section>` : null,
+    'd:day': () => v.model ? html`<section class="home-shelf desk-part" id="desk-day" key="d" aria-labelledby="desk-day-title">
+      <header class="home-shelf-head"><h2 class="home-shelf-title" id="desk-day-title">${h.deskPart.day}</h2></header>
+      <${DayView} s=${v} c=${c} />
+    </section>` : null,
+  }
+  return html`<div class="desk-parts">${parts.map(id => part[id]?.())}</div>`
+}
+
 /** The control view (the start page by default): one head line (the day, what waits on you, the signals),
  *  the areas, and what comes next (the next date, the quota). Everything else has a page of its own */
 function HomeDesk({ s, c }) {
@@ -496,10 +547,11 @@ function HomeDesk({ s, c }) {
         onClick=${() => c.setPage(a.page_id)}><${Dot} token="danger" /><span>${h.alarm(a.count, `${a.section_title} (${a.page_title})`)}</span></button>`)}
       ${relayDown ? html`<button type="button" class="home-signal tk-warning" onClick=${c.openClaude}>
         <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
-      <span class="desk-tools"><${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${h.choose}<//></span>
+      <span class="desk-tools"><button type="button" class="btn-link small" onClick=${() => c.openSettings('start')}>${h.choose}</button></span>
     </header>
     ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
     ${on.has('s:areas') ? html`<${HomeAreas} areas=${areas} project=${null} c=${c} desk />` : html`<p class="muted small">${h.areasOff}</p>`}
+    <${DeskParts} s=${s} c=${c} chosen=${[...on]} />
     <p class="desk-next">
       <span class="label-caps">${h.nextUp}</span>
       ${next ? html`<button type="button" class="btn-link" title=${next.it.title} onClick=${() => c.openInfo(next.it, next.page, next.section)}>
@@ -517,7 +569,8 @@ export function AreaBar({ s, c }) {
   const h = T().home
   const page = s.ui.page
   // on the start page the bar names the area its views show; the overview has no filter (its names jump)
-  const start = page === START_PAGE && homeView(homeChosen(s.model, s.home)) !== 'areas'
+  const chosen = homeChosen(s.model, s.home)
+  const start = page === START_PAGE && (homeView(chosen) !== 'areas' || chosen.some(id => id.startsWith('d:')))
   if (!AREA_PAGES.has(page) && !start) return null
   const work = page === 'briefing'
   const pins = s.home?.pins ?? []

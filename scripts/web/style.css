@@ -1849,6 +1849,17 @@ button.home-area-n:hover { background: var(--surface-muted); text-decoration: un
 }
 .desk-waiting.tk-warning { border-color: var(--tk); }
 .desk-tools { margin-left: auto; }
+/* the parts under the table: the same rhythm as the shelves; the guide and the tabs side by side when wide */
+.desk-parts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.desk-parts > * { min-width: 0; }
+@media (min-width: 1100px) {
+  .desk-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .desk-parts > :not(.desk-half) { grid-column: 1 / -1; }
+}
+/* the section of Work keeps its rows and tools, its head reads like the shelves' (home-shelf-title) */
+.desk-sec .sec { padding: 0; }
+.desk-sec .sec-head { padding: 0 0 8px; }
+.desk-sec .sec-title { margin: 0; font-size: var(--text-h3); font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--on-surface); }
 .desk-next { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 0; font-size: var(--text-sm); }
 
 /* over Work, Chat and Sessions: the area they show, and on Work the star filter */
@@ -2748,14 +2759,9 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .scale-band small { font-size: 11px; color: var(--on-surface-muted); }
 .scale-ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--on-surface-muted); }
 
-/* "Customise" beside the start page: a wider drawer, the page behind it unshaded so a change shows there */
+/* a drawer that leaves the page behind it unshaded */
 .overlay.is-clear { background: transparent; }
-.drawer.drawer-wide { width: min(520px, 100vw); padding: 20px; }
-.customize-lead { margin: -4px 0 14px; }
-.customize-body { display: grid; gap: 12px; }
-.drawer-wide .set-card { padding: 16px 18px; }
-.drawer-wide .set-row { padding: 12px 0; }
-.customize-foot { display: flex; justify-content: flex-end; margin-top: 14px; }
+.set-group { margin: 10px 0 0; color: var(--on-surface-muted); }
 
 @media (max-width: 899px) {
   .settings-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-md); }

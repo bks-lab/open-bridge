@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats, tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
+  listedChats, tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
   focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -1210,8 +1210,9 @@ function focusRowElement(key) {
 }
 
 function moveFocus(step) {
-  // the rows the page shows under its filters, never one they hide
-  const s = areaScope(store.get())
+  // the rows the page shows under its filters, never one they hide (Work, or the overview's waiting rows)
+  const s = keyScope(store.get())
+  if (!s) return
   const rows = displayedRows(s.model, s.ui.expanded, indexRows(s.model), s.ui.dayHeight ?? 0)
   if (!rows.length) return
   const at = rows.findIndex(r => r.key === s.ui.focusKey)
@@ -1359,7 +1360,9 @@ function onKey(e) {
     e.preventDefault()
     return lines[Math.min(lines.length - 1, Math.max(0, at + (key === 'j' ? 1 : -1)))]?.focus()
   }
-  if (s.ui.page !== 'briefing') return
+  // the row keys act on Work, and on the overview while it shows the rows waiting on you (keyScope)
+  const ks = keyScope(s)
+  if (!ks) return
   if (key === 'j' || key === 'k') {
     e.preventDefault()
     return moveFocus(key === 'j' ? 1 : -1)
@@ -1374,7 +1377,8 @@ function onKey(e) {
     }
     return
   }
-  if (key === 'x' && focused) {
+  // a pick on the overview would stand nowhere: no picking there
+  if (key === 'x' && focused && !ks.desk) {
     e.preventDefault()
     if (focused.selectable) ctl.togglePick(focused.key)
     return

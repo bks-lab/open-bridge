@@ -1744,6 +1744,36 @@ test('under the area filter the compact rows, the hidden rows and the page count
   assert.equal(logic.escapeStep({ page: 'briefing', area: null, selectedKey: 'k', picked: [] }), null)
 })
 
+test('the overview parts: off by default, a choice made before them does not get them, the keys reach only shown rows', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const model = { pages: [], sections: [
+    { id: 'now', total: 2, compact: ['inbox:1', 'inbox:2'], rows: [{ key: 'inbox:1', area: 'ACME' }, { key: 'inbox:2', area: 'ORBIT' }] },
+    { id: 'work', total: 1, compact: ['task:a'], rows: [{ key: 'task:a', task: 'a', area: 'ACME' }] }] }
+  const all = logic.homeCatalog(model)
+  const desk = all.filter(x => x.kind === 'desk').map(x => x.id)
+  assert.deepEqual(desk, ['d:waiting', 'd:guide', 'd:tabs', 'd:day'])
+  assert.equal(logic.homeChosen(model, null).some(x => x.startsWith('d:')), false)
+  const old = all.map(x => x.id).filter(x => !x.startsWith('d:'))
+  assert.equal(logic.homeChosen(model, { tiles: ['s:areas'], seen: old }).some(x => x.startsWith('d:')), false)
+  // the keys on the overview: the rows of "Waiting on you" when that part is on, the area's only
+  const ui = { page: '@start', area: null, expanded: {}, picked: [], dayHeight: 900 }
+  const base = { model, tabs: { tabs: [] }, more: {}, home: { tiles: ['s:areas'], seen: all.map(x => x.id) }, ui }
+  assert.equal(logic.keyScope(base), null)
+  const on = { ...base, home: { ...base.home, tiles: ['s:areas', 'd:waiting'] } }
+  const rows = v => logic.displayedRows(v.model, v.ui.expanded, logic.indexRows(v.model), v.ui.dayHeight).map(r => r.key)
+  assert.deepEqual(rows(logic.keyScope(on)), ['inbox:1', 'inbox:2'])
+  assert.equal(logic.keyScope(on).desk, true)
+  const acme = { ...on, ui: { ...ui, area: 'ACME' } }
+  assert.deepEqual(rows(logic.keyScope(acme)), ['inbox:1'])
+  assert.equal(logic.scopeRow(acme, 'inbox:2'), null)
+  assert.equal(logic.scopeRow(acme, 'task:a'), null)            // a task row is not on the overview
+  assert.equal(logic.scopeRow(acme, 'inbox:1').key, 'inbox:1')
+  // another view of the start page: no keys there, as before
+  assert.equal(logic.keyScope({ ...on, home: { ...on.home, tiles: ['d:waiting', 'o:classic'] } }), null)
+  // Work: the rows its filters show
+  assert.deepEqual(rows(logic.keyScope({ ...base, ui: { ...ui, page: 'briefing', area: 'ACME', dayHeight: 0 } })), ['inbox:1', 'task:a'])
+})
+
 test('the start page reckons a quota per day and where it ends at the reset', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   // a week with 19 % used after 24.5 % of it: 11.1 a day against a budget of 14.3, 77.6 at the reset
@@ -1775,7 +1805,8 @@ test('the start page offers every tile to choose, and without a choice only a le
   const ids = logic.homeCatalog(model).map(x => x.id)
   assert.deepEqual(ids, ['q:quota:session-5-h', 'q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done',
     'p:dates', 'p:work', 'p:ops', 's:areas', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
-    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief'])
+    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief',
+    'd:waiting', 'd:guide', 'd:tabs', 'd:day'])
   // a Bridge without a worker view offers no Workers station: it would lead to a tab that is not there
   assert.equal(logic.homeCatalog(model, { workers: false }).some(x => x.id === 'c:workers'), false)
   // no choice yet: the weekly quota, what waits on you, the next date, the work page, every shelf and option
@@ -3131,13 +3162,8 @@ test('ticker names a token source as the usage page does, not by its raw id', ()
   assert.doesNotMatch(logic.tickerText({ key: 'outlier', vars: ['subagent', 2] }, text.TABLES.de), /von subagent/)
 })
 
-test('settings: Customise opens a drawer beside the start page, every choice there is explained', () => {
-  assert.match(read('components.js'), /s\.ui\.drawer === 'customize' \? html`<\$\{CustomizeDrawer\}/)
-  assert.match(read('views/stage.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
-  assert.match(read('views/home.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
-  assert.doesNotMatch(read('views/home.js'), /HomeChooser/)
-  assert.match(read('app.js'), /openSettings\(id\) \{/)
-  const ids = logic.homeCatalog({ pages: [] }).filter(x => ['shelf', 'option', 'core'].includes(x.kind)).map(x => x.id)
+test('settings: every choice of the start page is explained in both languages', () => {
+  const ids = logic.homeCatalog({ pages: [] }).filter(x => ['shelf', 'option', 'core', 'desk'].includes(x.kind)).map(x => x.id)
   for (const lang of ['en', 'de']) {
     const w = text.TABLES[lang].settings
     for (const id of ['start', 'look', 'launch']) assert.ok(w.section[id].title && w.section[id].sub, `${lang} ${id}`)

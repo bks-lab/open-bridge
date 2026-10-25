@@ -311,7 +311,7 @@ function RowItem({ row, s, c }) {
   </li>`
 }
 
-function Section({ section, s, c, byKey, budget = 0 }) {
+export function Section({ section, s, c, byKey, budget = 0 }) {
   const t = T()
   const expanded = !!s.ui.expanded[section.id]
   const rows = sectionRows(section, expanded, byKey, budget)
