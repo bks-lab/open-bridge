@@ -6,14 +6,14 @@ import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.mo
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
   toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, hintsFor, nextInQueue, itemRow,
-  workKindOf,
+  workKindOf, noteGo,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
 import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { DetailFailed, Lines, NextUp, Segmented } from './detail.js'
 import { AsOf, RelayBadge } from './header.js'
-import { ReturnPanel } from './home.js'
+import { ReturnPanel, goTo } from './home.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, onPageOf,
 } from './nav.js'
@@ -28,21 +28,26 @@ import { TabsColumn } from './tabs.js'
 
 export function Toasts({ s, c }) {
   const t = T()
+  const more = s.toastsMore ?? 0
   return html`<div class="toasts" role="status" aria-live="polite" aria-atomic="false">
-    ${s.toasts.map(x => html`<div class="toast" key=${x.id}
+    ${s.toasts.map(x => {
+      const go = noteGo(x.go)
+      return html`<div class=${`toast${go ? ' has-go' : ''}`} key=${x.id}
         onMouseEnter=${() => c.pauseToast(x.id, 'hover')} onMouseLeave=${() => c.resumeToast(x.id, 'hover')}
         onfocusin=${() => c.pauseToast(x.id, 'focus')} onfocusout=${() => c.resumeToast(x.id, 'focus')}>
       <${Dot} token=${noteToken(x.tone)} />
-      <span class="toast-text">${x.text}</span>
+      ${go ? html`<button type="button" class="toast-text toast-go" title=${t.noteGo}
+          onClick=${e => { c.dismissToast(x.id); goTo(s, c, go, e.currentTarget) }}>
+          <span>${x.text}</span><${Icon} name="chevronRight" size=${14} /></button>`
+        : html`<span class="toast-text">${x.text}</span>`}
       ${x.action === 'undo' && x.undo?.length ? html`<${Btn} size="xs" variant="primary"
-          onClick=${() => { c.dismissToast(x.id); x.undo.forEach(u => c.undo(u.undo)) }}>${T().undoToast}<//>` : null}
+          onClick=${() => { c.dismissToast(x.id); x.undo.forEach(u => c.undo(u.undo)) }}>${t.undoToast}<//>` : null}
       ${x.action === 'copy' && x.copy ? html`<${Btn} size="xs" variant="primary" onClick=${() => c.copy(x.copy)}>${t.copyCommand}<//>` : null}
-      ${x.action === 'agent' ? html`<${Btn} size="xs" variant="primary" onClick=${() => { c.dismissToast(x.id); c.openAgentConv(x.conv) }}>${t.btnTabView}<//>` : null}
-      ${x.action === 'claude' || x.action === 'ask' ? html`<${Btn} size="xs" variant="primary"
-          onClick=${() => { c.dismissToast(x.id); x.action === 'ask' ? c.openAsk(x.conv) : c.openClaude() }}>${t.btnTabView}<//>`
-        : html`<span class="mono muted small">${x.at}</span>`}
+      <span class="mono muted small">${x.at}</span>
       <button type="button" class="icon-btn" aria-label=${t.close} onClick=${() => c.dismissToast(x.id)}><${Icon} name="close" size=${14} /></button>
-    </div>`)}
+    </div>`
+    })}
+    ${more > 0 && s.toasts.length ? html`<button type="button" class="toast toast-more" onClick=${() => c.openNotes()}>${t.toastsMore(more)}</button>` : null}
   </div>`
 }
 
@@ -418,10 +423,17 @@ export function NotesDrawer({ s, c }) {
   const t = T()
   const notes = s.notes.slice().reverse()
   return html`<${Drawer} id="notes" title=${t.notesTitle} onClose=${() => c.setDrawer(null)}>
-    ${notes.length ? html`<ol class="notes">${notes.map((n, i) => html`<li key=${i} class="note">
+    ${notes.length ? html`<ol class="notes">${notes.map((n, i) => {
+      const go = noteGo(n.go)
+      // an entry that names its place leads there; the drawer closes first, so an item drawer can open
+      return html`<li key=${i} class="note">
       <span class="mono muted small">${n.at}</span>
-      <${StateLine} token=${noteToken(n.tone)} word=${n.text} />
-    </li>`)}</ol>` : html`<${Empty}>${t.notesEmpty}<//>`}
+      ${go ? html`<button type="button" class="note-go" title=${t.noteGo}
+          onClick=${e => { c.setDrawer(null); goTo(s, c, go, e.currentTarget) }}>
+          <${StateLine} token=${noteToken(n.tone)} word=${n.text} /><${Icon} name="chevronRight" size=${14} /></button>`
+        : html`<${StateLine} token=${noteToken(n.tone)} word=${n.text} />`}
+    </li>`
+    })}</ol>` : html`<${Empty}>${t.notesEmpty}<//>`}
   <//>`
 }
 

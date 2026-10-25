@@ -994,7 +994,7 @@ test('history: a close offers undo at once and later; a task comes back open or 
   // the toast restores the status the task had before the close (#384); older entries fall back to doing
   assert.match(app, /undo: async \(u, as = u\.args\?\.as \?\? 'doing'\) =>/)
   // the server's own note of the same text is often first: the undo must still reach the toast
-  assert.match(app, /const twin = note\.action && s\.toasts\.find\(t => t\.text === note\.text && !t\.action\)/)
+  assert.match(app, /const twin = s\.toasts\.find\(t => t\.text === note\.text && \(\(note\.action && !t\.action\) \|\| \(go && !t\.go\)\)\)/)
   const buttons = comp.match(/function UndoButtons\([\s\S]*?\n\}/)[0]
   assert.match(buttons, /c\.undo\(u, 'doing'\)/)
   assert.match(buttons, /c\.undo\(u, 'backlog'\)/)
@@ -2473,7 +2473,8 @@ test('ticker: a page target opens pages the controller routes itself, Today only
   assert.equal(logic.tickerPage(s, '@sessions', order), '@sessions')
   assert.equal(logic.tickerPage(s, 'gone', order), 'briefing')
   assert.equal(logic.tickerPage({ model: null }, 'gone', []), 'briefing')
-  const tk = read('views/ticker.js')
+  // the band leads through goTo, which toasts and notes share (views/home.js)
+  const tk = read('views/home.js')
   assert.match(tk, /case 'page': return c\.setPage\(tickerPage\(s, target\.id, pageOrder\(s\)\)\)/)
   assert.match(tk, /case 'item': return c\.openItem\(target\.key, null\)/)
 })

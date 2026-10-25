@@ -40,6 +40,7 @@ from . import details
 from .. import work_find
 from . import model as m
 from .actions import ActionError, Actions
+from .actions_base import note_go
 from .collector import Collector
 from .daybook import DayBook
 from .returns import Launches
@@ -247,12 +248,20 @@ class App:
         """Every open page, a background one included (it still wants the waiting count in its title)."""
         return self.hub.count()
 
-    def note(self, text: str, tone: str = "info") -> None:
+    def note(self, text: str, tone: str = "info", go: dict | None = None) -> dict | None:
+        """A note for every page, with where it leads when it names a place (actions_base.note_go); returns that
+        place as sent, None for none. A target the scrub would change is dropped, never sent changed."""
         if not text:
-            return
+            return None
         entry = {"at": m.clock_time(self.clock()), "text": self.scrub(text), "tone": tone}
+        target = note_go(go)
+        if target and all(self.scrub(v) == v for v in target.values()):
+            entry["go"] = target
+        else:
+            target = None
         self.notes.append(entry)
         self.broadcast("note", entry)
+        return target
 
     @property
     def cookie_name(self) -> str:

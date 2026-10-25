@@ -1205,6 +1205,24 @@ Toasts report every action, and the notes drawer keeps the last 20. A tab that
 starts waiting for you is announced; with `voice: true` the browser also says
 it.
 
+A note that names its place leads there. It carries `go`, one small closed
+union: `{kind: tab, ref}` (the tab, brought to the front where the driver can,
+else shown large here), `{kind: row, key}` (a row of the model, opened whole;
+one that is gone opens Today), `{kind: item, key}` (an inbox item or a task in
+the item drawer), `{kind: page, id}`, `{kind: conv, id}` (an A2A
+conversation), `{kind: ask, id}` (a chat with the Bridge) and `{kind: claude}`
+(the control session). The server builds it with `ctx.note(text, bad, go)`
+and `App.note(text, tone, go)` and sends it with the note, in the action
+result and in the `note` event; `actions_base.note_go` keeps only the field of
+the kind and drops any other shape, as `logic.js noteGo` does on the page. A
+toast or a notes drawer entry with `go` is one button: a click dismisses the
+toast (or closes the drawer) and goes there; the close X and Undo stay apart
+and never navigate. Tab alerts lead to their tab, a start that answered to its
+row, an answered chat or agent to its conversation, and the band's status
+list uses the same targets for its notes. At most four toasts stand at once:
+one more does not vanish silently, a last compact toast says "+N more" and
+opens the notes drawer, where every note still is.
+
 **Triage on the task and inbox pages.** `scripts/triage.py run` sorts every
 task that is not done (streams never close and are left out), every open
 inbox item and, since the cockpit hands over its view (`--view`), every board,

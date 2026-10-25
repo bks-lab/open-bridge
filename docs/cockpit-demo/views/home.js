@@ -7,7 +7,7 @@ import {
   attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
-  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope,
+  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
@@ -135,6 +135,28 @@ export function ReturnPanel({ s, c, keys }) {
 /** One click into a tab: the terminal brings it to the front where it can, else it opens large here */
 export function jumpToTab(s, c, ref) {
   return canTab(s, 'focus') ? c.act('tab_jump', { tab_ref: ref }) : c.openTabView(ref)
+}
+
+/** Where a target leads (a status item of the band, a toast or note with `go`, logic.js noteGo): only to names
+ *  the controller has; a page that exists nowhere and a row that is gone open Today */
+export function goTo(s, c, target, el) {
+  switch (target?.kind) {
+    case 'page': return c.setPage(tickerPage(s, target.id, pageOrder(s)))
+    case 'item': return c.openItem(target.key, null)
+    case 'tab': return jumpToTab(s, c, target.ref)
+    case 'drawer': return c.setDrawer(target.id)
+    case 'info': return c.openInfo(target.it, target.page, target.section)
+    case 'row': {
+      const row = indexRows(s.model).get(target.key)
+      return row ? openWhole(c, row, el) : c.setPage('briefing')
+    }
+    case 'review': return c.openReview()
+    case 'workers': return c.openWorkers(null)
+    case 'conv': return c.openAgentConv(target.id)
+    case 'ask': return c.openAsk(target.id)
+    case 'claude': return c.openClaude()
+    default: return null
+  }
 }
 
 /** A section of the start page: eyebrow title with its count, a link to the whole list, the cards */

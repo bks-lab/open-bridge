@@ -98,7 +98,7 @@ class ChatVerbs:
             ctx.history.append(history_item(key, text, "other", f"hidden until {until}"))
             ctx.note(self.tx["remind_until"].format(until=until, title=title))
         else:
-            ctx.note(self.tx["remind_now"].format(title=title))
+            ctx.note(self.tx["remind_now"].format(title=title), go={"kind": "item", "key": f"inbox:{new_id}"})
         ctx.delta()
 
     def v_a2a_ask(self, ctx: Ctx, peer: str, text: str, conv: str | None = None, mode: str | None = None) -> None:
@@ -143,7 +143,7 @@ class ChatVerbs:
             raise ActionError(409, "stale_row", "no such session here", "session")
         name = (live or old).get("name") or session[:8]
         self.app.store.link_session(session, slug, name, (live or old).get("cwd") or "", "hand")
-        ctx.note(self.tx["session_linked"].format(name=m.short(name, 40), slug=slug))
+        ctx.note(self.tx["session_linked"].format(name=m.short(name, 40), slug=slug), go={"kind": "item", "key": f"task:{slug}"})
         self.app.broadcast("sessions", self.app.sessions_state())
 
     def v_session_unlink(self, ctx: Ctx, session: str) -> None:
@@ -290,7 +290,7 @@ class ChatVerbs:
         ctx = Ctx(self, "ask")
         record, online = self.ask_relay(ctx, kind, prompt)
         self.audit_line("ask", kind, via="control", id=record.get("id") or "-", chars=len(prompt), online=online)
-        app.note(" · ".join(ctx.notes), "info" if online else "warn")
+        app.note(" · ".join(ctx.notes), "info" if online else "warn", {"kind": "claude"})
         if online:
             return 202, {"ok": True, "record": record}
         control = app.tabs.control_tab()

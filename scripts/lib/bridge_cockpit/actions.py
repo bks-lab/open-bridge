@@ -433,12 +433,13 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         app = self.app
         ok = all(s["ok"] for s in ctx.steps) and not ctx.failed
         note = app.scrub(" · ".join(n for n in ctx.notes if n))
+        go = ctx.go if note else None
         if note:
-            app.note(note, "ok" if ok else "bad")
+            go = app.note(note, "ok" if ok else "bad", go)
         app.collector.rebuild()
         if ctx.reload == "delta":
             app.collector.request("delta", tasks=True)     # a verb may have moved or edited a task
         if ctx.tabs_delay is not None:
             app.tabs.schedule(ctx.tabs_delay)
-        return {"ok": ok, "verb": ctx.verb, "note": note, "steps": ctx.steps, "settled": ctx.settled,
+        return {"ok": ok, "verb": ctx.verb, "note": note, "go": go, "steps": ctx.steps, "settled": ctx.settled,
                 "reload": ctx.reload, "jump": ctx.jump, "relay": ctx.relay, "confirm": ctx.confirm, **ctx.extra}

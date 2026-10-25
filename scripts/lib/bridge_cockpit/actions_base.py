@@ -171,6 +171,18 @@ ASK_HASH_RE = re.compile(r"^[0-9a-f]{16}\Z")   # the hash of a tab's question (a
 TAB_STATES = ("needs-you", "waiting", "working")
 TOUR_HOW = ("finished", "skipped")   # how the first-run tour ended (store.py tour)
 TILE_ID_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9:._@/-]{0,79}\Z")   # a tile or shelf of the start page
+# where a note leads (the toast's `go`): one small closed union, each kind with the one field it needs and its
+# own pattern; the conversations as agents.py and quick.py name them. Never a path: a place the page opens itself.
+GO_PAGE_RE = re.compile(r"^@?[a-z0-9][a-z0-9_-]{0,63}\Z")
+GO_FIELDS = {
+    "tab": ("ref", TAB_REF_RE),
+    "row": ("key", ROW_KEY_RE),
+    "item": ("key", re.compile(r"^(?:inbox|task):")),   # and a row key: only an inbox item or a task has the item drawer
+    "page": ("id", GO_PAGE_RE),
+    "conv": ("id", re.compile(r"^g[0-9a-f]{10}\Z")),
+    "ask": ("id", re.compile(r"^q[0-9a-f]{10}\Z")),
+    "claude": None,
+}
 READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
@@ -193,6 +205,27 @@ class ActionError(Exception):
 
 def bad_arg(field: str, message: str) -> ActionError:
     return ActionError(400, "invalid_argument", message, field)
+
+
+def note_go(go: Any) -> dict | None:
+    """A note's target as the page takes it ({kind: tab, ref} ...), only the field of its kind; any other shape None"""
+    if not isinstance(go, dict) or go.get("kind") not in GO_FIELDS:
+        return None
+    kind = go["kind"]
+    spec = GO_FIELDS[kind]
+    if spec is None:
+        return {"kind": kind}
+    field, pattern = spec
+    value = go.get(field)
+    if not isinstance(value, str) or not pattern.match(value) or (kind == "item" and not ROW_KEY_RE.match(value)):
+        return None
+    return {"kind": kind, field: value}
+
+
+def row_go(row: dict) -> dict | None:
+    """Where a note about a row leads: an inbox item or a task to its item drawer, any other row to the row"""
+    key = row.get("key") if isinstance(row, dict) else None
+    return note_go({"kind": "item" if str(key).startswith(("inbox:", "task:")) else "row", "key": key})
 
 
 def check_text(value: Any, field: str, max_len: int) -> str:
@@ -245,6 +278,7 @@ class Ctx:
         self.audit_extra: dict = {}    # counts a verb adds to its audit line (never a text)
         self.pick: dict = {}           # the model and effort the start of this action asks for (launch.py)
         self.locked = False            # this action holds the write lock
+        self.go: dict | None = None    # where the note leads (note_go), the first note that names a place
 
     @contextlib.contextmanager
     def unlocked(self):
@@ -266,9 +300,10 @@ class Ctx:
                            "err": self.actions.app.scrub(run.err or "")[-300:]})
         return run
 
-    def note(self, text: str, bad: bool = False) -> None:
+    def note(self, text: str, bad: bool = False, go: dict | None = None) -> None:
         if text:
             self.notes.append(text)
+            self.go = self.go or note_go(go)
         self.failed = self.failed or bad
 
     def delta(self) -> None:

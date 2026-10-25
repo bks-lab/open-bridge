@@ -1,0 +1,170 @@
+// SPDX-License-Identifier: MIT
+// A toast that names its place leads there (the `go` of a note), and toasts past four are not lost.
+//
+//   node --test scripts/tests/bridge_cockpit_toast_go.test.mjs
+//
+// The pure part (logic.js noteGo, pushNoteState) is tested on its own; the toasts and the notes drawer
+// are mounted with the render harness (cockpit_render.mjs) and clicked as a person clicks them, so the
+// assertions are on where a click leads: the controller calls it makes, in order.
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+
+const { html, views, text, logic } = await loadCockpit()
+const { Toasts, NotesDrawer } = views.overlays
+const en = text.TABLES.en
+const de = text.TABLES.de
+
+const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
+
+const toast = (id, over = {}) => ({ id, text: `Note ${id}`, tone: 'ok', at: '12:00', action: null, conv: null, undo: null,
+  copy: null, go: null, ...over })
+
+function renderToasts(toasts, over = {}) {
+  const s = cockpitState(NOW, { toasts, ...over })
+  const c = recorder()
+  return { el: mount(html`<${Toasts} s=${s} c=${c} />`), c, s }
+}
+
+// ---------------------------------------------------------------- the union (logic.js noteGo)
+
+test('noteGo: a known target passes with the fields of its kind only', () => {
+  assert.deepEqual(logic.noteGo({ kind: 'tab', ref: 'surface:7' }), { kind: 'tab', ref: 'surface:7' })
+  assert.deepEqual(logic.noteGo({ kind: 'row', key: 'ref:example/repo#12', path: '/etc' }), { kind: 'row', key: 'ref:example/repo#12' })
+  assert.deepEqual(logic.noteGo({ kind: 'item', key: 'task:demo-task' }), { kind: 'item', key: 'task:demo-task' })
+  assert.deepEqual(logic.noteGo({ kind: 'page', id: '@sessions' }), { kind: 'page', id: '@sessions' })
+  assert.deepEqual(logic.noteGo({ kind: 'conv', id: 'g0123456789' }), { kind: 'conv', id: 'g0123456789' })
+  assert.deepEqual(logic.noteGo({ kind: 'ask', id: 'q0123456789' }), { kind: 'ask', id: 'q0123456789' })
+  assert.deepEqual(logic.noteGo({ kind: 'claude', id: 'x' }), { kind: 'claude' })
+})
+
+test('noteGo: an unknown or broken target becomes null', () => {
+  for (const go of [undefined, null, 'surface:7', [], {}, { kind: 'file', path: 'x' }, { kind: 'tab' }, { kind: 'tab', ref: 7 },
+    { kind: 'tab', ref: 'x'.repeat(300) }, { kind: 'item', key: 'ref:example/repo#12' }, { kind: 'row', key: 'nokind' },
+    { kind: 'conv', id: '' }, { kind: 'drawer', id: 'notes' }, { kind: 'info', it: {} }]) {
+    assert.equal(logic.noteGo(go), null, JSON.stringify(go))
+  }
+})
+
+test('pushNoteState: the toast and the note keep a valid target and drop a broken one', () => {
+  const s = logic.pushNoteState({ notes: [], toasts: [] }, { text: 'a', tone: 'ok', at: '12:00', go: { kind: 'tab', ref: 'surface:7' } }, 0, 1)
+  assert.deepEqual(s.toasts[0].go, { kind: 'tab', ref: 'surface:7' })
+  assert.deepEqual(s.notes[0].go, { kind: 'tab', ref: 'surface:7' })
+  const bad = logic.pushNoteState({ notes: [], toasts: [] }, { text: 'a', tone: 'ok', at: '12:00', go: { kind: 'file', path: '/' } }, 0, 1)
+  assert.equal(bad.toasts[0].go, null)
+  assert.equal(bad.notes[0].go, null)
+})
+
+test('pushNoteState: a fifth toast does not vanish silently, it is counted as more', () => {
+  let s = { notes: [], toasts: [], toastsMore: 0 }
+  for (let i = 0; i < 4; i++) s = { ...s, ...logic.pushNoteState(s, { text: `n${i}`, tone: 'info', at: '12:00' }, i, i + 1) }
+  assert.equal(s.toastsMore, 0)
+  s = { ...s, ...logic.pushNoteState(s, { text: 'n4', tone: 'info', at: '12:00' }, 4, 5) }
+  assert.deepEqual(s.toasts.map(t => t.id), [2, 3, 4, 5])
+  assert.equal(s.toastsMore, 1)
+  s = { ...s, ...logic.pushNoteState(s, { text: 'n5', tone: 'info', at: '12:00' }, 5, 6) }
+  assert.equal(s.toastsMore, 2)
+  assert.equal(s.notes.length, 6, 'the drawer still has every one')
+})
+
+// ---------------------------------------------------------------- a toast with a target
+
+test('toast: without a target the text is plain, as before', () => {
+  const { el } = renderToasts([toast(1)])
+  assert.equal(el.$('.toast-go'), null)
+  assert.equal(el.$('.toast-text').tagName.toLowerCase(), 'span')
+})
+
+test('toast: an unknown target is dropped, the text stays plain', () => {
+  const { el } = renderToasts([toast(1, { go: { kind: 'file', path: '/etc/passwd' } })])
+  assert.equal(el.$('.toast-go'), null)
+})
+
+test('toast: a click on the text of a tab toast dismisses it, then goes to the tab', () => {
+  const { el, c } = renderToasts([toast(3, { go: { kind: 'tab', ref: 'surface:7' } })], { driver: { caps: ['tabs'] } })
+  const go = el.$('button.toast-go')
+  assert.ok(go, 'the message is a button')
+  assert.equal(go.text().includes('Note 3'), true)
+  go.click()
+  assert.deepEqual(c.calls, [['dismissToast', 3], ['openTabView', 'surface:7']])
+})
+
+test('toast: a tab toast brings the tab to the front where the driver can', () => {
+  const { el, c } = renderToasts([toast(3, { go: { kind: 'tab', ref: 'surface:7' } })], { driver: { caps: ['tabs', 'focus'] } })
+  el.$('button.toast-go').click()
+  assert.deepEqual(c.calls, [['dismissToast', 3], ['act', 'tab_jump', { tab_ref: 'surface:7' }]])
+})
+
+test('toast: a row, an item, a page and a conversation each lead to their own place', () => {
+  const cases = [
+    [{ kind: 'item', key: 'task:alpha-release' }, ['openItem', 'task:alpha-release', null]],
+    [{ kind: 'page', id: '@sessions' }, ['setPage', '@sessions']],
+    [{ kind: 'conv', id: 'g0123456789' }, ['openAgentConv', 'g0123456789']],
+    [{ kind: 'ask', id: 'q0123456789' }, ['openAsk', 'q0123456789']],
+    [{ kind: 'claude' }, ['openClaude']],
+  ]
+  for (const [go, want] of cases) {
+    const { el, c } = renderToasts([toast(1, { go })])
+    el.$('button.toast-go').click()
+    assert.deepEqual(c.calls, [['dismissToast', 1], want], JSON.stringify(go))
+  }
+  // a row of the model opens whole as the start page opens it; a row that is gone leads to the work list
+  const row = renderToasts([toast(1, { go: { kind: 'row', key: 'task:alpha-release' } })])
+  row.el.$('button.toast-go').click()
+  assert.equal(row.c.calls[1][0], 'openItem')
+  assert.equal(row.c.calls[1][1], 'task:alpha-release')
+  const gone = renderToasts([toast(1, { go: { kind: 'row', key: 'ref:no/such#1' } })])
+  gone.el.$('button.toast-go').click()
+  assert.deepEqual(gone.c.calls, [['dismissToast', 1], ['setPage', 'briefing']])
+})
+
+test('toast: the close X and Undo never navigate', () => {
+  const undo = [{ undo: { verb: 'task_reopen', args: { slug: 'demo-task' } } }]
+  const { el, c } = renderToasts([toast(5, { go: { kind: 'item', key: 'task:demo-task' }, action: 'undo', undo })])
+  el.button(en.close).click()
+  assert.deepEqual(c.calls, [['dismissToast', 5]])
+  c.calls.length = 0
+  el.button(en.undoToast).click()
+  assert.deepEqual(c.calls, [['dismissToast', 5], ['undo', undo[0].undo]])
+})
+
+// ---------------------------------------------------------------- more than four
+
+test('overflow: at five a compact last toast says how many more and opens the notes drawer', () => {
+  const four = [1, 2, 3, 4].map(i => toast(i))
+  assert.equal(renderToasts(four, { toastsMore: 0 }).el.$('.toast-more'), null)
+  const { el, c } = renderToasts([2, 3, 4, 5].map(i => toast(i)), { toastsMore: 1 })
+  const more = el.$('button.toast-more')
+  assert.ok(more, 'the overflow toast is a button')
+  assert.equal(more.text(), en.toastsMore(1))
+  assert.equal(el.$('.toasts').childNodes.at(-1), more, 'it stands last')
+  more.click()
+  assert.deepEqual(c.calls, [['openNotes']])
+})
+
+test('overflow: the words are English and German', () => {
+  assert.equal(en.toastsMore(3), '+3 more')
+  assert.equal(de.toastsMore(3), '+3 weitere')
+})
+
+// ---------------------------------------------------------------- the notes drawer
+
+test('notes drawer: an entry with a target closes the drawer and goes there, one without stays text', async () => {
+  // the drawer moves the focus in on open: the small DOM answers its queries with what it supports, else none
+  const proto = Object.getPrototypeOf(document.body)
+  proto.focus ??= function focus() { document.activeElement = this }
+  proto.querySelector ??= function querySelector(sel) { try { return this.$(sel) } catch { return null } }
+  const s = cockpitState(NOW, { ui: { drawer: 'notes' }, notes: [
+    { at: '11:58', text: 'Plain note', tone: 'info', ms: 1 },
+    { at: '11:59', text: 'Sent to demo-task', tone: 'ok', ms: 2, go: { kind: 'item', key: 'task:demo-task' } },
+    { at: '11:59', text: 'Broken target', tone: 'ok', ms: 3, go: { kind: 'evil' } },
+  ] })
+  const c = recorder()
+  const el = mount(html`<${NotesDrawer} s=${s} c=${c} />`)
+  const gos = el.$$('button.note-go')
+  assert.equal(gos.length, 1)
+  assert.match(gos[0].text(), /Sent to demo-task/)
+  gos[0].click()
+  assert.deepEqual(c.calls, [['setDrawer', null], ['openItem', 'task:demo-task', null]])
+  await new Promise(resolve => setTimeout(resolve, 20))   // the focus effect runs inside the test
+})

@@ -147,7 +147,8 @@ class PageVerbs:
         if run is None:
             raise ActionError(409, "stale_row", "no such workflow run of an open task", "id")
         self.app.store.run_seen(id)
-        ctx.note(self.tx["run_seen"].format(name=m.short(run["name"], 40), slug=run["task"]))
+        ctx.note(self.tx["run_seen"].format(name=m.short(run["name"], 40), slug=run["task"]),
+                 go={"kind": "item", "key": f"task:{run['task']}"})
         self.app.broadcast("sessions", self.app.sessions_state())
 
     def v_pin(self, ctx: Ctx, key: str, on: bool) -> None:
@@ -286,7 +287,7 @@ class PageVerbs:
                             "did": label, "ident": row, "undone_ms": None,
                             "undo": {"verb": "row_undo", "args": {"section": section, "row": row, "action": undo}}
                             if isinstance(undo, str) and UNDO_TOKEN_RE.match(undo) else None})
-        ctx.note(self.tx["step_done"].format(title=m.short(str(it.get("title") or row), 60), did=label))
+        ctx.note(self.tx["step_done"].format(title=m.short(str(it.get("title") or row), 60), did=label), go={"kind": "page", "id": page})
 
     def v_row_undo(self, ctx: Ctx, section: str, row: str, action: str) -> None:
         ctx.subject = f"{section}/{row}"

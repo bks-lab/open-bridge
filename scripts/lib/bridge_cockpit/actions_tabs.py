@@ -33,7 +33,8 @@ class TabVerbs:
         slug = self.slug(row)
         run = ctx.call("workplace.adopt", tab_ref, self.app.workplace("adopt", tab_ref, slug), SHORT_TIMEOUT)
         if run.ok:
-            ctx.note(self.tx["adopted"].format(tab=m.short(tab["name"], 30), title=m.short(row["title"], 40)))
+            ctx.note(self.tx["adopted"].format(tab=m.short(tab["name"], 30), title=m.short(row["title"], 40)),
+                     go={"kind": "item", "key": f"task:{slug}"})
         else:
             ctx.note(self.tx["adopt_failed"].format(err=m.short(run.err, 100)), bad=True)
         ctx.tabs_after(0)
@@ -79,7 +80,7 @@ class TabVerbs:
             now_tab, fresh = self.app.tabs.find(tab_ref), None
         if not now_tab or now_tab["state"] != "needs-you":
             # nothing was pressed: not ok, so the page does not mark the question answered
-            ctx.note(self.tx["not_asking"].format(name=m.short(tab["name"], 30)), bad=True)
+            ctx.note(self.tx["not_asking"].format(name=m.short(tab["name"], 30)), bad=True, go={"kind": "tab", "ref": tab_ref})
             return
         if option is not None:
             picked = next((o for o in (fresh or {}).get("options") or [] if o["n"] == option), None)
@@ -88,7 +89,7 @@ class TabVerbs:
             said = self.tx["said_option"].format(n=option, label=m.short(picked["label"], 40))
         run = ctx.call("workplace.key", tab_ref, self.app.workplace("key", tab_ref, key), CMUX_TIMEOUT)
         if run.ok:
-            ctx.note(self.tx["key_sent"].format(name=m.short(tab["name"], 30), said=said))
+            ctx.note(self.tx["key_sent"].format(name=m.short(tab["name"], 30), said=said), go={"kind": "tab", "ref": tab_ref})
         else:
             ctx.note(self.tx["key_failed"].format(err=m.short((run.err or run.out).strip(), 100)), bad=True)
         ctx.tabs_after(3)
@@ -106,12 +107,12 @@ class TabVerbs:
     def v_tab_jump(self, ctx: Ctx, tab_ref: str) -> None:
         tab = self.tab(tab_ref)
         if self.jump_to(ctx, tab):
-            ctx.note(self.tx["jumped"].format(label=m.short(tab.get("label") or tab["ref"], 40)))
+            ctx.note(self.tx["jumped"].format(label=m.short(tab.get("label") or tab["ref"], 40)), go={"kind": "tab", "ref": tab["ref"]})
 
     def send_to(self, ctx: Ctx, tab: dict, text: str) -> bool:
         run = ctx.call("workplace.send", tab["ref"], self.app.workplace("send", tab["ref"], "--", text), SHORT_TIMEOUT)
         if run.ok:
-            ctx.note(self.tx["sent_to"].format(name=m.short(tab["name"], 30), text=m.short(text, 60)))
+            ctx.note(self.tx["sent_to"].format(name=m.short(tab["name"], 30), text=m.short(text, 60)), go={"kind": "tab", "ref": tab["ref"]})
         else:
             ctx.note(self.tx["send_failed"].format(err=m.short(run.err, 100)), bad=True)
         ctx.tabs_after(3)
@@ -403,7 +404,7 @@ class TabVerbs:
         if run.ok:
             ctx.relay = app.relay.mark_sent_to_tab(relay_id)
             app.broadcast("relay", ctx.relay)
-            ctx.note(self.tx["relay_sent_to_tab"].format(preview=m.short(rec["preview"], 60)))
+            ctx.note(self.tx["relay_sent_to_tab"].format(preview=m.short(rec["preview"], 60)), go={"kind": "claude"})
         else:
             ctx.note(self.tx["send_failed"].format(err=m.short(run.err, 100)), bad=True)
         ctx.tabs_after(3)

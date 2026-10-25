@@ -729,6 +729,28 @@ export function formatClock(ms, lang) {
   }
 }
 
+// where a note leads (its `go`), the same small union the server sends (actions_base.py note_go): each kind with
+// the one field it needs and its pattern; the band's status targets (tickerStatusItems) are the same shape
+const GO_FIELDS = {
+  tab: ['ref', /^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}$/],
+  row: ['key', /^(inbox|task|ref|title|item):.{1,240}$/],
+  item: ['key', /^(inbox|task):.{1,240}$/],
+  page: ['id', /^@?[a-z0-9][a-z0-9_-]{0,63}$/],
+  conv: ['id', /^g[0-9a-f]{10}$/],
+  ask: ['id', /^q[0-9a-f]{10}$/],
+  claude: null,
+}
+
+/** A note's target with the field of its kind only; anything else (an unknown kind, a broken field) null */
+export function noteGo(go) {
+  if (!go || typeof go !== 'object' || !Object.hasOwn(GO_FIELDS, go.kind)) return null
+  const spec = GO_FIELDS[go.kind]
+  if (!spec) return { kind: go.kind }
+  const [field, re] = spec
+  const v = go[field]
+  return typeof v === 'string' && re.test(v) && !/[\x00-\x1f]/.test(v) ? { kind: go.kind, [field]: v } : null
+}
+
 /** Notes keep the newest `max` entries; an entry equal in text and tone to a toast still on screen is
  * dropped (the server broadcasts action notes that the POST also returns). Once that toast is gone the
  * same text is news again: a retry that fails the same way shows again. */
@@ -737,17 +759,24 @@ export function addNote(notes, note, now, toasts = [], max = 20) {
   return [...notes, { ...note, ms: now }].slice(-max)
 }
 
-/** What a pushed note does to `{ notes, toasts }`: a new note and, unless `toast` is false, a toast
- * with `id` (the newest four stay up). A note a visible toast already shows changes neither and comes
- * back with `dup` set, so the caller can hand a twin's action to that toast. */
-export function pushNoteState({ notes, toasts }, note, now, id, toast = true) {
+// the toasts that stand at once; one more is counted in `toastsMore`, shown as one last "+N more" toast
+export const TOAST_MAX = 4
+
+/** What a pushed note does to `{ notes, toasts, toastsMore }`: a new note and, unless `toast` is false, a
+ * toast with `id`. The newest four stay up; one pushed out is counted in `toastsMore`, never lost without a
+ * word (the notes drawer keeps it). A note a visible toast already shows changes neither and comes back with
+ * `dup` set, so the caller can hand a twin's action and target to that toast. Its `go` is kept only as noteGo
+ * takes it. */
+export function pushNoteState({ notes, toasts, toastsMore = 0 }, note, now, id, toast = true) {
   const tone = note.tone ?? 'info'
-  const next = addNote(notes, { at: note.at, text: note.text, tone }, now, toasts)
-  if (next === notes) return { notes, toasts, dup: true }
-  if (!toast) return { notes: next, toasts, dup: false }
-  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, conv: note.conv ?? null, undo: note.undo ?? null,
-    copy: note.copy ?? null }
-  return { notes: next, toasts: [...toasts, t].slice(-4), toast: t, dup: false }
+  const go = noteGo(note.go)
+  const next = addNote(notes, { at: note.at, text: note.text, tone, go }, now, toasts)
+  if (next === notes) return { notes, toasts, toastsMore, dup: true }
+  if (!toast) return { notes: next, toasts, toastsMore, dup: false }
+  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, undo: note.undo ?? null, copy: note.copy ?? null, go }
+  const all = [...toasts, t]
+  const out = Math.max(0, all.length - TOAST_MAX)
+  return { notes: next, toasts: all.slice(-TOAST_MAX), toastsMore: toastsMore + out, toast: t, dup: false }
 }
 
 /** Insert or replace a relay record by id; newest first */
@@ -3002,7 +3031,7 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   // 25 the last loud notes of the last quarter hour; a server note replayed on load carries ms 0 and stays out
   const loud = (s?.notes ?? []).filter(x => (x.tone === 'bad' || x.tone === 'warn') && x.ms && now - x.ms < TICKER_NOTE_MS)
   for (const n of loud.slice(-3)) {
-    add(`note:${n.at ?? ''}:${n.text}`, 'notes', n.tone, 'note', [n.text])
+    add(`note:${n.at ?? ''}:${n.text}`, 'notes', n.tone, 'note', [n.text], noteGo(n.go))
   }
   const want = new Set(kinds ?? TICKER_KINDS)
   return out.filter(x => want.has(x.cat))

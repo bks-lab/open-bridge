@@ -11,7 +11,7 @@ import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces, pageOrder, quickLive } from './components.js'
 import {
-  CONN_GRACE_MS, DAY, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
+  CONN_GRACE_MS, DAY, noteGo, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
@@ -128,7 +128,7 @@ const store = createStore({
   work: null,          // the work tab as the config sets it (state.work): { view, focus_to_files }; null: an older server, as before
   rooms: null,         // the chat as cmux (state.rooms: layout, root, control, Bridges); null: an older server, the classic chat
   launchRoutes: {},    // per row key the recommendation of Auto: { title, status: loading|ok|error, route }   // null: not known yet, every button shows; a list: only what the terminal driver serves
-  notes: [], toasts: [], conn: 'connecting', connMs: Date.now(), now: Date.now(), mock: MOCK,
+  notes: [], toasts: [], toastsMore: 0, conn: 'connecting', connMs: Date.now(), now: Date.now(), mock: MOCK,
   layout: 'wide',
   ui: {
     // a new visit opens on the start page, a reload stays where it was; the project chip chosen there is kept
@@ -187,23 +187,32 @@ function pushNote(note, { toast = true, linger = 6000 } = {}) {
     const next = pushNoteState(s, { ...note, at: note.at ?? clock(now) }, now, toastSeq + 1, toast)
     if (next.dup) {
       // a toast of the same text is still up (the server's note event is often first): a twin that brings
-      // an action, an undo, gives it to that toast and keeps it up as long as its own would stay
-      const twin = note.action && s.toasts.find(t => t.text === note.text && !t.action)
+      // an action, an undo, gives it to that toast and keeps it up as long as its own would stay; a place to
+      // go the toast lacks comes along too
+      const go = noteGo(note.go)
+      const twin = s.toasts.find(t => t.text === note.text && ((note.action && !t.action) || (go && !t.go)))
       if (!twin) return s
       toastTimers.start(twin.id, toastLinger(twin.tone, linger))
-      return { ...s, toasts: s.toasts.map(t => t === twin ? { ...t, action: note.action, conv: note.conv ?? null, undo: note.undo ?? null, copy: note.copy ?? null } : t) }
+      const gives = note.action && !twin.action ? { action: note.action, undo: note.undo ?? null, copy: note.copy ?? null } : {}
+      return { ...s, toasts: s.toasts.map(t => t === twin ? { ...t, ...gives, go: t.go ?? go } : t) }
     }
     if (next.toast) {
       toastSeq = next.toast.id
       toastTimers.start(next.toast.id, toastLinger(next.toast.tone, linger))
     }
-    return { ...s, notes: next.notes, toasts: next.toasts }
+    // a toast pushed out stops its timer: it is gone from the screen and counted in toastsMore
+    for (const t of s.toasts) if (!next.toasts.includes(t)) toastTimers.stop(t.id)
+    return { ...s, notes: next.notes, toasts: next.toasts, toastsMore: next.toastsMore }
   })
 }
 
 function dismissToast(id) {
   toastTimers.stop(id)
-  store.set(s => ({ ...s, toasts: s.toasts.filter(t => t.id !== id) }))
+  store.set(s => {
+    const toasts = s.toasts.filter(t => t.id !== id)
+    // the "+N more" toast goes with the last of the others
+    return { ...s, toasts, toastsMore: toasts.length ? s.toastsMore : 0 }
+  })
 }
 
 // a toast waits while the pointer or the focus is inside it, a bad one until it is dismissed (logic.js)
@@ -340,7 +349,7 @@ const handlers = {
     const had = new Map((store.get().model?.returns ?? []).map(r => [r.key, r.stage]))
     for (const r of model?.returns ?? []) {
       if (had.size && had.has(r.key) && !['result', 'done'].includes(had.get(r.key)) && ['result', 'done'].includes(r.stage)) {
-        pushNote({ text: T().home.returnArrived(r.title), tone: 'ok' }, { linger: 12000 })
+        pushNote({ text: T().home.returnArrived(r.title), tone: 'ok', go: { kind: 'row', key: r.key } }, { linger: 12000 })
       }
     }
     const prev = store.get()
@@ -370,7 +379,7 @@ const handlers = {
       const was = before.find(b => b.id === c.id)
       const last = c.turns?.[c.turns.length - 1]
       // a suggested next step shows in its file, never as a chat answer
-      if (was?.running && !c.running && last?.a && c.place !== 'suggest' && !(inView && ui.quickConv === c.id)) answeredNote(last.q, 'ask', c.id)
+      if (was?.running && !c.running && last?.a && c.place !== 'suggest' && !(inView && ui.quickConv === c.id)) answeredNote(last.q, { kind: 'ask', id: c.id })
     }
   },
   triage(tr) {
@@ -387,7 +396,7 @@ const handlers = {
       const page = agentsLanding(store.get())
       const inView = ui.page === page.page && (!page.chatArea || ui.chatArea === page.chatArea) && !ui.tabView && ui.agentConv === c.id
       if (was?.running && !c.running && (last?.a || last?.waiting) && !inView) {
-        pushNote({ text: T().agentAnswered(c.peer, last.waiting), tone: last.waiting ? 'info' : 'ok', action: 'agent', conv: c.id }, { linger: 20000 })
+        pushNote({ text: T().agentAnswered(c.peer, last.waiting), tone: last.waiting ? 'info' : 'ok', go: { kind: 'conv', id: c.id } }, { linger: 20000 })
       }
     }
   },
@@ -410,7 +419,7 @@ const handlers = {
     store.set(s => ({ ...s, relay: { ...s.relay, records: upsertRecord(s.relay.records, record) } }))
     // an answer that arrives while the Claude window is closed says so, with the way to it
     if (record?.status === 'answered' && before?.status !== 'answered' && store.get().ui.tabView !== '@control') {
-      answeredNote(record.preview, 'claude')
+      answeredNote(record.preview, { kind: 'claude' })
     }
   },
   // the model choice changed (a save here or in another browser): the new block, the old recommendations go
@@ -442,7 +451,7 @@ const handlers = {
   alert(a) {
     const t = T()
     const text = a.kind === 'tab_long' ? t.tabLongToast(a.name) : t.tabToast(a.name, t.state[a.state] ?? a.state)
-    pushNote({ text, tone: 'warn' })
+    pushNote({ text, tone: 'warn', go: { kind: 'tab', ref: a.ref } })
     if (a.kind === 'tab_waiting' && store.get().boot.config?.voice) {
       try {
         const u = new SpeechSynthesisUtterance(t.voiceWaiting(a.name))
@@ -455,10 +464,10 @@ const handlers = {
 
 let probeTimer = null
 
-/** "Claude answered to «...»" with the way to the answer; the question without its [web:...] tag, cut at 60 */
-function answeredNote(q, action, conv) {
+/** "Claude answered to «...»" with the way to the answer (`go`); the question without its [web:...] tag, cut at 60 */
+function answeredNote(q, go) {
   const x = String(q ?? '').replace(/^\[web:[^\]]*\]\s*/, '')
-  pushNote({ text: T().claudeAnswered(x.length > 60 ? `${x.slice(0, 60)}…` : x), tone: 'ok', action, conv }, { linger: 20000 })
+  pushNote({ text: T().claudeAnswered(x.length > 60 ? `${x.slice(0, 60)}…` : x), tone: 'ok', go }, { linger: 20000 })
 }
 let graceTimer = null
 function onConn(conn) {
@@ -512,9 +521,9 @@ async function act(verb, args = {}) {
     if (r.confirm) return r
     // a close, drop or hide can be taken back for a few seconds right here, and later from the history
     if (r.undo?.length && r.ok) {
-      pushNote({ text: r.note || T().undoDone, tone: 'ok', action: 'undo', undo: r.undo }, { linger: 10000 })
+      pushNote({ text: r.note || T().undoDone, tone: 'ok', go: r.go, action: 'undo', undo: r.undo }, { linger: 10000 })
       if (store.get().ui.drawer === 'history') ctl.loadHistory()
-    } else if (r.note) pushNote({ text: r.note, tone: r.ok ? 'ok' : 'bad' })
+    } else if (r.note) pushNote({ text: r.note, tone: r.ok ? 'ok' : 'bad', go: r.go })
     if (r.relay) store.set(s => ({ ...s, relay: { ...s.relay, records: upsertRecord(s.relay.records, r.relay) } }))
     // the task facts and inbox events of the touched row changed on disk: fetch them again when shown
     const touched = (p.args.key ? [p.args.key] : p.args.keys ?? []).map(k => rowIndex().get(k)).filter(Boolean)
@@ -667,6 +676,11 @@ const ctl = {
   ask,
   copy,
   dismissToast,
+  // the notes drawer, from the "+N more" toast: the count goes, the toasts still up stay
+  openNotes() {
+    store.set(s => ({ ...s, toastsMore: 0 }))
+    setUi({ drawer: 'notes' })
+  },
   pauseToast: (id, why) => toastTimers.pause(id, why),
   resumeToast: (id, why) => toastTimers.resume(id, why),
   reload: async () => {

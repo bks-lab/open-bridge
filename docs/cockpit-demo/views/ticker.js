@@ -9,14 +9,13 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  TICKER_KINDS, indexRows, tickerDuration, tickerResume, tickerFeedItems, tickerFeedValid, tickerIsNew, tickerItems,
-  tickerMuteTerms, tickerPage, tickerPatch, tickerSourceToken, tickerStatusItems, tickerText,
+  TICKER_KINDS, tickerDuration, tickerResume, tickerFeedItems, tickerFeedValid, tickerIsNew, tickerItems,
+  tickerMuteTerms, tickerPatch, tickerSourceToken, tickerStatusItems, tickerText,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T } from '../text.js'
 import { Segmented } from './detail.js'
-import { jumpToTab, openWhole } from './home.js'
-import { pageOrder } from './nav.js'
+import { goTo } from './home.js'
 import { Btn, Chip, Empty } from './parts.js'
 // a cycle (settings.js draws TickerSettings): these parts are used only inside render functions
 import { Card, Row, Switch } from './settings.js'
@@ -25,26 +24,6 @@ import { Card, Row, Switch } from './settings.js'
 const TONE_TOKEN = { bad: 'danger', warn: 'warning', info: 'accent', ok: 'success' }
 // how many status rows the live section shows before "more"
 const STATUS_MAX = 6
-
-/** Where a click on a status item leads: only to names the controller has, a page that exists nowhere opens Today */
-function goTo(s, c, target, el) {
-  switch (target?.kind) {
-    case 'page': return c.setPage(tickerPage(s, target.id, pageOrder(s)))
-    case 'item': return c.openItem(target.key, null)
-    case 'tab': return jumpToTab(s, c, target.ref)
-    case 'drawer': return c.setDrawer(target.id)
-    case 'info': return c.openInfo(target.it, target.page, target.section)
-    case 'row': {
-      const row = indexRows(s.model).get(target.key)
-      return row ? openWhole(c, row, el) : c.setPage('briefing')
-    }
-    case 'review': return c.openReview()
-    case 'workers': return c.openWorkers(null)
-    case 'conv': return c.openAgentConv(target.id)
-    case 'claude': return c.openClaude()
-    default: return null
-  }
-}
 
 /** A status item: a button that leads to where it stands, or plain text where it leads nowhere; the same
  *  in the band and in the list of the live section */

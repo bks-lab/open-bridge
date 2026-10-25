@@ -1342,12 +1342,28 @@ kbd {
   width: min(420px, calc(100vw - 32px)); pointer-events: none;
 }
 .toast {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: auto; align-items: center; gap: 8px;
   padding: 10px 10px 10px 12px; pointer-events: auto;
   background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-float); font-size: var(--text-sm); animation: rise 200ms ease-out;
 }
 .toast-text { overflow-wrap: anywhere; }
+/* a toast or note that names its place: the whole message is the button that leads there */
+.toast-go, .note-go {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; margin: -4px -6px; padding: 4px 6px;
+  border: 0; border-radius: var(--radius-sm); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.toast-go > span { overflow-wrap: anywhere; }
+.toast-go svg, .note-go svg { flex: none; color: var(--on-surface-muted); }
+.toast-go:hover, .note-go:hover { background: var(--surface-muted); }
+.toast-go:hover > span { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.toast-go:hover svg, .note-go:hover svg { color: var(--accent); }
+/* past four: one compact last toast that opens the notes drawer */
+.toast.toast-more {
+  display: block; justify-self: end; align-self: flex-end; width: auto; padding: 6px 12px; cursor: pointer;
+  color: var(--on-surface-muted); font: inherit; font-size: var(--text-sm); text-align: center;
+}
+.toast.toast-more:hover { color: var(--on-surface); background: var(--surface-muted); }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 .center-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }

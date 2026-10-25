@@ -8,7 +8,7 @@ import json
 from . import model as m
 from .details import split_front
 from .history import item as history_item
-from .actions_base import DECLINED_REASONS, SHORT_TIMEOUT, TEAM_RE, ActionError, Ctx, bad_arg
+from .actions_base import DECLINED_REASONS, SHORT_TIMEOUT, TEAM_RE, ActionError, Ctx, bad_arg, row_go
 
 
 class WorkVerbs:
@@ -184,7 +184,7 @@ class WorkVerbs:
             return
         if getattr(self.app, "history", None) is not None:
             self.app.history.mark_undone("task_running", slug)
-        ctx.note(self.tx["running_again"].format(slug=slug))
+        ctx.note(self.tx["running_again"].format(slug=slug), go={"kind": "item", "key": f"task:{slug}"})
         self.app.collector.request("both")
 
     def v_to_task(self, ctx: Ctx, key: str, status: str | None = None) -> None:
@@ -235,7 +235,7 @@ class WorkVerbs:
             raise self.not_applicable("the row is not hidden")
         if getattr(self.app, "history", None) is not None:
             self.app.history.mark_undone("unhide", key)
-        ctx.note(self.tx["unhidden_note"].format(title=m.short(found["row"]["title"], 60)))
+        ctx.note(self.tx["unhidden_note"].format(title=m.short(found["row"]["title"], 60)), go=row_go(found["row"]))
 
     def v_drop(self, ctx: Ctx, key: str, reason: str | None = None) -> None:
         row = self.entry(key)["row"]
@@ -285,7 +285,8 @@ class WorkVerbs:
         item = self.inbox_id(row)
         run = ctx.call("inbox.urgency", item, self.inbox("urgency", item, value), SHORT_TIMEOUT)
         if run.ok:
-            ctx.note(self.tx["urgency_set"].format(word=self.tx["urgency"].get(value, value), title=m.short(row["title"], 60)))
+            ctx.note(self.tx["urgency_set"].format(word=self.tx["urgency"].get(value, value), title=m.short(row["title"], 60)),
+                     go=row_go(row))
             ctx.delta()
         else:
             ctx.note(self.tx["urgency_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -302,7 +303,7 @@ class WorkVerbs:
         run = ctx.call("inbox.area", item, self.inbox("area", item, value or "--clear"), SHORT_TIMEOUT)
         if run.ok:
             ctx.note((self.tx["area_set"].format(area=value, title=m.short(row["title"], 60)) if value
-                      else self.tx["area_cleared"].format(title=m.short(row["title"], 60))))
+                      else self.tx["area_cleared"].format(title=m.short(row["title"], 60))), go=row_go(row))
             ctx.delta()
         else:
             ctx.note(self.tx["area_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -315,7 +316,7 @@ class WorkVerbs:
         slug = self.slug(row)
         run = ctx.call("task.priority", slug, self.task_cmd("priority", slug, value), SHORT_TIMEOUT)
         if run.ok:
-            ctx.note(self.tx["prio_set"].format(priority=value, title=m.short(row["title"], 60)))
+            ctx.note(self.tx["prio_set"].format(priority=value, title=m.short(row["title"], 60)), go=row_go(row))
             ctx.delta()
         else:
             ctx.note(self.tx["prio_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -329,7 +330,7 @@ class WorkVerbs:
         slug = self.slug(row)
         run = ctx.call("task.next", slug, self.task_cmd("next", slug, "--", " ".join(text.split())), SHORT_TIMEOUT)
         if run.ok:
-            ctx.note(self.tx["next_set"].format(title=m.short(row["title"], 60)))
+            ctx.note(self.tx["next_set"].format(title=m.short(row["title"], 60)), go=row_go(row))
             ctx.delta()
         else:
             ctx.note(self.tx["next_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -445,7 +446,7 @@ class WorkVerbs:
         title = (it or {}).get("title") or ident
         for key in {*keys, *(((it or {}).get("key"),) if it else ())}:
             self.app.collector.unsettle(key)
-        ctx.note(word.format(title=m.short(title, 60)))
+        ctx.note(word.format(title=m.short(title, 60)), go={"kind": "item", "key": keys[0]})
         self.app.collector.request("both")   # the quick pass brings the row back in seconds, the full one follows
 
     def v_task_reopen(self, ctx: Ctx, slug: str, note: str | None = None, **kw) -> None:
@@ -487,14 +488,15 @@ class WorkVerbs:
         slugs = [self.slug(row) for row, _ in rows]
         run = ctx.call("task.keep", ",".join(slugs), self.task_cmd("review", "--keep", *slugs, "--json"), SHORT_TIMEOUT)
         if run.ok:
-            ctx.note(self.tx["task_kept" if len(slugs) == 1 else "task_kept_many"].format(n=len(slugs), title=m.short(rows[0][0]["title"], 60)))
+            ctx.note(self.tx["task_kept" if len(slugs) == 1 else "task_kept_many"].format(n=len(slugs), title=m.short(rows[0][0]["title"], 60)),
+                     go=row_go(rows[0][0]) if len(slugs) == 1 else None)
         else:
             ctx.note(self.tx["task_keep_failed"].format(err=m.short(run.err, 100)), bad=True)
 
     def v_note(self, ctx: Ctx, key: str, text: str) -> None:
         row = self.entry(key)["row"]
         if self.write_note(ctx, row, " ".join(text.split())):
-            ctx.note(self.tx["note_added"].format(title=m.short(row["title"], 40), line=m.short(text, 60)))
+            ctx.note(self.tx["note_added"].format(title=m.short(row["title"], 40), line=m.short(text, 60)), go=row_go(row))
             ctx.delta()
 
     def v_approve_all(self, ctx: Ctx, keys: list[str], confirm: bool = False) -> None:

@@ -173,7 +173,7 @@ class LaunchSteps:
             if tab and "focus" in app.driver_caps():
                 self.jump_to(ctx, tab)
                 ctx.jump = {"ref": tab["ref"]}
-            ctx.note(tx["already_open"].format(label=m.short(running[0]["label"], 40)))
+            ctx.note(tx["already_open"].format(label=m.short(running[0]["label"], 40)), go={"kind": "tab", "ref": running[0]["ref"]})
             ctx.tabs_after(0)
         if launched:
             ctx.tabs_after(5)
