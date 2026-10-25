@@ -474,8 +474,11 @@ def parse_teams(out: Any) -> list[dict]:
 def task_next(task: dict, inbox_rows: list[dict]) -> dict | None:
     """The next step of a task, derived and never stored: its oldest open inbox item, else the `next:` of its
     STATUS.md; each with where it comes from and since when ({what, from, since, key}), None when nothing names
-    one. A tab that asks and a result that waits are live: the page puts them in front itself (logic.js queueOf)."""
-    mine = [r for r in inbox_rows if r.get("inbox_id") and r.get("task") == task["slug"]]
+    one. An item put off is not open (the page leaves it out the same way, logic.js dossierParts); one that waits
+    for a yes still is. A tab that asks and a result that waits are live: the page puts them in front itself
+    (logic.js queueOf)."""
+    mine = [r for r in inbox_rows if r.get("inbox_id") and r.get("task") == task["slug"]
+            and r.get("inbox_state") != "deferred"]
     if mine:
         first = min(mine, key=lambda r: (r.get("created") or "9999", r.get("inbox_id") or ""))
         return {"what": first["title"], "from": "inbox", "since": first.get("created"), "key": first.get("key")}

@@ -11,7 +11,7 @@
 
 import { html, useEffect } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  detailNeedsLoad, dossierParts, dossierStep, focusIndex, formatDay, prioToken, queueOf, stepAge, tabOfTask,
+  detailNeedsLoad, dossierStep, fileQueue, focusIndex, formatDay, prioToken, stepAge, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
@@ -19,12 +19,16 @@ import { After, Calm, FocusWalk, Hero } from './focus.js'
 import { Dot, PrioChip } from './parts.js'
 
 /** The files the view walks: the one queue in its files scope, from the tabs, the model and the returns */
-export const dossierQueue = s => queueOf(dossierParts(s.tabs?.tabs ?? [], s.model, s.now || Date.now()), { scope: 'dossier' })
+export const dossierQueue = s => fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now())
 
-/** A queue entry as the hero of the focus reads it: the tab that asks, else the task row */
+/** A queue entry as the hero of the focus reads it: always its task row, so a file keeps the verbs of every row;
+ *  a tab that asks stands beside them as the row's tab (Hero tabOf) */
 function heroEntry(x) {
-  return x.reason === 'tab' ? { kind: 'tab', id: x.tab.ref, tab: x.tab } : { kind: 'row', id: x.row.key, row: x.row }
+  return { kind: 'row', id: x.row.key, row: x.row }
 }
+
+/** The tab of a file: the one that asks, where that put it in the queue, else the first tab of its task */
+const fileTab = (x, s) => (x.reason === 'tab' ? x.tab : tabOfTask(s.tabs?.tabs, x.slug))
 
 /** Where a step comes from and since when, in one line: "from the inbox, for 2 days" */
 function stepLine(step, nowMs) {
@@ -117,7 +121,7 @@ export function DossierView({ s, c }) {
     <header class="page-head"><${WorkSwitch} s=${s} c=${c} /></header>
     ${x ? html`
       <${Cover} key=${`c${x.id}`} x=${x} s=${s} data=${data} />
-      <${Hero} key=${x.id} x=${hero} n=${queue.length} tabOf=${() => tabOfTask(s.tabs?.tabs, x.slug)} s=${s} c=${c}
+      <${Hero} key=${x.id} x=${hero} n=${queue.length} tabOf=${() => fileTab(x, s)} s=${s} c=${c}
         title=${step?.what ?? d.noNext} kindWord=${d.next} sub=${stepLine(step, nowMs)} />
       <${Drawers} data=${data} />
       <${FocusWalk} queue=${queue} i=${i} s=${s} c=${c} walk=${c.dossierWalk} />

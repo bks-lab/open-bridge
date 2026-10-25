@@ -1840,6 +1840,18 @@ test('a file whose next step comes from STATUS.md says so, with its age, and the
   assert.ok(el.$('.fx-hero .fx-do'), 'the verbs of the row')
 })
 
+test('a file a tab asks about keeps the verbs of its task, the tab named beside them', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const s = filesOn()
+  const queue = dossierQueue(s)
+  assert.equal(queue[0].reason, 'tab', 'the demo has a tab that asks about a task')
+  const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
+  const acts = el.$('.fx-hero .fx-do')
+  assert.ok(acts.text().includes(en.settle), 'the close door of the row')
+  assert.ok(!acts.text().includes(en.home.view), 'not the bare tab buttons')
+  assert.ok(el.$('.fx-hero .fx-meta').text().includes(queue[0].tab.name), 'the tab that asks, named')
+})
+
 test('a file without a known next step says so instead of making one up', () => {
   const { DossierView, dossierQueue } = views.dossier
   const queue = dossierQueue(filesOn())

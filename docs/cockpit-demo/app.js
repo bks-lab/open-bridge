@@ -16,7 +16,7 @@ import {
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
-  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, queueOf, dossierParts,
+  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, fileQueue,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -245,6 +245,10 @@ updateChromeGap()
 
 // ---------------------------------------------------------------- live events
 
+// whether a page view was left with the model at hand: the first one waits for it, since the remembered view
+// and the start view read it (pageSeen, applyState)
+let bootSeen = false
+
 function applyState(payload) {
   store.set(s => ({
     ...s,
@@ -273,6 +277,7 @@ function applyState(payload) {
   if (payload.quick_live) quickLive.set(quickLiveSnapshot(payload.quick_live))
   fixPage()
   offerTour()
+  if (!bootSeen && payload.model) pageSeen(store.get().ui.page)
 }
 
 let tourOffer = true   // a visit offers the tour once, on its first state; Help and Settings start it again
@@ -567,6 +572,8 @@ async function copy(text) {
  *  in the server's audit log). Nothing waits for the answer; an older server without the endpoint says 404 */
 function pageSeen(page) {
   const s = store.get()
+  // a page measured with the model at hand counts as the first one: applyState leaves none after it (fixPage)
+  if (s.model) bootSeen = true
   const view = page === 'briefing' ? workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev)
     : page === START_PAGE ? homeView(homeChosen(s.model, s.home)) : null
   api.seen(page, view)
@@ -1306,7 +1313,7 @@ function onKey(e) {
   // n / p in the files view of the work tab: the same walk its bar takes (views/dossier.js)
   if ((key === 'n' || key === 'p') && s.ui.page === 'briefing' && !s.ui.drawer && !s.ui.pageDetail
     && workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'dossier') {
-    const queue = queueOf(dossierParts(s.tabs?.tabs ?? [], s.model, s.now || Date.now()), { scope: 'dossier' })
+    const queue = fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now())
     const to = focusIndex(queue, s.ui.dossierAt) + (key === 'n' ? 1 : -1)
     e.preventDefault()
     return queue[to] ? ctl.dossierWalk(queue[to].id, to) : undefined
@@ -1383,8 +1390,8 @@ async function boot() {
     warnings: Array.isArray(b.data.config_warnings) ? b.data.config_warnings : [] } }))
   if (MOCK) pushNote({ text: T().mockNote, tone: 'info' }, { toast: false })
 
+  // the page view at boot is measured in applyState, once the model and the home settings came
   openStream(api, handlers, onConn, { apply: applyState, fail: failNote })
-  pageSeen(store.get().ui.page)
 
   document.addEventListener('keydown', onKey)
   // durations and "as of" ages move on without new data; a hidden tab skips the ticks and catches up

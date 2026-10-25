@@ -197,7 +197,9 @@ what is clear or needs tidying and the workplace stand there as cards in a shelf
 keeps only the headline and a button to Start.
 
 **Files** is one more view of the same tab, on every Bridge, with or without a
-work page, and never the one the tab opens on. It shows one task at a time as
+work page, and never the one the tab opens on. On a Bridge without a work page
+this is what makes the tab's view switch appear ("Due | Files"), since without
+it the view could not be reached. It shows one task at a time as
 a file: on top the cover (its slug, kind, priority, status and area, and the
 situation in one sentence: the `headline` of its STATUS.md, else what the
 triage made of it, always with where that comes from and its date), under it
@@ -209,12 +211,19 @@ The queue is the one the focus on the start page walks, in one function
 (`queueOf` in logic.js), only wider: a tab that asks about a task comes first,
 then a start whose result waits, then a task with an open inbox item, then
 every task in `doing` or `review`, whatever its priority (the focus takes only
-P0 and P1 of them, and keeps doing so). Backlog, blocked and resting tasks
-stay out, and so does what has no task: a loose inbox item stays on Start. The
-next step is derived and never stored: the tab's question, the result, the
-oldest open inbox item of the task, else the `next:` of its STATUS.md, each
+P0 and P1 of them, and keeps doing so). A file opens only for a task in
+`doing` or `review`: one the model knows no status of (a backlog section of a
+profile, a task closed since) opens none. A tab, a result or an inbox item
+opens its task's file wherever the task's row stands, also one waiting on
+someone else; on its own such a task stays out. Backlog, blocked and resting
+tasks stay out, and so does what has no task: a loose inbox item stays on
+Start. A file is the task's own row, never a board item that names the same
+task. The next step is derived and never stored: the tab's question, the
+result, the oldest open inbox item of the task (one put off does not count,
+one waiting for a yes does), else the `next:` of its STATUS.md, each
 with where it comes from and since when; with none of these the file says "No
-next step known" rather than making one up. Every task row of the model
+next step known" rather than making one up. A file a tab asks about keeps the
+verbs of its task, the tab named beside them. Every task row of the model
 carries `status` and `next` for it (`model.task_next`).
 
 Only one number in the bar carries colour: Today's count of what waits for
@@ -1596,7 +1605,8 @@ nothing a stranger could trigger:
   daily, number of items, model; a click while one runs says `started=false`).
   `/api/seen` is the page's own measure: opening a page or a view of it
   leaves `page_view`, the page id and `view=` (the work tab's view, the start
-  page's view, else `-`), nothing more.
+  page's view, else `-`), nothing more. The first line waits for the model, so
+  a remembered view is measured as what it is.
   Read-only verbs and requests refused before anything happened leave none;
 - a question for Claude carries a signature (HMAC-SHA256) made with
   `relay.key`, which lives outside the Bridge in a folder only you can open

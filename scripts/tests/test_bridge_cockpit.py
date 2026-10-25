@@ -7412,6 +7412,18 @@ def test_task_next_is_derived_from_the_oldest_open_inbox_item_then_the_status_fi
     assert m.task_next(tinfo("alpha"), []) is None
 
 
+def test_task_next_passes_over_an_inbox_item_put_off():
+    t = tinfo("alpha", next="Write the summary", updated="2026-10-20")
+    put_off = row("inbox:1", ["inbox"], inbox_id="20261001-0900-a", task="alpha", title="Put off", created="2026-10-01T09:00",
+                  inbox_state="deferred")
+    waiting = row("inbox:2", ["inbox"], inbox_id="20261005-0900-b", task="alpha", title="Waits for a yes", created="2026-10-05T09:00",
+                  inbox_state="waiting")
+    # an item put off is not open: the next step is what STATUS.md names, as the page reads it (logic.js dossierParts)
+    assert m.task_next(t, [put_off]) == {"what": "Write the summary", "from": "status", "since": "2026-10-20", "key": None}
+    # an item that waits for a yes is still open and still the oldest one
+    assert m.task_next(t, [put_off, waiting])["key"] == "inbox:2"
+
+
 def test_with_tasks_gives_every_task_row_its_status_and_derived_next_step():
     v = view(buckets=[
         {"id": "plan", "title": "Plan", "rows": [
@@ -7472,3 +7484,12 @@ def test_seen_endpoint_leaves_one_page_view_line_and_refuses_bad_input(world):
     assert world.post("/api/seen", {"page": "../x"})[0] == 400
     assert world.post("/api/seen", {"page": "briefing", "view": "a b"})[0] == 400
     assert world.post("/api/seen", {"page": "briefing", "x": 1})[0] == 400
+
+
+def test_seen_endpoint_takes_a_profile_page_id_as_written(world):
+    # page ids come from the profiles as free text: capitals and dots measure too, a path or a space never
+    log = world.app.state_dir / "audit.log"
+    assert world.post("/api/seen", {"page": "Weekly.Review"})[0] == 200
+    assert log.read_text().splitlines()[-1].split()[1:] == ["page_view", "Weekly.Review", "view=-"]
+    for bad in ("a/b", "a\\b", "a b", "a\nb", "", "x" * 65):
+        assert world.post("/api/seen", {"page": bad})[0] == 400, bad

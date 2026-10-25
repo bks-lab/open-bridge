@@ -4933,7 +4933,7 @@ test('the files queue: a tab that asks, a result that waits, an inbox item, then
       { id: 'give', rows: [] },
       { id: 'work', rows: [fileTask('alpha', 'P0'), fileTask('beta', 'P2'), fileTask('gamma', 'P3', { status: 'review' }),
         fileTask('delta', 'P1'), fileTask('parked', 'P1', { status: 'backlog' })] },
-      { id: 'later', rows: [fileTask('resting', 'P0'), { key: 'inbox:2', title: 'x', inbox_id: '2', task: 'resting' }] },
+      { id: 'later', rows: [fileTask('resting', 'P0', { bucket: 'resting' }), { key: 'inbox:2', title: 'x', inbox_id: '2', task: 'resting' }] },
     ],
     returns: [{ key: 'task:beta', item: 'beta', stage: 'result', at_ms: 1 }, { key: 'task:alpha', item: 'alpha', stage: 'working', at_ms: 1 }],
   }
@@ -4956,6 +4956,63 @@ test('acceptance: a P2 task in status doing stands in the files queue, the focus
   const files = logic.queueOf(logic.dossierParts([], model, 0), { scope: 'dossier' })
   assert.deepEqual(files.map(x => x.slug), ['invoice-onboarding'])
   assert.deepEqual(logic.queueOf(logic.homeListParts([], model, {}), { scope: 'focus' }), [])
+})
+
+test('the files queue opens a file only for a task doing or in review: a row without a status opens none', () => {
+  // a profile section of backlog tasks, or a briefing that names a task closed since: the row has no status
+  const model = { sections: [
+    { id: 'now', rows: [fileTask('unknown', 'P1', { status: null }), { key: 'inbox:1', title: 'x', inbox_id: '1', task: 'unknown' }] },
+    { id: 'work', rows: [fileTask('closed', 'P0', { status: undefined }), fileTask('open', 'P3')] },
+  ] }
+  const tabs = [{ ref: 's:1', state: 'needs-you', slug: 'closed' }]
+  assert.deepEqual(logic.queueOf(logic.dossierParts(tabs, model, 0), { scope: 'dossier' }).map(x => x.slug), ['open'])
+})
+
+test('a tab, a result or an inbox item opens the file of a doing task wherever its row stands, never a resting one', () => {
+  // a doing task that waits on someone else stands in later; a tab that asks about it still leads the queue
+  const model = { sections: [
+    { id: 'now', rows: [{ key: 'inbox:1', title: 'Answer', inbox_id: '1', task: 'hidden' }] },
+    { id: 'work', rows: [fileTask('own', 'P2')] },
+    { id: 'later', rows: [fileTask('other', 'P2', { bucket: 'waiting' }), fileTask('stuck', 'P1', { bucket: 'resting' }),
+      fileTask('hidden', 'P2', { bucket: 'waiting' }), fileTask('quiet', 'P2', { bucket: 'waiting' })] },
+  ] }
+  const tabs = [{ ref: 's:1', state: 'needs-you', slug: 'other' }, { ref: 's:2', state: 'needs-you', slug: 'stuck' }]
+  const q = logic.queueOf(logic.dossierParts(tabs, model, 0), { scope: 'dossier' })
+  assert.deepEqual(q.map(x => [x.slug, x.reason]), [['other', 'tab'], ['hidden', 'inbox'], ['own', 'task']])
+  assert.equal(q[0].row.key, 'task:other')
+})
+
+test('a file is its task row, not a board item that names the same task', () => {
+  const board = { key: 'gh:1', title: 'Board item of x', task: 'x', status: 'doing', priority: 'P1' }
+  const model = { sections: [{ id: 'work', rows: [fileTask('x', 'P1'), board] }] }
+  const q = logic.queueOf(logic.dossierParts([], model, 0), { scope: 'dossier' })
+  assert.deepEqual(q.map(x => [x.slug, x.id, x.row.title]), [['x', 'task:x', 'Task x']])
+  // the board item alone still opens the file of its task
+  const only = logic.queueOf(logic.dossierParts([], { sections: [{ id: 'work', rows: [board] }] }, 0), { scope: 'dossier' })
+  assert.deepEqual(only.map(x => [x.slug, x.id]), [['x', 'gh:1']])
+})
+
+test('n and p walk the files view the way its bar does, the one files queue', () => {
+  const app = read('app.js')
+  const body = app.match(/\/\/ n \/ p in the files view[\s\S]*?\n  \}/)[0]
+  assert.match(body, /workViewOf\(s\.ui\.workView, workPageOf\(s\.model\?\.pages\), s\.jev\) === 'dossier'/)
+  assert.match(body, /fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\)\)/)
+  assert.match(body, /focusIndex\(queue, s\.ui\.dossierAt\) \+ \(key === 'n' \? 1 : -1\)/)
+  assert.match(body, /ctl\.dossierWalk\(queue\[to\]\.id, to\)/)
+})
+
+test('the page view is measured on every page and view change, and once at boot after the first model', () => {
+  const app = read('app.js')
+  assert.match(app.match(/setPage\(id[^)]*\) \{[\s\S]*?\n  \},/)[0], /pageSeen\(id\)/)
+  assert.match(app, /setWorkView: v => \{[^\n]*pageSeen\('briefing'\)/)
+  // at boot the remembered view and the start view need the model and the home settings: measured once they came
+  const boot = app.match(/async function boot\(\) \{[\s\S]*?\n\}/)[0]
+  assert.doesNotMatch(boot, /pageSeen\(/)
+  const apply = app.match(/function applyState\(payload\) \{[\s\S]*?\n\}/)[0]
+  assert.match(apply, /if \(!bootSeen && payload\.model\) pageSeen\(store\.get\(\)\.ui\.page\)/)
+  // a page measured with the model at hand (fixPage moving the page) is the first one: no second line
+  assert.match(app.match(/function pageSeen\(page\) \{[\s\S]*?\n\}/)[0], /if \(s\.model\) bootSeen = true/)
+  assert.match(read('api.js'), /seen[\s\S]{0,80}\/api\/seen/)
 })
 
 test('the next step of a file says where it comes from and since when', () => {

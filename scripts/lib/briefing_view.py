@@ -982,6 +982,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                              filed=key != f"inbox:{iid}", inbox_id=iid, gate=item.get("gate"),
                              urgency=item.get("urgency"), has_action=bool(item.get("has_action")),
                              inbox_state=item.get("state"), inbox_key=item.get("key"),
+                             # an inbox item's changed_at is when it was filed (briefing.py sec_inbox: item.created)
                              created=item.get("changed_at") or None))
             elif kind == "advise":
                 check = item.get("check")

@@ -91,7 +91,10 @@ GITHUB_DETAIL_TIMEOUT = 40
 SCREEN_MAX = 120_000
 SCREEN_CACHE_MS = 1000      # several pages on one tab share one read of its screen within this window
 SCREEN_HASH_RE = re.compile(r"^[0-9a-f]{1,64}\Z")
-# a page or view the files view measures (/api/seen): a profile page id, or one of the cockpit's own @ pages
+# a page or view the files view measures (/api/seen). A page id comes from a profile as free text, or is one of
+# the cockpit's own @ pages: any word up to 64 characters, never a path, a space or a control character. A view
+# is one of the cockpit's own ids
+SEEN_PAGE_RE = re.compile(r"^[^\s/\\\x00-\x1f\x7f]{1,64}\Z")
 SEEN_RE = re.compile(r"^@?[a-z0-9][a-z0-9_-]{0,63}\Z")
 CAPS_TTL_S = 300
 CAPS_RETRY_S = 15      # a failed read is tried again this soon, the last good answer standing meanwhile
@@ -1068,7 +1071,7 @@ class Handler(BaseHTTPRequestHandler):
                     if name not in ("page", "view"):
                         raise ActionError(400, "invalid_argument", "unknown field", str(name)[:40])
                 page, view = body.get("page"), body.get("view")
-                if not isinstance(page, str) or not SEEN_RE.match(page):
+                if not isinstance(page, str) or not SEEN_PAGE_RE.match(page):
                     raise ActionError(400, "invalid_argument", "page must be a page id", "page")
                 if view is not None and (not isinstance(view, str) or not SEEN_RE.match(view)):
                     raise ActionError(400, "invalid_argument", "view must be a view id", "view")

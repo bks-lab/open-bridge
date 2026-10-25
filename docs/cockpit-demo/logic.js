@@ -2128,10 +2128,15 @@ export function homeListParts(tabs, model, { project = null, pins = [] } = {}) {
  *    you, and of the tasks only P0 and P1, as the focus has always shown it;
  *  - 'dossier' (the files view, dossierParts): one entry per task (a file), at the place of the first reason
  *    that names it, every priority; a file is {kind: 'dossier', id, slug, row, reason, tab?, result?, item?},
- *    `row` its task row. Backlog, blocked and resting tasks stand in no part, so no file opens for them */
+ *    `row` its task row. A tab, a result or an item opens a file from `files`, a task on its own only from
+ *    `tasks`. Backlog, blocked and resting tasks stand in neither, so no file opens for them */
 export function queueOf(parts, { scope = 'focus' } = {}) {
   if (scope === 'dossier') {
-    const bySlug = new Map((parts?.tasks ?? []).map(r => [r.task, r]))
+    // a file is its task row: the row keyed task:<slug> where one stands, else the first that names the task
+    const bySlug = new Map()
+    for (const r of [...(parts?.files ?? []), ...(parts?.tasks ?? [])]) {
+      if (!bySlug.has(r.task) || (r.key === `task:${r.task}` && bySlug.get(r.task).key !== r.key)) bySlug.set(r.task, r)
+    }
     const files = new Map()
     const add = (slug, reason, extra) => {
       if (!slug || !bySlug.has(slug) || files.has(slug)) return
@@ -2160,19 +2165,28 @@ const FILE_STATES = ['doing', 'review']
 
 /** The parts of the files view (queueOf scope 'dossier'): the tabs that ask about a task, the starts whose
  *  result waits (model.returns, where they stand now), the open inbox items that name a task, and the task
- *  rows of what waits on you and of the work, doing or in review. Rows of `later` (blocked, resting) give no
- *  task; an item put off counts as not open */
+ *  rows. A file opens only for a task doing or in review (a row without a status, of a backlog section or a
+ *  task closed since, opens none). `files` are those rows in every section but the blocked, quiet or dropped
+ *  ones (bucket resting, drop): a tab, a result or an item opens them wherever they stand, a task waiting on
+ *  someone else too. `tasks` are those of what waits on you and of the work: they stand in the queue on their
+ *  own. An item put off counts as not open */
 export function dossierParts(tabs, model, nowMs) {
   const sec = id => (model?.sections ?? []).find(x => x.id === id)?.rows ?? []
   const all = ['now', 'give', 'work', 'track', 'later'].flatMap(sec)
-  const tasks = [...sec('now'), ...sec('work')]
-    .filter(r => r.task && !r.inbox_id && (!r.status || FILE_STATES.includes(r.status)))
+  const isFile = r => r.task && !r.inbox_id && FILE_STATES.includes(r.status) && !['resting', 'drop'].includes(r.bucket)
+  const files = all.filter(isFile)
+  const tasks = [...sec('now'), ...sec('work')].filter(isFile)
   const waiting = all.filter(r => r.inbox_id && r.task && r.inbox_state !== 'deferred')
   const taskOf = new Map(all.filter(r => r.task).map(r => [r.key, r.task]))
   const results = (model?.returns ?? []).filter(r => liveStage(r, tabs, nowMs) === 'result')
     .map(r => ({ ...r, slug: taskOf.get(r.key) ?? (String(r.key ?? '').startsWith('task:') ? r.key.slice(5) : null) }))
   const asking = (tabs ?? []).filter(t => !t.is_control && t.state === 'needs-you' && t.slug)
-  return { asking, results, waiting, tasks }
+  return { asking, results, waiting, files, tasks }
+}
+
+/** The files the files view walks, and its keys n and p: the one queue in its files scope */
+export function fileQueue(tabs, model, nowMs) {
+  return queueOf(dossierParts(tabs, model, nowMs), { scope: 'dossier' })
 }
 
 /** The next step of a file, derived and never stored: the tab's question, the result to check, the inbox item
