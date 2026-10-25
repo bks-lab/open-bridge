@@ -41,6 +41,11 @@ HANDOFF_MAX = 3500
 HANDOFF_ORDER_MAX = 3000
 # what the page shows right now, sent along with a free quick question (quick.py): refused above this, never cut
 CONTEXT_MAX = 6000
+# where a free quick question may stand outside the chat lists, the newest replacing the last: the start page's core,
+# the files view's suggested next step
+QUICK_PLACES = ("core", "suggest")
+# a task's next step as STATUS.md keeps it (task.py next): one line
+STEP_MAX = 300
 # how the chat's route chip came to its choice (logic.js routeOf, views/chat.js)
 ROUTE_BY = ("prefix", "words", "default", "flipped", "forced")
 
@@ -117,6 +122,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "inbox_reopen": {"id": ("inbox_id", True), "note": ("text", False)},
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
     "task_running": {"slug": ("slug", True)},
+    # the files view takes over a suggested next step: next: {what} with a dated note (task.py next)
+    "task_next": {"key": ("key", True), "text": ("line", True)},
     # taking a to_task back: the task it made closes as declined, the inbox item opens again
     "to_task_undo": {"id": ("inbox_id", True), "slug": ("slug", True)},
     "to_task": {"key": ("key", True), "status": ("reopen_as", False)},

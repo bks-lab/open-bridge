@@ -16,7 +16,7 @@ import {
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
-  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, fileQueue,
+  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, fileQueue, commandSearch,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -139,6 +139,8 @@ const store = createStore({
     theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false, queue: null, focusAt: null,
     // where the files view of the work tab stands in its queue (views/dossier.js), held by the task key
     dossierAt: null,
+    // a file opened from the search beside that queue (its slug), and the suggested next step asked in one: { slug, conv }
+    dossierOpen: null, suggest: null,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
@@ -159,6 +161,8 @@ const store = createStore({
   },
   details: { inbox: {}, task: {} },
   more: {},
+  // the search of the files view (/api/find): { q, status: loading|ok|error|tooShort, data, error }; null: none
+  find: null,
 })
 
 const setUi = patch => store.set(s => ({ ...s, ui: { ...s.ui, ...(typeof patch === 'function' ? patch(s.ui) : patch) } }))
@@ -340,7 +344,8 @@ const handlers = {
     for (const c of q?.convs ?? []) {
       const was = before.find(b => b.id === c.id)
       const last = c.turns?.[c.turns.length - 1]
-      if (was?.running && !c.running && last?.a && !(inView && ui.quickConv === c.id)) answeredNote(last.q, 'ask', c.id)
+      // a suggested next step shows in its file, never as a chat answer
+      if (was?.running && !c.running && last?.a && c.place !== 'suggest' && !(inView && ui.quickConv === c.id)) answeredNote(last.q, 'ask', c.id)
     }
   },
   triage(tr) {
@@ -887,7 +892,57 @@ const ctl = {
     if (force && res.ok && res.data.order) ctl.setWorkView('jev')
   },
   setWorkView: v => { save('bridge-cockpit.workTab', v); setUi({ workView: v }); pageSeen('briefing') },
-  dossierWalk: (id, i) => setUi({ dossierAt: { id, i } }),
+  dossierWalk: (id, i) => setUi({ dossierAt: { id, i }, dossierOpen: null }),
+  // the search of the files view: an answer for words no longer asked is dropped
+  async findFiles(q) {
+    const words = String(q ?? '').replace(/\s+/g, ' ').trim()
+    if (words.length < 2) return store.set(s => ({ ...s, find: { q: words, status: 'tooShort', data: null, error: null } }))
+    store.set(s => ({ ...s, find: { q: words, status: 'loading', data: s.find?.data ?? null, error: null } }))
+    const res = await api.find(words)
+    if (store.get().find?.q !== words) return
+    store.set(s => ({ ...s, find: res.ok ? { q: words, status: 'ok', data: res.data, error: null }
+      : { q: words, status: 'error', data: null, error: res.error?.message ?? String(res.status) } }))
+  },
+  clearFind: () => store.set(s => ({ ...s, find: null })),
+  // a found file opens in the queue where it stands there, else beside it (a closed one, a backlog task)
+  openFile(slug) {
+    const s = store.get()
+    const queue = fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now())
+    const i = queue.findIndex(x => x.slug === slug)
+    setUi(i >= 0 ? { dossierAt: { id: queue[i].id, i }, dossierOpen: null } : { dossierOpen: slug })
+  },
+  closeFile: () => setUi({ dossierOpen: null }),
+  // a question in a file or about the results: a quick read-only chat with the file (or the list) as data;
+  // `task` names an open task only (dossier.js), the server checks it again
+  askFile: (text, context, task) => withBusy('ask:free', 'free', async () => {
+    const ui = store.get().ui
+    const args = { text, ...(context ? { context } : {}), ...(task ? { task } : {}) }
+    const res = await api.ask('free', args, { via: 'quick', model: ui.quickModel })
+    if (res.ok && res.data?.conv) {
+      setUi({ tabView: '@ask', quickConv: res.data.conv, openMsg: null })
+      return true
+    }
+    failNote(res)
+    return false
+  }),
+  // a next step suggested for a file: read only, in a place of its own outside the chat lists; shown in the file
+  suggestNext: (slug, context) => withBusy('ask:suggest', 'free', async () => {
+    const res = await api.ask('free', { text: T().dossier.suggest.ask, ...(context ? { context } : {}), task: slug },
+      { via: 'quick', place: 'suggest', model: store.get().ui.quickModel })
+    if (res.ok && res.data?.conv) {
+      setUi({ suggest: { slug, conv: res.data.conv } })
+      return true
+    }
+    failNote(res)
+    return false
+  }),
+  dismissSuggest: () => setUi({ suggest: null }),
+  // only this click writes it: next: in STATUS.md with a dated note (verb task_next)
+  async takeNext(key, text) {
+    const r = await act('task_next', { key, text })
+    if (r?.ok) setUi({ suggest: null })
+    return !!r?.ok
+  },
   // the Jev view of the work tab: the first request of a day orders by itself (daily), the button orders anew
   jevWork: async (page, force) => {
     const res = await api.post('/api/jev/rank', { page, force: !!force, daily: !force })
@@ -1147,6 +1202,15 @@ const ctl = {
     return runPlan(plan)
   },
   async runCommand(text) {
+    // ?words searches the files: the work tab opens on its files view with the results; every code stays as it was
+    const search = commandSearch(text)
+    if (search !== null) {
+      ctl.setPage('briefing')
+      ctl.setWorkView('dossier')
+      setUi({ dossierOpen: null })
+      if (search) await ctl.findFiles(search)
+      return true
+    }
     const codes = parseShortcut(text)
     if (!codes) {
       pushNote({ text: T().notCode(text.trim()), tone: 'warn' })

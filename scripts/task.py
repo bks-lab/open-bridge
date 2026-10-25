@@ -10,6 +10,7 @@
     python3 scripts/task.py wait <slug> --until YYYY-MM-DD [--on TEXT] | --clear [--json]
     python3 scripts/task.py new [slug] --headline TEXT | --from-inbox ID [--status backlog|doing] [--json]
     python3 scripts/task.py log [--] <context> <text>
+    python3 scripts/task.py next <slug> [--] <text> | --clear [--json]
 
 Rewrites only the ``priority:`` line inside the YAML frontmatter of
 work/tasks/<slug>/STATUS.md or work/streams/<slug>/STATUS.md (the key is added
@@ -30,6 +31,11 @@ gets ``status: done``, ``closed:``, ``outcome: declined`` with ``--declined``, l
 directory moves to work/done/YYYY-MM/<slug>/ (a plain move, no git), the board is
 regenerated and one row goes into today's block of work/log.md. A stream, an
 unknown slug or a task already under work/done/ is refused without writing.
+
+``next`` sets the task's next step, ``next: {what: <text>}`` as the schema has it (a step written
+before, also as a block mapping, goes whole), with ``last_updated:`` and a dated "Next step: <text>" note,
+so the step carries the day it was taken over; ``--clear`` takes it away. The cockpit's files view writes
+it only when the person takes over a suggested step.
 
 ``log`` writes one row into today's block of work/log.md, for a decision on a row that has no task or
 inbox item of its own (a GitHub issue, a deadline): the cockpit keeps the person's sentence there.
@@ -312,6 +318,31 @@ def wait_task(root: Path, slug: str, *, until: str | None = None, on: str | None
     with contextlib.redirect_stdout(sys.stderr):
         regenerate_board(root)
     return {"slug": slug, "quiet_until": None if clear else until, "on": None if clear or kept else on}
+
+
+# ---------------------------------------------------------------- next step
+
+def set_next(root: Path, slug: str, text: str | None = None, *, clear: bool = False, today: str | None = None) -> dict:
+    """The task's next step as ``next: {what}``, dated by last_updated and a note; clear takes it away."""
+    today = today or dt.date.today().isoformat()
+    path = find_status(root, slug)
+    old = path.read_bytes().decode("utf-8")
+    new = remove_fields(old, ("next",))
+    if clear:
+        new = add_note(new, "Next step cleared", today)
+        what = None
+    else:
+        if text is None or "\n" in text or "\r" in text:
+            raise ValueError("the next step is one line of text (or --clear)")
+        what = " ".join(text.split())
+        if not what or len(what) > 300:
+            raise ValueError("the next step must be 1 to 300 characters")
+        line = "{what: " + json.dumps(what, ensure_ascii=False) + "}"
+        new = add_note(set_fields(new, [("next", line, "status")]), f"Next step: {what}", today)
+    path.write_bytes(new.encode("utf-8"))
+    with contextlib.redirect_stdout(sys.stderr):
+        regenerate_board(root)
+    return {"slug": slug, "next": what}
 
 
 # ---------------------------------------------------------------- new, also from an inbox item
@@ -1049,6 +1080,11 @@ def main(argv=None) -> int:
                                     "inbox item of its own (an issue, a deadline)")
     lg.add_argument("context")
     lg.add_argument("text")
+    nx = sub.add_parser("next", help="set the task's next step (next: {what}) with a dated note, or --clear it")
+    nx.add_argument("slug")
+    nx.add_argument("text", nargs="?")
+    nx.add_argument("--clear", action="store_true")
+    nx.add_argument("--json", action="store_true")
     nw = sub.add_parser("new", help="a new task in work/tasks/, also from an inbox item (which then closes)")
     nw.add_argument("slug", nargs="?")
     nw.add_argument("--headline")
@@ -1086,6 +1122,13 @@ def main(argv=None) -> int:
             out = wait_task(root, args.slug, until=args.until, on=args.on, clear=args.clear)
             print(json.dumps(out, ensure_ascii=False) if args.json else
                   (f"{out['slug']} running again" if args.clear else f"{out['slug']} runs on until {out['quiet_until']}"))
+            return 0
+        if args.cmd == "next":
+            if args.clear and args.text is not None:
+                raise ValueError("a step or --clear, not both")
+            out = set_next(root, args.slug, args.text, clear=args.clear)
+            print(json.dumps(out, ensure_ascii=False) if args.json else
+                  (f"{out['slug']}: next step cleared" if args.clear else f"{out['slug']}: next {out['next']}"))
             return 0
         if args.cmd == "log":
             what = " ".join(args.text.split())

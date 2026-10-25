@@ -3136,6 +3136,23 @@ details.hl-block:not([open]) > summary > svg { transform: rotate(-90deg); }
 .dz-drawer[open] { flex-basis: 100%; }
 .dz-drawer > summary { cursor: pointer; font-weight: 600; color: var(--on-surface); }
 .dz-drawer .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* the search of the files view, its results by file, a question to a file or the results, a suggested step */
+.dz-search { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dz-find, .dz-askbox { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.dz-find .input, .dz-askbox .input { flex: 1 1 220px; min-width: 0; }
+.dz-find-note { margin: 0; }
+.dz-found { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.dz-found-item { padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised); min-width: 0; }
+.dz-found-head { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.dz-found-open { font-family: var(--font-mono); font-weight: 600; }
+.dz-found-title { color: var(--on-surface); overflow-wrap: anywhere; }
+.dz-found-hit { margin: 4px 0 0; color: var(--on-surface); overflow-wrap: anywhere; }
+.dz-suggest { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dz-suggest > p { margin: 0; }
+.dz-suggest-step { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.dz-suggest-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.dz-opened { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dz-next { margin: 0; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   .fx-hero, .fx-line-now .fx-line-dot { animation: none; }
   .fx-card { transition: none; }

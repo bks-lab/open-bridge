@@ -448,3 +448,27 @@ def test_log_refuses_an_empty_row_and_keeps_a_pipe_from_breaking_the_table(repo)
     assert not (repo / "work" / "log.md").exists()
     assert run(repo, "log", "--", "repo", "a | b").returncode == 0
     assert "| repo | a / b |" in (repo / "work" / "log.md").read_text(encoding="utf-8")
+
+
+def test_next_sets_the_next_step_as_a_mapping_with_a_dated_note_and_clear_takes_it_away(repo):
+    import datetime
+    import yaml
+    today = datetime.date.today().isoformat()
+    p = repo / "work/tasks/alpha/STATUS.md"
+    # an older next step written as a block mapping goes whole, its indented lines too
+    p.write_text(STATUS.replace("status: doing\n", "status: doing\nnext:\n  what: Old step\n  who: me\n", 1), encoding="utf-8")
+    r = run(repo, "next", "alpha", "--", 'Call the vendor: "422" again')
+    assert r.returncode == 0, r.stderr
+    text = p.read_text(encoding="utf-8")
+    front = yaml.safe_load(text.split("---\n")[1])
+    assert front["next"] == {"what": 'Call the vendor: "422" again'} and front["last_updated"].isoformat() == today
+    assert "Old step" not in text and "who: me" not in text and text.count("next:") == 1
+    assert f"- {today}: Next step: Call the vendor" in text           # the date the step was taken over
+    assert "slug: alpha   # keep me" in text and "body status: doing" in text
+    assert run(repo, "next", "river", "--", "Watch it").returncode == 0     # a stream too
+    assert run(repo, "next", "alpha", "--clear").returncode == 0
+    text = p.read_text(encoding="utf-8")
+    assert "next:" not in text and "Next step cleared" in text
+    for bad in (("next", "alpha", "--", "   "), ("next", "alpha", "--", "a\nb"), ("next", "missing", "--", "x"),
+                ("next", "alpha")):
+        assert run(repo, *bad).returncode == 1, bad

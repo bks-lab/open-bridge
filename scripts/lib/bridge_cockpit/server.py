@@ -36,6 +36,7 @@ from typing import Any, Callable
 
 from . import VERSION
 from . import details
+from .. import work_find
 from . import model as m
 from .actions import ActionError, Actions
 from .collector import Collector
@@ -88,6 +89,7 @@ SCREEN_LINES = 400          # the tab view reads this much of a tab's scrollback
 SCREEN_TIMEOUT = 4
 GITHUB_REF_RE = re.compile(r"^[\w.-]{1,100}/[\w.-]{1,100}#\d{1,9}\Z")
 GITHUB_DETAIL_TIMEOUT = 40
+FIND_TIMEOUT = 30      # the search over work/ (scripts/work-find.py); rg answers in well under a second
 SCREEN_MAX = 120_000
 SCREEN_CACHE_MS = 1000      # several pages on one tab share one read of its screen within this window
 SCREEN_HASH_RE = re.compile(r"^[0-9a-f]{1,64}\Z")
@@ -857,6 +859,24 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error_json("not_found", "no such task")
             else:
                 self.send_json(200, app.scrub_tree(result))
+        elif path == "/api/find":
+            # the files view's search over every task, stream, closed task, the log and its archive
+            # (scripts/work-find.py, logic in lib/work_find.py), read only: the words go as one argv word after --
+            try:
+                q, _ = work_find.check_query(one("q"))
+            except ValueError as exc:
+                self.send_error_json("invalid_argument", str(exc), "q")
+                return
+            argv = [app.runner.python, app.runner.script("scripts/work-find.py"), "--root", str(app.root), "--json", "--", q]
+            run = app.run(argv, FIND_TIMEOUT)
+            try:
+                data = json.loads(run.out.strip().splitlines()[-1]) if run.ok else None
+            except (ValueError, IndexError):
+                data = None
+            if isinstance(data, dict) and isinstance(data.get("groups"), list):
+                self.send_json(200, app.scrub_tree(data))
+            else:
+                self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
         elif path == "/api/inbox":
             item_id = one("id")
             if not details.INBOX_ID_RE.match(item_id):

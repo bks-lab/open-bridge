@@ -760,16 +760,44 @@ function githubDetail(ref) {
   }
 }
 
+// a closed task the search finds in work/done/ (the queue never holds one): invented, like everything here
+const DONE_FILE = { slug: 'release-notes-2026-09', title: 'Release notes for September', month: '2026-09',
+  lines: ['Release notes for September went out on the 30th.', 'The vendor export timed out twice, fixed with a retry.'] }
+
+// the search (work-find.py through /api/find): every word in the slug, title or a line of an invented file, the
+// files whose slug or title holds every word first, then the rest; the same shape the server answers with
+function findFiles(q, state) {
+  const words = [...new Set(String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8)
+  const rows = (state?.model?.sections ?? []).flatMap(x => x.rows ?? []).filter(r => r.task && !r.inbox_id)
+  const seen = new Set()
+  const files = rows.filter(r => !seen.has(r.task) && seen.add(r.task)).map(r => ({ slug: r.task, kind: 'task', title: r.title,
+    path: `work/tasks/${r.task}`, lines: [`headline: ${r.title}`, ...(r.next?.what ? [`next: ${r.next.what}`] : [])] }))
+  files.push({ ...DONE_FILE, kind: 'done', path: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}` })
+  const groups = []
+  for (const f of files) {
+    const name = `${f.slug} ${f.title}`.toLowerCase()
+    const hits = f.lines.map((text, i) => ({ path: `${f.path}/STATUS.md`, line: i + 2, text }))
+      .filter(h => words.some(w => h.text.toLowerCase().includes(w)))
+    const all = `${name} ${hits.map(h => h.text).join(' ')}`.toLowerCase()
+    if (!words.length || !words.every(w => all.includes(w))) continue
+    groups.push({ slug: f.slug, kind: f.kind, path: f.path, title: f.title, rank: words.every(w => name.includes(w)) ? 0 : 1,
+      count: hits.length, hits })
+  }
+  groups.sort((a, b) => a.rank - b.rank || (a.kind === 'done') - (b.kind === 'done') || b.count - a.count)
+  return { ok: true, query: String(q ?? '').trim(), words, engine: 'python', total: groups.length, truncated: false, groups }
+}
+
 function taskDetail(slug, state) {
   // the front of the task the row stands for (review C12): a P0 row opens as that P0, not as one fixed page
   const rows = [...(state?.model?.sections ?? []).flatMap(s => s.rows ?? []),
     ...(state?.model?.pages ?? []).flatMap(p => (p.sections ?? []).flatMap(s => s.items ?? []))]
   // the task's own row, not an inbox item that names the task
   const row = rows.find(r => r?.task === slug && !r.inbox_id && !r.inbox) ?? rows.find(r => r?.task === slug) ?? {}
+  const done = slug === DONE_FILE.slug
   return {
-    ok: true, slug, kind: 'task', path: `work/tasks/${slug}/STATUS.md`,
-    front: { type: row.task_type ?? 'feature', status: row.state ?? 'doing', priority: row.priority ?? 'P1', created: '2026-10-01',
-      last_updated: '2026-10-08', headline: row.title ?? 'Onboarding guide for the demo project', origin: 'team call on 2026-09-30',
+    ok: true, slug, kind: done ? 'done' : 'task', path: done ? `work/done/${DONE_FILE.month}/${slug}/STATUS.md` : `work/tasks/${slug}/STATUS.md`,
+    front: { type: row.task_type ?? 'feature', status: done ? 'done' : row.state ?? 'doing', priority: row.priority ?? 'P1', created: '2026-10-01',
+      last_updated: '2026-10-08', headline: done ? DONE_FILE.title : row.title ?? 'Onboarding guide for the demo project', origin: 'team call on 2026-09-30',
       blocked_by: null },
     sections: [
       { heading: 'Goal', text: 'A new team member sets up the demo project in under an hour, with every step written down.', truncated: false },
@@ -1111,6 +1139,11 @@ export function createMockTransport(opts = {}) {
       if (url.pathname === '/api/state') return ok(state)
       if (url.pathname === '/api/inbox') return ok(inboxDetail(url.searchParams.get('id'), state))
       if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug'), state))
+      if (url.pathname === '/api/find') {
+        const q = String(url.searchParams.get('q') ?? '')
+        if (q.trim().length < 2 || q.length > 200) return fail(400, 'invalid_argument', 'the query must be 2 to 200 characters')
+        return ok(findFiles(q, state))
+      }
       if (url.pathname === '/api/inbox/noise') {
         // invented sources and one invented rule, in the shape of `inbox.py stats --json` and `mute list --json`
         const src = (source, filed, dropped, reasons, muted = 0) => ({ source, filed, dropped, muted, done: filed - dropped - muted - 1, open: 1,

@@ -1890,3 +1890,148 @@ test('with no file in the queue the files view rests calmly', () => {
   assert.ok(el.$('.fx-calm'))
   assert.equal(el.$('.fx-calm .fx-title').text(), en.dossier.empty)
 })
+
+// ---------------------------------------------------------------- the files view: find, ask a file, next step (E2)
+
+const FOUND = { ok: true, query: 'vendor export', words: ['vendor', 'export'], engine: 'rg', total: 3, truncated: false, groups: [
+  { slug: 'demo-task', kind: 'task', path: 'work/tasks/demo-task', title: 'Demo task', rank: 0, count: 1,
+    hits: [{ path: 'work/tasks/demo-task/STATUS.md', line: 4, text: 'the vendor export' }] },
+  { slug: 'release-notes-2026-09', kind: 'done', path: 'work/done/2026-09/release-notes-2026-09', title: 'Release notes for September',
+    rank: 2, count: 2, hits: [{ path: 'work/done/2026-09/release-notes-2026-09/notes.md', line: 1, text: 'vendor export timed out' }] },
+  { slug: null, kind: 'log', path: 'work/log.md', title: 'work/log.md', rank: 2, count: 1,
+    hits: [{ path: 'work/log.md', line: 9, text: 'vendor export again' }] }] }
+
+/** A controller that records like recorder() and answers the methods a form awaits */
+function answering() {
+  const calls = []
+  return new Proxy({}, { get: (_, p) => (p === 'calls' ? calls : p === 'then' || typeof p === 'symbol' ? undefined
+    : (...a) => { calls.push([p, ...a]); return Promise.resolve(true) }) })
+}
+
+async function typeAndSend(el, selector, value) {
+  const input = el.$(`${selector} input`)
+  input.value = value
+  input.dispatch('input')
+  await tick()
+  el.$(`form${selector}`).dispatch('submit')
+  await tick()
+}
+
+test('the files view has a search field of its own; what is typed there is searched, never run as a code', async () => {
+  const { DossierView } = views.dossier
+  const c = answering()
+  const el = mount(html`<${DossierView} s=${filesOn()} c=${c} />`)
+  const form = el.$('form.dz-find')
+  assert.ok(form && form.getAttribute('role') === 'search')
+  assert.equal(el.$('form.dz-find input').getAttribute('placeholder'), en.dossier.find.placeholder)
+  await typeAndSend(el, '.dz-find', '  2a vendor  ')
+  assert.deepEqual(c.calls.filter(x => x[0] === 'findFiles'), [['findFiles', '2a vendor']])
+  assert.equal(c.calls.filter(x => x[0] === 'act' || x[0] === 'runCommand').length, 0)
+})
+
+test('the results come by file, best first; a click opens a file, a closed one too; a log line has none to open', () => {
+  const { DossierView } = views.dossier
+  const c = recorder()
+  const el = mount(html`<${DossierView} s=${filesOn({ find: { q: 'vendor export', status: 'ok', data: FOUND } })} c=${c} />`)
+  const items = el.$$('.dz-found > li')
+  assert.equal(items.length, 3)
+  assert.ok(items[0].text().includes('demo-task') && items[0].text().includes(en.dossier.find.kind.task))
+  assert.ok(items[1].text().includes(en.dossier.find.kind.done) && items[1].text().includes(en.dossier.find.hits(2)))
+  assert.ok(items[1].text().includes('vendor export timed out'))
+  items[1].$('button.dz-found-open').click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [['openFile', 'release-notes-2026-09']])
+  assert.equal(items[2].$('button.dz-found-open'), null)
+  assert.ok(items[2].text().includes('work/log.md'))
+  el.button(en.dossier.find.clear).click()
+  assert.ok(c.calls.some(x => x[0] === 'clearFind'))
+})
+
+test('a search that finds nothing or fails says so in words', () => {
+  const { DossierView } = views.dossier
+  const none = mount(html`<${DossierView} s=${filesOn({ find: { q: 'zzz', status: 'ok', data: { ...FOUND, query: 'zzz', total: 0, groups: [] } } })} c=${recorder()} />`)
+  assert.ok(none.$('.dz-find-note').text().includes(en.dossier.find.none('zzz')))
+  const bad = mount(html`<${DossierView} s=${filesOn({ find: { q: 'zzz', status: 'error', error: 'boom' } })} c=${recorder()} />`)
+  assert.ok(bad.$('.dz-find-note').text().includes(en.dossier.find.failed('boom')))
+})
+
+test('without an open file a question about the results carries the result list, never a task', async () => {
+  const { DossierView } = views.dossier
+  const c = answering()
+  const s = filesOn({ find: { q: 'vendor export', status: 'ok', data: FOUND } })
+  const el = mount(html`<${DossierView} s=${s} c=${c} />`)
+  await typeAndSend(el, '.dz-ask-results', 'which one failed?')
+  const [call] = c.calls.filter(x => x[0] === 'askFile')
+  assert.equal(call[1], 'which one failed?')
+  assert.equal(call[2], logic_findContext(FOUND))
+  assert.equal(call[3], null)
+})
+
+const logic_findContext = res => loadedRooms.logic.findContext(res, 'en')
+
+test('a file opened from the search shows its cover from the task detail and leads back to the queue', async () => {
+  const { DossierView } = views.dossier
+  const slug = 'release-notes-2026-09'
+  const data = { ok: true, slug, kind: 'done', path: `work/done/2026-09/${slug}/STATUS.md`,
+    front: { status: 'done', priority: 'P2', type: 'admin', headline: 'Release notes for September', last_updated: '2026-09-30' },
+    sections: [{ heading: 'Notes', text: 'x', truncated: false }], log: [], inbox: [], related: [] }
+  const c = answering()
+  const s = filesOn({ details: { inbox: {}, task: { [slug]: { status: 'ok', data, ver: 0 } } }, ui: { dossierOpen: slug } })
+  const el = mount(html`<${DossierView} s=${s} c=${c} />`)
+  assert.ok(el.$('.dz-opened').text().includes(en.dossier.opened))
+  assert.ok(el.$('.dz-cover').text().includes(slug) && el.$('.dz-cover').text().includes(en.dossier.find.kind.done))
+  assert.equal(el.$('.fx-hero'), null, 'no verbs for a file outside the queue')
+  // a closed file is asked about without naming its task: the chat would otherwise be archived at once
+  await typeAndSend(el, '.dz-ask', 'what was the cause?')
+  const [call] = c.calls.filter(x => x[0] === 'askFile')
+  assert.equal(call[1], 'what was the cause?')
+  assert.ok(call[2].includes(`work/done/2026-09/${slug}/`) && call[2].includes('Release notes for September'))
+  assert.equal(call[3], null)
+  el.button(en.dossier.back).click()
+  assert.ok(c.calls.some(x => x[0] === 'closeFile'))
+})
+
+test('asking a file in the queue sends its folder and cover and names its task', async () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const s = filesOn()
+  const x = dossierQueue(s)[0]
+  const c = answering()
+  const el = mount(html`<${DossierView} s=${s} c=${c} />`)
+  assert.equal(el.$('.dz-ask input').getAttribute('placeholder'), en.dossier.ask.placeholder)
+  await typeAndSend(el, '.dz-ask', 'what blocks it?')
+  const [call] = c.calls.filter(y => y[0] === 'askFile')
+  assert.ok(call[2].includes(`work/tasks/${x.slug}/`) && call[2].includes(x.slug))
+  assert.equal(call[3], x.slug)
+})
+
+test('a file without a next step offers a suggestion; the answer shows read only until it is taken over', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const queue = dossierQueue(filesOn())
+  const k = queue.findIndex(y => y.reason === 'task' && !y.row.next)
+  const x = queue[k]
+  const at = { dossierAt: { id: x.id, i: k } }
+  const c = recorder()
+  let el = mount(html`<${DossierView} s=${filesOn({ ui: at })} c=${c} />`)
+  el.button(en.dossier.suggest.button).click()
+  const [call] = c.calls.filter(y => y[0] === 'suggestNext')
+  assert.equal(call[1], x.slug)
+  assert.ok(call[2].includes(`work/tasks/${x.slug}/`))
+  // a file whose step is known offers none
+  const known = queue.findIndex(y => y.reason === 'task' && y.row.next)
+  const other = mount(html`<${DossierView} s=${filesOn({ ui: { dossierAt: { id: queue[known].id, i: known } } })} c=${recorder()} />`)
+  assert.equal(other.button(en.dossier.suggest.button), null)
+  // while it is asked
+  const running = { quick: { convs: [{ id: 'q0000000001', running: true, turns: [{ q: 'x', a: null }] }] } }
+  el = mount(html`<${DossierView} s=${filesOn({ ...running, ui: { ...at, suggest: { slug: x.slug, conv: 'q0000000001' } } })} c=${c} />`)
+  assert.ok(el.$('.dz-suggest').text().includes(en.dossier.suggest.running))
+  // the answer: its first line, with the way to take it over or let it go
+  const answered = { quick: { convs: [{ id: 'q0000000001', running: false, turns: [{ q: 'x', a: '- **Call the vendor** today\nbecause it waits' }] }] } }
+  const c2 = recorder()
+  el = mount(html`<${DossierView} s=${filesOn({ ...answered, ui: { ...at, suggest: { slug: x.slug, conv: 'q0000000001' } } })} c=${c2} />`)
+  const box = el.$('.dz-suggest')
+  assert.ok(box.text().includes('Call the vendor today') && box.text().includes(en.dossier.suggest.note))
+  assert.ok(!box.text().includes('because'))
+  box.button(en.dossier.suggest.take).click()
+  assert.deepEqual(c2.calls.filter(y => y[0] === 'takeNext'), [['takeNext', x.row.key, 'Call the vendor today']])
+  box.button(en.dossier.suggest.dismiss).click()
+  assert.ok(c2.calls.some(y => y[0] === 'dismissSuggest'))
+})

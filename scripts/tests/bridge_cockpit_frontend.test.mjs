@@ -2829,7 +2829,7 @@ test('mock parity: every server route has a well-formed mock answer, unless it i
     const inbox = st.model.sections.flatMap(s => s.rows).find(r => r.inbox_id)
     const query = {
       '/api/page': `page=${page.id}&section=${page.sections[0].id}`, '/api/tab/screen': `ref=${encodeURIComponent(st.tabs.tabs[0].ref)}`,
-      '/api/task': 'slug=demo-task', '/api/inbox': `id=${inbox.inbox_id}`, '/api/github': `ref=${encodeURIComponent('example/repo#12')}`,
+      '/api/task': 'slug=demo-task', '/api/find': 'q=demo', '/api/inbox': `id=${inbox.inbox_id}`, '/api/github': `ref=${encodeURIComponent('example/repo#12')}`,
       '/api/graph/node': `id=${encodeURIComponent(node)}`,
     }
     const body = {
@@ -5046,4 +5046,86 @@ test('the work tab offers the files view beside the others, never as its default
   assert.deepEqual(logic.workViews(null, ready), ['due', 'dossier'])
   assert.equal(logic.workViewOf('dossier', null, ready), 'dossier')
   assert.equal(logic.workViewOf(undefined, work, ready), 'due')
+})
+
+// ---------------------------------------------------------------- the files view: find, ask a file, next step (E2)
+
+test('files: ?words in the command box is a search, everything else stays a code', () => {
+  assert.equal(logic.commandSearch('?gateway september'), 'gateway september')
+  assert.equal(logic.commandSearch('  ?  invoice  '), 'invoice')
+  assert.equal(logic.commandSearch('?'), '')
+  for (const code of ['1a 3b', '2a', 'gateway', '', null]) assert.equal(logic.commandSearch(code), null)
+  // a code still parses as before
+  assert.ok(logic.parseShortcut('1a 3b'))
+})
+
+test('files: the api searches with the words in the query string, encoded', async () => {
+  const got = []
+  const a = api.createApi({ get: async p => { got.push(p); return { ok: true } }, post: async () => ({ ok: true }), events: () => ({}) })
+  await a.find('a&b=c ?x')
+  assert.deepEqual(got, ['/api/find?q=a%26b%3Dc%20%3Fx'])
+})
+
+test('files: the facts of a file come from its task detail, the row filling what the detail lacks', () => {
+  const data = { kind: 'done', path: 'work/done/2026-09/invoice-onboarding/STATUS.md',
+    front: { status: 'done', priority: 'P2', type: 'admin', headline: 'Onboard the invoice vendor', next: null } }
+  const f = logic.fileFacts('invoice-onboarding', data, null)
+  assert.deepEqual(f, { slug: 'invoice-onboarding', kind: 'done', path: 'work/done/2026-09/invoice-onboarding', title: 'Onboard the invoice vendor',
+    status: 'done', priority: 'P2', type: 'admin', headline: 'Onboard the invoice vendor', next: null })
+  const row = { title: 'Row title', status: 'doing', priority: 'P1', task_type: 'feature', next: { what: 'Call the vendor' } }
+  const g = logic.fileFacts('x', null, row)
+  assert.equal(g.title, 'Row title')
+  assert.equal(g.next, 'Call the vendor')
+  assert.equal(g.kind, 'task')
+  assert.equal(g.path, 'work/tasks/x')
+})
+
+test('files: a question in a file carries where it lies and its cover as data, in the page language', () => {
+  const f = { slug: 'invoice-onboarding', kind: 'task', path: 'work/tasks/invoice-onboarding', title: 'Onboard the invoice vendor',
+    status: 'doing', priority: 'P2', type: 'admin', headline: 'Onboard the invoice vendor', next: 'Call the vendor' }
+  const en = logic.fileContext(f, 'en')
+  for (const part of ['invoice-onboarding', 'work/tasks/invoice-onboarding/', 'doing', 'P2', 'Call the vendor']) assert.ok(en.includes(part), part)
+  assert.ok(en.includes(text.TABLES.en.dossier.ctx.read('work/tasks/invoice-onboarding')))
+  assert.ok(logic.fileContext(f, 'de').includes(text.TABLES.de.dossier.ctx.next))
+  assert.ok(en.length <= logic.CONTEXT_MAX)
+  // a very long cover is cut to what the server takes, never refused
+  assert.ok(logic.fileContext({ ...f, headline: 'x'.repeat(9000) }, 'en').length <= logic.CONTEXT_MAX)
+})
+
+test('files: a question about the results carries the list of found files, best first, within the limit', () => {
+  const hit = (path, line) => ({ path, line, text: `gateway at ${line}` })
+  const res = { query: 'gateway', total: 3, groups: [
+    { slug: 'invoice-onboarding', kind: 'task', path: 'work/tasks/invoice-onboarding', title: 'Onboard', rank: 1, count: 2,
+      hits: [hit('work/tasks/invoice-onboarding/STATUS.md', 3), hit('work/tasks/invoice-onboarding/notes.md', 1)] },
+    { slug: null, kind: 'log', path: 'work/log.md', title: 'work/log.md', rank: 2, count: 1, hits: [hit('work/log.md', 9)] }] }
+  const ctx = logic.findContext(res, 'en')
+  assert.ok(ctx.startsWith(text.TABLES.en.dossier.ctx.results('gateway')))
+  assert.ok(ctx.indexOf('invoice-onboarding') < ctx.indexOf('work/log.md'))
+  assert.ok(ctx.includes('work/tasks/invoice-onboarding/STATUS.md:3: gateway at 3'))
+  const many = { ...res, total: 400, groups: Array.from({ length: 400 }, (_, i) => ({ ...res.groups[0], slug: `file-${i}` })) }
+  const cut = logic.findContext(many, 'en')
+  assert.ok(cut.length <= logic.CONTEXT_MAX && cut.includes(text.TABLES.en.dossier.ctx.more(1).split('1')[0].trim()))
+  assert.equal(logic.findContext(null, 'en'), '')
+})
+
+test('files: a suggested step is the first line of the answer, plain, one line, at most 300 characters', () => {
+  assert.equal(logic.suggestedStep('\n\n- **Call the vendor** about the 422\nBecause ...'), 'Call the vendor about the 422')
+  assert.equal(logic.suggestedStep('1. "Write the summary"'), 'Write the summary')
+  assert.equal(logic.suggestedStep('Next step: Send the draft'), 'Send the draft')
+  assert.equal(logic.suggestedStep('   '), null)
+  assert.equal(logic.suggestedStep(null), null)
+  assert.equal(logic.suggestedStep('y'.repeat(400)).length, 300)
+})
+
+test('files: the command box searches before it parses codes, and a suggestion stays out of the chat lists', () => {
+  const app = read('app.js')
+  const run = app.slice(app.indexOf('async runCommand(text)'))
+  assert.ok(run.indexOf('commandSearch(text)') >= 0 && run.indexOf('commandSearch(text)') < run.indexOf('parseShortcut(text)'))
+  assert.match(run, /ctl\.setWorkView\('dossier'\)/)
+  // an answer for words no longer asked is dropped; a suggestion asks in its own place; only a click writes it
+  assert.match(app, /if \(store\.get\(\)\.find\?\.q !== words\) return/)
+  assert.match(app, /place: 'suggest'/)
+  assert.match(app, /act\('task_next', \{ key, text \}\)/)
+  const convs = [{ id: 'a', place: 'core', running: true }, { id: 'b', place: 'suggest', running: true }, { id: 'c', running: true }]
+  assert.deepEqual(logic.listedChats(convs, 24, Date.now()).map(x => x.id), ['c'])
 })

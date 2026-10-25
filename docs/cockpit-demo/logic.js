@@ -447,12 +447,12 @@ const SIDEBAR_STATE = { waiting: 'waiting', 'needs input': 'needs-you', running:
  *  another Bridge's clone, and the quick chats in the control workspace; then the other Bridges on this
  *  machine that have no workspace, and the A2A agents. A workspace the list does not name (or no list
  *  at all) still shows from its tabs, marked known: false */
-/** The chats a list shows, quick chats and A2A conversations alike: not the start page's core (its panel
- *  shows it, a new one replaces it) and none untouched past keep_hours (the server archives it with its
+/** The chats a list shows, quick chats and A2A conversations alike: none with a place of its own (the start page's
+ *  core and a file's suggested next step: their panels show them, a new one replaces the last) and none untouched past keep_hours (the server archives it with its
  *  next look); one still answering, or an A2A task its owner still holds, always */
 export function listedChats(convs, keepHours, nowMs) {
   const cutoff = keepHours > 0 && Number.isFinite(nowMs) ? nowMs - keepHours * 3600000 : null
-  return (convs ?? []).filter(x => x.place !== 'core' && (x.running || x.turns?.at(-1)?.waiting || cutoff == null
+  return (convs ?? []).filter(x => !x.place && (x.running || x.turns?.at(-1)?.waiting || cutoff == null
     || (x.last_ms ?? x.started_ms) >= cutoff))
 }
 
@@ -2612,6 +2612,77 @@ export function askContext(s, lang = 'de') {
   const { total } = agentLoad(s?.sessions?.sessions, s?.tabs?.tabs)
   const out = [picture, tableOf(lang).situation.load(total.busy, total.subagents, total.workflows)].filter(Boolean).join('\n')
   return out.length <= CONTEXT_MAX ? out : ''
+}
+
+// ---------------------------------------------------------------- the files view: find, ask a file, next step
+
+/** "?words" in the command box is a search of the files (/api/find), never a code: the words ('' for a bare ?),
+ *  null for anything else, so every code parses as it always has */
+export function commandSearch(raw) {
+  const text = String(raw ?? '').trim()
+  return text.startsWith('?') ? text.slice(1).trim() : null
+}
+
+/** The facts of one file for its cover and its questions: what /api/task holds, the row (when the model has one)
+ *  filling what the detail lacks. `path` is the file's folder, `kind` task, stream or done */
+export function fileFacts(slug, data, row) {
+  const f = data?.front ?? {}
+  const kind = data?.kind ?? 'task'
+  const path = typeof data?.path === 'string' ? data.path.replace(/\/STATUS\.md$/, '')
+    : `work/${kind === 'stream' ? 'streams' : 'tasks'}/${slug}`
+  return { slug, kind, path, title: row?.title ?? f.headline ?? slug, status: f.status ?? row?.status ?? null,
+    priority: f.priority ?? row?.priority ?? null, type: f.type ?? row?.task_type ?? null, headline: f.headline ?? null,
+    next: f.next ?? row?.next?.what ?? null }
+}
+
+const filesWords = lang => (TABLES[lang] ?? TABLES.en).dossier
+
+/** What a question asked in a file carries along as data (actions.py ask `context`): where the file lies and its
+ *  cover, and that the answer comes from that folder. Cut to CONTEXT_MAX, never refused */
+export function fileContext(file, lang = 'en') {
+  const d = filesWords(lang)
+  const w = d.ctx
+  const lines = [`${w.file}: ${file.slug} (${d.find.kind[file.kind] ?? file.kind})`, `${w.folder}: ${file.path}/`,
+    file.title ? `${w.title}: ${file.title}` : null, file.status ? `${w.status}: ${file.status}` : null,
+    file.priority ? `${w.priority}: ${file.priority}` : null,
+    file.headline && file.headline !== file.title ? `${w.situation}: ${file.headline}` : null,
+    file.next ? `${w.next}: ${file.next}` : null, w.read(file.path)].filter(Boolean)
+  const out = lines.join('\n')
+  return out.length <= CONTEXT_MAX ? out : out.slice(0, CONTEXT_MAX)
+}
+
+/** What a question about the search results carries along, with no file open: the found files best first, each
+ *  with its first hits, as many as fit in CONTEXT_MAX and the count of those that did not; '' without results */
+export function findContext(result, lang = 'en') {
+  const groups = result?.groups ?? []
+  if (!groups.length) return ''
+  const d = filesWords(lang)
+  let out = d.ctx.results(result.query ?? '')
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i]
+    const block = [`- ${g.slug ?? g.path} (${d.find.kind[g.kind] ?? g.kind}): ${g.title} [${g.path}]`,
+      ...(g.hits ?? []).slice(0, 2).map(h => `  ${h.path}:${h.line}: ${h.text}`)].join('\n')
+    const rest = Math.max(result.total ?? groups.length, groups.length) - i
+    const tail = `\n${d.ctx.more(rest)}`
+    if (out.length + 1 + block.length + tail.length > CONTEXT_MAX) return out + tail
+    out += `\n${block}`
+  }
+  const left = (result.total ?? groups.length) - groups.length
+  const tail = left > 0 ? `\n${d.ctx.more(left)}` : ''
+  return out.length + tail.length <= CONTEXT_MAX ? out + tail : out
+}
+
+/** The step a suggestion names: the first line of the answer, without list marks, emphasis, quotes or a leading
+ *  "Next step:" in either language; one line of at most 300 characters (actions.py STEP_MAX), null for none */
+export function suggestedStep(answer) {
+  const first = String(answer ?? '').split('\n').map(x => x.trim()).find(Boolean)
+  if (!first) return null
+  const labels = Object.values(TABLES).map(t => t.dossier.next.toLowerCase())
+  let text = first.replace(/^(?:[-*>#•]+|\d+[.)])\s*/, '').replace(/\*\*|__|`/g, '').trim()
+  const label = labels.find(l => text.toLowerCase().startsWith(`${l}:`))
+  if (label) text = text.slice(label.length + 1).trim()
+  text = text.replace(/^["'“„«]+|["'”“»]+$/g, '').replace(/\s+/g, ' ').trim()
+  return text ? text.slice(0, 300) : null
 }
 
 // ---------------------------------------------------------------- the chat's one input: where Enter goes

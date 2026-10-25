@@ -33,7 +33,7 @@ from .actions_base import *  # noqa: F401,F403
 from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
                            READ_ONLY_VERBS, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
-                           TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
+                           STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
                            Ctx, bad_arg, check_date, check_key, check_text)
 from .actions_chats import ChatVerbs
 from .actions_launch import LaunchSteps
@@ -138,6 +138,13 @@ def _title(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
     return check_text(value, name, TITLE_MAX)
 
 
+def _line(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # one line of text (a next step): refused when it holds a line break or a tab, never cut
+    if isinstance(value, str) and re.search(r"[\n\r\t]", value):
+        raise bad_arg(name, "one line, no tabs")
+    return check_text(value, name, STEP_MAX)
+
+
 def _tab_name(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
     # compared with the tab's name as it is, so never stripped
     if not isinstance(value, str) or not 1 <= len(value) <= 120 or "\x00" in value or CONTROL_RE.search(value):
@@ -174,6 +181,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "team": _team,
     "index": _index,
     "title": _title,
+    "line": _line,
     "tab_name": _tab_name,
     "digit": _digit,
     "organize_items": _organize_items,

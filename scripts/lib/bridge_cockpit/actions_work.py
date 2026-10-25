@@ -302,6 +302,20 @@ class WorkVerbs:
         else:
             ctx.note(self.tx["prio_failed"].format(err=m.short(run.err, 100)), bad=True)
 
+    def v_task_next(self, ctx: Ctx, key: str, text: str) -> None:
+        """The person takes over a suggested next step: STATUS.md keeps it as next: {what} with a dated note
+        (task.py next), only on this click; the step shown before was derived and never stored."""
+        row = self.entry(key)["row"]
+        if not row.get("task") or row.get("inbox_id"):
+            raise self.not_applicable("a next step is for tasks")
+        slug = self.slug(row)
+        run = ctx.call("task.next", slug, self.task_cmd("next", slug, "--", " ".join(text.split())), SHORT_TIMEOUT)
+        if run.ok:
+            ctx.note(self.tx["next_set"].format(title=m.short(row["title"], 60)))
+            ctx.delta()
+        else:
+            ctx.note(self.tx["next_failed"].format(err=m.short(run.err, 100)), bad=True)
+
     def task_rows(self, keys: list[str], closing: bool = False, stream: bool = False) -> list[tuple[dict, dict]]:
         """(row, out) per key, every one a task row; closing also needs every one finite, or a stream the page
         asked about (stream)."""

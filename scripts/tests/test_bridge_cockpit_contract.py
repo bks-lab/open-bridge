@@ -227,6 +227,7 @@ def s_inbox_edits(w: World) -> None:
 def s_task_edits(w: World) -> None:
     w.act("priority", key="task:other-task", value="P0")
     w.act("note", key="task:other-task", text="ask the vendor")
+    w.act("task_next", key="task:other-task", text="Call the vendor; -x")
     w.act("task_close", keys=["task:demo-task"], reason="superseded", text="moved into #12")
     w.act("task_close", keys=["task:other-task"], reason="done")
 
@@ -365,7 +366,7 @@ SCENARIOS = {
     "waits": Scenario(s_waits, {"inbox.defer", "task.wait"}),
     "to_task": Scenario(s_to_task, {"task.new"}),
     "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
-    "task_edits": Scenario(s_task_edits, {"task.priority", "task.note", "task.close"}),
+    "task_edits": Scenario(s_task_edits, {"task.priority", "task.note", "task.next", "task.close"}),
     "settle": Scenario(s_settle, {"inbox.close", "inbox.drop", "task.close", "task.log"}),
     "reopen": Scenario(s_reopen, {"task.reopen", "inbox.reopen"}),
     "review": Scenario(s_review, {"task.review"}),

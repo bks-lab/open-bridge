@@ -153,6 +153,16 @@ or `review`, for a task closed while in review),
 note, the board is regenerated and one log row is written. It refuses a slug that is
 open. The dashboard's history and its undo run it.
 
+`python3 scripts/task.py next <slug> -- <text>` keeps a task's next step as
+`next: {what: <text>}` with `last_updated:` and a dated "Next step" note, so the step
+carries the day it was set; `--clear` takes it away. The cockpit runs it only when the
+person takes over a suggested step ([`bridge-cockpit.md`](bridge-cockpit.md) § 3).
+
+`python3 scripts/work-find.py <words> [--json]` searches every task, stream and closed
+task, the log and its archive, and lists the files ranked: slug or title first, then a
+hit in STATUS.md, then the rest. Plain words, never a pattern; `video/` and
+`deliverables/` folders are never read.
+
 ## Log format — one file per period, daily blocks
 
 `log.md` holds **one archive period at a time** — by default one week. The

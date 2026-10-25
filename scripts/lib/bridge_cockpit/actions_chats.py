@@ -12,8 +12,8 @@ from . import model as m
 from .history import item as history_item
 from .quick import CONV_RE
 from .relay import KINDS as ASK_KINDS
-from .actions_base import (CONTEXT_MAX, HANDOFF_MAX, HANDOFF_ORDER_MAX, INBOX_ID_RE, SHORT_TIMEOUT, ActionError, Ctx,
-                           bad_arg, check_key, check_text)
+from .actions_base import (CONTEXT_MAX, HANDOFF_MAX, HANDOFF_ORDER_MAX, INBOX_ID_RE, QUICK_PLACES, SHORT_TIMEOUT, SLUG_RE,
+                           ActionError, Ctx, bad_arg, check_key, check_text)
 
 
 class ChatVerbs:
@@ -188,12 +188,15 @@ class ChatVerbs:
         """A question to Claude. `via` "quick" (what the page sends) asks a short read-only session of its
         own (quick.py, Haiku unless the page names a model) and answers with the conversation id; "control"
         hands it to the control session through the relay. `place` "core": a free quick question of the start
-        page's core, kept out of the chat lists, and a new one replaces the last."""
+        page's core, kept out of the chat lists, and a new one replaces the last; "suggest": the same for the files
+        view's suggested next step. A free quick question may name the file it is asked in (`task`): an open
+        task or stream becomes what the chat is about, so it leaves once the task closes; a closed one is never
+        named, or the settle sweep would take the chat into the archive at once."""
         app, tx = self.app, self.tx
         if via not in ("quick", "control"):
             raise bad_arg("via", "quick or control")
-        if place is not None and (place != "core" or via != "quick" or kind != "free"):
-            raise bad_arg("place", "only core, for a free quick question")
+        if place is not None and (place not in QUICK_PLACES or via != "quick" or kind != "free"):
+            raise bad_arg("place", "only core or suggest, for a free quick question")
         if via == "control" and not app.cfg.relay:
             return 409, {"ok": False, "error": {"code": "relay_disabled", "message": "no control session: the relay is off",
                                                  "field": "via"}}
@@ -214,7 +217,7 @@ class ChatVerbs:
         allowed = {"row": {"key"}, "follow_up": {"key"}, "info": {"page", "section", "index"}, "free": {"text"},
                    "overview": set(), "plan_day": set(), "evening": set()}[kind]
         # may come along, never required: what the page shows right now, for a free quick question only
-        optional = {"free": {"context"}}.get(kind, set())
+        optional = {"free": {"context", "task"}}.get(kind, set())
         for name in args:
             if name not in allowed and name not in optional:
                 raise bad_arg(str(name)[:40], "unknown argument")
@@ -233,6 +236,14 @@ class ChatVerbs:
             context = context.strip() or None
         model = app.collector.model
         about = None                     # the row and the item a quick chat is about: it leaves when that ends
+        task = args.get("task")
+        if task is not None:
+            if via != "quick":
+                raise bad_arg("task", "only for a free quick question")
+            if not isinstance(task, str) or not SLUG_RE.match(task):
+                raise bad_arg("task", "not a task slug")
+            if any((app.root / "work" / where / task / "STATUS.md").is_file() for where in ("tasks", "streams")):
+                about = {"kind": "free", "key": f"task:{task}", "task": task}
         if kind in ("row", "follow_up"):
             row = self.entry(check_key(args["key"], "key"))["row"]
             prompt = m.ask_about(row, tx) if kind == "row" else m.follow_up(row, tx)

@@ -25,6 +25,7 @@ import datetime as dt
 import http.client
 import json
 import re
+import urllib.parse
 import os
 import socket
 import stat
@@ -7493,3 +7494,94 @@ def test_seen_endpoint_takes_a_profile_page_id_as_written(world):
     assert log.read_text().splitlines()[-1].split()[1:] == ["page_view", "Weekly.Review", "view=-"]
     for bad in ("a/b", "a\\b", "a b", "a\nb", "", "x" * 65):
         assert world.post("/api/seen", {"page": bad})[0] == 400, bad
+
+
+# ---------------------------------------------------------------- the files view: find, ask a file, next step (E2)
+
+def find_handler(world):
+    """The real search on the test Bridge, as scripts/work-find.py would answer it"""
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    return lambda argv: ok(work_find.find(world.root, argv[-1], engine="python"))
+
+
+def test_find_runs_the_search_command_through_the_runner_and_answers_by_file(world):
+    world.runner.handlers["work-find.--json"] = find_handler(world)
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/find?q=" + urllib.parse.quote("demo; rm -rf /"), headers=world.cookie)
+    assert status == 200
+    argv = world.runner.of("work-find.--json")[0]
+    assert argv[:2] == [PY, str(world.root / "scripts" / "work-find.py")]
+    assert argv[2:] == ["--root", str(world.root), "--json", "--", "demo; rm -rf /"]    # one argv word, no shell
+    assert json.loads(body)["groups"] == []
+    status, _, body = world.request("GET", "/api/find?q=demo", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True and data["groups"][0]["slug"] == "demo-task"
+    assert data["groups"][0]["path"] == "work/tasks/demo-task" and data["groups"][0]["rank"] == 0
+
+
+def test_find_refuses_a_bad_query_before_it_runs_anything(world):
+    world.runner.calls.clear()
+    for q in ("", "x", "%0A%0Aab", "a%00b", "y" * 201):
+        status, _, body = world.request("GET", f"/api/find?q={q}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["field"] == "q", q
+    assert world.runner.of("work-find.--json") == []
+    assert world.request("GET", "/api/find?q=demo")[0] == 401                       # no cookie, no search
+
+
+def test_find_says_so_when_the_search_fails_and_never_shows_the_token(world):
+    world.runner.handlers["work-find.--json"] = lambda argv: fail(f"broke near {world.app.token}")
+    status, _, body = world.request("GET", "/api/find?q=demo", headers=world.cookie)
+    assert status == 502 and json.loads(body)["error"]["code"] == "unreadable"
+    assert world.app.token.encode() not in body
+
+
+def test_asking_a_file_names_it_for_an_open_task_and_never_for_a_closed_one(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("It waits on the vendor.", 0.001)
+    done = world.root / "work" / "done" / "2026-09" / "gone-task"
+    done.mkdir(parents=True)
+    (done / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+    convs = {}
+    for slug in ("demo-task", "gone-task"):
+        status, _, body = free_ask(world, "what is the cause?", context=f"File: work/tasks/{slug}", task=slug)
+        assert status == 202
+        convs[slug] = json.loads(body)["conv"]
+        wait_quick(world)
+    # an open task: the chat is about it (it leaves when the task closes); a closed one: about nothing,
+    # or the settle sweep would take the chat into the archive at once
+    assert world.app.quick.convs[convs["demo-task"]]["about"] == {"kind": "free", "key": "task:demo-task", "task": "demo-task"}
+    assert world.app.quick.convs[convs["gone-task"]]["about"] is None
+    for bad in ("../etc", "Demo", 3):
+        status, _, body = free_ask(world, "x?", task=bad)
+        assert status == 400 and json.loads(body)["error"]["field"] == "task", bad
+    status, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "hi", "task": "demo-task"}, "via": "control"})
+    assert status == 400 and json.loads(body)["error"]["field"] == "task"
+
+
+def test_a_suggested_step_asks_in_a_place_of_its_own_that_the_next_one_replaces(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("Call the vendor", 0.001)
+    ask = lambda: json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "suggest", "task": "demo-task"},
+                                                     "via": "quick", "place": "suggest"})[2])["conv"]
+    first = ask()
+    wait_quick(world)
+    world.clock.advance(1)
+    second = ask()
+    wait_quick(world)
+    convs = {c["id"]: c for c in world.app.quick.state()["convs"]}
+    assert first not in convs and convs[second]["place"] == "suggest"
+    status, _, raw = world.post("/api/ask", {"kind": "overview", "args": {}, "via": "quick", "place": "suggest"})
+    assert status == 400 and json.loads(raw)["error"]["field"] == "place"
+
+
+def test_taking_over_a_next_step_writes_it_through_task_py_and_leaves_an_audit_line(world):
+    world.runner.calls.clear()
+    world.act("task_next", key="task:demo-task", text="  Call the vendor; rm -rf /  ")
+    assert writes(world) == [K(world, "next", "demo-task", "--", "Call the vendor; rm -rf /")]
+    line = (world.state / "audit.log").read_text().splitlines()[-1].split()
+    assert line[1:3] == ["task_next", "task:demo-task"] and "ok=true" in line
+    assert "Call" not in " ".join(line)                                           # never the text
+    refused(world, "not_applicable", "task_next", key=f"inbox:{YES_ID}", text="x")
+    refused(world, "invalid_argument", "task_next", key="task:demo-task", text="a\nb")
+    world.runner.handlers["task.next"] = lambda argv: fail("no such task")
+    res = world.act("task_next", key="task:demo-task", text="Call")
+    assert res["ok"] is False

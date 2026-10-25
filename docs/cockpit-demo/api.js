@@ -126,6 +126,8 @@ export function createApi(transport = httpTransport()) {
     seen: (page, view) => transport.post('/api/seen', view ? { page, view } : { page }, csrf),
     inbox: id => transport.get(`/api/inbox?id=${encodeURIComponent(id)}`),
     task: slug => transport.get(`/api/task?slug=${encodeURIComponent(slug)}`),
+    // the files view's search over every task, stream and closed task, the log and its archive (work-find.py)
+    find: q => transport.get(`/api/find?q=${encodeURIComponent(q)}`),
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),
     page: (page, section) => transport.get(`/api/page?page=${encodeURIComponent(page)}&section=${encodeURIComponent(section)}`),
     relay: () => transport.get('/api/relay'),
