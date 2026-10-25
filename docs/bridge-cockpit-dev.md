@@ -1,9 +1,11 @@
 ---
 summary: "Working on the cockpit: which files make up the server, the page and the mod relay, which of them are shared with the rest of the Bridge, the edit and test loop (mock mode, a second instance beside the live one), recipes for a new verb, a new model field and new text, the rules the tests hold, and what has to travel together when it moves to open-bridge."
 type: guide
-last_updated: 2026-10-24
+last_updated: 2026-10-25
 related:
   - bridge-cockpit.md
+  - cockpit-areas.md
+  - cockpit-files.md
   - ai-services.md
   - workplace.md
   - ../scripts/bridge-cockpit.py
@@ -104,11 +106,14 @@ layout now").
 | `scripts/web/views/tour.js` | the first-run tour: `Tour` (the welcome, one step per area with the area lit, Next, Back, Skip); the steps are `logic.js tourSteps`, where the box stands `tourPlace`, whether a visit offers it `tourOffered`; the end goes to the server as `tour_done` (`store.py` keeps it in `state.json`) |
 | `scripts/web/views/reply.js` | `AskLine` and `TabReply`: a waiting tab's question and the answers to it (`logic.js replyOptions`), in the sidebar, the tab pane and the tab window |
 | `scripts/web/views/prose.js` | `Prose`: draws what `markdown.js` read as elements, links in a new tab with `noopener noreferrer` |
-| `scripts/web/logic.js` | pure helpers, tested under node (the ticker's status rules are `tickerStatus` and `tickerItems`) |
+| `scripts/web/logic.js` | pure helpers, tested under node (the ticker's status rules are `tickerStatus` and `tickerItems`); it passes on every name of `areas.js` and `files.js`, so a view imports from either |
+| `scripts/web/areas.js` | the areas ([`cockpit-areas.md`](cockpit-areas.md)): the area lines `homeAreas`, where a number leads `areaJump`, the one area filter `areaScope` and what the keys see under it `keyScope`, `scopeRow`, `scopeKeep` |
+| `scripts/web/files.js` | the files view ([`cockpit-files.md`](cockpit-files.md)): its queue `fileQueue` and `scopedFileQueue`, the parts `dossierParts`, a file's results and next step, the search and the context a question carries |
 | `scripts/web/motion.js` | springs, hits and rail points from the explainer films (`skills/explainer-video/assets/motion.js`), tested under node |
 | `scripts/web/api.js` | fetch and EventSource wrappers |
-| `scripts/web/text.js` | page texts, de and en with identical keys |
+| `scripts/web/text.js` | page texts, de and en with identical keys; it takes in `text-areas.js` (`home`, the start page) and `text-files.js` (`dossier`), each with both languages side by side |
 | `scripts/web/tokens.css`, `style.css` | design tokens from `DESIGN.md`, layout |
+| `scripts/web/areas.css`, `files.css` | the rules of the areas and of the files view, loaded right after `style.css` so the cascade stands as it did inside it |
 | `scripts/web/mock.js` | invented example data for `?mock=1` |
 | `scripts/web/vendor/` | pinned Preact + htm bundle, checked by hash |
 | `mods/cockpit-relay/hooks/relay.ts` | pure relay functions of the mod, HMAC included, and its word tables (`TABLES`) |
@@ -325,6 +330,10 @@ ticker's source colours are checked on the palette `design.py` resolves, so
 the fallback chain counts; `BRIDGE_DESIGN_MD=/path/to/DESIGN.md` runs that
 check against another fork's `DESIGN.md`, for example the generic open-bridge
 one.
+
+The areas and the files view keep their tests apart, the pure helpers and the views together:
+`bridge_cockpit_areas.test.mjs` and `bridge_cockpit_files.test.mjs`. A change to one of them
+runs and grows its own suite, so two sessions building on the cockpit rarely meet in a test file.
 
 The render tests (`bridge_cockpit_render.test.mjs`) mount a view with the
 vendored Preact into the small DOM of `scripts/tests/cockpit_render.mjs`,

@@ -165,7 +165,7 @@ task, the log and its archive, and lists the files ranked: slug or title first, 
 hit in STATUS.md, then the rest. Plain words, never a pattern, the same answer with or
 without `rg`; an open and a closed task of one slug are two files; `video/` and
 `deliverables/` folders are never read. The cockpit's Files view runs the same search
-([`bridge-cockpit.md`](bridge-cockpit.md#the-files-view)).
+([`cockpit-files.md`](cockpit-files.md)).
 
 ## Log format — one file per period, daily blocks
 
