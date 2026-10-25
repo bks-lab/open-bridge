@@ -516,6 +516,36 @@ kbd {
 .lines { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; font-size: 12.5px; }
 .line-kind { font-weight: 600; color: var(--on-surface-muted); }
 .task-headline { font-weight: 600; margin-bottom: 8px; }
+/* the item card (views/card.js): the goal first and strongest, the story and criteria under it, then the next step,
+   the chips, the steps and the gaps; "AI" and "outdated" small beside the goal; a proposal set off in its own frame */
+.card { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 4px; }
+.card-title { font-weight: 600; }
+.card-summary { color: var(--on-surface); }
+.card-brief { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface-raised); }
+.card-brief .label-caps, .card-next .label-caps, .card-proposal .label-caps { display: inline; margin: 0 6px 0 0; }
+.card-goal { font-weight: 600; line-height: 1.4; }
+.card-goal-text { display: block; margin-top: 2px; font-size: 1.05em; color: var(--ink); }
+.card-story { color: var(--on-surface); }
+.card-criteria { margin: 4px 0 0; padding-left: 18px; font-size: var(--text-sm); color: var(--on-surface); }
+.card-criteria li { margin: 1px 0; }
+.card-next-what { font-weight: 600; }
+.card-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.card-progress { display: flex; align-items: center; gap: 8px; }
+.card-meter { display: block; width: 96px; height: 4px; background: var(--surface-muted); border-radius: var(--radius-full); overflow: hidden; }
+.card-meter-fill { display: block; height: 100%; background: var(--accent); transform-origin: 0 50%; }
+.card-gaps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ai-mark { display: inline-block; padding: 0 4px; border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
+  background: var(--accent-subtle); color: var(--ink); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; cursor: help; }
+.card-stale { display: inline-block; margin-left: 4px; padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--warning); font-size: 10px; font-weight: 600; cursor: help; }
+.card-proposal { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--accent-line);
+  border-radius: var(--radius-sm); }
+.card-edit { display: flex; flex-direction: column; gap: 6px; }
+.card-edit-story { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+.card-edit-field { display: flex; flex-direction: column; gap: 2px; }
+.card-describe { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.card-line { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-sections { margin-top: 12px; }
 .task-sections details { border-top: 1px solid var(--border); }
 .task-sections details > .pre { padding: 2px 0 10px; font-size: var(--text-sm); color: var(--on-surface); }

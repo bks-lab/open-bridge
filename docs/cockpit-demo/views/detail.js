@@ -9,6 +9,7 @@ import {
   skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { ItemCard, describeKey, describeOf } from './card.js'
 import { ReviewBlock } from './check.js'
 import { KindTag, OriginTag, RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
@@ -327,7 +328,7 @@ export function Lines({ lines }) {
   return html`<ul class="lines">${lines.map((l, i) => html`<li key=${i}><span class="line-kind">${t.lineKind[l.kind] ?? `${l.kind}: `}</span><span>${l.text}</span></li>`)}</ul>`
 }
 
-function TaskDetail({ slug, s, c, exclude }) {
+function TaskDetail({ slug, s, c, exclude, carded = false }) {
   const t = T()
   const d = s.details.task[slug]
   const ver = s.model?.collected_ms ?? 0
@@ -342,7 +343,7 @@ function TaskDetail({ slug, s, c, exclude }) {
     const f = d.data.front ?? {}
     const facts = ['status', 'priority', 'type', 'created', 'last_updated', 'origin', 'blocked_by'].filter(k => f[k])
     body = html`
-      ${f.headline ? html`<p class="task-headline">${f.headline}</p>` : null}
+      ${f.headline && !carded ? html`<p class="task-headline">${f.headline}</p>` : null}
       <dl class="meta">${facts.map(k => html`<div class="meta-item" key=${k}><dt>${t.front[k]}</dt>
         <dd>${k === 'status' ? (t.taskState[f[k]] ?? f[k]) : String(f[k])}</dd></div>`)}</dl>
       <div class="task-sections">
@@ -378,7 +379,7 @@ function RowDetail({ row, s, c }) {
     <header class="detail-head">
       <span class="detail-eyebrow">${n ? html`<span class="sec-count mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span></span>` : null}
         <span class="eyebrow">${t.section[row.section] ?? row.section}</span></span>
-      <h2 class="detail-title" id="detail-title" tabindex="-1">${row.title}</h2>
+      <h2 class="detail-title" id="detail-title" tabindex="-1">${row.card?.title || row.title}</h2>
       <p class="detail-kind"><${KindTag} row=${row} s=${s} c=${c} link /> <${OriginTag} row=${row} /></p>
       <div class="detail-chips">
         <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
@@ -389,6 +390,8 @@ function RowDetail({ row, s, c }) {
       <${LinkView} link=${row.link} c=${c} onOpenTask=${openTask} />
       ${row.task ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openInner(`task:${row.task}`)}>${t.item.inNet}<//>` : null}
     </header>
+    <${ItemCard} card=${row.card} d=${describeOf(s, describeKey(row), row.describe)} dkey=${describeKey(row)} s=${s} c=${c}
+      skip=${['priority', 'source']} cls="detail-card" />
     <${ReturnPanel} s=${s} c=${c} keys=${[row.key, row.task ? `task:${row.task}` : null]} />
     <${MetaList} row=${row} s=${s} />
     ${(row.why ?? []).length ? html`<div class="block"><h3 class="label-caps">${t.whyTitle}</h3>
@@ -398,7 +401,7 @@ function RowDetail({ row, s, c }) {
     <${ActionsBlock} row=${row} s=${s} c=${c} />
     ${row.hidden_until ? html`<div class="block"><${Btn} size="xs" onClick=${() => c.act('unhide', { key: row.key })}>${t.btnShowAgain}<//></div>` : null}
     <${TeamBlock} row=${row} s=${s} c=${c} />
-    ${row.task ? html`<${TaskDetail} slug=${row.task} s=${s} c=${c} exclude=${row.key} />` : null}
+    ${row.task ? html`<${TaskDetail} slug=${row.task} s=${s} c=${c} exclude=${row.key} carded=${!row.inbox_id && !!row.card?.summary} />` : null}
   </article>`
 }
 
@@ -438,13 +441,15 @@ export function DetailColumn({ s, c, byKey }) {
   if (!key) body = html`<${Overview} s=${s} c=${c} />`
   else if (row) body = html`<${RowDetail} key=${row.key} row=${row} s=${s} c=${c} />`
   else if (key.startsWith('task:')) {
-    const wk = s.details?.task?.[key.slice(5)]?.data?.work_kind ?? workKindOf({ task: key.slice(5) }, s) ?? 'task'
+    const data = s.details?.task?.[key.slice(5)]?.data
+    const wk = data?.work_kind ?? workKindOf({ task: key.slice(5) }, s) ?? 'task'
     body = html`<article class="panel panel-pad detail">
       <${DetailBack} s=${s} c=${c} />
-      <header class="detail-head"><span class="eyebrow">${t.kind[wk] ?? t.taskTitle}</span><h2 class="detail-title">${key.slice(5)}</h2>
+      <header class="detail-head"><span class="eyebrow">${t.kind[wk] ?? t.taskTitle}</span><h2 class="detail-title">${data?.card?.title || key.slice(5)}</h2>
         <p class="detail-kind"><${KindTag} row=${{ key, task: key.slice(5), work_kind: wk }} s=${s} />
-          <${OriginTag} origin=${s.details?.task?.[key.slice(5)]?.data?.origin ?? null} /></p></header>
-      <${TaskDetail} slug=${key.slice(5)} s=${s} c=${c} /></article>`
+          <${OriginTag} origin=${data?.origin ?? null} /></p></header>
+      <${ItemCard} card=${data?.card} d=${describeOf(s, key, data?.describe)} dkey=${key} s=${s} c=${c} skip=${['source']} cls="detail-card" />
+      <${TaskDetail} slug=${key.slice(5)} s=${s} c=${c} carded=${!!data?.card?.summary} /></article>`
   } else {
     body = html`<div class="panel panel-pad"><p class="muted">${t.rowGone}</p>
       ${s.ui.pageDetail ? html`<${Btn} size="xs" onClick=${c.closePeek}>${t.closeDetail}<//>`

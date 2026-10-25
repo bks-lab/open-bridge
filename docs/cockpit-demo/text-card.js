@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: MIT
+// UI texts of the item card (views/card.js, rules/language-policy.md section 3): the `card` part of both tables, side
+// by side under identical keys. text.js takes them in as TABLES.en.card and TABLES.de.card, so a view reads them
+// through T() as before. Keys and comments are English; only the values of `de` are German.
+
+export const CARD = {
+  en: {
+    goal: 'Goal', story: 'User story', criteria: 'Acceptance criteria', next: 'Next step', progress: 'Steps',
+    storyLine: (as, want, soThat) => `As ${as}, I want ${want}, so that ${soThat}.`,
+    steps: (done, total) => `${done} of ${total} steps done`,
+    due: day => `due ${day}`,
+    owner: { me: 'for you', bridge: 'for the Bridge', bridge_then_me: 'the Bridge, then you' },
+    who: { me: 'you', bridge: 'the Bridge', bridge_then_me: 'the Bridge, then you' },
+    gap: { no_goal: 'no goal yet', no_next: 'no next step', placeholder_next: 'placeholder step',
+      task_closed: 'task already closed', no_content: 'hardly says more than its title' },
+    closeEntry: 'Close this entry',
+    ai: 'AI', aiBy: (model, day) => `Written by ${model}${day ? ` on ${day}` : ''}, not edited by a person yet`,
+    aiUnknown: 'a model',
+    stale: 'outdated', staleHint: 'The item changed since this text was written.',
+    describe: 'Describe with AI', describeAgain: 'Describe again with AI',
+    describeHint: 'A small model writes the goal, a user story and the acceptance criteria into the item.',
+    running: 'AI is writing',
+    lastError: why => `The last try failed: ${why}`,
+    proposal: 'Proposal of the AI',
+    proposalHint: 'A person edited this text, so the AI only proposes. Nothing changes until you apply it.',
+    apply: 'Apply', edit: 'Edit', discard: 'Discard', save: 'Save', cancel: 'Cancel',
+    form: { goal: 'Goal', as: 'As', want: 'I want', soThat: 'so that', criterion: n => `Criterion ${n}`,
+      storyHint: 'A story needs all three parts, or none.' },
+  },
+  de: {
+    goal: 'Ziel', story: 'User Story', criteria: 'Akzeptanzkriterien', next: 'Nächster Schritt', progress: 'Schritte',
+    storyLine: (as, want, soThat) => `Als ${as} möchte ich ${want}, damit ${soThat}.`,
+    steps: (done, total) => `${done} von ${total} Schritten erledigt`,
+    due: day => `fällig ${day}`,
+    owner: { me: 'für dich', bridge: 'für die Bridge', bridge_then_me: 'erst die Bridge, dann du' },
+    who: { me: 'du', bridge: 'die Bridge', bridge_then_me: 'erst die Bridge, dann du' },
+    gap: { no_goal: 'kein Ziel', no_next: 'kein nächster Schritt', placeholder_next: 'Platzhalter-Schritt',
+      task_closed: 'Aufgabe schon geschlossen', no_content: 'sagt kaum mehr als der Titel' },
+    closeEntry: 'Eintrag schließen',
+    ai: 'AI', aiBy: (model, day) => `Von ${model}${day ? ` am ${day}` : ''} geschrieben, noch von niemandem bearbeitet`,
+    aiUnknown: 'einem Modell',
+    stale: 'veraltet', staleHint: 'Der Eintrag hat sich geändert, seit dieser Text geschrieben wurde.',
+    describe: 'AI beschreiben', describeAgain: 'Neu mit AI beschreiben',
+    describeHint: 'Ein kleines Modell schreibt Ziel, User Story und Akzeptanzkriterien in den Eintrag.',
+    running: 'AI schreibt',
+    lastError: why => `Der letzte Versuch ist gescheitert: ${why}`,
+    proposal: 'Vorschlag der AI',
+    proposalHint: 'Jemand hat diesen Text bearbeitet, darum schlägt die AI nur vor. Erst Übernehmen ändert etwas.',
+    apply: 'Übernehmen', edit: 'Bearbeiten', discard: 'Verwerfen', save: 'Speichern', cancel: 'Abbrechen',
+    form: { goal: 'Ziel', as: 'Als', want: 'möchte ich', soThat: 'damit', criterion: n => `Kriterium ${n}`,
+      storyHint: 'Eine Story braucht alle drei Teile oder keinen.' },
+  },
+}

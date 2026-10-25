@@ -8,6 +8,7 @@
 // own icons and status dots, so a value carries the word only, never a terminal glyph.
 
 import { HOME } from './text-areas.js'
+import { CARD } from './text-card.js'
 import { FILES } from './text-files.js'
 import { CHAT } from './text-chat.js'
 
@@ -1490,6 +1491,7 @@ const en = {
   },
   dossier: FILES.en,
   chatArea: CHAT.en,
+  card: CARD.en,
   logic: {
     days: { MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat', SU: 'Sun' },
     sched: { every: 'every', daily: 'daily', to: 'to', continuous: 'runs continuously', watched: n => `watches ${n} ${n === 1 ? 'path' : 'paths'}` },
@@ -2955,6 +2957,7 @@ const de = {
   },
   dossier: FILES.de,
   chatArea: CHAT.de,
+  card: CARD.de,
   logic: {
     days: { MO: 'Mo', TU: 'Di', WE: 'Mi', TH: 'Do', FR: 'Fr', SA: 'Sa', SU: 'So' },
     sched: { every: 'alle', daily: 'täglich', to: 'bis', continuous: 'läuft dauernd', watched: n => `beobachtet ${n} ${n === 1 ? 'Pfad' : 'Pfade'}` },

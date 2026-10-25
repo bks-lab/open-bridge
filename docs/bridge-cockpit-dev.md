@@ -101,6 +101,7 @@ layout now").
 | `scripts/web/views/*.js` | the components, one file per area (header, day, detail, chat, tabs, pages, start page, stage, sessions, check, overlays, small parts, page ids); each reads the store `s`, calls the controller `c` and imports what it uses from the others |
 | `scripts/web/views/dossier.js` | the Files view of the work tab: `DossierView` walks the one queue of `logic.js queueOf` (scope `dossier`, parts from `dossierParts`), one task at a time with its cover, its next step (`dossierStep`, derived, never stored) in the start page focus's `Hero`, its folded drawers from `/api/task` (Result from `logic.js fileResults`: the starts of the return channel and the workflow runs, a run checked by the verb `run_seen`; Files from `files`, one read in place by `/api/task?file=`), `FocusWalk` and `After`; on top `Find` (the search field and its results from `/api/find`), a found file outside the queue in `OpenFile` (`ui.dossierOpen`: its slug, or the folder of a closed copy, read by `/api/task?path=`), `AskBox` (a quick question with `logic.js fileContext` or `findContext` as its context) and `Suggest` (a read-only suggestion in the quick place `suggest`, written only by the verb `task_set_next`) |
 | `scripts/lib/work_find.py` | the search over the work system, shared by `scripts/work-find.py` and the cockpit's `/api/find` (which runs that command): eligible files, `rg` as a narrowing step when installed, the same Python reading and ranking either way |
+| `scripts/web/views/card.js` | the item card: `ItemCard` draws a row's or detail's `card` (card.py) in a detail head (the middle column, the item and info drawers, the files view's cover): summary, goal, story as one sentence, criteria as a list to read, next step, chips, progress, gaps; "AI" and "outdated" from the describe view; "Describe with AI" and a proposal's Apply, Edit and Discard (`describe_run`, `describe_apply`, `describe_discard`). `ItemCardLine` is a list row's sub line (its goal). `describeOf(s, key, ...)` reads the live view (`s.describe`) before the one a row or detail carries |
 | `scripts/web/views/ticker.js` | the news ticker: `TickerBand` on the start page and `TickerSettings`, its group on the Settings page, drawn with the page's own `Card`, `Row` and `Switch` from `views/settings.js` |
 | `scripts/web/markdown.js` | the Markdown reader for answers (Chat, A2A connections): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
 | `scripts/web/views/organize.js` | `OrganizeView`: the proposal grouped by workspace, nothing ticked, the ticks, Apply, and the applied, skipped and failed items in words |
@@ -114,7 +115,7 @@ layout now").
 | `scripts/web/files.js` | the files view ([`cockpit-files.md`](cockpit-files.md)): its queue `fileQueue` and `scopedFileQueue`, the parts `dossierParts`, a file's results and next step, the search and the context a question carries |
 | `scripts/web/motion.js` | springs, hits and rail points from the explainer films (`skills/explainer-video/assets/motion.js`), tested under node |
 | `scripts/web/api.js` | fetch and EventSource wrappers |
-| `scripts/web/text.js` | page texts, de and en with identical keys; it takes in `text-areas.js` (`home`, the start page) and `text-files.js` (`dossier`), each with both languages side by side |
+| `scripts/web/text.js` | page texts, de and en with identical keys; it takes in `text-areas.js` (`home`, the start page), `text-card.js` (`card`, the item card) and `text-files.js` (`dossier`), each with both languages side by side |
 | `scripts/web/tokens.css`, `style.css` | design tokens from `DESIGN.md`, layout |
 | `scripts/web/areas.css`, `files.css` | the rules of the areas and of the files view, loaded right after `style.css` so the cascade stands as it did inside it |
 | `scripts/web/mock.js` | invented example data for `?mock=1` |
@@ -373,9 +374,15 @@ title). `gaps` lists what the card misses: `no_goal`, `no_next`, `placeholder_ne
 in `next:` or still open in the checklist, `workplace.py tasks` reports it as `placeholder`), `task_closed`,
 `no_content` (a detail that adds fewer than 60 characters to the title). A closed task has no gaps.
 
-The inputs: `build_model(..., triage=, describe=)` gets the triage items (`Triage.state()["items"]`) and the brief
-proposals by key from `App.card_sources()`; `App.describe_items()` is the hook for the describe run and gives
-nothing yet. The detail endpoints build the same context with `App.card_ctx()`. An inbox row's detail, gate, probe
+The inputs: `build_model(..., triage=, describe=)` gets the triage items (`Triage.state()["items"]`) and the describe
+views by key from `App.card_sources()`. `App.describe_items()` is `Describer.views()`: `state_for` of every task and
+stream and of every inbox item `.bridge/describe.json` holds, with that file read once, and only the views that say
+something (a brief, a proposal, a run, an error, a warning). A view's `written` wins over what the brief itself says,
+because describe.json knows a brief a person changed by hand (its hash); a proposal fills a card only while the item
+has no brief. What a card cannot hold travels beside it: every row (`collector.row_out`) and both detail payloads
+carry `describe`, `card.describe_state(key, ctx)`: `written`, `stale`, `running`, `last_error`, `warnings`,
+`model_mismatch`, `proposal` {id, brief, by, at_ms} and the stored brief's `by` and `at`, or None for an item describe
+has nothing on. A damaged describe.json degrades to no views, never to no page. The detail endpoints build the same context with `App.card_ctx()`. An inbox row's detail, gate, probe
 and brief come from `details.inbox_facts`, read once per item and kept until `item.yaml`, its `events/` folder
 or one of its event files changes (an event rewritten in place leaves the folder's time alone), so a rebuild costs
 a stat per file. The cached dict is shared between threads: the card copies it before it completes it from the row. The words a card says (the story sentence, the next steps, the
@@ -383,14 +390,27 @@ probe) live in `text.py` under `card`, English and German; `card.probe_text` say
 `logic.js probeText` does, word for word: a test runs both on the same probes in both languages (it skips without
 `node`), so a change to one side fails until the other follows.
 
+The page draws it with `views/card.js` (texts in `text-card.js`). `ItemCard` takes `card`, the describe view `d` and
+the key describe takes (`dkey`, a `task:` or `inbox:` key); `skip` leaves out what a head shows already (the drawer's
+origin tag, the files view's status, priority, area and next step), so nothing is said twice. The store keeps the live
+views in `s.describe` (the `describe` event, the `describe` of an action's answer) and clears them with the next
+model, whose rows carry the same. The button shows on task, stream and inbox cards with a key and a controller; its
+busy state is the row's busy key, or `running` while the server's own pass writes. A proposal's Edit is a small form
+(goal, the three story parts, up to five criteria, none for a stream): a story with a part left empty goes as no
+story, empty criteria are dropped, and the person's text goes to `describe_apply` as `brief`. The demo (`mock.js`)
+gives every row a card and four briefs that show the states: AI written (`task:demo-task`), edited with a proposal
+(`task:docs-refresh`), outdated (`task:alpha-release`) and gaps (`task:old-cleanup`, the board row filed about a
+closed task), and answers the three verbs. `scripts/tests/bridge_cockpit_card.test.mjs` renders it.
+
 To add a kind: one adapter in `card.py` returning `_new(...)`, one branch in `card_of`, a case in
-`scripts/tests/test_bridge_cockpit_card.py`. The contract test asserts that every row and page item of a pass and
+`scripts/tests/test_bridge_cockpit_card.py`; a part the page should show goes into `ItemCard` with its text in
+`text-card.js` and a render case. The contract test asserts that every row and page item of a pass and
 both detail payloads carry a card of exactly `CARD_FIELDS`. Jev gets none of it (`jev.ROW_FIELDS` is unchanged).
 
 ### New page text
 
 `text.js`, both `en` and `de`, same key; a text of the start page (`home`) goes in `text-areas.js`,
-one of the files view (`dossier`) in `text-files.js`, both languages there too. The frontend test fails on a key
+one of the files view (`dossier`) in `text-files.js`, one of the item card (`card`) in `text-card.js`, both languages there too. The frontend test fails on a key
 missing in one language, an empty value, an em or en dash, or an emoji.
 
 ## 6. Tests

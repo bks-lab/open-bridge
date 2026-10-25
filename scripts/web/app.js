@@ -109,6 +109,9 @@ const store = createStore({
   quick: { available: false, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], convs: [] },
   agents: { peers: [], convs: [] },
   triage: { items: {}, last: null, running: null },
+  // the describe view per key (describe.py state_for) as the server last said it, live: its `describe` event and the
+  // answer of a describe action; the next model carries it on its rows, so a new model clears it (views/card.js)
+  describe: {},
   history: [],
   jev: { enabled: false, ready: false, reason: 'off' },
   workers: { status: 'idle', data: null, error: null },
@@ -350,7 +353,7 @@ const handlers = {
     }
     const prev = store.get()
     noteFeed(feedEvents(prev.model, model, prev.tabs?.tabs, prev.tabs?.tabs, Date.now()))
-    store.set(s => ({ ...s, model, more: freshMore(s.more, model) }))
+    store.set(s => ({ ...s, model, describe: {}, more: freshMore(s.more, model) }))
     fixPage()
   },
   // only the pages that changed (review C34): put in by id and handled as a whole view; one that cannot be
@@ -380,6 +383,10 @@ const handlers = {
   },
   triage(tr) {
     store.set(s => ({ ...s, triage: tr }))
+  },
+  // a brief written, proposed, applied or dropped, here or by the server's own pass (describe.py changed)
+  describe(ev) {
+    if (typeof ev?.key === 'string') store.set(s => ({ ...s, describe: { ...s.describe, [ev.key]: ev } }))
   },
   agents(a) {
     const before = store.get().agents?.convs ?? []
@@ -521,6 +528,8 @@ async function act(verb, args = {}) {
       if (store.get().ui.drawer === 'history') ctl.loadHistory()
     } else if (r.note) pushNote({ text: r.note, tone: r.ok ? 'ok' : 'bad', go: r.go })
     if (r.relay) store.set(s => ({ ...s, relay: { ...s.relay, records: upsertRecord(s.relay.records, r.relay) } }))
+    // a describe action answers with the item's describe view: the card shows it before the next model comes
+    if (r.describe && p.args.key) store.set(s => ({ ...s, describe: { ...s.describe, [p.args.key]: { key: p.args.key, ...r.describe } } }))
     // the task facts and inbox events of the touched row changed on disk: fetch them again when shown
     const touched = (p.args.key ? [p.args.key] : p.args.keys ?? []).map(k => rowIndex().get(k)).filter(Boolean)
     if (touched.length) store.set(s => ({ ...s, details: touched.reduce(invalidateDetails, s.details) }))

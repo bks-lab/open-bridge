@@ -159,6 +159,26 @@ const WORDS = {
     'Check the open demo reviews': 'Die offenen Demo-Reviews prüfen',
     'Sort the demo inbox': 'Den Demo-Posteingang sortieren',
     'Example answer from the mock: the steps are clear, an agent can take it from here.': 'Beispielantwort aus der Demo: die Schritte sind klar, ein Agent kann übernehmen.',
+    // the briefs of the cards (views/card.js): goal, story parts, criteria, proposals
+    'A new team member sets up the demo project in under an hour': 'Ein neues Teammitglied richtet das Demo-Projekt in unter einer Stunde ein',
+    'a new team member': 'neues Teammitglied', 'a written guide for the demo setup': 'eine schriftliche Anleitung für das Demo-Setup',
+    'I am ready to work on the first day': 'ich am ersten Tag loslegen kann',
+    'Every setup step is written down with its command': 'Jeder Einrichtungsschritt steht mit seinem Befehl da',
+    'Two colleagues followed the guide without asking': 'Zwei Kollegen sind der Anleitung ohne Rückfrage gefolgt',
+    'The guide is linked from the README': 'Die Anleitung ist im README verlinkt',
+    'Readers find every docs page from one index': 'Lesende finden jede Doku-Seite über einen Index',
+    'Every page of the docs folder is listed once': 'Jede Seite des Doku-Ordners steht genau einmal da',
+    'No link of the index is broken': 'Kein Link des Index ist kaputt',
+    'Readers find every page from one index, grouped by topic': 'Lesende finden jede Seite über einen Index, nach Thema gruppiert',
+    'a reader of the docs': 'Leser der Doku', 'one index of every page': 'einen Index aller Seiten', 'I never search the folder': 'ich nie den Ordner durchsuchen muss',
+    'The index groups the pages by topic': 'Der Index gruppiert die Seiten nach Thema',
+    'The alpha release notes name every change since the last tag': 'Die Notizen zur Alpha nennen jede Änderung seit dem letzten Tag',
+    'Each change links its pull request': 'Jede Änderung verlinkt ihren Pull Request',
+    'The notes are reviewed before the tag is pushed': 'Die Notizen sind geprüft, bevor der Tag gepusht wird',
+    'The report of the demo check is ready to read.': 'Der Bericht der Demo-Prüfung liegt zum Lesen bereit.',
+    'The work is done and written down in STATUS.md': 'Die Arbeit ist erledigt und in STATUS.md festgehalten',
+    'Someone else checked the result': 'Jemand anderes hat das Ergebnis geprüft',
+    'First step': 'Erster Schritt',
   },
 }
 
@@ -379,6 +399,65 @@ function organizeProposal(now) {
   ] }
 }
 
+// the briefs of the demo (card_fields.py shape) and how describe sees them: who wrote them, outdated or not, a proposal
+const MOCK_BRIEFS = {
+  'task:demo-task': { brief: { goal: 'A new team member sets up the demo project in under an hour',
+    story: { as: 'a new team member', want: 'a written guide for the demo setup', so_that: 'I am ready to work on the first day' },
+    acceptance: ['Every setup step is written down with its command', 'Two colleagues followed the guide without asking',
+      'The guide is linked from the README'], by: 'claude-haiku-5-5', at: '2026-10-08', edited: false },
+  written: 'ai', stale: false, progress: { done: 2, total: 5 } },
+  'task:docs-refresh': { brief: { goal: 'Readers find every docs page from one index',
+    acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken'], by: 'claude-haiku-5-5', at: '2026-10-02', edited: true },
+  written: 'human', stale: false, progress: { done: 1, total: 3 },
+  proposal: { id: 'd0a1b2c3d4e', by: 'claude-haiku-5-5', brief: { goal: 'Readers find every page from one index, grouped by topic',
+    story: { as: 'a reader of the docs', want: 'one index of every page', so_that: 'I never search the folder' },
+    acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken', 'The index groups the pages by topic'] } } },
+  'task:alpha-release': { brief: { goal: 'The alpha release notes name every change since the last tag',
+    acceptance: ['Each change links its pull request', 'The notes are reviewed before the tag is pushed'], by: 'claude-haiku-5-5', at: '2026-09-28', edited: false },
+  written: 'ai', stale: true, progress: { done: 3, total: 4 } },
+  'task:old-cleanup': { next: 'First step', progress: { done: 0, total: 2 } },
+  'inbox:20261009-0940-filed-board-c2d3': { gaps: ['no_goal', 'task_closed', 'no_content'], closedTask: 'release-notes-2026-09' },
+  'inbox:20261009-0900-review-demo-a1b2': { summary: 'The report of the demo check is ready to read.' },
+}
+
+const GATE_OWNER = { 'only-you': 'me', 'your-yes': 'bridge_then_me', free: 'bridge' }
+
+/** A row's card and describe view, in the shape card.py and describe.py send them: invented from the row and its brief */
+function mockCard(r, m = {}, now = Date.now()) {
+  m = m ?? {}
+  const inbox = !!r.inbox_id
+  const task = !!r.task && !inbox
+  const kind = inbox ? 'inbox' : task ? (r.work_kind === 'stream' || r.stream ? 'stream' : 'task') : 'info'
+  const b = m.brief ?? null
+  const what = m.next ?? r.next?.what ?? null
+  const next = task ? (what ? { what, who: r.next?.from === 'status' || m.next ? 'me' : null, due: null, from: r.next?.from ?? 'status', since: r.next?.since ?? null } : null)
+    : inbox ? { what: r.inbox_kind === 'decision' ? 'decide' : r.gate === 'your-yes' ? 'give your yes' : r.inbox_kind === 'result' ? 'check the result' : 'read',
+      who: r.gate === 'free' ? 'bridge' : 'me', due: r.due ?? null, from: 'item', since: null } : null
+  const gaps = m.gaps ?? (task ? [!b?.goal && 'no_goal', !next && 'no_next', m.next === 'First step' && 'placeholder_next'].filter(Boolean)
+    : inbox ? ['no_goal'] : [])
+  const closed = m.closedTask ?? null
+  const links = task ? [{ kind: 'task', key: r.task, label: r.title, closed: false }]
+    : inbox ? [{ kind: 'inbox', key: r.inbox_id, label: r.title }, ...(r.task || closed ? [{ kind: 'task', key: closed ?? r.task, label: closed ?? r.task, closed: !!closed }] : [])]
+      : r.link?.kind === 'web' ? [{ kind: 'web', href: r.link.href, label: r.ref ?? r.title }] : []
+  const card = {
+    kind, subkind: inbox ? r.inbox_kind ?? null : kind === 'info' && r.ref ? 'tracker' : null, title: r.title,
+    summary: m.summary ?? null, goal: b?.goal ?? null, story: b?.story ?? null, acceptance: b?.acceptance ?? null, next,
+    state: { word: inbox ? r.inbox_state ?? 'open' : task ? r.status ?? 'doing' : r.status ?? null, blocked_by: null, since: null },
+    owner: inbox ? GATE_OWNER[r.gate] ?? null : null, priority: r.priority ?? null, due: r.due ?? null, area: r.area ?? null,
+    updated: null, source: r.origin ?? null, links, progress: m.progress ?? null,
+    written: b ? (m.written === 'human' ? 'human' : 'ai') : m.summary ? 'item' : 'title', gaps,
+  }
+  const describe = b || m.proposal ? { written: m.written ?? null, stale: !!m.stale, running: false, last_error: null, warnings: [],
+    model_mismatch: false, proposal: m.proposal ? { ...m.proposal, at_ms: now - 40 * MIN } : null, by: b?.by ?? null, at: b?.at ?? null } : null
+  return { card, describe }
+}
+
+/** What the demo's describe writes for a row without a brief: invented, in the shape the model answers with */
+function mockBrief(r) {
+  return { goal: `${r.title}, done and checked`, acceptance: r.stream ? [] : ['The work is done and written down in STATUS.md', 'Someone else checked the result'],
+    by: 'claude-haiku-5-5', edited: false }
+}
+
 export function buildState(now = Date.now(), opts = {}) {
   const empty = !!opts.empty
   const rows = {
@@ -518,11 +597,15 @@ export function buildState(now = Date.now(), opts = {}) {
   const numbers = {}
   let n = 0
   for (const s of sections) for (const r of s.rows) { n += 1; r.number = n; numbers[r.key] = n }
+  // every row carries its card (card.py) and, where describe has something to say, its describe view (describe.py
+  // state_for): one brief written by AI, one a person edited with a proposal waiting, one outdated, one with gaps
+  for (const r of Object.values(rows)) Object.assign(r, mockCard(r, MOCK_BRIEFS[r.key], now))
   const hidden = empty ? [] : [row({
     key: 'title:Renew the test certificate', bucket: 'plan', section: 'later', title: 'Renew the test certificate', sources: ['calendar'],
     origin: O('calendar', 'Calendar'), work_kind: null,
     hidden_until: isoIn(5, now), actions: [A('ask')],
   })]
+  for (const r of hidden) Object.assign(r, mockCard(r, null, now))
 
   // every task and stream as a file (collector.files_of, cockpit.files_scope all): the ones a row stands for with
   // that row's bucket, a deferred one, and the backlog the queue never shows; only the keys the page reads
@@ -831,6 +914,8 @@ function inboxDetail(id, state) {
     ],
     // who filed it, as the server names it (details.py inbox_detail, origin.py)
     origin: r?.origin ?? O('other', 'demo-check', 'demo-check'),
+    // its card and describe view (card.py, describe.py), as its row carries them
+    card: r?.card ?? null, describe: r?.describe ?? null,
   }
 }
 
@@ -915,6 +1000,8 @@ function taskDetail(slug, state) {
     ],
     // the files of its folder besides STATUS.md (details.py folder_files)
     files: MOCK_FILES.map(f => ({ path: f.path, size: f.text.length })),
+    // its card (card.py: the H1 as title, as the row says it) and describe view (describe.py)
+    card: row.card ?? null, describe: row.describe ?? null,
   }
 }
 
@@ -1545,6 +1632,43 @@ export function createMockTransport(opts = {}) {
           result.muted = `20261010-1200-mock-${mockMutes.length}`
           mockMutes.push({ id: result.muted, source: 'homebox/health', scope: args.reason,
             ...(args.reason === 'source' ? { until: '2026-11-09' } : { key_prefix: 'health:crash:' }) })
+        }
+        if (verb === 'describe_run' || verb === 'describe_apply' || verb === 'describe_discard') {
+          // describe (describe.py): an invented brief after a pause like the model's, a proposal once a person
+          // edited it, a proposal taken over or dropped; the row's card and view change, the page hears both
+          const rows = [...state.model.sections.flatMap(x => x.rows), ...(state.model.task_rows ?? [])].filter(r => r.key === args.key)
+          if (!rows.length) return fail(409, 'stale_row', 'the row is no longer there')
+          const r = rows[0]
+          const view = r.describe ?? { written: null, stale: false, running: false, last_error: null, warnings: [], model_mismatch: false, proposal: null, by: null, at: null }
+          const prop = view.proposal
+          if (verb !== 'describe_run' && (!prop || prop.id !== args.proposal)) return fail(409, 'stale_proposal', 'This proposal is no longer current.', { describe: view })
+          const day = isoIn(0, now())
+          const setBrief = (brief, written) => {
+            const card = { ...r.card, goal: brief.goal ?? null, story: brief.story ?? null, acceptance: brief.acceptance ?? null, written,
+              gaps: (r.card?.gaps ?? []).filter(g => g !== 'no_goal') }
+            return { card, describe: { ...view, written, stale: false, proposal: null, by: brief.by ?? 'claude-haiku-5-5', at: day } }
+          }
+          let next
+          if (verb === 'describe_run') {
+            await new Promise(res => wait(res, 1500))
+            const brief = mockBrief(r)
+            next = view.written === 'human'
+              ? { describe: { ...view, proposal: { id: `d${String(now()).slice(-10)}`, by: brief.by, at_ms: now(), brief } } }
+              : setBrief(brief, 'ai')
+            result.outcome = view.written === 'human' ? 'proposal' : 'written'
+            result.note = view.written === 'human' ? 'Mock: a proposal waits beside your text' : `Mock: described ${r.title}`
+          } else if (verb === 'describe_apply') {
+            next = setBrief({ ...prop.brief, ...(args.brief ?? {}), by: prop.by }, 'human')
+            result.note = `Mock: applied for ${r.title}`
+          } else {
+            next = { describe: { ...view, proposal: null } }
+            result.note = 'Mock: proposal discarded'
+          }
+          for (const x of rows) Object.assign(x, next)
+          result.describe = rows[0].describe
+          seq += 1
+          state.model = { ...state.model, seq }
+          wait(() => { emit('describe', { key: args.key, ...rows[0].describe }); emit('view', state.model) }, 60)
         }
         if (verb === 'run_seen') {
           // a workflow run's result checked: it no longer waits in its task's file (the server's sessions event)

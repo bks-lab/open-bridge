@@ -11,6 +11,7 @@ import {
   rowProject,
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { ItemCardLine } from './card.js'
 import { KindTag, OriginTag, RowBar } from './day.js'
 import { jumpToTab, openWhole, returnsOf, shownTiles, ReturnCard, ReturnChip, PinStar } from './home.js'
 import { Btn, Dot, Icon, PrioChip, StateLine } from './parts.js'
@@ -87,6 +88,7 @@ function RowLine({ row, tab, s, c, lead = false, walk = null }) {
         ${why ? html`<span class="muted">${short(why, 70)}</span>` : null}
         <${ReturnChip} s=${s} rowKey=${row.key} />
       </span>
+      <${ItemCardLine} card=${row.card} cls="hl-line-last" />
     </button>
     <span class="hl-line-acts"><${RowBar} row=${row} s=${s} c=${c} tab=${tab} pin=${false} /><${PinStar} rowKey=${row.key} s=${s} c=${c} /></span>
   </li>`

@@ -38,13 +38,13 @@ const VENDOR_BYTES = 13194
 const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
   ? fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).sort().map(f => `views/${f}`) : []
 const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
-const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'motion.js', 'text.js', 'text-areas.js', 'text-files.js', 'text-chat.js', 'theme.js', 'mock.js', ...VIEW_FILES]
+const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'motion.js', 'text.js', 'text-areas.js', 'text-card.js', 'text-files.js', 'text-chat.js', 'theme.js', 'mock.js', ...VIEW_FILES]
 // the page's styles: style.css and the parts index.html loads right after it, in this order
 const STYLE_FILES = ['style.css', 'areas.css', 'files.css']
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
-for (const name of ['logic', 'areas', 'files', 'text', 'text-areas', 'text-files', 'text-chat', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
+for (const name of ['logic', 'areas', 'files', 'text', 'text-areas', 'text-card', 'text-files', 'text-chat', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }
@@ -5051,4 +5051,15 @@ test('with cockpit.focus_to_files, n on the last step of the focus leads on into
 
 test('the demo takes the two work switches from its address: ?work=files and ?focus_to_files=1', () => {
   assert.match(read('app.js'), /work: params\.get\('work'\), focusToFiles: params\.get\('focus_to_files'\) === '1'/)
+})
+
+test('the describe view reaches the page live: the describe event and an action answer, cleared by the next model', () => {
+  assert.match(read('api.js'), /const EVENTS = \[[^\]]*'describe'[^\]]*\]/)
+  const app = read('app.js')
+  assert.match(app, /describe: \{\},/)
+  assert.match(app, /describe\(ev\) \{/)
+  assert.match(app, /r\.describe && p\.args\.key/)
+  assert.match(app, /model, describe: \{\}, more: freshMore\(s\.more, model\)/)
+  // the card reads the live view before what the row carries (views/card.js describeOf)
+  assert.match(read('views/card.js'), /s\?\.describe\?\.\[key\]/)
 })

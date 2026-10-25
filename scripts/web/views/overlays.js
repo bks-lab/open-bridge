@@ -10,6 +10,7 @@ import {
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
+import { ItemCard, cardOf, describeKey, describeOf } from './card.js'
 import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { DetailFailed, Lines, NextUp, Segmented } from './detail.js'
 import { AsOf, RelayBadge } from './header.js'
@@ -194,7 +195,7 @@ function InboxBody({ id, cur, s, c }) {
 }
 
 /** STATUS.md in its sections: those that start within the first 4000 characters open, the rest folded */
-function TaskBody({ slug, cur, s, c }) {
+function TaskBody({ slug, cur, s, c, carded = false }) {
   const t = T()
   const d = useItemDetail('task', slug, s, c)
   const where = { page: cur.page, section: cur.section }
@@ -205,7 +206,7 @@ function TaskBody({ slug, cur, s, c }) {
   const sections = (d.data.sections ?? []).map(x => { const open = used < 4000; used += x.text.length; return { ...x, open } })
   const related = d.data.inbox ?? []
   return html`
-    ${f.next ? html`<section class="idrawer-sec"><h3 class="label-caps">${t.front.next}</h3><p class="idrawer-next"><${Linked} text=${String(f.next)} /></p></section>` : null}
+    ${f.next && !carded ? html`<section class="idrawer-sec"><h3 class="label-caps">${t.front.next}</h3><p class="idrawer-next"><${Linked} text=${String(f.next)} /></p></section>` : null}
     <section class="idrawer-sec"><h3 class="label-caps">${t.item.facts}</h3>
       <dl class="meta idrawer-facts">${facts.map(k => html`<${Fact} key=${k} label=${t.front[k]}>
         ${k === 'status' ? (t.taskState[f[k]] ?? f[k]) : String(f[k])}<//>`)}</dl>
@@ -247,7 +248,10 @@ export function ItemDrawer({ s, c, byKey }) {
   const made = own ? null : actionRow(isInbox ? { inbox: id, title: it.title, task: it.task } : { task: id, title: it.title }, byKey)
   // a row built here knows from the item whether its yes is given already, so its start button says so
   const row = own ?? (made && isInbox && data?.item?.state ? { ...made, inbox_state: data.item.state } : made)
-  const title = (isInbox ? data?.item?.summary : data?.front?.headline) || it.title || id
+  // one title everywhere: the card's (the row's own, else the detail's), the same in the list and the files view;
+  // a task's headline is its summary, never its title
+  const card = cardOf(own, data)
+  const title = card?.title || (isInbox ? data?.item?.summary : null) || it.title || id
   // what it is and where it comes from: the model's row, else what the item's own detail says (a stream opened
   // only by its key is a stream here too, not "Task")
   const kindRow = { ...(row ?? { key, inbox_id: isInbox ? id : null, task: isInbox ? (data?.item?.task ?? it.task ?? null) : id }),
@@ -279,12 +283,14 @@ export function ItemDrawer({ s, c, byKey }) {
         ${own && !isInbox ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { c.closeItem(); c.peek(key) }}>${t.item.more}<//>` : null}
       </div>
       <div class="idrawer-body">
+        <${ItemCard} card=${card} d=${describeOf(s, key, own?.describe, data?.describe)} dkey=${key} s=${s} c=${cc}
+          skip=${['source']} cls="idrawer-sec idrawer-card" />
         <${ReturnPanel} s=${s} c=${c} keys=${[key, slug ? `task:${slug}` : null]} />
         ${slug ? html`<section class="idrawer-sec"><${TaskSessions} row=${{ task: slug, key: `task:${slug}` }} s=${s} c=${c} /></section>` : null}
         ${tri ? html`<section class="idrawer-sec idrawer-tri"><h3 class="label-caps">${t.item.about}</h3>
           <${TriageGist} tri=${tri} keyRow=${row} c=${cc} s=${s} />
           ${tri.reason ? html`<p class="muted small">${tri.reason}</p>` : null}</section>` : null}
-        ${isInbox ? html`<${InboxBody} key=${id} id=${id} cur=${cur} s=${s} c=${c} />` : html`<${TaskBody} key=${id} slug=${id} cur=${cur} s=${s} c=${c} />`}
+        ${isInbox ? html`<${InboxBody} key=${id} id=${id} cur=${cur} s=${s} c=${c} />` : html`<${TaskBody} key=${id} slug=${id} cur=${cur} s=${s} c=${c} carded=${!!card?.next} />`}
       </div>
       <${NextUp} s=${s} c=${c} byKey=${byKey} current=${key} />
     </aside>
@@ -343,6 +349,8 @@ export function InfoDrawer({ s, c }) {
         ${cur.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { close(); c.ask('info', { page, section, index: cur.index }) }}>${t.btnAsk}<//>` : null}
       </div>
       <div class="idrawer-body">
+        <${ItemCard} card=${cur.card} d=${describeOf(s, describeKey(cur))} dkey=${describeKey(cur)} s=${s} c=${c}
+          skip=${['source', 'summary', 'state']} cls="idrawer-sec idrawer-card" />
         ${ghRef ? html`<${GitHubDetail} gref=${ghRef} c=${c} />` : null}
         ${onHost.length ? html`<section class="idrawer-sec"><${StateLine} token=${onHostBad ? 'warning' : 'success'} word=${t.workersOnHost(onHost.length, onHostBad)} /></section>` : null}
         ${cur.detail && !cur.cal ? html`<section class="idrawer-sec"><p class="info-detail-full"><${Linked} text=${detailText(cur.detail, t)} /></p></section>` : null}

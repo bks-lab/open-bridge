@@ -9,6 +9,7 @@ import {
   SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { ItemCardLine } from './card.js'
 import { CheckButton } from './check.js'
 import { AlarmBanner } from './header.js'
 import { PinStar, ReturnChip } from './home.js'
@@ -328,7 +329,7 @@ function RowItem({ row, s, c }) {
     <button type="button" class="row-main" aria-current=${selected ? 'true' : undefined}
       onClick=${() => c.select(row.key)} onFocus=${() => c.focusRow(row.key)}>
       <span class="row-title">${short(row.title, 110)}</span>
-      ${gistOf(row, s) ? html`<span class="row-gist">${gistOf(row, s)}</span>` : null}
+      ${gistOf(row, s) ? html`<span class="row-gist">${gistOf(row, s)}</span>` : html`<${ItemCardLine} card=${row.card} cls="row-gist" />`}
       <${RowMeta} row=${row} s=${s} />
       <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
     </button>

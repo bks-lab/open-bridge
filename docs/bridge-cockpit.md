@@ -1299,6 +1299,39 @@ the calls of the hour (clicks count, but are never refused) and never runs two
 calls at once. A card reads `written` (`ai`, `human` or none), `stale`, the
 waiting `proposal`, `running` and `last_error` from `describe.state_for`.
 
+### One card for every item
+
+Every task, stream and inbox item looks the same wherever it opens: in the
+middle column, in the drawer of the Inbox and Tasks pages and in the files view.
+It has one title there (a task's H1, never its headline), and under it, each
+only when the item has it:
+
+- the **goal**, set apart and first: what is different once it is done;
+- the **user story** as one sentence ("As a reader of the docs, I want one
+  index of every page, so that I never search the folder");
+- the **acceptance criteria** as a short list to read. They are not ticked: the
+  steps checklist of STATUS.md stays the only thing to tick;
+- the **next step** with who takes it and by when;
+- chips for the state, the owner, the priority, the due day, the area and the
+  source, the progress of the steps (2 of 5), and quiet hints for what is
+  missing: no goal yet, a placeholder step, no next step, an entry about a task
+  that is closed already (with "Close this entry" beside it).
+
+A check or an info row shows only what it has, so it stays small. In a list a
+row without a triage gist shows its goal under the title.
+
+Text a model wrote and no person edited carries a small **AI**; the model and
+the day show on hover. Once the item changed past it, **outdated** stands
+beside it.
+
+**Describe with AI** on a task, stream or inbox item asks the small model for
+its goal, story and criteria now. While no person edited the brief, it is
+written straight into the item. Once a person did, the model only proposes: the
+proposal shows in the card with **Apply**, **Edit** and **Discard**. Edit
+opens a small form (the goal, the three parts of the story, up to five
+criteria) and saves what you wrote as your own text; nothing changes in the
+item before Apply or Save. A failed try shows like any other failed action.
+
 A command row that offers steps of its own (`actions`, docs/briefings.md) shows
 an "Action" menu: two clicks run one through `row_action {page, section, index,
 action}`, which calls `briefing.py act` and voids the section's cache. A step

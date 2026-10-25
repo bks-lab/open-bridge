@@ -41,6 +41,7 @@ import {
   queueLeftOut, rowProject, short, stepAge, suggestedStep, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { ItemCard, cardOf, describeOf } from './card.js'
 import { KindTag, OriginTag, WorkSwitch } from './day.js'
 import { Calm, Hero } from './focus.js'
 import { ReturnCard } from './home.js'
@@ -123,6 +124,9 @@ function Cover({ x, s, c, data, where = [], file = null, queued = false }) {
   const r = x.row
   const kind = data?.front?.type ?? r.task_type
   const parts = [...where, r.status ? t.taskState[r.status] ?? r.status : null, kind, r.priority].filter(Boolean)
+  // the card of the task (card.py): the same title as its row and drawer, its goal, story and criteria under the
+  // situation; the next step stands in the hero below, the status, priority and area in the eyebrow
+  const card = cardOf(r, data)
   return html`<header class="dz-cover">
     <p class="dz-eyebrow">
       <span class="dz-eyebrow-what"><${Dot} token=${prioToken(r.priority)} /><${KindTag} row=${{ key: `task:${x.slug}`, task: x.slug, stream: r.stream, work_kind: data?.work_kind ?? r.work_kind }} s=${s} />
@@ -130,8 +134,10 @@ function Cover({ x, s, c, data, where = [], file = null, queued = false }) {
         ${file ? html`<${ReasonChip} f=${file} queued=${queued} />` : null}</span>
       <span class="dz-eyebrow-end"><${AreaChip} name=${rowProject(r)} s=${s} c=${c} /><span class="dz-slug mono">${x.slug}</span></span>
     </p>
-    <h2 id="dz-title" class="dz-title">${r.title}</h2>
+    <h2 id="dz-title" class="dz-title">${card?.title || r.title}</h2>
     <${Situation} x=${x} s=${s} data=${data} />
+    <${ItemCard} card=${card} d=${describeOf(s, `task:${x.slug}`, r.describe, data?.describe)} dkey=${`task:${x.slug}`} s=${s} c=${c}
+      skip=${['summary', 'next', 'state', 'priority', 'area', 'source']} cls="dz-card" />
   </header>`
 }
 

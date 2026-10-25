@@ -636,6 +636,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/components.js",
     "scripts/web/views/agents.js",
     "scripts/web/views/chat.js",
+    "scripts/web/views/card.js",
     "scripts/web/views/check.js",
     "scripts/web/views/costs.js",
     "scripts/web/views/dates.js",
@@ -675,6 +676,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/text-areas.js",              # the start page's texts, taken in by text.js
     "scripts/web/text-files.js",              # the files view's texts, taken in by text.js
     "scripts/web/text-chat.js",               # the chat's area switch texts, taken in by text.js
+    "scripts/web/text-card.js",               # the item card's texts, taken in by text.js
     "scripts/web/mock.js",
     "scripts/web/tokens.css",
     "scripts/web/style.css",
@@ -701,6 +703,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
     "scripts/tests/bridge_cockpit_settle.test.mjs",
+    "scripts/tests/bridge_cockpit_card.test.mjs",
     "scripts/tests/bridge_cockpit_files_count.test.mjs",
     "scripts/tests/bridge_cockpit_chat_a2a.test.mjs",
     "scripts/tests/bridge_cockpit_toast_go.test.mjs",   # a toast that names its place leads there
