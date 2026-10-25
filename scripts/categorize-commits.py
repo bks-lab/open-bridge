@@ -663,6 +663,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/mock.js",
     "scripts/web/tokens.css",
     "scripts/web/style.css",
+    "scripts/web/areas.css",                  # the areas' rules, loaded right after style.css
+    "scripts/web/files.css",                  # the files view's rules, loaded right after style.css
     "scripts/web/favicon.ico",                # the cockpit's icon, for tabs, bookmarks and favourites
     "scripts/web/apple-touch-icon.png",
     "scripts/web/icon-192.png",

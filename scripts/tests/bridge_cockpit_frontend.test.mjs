@@ -39,6 +39,8 @@ const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
   ? fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).sort().map(f => `views/${f}`) : []
 const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
 const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'motion.js', 'text.js', 'text-areas.js', 'text-files.js', 'theme.js', 'mock.js', ...VIEW_FILES]
+// the page's styles: style.css and the parts index.html loads right after it, in this order
+const STYLE_FILES = ['style.css', 'areas.css', 'files.css']
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
@@ -502,7 +504,7 @@ test('authored files carry the SPDX header and no em or en dash', () => {
     '.js': '// SPDX-License-Identifier: MIT', '.css': '/* SPDX-License-Identifier: MIT */',
     '.html': '<!-- SPDX-License-Identifier: MIT -->', '.md': '',
   }
-  for (const rel of [...AUTHORED_JS, 'tokens.css', 'style.css', 'index.html', 'vendor/README.md']) {
+  for (const rel of [...AUTHORED_JS, 'tokens.css', ...STYLE_FILES, 'index.html', 'vendor/README.md']) {
     const src = read(rel)
     const h = header[path.extname(rel)]
     if (h) assert.ok(src.split('\n').slice(0, 3).includes(h), `${rel}: SPDX header`)
@@ -511,10 +513,11 @@ test('authored files carry the SPDX header and no em or en dash', () => {
   assert.match(read('vendor/README.md'), /72284e8e9079c87817145df1110f74e8a2aa040b2fc384922e18dfcb46fc1fd7/)
 })
 
-test('tokens.css and style.css carry no colour of their own: colors.css comes from DESIGN.md (design.py)', () => {
-  assert.doesNotMatch(read('tokens.css'), /#[0-9A-Fa-f]{3,8}\b/)
-  assert.doesNotMatch(read('style.css'), /#[0-9A-Fa-f]{3,8}\b/)
+test('tokens.css and the style files carry no colour of their own: colors.css comes from DESIGN.md (design.py)', () => {
+  for (const rel of ['tokens.css', ...STYLE_FILES]) assert.doesNotMatch(read(rel), /#[0-9A-Fa-f]{3,8}\b/, rel)
   assert.match(read('index.html'), /<link rel="stylesheet" href="colors.css">/)
+  // the parts follow style.css directly, so their rules stand in the cascade where they stood inside it
+  assert.match(read('index.html'), new RegExp(STYLE_FILES.map(f => `<link rel="stylesheet" href="${f}">`).join('\\n')))
 })
 
 // ---------------------------------------------------------------- review findings
@@ -3270,10 +3273,10 @@ test('errorText: a missing quick-question CLI is named as such, not as cmux, in 
   text.setLanguage('en')
 })
 
-test('style.css: every class selector is used by the page, or built from an allowed prefix', () => {
+test('the style files: every class selector is used by the page, or built from an allowed prefix', () => {
   // a rule nobody draws is dead weight that the next reader has to keep working; the leftovers of the
   // retired briefing-ui mod (ask box, its records, the skill list) were such rules
-  const css = fs.readFileSync(path.join(WEB, 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const css = STYLE_FILES.map(read).join('\n').replace(/\/\*[\s\S]*?\*\//g, '')
   const classes = new Set()
   for (const m of css.matchAll(/([^{}]+)\{/g)) {
     const selector = m[1].trim()
