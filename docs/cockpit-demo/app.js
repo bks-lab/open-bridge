@@ -11,7 +11,7 @@ import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces, pageOrder, quickLive } from './components.js'
 import {
-  CONN_GRACE_MS, DAY, noteGo, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
+  CONN_GRACE_MS, DAY, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
@@ -186,33 +186,26 @@ function pushNote(note, { toast = true, linger = 6000 } = {}) {
   store.set(s => {
     const next = pushNoteState(s, { ...note, at: note.at ?? clock(now) }, now, toastSeq + 1, toast)
     if (next.dup) {
-      // a toast of the same text is still up (the server's note event is often first): a twin that brings
-      // an action, an undo, gives it to that toast and keeps it up as long as its own would stay; a place to
-      // go the toast lacks comes along too
-      const go = noteGo(note.go)
-      const twin = s.toasts.find(t => t.text === note.text && ((note.action && !t.action) || (go && !t.go)))
+      // a toast of the same text is still up: the twin gives it what it lacks and keeps it up as long as its
+      // own would stay (logic.js giveTwin)
+      const twin = giveTwin(s.toasts, note)
       if (!twin) return s
-      toastTimers.start(twin.id, toastLinger(twin.tone, linger))
-      const gives = note.action && !twin.action ? { action: note.action, undo: note.undo ?? null, copy: note.copy ?? null } : {}
-      return { ...s, toasts: s.toasts.map(t => t === twin ? { ...t, ...gives, go: t.go ?? go } : t) }
+      toastTimers.start(twin.id, toastLinger(s.toasts.find(t => t.id === twin.id).tone, linger))
+      return { ...s, toasts: twin.toasts }
     }
     if (next.toast) {
       toastSeq = next.toast.id
       toastTimers.start(next.toast.id, toastLinger(next.toast.tone, linger))
     }
     // a toast pushed out stops its timer: it is gone from the screen and counted in toastsMore
-    for (const t of s.toasts) if (!next.toasts.includes(t)) toastTimers.stop(t.id)
+    for (const id of next.out) toastTimers.stop(id)
     return { ...s, notes: next.notes, toasts: next.toasts, toastsMore: next.toastsMore }
   })
 }
 
 function dismissToast(id) {
   toastTimers.stop(id)
-  store.set(s => {
-    const toasts = s.toasts.filter(t => t.id !== id)
-    // the "+N more" toast goes with the last of the others
-    return { ...s, toasts, toastsMore: toasts.length ? s.toastsMore : 0 }
-  })
+  store.set(s => ({ ...s, ...dismissState(s, id) }))
 }
 
 // a toast waits while the pointer or the focus is inside it, a bad one until it is dismissed (logic.js)
@@ -678,7 +671,7 @@ const ctl = {
   dismissToast,
   // the notes drawer, from the "+N more" toast: the count goes, the toasts still up stay
   openNotes() {
-    store.set(s => ({ ...s, toastsMore: 0 }))
+    store.set(s => ({ ...s, ...notesOpenedState(s) }))
     setUi({ drawer: 'notes' })
   },
   pauseToast: (id, why) => toastTimers.pause(id, why),

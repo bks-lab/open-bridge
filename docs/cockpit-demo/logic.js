@@ -731,10 +731,11 @@ export function formatClock(ms, lang) {
 
 // where a note leads (its `go`), the same small union the server sends (actions_base.py note_go): each kind with
 // the one field it needs and its pattern; the band's status targets (tickerStatusItems) are the same shape
+// a row key as ROW_KEY_RE takes it: the part after the kind may hold slashes but never a ".." segment
 const GO_FIELDS = {
   tab: ['ref', /^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}$/],
-  row: ['key', /^(inbox|task|ref|title|item):.{1,240}$/],
-  item: ['key', /^(inbox|task):.{1,240}$/],
+  row: ['key', /^(inbox|task|ref|title|item):(?!(?:.*\/)?\.\.(?:\/|$)).{1,240}$/],
+  item: ['key', /^(inbox|task):(?!(?:.*\/)?\.\.(?:\/|$)).{1,240}$/],
   page: ['id', /^@?[a-z0-9][a-z0-9_-]{0,63}$/],
   conv: ['id', /^g[0-9a-f]{10}$/],
   ask: ['id', /^q[0-9a-f]{10}$/],
@@ -743,7 +744,7 @@ const GO_FIELDS = {
 
 /** A note's target with the field of its kind only; anything else (an unknown kind, a broken field) null */
 export function noteGo(go) {
-  if (!go || typeof go !== 'object' || !Object.hasOwn(GO_FIELDS, go.kind)) return null
+  if (!go || typeof go !== 'object' || typeof go.kind !== 'string' || !Object.hasOwn(GO_FIELDS, go.kind)) return null
   const spec = GO_FIELDS[go.kind]
   if (!spec) return { kind: go.kind }
   const [field, re] = spec
@@ -763,20 +764,47 @@ export function addNote(notes, note, now, toasts = [], max = 20) {
 export const TOAST_MAX = 4
 
 /** What a pushed note does to `{ notes, toasts, toastsMore }`: a new note and, unless `toast` is false, a
- * toast with `id`. The newest four stay up; one pushed out is counted in `toastsMore`, never lost without a
- * word (the notes drawer keeps it). A note a visible toast already shows changes neither and comes back with
- * `dup` set, so the caller can hand a twin's action and target to that toast. Its `go` is kept only as noteGo
- * takes it. */
+ * toast with `id`. Four stay up; one pushed out is counted in `toastsMore`, never lost without a word (the
+ * notes drawer keeps it), and named in `out`, so its timer stops. The oldest toast without an action goes
+ * first, so an Undo stays within its few seconds; only when every one has an action does the oldest go. A
+ * note a visible toast already shows changes neither and comes back with `dup` set, so the caller can hand
+ * a twin's action and target to that toast (giveTwin). Its `go` is kept only as noteGo takes it. */
 export function pushNoteState({ notes, toasts, toastsMore = 0 }, note, now, id, toast = true) {
   const tone = note.tone ?? 'info'
   const go = noteGo(note.go)
   const next = addNote(notes, { at: note.at, text: note.text, tone, go }, now, toasts)
-  if (next === notes) return { notes, toasts, toastsMore, dup: true }
-  if (!toast) return { notes: next, toasts, toastsMore, dup: false }
+  if (next === notes) return { notes, toasts, toastsMore, out: [], dup: true }
+  if (!toast) return { notes: next, toasts, toastsMore, out: [], dup: false }
   const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, undo: note.undo ?? null, copy: note.copy ?? null, go }
-  const all = [...toasts, t]
-  const out = Math.max(0, all.length - TOAST_MAX)
-  return { notes: next, toasts: all.slice(-TOAST_MAX), toastsMore: toastsMore + out, toast: t, dup: false }
+  const kept = [...toasts, t]
+  const out = []
+  while (kept.length > TOAST_MAX) {
+    const plain = kept.findIndex(x => !x.action)
+    out.push(kept.splice(plain >= 0 ? plain : 0, 1)[0].id)
+  }
+  return { notes: next, toasts: kept, toastsMore: toastsMore + out.length, out, toast: t, dup: false }
+}
+
+/** A note whose text a toast still up shows (pushNoteState `dup`; the server's note event is often first):
+ * the twin hands that toast the action it lacks (an undo, a copy) and the place it lacks, never replaces
+ * either. `{ toasts, id }` with the id whose timer starts again, or null when it has nothing to give. */
+export function giveTwin(toasts, note) {
+  const go = noteGo(note.go)
+  const twin = toasts.find(t => t.text === note.text && ((note.action && !t.action) || (go && !t.go)))
+  if (!twin) return null
+  const gives = note.action && !twin.action ? { action: note.action, undo: note.undo ?? null, copy: note.copy ?? null } : {}
+  return { toasts: toasts.map(t => (t === twin ? { ...t, ...gives, go: t.go ?? go } : t)), id: twin.id }
+}
+
+/** A toast dismissed: the "+N more" toast goes with the last of the others */
+export function dismissState({ toasts, toastsMore = 0 }, id) {
+  const left = toasts.filter(t => t.id !== id)
+  return { toasts: left, toastsMore: left.length ? toastsMore : 0 }
+}
+
+/** The notes drawer opened from the "+N more" toast: the count goes, the toasts still up stay */
+export function notesOpenedState() {
+  return { toastsMore: 0 }
 }
 
 /** Insert or replace a relay record by id; newest first */

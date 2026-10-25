@@ -994,7 +994,8 @@ test('history: a close offers undo at once and later; a task comes back open or 
   // the toast restores the status the task had before the close (#384); older entries fall back to doing
   assert.match(app, /undo: async \(u, as = u\.args\?\.as \?\? 'doing'\) =>/)
   // the server's own note of the same text is often first: the undo must still reach the toast
-  assert.match(app, /const twin = s\.toasts\.find\(t => t\.text === note\.text && \(\(note\.action && !t\.action\) \|\| \(go && !t\.go\)\)\)/)
+  // (what the twin gives is logic.js giveTwin, tested in bridge_cockpit_toast_go.test.mjs)
+  assert.match(app, /const twin = giveTwin\(s\.toasts, note\)/)
   const buttons = comp.match(/function UndoButtons\([\s\S]*?\n\}/)[0]
   assert.match(buttons, /c\.undo\(u, 'doing'\)/)
   assert.match(buttons, /c\.undo\(u, 'backlog'\)/)

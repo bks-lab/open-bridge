@@ -209,7 +209,7 @@ def bad_arg(field: str, message: str) -> ActionError:
 
 def note_go(go: Any) -> dict | None:
     """A note's target as the page takes it ({kind: tab, ref} ...), only the field of its kind; any other shape None"""
-    if not isinstance(go, dict) or go.get("kind") not in GO_FIELDS:
+    if not isinstance(go, dict) or not isinstance(go.get("kind"), str) or go["kind"] not in GO_FIELDS:
         return None
     kind = go["kind"]
     spec = GO_FIELDS[kind]

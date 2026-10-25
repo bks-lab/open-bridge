@@ -56,6 +56,7 @@ def test_only_the_fields_of_its_kind_are_kept():
 
 @pytest.mark.parametrize("go", [
     None, "surface:7", ["tab", "surface:7"], {}, {"kind": "file", "path": "work/tasks/x"},
+    {"kind": ["tab"], "ref": "surface:7"}, {"kind": {"x": 1}},
     {"kind": "tab"}, {"kind": "tab", "ref": 7}, {"kind": "tab", "ref": "--all"}, {"kind": "tab", "ref": "surface:7\n"},
     {"kind": "row", "key": "nokind"}, {"kind": "row", "key": "task:../../etc"},
     {"kind": "item", "key": "ref:example/repo#12"},          # only an inbox item or a task opens in the item drawer
@@ -119,3 +120,4 @@ def test_a_step_on_a_page_row_leads_to_that_page(world):
     world.runner.handlers["briefing.act"] = lambda argv: ok(json.dumps({"ok": True, "did": "turned down"}))
     res = world.act("row_action", page="tasks", section="apps", index=0, action="turned_down")
     assert res["go"] == {"kind": "page", "id": "tasks"}
+

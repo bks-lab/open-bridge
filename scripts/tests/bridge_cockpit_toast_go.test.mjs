@@ -41,7 +41,7 @@ test('noteGo: a known target passes with the fields of its kind only', () => {
 test('noteGo: an unknown or broken target becomes null', () => {
   for (const go of [undefined, null, 'surface:7', [], {}, { kind: 'file', path: 'x' }, { kind: 'tab' }, { kind: 'tab', ref: 7 },
     { kind: 'tab', ref: 'x'.repeat(300) }, { kind: 'item', key: 'ref:example/repo#12' }, { kind: 'row', key: 'nokind' },
-    { kind: 'conv', id: '' }, { kind: 'drawer', id: 'notes' }, { kind: 'info', it: {} }]) {
+    { kind: 'conv', id: '' }, { kind: 'drawer', id: 'notes' }, { kind: 'info', it: {} }, { kind: ['tab'], ref: 'surface:7' }]) {
     assert.equal(logic.noteGo(go), null, JSON.stringify(go))
   }
 })
@@ -167,4 +167,69 @@ test('notes drawer: an entry with a target closes the drawer and goes there, one
   gos[0].click()
   assert.deepEqual(c.calls, [['setDrawer', null], ['openItem', 'task:demo-task', null]])
   await new Promise(resolve => setTimeout(resolve, 20))   // the focus effect runs inside the test
+})
+
+// ---------------------------------------------------------------- the store's toast steps (review fixes)
+
+test('noteGo and its kind: only a string kind counts, never one that only coerces to a name', () => {
+  assert.equal(logic.noteGo({ kind: ['claude'] }), null)
+  assert.equal(logic.noteGo({ kind: ['tab'], ref: 'surface:7' }), null)
+})
+
+test('noteGo: a row or item key with a ".." segment is dropped, as the server drops it', () => {
+  assert.equal(logic.noteGo({ kind: 'row', key: 'task:../../etc' }), null)
+  assert.equal(logic.noteGo({ kind: 'item', key: 'task:a/../b' }), null)
+  assert.equal(logic.noteGo({ kind: 'row', key: 'item:..' }), null)
+  assert.deepEqual(logic.noteGo({ kind: 'row', key: 'item:systems/checks/x' }), { kind: 'row', key: 'item:systems/checks/x' })
+  assert.deepEqual(logic.noteGo({ kind: 'row', key: 'title:Fix the..thing' }), { kind: 'row', key: 'title:Fix the..thing' })
+})
+
+test('pushNoteState: a toast pushed out is named in `out`, so its timer stops', () => {
+  let s = { notes: [], toasts: [], toastsMore: 0 }
+  for (let i = 0; i < 4; i++) s = { ...s, ...logic.pushNoteState(s, { text: `n${i}`, tone: 'info', at: '12:00' }, i, i + 1) }
+  assert.deepEqual(s.out, [])
+  const next = logic.pushNoteState(s, { text: 'n4', tone: 'info', at: '12:00' }, 4, 5)
+  assert.deepEqual(next.out, [1])
+})
+
+test('pushNoteState: an Undo toast is kept over a plain one when one must go', () => {
+  const undo = [{ undo: { verb: 'task_reopen' } }]
+  let s = { notes: [], toasts: [], toastsMore: 0 }
+  s = { ...s, ...logic.pushNoteState(s, { text: 'closed', tone: 'ok', at: '12:00', action: 'undo', undo }, 0, 1) }
+  for (let i = 1; i < 5; i++) s = { ...s, ...logic.pushNoteState(s, { text: `n${i}`, tone: 'info', at: '12:00' }, i, i + 1) }
+  assert.deepEqual(s.toasts.map(t => t.id), [1, 3, 4, 5], 'the oldest plain one went, the undo stays')
+  assert.deepEqual(s.out, [2])
+  assert.equal(s.toastsMore, 1)
+  // every one with an action: then the oldest goes after all
+  let a = { notes: [], toasts: [], toastsMore: 0 }
+  for (let i = 0; i < 5; i++) a = { ...a, ...logic.pushNoteState(a, { text: `u${i}`, tone: 'ok', at: '12:00', action: 'undo', undo }, i, i + 1) }
+  assert.deepEqual(a.toasts.map(t => t.id), [2, 3, 4, 5])
+  assert.deepEqual(a.out, [1])
+})
+
+test('giveTwin: the twin of a toast still up hands over its action and its place, never takes one away', () => {
+  const up = [toast(1, { text: 'Closed', go: null }), toast(2, { text: 'Other' })]
+  const undo = [{ undo: { verb: 'task_reopen' } }]
+  const got = logic.giveTwin(up, { text: 'Closed', action: 'undo', undo, go: { kind: 'item', key: 'task:demo-task' } })
+  assert.equal(got.id, 1)
+  assert.equal(got.toasts[0].action, 'undo')
+  assert.deepEqual(got.toasts[0].undo, undo)
+  assert.deepEqual(got.toasts[0].go, { kind: 'item', key: 'task:demo-task' })
+  assert.equal(got.toasts[1], up[1])
+  // only a place: the action of the toast stays
+  const withUndo = [toast(1, { text: 'Closed', action: 'undo', undo })]
+  const placed = logic.giveTwin(withUndo, { text: 'Closed', go: { kind: 'tab', ref: 'surface:7' } })
+  assert.equal(placed.toasts[0].action, 'undo')
+  assert.deepEqual(placed.toasts[0].go, { kind: 'tab', ref: 'surface:7' })
+  // nothing to give, or a broken place: no twin
+  assert.equal(logic.giveTwin(withUndo, { text: 'Closed' }), null)
+  assert.equal(logic.giveTwin(up, { text: 'Closed', go: { kind: 'evil' } }), null)
+  assert.equal(logic.giveTwin(up, { text: 'Nobody', action: 'undo', undo }), null)
+})
+
+test('dismissState: the "+N more" count stays while others are up and goes with the last', () => {
+  const s = { toasts: [toast(1), toast(2)], toastsMore: 3 }
+  assert.deepEqual(logic.dismissState(s, 1), { toasts: [s.toasts[1]], toastsMore: 3 })
+  assert.deepEqual(logic.dismissState({ toasts: [toast(2)], toastsMore: 3 }, 2), { toasts: [], toastsMore: 0 })
+  assert.deepEqual(logic.notesOpenedState({ toasts: [toast(2)], toastsMore: 3 }), { toastsMore: 0 })
 })

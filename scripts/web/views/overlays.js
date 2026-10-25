@@ -32,7 +32,7 @@ export function Toasts({ s, c }) {
   return html`<div class="toasts" role="status" aria-live="polite" aria-atomic="false">
     ${s.toasts.map(x => {
       const go = noteGo(x.go)
-      return html`<div class=${`toast${go ? ' has-go' : ''}`} key=${x.id}
+      return html`<div class="toast" key=${x.id}
         onMouseEnter=${() => c.pauseToast(x.id, 'hover')} onMouseLeave=${() => c.resumeToast(x.id, 'hover')}
         onfocusin=${() => c.pauseToast(x.id, 'focus')} onfocusout=${() => c.resumeToast(x.id, 'focus')}>
       <${Dot} token=${noteToken(x.tone)} />
