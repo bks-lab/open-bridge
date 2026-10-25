@@ -1315,13 +1315,17 @@ only when the item has it:
 - chips for the state, the owner, the priority, the due day, the area and the
   source, the progress of the steps (2 of 5), and quiet hints for what is
   missing: no goal yet, a placeholder step, no next step, an entry about a task
-  that is closed already (with "Close this entry" beside it).
+  that is closed already (with "Close this entry" beside it; there is no verb
+  that moves an inbox entry to another task, so the card offers no "reassign").
 
-A check or an info row shows only what it has, so it stays small. In a list a
-row without a triage gist shows its goal under the title.
+A check or an info row shows only what it has, so it stays small. A list row
+shows the card's title. Its goal stands under the title on the start page, and
+on Today in place of a missing triage gist. A detail head leaves out the chips
+its facts list says further down (a task's status and priority, an inbox
+item's state and due day).
 
 Text a model wrote and no person edited carries a small **AI**; the model and
-the day show on hover. Once the item changed past it, **outdated** stands
+the day show on hover and are its label for a screen reader. Once the item changed past it, **outdated** stands
 beside it.
 
 **Describe with AI** on a task, stream or inbox item asks the small model for
@@ -1330,7 +1334,10 @@ written straight into the item. Once a person did, the model only proposes: the
 proposal shows in the card with **Apply**, **Edit** and **Discard**. Edit
 opens a small form (the goal, the three parts of the story, up to five
 criteria) and saves what you wrote as your own text; nothing changes in the
-item before Apply or Save. A failed try shows like any other failed action.
+item before Apply or Save. A newer proposal replaces an open form. After Apply
+or Discard the focus goes back to Describe with AI. Only one describe runs at a
+time, so while one runs, the button waits on every card. A failed try shows like
+any other failed action.
 
 A command row that offers steps of its own (`actions`, docs/briefings.md) shows
 an "Action" menu: two clicks run one through `row_action {page, section, index,

@@ -382,7 +382,10 @@ because describe.json knows a brief a person changed by hand (its hash); a propo
 has no brief. What a card cannot hold travels beside it: every row (`collector.row_out`) and both detail payloads
 carry `describe`, `card.describe_state(key, ctx)`: `written`, `stale`, `running`, `last_error`, `warnings`,
 `model_mismatch`, `proposal` {id, brief, by, at_ms} and the stored brief's `by` and `at`, or None for an item describe
-has nothing on. A damaged describe.json degrades to no views, never to no page. The detail endpoints build the same context with `App.card_ctx()`. An inbox row's detail, gate, probe
+has nothing on. A damaged describe.json degrades to no views, never to no page. The detail endpoints build the same
+context with `App.card_ctx(key)`, which reads the describe view of that one key only (`Describer.view`), never every
+item's. `Describer` keeps an inbox item it read until its `item.yaml` or its `events/` folder changes (a closed one
+as None), so the entries describe.json still holds for closed items cost a stat per build. An inbox row's detail, gate, probe
 and brief come from `details.inbox_facts`, read once per item and kept until `item.yaml`, its `events/` folder
 or one of its event files changes (an event rewritten in place leaves the folder's time alone), so a rebuild costs
 a stat per file. The cached dict is shared between threads: the card copies it before it completes it from the row. The words a card says (the story sentence, the next steps, the
@@ -392,10 +395,17 @@ probe) live in `text.py` under `card`, English and German; `card.probe_text` say
 
 The page draws it with `views/card.js` (texts in `text-card.js`). `ItemCard` takes `card`, the describe view `d` and
 the key describe takes (`dkey`, a `task:` or `inbox:` key); `skip` leaves out what a head shows already (the drawer's
-origin tag, the files view's status, priority, area and next step), so nothing is said twice. The store keeps the live
-views in `s.describe` (the `describe` event, the `describe` of an action's answer) and clears them with the next
-model, whose rows carry the same. The button shows on task, stream and inbox cards with a key and a controller; its
-busy state is the row's busy key, or `running` while the server's own pass writes. A proposal's Edit is a small form
+origin tag, the files view's status, priority, area and next step; `TASK_FACTS_SKIP` and `INBOX_FACTS_SKIP` where the
+facts below the head say the state, the priority or the due day), so nothing is said twice. The store keeps the live
+views in `s.describe` (the `describe` event, the `describe` of an action's answer); a new model drops those of the keys
+it has a row of (`logic.liveDescribeAfter`), since those rows carry their own. The button shows on task, stream and
+inbox cards with a key and a controller; it waits while any describe runs (`describeBusy`: a live view, a row of the
+model, or any `describe_run` in `ui.busy`), because the server runs one at a time. A card filled from the waiting
+proposal (`briefFromProposal`: no valid stored brief) leaves goal, story and criteria to the proposal block. The
+proposal is keyed by its id, so a newer one starts its form afresh; the AI mark carries `role="img"` and its hover
+text as `aria-label`; Edit focuses the goal field, Apply and Discard hand the focus back to the describe button, and
+`running` and `last_error` sit in `role="status"` and `role="alert"`. List rows show `titleOf(row)`, the card's
+title. "Close this entry" is the one gap action: no verb moves an inbox item to another task. A proposal's Edit is a small form
 (goal, the three story parts, up to five criteria, none for a stream): a story with a part left empty goes as no
 story, empty criteria are dropped, and the person's text goes to `describe_apply` as `brief`. The demo (`mock.js`)
 gives every row a card and four briefs that show the states: AI written (`task:demo-task`), edited with a proposal

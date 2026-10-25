@@ -16,7 +16,7 @@ import {
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
-  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
+  focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -353,7 +353,7 @@ const handlers = {
     }
     const prev = store.get()
     noteFeed(feedEvents(prev.model, model, prev.tabs?.tabs, prev.tabs?.tabs, Date.now()))
-    store.set(s => ({ ...s, model, describe: {}, more: freshMore(s.more, model) }))
+    store.set(s => ({ ...s, model, describe: liveDescribeAfter(s.describe, model), more: freshMore(s.more, model) }))
     fixPage()
   },
   // only the pages that changed (review C34): put in by id and handled as a whole view; one that cannot be

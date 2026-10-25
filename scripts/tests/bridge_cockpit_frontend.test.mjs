@@ -5053,13 +5053,14 @@ test('the demo takes the two work switches from its address: ?work=files and ?fo
   assert.match(read('app.js'), /work: params\.get\('work'\), focusToFiles: params\.get\('focus_to_files'\) === '1'/)
 })
 
-test('the describe view reaches the page live: the describe event and an action answer, cleared by the next model', () => {
+test('the describe view reaches the page live: the describe event and an action answer, cleared by the next model for its rows', () => {
   assert.match(read('api.js'), /const EVENTS = \[[^\]]*'describe'[^\]]*\]/)
   const app = read('app.js')
   assert.match(app, /describe: \{\},/)
   assert.match(app, /describe\(ev\) \{/)
   assert.match(app, /r\.describe && p\.args\.key/)
-  assert.match(app, /model, describe: \{\}, more: freshMore\(s\.more, model\)/)
+  // a new model drops the live views of the keys it has rows of, never those of items without a row (logic.js)
+  assert.match(app, /model, describe: liveDescribeAfter\(s\.describe, model\), more: freshMore\(s\.more, model\)/)
   // the card reads the live view before what the row carries (views/card.js describeOf)
   assert.match(read('views/card.js'), /s\?\.describe\?\.\[key\]/)
 })

@@ -312,3 +312,114 @@ test('demo: describe writes a brief for an item nobody wrote, proposes for an ed
   assert.equal(detail.card.goal, 'My own goal')
   assert.equal(detail.describe.written, 'human')
 })
+
+// ---------------------------------------------------------------- review fixes
+
+const { render } = await loadCockpit()
+const count = (hay, needle) => hay.split(needle).length - 1
+
+test('card: a proposal that fills a card without a valid brief stands once, in the proposal with Apply', () => {
+  // the stored brief failed the gate (or there is none): card.py fills the card from the proposal as "ai"
+  const filled = { ...TASK, written: 'ai', goal: PROPOSAL.brief.goal, story: PROPOSAL.brief.story, acceptance: PROPOSAL.brief.acceptance }
+  for (const written of ['human', null]) {
+    const el = mount(html`<${ItemCard} card=${filled} d=${{ ...AI, written, proposal: PROPOSAL }} dkey="task:demo-task" s=${s0()} c=${recorder()} />`)
+    assert.equal(count(el.text(), PROPOSAL.brief.goal), 1, `the goal once (${written})`)
+    assert.ok(el.$('.card-goal-text') === null, 'the card does not pass the proposal off as its brief')
+    assert.ok(el.$('.card-proposal').button(en.card.apply), 'the proposal keeps Apply')
+  }
+})
+
+test('card: a new proposal while the form is open starts the form afresh, never with the old text', async () => {
+  const root = document.createElement('div')
+  const draw = prop => render(html`<${ItemCard} card=${{ ...TASK, written: 'human' }} d=${{ ...HUMAN, proposal: prop }}
+    dkey="task:demo-task" s=${s0()} c=${answering()} />`, root)
+  draw(PROPOSAL)
+  root.$('.card-proposal').button(en.card.edit).click()
+  await tick()
+  assert.ok(root.$('form.card-edit'))
+  const next = { ...PROPOSAL, id: 'd9876543210', brief: { ...PROPOSAL.brief, goal: 'A newer proposed goal' } }
+  draw(next)
+  await tick()
+  assert.ok(root.$('form.card-edit') === null, 'the form of the old proposal is gone')
+  assert.ok(root.$('.card-proposal').text().includes('A newer proposed goal'))
+  render(null, root)
+})
+
+test('card: the AI mark says its model and day to a screen reader too, not only on hover', () => {
+  const el = mount(html`<${ItemCard} card=${{ ...TASK, written: 'human' }} d=${{ ...AI, proposal: PROPOSAL }} dkey="task:demo-task" s=${s0()} c=${recorder()} />`)
+  for (const mark of el.$$('.ai-mark')) {
+    assert.equal(mark.getAttribute('role'), 'img')
+    assert.equal(mark.getAttribute('aria-label'), mark.getAttribute('title'))
+  }
+  assert.equal(el.$$('.ai-mark').length, 2, 'the brief and the proposal')
+})
+
+test('card: the focus goes to the form on Edit and back to the describe button after Apply; the state is announced', async () => {
+  const c = answering()
+  const el = mount(html`<${ItemCard} card=${{ ...TASK, written: 'human' }} d=${HUMAN} dkey="task:demo-task" s=${s0()} c=${c} />`)
+  el.$('.card-proposal').button(en.card.edit).click()
+  await tick()
+  assert.ok(document.activeElement === el.$('form.card-edit').$('[name="goal"]'), 'the first field of the form')
+  el.$('form.card-edit').dispatch('submit')
+  await tick()
+  assert.ok(document.activeElement === el.$('.card-describe button'), 'the describe button')
+  const discard = mount(html`<${ItemCard} card=${{ ...TASK, written: 'human' }} d=${HUMAN} dkey="task:demo-task" s=${s0()} c=${answering()} />`)
+  discard.$('.card-proposal').button(en.card.discard).click()
+  await tick()
+  assert.ok(document.activeElement === discard.$('.card-describe button'), 'the describe button after Discard')
+  const running = mount(html`<${ItemCard} card=${TASK} d=${{ ...AI, running: true }} dkey="task:demo-task" s=${s0()} c=${recorder()} />`)
+  assert.equal(running.$('.card-describe [role="status"]').text(), en.card.running)
+  const failed = mount(html`<${ItemCard} card=${TASK} d=${{ ...AI, last_error: 'no answer' }} dkey="task:demo-task" s=${s0()} c=${recorder()} />`)
+  assert.equal(failed.$('.card-describe [role="alert"]').text(), en.card.lastError('no answer'))
+})
+
+test('card: the describe button waits while any describe runs, since the server runs one at a time', () => {
+  const card = html`<${ItemCard} card=${TASK} d=${AI} dkey="task:demo-task" s=${null} c=${recorder()} />`
+  const of = s => mount({ ...card, props: { ...card.props, s } }).$('.card-describe button').hasAttribute('disabled')
+  assert.equal(of(s0()), false)
+  assert.equal(of(s0({ describe: { 'inbox:x': { key: 'inbox:x', running: true } } })), true, 'a live run of another item')
+  assert.equal(of(s0({ ui: { busy: { 'inbox:x': 'describe_run' } } })), true, 'an action of another card')
+  assert.equal(of(s0({ ui: { busy: { 'inbox:x': 'settle' } } })), false, 'another verb does not count')
+  const base = s0()
+  const model = { ...base.model, sections: base.model.sections.map((sec, i) => (i ? sec : { ...sec,
+    rows: sec.rows.map((r, j) => (j ? r : { ...r, describe: { ...AI, running: true } })) })) }
+  assert.equal(of({ ...base, model }), true, 'a run the model carries on another row')
+})
+
+test('logic: a new model keeps the live describe views of keys it carries no row of', () => {
+  const s = s0()
+  const live = { 'task:demo-task': { running: true }, 'inbox:not-in-the-model': { running: true } }
+  assert.deepEqual(Object.keys(logic.liveDescribeAfter(live, s.model)), ['inbox:not-in-the-model'])
+  assert.deepEqual(logic.liveDescribeAfter(undefined, s.model), {})
+})
+
+test('card: a list row shows the card title, the one the drawer and the files view show', () => {
+  const base = s0()
+  const model = { ...base.model, sections: base.model.sections.map(sec => ({ ...sec,
+    rows: sec.rows.map(r => (r.key === 'task:demo-task' ? { ...r, title: 'demo-task' } : r)) })) }
+  const s = { ...base, model }
+  const byKey = logic.indexRows(model)
+  const list = mount(html`<${views.day.Section} section=${model.sections.find(x => x.id === 'work')} s=${s} c=${recorder()} byKey=${byKey} />`)
+  const line = list.$$('li.row').find(li => li.getAttribute('data-key') === 'task:demo-task')
+  assert.equal(line.$('.row-title').text(), byKey.get('task:demo-task').card.title)
+  assert.notEqual(byKey.get('task:demo-task').card.title, 'demo-task')
+})
+
+test('card: a detail head leaves out the chips the facts below it already say', async () => {
+  const s = s0({ ui: { page: 'briefing', selectedKey: 'task:demo-task' } })
+  const byKey = logic.indexRows(s.model)
+  const row = byKey.get('task:demo-task')
+  const detail = mount(html`<${views.detail.DetailColumn} s=${s} c=${recorder()} byKey=${byKey} />`)
+  const chips = detail.$('.detail-card .card-chips')?.text() ?? ''
+  assert.ok(!chips.includes(row.area), 'the area stands in the facts')
+  assert.ok(!chips.includes(en.taskState.doing), 'the state stands in the task facts')
+  // the drawer of a task: its facts list says the state and the priority
+  const loaded = { ...s, details: { inbox: {}, task: { 'demo-task': { status: 'ok', at: s.model.collected_ms, data: {
+    ok: true, slug: 'demo-task', front: { status: 'doing', priority: 'P1' }, sections: [], card: row.card } } } },
+    ui: { ...s.ui, item: { key: 'task:demo-task', it: { task: 'demo-task', title: 'demo-task' } } } }
+  const drawer = mount(html`<${views.overlays.ItemDrawer} s=${loaded} c=${recorder()} byKey=${byKey} />`)
+  await tick()
+  const dchips = drawer.$('.idrawer-card .card-chips')?.text() ?? ''
+  assert.ok(!dchips.includes(en.taskState.doing) && !dchips.includes('P1'))
+  assert.ok(drawer.$('.idrawer-facts').text().includes(en.taskState.doing))
+})

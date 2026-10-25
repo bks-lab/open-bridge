@@ -10,7 +10,7 @@ import {
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
-import { ItemCard, cardOf, describeKey, describeOf } from './card.js'
+import { INBOX_FACTS_SKIP, ItemCard, TASK_FACTS_SKIP, cardOf, describeKey, describeOf } from './card.js'
 import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { DetailFailed, Lines, NextUp, Segmented } from './detail.js'
 import { AsOf, RelayBadge } from './header.js'
@@ -284,7 +284,7 @@ export function ItemDrawer({ s, c, byKey }) {
       </div>
       <div class="idrawer-body">
         <${ItemCard} card=${card} d=${describeOf(s, key, own?.describe, data?.describe)} dkey=${key} s=${s} c=${cc}
-          skip=${['source']} cls="idrawer-sec idrawer-card" />
+          skip=${isInbox ? INBOX_FACTS_SKIP : TASK_FACTS_SKIP} cls="idrawer-sec idrawer-card" />
         <${ReturnPanel} s=${s} c=${c} keys=${[key, slug ? `task:${slug}` : null]} />
         ${slug ? html`<section class="idrawer-sec"><${TaskSessions} row=${{ task: slug, key: `task:${slug}` }} s=${s} c=${c} /></section>` : null}
         ${tri ? html`<section class="idrawer-sec idrawer-tri"><h3 class="label-caps">${t.item.about}</h3>

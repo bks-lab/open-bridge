@@ -400,6 +400,14 @@ export function indexRows(model) {
   return byKey
 }
 
+/** The live describe views (the `describe` event, an action's answer) a new model leaves standing: those of keys
+ *  it carries no row of, since a row of the model carries its own describe view (a run the live event alone
+ *  reported, of an item without a row, keeps its `running` until the server says otherwise) */
+export function liveDescribeAfter(describe, model) {
+  const rows = indexRows(model)
+  return Object.fromEntries(Object.entries(describe ?? {}).filter(([k]) => !rows.has(k)))
+}
+
 /** The rows a section shows: every row when expanded, else the compact keys */
 export function sectionRows(section, expanded, byKey, budget = 0) {
   if (!section) return []

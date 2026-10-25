@@ -11,7 +11,7 @@ import {
   rowProject,
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { ItemCardLine } from './card.js'
+import { ItemCardLine, titleOf } from './card.js'
 import { KindTag, OriginTag, RowBar } from './day.js'
 import { jumpToTab, openWhole, returnsOf, shownTiles, ReturnCard, ReturnChip, PinStar } from './home.js'
 import { Btn, Dot, Icon, PrioChip, StateLine } from './parts.js'
@@ -79,7 +79,7 @@ function RowLine({ row, tab, s, c, lead = false, walk = null }) {
   return html`<li class=${`hl-line${lead ? ' is-lead' : ''}`}>
     <span class="hl-line-mark"><${Dot} token=${row.priority === 'P0' ? 'danger' : tab?.state === 'needs-you' ? 'warning' : 'info'} /></span>
     <button type="button" class="hl-line-main" onClick=${e => openWhole(c, row, e.currentTarget, walk?.())} title=${t.home.openRow(short(row.title, 60))}>
-      <span class="hl-line-title">${row.priority ? html`<${PrioChip} priority=${row.priority} /> ` : null}${short(row.title, lead ? 160 : 110)}</span>
+      <span class="hl-line-title">${row.priority ? html`<${PrioChip} priority=${row.priority} /> ` : null}${short(titleOf(row), lead ? 160 : 110)}</span>
       <span class="hl-line-sub">
         ${project ? html`<span class=${`hl-proj tk-${projectTone(project)}`}>${project}</span>` : null}
         ${n != null ? html`<span class="hl-num mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">#${n}</span></span>` : null}

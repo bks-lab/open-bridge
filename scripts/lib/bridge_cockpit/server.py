@@ -526,17 +526,24 @@ class App:
     def card_sources(self) -> dict:
         """What every card is built with besides its item (card.py): the triage items and the brief proposals,
         by key. A failure here never stops the page: the cards are built without them."""
+        return {"triage": self.card_triage(), "describe": self.describe_items()}
+
+    def card_triage(self) -> dict:
         try:
-            triage = self.triage.state().get("items") or {}
+            return self.triage.state().get("items") or {}
         except Exception as exc:  # noqa: BLE001 - a damaged triage file degrades to no gist
             self.log_error(f"card sources: {exc!r}")
-            triage = {}
-        return {"triage": triage, "describe": self.describe_items()}
+            return {}
 
-    def card_ctx(self) -> "cd.Ctx":
-        """The card context of the detail endpoints: the same text table and sources as the model's cards"""
-        src = self.card_sources()
-        return cd.Ctx(tx=self.tx.get("card"), triage=src["triage"], describe=src["describe"],
+    def card_ctx(self, key: str) -> "cd.Ctx":
+        """The card context of a detail endpoint: the same text table and triage as the model's cards, and the
+        describe view of this one key (a detail draws one card, so it never reads every item's view)"""
+        try:
+            view = self.describe.view(key)
+        except Exception as exc:  # noqa: BLE001 - a damaged describe store degrades to no describe view
+            self.log_error(f"describe items: {exc!r}")
+            view = None
+        return cd.Ctx(tx=self.tx.get("card"), triage=self.card_triage(), describe={key: view} if view else {},
                       tasks={t["slug"]: t for t in self.collector.tasks})
 
     def inbox_listing(self) -> list | None:
@@ -929,7 +936,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             result = details.task_file(app.root, slug, rel, folder) if rel is not None \
                 else details.task_detail(app.root, slug, app.inbox_listing(), folder, app.cfg.origin_map,
-                                         ctx=app.card_ctx())
+                                         ctx=app.card_ctx(f"task:{slug}"))
             if result is None:
                 self.send_error_json("not_found", "no such file" if rel is not None else "no such task")
             else:
@@ -958,7 +965,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error_json("invalid_argument", "not an inbox id", "id")
                 return
             result = details.inbox_detail(app.root, item_id, app.inbox_listing(), app.cfg.origin_map,
-                                          ctx=app.card_ctx())
+                                          ctx=app.card_ctx(f"inbox:{item_id}"))
             if result is None:
                 self.send_error_json("not_found", "no such inbox item")
             else:

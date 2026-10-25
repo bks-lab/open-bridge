@@ -698,3 +698,38 @@ def test_a_damaged_describe_store_never_stops_the_page(world):
     (world.app.root / ".bridge" / "describe.json").write_text("{not json", encoding="utf-8")
     assert world.app.describe_items() == {}
     assert rebuilt_row(world)["card"]["kind"] == "task"
+
+
+def test_a_detail_reads_only_its_own_describe_view(world, monkeypatch):
+    world.act("describe_run", key="task:demo-task")
+    asked = []
+    real_state = world.app.describe.state_for
+    monkeypatch.setattr(world.app.describe, "state_for", lambda key: asked.append(key) or real_state(key))
+    detail = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    assert detail["describe"]["written"] == "ai" and detail["card"]["goal"] == GOAL
+    assert asked == ["task:demo-task"]
+    # an item describe never touched carries no describe view, as on the rows
+    world.request("GET", f"/api/inbox?id={YES_ID}", headers=world.cookie)
+    assert json.loads(world.request("GET", f"/api/inbox?id={YES_ID}", headers=world.cookie)[2])["describe"] is None
+
+
+def test_the_model_build_reads_an_inbox_item_again_only_once_it_changed(world, monkeypatch):
+    world.act("describe_run", key=f"inbox:{YES_ID}")
+    reads = []
+    make = world.app.describe._inbox
+
+    def counting():
+        inbox = make()
+        get = inbox.get
+        inbox.get = lambda iid: reads.append(iid) or get(iid)
+        return inbox
+    monkeypatch.setattr(world.app.describe, "_inbox", counting)
+    first = world.app.describe.views()
+    assert first[f"inbox:{YES_ID}"]["written"] == "ai"
+    reads.clear()
+    assert world.app.describe.views() == first and reads == []
+    # a new event (here: a seen note) changes the item, so the next build reads it again
+    events = world.app.root / "work" / "inbox" / YES_ID / "events"
+    (events / "9999-seen.yaml").write_text("verb: seen\nby: web\nat: '2026-10-25T10:00:00'\n", encoding="utf-8")
+    world.app.describe.views()
+    assert reads == [YES_ID]

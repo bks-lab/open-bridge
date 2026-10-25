@@ -15,14 +15,19 @@
 // like any other action. All of it for the mouse; no key is named.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { formatDay } from '../logic.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { formatDay, indexRows } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
 import { Btn, Chip } from './parts.js'
 
 /** The kinds of card describe takes (describe.py KINDS) */
 export const DESCRIBABLE = new Set(['task', 'stream', 'inbox'])
+/** The card chips a detail head leaves out where the facts below it say them already (and the origin tag of the
+ *  head): a task's status and priority (TaskDetail, the drawer's TaskBody), an inbox item's state and due day
+ *  (the drawer's InboxBody) */
+export const TASK_FACTS_SKIP = ['source', 'state', 'priority']
+export const INBOX_FACTS_SKIP = ['source', 'state', 'due']
 const CRITERIA_MAX = 5
 const STORY_PARTS = ['as', 'want', 'so_that']
 
@@ -30,6 +35,35 @@ const STORY_PARTS = ['as', 'want', 'so_that']
  *  detail carries; null without any */
 export function describeOf(s, key, ...carried) {
   return (key && s?.describe?.[key]) || carried.find(x => x && typeof x === 'object') || null
+}
+
+/** The title of a list row: its card's, the one its detail, drawer and file show, else the row's own */
+export const titleOf = row => row?.card?.title || row?.title || ''
+
+/** Whether any describe runs now: the server runs one at a time (describe_running), so every card waits. A live
+ *  view (the `describe` event, an action's answer), a describe action of any card, or a run a row of the model
+ *  carries */
+export function describeBusy(s) {
+  if (Object.values(s?.describe ?? {}).some(v => v?.running)) return true
+  if (Object.values(s?.ui?.busy ?? {}).includes('describe_run')) return true
+  for (const r of indexRows(s?.model).values()) if (r.describe?.running) return true
+  return false
+}
+
+/** Whether the card's brief is the waiting proposal (card.py fills a card without a valid stored brief from it,
+ *  as "ai"): then the proposal, with Apply, says it once and the card does not pass it off as a brief */
+export function briefFromProposal(card, d) {
+  return !!(d?.proposal?.id && card?.goal && card.written === 'ai' && d.written !== 'ai')
+}
+
+/** The first button inside an element, walked by hand (no selector engine needed) */
+function firstButton(el) {
+  for (const n of el?.childNodes ?? []) {
+    if (n.tagName === 'BUTTON') return n
+    const deeper = firstButton(n)
+    if (deeper) return deeper
+  }
+  return null
 }
 
 /** The card of an item: the model's row before the detail payload, null without either */
@@ -52,13 +86,20 @@ function storyText(story) {
   return T().card.storyLine(story.as, story.want, story.so_that)
 }
 
+/** The small "AI": its model and day on hover and, as its label, for a screen reader */
+function AiMark({ by, day }) {
+  const w = T().card
+  const says = w.aiBy(by || w.aiUnknown, day)
+  return html`<span class="ai-mark" role="img" title=${says} aria-label=${says}>${w.ai}</span>`
+}
+
 /** "AI" for a brief a model wrote and nobody edited, with its model and day on hover; "outdated" once the item
  *  changed past it */
 function WrittenMarks({ card, d }) {
   const w = T().card
   // the view's word on a stored brief; without one (no brief stored, a proposal fills the card) the card's own
   const ai = d?.written ? d.written === 'ai' : card.written === 'ai' && !!card.goal
-  return html`${ai ? html`<span class="ai-mark" title=${w.aiBy(d?.by || w.aiUnknown, dayOf(d?.at))}>${w.ai}</span>` : null}
+  return html`${ai ? html`<${AiMark} by=${d?.by} day=${dayOf(d?.at)} />` : null}
     ${d?.stale ? html`<span class="card-stale" title=${w.staleHint}>${w.stale}</span>` : null}`
 }
 
@@ -137,6 +178,8 @@ function EditForm({ brief, stream, busy, onSave, onCancel }) {
     goal: brief?.goal ?? '', ...Object.fromEntries(STORY_PARTS.map(k => [k, brief?.story?.[k] ?? ''])),
     acceptance: Array.from({ length: CRITERIA_MAX }, (_, i) => brief?.acceptance?.[i] ?? ''),
   }))
+  const first = useRef(null)
+  useEffect(() => { first.current?.focus() }, [])
   const set = (k, val) => setV(x => ({ ...x, [k]: val }))
   const setCrit = (i, val) => setV(x => ({ ...x, acceptance: x.acceptance.map((a, j) => (j === i ? val : a)) }))
   const submit = e => {
@@ -147,10 +190,10 @@ function EditForm({ brief, stream, busy, onSave, onCancel }) {
     out.acceptance = stream ? [] : v.acceptance.map(a => a.trim()).filter(Boolean)
     onSave(out)
   }
-  const field = (name, label, value, onInput, extra = '') => html`<label class="card-edit-field"><span class="small muted">${label}</span>
-    <input class=${`input input-sm${extra}`} name=${name} type="text" value=${value} onInput=${e => onInput(e.currentTarget.value)} /></label>`
+  const field = (name, label, value, onInput, extra = '', ref = null) => html`<label class="card-edit-field"><span class="small muted">${label}</span>
+    <input class=${`input input-sm${extra}`} name=${name} type="text" value=${value} ref=${ref} onInput=${e => onInput(e.currentTarget.value)} /></label>`
   return html`<form class="card-edit" onSubmit=${submit}>
-    ${field('goal', f.goal, v.goal, x => set('goal', x))}
+    ${field('goal', f.goal, v.goal, x => set('goal', x), '', first)}
     <div class="card-edit-story">${STORY_PARTS.map(k => field(k, f[k === 'so_that' ? 'soThat' : k], v[k], x => set(k, x)))}</div>
     <p class="small muted">${f.storyHint}</p>
     ${stream ? null : v.acceptance.map((a, i) => field(`acceptance${i}`, f.criterion(i + 1), a, x => setCrit(i, x), ' card-edit-crit'))}
@@ -161,8 +204,10 @@ function EditForm({ brief, stream, busy, onSave, onCancel }) {
   </form>`
 }
 
-/** A proposal of the model beside a brief a person wrote: what it says, Apply, Edit, Discard */
-function Proposal({ prop, card, dkey, s, c }) {
+/** A proposal of the model beside a brief a person wrote: what it says, Apply, Edit, Discard. Drawn with the
+ *  proposal's id as its key, so a newer proposal starts afresh (never the form of the old one); `onDone` hands the
+ *  focus on once the proposal is applied or discarded and leaves */
+function Proposal({ prop, card, dkey, s, c, onDone }) {
   const w = T().card
   const [editing, setEditing] = useState(false)
   const busy = !!s?.ui?.busy?.[dkey]
@@ -172,48 +217,59 @@ function Proposal({ prop, card, dkey, s, c }) {
   const criteria = stream ? [] : (b.acceptance ?? []).filter(Boolean)
   const apply = async brief => {
     const r = await c.act('describe_apply', brief ? { key: dkey, proposal: prop.id, brief } : { key: dkey, proposal: prop.id })
-    if (r) setEditing(false)
+    if (r) {
+      setEditing(false)
+      onDone?.()
+    }
   }
+  const discard = async () => { if (await c.act('describe_discard', { key: dkey, proposal: prop.id })) onDone?.() }
   return html`<div class="card-proposal">
     <p class="card-proposal-head"><span class="label-caps">${w.proposal}</span>
-      <span class="ai-mark" title=${w.aiBy(prop.by || w.aiUnknown, prop.at_ms ? dayOf(new Date(prop.at_ms).toISOString()) : null)}>${w.ai}</span></p>
+      <${AiMark} by=${prop.by} day=${prop.at_ms ? dayOf(new Date(prop.at_ms).toISOString()) : null} /></p>
     <p class="muted small">${w.proposalHint}</p>
-    ${editing ? html`<${EditForm} brief=${b} stream=${stream} busy=${busy} onSave=${apply} onCancel=${() => setEditing(false)} />`
+    ${editing ? html`<${EditForm} key=${prop.id} brief=${b} stream=${stream} busy=${busy} onSave=${apply} onCancel=${() => setEditing(false)} />`
       : html`${b.goal ? html`<p class="card-goal"><span class="label-caps">${w.goal}</span> <span>${b.goal}</span></p>` : null}
         ${story ? html`<p class="card-story-line"><span class="label-caps">${w.story}</span> <span>${story}</span></p>` : null}
         ${criteria.length ? html`<ul class="card-criteria">${criteria.map((x, i) => html`<li key=${i}>${x}</li>`)}</ul>` : null}
         <div class="btn-row">
           <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => apply(null)}>${w.apply}<//>
           <${Btn} size="xs" variant="secondary" disabled=${busy} onClick=${() => setEditing(true)}>${w.edit}<//>
-          <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('describe_discard', { key: dkey, proposal: prop.id })}>${w.discard}<//>
+          <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${discard}>${w.discard}<//>
         </div>`}
   </div>`
 }
 
-/** "Describe with AI": busy while the action or a run of the server's own pass goes on; the last error quietly */
-function Describe({ card, d, dkey, s, c }) {
+/** "Describe with AI": busy while any describe runs (the server runs one at a time: this card's action, another
+ *  card's, a run of the server's own pass); this item's run and its last error said in a live region */
+function Describe({ card, d, dkey, s, c, box }) {
   const w = T().card
   const running = !!d?.running
-  const busy = running || !!s?.ui?.busy?.[dkey]
-  return html`<div class="card-describe">
+  const busy = running || !!s?.ui?.busy?.[dkey] || describeBusy(s)
+  return html`<div class="card-describe" ref=${box}>
     <${Btn} size="xs" variant="secondary" icon="spark" busy=${busy} title=${w.describeHint}
       onClick=${() => c.act('describe_run', { key: dkey })}>${card.goal ? w.describeAgain : w.describe}<//>
-    ${running ? html`<span class="muted small">${w.running}</span>` : null}
-    ${d?.last_error && !running ? html`<span class="muted small card-error">${w.lastError(d.last_error)}</span>` : null}
+    ${running ? html`<span class="muted small" role="status">${w.running}</span>` : null}
+    ${d?.last_error && !running ? html`<span class="muted small card-error" role="alert">${w.lastError(d.last_error)}</span>` : null}
   </div>`
 }
+
+const has_ = (skip, k) => !skip.includes(k)
 
 /** The card of an item in a detail head. `d` is its describe view, `dkey` the key describe takes (task:, inbox:);
  *  `title` draws the title too (where the head has none of its own), `skip` leaves out parts the head shows
  *  already: summary, goal, story, acceptance, next, state, owner, priority, due, area, source, progress, gaps,
  *  describe */
 export function ItemCard({ card, d = null, dkey = null, s, c, title = false, skip = [], cls = '' }) {
+  const box = useRef(null)
   if (!card) return null
-  const has = k => !skip.includes(k)
-  const story = storyText(card.story)
-  const summary = has('summary') && card.summary && !(story && has('story')) ? card.summary : null
-  const describable = has('describe') && dkey && c && DESCRIBABLE.has(card.kind)
+  const describable = has_(skip, 'describe') && dkey && c && DESCRIBABLE.has(card.kind)
   const prop = describable && d?.proposal?.id ? d.proposal : null
+  // a card filled from the waiting proposal leaves its brief to the proposal, which says it once with Apply
+  const lent = prop && briefFromProposal(card, d)
+  const has = k => has_(skip, k) && !(lent && ['goal', 'story', 'acceptance'].includes(k))
+  const story = storyText(card.story)
+  const summary = has('summary') && card.summary && !(story && (has_(skip, 'story') || lent)) ? card.summary : null
+  const focusDescribe = () => setTimeout(() => firstButton(box.current)?.focus(), 0)
   return html`<section class=${`card card-${card.kind ?? 'item'} ${cls}`}>
     ${title && card.title ? html`<p class="card-title">${card.title}</p>` : null}
     ${summary ? html`<p class="card-summary">${summary}</p>` : null}
@@ -222,8 +278,8 @@ export function ItemCard({ card, d = null, dkey = null, s, c, title = false, ski
     <${Chips} card=${card} has=${has} />
     ${has('progress') ? html`<${Progress} p=${card.progress} />` : null}
     ${has('gaps') ? html`<${Gaps} card=${card} dkey=${dkey} s=${s} c=${c} />` : null}
-    ${prop ? html`<${Proposal} prop=${prop} card=${card} dkey=${dkey} s=${s} c=${c} />` : null}
-    ${describable ? html`<${Describe} card=${card} d=${d} dkey=${dkey} s=${s} c=${c} />` : null}
+    ${prop ? html`<${Proposal} key=${prop.id} prop=${prop} card=${card} dkey=${dkey} s=${s} c=${c} onDone=${focusDescribe} />` : null}
+    ${describable ? html`<${Describe} card=${card} d=${d} dkey=${dkey} s=${s} c=${c} box=${box} />` : null}
   </section>`
 }
 

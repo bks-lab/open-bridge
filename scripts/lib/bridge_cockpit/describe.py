@@ -407,6 +407,11 @@ def language(root: Path) -> str:
         return "English"
 
 
+def says(view: dict) -> bool:
+    """A describe view with something for the page: a brief, a proposal, a run, an error or a warning"""
+    return bool(view["written"] or view["proposal"] or view["running"] or view["last_error"] or view["warnings"])
+
+
 # ---------------------------------------------------------------- the describer of one server
 
 class Describer:
@@ -417,7 +422,7 @@ class Describer:
         self.lock = threading.Lock()          # describe.json and the flags
         self.running: str | None = None       # the key whose call runs now
         self._thread: threading.Thread | None = None
-        self._cache: dict = {}                 # slug: ((folder, mtime_ns, size), item) for state_for and the pass
+        self._cache: dict = {}                 # slug or inbox:<id>: (stamp, item) for state_for and the pass
         self.asked = 0                         # model calls made since the start, what the pass counts
 
     # ------------------------------------------------------------ the store
@@ -503,14 +508,39 @@ class Describer:
             return task_item(self.app.root, slug, scrub, lines)
         if key.startswith("inbox:"):
             iid = key[6:]
-            if not INBOX_ID_RE.match(iid) or not (Path(self.app.root) / "work" / "inbox" / iid / "item.yaml").is_file():
+            if not INBOX_ID_RE.match(iid):
                 return None
-            try:
-                found = self._inbox().get(iid)
-            except Exception:  # noqa: BLE001 - an unreadable item is no item
-                return None
-            return inbox_item(found, scrub) if found.state in INBOX_STATES else None
+            return self._inbox_cached(iid) if not full else self._inbox_read(iid)
         return None
+
+    def _inbox_read(self, iid: str) -> dict | None:
+        if not (Path(self.app.root) / "work" / "inbox" / iid / "item.yaml").is_file():
+            return None
+        try:
+            found = self._inbox().get(iid)
+        except Exception:  # noqa: BLE001 - an unreadable item is no item
+            return None
+        return inbox_item(found, self.app.scrub) if found.state in INBOX_STATES else None
+
+    def _inbox_cached(self, iid: str) -> dict | None:
+        """An inbox item read again only once its item.yaml or its events changed (a new event file changes the
+        folder); a closed item is remembered as None, so describe.json's old entries cost a stat per build"""
+        folder = Path(self.app.root) / "work" / "inbox" / iid
+        try:
+            st, ev = (folder / "item.yaml").stat(), (folder / "events").stat()
+            stamp = ("inbox", st.st_mtime_ns, st.st_size, ev.st_mtime_ns, sum(1 for _ in (folder / "events").iterdir()))
+        except (OSError, ValueError):
+            stamp = None
+        cache_key = f"inbox:{iid}"
+        with self.lock:
+            hit = self._cache.get(cache_key)
+        if stamp is not None and hit and hit[0] == stamp:
+            return dict(hit[1]) if hit[1] else None
+        found = self._inbox_read(iid)
+        if stamp is not None:
+            with self.lock:
+                self._cache[cache_key] = (stamp, found)
+        return dict(found) if found else None
 
     def _task_cached(self, slug: str) -> dict | None:
         root = Path(self.app.root)
@@ -597,9 +627,14 @@ class Describer:
         out = {}
         for key in keys:
             view = self._state(key, items.get(key) if isinstance(items.get(key), dict) else {}, running)
-            if view["written"] or view["proposal"] or view["running"] or view["last_error"] or view["warnings"]:
+            if says(view):
                 out[key] = view
         return out
+
+    def view(self, key: str) -> dict | None:
+        """state_for of one key when it says something (as views keeps it), else None: what a detail reads"""
+        view = self.state_for(key)
+        return view if says(view) else None
 
     # ------------------------------------------------------------ writing
 

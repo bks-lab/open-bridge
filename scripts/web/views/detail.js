@@ -9,7 +9,7 @@ import {
   skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { ItemCard, describeKey, describeOf } from './card.js'
+import { ItemCard, TASK_FACTS_SKIP, describeKey, describeOf } from './card.js'
 import { ReviewBlock } from './check.js'
 import { KindTag, OriginTag, RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
@@ -370,6 +370,13 @@ function TaskDetail({ slug, s, c, exclude, carded = false }) {
   </div>`
 }
 
+/** The card chips a row detail leaves out: the priority chip and origin tag of its head, and what its MetaList,
+ *  TaskDetail or InboxDetail facts below say (area, due, an inbox state, a task's status) */
+function rowDetailSkip(row) {
+  return ['priority', 'source', row.area ? 'area' : null, row.due ? 'due' : null,
+    row.inbox_state || (row.task && !row.inbox_id) ? 'state' : null].filter(Boolean)
+}
+
 function RowDetail({ row, s, c }) {
   const t = T()
   const n = s.model?.numbers?.[row.key] ?? row.number
@@ -391,7 +398,7 @@ function RowDetail({ row, s, c }) {
       ${row.task ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openInner(`task:${row.task}`)}>${t.item.inNet}<//>` : null}
     </header>
     <${ItemCard} card=${row.card} d=${describeOf(s, describeKey(row), row.describe)} dkey=${describeKey(row)} s=${s} c=${c}
-      skip=${['priority', 'source']} cls="detail-card" />
+      skip=${rowDetailSkip(row)} cls="detail-card" />
     <${ReturnPanel} s=${s} c=${c} keys=${[row.key, row.task ? `task:${row.task}` : null]} />
     <${MetaList} row=${row} s=${s} />
     ${(row.why ?? []).length ? html`<div class="block"><h3 class="label-caps">${t.whyTitle}</h3>
@@ -448,7 +455,7 @@ export function DetailColumn({ s, c, byKey }) {
       <header class="detail-head"><span class="eyebrow">${t.kind[wk] ?? t.taskTitle}</span><h2 class="detail-title">${data?.card?.title || key.slice(5)}</h2>
         <p class="detail-kind"><${KindTag} row=${{ key, task: key.slice(5), work_kind: wk }} s=${s} />
           <${OriginTag} origin=${data?.origin ?? null} /></p></header>
-      <${ItemCard} card=${data?.card} d=${describeOf(s, key, data?.describe)} dkey=${key} s=${s} c=${c} skip=${['source']} cls="detail-card" />
+      <${ItemCard} card=${data?.card} d=${describeOf(s, key, data?.describe)} dkey=${key} s=${s} c=${c} skip=${TASK_FACTS_SKIP} cls="detail-card" />
       <${TaskDetail} slug=${key.slice(5)} s=${s} c=${c} carded=${!!data?.card?.summary} /></article>`
   } else {
     body = html`<div class="panel panel-pad"><p class="muted">${t.rowGone}</p>
