@@ -193,7 +193,6 @@ export function HomeList({ s, c }) {
       </div>
       <div class="hl-strip">
         ${strip.length ? html`<div class="hl-kpis">${strip.map(x => html`<${Kpi} key=${x.id} x=${x} st=${stationOf(x, s, c, chosen, project)} />`)}</div>` : null}
-        <button type="button" class="btn-link small" onClick=${() => c.openSettings('start')}>${h.choose}</button>
       </div>
       ${alarms.length || relayDown ? html`<div class="home-signals">
         ${alarms.map(a => html`<button type="button" class="home-signal tk-danger" key=${a.page_id + a.section_title}

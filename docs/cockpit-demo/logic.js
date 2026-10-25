@@ -3423,7 +3423,7 @@ export function tourPlace(rect, box, view, gap = 12) {
 // hints.items.<id>; an area the page does not show is left out when drawn. The page comes first, the header
 // on every page in a round of its own after it, so its notes never take the page's room
 const HINTS = {
-  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'], ['startTools', '.stage-tools'],
+  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'],
     ['stations', '.station'], ['core', '.core-button'], ['today', '.stage-card'], ['projects', '.home-chips'],
     ['tabCards', '.hcard:not(.hcard-row)'], ['rowCards', '.hcard-row'], ['starts', '.home-starts']],
   briefing: [['alarm', '.col-day .alarm'], ['secHead', '.col-day .sec-head'], ['rowMain', '.col-day .row-main'],

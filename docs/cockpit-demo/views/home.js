@@ -415,8 +415,7 @@ function HomeOverview({ s, c, catalog, chosen, project }) {
   const shown = shownTiles(catalog, chosen)
   const tile = tileMaker(s, c, chosen, project)
   return html`<section class="home-shelf" aria-labelledby="home-overview">
-    <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-overview">${h.overviewTitle}</h2>
-      <button type="button" class="btn-link small" onClick=${() => c.openSettings('start')}>${h.choose}</button></header>
+    <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-overview">${h.overviewTitle}</h2></header>
     ${shown.length ? html`<div class="kgrid">${shown.map(tile)}</div>` : html`<${Empty}>${h.chooseEmpty}<//>`}
   </section>`
 }
@@ -547,7 +546,6 @@ function HomeDesk({ s, c }) {
         onClick=${() => c.setPage(a.page_id)}><${Dot} token="danger" /><span>${h.alarm(a.count, `${a.section_title} (${a.page_title})`)}</span></button>`)}
       ${relayDown ? html`<button type="button" class="home-signal tk-warning" onClick=${c.openClaude}>
         <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
-      <span class="desk-tools"><button type="button" class="btn-link small" onClick=${() => c.openSettings('start')}>${h.choose}</button></span>
     </header>
     ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
     ${on.has('s:areas') ? html`<${HomeAreas} areas=${areas} project=${null} c=${c} desk />` : html`<p class="muted small">${h.areasOff}</p>`}

@@ -2085,17 +2085,16 @@ test('overview: the decision guide shows the next tab that wants you, with next 
   assert.equal(none.$('#desk-guide'), null)
 })
 
-test('no Customise anywhere: the overview, the tiles and the bridge lead to Settings, Start page', () => {
+test('no Customise and no settings link on the start page: the page bar has Settings', () => {
   const { logic } = loadedRooms
   for (const view of ['areas', 'tiles', 'stage', 'list']) {
     const base = cockpitState(NOW, { ui: { page: '@start' } })
     const tiles = logic.homeViewSet(logic.homeChosen(base.model, null), view)
     const c = recorder()
     const el = mount(html`<${HomePage} s=${{ ...base, home: { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] } }} c=${c} />`)
-    const link = el.button(en.home.choose)
-    assert.ok(link, view)
-    link.click()
-    assert.deepEqual(c.calls.at(-1), ['openSettings', 'start'], view)
+    // the small links only: reading the text of every button of the bridge (its stations draw SVG) takes minutes
+    assert.equal(el.$$('button.btn-link').some(b => b.text() === en.home.choose), false, view)
+    assert.equal(el.$('.stage-tools') ?? el.$('.desk-tools'), null, view)
     assert.equal(c.calls.some(x => x[0] === 'setDrawer' && x[1] === 'customize'), false, view)
   }
 })

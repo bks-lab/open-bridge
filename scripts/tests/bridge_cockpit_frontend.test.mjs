@@ -2928,7 +2928,7 @@ test('ticker: wired into both start page layouts, the store, the events; links o
   const term = stage.slice(stage.indexOf('<div class="stage-term">'), stage.indexOf('<div class="stage-body">'))
   assert.ok(term.length > 0, 'stage-term stands before stage-body')
   assert.match(term, /<div class="stage-greet">[\s\S]*?<\$\{StagePrompt\}/)
-  assert.match(term, /<div class="stage-tools">/)
+  assert.doesNotMatch(stage, /stage-tools|openSettings\('start'\)/)
   assert.doesNotMatch(stage.slice(stage.indexOf('<div class="stage-body">')), /TickerBand/)
   // the status stands still in the live section of the side card, above the live feed
   assert.match(stage, /<div class="feed">\n\s+<h3 class="label-caps feed-head">[^\n]*<\/h3>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{\(s\.feed/)

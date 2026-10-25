@@ -1848,7 +1848,6 @@ button.home-area-n:hover { background: var(--surface-muted); text-decoration: un
   border-radius: var(--radius-full); background: var(--surface-raised); color: var(--on-surface); font: inherit; font-weight: 600; cursor: pointer;
 }
 .desk-waiting.tk-warning { border-color: var(--tk); }
-.desk-tools { margin-left: auto; }
 /* the parts under the table: the same rhythm as the shelves; the guide and the tabs side by side when wide */
 .desk-parts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .desk-parts > * { min-width: 0; }
@@ -2114,7 +2113,6 @@ button.home-area-n:hover { background: var(--surface-muted); text-decoration: un
 }
 @keyframes stage-blink { 50% { opacity: 0; } }
 .stage-lead { margin: 0; color: var(--on-surface-muted); font-size: var(--text-sm); }
-.stage-tools { position: absolute; top: 0; right: 0; }
 .stage-term { position: relative; }
 
 .stage-side { padding-top: 12px; }
@@ -2162,7 +2160,6 @@ button.home-area-n:hover { background: var(--surface-muted); text-decoration: un
   .stage-input, .stage-ghost { font-size: 20px; }
   .stage-caret { font-size: 20px; }
   .stage-cursor { height: 22px; width: 10px; }
-  .stage-tools { position: static; }
 }
 @media (prefers-reduced-motion: reduce) {
   .sweep, .stage-cursor { animation: none; }

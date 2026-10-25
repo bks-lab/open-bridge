@@ -222,7 +222,7 @@ parts and nothing else:
    first number of the line All, so what has no area counts too; a click
    leads where that number leads, without a filter), the findings of a status page
    and a control session that is not listening as signals (each opens its
-   place), and a small link to Settings, Start page.
+   place). The page carries no settings link of its own: Settings sits in the page bar.
 2. The **Areas** as a table (below): the column heads once on top; on a
    narrow screen each line wraps and every number carries its label (the
    table keeps its table roles for screen readers). With the shelf switched
@@ -385,8 +385,8 @@ count, its largest sections underneath (a page with findings names where
 they are). A click opens the page.
 
 What stands on the start page is your choice, all of it in one place:
-Settings, Start page (the small "Settings" link on every start view leads
-there). In this order: the view (overview, bridge, tiles, list or focus, five
+Settings, Start page, reached through Settings in the page bar like every
+other setting. In this order: the view (overview, bridge, tiles, list or focus, five
 pictures to pick from), the parts of the overview, then the tiles and
 sections of the other views: the stations as one list in their order (a
 switch each, a grip to drag, arrows for the keyboard; the bridge has room for

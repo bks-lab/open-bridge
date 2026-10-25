@@ -580,9 +580,6 @@ export function BridgeStage({ s, c, catalog, chosen, project }) {
         </div>` : null}
       </div>
       ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
-      <div class="stage-tools">
-        <button type="button" class="btn-link small" onClick=${() => c.openSettings('start')}>${h.choose}</button>
-      </div>
     </div>
     <div class="stage-body">
       <div class="stage-bridge-box">
