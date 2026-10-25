@@ -10,10 +10,14 @@ session) and the cockpit's `/api/find` (which runs that command through its runn
 - `work/log.md`.
 
 The query is plain words, never a pattern: matched case-insensitively as fixed strings (`a.b(` finds the
-text `a.b(`). A file (one task, the folder of one slug) is a hit when its slug, its title and its lines
-hold every word between them. A log or archive line belongs to the file its context column names, else to
-the first slug it mentions; a line that names none stays with its log or archive file and counts only when
-it holds every word itself.
+text `a.b(`). Case is folded per character with `str.lower()`, the way `rg --ignore-case` folds it, so "ß"
+stays "ß" (never "ss") on both ways. A file (one folder: `work/tasks/<slug>`, `work/streams/<slug>` or
+`work/done/<month>/<slug>`, so an open task and a closed one of the same slug are two files) is a hit when
+its slug, its title and its lines hold every word between them. A log or archive line belongs to the file
+its context column names, else to the first slug it mentions (the open file of that slug, else the newest
+closed one); a line that names none stays with its log or archive file and counts only when it holds every
+word itself. A file in a folder that is no slug (`work/tasks/_briefings/...`) is a file of its own, found
+by its path, with nothing to open.
 
 The order is the point, since a common word finds hundreds of files: first the files whose slug or title
 holds every word (rank 0), then those with a hit in their STATUS.md (rank 1), then the rest (rank 2); open
@@ -51,7 +55,7 @@ KIND_ORDER = {"task": 0, "stream": 0, "done": 1, "log": 2, "archive": 2}
 
 
 def check_query(query: object) -> tuple[str, list[str]]:
-    """The query as searched and its words (case-folded, each once, in order); ValueError when it is not one:
+    """The query as searched and its words (lower case, each once, in order); ValueError when it is not one:
     not a string, a control character, shorter than 2 or longer than QUERY_MAX characters."""
     if not isinstance(query, str):
         raise ValueError("the query must be a string")
@@ -61,7 +65,7 @@ def check_query(query: object) -> tuple[str, list[str]]:
     if not 2 <= len(text) <= QUERY_MAX:
         raise ValueError(f"the query must be 2 to {QUERY_MAX} characters")
     words: list[str] = []
-    for word in text.casefold().split():
+    for word in text.lower().split():
         if word not in words:
             words.append(word)
     return text, words[:WORDS_MAX]
@@ -140,9 +144,9 @@ def _rg_files(root: Path, rg: str, words: list[str]) -> list[str] | None:
     return sorted(rel for rel in found if _eligible(root, rel))
 
 
-def known_slugs(root: Path) -> dict[str, tuple[str, str]]:
-    """slug -> (kind, folder): an open task first, then a stream, then the newest closed one (as /api/task)."""
-    out: dict[str, tuple[str, str]] = {}
+def known_folders(root: Path) -> list[tuple[str, str, str]]:
+    """Every file as (slug, kind, folder): the open tasks, the streams, then the closed ones, newest month first."""
+    out: list[tuple[str, str, str]] = []
     work = root / "work"
     places = [("task", work / "tasks"), ("stream", work / "streams")]
     done = work / "done"
@@ -153,17 +157,26 @@ def known_slugs(root: Path) -> dict[str, tuple[str, str]]:
         if not base.is_dir():
             continue
         for d in sorted(base.iterdir()):
-            if d.is_dir() and not d.is_symlink() and SLUG_RE.match(d.name) and d.name not in out:
-                out[d.name] = (kind, d.relative_to(root).as_posix())
+            if d.is_dir() and not d.is_symlink() and SLUG_RE.match(d.name):
+                out.append((d.name, kind, d.relative_to(root).as_posix()))
     return out
 
 
-def _slug_of_path(rel: str) -> str | None:
+def known_slugs(root: Path) -> dict[str, tuple[str, str]]:
+    """slug -> (kind, folder): an open task first, then a stream, then the newest closed one (as /api/task)."""
+    out: dict[str, tuple[str, str]] = {}
+    for slug, kind, folder in known_folders(root):
+        out.setdefault(slug, (kind, folder))
+    return out
+
+
+def _folder_of_path(rel: str) -> str | None:
+    """The file folder a path lies in: `work/tasks/<slug>`, `work/streams/<slug>`, `work/done/<month>/<slug>`."""
     parts = rel.split("/")
     if len(parts) >= 4 and parts[1] in ("tasks", "streams"):
-        return parts[2]
+        return "/".join(parts[:3])
     if len(parts) >= 5 and parts[1] == "done":
-        return parts[3]
+        return "/".join(parts[:4])
     return None
 
 
@@ -173,7 +186,7 @@ def _slug_of_line(line: str, slugs: dict, order: list[str]) -> str | None:
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) >= 3 and cells[2] in slugs:
             return cells[2]
-    low = line.casefold()
+    low = line.lower()
     for slug in order:
         at = low.find(slug)
         while at >= 0:
@@ -190,7 +203,7 @@ def snippet(line: str, words: list[str]) -> str:
     text = " ".join(line.split())
     if len(text) <= SNIPPET_MAX:
         return text
-    low = text.casefold()
+    low = text.lower()
     at = min((low.find(w) for w in words if w in low), default=0)
     start = max(0, at - 60)
     cut = text[start:start + SNIPPET_MAX]
@@ -238,9 +251,12 @@ def find(root: Path | str, query: object, *, engine: str = "auto", rg: str | Non
             used = "rg" if files is not None else "python"
     if files is None:
         files = _walk(root)
+    folders = known_folders(root)
+    place = {folder: (i, slug, kind) for i, (slug, kind, folder) in enumerate(folders)}
     slugs = known_slugs(root)
     order = sorted(slugs, key=lambda s: (-len(s), s))
     groups: dict[tuple, dict] = {}
+    tree_kind = {"tasks": "task", "streams": "stream", "done": "done", "archive": "archive"}
 
     def group(key: tuple, slug: str | None, kind: str, path: str) -> dict:
         if key not in groups:
@@ -253,34 +269,39 @@ def find(root: Path | str, query: object, *, engine: str = "auto", rg: str | Non
         except OSError:
             continue
         loose = rel == "work/log.md" or rel.startswith("work/archive/")
-        own = None if loose else _slug_of_path(rel)
+        own = None if loose else _folder_of_path(rel)
         for n, line in enumerate(lines, 1):
-            low = line.casefold()
+            low = line.lower()
             got = {w for w in words if w in low}
             if not got:
                 continue
-            slug = own if not loose else _slug_of_line(line, slugs, order)
-            if slug and slug in slugs:
-                kind, folder = slugs[slug]
-                g = group(("file", slug), slug, kind, folder)
+            if not loose and own in place:
+                _, slug, kind = place[own]
+                g = group(("file", own), slug, kind, own)
             elif not loose:
-                continue      # a folder with no slug of its own (a stray file in a tree): no file to open
+                # a folder that is no slug (work/tasks/_briefings/): a file of its own, nothing to open
+                g = group(("stray", rel), None, tree_kind[rel.split("/")[1]], rel)
             else:
-                if len(got) < len(words):
+                slug = _slug_of_line(line, slugs, order)
+                if slug:
+                    kind, folder = slugs[slug]
+                    g = group(("file", folder), slug, kind, folder)
+                elif len(got) < len(words):
                     continue  # a line nobody owns counts only when it holds every word itself
-                g = group(("loose", rel), None, "log" if rel == "work/log.md" else "archive", rel)
+                else:
+                    g = group(("loose", rel), None, "log" if rel == "work/log.md" else "archive", rel)
             g["words"] |= got
-            is_status = rel.endswith("/STATUS.md") and not loose
+            is_status = rel.endswith("/STATUS.md") and g["slug"] is not None and not loose
             g["status"] = g["status"] or is_status
             g["hits"].append({"path": rel, "line": n, "text": snippet(line, words), "n": len(got), "status": is_status})
     # a file whose name alone holds every word is found without a line
-    for slug, (kind, folder) in slugs.items():
+    for slug, kind, folder in folders:
         if all(w in slug for w in words):
-            group(("file", slug), slug, kind, folder)
+            group(("file", folder), slug, kind, folder)
     out = []
     for g in groups.values():
         title = title_of(root, g["path"], g["slug"]) if g["slug"] else g["path"]
-        name = f"{g['slug'] or ''} {title}".casefold()
+        name = f"{g['slug'] or ''} {title}".lower()
         named = bool(g["slug"]) and all(w in name for w in words)
         if not named and not set(words) <= (g["words"] | {w for w in words if w in name}):
             continue
@@ -288,7 +309,9 @@ def find(root: Path | str, query: object, *, engine: str = "auto", rg: str | Non
         hits = sorted(g["hits"], key=lambda h: (not h["status"], -h["n"], h["path"], h["line"]))
         out.append({"slug": g["slug"], "kind": g["kind"], "path": g["path"], "title": title, "rank": rank,
                     "count": len(hits), "hits": [{k: h[k] for k in ("path", "line", "text")} for h in hits[:HITS_MAX]]})
-    out.sort(key=lambda g: (g["rank"], KIND_ORDER.get(g["kind"], 3), -g["count"], g["slug"] or g["path"]))
+    # the same slug twice (open and closed, or closed in two months): the order of known_folders, newest first
+    out.sort(key=lambda g: (g["rank"], KIND_ORDER.get(g["kind"], 3), -g["count"], g["slug"] or g["path"],
+                            place.get(g["path"], (len(folders),))[0]))
     return {"ok": True, "query": text, "words": words, "engine": used, "total": len(out),
             "truncated": len(out) > groups_max, "groups": out[:groups_max]}
 

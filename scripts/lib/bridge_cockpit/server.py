@@ -854,7 +854,12 @@ class Handler(BaseHTTPRequestHandler):
             if not details.SLUG_RE.match(slug):
                 self.send_error_json("invalid_argument", "not a task slug", "slug")
                 return
-            result = details.task_detail(app.root, slug, app.inbox_listing())
+            # path: one folder of the slug (a closed copy the search found), else the open one first
+            folder = one("path") or None
+            if folder is not None and (len(folder) > 200 or folder.split("/")[-1] != slug):
+                self.send_error_json("invalid_argument", "not a folder of this task", "path")
+                return
+            result = details.task_detail(app.root, slug, app.inbox_listing(), folder)
             if result is None:
                 self.send_error_json("not_found", "no such task")
             else:

@@ -589,7 +589,8 @@ async function loadDetail(kind, id) {
   const ver = store.get().model?.collected_ms ?? 0
   store.set(s => ({ ...s, details: { ...s.details, [kind]: { ...s.details[kind],
     [id]: { status: 'loading', ver, data: s.details[kind][id]?.data ?? null } } } }))
-  const res = kind === 'inbox' ? await api.inbox(id) : await api.task(id)
+  // a task by its slug, or one folder of it (a closed copy the files view opened from the search)
+  const res = kind === 'inbox' ? await api.inbox(id) : id.includes('/') ? await api.task(id.split('/').pop(), id) : await api.task(id)
   const entry = res.ok ? { status: 'ok', data: res.data, ver } : { status: 'error', error: errorText(res.error, T()), ver }
   if (res.status === 401) failNote(res)
   store.set(s => ({ ...s, details: { ...s.details, [kind]: { ...s.details[kind], [id]: entry } } }))
@@ -904,12 +905,14 @@ const ctl = {
       : { q: words, status: 'error', data: null, error: res.error?.message ?? String(res.status) } }))
   },
   clearFind: () => store.set(s => ({ ...s, find: null })),
-  // a found file opens in the queue where it stands there, else beside it (a closed one, a backlog task)
-  openFile(slug) {
+  // a found file opens in the queue where it stands there, else beside it (a backlog task); a closed one always
+  // beside it, by its folder, since a slug can be open and closed at once
+  openFile(slug, path) {
+    const closed = typeof path === 'string' && path.startsWith('work/done/')
     const s = store.get()
-    const queue = fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now())
+    const queue = closed ? [] : fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now())
     const i = queue.findIndex(x => x.slug === slug)
-    setUi(i >= 0 ? { dossierAt: { id: queue[i].id, i }, dossierOpen: null } : { dossierOpen: slug })
+    setUi(i >= 0 ? { dossierAt: { id: queue[i].id, i }, dossierOpen: null } : { dossierOpen: closed ? path : slug })
   },
   closeFile: () => setUi({ dossierOpen: null }),
   // a question in a file or about the results: a quick read-only chat with the file (or the list) as data;
@@ -937,9 +940,9 @@ const ctl = {
     return false
   }),
   dismissSuggest: () => setUi({ suggest: null }),
-  // only this click writes it: next: in STATUS.md with a dated note (verb task_next)
+  // only this click writes it: next: in STATUS.md with a dated note (verb task_set_next)
   async takeNext(key, text) {
-    const r = await act('task_next', { key, text })
+    const r = await act('task_set_next', { key, text })
     if (r?.ok) setUi({ suggest: null })
     return !!r?.ok
   },
@@ -1205,9 +1208,10 @@ const ctl = {
     // ?words searches the files: the work tab opens on its files view with the results; every code stays as it was
     const search = commandSearch(text)
     if (search !== null) {
+      // for this visit only: the saved work view stays the default (it changes by a click on the switch or config)
       ctl.setPage('briefing')
-      ctl.setWorkView('dossier')
-      setUi({ dossierOpen: null })
+      setUi({ workView: 'dossier', dossierOpen: null })
+      pageSeen('briefing')
       if (search) await ctl.findFiles(search)
       return true
     }

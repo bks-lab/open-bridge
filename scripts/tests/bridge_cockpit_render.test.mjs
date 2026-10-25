@@ -1939,7 +1939,7 @@ test('the results come by file, best first; a click opens a file, a closed one t
   assert.ok(items[1].text().includes(en.dossier.find.kind.done) && items[1].text().includes(en.dossier.find.hits(2)))
   assert.ok(items[1].text().includes('vendor export timed out'))
   items[1].$('button.dz-found-open').click()
-  assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [['openFile', 'release-notes-2026-09']])
+  assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [['openFile', 'release-notes-2026-09', 'work/done/2026-09/release-notes-2026-09']])
   assert.equal(items[2].$('button.dz-found-open'), null)
   assert.ok(items[2].text().includes('work/log.md'))
   el.button(en.dossier.find.clear).click()
@@ -2034,4 +2034,109 @@ test('a file without a next step offers a suggestion; the answer shows read only
   assert.deepEqual(c2.calls.filter(y => y[0] === 'takeNext'), [['takeNext', x.row.key, 'Call the vendor today']])
   box.button(en.dossier.suggest.dismiss).click()
   assert.ok(c2.calls.some(y => y[0] === 'dismissSuggest'))
+})
+
+// ---------------------------------------------------------------- the files view: review fixes of E2
+
+test('files: the search field shows the words searched last, also when they came from the command box', async () => {
+  const { DossierView } = views.dossier
+  const field = el => boxValue(el.$('form.dz-find input'))
+  const el = mount(html`<${DossierView} s=${filesOn({ find: { q: 'vendor export', status: 'ok', data: FOUND } })} c=${recorder()} />`)
+  await tick()
+  assert.equal(field(el), 'vendor export')
+  // ?invoice in the command box while the view is open: the field follows
+  loadedRooms.render(html`<${DossierView} s=${filesOn({ find: { q: 'invoice', status: 'loading', data: null } })} c=${recorder()} />`, el)
+  await tick()
+  assert.equal(field(el), 'invoice')
+  // what is typed stays while the search stays the same
+  const input = el.$('form.dz-find input')
+  input.value = 'invoice vendor'
+  input.dispatch('input')
+  await tick()
+  loadedRooms.render(html`<${DossierView} s=${filesOn({ find: { q: 'invoice', status: 'ok', data: FOUND } })} c=${recorder()} />`, el)
+  await tick()
+  assert.equal(field(el), 'invoice vendor')
+})
+
+test('files: a found closed file opens by its folder, so a slug open and closed are two files', () => {
+  const { DossierView } = views.dossier
+  const c = recorder()
+  const el = mount(html`<${DossierView} s=${filesOn({ find: { q: 'vendor export', status: 'ok', data: FOUND } })} c=${c} />`)
+  el.$$('.dz-found > li')[1].$('button.dz-found-open').click()
+  el.$$('.dz-found > li')[0].$('button.dz-found-open').click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [
+    ['openFile', 'release-notes-2026-09', 'work/done/2026-09/release-notes-2026-09'],
+    ['openFile', 'demo-task', FOUND.groups[0].path]])
+})
+
+test('files: a closed copy opened by its folder reads that copy and borrows nothing from an open row of its slug', async () => {
+  const { DossierView } = views.dossier
+  const queue = views.dossier.dossierQueue(filesOn())
+  const slug = queue.find(x => x.reason === 'task').slug
+  const folder = `work/done/2026-08/${slug}`
+  const data = { ok: true, slug, kind: 'done', path: `${folder}/STATUS.md`,
+    front: { status: 'done', priority: 'P3', type: 'admin', headline: 'The August copy', last_updated: '2026-08-30' },
+    sections: [], log: [], inbox: [], related: [] }
+  const c = answering()
+  const el = mount(html`<${DossierView} s=${filesOn({ details: { inbox: {}, task: { [folder]: { status: 'ok', data, ver: 0 } } }, ui: { dossierOpen: folder } })} c=${c} />`)
+  const cover = el.$('.dz-cover').text()
+  assert.ok(cover.includes(slug) && cover.includes('The August copy') && cover.includes(en.dossier.find.kind.done))
+  assert.equal(el.button(en.dossier.suggest.button), null, 'no suggestion for a closed file')
+  // not loaded yet: it asks for that folder
+  const c2 = recorder()
+  mount(html`<${DossierView} s=${filesOn({ ui: { dossierOpen: folder } })} c=${c2} />`)
+  await tick()
+  assert.ok(c2.calls.some(x => x[0] === 'loadTask' && x[1] === folder))
+  assert.ok(!c2.calls.some(x => x[0] === 'loadTask' && x[1] === slug), 'never the open file of its slug in its place')
+})
+
+test('files: an open task found outside the queue without a next step offers the suggestion too', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const base = filesOn()
+  const inQueue = new Set(dossierQueue(base).map(x => x.slug))
+  const row = base.model.sections.flatMap(x => x.rows ?? []).find(r => r.key?.startsWith('task:') && !r.inbox_id && !r.next
+    && !inQueue.has(r.key.slice(5)))
+  assert.ok(row, 'the demo has an open task outside the queue without a next step')
+  const slug = row.key.slice(5)
+  const data = { ok: true, slug, kind: 'task', path: `work/tasks/${slug}/STATUS.md`, front: { status: 'backlog', headline: 'h' },
+    sections: [], log: [], inbox: [], related: [] }
+  const c = recorder()
+  const el = mount(html`<${DossierView} s=${filesOn({ details: { inbox: {}, task: { [slug]: { status: 'ok', data, ver: 0 } } }, ui: { dossierOpen: slug } })} c=${c} />`)
+  el.button(en.dossier.suggest.button).click()
+  const [call] = c.calls.filter(x => x[0] === 'suggestNext')
+  assert.equal(call[1], slug)
+  assert.ok(call[2].includes(`work/tasks/${slug}/`))
+})
+
+test('files: a suggestion whose chat is gone or still running can always be let go', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const queue = dossierQueue(filesOn())
+  const k = queue.findIndex(y => y.reason === 'task' && !y.row.next)
+  const x = queue[k]
+  const at = { dossierAt: { id: x.id, i: k }, suggest: { slug: x.slug, conv: 'q0000000009' } }
+  // its chat left the list (archived, replaced): no endless "running"
+  const c = recorder()
+  let el = mount(html`<${DossierView} s=${filesOn({ quick: { convs: [] }, ui: at })} c=${c} />`)
+  assert.ok(!el.$('.dz-suggest').text().includes(en.dossier.suggest.running))
+  assert.ok(el.$('.dz-suggest').text().includes(en.dossier.suggest.failed))
+  el.$('.dz-suggest').button(en.dossier.suggest.dismiss).click()
+  assert.ok(c.calls.some(y => y[0] === 'dismissSuggest'))
+  // while it runs
+  const c2 = recorder()
+  el = mount(html`<${DossierView} s=${filesOn({ quick: { convs: [{ id: 'q0000000009', running: true, turns: [{ q: 'x', a: null }] }] }, ui: at })} c=${c2} />`)
+  assert.ok(el.$('.dz-suggest').text().includes(en.dossier.suggest.running))
+  el.$('.dz-suggest').button(en.dossier.suggest.dismiss).click()
+  assert.ok(c2.calls.some(y => y[0] === 'dismissSuggest'))
+})
+
+test('header: a running suggestion is no running chat, the start page core still is', () => {
+  // the chat tab's spinner and the ask button read the same test (the page bar measures the window, so its own test)
+  const { chatRunning } = views.header
+  const convs = list => ({ quick: { convs: list } })
+  assert.equal(chatRunning({ place: 'suggest', running: true }), false)
+  assert.equal(chatRunning({ place: 'core', running: true }), true)
+  assert.equal(chatRunning({ running: true }), true)
+  assert.equal(chatRunning({ running: false }), false)
+  assert.ok(!renderHeader(null, convs([{ id: 'a', place: 'suggest', running: true, turns: [] }])).$('.hdr-ask').hasClass('btn-primary'))
+  assert.ok(renderHeader(null, convs([{ id: 'b', place: 'core', running: true, turns: [] }])).$('.hdr-ask').hasClass('btn-primary'))
 })

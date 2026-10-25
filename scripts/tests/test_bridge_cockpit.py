@@ -2539,6 +2539,16 @@ def test_task_detail_names_its_next_step_and_open_inbox_items(world):
     data = json.loads(world.request("GET", "/api/task?slug=gone-task", headers=world.cookie)[2])
     assert data["kind"] == "done" and data["front"]["headline"] == "newer"
     assert data["path"] == "work/done/2026-10/gone-task/STATUS.md"
+    # one closed copy by its folder (the search finds every copy of a slug); a folder that is not one of its
+    # places is refused or not found, never read
+    q = "/api/task?slug=gone-task&path=" + urllib.parse.quote("work/done/2026-09/gone-task")
+    data = json.loads(world.request("GET", q, headers=world.cookie)[2])
+    assert data["kind"] == "done" and data["front"]["headline"] == "older"
+    assert data["path"] == "work/done/2026-09/gone-task/STATUS.md"
+    for bad in ("work/done/2026-09/demo-task", "work/done/../tasks/gone-task", "work/done/2026-11/gone-task", "/etc/gone-task",
+                "work/tasks/gone-task"):
+        status, _, _ = world.request("GET", "/api/task?slug=gone-task&path=" + urllib.parse.quote(bad), headers=world.cookie)
+        assert status in (400, 404), bad
 
 
 def test_split_front_skips_a_leading_schema_comment():
@@ -7575,13 +7585,13 @@ def test_a_suggested_step_asks_in_a_place_of_its_own_that_the_next_one_replaces(
 
 def test_taking_over_a_next_step_writes_it_through_task_py_and_leaves_an_audit_line(world):
     world.runner.calls.clear()
-    world.act("task_next", key="task:demo-task", text="  Call the vendor; rm -rf /  ")
+    world.act("task_set_next", key="task:demo-task", text="  Call the vendor; rm -rf /  ")
     assert writes(world) == [K(world, "next", "demo-task", "--", "Call the vendor; rm -rf /")]
     line = (world.state / "audit.log").read_text().splitlines()[-1].split()
-    assert line[1:3] == ["task_next", "task:demo-task"] and "ok=true" in line
+    assert line[1:3] == ["task_set_next", "task:demo-task"] and "ok=true" in line
     assert "Call" not in " ".join(line)                                           # never the text
-    refused(world, "not_applicable", "task_next", key=f"inbox:{YES_ID}", text="x")
-    refused(world, "invalid_argument", "task_next", key="task:demo-task", text="a\nb")
+    refused(world, "not_applicable", "task_set_next", key=f"inbox:{YES_ID}", text="x")
+    refused(world, "invalid_argument", "task_set_next", key="task:demo-task", text="a\nb")
     world.runner.handlers["task.next"] = lambda argv: fail("no such task")
-    res = world.act("task_next", key="task:demo-task", text="Call")
+    res = world.act("task_set_next", key="task:demo-task", text="Call")
     assert res["ok"] is False

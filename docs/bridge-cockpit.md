@@ -230,15 +230,19 @@ On top of the Files view stands a search field of its own. It searches every
 task, stream and closed task (`work/tasks/`, `work/streams/`, `work/done/`),
 `work/log.md` and `work/archive/`: every `*.md` and `*.yaml`, never inside a
 `video/` or `deliverables/` folder, never a hidden file, a link or anything
-outside the Bridge. The words are plain text, never a pattern, and a file is a
-hit when its slug, its title and its lines hold every word between them. The
+outside the Bridge. The words are plain text, never a pattern, matched without
+regard to case one letter at a time ("ß" stays "ß", it never stands for "ss"),
+and a file is a hit when its slug, its title and its lines hold every word
+between them. A file is one folder, so an open task and a closed one with the
+same slug are two files, each with its own hits; a file in a folder that is no
+slug (`work/tasks/_briefings/`) is listed by its path, with nothing to open. The
 results come by file, best first: the files whose slug or title holds every
 word, then those with a hit in their STATUS.md, then the rest, open before
 closed; a log row counts for the file its context column or its text names.
 A click opens a file, a closed one too: one in the queue is walked to, any
 other opens beside the queue with its cover, its drawers and "Back to the
-queue". The same search runs as a command, for a chat session as for a
-terminal: `python3 scripts/work-find.py gateway september` (`--json` for the
+queue", a closed one by its folder (`GET /api/task?slug=&path=`). The same
+search runs as a command, for a chat session as for a terminal: `python3 scripts/work-find.py gateway september` (`--json` for the
 whole answer). It uses `rg` when it is installed and plain Python when not,
 with the same answer either way (`GET /api/find?q=` runs that command).
 
@@ -247,11 +251,13 @@ its own (section 5, read only) with the file's folder and cover sent along as
 data. An open task becomes what the chat is about, so the chat leaves its list
 once the task closes; a closed one is never named, or the chat would be taken
 into the archive at once. With no file open, a question about the results
-sends the result list along instead. A file whose next step nobody names
-offers "Suggest next step": one read-only question whose answer stands in the
-file and nowhere else (not in the chat lists, no note). Nothing is written
-until you press Take over, which keeps the step in STATUS.md as
-`next: {what: ...}` with a dated note (`task.py next`, the verb `task_next`).
+sends the result list along instead. An open task whose next step nobody
+names, in the queue or opened from the search, offers "Suggest next step":
+one read-only question whose answer stands in the file and nowhere else (not
+in the chat lists, no note, no spinner on the chat tab); "Dismiss" drops it at
+any time. Nothing is written until you press Take over, which keeps the step
+in STATUS.md as `next: {what: ...}` with a dated note (`task.py next`, the
+verb `task_set_next`).
 
 Only one number in the bar carries colour: Today's count of what waits for
 you, the same count as the start page's station "waits for you" and the
@@ -1532,8 +1538,9 @@ with a running tab jumps there instead of starting a second one, and `a` or
 `w` is refused for an entry only you can do, a row that waits for someone else,
 and a yes already given.
 A text that starts with `?` is no code but a search: `?gateway september`
-opens the work tab on its Files view with what the search found. Every code
-stays as it was.
+opens the work tab on its Files view with what the search found, for this
+visit only: the next load opens the work tab on the view it had before. Every
+code stays as it was.
 
 ## 4. Safety model
 

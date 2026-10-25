@@ -123,7 +123,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
     "task_running": {"slug": ("slug", True)},
     # the files view takes over a suggested next step: next: {what} with a dated note (task.py next)
-    "task_next": {"key": ("key", True), "text": ("line", True)},
+    "task_set_next": {"key": ("key", True), "text": ("line", True)},
     # taking a to_task back: the task it made closes as declined, the inbox item opens again
     "to_task_undo": {"id": ("inbox_id", True), "slug": ("slug", True)},
     "to_task": {"key": ("key", True), "status": ("reopen_as", False)},

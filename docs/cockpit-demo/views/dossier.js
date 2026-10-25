@@ -12,10 +12,10 @@
 // folder and cover as data (logic.js fileContext) and names an open task, never a closed one; with no file
 // open, a question about the results carries the result list (findContext). A file whose next step nobody
 // names offers a suggestion: one read-only question, its answer shown, written to STATUS.md only when the
-// person takes it over (verb task_next).
+// person takes it over (verb task_set_next).
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, dossierStep, fileContext, fileFacts, fileQueue, findContext, focusIndex, formatDay, prioToken,
   stepAge, suggestedStep, tabOfTask,
@@ -130,6 +130,13 @@ function Find({ s, c, open }) {
   const d = T().dossier
   const f = d.find
   const [text, setText] = useState(s.find?.q ?? '')
+  // the words searched last, also when the command box searched them (?words) while this field was open; only
+  // a new search sets it, never what is being typed
+  const searched = useRef(s.find?.q ?? '')
+  useEffect(() => {
+    const q = s.find?.q ?? ''
+    if (q !== searched.current) { searched.current = q; setText(q) }
+  }, [s.find?.q])
   const submit = e => {
     e.preventDefault()
     const q = text.replace(/\s+/g, ' ').trim()
@@ -148,9 +155,9 @@ function Find({ s, c, open }) {
       ${found ? html`<${Btn} variant="ghost" size="sm" onClick=${() => { setText(''); c.clearFind() }}>${f.clear}<//>` : null}
     </form>
     ${note ? html`<p class="dz-find-note muted small" role="status">${note}</p>` : null}
-    ${groups.length ? html`<ol class="dz-found">${groups.map(g => html`<li key=${g.slug ?? g.path} class="dz-found-item">
+    ${groups.length ? html`<ol class="dz-found">${groups.map(g => html`<li key=${g.path} class="dz-found-item">
       <p class="dz-found-head">
-        ${g.slug ? html`<button type="button" class="dz-found-open btn-link" onClick=${() => c.openFile(g.slug)}>${g.slug}</button>`
+        ${g.slug ? html`<button type="button" class="dz-found-open btn-link" onClick=${() => c.openFile(g.slug, g.path)}>${g.slug}</button>`
           : html`<span class="mono">${g.path}</span>`}
         <span class="dz-fact">${f.kind[g.kind] ?? g.kind}</span>
         ${g.slug ? html`<span class="dz-found-title">${g.title}</span>` : null}
@@ -164,7 +171,7 @@ function Find({ s, c, open }) {
 }
 
 /** No step known: a suggestion on request. One read-only question (c.suggestNext), its answer shown, written
- *  to STATUS.md only on Take over (c.takeNext, verb task_next) */
+ *  to STATUS.md only on Take over (c.takeNext, verb task_set_next) */
 function Suggest({ x, s, c, context }) {
   const d = T().dossier.suggest
   const mine = s.ui.suggest?.slug === x.slug ? s.ui.suggest : null
@@ -175,39 +182,50 @@ function Suggest({ x, s, c, context }) {
   const conv = (s.quick?.convs ?? []).find(q => q.id === mine.conv)
   const last = conv?.turns?.[conv.turns.length - 1]
   const step = last?.a ? suggestedStep(last.a) : null
-  if (!conv || conv.running || (!last?.a && !last?.error)) {
-    return html`<div class="dz-suggest" role="status"><p class="muted small">${d.running}</p></div>`
+  const dismiss = html`<${Btn} variant="ghost" size="sm" onClick=${() => c.dismissSuggest()}>${d.dismiss}<//>`
+  // still asked; a chat gone from the list (archived, replaced) falls through to "no suggestion"
+  if (conv && (conv.running || (!last?.a && !last?.error))) {
+    return html`<div class="dz-suggest" role="status"><p class="muted small">${d.running}</p>
+      <div class="dz-suggest-acts">${dismiss}</div></div>`
   }
   return html`<div class="dz-suggest panel panel-pad" role="status">
     ${step ? html`<p class="eyebrow">${d.title}</p><p class="dz-suggest-step">${step}</p><p class="muted small">${d.note}</p>`
       : html`<p class="muted small">${d.failed}</p>`}
     <div class="dz-suggest-acts">
       ${step ? html`<${Btn} variant="primary" size="sm" onClick=${() => c.takeNext(x.row.key, step)}>${d.take}<//>` : null}
-      <${Btn} variant="ghost" size="sm" onClick=${() => c.dismissSuggest()}>${d.dismiss}<//>
+      ${dismiss}
     </div>
   </div>`
 }
 
 /** A file opened from the search, beside the queue: its cover from /api/task, the next step its STATUS.md
- *  names, its drawers, a question to it, and the way back. A closed file is never named as the task of a
- *  question (quick.py would archive the chat at once); none of the verbs, it is not in the queue */
-function OpenFile({ slug, s, c }) {
+ *  names (or the suggestion when it names none and the task is open), its drawers, a question to it, and the
+ *  way back. `open` is its slug, or the folder of a closed copy (work/done/<month>/<slug>), which borrows
+ *  nothing from a row of its slug. A closed file is never named as the task of a question (quick.py would
+ *  archive the chat at once); none of the verbs, it is not in the queue */
+function OpenFile({ open, s, c }) {
   const d = T().dossier
-  const entry = s.details?.task?.[slug]
+  const slug = open.split('/').pop()
+  const entry = s.details?.task?.[open]
   const ver = s.model?.collected_ms ?? 0
-  useEffect(() => { if (detailNeedsLoad(entry, ver)) c.loadTask(slug) }, [slug, ver, entry?.stale])
+  useEffect(() => { if (detailNeedsLoad(entry, ver)) c.loadTask(open) }, [open, ver, entry?.stale])
   const data = entry?.data ?? null
-  const row = (s.model?.sections ?? []).flatMap(x => x.rows ?? []).find(r => r.key === `task:${slug}`) ?? null
+  const row = open.includes('/') ? null
+    : (s.model?.sections ?? []).flatMap(x => x.rows ?? []).find(r => r.key === `task:${slug}` && !r.inbox_id) ?? null
   const facts = fileFacts(slug, data, row)
   const x = { id: `task:${slug}`, slug, row: { key: `task:${slug}`, title: facts.title, priority: facts.priority,
     status: facts.status, task_type: facts.type, area: row?.area ?? null } }
+  const context = fileContext(facts, language())
+  // the suggestion writes through the task's row (verb task_set_next): only an open task the model lists
+  const suggest = row && facts.kind !== 'done' && !facts.next
   return html`<div class="dz-open">
     <p class="dz-opened muted small">${d.opened} <${Btn} variant="ghost" size="sm" icon="back" onClick=${() => c.closeFile()}>${d.back}<//></p>
     ${entry?.status === 'error' ? html`<p class="muted" role="status">${d.noFile}</p>` : html`
       <${Cover} x=${x} s=${s} data=${data} place=${facts.kind === 'task' ? null : d.find.kind[facts.kind]} />
       ${facts.next ? html`<p class="dz-next"><span class="eyebrow">${d.next}</span> ${facts.next}</p>` : null}
+      ${suggest ? html`<${Suggest} x=${x} s=${s} c=${c} context=${context} />` : null}
       <${Drawers} data=${data} />
-      <${AskBox} cls="dz-ask" label=${d.ask.label} placeholder=${d.ask.placeholder} context=${fileContext(facts, language())}
+      <${AskBox} cls="dz-ask" label=${d.ask.label} placeholder=${d.ask.placeholder} context=${context}
         task=${facts.kind === 'done' ? null : slug} s=${s} c=${c} />`}
   </div>`
 }
@@ -236,7 +254,7 @@ export function DossierView({ s, c }) {
   return html`<div class="col col-page dz">
     <header class="page-head"><${WorkSwitch} s=${s} c=${c} /></header>
     <${Find} s=${s} c=${c} open=${open} />
-    ${open ? html`<${OpenFile} key=${open} slug=${open} s=${s} c=${c} />` : x ? html`
+    ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} />` : x ? html`
       <${Cover} key=${`c${x.id}`} x=${x} s=${s} data=${data} />
       <${Hero} key=${x.id} x=${hero} n=${queue.length} tabOf=${() => fileTab(x, s)} s=${s} c=${c}
         title=${step?.what ?? d.noNext} kindWord=${d.next} sub=${stepLine(step, nowMs)} />

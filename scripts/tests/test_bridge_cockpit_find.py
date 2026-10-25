@@ -198,3 +198,51 @@ def test_the_command_answers_in_json_and_in_lines(bridge):
     run = subprocess.run([sys.executable, str(script), "--root", str(bridge), "--json", "x"],
                          capture_output=True, text=True, check=False)
     assert run.returncode == 2 and "2 to 200" in run.stderr
+
+
+def test_umlauts_and_sharp_s_fold_alike_in_both_ways(bridge):
+    # rg folds case per character and never turns "ß" into "ss": the Python way folds the same, so neither finds
+    # what the other cannot
+    put(bridge, "work/tasks/street-works/STATUS.md", status("Road works", "Die Straße ist gesperrt. Äpfel liegen bereit."))
+    assert wf.check_query("Straße ÄPFEL")[1] == ["straße", "äpfel"]
+    engines = ("python",) + (("rg",) if HAS_RG else ())
+    for engine in engines:
+        for query in ("Straße", "straße", "STRAßE", "Äpfel", "äpfel", "ÄPFEL", "straße äpfel"):
+            assert "street-works" in slugs(wf.find(bridge, query, engine=engine)), (engine, query)
+        # "ss" for "ß" is another word, the same way in both
+        assert "street-works" not in slugs(wf.find(bridge, "STRASSE", engine=engine)), engine
+    if HAS_RG:
+        for query in ("Straße", "STRASSE", "Äpfel", "ÄPFEL", "gesperrt Straße"):
+            a, b = wf.find(bridge, query, engine="rg"), wf.find(bridge, query, engine="python")
+            assert {**a, "engine": None} == {**b, "engine": None}, query
+
+
+def test_a_slug_open_and_closed_is_two_files_each_with_its_own_hits(bridge):
+    put(bridge, "work/tasks/weekly-report/STATUS.md", status("This week's report", "drafting"))
+    put(bridge, "work/done/2026-08/weekly-report/STATUS.md", status("August report", "the zebra figure was wrong"))
+    put(bridge, "work/done/2026-09/weekly-report/STATUS.md", status("September report", "the zebra chart"))
+    for engine in ("python",) + (("rg",) if HAS_RG else ()):
+        res = wf.find(bridge, "zebra", engine=engine)
+        assert [(g["slug"], g["kind"], g["path"]) for g in res["groups"]] == [
+            ("weekly-report", "done", "work/done/2026-09/weekly-report"),
+            ("weekly-report", "done", "work/done/2026-08/weekly-report")], engine
+        assert [g["title"] for g in res["groups"]] == ["September report", "August report"]
+        assert all(h["path"].startswith(g["path"] + "/") for g in res["groups"] for h in g["hits"])
+    # the name alone finds every copy, the open one first
+    res = wf.find(bridge, "weekly-report", engine="python")
+    assert [g["path"] for g in res["groups"]] == ["work/tasks/weekly-report", "work/done/2026-09/weekly-report",
+                                                   "work/done/2026-08/weekly-report"]
+
+
+def test_a_folder_without_a_slug_of_its_own_is_found_by_its_file(bridge):
+    put(bridge, "work/tasks/_briefings/2026-10-05.md", "Morning: the gateway answered in September.\n")
+    put(bridge, "work/tasks/Odd.Name/notes.md", "gateway\nseptember\n")
+    for engine in ("python",) + (("rg",) if HAS_RG else ()):
+        by = {g["slug"] or g["path"]: g for g in wf.find(bridge, "gateway september", engine=engine)["groups"]}
+        brief = by["work/tasks/_briefings/2026-10-05.md"]
+        assert brief["slug"] is None and brief["kind"] == "task" and brief["rank"] == 2
+        assert [h["line"] for h in brief["hits"]] == [1]
+        # every word in the file, on lines of their own
+        odd = by["work/tasks/Odd.Name/notes.md"]
+        assert odd["slug"] is None and odd["count"] == 2
+        assert "work/tasks/_briefings/2026-10-05.md" not in slugs(wf.find(bridge, "morning nothing", engine=engine))

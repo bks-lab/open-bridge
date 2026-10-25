@@ -125,7 +125,8 @@ export function createApi(transport = httpTransport()) {
     // which page or view was opened: one audit line on the server (page_view), the files view's measure
     seen: (page, view) => transport.post('/api/seen', view ? { page, view } : { page }, csrf),
     inbox: id => transport.get(`/api/inbox?id=${encodeURIComponent(id)}`),
-    task: slug => transport.get(`/api/task?slug=${encodeURIComponent(slug)}`),
+    // path: one folder of the slug (work/done/<month>/<slug>, a closed copy the search found), else the open one first
+    task: (slug, path) => transport.get(`/api/task?slug=${encodeURIComponent(slug)}${path ? `&path=${encodeURIComponent(path)}` : ''}`),
     // the files view's search over every task, stream and closed task, the log and its archive (work-find.py)
     find: q => transport.get(`/api/find?q=${encodeURIComponent(q)}`),
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),

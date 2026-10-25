@@ -2,7 +2,8 @@
 """Read-only readers for the detail endpoints: a task's STATUS.md and an inbox item.
 
 /api/task reads work/tasks/<slug>/STATUS.md, else work/streams/<slug>/, else the newest
-work/done/<month>/<slug>/ (the resolved path must stay inside work/): front matter, every `## ` section (body
+work/done/<month>/<slug>/ (the resolved path must stay inside work/); with `path` exactly that one of these
+folders (the search finds an open and a closed file of one slug apart): front matter, every `## ` section (body
 cut to 6000 characters), and the last 15 rows of work/log.md that name the slug.
 It also lists the open inbox items that name the slug as their task.
 /api/inbox reads work/inbox/<id>/item.yaml and events/*.yaml (the last 50), with how the item
@@ -117,7 +118,9 @@ def log_rows(root: Path, slug: str) -> list[dict]:
     return rows[-LOG_ROWS:]
 
 
-def task_detail(root: Path, slug: str, listing: list | None = None) -> dict | None:
+def task_detail(root: Path, slug: str, listing: list | None = None, folder: str | None = None) -> dict | None:
+    """The file of a slug, the open one first; `folder` (`work/done/<month>/<slug>`) picks one of its places,
+    compared with the places as they are, so a folder that is none of them is never read."""
     if not isinstance(slug, str) or not SLUG_RE.match(slug):
         return None
     root = Path(root)
@@ -128,6 +131,8 @@ def task_detail(root: Path, slug: str, listing: list | None = None) -> dict | No
         places += [("done", month) for month in sorted(done.iterdir(), reverse=True) if month.is_dir()]
     for kind, base in places:
         path = base / slug / "STATUS.md"
+        if folder is not None and (base / slug).relative_to(root).as_posix() != folder:
+            continue
         if path.is_file() and _inside(path, root / "work"):
             break
     else:

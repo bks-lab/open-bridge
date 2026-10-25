@@ -111,6 +111,9 @@ function CommandBox({ c }) {
   </form>`
 }
 
+/** A quick chat that makes the chat tab spin: a file's suggested next step is not one (its file shows it, no list does) */
+export const chatRunning = x => !!x.running && x.place !== 'suggest'
+
 export function Header({ s, c }) {
   const t = T()
   const themeIcon = s.ui.theme === 'dark' ? 'moon' : s.ui.theme === 'light' ? 'sun' : 'auto'
@@ -134,7 +137,7 @@ export function Header({ s, c }) {
         onClick=${() => c.setDrawer(s.ui.drawer === 'tabs' ? null : 'tabs')} pressed=${s.ui.drawer === 'tabs'} cls="hdr-tabs">${t.tabsButton(waiting)}<//>` : null}
       <${Btn} variant="ghost" size="sm" icon="reload" title=${t.reloadTitle} label=${t.reloadTitle}
         busy=${!!s.loading?.pass && s.loading?.fresh} onClick=${c.reload} cls="hdr-reload"><span class="hide-narrow">${t.reload}</span><//>
-      <${Btn} variant=${(s.quick?.convs ?? []).some(x => x.running) ? 'primary' : 'secondary'}
+      <${Btn} variant=${(s.quick?.convs ?? []).some(chatRunning) ? 'primary' : 'secondary'}
         size="sm" icon="send" onClick=${() => c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>
       <${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
         pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()} cls="hdr-history"><span class="hide-narrow">${t.historyButton}</span><//>
@@ -239,7 +242,7 @@ export function PageBar({ s, c }) {
         ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null)}
       ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, s.workers?.data?.stats?.with_findings
         ? html`<span class="pbadge" title=${t.home.workersFindings(s.workers.data.stats.with_findings)}><${Dot} token="warning" /><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null)}
-      ${tab(CHAT_PAGE, t.chatTab, (s.quick?.convs ?? []).some(x => x.running) ? html`<${Spinner} />` : null)}
+      ${tab(CHAT_PAGE, t.chatTab, (s.quick?.convs ?? []).some(chatRunning) ? html`<${Spinner} />` : null)}
       ${(s.agents?.peers ?? []).length ? tab(AGENTS_PAGE, t.agentsTab, (s.agents?.convs ?? []).some(x => x.running) ? html`<${Spinner} />`
         : (s.agents?.convs ?? []).some(x => x.turns?.[x.turns.length - 1]?.waiting) ? html`<${Dot} token="warning" />` : null) : null}
       ${reviewHomeOf(s) ? null : tab(CHECK_PAGE, t.reviewTab, s.model?.review?.running ? html`<${Spinner} />`

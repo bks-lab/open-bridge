@@ -302,7 +302,7 @@ class WorkVerbs:
         else:
             ctx.note(self.tx["prio_failed"].format(err=m.short(run.err, 100)), bad=True)
 
-    def v_task_next(self, ctx: Ctx, key: str, text: str) -> None:
+    def v_task_set_next(self, ctx: Ctx, key: str, text: str) -> None:
         """The person takes over a suggested next step: STATUS.md keeps it as next: {what} with a dated note
         (task.py next), only on this click; the step shown before was derived and never stored."""
         row = self.entry(key)["row"]

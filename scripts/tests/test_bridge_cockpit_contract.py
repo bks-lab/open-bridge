@@ -227,7 +227,7 @@ def s_inbox_edits(w: World) -> None:
 def s_task_edits(w: World) -> None:
     w.act("priority", key="task:other-task", value="P0")
     w.act("note", key="task:other-task", text="ask the vendor")
-    w.act("task_next", key="task:other-task", text="Call the vendor; -x")
+    w.act("task_set_next", key="task:other-task", text="Call the vendor; -x")
     w.act("task_close", keys=["task:demo-task"], reason="superseded", text="moved into #12")
     w.act("task_close", keys=["task:other-task"], reason="done")
 

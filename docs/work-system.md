@@ -160,7 +160,8 @@ person takes over a suggested step ([`bridge-cockpit.md`](bridge-cockpit.md) § 
 
 `python3 scripts/work-find.py <words> [--json]` searches every task, stream and closed
 task, the log and its archive, and lists the files ranked: slug or title first, then a
-hit in STATUS.md, then the rest. Plain words, never a pattern; `video/` and
+hit in STATUS.md, then the rest. Plain words, never a pattern, the same answer with or
+without `rg`; an open and a closed task of one slug are two files; `video/` and
 `deliverables/` folders are never read.
 
 ## Log format — one file per period, daily blocks

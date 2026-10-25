@@ -5063,7 +5063,11 @@ test('files: the api searches with the words in the query string, encoded', asyn
   const got = []
   const a = api.createApi({ get: async p => { got.push(p); return { ok: true } }, post: async () => ({ ok: true }), events: () => ({}) })
   await a.find('a&b=c ?x')
-  assert.deepEqual(got, ['/api/find?q=a%26b%3Dc%20%3Fx'])
+  // a closed copy of a slug by its folder
+  await a.task('weekly-report', 'work/done/2026-09/weekly-report')
+  await a.task('weekly-report')
+  assert.deepEqual(got, ['/api/find?q=a%26b%3Dc%20%3Fx', '/api/task?slug=weekly-report&path=work%2Fdone%2F2026-09%2Fweekly-report',
+    '/api/task?slug=weekly-report'])
 })
 
 test('files: the facts of a file come from its task detail, the row filling what the detail lacks', () => {
@@ -5121,11 +5125,18 @@ test('files: the command box searches before it parses codes, and a suggestion s
   const app = read('app.js')
   const run = app.slice(app.indexOf('async runCommand(text)'))
   assert.ok(run.indexOf('commandSearch(text)') >= 0 && run.indexOf('commandSearch(text)') < run.indexOf('parseShortcut(text)'))
-  assert.match(run, /ctl\.setWorkView\('dossier'\)/)
+  // the search opens the files view for this visit only: the saved work view stays what it was
+  const search = run.slice(0, run.indexOf('parseShortcut(text)'))
+  assert.doesNotMatch(search, /setWorkView|save\(/)
+  assert.match(search, /workView: 'dossier'/)
   // an answer for words no longer asked is dropped; a suggestion asks in its own place; only a click writes it
   assert.match(app, /if \(store\.get\(\)\.find\?\.q !== words\) return/)
   assert.match(app, /place: 'suggest'/)
-  assert.match(app, /act\('task_next', \{ key, text \}\)/)
+  assert.match(app, /act\('task_set_next', \{ key, text \}\)/)
   const convs = [{ id: 'a', place: 'core', running: true }, { id: 'b', place: 'suggest', running: true }, { id: 'c', running: true }]
   assert.deepEqual(logic.listedChats(convs, 24, Date.now()).map(x => x.id), ['c'])
+  // nor does it make the chat tab spin or the ask button light up
+  const header = read('views/header.js')
+  assert.equal((header.match(/\(s\.quick\?\.convs \?\? \[\]\)\.some\(chatRunning\)/g) ?? []).length, 2)
+  assert.doesNotMatch(header, /\(s\.quick\?\.convs \?\? \[\]\)\.some\(x => x\.running\)/)
 })
