@@ -155,7 +155,8 @@ export const focusQueue = s => homeQueue(focusParts(s))
  *  (c.focusWalk on the start page, c.dossierWalk in the files view); `done` stands in place of the end line */
 export function FocusWalk({ queue, i, s, c, walk = null, done = null }) {
   const t = T()
-  if (queue.length < 2) return null
+  // one step has no bar to walk; the way on (cockpit.focus_to_files) still stands under it
+  if (queue.length < 2) return done ? html`<p class="fx-onward">${done}</p>` : null
   const go = walk ?? c.focusWalk
   const entry = k => {
     const x = queue[k]

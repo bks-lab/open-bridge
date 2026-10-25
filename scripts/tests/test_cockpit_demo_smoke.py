@@ -187,5 +187,39 @@ def test_the_demo_opens_the_work_tab_on_the_files_view_the_config_names(base_url
     page.wait_for_selector("#main .dz .fx-hero")
     assert page.locator("#main .dz .fx-hero").count() == 1
     page.wait_for_timeout(250)
+
+    # a click on Due holds on the next visit, the config unchanged (logic.js workViewWrites)
+    where[0] = "click holds"
+    page.locator("#main .fchip").first.click()
+    page.wait_for_selector("#main .dz", state="detached")
+    page.reload()
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
+    page.wait_for_function("() => (document.getElementById('main')?.textContent ?? '').trim().length > 0")
+    page.wait_for_timeout(250)
+    assert page.locator("#main .dz").count() == 0
+    assert "is-on" in (page.locator("#main .fchip").first.get_attribute("class") or "")
+
+    # the focus of the start page, walked with its bar to the end, leads on into the files view (focus_to_files)
+    where[0] = "focus to files"
+    word = re.compile("Settings|Einstellungen")
+    bar = page.locator(".pagebar-tabs > [role=tab]").filter(has_text=word)
+    if bar.count():
+        bar.first.click()
+    else:
+        page.locator(".ptab-more > [role=tab]").click()
+        page.locator(".more-menu [role=menuitem]").filter(has_text=word).first.click()
+    page.locator(".view-opt").nth(3).click()   # bridge, tiles, list, focus
+    page.locator(".pagebar-tabs > [role=tab]").first.click()
+    page.wait_for_selector("#main .fx .fx-work")
+    onward = page.locator("#main .fx-work button").filter(has_text=re.compile("Continue with the files|Weiter mit den Akten"))
+    for _ in range(40):
+        if onward.count():
+            break
+        page.locator("#main .fx-work .next-up-go button").click()
+        page.wait_for_timeout(50)
+    onward.first.click()
+    page.wait_for_selector("#main .dz")
+    page.wait_for_timeout(250)
     ctx.close()
     assert not problems, "\n".join(problems)

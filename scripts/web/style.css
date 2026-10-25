@@ -3069,6 +3069,7 @@ details.hl-block:not([open]) > summary > svg { transform: rotate(-90deg); }
 .fx-why { margin: 0; padding-left: 18px; color: var(--on-surface); font-size: var(--text-sm); display: flex; flex-direction: column; gap: 3px; }
 .fx-acts { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin-top: 6px; }
 .fx-work > .next-up { margin-top: 20px; position: static; }
+.fx-work > .fx-onward { margin: 20px 0 0; }
 .fx-do { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .fx-calm { align-items: flex-start; }

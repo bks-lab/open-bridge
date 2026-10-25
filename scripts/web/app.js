@@ -16,7 +16,7 @@ import {
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
-  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, fileQueue, commandSearch, workViewStart,
+  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, fileQueue, commandSearch, workViewWrites, focusStep,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -281,9 +281,10 @@ function applyState(payload) {
   }))
   // the answers being written, whole: a page that connects in the middle of one shows all of it
   if (payload.quick_live) quickLive.set(quickLiveSnapshot(payload.quick_live))
+  // the config's view first: a remembered check that moved onto a page then opens in By source (fixPage)
+  workDefault()
   fixPage()
   offerTour()
-  workDefault()
   if (!bootSeen && payload.model) pageSeen(store.get().ui.page)
 }
 
@@ -295,10 +296,10 @@ function workDefault() {
   const s = store.get()
   if (!workOffer || !s.work) return
   workOffer = false
-  const start = workViewStart(load('bridge-cockpit.workTab', null), load('bridge-cockpit.workTabSeen', null), s.work?.view)
-  if (start.seen) save('bridge-cockpit.workTabSeen', start.seen)
-  if (start.view !== load('bridge-cockpit.workTab', null)) save('bridge-cockpit.workTab', start.view)
-  if (start.view !== s.ui.workView) setUi({ workView: start.view })
+  const stored = { workTab: load('bridge-cockpit.workTab', null), workTabSeen: load('bridge-cockpit.workTabSeen', null) }
+  const { view, writes } = workViewWrites(stored, s.work?.view)
+  for (const [k, v] of Object.entries(writes)) save(`bridge-cockpit.${k}`, v)
+  if (view !== s.ui.workView) setUi({ workView: view })
 }
 
 let tourOffer = true   // a visit offers the tour once, on its first state; Help and Settings start it again
@@ -1412,11 +1413,10 @@ function onKey(e) {
   if ((key === 'n' || key === 'p') && s.ui.page === START_PAGE && !s.ui.drawer && !s.ui.pageDetail
     && homeView(homeChosen(s.model, s.home)) === 'focus') {
     const queue = homeQueue(homeListParts(s.tabs?.tabs ?? [], s.model, { pins: s.home?.pins ?? [] }))
-    const to = focusIndex(queue, s.ui.focusAt) + (key === 'n' ? 1 : -1)
     e.preventDefault()
     // past the last step the focus leads on into the files view where cockpit.focus_to_files says so
-    if (key === 'n' && !queue[to] && s.work?.focus_to_files) return ctl.openFiles()
-    return queue[to] ? ctl.focusWalk(queue[to].id, to) : undefined
+    const step = focusStep(queue, s.ui.focusAt, key, !!s.work?.focus_to_files)
+    return step?.files ? ctl.openFiles() : step ? ctl.focusWalk(queue[step.to].id, step.to) : undefined
   }
   if (s.ui.page !== 'briefing') return
   if (key === 'j' || key === 'k') {

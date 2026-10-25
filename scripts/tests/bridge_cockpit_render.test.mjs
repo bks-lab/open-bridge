@@ -2270,6 +2270,21 @@ test('with cockpit.focus_to_files the last step of the focus offers the files vi
   assert.equal(mid.$$('button').some(b => b.text() === en.home.focus.toFiles), false)
 })
 
+test('with cockpit.focus_to_files a focus of one step still offers the files view, where no bar stands', () => {
+  const s = homeOn({ work: { view: 'due', focus_to_files: true } })
+  const one = views.focus.focusQueue(s).slice(0, 1)
+  assert.equal(one.length, 1, 'the demo state has a step')
+  const c = recorder()
+  const done = html`<button type="button" class="btn-link" onClick=${() => c.openFiles()}>${en.home.focus.toFiles}</button>`
+  const el = mount(html`<div><${views.focus.FocusWalk} queue=${one} i=${0} s=${s} c=${c} done=${done} /></div>`)
+  assert.equal(el.$('.next-up'), null, 'no bar for one step')
+  el.button(en.home.focus.toFiles).click()
+  assert.deepEqual(c.calls, [['openFiles']])
+  // without the switch one step stands alone, as before
+  const plain = mount(html`<div><${views.focus.FocusWalk} queue=${one} i=${0} s=${s} c=${recorder()} /></div>`)
+  assert.equal(plain.$$('button').length, 0)
+})
+
 test('the demo shows the work tab as the default config does, and ?work=files&focus_to_files=1 as the switches do', () => {
   const { mock } = loadedRooms
   assert.deepEqual(mock.buildState(NOW).work, { view: 'due', focus_to_files: false })

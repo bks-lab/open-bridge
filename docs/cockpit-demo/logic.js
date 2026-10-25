@@ -1675,6 +1675,16 @@ export function workViewStart(remembered, seen, configured) {
   return { view: changed ? id : remembered ?? id, seen: configured }
 }
 
+/** workViewStart over what a browser remembers, `stored` { workTab, workTabSeen } (the last click on the switch,
+ *  the config word seen last). Returns { view, writes }, writes holding only the entries that change */
+export function workViewWrites(stored, configured) {
+  const start = workViewStart(stored?.workTab ?? null, stored?.workTabSeen ?? null, configured)
+  const writes = {}
+  if (start.seen && start.seen !== stored?.workTabSeen) writes.workTabSeen = start.seen
+  if (start.view !== (stored?.workTab ?? null)) writes.workTab = start.view
+  return { view: start.view, writes }
+}
+
 /** The rows of a work page for the order of Jev: `ranked` in Jev's order, `rest` (not sent, or new since)
  *  in page order. A row standing in two sections shows once, in the first. Each entry: {it, section, label,
  *  rank, judge}, judge being Jev's levels 0 to 3 and whether only the person can do it */
@@ -2275,6 +2285,14 @@ export function focusIndex(queue, at) {
   if (!n || !at) return 0
   const i = queue.findIndex(x => x.id === at.id)
   return i >= 0 ? i : Math.min(Math.max(0, at.i ?? 0), n - 1)
+}
+
+/** Where n or p moves a focus walk from `at`: { to } the step it reaches, { files: true } for n past the last
+ *  step where cockpit.focus_to_files (`toFiles`) leads on into the files view, else null */
+export function focusStep(queue, at, key, toFiles = false) {
+  const to = focusIndex(queue, at) + (key === 'n' ? 1 : -1)
+  if (queue?.[to]) return { to }
+  return key === 'n' && toFiles ? { files: true } : null
 }
 
 /** The one next step of the start page: a tab that asks you, else the first row waiting on you, else the
