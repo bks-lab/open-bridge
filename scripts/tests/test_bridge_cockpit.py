@@ -445,7 +445,7 @@ def test_parse_pages():
                              "group": None, "icon": None, "tags": None, "account": None, "inbox": None,
                              "actions": None, "row_id": None, "flags": None, "who": None, "gh": None, "cal": None, "due_at": None, "at": None, "id": None, "actionable": False,
                              # where it comes from, raw (origin.py classifies it in the collector)
-                             "origin_raw": None, "origin_provider": None, "origin_section_kind": None,
+                             "origin_raw": None, "origin_provider": None, "origin_section_kind": None, "inbox_key": None,
                              "about_task": None, "about_kind": None}
     assert s["as_of"] is None and s["empty"] == "nothing"
     assert s["boards"] is None and s["metrics"] is None and s["stale"] is None and s["cal_figures"] is None

@@ -171,6 +171,7 @@ def parse_info(i: dict) -> dict:
             # where the row comes from, raw: the collector classifies it (origin.py), the page gets the result
             "origin_raw": as_text_or_null(i.get("origin_raw")), "origin_provider": as_text_or_null(i.get("origin_provider")),
             "origin_section_kind": as_text_or_null(i.get("origin_section_kind")),
+            "inbox_key": as_text_or_null(i.get("inbox_key")),
             "about_task": as_text_or_null(i.get("about_task")),
             "about_kind": i.get("about_kind") if i.get("about_kind") in ("task", "stream") else None}
 

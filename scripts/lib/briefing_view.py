@@ -2038,6 +2038,8 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
         # where the row comes from (cockpit origin.py): an inbox item's `from`, a task's origin, the section
         r["origin_raw"] = _text(i.get("from") if kind == "inbox" else i.get("origin") if kind == "tasks" else None)[:300] or None
         r["origin_section_kind"] = kind or None
+        # an inbox item's key: a cockpit filing names its section there, a ref lives there too
+        r["inbox_key"] = (_text(i.get("key")) or None) if kind == "inbox" else None
         r["origin_provider"] = _text(i.get("tracker") or section.get("provider")) or None
         if kind == "tracker" and i.get("about_task"):
             r["about_task"], r["about_kind"] = _text(i["about_task"]), _text(i.get("about_kind")) or None

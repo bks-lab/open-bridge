@@ -164,7 +164,7 @@ def test_tracker_rows_fill_every_column():
                   # a GitHub row: the id a dashboard asks its detail by, and what the figures filter by
                   "row_id": "acme/app#7", "flags": [], "gh": pr["gh"],
                   # where it comes from, for the cockpit (origin.py): the section's kind and provider
-                  "origin_raw": None, "origin_section_kind": "tracker", "origin_provider": pr["origin_provider"]}
+                  "origin_raw": None, "origin_section_kind": "tracker", "inbox_key": None, "origin_provider": pr["origin_provider"]}
     # the facts one field each (github_facts), the plain title without its id
     assert pr["gh"]["title"] == "Fix login" and pr["gh"]["repo"] == "acme/app" and pr["gh"]["number"] == 7
     assert pr["gh"]["type"] == "pr"

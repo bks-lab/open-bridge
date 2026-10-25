@@ -86,8 +86,10 @@ def page_origin(it: dict, section_id: str, known: og.Known | None) -> dict:
     anything else by its section; the work kind of the task it is, or the task or stream it is about"""
     known = known or og.Known()
     inbox = it.get("inbox") if it.get("origin_section_kind") == "inbox" else None
-    row = {"key": f"item:{section_id}", "inbox_id": inbox, "inbox_key": None,
-           "task": it.get("task") if not inbox else None, "ref": it.get("row_id") or it.get("id"), "url": it.get("url"),
+    # an inbox item reads its key as Due does (a cockpit filing names its section there); its own id is no ref
+    row = {"key": f"item:{section_id}", "inbox_id": inbox, "inbox_key": it.get("inbox_key") if inbox else None,
+           "task": it.get("task") if not inbox else None, "ref": None if inbox else it.get("row_id") or it.get("id"),
+           "url": it.get("url"),
            "sources": [section_id], "origin_raw": it.get("origin_raw"), "origin_provider": it.get("origin_provider"),
            "origin_section_kind": it.get("origin_section_kind")}
     slug = it.get("task") or it.get("about_task") or (it.get("gh") or {}).get("task")

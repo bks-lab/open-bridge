@@ -235,3 +235,29 @@ def test_a_history_line_of_a_stream_says_stream():
     assert history.item("task:s", "S", "task", "done", "s", work_kind="stream")["work_kind"] == "stream"
     assert history.item("task:t", "T", "task", "done", "t", work_kind="task")["work_kind"] == "task"
     assert "work_kind" not in history.item("inbox:x", "X", "inbox", "done", "x", work_kind="stream")
+
+
+def test_a_page_inbox_item_filed_by_a_cockpit_click_names_its_section_and_no_id():
+    """The By source view: an inbox item a click filed from a section reads that section's origin, as in Due,
+    and its own id is never shown as a ref"""
+    from lib.bridge_cockpit import collector as co, origin as og
+    sec = {"id": "inbox", "kind": "inbox", "status": "ok", "items": [
+        {"id": "20261025-1907-probe-6468", "title": "x", "state": "open", "kind": "decision", "gate": "free",
+         "from": "bridge-cockpit", "key": "briefing:cockpit:systeme:backup/pipelines-healthy"}]}
+    pages = bv.pages(result(sec), {"id": "p", "sections": [{"kind": "inbox", "id": "inbox"}]})
+    it = next(i for pg in pages for s in pg["sections"] for i in s["items"])
+    assert it["inbox_key"] == "briefing:cockpit:systeme:backup/pipelines-healthy"
+    known = og.Known(sections={"systeme": {"kind": "command", "title": "Systemproben"}})
+    o = co.page_origin(it, "inbox", known)["origin"]
+    assert o["category"] == "bot" and o["detail"] == "Systemproben" and o["via_cockpit"] is True
+    assert o["ref"] is None
+
+
+def test_a_page_inbox_item_shows_its_ref_from_the_key_not_its_id():
+    from lib.bridge_cockpit import collector as co
+    it = {"inbox": "20261009-0900-a-ab12", "row_id": "20261009-0900-a-ab12", "origin_raw": "claude",
+          "origin_section_kind": "inbox", "inbox_key": "pr:acme/web#5"}
+    o = co.page_origin(it, "inbox", None)["origin"]
+    assert o["category"] == "session" and o["ref"] == "acme/web#5"
+    it["inbox_key"] = None
+    assert co.page_origin(it, "inbox", None)["origin"]["ref"] is None
