@@ -68,13 +68,52 @@ test('settle: the close door of a task the check would close opens with its reas
   assert.equal(shown(door.$('textarea')), row.review.reason.slice(0, 400))
 })
 
-test('settle: a passed seed wins, a recommendation to continue leaves the sentence empty', async () => {
+/** Opens the close door of a view and returns the sentence its panel shows */
+const sentence = async vnode => {
+  const el = await settled(vnode)
+  doors(el)[0].$('button').click()
+  await tick()
+  return shown(el.$('textarea'))
+}
+/** A row of the demo with the check's recommendation replaced */
+const reviewed = (s, review) => {
+  const row = logic.indexRows(s.model).get('task:quiet-docs')
+  return { ...row, review: { ...row.review, ...review } }
+}
+
+test('settle: a passed seed wins, a stale recommendation leaves the sentence empty', async () => {
   const s = cockpitState(NOW)
   const row = logic.indexRows(s.model).get('task:quiet-docs')
   assert.equal(row.review.verdict, 'stale')
-  const open = async vnode => { const el = await settled(vnode); el.$('.settle button').click(); await tick(); return shown(el.$('textarea')) }
-  assert.equal(await open(html`<${SettleMenu} rows=${[row]} s=${s} c=${recorder()} />`), '')
-  assert.equal(await open(html`<${SettleMenu} rows=${[row]} s=${s} c=${recorder()} seed="mine" />`), 'mine')
+  assert.equal(await sentence(html`<${SettleMenu} rows=${[row]} s=${s} c=${recorder()} />`), '')
+  assert.equal(await sentence(html`<${SettleMenu} rows=${[row]} s=${s} c=${recorder()} seed="mine" />`), 'mine')
+  assert.equal(await sentence(html`<${SettleMenu} rows=${[reviewed(s, { verdict: 'close' })]} s=${s} c=${recorder()} seed="" />`), '',
+    'an empty seed keeps the sentence empty')
+})
+
+test('settle: a recommendation to continue leaves the sentence empty', async () => {
+  const s = cockpitState(NOW)
+  const row = reviewed(s, { verdict: 'continue', resolved: false, reason: 'Still moving.' })
+  assert.equal(await sentence(html`<${SettleMenu} rows=${[row]} s=${s} c=${recorder()} />`), '')
+})
+
+test('settle: a check that found the work resolved brings its reason, whatever the verdict', async () => {
+  const s = cockpitState(NOW)
+  const row = reviewed(s, { verdict: 'continue', resolved: true, reason: 'The fix has landed.' })
+  assert.equal(await sentence(html`<${SettleMenu} rows=${[row]} s=${s} c=${recorder()} />`), 'The fix has landed.')
+})
+
+test('settle: a list row the check would close opens its close door with the reason as well', async () => {
+  const s = cockpitState(NOW)
+  const row = reviewed(s, { verdict: 'close', reason: 'Nothing left to do.' })
+  assert.equal(await sentence(html`<${views.day.RowBar} row=${row} s=${s} c=${recorder()} />`), 'Nothing left to do.')
+})
+
+test('settle: a selection of several rows brings no reason', async () => {
+  const s = cockpitState(NOW)
+  const a = reviewed(s, { verdict: 'close', reason: 'Nothing left to do.' })
+  const b = { ...a, key: 'task:other', task: 'other' }
+  assert.equal(await sentence(html`<${SettleMenu} rows=${[a, b]} s=${s} c=${recorder()} />`), '')
 })
 
 test('settle: an inbox item detail still offers the close door once', async () => {
