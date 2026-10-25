@@ -1413,6 +1413,8 @@ def test_runs_on_puts_off_an_item_with_what_it_waits_on_and_quiets_a_task(world)
     assert writes(world)[0] == K(world, "wait", "demo-task", "--until", TOMORROW, "--json")
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
     assert undo == {"verb": "task_running", "args": {"slug": "demo-task"}}
+    # the history names a task as a task (and a stream as a stream), not only as "task"
+    assert [it.get("work_kind") for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0] == "task"
     world.runner.calls.clear()
     world.act(undo["verb"], **undo["args"])                                # running again: the undo
     assert writes(world)[0] == K(world, "wait", "demo-task", "--clear", "--json")
@@ -2557,7 +2559,10 @@ def test_task_detail_names_its_next_step_and_open_inbox_items(world):
     assert status == 200 and data["front"]["next"] == "Call Ana"
     # who filed each one and what it is (none in this listing), and the origin the page names (origin.py)
     assert data["inbox"] == [{"id": YES_ID, "summary": "Tidy labels", "state": "open", "urgency": "later", "gate": "your-yes",
-                              "from": None, "kind": None, "origin": None}]
+                              "from": None, "kind": None,
+                              # no source written down: a neutral other, still named on the page
+                              "origin": {"category": "other", "word_key": None, "detail": None, "raw": None, "ref": None,
+                                         "via_cockpit": False}}]
     # an inbox item can outlive its task: a closed task is read from work/done/<month>/, the newest month first
     for month, word in (("2026-09", "older"), ("2026-10", "newer")):
         done = world.root / "work" / "done" / month / "gone-task"

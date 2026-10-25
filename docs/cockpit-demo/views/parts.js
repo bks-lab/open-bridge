@@ -293,6 +293,6 @@ export function WalkBar({ label, shortcuts = false, pos = null, onPrev = null, n
         : html`<span class="next-up-text muted small">${done}</span>`}
     </div>
     ${later.length ? html`<ol class="next-up-later" start=${(pos?.[0] ?? 0) + 2}>${later.map(e => html`<li key=${e.key}>
-      <button type="button" class="btn-link" title=${e.look} onClick=${e.onOpen}>${e.title}</button></li>`)}</ol>` : null}
+      <button type="button" class="btn-link" title=${e.look} onClick=${e.onOpen}>${e.title}</button>${e.sub ? html` <span class="muted small next-up-sub">${e.sub}</span>` : null}</li>`)}</ol>` : null}
   </nav>`
 }

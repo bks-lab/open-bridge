@@ -41,13 +41,24 @@ COCKPIT_FROM = "bridge-cockpit"
 SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
 WAS_STREAM_RE = re.compile(r"^was_stream:\s*true\s*$", re.M | re.I)
 TASK_ORIGIN_RE = re.compile(r"^inbox \S+ \([^,()]*, ([^()]+)\):")
+# task.py's own origin for a task started here with no inbox item behind it
+ADHOC_RE = re.compile(r"^ad-hoc(?: \d{4}-\d{2}-\d{2})?$", re.I)
+# a GitHub issue or pull request URL, its repo and number
+GITHUB_URL_RE = re.compile(r"https?://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+)(?:/(?:issues|pull)/(\d+))?", re.I)
+# a task origin that names GitHub as where it began: the ref or the URL first, after at most a word like "from"
+GITHUB_START_RE = re.compile(r"^(?:(?:from|issue|pr|pull request|see)\s+)?(?:https?://(?:www\.)?github\.com/\S+|[\w.-]+/[\w.-]+#\d+)(?=$|[\s,.;:)])", re.I)
+# names that read as an automatic job by their ending, on any Bridge
+BOT_SUFFIXES = ("-bot", "-notifier", "-autorun", "-watcher", "-watchdog", "-probe", "-monitor", "-cron", "-daemon", "-poller")
+# what a source that is no source reads as (task.py writes None when an item had none)
+NO_SOURCE = ("none", "null", "-")
 CACHE_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
 class Known:
     skills: frozenset = frozenset()     # skills/<name>/ dirs that hold a SKILL.md
-    runs: frozenset = frozenset()       # declared runs: workloads, channels, agents/<name>/
+    runs: frozenset = frozenset()       # declared runs: workloads, channels, agents/<name>/ with an agent.yaml
+    scripts: frozenset = frozenset()    # the Bridge's own filers: scripts/*.py and skills/*/scripts/*.py stems
     hosts: frozenset = frozenset()      # infra/remotes ids and their declared names
     work: Mapping = field(default_factory=dict)         # slug -> task | stream | done_task | done_stream
     mapping: tuple = ()                 # cockpit.origin_map: ((pattern_lower, category), ...) in file order
@@ -56,6 +67,26 @@ class Known:
 
 
 # ---------------------------------------------------------------- what this Bridge declares
+
+def front_block(text: Any) -> str:
+    """The frontmatter of a STATUS.md as text, between its two `---` fences, after any leading comment or blank
+    lines (task.py writes a `# yaml-language-server: ...` line first); "" for a file without one"""
+    if not isinstance(text, str):
+        return ""
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
+        i += 1
+    if i >= len(lines) or lines[i].strip() != "---":
+        return ""
+    end = next((j for j in range(i + 1, len(lines)) if lines[j].strip() == "---"), len(lines))
+    return "\n".join(lines[i + 1:end])
+
+
+def was_stream(text: Any) -> bool:
+    """Whether a closed STATUS.md was a stream (task.py close keeps `was_stream: true`)"""
+    return WAS_STREAM_RE.search(front_block(text)) is not None
+
 
 def _stems(folder: Path) -> set:
     try:
@@ -84,9 +115,10 @@ def _remote_names(folder: Path) -> set:
             text = path.read_text(encoding="utf-8", errors="replace")[:20000]
         except OSError:
             continue
-        for m in re.finditer(r"^\s*(?:hostname|host_name|name|alias):\s*[\"']?([A-Za-z0-9._-]{1,64})[\"']?\s*$", text, re.M):
+        # top-level keys only: a nested `name:` is a service's or a user's, not the machine's
+        for m in re.finditer(r"^(?:hostname|host_name|name|alias):\s*[\"']?([A-Za-z0-9._-]{1,64})[\"']?\s*$", text, re.M):
             out.add(m.group(1).lower())
-        block = re.search(r"^\s*aliases:\s*(\[[^\]]*\]|(?:\n\s*-\s*.+)+)", text, re.M)
+        block = re.search(r"^aliases:\s*(\[[^\]]*\]|(?:\n\s+-\s*.+)+)", text, re.M)
         if block:
             out |= {x.lower() for x in re.findall(r"[A-Za-z0-9._-]{1,64}", block.group(1))}
     return out
@@ -109,8 +141,7 @@ def _work(root: Path) -> dict:
                 head = (p / "STATUS.md").read_text(encoding="utf-8", errors="replace")[:4000]
             except OSError:
                 head = ""
-            front = head.split("\n---", 1)[0] if head.startswith("---") else ""
-            work[p.name] = "done_stream" if WAS_STREAM_RE.search(front) else "done_task"
+            work[p.name] = "done_stream" if was_stream(head) else "done_task"
     for kind, folder in (("stream", "streams"), ("task", "tasks")):      # a live slug wins over a closed one
         try:
             names = [p.name for p in (base / folder).iterdir() if p.is_dir() and not p.name.startswith("_")]
@@ -145,11 +176,23 @@ _CACHE: dict = {}
 _LOCK = threading.Lock()
 
 
+def _scripts(root: Path) -> set:
+    """The stems of the Bridge's own scripts (scripts/*.py, skills/*/scripts/*.py): CORE files by these names"""
+    out = set()
+    for pattern in ("scripts/*.py", "skills/*/scripts/*.py"):
+        try:
+            out |= {p.stem.lower() for p in root.glob(pattern) if not p.name.startswith(("_", "."))}
+        except OSError:
+            pass
+    return out
+
+
 def _tree(root: Path) -> Known:
     root = Path(root)
     return Known(skills=frozenset(_dirs(root / "skills", "SKILL.md")),
                  runs=frozenset(_stems(root / "workflow" / "workloads") | _stems(root / "infra" / "channels")
-                                | _dirs(root / "agents")),
+                                | _dirs(root / "agents", "agent.yaml")),
+                 scripts=frozenset(_scripts(root)),
                  hosts=frozenset(_remote_names(root / "infra" / "remotes")),
                  work=_work(root), boards=_boards(root))
 
@@ -204,6 +247,25 @@ def _mapped(low: str, mapping: tuple) -> str | None:
     return None
 
 
+def _github(text: str) -> dict | None:
+    """GitHub named as the source: the word, an issue or pull request URL, or an `owner/repo#n` ref"""
+    low = text.lower()
+    if low in ("github", "gh", "github.com"):
+        return _result("github", None, text)
+    m = GITHUB_URL_RE.match(text)
+    if m:
+        repo = f"{m.group(1)}/{m.group(2)}"
+        return _result("github", repo, text, ref=f"{repo}#{m.group(3)}" if m.group(3) else None)
+    if REF_FULL_RE.fullmatch(text):
+        return _result("github", text.split("#", 1)[0], text, ref=text)
+    return None
+
+
+def _work_of(text: str, known: Known, kinds: tuple) -> dict | None:
+    kind = known.work.get(text) or known.work.get(text.lower())
+    return _result("work", text, text, word_key=kind) if kind in kinds else None
+
+
 def _rules(text: str, known: Known, *, top: bool) -> dict:
     low = text.lower()
     segs = [s for s in low.split("/")]
@@ -218,19 +280,31 @@ def _rules(text: str, known: Known, *, top: bool) -> dict:
         return _result("session", text[: -len("-session")], text)
     if len(segs) >= 2 and segs[1] in SESSION_SEGMENTS and segs[0]:
         return _result("session", raw_segs[0], text)
-    if top and len(segs) >= 2 and segs[0] == "bridge" and "/".join(segs[1:]):     # 5. bridge/<what>
+    gh = _github(text)                                              # 5. GitHub named as the source
+    if gh:
+        return gh
+    if top and len(segs) >= 2 and segs[0] == "bridge" and "/".join(segs[1:]):     # 6. bridge/<what>
         rest = "/".join(raw_segs[1:])
         inner = _rules(rest, known, top=False)
         return inner if inner["category"] != "other" else _result("bot", rest, text)
-    if low in known.runs or low in known.hosts:                    # 6. a declared run, a machine
+    live = _work_of(text, known, ("task", "stream"))               # 7. an open task or stream: the closest name
+    if live:
+        return live
+    if low in known.runs or low in known.hosts:                    # 8. a declared run, a machine
         return _result("bot", text, text)
-    if len(segs) >= 2 and segs[0] and segs[1] and segs[0] not in known.skills:
-        return _result("bot", "/".join(raw_segs[1:]), text)
-    if low in known.skills or segs[0] in known.skills:             # 7. a skill run
+    if "-" in low and low.split("-", 1)[0] in AGENT_CLIS:           # 9. an agent tool by its full name (claude-code)
+        return _result("session", low.split("-", 1)[0], text)
+    if len(segs) >= 2 and segs[0] and segs[1] and segs[0] not in known.skills:     # 10. <host>/<job>
+        # only a machine this Bridge knows is dropped from the detail; any other first part says what filed it
+        return _result("bot", "/".join(raw_segs[1:]) if segs[0] in known.hosts else text, text)
+    if low in known.skills or segs[0] in known.skills:             # 11. a skill run
         return _result("skill", text, text)
-    if text in known.work or low in known.work:                    # 8. filed while working on a task
-        return _result("work", text, text, word_key=known.work.get(text) or known.work.get(low))
-    return _result("other", text, text)                             # 9. as written
+    done = _work_of(text, known, ("done_task", "done_stream"))     # 12. a closed task or an ended stream
+    if done:
+        return done
+    if low in known.scripts or low.endswith(BOT_SUFFIXES):         # 13. the Bridge's own filers, a bot by its name
+        return _result("bot", text, text)
+    return _result("other", text, text)                             # 14. as written
 
 
 def classify_from(raw: Any, known: Known | None = None) -> dict | None:
@@ -241,12 +315,16 @@ def classify_from(raw: Any, known: Known | None = None) -> dict | None:
             return None
         known = known or Known()
         text = raw.strip()
+        if text.lower() in NO_SOURCE:
+            return None
         cat = _mapped(text.lower(), known.mapping)
         if cat:
             segs = text.split("/")
             if len(segs) > 1 and (segs[0].lower() == "bridge" or segs[0].lower() in known.hosts):
                 segs = segs[1:]
             return _result(cat, "/".join(segs), raw)
+        if text.lower() == COCKPIT_FROM:                             # a click in the cockpit, by a person
+            return _result("person", None, raw, via_cockpit=True)
         out = _rules(text, known, top=True)
         out["raw"] = raw
         return out
@@ -326,6 +404,8 @@ def _filed_by_cockpit(row: dict, raw: str | None) -> tuple[bool, str | None]:
         return True, parts[2]
     if key.startswith("web:"):
         rest = key[4:]
+        if rest.startswith("ref:") and REF_FULL_RE.fullmatch(rest[4:]):     # a board row: web:ref:<owner/repo#n>
+            return True, None
         m = re.match(r"^item:([^:]+):", rest)
         if m and not REF_FULL_RE.fullmatch(m.group(1)):
             return True, m.group(1)
@@ -354,19 +434,25 @@ def classify_row(row: Any, known: Known | None = None) -> dict | None:
         if not isinstance(row, dict):
             return None
         known = known or Known()
-        raw = row.get("origin_raw") if isinstance(row.get("origin_raw"), str) and row["origin_raw"].strip() else None
+        raw = row.get("origin_raw") if isinstance(row.get("origin_raw"), str) and row["origin_raw"].strip() \
+            and row["origin_raw"].strip().lower() not in NO_SOURCE else None
         key = str(row.get("inbox_key") or "")
         if row.get("inbox_id"):
             hit = REF_RE.search(key)
             ref = hit.group(1) if hit else (row.get("ref") if isinstance(row.get("ref"), str) else None)
             if raw is None:
                 slug = _tab_slug(key, known)
-                return _result("session", slug, None, ref=ref) if slug else None
+                # no source written down: a neutral "other" the page still names, never a row without a tag
+                return _result("session", slug, None, ref=ref) if slug else _result("other", None, None, ref=ref)
             by_cockpit, sid = _filed_by_cockpit(row, raw)
             if by_cockpit:
+                web_ref = key[8:] if key.startswith("web:ref:") and REF_FULL_RE.fullmatch(key[8:]) else None
                 sec = _section(row, known, sid) if sid or row.get("origin_section_kind") or row.get("origin_provider") \
                     else {"kind": None, "provider": None, "title": None}
-                if sec.get("kind") in ("tracker", "calendar", "command") or sec.get("provider"):
+                if web_ref and not (sec.get("kind") in ("tracker", "calendar", "command") or sec.get("provider")):
+                    out = _from_section(row, known, {"provider": row.get("origin_provider"), "kind": "tracker",
+                                                     "title": None}, web_ref)
+                elif sec.get("kind") in ("tracker", "calendar", "command") or sec.get("provider"):
                     out = _from_section(row, known, sec, ref)
                 else:
                     out = _result("person", None, raw, ref=ref)
@@ -381,22 +467,28 @@ def classify_row(row: Any, known: Known | None = None) -> dict | None:
         if str(row.get("key") or "").startswith("advise:"):
             return _result("bridge", _section(row, known).get("title"))
         if row.get("task") and not (ref and REF_FULL_RE.fullmatch(ref)) and not row.get("origin_provider"):
-            inner = from_task_origin(raw)
-            if inner:
-                out = classify_from(inner, known)
-                if out is not None:
-                    out["raw"] = raw
-                    return out
-            first = raw.split()[0].lower() if raw else ""
-            if first and first in known.skills:
+            if raw is None or ADHOC_RE.match(raw.strip()):          # started here, nothing else written down
+                return _result("bridge", None, raw)
+            if TASK_ORIGIN_RE.match(raw.strip()):                    # made from an inbox item
+                inner = from_task_origin(raw)
+                out = classify_from(inner, known) if inner and inner.strip().lower() not in NO_SOURCE else None
+                if out is None:
+                    return _result("other", None, raw)
+                out["raw"] = raw
+                return out
+            first = raw.split()[0].lower()
+            if first in known.skills:
                 return _result("skill", raw.split()[0], raw)
-            if raw:
-                hit = REF_RE.search(raw)
-                if hit or re.search(r"https?://(www\.)?github\.com/", raw):
-                    return _result("github", _repo_of(hit.group(1) if hit else None,
-                                                      (re.search(r"https?://\S+", raw) or [None])[0]), raw,
-                                   ref=hit.group(1) if hit else None)
-            return _result("bridge", None, raw)
+            text = raw.strip()
+            if GITHUB_START_RE.match(text):                          # begun on GitHub: the ref or URL comes first
+                hit = REF_RE.search(text)
+                url = GITHUB_URL_RE.search(text)
+                if url and (not hit or url.start() < hit.start()):
+                    repo = f"{url.group(1)}/{url.group(2)}"
+                    return _result("github", repo, raw, ref=f"{repo}#{url.group(3)}" if url.group(3) else None)
+                return _result("github", _repo_of(hit.group(1), None), raw, ref=hit.group(1))
+            # a source was written down that no rule knows (a call, a meeting, a mail): shown as written
+            return _result("other", raw, raw)
         return _from_section(row, known, _section(row, known))
     except Exception:  # noqa: BLE001 - a label is a nicety, never a reason to lose the row
         return None

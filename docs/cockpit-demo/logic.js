@@ -120,14 +120,16 @@ export function rowKind(row, s) {
     const task = row.about_task ?? row.task ?? null
     return { kind: 'issue', ref: row.ref, task, taskKind: task ? workKindOf(row, s) : null }
   }
-  if (row?.task) return { kind: workKindOf(row, s) ?? 'task', task: row.task }
+  // 'done': closed under work/done/ with no word on whether it was a task or a stream (an older server's search hit)
+  if (row?.task) return { kind: row.work_kind === 'done' ? 'done' : workKindOf(row, s) ?? 'task', task: row.task }
   return { kind: 'other', source: row?.sources?.[0] ?? null }
 }
 
-/** The work kind of a place under work/ (a search hit's path): a task, a stream, or closed under work/done/ */
+/** The work kind of a place under work/ (a search hit's path): a task, a stream, or 'done' for closed under
+ * work/done/, where the path alone cannot say whether it was a task or a stream (the server's work_kind can) */
 export function placeKind(path) {
   const m = /^work\/(tasks|streams|done)\//.exec(String(path ?? ''))
-  return m ? { tasks: 'task', streams: 'stream', done: 'done_task' }[m[1]] : null
+  return m ? { tasks: 'task', streams: 'stream', done: 'done' }[m[1]] : null
 }
 
 /** A page item (By source, the Jev list, a board row) in the shape KindTag and OriginTag read: an inbox item, an

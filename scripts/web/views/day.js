@@ -19,7 +19,7 @@ import { Btn, Chip, Dot, Empty, MarkChip, PrioChip, StateLine, VerdictChip, useR
 
 // ---------------------------------------------------------------- left column: the day
 
-export const KIND_MARK = { task: '▣', stream: '↻', done_task: '✓', done_stream: '↻✓', inbox: '◆', issue: '#', other: '•' }
+export const KIND_MARK = { task: '▣', stream: '↻', done_task: '✓', done_stream: '↻✓', done: '✓', inbox: '◆', issue: '#', other: '•' }
 
 /** What a row is (rowKind), first on every row and in every head, in one shape that stands apart from the state
  *  chips: the state changes, the kind does not. A report or an issue about a task or stream names it, the word Task
@@ -43,16 +43,18 @@ const ORIGIN_TONE = { github: 'tk-info', tracker: 'tk-info', calendar: 'tk-accen
   skill: 'tk-secondary', work: 'tk-on-surface-muted', person: 'tk-muted', bridge: 'tk-muted', other: 'tk-muted' }
 
 /** Where a row comes from (originOf: the server classified it, origin.py): a word for the category and a short
- *  detail, the text as written in the tooltip, a spoken "Source:" in front. Nothing for no origin, or for an
- *  unknown source without a text. `origin` given wins over the row's own; a ref the kind tag shows already is not
- *  repeated */
+ *  detail, the text as written in the tooltip, a spoken "Source:" in front. A row with no origin (no source written
+ *  down, an older server) still gets one: "Other source · unknown", so no work row goes without a source tag.
+ *  `origin` given wins over the row's own; a ref the kind tag shows already is not repeated */
 export function OriginTag({ row = null, origin }) {
   const t = T()
-  const o = origin !== undefined ? (origin && ORIGIN_CATEGORIES.includes(origin.category) ? origin : null) : originOf(row)
-  if (!o || (o.category === 'other' && !o.detail)) return null
+  const given = origin !== undefined ? (origin && ORIGIN_CATEGORIES.includes(origin.category) ? origin : null) : originOf(row)
+  const unknown = !given || (given.category === 'other' && !given.detail)
+  const o = unknown ? { category: 'other', word_key: null, detail: t.originUnknown, raw: given?.raw ?? null,
+    ref: given?.ref ?? null, via_cockpit: !!given?.via_cockpit } : given
   const word = o.category === 'work' ? (t.origin.work[o.word_key] ?? t.origin.work.task)
     : o.category === 'tracker' ? (o.word_key || t.origin.tracker) : t.origin[o.category]
-  const title = [o.raw || t.originTitle[o.category], o.via_cockpit ? t.originViaCockpit : null].filter(Boolean).join(' · ')
+  const title = [o.raw || (unknown ? t.originNone : t.originTitle[o.category]), o.via_cockpit ? t.originViaCockpit : null].filter(Boolean).join(' · ')
   const ref = o.ref && o.ref !== row?.ref ? o.ref : null
   return html`<span class=${`chip origin ${ORIGIN_TONE[o.category]}`} title=${title}><span class="sr-only">${t.originSpoken} </span><span class="origin-word">${word}</span>${o.detail ? html`<span class="origin-detail">${o.detail}</span>` : null}${ref ? html`<span class="mono origin-ref">${ref}</span>` : null}</span>`
 }
@@ -211,7 +213,7 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
     </span>`
   }
   return html`${still}<span class="settle-menu row-panel" role="menu" ref=${me} style=${style}>
-    ${rows.length > 1 ? html`<ul class="settle-list">${rows.map(r => html`<li key=${r.key}><${KindTag} row=${r} s=${s} /> ${r.title}</li>`)}</ul>` : null}
+    ${rows.length > 1 ? html`<ul class="settle-list">${rows.map(r => html`<li key=${r.key}><${KindTag} row=${r} s=${s} /> <${OriginTag} row=${r} /> ${r.title}</li>`)}</ul>` : null}
     <label class="start-note">
       <span class="label-caps">${part === 'start' ? t.panelTextStart : t.panelTextSettle}</span>
       <textarea rows="2" ref=${field} value=${text} placeholder=${part !== 'start' ? t.panelSettleHint : needsWords ? t.startNeedsHint : t.panelStartHint}

@@ -196,12 +196,13 @@ def test_the_inbox_detail_and_the_task_detail_name_the_origin(tmp_path):
     w = World(tmp_path, serve=False, prepare=False)
     try:
         d = details.inbox_detail(w.root, "20261009-0910-tidy-labels-c3d4", None)
-        assert d["origin"]["category"] == "bot" and d["origin"]["detail"] == "demo"     # <host>/<job>, no skill folder here
+        # <host>/<job>, no skill folder here; "briefing" is no machine this Bridge knows, so it stays in the detail
+        assert d["origin"]["category"] == "bot" and d["origin"]["detail"] == "briefing/demo"
         assert d["origin"]["raw"] == "briefing/demo"
         listing = [{"id": "20261009-0910-tidy-labels-c3d4", "task": "demo-task", "state": "open", "from": "claude",
                     "kind": "decision", "summary": "x"}]
         t = details.task_detail(w.root, "demo-task", listing)
-        assert t["work_kind"] == "task" and t["origin"]["category"] == "bridge" and t["origin"]["raw"] == "invented"
+        assert t["work_kind"] == "task" and t["origin"]["category"] == "other" and t["origin"]["raw"] == "invented"
         assert t["inbox"][0]["from"] == "claude" and t["inbox"][0]["kind"] == "decision"
         assert t["inbox"][0]["origin"]["category"] == "session"
         done = w.root / "work" / "done" / "2026-10" / "old-stream"
@@ -227,3 +228,10 @@ def test_a_page_item_rebuilt_from_the_inbox_keeps_its_source(tmp_path):
 
 def test_jev_gets_nothing_new():
     assert not {"origin", "origin_raw", "work_kind", "about_kind", "inbox_kind"} & set(jev.ROW_FIELDS)
+
+
+def test_a_history_line_of_a_stream_says_stream():
+    from lib.bridge_cockpit import history
+    assert history.item("task:s", "S", "task", "done", "s", work_kind="stream")["work_kind"] == "stream"
+    assert history.item("task:t", "T", "task", "done", "t", work_kind="task")["work_kind"] == "task"
+    assert "work_kind" not in history.item("inbox:x", "X", "inbox", "done", "x", work_kind="stream")

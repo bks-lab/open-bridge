@@ -310,20 +310,32 @@ flow. The raw inputs travel as `origin_raw`, `inbox_kind`, `origin_provider` and
 `briefing.py` and `briefing_view.py` (the contract test lists them in `READS`); `cockpit.origin_map` stays on the
 server. Jev gets none of it (`jev.ROW_FIELDS` is unchanged).
 
-The rules, in order: the person's map, a `tab:`/`tab-` name, an agent tool, a session suffix, a leading `bridge/`, a
-declared run or machine or the `<host>/<job>` shape, a skill folder, a work slug, else `other` with its text. A
-row the cockpit filed (`--from bridge-cockpit`, key `briefing:<p>:<section>:<id>` or `web:<row key>`) takes the
-origin of the section it came from, `via_cockpit: true`. A board row goes by its provider first, so GitLab is
-never called GitHub. Names of one instance never stand in the rules: the tree and the map name them.
+The rules, in order: the person's map, `bridge-cockpit`, a `tab:`/`tab-` name, an agent tool, a session suffix,
+`github`/a GitHub URL/`owner/repo#n`, a leading `bridge/`, an open task or stream slug, a declared run or machine,
+an agent tool by its longer name, the `<host>/<job>` shape (only a known host leaves the detail), a skill folder, a
+closed slug, a script of the Bridge (`Known.scripts`: `scripts/*.py`, `skills/*/scripts/*.py`) or a bot ending
+(`origin.BOT_SUFFIXES`), else `other` with its text. A task's origin is `bridge` only for none or `task.py`'s
+"Ad-hoc <date>", GitHub only when the ref or URL comes first, else `other` with the text. An inbox row with no
+`from` is `other` with no detail; `OriginTag` draws it as "Other source · unknown", so it never draws nothing. A
+row the cockpit filed (`--from bridge-cockpit`, key `briefing:<p>:<section>:<id>`, `web:<row key>` or
+`web:ref:<owner/repo#n>`) takes the origin of the section or board row it came from, `via_cockpit: true`. A board
+row goes by its provider first, so GitLab is never called GitHub. A closed STATUS.md is read past a leading
+`# yaml-language-server` line (`origin.front_block`, `was_stream`; `daybook.week_done` and `work_find` agree), so an
+ended stream is never a closed task. Names of one instance never stand in the rules: the tree and the map name
+them.
 
 Every renderer of a work row draws `KindTag` and then `OriginTag` (both in `views/day.js`): `RowMeta` (the Due list,
-`HomeRowCard`, `DeskParts`, the overview), `HiddenList`, `RowPanel`'s list (the kind only), `InfoRow` in
-`views/pages.js` (By source, the Jev list, through `logic.itemRow`), `GhRow` (the origin; its task or stream chip
-stays), `PlanList` in `jev/page.js`, the file's `Cover`, `Walk` queue and `FindResults` in `views/dossier.js`,
-`Hero`, `After` and `FocusWalk` in `views/focus.js`, `RowDetail`, `MetaList` (the "Source" row beside "Sources"),
-`TaskDetail`, `NextUp` and `DetailColumn` in `views/detail.js`, the `ItemDrawer` head and bodies and `InfoDrawer` in
-`views/overlays.js`, `RowLine` in `views/list.js`, `StageCard` and the inspector in `views/stage.js`, `ReturnCard`
-and the week tile in `views/home.js`, and `ReviewBody` in `views/check.js` (the kind). A new renderer of a work row
+`HomeRowCard`, `DeskParts`, the overview), `HiddenList`, `RowPanel`'s list, `InfoRow` in
+`views/pages.js` (By source, the Jev list, through `logic.itemRow`), `GhRow` (the origin; its chip names the task,
+stream, closed task or ended stream it syncs with, `ghPlaceChip`), `PlanList` in `jev/page.js` (a plan entry the
+model holds no row for reads the work page's own item), the file's `Cover`, inbox drawer, `Walk` queue and
+`FindResults` (the hit's `work_kind`) in `views/dossier.js`, `Hero`, `After` and `FocusWalk` in `views/focus.js`,
+`RowDetail`, `MetaList` (the "Source" row beside "Sources"), `TaskDetail` (its head word and its entries list),
+`NextUp` and `DetailColumn` in `views/detail.js`, `WalkBar` in `views/parts.js` (the later entries too), the
+`ItemDrawer` head and bodies (`ItemTaskCard`, `TaskBody`'s related items), `InfoDrawer` and `HistoryDrawer` (Task
+or Stream from the history line's `work_kind`) in `views/overlays.js`, `RowLine` in `views/list.js`, `StageCard`,
+the inspector (work page items) and `FeedLine` in `views/stage.js`, `ReturnCard` and the week tile in
+`views/home.js`, and `ReviewBody` in `views/check.js`. A new renderer of a work row
 draws both: the frontend test "the kind stands first on every row" fails on a view file without them. After the
 change run `python3 scripts/build-cockpit-demo.py --write` so the demo mirror follows.
 

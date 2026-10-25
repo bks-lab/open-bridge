@@ -42,9 +42,14 @@ def undo_for(kind: str, key: str, ident: str | None, status: str | None = None) 
     return None
 
 
-def item(key: str, title: str, kind: str, did: str, ident: str | None = None, status: str | None = None) -> dict:
-    return {"key": key, "title": str(title)[:200], "kind": kind, "did": did, "ident": ident,
-            "undo": undo_for(kind, key, ident, status), "undone_ms": None}
+def item(key: str, title: str, kind: str, did: str, ident: str | None = None, status: str | None = None,
+         work_kind: str | None = None) -> dict:
+    """One line of the history; a task's carries whether it was a task or a stream, so the page names it"""
+    out = {"key": key, "title": str(title)[:200], "kind": kind, "did": did, "ident": ident,
+           "undo": undo_for(kind, key, ident, status), "undone_ms": None}
+    if kind == "task" and work_kind in ("task", "stream"):
+        out["work_kind"] = work_kind
+    return out
 
 
 class History:
@@ -144,6 +149,7 @@ def _closed_item(root: Path, key: str) -> dict | None:
             return None
         title = ident
         outcome = "done"
+        fm = {}
         try:
             text = found[-1].read_text(encoding="utf-8")
             fm = yaml.safe_load(text.split("---", 2)[1]) if text.lstrip().startswith(("---", "#")) and "---" in text else {}
@@ -152,7 +158,9 @@ def _closed_item(root: Path, key: str) -> dict | None:
             outcome = "declined" if (fm or {}).get("outcome") == "declined" else "done"
         except (OSError, yaml.YAMLError, IndexError):
             pass
-        out = item(key, title, "task", "done" if live else outcome, ident)
+        stream = (live.parent.parent.name == "streams") if live else (fm or {}).get("was_stream") is True \
+            if isinstance(fm, dict) else False
+        out = item(key, title, "task", "done" if live else outcome, ident, work_kind="stream" if stream else "task")
         if live:                    # opened again since: already taken back, when the file last changed
             out["undone_ms"] = int(live.stat().st_mtime * 1000)
         return out

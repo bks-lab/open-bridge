@@ -799,13 +799,15 @@ function inboxDetail(id, state) {
     item: {
       summary: r?.title ?? 'Example item', detail: 'Invented example detail.\nThe item came from a demo check and carries no real data.',
       kind: hasAction ? 'approval' : 'todo', gate: r?.gate ?? 'only-you', urgency: r?.urgency ?? null, state: r?.inbox_state ?? 'open',
-      task: r?.task ?? null, due: r?.due ?? null, key: r?.inbox_key ?? 'example', from: 'demo-check', created: '2026-10-09T09:00:00',
+      task: r?.task ?? null, due: r?.due ?? null, key: r?.inbox_key ?? 'example', from: r?.origin?.raw ?? 'demo-check', created: '2026-10-09T09:00:00',
       action_display: hasAction ? 'python3 scripts/example-tool.py --apply demo' : null, has_closes_when: hasAction,
     },
     events: [
-      { verb: 'add', by: 'demo-check', at: '2026-10-09T09:00:00' },
+      { verb: 'add', by: r?.origin?.raw ?? 'demo-check', at: '2026-10-09T09:00:00' },
       { verb: 'note', by: 'web', at: '2026-10-09T09:05:00', note: 'looked at it, fine' },
     ],
+    // who filed it, as the server names it (details.py inbox_detail, origin.py)
+    origin: r?.origin ?? O('other', 'demo-check', 'demo-check'),
   }
 }
 
@@ -839,8 +841,8 @@ function findFiles(q, state) {
   const words = [...new Set(String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8)
   const rows = (state?.model?.sections ?? []).flatMap(x => x.rows ?? []).filter(r => r.task && !r.inbox_id)
   const seen = new Set()
-  const files = rows.filter(r => !seen.has(r.task) && seen.add(r.task)).map(r => ({ slug: r.task, kind: 'task', title: r.title,
-    path: `work/tasks/${r.task}`, lines: [`headline: ${r.title}`, ...(r.next?.what ? [`next: ${r.next.what}`] : [])] }))
+  const files = rows.filter(r => !seen.has(r.task) && seen.add(r.task)).map(r => ({ slug: r.task, kind: r.stream ? 'stream' : 'task', title: r.title,
+    path: `work/${r.stream ? 'streams' : 'tasks'}/${r.task}`, lines: [`headline: ${r.title}`, ...(r.next?.what ? [`next: ${r.next.what}`] : [])] }))
   files.push({ ...DONE_FILE, kind: 'done', path: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}` })
   const groups = []
   for (const f of files) {
@@ -849,7 +851,7 @@ function findFiles(q, state) {
       .filter(h => words.some(w => h.text.toLowerCase().includes(w)))
     const all = `${name} ${hits.map(h => h.text).join(' ')}`.toLowerCase()
     if (!words.length || !words.every(w => all.includes(w))) continue
-    groups.push({ slug: f.slug, kind: f.kind, path: f.path, title: f.title, rank: words.every(w => name.includes(w)) ? 0 : 1,
+    groups.push({ slug: f.slug, kind: f.kind, work_kind: f.kind === 'done' ? 'done_task' : f.kind, path: f.path, title: f.title, rank: words.every(w => name.includes(w)) ? 0 : 1,
       count: hits.length, hits })
   }
   groups.sort((a, b) => a.rank - b.rank || (a.kind === 'done') - (b.kind === 'done') || b.count - a.count)
@@ -863,10 +865,19 @@ function taskDetail(slug, state) {
   // the task's own row, not an inbox item that names the task
   const row = rows.find(r => r?.task === slug && !r.inbox_id && !r.inbox) ?? rows.find(r => r?.task === slug) ?? {}
   const done = slug === DONE_FILE.slug
+  // what the server sends (details.py task_detail): the four kinds by the folder, the origin as origin.py names it,
+  // and the open inbox items that name the task, each with who filed it
+  const workKind = done ? 'done_task' : row.work_kind ?? (row.stream ? 'stream' : 'task')
+  const folder = done ? `work/done/${DONE_FILE.month}` : workKind === 'stream' ? 'work/streams' : 'work/tasks'
+  const raw = row.origin?.raw ?? 'team call on 2026-09-30'
+  const inbox = (state?.model?.sections ?? []).flatMap(x => x.rows ?? []).filter(r => r.inbox_id && r.task === slug)
+    .map(r => ({ id: r.inbox_id, summary: r.title, state: r.inbox_state ?? 'open', urgency: r.urgency ?? null, gate: r.gate ?? null,
+      from: r.origin?.raw ?? null, kind: r.inbox_kind ?? null, origin: r.origin ?? null }))
   return {
-    ok: true, slug, kind: done ? 'done' : 'task', path: done ? `work/done/${DONE_FILE.month}/${slug}/STATUS.md` : `work/tasks/${slug}/STATUS.md`,
+    ok: true, slug, kind: done ? 'done' : workKind === 'stream' ? 'stream' : 'task', work_kind: workKind,
+    origin: row.origin ?? O('other', raw, raw), inbox, path: `${folder}/${slug}/STATUS.md`,
     front: { type: row.task_type ?? 'feature', status: done ? 'done' : row.state ?? 'doing', priority: row.priority ?? 'P1', created: '2026-10-01',
-      last_updated: '2026-10-08', headline: done ? DONE_FILE.title : row.title ?? 'Onboarding guide for the demo project', origin: 'team call on 2026-09-30',
+      last_updated: '2026-10-08', headline: done ? DONE_FILE.title : row.title ?? 'Onboarding guide for the demo project', origin: raw,
       blocked_by: null },
     sections: [
       { heading: 'Goal', text: 'A new team member sets up the demo project in under an hour, with every step written down.', truncated: false },

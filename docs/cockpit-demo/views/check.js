@@ -10,7 +10,7 @@ import {
 import { flash, flowAlpha, flowPoints, nowSec } from '../motion.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
-import { KindTag, SettleMenu, StartMany } from './day.js'
+import { KindTag, OriginTag, SettleMenu, StartMany } from './day.js'
 import { Btn, CountNum, Dot, Empty, PrioChip, StateLine, useClock, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- task check
@@ -228,7 +228,7 @@ export function ReviewBody({ s, c, inline = false }) {
             <td class="c-pick"><input type="checkbox" checked=${picked.includes(r.key)} aria-label=${t.rvPick(short(r.title, 40))}
               onChange=${() => c.toggleRvPick(r.key)} /></td>
             <td class="c-task"><button type="button" class="btn-link info-open" title=${t.openDetail} onClick=${e => c.peek(r.key, e.currentTarget, rows.map(x => ({ how: 'peek', key: x.key, title: x.title })))}>${short(r.title, 80)}</button>
-              <span class="row-meta"><${KindTag} row=${r} s=${s} /><${PrioChip} priority=${r.priority} />${r.area ? html`<span class="meta-area">${r.area}</span>` : null}</span></td>
+              <span class="row-meta"><${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} /><${PrioChip} priority=${r.priority} />${r.area ? html`<span class="meta-area">${r.area}</span>` : null}</span></td>
             <td class="c-verdict"><${StateLine} token=${verdictToken(r.review.verdict)} strong=${r.review.verdict === 'close'} word=${t.verdictName[r.review.verdict]} />
               <span class="muted small conf" title=${t.confidence[r.review.confidence] ?? ''}>${confidenceDots(r.review.confidence)}</span>
               ${r.review.kept ? html`<span class="chip">${t.keptMark}</span>` : null}

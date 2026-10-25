@@ -100,3 +100,15 @@ def test_the_week_counts_the_tasks_closed_since_monday(tmp_path):
     assert [x["title"] for x in week["items"]] == ["Beta", "Alpha"]      # newest first
     assert week["since"] == "2026-10-12"
     assert daybook.week_done(tmp_path / "nowhere", dt.date(2026, 10, 14))["count"] == 0
+
+
+def test_the_week_names_an_ended_stream_also_behind_the_comment_line_task_py_writes(tmp_path):
+    for slug, head in (("plain-stream", ""), ("commented-stream", "# yaml-language-server: $schema=x\n"),
+                       ("commented-task", "# yaml-language-server: $schema=x\n")):
+        d = tmp_path / "work" / "done" / "2026-10" / slug
+        d.mkdir(parents=True)
+        stream = "" if slug.endswith("task") else "was_stream: true\n"
+        (d / "STATUS.md").write_text(f"{head}---\nslug: {slug}\nstatus: done\n{stream}closed: \"2026-10-13\"\n---\n\n# {slug}\n",
+                                     encoding="utf-8")
+    kinds = {x["slug"]: x["work_kind"] for x in daybook.week_done(tmp_path, dt.date(2026, 10, 14))["items"]}
+    assert kinds == {"plain-stream": "done_stream", "commented-stream": "done_stream", "commented-task": "done_task"}

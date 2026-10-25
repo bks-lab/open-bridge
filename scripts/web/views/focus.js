@@ -163,7 +163,7 @@ export function FocusWalk({ queue, i, s, c, walk = null, done = null }) {
   const entry = k => {
     const x = queue[k]
     return { key: x.id, title: short(x.kind === 'tab' ? x.tab.name : x.row.title, 90),
-      sub: x.kind === 'tab' ? x.tab.workspace : html`<${KindTag} row=${x.row} s=${s} />`,
+      sub: x.kind === 'tab' ? x.tab.workspace : html`<span class="entry-tags"><${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} /></span>`,
       onOpen: () => go(x.id, k) }
   }
   const later = [i + 2, i + 3].filter(k => k < queue.length).map(entry)

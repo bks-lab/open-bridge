@@ -210,6 +210,30 @@ def snippet(line: str, words: list[str]) -> str:
     return ("…" if start else "") + cut + ("…" if start + SNIPPET_MAX < len(text) else "")
 
 
+def work_kind_of(root: Path, folder: str, kind: str) -> str | None:
+    """What a file is, in the words of the cockpit (origin.py WORK_KINDS): an open task or stream as its folder says,
+    a closed one a task or a stream by the `was_stream: true` task.py keeps (past a leading comment line); None for
+    a log or archive group"""
+    if kind in ("task", "stream"):
+        return kind
+    if kind != "done":
+        return None
+    try:
+        lines = (root / folder / "STATUS.md").read_text(encoding="utf-8", errors="replace")[:8000].splitlines()
+    except OSError:
+        return "done_task"
+    i = 0
+    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
+        i += 1
+    if i < len(lines) and lines[i].strip() == "---":
+        for ln in lines[i + 1:]:
+            if ln.strip() == "---":
+                break
+            if re.match(r"^was_stream:\s*true\s*$", ln, re.I):
+                return "done_stream"
+    return "done_task"
+
+
 def title_of(root: Path, folder: str, slug: str) -> str:
     """A file's title: the headline of its STATUS.md, else its first `# ` heading, else its slug."""
     try:
@@ -308,6 +332,7 @@ def find(root: Path | str, query: object, *, engine: str = "auto", rg: str | Non
         rank = 0 if named else 1 if g["status"] else 2
         hits = sorted(g["hits"], key=lambda h: (not h["status"], -h["n"], h["path"], h["line"]))
         out.append({"slug": g["slug"], "kind": g["kind"], "path": g["path"], "title": title, "rank": rank,
+                    "work_kind": work_kind_of(root, g["path"], g["kind"]) if g["slug"] else None,
                     "count": len(hits), "hits": [{k: h[k] for k in ("path", "line", "text")} for h in hits[:HITS_MAX]]})
     # the same slug twice (open and closed, or closed in two months): the order of known_folders, newest first
     out.sort(key=lambda g: (g["rank"], KIND_ORDER.get(g["kind"], 3), -g["count"], g["slug"] or g["path"],

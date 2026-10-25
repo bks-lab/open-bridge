@@ -223,28 +223,37 @@ where a tab already runs.
 
 Every work row carries two tags, in this order, as words and never as colour alone:
 
-- **What it is.** Task, Stream, Closed task or Ended stream; Report (an inbox item), always followed by
+- **What it is.** Task, Stream, Closed task or Ended stream (Closed alone for an older search hit that cannot
+  say which of the two); Report (an inbox item), always followed by
   "about ▣ Task: X" or "about ↻ Stream: X" when it belongs to one; Issue, with the same "about" when a task
   or stream syncs it; or Item. A stream's tag also has a dashed border, a second cue beside the word.
 - **Where it comes from.** One word and a short detail: GitHub (with the repository), the name of another
   board (GitLab, Azure Boards), Calendar, Bot (a scheduled run, a notifier, a check, a bot, a machine),
   Session (an agent session or tab: Claude, Codex and the like), Skill (a skill run such as a briefing or
   meeting notes), From task or From stream (filed while working on it), By hand (a person), Bridge (started
-  here, no other source written down) or Other source. The text as it was written stands in the tooltip and
-  in full in the detail's "Source" row, so the word never hides anything.
+  here, no other source written down: `task.py`'s own "Ad-hoc <date>") or Other source. A task whose origin is
+  free text no rule knows (a call, a meeting, a mail) reads Other source with that text, and a row with no
+  source at all reads "Other source · unknown", so no work row goes without the tag. The text as it was
+  written stands in the tooltip and in full in the detail's "Source" row, so the word never hides anything.
+  The drawers, the walk bars, the check table, the live feed and the history say Task or Stream the same way.
 
 The source of an inbox item is who filed it, not what it is about: a radar job that files about an issue reads
 "Bot · radar job" and shows the issue number beside it. A row you sent to the inbox from the cockpit takes the
 source of the page row it came from (a GitHub row stays GitHub) and its detail says "filed from the cockpit".
 
-The rules, first match wins: your `cockpit.origin_map`; a `tab:` or `tab-` name (Session); an agent tool
-(`claude`, `codex`, `gemini`, `copilot`, `cursor`, `opencode`, also with `-session`); a `-session` suffix or a
-second part `session` or `chat` (`laptop/session`); a leading `bridge/` (the rest is read again, else Bot); a run
-this Bridge declares (`workflow/workloads/`, `infra/channels/`, `agents/`) or a machine of `infra/remotes/`, or the
-shape `<machine>/<job>` (Bot); a skill folder of this Bridge (Skill); a task or stream slug (From task, From stream);
-anything else is Other source with its text. A board row is named by its provider first (a GitLab row is never
-called GitHub), a GitHub link or `owner/repo#n` only when no provider is known. Map your own names when a word is
-wrong:
+The rules, first match wins: your `cockpit.origin_map`; `bridge-cockpit` (By hand, filed from the cockpit); a
+`tab:` or `tab-` name (Session); an agent tool (`claude`, `codex`, `gemini`, `copilot`, `cursor`, `opencode`, also
+with `-session`); a `-session` suffix or a second part `session` or `chat` (`laptop/session`); `github`, a GitHub
+link or an `owner/repo#n` (GitHub); a leading `bridge/` (the rest is read again, else Bot); an open task or stream
+slug (From task, From stream); a run this Bridge declares (`workflow/workloads/`, `infra/channels/`, `agents/` with
+an `agent.yaml`) or a machine of `infra/remotes/` (Bot); an agent tool by its longer name (`claude-code`); the shape
+`<machine>/<job>` (Bot; the first part is dropped from the detail only when it is a machine this Bridge knows); a
+skill folder of this Bridge (Skill); a closed task or ended stream slug; a script of the Bridge itself
+(`scripts/*.py`, `skills/*/scripts/*.py`, such as `cloud-costs`) or a name ending in `-bot`, `-notifier`,
+`-autorun`, `-watcher`, `-probe`, `-monitor` and the like (Bot); anything else is Other source with its text. A
+task's own origin is GitHub only when it starts with the link or the `owner/repo#n` (a PR mentioned in the middle
+is no origin). A board row is named by its provider first (a GitLab row is never called GitHub), a GitHub link or
+`owner/repo#n` only when no provider is known. Map your own names when a word is wrong:
 
 ```yaml
 cockpit:

@@ -167,6 +167,7 @@ class WorkVerbs:
                     continue
                 ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
                                     "did": f"runs on until {until}", "ident": slug, "undone_ms": None,
+                                    "work_kind": "stream" if row.get("stream") else "task",
                                     "undo": {"verb": "task_running", "args": {"slug": slug}}})
                 ctx.note(self.tx["runs_on_note"].format(until=until) + f": {title}")
                 ctx.delta()
@@ -382,7 +383,8 @@ class WorkVerbs:
                 continue
             done += 1
             ctx.history.append(history_item(row["key"], row["title"], "task",
-                                            "declined" if why in DECLINED_REASONS else "done", slug, before))
+                                            "declined" if why in DECLINED_REASONS else "done", slug, before,
+                                            work_kind="stream" if out.get("stream") or row.get("stream") else "task"))
             if len(rows) == 1:
                 self.settle(ctx, row, self.tx["task_declined" if why in DECLINED_REASONS else "task_closed"])
             else:

@@ -521,6 +521,8 @@ kbd {
 .task-sections details > .pre { padding: 2px 0 10px; font-size: var(--text-sm); color: var(--on-surface); }
 .entries { display: flex; flex-direction: column; }
 .entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); }
+/* the kind and the source of an entry, beside its title (views/detail.js, overlays.js, dossier.js) */
+.entry-tags { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 
 .team-state { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font-size: var(--text-sm); }
 .roles { display: flex; flex-wrap: wrap; gap: 6px 14px; }

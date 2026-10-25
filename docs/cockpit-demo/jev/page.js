@@ -19,7 +19,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { clamp, countTo, cursorOn, flash, flowAlpha, noise1, nowSec, o3, ramp, reducedMotion, ripples, spring, track, trackAt, tracking, typed, win } from './motion.js'
 import { CORE, H, W, X0, X1, Y0, Y1, costLine, launch, liveItems, orderPlan, pendingTitles, place, planOpen, rowJump, tokenText } from './logic.js'
-import { indexRows } from '../logic.js'
+import { indexRows, itemRow, triageKey } from '../logic.js'
 import { KindTag, OriginTag } from '../views/day.js'
 import { T as dashText, language } from '../text.js'
 
@@ -220,14 +220,17 @@ function Matrix({ items, first, spots, emph, onDot }) {
   </g>`
 }
 
-/** The row a plan entry stands for, for its kind and origin tags: the model's row, else one built from its key */
-function planRow(it, row) {
+/** The row a plan entry stands for, for its kind and origin tags: the model's row, else the work page's own item of
+ *  that key (it carries its origin and work kind), else one built from its key */
+export function planRow(it, row, pageItems = null) {
   if (row) return row
+  const own = pageItems?.get(it.key)
+  if (own) return { ...itemRow(own), key: it.key }
   const m = /^(inbox|task):(.+)$/.exec(it.key ?? '')
   return m ? { key: it.key, [m[1] === 'inbox' ? 'inbox_id' : 'task']: m[2] } : { key: it.key }
 }
 
-function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, onOpen }) {
+function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, pageItems, onOpen }) {
   const t = tx()
   const d = dashText()
   return html`<ol class="jev-plan" ref=${listRef}>
@@ -245,7 +248,7 @@ function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, onOpen }
               onFocus=${() => setHover(it.key)} onBlur=${() => setHover(null)} onClick=${e => onOpen(it, e.currentTarget)}>${it.title}</button>`
             : html`<span class="jev-row-title">${it.title}</span>`}
           <span class="jev-row-meta">
-            <${KindTag} row=${planRow(it, row)} s=${s} /><${OriginTag} row=${planRow(it, row)} />
+            <${KindTag} row=${planRow(it, row, pageItems)} s=${s} /><${OriginTag} row=${planRow(it, row, pageItems)} />
             <span class=${`jev-pill jev-${it.who}`}>${it.who === 'me' ? t.me : t.delegate}</span>
             <span class="jev-pill">${t.effort[Math.min(3, Math.round(it.effort * 3))]}</span>
             <span class="jev-pill">${t.quads[it.quadrant]}</span>
@@ -289,7 +292,7 @@ function Headline({ items, data, headRef }) {
 
 // ---------------------------------------------------------------- page
 
-export function JevPage({ s, c, ask = null, extra = null, store = 'tab', top = null }) {
+export function JevPage({ s, c, ask = null, extra = null, pageItems = null, store = 'tab', top = null }) {
   const t = tx()
   const kept = keptBy[store] ?? null
   const [st, setSt] = useState(() => ({ data: kept, reading: false, err: null }))
@@ -623,7 +626,7 @@ export function JevPage({ s, c, ask = null, extra = null, store = 'tab', top = n
       </div>
       <aside class="jev-side panel">
         <h3 class="jev-side-title">${t.plan}</h3>
-        ${plan ? html`<${PlanList} items=${items} byKey=${byKey} s=${s} c=${c} emph=${emph} setHover=${setHover} listRef=${listRef} extra=${extra} onOpen=${onOpen} />`
+        ${plan ? html`<${PlanList} items=${items} byKey=${byKey} s=${s} c=${c} emph=${emph} setHover=${setHover} listRef=${listRef} extra=${extra} pageItems=${pageItems} onOpen=${onOpen} />`
           : html`<ol class="jev-plan jev-plan-ghost">${titles.slice(0, 7).map((x, i) => html`<li key=${i} class="jev-row"><span class="jev-rank mono">·</span><span class="jev-row-title muted">${x}</span></li>`)}</ol>`}
       </aside>
     </div>`}
@@ -640,5 +643,8 @@ export function JevWork({ s, c, page, extra, top }) {
     const data = orderPlan(res.data.order) ?? { ok: true, empty: true, plan: { items: [], first: null } }
     return { ok: true, data: { ...data, today: res.data.today } }
   }
-  return html`<${JevPage} s=${s} c=${c} ask=${ask} extra=${extra} store=${page.id} top=${top} />`
+  // the work page's own items by key: a plan entry the model holds no row for still shows its kind and source
+  const pageItems = new Map((page.sections ?? []).flatMap(sec => (s.more?.[`${page.id}/${sec.id}`]?.items ?? sec.items ?? [])
+    .map(it => [triageKey(it), it])).filter(([k]) => k))
+  return html`<${JevPage} s=${s} c=${c} ask=${ask} extra=${extra} pageItems=${pageItems} store=${page.id} top=${top} />`
 }

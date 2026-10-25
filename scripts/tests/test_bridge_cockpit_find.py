@@ -246,3 +246,16 @@ def test_a_folder_without_a_slug_of_its_own_is_found_by_its_file(bridge):
         odd = by["work/tasks/Odd.Name/notes.md"]
         assert odd["slug"] is None and odd["count"] == 2
         assert "work/tasks/_briefings/2026-10-05.md" not in slugs(wf.find(bridge, "morning nothing", engine=engine))
+
+
+def test_every_file_says_whether_it_is_a_task_or_a_stream_also_once_closed(bridge):
+    # task.py writes a comment line before the fence; an ended stream keeps was_stream: true
+    put(bridge, "work/done/2026-10/ended-watch/STATUS.md",
+        "# yaml-language-server: $schema=x\n---\nstatus: done\nwas_stream: true\nheadline: Gateway watch ended\n---\n")
+    res = wf.find(bridge, "gateway", engine="python")
+    kinds = {g["path"]: g["work_kind"] for g in res["groups"]}
+    assert kinds["work/tasks/gateway-cleanup"] == "task"
+    assert kinds["work/streams/ops-watch"] == "stream"
+    assert kinds["work/done/2026-09/old-task"] == "done_task"
+    assert kinds["work/done/2026-10/ended-watch"] == "done_stream"
+    assert all(v is None for p, v in kinds.items() if not p.startswith("work/"))

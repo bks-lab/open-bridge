@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabNextStep, areaScope, homeAreas,
-  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -354,14 +354,17 @@ function TaskDetail({ slug, s, c, exclude }) {
         <ol class="log-rows">${d.data.log.map((l, i) => html`<li key=${i}><span class="mono muted">${l.at}</span><span>${l.text}</span></li>`)}</ol></div>` : null}`
   }
   const kindRow = { key: `task:${slug}`, task: slug, work_kind: d?.data?.work_kind ?? byKey.get(`task:${slug}`)?.work_kind }
+  // the head word is the kind (task, stream, closed task, ended stream), never "Task" over a stream
+  const wk = workKindOf(kindRow, s) ?? 'task'
   return html`<div class="block task-detail">
-    <h3 class="label-caps">${t.taskTitle}: <span class="mono">${slug}</span></h3>
+    <h3 class="label-caps">${t.kind[wk] ?? t.taskTitle}: <span class="mono">${slug}</span></h3>
     <p class="detail-kind"><${KindTag} row=${kindRow} s=${s} /> <${OriginTag} row=${kindRow} origin=${d?.data?.origin ?? byKey.get(`task:${slug}`)?.origin ?? null} /></p>
     ${lines.length ? html`<${Lines} lines=${lines} />` : null}
     ${body}
-    ${entries.length ? html`<div class="sub-block"><h4 class="sub-title">${t.taskEntries}</h4>
+    ${entries.length ? html`<div class="sub-block"><h4 class="sub-title">${t.taskEntries(wk)}</h4>
       <ul class="entries">${entries.map(r => html`<li key=${r.key} class="entry">
         <button type="button" class="btn-link" onClick=${() => c.select(r.key)}>${short(r.title, 80)}</button>
+        <span class="entry-tags"><${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} /></span>
         <span class="btn-row"><${RowBar} row=${r} s=${s} c=${c} pin=${false} /></span></li>`)}</ul></div>` : null}
   </div>`
 }
@@ -408,8 +411,12 @@ export function NextUp({ s, c, byKey, current, queue = s.ui.queue }) {
   const v = current ? queueView(queue, current, e => live.has(e.key)) : null
   if (!v || v.total < 2) return null
   const look = e => s.triage?.items?.[e.key]?.gist || (byKey.get(e.key)?.why ?? [])[0] || undefined
-  const entry = (e, max) => ({ key: e.key, title: short(e.title || byKey.get(e.key)?.title || e.key, max), look: look(e), onOpen: () => c.openNext(e),
-    sub: byKey.get(e.key) ? html`<${KindTag} row=${byKey.get(e.key)} s=${s} />` : null })
+  // kind and source of every entry of the walk; a page item the model holds no row for (By source) reads its own
+  const entry = (e, max) => {
+    const r = byKey.get(e.key) ?? (e.it ? itemRow(e.it) : null)
+    return { key: e.key, title: short(e.title || byKey.get(e.key)?.title || e.key, max), look: look(e), onOpen: () => c.openNext(e),
+      sub: r ? html`<span class="entry-tags"><${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} /></span>` : null }
+  }
   const [next, ...later] = v.next
   return html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[v.pos, v.total]} onPrev=${v.prev ? () => c.openNext(v.prev) : null}
     next=${next ? entry(next, 90) : null} later=${later.map(e => entry(e, 80))} done=${t.nextDone} />`
@@ -431,10 +438,12 @@ export function DetailColumn({ s, c, byKey }) {
   if (!key) body = html`<${Overview} s=${s} c=${c} />`
   else if (row) body = html`<${RowDetail} key=${row.key} row=${row} s=${s} c=${c} />`
   else if (key.startsWith('task:')) {
+    const wk = s.details?.task?.[key.slice(5)]?.data?.work_kind ?? workKindOf({ task: key.slice(5) }, s) ?? 'task'
     body = html`<article class="panel panel-pad detail">
       <${DetailBack} s=${s} c=${c} />
-      <header class="detail-head"><span class="eyebrow">${t.taskTitle}</span><h2 class="detail-title">${key.slice(5)}</h2>
-        <p class="detail-kind"><${KindTag} row=${{ key, task: key.slice(5), work_kind: s.details?.task?.[key.slice(5)]?.data?.work_kind ?? workKindOf({ task: key.slice(5) }, s) }} s=${s} /></p></header>
+      <header class="detail-head"><span class="eyebrow">${t.kind[wk] ?? t.taskTitle}</span><h2 class="detail-title">${key.slice(5)}</h2>
+        <p class="detail-kind"><${KindTag} row=${{ key, task: key.slice(5), work_kind: wk }} s=${s} />
+          <${OriginTag} origin=${s.details?.task?.[key.slice(5)]?.data?.origin ?? null} /></p></header>
       <${TaskDetail} slug=${key.slice(5)} s=${s} c=${c} /></article>`
   } else {
     body = html`<div class="panel panel-pad"><p class="muted">${t.rowGone}</p>

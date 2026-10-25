@@ -6,6 +6,7 @@ import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.mo
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
   toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, hintsFor, nextInQueue, itemRow,
+  workKindOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
@@ -128,19 +129,22 @@ function stamp(value) {
   return String(value ?? '').replace('T', ' ').slice(0, 16)
 }
 
-/** The task an inbox item belongs to, in three lines, and the way into it */
+/** The task or stream an inbox item belongs to, in three lines, and the way into it; its kind tag and the
+ *  button say which of the two it is, never "task" on a stream */
 function ItemTaskCard({ slug, s, c, onOpen }) {
   const t = T()
   const d = useItemDetail('task', slug, s, c)
   const f = d?.data?.front ?? {}
+  const kindRow = { key: `task:${slug}`, task: slug, work_kind: d?.data?.work_kind ?? null }
+  const wk = workKindOf(kindRow, s) ?? 'task'
   return html`<div class="idrawer-task">
-    <div class="idrawer-task-head"><span class="label-caps">${t.item.task}</span><code class="muted">${slug}</code>
+    <div class="idrawer-task-head"><${KindTag} row=${kindRow} s=${s} /><code class="muted">${slug}</code>
       ${f.status ? html`<span class="chip">${t.taskState[f.status] ?? f.status}</span>` : null}</div>
     ${d?.data ? html`${f.headline ? html`<p class="idrawer-task-title">${f.headline}</p>` : null}
       ${f.next ? html`<p class="small"><span class="line-kind">${t.lineKind.next}</span>${f.next}</p>` : null}
       ${f.blocked_by ? html`<p class="small"><span class="line-kind">${t.lineKind.blocked}</span>${f.blocked_by}</p>` : null}`
       : html`<${DetailState} d=${d} onRetry=${() => c.loadTask(slug)} />`}
-    <${Btn} size="xs" variant="secondary" onClick=${onOpen}>${t.item.openTask}<//>
+    <${Btn} size="xs" variant="secondary" onClick=${onOpen}>${t.item.openKind[wk] ?? t.item.openKind.task}<//>
   </div>`
 }
 
@@ -203,10 +207,11 @@ function TaskBody({ slug, cur, s, c }) {
       ${f.origin || d.data.origin ? html`<p class="small idrawer-origin"><span class="line-kind">${t.lineKind.origin}</span><${OriginTag} origin=${d.data.origin ?? null} />
         ${f.origin ? html` <${Linked} text=${String(f.origin)} />` : null}</p>` : null}
     </section>
-    <section class="idrawer-sec"><h3 class="label-caps">${t.item.related}</h3>
+    <section class="idrawer-sec"><h3 class="label-caps">${t.item.related(d.data.work_kind ?? workKindOf({ task: slug }, s))}</h3>
       ${related.length ? html`<ul class="entries">${related.map(r => html`<li key=${r.id} class="entry">
         <button type="button" class="btn-link" onClick=${() => c.openItem(`inbox:${r.id}`, { inbox: r.id, task: slug, title: r.summary }, where, cur)}>
           ${short(r.summary ?? r.id, 90)}</button>
+        <span class="entry-tags"><${OriginTag} origin=${r.origin ?? null} /></span>
         <span class="btn-row">${r.urgency ? html`<span class="chip">${t.urgency[r.urgency] ?? r.urgency}</span>` : null}
           ${r.gate ? html`<span class="chip">${t.gate[r.gate] ?? r.gate}</span>` : null}</span></li>`)}</ul>`
         : html`<p class="muted small">${t.item.none}</p>`}
@@ -369,6 +374,14 @@ function UndoButtons({ it, c, busy }) {
   return html`<span class="btn-row"><${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u)}>${u.verb === 'unhide' ? t.undoShow : u.verb === 'row_undo' ? t.undoStep : t.undoReopen}<//></span>`
 }
 
+/** The word of a history line: a task's line says Stream for a stream (the server keeps work_kind on it; an older
+ *  line asks the task list), never Task on a stream */
+function histWord(it, s) {
+  if (it.kind !== 'task') return it.kind
+  const wk = it.work_kind ?? workKindOf({ task: it.ident ?? String(it.key ?? '').replace(/^task:/, '') }, s)
+  return /stream/.test(wk ?? '') ? 'stream' : 'task'
+}
+
 /** What the dashboard closed, dropped, settled or hid, newest first and by day; each item can be taken back */
 export function HistoryDrawer({ s, c }) {
   const t = T()
@@ -389,7 +402,7 @@ export function HistoryDrawer({ s, c }) {
       <ol class="hist">${d.entries.flatMap(e => e.items.map((it, i) => html`<li key=${`${e.id}-${i}`} class=${`hist-item${it.undone_ms ? ' is-undone' : ''}`}>
         <span class="mono muted small">${clockTime(e.at_ms)}</span>
         <div class="hist-main">
-          <span class="hist-what"><span class="chip">${t.histKind[it.kind] ?? it.kind}</span>
+          <span class="hist-what"><span class="chip">${t.histKind[histWord(it, s)] ?? it.kind}</span>
             <span class=${`hist-did hist-${it.did?.startsWith('hidden') ? 'hidden' : it.did}`}>${t.histDid(it.did)}</span>
             ${e.backfilled ? html`<span class="muted small">${t.histBackfilled}</span>` : null}</span>
           <span class="hist-title">${it.title}</span>

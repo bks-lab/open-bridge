@@ -4287,7 +4287,7 @@ test('the kind stands first on every row, in the detail head and in the drawer h
   // the origin stands right after the kind, and every renderer of a work row draws both
   assert.match(meta, /<\$\{KindTag\} row=\$\{row\} s=\$\{s\} \/>`, html`<\$\{OriginTag\} row=\$\{row\} \/>`\]/, 'kind, then origin')
   for (const f of ['views/day.js', 'views/pages.js', 'views/github.js', 'jev/page.js', 'views/dossier.js', 'views/focus.js',
-    'views/detail.js', 'views/overlays.js', 'views/list.js', 'views/stage.js', 'views/home.js']) {
+    'views/detail.js', 'views/overlays.js', 'views/list.js', 'views/stage.js', 'views/home.js', 'views/check.js']) {
     assert.match(read(f), /<\$\{OriginTag\}/, `${f} draws the origin`)
     // a board row keeps its own task or stream chip (ghl-chip-task), the rest draw the kind tag
     if (f !== 'views/github.js') assert.match(read(f), /<\$\{KindTag\}/, `${f} draws the kind`)

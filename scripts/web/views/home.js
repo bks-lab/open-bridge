@@ -348,7 +348,7 @@ function DoneTile({ s }) {
   return html`<button type="button" class="ktile tk-success" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>
     <span class="ktile-big num">${week.count}</span>
     <span class="ktile-label">${h.doneTitle}</span>
-    <span class="ktile-parts ktile-list">${(open ? week.items : week.items.slice(0, 3)).map(x => html`<span key=${x.slug}><${KindTag} row=${{ key: `task:${x.slug}`, task: x.slug, work_kind: x.work_kind ?? 'done_task' }} s=${s} /> ${short(x.title, 48)}</span>`)}</span>
+    <span class="ktile-parts ktile-list">${(open ? week.items : week.items.slice(0, 3)).map(x => html`<span key=${x.slug}><${KindTag} row=${{ key: `task:${x.slug}`, task: x.slug, work_kind: x.work_kind ?? 'done' }} s=${s} /> ${short(x.title, 48)}</span>`)}</span>
   </button>`
 }
 

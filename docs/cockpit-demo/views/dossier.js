@@ -182,7 +182,7 @@ function FilesDrawer({ data, folder, c }) {
 /** The drawers of a file: what came back for it (when `res` is given), and from what /api/task holds its inbox
  *  items, its history (log rows), the files of its folder, the paths it names as related and the sections of
  *  STATUS.md. `folder` the folder of a closed copy, or null */
-function Drawers({ data, res = null, folder = null, s, c }) {
+export function Drawers({ data, res = null, folder = null, s, c }) {
   const d = T().dossier
   if (!data && !res) return null
   const inbox = data?.inbox ?? []
@@ -192,7 +192,8 @@ function Drawers({ data, res = null, folder = null, s, c }) {
   return html`<div class="dz-drawers">
     ${res ? html`<${ResultDrawer} res=${res} s=${s} c=${c} />` : null}
     <${Drawer} title=${d.drawers.inbox} n=${inbox.length}>
-      <ul class="entries">${inbox.map(e => html`<li key=${e.id} class="entry">${e.summary}</li>`)}</ul><//>
+      <ul class="entries">${inbox.map(e => html`<li key=${e.id} class="entry"><span>${e.summary}</span>
+        <span class="entry-tags"><${KindTag} row=${{ key: `inbox:${e.id}`, inbox_id: e.id }} s=${null} /><${OriginTag} origin=${e.origin ?? null} /></span></li>`)}</ul><//>
     <${Drawer} title=${d.drawers.history} n=${log.length}>
       <ol class="log-rows">${log.map((l, i) => html`<li key=${i}><span class="mono muted">${l.at}</span><span>${l.text}</span></li>`)}</ol><//>
     ${data ? html`<${FilesDrawer} key=${data.path} data=${data} folder=${folder} c=${c} />` : null}
@@ -280,7 +281,7 @@ function FindResults({ s, c, open }) {
       <p class="dz-found-head">
         ${g.slug ? html`<button type="button" class="dz-found-open btn-link" onClick=${() => c.openFile(g.slug, g.path)}>${g.slug}</button>`
           : html`<span class="mono">${g.path}</span>`}
-        ${g.slug ? html`<${KindTag} row=${{ key: `task:${g.slug}`, task: g.slug, work_kind: placeKind(g.path) }} s=${s} />` : null}
+        ${g.slug ? html`<${KindTag} row=${{ key: `task:${g.slug}`, task: g.slug, work_kind: g.work_kind ?? placeKind(g.path) }} s=${s} />` : null}
         <span class="dz-fact">${f.kind[g.kind] ?? g.kind}</span>
         ${g.slug ? html`<${AreaChip} name=${areaOf(g.slug)} s=${s} c=${c} cls="dz-found-area" />` : null}
         ${g.slug ? html`<span class="dz-found-title">${g.title}</span>` : null}
@@ -371,7 +372,7 @@ const reasonWord = x => {
 /** The foot of the file: Previous, where it stands, the title of the next file and Next, all buttons for the
  *  mouse. The position opens the whole queue as a list, a click on one walks to it. No key is named here:
  *  n and p walk too, only with the shortcuts switched on (app.js) */
-function Walk({ queue, i, c }) {
+function Walk({ queue, i, s, c }) {
   const t = T()
   const w = t.dossier.walk
   const [list, setList] = useState(false)
@@ -382,7 +383,7 @@ function Walk({ queue, i, c }) {
     ${list ? html`<ol id="dz-queue" class="dz-queue">${queue.map((x, k) => html`<li key=${x.id}>
       <button type="button" class="dz-queue-item" aria-current=${k === i ? 'true' : undefined} onClick=${() => go(k)}>
         <span class="dz-queue-n mono">${k + 1}</span>
-        <${KindTag} row=${x.row} s=${null} />
+        <span class="entry-tags"><${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} /></span>
         <span class="dz-queue-title">${short(x.row.title, 90)}</span>
         <span class="dz-queue-why">${reasonWord(x)}</span>
       </button></li>`)}</ol>` : null}
@@ -424,7 +425,7 @@ export function DossierView({ s, c }) {
         <${Drawers} key=${`d${x.id}`} data=${data} res=${fileResults(x.slug, s.model, s.tabs?.tabs, nowMs, s.sessions?.runs)} s=${s} c=${c} />
         <${AskBox} key=${`a${x.id}`} cls="dz-ask" label=${d.ask.label} placeholder=${d.ask.placeholder} context=${context}
           task=${x.slug} s=${s} c=${c} />
-        <${Walk} queue=${queue} i=${i} c=${c} />
+        <${Walk} queue=${queue} i=${i} s=${s} c=${c} />
       </article>`
       : s.ui.pinnedOnly ? html`<${Calm} s=${s} c=${c} title=${s.ui.area ? d.emptyAreaPinned(s.ui.area) : d.emptyPinned} sub=${d.emptyPinnedSub} action=${false} />
           <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setPinnedOnly(false)}>${d.allFiles}<//></div>`

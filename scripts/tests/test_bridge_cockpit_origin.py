@@ -24,8 +24,10 @@ ROOT = Path(__file__).resolve().parents[2]
 KNOWN = o.Known(
     skills=frozenset({"briefing", "debrief", "notes-bot"}),
     runs=frozenset({"notes-bot", "nightly-report"}),
-    hosts=frozenset({"homebox"}),
-    work={"team-onboarding": "stream", "docs-refresh": "task", "old-cleanup": "done_task", "old-stream": "done_stream"},
+    hosts=frozenset({"homebox", "shared-name", "old-shared"}),
+    scripts=frozenset({"cloud-costs", "archive-autorun", "briefing"}),
+    work={"team-onboarding": "stream", "docs-refresh": "task", "old-cleanup": "done_task", "old-stream": "done_stream",
+          "shared-name": "task", "old-shared": "done_task"},
 )
 
 
@@ -36,7 +38,19 @@ def cat(raw, known=KNOWN):
 
 @pytest.mark.parametrize("raw, category, detail", [
     ("homebox/issue-radar", "bot", "issue-radar"),
-    ("anyhost/nightly", "bot", "nightly"),
+    ("anyhost/nightly", "bot", "anyhost/nightly"),      # only a machine this Bridge knows is dropped
+    ("agent-approval/axel", "bot", "agent-approval/axel"),
+    ("claude-code", "session", "claude"),
+    ("codex-cli", "session", "codex"),
+    ("github", "github", None),
+    ("GitHub", "github", None),
+    ("acme/web#12", "github", "acme/web"),
+    ("https://github.com/acme/web/issues/9", "github", "acme/web"),
+    ("cloud-costs", "bot", "cloud-costs"),               # CORE's own filers (scripts/*.py) read as a bot
+    ("archive-autorun", "bot", "archive-autorun"),
+    ("deploy-notifier", "bot", "deploy-notifier"),       # a bot by its ending
+    ("shared-name", "work", "shared-name"),              # an open task wins over a machine of the same name
+    ("old-shared", "bot", "old-shared"),                 # a closed one does not
     ("laptop/session", "session", "laptop"),
     ("laptop/chat", "session", "laptop"),
     ("claude", "session", "claude"),
@@ -59,6 +73,19 @@ def cat(raw, known=KNOWN):
 ])
 def test_a_from_text_gets_its_category_by_shape_and_by_what_the_bridge_declares(raw, category, detail):
     assert cat(raw) == (category, detail)
+
+
+def test_a_ref_as_source_is_github_with_its_ref():
+    out = o.classify_from("acme/web#12", KNOWN)
+    assert out["ref"] == "acme/web#12"
+    out = o.classify_from("https://github.com/acme/web/pull/7", KNOWN)
+    assert out["category"] == "github" and out["ref"] == "acme/web#7"
+
+
+def test_the_cockpit_and_no_source_at_all():
+    out = o.classify_from("bridge-cockpit", KNOWN)
+    assert out["category"] == "person" and out["via_cockpit"] is True and out["raw"] == "bridge-cockpit"
+    assert o.classify_from("None", KNOWN) is None
 
 
 def test_the_raw_text_stays_as_written_and_the_match_ignores_case():
@@ -131,10 +158,17 @@ def test_a_row_the_cockpit_filed_takes_the_origin_of_the_section_it_came_from():
     assert out["category"] == "calendar" and out["via_cockpit"] is True
     out = o.classify_row(inbox(origin_raw="bridge-cockpit", inbox_key="web:x:y"), WITH)
     assert out["category"] == "person" and out["via_cockpit"] is True
+    # a click on a board row files it as web:<row key>, the key of a board row being ref:<owner/repo#n>
+    out = o.classify_row(inbox(origin_raw="bridge-cockpit", inbox_key="web:ref:org/repo#1"), WITH)
+    assert out["category"] == "github" and out["via_cockpit"] is True and out["ref"] == "org/repo#1"
+    out = o.classify_row(inbox(origin_raw="bridge-cockpit", inbox_key="web:ref:grp/app#2", origin_provider="gitlab"), WITH)
+    assert out["category"] == "tracker" and out["word_key"] == "GitLab"
 
 
-def test_an_inbox_row_of_an_old_saved_view_draws_no_chip_unless_a_tab_filed_it():
-    assert o.classify_row(inbox(inbox_key="demo-review"), WITH) is None
+def test_an_inbox_row_without_a_source_is_a_neutral_other_unless_a_tab_filed_it():
+    out = o.classify_row(inbox(inbox_key="demo-review"), WITH)
+    assert out["category"] == "other" and out["detail"] is None and out["raw"] is None
+    assert o.classify_row(inbox(origin_raw="None"), WITH)["category"] == "other"
     out = o.classify_row(inbox(inbox_key="tab-docs-refresh-20261001"), WITH)
     assert out["category"] == "session" and out["detail"] == "docs-refresh"
 
@@ -175,6 +209,31 @@ def test_a_task_row_names_how_its_task_began():
     assert out["category"] == "github" and out["ref"] == "acme/web#7"
 
 
+def test_a_task_origin_is_github_only_when_it_begins_there():
+    row = lambda raw: o.classify_row({"key": "task:docs-refresh", "task": "docs-refresh", "origin_raw": raw}, WITH)
+    out = row("https://github.com/acme/web/issues/4")
+    assert out["category"] == "github" and out["detail"] == "acme/web" and out["ref"] == "acme/web#4"
+    assert row("acme/web#9: flaky parser")["ref"] == "acme/web#9"
+    # a PR merely mentioned in the middle is no origin on GitHub: the text is shown as written
+    mid = "Follow-up of work/done/2026-09/old-cleanup (PR acme/web#191 merged 30.09.), open points"
+    out = row(mid)
+    assert out["category"] == "other" and out["raw"] == mid and out["ref"] is None
+
+
+def test_a_written_task_origin_no_rule_knows_is_shown_as_written_not_as_bridge():
+    out = o.classify_row({"key": "task:docs-refresh", "task": "docs-refresh", "origin_raw": "Call with Alex on 2026-10-01"}, WITH)
+    assert out["category"] == "other" and out["detail"].startswith("Call with Alex") and out["raw"].startswith("Call")
+    assert o.classify_row({"key": "task:a", "task": "a", "origin_raw": "Ad-hoc 2026-10-01"}, WITH)["category"] == "bridge"
+
+
+def test_a_task_made_from_a_cockpit_filing_was_made_by_hand():
+    out = o.classify_row({"key": "task:a", "task": "a", "origin_raw": "inbox 2026-10-01-a (2026-10-01, bridge-cockpit): x"},
+                         o.Known(work={"bridge-cockpit": "done_task"}))
+    assert out["category"] == "person" and out["via_cockpit"] is True
+    out = o.classify_row({"key": "task:a", "task": "a", "origin_raw": "inbox 2026-10-01-a (2026-10-01, None): x"}, WITH)
+    assert out["category"] == "other" and out["detail"] is None
+
+
 def test_nothing_breaks_the_classifier():
     for bad in (None, 3, [], {"inbox_id": 5, "inbox_key": 7, "origin_raw": 9}, {"sources": None}):
         o.classify_row(bad, WITH)
@@ -192,18 +251,36 @@ def test_the_known_names_come_from_the_tree_of_the_bridge(tmp_path):
         (tmp_path / folder).mkdir(parents=True, exist_ok=True)
         (tmp_path / folder / f"{name}.yaml").write_text("hostname: homebox-lan\n")
     (tmp_path / "agents" / "helper").mkdir(parents=True)
+    (tmp_path / "agents" / "helper" / "agent.yaml").write_text("name: helper\n")
+    (tmp_path / "agents" / "tests").mkdir()          # no agent.yaml: no agent
     (tmp_path / "agents" / "_template").mkdir()
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "cloud-costs.py").write_text("")
+    (tmp_path / "skills" / "debrief" / "scripts").mkdir()
+    (tmp_path / "skills" / "debrief" / "scripts" / "debrief-scan.py").write_text("")
+    (tmp_path / "infra" / "remotes" / "nested.yaml").write_text("hostname: nestbox\nservices:\n  - name: backup\n    user: debrief\n")
     for path, text in (("work/tasks/docs-refresh/STATUS.md", "---\nstatus: doing\n---\n"),
                        ("work/streams/team-onboarding/STATUS.md", "---\nstatus: doing\n---\n"),
                        ("work/done/2026-09/old-cleanup/STATUS.md", "---\nstatus: done\n---\n"),
-                       ("work/done/2026-09/old-stream/STATUS.md", "---\nstatus: done\nwas_stream: true\n---\n")):
+                       ("work/done/2026-09/old-stream/STATUS.md", "---\nstatus: done\nwas_stream: true\n---\n"),
+                       # task.py writes a comment line before the fence: the stream is still read as one
+                       ("work/done/2026-10/commented-stream/STATUS.md",
+                        "# yaml-language-server: $schema=../../templates/_schema.status.yaml\n---\nstatus: done\nwas_stream: true\n---\n")):
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_text(text)
     k = o.known_from_root(tmp_path, (("alex", "person"),), {"gh": {"kind": "tracker"}}, fresh=True)
     assert k.skills == {"debrief"}
     assert k.runs == {"nightly-report", "notes-bot", "helper"}
-    assert {"homebox", "homebox-lan"} <= k.hosts
+    assert {"cloud-costs", "debrief-scan"} <= k.scripts
+    assert {"homebox", "homebox-lan", "nestbox"} <= k.hosts and not {"backup", "debrief"} & k.hosts
     assert dict(k.work) == {"docs-refresh": "task", "team-onboarding": "stream", "old-cleanup": "done_task",
-                            "old-stream": "done_stream"}
+                            "old-stream": "done_stream", "commented-stream": "done_stream"}
     assert k.mapping == (("alex", "person"),) and k.sections == {"gh": {"kind": "tracker"}}
     assert o.known_from_root(tmp_path / "missing", ()).skills == frozenset()
+
+
+def test_the_front_reader_skips_a_leading_comment_line():
+    head = "# yaml-language-server: $schema=x\n---\nstatus: done\nwas_stream: true\n---\n# Body\n"
+    assert o.was_stream(head) is True
+    assert o.was_stream("---\nstatus: done\n---\nwas_stream: true\n") is False     # in the body, not the front
+    assert o.front_block("no front") == "" and o.was_stream(None) is False
