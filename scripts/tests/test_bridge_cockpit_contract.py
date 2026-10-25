@@ -470,7 +470,7 @@ READS = {
     "view": {"headline", "since", "buckets", "agenda", "status", "clear", "hygiene", "workplace"},
     "bucket": {"id", "title", "items"},
     "row": {"title", "why", "sources", "inbox_id", "gate", "task", "url", "urgency", "has_action", "inbox_state",
-            "inbox_key", "mark", "due", "new", "changed"},
+            "inbox_key", "mark", "due", "new", "changed", "created"},
     "page": {"id", "title", "sections"},
     "page_section": {"id", "kind", "title", "status", "reason", "alarm", "empty", "items", "total", "weight", "bad",
                      "as_of"},

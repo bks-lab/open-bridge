@@ -623,6 +623,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/dates.js",
     "scripts/web/views/day.js",
     "scripts/web/views/detail.js",
+    "scripts/web/views/dossier.js",
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",

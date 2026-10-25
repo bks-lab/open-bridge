@@ -345,7 +345,7 @@ const en = {
   workOrder: {
     label: 'Order of this page',
     viewLabel: 'View of the work tab',
-    views: { due: 'Due', area: 'By source', jev: 'By Jev' },
+    views: { due: 'Due', area: 'By source', jev: 'By Jev', dossier: 'Files' },
     byArea: 'By area',
     byJev: 'By Jev',
     run: 'Order with Jev',
@@ -1578,6 +1578,15 @@ const en = {
       addFeed: 'Add feed', removeFeed: 'Remove',
     },
   },
+  dossier: {
+    label: 'File', next: 'Next step', noNext: 'No next step known',
+    from: { tab: 'an agent tab asks', result: 'a result waits', inbox: 'from the inbox', status: 'from STATUS.md' },
+    age: d => (d === 0 ? 'today' : d === 1 ? 'for 1 day' : `for ${d} days`),
+    situationFrom: { status: 'STATUS.md', triage: 'triage' },
+    drawers: { inbox: 'Inbox', history: 'History', sections: 'Sections', refs: 'References' },
+    empty: 'No file waits for you.', emptySub: 'Nothing is doing or in review. Backlog and resting tasks stay out of this queue.',
+    after: 'Next', loading: 'Reading the file',
+  },
   logic: {
     days: { MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat', SU: 'Sun' },
     sched: { every: 'every', daily: 'daily', to: 'to', continuous: 'runs continuously', watched: n => `watches ${n} ${n === 1 ? 'path' : 'paths'}` },
@@ -1916,7 +1925,7 @@ const de = {
   workOrder: {
     label: 'Reihenfolge dieser Seite',
     viewLabel: 'Ansicht des Arbeit-Reiters',
-    views: { due: 'Dran', area: 'Nach Quelle', jev: 'Nach Jev' },
+    views: { due: 'Dran', area: 'Nach Quelle', jev: 'Nach Jev', dossier: 'Akten' },
     byArea: 'Nach Bereichen',
     byJev: 'Nach Jev',
     run: 'Mit Jev ordnen',
@@ -3136,6 +3145,15 @@ const de = {
       feedFailed: e => `Letzter Abruf fehlgeschlagen: ${e}`,
       addFeed: 'Feed hinzufügen', removeFeed: 'Entfernen',
     },
+  },
+  dossier: {
+    label: 'Akte', next: 'Nächster Schritt', noNext: 'Kein nächster Schritt bekannt',
+    from: { tab: 'ein Agenten-Tab fragt', result: 'ein Ergebnis wartet', inbox: 'aus dem Eingang', status: 'aus STATUS.md' },
+    age: d => (d === 0 ? 'heute' : d === 1 ? 'seit 1 Tag' : `seit ${d} Tagen`),
+    situationFrom: { status: 'STATUS.md', triage: 'Triage' },
+    drawers: { inbox: 'Eingang', history: 'Verlauf', sections: 'Abschnitte', refs: 'Verweise' },
+    empty: 'Keine Akte wartet auf dich.', emptySub: 'Nichts ist in Arbeit oder im Review. Backlog und ruhende Aufgaben bleiben aus dieser Schlange.',
+    after: 'Als Nächstes', loading: 'Akte wird gelesen',
   },
   logic: {
     days: { MO: 'Mo', TU: 'Di', WE: 'Mi', TH: 'Do', FR: 'Fr', SA: 'Sa', SU: 'So' },

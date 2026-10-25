@@ -179,6 +179,7 @@ function row(over) {
     has_action: false, inbox_state: null, inbox_key: null, mark: null, is_new: false, is_changed: false,
     tab: null, actions: [{ id: 'ask', primary: false, dim: false }], selectable: false, starting: false,
     adopt_candidates: [], team: null, team_suggestions: [], closable: false, settle: ['done', 'not_doing'], review: null,
+    status: null, next: null,
     ...over,
   }
 }
@@ -387,7 +388,7 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
     release: row({
       key: 'task:alpha-release', bucket: 'do', section: 'now', title: 'Prepare the alpha release notes',
-      why: ['tab asks for permission'], sources: ['tasks'], task: 'alpha-release', priority: 'P0', urgency: 'now',
+      why: ['tab asks for permission'], sources: ['tasks'], task: 'alpha-release', priority: 'P0', urgency: 'now', status: 'doing',
       area: 'Ops', area_names: ['Ops'], task_type: 'ops', mark: { label: 'Ops', color: 'red' },
       tab: { ref: 'surface:7', state: 'needs-you', live: true, waiting: true },
       actions: [A('to_tab', true)], team: { team_id: 'build', started: 1, next_role: { id: 'review', name: 'Review' }, ready: false, waiting_for: 'Implement' },
@@ -413,7 +414,8 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
     demo: row({
       key: 'task:demo-task', bucket: 'tasks', section: 'work', title: 'Write the onboarding guide for the demo project',
-      why: ['1 in the inbox'], sources: ['tasks'], task: 'demo-task', priority: 'P1', area: 'Demo', area_names: ['Demo'],
+      why: ['1 in the inbox'], sources: ['tasks'], task: 'demo-task', priority: 'P1', area: 'Demo', area_names: ['Demo'], status: 'doing',
+      next: { what: 'Review the demo report', from: 'inbox', since: isoIn(-2, now), key: 'inbox:20261009-0900-review-demo-a1b2' },
       task_type: 'feature', actions: [A('do', true), A('advise')], selectable: true, closable: true,
       adopt_candidates: [{ ref: 'surface:9', name: 'notes', workspace: 'Demo' }], team_suggestions: ['build', 'research'],
       link: { kind: 'file', path: 'work/tasks/demo-task/STATUS.md' },
@@ -447,12 +449,13 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
     index: row({
       key: 'task:docs-refresh', bucket: 'tasks', section: 'work', title: 'Refresh the docs index', sources: ['tasks'],
-      task: 'docs-refresh', priority: 'P2', area: 'Docs', area_names: ['Docs'], task_type: 'docs',
+      task: 'docs-refresh', priority: 'P2', area: 'Docs', area_names: ['Docs'], task_type: 'docs', status: 'doing',
+      next: { what: 'Check the links of the new index page', from: 'status', since: isoIn(-3, now), key: null },
       tab: { ref: 'surface:8', state: 'working', live: true, waiting: false }, actions: [A('to_tab', true)],
     }),
     cleanup: row({
       key: 'task:old-cleanup', bucket: 'tasks', section: 'work', title: 'Clean up the old example fixtures', sources: ['tasks'],
-      task: 'old-cleanup', priority: 'P3', area: 'Ops', area_names: ['Ops'], actions: [A('do', true), A('advise')], selectable: true,
+      task: 'old-cleanup', priority: 'P3', area: 'Ops', area_names: ['Ops'], status: 'review', actions: [A('do', true), A('advise')], selectable: true,
     }),
     vendor: row({
       key: 'inbox:20261008-1400-vendor-reply-9f9f', bucket: 'waiting', section: 'later', title: 'Waiting for the reply on the license question',
@@ -1182,6 +1185,8 @@ export function createMockTransport(opts = {}) {
       await new Promise(r => wait(r, 250))
       // the demo has no server poll to slow down: a page reporting its visibility is simply acknowledged
       if (path === '/api/presence') return { status: 200, ok: true, data: { ok: true }, error: null }
+      // nor an audit log: a page view is simply acknowledged
+      if (path === '/api/seen') return { status: 200, ok: true, data: { ok: true }, error: null }
       if (path === '/api/reload') {
         const loading = { pass: 'quick', fresh: !!body?.fresh, started_ms: now(), eta_ms: 3000, queued: 'full', last_error: null }
         state.loading = loading

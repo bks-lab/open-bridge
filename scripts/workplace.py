@@ -265,7 +265,7 @@ def collect_tasks(root: Path) -> list:
             tasks.append({
                 "slug": fm.get("slug") or status.parent.name, "kind": kind, "status": fm.get("status"),
                 "context": fm.get("context"), "priority": fm.get("priority"), "type": fm.get("type"),
-                "blocked_by": fm.get("blocked_by"), "updated": _date(fm.get("last_updated")),
+                "blocked_by": fm.get("blocked_by"), "updated": _date(fm.get("last_updated")), "next": fm.get("next"),
                 "status_path": str(status.relative_to(root)), "heading": heading(text),
             })
     return tasks
@@ -780,6 +780,14 @@ def propose(tasks: list, cfg: dict, mentions: dict, sessions: dict, open_tabs: d
             "stale": sorted(stale, key=lambda t: -t["age"])}
 
 
+def _next_what(value) -> str | None:
+    """The words of a task's `next:`: the string itself, or the `what` of a mapping; None when it names none."""
+    if isinstance(value, dict):
+        value = value.get("what")
+    text = str(value).strip() if isinstance(value, (str, int, float)) else ""
+    return text or None
+
+
 def task_rows(root: Path, cfg: dict, today: dt.date) -> list:
     """Every active task, flat: label, area (its workspace), priority, score, blocked_by, stale.
     The whole list, for any UI or script that drives workplace.py; propose decides which of them get a
@@ -797,6 +805,8 @@ def task_rows(root: Path, cfg: dict, today: dt.date) -> list:
                      "area": area["name"],
                      "area_aliases": list(area.get("aliases") or []),
                      "priority": t.get("priority"), "type": t.get("type"), "status": t.get("status"),
+                     "next": _next_what(t.get("next")),
+                     "updated": t["updated"].isoformat() if t.get("updated") else None,
                      "score": score, "age": age,
                      "blocked_by": t.get("blocked_by"), "stale": age > limits["stale_days"],
                      "kind": t["kind"]})

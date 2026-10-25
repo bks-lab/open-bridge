@@ -25,6 +25,7 @@ TOTAL_MAX = 80 * 1024
 LOG_ROWS = 15
 DETAIL_MAX = 8000
 EVENTS_MAX = 50
+RELATED_MAX = 20
 FRONT_KEYS = ("type", "status", "priority", "created", "last_updated", "headline", "origin", "blocked_by", "next")
 ACTIVE = ("open", "approved", "waiting")
 
@@ -136,8 +137,14 @@ def task_detail(root: Path, slug: str, listing: list | None = None) -> dict | No
     except OSError:
         return None
     front, body = split_front(text)
+    nxt = front.get("next")
+    if isinstance(nxt, dict):     # `next: {what, who}` reads as its words
+        front = {**front, "next": nxt.get("what")}
+    related = front.get("related") if isinstance(front.get("related"), list) else []
     result = {"ok": True, "slug": slug, "kind": kind, "path": path.resolve().relative_to(root.resolve()).as_posix(),
               "front": {k: _scalar(front.get(k)) for k in FRONT_KEYS}, "sections": sections_of(body),
+              # the paths STATUS.md names as related, as written: the files view lists them as references
+              "related": [str(x)[:300] for x in related if isinstance(x, (str, int, float))][:RELATED_MAX],
               "log": log_rows(root, slug),
               "inbox": [{"id": e.get("id"), "summary": _scalar(e.get("summary")), "state": e.get("state"),
                          "urgency": _scalar(e.get("urgency")), "gate": _scalar(e.get("gate"))}

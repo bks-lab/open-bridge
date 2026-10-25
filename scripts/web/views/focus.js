@@ -37,8 +37,10 @@ function screenLines(text, n = 4) {
   return String(text ?? '').split('\n').map(previewText).filter(Boolean).slice(-n)
 }
 
-/** The one next step, large: its kind, its title, where it belongs, what it is about, and the way to act */
-function Hero({ x, n, tabOf, s, c }) {
+/** The one next step, large: its kind, its title, where it belongs, what it is about, and the way to act.
+ *  The files view (dossier.js) shows its next step in it: `title` in place of the entry's own, `kindWord` in
+ *  place of its kind, `sub` a line under the title (where the step comes from and since when) */
+export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null }) {
   const t = T()
   const f = t.home.focus
   const kind = kindOf(x, nowKeys(s))
@@ -50,11 +52,12 @@ function Hero({ x, n, tabOf, s, c }) {
   const open = el => (x.kind === 'tab' ? jumpToTab(s, c, x.tab.ref) : openWhole(c, x.row, el))
   return html`<article class=${`fx-hero tk-${tone}${n > 1 ? ' has-more' : ''}${n > 2 ? ' has-many' : ''}`} aria-labelledby="fx-title">
     <header class="fx-hero-top">
-      <span class="fx-kind"><${Dot} token=${tone === 'accent' ? 'info' : tone} pulse=${kind === 'tab'} />${f.kind[kind]}</span>
+      <span class="fx-kind"><${Dot} token=${tone === 'accent' ? 'info' : tone} pulse=${kind === 'tab'} />${kindWord ?? f.kind[kind]}</span>
     </header>
     <h2 id="fx-title" class="fx-title">
-      <button type="button" onClick=${e => open(e.currentTarget)}>${x.kind === 'row' && x.row.priority ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${x.kind === 'tab' ? x.tab.name : x.row.title}</button>
+      <button type="button" onClick=${e => open(e.currentTarget)}>${x.kind === 'row' && x.row.priority && title == null ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}</button>
     </h2>
+    ${sub ? html`<p class="fx-sub muted small">${sub}</p>` : null}
     <div class="fx-meta">
       ${project ? html`<span class=${`fx-proj tk-${projectTone(project)}`}>${project}</span>` : null}
       ${tab ? html`<${StateLine} token=${stateToken(tab.state)} strong word=${x.kind === 'tab' ? t.state[tab.state] ?? tab.state : `${t.home.list.tab} ${tab.name}: ${t.state[tab.state] ?? tab.state}`} />
@@ -73,30 +76,32 @@ function Hero({ x, n, tabOf, s, c }) {
   </article>`
 }
 
-/** Nothing waits: a calm card, the way to the tasks */
-function Calm({ s, c }) {
+/** Nothing waits: a calm card, the way to the tasks. The files view gives its own words and no way on
+ *  (`action` false), since it stands on the work tab already */
+export function Calm({ s, c, title = null, sub = null, action = true }) {
   const f = T().home.focus
   const workPage = workPageId(s.model)
   return html`<article class="fx-hero fx-calm tk-success">
     <span class="fx-calm-ring" aria-hidden="true"><${Icon} name="spark" size=${28} /></span>
-    <h2 class="fx-title">${f.nothing}</h2>
-    <p class="muted">${f.nothingSub}</p>
-    <div class="fx-acts"><${Btn} variant="secondary" onClick=${() => c.setPage(workPage)}>${f.toWork}<//></div>
+    <h2 class="fx-title">${title ?? f.nothing}</h2>
+    <p class="muted">${sub ?? f.nothingSub}</p>
+    ${action ? html`<div class="fx-acts"><${Btn} variant="secondary" onClick=${() => c.setPage(workPage)}>${f.toWork}<//></div>` : null}
   </article>`
 }
 
-/** The queue after the step in front, a small card each; a click brings it to the front */
-function After({ queue, i, onPick, s }) {
+/** The queue after the step in front, a small card each, at most six; a click brings it to the front.
+ *  `title` names the strip (the files view calls it Next), `kindWord` the word over a card */
+export function After({ queue, i, onPick, s, title = null, kindWord = null }) {
   const f = T().home.focus
   const now = nowKeys(s)
   const rest = queue.map((x, k) => ({ x, k })).filter(({ k }) => k !== i).slice(0, AFTER_MAX)
   if (!rest.length) return null
   return html`<section class="fx-after" aria-labelledby="fx-after">
-    <h2 id="fx-after" class="label-caps">${f.after} <span class="sec-count mono">${queue.length - 1}</span></h2>
+    <h2 id="fx-after" class="label-caps">${title ?? f.after} <span class="sec-count mono">${queue.length - 1}</span></h2>
     <ol class="fx-after-list">${rest.map(({ x, k }) => html`<li key=${x.id}>
       <button type="button" class=${`fx-card tk-${x.kind === 'tab' ? 'warning' : x.row.priority === 'P0' ? 'danger' : 'info'}`} onClick=${() => onPick(k)}>
         <span class="fx-card-n mono">${k + 1}</span>
-        <span class="fx-card-kind">${f.kind[kindOf(x, now)]}</span>
+        <span class="fx-card-kind">${kindWord ? kindWord(x) : f.kind[kindOf(x, now)]}</span>
         <span class="fx-card-title">${short(x.kind === 'tab' ? x.tab.name : x.row.title, 70)}</span>
         ${projectOf(x) ? html`<span class=${`fx-proj tk-${projectTone(projectOf(x))}`}>${projectOf(x)}</span>` : null}
       </button></li>`)}</ol>
@@ -144,18 +149,20 @@ function Crew({ s, c }) {
 const focusParts = s => homeListParts(s.tabs?.tabs ?? [], s.model, { pins: s.home?.pins ?? [] })
 export const focusQueue = s => homeQueue(focusParts(s))
 
-/** The bar under the step in front, the one the lists have: back, where you stand, Next */
-function FocusWalk({ queue, i, s, c }) {
+/** The bar under the step in front, the one the lists have: back, where you stand, Next. `walk` moves
+ *  (c.focusWalk on the start page, c.dossierWalk in the files view) */
+export function FocusWalk({ queue, i, s, c, walk = null }) {
   const t = T()
   if (queue.length < 2) return null
+  const go = walk ?? c.focusWalk
   const entry = k => {
     const x = queue[k]
     return { key: x.id, title: short(x.kind === 'tab' ? x.tab.name : x.row.title, 90), sub: x.kind === 'tab' ? x.tab.workspace : '',
-      onOpen: () => c.focusWalk(x.id, k) }
+      onOpen: () => go(x.id, k) }
   }
   const later = [i + 2, i + 3].filter(k => k < queue.length).map(entry)
   return html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[i + 1, queue.length]}
-    onPrev=${i > 0 ? () => c.focusWalk(queue[i - 1].id, i - 1) : null} next=${i + 1 < queue.length ? entry(i + 1) : null}
+    onPrev=${i > 0 ? () => go(queue[i - 1].id, i - 1) : null} next=${i + 1 < queue.length ? entry(i + 1) : null}
     later=${later} done=${t.nextDone} />`
 }
 

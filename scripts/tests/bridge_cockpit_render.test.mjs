@@ -1797,3 +1797,84 @@ test('github boards: without a GitHub section the settings say where boards come
   const el = mount(html`<${BoardSettings} s=${s} c=${recorder()} />`)
   assert.match(el.text(), new RegExp(en.gh.noBoards.slice(0, 20)))
 })
+
+// ---------------------------------------------------------------- the files view: one file large, the next ones after it
+
+const filesOn = (over = {}) => cockpitState(NOW, { ...over, ui: { page: 'briefing', workView: 'dossier', ...(over.ui ?? {}) } })
+
+test('the files view shows one file large: its cover, its next step with the four verbs, where you stand, the next ones', async () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const s = filesOn()
+  const queue = dossierQueue(s)
+  assert.ok(queue.length > 2, 'the demo has files in the queue')
+  // a P2 task in status doing stands in it (the focus on the start page leaves it out)
+  assert.ok(queue.some(x => x.row.priority === 'P2' && x.row.status === 'doing'))
+  const c = recorder()
+  const el = mount(html`<${DossierView} s=${s} c=${c} />`)
+  const cover = el.$('.dz-cover')
+  assert.ok(cover, 'a cover')
+  assert.match(cover.text(), new RegExp(queue[0].slug))
+  assert.ok(cover.text().includes(en.taskState[queue[0].row.status]), 'the status in words')
+  assert.ok(el.$('.fx-hero'), 'the next step in the hero of the start page focus')
+  assert.equal(el.$('.next-up-pos').text(), en.nextPos(1, queue.length))
+  el.$('.next-up').button(en.nextOpen).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'dossierWalk'), [['dossierWalk', queue[1].id, 1]])
+  // the files after it: at most six
+  assert.ok(el.$$('.fx-after-list li').length <= 6 && el.$$('.fx-after-list li').length > 0)
+  // the view switch stands on top, the files view on
+  const on = el.$$('.work-switch button').find(b => b.getAttribute('aria-checked') === 'true')
+  assert.equal(on.text(), en.workOrder.views.dossier)
+})
+
+test('a file whose next step comes from STATUS.md says so, with its age, and the verbs act on the task', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const base = filesOn()
+  const queue = dossierQueue(base)
+  const k = queue.findIndex(x => x.reason === 'task' && x.row.next?.from === 'status')
+  assert.ok(k >= 0, 'the demo has a task with a next step in its STATUS.md')
+  const x = queue[k]
+  const el = mount(html`<${DossierView} s=${filesOn({ ui: { dossierAt: { id: x.id, i: k } } })} c=${recorder()} />`)
+  const hero = el.$('.fx-hero')
+  assert.equal(hero.$('.fx-title').text().trim(), x.row.next.what)
+  assert.ok(hero.text().includes(en.dossier.from.status), 'where the step comes from')
+  assert.ok(el.$('.fx-hero .fx-do'), 'the verbs of the row')
+})
+
+test('a file without a known next step says so instead of making one up', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const queue = dossierQueue(filesOn())
+  const k = queue.findIndex(x => x.reason === 'task' && !x.row.next)
+  assert.ok(k >= 0, 'the demo has a task without a next step')
+  const el = mount(html`<${DossierView} s=${filesOn({ ui: { dossierAt: { id: queue[k].id, i: k } } })} c=${recorder()} />`)
+  assert.equal(el.$('.fx-hero .fx-title').text().trim(), en.dossier.noNext)
+})
+
+test('the drawers of a file come folded, each with its count, from what the task detail holds', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const queue = dossierQueue(filesOn())
+  const slug = queue[0].slug
+  const data = { ok: true, slug, kind: 'task', path: `work/tasks/${slug}/STATUS.md`, front: { headline: 'Ship the release notes', last_updated: '2026-10-07' },
+    sections: [{ heading: 'Goal', text: 'x', truncated: false }, { heading: 'Notes', text: 'y', truncated: false }],
+    log: [{ at: '2026-10-08 09:00', glyph: 'x', context: slug, text: 'started' }],
+    inbox: [{ id: '20261009-0900-x', summary: 'One item', state: 'open' }], related: ['docs/example.md'] }
+  const s = filesOn({ details: { inbox: {}, task: { [slug]: { status: 'ok', data, ver: 0 } } } })
+  const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
+  const drawers = el.$$('details.dz-drawer')
+  assert.equal(drawers.length, 4)
+  assert.ok(drawers.every(d => d.getAttribute('open') == null), 'folded')
+  const heads = drawers.map(d => d.$('summary').text())
+  assert.ok(heads[0].includes(en.dossier.drawers.inbox) && heads[0].includes('1'))
+  assert.ok(heads.some(h => h.includes(en.dossier.drawers.sections) && h.includes('2')))
+  assert.ok(heads.some(h => h.includes(en.dossier.drawers.refs)))
+  // the situation in one sentence, with where it comes from and its date
+  const sit = el.$('.dz-lead').text()
+  assert.ok(sit.includes('Ship the release notes') && sit.includes(en.dossier.situationFrom.status))
+})
+
+test('with no file in the queue the files view rests calmly', () => {
+  const { DossierView } = views.dossier
+  const s = { ...filesOn(), ...cockpitState(NOW, { model: loadedRooms.mock.buildState(NOW, { empty: true }).model, ui: { page: 'briefing', workView: 'dossier' } }) }
+  const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
+  assert.ok(el.$('.fx-calm'))
+  assert.equal(el.$('.fx-calm .fx-title').text(), en.dossier.empty)
+})

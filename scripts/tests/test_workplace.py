@@ -242,6 +242,19 @@ def test_tasks_list_every_active_task_with_area_priority_and_flags(repo):
     assert rows["payments-incident"]["area_aliases"] == []
 
 
+def test_tasks_carry_status_next_step_and_last_change(repo, tmp_path):
+    task(tmp_path, "with-next", next="Call the vendor")
+    d = tmp_path / "work" / "tasks" / "as-mapping"
+    d.mkdir(parents=True)
+    (d / "STATUS.md").write_text("---\nslug: as-mapping\nstatus: review\nlast_updated: 2026-10-02\n"
+                                 "next:\n  what: Merge the change\n  who: me\n---\n\n# As mapping\n", encoding="utf-8")
+    rows = {t["slug"]: t for t in wp.task_rows(repo, CFG, TODAY)}
+    assert (rows["with-next"]["next"], rows["with-next"]["status"], rows["with-next"]["updated"]) == \
+        ("Call the vendor", "doing", "2026-10-03")
+    assert (rows["as-mapping"]["next"], rows["as-mapping"]["status"]) == ("Merge the change", "review")
+    assert rows["payments-incident"]["next"] is None
+
+
 def test_tasks_name_the_aliases_of_their_area(repo):
     cfg = {"workspaces": [{"name": "Bigcorp", "contexts": ["bigcorp"], "aliases": ["BC", "Big"]}]}
     rows = {t["slug"]: t for t in wp.task_rows(repo, cfg, TODAY)}

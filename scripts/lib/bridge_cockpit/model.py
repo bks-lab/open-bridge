@@ -247,7 +247,9 @@ def _base_row(**extra) -> dict:
     row = {"bucket": "do", "title": "", "why": [], "sources": [], "inbox_id": None, "gate": None, "task": None,
            "ref": None, "url": None, "priority": None, "urgency": None, "area": None, "area_names": [],
            "task_type": None, "has_action": False, "inbox_state": None, "inbox_key": None, "mark": None,
-           "due": None, "is_new": False, "is_changed": False}
+           "due": None, "is_new": False, "is_changed": False,
+           # a task row's state (doing, review) and its next step, derived (task_next), never stored
+           "status": None, "next": None, "created": None}
     row.update(extra)
     return row
 
@@ -387,6 +389,8 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 mark=parse_mark(i.get("mark")),
                 # web only: shown by the page, not used for any decision
                 due=as_text_or_null(i.get("due")), is_new=i.get("new") is True, is_changed=i.get("changed") is True,
+                # when an inbox item was filed: the age of a next step taken from it
+                created=as_text_or_null(i.get("created")),
             )
             # Same key twice (same number from two trackers): the second gets the block added.
             key = row_key(base)
@@ -447,6 +451,9 @@ def parse_tasks(out: Any) -> list[dict]:
             "stale": t.get("stale") is True, "age": _number(t.get("age")), "type": as_text_or_null(t.get("type")),
             # tasks or streams (workplace.py); a stream never closes
             "kind": t.get("kind") if t.get("kind") in ("tasks", "streams") else None,
+            # doing or review, what STATUS.md names as next, and the day it last changed (workplace.py tasks)
+            "status": as_text_or_null(t.get("status")), "next": as_text_or_null(t.get("next")),
+            "updated": as_text_or_null(t.get("updated")),
         })
     return result
 
@@ -464,8 +471,22 @@ def parse_teams(out: Any) -> list[dict]:
     return result
 
 
+def task_next(task: dict, inbox_rows: list[dict]) -> dict | None:
+    """The next step of a task, derived and never stored: its oldest open inbox item, else the `next:` of its
+    STATUS.md; each with where it comes from and since when ({what, from, since, key}), None when nothing names
+    one. A tab that asks and a result that waits are live: the page puts them in front itself (logic.js queueOf)."""
+    mine = [r for r in inbox_rows if r.get("inbox_id") and r.get("task") == task["slug"]]
+    if mine:
+        first = min(mine, key=lambda r: (r.get("created") or "9999", r.get("inbox_id") or ""))
+        return {"what": first["title"], "from": "inbox", "since": first.get("created"), "key": first.get("key")}
+    if task.get("next"):
+        return {"what": task["next"], "from": "status", "since": task.get("updated"), "key": None}
+    return None
+
+
 def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
     by_slug = {t["slug"]: t for t in tasks}
+    inbox_rows = [r for b in view["buckets"] for r in b["rows"] if r.get("inbox_id") and r.get("task")]
     seen: set[str] = set()
     inbox_count: dict[str, int] = {}
     buckets = []
@@ -485,8 +506,9 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
                 seen.add(t["slug"])
             # An inbox entry shows the area of its task, but not its priority.
             priority = r["priority"] if r.get("inbox_id") else (r["priority"] if r["priority"] is not None else t["priority"])
+            mine = {} if r.get("inbox_id") else {"status": t.get("status"), "next": task_next(t, inbox_rows)}
             rows.append({**r, "area": t["area"], "area_names": list(t["area_names"]), "priority": priority,
-                         "task_type": t["type"]})
+                         "task_type": t["type"], **mine})
         buckets.append({**b, "rows": rows})
 
     def to_row(t: dict, bucket: str) -> dict:
@@ -495,7 +517,8 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
         if inbox_count.get(t["slug"]):
             why.append(tx["inbox_open"].format(n=inbox_count[t["slug"]]))
         base = _base_row(bucket=bucket, title=t.get("title") or t["label"], why=why, sources=["tasks"], task=t["slug"],
-                         priority=t["priority"], area=t["area"], area_names=list(t["area_names"]), task_type=t["type"])
+                         priority=t["priority"], area=t["area"], area_names=list(t["area_names"]), task_type=t["type"],
+                         status=t.get("status"), next=task_next(t, inbox_rows))
         base["key"] = row_key(base)
         return base
 

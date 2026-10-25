@@ -1644,9 +1644,10 @@ export function workPageOf(pages) {
 }
 
 /** The views of the work tab: what is due (the four blocks) always, by source where a work page exists,
- *  by Jev where that page asks for an order and Jev is switched on and has its key */
+ *  by Jev where that page asks for an order and Jev is switched on and has its key, and the files (one task
+ *  at a time, views/dossier.js) always, last: an extra view, never the default */
 export function workViews(page, jev) {
-  return ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : [])]
+  return ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : []), 'dossier']
 }
 
 /** The view the work tab shows: the remembered one where it can, else what is due */
@@ -2121,14 +2122,80 @@ export function homeListParts(tabs, model, { project = null, pins = [] } = {}) {
     tabOf: key => bound.get(key) ?? null }
 }
 
-/** The queue of the focus view, from the parts of the list: the lead, the tabs that ask, the rows that
- *  wait on you, then the P0 and P1 tasks; what merely runs or rests is not yours to take */
-export function homeQueue(parts) {
+/** The one queue every walk takes, in one order: a tab that asks, a result that waits, an open inbox item,
+ *  then the tasks; what merely runs or rests is not yours to take. `scope` picks whose parts it reads:
+ *  - 'focus' (the start page, homeListParts): its lead first, then the tabs that ask, the rows that wait on
+ *    you, and of the tasks only P0 and P1, as the focus has always shown it;
+ *  - 'dossier' (the files view, dossierParts): one entry per task (a file), at the place of the first reason
+ *    that names it, every priority; a file is {kind: 'dossier', id, slug, row, reason, tab?, result?, item?},
+ *    `row` its task row. Backlog, blocked and resting tasks stand in no part, so no file opens for them */
+export function queueOf(parts, { scope = 'focus' } = {}) {
+  if (scope === 'dossier') {
+    const bySlug = new Map((parts?.tasks ?? []).map(r => [r.task, r]))
+    const files = new Map()
+    const add = (slug, reason, extra) => {
+      if (!slug || !bySlug.has(slug) || files.has(slug)) return
+      const row = bySlug.get(slug)
+      files.set(slug, { kind: 'dossier', id: row.key, slug, row, reason, ...extra })
+    }
+    for (const t of parts?.asking ?? []) add(t.slug, 'tab', { tab: t })
+    for (const r of parts?.results ?? []) add(r.slug, 'result', { result: r })
+    for (const r of parts?.waiting ?? []) add(r.task, 'inbox', { item: r })
+    for (const r of parts?.tasks ?? []) add(r.task, 'task', {})
+    return [...files.values()]
+  }
   const tab = x => ({ kind: 'tab', id: x.ref, tab: x })
   const row = r => ({ kind: 'row', id: r.key, row: r })
   const lead = parts?.lead ? [parts.lead.kind === 'tab' ? tab(parts.lead.tab) : row(parts.lead.row)] : []
   return [...lead, ...(parts?.asking ?? []).map(tab), ...(parts?.waiting ?? []).map(row),
     ...(parts?.tasks ?? []).filter(r => /^P[01]$/.test(r.priority ?? '')).map(row)]
+}
+
+/** The queue of the focus view, from the parts of the list: the one queue in its focus scope */
+export function homeQueue(parts) {
+  return queueOf(parts, { scope: 'focus' })
+}
+
+const FILE_STATES = ['doing', 'review']
+
+/** The parts of the files view (queueOf scope 'dossier'): the tabs that ask about a task, the starts whose
+ *  result waits (model.returns, where they stand now), the open inbox items that name a task, and the task
+ *  rows of what waits on you and of the work, doing or in review. Rows of `later` (blocked, resting) give no
+ *  task; an item put off counts as not open */
+export function dossierParts(tabs, model, nowMs) {
+  const sec = id => (model?.sections ?? []).find(x => x.id === id)?.rows ?? []
+  const all = ['now', 'give', 'work', 'track', 'later'].flatMap(sec)
+  const tasks = [...sec('now'), ...sec('work')]
+    .filter(r => r.task && !r.inbox_id && (!r.status || FILE_STATES.includes(r.status)))
+  const waiting = all.filter(r => r.inbox_id && r.task && r.inbox_state !== 'deferred')
+  const taskOf = new Map(all.filter(r => r.task).map(r => [r.key, r.task]))
+  const results = (model?.returns ?? []).filter(r => liveStage(r, tabs, nowMs) === 'result')
+    .map(r => ({ ...r, slug: taskOf.get(r.key) ?? (String(r.key ?? '').startsWith('task:') ? r.key.slice(5) : null) }))
+  const asking = (tabs ?? []).filter(t => !t.is_control && t.state === 'needs-you' && t.slug)
+  return { asking, results, waiting, tasks }
+}
+
+/** The next step of a file, derived and never stored: the tab's question, the result to check, the inbox item
+ *  (the server's oldest one with its date where it names this item), else what STATUS.md names as next
+ *  (model.py task_next); {what, from, since} or null when nothing names one. `since` is ms or an ISO date */
+export function dossierStep(x) {
+  if (x?.reason === 'tab') return { what: x.tab.name, from: 'tab', since: x.tab.since_ms ?? null }
+  if (x?.reason === 'result') return { what: x.result.result?.text || x.result.title, from: 'result', since: x.result.at_ms ?? null }
+  const next = x?.row?.next
+  if (x?.reason === 'inbox' && (!next || next.from !== 'inbox' || next.key !== x.item.key)) {
+    return { what: x.item.title, from: 'inbox', since: null }
+  }
+  return next?.what ? { what: next.what, from: next.from, since: next.since ?? null } : null
+}
+
+/** How many whole days lie between `since` (ms, an ISO date or date and time, read as local) and now; null
+ *  for no date or one that does not read */
+export function stepAge(since, nowMs) {
+  if (since == null || since === '') return null
+  const ms = typeof since === 'number' ? since : new Date(/^\d{4}-\d{2}-\d{2}$/.test(since) ? `${since}T00:00` : since).getTime()
+  if (!Number.isFinite(ms)) return null
+  const day = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime() }
+  return Math.max(0, Math.round((day(nowMs) - day(ms)) / 86400000))
 }
 
 /** The rows of a start-page list in the order it shows them, as the queue a detail opened there walks

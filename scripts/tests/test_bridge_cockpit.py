@@ -78,6 +78,7 @@ def collect_fixture(root: Path) -> dict:
                 {"id": "do", "title": "Do", "items": [
                     {"title": "Review the demo report", "inbox_id": ONLY_ID, "gate": "only-you", "urgency": "today",
                      "task": "demo-task", "sources": ["inbox"], "why": ["due 10.10", "only you"], "has_action": False,
+                     "created": "2026-10-09T09:00",
                      "inbox_state": "open", "inbox_key": "demo-review", "due": "2026-10-10",
                      "mark": {"label": "Demo", "color": "blue"}, "new": True}]},
                 {"id": "plan", "title": "Plan", "items": [
@@ -2144,6 +2145,7 @@ def test_every_post_path_but_reload_leaves_exactly_one_audit_line_without_texts(
             ("/api/jev/run", {"force": True}, "jev_run"),
             ("/api/jev/rank", {"page": "work", "force": True}, "jev_rank"),
             ("/api/triage/run", {"fresh": True}, "triage"),
+            ("/api/seen", {"page": "briefing", "view": "dossier"}, "page_view"),
         ]
         # every POST path the server knows is in the list above, so a new endpoint cannot skip its line;
         # reload and presence change no record and send nothing on, and presence fires on every tab switch
@@ -7386,3 +7388,87 @@ def test_a_change_inside_one_page_sends_only_that_page(world):
     col.view["headline"] = "Something else entirely"
     col.rebuild()
     assert [ev for ev, _ in sent] == ["view"], "a change outside the pages still sends the whole model"
+
+
+# ---------------------------------------------------------------- the files view: status and the derived next step
+
+def test_parse_tasks_keeps_status_next_and_when_the_task_last_changed():
+    out = m.parse_tasks([{"slug": "a", "label": "A", "status": "review", "next": "Call the vendor", "updated": "2026-10-20"},
+                         {"slug": "b", "label": "B", "next": 7}])
+    assert (out[0]["status"], out[0]["next"], out[0]["updated"]) == ("review", "Call the vendor", "2026-10-20")
+    assert (out[1]["status"], out[1]["next"], out[1]["updated"]) == (None, None, None)
+
+
+def test_task_next_is_derived_from_the_oldest_open_inbox_item_then_the_status_file():
+    t = tinfo("alpha", next="Write the summary", updated="2026-10-20")
+    newer = row("inbox:2", ["inbox"], inbox_id="20261012-0900-b", task="alpha", title="Newer", created="2026-10-12T09:00")
+    older = row("inbox:1", ["inbox"], inbox_id="20261010-0900-a", task="alpha", title="Older", created="2026-10-10T09:00")
+    elsewhere = row("inbox:3", ["inbox"], inbox_id="20261001-0900-c", task="beta", title="Elsewhere", created="2026-10-01T09:00")
+    assert m.task_next(t, [newer, older, elsewhere]) == {"what": "Older", "from": "inbox", "since": "2026-10-10T09:00",
+                                                        "key": "inbox:1"}
+    # without an inbox item: what STATUS.md names as next, dated by its last change
+    assert m.task_next(t, [elsewhere]) == {"what": "Write the summary", "from": "status", "since": "2026-10-20", "key": None}
+    # nothing names a next step: none is made up
+    assert m.task_next(tinfo("alpha"), []) is None
+
+
+def test_with_tasks_gives_every_task_row_its_status_and_derived_next_step():
+    v = view(buckets=[
+        {"id": "plan", "title": "Plan", "rows": [
+            row("inbox:1", ["inbox"], inbox_id="20261010-0900-a", task="alpha", title="Answer the vendor",
+                created="2026-10-10T09:00")]},
+        {"id": "delegate", "title": "Delegate", "rows": [row("task:gamma", ["tasks"], task="gamma", title="Next of gamma")]}])
+    tasks = [tinfo("alpha", status="doing", priority="P2"), tinfo("beta", status="review", next="Merge it", updated="2026-10-20"),
+             tinfo("gamma", status="doing", next="Next of gamma", updated="2026-10-19")]
+    out = m.with_tasks(v, tasks)
+    rows = {r["key"]: r for b in out["buckets"] for r in b["rows"]}
+    assert rows["task:alpha"]["status"] == "doing"
+    assert rows["task:alpha"]["next"] == {"what": "Answer the vendor", "from": "inbox", "since": "2026-10-10T09:00",
+                                          "key": "inbox:1"}
+    assert rows["task:beta"]["status"] == "review" and rows["task:beta"]["next"]["from"] == "status"
+    # a task the briefing already lists (its next step as the title) carries the same fields
+    assert rows["task:gamma"]["status"] == "doing" and rows["task:gamma"]["next"]["what"] == "Next of gamma"
+    # an inbox row is a part of its task: it carries neither
+    assert rows["inbox:1"]["status"] is None and rows["inbox:1"]["next"] is None
+
+
+def test_parse_view_keeps_when_an_inbox_item_was_filed():
+    raw = {"view": {"buckets": [{"id": "do", "title": "Do", "items": [
+        {"title": "A", "inbox_id": "x1", "created": "2026-10-10T09:00"}, {"title": "B", "inbox_id": "x2", "created": 5}]}]}}
+    rows = m.parse_view(raw, False, NOW)["buckets"][0]["rows"]
+    assert [r["created"] for r in rows] == ["2026-10-10T09:00", None]
+
+
+def test_the_model_rows_carry_status_and_next_step_to_the_page(world):
+    demo = world.row("task:demo-task")
+    assert demo["status"] == "doing"
+    assert demo["next"] == {"what": "Review the demo report", "from": "inbox", "since": "2026-10-09T09:00",
+                            "key": f"inbox:{ONLY_ID}"}
+    other = world.row("task:other-task")
+    assert other["status"] is None and other["next"] is None
+
+
+def test_task_detail_names_the_references_of_its_status_file(world):
+    path = world.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    text = path.read_text(encoding="utf-8").replace(
+        "origin: invented\n", "origin: invented\nnext:\n  what: Call the vendor\n  who: me\n"
+        "related:\n  - ../other-task/STATUS.md\n  - docs/example.md\n")
+    path.write_text(text, encoding="utf-8")
+    data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    assert data["related"] == ["../other-task/STATUS.md", "docs/example.md"]
+    # a next step written as a mapping reads as its words, not as a Python dict
+    assert data["front"]["next"] == "Call the vendor"
+
+
+def test_seen_endpoint_leaves_one_page_view_line_and_refuses_bad_input(world):
+    log = world.app.state_dir / "audit.log"
+    before = log.read_text().splitlines() if log.exists() else []
+    status, _, data = world.post("/api/seen", {"page": "briefing", "view": "dossier"})
+    assert status == 200 and json.loads(data)["ok"] is True
+    new = log.read_text().splitlines()[len(before):]
+    assert len(new) == 1 and new[0].split()[1:] == ["page_view", "briefing", "view=dossier"]
+    assert world.post("/api/seen", {"page": "@start"})[0] == 200
+    assert log.read_text().splitlines()[-1].split()[1:] == ["page_view", "@start", "view=-"]
+    assert world.post("/api/seen", {"page": "../x"})[0] == 400
+    assert world.post("/api/seen", {"page": "briefing", "view": "a b"})[0] == 400
+    assert world.post("/api/seen", {"page": "briefing", "x": 1})[0] == 400

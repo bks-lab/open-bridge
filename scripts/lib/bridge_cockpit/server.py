@@ -91,6 +91,8 @@ GITHUB_DETAIL_TIMEOUT = 40
 SCREEN_MAX = 120_000
 SCREEN_CACHE_MS = 1000      # several pages on one tab share one read of its screen within this window
 SCREEN_HASH_RE = re.compile(r"^[0-9a-f]{1,64}\Z")
+# a page or view the files view measures (/api/seen): a profile page id, or one of the cockpit's own @ pages
+SEEN_RE = re.compile(r"^@?[a-z0-9][a-z0-9_-]{0,63}\Z")
 CAPS_TTL_S = 300
 CAPS_RETRY_S = 15      # a failed read is tried again this soon, the last good answer standing meanwhile
 CAPS_TIMEOUT = 20
@@ -1059,6 +1061,18 @@ class Handler(BaseHTTPRequestHandler):
                     raise ActionError(404, "not_found", "no such page is connected", "client")
                 if back:
                     app.on_client_connect()   # a page that comes back sees fresh tabs at once
+                self.send_json(200, {"ok": True})
+            elif path == "/api/seen":
+                # the files view's measure: which page or view was opened, one audit line, nothing else changes
+                for name in body:
+                    if name not in ("page", "view"):
+                        raise ActionError(400, "invalid_argument", "unknown field", str(name)[:40])
+                page, view = body.get("page"), body.get("view")
+                if not isinstance(page, str) or not SEEN_RE.match(page):
+                    raise ActionError(400, "invalid_argument", "page must be a page id", "page")
+                if view is not None and (not isinstance(view, str) or not SEEN_RE.match(view)):
+                    raise ActionError(400, "invalid_argument", "view must be a view id", "view")
+                app.actions.audit_line("page_view", page, view=view or "-")
                 self.send_json(200, {"ok": True})
             elif path == "/api/triage/run":
                 app.triage.handle_post(self, body)

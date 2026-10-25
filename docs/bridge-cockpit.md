@@ -196,6 +196,27 @@ what is clear or needs tidying and the workplace stand there as cards in a shelf
 `group: day` close the start page as shelves of their own. The middle of Due
 keeps only the headline and a button to Start.
 
+**Files** is one more view of the same tab, on every Bridge, with or without a
+work page, and never the one the tab opens on. It shows one task at a time as
+a file: on top the cover (its slug, kind, priority, status and area, and the
+situation in one sentence: the `headline` of its STATUS.md, else what the
+triage made of it, always with where that comes from and its date), under it
+the next step large with the four verbs, then the file's drawers, folded:
+Inbox, History, Sections and References (the `related:` paths of STATUS.md),
+each only when it holds something. Under them stands the bar every list walks
+with ("2 of 9", Next, keys `n` and `p`) and the next files, at most six.
+The queue is the one the focus on the start page walks, in one function
+(`queueOf` in logic.js), only wider: a tab that asks about a task comes first,
+then a start whose result waits, then a task with an open inbox item, then
+every task in `doing` or `review`, whatever its priority (the focus takes only
+P0 and P1 of them, and keeps doing so). Backlog, blocked and resting tasks
+stay out, and so does what has no task: a loose inbox item stays on Start. The
+next step is derived and never stored: the tab's question, the result, the
+oldest open inbox item of the task, else the `next:` of its STATUS.md, each
+with where it comes from and since when; with none of these the file says "No
+next step known" rather than making one up. Every task row of the model
+carries `status` and `next` for it (`model.task_next`).
+
 Only one number in the bar carries colour: Today's count of what waits for
 you, the same count as the start page's station "waits for you" and the
 headline in the middle (the approvals stand in its tooltip and in their own
@@ -1456,15 +1477,15 @@ the focus is not in a text field:
 | `r` | reload, fresh |
 | `/` | the command box |
 | `g` then `t` | the agent tabs |
-| `n` / `p` | the next / previous entry of the walk you are in: a detail opened from a list, the Today list, the Chat page's tabs, the focus on the start page |
+| `n` / `p` | the next / previous entry of the walk you are in: a detail opened from a list, the Today list, the Chat page's tabs, the focus on the start page, the Files view |
 | `Alt` + `1` to `9` | the page tabs |
 | `?` | help |
 
 The row keys (`j` `k` `Enter` `x` and the five letters) act on the Briefing
 page only; `n` and `p` act while a detail opened from a list is open (the item
 drawer included), on the Today list with a row open in the center, on the
-Chat page (where `n` starts the walk through the tabs that want you) and on
-the start page in the focus view; the others work on every page. A text field keeps every key,
+Chat page (where `n` starts the walk through the tabs that want you), on
+the start page in the focus view and in the Files view of the work tab; the others work on every page. A text field keeps every key,
 `Alt` + a digit included, because on many keyboards that is how a bracket
 or a pipe is typed: leave the field with `Esc` first, for instance after
 the Chat page put the cursor in its box.
@@ -1573,6 +1594,9 @@ nothing a stranger could trigger:
   rows, judge), `/api/jev/run` and `/api/jev/rank` (`jev_run`, `jev_rank`,
   requests, rows and model sent to Jev) and a triage run (`triage`, click or
   daily, number of items, model; a click while one runs says `started=false`).
+  `/api/seen` is the page's own measure: opening a page or a view of it
+  leaves `page_view`, the page id and `view=` (the work tab's view, the start
+  page's view, else `-`), nothing more.
   Read-only verbs and requests refused before anything happened leave none;
 - a question for Claude carries a signature (HMAC-SHA256) made with
   `relay.key`, which lives outside the Bridge in a folder only you can open

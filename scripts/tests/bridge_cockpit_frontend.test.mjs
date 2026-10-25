@@ -1357,10 +1357,10 @@ test('the work tab opens on what is due and switches to by source and by Jev', (
   assert.equal(logic.workPageOf([{ id: 'ops' }, work]), work)
   assert.equal(logic.workPageOf([{ id: 'ops' }]), null)
   const ready = { enabled: true, ready: true }
-  assert.deepEqual(logic.workViews(work, ready), ['due', 'area', 'jev'])
-  assert.deepEqual(logic.workViews(work, { enabled: false }), ['due', 'area'])
-  assert.deepEqual(logic.workViews({ ...work, jev: false }, ready), ['due', 'area'])
-  assert.deepEqual(logic.workViews(null, ready), ['due'])
+  assert.deepEqual(logic.workViews(work, ready), ['due', 'area', 'jev', 'dossier'])
+  assert.deepEqual(logic.workViews(work, { enabled: false }), ['due', 'area', 'dossier'])
+  assert.deepEqual(logic.workViews({ ...work, jev: false }, ready), ['due', 'area', 'dossier'])
+  assert.deepEqual(logic.workViews(null, ready), ['due', 'dossier'])
   // a remembered view the tab cannot show falls back to what is due, the default
   assert.equal(logic.workViewOf('jev', work, ready), 'jev')
   assert.equal(logic.workViewOf('jev', work, { enabled: false }), 'due')
@@ -4908,4 +4908,85 @@ test('the demo opens a task with its own front, not one fixed page (review C12)'
   assert.equal(b.data.front.headline, tasks[1].title)
   assert.notEqual(a.data.front.headline, b.data.front.headline)
   for (const [res, r] of [[a, tasks[0]], [b, tasks[1]]]) if (r.priority) assert.equal(res.data.front.priority, r.priority)
+})
+
+// ---------------------------------------------------------------- the files view: one queue for every walk
+
+test('one queue function: the focus scope keeps the start page queue as it was, P0 and P1 tasks only', () => {
+  const tabs = [{ ref: 'ask', name: 'ask', state: 'needs-you' }, { ref: 'run', name: 'run', state: 'working' }]
+  const model = { sections: [
+    { id: 'now', rows: [{ key: 'n1', title: 'Answer' }] },
+    { id: 'work', rows: [{ key: 't0', title: 'Urgent', task: 'u', priority: 'P0', status: 'doing' },
+      { key: 't1', title: 'Later', task: 'l', priority: 'P2', status: 'doing' }] },
+  ] }
+  const parts = logic.homeListParts(tabs, model, {})
+  assert.deepEqual(logic.queueOf(parts, { scope: 'focus' }), logic.homeQueue(parts))
+  assert.deepEqual(logic.queueOf(parts).map(x => x.id), ['ask', 'n1', 't0'], 'focus is the default scope')
+})
+
+const fileTask = (slug, priority, extra = {}) => ({ key: `task:${slug}`, title: `Task ${slug}`, task: slug, priority, status: 'doing', ...extra })
+
+test('the files queue: a tab that asks, a result that waits, an inbox item, then doing and review tasks of every priority', () => {
+  const model = {
+    sections: [
+      { id: 'now', rows: [{ key: 'inbox:1', title: 'Answer the vendor', inbox_id: '1', task: 'gamma' }, { key: 'inbox:9', title: 'Loose', inbox_id: '9' }] },
+      { id: 'give', rows: [] },
+      { id: 'work', rows: [fileTask('alpha', 'P0'), fileTask('beta', 'P2'), fileTask('gamma', 'P3', { status: 'review' }),
+        fileTask('delta', 'P1'), fileTask('parked', 'P1', { status: 'backlog' })] },
+      { id: 'later', rows: [fileTask('resting', 'P0'), { key: 'inbox:2', title: 'x', inbox_id: '2', task: 'resting' }] },
+    ],
+    returns: [{ key: 'task:beta', item: 'beta', stage: 'result', at_ms: 1 }, { key: 'task:alpha', item: 'alpha', stage: 'working', at_ms: 1 }],
+  }
+  const tabs = [{ ref: 's:1', state: 'needs-you', slug: 'delta' }, { ref: 's:2', state: 'needs-you' },
+    { ref: 's:3', state: 'needs-you', slug: 'resting' }, { ref: 's:4', state: 'needs-you', slug: 'alpha', is_control: true }]
+  const q = logic.queueOf(logic.dossierParts(tabs, model, 10), { scope: 'dossier' })
+  assert.deepEqual(q.map(x => [x.slug, x.reason]), [['delta', 'tab'], ['beta', 'result'], ['gamma', 'inbox'], ['alpha', 'task']])
+  assert.deepEqual(q.map(x => x.id), ['task:delta', 'task:beta', 'task:gamma', 'task:alpha'], 'one entry per file, by its task key')
+  assert.equal(q[0].tab.ref, 's:1')
+  assert.equal(q[1].result.key, 'task:beta')
+  assert.equal(q[2].item.key, 'inbox:1')
+  assert.equal(q[3].row.key, 'task:alpha')
+  // backlog, blocked and resting files stay out, and so does what has no file (a loose inbox item, a tab without a task)
+  assert.ok(!q.some(x => ['parked', 'resting'].includes(x.slug)))
+  assert.deepEqual(logic.queueOf(logic.dossierParts([], {}, 10), { scope: 'dossier' }), [])
+})
+
+test('acceptance: a P2 task in status doing stands in the files queue, the focus keeps leaving it out', () => {
+  const model = { sections: [{ id: 'now', rows: [] }, { id: 'work', rows: [fileTask('invoice-onboarding', 'P2')] }] }
+  const files = logic.queueOf(logic.dossierParts([], model, 0), { scope: 'dossier' })
+  assert.deepEqual(files.map(x => x.slug), ['invoice-onboarding'])
+  assert.deepEqual(logic.queueOf(logic.homeListParts([], model, {}), { scope: 'focus' }), [])
+})
+
+test('the next step of a file says where it comes from and since when', () => {
+  const row = fileTask('alpha', 'P2', { next: { what: 'Merge it', from: 'status', since: '2026-10-07', key: null } })
+  assert.deepEqual(logic.dossierStep({ reason: 'task', row }), { what: 'Merge it', from: 'status', since: '2026-10-07' })
+  assert.deepEqual(logic.dossierStep({ reason: 'tab', row, tab: { name: 'alpha tab', since_ms: 5 } }), { what: 'alpha tab', from: 'tab', since: 5 })
+  assert.deepEqual(logic.dossierStep({ reason: 'result', row, result: { title: 'Run', at_ms: 7, result: { text: 'All green' } } }),
+    { what: 'All green', from: 'result', since: 7 })
+  // an inbox item: the server's oldest item with its date where it names one, else the item itself
+  const inboxNext = { what: 'Answer', from: 'inbox', since: '2026-10-08T09:00', key: 'inbox:1' }
+  assert.deepEqual(logic.dossierStep({ reason: 'inbox', row: { ...row, next: inboxNext }, item: { key: 'inbox:1', title: 'Answer' } }),
+    { what: 'Answer', from: 'inbox', since: '2026-10-08T09:00' })
+  assert.deepEqual(logic.dossierStep({ reason: 'inbox', row, item: { key: 'inbox:3', title: 'Other' } }), { what: 'Other', from: 'inbox', since: null })
+  // nothing names a next step: none is made up
+  assert.equal(logic.dossierStep({ reason: 'task', row: fileTask('beta', 'P3') }), null)
+})
+
+test('the age of a step in whole days, from a date, a date and time, or milliseconds', () => {
+  const now = new Date(2026, 9, 9, 12, 0, 0).getTime()
+  assert.equal(logic.stepAge('2026-10-07', now), 2)
+  assert.equal(logic.stepAge('2026-10-09T09:00', now), 0)
+  assert.equal(logic.stepAge(now - 3 * 86400000, now), 3)
+  assert.equal(logic.stepAge(null, now), null)
+  assert.equal(logic.stepAge('not a date', now), null)
+})
+
+test('the work tab offers the files view beside the others, never as its default', () => {
+  const work = { id: 'work', group: 'work', jev: true }
+  const ready = { enabled: true, ready: true }
+  assert.deepEqual(logic.workViews(work, ready), ['due', 'area', 'jev', 'dossier'])
+  assert.deepEqual(logic.workViews(null, ready), ['due', 'dossier'])
+  assert.equal(logic.workViewOf('dossier', null, ready), 'dossier')
+  assert.equal(logic.workViewOf(undefined, work, ready), 'due')
 })

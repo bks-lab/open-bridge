@@ -861,7 +861,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 have["bucket"], have["forced"] = row["bucket"], row["forced"]
             have["rank"] = min(have["rank"], row["rank"])
             have["why"] += [w for w in row["why"] if w not in have["why"]]
-            for k in ("due", "nudge", "estimate", "inbox_id", "inbox_state", "inbox_key", "gate", "urgency", "priority",
+            for k in ("due", "nudge", "estimate", "inbox_id", "inbox_state", "inbox_key", "created", "gate", "urgency", "priority",
                       "has_action", "mark"):
                 if row.get(k) and not have.get(k):
                     have[k] = row[k]
@@ -981,7 +981,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 add(key, row(sid, item, forced or bucket, item.get("title"), why, rank, due=item.get("due"),
                              filed=key != f"inbox:{iid}", inbox_id=iid, gate=item.get("gate"),
                              urgency=item.get("urgency"), has_action=bool(item.get("has_action")),
-                             inbox_state=item.get("state"), inbox_key=item.get("key")))
+                             inbox_state=item.get("state"), inbox_key=item.get("key"),
+                             created=item.get("changed_at") or None))
             elif kind == "advise":
                 check = item.get("check")
                 if check == "wip":

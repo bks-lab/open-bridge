@@ -3123,6 +3123,19 @@ details.hl-block:not([open]) > summary > svg { transform: rotate(-90deg); }
   .fx-hero { padding: 20px 18px 18px; border-radius: 16px; }
   .fx-acts { flex-direction: column; align-items: flex-start; }
 }
+/* the files view of the work tab (views/dossier.js): the cover over the hero of the focus, the drawers under it */
+.dz { display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: 980px; }
+.dz-cover { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dz-facts { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: var(--text-sm); color: var(--on-surface); }
+.dz-fact { font-size: var(--text-label); font-weight: 600; }
+.dz-title { margin: 0; font-size: var(--text-h4); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.dz-lead { margin: 0; color: var(--on-surface); overflow-wrap: anywhere; }
+.fx-sub { margin: 0; }
+.dz-drawers { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.dz-drawer { flex: 1 1 220px; min-width: 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised); }
+.dz-drawer[open] { flex-basis: 100%; }
+.dz-drawer > summary { cursor: pointer; font-weight: 600; color: var(--on-surface); }
+.dz-drawer .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   .fx-hero, .fx-line-now .fx-line-dot { animation: none; }
   .fx-card { transition: none; }

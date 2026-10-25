@@ -16,7 +16,7 @@ import {
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
-  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages,
+  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, queueOf, dossierParts,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -137,6 +137,8 @@ const store = createStore({
     workView: load('bridge-cockpit.workTab', 'due'),
     workKind: load('bridge-cockpit.workKind', null),
     theme: THEME_OVERRIDE ?? load('bridge-cockpit.theme', 'auto'), drawer: null, item: null, pane: 'day', confirm: null, askFallback: null, pageDetail: false, queue: null, focusAt: null,
+    // where the files view of the work tab stands in its queue (views/dossier.js), held by the task key
+    dossierAt: null,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
@@ -561,6 +563,15 @@ async function copy(text) {
   }
 }
 
+/** The files view's measure: which page, and which view of it, was opened (POST /api/seen, one page_view line
+ *  in the server's audit log). Nothing waits for the answer; an older server without the endpoint says 404 */
+function pageSeen(page) {
+  const s = store.get()
+  const view = page === 'briefing' ? workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev)
+    : page === START_PAGE ? homeView(homeChosen(s.model, s.home)) : null
+  api.seen(page, view)
+}
+
 async function loadDetail(kind, id) {
   // `ver` ties the entry to the collect run it was read for; the old data stays visible meanwhile
   const ver = store.get().model?.collected_ms ?? 0
@@ -703,6 +714,7 @@ const ctl = {
     // a page with the tab column beside it closes the tab drawer a folded page opened
     const drawer = s.layout === 'wide' && railShown(id, s.rooms?.layout, s.ui.railHidden) && s.ui.drawer === 'tabs' ? null : s.ui.drawer
     setUi({ page: id, pageDetail: false, queue: null, drawer, pane: s.layout === 'narrow' ? 'day' : s.ui.pane, workersFilter: null })
+    pageSeen(id)
   },
   // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab
   openReview() {
@@ -867,7 +879,8 @@ const ctl = {
       : { order: s.jevOrder[page]?.order ?? null, error: res.error?.message ?? 'error', running: false } } }))
     if (force && res.ok && res.data.order) ctl.setWorkView('jev')
   },
-  setWorkView: v => { save('bridge-cockpit.workTab', v); setUi({ workView: v }) },
+  setWorkView: v => { save('bridge-cockpit.workTab', v); setUi({ workView: v }); pageSeen('briefing') },
+  dossierWalk: (id, i) => setUi({ dossierAt: { id, i } }),
   // the Jev view of the work tab: the first request of a day orders by itself (daily), the button orders anew
   jevWork: async (page, force) => {
     const res = await api.post('/api/jev/rank', { page, force: !!force, daily: !force })
@@ -1290,6 +1303,14 @@ function onKey(e) {
     const to = key === 'n' ? v.next[0] : v.prev
     return to ? ctl.walkTab(to.key, { focus: true }) : undefined
   }
+  // n / p in the files view of the work tab: the same walk its bar takes (views/dossier.js)
+  if ((key === 'n' || key === 'p') && s.ui.page === 'briefing' && !s.ui.drawer && !s.ui.pageDetail
+    && workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'dossier') {
+    const queue = queueOf(dossierParts(s.tabs?.tabs ?? [], s.model, s.now || Date.now()), { scope: 'dossier' })
+    const to = focusIndex(queue, s.ui.dossierAt) + (key === 'n' ? 1 : -1)
+    e.preventDefault()
+    return queue[to] ? ctl.dossierWalk(queue[to].id, to) : undefined
+  }
   // n / p on the start page in the focus view: the same walk its bar takes
   if ((key === 'n' || key === 'p') && s.ui.page === START_PAGE && !s.ui.drawer && !s.ui.pageDetail
     && homeView(homeChosen(s.model, s.home)) === 'focus') {
@@ -1363,6 +1384,7 @@ async function boot() {
   if (MOCK) pushNote({ text: T().mockNote, tone: 'info' }, { toast: false })
 
   openStream(api, handlers, onConn, { apply: applyState, fail: failNote })
+  pageSeen(store.get().ui.page)
 
   document.addEventListener('keydown', onKey)
   // durations and "as of" ages move on without new data; a hidden tab skips the ticks and catches up

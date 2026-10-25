@@ -94,6 +94,7 @@ layout now").
 | `scripts/web/app.js` | store, controller (`ctl`), event stream, keyboard |
 | `scripts/web/components.js` | the root (`App`) and the page router; the rules every component keeps |
 | `scripts/web/views/*.js` | the components, one file per area (header, day, detail, chat, tabs, pages, start page, stage, sessions, check, overlays, small parts, page ids); each reads the store `s`, calls the controller `c` and imports what it uses from the others |
+| `scripts/web/views/dossier.js` | the Files view of the work tab: `DossierView` walks the one queue of `logic.js queueOf` (scope `dossier`, parts from `dossierParts`), one task at a time with its cover, its next step (`dossierStep`, derived, never stored) in the start page focus's `Hero`, its folded drawers from `/api/task`, `FocusWalk` and `After` |
 | `scripts/web/views/ticker.js` | the news ticker: `TickerBand` on the start page and `TickerSettings`, its group on the Settings page, drawn with the page's own `Card`, `Row` and `Switch` from `views/settings.js` |
 | `scripts/web/markdown.js` | the Markdown reader for answers (Chat, A2A connections): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
 | `scripts/web/views/organize.js` | `OrganizeView`: the proposal grouped by workspace, nothing ticked, the ticks, Apply, and the applied, skipped and failed items in words |

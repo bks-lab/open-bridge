@@ -122,6 +122,8 @@ export function createApi(transport = httpTransport()) {
     // the recommended model for each row an agent may start with (launch, Auto); at most 20 keys
     route: keys => transport.post('/api/route', { keys }, csrf),
     reload: fresh => transport.post('/api/reload', { fresh: !!fresh }, csrf),
+    // which page or view was opened: one audit line on the server (page_view), the files view's measure
+    seen: (page, view) => transport.post('/api/seen', view ? { page, view } : { page }, csrf),
     inbox: id => transport.get(`/api/inbox?id=${encodeURIComponent(id)}`),
     task: slug => transport.get(`/api/task?slug=${encodeURIComponent(slug)}`),
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),

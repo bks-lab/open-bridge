@@ -236,7 +236,7 @@ export async function loadCockpit() {
   const load = rel => import(pathToFileURL(path.join(web, rel)).href)
   const vendor = await load('vendor/htm-preact-3.1.1.module.js')
   const views = {}
-  for (const name of ['home', 'detail', 'sessions', 'header', 'tabs', 'day', 'github', 'rooms', 'reply', 'organize', 'chat', 'agents', 'pages', 'costs', 'guide', 'tour', 'hints', 'overlays', 'list', 'focus', 'stage']) views[name] = await load(`views/${name}.js`)
+  for (const name of ['home', 'detail', 'sessions', 'header', 'tabs', 'day', 'github', 'rooms', 'reply', 'organize', 'chat', 'agents', 'pages', 'costs', 'guide', 'tour', 'hints', 'overlays', 'list', 'focus', 'stage', 'dossier']) views[name] = await load(`views/${name}.js`)
   loaded = { ...vendor, views, text: await load('text.js'), logic: await load('logic.js'), mock: await load('mock.js') }
   return loaded
 }

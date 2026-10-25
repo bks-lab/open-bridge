@@ -157,6 +157,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "stream": is_task_row and is_stream(row.get("task")),
             "settle": list(m.SETTLE_OUTCOMES),
             "review": verdicts.get(row.get("task")) if is_task_row else None,
+            # the files view (logic.js queueOf): doing or review, and the next step with where it comes from
+            "status": row.get("status") if is_task_row else None, "next": row.get("next") if is_task_row else None,
         }
         index[row["key"]] = {"row": row, "section": section, "tab": tab, "out": out, "hidden": False}
         return out

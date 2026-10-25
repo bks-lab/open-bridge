@@ -18,6 +18,7 @@ import { OrganizeView } from './views/organize.js'
 import { ReviewBody, ReviewPage, ReviewStrip } from './views/check.js'
 import { DayColumn, WorkSwitch } from './views/day.js'
 import { DetailColumn } from './views/detail.js'
+import { DossierView } from './views/dossier.js'
 import { Header, PageBadge, PageBar } from './views/header.js'
 import { HomePage, jumpToTab, useHomeTitle } from './views/home.js'
 import {
@@ -70,6 +71,8 @@ function PageView({ s, c }) {
   if (s.ui.page === SETTINGS_PAGE) return html`<${SettingsPage} s=${s} c=${c} />`
   if (s.ui.page === AGENTS_PAGE && (s.agents?.peers ?? []).length) return html`<${AgentsPage} s=${s} c=${c} />`
   const view = workViewNow(s)
+  // the files view (one task at a time) needs no work page: it walks the tasks of the model
+  if (view === 'dossier') return html`<${DossierView} s=${s} c=${c} />`
   const work = view === 'due' ? null : workPageOf(s.model?.pages)
   if (view === 'jev') {
     const JevWork = jev?.JevWork
