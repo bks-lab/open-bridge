@@ -1645,7 +1645,7 @@ export function workPageOf(pages) {
 
 /** The views of the work tab: what is due (the four blocks) always, by source where a work page exists,
  *  by Jev where that page asks for an order and Jev is switched on and has its key, and the files (one task
- *  at a time, views/dossier.js) always, last: an extra view, never the default */
+ *  at a time, views/dossier.js) always, last: an extra view, the default only where cockpit.work_view says so */
 export function workViews(page, jev) {
   return ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : []), 'dossier']
 }
@@ -1653,6 +1653,26 @@ export function workViews(page, jev) {
 /** The view the work tab shows: the remembered one where it can, else what is due */
 export function workViewOf(view, page, jev) {
   return workViews(page, jev).includes(view) ? view : 'due'
+}
+
+// cockpit.work_view names a view by the word the docs use; the page has its own ids for them
+const WORK_VIEW_IDS = { due: 'due', source: 'area', jev: 'jev', files: 'dossier' }
+
+/** The view id a word of cockpit.work_view names, or null for anything else */
+export function workViewId(word) {
+  return typeof word === 'string' && Object.hasOwn(WORK_VIEW_IDS, word) ? WORK_VIEW_IDS[word] : null
+}
+
+/** The view the work tab opens on at the start of a visit: `remembered` (the last click on its switch, or null),
+ *  `seen` (the config word this browser saw last, or null) and `configured` (the config word the server sends).
+ *  A config that changed since this browser last saw it wins once over the remembered view; after that a click
+ *  holds again. "due" counts as what a browser saw before there was a config, so the default changes nothing.
+ *  Returns { view, seen }, `seen` the word to keep (null: nothing to keep, an older server or an unknown word) */
+export function workViewStart(remembered, seen, configured) {
+  const id = workViewId(configured)
+  if (!id) return { view: remembered ?? 'due', seen: seen ?? null }
+  const changed = configured !== (workViewId(seen) ? seen : 'due')
+  return { view: changed ? id : remembered ?? id, seen: configured }
 }
 
 /** The rows of a work page for the order of Jev: `ranked` in Jev's order, `rest` (not sent, or new since)

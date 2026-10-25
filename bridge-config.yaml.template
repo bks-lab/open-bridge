@@ -192,6 +192,8 @@ work:
 #   language: en           # de | en for the page's words; default language.conversation, else en
 #   chat_layout: classic   # classic | workspaces = the Chat tab as cmux shows it
 #   chat_keep_hours: 24    # an untouched quick chat leaves the list into the archive after this many hours; 0 = only the limit of 30
+#   work_view: due         # the view the work tab opens on: due | source | jev | files (a click on its switch still picks another)
+#   focus_to_files: false  # true: when the start page's focus runs out, it leads on into the files view of the work tab
 #   launch:
 #     target: area         # area = the workspace of the item's area (workplace.workspaces) | tab = here | workspace = one each
 #                          # | auto = a small model picks the area or a workspace of its own (workplace.router)

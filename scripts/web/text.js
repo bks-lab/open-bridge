@@ -1031,6 +1031,7 @@ const en = {
     focus: {
       now: 'Up now', after: 'After that', nothing: 'Nothing waits for you.',
       nothingSub: 'The AI carries on alone. The tasks are on the work page.', toWork: 'Open the tasks',
+      nothingSubFiles: 'The AI carries on alone. Your files wait in the work tab, one at a time.', toFiles: 'Continue with the files',
       kind: { tab: 'Agent tab asks', row: 'Waiting on you', task: 'Urgent task' },
       today: 'Today', nowMark: 'now', noDates: 'No more dates today.', ai: 'The AI',
       working: 'working', resting: 'resting', results: 'results in',
@@ -2637,6 +2638,7 @@ const de = {
     focus: {
       now: 'Jetzt dran', after: 'Danach', nothing: 'Nichts wartet auf dich.',
       nothingSub: 'Die AI arbeitet allein weiter. Die Aufgaben liegen auf der Arbeitsseite.', toWork: 'Aufgaben öffnen',
+      nothingSubFiles: 'Die AI arbeitet allein weiter. Deine Akten warten im Arbeitstab, eine nach der anderen.', toFiles: 'Weiter mit den Akten',
       kind: { tab: 'Agenten-Tab fragt', row: 'Wartet auf dich', task: 'Dringende Aufgabe' },
       today: 'Heute', nowMark: 'jetzt', noDates: 'Heute keine Termine mehr.', ai: 'Die AI',
       working: 'arbeiten', resting: 'ruhen', results: 'Ergebnisse da',

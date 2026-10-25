@@ -16,7 +16,7 @@ import {
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   listedChats, tabWalkView, walkRefs, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
-  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, fileQueue, commandSearch,
+  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, fileQueue, commandSearch, workViewStart,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -125,6 +125,7 @@ const store = createStore({
   ticker: null,        // the news ticker (state.ticker); null: an older server, the band and its settings stay hidden
   guide: null,         // the decision guide of waiting tabs (state.guide); null: an older server, the guide stays hidden
   tour: null,          // the first-run tour (state.tour): { enabled, done }; null: an older server, it never starts by itself
+  work: null,          // the work tab as the config sets it (state.work): { view, focus_to_files }; null: an older server, as before
   rooms: null,         // the chat as cmux (state.rooms: layout, root, control, Bridges); null: an older server, the classic chat
   launchRoutes: {},    // per row key the recommendation of Auto: { title, status: loading|ok|error, route }   // null: not known yet, every button shows; a list: only what the terminal driver serves
   notes: [], toasts: [], conn: 'connecting', connMs: Date.now(), now: Date.now(), mock: MOCK,
@@ -274,6 +275,7 @@ function applyState(payload) {
     ticker: payload.ticker ?? s.ticker,
     guide: payload.guide ?? s.guide,
     tour: payload.tour ?? s.tour,
+    work: payload.work ?? s.work,
     rooms: payload.rooms ?? s.rooms,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
@@ -281,7 +283,22 @@ function applyState(payload) {
   if (payload.quick_live) quickLive.set(quickLiveSnapshot(payload.quick_live))
   fixPage()
   offerTour()
+  workDefault()
   if (!bootSeen && payload.model) pageSeen(store.get().ui.page)
+}
+
+let workOffer = true   // a visit takes the work tab's view from the config once, on its first state with one
+
+/** The view the work tab opens on, from cockpit.work_view: a config changed since this browser saw it wins once
+ *  over the remembered click, after that the click holds (logic.js workViewStart) */
+function workDefault() {
+  const s = store.get()
+  if (!workOffer || !s.work) return
+  workOffer = false
+  const start = workViewStart(load('bridge-cockpit.workTab', null), load('bridge-cockpit.workTabSeen', null), s.work?.view)
+  if (start.seen) save('bridge-cockpit.workTabSeen', start.seen)
+  if (start.view !== load('bridge-cockpit.workTab', null)) save('bridge-cockpit.workTab', start.view)
+  if (start.view !== s.ui.workView) setUi({ workView: start.view })
 }
 
 let tourOffer = true   // a visit offers the tour once, on its first state; Help and Settings start it again
@@ -893,6 +910,12 @@ const ctl = {
     if (force && res.ok && res.data.order) ctl.setWorkView('jev')
   },
   setWorkView: v => { save('bridge-cockpit.workTab', v); setUi({ workView: v }); pageSeen('briefing') },
+  // the files view of the work tab for this visit only (the search of the command box, the focus's way on with
+  // cockpit.focus_to_files): the saved view stays the default (it changes by a click on the switch or the config)
+  openFiles() {
+    setUi({ workView: 'dossier', dossierOpen: null })
+    ctl.setPage('briefing')   // measures the page view, the files view already set
+  },
   dossierWalk: (id, i) => setUi({ dossierAt: { id, i }, dossierOpen: null }),
   // the search of the files view: an answer for words no longer asked is dropped
   async findFiles(q) {
@@ -1210,10 +1233,7 @@ const ctl = {
     // ?words searches the files: the work tab opens on its files view with the results; every code stays as it was
     const search = commandSearch(text)
     if (search !== null) {
-      // for this visit only: the saved work view stays the default (it changes by a click on the switch or config)
-      ctl.setPage('briefing')
-      setUi({ workView: 'dossier', dossierOpen: null })
-      pageSeen('briefing')
+      ctl.openFiles()
       if (search) await ctl.findFiles(search)
       return true
     }
@@ -1394,6 +1414,8 @@ function onKey(e) {
     const queue = homeQueue(homeListParts(s.tabs?.tabs ?? [], s.model, { pins: s.home?.pins ?? [] }))
     const to = focusIndex(queue, s.ui.focusAt) + (key === 'n' ? 1 : -1)
     e.preventDefault()
+    // past the last step the focus leads on into the files view where cockpit.focus_to_files says so
+    if (key === 'n' && !queue[to] && s.work?.focus_to_files) return ctl.openFiles()
     return queue[to] ? ctl.focusWalk(queue[to].id, to) : undefined
   }
   if (s.ui.page !== 'briefing') return
@@ -1438,6 +1460,7 @@ async function boot() {
     transport = mock.createMockTransport({
       lang: params.get('lang') || 'en', offline: params.get('offline') === '1', empty: params.get('empty') === '1',
       auth: params.get('auth') === '0' ? false : undefined, tour: params.get('tour') === '1',
+      work: params.get('work'), focusToFiles: params.get('focus_to_files') === '1',
     })
   }
   api = createApi(transport)

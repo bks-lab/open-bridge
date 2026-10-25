@@ -670,6 +670,8 @@ export function buildState(now = Date.now(), opts = {}) {
     guide: guideState(tabs, now),
     // the first-run tour: ended in the demo unless ?tour=1 asks for a first visit
     tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
+    // the work tab as the config sets it (cockpit.work_view, cockpit.focus_to_files): ?work=files and ?focus_to_files=1
+    work: { view: ['due', 'source', 'jev', 'files'].includes(opts.work) ? opts.work : 'due', focus_to_files: opts.focusToFiles === true },
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
       { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },

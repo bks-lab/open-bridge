@@ -23,6 +23,8 @@ DEFAULT_PORT = 8797
 OPEN_IN = ("auto", "cmux", "system", "none")
 TARGETS = ("tab", "workspace", "area", "auto")
 CHAT_LAYOUTS = ("classic", "workspaces")   # workspaces: the chat as cmux shows it (workspaces, tabs, Bridges, agents)
+# the view the work tab opens on (cockpit.work_view): Due, By source, By Jev or Files; the page maps each to its own id
+WORK_VIEWS = ("due", "source", "jev", "files")
 
 
 JEV_MODEL_RE = re.compile(r"^jev-[0-9]+(\.[0-9]+){1,2}\Z")
@@ -83,6 +85,11 @@ class WebConfig:
     # the first-run tour of the page (cockpit.tour): offered on a first visit unless switched off;
     # Help and Settings start it by hand either way
     tour: bool = True
+    # the view the work tab opens on until a click on its switch picks another (cockpit.work_view); "due" is
+    # what the tab always opened on, so a Bridge without the key sees no change
+    work_view: str = "due"
+    # the calm card of the start page's focus, and its last step, lead on into the files view (cockpit.focus_to_files)
+    focus_to_files: bool = False
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
     config_warnings: tuple = ()
@@ -156,6 +163,7 @@ BLOCK = {
     "launch": ("block", {"target": ("choice", "target", TARGETS)}),
     "launch_model": ("launch_model",), "ticker": ("ticker",), "usage": ("usage",),
     "session_guide": ("session_guide",), "tour": ("bool", "tour"),
+    "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -361,6 +369,8 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
                     session_guide=gd.guide_of(w.get("session_guide")),
                     tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
+                    work_view=w["work_view"] if w.get("work_view") in WORK_VIEWS else "due",
+                    focus_to_files=w.get("focus_to_files") is True,
                     snapshot_minutes=snapshot_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

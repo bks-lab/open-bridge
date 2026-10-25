@@ -2241,3 +2241,38 @@ test('the Files drawer lists the folder, a click reads the file in place as Mark
   assert.ok(shown.$('strong') && shown.text().includes('vendor'), 'Markdown drawn as prose')
   assert.ok(el.$('.dz-file-path').text().includes(`work/tasks/${slug}/notes.md`), 'with its path')
 })
+
+// ---------------------------------------------------------------- cockpit.focus_to_files: the focus leads on into the files
+
+test('the calm card of the focus opens the tasks, or with cockpit.focus_to_files the files view', () => {
+  const { Calm } = views.focus
+  const c = recorder()
+  const el = mount(html`<${Calm} s=${homeOn()} c=${c} />`)
+  assert.equal(el.$('.fx-calm .fx-acts button').text(), en.home.focus.toWork)
+  assert.equal(el.$('.fx-calm p').text(), en.home.focus.nothingSub)
+  const on = recorder()
+  const files = mount(html`<${Calm} s=${homeOn({ work: { view: 'due', focus_to_files: true } })} c=${on} />`)
+  assert.equal(files.$('.fx-calm p').text(), en.home.focus.nothingSubFiles)
+  files.button(en.home.focus.toFiles).click()
+  assert.deepEqual(on.calls, [['openFiles']])
+})
+
+test('with cockpit.focus_to_files the last step of the focus offers the files view in place of the end line', () => {
+  const s = homeOn({ work: { view: 'due', focus_to_files: true } })
+  const queue = views.focus.focusQueue(s)
+  const last = queue.length - 1
+  const c = recorder()
+  const end = mount(html`<${HomeFocusView} s=${{ ...s, ui: { ...s.ui, focusAt: { id: queue[last].id, i: last } } }} c=${c} />`).$('.fx-work .next-up')
+  end.button(en.home.focus.toFiles).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'openFiles'), [['openFiles']])
+  // before the end the bar walks on as always
+  const mid = mount(html`<${HomeFocusView} s=${s} c=${recorder()} />`).$('.fx-work .next-up')
+  assert.equal(mid.$$('button').some(b => b.text() === en.home.focus.toFiles), false)
+})
+
+test('the demo shows the work tab as the default config does, and ?work=files&focus_to_files=1 as the switches do', () => {
+  const { mock } = loadedRooms
+  assert.deepEqual(mock.buildState(NOW).work, { view: 'due', focus_to_files: false })
+  assert.deepEqual(mock.buildState(NOW, { work: 'files', focusToFiles: true }).work, { view: 'files', focus_to_files: true })
+  assert.deepEqual(mock.buildState(NOW, { work: 'tiles' }).work, { view: 'due', focus_to_files: false })
+})

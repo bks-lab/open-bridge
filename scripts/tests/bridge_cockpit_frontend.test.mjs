@@ -5128,7 +5128,7 @@ test('files: the command box searches before it parses codes, and a suggestion s
   // the search opens the files view for this visit only: the saved work view stays what it was
   const search = run.slice(0, run.indexOf('parseShortcut(text)'))
   assert.doesNotMatch(search, /setWorkView|save\(/)
-  assert.match(search, /workView: 'dossier'/)
+  assert.match(search, /ctl\.openFiles\(\)/)   // which sets workView 'dossier' and saves nothing (test below)
   // an answer for words no longer asked is dropped; a suggestion asks in its own place; only a click writes it
   assert.match(app, /if \(store\.get\(\)\.find\?\.q !== words\) return/)
   assert.match(app, /place: 'suggest'/)
@@ -5185,4 +5185,54 @@ test('every walk of the files view reads the workflow runs of the sessions state
   assert.equal((app.match(/fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\), s\.sessions\?\.runs\)/g) ?? []).length, 2)
   assert.match(read('views/dossier.js'), /fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\), s\.sessions\?\.runs\)/)
   assert.match(read('api.js'), /file=\$\{encodeURIComponent\(file\)\}/)
+})
+
+test('cockpit.work_view names the view by its word: due, source, jev, files; anything else names none', () => {
+  assert.equal(logic.workViewId('due'), 'due')
+  assert.equal(logic.workViewId('source'), 'area')
+  assert.equal(logic.workViewId('jev'), 'jev')
+  assert.equal(logic.workViewId('files'), 'dossier')
+  for (const x of ['dossier', 'area', '', null, undefined, 3]) assert.equal(logic.workViewId(x), null, String(x))
+})
+
+test('the config sets the view the work tab opens on; a click on the switch holds until the config changes', () => {
+  // an older server sends no view: the remembered one, and nothing is kept as seen
+  assert.deepEqual(logic.workViewStart('area', null, undefined), { view: 'area', seen: null })
+  assert.deepEqual(logic.workViewStart(null, null, undefined), { view: 'due', seen: null })
+  // the default on a browser that never saw a config: the remembered view stays, so nobody sees a change
+  assert.deepEqual(logic.workViewStart('area', null, 'due'), { view: 'area', seen: 'due' })
+  assert.deepEqual(logic.workViewStart(null, null, 'due'), { view: 'due', seen: 'due' })
+  // the config switched to files: the tab opens on it, the remembered view gives way once
+  assert.deepEqual(logic.workViewStart('due', null, 'files'), { view: 'dossier', seen: 'files' })
+  assert.deepEqual(logic.workViewStart('area', 'due', 'files'), { view: 'dossier', seen: 'files' })
+  // seen before: a click on the switch since then holds
+  assert.deepEqual(logic.workViewStart('due', 'files', 'files'), { view: 'due', seen: 'files' })
+  assert.deepEqual(logic.workViewStart(null, 'files', 'files'), { view: 'dossier', seen: 'files' })
+  // switched back: the old default again
+  assert.deepEqual(logic.workViewStart('dossier', 'files', 'due'), { view: 'due', seen: 'due' })
+  // a word the page does not know counts as no config
+  assert.deepEqual(logic.workViewStart('area', 'due', 'tiles'), { view: 'area', seen: 'due' })
+})
+
+test('the first state sets the work view from the config once a visit, before the page view is measured', () => {
+  const app = read('app.js')
+  assert.match(app, /work: payload\.work \?\? s\.work/)
+  const fn = app.match(/function workDefault\(\) \{[\s\S]*?\n\}/)[0]
+  assert.match(fn, /workViewStart\(load\('bridge-cockpit\.workTab', null\), load\('bridge-cockpit\.workTabSeen', null\), s\.work\?\.view\)/)
+  assert.match(fn, /save\('bridge-cockpit\.workTabSeen', start\.seen\)/)
+  const apply = app.match(/function applyState\(payload\) \{[\s\S]*?\n\}/)[0]
+  assert.ok(apply.indexOf('workDefault()') > 0 && apply.indexOf('workDefault()') < apply.indexOf('pageSeen('), 'set before the measure')
+})
+
+test('with cockpit.focus_to_files, n on the last step of the focus leads on into the files view', () => {
+  const app = read('app.js')
+  const body = app.match(/\/\/ n \/ p on the start page in the focus view[\s\S]*?\n  \}/)[0]
+  assert.match(body, /key === 'n' && !queue\[to\] && s\.work\?\.focus_to_files\) return ctl\.openFiles\(\)/)
+  // the search of the command box opens the files view the same way, for this visit only
+  assert.match(app.match(/openFiles\(\) \{[\s\S]*?\n  \},/)[0], /setUi\(\{ workView: 'dossier', dossierOpen: null \}\)/)
+  assert.doesNotMatch(app.match(/openFiles\(\) \{[\s\S]*?\n  \},/)[0], /save\('bridge-cockpit\.workTab'/)
+})
+
+test('the demo takes the two work switches from its address: ?work=files and ?focus_to_files=1', () => {
+  assert.match(read('app.js'), /work: params\.get\('work'\), focusToFiles: params\.get\('focus_to_files'\) === '1'/)
 })

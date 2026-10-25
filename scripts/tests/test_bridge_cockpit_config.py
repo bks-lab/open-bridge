@@ -221,3 +221,39 @@ def test_the_usage_block_is_known_and_checked(tmp_path):
     assert warnings_of(tmp_path, {"usage": "x"})[0].startswith("cockpit.usage: must be a mapping")
     assert warnings_of(tmp_path, {"usage": {"host": "my-laptop"}}) == ()
     assert warnings_of(tmp_path, {"usage": {"host": "a b"}})[0].startswith("cockpit.usage.host")
+
+
+# ---------------------------------------------------------------- cockpit.work_view and cockpit.focus_to_files
+
+def test_the_work_tab_keeps_its_old_default_unless_the_config_names_another_view(tmp_path):
+    cfg = load_web_config(tmp_path, {})
+    assert cfg.work_view == "due" and cfg.focus_to_files is False
+    for view in ("due", "source", "jev", "files"):
+        cfg = load_web_config(tmp_path, {"cockpit": {"work_view": view, "focus_to_files": True}})
+        assert cfg.work_view == view and cfg.focus_to_files is True and cfg.config_warnings == ()
+
+
+@pytest.mark.parametrize("block, key, used", [
+    ({"work_view": "dossier"}, "cockpit.work_view", "\"due\""),
+    ({"work_view": 3}, "cockpit.work_view", "\"due\""),
+    ({"focus_to_files": "yes"}, "cockpit.focus_to_files", "false"),
+])
+def test_a_wrong_work_view_or_focus_switch_keeps_the_default_and_says_so(tmp_path, block, key, used):
+    cfg = load_web_config(tmp_path, {"cockpit": block})
+    assert cfg.work_view == "due" and cfg.focus_to_files is False
+    out = cfg.config_warnings
+    assert len(out) == 1 and out[0].startswith(key + ":") and out[0].endswith("using " + used), out
+
+
+def test_the_state_hands_the_work_view_and_the_focus_switch_to_the_page(tmp_path):
+    base = "cockpit:\n  enabled: true\n  language: en\n"
+    w = World(tmp_path / "a", config=base, serve=False, prepare=False)
+    try:
+        assert w.app.state_payload()["work"] == {"view": "due", "focus_to_files": False}
+    finally:
+        w.close()
+    w = World(tmp_path / "b", config=base + "  work_view: files\n  focus_to_files: true\n", serve=False, prepare=False)
+    try:
+        assert w.app.state_payload()["work"] == {"view": "files", "focus_to_files": True}
+    finally:
+        w.close()

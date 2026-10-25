@@ -81,6 +81,8 @@ their defaults:
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
 | `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
+| `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `files` (Files), see [The files view](#the-files-view); a view the tab does not offer opens Due. A click on the tab's switch still picks another for this browser, until the key changes |
+| `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
@@ -185,7 +187,8 @@ happened today" in the middle of the Today page.
 
 A page with `group: work` has no tab either: it folds into the Today tab, which
 then carries that page's title (Work, say) and a switch over its left column
-with three views. **Due** is the four blocks below, and the tab opens on it.
+with three views. **Due** is the four blocks below, and the tab opens on it
+unless `cockpit.work_view` names another view.
 **By source** is the work page itself, its sections as labels. **By Jev** is the
 Jev picture (the matrix and the plan) fed by the work page's order, and it
 stands only where that page has `jev:` and Jev is on. With such a page the Jev
@@ -196,8 +199,24 @@ what is clear or needs tidying and the workplace stand there as cards in a shelf
 `group: day` close the start page as shelves of their own. The middle of Due
 keeps only the headline and a button to Start.
 
-**Files** is one more view of the same tab, on every Bridge, with or without a
-work page, and never the one the tab opens on. On a Bridge without a work page
+Only one number in the bar carries colour: Today's count of what waits for
+you, the same count as the start page's station "waits for you" and the
+headline in the middle (the approvals stand in its tooltip and in their own
+block). A finding is red wherever it is; every other count is grey. A page
+badge that adds up several sections names them in its tooltip. A finding on a
+status page also shows as a banner on the Today tab.
+
+The buttons speak four verbs everywhere, also in the Telegram inbox watcher:
+**Let AI do it** (an agent tab does it), **Advise** (an agent tab reads and
+reports, then waits), **Ask** (a short read-only answer in the chat) and
+**Close** (done, not doing, or more). "To tab", "Message" and "View" only stand
+where a tab already runs.
+
+### The files view
+
+**Files** is one more view of the work tab, on every Bridge, with or without a
+work page, beside Due and never in its place: Due stays, and stays the view the
+tab opens on, unless `cockpit.work_view: files` says otherwise (below). On a Bridge without a work page
 this is what makes the tab's view switch appear ("Due | Files"), since without
 it the view could not be reached. It shows one task at a time as
 a file: on top the cover (its slug, kind, priority, status and area, and the
@@ -293,18 +312,30 @@ any time. Nothing is written until you press Take over, which keeps the step
 in STATUS.md as `next: {what: ...}` with a dated note (`task.py next`, the
 verb `task_set_next`).
 
-Only one number in the bar carries colour: Today's count of what waits for
-you, the same count as the start page's station "waits for you" and the
-headline in the middle (the approvals stand in its tooltip and in their own
-block). A finding is red wherever it is; every other count is grey. A page
-badge that adds up several sections names them in its tooltip. A finding on a
-status page also shows as a banner on the Today tab.
+**Switching the default.** Two keys of the `cockpit:` block (section 1) let
+the Files view take over step by step, each off by default, so a Bridge that
+sets neither sees the work tab as before:
 
-The buttons speak four verbs everywhere, also in the Telegram inbox watcher:
-**Let AI do it** (an agent tab does it), **Advise** (an agent tab reads and
-reports, then waits), **Ask** (a short read-only answer in the chat) and
-**Close** (done, not doing, or more). "To tab", "Message" and "View" only stand
-where a tab already runs.
+- `work_view: files` opens the work tab on Files (`due`, `source` and `jev`
+  name the other views; a view the tab does not offer opens Due). A click on
+  the tab's switch still picks another view for this browser, and that click
+  holds until the key changes: the first visit after a change opens the view
+  the key names, once, whatever was clicked before. Setting the key back to
+  `due` brings Due back the same way.
+- `focus_to_files: true` lets the focus on the start page lead on into Files
+  when it runs out: its calm card says "Continue with the files" in place of
+  "Open the tasks", and its last step offers the same where the bar would say
+  "That was the last one in this list"; `n` on the last step goes there too.
+  The focus itself keeps what it walks (P0 and P1 of the tasks).
+
+Both take effect with the next start of the cockpit (`bridge-cockpit.py stop`,
+then `open`) and a reload of the page. The page says which view it opened: every opening of the work
+tab, its view switch, the search of the command box and the focus's way on
+leave one `page_view` line in the audit log with `view=` (`due`, `area`, `jev`
+or `dossier`, the page's ids for Due, By source, By Jev and Files; section 4),
+so how often each view is used can be counted before the default changes, for
+instance with
+`grep -c ' page_view briefing view=dossier' .bridge/cockpit/audit.log`.
 
 ### The start page
 
@@ -1561,7 +1592,8 @@ The row keys (`j` `k` `Enter` `x` and the five letters) act on the Briefing
 page only; `n` and `p` act while a detail opened from a list is open (the item
 drawer included), on the Today list with a row open in the center, on the
 Chat page (where `n` starts the walk through the tabs that want you), on
-the start page in the focus view and in the Files view of the work tab; the others work on every page. A text field keeps every key,
+the start page in the focus view (with `cockpit.focus_to_files`, `n` on its
+last step opens the Files view) and in the Files view of the work tab; the others work on every page. A text field keeps every key,
 `Alt` + a digit included, because on many keyboards that is how a bracket
 or a pipe is typed: leave the field with `Esc` first, for instance after
 the Chat page put the cursor in its box.
@@ -2109,6 +2141,11 @@ The page's own buttons and help come in German and English
 (`cockpit.language`). The briefing's words (headline, tab names, "today") are
 yours: set them in `view.labels`, for example
 `labels: {page_status: Systeme, today: heute}`.
+
+The Files view calls an open or closed task a file ("File", "Files", "Next
+step", "Search the files"); in German the page says "Akte" and "Akten". Like
+every word of the page itself they come from the page's own table in both
+languages (`scripts/web/text.js`), not from the profile.
 
 Opening a `file://` link on the page is not possible; the page shows its path
 to copy.

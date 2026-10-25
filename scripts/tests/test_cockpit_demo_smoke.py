@@ -167,3 +167,25 @@ def test_every_start_page_view_mounts_without_console_errors(base_url, browser, 
     ctx.close()
     assert all(shown), shown
     assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_the_demo_opens_the_work_tab_on_the_files_view_the_config_names(base_url, browser, lang):
+    # ?work=files and ?focus_to_files=1 stand for cockpit.work_view: files and cockpit.focus_to_files: true
+    problems: list[str] = []
+    where = ["files"]
+    ctx = browser.new_context(viewport={"width": 1440, "height": 1000})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    page.goto(f"{base_url}?lang={lang}&work=files&focus_to_files=1")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    page.evaluate("() => window.localStorage.clear()")   # a fresh browser: nothing remembered, nothing seen
+    page.reload()
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.locator(".pagebar-tabs > [role=tab]").nth(1).click()   # the work tab stands right after Start
+    page.wait_for_selector("#main .dz .fx-hero")
+    assert page.locator("#main .dz .fx-hero").count() == 1
+    page.wait_for_timeout(250)
+    ctx.close()
+    assert not problems, "\n".join(problems)

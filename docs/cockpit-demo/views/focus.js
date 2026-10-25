@@ -76,16 +76,18 @@ export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = n
   </article>`
 }
 
-/** Nothing waits: a calm card, the way to the tasks. The files view gives its own words and no way on
- *  (`action` false), since it stands on the work tab already */
+/** Nothing waits: a calm card, the way to the tasks, or with cockpit.focus_to_files into the files view of the
+ *  work tab. The files view gives its own words and no way on (`action` false), since it stands there already */
 export function Calm({ s, c, title = null, sub = null, action = true }) {
   const f = T().home.focus
   const workPage = workPageId(s.model)
+  const files = !!s.work?.focus_to_files
   return html`<article class="fx-hero fx-calm tk-success">
     <span class="fx-calm-ring" aria-hidden="true"><${Icon} name="spark" size=${28} /></span>
     <h2 class="fx-title">${title ?? f.nothing}</h2>
-    <p class="muted">${sub ?? f.nothingSub}</p>
-    ${action ? html`<div class="fx-acts"><${Btn} variant="secondary" onClick=${() => c.setPage(workPage)}>${f.toWork}<//></div>` : null}
+    <p class="muted">${sub ?? (files ? f.nothingSubFiles : f.nothingSub)}</p>
+    ${action ? html`<div class="fx-acts">${files ? html`<${Btn} variant="primary" icon="forward" onClick=${() => c.openFiles()}>${f.toFiles}<//>`
+      : html`<${Btn} variant="secondary" onClick=${() => c.setPage(workPage)}>${f.toWork}<//>`}</div>` : null}
   </article>`
 }
 
@@ -150,8 +152,8 @@ const focusParts = s => homeListParts(s.tabs?.tabs ?? [], s.model, { pins: s.hom
 export const focusQueue = s => homeQueue(focusParts(s))
 
 /** The bar under the step in front, the one the lists have: back, where you stand, Next. `walk` moves
- *  (c.focusWalk on the start page, c.dossierWalk in the files view) */
-export function FocusWalk({ queue, i, s, c, walk = null }) {
+ *  (c.focusWalk on the start page, c.dossierWalk in the files view); `done` stands in place of the end line */
+export function FocusWalk({ queue, i, s, c, walk = null, done = null }) {
   const t = T()
   if (queue.length < 2) return null
   const go = walk ?? c.focusWalk
@@ -163,7 +165,7 @@ export function FocusWalk({ queue, i, s, c, walk = null }) {
   const later = [i + 2, i + 3].filter(k => k < queue.length).map(entry)
   return html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[i + 1, queue.length]}
     onPrev=${i > 0 ? () => go(queue[i - 1].id, i - 1) : null} next=${i + 1 < queue.length ? entry(i + 1) : null}
-    later=${later} done=${t.nextDone} />`
+    later=${later} done=${done ?? t.nextDone} />`
 }
 
 export function HomeFocusView({ s, c }) {
@@ -176,6 +178,9 @@ export function HomeFocusView({ s, c }) {
   // in front is settled, the next one moves up into its place (logic.js focusIndex)
   const i = focusIndex(queue, s.ui.focusAt)
   const day = dayLabel(now, language())
+  // with cockpit.focus_to_files the end of the walk leads on into the files view of the work tab (n does too, app.js)
+  const onward = s.work?.focus_to_files
+    ? html`<button type="button" class="btn-link" onClick=${() => c.openFiles()}>${h.focus.toFiles}</button>` : null
   return html`<div class="col col-page home fx">
     <header class="fx-head">
       <p class="home-eyebrow">${day}</p>
@@ -185,7 +190,7 @@ export function HomeFocusView({ s, c }) {
       <div class="fx-work">
         <p class="fx-label label-caps">${h.focus.now}</p>
         ${queue.length ? html`<${Hero} key=${queue[i].id} x=${queue[i]} n=${queue.length} tabOf=${parts.tabOf} s=${s} c=${c} />
-          <${FocusWalk} queue=${queue} i=${i} s=${s} c=${c} />` : html`<${Calm} s=${s} c=${c} />`}
+          <${FocusWalk} queue=${queue} i=${i} s=${s} c=${c} done=${onward} />` : html`<${Calm} s=${s} c=${c} />`}
         <${After} queue=${queue} i=${i} onPick=${k => c.focusWalk(queue[k].id, k)} s=${s} />
       </div>
       <aside class="fx-side">

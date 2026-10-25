@@ -158,11 +158,14 @@ open. The dashboard's history and its undo run it.
 carries the day it was set; `--clear` takes it away. The cockpit runs it only when the
 person takes over a suggested step ([`bridge-cockpit.md`](bridge-cockpit.md) § 3).
 
+## Finding work
+
 `python3 scripts/work-find.py <words> [--json]` searches every task, stream and closed
 task, the log and its archive, and lists the files ranked: slug or title first, then a
 hit in STATUS.md, then the rest. Plain words, never a pattern, the same answer with or
 without `rg`; an open and a closed task of one slug are two files; `video/` and
-`deliverables/` folders are never read.
+`deliverables/` folders are never read. The cockpit's Files view runs the same search
+([`bridge-cockpit.md`](bridge-cockpit.md#the-files-view)).
 
 ## Log format — one file per period, daily blocks
 
