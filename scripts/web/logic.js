@@ -2243,16 +2243,18 @@ export function fileResults(slug, model, tabs, nowMs, runs = []) {
   return { returns, runs: mine, waiting }
 }
 
-/** The next step of a file, derived and never stored: the tab's question, the result to check, the inbox item
- *  (the server's oldest one with its date where it names this item), else what STATUS.md names as next
- *  (model.py task_next); {what, from, since} or null when nothing names one. `since` is ms or an ISO date */
+/** The next step of a file, derived and never stored: the tab's question, the result to check, the oldest open
+ *  inbox item of the task (the server's, with its date; the item that put the file in the queue where the server
+ *  names none), else what STATUS.md names as next (model.py task_next); {what, from, since} or null when nothing
+ *  names one. `since` is ms or an ISO date */
 export function dossierStep(x) {
   if (x?.reason === 'tab') return { what: x.tab.name, from: 'tab', since: x.tab.since_ms ?? null }
   // a workflow run: its name, the view words it as a check of its result
   if (x?.reason === 'result' && x.result.kind === 'run') return { what: x.result.title, from: 'run', since: x.result.at_ms ?? null }
   if (x?.reason === 'result') return { what: x.result.result?.text || x.result.title, from: 'result', since: x.result.at_ms ?? null }
   const next = x?.row?.next
-  if (x?.reason === 'inbox' && (!next || next.from !== 'inbox' || next.key !== x.item.key)) {
+  // the queue meets a task's items in the order of the page, not by age: the server's oldest one names the step
+  if (x?.reason === 'inbox' && (!next || next.from !== 'inbox')) {
     return { what: x.item.title, from: 'inbox', since: null }
   }
   return next?.what ? { what: next.what, from: next.from, since: next.since ?? null } : null

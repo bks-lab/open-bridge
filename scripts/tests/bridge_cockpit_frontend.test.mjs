@@ -5026,6 +5026,9 @@ test('the next step of a file says where it comes from and since when', () => {
   assert.deepEqual(logic.dossierStep({ reason: 'inbox', row: { ...row, next: inboxNext }, item: { key: 'inbox:1', title: 'Answer' } }),
     { what: 'Answer', from: 'inbox', since: '2026-10-08T09:00' })
   assert.deepEqual(logic.dossierStep({ reason: 'inbox', row, item: { key: 'inbox:3', title: 'Other' } }), { what: 'Other', from: 'inbox', since: null })
+  // the queue met a younger item of the task first: the step is still the oldest one, with its date
+  assert.deepEqual(logic.dossierStep({ reason: 'inbox', row: { ...row, next: inboxNext }, item: { key: 'inbox:3', title: 'Younger' } }),
+    { what: 'Answer', from: 'inbox', since: '2026-10-08T09:00' })
   // nothing names a next step: none is made up
   assert.equal(logic.dossierStep({ reason: 'task', row: fileTask('beta', 'P3') }), null)
 })
