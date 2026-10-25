@@ -23,6 +23,20 @@ export const FILES = {
     emptyPinned: 'No pinned file is open.', emptyAreaPinned: name => `No pinned file is open in ${name}.`,
     emptyPinnedSub: 'Only the files you pinned with the star show.', allFiles: 'Show unpinned files too',
     after: 'Next', loading: 'Reading the file',
+    left: {
+      line: (n, parts) => `${n} more not in the queue: ${parts}`,
+      emptySub: parts => `Left out of the queue: ${parts}.`,
+      reason: { resting: n => `${n} resting`, drop: n => `${n} dropped`, waiting: n => `${n} waiting`, deferred: n => `${n} deferred`,
+        area: n => `${n} in other areas`, unpinned: n => `${n} not pinned` },
+      why: {
+        resting: 'Resting: blocked, or quiet for a while.', drop: 'Dropped: the triage put them on drop.',
+        waiting: 'Waiting: on someone else, and no tab, result or inbox item asks about them.',
+        deferred: 'Deferred: put off, they come back on their day.', area: name => `In other areas than ${name}.`,
+        unpinned: 'Not pinned: only the files you pinned with the star show.',
+      },
+      until: day => `until ${day}`, untilShown: 'until you show it again',
+      backlog: 'Backlog tasks are not in the files at all.',
+    },
     find: {
       label: 'Search the files, closed ones too', placeholder: 'Search the files', title: 'Search results', show: 'Show results', hide: 'Fold results', button: 'Search', clear: 'Clear',
       loading: 'Searching', none: q => `Nothing found for "${q}".`, failed: e => `The search failed: ${e}`,
@@ -68,6 +82,20 @@ export const FILES = {
     emptyPinned: 'Keine angeheftete Akte ist offen.', emptyAreaPinned: name => `Keine angehefteten Akten im Bereich ${name}.`,
     emptyPinnedSub: 'Es stehen nur die Akten, die du mit dem Stern angeheftet hast.', allFiles: 'Auch nicht angeheftete zeigen',
     after: 'Als Nächstes', loading: 'Akte wird gelesen',
+    left: {
+      line: (n, parts) => `${n} weitere nicht in der Schlange: ${parts}`,
+      emptySub: parts => `Nicht in der Schlange: ${parts}.`,
+      reason: { resting: n => `${n} ruhend`, drop: n => `${n} verworfen`, waiting: n => `${n} wartend`, deferred: n => `${n} zurückgestellt`,
+        area: n => `${n} in anderen Bereichen`, unpinned: n => `${n} nicht angeheftet` },
+      why: {
+        resting: 'Ruhend: blockiert oder länger still.', drop: 'Verworfen: die Triage hat sie zum Fallenlassen gelegt.',
+        waiting: 'Wartend: auf jemand anderen, und kein Tab, kein Ergebnis und kein Eintrag im Eingang fragt danach.',
+        deferred: 'Zurückgestellt: sie kommen an ihrem Tag wieder.', area: name => `In anderen Bereichen als ${name}.`,
+        unpinned: 'Nicht angeheftet: es stehen nur die Akten, die du mit dem Stern angeheftet hast.',
+      },
+      until: day => `bis ${day}`, untilShown: 'bis du sie wieder zeigst',
+      backlog: 'Backlog-Aufgaben stehen gar nicht in den Akten.',
+    },
     find: {
       label: 'Akten durchsuchen, auch erledigte', placeholder: 'Akten durchsuchen', title: 'Suchtreffer', show: 'Treffer zeigen', hide: 'Treffer einklappen', button: 'Suchen', clear: 'Leeren',
       loading: 'Suche läuft', none: q => `Nichts gefunden für „${q}“.`, failed: e => `Die Suche ging nicht: ${e}`,

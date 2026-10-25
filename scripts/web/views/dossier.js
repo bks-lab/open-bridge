@@ -16,7 +16,9 @@
 // (/api/task?file=), Markdown as prose, anything else as it stands.
 // The queue is the one every walk takes (logic.js queueOf, scope 'dossier'): a tab that asks, a result that
 // waits, an open inbox item, then the doing and review tasks of every priority. The next step is derived on
-// every render and never stored.
+// every render and never stored. Under the head of the file one calm line says how many active tasks and streams
+// the queue leaves out and why (logic.js queueLeftOut: resting, dropped, waiting with nothing that asks, deferred,
+// of another area, not pinned); a click lists them, each opens beside the queue, and the empty view names the same.
 // The search field of the view (/api/find) puts what it found above the file: by file, best first, a click
 // opens a file, a closed one too, beside the queue (ui.dossierOpen) on the same surface with the way back at
 // its foot, the results then folded to their head. A question asked in a file carries its folder and cover as
@@ -29,7 +31,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, dossierStep, duration, fileContext, fileFacts, fileQueue, fileResults, findContext, focusIndex, formatDay,
-  indexRows, placeKind, prioToken, projectTone, rowProject, short, stepAge, suggestedStep, tabOfTask,
+  indexRows, placeKind, prioToken, projectTone, queueLeftOut, rowProject, short, stepAge, suggestedStep, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, WorkSwitch } from './day.js'
@@ -398,6 +400,41 @@ function Walk({ queue, i, s, c }) {
   </footer>`
 }
 
+/** The active tasks the queue leaves out, in one calm line: where the file stands (none in an empty queue) and
+ *  how many more by why; a click lists them by why, each opening beside the queue (c.openFile), with the one
+ *  sentence that backlog tasks never show here. Under an area that hides some, every area again with one click
+ *  (`areaButton`, off where the view offers it already). None when nothing is left out */
+function LeftOut({ gaps, s, c, pos = null, areaButton = true }) {
+  const t = T()
+  const d = t.dossier.left
+  const [open, setOpen] = useState(false)
+  if (!gaps.total) return null
+  const lang = language()
+  const parts = gaps.groups.map(g => d.reason[g.reason](g.rows.length)).join(', ')
+  const why = g => (g.reason === 'area' ? d.why.area(s.ui.area) : d.why[g.reason])
+  const detail = (g, x) => (g.reason === 'deferred' ? (x.until ? d.until(formatDay(x.until, lang)) : d.untilShown)
+    : g.reason === 'area' ? rowProject(x.row) || t.home.noArea : null)
+  const folder = x => `work/${x.row.stream || x.row.work_kind === 'stream' ? 'streams' : 'tasks'}/${x.slug}`
+  return html`<div class="dz-left">
+    <p class="dz-left-head">
+      <button type="button" class="dz-left-line" aria-expanded=${String(open)} aria-controls="dz-left-list"
+        onClick=${() => setOpen(!open)}>${pos ? `${pos} · ` : ''}${d.line(gaps.total, parts)}<${Icon} name=${open ? 'chevronUp' : 'chevronDown'} /></button>
+      ${areaButton && s.ui.area && gaps.groups.some(g => g.reason === 'area')
+        ? html`<${Btn} variant="ghost" size="xs" onClick=${() => c.setArea(null)}>${t.home.areaClear}<//>` : null}
+    </p>
+    ${open ? html`<div id="dz-left-list" class="dz-left-list">
+      ${gaps.groups.map(g => html`<section key=${g.reason} class="dz-left-group">
+        <p class="dz-left-why muted small">${why(g)}</p>
+        <ul class="entries">${g.rows.map(x => html`<li key=${x.slug} class="entry">
+          <button type="button" class="btn-link dz-left-open" onClick=${() => c.openFile(x.slug, folder(x))}>${x.row.title || x.slug}</button>
+          <span class="entry-tags"><${KindTag} row=${x.row} s=${s} />${detail(g, x) ? html`<span class="muted small">${detail(g, x)}</span>` : null}</span>
+        </li>`)}</ul>
+      </section>`)}
+      <p class="dz-left-backlog muted small">${d.backlog}</p>
+    </div>` : null}
+  </div>`
+}
+
 export function DossierView({ s, c }) {
   const d = T().dossier
   const t = T()
@@ -413,12 +450,16 @@ export function DossierView({ s, c }) {
   const step = x ? dossierStep(x) : null
   const open = s.ui.dossierOpen ?? null
   const context = x ? fileContext(fileFacts(x.slug, data, x.row), language()) : ''
+  // the active tasks the queue leaves out, and in an empty queue the sentence that says why
+  const gaps = queueLeftOut(s, queue)
+  const why = sub => (gaps.total ? `${d.left.emptySub(gaps.groups.map(g => d.left.reason[g.reason](g.rows.length)).join(', '))} ${d.left.backlog}` : sub)
   return html`<div class="col col-page dz">
     <div class="dz-page">
       <header class="page-head dz-head"><${WorkSwitch} s=${s} c=${c} /><${FindField} s=${s} c=${c} /></header>
       <${FindResults} s=${s} c=${c} open=${open} />
       ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} />` : x ? html`<article class="dz-file" aria-labelledby="dz-title">
         <${Cover} key=${`c${x.id}`} x=${x} s=${s} c=${c} data=${data} where=${[d.label, t.nextPos(i + 1, queue.length)]} />
+        <${LeftOut} gaps=${gaps} s=${s} c=${c} pos=${t.nextPos(i + 1, queue.length)} />
         <${Hero} key=${x.id} x=${heroEntry(x)} n=${1} tabOf=${() => fileTab(x, s)} s=${s} c=${c}
           title=${stepTitle(step)} kindWord=${d.next} sub=${stepLine(step, nowMs)} />
         ${step ? null : html`<${Suggest} key=${`s${x.id}`} x=${x} s=${s} c=${c} context=${context} />`}
@@ -427,11 +468,13 @@ export function DossierView({ s, c }) {
           task=${x.slug} s=${s} c=${c} />
         <${Walk} queue=${queue} i=${i} s=${s} c=${c} />
       </article>`
-      : s.ui.pinnedOnly ? html`<${Calm} s=${s} c=${c} title=${s.ui.area ? d.emptyAreaPinned(s.ui.area) : d.emptyPinned} sub=${d.emptyPinnedSub} action=${false} />
-          <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setPinnedOnly(false)}>${d.allFiles}<//></div>`
-      : s.ui.area ? html`<${Calm} s=${s} c=${c} title=${d.emptyArea(s.ui.area)} sub=${d.emptyAreaSub} action=${false} />
-          <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setArea(null)}>${d.allAreas}<//></div>`
-        : html`<${Calm} s=${s} c=${c} title=${d.empty} sub=${d.emptySub} action=${false} />`}
+      : s.ui.pinnedOnly ? html`<${Calm} s=${s} c=${c} title=${s.ui.area ? d.emptyAreaPinned(s.ui.area) : d.emptyPinned} sub=${why(d.emptyPinnedSub)} action=${false} />
+          <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setPinnedOnly(false)}>${d.allFiles}<//></div>
+          <${LeftOut} gaps=${gaps} s=${s} c=${c} />`
+      : s.ui.area ? html`<${Calm} s=${s} c=${c} title=${d.emptyArea(s.ui.area)} sub=${why(d.emptyAreaSub)} action=${false} />
+          <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setArea(null)}>${d.allAreas}<//></div>
+          <${LeftOut} gaps=${gaps} s=${s} c=${c} areaButton=${false} />`
+        : html`<${Calm} s=${s} c=${c} title=${d.empty} sub=${why(d.emptySub)} action=${false} /><${LeftOut} gaps=${gaps} s=${s} c=${c} />`}
     </div>
   </div>`
 }

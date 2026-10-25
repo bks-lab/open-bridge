@@ -59,6 +59,18 @@
 .dz-area[aria-pressed="true"], .dz-found-area[aria-pressed="true"] { border-color: var(--on-surface); background: var(--surface-muted); }
 .dz-area-none, .dz-found-area-none { font-size: var(--text-label); font-weight: 400; letter-spacing: 0; text-transform: none; }
 .dz-empty-acts { justify-content: center; margin-top: 12px; }
+/* what the queue leaves out: one calm line under the head of the file, a click lists the tasks by why */
+.dz-left { min-width: 0; margin-top: -8px; }
+.fx-calm ~ .dz-left { margin-top: 14px; text-align: center; }
+.dz-left-head { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.fx-calm ~ .dz-left .dz-left-head { justify-content: center; }
+.dz-left-line { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: var(--text-sm); color: var(--on-surface-muted); text-align: left; overflow-wrap: anywhere; }
+.dz-left-line:hover { color: var(--on-surface); }
+.dz-left-list { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.dz-left-group .entries { margin: 4px 0 0; }
+.dz-left-why, .dz-left-backlog { margin: 0; }
+.dz-left-open { text-align: left; overflow-wrap: anywhere; }
 .dz-slug { font-size: var(--text-mono-label); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--on-surface-muted); overflow-wrap: anywhere; }
 .dz-title { margin: 0; font-family: var(--font-display); font-weight: 500; font-size: clamp(24px, 2.4vw, 31px); line-height: 1.18; color: var(--ink); overflow-wrap: anywhere; }
 .dz-lead { margin: 0; max-width: 68ch; color: var(--on-surface); font-size: var(--text-body); line-height: 1.5; overflow-wrap: anywhere; }

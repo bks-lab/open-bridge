@@ -14,7 +14,8 @@ related:
 
 > Part of [the Bridge cockpit](bridge-cockpit.md). The code is `scripts/web/files.js`,
 > `views/dossier.js`, `text-files.js` and `files.css`; the tests are
-> `scripts/tests/bridge_cockpit_files.test.mjs`.
+> `scripts/tests/bridge_cockpit_files.test.mjs` and
+> `scripts/tests/bridge_cockpit_files_count.test.mjs`.
 
 **Files** is one more view of the work tab, on every Bridge, with or without a
 work page, beside Due and never in its place: Due stays, and stays the view the
@@ -54,6 +55,24 @@ with where it comes from and since when; with none of these the file says "No
 next step known" rather than making one up. A file a tab asks about keeps the
 verbs of its task, the tab named beside them. Every task row of the model
 carries `status` and `next` for it (`model.task_next`).
+
+The view says what its queue leaves out, so a short queue explains itself.
+Under the head of the file stands one calm line: where the file stands, then
+how many active tasks and streams (`doing` or `review`) are not in the queue,
+by why ("2 of 2 · 13 more not in the queue: 3 resting, 3 dropped, 3 waiting,
+4 deferred"). The reasons, counted in the page from the model it already has
+(`queueLeftOut` in files.js): **resting**, a blocked task or one quiet for a
+while (bucket `resting`); **dropped**, one the triage put on drop (bucket
+`drop`); **waiting**, one waiting on someone else that no tab, result or open
+inbox item asks about; **deferred**, one put off, with the day it comes back
+(or until it is shown again); and under the filters of Work **in other
+areas** and **not pinned**. A click on the line lists those tasks by why, each
+opening beside the queue like a found file, and ends with one sentence that
+backlog tasks are not in the files at all: they never reach the model, so the
+page cannot count them. Under an area that hides some, **Show every area**
+beside the line lets the filter go. With nothing in the queue, the empty view
+names the same reasons and offers the same list; with nothing left out there
+is no line.
 
 The Result drawer holds what came back for the task: the starts of the
 return channel for the task or its inbox items, as the start page shows them

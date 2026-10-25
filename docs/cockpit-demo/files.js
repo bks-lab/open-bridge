@@ -4,7 +4,7 @@
 // passes every name on, so a view may import it from either; the frontend test imports this file under node.
 import { TABLES } from './text.js'
 import { CONTEXT_MAX, indexRows, liveStage, queueOf } from './logic.js'
-import { areaScope } from './areas.js'
+import { areaScope, inProject } from './areas.js'
 
 /** The files the files view walks under the filters of Work (areaScope as on Work, whatever page is open):
  *  what Next and Previous, n and p and a found file see */
@@ -62,6 +62,35 @@ export function dossierParts(tabs, model, nowMs, runs = []) {
 /** The files the files view walks, and its keys n and p: the one queue in its files scope */
 export function fileQueue(tabs, model, nowMs, runs = []) {
   return queueOf(dossierParts(tabs, model, nowMs, runs), { scope: 'dossier' })
+}
+
+// why an active task stands outside the queue, in the order the files view names them
+export const LEFT_OUT = ['resting', 'drop', 'waiting', 'deferred', 'area', 'unpinned']
+
+/** The active tasks and streams (doing or review) the files queue leaves out, by why: under the filters of Work
+ *  of another area (area) or not pinned (unpinned), put off (deferred, the day it comes back as `until`, null for
+ *  one put away until shown again), resting or dropped by its bucket, else waiting with nothing that asks about it
+ *  (a row of a later section with no tab, result or open item). Read from the whole model, so the filter's own
+ *  share shows; backlog tasks never reach the model and count nowhere. `s` the state the view sees (areaScope),
+ *  `queue` its files. {total, groups: [{reason, rows: [{slug, row, until}]}]}, in LEFT_OUT order, none empty */
+export function queueLeftOut(s, queue) {
+  const whole = s?.wholeModel ?? s?.model
+  const inQueue = new Set((queue ?? []).map(x => x.slug))
+  const area = s?.ui?.area || null
+  const pins = s?.ui?.pinnedOnly ? new Set(s.home?.pins ?? []) : null
+  const hidden = new Set((whole?.hidden ?? []).map(r => r.key))
+  const by = Object.fromEntries(LEFT_OUT.map(k => [k, []]))
+  const seen = new Set()
+  for (const r of [...(whole?.sections ?? []).flatMap(x => x.rows ?? []), ...(whole?.hidden ?? [])]) {
+    if (!r?.task || r.inbox_id || !FILE_STATES.includes(r.status) || seen.has(r.task)) continue
+    seen.add(r.task)
+    if (inQueue.has(r.task)) continue
+    const why = area && !inProject(r, area) ? 'area' : pins && !pins.has(r.key) ? 'unpinned'
+      : hidden.has(r.key) ? 'deferred' : r.bucket === 'resting' ? 'resting' : r.bucket === 'drop' ? 'drop' : 'waiting'
+    by[why].push({ slug: r.task, row: r, until: why === 'deferred' ? r.hidden_until ?? null : null })
+  }
+  const groups = LEFT_OUT.filter(k => by[k].length).map(reason => ({ reason, rows: by[reason] }))
+  return { total: groups.reduce((n, g) => n + g.rows.length, 0), groups }
 }
 
 /** What a file's Result drawer holds: the starts of the return channel for its task or its inbox items (each
