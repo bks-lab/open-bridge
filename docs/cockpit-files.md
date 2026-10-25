@@ -66,7 +66,9 @@ while (bucket `resting`); **dropped**, one the triage put on drop (bucket
 `drop`); **waiting**, one waiting on someone else that no tab, result or open
 inbox item asks about; **deferred**, one put off, with the day it comes back
 (or until it is shown again); and under the filters of Work **in other
-areas** and **not pinned**. A click on the line lists those tasks by why, each
+areas** and **not pinned**. Each task counts once, under its first reason, and
+a filter reason wins over the rest: a deferred task of another area counts as
+in other areas. A click on the line lists those tasks by why, each
 opening beside the queue like a found file, and ends with one sentence that
 backlog tasks are not in the files at all: they never reach the model, so the
 page cannot count them. Under an area that hides some, **Show every area**

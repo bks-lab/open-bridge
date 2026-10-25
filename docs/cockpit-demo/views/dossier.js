@@ -450,9 +450,11 @@ export function DossierView({ s, c }) {
   const step = x ? dossierStep(x) : null
   const open = s.ui.dossierOpen ?? null
   const context = x ? fileContext(fileFacts(x.slug, data, x.row), language()) : ''
-  // the active tasks the queue leaves out, and in an empty queue the sentence that says why
+  // the active tasks the queue leaves out, and in an empty queue the sentence that says why (the star keeps its
+  // own sentence before the reasons; the backlog sentence stands in the list only)
   const gaps = queueLeftOut(s, queue)
-  const why = sub => (gaps.total ? `${d.left.emptySub(gaps.groups.map(g => d.left.reason[g.reason](g.rows.length)).join(', '))} ${d.left.backlog}` : sub)
+  const reasons = () => d.left.emptySub(gaps.groups.map(g => d.left.reason[g.reason](g.rows.length)).join(', '))
+  const why = (sub, keep = false) => (gaps.total ? (keep ? `${sub} ${reasons()}` : reasons()) : sub)
   return html`<div class="col col-page dz">
     <div class="dz-page">
       <header class="page-head dz-head"><${WorkSwitch} s=${s} c=${c} /><${FindField} s=${s} c=${c} /></header>
@@ -468,7 +470,7 @@ export function DossierView({ s, c }) {
           task=${x.slug} s=${s} c=${c} />
         <${Walk} queue=${queue} i=${i} s=${s} c=${c} />
       </article>`
-      : s.ui.pinnedOnly ? html`<${Calm} s=${s} c=${c} title=${s.ui.area ? d.emptyAreaPinned(s.ui.area) : d.emptyPinned} sub=${why(d.emptyPinnedSub)} action=${false} />
+      : s.ui.pinnedOnly ? html`<${Calm} s=${s} c=${c} title=${s.ui.area ? d.emptyAreaPinned(s.ui.area) : d.emptyPinned} sub=${why(d.emptyPinnedSub, true)} action=${false} />
           <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setPinnedOnly(false)}>${d.allFiles}<//></div>
           <${LeftOut} gaps=${gaps} s=${s} c=${c} />`
       : s.ui.area ? html`<${Calm} s=${s} c=${c} title=${d.emptyArea(s.ui.area)} sub=${why(d.emptyAreaSub)} action=${false} />

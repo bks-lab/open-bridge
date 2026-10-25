@@ -137,12 +137,23 @@ test('the empty files view names the same reasons and lists the tasks left out',
   const parts = [en.dossier.left.reason.resting(1), en.dossier.left.reason.drop(1)].join(', ')
   const sub = el.$('.fx-calm p.muted').text()
   assert.ok(sub.includes(en.dossier.left.emptySub(parts)), 'the reasons')
-  assert.ok(sub.includes(en.dossier.left.backlog), 'and that backlog tasks never show')
+  assert.ok(!sub.includes(en.dossier.left.backlog), 'the backlog sentence waits for the list')
   assert.equal(el.$('.dz-left-line').text(), en.dossier.left.line(2, parts), 'no place in an empty queue')
   el.$('.dz-left-line').click()
   await tick()
+  // the backlog sentence stands once on the page, in the list
+  assert.equal(el.text().split(en.dossier.left.backlog).length, 2)
   el.$$('.dz-left-open')[0].click()
   assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [['openFile', 'r', 'work/tasks/r']])
+})
+
+test('the empty view under the star keeps its own sentence and names the reasons after it', () => {
+  const { DossierView } = views.dossier
+  const m = { sections: [{ id: 'work', rows: [row('a')] }], hidden: [], returns: [] }
+  const s = seen({ pinnedOnly: true }, { model: m, tabs: { tabs: [] }, home: { tiles: null, seen: null, pins: [] } })
+  const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
+  assert.equal(el.$('.fx-calm .fx-title').text(), en.dossier.emptyPinned)
+  assert.equal(el.$('.fx-calm p.muted').text(), `${en.dossier.emptyPinnedSub} ${en.dossier.left.emptySub(en.dossier.left.reason.unpinned(1))}`)
 })
 
 test('with nothing left out the view says nothing more, and the empty view keeps its sentence', () => {
