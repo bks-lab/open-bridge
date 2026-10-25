@@ -182,7 +182,9 @@ export function areaScope(s) {
     // and only the workspaces that hold one of those tabs or carry the area's name: the others showed up
     // empty under the filter, a workspace nobody could enter (25.10.)
     const holds = w => kept.some(t => (t.ws_ref && w.ref ? t.ws_ref === w.ref : t.workspace === w.title))
-    const workspaces = listed ? { workspaces: listed.filter(w => holds(w) || inProject({ workspace: w.title }, area)) } : {}
+    const keepWs = w => holds(w) || inProject({ workspace: w.title }, area)
+    // the ones left out still tell the sidebar which Bridge a workspace lies in (roomsOf: other Bridges)
+    const workspaces = listed ? { workspaces: listed.filter(keepWs), hidden_workspaces: listed.filter(w => !keepWs(w)) } : {}
     return { ...s, tabs: { ...s.tabs, tabs: kept, ...workspaces } }
   }
   // the Sessions page

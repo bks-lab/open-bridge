@@ -575,7 +575,8 @@ export function AreaBar({ s, c }) {
   const pins = s.home?.pins ?? []
   if (!s.ui.area && !(work && (pins.length || s.ui.pinnedOnly))) return null
   // Chat under an area without an agent tab says so and offers every area, rather than an empty page
-  const noTabs = page === '@chat' && s.ui.area
+  // (only once the tabs came: not before the first answer, not over an error of the terminal)
+  const noTabs = page === '@chat' && s.ui.area && s.tabs?.at_ms > 0 && !s.tabs.error
     && !(areaScope(s).tabs?.tabs ?? []).some(t => !t.is_control && t.state !== 'shell')
   return html`<div class="area-bar" role="region" aria-label=${h.areasTitle}>
     ${s.ui.area ? html`<span class="chip area-bar-chip"><span class=${`home-area-dot tk-${projectTone(s.ui.area)}`} aria-hidden="true"></span>

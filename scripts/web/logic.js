@@ -511,7 +511,9 @@ export function roomsOf(s) {
   return {
     workspaces: out,
     chats: placed ? [] : chats,
-    bridges: bridges.filter(b => !out.some(w => w.bridge?.id === b.id)),
+    // a workspace the area filter left out still has its Bridge: that one is no "other" Bridge either
+    bridges: bridges.filter(b => !out.some(w => w.bridge?.id === b.id)
+      && !(s.tabs?.hidden_workspaces ?? []).some(w => bridgeOf(w)?.id === b.id)),
     agents: s.agents?.peers ?? [],
     waiting: tabs.filter(wantsYou).length,
   }
