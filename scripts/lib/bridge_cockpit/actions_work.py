@@ -543,3 +543,33 @@ class WorkVerbs:
         result = self.launch(ctx, [row], role["mode"], app.cfg.target, {"id": team, "role": role["id"], "name": role["name"]})
         if result in ("failed", "manual"):
             app.store.set_team_run(slug, before)
+
+    # ------------------------------------------------------------ describe (describe.py)
+
+    def describe_ctx(self, ctx: Ctx):
+        """The steps of a describe verb go on its record like any other call"""
+        return lambda name, subject, argv, timeout, **kw: ctx.call(name, subject, argv, timeout, **kw)
+
+    def v_describe_run(self, ctx: Ctx, key: str) -> None:
+        """One item's brief now: written while no person changed it, else a proposal; the model call runs
+        without the write lock"""
+        app = self.app
+        tx = app.describe.tx()
+        result = app.describe.run_key(key, why="click", call=self.describe_ctx(ctx), unlocked=ctx.unlocked)
+        ctx.note(tx["written"].format(title=result["title"]) if result["outcome"] == "written" else tx["proposed"])
+        ctx.extra["describe"] = app.describe.state_for(key)
+        ctx.extra["outcome"] = result["outcome"]
+        ctx.delta()
+
+    def v_describe_apply(self, ctx: Ctx, key: str, proposal: str, brief: dict | None = None) -> None:
+        app = self.app
+        result = app.describe.apply(key, proposal, brief, call=self.describe_ctx(ctx))
+        ctx.note(app.describe.tx()["applied"].format(title=result["title"]))
+        ctx.extra["describe"] = app.describe.state_for(key)
+        ctx.delta()
+
+    def v_describe_discard(self, ctx: Ctx, key: str, proposal: str) -> None:
+        app = self.app
+        app.describe.discard(key, proposal)
+        ctx.note(app.describe.tx()["discarded"])
+        ctx.extra["describe"] = app.describe.state_for(key)

@@ -11,6 +11,7 @@
     python3 scripts/task.py new [slug] --headline TEXT | --from-inbox ID [--status backlog|doing] [--json]
     python3 scripts/task.py log [--] <context> <text>
     python3 scripts/task.py next <slug> [--] <text> | --clear [--json]
+    python3 scripts/task.py brief <slug> --brief-json JSON [--basis HEX] [--edited] | --mark-edited [--json]
 
 Rewrites only the ``priority:`` line inside the YAML frontmatter of
 work/tasks/<slug>/STATUS.md or work/streams/<slug>/STATUS.md (the key is added
@@ -36,6 +37,14 @@ unknown slug or a task already under work/done/ is refused without writing.
 before, also as a block mapping, goes whole), with ``last_updated:`` and a dated "Next step: <text>" note,
 so the step carries the day it was taken over; ``--clear`` takes it away. The cockpit's files view writes
 it only when the person takes over a suggested step.
+
+``brief`` writes the task's brief (lib/bridge_cockpit/card_fields.py: goal, story, acceptance, by, at) as
+the nested ``brief:`` block of the frontmatter, written or replaced as a whole where it stands (appended
+before the closing ``---`` when there is none), with ``basis`` (brief_basis of the file as written) and
+``edited`` (false, ``--edited`` for a person's write). A brief the gate finds anything wrong with is refused,
+and so is one whose ``--basis`` (the text it was written against) no longer matches the file. Every other byte
+stays, ``last_updated`` too: a brief is no activity on the task. ``--mark-edited`` only turns ``edited:``
+true in a block a person changed by hand (the cockpit's describe pass finds those), nothing else.
 
 ``log`` writes one row into today's block of work/log.md, for a decision on a row that has no task or
 inbox item of its own (a GitHub issue, a deadline): the cockpit keeps the person's sentence there.
@@ -83,6 +92,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 from lib import ai_services as ai
+from lib.bridge_cockpit.card_fields import brief_basis, validate_brief
 PRIORITIES = ("P0", "P1", "P2", "P3")      # work/templates/_schema.status.yaml: priority.enum
 
 
@@ -345,6 +355,118 @@ def set_next(root: Path, slug: str, text: str | None = None, *, clear: bool = Fa
     return {"slug": slug, "next": what}
 
 
+# ---------------------------------------------------------------- brief
+
+BRIEF_ORDER = ("goal", "story", "acceptance", "by", "at", "basis", "edited")
+
+
+def brief_block(brief: dict, nl: str = "\n") -> str:
+    """The brief as the frontmatter block it is written as: texts JSON-quoted (a basis of digits stays text)."""
+    q = lambda v: json.dumps(v, ensure_ascii=False)  # noqa: E731
+    out = ["brief:"]
+    for key in BRIEF_ORDER:
+        if key not in brief:
+            continue
+        value = brief[key]
+        if key == "story":
+            out.append("  story: {" + ", ".join(f"{k}: {q(value[k])}" for k in ("as", "want", "so_that")) + "}")
+        elif key == "acceptance":
+            out += ["  acceptance:" + ("" if value else " []")] + [f"    - {q(x)}" for x in value]
+        elif key == "edited":
+            out.append(f"  edited: {'true' if value else 'false'}")
+        else:
+            out.append(f"  {key}: {q(value)}")
+    return nl.join(out) + nl
+
+
+def _front_bounds(lines: list) -> tuple:
+    start = 0
+    while start < len(lines) and (not lines[start].strip() or lines[start].startswith("#")):
+        start += 1
+    if start >= len(lines) or lines[start].rstrip("\r\n") != "---":
+        raise ValueError("STATUS.md has no frontmatter")
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].rstrip("\r\n") == "---"), None)
+    if end is None:
+        raise ValueError("STATUS.md frontmatter is not closed")
+    return start, end
+
+
+def _brief_span(lines: list, start: int, end: int) -> tuple | None:
+    """(first, past) of the brief block in the frontmatter, as card_fields.strip_brief takes it out: the
+    `brief:` line and the indented and blank lines after it, less the blank lines at its end"""
+    first = next((i for i in range(start + 1, end) if re.match(r"brief\s*:", lines[i])), None)
+    if first is None:
+        return None
+    past, i = first + 1, first + 1
+    while i < end and (lines[i][:1] in (" ", "\t") or not lines[i].strip()):
+        i += 1
+        if lines[i - 1].strip():
+            past = i
+    return first, past
+
+
+def write_brief(root: Path, slug: str, brief: dict, *, basis: str | None = None, edited: bool = False,
+                today: str | None = None) -> dict:
+    """Write or replace the task's brief block; see the module doc. Returns {slug, basis, brief}."""
+    today = today or dt.date.today().isoformat()
+    path = find_status(root, slug)
+    old = path.read_bytes().decode("utf-8")
+    if basis is not None and brief_basis(old) != basis:
+        raise ValueError("STATUS.md changed since the brief was written against it")
+    if not isinstance(brief, dict):
+        raise ValueError("brief: not a mapping")
+    given = {k: v for k, v in brief.items() if k not in ("basis", "edited")}
+    clean, errors = validate_brief({"at": today, **given, "basis": "0" * 16, "edited": bool(edited)})
+    if errors or clean is None:
+        raise ValueError("brief: " + "; ".join(errors or ["empty"]))
+    lines = old.splitlines(keepends=True)
+    start, end = _front_bounds(lines)
+    nl = "\r\n" if lines[start].endswith("\r\n") else "\n"
+    span = _brief_span(lines, start, end)
+    first, past = span if span else (end, end)
+
+    def render(b: dict) -> str:
+        return "".join(lines[:first]) + brief_block(b, nl) + "".join(lines[past:])
+
+    clean["basis"] = brief_basis(render(clean))     # the basis leaves the block out, so it is the same after
+    new = render(clean)
+    path.write_bytes(new.encode("utf-8"))
+    return {"slug": slug, "basis": clean["basis"], "brief": clean}
+
+
+def mark_brief_edited(root: Path, slug: str) -> dict:
+    """`edited: true` in the brief block a person changed by hand; every other byte of it stays."""
+    path = find_status(root, slug)
+    old = path.read_bytes().decode("utf-8")
+    lines = old.splitlines(keepends=True)
+    start, end = _front_bounds(lines)
+    span = _brief_span(lines, start, end)
+    if span is None:
+        raise ValueError(f"{slug} has no brief to mark")
+    first, past = span
+    nl = "\r\n" if lines[start].endswith("\r\n") else "\n"
+    flag = next((i for i in range(first + 1, past) if re.match(r"\s+edited\s*:", lines[i])), None)
+    if flag is not None:
+        indent = re.match(r"\s+", lines[flag]).group(0)
+        lines[flag] = f"{indent}edited: true" + (lines[flag][len(lines[flag].rstrip("\r\n")):] or nl)
+    elif past > first + 1:
+        indent = re.match(r"[ \t]+", lines[first + 1]).group(0)
+        lines.insert(past, f"{indent}edited: true{nl}")
+    else:
+        # a flow mapping on one line: written again as a block, its texts as they were
+        data = (yaml_load("".join(lines[first:past])) or {}).get("brief")
+        if not isinstance(data, dict):
+            raise ValueError(f"{slug}: the brief block is not a mapping")
+        lines[first:past] = [brief_block({**data, "edited": True}, nl)]
+    path.write_bytes("".join(lines).encode("utf-8"))
+    return {"slug": slug, "edited": True}
+
+
+def yaml_load(text: str):
+    import yaml
+    return yaml.safe_load(text)
+
+
 # ---------------------------------------------------------------- new, also from an inbox item
 
 NEW_STATUSES = ("backlog", "doing")
@@ -495,7 +617,7 @@ REVIEW_BUDGET_SEC = 190
 TIER_ONE_MAX_SEC = 150
 # What one call of the directed model costs when no run has measured it (a small Sonnet call, 2026-10).
 DIRECTED_CALL_USD = 0.021
-PROMPT_VERSION = 3          # raise when the prompt changes: cached verdicts of an older prompt are asked again
+PROMPT_VERSION = 4          # raise when the prompt changes: cached verdicts of an older prompt are asked again
 _clock = time.monotonic
 LANGUAGE_NAMES = {"de": "German", "en": "English", "fr": "French", "es": "Spanish", "it": "Italian",
                   "nl": "Dutch", "pt": "Portuguese", "pl": "Polish"}
@@ -511,6 +633,7 @@ Verdicts:
 - unclear: the evidence supports none of the above.
 A blocker that names an issue or PR which is now closed or merged is no longer pending: decide whether the work is done.
 A task may start with a `signals:` line, computed from GitHub: own_refs_closed (every issue and PR the task tracks is closed as completed or merged) and blocker_resolved (everything its blocker names is closed or merged). When own_refs_closed holds, the verdict is close, with confidence medium unless the steps clearly describe new work that remains AFTER that reference closed (steps written before it closed, or steps that only read, review, confirm or wrap up that reference, do not count); the reason names the closed reference with its date and, briefly, which steps still look open, so the person can confirm. blocker_resolved alone means the task is no longer waiting: decide from the steps and the log whether it is done or should continue.
+A task may list `acceptance:` criteria, the outcomes that make it done: when the evidence shows each of them met, that supports close; when one is plainly not met yet, it does not. Name the criteria the evidence meets in the reason.
 Confidence: high when one piece of evidence decides it, medium when it is likely, low when you guess.
 
 Answer with a JSON array only, one object per task:
@@ -733,6 +856,9 @@ def gather(root: Path, slugs, run, backlog: bool = False, now_day: dt.date | Non
             "last_commit": (commit.stdout.strip() or None) if getattr(commit, "returncode", 1) == 0 else None,
             "inbox": [f"{i.kind}: {b._clip(str(i.summary), 100)} ({i.state})" for i in inbox
                       if getattr(i, "task", None) == slug],
+            # what makes the task done, as its brief says (card_fields.py): evidence for a close verdict
+            "acceptance": (validate_brief(fm["brief"])[0] or {}).get("acceptance") or None
+            if isinstance(fm.get("brief"), dict) else None,
         })
         refs = _refs_of(fm, [fm.get("blocked_by"), fm.get("headline"), title, ev["next"], *steps])
         tasks.append({"slug": slug, "title": title, "evidence": ev, "refs": refs,
@@ -762,7 +888,8 @@ def _task_block(t: dict) -> str:
     for key in ("headline", "origin", "blocked_by", "blocked_since", "next", "last_commit"):
         if ev.get(key):
             out.append(f"{key}: {ev[key]}")
-    for key, label in (("steps", "open steps"), ("log", "log"), ("notes", "notes"), ("inbox", "open inbox")):
+    for key, label in (("acceptance", "acceptance"), ("steps", "open steps"), ("log", "log"), ("notes", "notes"),
+                       ("inbox", "open inbox")):
         if ev.get(key):
             out.append(f"{label}: " + " | ".join(ev[key]))
     if not ev.get("log") and not ev.get("last_commit"):
@@ -1092,6 +1219,15 @@ def main(argv=None) -> int:
     nw.add_argument("--status", choices=NEW_STATUSES, default="backlog")
     nw.add_argument("--type", dest="task_type", default="admin")
     nw.add_argument("--json", action="store_true")
+    br = sub.add_parser("brief", help="write or replace the task's brief block (goal, story, acceptance), "
+                                      "or --mark-edited after a person changed it")
+    br.add_argument("slug")
+    br.add_argument("--brief-json", dest="brief_json", help='{"goal": "...", "acceptance": [...], "by": "<model id>"}')
+    br.add_argument("--basis", help="the brief_basis it was written against; refused when the file moved on")
+    br.add_argument("--edited", action="store_true", help="a person wrote it (edited: true)")
+    br.add_argument("--mark-edited", dest="mark_edited", action="store_true",
+                    help="only set edited: true in the block as it stands")
+    br.add_argument("--json", action="store_true")
     rv = sub.add_parser("review", help="recommend close/continue/waiting/stale/unclear per open task")
     rv.add_argument("slugs", nargs="*")
     rv.add_argument("--all", action="store_true", help="every task in doing or review (the default without slugs)")
@@ -1129,6 +1265,19 @@ def main(argv=None) -> int:
             out = set_next(root, args.slug, args.text, clear=args.clear)
             print(json.dumps(out, ensure_ascii=False) if args.json else
                   (f"{out['slug']}: next step cleared" if args.clear else f"{out['slug']}: next {out['next']}"))
+            return 0
+        if args.cmd == "brief":
+            if args.mark_edited == bool(args.brief_json) or (args.mark_edited and (args.basis or args.edited)):
+                raise ValueError("give --brief-json or --mark-edited, not both and not neither")
+            if args.mark_edited:
+                out = mark_brief_edited(root, args.slug)
+            else:
+                try:
+                    data = json.loads(args.brief_json)
+                except ValueError:
+                    raise ValueError("brief: --brief-json is no JSON") from None
+                out = write_brief(root, args.slug, data, basis=args.basis, edited=args.edited, today=today)
+            print(json.dumps(out, ensure_ascii=False) if args.json else f"{out['slug']}: brief written")
             return 0
         if args.cmd == "log":
             what = " ".join(args.text.split())

@@ -21,7 +21,9 @@ from typing import Any, Callable
 
 from .. import model_route as mr
 from . import model as m
+from . import describe as dsc
 from . import organize as og
+from .card_fields import validate_brief
 from .config import TARGETS
 from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as AGENT_PEER_RE
 from .quick import CONV_RE
@@ -61,6 +63,7 @@ PATTERN_KINDS: dict[str, tuple[re.Pattern, str]] = {
     "relay_id": (RELAY_ID_RE, "not a relay id"),
     "ask_hash": (ASK_HASH_RE, "not a question hash"),
     "organize_id": (og.ID_RE, "not a proposal id"),
+    "describe_id": (dsc.PROPOSAL_RE, "not a proposal id"),
 }
 _LAUNCH_MODELS = ("auto", *mr.MODELS)
 _LAUNCH_EFFORTS = ("auto", "standard", *mr.EFFORTS)
@@ -168,6 +171,17 @@ def _organize_items(actions: "Actions", value: Any, name: str, today: dt.date) -
     return list(value)
 
 
+def _brief(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
+    # what a person wrote for a brief: refused whole when the gate finds anything wrong, never cut
+    if not isinstance(value, dict):
+        raise bad_arg(name, "must be a brief: goal, story, acceptance")
+    text = {k: v for k, v in value.items() if k not in ("by", "at", "basis", "edited")}
+    clean, errors = validate_brief(text)
+    if errors or clean is None:
+        raise bad_arg(name, "; ".join(errors or ["goal: missing"])[:300])
+    return clean
+
+
 SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "keys": _keys,
     "key": lambda actions, value, name, today: check_key(value, name),
@@ -186,6 +200,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "tab_name": _tab_name,
     "digit": _digit,
     "organize_items": _organize_items,
+    "brief": _brief,
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
 

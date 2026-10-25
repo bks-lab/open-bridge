@@ -107,6 +107,11 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # organize with AI: a proposal of one model call (read only), then the ticked items of it (organize.py)
     "organize_propose": {},
     "organize_apply": {"proposal": ("organize_id", True), "items": ("organize_items", True)},
+    # describe (describe.py): one item's brief now (a proposal when a person wrote it), a proposal taken over as it
+    # is or as the person changed it (edited: true), a proposal dropped
+    "describe_run": {"key": ("key", True)},
+    "describe_apply": {"key": ("key", True), "proposal": ("describe_id", True), "brief": ("brief", False)},
+    "describe_discard": {"key": ("key", True), "proposal": ("describe_id", True)},
     "snapshot": {},
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
     "pin": {"key": ("key", True), "on": ("bool", True)},
@@ -254,8 +259,9 @@ class Ctx:
         finally:
             self.actions.write_lock.acquire()
 
-    def call(self, name: str, subject: str, argv: list[str], timeout: float):
-        run = self.actions.app.run(argv, timeout)
+    def call(self, name: str, subject: str, argv: list[str], timeout: float, env_extra: dict | None = None):
+        app = self.actions.app
+        run = app.run(argv, timeout) if env_extra is None else app.run(argv, timeout, env_extra=env_extra)
         self.steps.append({"call": name, "subject": subject, "ok": run.ok, "exit": run.code, "took_ms": run.took_ms,
                            "err": self.actions.app.scrub(run.err or "")[-300:]})
         return run

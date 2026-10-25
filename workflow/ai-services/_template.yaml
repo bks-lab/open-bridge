@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=./_schema.yaml
 # One consumer's AI selection. Copy to <id>.yaml; absent files keep Claude.
-# Built-in consumers: briefing-chat, task-review, triage.
+# Built-in consumers: briefing-chat, task-review, triage, cockpit-organize (organize with AI),
+# cockpit-describe (each item's brief, scripts/lib/bridge_cockpit/describe.py; default haiku).
 # Workers opt in with scripts/ai-run.py --service <id>.
 schema_version: 1
 scope: user

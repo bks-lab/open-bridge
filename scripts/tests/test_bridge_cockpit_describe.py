@@ -1,0 +1,570 @@
+# SPDX-License-Identifier: MIT
+"""Describe (describe.py): Haiku writes and keeps each item's brief (goal, story, acceptance) in its STATUS.md or
+inbox item while no person changed it, proposes once one did, within an hourly budget, one call at a time.
+
+Uses the world of test_bridge_cockpit (fake runner); the model is never called, task.py and inbox.py run for
+real against the temp Bridge."""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+import pytest
+import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_bridge_cockpit import YES_ID, World, ok, private_key_dir  # noqa: E402,F401  (the autouse fixture comes along)
+
+from lib.bridge_cockpit import describe as dsc  # noqa: E402
+from lib.bridge_cockpit.actions import ActionError  # noqa: E402
+from lib.bridge_cockpit.card_fields import brief_basis  # noqa: E402
+from lib.bridge_cockpit.config import load_web_config  # noqa: E402
+from lib.bridge_cockpit.runner import Runner, RunnerRefused, RunResult  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
+HAIKU = "claude-haiku-5-5"
+GOAL = "Ship the demo so the team can try it on Friday"
+CRITERIA = ["The demo opens without an error", "Two colleagues tried it and said so"]
+
+
+def answer(goal=GOAL, acceptance=CRITERIA, story=None, used=HAIKU, cost=0.0021, structured=True):
+    brief = {"goal": goal, "acceptance": acceptance, "story": story}
+    out = {"type": "result", "subtype": "success", "is_error": False, "total_cost_usd": cost,
+           "modelUsage": {used: {"costUSD": cost}} if used else {}}
+    if structured:
+        out.update(result="", structured_output=brief)
+    else:
+        out["result"] = "Here it is:\n" + json.dumps(brief)
+    return ok(out)
+
+
+CONFIG = ("cockpit:\n  enabled: true\n  language: en\n  describe:\n    auto: {auto}\n    budget_per_hour: {budget}\n"
+          "workplace:\n  control:\n    name: Control\n")
+
+
+def real(argv):
+    """task.py and inbox.py of this checkout, run for real against the temp Bridge"""
+    argv = [argv[0], str(ROOT / "scripts" / Path(argv[1]).name), *argv[2:]]
+    done = subprocess.run(argv, capture_output=True, text=True)
+    return RunResult(done.returncode == 0, done.returncode, done.stdout, done.stderr, 1)
+
+
+def make_world(tmp_path, auto="off", budget=20):
+    w = World(tmp_path, config=CONFIG.format(auto=auto, budget=budget))
+    w.runner.handlers["task.brief"] = real
+    w.runner.handlers["inbox.describe"] = real
+    w.runner.handlers["claude.p"] = lambda argv: answer()
+    return w
+
+
+@pytest.fixture
+def world(tmp_path):
+    w = make_world(tmp_path)
+    yield w
+    w.close()
+
+
+def status_path(world, slug="demo-task", kind="tasks"):
+    return world.app.root / "work" / kind / slug / "STATUS.md"
+
+
+def brief_of(world, slug="demo-task", kind="tasks"):
+    text = status_path(world, slug, kind).read_text(encoding="utf-8")
+    return yaml.safe_load(text.split("---\n", 2)[1]).get("brief")
+
+
+def add_task(world, slug, body="Some work.\n", kind="tasks", extra=""):
+    d = world.app.root / "work" / kind / slug
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "STATUS.md").write_text(f"---\nstatus: doing\nheadline: {slug} work\n{extra}---\n\n# {slug.title()}\n\n{body}",
+                                 encoding="utf-8")
+
+
+def model_calls(world):
+    return world.runner.of("claude.p")
+
+
+def calls_for(world, title="Demo task"):
+    """the model calls about one item: its title is in the data the call carries"""
+    return [c for c in model_calls(world) if title in c[16]]
+
+
+# ---------------------------------------------------------------- the one argv shape
+
+def describe_argv(claude="/fake/bin/claude", model=HAIKU, system="Write a brief.", text="data"):
+    return dsc.argv(claude, model, system, text)
+
+
+def test_the_describe_argv_is_one_exact_shape_the_runner_lets_through(tmp_path):
+    runner = Runner(tmp_path, cmux=None, claude="/fake/bin/claude", codex=None)
+    argv = describe_argv()
+    assert argv[:12] == ["/fake/bin/claude", "-p", "--model", HAIKU, "--output-format", "json",
+                         "--no-session-persistence", "--setting-sources", "", "--tools", "", "--json-schema"]
+    assert argv[12] == dsc.SCHEMA and argv[13] == "--append-system-prompt" and argv[15] == "--"
+    runner.check(argv)
+
+
+@pytest.mark.parametrize("change", [
+    lambda a: a.__setitem__(3, "haiku"),                       # an alias, never a full id
+    lambda a: a.__setitem__(10, "Read"),                        # a tool
+    lambda a: a.__setitem__(12, '{"type": "object"}'),          # another schema
+    lambda a: a.__setitem__(8, "user"),                         # settings
+    lambda a: a.insert(6, "--verbose"),                         # anything more
+    lambda a: a.__setitem__(16, "x" * (dsc.PROMPT_MAX + 1)),    # past the prompt limit
+    lambda a: a.__setitem__(14, ""),                            # no instruction
+    lambda a: a.__setitem__(0, "/other/claude"),                # another program
+])
+def test_any_other_describe_argv_is_refused(tmp_path, change):
+    runner = Runner(tmp_path, cmux=None, claude="/fake/bin/claude", codex=None)
+    argv = describe_argv()
+    change(argv)
+    with pytest.raises(RunnerRefused):
+        runner.check(argv)
+
+
+def test_env_extra_takes_only_max_thinking_tokens_zero_and_only_for_describe(tmp_path):
+    seen = []
+
+    class Spy(Runner):
+        def _spawn(self, argv, timeout_s, env_extra=None):
+            seen.append(env_extra)
+            return RunResult(True, 0, "", "", 1)
+
+    runner = Spy(tmp_path, cmux=None, claude="/fake/bin/claude", codex=None)
+    runner.run(describe_argv(), 5, env_extra={"MAX_THINKING_TOKENS": "0"})
+    assert seen == [{"MAX_THINKING_TOKENS": "0"}]
+    assert runner.run(describe_argv(), 5).ok and seen[-1] is None
+    for bad in ({"MAX_THINKING_TOKENS": "1000"}, {"PATH": "/tmp"}, {"MAX_THINKING_TOKENS": "0", "HOME": "/"}):
+        with pytest.raises(RunnerRefused):
+            runner.run(describe_argv(), 5, env_extra=bad)
+    with pytest.raises(RunnerRefused):      # another call never gets it
+        runner.run([runner.python, runner.script("scripts/task.py"), "review"], 5, env_extra={"MAX_THINKING_TOKENS": "0"})
+
+
+def test_the_env_extra_reaches_the_process(tmp_path):
+    runner = Runner(tmp_path, cmux=None, claude="/fake/bin/claude", codex=None)
+    assert runner.env_with({"MAX_THINKING_TOKENS": "0"})["MAX_THINKING_TOKENS"] == "0"
+    assert runner.env_with(None) == runner.env()
+
+
+# ---------------------------------------------------------------- reading the answer
+
+ITEM = {"key": "task:demo", "kind": "task", "id": "demo", "title": "Demo task", "basis": "0123456789abcdef"}
+
+
+def test_the_answer_becomes_a_brief_through_the_gate_with_the_model_that_answered():
+    got = dsc.parse(answer().out, ITEM, HAIKU, "2026-10-25")
+    assert got["brief"] == {"goal": GOAL, "acceptance": CRITERIA, "by": HAIKU, "at": "2026-10-25",
+                            "basis": "0123456789abcdef", "edited": False}
+    assert got["cost_usd"] == 0.0021 and got["model_mismatch"] is False and got["used"] == HAIKU
+
+
+def test_an_answer_in_the_result_text_is_read_too():
+    story = {"as": "a colleague", "want": "to try the demo", "so_that": "I can give feedback"}
+    got = dsc.parse(answer(structured=False, story=story).out, ITEM, HAIKU, "2026-10-25")
+    assert got["brief"]["goal"] == GOAL and got["brief"]["story"] == story
+
+
+def test_more_than_five_criteria_are_clipped_to_five():
+    eight = [f"Outcome number {n} can be seen" for n in range(8)]
+    got = dsc.parse(answer(acceptance=eight).out, ITEM, HAIKU, "2026-10-25")
+    assert got["brief"]["acceptance"] == eight[:5] and any("kept the first 5" in e for e in got["errors"])
+
+
+def test_a_stream_keeps_no_criteria():
+    got = dsc.parse(answer().out, {**ITEM, "kind": "stream"}, HAIKU, "2026-10-25")
+    assert got["brief"]["acceptance"] == []
+
+
+def test_another_model_than_asked_is_flagged_and_stored_as_it_answered():
+    got = dsc.parse(answer(used="claude-sonnet-5-5").out, ITEM, HAIKU, "2026-10-25")
+    assert got["model_mismatch"] is True and got["brief"]["by"] == "claude-sonnet-5-5"
+
+
+@pytest.mark.parametrize("goal", ["Demo task", "demo TASK", "Ship it \u2014 now", "x" * 141, ""])
+def test_a_goal_that_repeats_the_title_or_fails_the_gate_gives_no_brief(goal):
+    got = dsc.parse(answer(goal=goal).out, ITEM, HAIKU, "2026-10-25")
+    assert got["brief"] is None and got["errors"]
+
+
+@pytest.mark.parametrize("out", ["", "not json", json.dumps({"type": "result", "is_error": True, "result": "x"})])
+def test_an_unreadable_answer_gives_no_brief(out):
+    got = dsc.parse(out, ITEM, HAIKU, "2026-10-25")
+    assert got["brief"] is None
+
+
+# ---------------------------------------------------------------- what the model sees
+
+def test_the_input_is_capped_scrubbed_and_marked_as_data(world):
+    path = status_path(world)
+    text = path.read_text(encoding="utf-8").replace("## Goal", "## Older\n\nold part\n\n## Goal")
+    text = text.replace("headline: Demo task\n", "headline: Demo task\nblocked_by: SECRET-TOKEN\n")
+    text += "\n## Latest\n\nthe newest words\n"
+    path.write_text(text, encoding="utf-8")
+    world.app.scrub = lambda s: s.replace("SECRET-TOKEN", "[token]")
+    item = world.app.describe.item("task:demo-task")
+    assert item["basis"] == brief_basis(text) and item["kind"] == "task" and item["title"] == "Demo task"
+    data = json.loads(item["data"])
+    assert len(item["data"]) <= dsc.DATA_MAX
+    assert data["front"]["status"] == "doing" and data["front"]["blocked_by"] == "[token]"
+    assert data["heading"] == "Demo task" and "Ship the demo." in data["body_start"]
+    assert [s.split("\n", 1)[0] for s in data["recent_sections"]] == ["## Notes", "## Latest"]
+    system, prompt = dsc.prompt(item, "German")
+    assert "German" in system and "data" in prompt.split("\n", 1)[0].lower()
+    assert "SECRET-TOKEN" not in prompt and len(system) <= dsc.SYSTEM_MAX
+
+
+def test_the_open_inbox_of_a_task_goes_along(world):
+    item_dir = world.app.root / "work" / "inbox" / YES_ID
+    y = (item_dir / "item.yaml").read_text(encoding="utf-8") + "task: demo-task\n"
+    (item_dir / "item.yaml").write_text(y, encoding="utf-8")
+    data = json.loads(world.app.describe.item("task:demo-task", full=True)["data"])
+    assert data["open_inbox"] == ["decision: Tidy labels"]
+    # the basis never depends on them: a card's stale flag reads the item without
+    assert world.app.describe.item("task:demo-task")["basis"] == world.app.describe.item("task:demo-task", full=True)["basis"]
+
+
+# ---------------------------------------------------------------- the button: describe_run
+
+def test_describe_run_writes_the_brief_into_status_md(world):
+    before = status_path(world).read_text(encoding="utf-8")
+    res = world.act("describe_run", key="task:demo-task")
+    assert res["ok"] and res["describe"]["written"] == "ai" and res["describe"]["stale"] is False
+    b = brief_of(world)
+    assert b["goal"] == GOAL and b["by"] == HAIKU and b["edited"] is False and b["acceptance"] == CRITERIA
+    after = status_path(world).read_text(encoding="utf-8")
+    assert b["basis"] == brief_basis(after) == brief_basis(before)
+    [argv] = model_calls(world)
+    assert argv[3] == HAIKU and world.runner.envs[world.runner.calls.index(argv)] == {"MAX_THINKING_TOKENS": "0"}
+    state = json.loads((world.app.root / ".bridge" / "describe.json").read_text(encoding="utf-8"))
+    entry = state["items"]["task:demo-task"]
+    assert entry["sha"] == dsc.brief_sha(b) and entry["cost_usd"] == 0.0021 and entry["by"] == HAIKU
+
+
+def test_the_model_comes_from_the_ai_service_file(world):
+    folder = world.app.root / "workflow" / "ai-services"
+    folder.mkdir(parents=True)
+    (folder / "cockpit-describe.yaml").write_text("schema_version: 1\nscope: user\nid: cockpit-describe\n"
+                                                  "provider: claude\nmodels:\n  claude: sonnet\n", encoding="utf-8")
+    world.runner.handlers["claude.p"] = lambda argv: answer(used="claude-sonnet-5-5")
+    world.act("describe_run", key="task:demo-task")
+    assert model_calls(world)[0][3] == "claude-sonnet-5-5"
+
+
+def test_a_mismatch_is_said_and_the_real_model_stored(world):
+    world.runner.handlers["claude.p"] = lambda argv: answer(used="claude-sonnet-5-5")
+    res = world.act("describe_run", key="task:demo-task")
+    assert brief_of(world)["by"] == "claude-sonnet-5-5" and res["describe"]["model_mismatch"] is True
+
+
+def test_an_edited_brief_is_never_overwritten_the_run_proposes(world):
+    world.act("describe_run", key="task:demo-task")
+    path = status_path(world)
+    mine = path.read_text(encoding="utf-8").replace(GOAL, "The goal Michael wrote").replace("edited: false", "edited: true")
+    path.write_text(mine, encoding="utf-8")
+    world.runner.handlers["claude.p"] = lambda argv: answer(goal="A newer goal from the model")
+    res = world.act("describe_run", key="task:demo-task")
+    assert path.read_text(encoding="utf-8") == mine
+    prop = res["describe"]["proposal"]
+    assert prop["brief"]["goal"] == "A newer goal from the model" and dsc.PROPOSAL_RE.match(prop["id"])
+    assert res["describe"]["written"] == "human"
+
+
+def test_describe_apply_writes_the_proposal_as_a_human_choice(world):
+    world.act("describe_run", key="task:demo-task")
+    path = status_path(world)
+    path.write_text(path.read_text(encoding="utf-8").replace("edited: false", "edited: true"), encoding="utf-8")
+    world.runner.handlers["claude.p"] = lambda argv: answer(goal="A newer goal from the model")
+    pid = world.act("describe_run", key="task:demo-task")["describe"]["proposal"]["id"]
+    res = world.act("describe_apply", key="task:demo-task", proposal=pid)
+    b = brief_of(world)
+    assert b["goal"] == "A newer goal from the model" and b["edited"] is True and b["by"] == HAIKU
+    assert res["describe"]["proposal"] is None and res["describe"]["written"] == "human"
+    with pytest.raises(ActionError) as gone:
+        world.act("describe_apply", key="task:demo-task", proposal=pid)
+    assert gone.value.code == "stale_proposal"
+
+
+def test_describe_apply_takes_the_persons_own_text(world):
+    world.act("describe_run", key="task:demo-task")
+    path = status_path(world)
+    path.write_text(path.read_text(encoding="utf-8").replace("edited: false", "edited: true"), encoding="utf-8")
+    pid = world.act("describe_run", key="task:demo-task")["describe"]["proposal"]["id"]
+    own = {"goal": "My own goal for the demo", "acceptance": ["It runs on my laptop"]}
+    world.act("describe_apply", key="task:demo-task", proposal=pid, brief=own)
+    b = brief_of(world)
+    assert b["goal"] == "My own goal for the demo" and b["acceptance"] == ["It runs on my laptop"] and b["edited"] is True
+
+
+@pytest.mark.parametrize("bad", [{"goal": "x" * 141}, {"goal": "One \u2013 two"}, {"acceptance": ["a"]}, "text",
+                                 {"goal": "ok", "extra": 1}])
+def test_describe_apply_refuses_a_brief_the_gate_refuses(world, bad):
+    with pytest.raises(ActionError) as refused:
+        world.act("describe_apply", key="task:demo-task", proposal="d0123456789", brief=bad)
+    assert refused.value.code == "invalid_argument" and refused.value.field == "brief"
+
+
+def test_describe_discard_drops_the_proposal_and_it_is_not_made_again_for_that_text(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        w.act("describe_run", key="task:demo-task")
+        path = status_path(w)
+        path.write_text(path.read_text(encoding="utf-8").replace("edited: false", "edited: true") + "\nmore\n",
+                        encoding="utf-8")
+        pid = w.act("describe_run", key="task:demo-task")["describe"]["proposal"]["id"]
+        res = w.act("describe_discard", key="task:demo-task", proposal=pid)
+        assert res["describe"]["proposal"] is None
+        n = len(calls_for(w))
+        w.app.describe.pass_once()
+        assert len(calls_for(w)) == n               # discarded for this basis: no new proposal
+    finally:
+        w.close()
+
+
+def test_describe_run_for_an_inbox_item_writes_a_describe_event(world):
+    res = world.act("describe_run", key=f"inbox:{YES_ID}")
+    assert res["ok"] and res["describe"]["written"] == "ai"
+    events = sorted((world.app.root / "work" / "inbox" / YES_ID / "events").glob("*-describe.yaml"))
+    assert len(events) == 1
+    ev = yaml.safe_load(events[-1].read_text(encoding="utf-8"))
+    assert ev["brief"]["goal"] == GOAL and ev["brief"]["by"] == HAIKU and ev["brief"]["edited"] is False
+
+
+def test_an_unknown_or_closed_key_is_stale_row(world):
+    for key in ("task:nope", "inbox:20991231-0000-nope", "ref:x"):
+        with pytest.raises(ActionError) as gone:
+            world.act("describe_run", key=key)
+        assert gone.value.code in ("stale_row", "not_applicable")
+    assert model_calls(world) == []
+
+
+def test_a_failed_call_is_kept_as_the_last_error_and_nothing_written(world):
+    world.runner.handlers["claude.p"] = lambda argv: RunResult(False, 1, "", "boom", 1)
+    with pytest.raises(ActionError) as failed:
+        world.act("describe_run", key="task:demo-task")
+    assert failed.value.code == "describe_failed"
+    assert brief_of(world) is None and world.app.describe.state_for("task:demo-task")["last_error"]
+
+
+def test_two_runs_never_go_at_once(world):
+    gate, seen = threading.Event(), {}
+
+    def slow(argv):
+        gate.wait(3)
+        return answer()
+
+    world.runner.handlers["claude.p"] = slow
+    t = threading.Thread(target=lambda: seen.update(first=world.act("describe_run", key="task:demo-task")))
+    t.start()
+    for _ in range(200):
+        if world.app.describe.state_for("task:demo-task")["running"]:
+            break
+        threading.Event().wait(0.01)
+    with pytest.raises(ActionError) as busy:
+        world.app.describe.run_key(f"inbox:{YES_ID}", why="auto")
+    assert busy.value.code == "describe_running"
+    gate.set()
+    t.join(5)
+    assert seen["first"]["ok"]
+
+
+# ---------------------------------------------------------------- a hand edit outside the cockpit
+
+def test_a_hand_edit_is_found_and_marked_without_a_model_call(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        w.act("describe_run", key="task:demo-task")
+        path = status_path(w)
+        text = path.read_text(encoding="utf-8").replace(GOAL, "Michael changed this goal")
+        path.write_text(text, encoding="utf-8")
+        n = len(calls_for(w))
+        w.app.describe.pass_once()
+        assert path.read_text(encoding="utf-8") == text.replace("edited: false", "edited: true")
+        assert len(calls_for(w)) == n
+        assert w.app.describe.state_for("task:demo-task")["written"] == "human"
+    finally:
+        w.close()
+
+
+def test_an_untouched_ai_brief_counts_as_ai(world):
+    world.act("describe_run", key="task:demo-task")
+    assert world.app.describe.state_for("task:demo-task")["written"] == "ai"
+    assert world.app.describe.state_for("task:demo-task")["stale"] is False
+
+
+# ---------------------------------------------------------------- stale and the pass by itself
+
+def test_a_brief_goes_stale_when_the_text_changes(world):
+    world.act("describe_run", key="task:demo-task")
+    path = status_path(world)
+    path.write_text(path.read_text(encoding="utf-8") + "\n## New\n\nnew work\n", encoding="utf-8")
+    assert world.app.describe.state_for("task:demo-task")["stale"] is True
+
+
+def test_auto_off_makes_no_call(world):
+    assert world.app.cfg.describe["auto"] == "off"
+    assert world.app.describe.pass_once() == 0 and model_calls(world) == []
+
+
+def test_auto_missing_writes_only_what_has_no_brief(tmp_path):
+    w = make_world(tmp_path, auto="missing")
+    try:
+        add_task(w, "second")
+        w.app.describe.pass_once()
+        assert brief_of(w)["goal"] == GOAL and brief_of(w, "second")["goal"] == GOAL
+        calls = len(model_calls(w))
+        assert calls == 3            # two tasks and the inbox item
+        path = status_path(w)
+        path.write_text(path.read_text(encoding="utf-8") + "\nchanged\n", encoding="utf-8")
+        w.app.describe.pass_once()
+        assert len(model_calls(w)) == calls     # stale, but auto: missing leaves it
+    finally:
+        w.close()
+
+
+def test_auto_stale_writes_a_stale_brief_again(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        w.app.describe.pass_once()
+        path = status_path(w)
+        path.write_text(path.read_text(encoding="utf-8") + "\nchanged\n", encoding="utf-8")
+        w.runner.handlers["claude.p"] = lambda argv: answer(goal="The demo is shipped and tried")
+        n = len(model_calls(w))
+        w.app.describe.pass_once()
+        assert len(model_calls(w)) == n + 1 and brief_of(w)["goal"] == "The demo is shipped and tried"
+        assert w.app.describe.state_for("task:demo-task")["stale"] is False
+    finally:
+        w.close()
+
+
+def test_kinds_limit_what_the_pass_takes(tmp_path):
+    w = World(tmp_path, config=("cockpit:\n  enabled: true\n  language: en\n  describe:\n    auto: missing\n"
+                                "    kinds: [inbox]\nworkplace:\n  control:\n    name: Control\n"))
+    try:
+        w.runner.handlers.update({"task.brief": real, "inbox.describe": real, "claude.p": lambda argv: answer()})
+        w.app.describe.pass_once()
+        assert len(model_calls(w)) == 1 and brief_of(w) is None
+    finally:
+        w.close()
+
+
+def test_an_edited_item_gets_a_proposal_at_most_once_per_basis(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        w.act("describe_run", key="task:demo-task")
+        path = status_path(w)
+        path.write_text(path.read_text(encoding="utf-8").replace("edited: false", "edited: true") + "\nmore\n",
+                        encoding="utf-8")
+        mine = path.read_text(encoding="utf-8")
+        n = len(calls_for(w))
+        w.app.describe.pass_once()
+        w.app.describe.pass_once()
+        assert len(calls_for(w)) == n + 1
+        assert path.read_text(encoding="utf-8") == mine
+        assert w.app.describe.state_for("task:demo-task")["proposal"]["brief"]["goal"] == GOAL
+    finally:
+        w.close()
+
+
+def test_the_hourly_budget_holds_the_pass(tmp_path):
+    w = make_world(tmp_path, auto="missing", budget=2)
+    try:
+        for n in range(3):
+            add_task(w, f"more-{n}")
+        w.app.describe.pass_once()
+        assert len(model_calls(w)) == 2
+        w.app.describe.pass_once()
+        assert len(model_calls(w)) == 2           # the hour is not over
+        w.clock.advance(3601)
+        w.app.describe.pass_once()
+        assert len(model_calls(w)) == 4
+        assert w.app.describe.budget_left() == 0
+    finally:
+        w.close()
+
+
+def test_a_failed_text_is_not_asked_again_by_the_pass_until_it_changes(tmp_path):
+    w = make_world(tmp_path, auto="missing")
+    try:
+        w.runner.handlers["claude.p"] = lambda argv: answer(goal="Demo task")     # repeats the title
+        w.app.describe.pass_once()
+        n = len(model_calls(w))
+        w.app.describe.pass_once()
+        assert len(model_calls(w)) == n
+    finally:
+        w.close()
+
+
+def test_a_status_md_without_a_closed_frontmatter_costs_no_call(tmp_path):
+    w = make_world(tmp_path, auto="missing")
+    try:
+        d = w.app.root / "work" / "tasks" / "broken"
+        d.mkdir(parents=True)
+        (d / "STATUS.md").write_text("# yaml-language-server: x\n---\n\n# Broken\n\nNo fields.\n", encoding="utf-8")
+        with pytest.raises(ActionError) as refused:
+            w.act("describe_run", key="task:broken")
+        assert refused.value.code == "describe_no_front" and calls_for(w, "Broken") == []
+        w.app.describe.pass_once()
+        assert calls_for(w, "Broken") == [] and w.app.describe.state_for("task:broken")["last_error"]
+    finally:
+        w.close()
+
+
+def test_a_failed_write_is_not_tried_again_by_the_pass_until_the_text_changes(tmp_path):
+    w = make_world(tmp_path, auto="missing")
+    try:
+        w.runner.handlers["task.brief"] = lambda argv: RunResult(False, 1, "", "task: disk full", 1)
+        w.app.describe.pass_once()
+        n = len(calls_for(w))
+        assert n == 1 and w.app.describe.state_for("task:demo-task")["last_error"] == "task: disk full"
+        w.app.describe.pass_once()
+        assert len(calls_for(w)) == n
+    finally:
+        w.close()
+
+
+def test_the_pass_starts_only_when_auto_is_on(world, tmp_path):
+    assert world.app.describe.start_auto() is False
+    w = make_world(tmp_path / "on", auto="missing")
+    try:
+        assert w.app.describe.start_auto() is True
+        assert any(t.name == "bridge-cockpit-describe" for t in threading.enumerate())
+    finally:
+        w.close()
+
+
+# ---------------------------------------------------------------- config
+
+def test_describe_config_defaults_to_off(tmp_path):
+    cfg = load_web_config(tmp_path, {"cockpit": {}})
+    assert cfg.describe == {"auto": "off", "budget_per_hour": 20, "kinds": ["task", "stream", "inbox"]}
+    assert cfg.config_warnings == ()
+
+
+def test_describe_config_takes_its_keys_and_warns_on_bad_values(tmp_path):
+    cfg = load_web_config(tmp_path, {"cockpit": {"describe": {"auto": "stale", "budget_per_hour": 5, "kinds": ["task"]}}})
+    assert cfg.describe == {"auto": "stale", "budget_per_hour": 5, "kinds": ["task"]} and cfg.config_warnings == ()
+    bad = load_web_config(tmp_path, {"cockpit": {"describe": {"auto": "always", "budget_per_hour": -1,
+                                                              "kinds": ["task", "github"], "speed": 1}}})
+    assert bad.describe == {"auto": "off", "budget_per_hour": 20, "kinds": ["task"]}
+    text = " | ".join(bad.config_warnings)
+    for part in ("cockpit.describe.auto", "cockpit.describe.budget_per_hour", "cockpit.describe.kinds",
+                 "cockpit.describe.speed: unknown key"):
+        assert part in text
+    assert load_web_config(tmp_path, {"cockpit": {"describe": "on"}}).config_warnings
+    # a bare `auto: off` in YAML is false: still off, without a warning
+    plain = load_web_config(tmp_path, yaml.safe_load("cockpit:\n  describe:\n    auto: off\n"))
+    assert plain.describe["auto"] == "off" and plain.config_warnings == ()
+
+
+def test_the_ai_services_template_lists_the_cockpit_services():
+    text = (ROOT / "workflow" / "ai-services" / "_template.yaml").read_text(encoding="utf-8")
+    assert "cockpit-describe" in text and "cockpit-organize" in text
+
+
+def test_the_docs_name_the_describe_keys():
+    text = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
+    assert "`describe`" in text and "budget_per_hour" in text and "auto: missing" in text

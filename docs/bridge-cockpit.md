@@ -86,6 +86,7 @@ their defaults:
 | `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `files` (Files), see [The files view](cockpit-files.md); a view the tab does not offer opens Due. A click on the tab's switch still picks another for this browser, until the key changes |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
 | `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
+| `describe` | `auto: off` | each item's brief (goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes. The button on a card works with `auto: off` too |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
@@ -1230,6 +1231,48 @@ two clicks after naming it (the `settle` verb, so the history can undo it). An
 inbox row on a page carries its item id (`inbox`), which is how a row finds its
 triage.
 
+### Each item's brief
+
+A brief says what an item is for and when it is done: a `goal` (one sentence of
+what is different afterwards), a user `story` {as, want, so_that} when one fits,
+and two to five `acceptance` criteria, checkable outcomes rather than steps (a
+stream has none). Its shape and limits are `card_fields.py`; a task keeps it in
+the `brief:` block of its STATUS.md (`task.py brief`), an inbox item in its
+`describe` event (`inbox.py describe`).
+
+The small model writes it (service `cockpit-describe` in
+`workflow/ai-services/`, default `haiku` resolved to its full id; one call
+without tools, settings or session, a fixed JSON schema and `MAX_THINKING_TOKENS=0`
+in its env). The
+item goes in as data: a few frontmatter fields, its heading, the start of the
+body, its two last sections and its open inbox items, about 6000 characters.
+`by` names the model that answered as `modelUsage` reports it; another one than
+asked for is flagged as `model_mismatch`.
+
+The model keeps a brief up to date by itself as long as no person changed it.
+Once a person did, it only proposes: describe_apply takes a proposal over, as
+it is or as the person changed it (`edited: true`), describe_discard drops it.
+A brief changed by hand in the file counts as a person's too: `.bridge/describe.json`
+keeps the hash of each brief as describe wrote it, and the next pass marks a
+changed one `edited: true` without a model call. A brief is stale when its
+`basis` is no longer the item's text.
+
+"Describe" on a card (`describe_run {key}`) asks for one item now. With
+
+```yaml
+cockpit:
+  describe:
+    auto: missing        # or stale
+    budget_per_hour: 20
+```
+
+a pass of the server every ten minutes takes the items without a brief (and,
+with `stale`, the stale ones), proposes at most once per text for a brief a
+person wrote, does not ask again for a text whose answer failed, stays within
+the calls of the hour (clicks count, but are never refused) and never runs two
+calls at once. A card reads `written` (`ai`, `human` or none), `stale`, the
+waiting `proposal`, `running` and `last_error` from `describe.state_for`.
+
 A command row that offers steps of its own (`actions`, docs/briefings.md) shows
 an "Action" menu: two clicks run one through `row_action {page, section, index,
 action}`, which calls `briefing.py act` and voids the section's cache. A step
@@ -1973,6 +2016,7 @@ the cockpit (git ignores them too):
 | File | What | Inbox or chat text |
 |---|---|---|
 | `.bridge/triage.json` | the last triage run (`scripts/triage.py`): per task and inbox item a gist, a verdict and who does it | yes: titles and gists |
+| `.bridge/describe.json` | describe (`describe.py`): per item the hash of the brief as it was written, the waiting proposal, the last error and cost, and the calls of the last hour (the budget) | yes: proposed goals and criteria |
 | `.bridge/task-review.json` | the last task check (`task.py review`): per task a verdict and its reason | yes: task titles and reasons |
 | `.bridge/resources/workers-view.json` | the full worker view of the Resources section (`scripts/bridge-resources.py workers`) | no |
 | `.bridge/resources/costs-view.json` | the last cloud cost report with its source, read time and age (`scripts/bridge-resources.py costs`) | no |

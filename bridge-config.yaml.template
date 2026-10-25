@@ -203,6 +203,10 @@ work:
 #     "*-health": bot        # globs need quotes
 #     alex: person
 #     team-notes: session
+#   describe:              # each item's brief (goal, story, acceptance) written and kept by a small model
+#     auto: off            # off | missing = items without a brief | stale = also briefs whose text moved on
+#     budget_per_hour: 20  # the most model calls of an hour; a click on a card counts but is never refused
+#     kinds: [task, stream, inbox]
 #   launch:
 #     target: area         # area = the workspace of the item's area (workplace.workspaces) | tab = here | workspace = one each
 #                          # | auto = a small model picks the area or a workspace of its own (workplace.router)

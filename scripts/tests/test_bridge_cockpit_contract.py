@@ -345,6 +345,15 @@ def s_organize(w: World) -> None:
     w.act("organize_apply", proposal=prop["id"], items=[i["id"] for i in prop["items"]])
 
 
+def s_describe(w: World) -> None:
+    """Describe writes a task's brief through task.py brief and an inbox item's through inbox.py describe."""
+    brief = {"goal": "The demo is ready to try", "story": None, "acceptance": ["It opens", "Two people tried it"]}
+    w.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": "", "structured_output": brief,
+                                                     "total_cost_usd": 0.001, "modelUsage": {"claude-haiku-5-5": {}}})
+    w.act("describe_run", key="task:demo-task")
+    w.act("describe_run", key=f"inbox:{YES_ID}")
+
+
 @dataclass
 class Scenario:
     drive: Callable[[World], None]
@@ -378,6 +387,7 @@ SCENARIOS = {
     "reads": Scenario(s_reads, {"inbox.list", "inbox.stats", "inbox.mute", "workplace.screen", "briefing.detail"}),
     "returns": Scenario(s_returns, {"task.note", "inbox.note"}),
     "workspaces": Scenario(s_workspaces, {"workplace.workspaces"}, config=WORKSPACES_CFG),
+    "describe": Scenario(s_describe, {"task.brief", "inbox.describe"}),
     "organize": Scenario(s_organize, {"workplace.workspaces", "workplace.move-tab", "workplace.rename",
                                       "workplace.rename-workspace", "workplace.workspace-color",
                                       "workplace.workspace-description"}, config=WORKSPACES_CFG),

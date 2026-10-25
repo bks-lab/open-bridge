@@ -51,6 +51,7 @@ from .relay import Relay, default_key_dir, load_key
 from .agents import Agents
 from .bridges import Bridges
 from .triage import Triage
+from .describe import Describer
 from .history import History
 from .quick import Quick
 from .review import Review
@@ -209,6 +210,7 @@ class App:
         self.agents = Agents(self)
         self.bridges = Bridges(self.root)
         self.triage = Triage(self)
+        self.describe = Describer(self)                # each item's brief, written and kept (describe.py)
         self.history = History(self.state_dir, self.clock)
         self.collector = Collector(self)
         self.relay = Relay(self.state_dir, cfg, clock, self.tx, key=load_key(key_dir or default_key_dir()))
@@ -225,7 +227,9 @@ class App:
 
     # ------------------------------------------------------------ plumbing
 
-    def run(self, argv: list[str], timeout: float, on_line=None):
+    def run(self, argv: list[str], timeout: float, on_line=None, env_extra: dict | None = None):
+        if env_extra is not None:
+            return self.runner.run(argv, timeout, env_extra=env_extra)
         return self.runner.run(argv, timeout, on_line) if on_line else self.runner.run(argv, timeout)
 
     def workplace(self, *args: str) -> list[str]:
@@ -600,6 +604,7 @@ class App:
         if self.cfg.triage_daily:
             self.triage.start_daily()  # what each task and inbox item is, once a day by itself (cockpit.triage_daily)
         self.start_layout_backup()     # the cmux layout, every snapshot_minutes, only on change
+        self.describe.start_auto()     # each item's brief kept by itself, only with cockpit.describe.auto on
         self.history.backfill(self.root, self.state_dir / "audit.log")   # closes from before the history
         for target, name in ((self.collector.worker, "collect"), (self.tabs.loop, "tabs"), (self.watcher.loop, "watch"),
                              (self.ticker.loop, "ticker-loop")):

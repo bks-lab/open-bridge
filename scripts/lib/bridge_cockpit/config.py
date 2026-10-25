@@ -16,6 +16,7 @@ import re
 import yaml
 
 from .. import model_route as mr
+from . import describe as dsc
 from . import guide as gd
 from . import origin as og
 from . import ticker as tk
@@ -97,6 +98,9 @@ class WebConfig:
     # how the work tab names a source the built-in rules cannot tell (cockpit.origin_map, origin.py): pairs of
     # (pattern lower-cased, category) in file order, a tuple since the config is frozen and order matters
     origin_map: tuple = ()
+    # each item's brief written and kept by a small model (cockpit.describe, describe.py): {auto, budget_per_hour,
+    # kinds}; auto off unless switched on, the button on a card works either way
+    describe: dict = field(default_factory=dsc.defaults)
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
     config_warnings: tuple = ()
@@ -172,7 +176,7 @@ BLOCK = {
     "launch_model": ("launch_model",), "ticker": ("ticker",), "usage": ("usage",),
     "session_guide": ("session_guide",), "tour": ("bool", "tour"),
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
-    "origin_map": ("origin_map",),
+    "origin_map": ("origin_map",), "describe": ("describe",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -331,6 +335,9 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
         if kind == "origin_map":
             out += origin_map_of(value)[1]
             continue
+        if kind == "describe":
+            out += dsc.check(value, cfg.describe, at)
+            continue
         if kind == "block":
             if not isinstance(value, dict):
                 used = ", ".join(f"{name} {_show(getattr(cfg, r[1]))}" for name, r in rule[1].items())
@@ -414,7 +421,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
                     work_view=w["work_view"] if w.get("work_view") in WORK_VIEWS else "due",
                     focus_to_files=w.get("focus_to_files") is True,
-                    origin_map=origin_map_of(w.get("origin_map"))[0],
+                    origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)
