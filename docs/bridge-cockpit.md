@@ -1249,9 +1249,11 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   and the Chat shows Work. There is then no A2A connections tab: every way to an
   agent (a toast "an agent answered", the band's "agent not reachable", an agent
   on the start page, a stored page) opens the Chat on its A2A area with that agent
-  or conversation picked. So the signal is not lost with the tab, the Chat tab and
-  the A2A switch wear it: a spinner while an agent answers, a dot while an answer
-  is held for its owner.
+  or conversation picked. The way back works the same: a tab, a workspace, a chat or
+  a Bridge picked from anywhere (Work through, the start page's waiting tabs) opens
+  the Chat on Work, even when it was left on A2A. So the signal is not lost with
+  the tab, the Chat tab and the A2A switch wear it: a spinner while an agent
+  answers, a dot while an answer is held for its owner.
 - **In Work, on top**, "Waiting for you" lists the tabs that wait for
   you or need you, the most urgent first (the control tab never), each with its
   workspace, its question and the answers, see [Answering a tab from

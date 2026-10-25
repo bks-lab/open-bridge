@@ -1048,9 +1048,14 @@ kbd {
 .rooms-left { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; min-width: 0; }
 .rooms-area > .seg { display: flex; width: 100%; }
 .rooms-area .seg-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.rooms-agents { padding: 8px; max-height: calc(100dvh - 220px); }
+.rooms-agents { padding: 8px; }
 .agent-mark { display: inline-flex; align-items: center; }
-.rooms-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px; max-height: calc(100dvh - 220px); overflow-y: auto; align-content: start; }
+.rooms-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px; max-height: calc(100dvh - 180px); overflow-y: auto; align-content: start; }
+/* the switch above the sidebar takes 40px of its height, only where it stands (a peer); the A2A list names both
+   classes, since .agents-list further down would win at the same weight. Narrow pages keep their 260px */
+@media (min-width: 900px) {
+  .rooms-left:has(> .rooms-area) > .rooms-side, .rooms-agents.agents-list { max-height: calc(100dvh - 220px); }
+}
 .rooms-side > .room-item { padding-left: 12px; }
 .room-group { margin: 12px 10px 4px; }
 /* the workspaces heading with the order toggle (terminal order or the most urgent first) */

@@ -39,7 +39,7 @@ import { HintsOverlay } from './views/hints.js'
 export { useHomeTitle } from './views/home.js'
 export { quickLive } from './views/chat.js'
 export {
-  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAsWorkspaces,
+  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces,
   morePages, pageOrder, workViewNow,
 } from './views/nav.js'
 
