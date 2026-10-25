@@ -99,6 +99,13 @@ def test_checkboxes_in_the_front_matter_do_not_count(tmp_path):
     assert wp.collect_tasks(tmp_path)[0]["progress"] == {"done": 0, "total": 1}
 
 
+
+def test_checkboxes_in_a_code_fence_do_not_count(tmp_path):
+    write(tmp_path, "x", {}, "- [x] real\n\n```markdown\n- [ ] an example\n- [x] another\n```\n\n"
+                            "~~~\n- [ ] tilde fenced\n~~~\n- [ ] after the fence\n")
+    assert wp.collect_tasks(tmp_path)[0]["progress"] == {"done": 1, "total": 2}
+
+
 # ---------------------------------------------------------------- task_rows and the CLI
 
 def test_task_rows_carry_brief_headline_next_who_due_and_progress(repo):

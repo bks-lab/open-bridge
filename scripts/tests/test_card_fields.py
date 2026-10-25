@@ -156,6 +156,18 @@ def test_basis_is_sixteen_hex_characters_and_edited_a_bool():
     assert any("basis" in e for e in errors) and any("edited" in e for e in errors)
 
 
+
+@pytest.mark.parametrize("key,value", [("basis", "0123456789abcdef\n"), ("by", "claude-haiku-4-5-20251001\n"),
+                                       ("at", "2026-10-25\n")])
+def test_a_trailing_newline_is_no_match(key, value):
+    # `$` matches before a final newline; the stored value must be exactly what the schema pattern takes
+    clean, errors = cf.validate_brief({"goal": "g", key: value})
+    if key == "basis":
+        assert "basis" not in clean and any("basis" in e for e in errors)
+    else:  # by and at are texts a person may type, so their surrounding whitespace is dropped
+        assert clean[key] == value.strip() and not errors
+
+
 # ---------------------------------------------------------------- brief_basis
 
 STATUS = """# yaml-language-server: $schema=../../templates/_schema.status.yaml
@@ -194,6 +206,20 @@ def test_writing_or_rewriting_the_brief_keeps_the_basis():
     inline = bare.replace("priority: P1\n", "brief: {goal: Something else}\npriority: P1\n")
     assert cf.brief_basis(bare) == cf.brief_basis(STATUS) == cf.brief_basis(inline)
 
+
+
+def test_a_brief_appended_with_a_separator_line_keeps_the_basis():
+    bare = STATUS.replace("brief:\n  goal: Invoices reach the customer\n  acceptance:\n    - No invoice twice\n\n"
+                          "  by: claude-haiku-4-5-20251001\n", "")
+    appended = bare.replace("priority: P1\n---", "priority: P1\n\nbrief:\n  goal: Invoices reach the customer\n---")
+    assert cf.brief_basis(appended) == cf.brief_basis(bare)
+
+
+def test_only_one_separator_line_belongs_to_the_brief():
+    bare = "---\nslug: a\n\nstatus: doing\n---\n"
+    assert cf.brief_basis("---\nslug: a\n\nbrief: {goal: g}\nstatus: doing\n---\n") == cf.brief_basis(
+        "---\nslug: a\nstatus: doing\n---\n")
+    assert cf.brief_basis(bare) != cf.brief_basis("---\nslug: a\nstatus: doing\n---\n")
 
 def test_any_other_change_moves_the_basis():
     assert cf.brief_basis(STATUS) != cf.brief_basis(STATUS.replace("status: doing", "status: review"))

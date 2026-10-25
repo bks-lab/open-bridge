@@ -589,6 +589,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/card_fields.py",          # the wire shape of a card and of a brief
     "scripts/tests/test_card_fields.py",
     "scripts/tests/test_workplace_brief.py",
+    "scripts/tests/test_validate_status_brief.py",
     "scripts/tests/test_bridge_cockpit_origin.py",
     "scripts/tests/test_bridge_cockpit_origin_flow.py",
     "scripts/triage.py",

@@ -253,13 +253,23 @@ def tab_label(task: dict, cfg: dict) -> str:
     return text[:LABEL_MAX].rsplit(" ", 1)[0].rstrip(",:;") + "…"
 
 
-CHECK_RE = re.compile(r"^\s*[-*] \[([ xX])\]", flags=re.MULTILINE)
+CHECK_RE = re.compile(r"^\s*[-*] \[([ xX])\]")
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
 def progress(text: str) -> dict | None:
-    """{done, total} from the `- [x]` and `- [ ]` lines of the body (nested ones too); None without any."""
+    """{done, total} from the `- [x]` and `- [ ]` lines of the body (nested ones too, none inside a ``` or ~~~
+    code fence, where they are examples); None without any."""
     parts = re.split(r"^---\s*$", text, maxsplit=2, flags=re.MULTILINE)
-    marks = CHECK_RE.findall(parts[2] if len(parts) == 3 else text)
+    marks, fence = [], None
+    for line in (parts[2] if len(parts) == 3 else text).splitlines():
+        opener = FENCE_RE.match(line)
+        if opener:
+            fence = None if fence == opener.group(1) else (fence or opener.group(1))
+            continue
+        mark = None if fence else CHECK_RE.match(line)
+        if mark:
+            marks.append(mark.group(1))
     return {"done": sum(m != " " for m in marks), "total": len(marks)} if marks else None
 
 

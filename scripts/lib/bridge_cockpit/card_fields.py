@@ -21,8 +21,12 @@ rewritten, so a wrong text is never shown as if it were right; a list of more th
 first five and says so. Without a usable goal there is no brief and `clean` is None.
 
 `brief_basis(text)` is the sha256 prefix (16 hex characters) of a STATUS.md with its `brief:` block taken out
-of the front matter, so writing the brief does not change it and any other change does: a brief whose basis
-differs from the file's is stale.
+of the front matter (and one blank line directly before it), so writing the brief does not change it and any
+other change does: a brief whose basis differs from the file's is stale. A writer adds at most that one
+separator line; a second one is a change to the file.
+
+The card's `next` {what, who, due} is built from a task row's flat `next`, `next_who` and `next_due`
+(workplace.py tasks, docs/workplace.md): `next` stays the text it always was for the callers that read it.
 
 Pure: no I/O, nothing raises on bad input.
 """
@@ -44,10 +48,11 @@ BRIEF_FIELDS = ("goal", "story", "acceptance", "by", "at", "basis", "edited")
 BRIEF_LIMITS = {"goal": 140, "story": 80, "acceptance_items": 5, "acceptance_len": 120}
 
 _DASH_RE = re.compile("[‒-―]")
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_BASIS_RE = re.compile(r"^[0-9a-f]{16}$")
+# matched with fullmatch: `$` would also take a value that ends in a newline
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_BASIS_RE = re.compile(r"[0-9a-f]{16}")
 # a model id names a version, so it holds a digit; an alias (haiku, opus[1m]) does not
-_MODEL_RE = re.compile(r"^(?=.*\d)[A-Za-z0-9][A-Za-z0-9._:/@-]*$")
+_MODEL_RE = re.compile(r"(?=.*\d)[A-Za-z0-9][A-Za-z0-9._:/@-]*")
 
 
 def _text(value: Any, name: str, limit: int, errors: list) -> str | None:
@@ -111,7 +116,7 @@ def validate_brief(obj: Any) -> tuple[dict | None, list[str]]:
             clean["acceptance"] = [x for x in kept if x is not None]
     if "by" in obj:
         by = obj["by"]
-        if isinstance(by, str) and _MODEL_RE.match(by.strip()):
+        if isinstance(by, str) and _MODEL_RE.fullmatch(by.strip()):
             clean["by"] = by.strip()
         else:
             errors.append(f"by: {by!r} is no model id (as modelUsage reports it, never an alias)")
@@ -121,7 +126,7 @@ def validate_brief(obj: Any) -> tuple[dict | None, list[str]]:
             at = at.date()
         if isinstance(at, dt.date):
             clean["at"] = at.isoformat()
-        elif isinstance(at, str) and _DATE_RE.match(at.strip()):
+        elif isinstance(at, str) and _DATE_RE.fullmatch(at.strip()):
             try:
                 clean["at"] = dt.date.fromisoformat(at.strip()).isoformat()
             except ValueError:
@@ -129,7 +134,7 @@ def validate_brief(obj: Any) -> tuple[dict | None, list[str]]:
         else:
             errors.append(f"at: {at!r} is no date (YYYY-MM-DD)")
     if "basis" in obj:
-        if isinstance(obj["basis"], str) and _BASIS_RE.match(obj["basis"]):
+        if isinstance(obj["basis"], str) and _BASIS_RE.fullmatch(obj["basis"]):
             clean["basis"] = obj["basis"]
         else:
             errors.append("basis: not 16 lowercase hex characters")
@@ -147,7 +152,8 @@ _FENCE_RE = re.compile(r"^---\s*$")
 
 
 def strip_brief(text: str) -> str:
-    """The text with the `brief:` block of its front matter taken out (line endings made `\\n`); a text
+    """The text with the `brief:` block of its front matter taken out (line endings made `\\n`), and with it
+    one blank line directly before it, so a writer may append the block after a separator line; a text
     without front matter, or a front matter without a brief, comes back as it was."""
     lines = text.replace("\r\n", "\n").split("\n")
     fences = [i for i, line in enumerate(lines) if _FENCE_RE.match(line)][:2]
@@ -157,6 +163,8 @@ def strip_brief(text: str) -> str:
     out, i = lines[:start + 1], start + 1
     while i < end:
         if re.match(r"^brief\s*:", lines[i]):
+            if len(out) > start + 1 and not out[-1].strip():
+                out.pop()  # the one separator line a writer may put before the block
             i += 1
             block_end = i
             # the block runs on over indented and blank lines; trailing blank lines belong to what follows
