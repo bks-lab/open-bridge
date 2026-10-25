@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: MIT
+// UI texts of the files view (rules/language-policy.md section 3): the `dossier` part of both tables, side by side
+// under identical keys. text.js takes them in as TABLES.en.dossier and TABLES.de.dossier, so a view reads them
+// through T() as before. Keys and comments are English; only the values of `de` are German.
+
+export const FILES = {
+  en: {
+    label: 'File', next: 'Next step', noNext: 'No next step known',
+    from: { tab: 'an agent tab asks', result: 'a result waits', run: 'a workflow finished', inbox: 'from the inbox', status: 'from STATUS.md' },
+    runStep: name => `Check the result of ${name}`,
+    age: d => (d === 0 ? 'today' : d === 1 ? 'for 1 day' : `for ${d} days`),
+    situationFrom: { status: 'STATUS.md', triage: 'triage' },
+    drawers: { result: 'Result', inbox: 'Inbox', history: 'History', files: 'Files', sections: 'Sections', refs: 'References' },
+    run: {
+      status: { running: 'running', pending: 'waiting to start', completed: 'finished', failed: 'failed', killed: 'stopped', unknown: 'unknown' },
+      agents: n => (n === 1 ? '1 agent' : `${n} agents`), answer: 'It left',
+      how: { named: 'names this file', session: 'ran in its session', place: 'ran in its folder' },
+      check: 'Checked', checked: 'checked',
+    },
+    file: { loading: 'Reading the file', failed: 'This file cannot be read.', cut: 'Shown in part: the file is longer.', close: 'Close' },
+    empty: 'No file waits for you.', emptySub: 'Nothing is doing or in review. Backlog and resting tasks stay out of this queue.',
+    emptyArea: name => `Nothing open in ${name}.`, emptyAreaSub: 'No task of this area is doing or in review.', allAreas: 'All areas',
+    emptyPinned: 'No pinned file is open.', emptyAreaPinned: name => `No pinned file is open in ${name}.`,
+    emptyPinnedSub: 'Only the files you pinned with the star show.', allFiles: 'Show unpinned files too',
+    after: 'Next', loading: 'Reading the file',
+    find: {
+      label: 'Search the files, closed ones too', placeholder: 'Search the files', title: 'Search results', show: 'Show results', hide: 'Fold results', button: 'Search', clear: 'Clear',
+      loading: 'Searching', none: q => `Nothing found for "${q}".`, failed: e => `The search failed: ${e}`,
+      tooShort: 'Type at least two characters.', allAreas: 'Searches in all areas.', open: 'Open', hits: n => (n === 1 ? '1 hit' : `${n} hits`),
+      shown: (n, total) => `${n} of ${total} files shown`,
+      kind: { task: 'task', stream: 'stream', done: 'closed', log: 'log', archive: 'archive' },
+    },
+    back: 'Back to the queue', opened: 'Opened from the search', noFile: 'This file can no longer be read.',
+    walk: { label: 'Walk through the files', prev: 'Previous file', next: 'Next file', queue: 'Show the whole queue' },
+    ask: {
+      label: 'Ask this file', placeholder: 'Ask this file...', button: 'Ask',
+      results: 'Ask about these results', resultsPlaceholder: 'Ask about what the search found...',
+    },
+    suggest: {
+      button: 'Suggest next step', running: 'Looking for a next step', take: 'Take over', dismiss: 'Dismiss',
+      title: 'Suggested next step', failed: 'No suggestion came back.',
+      note: 'Read only: nothing is written until you take it over.',
+      ask: 'Suggest one next step for this file. Read its folder first. Answer with exactly one line: the step itself, as an instruction, at most 120 characters, nothing else.',
+    },
+    ctx: {
+      file: 'File', folder: 'Folder', title: 'Title', status: 'Status', priority: 'Priority', situation: 'Situation',
+      next: 'Next step', read: p => `Answer from the files in ${p}/ and name the file you used.`,
+      results: q => `Search results for "${q}" in the files of the work system, best first:`,
+      more: n => `and ${n} more files`,
+    },
+  },
+  de: {
+    label: 'Akte', next: 'Nächster Schritt', noNext: 'Kein nächster Schritt bekannt',
+    from: { tab: 'ein Agenten-Tab fragt', result: 'ein Ergebnis wartet', run: 'ein Workflow ist fertig', inbox: 'aus dem Eingang', status: 'aus STATUS.md' },
+    runStep: name => `Ergebnis von ${name} prüfen`,
+    age: d => (d === 0 ? 'heute' : d === 1 ? 'seit 1 Tag' : `seit ${d} Tagen`),
+    situationFrom: { status: 'STATUS.md', triage: 'Triage' },
+    drawers: { result: 'Ergebnis', inbox: 'Eingang', history: 'Verlauf', files: 'Dateien', sections: 'Abschnitte', refs: 'Verweise' },
+    run: {
+      status: { running: 'läuft', pending: 'wartet auf den Start', completed: 'fertig', failed: 'fehlgeschlagen', killed: 'abgebrochen', unknown: 'unbekannt' },
+      agents: n => (n === 1 ? '1 Agent' : `${n} Agenten`), answer: 'Hinterlassen',
+      how: { named: 'nennt diese Akte', session: 'lief in ihrer Sitzung', place: 'lief in ihrem Ordner' },
+      check: 'Geprüft', checked: 'geprüft',
+    },
+    file: { loading: 'Datei wird gelesen', failed: 'Diese Datei lässt sich nicht lesen.', cut: 'Nur ein Teil: die Datei ist länger.', close: 'Schließen' },
+    empty: 'Keine Akte wartet auf dich.', emptySub: 'Nichts ist in Arbeit oder im Review. Backlog und ruhende Aufgaben bleiben aus dieser Schlange.',
+    emptyArea: name => `Im Bereich ${name} ist nichts offen.`, emptyAreaSub: 'Keine Aufgabe dieses Bereichs ist in Arbeit oder im Review.', allAreas: 'Alle Bereiche',
+    emptyPinned: 'Keine angeheftete Akte ist offen.', emptyAreaPinned: name => `Keine angehefteten Akten im Bereich ${name}.`,
+    emptyPinnedSub: 'Es stehen nur die Akten, die du mit dem Stern angeheftet hast.', allFiles: 'Auch nicht angeheftete zeigen',
+    after: 'Als Nächstes', loading: 'Akte wird gelesen',
+    find: {
+      label: 'Akten durchsuchen, auch erledigte', placeholder: 'Akten durchsuchen', title: 'Suchtreffer', show: 'Treffer zeigen', hide: 'Treffer einklappen', button: 'Suchen', clear: 'Leeren',
+      loading: 'Suche läuft', none: q => `Nichts gefunden für „${q}“.`, failed: e => `Die Suche ging nicht: ${e}`,
+      tooShort: 'Mindestens zwei Zeichen eingeben.', allAreas: 'Sucht in allen Bereichen.', open: 'Öffnen', hits: n => (n === 1 ? '1 Treffer' : `${n} Treffer`),
+      shown: (n, total) => `${n} von ${total} Akten gezeigt`,
+      kind: { task: 'Aufgabe', stream: 'Stream', done: 'erledigt', log: 'Log', archive: 'Archiv' },
+    },
+    back: 'Zurück zur Schlange', opened: 'Aus der Suche geöffnet', noFile: 'Diese Akte lässt sich nicht mehr lesen.',
+    walk: { label: 'Durch die Akten gehen', prev: 'Vorherige Akte', next: 'Nächste Akte', queue: 'Die ganze Schlange zeigen' },
+    ask: {
+      label: 'Akte fragen', placeholder: 'Akte fragen ...', button: 'Fragen',
+      results: 'Zu diesen Treffern fragen', resultsPlaceholder: 'Zu dem fragen, was die Suche gefunden hat ...',
+    },
+    suggest: {
+      button: 'Vorschlag holen', running: 'Suche nach einem nächsten Schritt', take: 'Übernehmen', dismiss: 'Verwerfen',
+      title: 'Vorgeschlagener nächster Schritt', failed: 'Es kam kein Vorschlag zurück.',
+      note: 'Nur gelesen: geschrieben wird erst, wenn du ihn übernimmst.',
+      ask: 'Schlage einen nächsten Schritt für diese Akte vor. Lies zuerst ihren Ordner. Antworte mit genau einer Zeile: nur der Schritt, als Anweisung, höchstens 120 Zeichen, sonst nichts.',
+    },
+    ctx: {
+      file: 'Akte', folder: 'Ordner', title: 'Titel', status: 'Status', priority: 'Priorität', situation: 'Lage',
+      next: 'Nächster Schritt', read: p => `Antworte aus den Dateien in ${p}/ und nenne die Datei, die du genutzt hast.`,
+      results: q => `Suchtreffer für „${q}“ in den Akten des Arbeitssystems, die besten zuerst:`,
+      more: n => `und ${n} weitere Akten`,
+    },
+  },
+}

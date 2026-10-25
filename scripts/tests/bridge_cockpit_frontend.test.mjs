@@ -38,11 +38,11 @@ const VENDOR_BYTES = 13194
 const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
   ? fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).sort().map(f => `views/${f}`) : []
 const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
-const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'motion.js', 'text.js', 'theme.js', 'mock.js', ...VIEW_FILES]
+const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'motion.js', 'text.js', 'text-areas.js', 'text-files.js', 'theme.js', 'mock.js', ...VIEW_FILES]
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
-for (const name of ['logic', 'areas', 'files', 'text', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
+for (const name of ['logic', 'areas', 'files', 'text', 'text-areas', 'text-files', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }
