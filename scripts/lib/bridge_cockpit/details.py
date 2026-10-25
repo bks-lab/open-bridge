@@ -222,6 +222,8 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
                               if isinstance(front.get("origin"), str) else None}, known)
     result = {"ok": True, "slug": slug, "kind": kind, "work_kind": work_kind, "origin": origin, "path": path.resolve().relative_to(root.resolve()).as_posix(),
               "front": {k: _scalar(front.get(k)) for k in FRONT_KEYS}, "sections": sections_of(body),
+              # the brief block as a mapping, never flattened through _scalar (card_fields.py names its shape)
+              "brief": _plain(front["brief"]) if isinstance(front.get("brief"), dict) else None,
               # the paths STATUS.md names as related, as written: the files view lists them as references
               "related": [str(x)[:300] for x in related if isinstance(x, (str, int, float))][:RELATED_MAX],
               "log": log_rows(root, slug),

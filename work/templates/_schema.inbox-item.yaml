@@ -2,8 +2,10 @@
 #
 # Validates `work/inbox/<id>/item.yaml`, the file `scripts/inbox.py add` writes
 # once and never changes. Events under `work/inbox/<id>/events/` are validated
-# by `python3 scripts/inbox.py validate` (their verb must be one of the nine
-# below). The contract is scripts/inbox.py; this schema mirrors it.
+# by `python3 scripts/inbox.py validate` (their verb must be one of
+# inbox.VERBS; a `describe` event carries a `brief` as `$defs/brief`, the
+# same shape as the `brief:` block of a STATUS.md). The contract is
+# scripts/inbox.py; this schema mirrors it.
 #
 # Related:
 #   - work/templates/inbox-item.yaml  (annotated example)
@@ -81,6 +83,54 @@ properties:
     description: "Who ends the item when it has no probe: the reporter (closes by key once the condition is gone), a person, or a watcher bot. An item with neither closes_when nor closer has no way out; `add` warns."
 
 $defs:
+  brief:
+    type: object
+    additionalProperties: false
+    required: [goal]
+    description: |
+      What was written about an item: a goal, an optional user story and the
+      acceptance criteria, plus who wrote it, when and against which text.
+      One shape in two places, the `brief:` block of a STATUS.md and the
+      `describe` event of an inbox item. The gate every writer passes is
+      scripts/lib/bridge_cockpit/card_fields.py validate_brief; its
+      BRIEF_LIMITS are the limits below. No text holds a dash as punctuation.
+    properties:
+      goal:
+        type: string
+        minLength: 1
+        maxLength: 140
+        description: "One sentence: what is true once the item is done"
+      story:
+        type: object
+        additionalProperties: false
+        required: [as, want, so_that]
+        description: "Optional user story: as <who>, I want <what>, so that <why>"
+        properties:
+          as: {type: string, minLength: 1, maxLength: 80}
+          want: {type: string, minLength: 1, maxLength: 80}
+          so_that: {type: string, minLength: 1, maxLength: 80}
+      acceptance:
+        type: array
+        minItems: 0
+        maxItems: 5
+        items: {type: string, minLength: 1, maxLength: 120}
+        description: "Testable outcomes, not steps. A stream has none"
+      by:
+        type: string
+        pattern: "^(?=.*[0-9])[A-Za-z0-9][A-Za-z0-9._:/@-]*$"
+        description: "The model id exactly as the run's modelUsage reports it, never an alias such as haiku"
+      at:
+        type: string
+        format: date
+        description: "The day it was written"
+      basis:
+        type: string
+        pattern: "^[0-9a-f]{16}$"
+        description: "sha256 prefix of the STATUS.md text without this block (card_fields.brief_basis): a brief whose basis differs from the file's is stale"
+      edited:
+        type: boolean
+        description: "true once a person changed it; a model then never rewrites it unasked"
+
   probe:
     type: object
     minProperties: 1

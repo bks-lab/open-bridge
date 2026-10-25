@@ -253,7 +253,30 @@ def tab_label(task: dict, cfg: dict) -> str:
     return text[:LABEL_MAX].rsplit(" ", 1)[0].rstrip(",:;") + "…"
 
 
-def collect_tasks(root: Path) -> list:
+CHECK_RE = re.compile(r"^\s*[-*] \[([ xX])\]", flags=re.MULTILINE)
+
+
+def progress(text: str) -> dict | None:
+    """{done, total} from the `- [x]` and `- [ ]` lines of the body (nested ones too); None without any."""
+    parts = re.split(r"^---\s*$", text, maxsplit=2, flags=re.MULTILINE)
+    marks = CHECK_RE.findall(parts[2] if len(parts) == 3 else text)
+    return {"done": sum(m != " " for m in marks), "total": len(marks)} if marks else None
+
+
+def _plain(value):
+    """YAML as JSON: a date becomes its ISO text, mappings and lists keep their shape."""
+    if isinstance(value, dict):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_plain(v) for v in value]
+    if isinstance(value, (dt.date, dt.datetime)):
+        return value.isoformat()
+    return value
+
+
+def collect_tasks(root: Path, include_all: bool = False) -> list:
+    """The tasks and streams in doing or review; `include_all` adds the backlog (never the closed ones)."""
+    wanted = (*ACTIVE, "backlog") if include_all else ACTIVE
     tasks = []
     for kind in ("tasks", "streams"):
         for status in sorted((root / "work" / kind).glob("*/STATUS.md")):
@@ -261,7 +284,7 @@ def collect_tasks(root: Path) -> list:
                 continue
             text = status.read_text(encoding="utf-8")
             fm = frontmatter(text)
-            if fm.get("status") not in ACTIVE:
+            if fm.get("status") not in wanted:
                 continue
             tasks.append({
                 "slug": fm.get("slug") or status.parent.name, "kind": kind, "status": fm.get("status"),
@@ -269,6 +292,11 @@ def collect_tasks(root: Path) -> list:
                 "blocked_by": fm.get("blocked_by"), "updated": _date(fm.get("last_updated")), "next": fm.get("next"),
                 "status_path": str(status.relative_to(root)), "heading": heading(text),
                 "origin": fm.get("origin") if isinstance(fm.get("origin"), str) else None,
+                # what a card is written from: the brief as a mapping (the gate is card_fields.validate_brief,
+                # run where the card is built), the one-line headline and the checklist of the body
+                "brief": _plain(fm["brief"]) if isinstance(fm.get("brief"), dict) else None,
+                "headline": fm.get("headline") if isinstance(fm.get("headline"), str) else None,
+                "progress": progress(text),
             })
     return tasks
 
@@ -906,12 +934,21 @@ def _next_what(value) -> str | None:
     return text or None
 
 
-def task_rows(root: Path, cfg: dict, today: dt.date) -> list:
-    """Every active task, flat: label, area (its workspace), priority, score, blocked_by, stale.
-    The whole list, for any UI or script that drives workplace.py; propose decides which of them get a
-    tab today."""
+def _next_part(value, key: str) -> str | None:
+    """The `who` or `due` of a `next:` mapping, as text; None for a plain `next:` or one without it."""
+    part = value.get(key) if isinstance(value, dict) else None
+    if not isinstance(part, (str, int, float, dt.date)) or isinstance(part, bool):
+        return None
+    return str(_plain(part)).strip() or None
+
+
+def task_rows(root: Path, cfg: dict, today: dt.date, include_all: bool = False) -> list:
+    """Every active task, flat: label, area (its workspace), priority, score, blocked_by, stale, plus what a
+    card is written from (brief, headline, next_who, next_due, progress). The whole list, for any UI or
+    script that drives workplace.py; propose decides which of them get a tab today. `include_all` adds
+    the backlog."""
     limits = {**DEFAULT_LIMITS, **(cfg.get("limits") or {})}
-    tasks = collect_tasks(root)
+    tasks = collect_tasks(root, include_all=include_all)
     log_path = root / "work" / "log.md"
     log = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
     mentions = log_mentions(log, [t["slug"] for t in tasks], today, limits["activity_days"])
@@ -929,7 +966,9 @@ def task_rows(root: Path, cfg: dict, today: dt.date) -> list:
                      "blocked_by": t.get("blocked_by"), "stale": age > limits["stale_days"],
                      "kind": t["kind"],
                      # how it began (STATUS.md origin, free text): the cockpit says where it comes from
-                     "origin": (t.get("origin") or "")[:300] or None})
+                     "origin": (t.get("origin") or "")[:300] or None,
+                     "headline": t.get("headline"), "brief": t.get("brief"), "progress": t.get("progress"),
+                     "next_who": _next_part(t.get("next"), "who"), "next_due": _next_part(t.get("next"), "due")})
     rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     return sorted(rows, key=lambda r: (rank.get(r["priority"] or "", 4), -r["score"], r["slug"]))
 
@@ -1418,8 +1457,9 @@ def main(argv=None) -> int:
     sub.add_parser("teams", help="the team recipes: ordered role tabs on one task").add_argument(
         "--json", action="store_true")
     sub.add_parser("status").add_argument("--json", action="store_true")
-    sub.add_parser("tasks", help="every active task with area, priority and flags").add_argument(
-        "--json", action="store_true")
+    tk = sub.add_parser("tasks", help="every active task with area, priority and flags")
+    tk.add_argument("--json", action="store_true")
+    tk.add_argument("--all", action="store_true", help="the backlog too")
     sd = sub.add_parser("send")
     sd.add_argument("tab")
     sd.add_argument("text", nargs="+")
@@ -1521,7 +1561,7 @@ def main(argv=None) -> int:
         print("\n".join(driver.control(ctl, command, args.root)))
         return 1 if getattr(driver, "failed", False) else 0
     if args.cmd == "tasks":
-        rows = task_rows(args.root, cfg, today)
+        rows = task_rows(args.root, cfg, today, include_all=args.all)
         if args.json:
             print(json.dumps(rows, ensure_ascii=False, indent=1))
         else:

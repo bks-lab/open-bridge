@@ -323,10 +323,14 @@ workspace each item belongs to and writes the answer as the item's `area`
 placer at a time (a lock in `.bridge/cache/`). The router runs in the repository root. An inbox item without a task then launches into
 its area's workspace instead of the default one.
 
-`workplace.py tasks [--json]` lists every active task flat, sorted by priority and then
+`workplace.py tasks [--json] [--all]` lists every active task flat, sorted by priority and then
 activity: label, area, priority, score, `blocked_by`, and `stale` (no activity for longer
 than `limits.stale_days`). `propose` decides which of them get a tab today; `tasks` is the
-whole list, for any UI or script that drives `workplace.py`.
+whole list, for any UI or script that drives `workplace.py`. Each row also carries what a
+card is written from: the `brief:` block as a mapping, the `headline`, `next_who` and
+`next_due` of a `next:` mapping, and `progress` {done, total} counted from the `- [x]` and
+`- [ ]` lines of the body (none without a checklist). `--all` adds the backlog; the day
+plan never sees it.
 
 ## Teams: several role tabs on one task
 

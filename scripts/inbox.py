@@ -70,6 +70,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
+from lib.bridge_cockpit.card_fields import validate_brief  # noqa: E402  (the one shape of a brief)
 from lib.inbox_verbs import TERMINAL  # noqa: E402  (shared with the cockpit's return channel)
 
 SCHEMA_VERSION = 1
@@ -83,7 +84,7 @@ URGENCIES = ("now", "today", "later")
 #: ever, which is what the inbox exists to prevent (2026-10-07: 51 of 62 items had no way out).
 CLOSERS = ("probe", "reporter", "person", "bot")
 VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "executed", "failed", "urgency", "reopen",
-         "area")
+         "area", "describe")
 ACTIVE_STATES = ("open", "approved", "waiting")
 #: Why a person dropped an item. `family` and `source` leave a mute rule behind.
 DROP_REASONS = ("once", "duplicate", "family", "source")
@@ -279,6 +280,12 @@ class Item:
             set_to = [e.data.get("value") for e in self.events if e.verb == "area"]
             value = set_to[-1] if set_to else self.data.get("area")
             return str(value).strip() or None if value is not None else None
+        if key == "brief":
+            # What was written about the item (goal, story, acceptance): the last `describe` event, one without
+            # a brief takes it back. Read through the same gate it was written through, so a hand-edited
+            # event never shows a text the gate would refuse.
+            set_to = [e.data.get("brief") for e in self.events if e.verb == "describe"]
+            return validate_brief(set_to[-1])[0] if set_to and set_to[-1] is not None else None
         if key in ("kind", "gate", "task", "source", "created", "key",
                    "action", "closes_when", "detail", "due", "closer"):
             return self.data.get("from" if key == "source" else key)
@@ -355,6 +362,7 @@ class Item:
         deferral = self.deferral or {}
         return {"id": self.id, "state": self.state, **{k: v for k, v in self.data.items()
                                                       if k != "schema_version"}, "urgency": self.urgency, "area": self.area,
+                "brief": self.brief,
                 **({"deferred_until": deferral["until"]} if deferral.get("until") else {}),
                 **({"waiting_on": deferral["on"]} if deferral.get("on") else {})}
 
@@ -612,6 +620,19 @@ class Inbox:
         if state in ("done", "dropped"):
             raise ValueError(f"{item_id} is closed ({state}); its area no longer matters")
         self.event(item_id, "area", by=by, value=str(value or "").strip(), why=why)
+
+    def describe(self, item_id: str, brief: dict | None, *, by: str | None = None) -> None:
+        """Write what an open item is about (card_fields.py: goal, story, acceptance, by, at, basis, edited), or
+        take it back with None. A brief the gate finds anything wrong with is refused, nothing is written."""
+        state = self.get(item_id).state
+        if state in ("done", "dropped"):
+            raise ValueError(f"{item_id} is closed ({state}); there is nothing left to describe")
+        if brief is not None:
+            clean, errors = validate_brief(brief)
+            if errors or clean is None:
+                raise ValueError("brief: " + "; ".join(errors or ["empty"]))
+            brief = clean
+        self.event(item_id, "describe", by=by, brief=brief)
 
     def reject(self, item_id: str, note: str | None = None) -> None:
         self.event(item_id, "reject", text=note)
@@ -879,11 +900,14 @@ class Inbox:
                 problems.append(f"{where}: {exc}")
             for path in sorted((item_dir / "events").glob("*.yaml")):
                 try:
-                    verb = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("verb")
+                    event = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
                 except yaml.YAMLError:
-                    verb = None
+                    event = {}
+                verb = event.get("verb") if isinstance(event, dict) else None
                 if verb not in VERBS:
                     problems.append(f"{where}: event {path.name} has verb {verb!r}")
+                elif verb == "describe" and event.get("brief") is not None:
+                    problems += [f"{where}: describe event {path.name}: {e}" for e in validate_brief(event["brief"])[1]]
         return problems
 
 
@@ -957,6 +981,11 @@ def build_parser() -> argparse.ArgumentParser:
     ar.add_argument("id")
     ar.add_argument("value", nargs="?")
     ar.add_argument("--clear", action="store_true")
+    de = sub.add_parser("describe", help="write what an open item is about (a brief: goal, story, acceptance), "
+                                         "or --clear it")
+    de.add_argument("id")
+    de.add_argument("--brief-json", help='{"goal": "...", "acceptance": ["..."], "by": "<model id>", ...}')
+    de.add_argument("--clear", action="store_true")
     nt = sub.add_parser("note")
     nt.add_argument("id")
     nt.add_argument("text")
@@ -1176,6 +1205,10 @@ def main(argv=None) -> int:
             if args.clear == bool((args.value or "").strip()):
                 raise ValueError("give an area or --clear, not both and not neither")
             box.set_area(box.resolve(args.id), "" if args.clear else area_name(args.root, args.value))
+        elif args.cmd == "describe":
+            if args.clear == bool(args.brief_json):
+                raise ValueError("give --brief-json or --clear, not both and not neither")
+            box.describe(box.resolve(args.id), None if args.clear else _json_arg(args.brief_json))
         elif args.cmd == "note":
             box.note(box.resolve(args.id), args.text)
         elif args.cmd == "check":

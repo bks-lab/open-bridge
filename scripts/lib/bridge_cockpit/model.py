@@ -478,8 +478,24 @@ def parse_tasks(out: Any) -> list[dict]:
             "updated": as_text_or_null(t.get("updated")),
             # how the task began (STATUS.md origin, free text): origin.py names it
             "origin": as_text_or_null(t.get("origin")),
+            # what a card is written from (workplace.py tasks), passed through as it comes: the brief as a mapping,
+            # the headline, who takes the next step and by when, and the checklist count {done, total}
+            "brief": t.get("brief") if isinstance(t.get("brief"), dict) else None,
+            "headline": as_text_or_null(t.get("headline")),
+            "next_who": as_text_or_null(t.get("next_who")), "next_due": as_text_or_null(t.get("next_due")),
+            "progress": _progress(t.get("progress")),
         })
     return result
+
+
+def _progress(value: Any) -> dict | None:
+    """{done, total} as two whole numbers, done never above total; anything else is None."""
+    if not isinstance(value, dict):
+        return None
+    done, total = value.get("done"), value.get("total")
+    if not all(isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in (done, total)) or done > total:
+        return None
+    return {"done": done, "total": total}
 
 
 def parse_teams(out: Any) -> list[dict]:

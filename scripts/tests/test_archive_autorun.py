@@ -46,7 +46,8 @@ LOG = """# Week 27 — 2026-06-29 to 2026-07-05
 def repo(tmp_path):
     """A throwaway Bridge: the three scripts, a config, a log, on a user/* branch."""
     for rel in (SCRIPT, "scripts/archive-buckets.py", "scripts/inbox.py",
-                "scripts/lib/inbox_verbs.py"):
+                "scripts/lib/inbox_verbs.py", "scripts/lib/bridge_cockpit/__init__.py",
+                "scripts/lib/bridge_cockpit/card_fields.py"):
         dst = tmp_path / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / rel, dst)

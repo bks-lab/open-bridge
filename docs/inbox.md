@@ -77,6 +77,15 @@ files through the `Inbox` class (the briefing's own items, which mostly name a t
 nothing; `workplace.py place --unplaced` catches up on every open item that has none yet
 (`--dry-run` shows the answer and writes nothing).
 
+**Brief.** What an item is about, beyond its one-line summary: a `goal`, an optional user
+`story` and a few `acceptance` criteria, plus `by` (the model id), `at`, `basis` and `edited`.
+It is the same block a task carries as `brief:` in its STATUS.md
+(`work/templates/_schema.status.yaml`, `$defs/Brief`), written as a `describe` event with
+`inbox.py describe <id> --brief-json '{...}'`; the last one wins, `--clear` takes it back.
+A brief the gate (`scripts/lib/bridge_cockpit/card_fields.py`, `validate_brief`) finds
+anything wrong with is refused, and `validate` reports a hand-edited event that no longer
+passes it. `closes_when` stays the machine's probe and never becomes a criterion.
+
 ## States
 
 | State | Meaning |
@@ -203,6 +212,7 @@ python3 scripts/inbox.py close --key <key> [--note "why"]     # every live item 
 python3 scripts/inbox.py defer <id> --until 2026-10-08
 python3 scripts/inbox.py urgency <id> now|today|later       # re-rank; the latest urgency event wins
 python3 scripts/inbox.py area <id> <workspace> | --clear    # the area of an item without a task
+python3 scripts/inbox.py describe <id> --brief-json '{"goal": "..."}' | --clear   # what it is about
 python3 scripts/inbox.py note <id> "Sam will answer on Monday"
 python3 scripts/inbox.py check                             # close what the live source says is done
 python3 scripts/inbox.py run [--dry-run]                   # execute what a person released
