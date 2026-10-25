@@ -97,13 +97,27 @@ function GaugeTile({ it, page, section, c }) {
 }
 
 /** A command row's own steps (an application: followed up, turned down, ...) in two clicks; each is
- *  run by its section's command and can be taken back from the toast or the history */
-export function RowSteps({ it, page, section, s, c }) {
+ *  run by its section's command and can be taken back from the toast or the history. `as="buttons"`
+ *  (a section's `steps: buttons`) sets every step out as a button of its own: the first click arms it,
+ *  the second runs it, and an armed button falls back after a few seconds */
+export function RowSteps({ it, page, section, s, c, as = 'menu' }) {
   const t = T()
   const [open, setOpen] = useState(false)
+  const [armed, setArmed] = useState(null)
   const box = usePopover(open, setOpen)
   const busy = !!s.ui.busy[rowActionKey({ page, section, index: it.index })]
-  const pick = action => { setOpen(false); c.act('row_action', { page, section, index: it.index, action }) }
+  const pick = action => { setOpen(false); setArmed(null); c.act('row_action', { page, section, index: it.index, action }) }
+  useEffect(() => {
+    if (!armed) return undefined
+    const id = setTimeout(() => setArmed(null), 4000)
+    return () => clearTimeout(id)
+  }, [armed])
+  if (as === 'buttons') {
+    return html`<span class="btn-row row-step-buttons">${it.actions.map(a => html`<${Btn} key=${a.id} size="xs"
+      variant=${armed === a.id ? 'primary' : 'secondary'} busy=${busy} pressed=${armed === a.id}
+      title=${armed === a.id ? t.stepConfirmTitle : undefined}
+      onClick=${() => (armed === a.id ? pick(a.id) : setArmed(a.id))}>${armed === a.id ? t.stepConfirm(a.label) : a.label}<//>`)}</span>`
+  }
   return html`<span class="settle" ref=${box}>
     <${Btn} size="xs" variant="ghost" busy=${busy} pressed=${open} title=${t.rowStepsTitle} onClick=${() => setOpen(!open)}>${t.rowSteps} ▾<//>
     ${open ? html`<span class="settle-menu" role="menu">${it.actions.map(a => html`<button type="button" role="menuitem" key=${a.id}
@@ -123,7 +137,7 @@ export function rowEntry(it, page, section, byKey) {
 /** The rows of a list in the order it shows them, as the queue its details walk through */
 export const rowQueue = (rows, byKey) => rows.map(r => rowEntry(r.it, r.page, r.section, byKey)).filter(Boolean)
 
-function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue = null }) {
+function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue = null, steps = 'menu' }) {
   const t = T()
   const tri = s.triage?.items?.[triageKey(it)] ?? null
   const [open, setOpen] = useState(false)
@@ -168,7 +182,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
       <${PageItemActions} it=${it} s=${s} c=${c} />
       ${it.ask ? html`<${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
-      ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} />` : null}
+      ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as=${steps} />` : null}
       ${actionRow(it, byKey) && (it.inbox || it.task) ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}
     </span></td>
   </tr>`
@@ -273,7 +287,7 @@ export function StatusMenu({ it, page, section, c }) {
 }
 
 /** One drawn row: symbol, name, state as dot and word, what it is, the way to it */
-function ResTile({ it, page, section, c, i, services }) {
+function ResTile({ it, page, section, c, i, services, s = null, steps = 'menu' }) {
   const t = T()
   const tone = it.tone ?? 'ok'
   return html`<article class=${`rtile rt-${tone} row-in card-opens`} style=${{ '--i': Math.min(i, 14) }} tabindex="0"
@@ -292,6 +306,8 @@ function ResTile({ it, page, section, c, i, services }) {
       ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${13} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
+      ${steps === 'buttons' && s && it.actions?.length && it.row_id
+        ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as="buttons" />` : null}
     </footer>
   </article>`
 }
@@ -355,7 +371,7 @@ const MANY = 6     // a group with more rows than this shows its head, its probl
 
 /** Cards in groups: a group's own head row (an account with its counts) leads it, the rest are tiles;
  *  a large group shows only what needs a look, the whole of it opens as a list */
-function TilesView({ items, page, section, sections, c }) {
+function TilesView({ items, page, section, sections, c, s = null, steps = 'menu' }) {
   const t = T()
   const f = useRowFilter(items)
   const [drawer, setDrawer] = useState(null)
@@ -403,7 +419,7 @@ function TilesView({ items, page, section, sections, c }) {
               <span class=${`fdot fdot-${FILTER_TONE[k]}`} aria-hidden="true"></span>${t.filterTone[k]} <span class="mono">${n(k)}</span></span>`)}</span></header>` : null}
         ${big && tiles.length ? html`<h4 class="label-caps mosaic-sub">${t.mosaicProblems(tiles.length)}</h4>` : null}
         ${tiles.length ? html`<div class="rtiles">${tiles.map((it, i) => html`<${ResTile} key=${it.index} it=${it} i=${i} page=${page}
-          section=${section} c=${c} services=${servicesOf(it)} />`)}</div>` : null}
+          section=${section} c=${c} services=${servicesOf(it)} s=${s} steps=${steps} />`)}</div>` : null}
       </section>`
     })}
     ${drawer ? html`<${ResDrawer} d=${drawer} page=${page} c=${c} onClose=${() => setDrawer(null)} />` : null}
@@ -499,7 +515,7 @@ export function PageSection({ page, section, s, c }) {
   if (section.status === 'skipped') body = html`<p class=${section.left_out ? 'muted' : ''}><${StateLine} token=${section.left_out ? 'info' : 'warning'} word=${skipText(section, t)} />
     ${skipFixable(section) ? html` <${SkipFix} s=${s} c=${c} title=${section.title} reason=${section.reason} />` : null}</p>`
   else if (section.status === 'error') body = html`<p><${StateLine} token="danger" strong word=${t.unreadable(section.reason || '')} /></p>`
-  else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} />`
+  else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} s=${s} steps=${section.steps ?? 'menu'} />`
   else if (section.view === 'agenda' && section.kind === 'calendar') body = html`<${DatesAgenda} items=${items} page=${page} section=${section} s=${s} c=${c} />`
   else if (section.view === 'groups') body = html`<${GroupsView} items=${items} page=${page.id} section=${section.id} c=${c} />`
   // a github-work section on its board view: the GitHub list (views/github.js), not the general table
@@ -515,7 +531,7 @@ export function PageSection({ page, section, s, c }) {
     // the order the rows are shown in is the order a detail walks on to the next
     const shown = lanes.length > 1 ? lanes.flatMap(([, l]) => l) : items
     const queue = rowQueue(shown.map(it => ({ it, page: page.id, section: section.id })), byKey)
-    const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} queue=${queue} />`
+    const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} queue=${queue} steps=${section.steps ?? 'menu'} />`
     body = html`<div class="table-wrap" tabindex="0" role="region" aria-label=${section.title}>
       <table class="tbl">
         <thead><tr><th scope="col" class="c-when">${t.col.when}</th><th scope="col">${t.col.item}</th><th scope="col" class="c-acts">${t.col.actions}</th></tr></thead>

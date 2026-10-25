@@ -241,6 +241,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                     sec[extra] = s[extra]
             secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,
                                "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
+                               "steps": s.get("steps"),
                                "more": max(0, len(s["items"]) - cap)})
             if bad > 0:
                 alarms.append({"page_id": pg["id"], "page_title": pg["title"], "section_title": s["title"],

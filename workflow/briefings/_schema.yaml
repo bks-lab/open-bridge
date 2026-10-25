@@ -188,6 +188,7 @@ $defs:
                       badge: {type: boolean, description: "false: listed, but left out of the number on the tab. Default true."}
                       view: {enum: [table, tiles, mosaic, groups, board, agenda], description: "How a dashboard draws the rows. table (default); tiles and mosaic: cards; groups: short lists under each row's group; board: the table with its rows under their group (a GitHub row's board); agenda: a calendar section by day, as a week or a month, with its figures."}
                       hide_empty: {type: boolean, description: "true: an empty section is left out instead of saying so."}
+                      steps: {enum: [menu, buttons], description: "How a dashboard offers a row's own steps (a command row's actions). menu (default): one button opens them; buttons: each step is a button of its own, run by a second click on it."}
                       actionable: {type: boolean, description: "Whether a person can hand the rows on (Do it, Advise, Later, Close). Default: findings and tracker rows."}
       page_rest:
         enum: [show, hide]

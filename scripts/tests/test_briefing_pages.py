@@ -321,6 +321,16 @@ def test_hide_empty_is_carried_only_when_set_and_must_be_a_bool():
                bv._page_problems({"pages": [{"id": "d", "sections": [{"id": "log", "hide_empty": "yes"}]}]}))
 
 
+def test_steps_buttons_is_carried_only_when_set_and_names_one_of_two_ways():
+    view = {"pages": [{"id": "day", "sections": ["commits", {"id": "log", "steps": "buttons"}]}], "page_rest": "hide"}
+    pages = bv.pages(_result(), _profile(view))
+    assert _section(pages, "log")["steps"] == "buttons"
+    assert "steps" not in _section(pages, "commits")
+    assert not bv._page_problems({"pages": [{"id": "d", "sections": [{"id": "log", "steps": "menu"}]}]})
+    assert any("steps must be one of menu, buttons" in x for x in
+               bv._page_problems({"pages": [{"id": "d", "sections": [{"id": "log", "steps": "big"}]}]}))
+
+
 def test_a_skipped_section_keeps_its_place_and_says_why():
     result = _result()
     result["sections"][2] = _sec("mine", "tracker", [], status="skipped", reason="quick mode")

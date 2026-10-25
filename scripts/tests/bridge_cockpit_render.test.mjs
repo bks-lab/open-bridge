@@ -684,6 +684,28 @@ test('row steps: a busy row action disables only its own row', () => {
   assert.equal(steps(2).$('button').hasAttribute('disabled'), false, 'another row stays free')
 })
 
+test('row steps as buttons: every step stands as its own button and runs on the second click', async () => {
+  const redraw = () => new Promise(r => setTimeout(r, 20))   // a click's state lands on the next render
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const it = { index: 3, row_id: 'pc:lab', actions: [{ id: 'wake', label: 'Switch on' }, { id: 'shutdown', label: 'Switch off' }] }
+  const el = mountExtra(extra.html`<${extra.pages.RowSteps} it=${it} page="p" section="sec" s=${s} c=${c} as="buttons" />`)
+  assert.deepEqual(el.$$('button').map(b => b.text()), ['Switch on', 'Switch off'], 'no menu in front of the steps')
+  el.button('Switch off').dispatch('click')
+  await redraw()
+  assert.deepEqual(c.calls, [], 'the first click only asks')
+  assert.ok(el.$$('button').some(b => b.text() === en.stepConfirm('Switch off')), 'the armed button says what a second click does')
+  el.button(en.stepConfirm('Switch off')).dispatch('click')
+  assert.deepEqual(c.calls, [['act', 'row_action', { page: 'p', section: 'sec', index: 3, action: 'shutdown' }]])
+})
+
+test('row steps as buttons: a busy row disables its buttons', () => {
+  const s = cockpitState(NOW, { ui: { busy: { [extra.logic.rowActionKey({ page: 'p', section: 'sec', index: 1 })]: 'row_action' } } })
+  const it = { index: 1, row_id: 'r1', actions: [{ id: 'wake', label: 'Switch on' }] }
+  const el = mountExtra(extra.html`<${extra.pages.RowSteps} it=${it} page="p" section="sec" s=${s} c=${recorder()} as="buttons" />`)
+  assert.equal(el.$('button').hasAttribute('disabled'), true)
+})
+
 // ---------------------------------------------------------------- quick_live: only the chat re-renders (#400)
 
 /** views/chat.js and the vendored Preact from a copy of their own (cockpit_render.mjs loads other views) */

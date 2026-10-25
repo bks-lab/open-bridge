@@ -582,6 +582,10 @@ When that JSON carries `undo: "restore:..."`, the token goes back to the same
 command unchecked by act (the row may be gone by then), so the command itself
 must check it. The cockpit shows the steps as a two-click menu on the row
 and keeps every step in its history, with "take back" where an undo came back.
+A page entry with `steps: buttons` sets every step out as a button of its own, on the row,
+on a tile and in the detail: the first click arms it ("Switch off: sure?"), the second runs it,
+and an armed button falls back after a few seconds. For a handful of steps that should be in
+sight, such as the power switches of a machine; the default `menu` keeps a long list short.
 Example: the rows of a job-application tracker (followed up, turned down, ...).
 
 Each row also says where it leads. **url** is a web address, or a file of this

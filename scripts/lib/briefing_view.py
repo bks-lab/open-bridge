@@ -358,7 +358,9 @@ JEV_KEYS = {"skip_sections", "private"}
 # where a page sits in a dashboard's page bar: in front, or behind a "More" menu
 PAGE_GROUPS = ("main", "more", "work", "day")   # day: no tab, its sections stand under the day list;
 # work: no tab, it is the "by source" view of the work tab (the briefing), beside "what is due" and "by Jev"
-PAGE_SECTION_KEYS = {"id", "when", "detail", "link", "empty", "alarm", "badge", "view", "hide_empty", "actionable"}
+PAGE_SECTION_KEYS = {"id", "when", "detail", "link", "empty", "alarm", "badge", "view", "hide_empty", "actionable", "steps"}
+# how a dashboard offers a row's own steps: one menu (default), or each as a button of its own
+PAGE_STEPS = ("menu", "buttons")
 # how a dashboard draws a section: rows in a table (default), cards, or a mosaic of every row
 # board: the table, its rows under their group; agenda: a calendar by day, with figures and a timeline
 PAGE_VIEWS = ("table", "tiles", "mosaic", "groups", "board", "agenda")
@@ -652,6 +654,8 @@ def _page_problems(view: dict) -> list:
                     out.append(f"{at}: {key} must be true or false")
             if "view" in entry and entry["view"] not in PAGE_VIEWS:
                 out.append(f"{at}: view must be one of {', '.join(PAGE_VIEWS)}")
+            if "steps" in entry and entry["steps"] not in PAGE_STEPS:
+                out.append(f"{at}: steps must be one of {', '.join(PAGE_STEPS)}")
     return out
 
 
@@ -2070,6 +2074,8 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
             **({"cal_figures": calendar_figures([{**r["cal"], "title": r["title"]} for r in rows], now)}
                if kind == "calendar" else {}),
             **({"view": entry["view"]} if entry.get("view") in PAGE_VIEWS[1:] else {}),
+            # a row's steps as buttons of their own (a machine's power switches), not behind one menu
+            **({"steps": "buttons"} if entry.get("steps") == "buttons" else {}),
             # nothing to say when it is empty: a dashboard leaves the section out instead of "nothing"
             **({"hide_empty": True} if entry.get("hide_empty") is True else {})}
 

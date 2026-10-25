@@ -332,7 +332,7 @@ export function InfoDrawer({ s, c }) {
           // an event's or a GitHub row's steps start an agent tab and change nothing, so each is a button of its own
           ? cur.actions.map(a => html`<${Btn} key=${a.id} size="xs" variant="primary" busy=${!!s.ui.busy[rowActionKey({ page, section, index: cur.index })]}
               onClick=${() => c.act('row_action', { page, section, index: cur.index, action: a.id })}>${a.label}<//>`)
-          : html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} />`) : null}
+          : html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} as=${sec?.steps ?? 'menu'} />`) : null}
         ${cur.account?.status ? html`<${StatusMenu} it=${cur} page=${page} section=${section} c=${c} />` : null}
         <${PageItemActions} it=${cur} s=${s} c=${c} after=${close} />
         ${cur.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { close(); c.ask('info', { page, section, index: cur.index }) }}>${t.btnAsk}<//>` : null}

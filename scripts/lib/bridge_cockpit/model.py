@@ -315,6 +315,7 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                 "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board", "agenda") else None,
                 "cal_figures": parse_cal_figures(x.get("cal_figures")),
                 "hide_empty": x.get("hide_empty") is True,
+                "steps": "buttons" if x.get("steps") == "buttons" else None,
                 "stale": as_text_or_null(x.get("stale")),
                 "boards": parse_boards(x.get("boards")),
                 "metrics": [{"id": as_text(g.get("id")), "n": int(_number(g.get("n"))),

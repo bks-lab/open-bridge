@@ -430,6 +430,14 @@ def test_result_belongs_to_exactly_one_tab():
     assert m.filed_by(tab("waiting", "alpha-beta"), v)
 
 
+def test_parse_pages_keeps_steps_buttons_and_drops_anything_else():
+    pages = m.parse_pages({"pages": [{"id": "lab", "title": "Lab", "sections": [
+        {"id": "pcs", "steps": "buttons", "items": []}, {"id": "vms", "steps": "huge", "items": []}, {"id": "logs", "items": []}]}]})
+    secs = {x["id"]: x for x in pages[0]["sections"]}
+    assert secs["pcs"]["steps"] == "buttons"
+    assert secs["vms"]["steps"] is None and secs["logs"]["steps"] is None
+
+
 def test_parse_pages():
     pages = m.parse_pages({"pages": [
         {"id": "briefing", "title": "X", "sections": [{"id": "a"}]},

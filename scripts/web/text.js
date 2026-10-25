@@ -410,6 +410,7 @@ const en = {
   historyEmpty: 'Nothing closed yet.',
   histKind: { task: 'Task', stream: 'Stream', inbox: 'Inbox', other: 'Row', row: 'Step' },
   rowSteps: 'Action', rowStepsTitle: 'Steps this row offers: a click opens them, a second click runs one',
+  stepConfirm: label => `${label}: sure?`, stepConfirmTitle: 'A second click runs it; it resets after a few seconds',
   // GitHub work (views/github.js): the figures and boards above a github-work section, and an opened issue or PR
   gh: {
     today: 'today', yesterday: 'yesterday', daysAgo: n => `${n} days ago`,
@@ -1885,6 +1886,7 @@ const de = {
   historyEmpty: 'Noch nichts geschlossen.',
   histKind: { task: 'Aufgabe', stream: 'Stream', inbox: 'Posteingang', other: 'Zeile', row: 'Schritt' },
   rowSteps: 'Schritte', rowStepsTitle: 'Schritte dieser Zeile: ein Klick öffnet sie, ein zweiter führt einen aus',
+  stepConfirm: label => `${label}: sicher?`, stepConfirmTitle: 'Ein zweiter Klick führt es aus; nach ein paar Sekunden fällt es zurück',
   gh: {
     today: 'heute', yesterday: 'gestern', daysAgo: n => `vor ${n} Tagen`,
     figuresLabel: 'Kennzahlen deiner GitHub-Arbeit, jede ein Filter',
