@@ -27,7 +27,7 @@ CONFIG lives in bridge-config.yaml under `workplace:`:
 
     workplace:
       driver: none                       # or {command: ["python3", "path/to/driver.py"]}
-      workspaces:                        # first match wins: slugs, then contexts, then default
+      workspaces:                        # first match wins: a task's area:, slugs, contexts, default
         - {name: Bigcorp, contexts: [bigcorp], color: "#1565C0"}
         - {name: Platform, slugs: ["platform-*"]}
         - {name: Misc, default: true}
@@ -264,7 +264,7 @@ def collect_tasks(root: Path) -> list:
                 continue
             tasks.append({
                 "slug": fm.get("slug") or status.parent.name, "kind": kind, "status": fm.get("status"),
-                "context": fm.get("context"), "priority": fm.get("priority"), "type": fm.get("type"),
+                "context": fm.get("context"), "area": fm.get("area"), "priority": fm.get("priority"), "type": fm.get("type"),
                 "blocked_by": fm.get("blocked_by"), "updated": _date(fm.get("last_updated")), "next": fm.get("next"),
                 "status_path": str(status.relative_to(root)), "heading": heading(text),
             })
@@ -273,6 +273,13 @@ def collect_tasks(root: Path) -> list:
 
 def workspace_for(task: dict, cfg: dict) -> dict:
     spaces = cfg.get("workspaces") or []
+    # an `area:` in the STATUS.md head names the workspace outright, by name or alias, whatever its case;
+    # one that names no workspace is ignored and the rules decide
+    want = str(task.get("area") or "").strip().casefold()
+    if want:
+        for ws in spaces:
+            if want in [str(n).casefold() for n in [ws.get("name"), *(ws.get("aliases") or [])] if n]:
+                return ws
     for ws in spaces:
         if any(fnmatch.fnmatch(task["slug"], p) for p in ws.get("slugs") or []):
             return ws
@@ -573,7 +580,7 @@ def _task_area(root: Path, slug: str, cfg: dict) -> dict:
     task_dir = _task_dir(root, slug)
     status = task_dir / "STATUS.md" if task_dir else None
     fm = frontmatter(status.read_text(encoding="utf-8")) if status and status.is_file() else {}
-    return workspace_for({"slug": slug, "context": fm.get("context")}, cfg)
+    return workspace_for({"slug": slug, "context": fm.get("context"), "area": fm.get("area")}, cfg)
 
 
 SESSION_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")

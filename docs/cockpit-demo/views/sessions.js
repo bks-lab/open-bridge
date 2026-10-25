@@ -21,6 +21,7 @@ import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from '.
 /** What a session is doing, in one word: its tab's attention state wins over busy or idle */
 function sessionState(x) {
   const tabState = x.tab?.state
+  if (tabState === 'waiting' && x.tab?.idle) return ['idle', stateToken('idle')]   // finished: done, not waiting
   if (tabState === 'needs-you' || tabState === 'waiting') return [tabState, stateToken(tabState)]
   return [x.status, x.status === 'busy' ? 'success' : 'on-surface-muted']
 }

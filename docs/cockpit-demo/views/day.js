@@ -6,7 +6,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
   pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups,
-  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue,
+  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { CheckButton } from './check.js'
@@ -40,7 +40,7 @@ export function KindTag({ row, s, c, link = false }) {
 export function RowMeta({ row, s }) {
   const t = T()
   const parts = [html`<${KindTag} row=${row} s=${s} />`]
-  if (row.tab) parts.push(html`<${Chip} token=${stateToken(row.tab.state)}>${t.state[row.tab.state] ?? row.tab.state}<//>`)
+  if (row.tab) parts.push(html`<${Chip} token=${stateToken(tabStateKey(row.tab))}>${t.state[tabStateKey(row.tab)] ?? row.tab.state}<//>`)
   if (row.starting) parts.push(html`<${Chip} token="info">${t.startingTab}<//>`)
   const liveSessions = row.task && !row.inbox_id ? (s?.sessions?.sessions ?? []).filter(x => x.task === row.task).length : 0
   if (liveSessions) parts.push(html`<span class="chip chip-task">${t.sessionsOnTask(liveSessions)}</span>`)
@@ -311,7 +311,7 @@ function RowItem({ row, s, c }) {
   </li>`
 }
 
-function Section({ section, s, c, byKey, budget = 0 }) {
+export function Section({ section, s, c, byKey, budget = 0 }) {
   const t = T()
   const expanded = !!s.ui.expanded[section.id]
   const rows = sectionRows(section, expanded, byKey, budget)
@@ -349,7 +349,7 @@ function TabMini({ tab, s, c }) {
   const age = duration(s.now - (tab.since_ms || s.now))
   return html`<li class="tabmini">
     <span class="tabmini-main">
-      <${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />
+      <${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />
       <span class="tabmini-name" title=${tab.last}>${tab.workspace} / ${tab.name}</span>
       <span class="tabmini-age mono">${age}</span>
       ${tab.long ? html`<span class="chip chip-warn-outline">${t.tabLong}</span>` : null}
@@ -383,10 +383,11 @@ function WaitingTabs({ s, c }) {
 
 function SelectionBar({ s, c }) {
   const t = T()
-  const n = s.ui.picked.length
-  if (!n) return null
+  // the picks the page shows (under a filter the model holds only those): the count and the acts agree
   const byKey = indexRows(s.model)
   const rows = s.ui.picked.map(k => byKey.get(k)).filter(Boolean)
+  const n = rows.length
+  if (!n) return null
   return html`<div class="selbar" role="region" aria-label=${t.picked(n)}>
     <strong>${t.picked(n)}</strong>
     <span class="selbar-acts">

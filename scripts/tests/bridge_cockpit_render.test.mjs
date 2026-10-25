@@ -2331,3 +2331,304 @@ test('the demo shows the work tab as the default config does, and ?work=files&fo
   assert.deepEqual(mock.buildState(NOW, { work: 'files', focusToFiles: true }).work, { view: 'files', focus_to_files: true })
   assert.deepEqual(mock.buildState(NOW, { work: 'tiles' }).work, { view: 'due', focus_to_files: false })
 })
+
+// ---------------------------------------------------------------- the areas on the start page
+
+const { HomeAreas, HomePage } = views.home
+
+const AREAS = [
+  { name: 'ACME', tone: 'accent', waiting: 2, waitingTabs: 1, running: 1, review: 0, overdue: 1, tasks: 3, total: 4 },
+  { name: 'ORBIT', tone: 'info', waiting: 0, waitingTabs: 0, running: 0, review: 2, overdue: 0, tasks: 0, total: 2 },
+  { name: 'Still', tone: 'success', waiting: 0, waitingTabs: 0, running: 0, review: 0, overdue: 0, tasks: 1, total: 0 },
+]
+
+test('areas: a table, the column heads once, a line per area; the name filters the start page, a number jumps', () => {
+  const c = recorder()
+  const el = mount(html`<${HomeAreas} areas=${AREAS} project="ACME" c=${c} />`)
+  assert.equal(el.$('h2').text(), en.home.areasTitle)
+  assert.deepEqual(el.$$('thead th').map(x => x.text()).slice(1),
+    [en.home.areaWaiting, en.home.areaRunning, en.home.areaReview, en.home.areaOverdue, en.home.areaTasks])
+  const lines = el.$$('tbody tr')
+  // "All" first, then the areas in their order
+  assert.equal(lines.length, 4)
+  const picks = el.$$('button.home-area-pick')
+  assert.match(picks[0].text(), new RegExp(en.home.all))
+  assert.equal(picks[0].getAttribute('aria-pressed'), 'false')
+  assert.equal(picks[1].getAttribute('aria-pressed'), 'true')
+  assert.ok(picks[1].$('.home-area-dot').hasClass('tk-accent'))
+  // a line with nothing but tasks is damped
+  assert.ok(lines[3].hasClass('is-quiet'))
+  assert.ok(!lines[1].hasClass('is-quiet'))
+  // the numbers, each with its label for the narrow screen; a zero is damped and no button
+  const cells = lines[1].$$('td')
+  assert.deepEqual(cells.map(x => x.text()), ['2', '1', '0', '1', '3'])
+  assert.deepEqual(cells.map(x => x.getAttribute('data-label')),
+    [en.home.areaWaiting, en.home.areaRunning, en.home.areaReview, en.home.areaOverdue, en.home.areaTasks])
+  assert.ok(cells[2].hasClass('is-zero'))
+  assert.equal(cells[2].$('button'), null)
+  // "All" sums them up
+  assert.deepEqual(lines[0].$$('td').map(x => x.text()), ['2', '1', '2', '1', '4'])
+  picks[1].click()
+  picks[2].click()
+  picks[0].click()
+  cells[0].$('button').click()
+  cells[3].$('button').click()
+  assert.deepEqual(c.calls, [['setArea', null], ['setArea', 'ORBIT'], ['setArea', null],
+    ['goArea', 'ACME', { page: '@chat', walk: true }], ['goArea', 'ACME', { page: 'briefing', view: 'due' }]])
+})
+
+test('areas in the control view: the name opens Work for that area instead of filtering the start page', () => {
+  const c = recorder()
+  const el = mount(html`<${HomeAreas} areas=${AREAS} project=${null} c=${c} desk />`)
+  const picks = el.$$('button.home-area-pick')
+  assert.equal(picks[1].getAttribute('aria-pressed'), null)
+  picks[1].click()
+  picks[0].click()
+  assert.deepEqual(c.calls, [['goArea', 'ACME', { page: 'briefing' }], ['goArea', null, { page: 'briefing' }]])
+})
+
+test('areas: with nothing in any area a short line says so', () => {
+  const el = mount(html`<${HomeAreas} areas=${[]} project=${null} c=${recorder()} />`)
+  assert.equal(el.$$('button.home-area-pick').length, 0)
+  assert.match(el.text(), new RegExp(en.home.areasEmpty.slice(0, 20)))
+})
+
+test('the control view is the start page: one head line, the areas, next up, and nothing else', () => {
+  const s = cockpitState(NOW, { ui: { page: '@start' } })
+  const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  const desk = el.$('.desk')
+  assert.ok(desk, 'the control view')
+  assert.deepEqual(desk.childNodes.filter(x => x.nodeType === 1).map(x => x.getAttribute('class').split(' ')[0]), ['desk-head', 'home-shelf', 'desk-next'])
+  assert.ok(desk.$('.home-areas'))
+  // no greeting, no ask box, no news band, no other shelf
+  for (const sel of ['.home-hero', '.home-ask', '.ticker', '.home-chips', '.home-grid', '.bridge-stage']) assert.equal(el.$(sel), null, sel)
+  // the head counts what waits on you as the column does
+  const sum = el.$$('tbody tr').slice(1).reduce((n, tr) => n + Number(tr.$$('td')[0].text()), 0)
+  assert.match(el.$('.desk-head').text(), new RegExp(en.home.deskWaiting(sum)))
+  // next up names the next date and the quota, each a link
+  assert.ok(el.$$('.desk-next button').length >= 1)
+})
+
+test('the area bar: over Work it names the area and offers the star filter; nothing on a page it does not filter', () => {
+  const { AreaBar } = views.home
+  const c = recorder()
+  const s = cockpitState(NOW, { ui: { page: 'briefing', area: 'ACME' } })
+  s.home = { ...s.home, pins: ['task:a'] }
+  const el = mount(html`<${AreaBar} s=${s} c=${c} />`)
+  assert.match(el.text(), new RegExp(en.home.areaFilter('ACME')))
+  el.button(en.home.areaClear).click()
+  const star = el.$$('button').find(b => b.getAttribute('aria-pressed') === 'false')
+  star.click()
+  assert.deepEqual(c.calls, [['setArea', null], ['setPinnedOnly', true]])
+  // Chat with an area: the area, no star
+  const chat = mount(html`<${AreaBar} s=${cockpitState(NOW, { ui: { page: '@chat', area: 'ACME' } })} c=${recorder()} />`)
+  assert.equal(chat.$$('button').length, 1)
+  // the start page and a page without a filter: no bar
+  assert.equal(mount(html`<${AreaBar} s=${cockpitState(NOW, { ui: { page: '@start', area: 'ACME' } })} c=${recorder()} />`).$('.area-bar'), null)
+  assert.equal(mount(html`<${AreaBar} s=${cockpitState(NOW, { ui: { page: '@chat', area: null } })} c=${recorder()} />`).$('.area-bar'), null)
+})
+
+test('areas: what has no area stands last as "No area", its numbers jump without a filter', () => {
+  const c = recorder()
+  const none = { name: '', none: true, tone: 'muted', waiting: 2, waitingTabs: 1, waitingRows: 1, running: 0, review: 0, overdue: 0, tasks: 0, total: 2 }
+  const el = mount(html`<${HomeAreas} areas=${[AREAS[0], none]} project=${null} c=${c} desk />`)
+  const lines = el.$$('tbody tr')
+  assert.match(lines.at(-1).text(), new RegExp(en.home.noArea))
+  lines.at(-1).$('td button').click()
+  lines.at(-1).$('button.home-area-pick').click()
+  assert.deepEqual(c.calls, [['goArea', null, { page: 'briefing', view: 'due' }], ['goArea', null, { page: 'briefing' }]])
+  // a table also for screen readers when the narrow layout draws it as blocks
+  assert.equal(el.$('table').getAttribute('role'), 'table')
+  assert.equal(lines[0].getAttribute('role'), 'row')
+  assert.equal(lines[0].$('td').getAttribute('role'), 'cell')
+  assert.equal(el.$('thead th').getAttribute('role'), 'columnheader')
+})
+
+test('the overview: the head counts what waits as the line All does, split into tabs and entries', () => {
+  const s = cockpitState(NOW, { ui: { page: '@start' } })
+  const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  const all = el.$$('tbody tr')[0]
+  const n = Number(all.$$('td')[0].text())
+  assert.ok(n > 0)
+  assert.match(el.$('.desk-head').text(), new RegExp(en.home.deskWaiting(n).replace(/[()]/g, '.')))
+})
+
+test('the overview with the areas switched off says where they went', () => {
+  const s = cockpitState(NOW, { ui: { page: '@start' } })
+  const { logic } = loadedRooms
+  s.home = { tiles: logic.homeChosen(s.model, null).filter(x => x !== 's:areas'), seen: logic.homeCatalog(s.model).map(x => x.id), pins: [] }
+  const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  assert.equal(el.$('table'), null)
+  assert.match(el.$('.desk').text(), new RegExp(en.home.areasOff.slice(0, 20)))
+})
+
+test('start page views: the news band only when switched on for the start page; the day, the areas, then the chips', () => {
+  const { logic } = loadedRooms
+  const walk = root => { const out = []; const go = n => { for (const x of n.childNodes) if (x.nodeType === 1) { out.push(x); go(x) } }; go(root); return out }
+  for (const view of ['tiles', 'stage']) {
+    const base = cockpitState(NOW, { ui: { page: '@start' } })
+    const tiles = logic.homeViewSet(logic.homeChosen(base.model, null), view)
+    const home = { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] }
+    const off = mount(html`<${HomePage} s=${{ ...base, home }} c=${recorder()} />`)
+    assert.equal(off.$('.ticker'), null, view)
+    const on = mount(html`<${HomePage} s=${{ ...base, home, ui: { ...base.ui, tickerOnStart: true } }} c=${recorder()} />`)
+    assert.ok(on.$('.ticker'), view)
+    // in page order: the day shelf before the areas, the areas before any chip row
+    const els = walk(off)
+    const areas = els.findIndex(x => x.hasClass('home-areas'))
+    const chips = els.findIndex(x => x.hasClass('home-chips'))
+    const day = els.findIndex(x => x.getAttribute('aria-labelledby') === 'home-day')
+    assert.ok(areas >= 0, view)
+    if (day >= 0) assert.ok(day < areas, view)
+    if (chips >= 0) assert.ok(areas < chips, view)
+  }
+})
+
+test('one area filter: on the other start views the bar names it, the overview shows none', () => {
+  const { AreaBar } = views.home
+  const { logic } = loadedRooms
+  const base = cockpitState(NOW, { ui: { page: '@start', area: 'ACME' } })
+  const tiles = { tiles: logic.homeViewSet(logic.homeChosen(base.model, null), 'tiles'), seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] }
+  assert.match(mount(html`<${AreaBar} s=${{ ...base, home: tiles }} c=${recorder()} />`).text(), new RegExp(en.home.areaFilter('ACME')))
+  assert.equal(mount(html`<${AreaBar} s=${base} c=${recorder()} />`).$('.area-bar'), null)
+})
+
+test('the middle of Due shows the day, with a work page too, under the same area filter; the overview does not', () => {
+  const { DetailColumn } = views.detail
+  const { logic } = loadedRooms
+  const base = cockpitState(NOW, { ui: { page: 'briefing', selectedKey: null } })
+  const day = { id: 'today', title: 'What happened today', group: 'day', sections: [{ id: 'log', title: 'Log', kind: 'list', items: [
+    { key: 'item:today/log/a', title: 'ACME deploy', detail: '', when: '', tone: 'ok', mark: { label: 'ACME' } },
+    { key: 'item:today/log/b', title: 'ORBIT backup', detail: '', when: '', tone: 'ok', mark: { label: 'ORBIT' } }] }] }
+  const work = { id: 'work', title: 'Work', group: 'work', sections: [{ id: 'tasks', title: 'Tasks', kind: 'tasks', items: [] }] }
+  const s = { ...base, model: { ...base.model, pages: [...(base.model.pages ?? []), work, day] } }
+  const el = mount(html`<${DetailColumn} s=${s} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
+  assert.ok(el.$('.day-view'), 'the day in the middle')
+  assert.match(el.text(), new RegExp(en.agendaTitle))
+  assert.match(el.text(), /ACME deploy/)
+  assert.match(el.text(), /ORBIT backup/)
+  // under the area filter the day keeps to the area as the rows do
+  const scoped = { ...s, ui: { ...s.ui, area: 'ACME' } }
+  const fel = mount(html`<${DetailColumn} s=${scoped} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
+  assert.match(fel.text(), /ACME deploy/)
+  assert.doesNotMatch(fel.text(), /ORBIT backup/)
+  // the overview on Start shows no day
+  const start = mount(html`<${HomePage} s=${{ ...s, ui: { ...s.ui, page: '@start' } }} c=${recorder()} />`)
+  assert.equal(start.$('.day-view'), null)
+  assert.equal(start.$('.day-card'), null)
+  assert.doesNotMatch(start.text(), /ACME deploy/)
+})
+
+test('Work under an area filter: the tab column shows and counts that area, the middle counts what waits there', () => {
+  const { TabsColumn } = views.tabs
+  const { DetailColumn } = views.detail
+  const { logic } = loadedRooms
+  const base = cockpitState(NOW, { ui: { page: 'briefing', selectedKey: null, area: 'ACME' } })
+  const tabs = [{ ref: 'c', name: 'control', is_control: true, workspace: 'Bridge', state: 'waiting' },
+    { ref: 'a1', name: 'acme-one', workspace: 'ACME', state: 'needs-you', waiting: true },
+    { ref: 'a2', name: 'acme-two', workspace: 'ACME', state: 'working' },
+    { ref: 'o1', name: 'orbit-one', workspace: 'ORBIT', state: 'needs-you', waiting: true },
+    { ref: 'o2', name: 'orbit-two', workspace: 'ORBIT', state: 'working' }]
+  const model = { ...base.model, briefing_badge: 11, headline_rest: 'free for the rest of the day',
+    sections: [{ id: 'now', total: 3, rows: [{ key: 'inbox:1', title: 'A', area: 'ACME' }, { key: 'inbox:2', title: 'B', area: 'ORBIT' }, { key: 'inbox:3', title: 'C', area: 'ORBIT' }] }] }
+  const s = { ...base, model, tabs: { ...base.tabs, tabs } }
+  const v = logic.areaScope(s)
+  const col = mount(html`<${TabsColumn} s=${v} c=${recorder()} byKey=${logic.indexRows(v.model)} />`)
+  assert.match(col.text(), /acme-one/)
+  assert.doesNotMatch(col.text(), /orbit-one|orbit-two/)
+  assert.match(col.$('#tabs-title').text(), /2/)
+  // the middle: what waits in the area (its row and its tab), as the area's line on the overview counts it
+  const mid = mount(html`<${DetailColumn} s=${s} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
+  assert.match(mid.$('.detail-title').text(), new RegExp(en.forYouNow(2)))
+  assert.doesNotMatch(mid.$('.detail-title').text(), /11/)
+  assert.match(mid.$('.detail-title').text(), /free for the rest of the day/)
+  // what stays global says so
+  assert.match(mid.text(), new RegExp(en.allAreas))
+  // without a filter the server's number stands
+  const whole = mount(html`<${DetailColumn} s=${{ ...s, ui: { ...s.ui, area: null } }} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
+  assert.match(whole.$('.detail-title').text(), new RegExp(en.forYouNow(11)))
+  assert.doesNotMatch(whole.text(), new RegExp(en.allAreas))
+})
+
+// ---------------------------------------------------------------- the parts of the overview
+
+function deskState(parts, over = {}) {
+  const { logic } = loadedRooms
+  const base = cockpitState(NOW, { ui: { page: '@start', ...(over.ui ?? {}) } })
+  const tiles = [...logic.homeChosen(base.model, null), ...parts]
+  return { ...base, home: { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] } }
+}
+
+test('overview parts: none by default; each one shows only when chosen, in the chosen order, under the table', () => {
+  const off = mount(html`<${HomePage} s=${deskState([])} c=${recorder()} />`)
+  for (const id of ['desk-waiting', 'desk-guide', 'desk-tabs', 'desk-day']) assert.equal(off.$(`#${id}`), null, id)
+  const s = deskState(['d:waiting', 'd:tabs', 'd:day'])
+  const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  const desk = el.$('.desk')
+  const kids = desk.childNodes.filter(x => x.nodeType === 1).map(x => x.getAttribute('class').split(' ')[0])
+  // the head, the table, the parts, then next up
+  assert.equal(kids[0], 'desk-head')
+  assert.equal(kids.at(-1), 'desk-next')
+  assert.ok(el.$('.desk-parts'))
+  // waiting on you: the rows of the Work section, the same component (its rows, their actions)
+  const waiting = el.$('#desk-waiting')
+  assert.ok(waiting, 'waiting on you')
+  assert.ok(waiting.$$('li.row').length > 0)
+  assert.ok(waiting.$('.row-acts'))
+  // the agent tabs: the same cards as beside Work
+  assert.ok(el.$('#desk-tabs .tabcard'))
+  // the day: the blocks of the middle of Work
+  assert.ok(el.$('#desk-day .day-view'))
+  // the guide was not chosen
+  assert.equal(el.$('#desk-guide'), null)
+  // the order of the choice is the order on the page
+  const s2 = deskState(['d:day', 'd:waiting'])
+  const el2 = mount(html`<${HomePage} s=${s2} c=${recorder()} />`)
+  const ids = el2.$('.desk-parts').childNodes.filter(x => x.nodeType === 1).map(x => x.getAttribute('id'))
+  assert.deepEqual(ids, ['desk-day', 'desk-waiting'])
+})
+
+test('overview parts follow the area filter, and with one on the bar names the filter', () => {
+  const { AreaBar } = views.home
+  const s = deskState(['d:waiting', 'd:tabs'], { ui: { area: 'zzz-no-such-area' } })
+  const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  // nothing of the area: the parts stay small or away, no big empty cards
+  assert.equal(el.$$('#desk-waiting li.row').length, 0)
+  assert.equal(el.$('#desk-tabs .tabcard'), null)
+  assert.match(mount(html`<${AreaBar} s=${s} c=${recorder()} />`).text(), /zzz-no-such-area/)
+  // without a part the overview has no filter, so no bar
+  assert.equal(mount(html`<${AreaBar} s=${deskState([], { ui: { area: 'ACME' } })} c=${recorder()} />`).$('.area-bar'), null)
+})
+
+test('overview: the decision guide shows the next tab that wants you, with next and previous when there are more', async () => {
+  const s = deskState(['d:guide'])
+  const tabs = [{ ref: 'g1', name: 'first', workspace: 'W', state: 'needs-you', since_ms: NOW - 9000 },
+    { ref: 'g2', name: 'second', workspace: 'W', state: 'waiting', since_ms: NOW - 5000 }]
+  const st = { ...s, tabs: { ...s.tabs, tabs }, guide: { enabled: true, auto: true, entries: {} } }
+  const c = recorder()
+  const el = mount(html`<${HomePage} s=${st} c=${c} />`)
+  const box = el.$('#desk-guide')
+  assert.ok(box)
+  assert.match(box.text(), /first/)
+  assert.doesNotMatch(box.text(), /second/)
+  box.button(en.home.deskNext).click()
+  await new Promise(r => setTimeout(r, 0))     // Preact draws a state change on the next tick
+  assert.match(el.$('#desk-guide').text(), /second/)
+  // the guide off: the part says nothing
+  const none = mount(html`<${HomePage} s=${{ ...st, guide: { enabled: false } }} c=${recorder()} />`)
+  assert.equal(none.$('#desk-guide'), null)
+})
+
+test('no Customise and no settings link on the start page: the page bar has Settings', () => {
+  const { logic } = loadedRooms
+  for (const view of ['areas', 'tiles', 'stage', 'list']) {
+    const base = cockpitState(NOW, { ui: { page: '@start' } })
+    const tiles = logic.homeViewSet(logic.homeChosen(base.model, null), view)
+    const c = recorder()
+    const el = mount(html`<${HomePage} s=${{ ...base, home: { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] } }} c=${c} />`)
+    // the small links only: reading the text of every button of the bridge (its stations draw SVG) takes minutes
+    assert.equal(el.$$('button.btn-link').some(b => b.text() === en.home.choose), false, view)
+    assert.equal(el.$('.stage-tools') ?? el.$('.desk-tools'), null, view)
+    assert.equal(c.calls.some(x => x[0] === 'setDrawer' && x[1] === 'customize'), false, view)
+  }
+})

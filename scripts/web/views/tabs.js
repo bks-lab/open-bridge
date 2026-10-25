@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railShown, SCREEN_POLL_MS } from '../logic.js'
+import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railShown, SCREEN_POLL_MS, tabStateKey } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -134,7 +134,7 @@ export function TabCard({ tab, s, c, byKey, slim = false }) {
     <header class="tabcard-head">
       ${tab.is_control
         ? html`<button type="button" class="btn-link" onClick=${c.openClaude}><${StateLine} token="on-surface-muted" word=${t.controlSession} /></button>`
-        : html`<${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />`}
+        : html`<${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />`}
       <span class="tabcard-age mono">${ageText}</span>
       ${tab.long ? html`<span class="chip chip-warn-outline">${t.tabLong}</span>` : null}
     </header>

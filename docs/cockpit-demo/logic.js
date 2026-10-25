@@ -320,6 +320,12 @@ export function noteToken(tone) {
   return { ok: 'success', warn: 'warning', bad: 'danger' }[tone] ?? 'info'
 }
 
+/** The state a tab shows: 'idle' for one that waits but is finished (the server's `idle`), else its state */
+export const tabStateKey = tab => (tab?.state === 'waiting' && tab.idle ? 'idle' : tab?.state)
+
+/** The number on the header's Tabs button: the tabs that want you (wantsYou), not the finished ones */
+export const tabsButtonCount = tabs => (tabs ?? []).filter(wantsYou).length
+
 /** Design token for a tab state */
 export function stateToken(state) {
   return { 'needs-you': 'danger', waiting: 'warning', working: 'success' }[state] ?? 'on-surface-muted'
@@ -502,7 +508,7 @@ export function roomsOf(s) {
     chats: placed ? [] : chats,
     bridges: bridges.filter(b => !out.some(w => w.bridge?.id === b.id)),
     agents: s.agents?.peers ?? [],
-    waiting: tabs.filter(t => !t.is_control && (t.state === 'needs-you' || t.state === 'waiting')).length,
+    waiting: tabs.filter(wantsYou).length,
   }
 }
 
@@ -512,28 +518,33 @@ export function attentionTabs(tabs) {
     .sort((a, b) => (STATE_ORDER[a.state] ?? 4) - (STATE_ORDER[b.state] ?? 4) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
 }
 
-const STATUS_GROUPS = ['needs-you', 'waiting', 'working', 'shell']
+const STATUS_GROUPS = ['needs-you', 'waiting', 'working', 'idle', 'shell']
+
+/** Whether a tab wants you: it needs you, or waits and has not gone idle (finished, nothing asked; the
+ *  server's `idle`), and is not the control tab. Its state stays 'waiting' when idle, so a test on the
+ *  state alone counts finished tabs as waiting */
+export const wantsYou = t => !!t && !t.is_control && (t.state === 'needs-you' || (t.state === 'waiting' && !t.idle))
 
 /** Every tab under its status, in the order you walk them (ui.roomsSort: status): needs you, waiting,
- *  working, terminal, each the longest in its state first, then by name. A state the list does not know
+ *  working, idle (waiting but finished), terminal, each the longest in its state first, then by name. A state the list does not know
  *  stands with the terminals; the control tab, which never waits for you, is left out. [{ state, tabs }],
  *  no group for a status without tabs */
 export function statusQueue(tabs) {
   const by = new Map(STATUS_GROUPS.map(x => [x, []]))
   for (const t of tabs ?? []) {
-    if (!t.is_control) by.get(by.has(t.state) ? t.state : 'shell').push(t)
+    if (!t.is_control) by.get(t.state === 'waiting' && t.idle ? 'idle' : by.has(t.state) ? t.state : 'shell').push(t)
   }
   const since = t => (Number.isFinite(t.since_ms) ? t.since_ms : Infinity)
   return STATUS_GROUPS.map(state => ({ state, tabs: by.get(state).sort((a, b) => since(a) - since(b) || String(a.name).localeCompare(String(b.name))) }))
     .filter(g => g.tabs.length)
 }
 
-/** Whether a tab wants you: it needs you or waits, and is not the control tab */
-export const tabWaits = tab => !!tab && !tab.is_control && (tab.state === 'needs-you' || tab.state === 'waiting')
+/** Whether a tab wants you (wantsYou), under the name the views know */
+export const tabWaits = wantsYou
 
 /** The tabs that want you, in the order By status lists them: the walk on the Chat page */
 export const walkRefs = tabs => statusQueue(tabs).filter(g => g.state === 'needs-you' || g.state === 'waiting')
-  .flatMap(g => g.tabs.map(t => t.ref))
+  .flatMap(g => g.tabs.filter(wantsYou).map(t => t.ref))
 
 /** The walk through the tabs as the lists walk theirs (queueView): the order taken when the walk began
  *  (ui.tabWalk), then every tab that started waiting since, at the end. A tab answered meanwhile keeps
@@ -770,7 +781,7 @@ export function modalKeyAllowed(ui, key, gPending) {
   if (!ui?.drawer) return true
   // n and p act on the item drawer itself: they walk the list it was opened from
   if (ui.drawer === 'item' && ui.queue?.length && (key === 'n' || key === 'p')) return true
-  return key === 'g' || (gPending && key === 't')
+  return key === 'g' || (gPending && (key === 't' || key === 'a'))
 }
 
 /** The list a detail was opened from (ui.queue), seen from its open entry: where it stands (pos of
@@ -1888,6 +1899,7 @@ export function guideKey(tab) {
  *  now; fresh: its options answer what the tab asks now */
 export function guideOf(s, tab) {
   const g = s?.guide
+  // by state on purpose: an idle tab can still be answered, so the guide reads it too
   if (!g?.enabled || !tab || tab.is_control || (tab.state !== 'needs-you' && tab.state !== 'waiting')) return { status: 'off', entry: null }
   const entry = g.entries?.[tab.ref] ?? null
   if (!entry) return { status: 'none', entry }
@@ -1983,9 +1995,9 @@ export function homeProjects(tabs, rows) {
 /** Does a tab or a row belong to the chosen project? No project chosen: everything does */
 export function inProject(x, project) {
   if (!project) return true
-  const want = String(project).toLowerCase()
+  const want = String(project).trim().toLowerCase()
   const names = [x?.workspace, x?.area, ...(x?.area_names ?? []), x?.mark?.label]
-  return names.some(n => n && String(n).toLowerCase() === want)
+  return names.some(n => n && String(n).trim().toLowerCase() === want)
 }
 
 /** The cards of "continue": the agent tabs of the project without the control tab and bare shells,
@@ -2003,6 +2015,190 @@ export function projectTone(name) {
   let h = 0
   for (const ch of String(name ?? '').toLowerCase()) h = (h * 31 + ch.codePointAt(0)) >>> 0
   return PROJECT_TONES[h % PROJECT_TONES.length]
+}
+
+/** Is a row past its date? `due_at` or `due`, a day (YYYY-MM-DD, the server's form) or milliseconds;
+ *  due today is not overdue */
+function rowOverdue(row, nowMs) {
+  const due = row?.due_at ?? row?.due
+  if (typeof due === 'number') return due < nowMs
+  return dueWhen(due, nowMs)?.kind === 'overdue'
+}
+
+/** The areas of the start page, each with what it holds for you: rows of "now" and tabs that wait on you,
+ *  tabs at work, tabs that went idle and answered starts to review, rows past their date, and the open
+ *  tasks (`tasks`, not in `total`: it keeps an area there to pick when nothing else is). Names and order as
+ *  the project chips have them (homeProjects); an area with no number at all drops out. The control tab
+ *  and bare shells count for nothing, and each thing counts once: a row in several sections, a row of
+ *  "now" and the tab waiting on its work (as model.tab_for pairs them), an answered start and its idle tab */
+export function homeAreas(tabs, sections, returns, nowMs) {
+  const live = (tabs ?? []).filter(t => !t.is_control && t.state !== 'shell')
+  const byKey = new Map()
+  for (const sec of sections ?? []) for (const r of sec.rows ?? []) if (!byKey.has(r.key)) byKey.set(r.key, r)
+  const rows = [...byKey.values()]
+  const section = id => (sections ?? []).find(x => x.id === id)?.rows ?? []
+  const counts = new Map()
+  const zero = () => ({ waiting: 0, waitingTabs: 0, waitingRows: 0, running: 0, review: 0, overdue: 0, tasks: 0 })
+  // what has no area counts under NONE, the line "No area" at the end
+  const bump = (name, what) => {
+    const key = String(name ?? '').trim().toLowerCase() || NONE
+    const x = counts.get(key) ?? zero()
+    x[what] += 1
+    counts.set(key, x)
+  }
+  // a row of "now" stands for the tab that waits on its work
+  const paired = new Set()
+  for (const r of section('now')) {
+    bump(rowProject(r), 'waiting')
+    bump(rowProject(r), 'waitingRows')
+    for (const t of live) if ((r.task && t.slug === r.task) || (r.inbox_id && t.item === r.inbox_id)) paired.add(t.ref)
+  }
+  // an answered start stands for its tab gone idle
+  const answered = new Set()
+  for (const r of returns ?? []) {
+    const row = byKey.get(r.key)
+    if (!row || (r.live ?? r.stage) !== 'result') continue
+    bump(rowProject(row), 'review')
+    for (const t of live) if (t.ref === r.tab?.ref || (r.item && (t.slug === r.item || t.item === r.item))) answered.add(t.ref)
+  }
+  for (const t of live) {
+    // one rule for the number and its jump: the tab wants you (wantsYou), and no row of "now" stands for it
+    if (wantsYou(t) && !paired.has(t.ref)) {
+      bump(t.workspace, 'waiting')
+      bump(t.workspace, 'waitingTabs')
+    }
+    if (t.state === 'working') bump(t.workspace, 'running')
+    if (t.idle === true && !answered.has(t.ref)) bump(t.workspace, 'review')
+  }
+  for (const r of rows) if (rowOverdue(r, nowMs)) bump(rowProject(r), 'overdue')
+  const slugs = new Set()
+  for (const r of section('work')) {
+    if (!r.task || slugs.has(r.task)) continue
+    slugs.add(r.task)
+    bump(rowProject(r), 'tasks')
+  }
+  const line = (name, x, extra = {}) => ({ name, tone: projectTone(name), ...x, total: x.waiting + x.running + x.review + x.overdue, ...extra })
+  const out = homeProjects(tabs, rows).map(name => line(name, counts.get(name.toLowerCase()) ?? zero()))
+  if (counts.has(NONE)) out.push(line('', counts.get(NONE), { none: true, tone: 'muted' }))
+  return out.filter(a => a.total > 0 || a.tasks > 0)
+}
+
+const NONE = '\u0000none'   // no area name can be this
+
+/** Where a number of the areas leads, the area as the filter there (ui.area): tabs alone that want you
+ *  are answered in the chat, one after the other (its walk); rows, or rows and tabs, wait in Work, what is due first, as do
+ *  overdue rows; what runs and what is to review are the sessions and the starts of the Sessions page;
+ *  the tasks and the area's name open Work in the view it was left in */
+export function areaJump(kind, area) {
+  if (kind === 'waiting') return area?.waitingTabs && !area.waitingRows ? { page: '@chat', walk: true } : { page: 'briefing', view: 'due' }
+  if (kind === 'running' || kind === 'review') return { page: '@sessions' }
+  if (kind === 'overdue') return { page: 'briefing', view: 'due' }
+  return { page: 'briefing' }
+}
+
+// the pages the area filter (ui.area) acts on
+export const AREA_PAGES = new Set(['briefing', '@chat', '@sessions'])
+
+/** The row behind a page item: by its key, its task or its inbox item */
+function itemRow(it, byKey) {
+  return byKey.get(it.key) ?? (it.task ? byKey.get(`task:${it.task}`) : null) ?? (it.inbox ? byKey.get(`inbox:${it.inbox}`) : null) ?? null
+}
+
+/** The state a page sees under the area filter (ui.area) and Work's star (ui.pinnedOnly): Work keeps the
+ *  rows and page items of the area (or pinned) and the area's tabs beside them, Chat the tabs of the area, Sessions its sessions (by
+ *  their tab, else their folder) and its starts. Every other page, and the header with its badges, gets
+ *  the state as it is; so does a page without a filter (the same object back) */
+export function areaScope(s) {
+  const page = s?.ui?.page
+  const area = AREA_PAGES.has(page) ? s.ui.area || null : null
+  const pins = page === 'briefing' && s.ui.pinnedOnly ? new Set(s.home?.pins ?? []) : null
+  if (!area && !pins) return s
+  const byKey = indexRows(s.model)
+  const tabs = s.tabs?.tabs ?? []
+  const keepTab = t => t.is_control || inProject(t, area)
+  if (page === 'briefing') {
+    const keepRow = r => !!r && inProject(r, area) && (!pins || pins.has(r.key))
+    const keepItem = it => {
+      const row = itemRow(it, byKey)
+      return (inProject(it, area) || (!!row && inProject(row, area))) && (!pins || (!!row && pins.has(row.key)))
+    }
+    const model = s.model && {
+      ...s.model,
+      sections: (s.model.sections ?? []).map(sec => {
+        const rows = (sec.rows ?? []).filter(keepRow)
+        const shown = new Set(rows.map(r => r.key))
+        return { ...sec, rows, total: rows.length, ...(sec.compact ? { compact: sec.compact.filter(k => shown.has(k)) } : {}) }
+      }),
+      hidden: (s.model.hidden ?? []).filter(keepRow),
+      // a page section counts what it shows; `scoped` says the rows still to load are not filtered yet
+      pages: (s.model.pages ?? []).map(p => ({ ...p, sections: (p.sections ?? []).map(sec => {
+        if (!sec.items) return sec
+        const items = sec.items.filter(keepItem)
+        return { ...sec, items, total: items.length, count: items.length, scoped: true }
+      }) })),
+    }
+    const more = Object.fromEntries(Object.entries(s.more ?? {}).map(([k, v]) => [k, v?.items ? { ...v, items: v.items.filter(keepItem) } : v]))
+    // the tab column beside Work shows and counts the area's tabs too
+    return { ...s, model, more, tabs: area ? { ...s.tabs, tabs: tabs.filter(keepTab) } : s.tabs }
+  }
+  if (page === '@chat') return { ...s, tabs: { ...s.tabs, tabs: tabs.filter(keepTab) } }
+  // the Sessions page
+  const tabOf = new Map(tabs.map(t => [t.ref, t]))
+  const keepSession = x => {
+    const tab = x.tab?.ref ? tabOf.get(x.tab.ref) : null
+    return tab ? inProject(tab, area) : inProject({ workspace: x.project }, area)
+  }
+  const keepReturn = r => inProject(byKey.get(r.key) ?? {}, area) || (!!r.tab?.ref && !!tabOf.get(r.tab.ref) && inProject(tabOf.get(r.tab.ref), area))
+  return {
+    ...s,
+    tabs: { ...s.tabs, tabs: tabs.filter(keepTab) },
+    sessions: s.sessions && { ...s.sessions, sessions: (s.sessions.sessions ?? []).filter(keepSession) },
+    model: s.model && { ...s.model, returns: (s.model.returns ?? []).filter(keepReturn) },
+  }
+}
+
+/** The state the keys act on, or null where they act on no rows: Work under its filters, and the overview
+ *  of the start page while its part "Waiting on you" is on (its rows only, of the area, folded as shown:
+ *  `desk` marks it, a pick there would not show) */
+export function keyScope(s) {
+  const page = s?.ui?.page
+  if (page === 'briefing') return areaScope(s)
+  if (page !== '@start') return null
+  const chosen = homeChosen(s.model, s.home)
+  if (homeView(chosen) !== 'areas' || !chosen.includes('d:waiting')) return null
+  const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', pinnedOnly: false } })
+  return { ...v, desk: true, ui: { ...s.ui, dayHeight: 0 },
+    model: v.model && { ...v.model, sections: (v.model.sections ?? []).filter(x => x.id === 'now'), hidden: [] } }
+}
+
+/** A row as the page shows it under its filters (keyScope, else areaScope), or null when they hide it:
+ *  what a key may act on */
+export function scopeRow(s, key) {
+  if (!key) return null
+  const v = keyScope(s) ?? areaScope(s)
+  return indexRows(v.model).get(key) ?? null
+}
+
+/** What leaves the ui once a filter hides it: picks, the focus and the selection on rows no longer shown,
+ *  so nothing can act on a row unseen. A patch for setUi */
+export function scopeKeep(s) {
+  const shown = indexRows(areaScope(s).model)
+  const keep = k => (k && shown.has(k) ? k : null)
+  return { picked: (s.ui?.picked ?? []).filter(k => shown.has(k)), focusKey: keep(s.ui?.focusKey), selectedKey: keep(s.ui?.selectedKey) }
+}
+
+/** What Escape does on a page the area filter acts on: a selection (an open row or picks) closes first,
+ *  then the filter goes; null when neither applies */
+export function escapeStep(ui) {
+  if (!ui?.area || !AREA_PAGES.has(ui.page)) return null
+  return ui.selectedKey || ui.picked?.length ? 'selection' : 'area'
+}
+
+/** Whether the area lines can stand in for the project chips: every chip has a line, else a project
+ *  without one could no longer be picked */
+export function areasCoverProjects(projects, areas) {
+  const have = new Set((areas ?? []).map(a => a.name.trim().toLowerCase()))
+  return (projects ?? []).every(p => have.has(String(p).trim().toLowerCase()))
 }
 
 /** The agent tab that works on a task, by the task's slug */
@@ -2030,10 +2226,14 @@ export function tileSlug(text) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
 }
 
-const HOME_SHELVES = ['focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
-const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'classic', 'list', 'focusview']
+const HOME_SHELVES = ['areas', 'focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
+const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'stage', 'classic', 'list', 'focusview']
 const HOME_CORE = ['scan', 'brief']   // what a click on the bridge's core does; several combine
-const OFF_BY_DEFAULT = new Set(['o:classic', 'o:list', 'o:focusview', 'k:brief'])   // the bridge stage is the start page; tiles, list and focus are a choice
+// the parts the overview can show under its table, each off until chosen (Settings, Start page)
+export const DESK_PARTS = ['waiting', 'guide', 'tabs', 'day']
+// the control view (areas) is the start page; the bridge, tiles, list and focus are a choice, the pinned shelf too
+// (Work filters by the star). A choice saved before o:stage existed has no view option and so gets the control view
+const OFF_BY_DEFAULT = new Set(['o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:brief', 's:pinned'])
 
 /** Everything the start page can show, in the order it offers it: each gauge in percent of a page (a quota),
  *  the counts of the day, every page of the profile, the shelves, and the options that change how things
@@ -2056,17 +2256,27 @@ export function homeCatalog(model, { workers = true } = {}) {
   for (const x of HOME_SHELVES) out.push({ id: `s:${x}`, kind: 'shelf' })
   for (const x of HOME_OPTIONS) out.push({ id: `o:${x}`, kind: 'option' })
   for (const x of HOME_CORE) out.push({ id: `k:${x}`, kind: 'core' })
+  for (const x of DESK_PARTS) out.push({ id: `d:${x}`, kind: 'desk' })
   return out
 }
 
 /** What a page shows before anyone chose: the first quota of a window of a day or more, what waits on you,
  *  the next date, the page with the tasks, every shelf and every option */
 function homeDefaults(model, all) {
-  const quota = all.find(x => x.kind === 'quota' && x.it.meter.window_h >= 24) ?? all.find(x => x.kind === 'quota')
+  const quota = firstQuota(all)
   const work = (model?.pages ?? []).find(p => (p.sections ?? []).some(sec => sec.kind === 'tasks'))
   return new Set([quota?.id, 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', work ? `p:${work.id}` : null,
     ...HOME_SHELVES.map(x => `s:${x}`), ...HOME_OPTIONS.map(x => `o:${x}`), ...HOME_CORE.map(x => `k:${x}`)]
     .filter(x => x && !OFF_BY_DEFAULT.has(x)))
+}
+
+function firstQuota(all) {
+  return all.find(x => x.kind === 'quota' && x.it.meter.window_h >= 24) ?? all.find(x => x.kind === 'quota') ?? null
+}
+
+/** The quota "next up" names: the one the defaults take, the first with a window of a day or more */
+export function homeQuota(model) {
+  return firstQuota(homeCatalog(model))
 }
 
 /** What the start page shows, in its order: the choice made ({tiles, seen} from the server), else the
@@ -2113,12 +2323,13 @@ export function dropAmong(list, among, id, target) {
   return refill(list, among, next)
 }
 
-const HOME_VIEWS = { list: 'o:list', focus: 'o:focusview', tiles: 'o:classic' }   // in the order one wins over the next
+const HOME_VIEWS = { list: 'o:list', focus: 'o:focusview', tiles: 'o:classic', stage: 'o:stage' }   // in the order one wins over the next
 
-/** The start page's view from what is chosen: the list, the focus, the tiles of before, else the bridge */
+/** The start page's view from what is chosen: the list, the focus, the tiles of before, the bridge, else
+ *  the control view ('areas': one head line, the areas, next up) */
 export function homeView(chosen) {
   const on = new Set(chosen ?? [])
-  return Object.keys(HOME_VIEWS).find(v => on.has(HOME_VIEWS[v])) ?? 'stage'
+  return Object.keys(HOME_VIEWS).find(v => on.has(HOME_VIEWS[v])) ?? 'areas'
 }
 
 /** The chosen list with one view picked: every view option out, the picked one at the end */
@@ -2148,6 +2359,7 @@ export function homeListParts(tabs, model, { project = null, pins = [] } = {}) {
   const bound = new Map(shown.map(r => [r.key, tabOfTask(live, r.task)]).filter(([, tb]) => tb))
   const seenTabs = new Set([...(lead?.kind === 'tab' ? [lead.tab.ref] : []), ...[...bound.values()].map(tb => tb.ref)])
   const free = state => live.filter(x => x.state === state && !seenTabs.has(x.ref))
+  // resting by state on purpose: a tab gone idle rests there too, it asks nothing
   return { lead, asking: free('needs-you'), waiting, pinned, tasks, running: free('working'), resting: free('waiting'),
     tabOf: key => bound.get(key) ?? null }
 }
@@ -2636,7 +2848,8 @@ export function situation(model, tabs, nowMs) {
     work: rows('work'),
     later: rows('later'),
     asking: live.filter(t => t.state === 'needs-you'),
-    waiting: live.filter(t => t.state === 'waiting'),
+    waiting: live.filter(t => t.state === 'waiting' && wantsYou(t)),
+    idle: live.filter(t => t.state === 'waiting' && t.idle),
     working: live.filter(t => t.state === 'working'),
     answers: returns.filter(r => r.stage === 'result'),
     lost: returns.filter(r => r.stage === 'lost'),
@@ -2839,7 +3052,8 @@ export function graphLive(g, tabs, returns, runs) {
   const task = slug => slug ? g.index.get(`work/tasks/${slug}/STATUS.md`) ?? g.index.get(`work/streams/${slug}/STATUS.md`) : undefined
   for (const t of tabs ?? []) {
     if (t.is_control || !t.slug) continue
-    if (t.state === 'needs-you' || t.state === 'waiting') put(task(t.slug), { tone: 'asks', text: t.name, ref: t.ref })
+    if (wantsYou(t)) put(task(t.slug), { tone: 'asks', text: t.name, ref: t.ref })
+    else if (t.state === 'waiting' && t.idle) put(task(t.slug), { tone: 'answer', text: t.name, ref: t.ref })   // finished: to check
     else if (t.state === 'working') put(task(t.slug), { tone: 'working', text: t.name, ref: t.ref })
   }
   for (const r of returns ?? []) {
@@ -3427,7 +3641,7 @@ export function tourPlace(rect, box, view, gap = 12) {
 // hints.items.<id>; an area the page does not show is left out when drawn. The page comes first, the header
 // on every page in a round of its own after it, so its notes never take the page's room
 const HINTS = {
-  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'], ['startTools', '.stage-tools'],
+  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'],
     ['stations', '.station'], ['core', '.core-button'], ['today', '.stage-card'], ['projects', '.home-chips'],
     ['tabCards', '.hcard:not(.hcard-row)'], ['rowCards', '.hcard-row'], ['starts', '.home-starts']],
   briefing: [['alarm', '.col-day .alarm'], ['secHead', '.col-day .sec-head'], ['rowMain', '.col-day .row-main'],

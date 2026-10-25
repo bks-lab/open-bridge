@@ -8,7 +8,7 @@
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, focusIndex, homeListParts, homeQueue, previewText, projectTone, short, stateToken, untilText,
-  upcomingEvents, greetingText, dayLabel, workPageId, rowProject,
+  upcomingEvents, greetingText, dayLabel, workPageId, rowProject, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { RowBar } from './day.js'
@@ -60,7 +60,7 @@ export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = n
     ${sub ? html`<p class="fx-sub muted small">${sub}</p>` : null}
     <div class="fx-meta">
       ${project ? html`<span class=${`fx-proj tk-${projectTone(project)}`}>${project}</span>` : null}
-      ${tab ? html`<${StateLine} token=${stateToken(tab.state)} strong word=${x.kind === 'tab' ? t.state[tab.state] ?? tab.state : `${t.home.list.tab} ${tab.name}: ${t.state[tab.state] ?? tab.state}`} />
+      ${tab ? html`<${StateLine} token=${stateToken(tabStateKey(tab))} strong word=${x.kind === 'tab' ? t.state[tabStateKey(tab)] ?? tab.state : `${t.home.list.tab} ${tab.name}: ${t.state[tabStateKey(tab)] ?? tab.state}`} />
         <span class="mono muted">${duration(s.now - (tab.since_ms || s.now))}</span>` : null}
       ${x.kind === 'row' ? html`<${ReturnChip} s=${s} rowKey=${x.row.key} />` : null}
     </div>

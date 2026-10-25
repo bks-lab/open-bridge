@@ -592,6 +592,9 @@ test('FE-2: single-key shortcuts do nothing while a drawer or a confirmation is 
   }
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'g', false), true)
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 't', true), true)
+  // g a (to the areas of the start page) works over a drawer as g t does; a alone still does not
+  assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'a', true), true)
+  assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'a', false), false)
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: null }, 'c', false), true)
   assert.match(read('app.js'), /modalKeyAllowed\(/)
 })
@@ -1197,9 +1200,7 @@ test('the briefing headline counts what the Briefing tab counts, the header does
   const comp = readComponents()
   const header = comp.match(/function Header\([\s\S]*?\n\}/)[0]
   assert.doesNotMatch(header, /m\?\.headline/)
-  const ov = comp.match(/function Overview\([\s\S]*?\n\}/)[0]
-  assert.match(ov, /t\.forYouNow\(m\.briefing_badge/)
-  assert.match(ov, /m\.headline_rest/)
+  // (the middle's headline, the server's count and its rest, is a render test: "Work under an area filter")
 })
 
 test('the agent tab column stands only where work is handed to the AI: the work tab and the chat', async () => {
@@ -1368,7 +1369,7 @@ test('the work tab opens on what is due and switches to by source and by Jev', (
   assert.equal(logic.workViewOf(undefined, work, ready), 'due')
 })
 
-test('with a work tab the day view stands on Start, the middle of Due only points there', () => {
+test('with a work tab the day stands in the middle of Due, and on Start in the bridge and tiles views', () => {
   const comp = readComponents()
   // one component holds the day: dates, status, clear and hygiene, the workplace, the pages of group day
   const day = comp.slice(comp.indexOf('function DayView('), comp.indexOf('function StatusList('))
@@ -1382,7 +1383,7 @@ test('with a work tab the day view stands on Start, the middle of Due only point
   // there it looks like the other shelves: one card per block; on the stage above the project chips, which do not filter it
   const cards = day.slice(day.indexOf('if (cards)'), day.indexOf('const [agenda, status'))
   assert.match(cards, /class=\$\{`hcard day-card day-\$\{b\.id\}`\}/)
-  assert.match(home, /\$\{daily\}\s*\$\{chips\}/)
+  // (the order day, areas, chips is a render test in bridge_cockpit_render.test.mjs)
   // what happened today is long and read last: on Start a shelf of its own at the end, not one of the day cards
   assert.doesNotMatch(cards, /DayPages/)
   assert.match(day.slice(day.indexOf('const [agenda, status')), /<\$\{DayPages\} s=\$\{s\} c=\$\{c\} \/>/)
@@ -1390,13 +1391,7 @@ test('with a work tab the day view stands on Start, the middle of Due only point
   // the shelf does not repeat the title of the card on the stage
   assert.notEqual(text.TABLES.de.home.dayTitle, text.TABLES.de.overviewTitle)
   assert.ok(text.TABLES.en.home.dayTitle)
-  // the middle of Due keeps only the headline and a way to Start there; without a work page it stays whole
-  const ov = comp.slice(comp.indexOf('function Overview('), comp.indexOf('function DayView('))
-  assert.match(ov, /if \(workPageOf\(m\.pages\)\)/)
-  assert.match(ov, /c\.setPage\(START_PAGE\)/)
-  assert.match(ov, /<\$\{DayView\} s=\$\{s\} c=\$\{c\} \/>/)
-  // its words exist in both languages
-  assert.equal((read('text.js').match(/^  dayOnStart(Open)?: '/gm) ?? []).length, 4)
+  // (that the middle of Due shows the day, with or without a work page, is a render test)
 })
 
 test('the words of the Jev order exist in both languages', () => {
@@ -1511,6 +1506,274 @@ test('the start page: greeting by hour, project chips from tabs and rows, cards 
   assert.equal(logic.tabOfTask([{ ref: 'x', slug: 'foo' }], null), null)
 })
 
+test('the start page counts per area what waits, runs, is to review, is overdue and its tasks, each thing once', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const now = new Date(2026, 9, 13, 12, 0).getTime()
+  const tabs = [
+    { ref: 'c', workspace: 'ACME', state: 'working', waiting: true, idle: true, is_control: true },   // the control tab: never
+    { ref: 's', workspace: 'ACME', state: 'shell', waiting: true },                                  // a bare shell: never
+    { ref: 'a', workspace: 'acme', state: 'working' },
+    { ref: 'b', workspace: 'ACME', state: 'needs-you', waiting: true },
+    { ref: 'i', workspace: ' ACME ', state: 'waiting', waiting: true, item: 'inbox-1' },            // the tab of the row inbox:1
+    { ref: 'd', workspace: 'ORBIT', state: 'waiting', idle: true },
+    { ref: 'g', workspace: 'ORBIT', state: 'waiting', idle: true, slug: 'a' },                       // its start answered: counted there
+    { ref: 'e', workspace: 'ORBIT', state: 'waiting' },                                              // no idle field: waiting, not to review
+    { ref: 'f', workspace: 'Quiet', state: 'shell' },                                                // counts for nothing
+  ]
+  const sections = [
+    { id: 'now', rows: [{ key: 'inbox:1', inbox_id: 'inbox-1', area: 'Acme' }, { key: 'inbox:2', area: 'Privat', due: '2026-10-12' }] },
+    { id: 'work', rows: [
+      { key: 'task:a', task: 'a', area: 'ORBIT', due: '2026-10-01' },
+      { key: 'task:b', task: 'b', area: 'ORBIT', due: '2026-10-13' },      // due today: not overdue
+      { key: 'task:b2', task: 'b', area: 'ORBIT' },                        // the same task again: one task
+      { key: 'task:c', task: 'c', area: 'ACME', due_at: '2026-10-10' },
+      { key: 'task:d', task: 'd', area: 'Still', due: '2026-12-01' },      // only a task: the area stays, damped
+      { key: 'gh:1', area: 'Board' }] },                                   // no task, no number: no line
+  ]
+  const returns = [
+    { key: 'task:a', item: 'a', stage: 'result', live: 'result', tab: { ref: 'g' } },
+    { key: 'task:c', stage: 'working', live: 'working' },                 // still at work: not to review
+    { key: 'inbox:gone', stage: 'result', live: 'result' },               // its row is gone: no area
+  ]
+  const areas = logic.homeAreas(tabs, sections, returns, now)
+  const rows = sections.flatMap(x => x.rows)
+  // the order of the project chips, names merged without regard to case or spaces, an area without a number left out
+  assert.deepEqual(areas.map(a => a.name), logic.homeProjects(tabs, rows).filter(n => !['Quiet', 'Board'].includes(n)))
+  const by = Object.fromEntries(areas.map(a => [a.name.toLowerCase(), a]))
+  assert.deepEqual(Object.keys(by).sort(), ['acme', 'orbit', 'privat', 'still'])
+  const figs = a => [a.waiting, a.running, a.review, a.overdue, a.tasks, a.total]
+  // the row inbox:1 and its waiting tab are one thing: 2 waiting (that one and tab b), not 3
+  assert.equal(by.acme.tone, logic.projectTone('ACME'))
+  assert.deepEqual(figs(by.acme), [2, 1, 0, 1, 1, 4])
+  // the idle tab g is the start whose answer came: to review once, with d beside it; e waits
+  assert.deepEqual(figs(by.orbit), [1, 0, 2, 1, 2, 4])
+  assert.deepEqual(figs(by.privat), [1, 0, 0, 1, 0, 2])
+  // tasks only: total 0, but the line stays so the area can still be picked
+  assert.deepEqual(figs(by.still), [0, 0, 0, 0, 1, 0])
+  assert.deepEqual(logic.homeAreas([], [], [], now), [])
+  assert.deepEqual(logic.homeAreas(null, null, null, now), [])
+  // the lines stand in for the chips only when every chip has a line
+  assert.equal(logic.areasCoverProjects(['ACME', 'ORBIT'], areas), true)
+  assert.equal(logic.areasCoverProjects(['ACME', 'Board'], areas), false)
+  assert.equal(logic.areasCoverProjects(['acme '], areas), true)
+  // inProject compares as the chips do: no case, no surrounding spaces
+  assert.equal(logic.inProject({ workspace: ' ACME ' }, 'acme'), true)
+  assert.equal(logic.inProject({ area: 'Acme' }, ' ACME'), true)
+})
+
+test('a tab that went idle is done, not waiting on you: walks, groups, counts and the picture leave it out', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const tab = (ref, state, over = {}) => ({ ref, state, name: ref, workspace: 'W', since_ms: 1, ...over })
+  const tabs = [tab('n', 'needs-you'), tab('w', 'waiting', { waiting: true }), tab('i', 'waiting', { idle: true, waiting: false }),
+    tab('k', 'working'), { ...tab('c', 'waiting'), is_control: true }]
+  assert.equal(logic.wantsYou(tabs[0]), true)
+  assert.equal(logic.wantsYou(tabs[1]), true)
+  assert.equal(logic.wantsYou(tabs[2]), false)
+  assert.equal(logic.wantsYou(tabs[3]), false)
+  assert.equal(logic.wantsYou(tabs[4]), false)
+  assert.equal(logic.tabWaits(tabs[2]), false)
+  assert.deepEqual(logic.walkRefs(tabs), ['n', 'w'])
+  // an idle tab stands in a group of its own, after the ones at work
+  const q = logic.statusQueue(tabs)
+  assert.deepEqual(q.map(g => g.state), ['needs-you', 'waiting', 'working', 'idle'])
+  assert.deepEqual(q.find(g => g.state === 'idle').tabs.map(t => t.ref), ['i'])
+  assert.deepEqual(logic.situation({ sections: [], returns: [] }, tabs, 0).waiting.map(t => t.ref), ['w'])
+  assert.deepEqual(logic.situation({ sections: [], returns: [] }, tabs, 0).idle.map(t => t.ref), ['i'])
+  // the graph: an idle tab reads as an answer to check, not as a question
+  const g = { index: new Map([['work/tasks/x/STATUS.md', 0], ['work/tasks/y/STATUS.md', 1]]) }
+  const live = logic.graphLive(g, [tab('i', 'waiting', { idle: true, slug: 'x' }), tab('w', 'waiting', { slug: 'y' })], [], [])
+  assert.equal(live.get(0).tone, 'answer')
+  assert.equal(live.get(1).tone, 'asks')
+})
+
+test('the control view: the default, also for a choice made before it existed; a chosen view stays', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const model = { pages: [{ id: 'ops', title: 'Ops', sections: [{ id: 'quota', kind: 'command', items: [
+    { title: 'Session (5 h): 3 %', meter: { value: 3, max: 100, unit: '%', window_h: 5 } },
+    { title: 'Week: 19 %', meter: { value: 19, max: 100, unit: '%', window_h: 168 } }] }] }] }
+  const all = logic.homeCatalog(model).map(x => x.id)
+  const old = all.filter(x => x !== 'o:stage')        // what the chooser offered before the control view
+  assert.equal(logic.homeView(logic.homeChosen(model, null)), 'areas')
+  // chosen before, no view option set (it was the bridge then): now the control view, the bridge is not added
+  assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['c:waiting', 's:tasks'], seen: old })), 'areas')
+  // a view chosen before stays
+  assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['c:waiting', 'o:focusview'], seen: old })), 'focus')
+  assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['o:classic'], seen: old })), 'tiles')
+  assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['o:list'], seen: old })), 'list')
+  // pinned is no longer a default shelf, but a choice that had it keeps it
+  assert.equal(logic.homeChosen(model, null).includes('s:pinned'), false)
+  assert.equal(logic.homeChosen(model, { tiles: ['s:pinned'], seen: old }).includes('s:pinned'), true)
+  // "next up" takes the quota the defaults take: the first with a window of a day or more
+  assert.equal(logic.homeQuota(model).label, 'Week')
+  assert.equal(logic.homeQuota({ pages: [] }), null)
+})
+
+test('a number of the areas jumps to the page that holds those things, the area as its filter', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const a = { name: 'ACME', waiting: 2, waitingTabs: 1, running: 1, review: 1, overdue: 1, tasks: 3 }
+  // tabs that want you are answered in the chat, walked one by one; rows alone wait in Work, what is due first
+  assert.deepEqual(logic.areaJump('waiting', a), { page: '@chat', walk: true })
+  assert.deepEqual(logic.areaJump('waiting', { ...a, waitingTabs: 0 }), { page: 'briefing', view: 'due' })
+  assert.deepEqual(logic.areaJump('running', a), { page: '@sessions' })
+  assert.deepEqual(logic.areaJump('review', a), { page: '@sessions' })
+  assert.deepEqual(logic.areaJump('overdue', a), { page: 'briefing', view: 'due' })
+  assert.deepEqual(logic.areaJump('tasks', a), { page: 'briefing' })
+  assert.deepEqual(logic.areaJump('name', a), { page: 'briefing' })
+  // homeAreas says how many of the waiting are tabs
+  const areas = logic.homeAreas([{ ref: 't', workspace: 'ACME', state: 'needs-you', waiting: true }],
+    [{ id: 'now', rows: [{ key: 'inbox:1', area: 'ACME' }] }], [], 0)
+  assert.equal(areas[0].waiting, 2)
+  assert.equal(areas[0].waitingTabs, 1)
+})
+
+test('the area filter: Work, Chat and Sessions show the area only, the other pages and the badges everything', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const tabs = [{ ref: 'c', is_control: true, workspace: 'Bridge', state: 'waiting' }, { ref: 'a', workspace: 'ACME', state: 'working' },
+    { ref: 'o', workspace: 'ORBIT', state: 'needs-you' }]
+  const model = {
+    sections: [{ id: 'now', total: 2, rows: [{ key: 'inbox:1', area: 'ACME' }, { key: 'inbox:2', area: 'ORBIT' }] },
+      { id: 'work', total: 2, rows: [{ key: 'task:a', task: 'a', area: 'acme' }, { key: 'task:b', task: 'b', area: 'ORBIT' }] }],
+    pages: [{ id: 'work', group: 'work', sections: [{ id: 'tasks', kind: 'tasks', items: [
+      { key: 'item:work/tasks/a', task: 'a', title: 'A' }, { key: 'item:work/tasks/b', task: 'b', title: 'B' },
+      { key: 'item:work/tasks/x', title: 'X', mark: { label: 'ACME' } }] }] }],
+    returns: [{ key: 'task:a', stage: 'result' }, { key: 'task:b', stage: 'result' }],
+  }
+  const sessions = { sessions: [{ sid: '1', project: 'acme', tab: null }, { sid: '2', project: 'x', tab: { ref: 'o' } }, { sid: '3', project: 'y', tab: { ref: 'a' } }] }
+  const more = { 'work/tasks': { items: model.pages[0].sections[0].items } }
+  const base = { model, tabs: { tabs }, sessions, more, home: { pins: ['task:b'] } }
+  const at = (page, ui = {}) => logic.areaScope({ ...base, ui: { page, area: 'ACME', ...ui } })
+  const keys = v => v.model.sections.flatMap(x => x.rows.map(r => r.key))
+  // Work: the rows and the page items of the area, a section's total follows; the tab column beside it too
+  const work = at('briefing')
+  assert.deepEqual(work.tabs.tabs.map(t => t.ref), ['c', 'a'])
+  assert.deepEqual(keys(work), ['inbox:1', 'task:a'])
+  assert.deepEqual(work.model.sections.map(x => x.total), [1, 1])
+  assert.deepEqual(work.model.pages[0].sections[0].items.map(x => x.title), ['A', 'X'])
+  assert.deepEqual(work.more['work/tasks'].items.map(x => x.title), ['A', 'X'])
+  // Chat: the tabs of the area, the control tab stays
+  assert.deepEqual(at('@chat').tabs.tabs.map(t => t.ref), ['c', 'a'])
+  // Sessions: by the session's tab, else its folder; the starts by their row
+  const sess = at('@sessions')
+  assert.deepEqual(sess.sessions.sessions.map(x => x.sid), ['1', '3'])
+  assert.deepEqual(sess.model.returns.map(r => r.key), ['task:a'])
+  // any other page, or no area: the state as it is
+  const start = { ...base, ui: { page: '@start', area: 'ACME' } }
+  assert.equal(logic.areaScope(start), start)
+  const plain = { ...base, ui: { page: 'briefing', area: null } }
+  assert.equal(logic.areaScope(plain), plain)
+  // only pinned (the star on Work): the rows and items whose row is pinned, with or without an area
+  const pinned = logic.areaScope({ ...base, ui: { page: 'briefing', area: null, pinnedOnly: true } })
+  assert.deepEqual(keys(pinned), ['task:b'])
+  assert.deepEqual(pinned.model.pages[0].sections[0].items.map(x => x.title), ['B'])
+  assert.deepEqual(keys(at('briefing', { pinnedOnly: true })), [])
+  // the pin filter is Work's own
+  assert.deepEqual(logic.areaScope({ ...base, ui: { page: '@chat', area: null, pinnedOnly: true } }).tabs.tabs.length, 3)
+})
+
+test('the tabs button counts the tabs that want you; a finished tab reads done', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const tabs = [{ ref: 'n', state: 'needs-you' }, { ref: 'w', state: 'waiting', waiting: true }, { ref: 'i', state: 'waiting', idle: true, long: null },
+    { ref: 'c', state: 'needs-you', is_control: true }, { ref: 'k', state: 'working', long: 'working' }]
+  assert.equal(logic.tabsButtonCount(tabs), 2)
+  assert.equal(logic.tabStateKey(tabs[2]), 'idle')
+  assert.equal(logic.tabStateKey(tabs[1]), 'waiting')
+  assert.equal(logic.tabStateKey({ state: 'working', idle: true }), 'working')
+  assert.equal(text.TABLES.en.state.idle, 'done')
+  assert.equal(text.TABLES.de.state.idle, 'fertig')
+})
+
+test('the areas count waiting with one rule, split into tabs and rows; what has no area gets a line of its own', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const tabs = [
+    { ref: 'a', workspace: 'ACME', state: 'needs-you' },                    // wants you, no server waiting flag: counts
+    { ref: 'b', workspace: 'ACME', state: 'waiting', waiting: true, idle: true },   // idle: not waiting, whatever the flag says
+    { ref: 'o', workspace: 'ORBIT', state: 'waiting', waiting: true },
+    { ref: 'n', workspace: '', state: 'needs-you' },                         // no area
+  ]
+  const sections = [{ id: 'now', rows: [{ key: 'inbox:1', area: 'ORBIT' }, { key: 'inbox:2' }, { key: 'inbox:3' }] }]
+  const areas = logic.homeAreas(tabs, sections, [], 0)
+  const by = Object.fromEntries(areas.map(a => [a.none ? '-' : a.name, a]))
+  assert.deepEqual([by.ACME.waiting, by.ACME.waitingTabs, by.ACME.waitingRows], [1, 1, 0])
+  assert.deepEqual([by.ORBIT.waiting, by.ORBIT.waitingTabs, by.ORBIT.waitingRows], [2, 1, 1])
+  // what has no area: one line at the end, named by the page
+  assert.equal(areas.at(-1).none, true)
+  assert.equal(areas.at(-1).name, '')
+  assert.deepEqual([by['-'].waiting, by['-'].waitingTabs, by['-'].waitingRows], [3, 1, 2])
+  // the jump follows what waits: tabs alone are walked in the chat, rows or a mix open Work on what is due
+  assert.deepEqual(logic.areaJump('waiting', by.ACME), { page: '@chat', walk: true })
+  assert.deepEqual(logic.areaJump('waiting', by.ORBIT), { page: 'briefing', view: 'due' })
+  // the lines cover the chips without the no-area line
+  assert.equal(logic.areasCoverProjects(['ACME', 'ORBIT'], areas), true)
+  assert.deepEqual(logic.homeAreas([], [{ id: 'now', rows: [{ key: 'x', area: 'A' }] }], [], 0).map(a => a.none ?? false), [false])
+})
+
+test('under the area filter the compact rows, the hidden rows and the page counts follow; picks and focus that left go', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const model = {
+    sections: [{ id: 'now', total: 3, compact: ['inbox:1', 'inbox:2'], rows: [{ key: 'inbox:1', area: 'ACME' }, { key: 'inbox:2', area: 'ORBIT' }, { key: 'inbox:3', area: 'ACME' }] }],
+    hidden: [{ key: 'inbox:9', area: 'ORBIT' }, { key: 'inbox:8', area: 'ACME' }],
+    pages: [{ id: 'work', group: 'work', sections: [{ id: 'inbox', kind: 'inbox', total: 3, count: 3, more: 4, items: [
+      { key: 'item:1', inbox: '1' }, { key: 'item:2', inbox: '2' }, { key: 'item:3', inbox: '3' }] }] }],
+  }
+  const s = { model, more: {}, tabs: { tabs: [] }, home: { pins: ['inbox:2'] },
+    ui: { page: 'briefing', area: 'ACME', expanded: {}, picked: ['inbox:1', 'inbox:2'], focusKey: 'inbox:2', selectedKey: 'inbox:2' } }
+  const v = logic.areaScope(s)
+  assert.deepEqual(v.model.sections[0].compact, ['inbox:1'])
+  assert.deepEqual(v.model.hidden.map(r => r.key), ['inbox:8'])
+  // the day list shows the area's rows only, also folded
+  assert.deepEqual(logic.displayedRows(v.model, {}, logic.indexRows(v.model)).map(r => r.key), ['inbox:1'])
+  // a page section counts what it shows and says that more are filtered
+  const sec = v.model.pages[0].sections[0]
+  assert.deepEqual([sec.total, sec.count, sec.scoped], [2, 2, true])
+  // the star filter folds the compact rows too
+  const p = logic.areaScope({ ...s, ui: { ...s.ui, area: null, pinnedOnly: true } })
+  assert.deepEqual(p.model.sections[0].compact, ['inbox:2'])
+  // what the filter hid leaves the picks, the focus and the selection; nothing can act on it unseen
+  assert.deepEqual(logic.scopeKeep(s), { picked: ['inbox:1'], focusKey: null, selectedKey: null })
+  assert.deepEqual(logic.scopeKeep({ ...s, ui: { ...s.ui, focusKey: 'inbox:1', selectedKey: null } }), { picked: ['inbox:1'], focusKey: 'inbox:1', selectedKey: null })
+  assert.equal(logic.scopeRow(s, 'inbox:2'), null)
+  assert.equal(logic.scopeRow(s, 'inbox:1').key, 'inbox:1')
+  // the walk in the chat goes through the area's tabs only
+  const tabs = [{ ref: 'a', workspace: 'ACME', state: 'needs-you' }, { ref: 'o', workspace: 'ORBIT', state: 'needs-you' }]
+  assert.deepEqual(logic.walkRefs(logic.areaScope({ tabs: { tabs }, ui: { page: '@chat', area: 'ACME' } }).tabs.tabs), ['a'])
+  // Escape: an open selection first, then the filter, and only on the pages it filters
+  assert.equal(logic.escapeStep({ page: 'briefing', area: 'ACME', selectedKey: 'k', picked: [] }), 'selection')
+  assert.equal(logic.escapeStep({ page: 'briefing', area: 'ACME', selectedKey: null, picked: ['k'] }), 'selection')
+  assert.equal(logic.escapeStep({ page: 'briefing', area: 'ACME', selectedKey: null, picked: [] }), 'area')
+  assert.equal(logic.escapeStep({ page: '@start', area: 'ACME', selectedKey: null, picked: [] }), null)
+  assert.equal(logic.escapeStep({ page: 'briefing', area: null, selectedKey: 'k', picked: [] }), null)
+})
+
+test('the overview parts: off by default, a choice made before them does not get them, the keys reach only shown rows', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const model = { pages: [], sections: [
+    { id: 'now', total: 2, compact: ['inbox:1', 'inbox:2'], rows: [{ key: 'inbox:1', area: 'ACME' }, { key: 'inbox:2', area: 'ORBIT' }] },
+    { id: 'work', total: 1, compact: ['task:a'], rows: [{ key: 'task:a', task: 'a', area: 'ACME' }] }] }
+  const all = logic.homeCatalog(model)
+  const desk = all.filter(x => x.kind === 'desk').map(x => x.id)
+  assert.deepEqual(desk, ['d:waiting', 'd:guide', 'd:tabs', 'd:day'])
+  assert.equal(logic.homeChosen(model, null).some(x => x.startsWith('d:')), false)
+  const old = all.map(x => x.id).filter(x => !x.startsWith('d:'))
+  assert.equal(logic.homeChosen(model, { tiles: ['s:areas'], seen: old }).some(x => x.startsWith('d:')), false)
+  // the keys on the overview: the rows of "Waiting on you" when that part is on, the area's only
+  const ui = { page: '@start', area: null, expanded: {}, picked: [], dayHeight: 900 }
+  const base = { model, tabs: { tabs: [] }, more: {}, home: { tiles: ['s:areas'], seen: all.map(x => x.id) }, ui }
+  assert.equal(logic.keyScope(base), null)
+  const on = { ...base, home: { ...base.home, tiles: ['s:areas', 'd:waiting'] } }
+  const rows = v => logic.displayedRows(v.model, v.ui.expanded, logic.indexRows(v.model), v.ui.dayHeight).map(r => r.key)
+  assert.deepEqual(rows(logic.keyScope(on)), ['inbox:1', 'inbox:2'])
+  assert.equal(logic.keyScope(on).desk, true)
+  const acme = { ...on, ui: { ...ui, area: 'ACME' } }
+  assert.deepEqual(rows(logic.keyScope(acme)), ['inbox:1'])
+  assert.equal(logic.scopeRow(acme, 'inbox:2'), null)
+  assert.equal(logic.scopeRow(acme, 'task:a'), null)            // a task row is not on the overview
+  assert.equal(logic.scopeRow(acme, 'inbox:1').key, 'inbox:1')
+  // another view of the start page: no keys there, as before
+  assert.equal(logic.keyScope({ ...on, home: { ...on.home, tiles: ['d:waiting', 'o:classic'] } }), null)
+  // Work: the rows its filters show
+  assert.deepEqual(rows(logic.keyScope({ ...base, ui: { ...ui, page: 'briefing', area: 'ACME', dayHeight: 0 } })), ['inbox:1', 'task:a'])
+})
+
 test('the start page reckons a quota per day and where it ends at the reset', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   // a week with 19 % used after 24.5 % of it: 11.1 a day against a budget of 14.3, 77.6 at the reset
@@ -1541,13 +1804,14 @@ test('the start page offers every tile to choose, and without a choice only a le
   assert.equal(logic.tileSlug('Week, all Modelle: Ä'), 'week-all-modelle-a')
   const ids = logic.homeCatalog(model).map(x => x.id)
   assert.deepEqual(ids, ['q:quota:session-5-h', 'q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done',
-    'p:dates', 'p:work', 'p:ops', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
-    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief'])
+    'p:dates', 'p:work', 'p:ops', 's:areas', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
+    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief',
+    'd:waiting', 'd:guide', 'd:tabs', 'd:day'])
   // a Bridge without a worker view offers no Workers station: it would lead to a tab that is not there
   assert.equal(logic.homeCatalog(model, { workers: false }).some(x => x.id === 'c:workers'), false)
   // no choice yet: the weekly quota, what waits on you, the next date, the work page, every shelf and option
   assert.deepEqual(logic.homeChosen(model, null),
-    ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:focus', 's:returns', 's:pinned', 's:continue',
+    ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:areas', 's:focus', 's:returns', 's:continue',
       's:waiting', 's:tasks', 's:starts', 'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'k:scan'])
   // a choice keeps its order, an empty one too; what the chooser had offered is never added back
   const all = ids
@@ -2663,9 +2927,8 @@ test('ticker: wired into both start page layouts, the store, the events; links o
   assert.match(stage, /import \{ TickerBand, TickerStatusList \} from '\.\/ticker\.js'/)
   const term = stage.slice(stage.indexOf('<div class="stage-term">'), stage.indexOf('<div class="stage-body">'))
   assert.ok(term.length > 0, 'stage-term stands before stage-body')
-  assert.match(term, /<\$\{TickerBand\} s=\$\{s\} c=\$\{c\} only="news" \/>/)
   assert.match(term, /<div class="stage-greet">[\s\S]*?<\$\{StagePrompt\}/)
-  assert.match(term, /<div class="stage-tools">/)
+  assert.doesNotMatch(stage, /stage-tools|openSettings\('start'\)/)
   assert.doesNotMatch(stage.slice(stage.indexOf('<div class="stage-body">')), /TickerBand/)
   // the status stands still in the live section of the side card, above the live feed
   assert.match(stage, /<div class="feed">\n\s+<h3 class="label-caps feed-head">[^\n]*<\/h3>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{\(s\.feed/)
@@ -2677,8 +2940,8 @@ test('ticker: wired into both start page layouts, the store, the events; links o
     assert.ok(q.length < text.TABLES[lang].home.liveEmpty.length / 2, lang)
     assert.doesNotMatch(q, /^(Quiet|Ruhig)/, lang)
   }
-  // the tiles view: the news under the greeting, the status under the news
-  assert.match(home, /<\/header>\n\s+<\$\{TickerBand\} s=\$\{s\} c=\$\{c\} only="news" \/>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{chips\}/)
+  // the tiles view: the news under the greeting only when switched on for the start page, the status under it
+  // (where the news band shows on the start page, and only when switched on there, is a render test)
   assert.doesNotMatch(home, /home bridge-home`\}>\n\s+<\$\{TickerBand\}/)
   const tk = read('views/ticker.js')
   assert.match(tk, /export function TickerBand\(\{ s, c, only \}\)/)
@@ -2718,7 +2981,9 @@ test('ticker: wired into both start page layouts, the store, the events; links o
     const t = text.TABLES[lang].ticker
     for (const k of ['label', 'edit', 'editing', 'refresh', 'refreshing', 'fresh', 'newsLabel', 'statusLabel', 'less']) assert.ok(t[k], `${lang} ${k}`)
     assert.match(t.more(3), /3/)
-    assert.match(t.settings.explain.enabled, lang === 'de' ? /Begrüßung/ : /greeting/)
+    // the band is off the start page unless switched on there, as one line under the head (kept per browser)
+    assert.match(t.settings.explain.onStart, lang === 'de' ? /Startseite/ : /start page/)
+    assert.ok(t.settings.label.onStart, lang)
     for (const k of logic.TICKER_KINDS) assert.ok(t.settings.kind[k], `${lang} kind ${k}`)
     for (const k of ['enabled', 'speed', 'max_items', 'per_feed', 'refresh_minutes', 'feeds', 'status', 'kinds', 'interests', 'max_picks', 'shorten']) {
       assert.ok(t.settings.label[k], `${lang} label ${k}`); assert.ok(t.settings.explain[k], `${lang} explain ${k}`)
@@ -2897,17 +3162,12 @@ test('ticker names a token source as the usage page does, not by its raw id', ()
   assert.doesNotMatch(logic.tickerText({ key: 'outlier', vars: ['subagent', 2] }, text.TABLES.de), /von subagent/)
 })
 
-test('settings: Customise opens a drawer beside the start page, every choice there is explained', () => {
-  assert.match(read('components.js'), /s\.ui\.drawer === 'customize' \? html`<\$\{CustomizeDrawer\}/)
-  assert.match(read('views/stage.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
-  assert.match(read('views/home.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
-  assert.doesNotMatch(read('views/home.js'), /HomeChooser/)
-  assert.match(read('app.js'), /openSettings\(id\) \{/)
-  const ids = logic.homeCatalog({ pages: [] }).filter(x => ['shelf', 'option', 'core'].includes(x.kind)).map(x => x.id)
+test('settings: every choice of the start page is explained in both languages', () => {
+  const ids = logic.homeCatalog({ pages: [] }).filter(x => ['shelf', 'option', 'core', 'desk'].includes(x.kind)).map(x => x.id)
   for (const lang of ['en', 'de']) {
     const w = text.TABLES[lang].settings
     for (const id of ['start', 'look', 'launch']) assert.ok(w.section[id].title && w.section[id].sub, `${lang} ${id}`)
-    for (const id of ids.filter(x => !['o:classic', 'o:list', 'o:focusview'].includes(x))) assert.ok(w.explainOption[id], `${lang} ${id}`)
+    for (const id of ids.filter(x => !['o:stage', 'o:classic', 'o:list', 'o:focusview'].includes(x))) assert.ok(w.explainOption[id], `${lang} ${id}`)
     for (const k of ['quota', 'count', 'page']) assert.ok(w.kind[k], `${lang} ${k}`)
   }
 })
@@ -4708,20 +4968,22 @@ test('dayQueue: the Today list walks every row in section order, also the ones f
 })
 
 test('start page: three views to choose, the list shows each thing once', () => {
-  // the view is read from two options; the bridge is what nobody chose
-  assert.equal(logic.homeView(['c:waiting']), 'stage')
+  // the view is read from the options; the control view (areas) is what nobody chose
+  assert.equal(logic.homeView(['c:waiting']), 'areas')
+  assert.equal(logic.homeView(['o:stage']), 'stage')
   assert.equal(logic.homeView(['o:classic']), 'tiles')
   assert.equal(logic.homeView(['o:list']), 'list')
   assert.equal(logic.homeView(['o:list', 'o:classic']), 'list')
   // a pick sets one view and keeps everything else in its place
   assert.deepEqual(logic.homeViewSet(['c:waiting', 'o:classic', 's:tasks'], 'list'), ['c:waiting', 's:tasks', 'o:list'])
   assert.deepEqual(logic.homeViewSet(['c:waiting', 'o:list'], 'tiles'), ['c:waiting', 'o:classic'])
-  assert.deepEqual(logic.homeViewSet(['o:classic', 'o:list'], 'stage'), [])
+  assert.deepEqual(logic.homeViewSet(['o:classic', 'o:list'], 'stage'), ['o:stage'])
+  assert.deepEqual(logic.homeViewSet(['o:classic', 'o:stage'], 'areas'), [])
   assert.deepEqual(logic.homeViewSet(['o:list'], 'list'), ['o:list'])
   assert.equal(logic.homeView(['o:focusview']), 'focus')
   assert.equal(logic.homeView(['o:classic', 'o:focusview']), 'focus')
   assert.deepEqual(logic.homeViewSet(['o:list', 'c:next'], 'focus'), ['c:next', 'o:focusview'])
-  assert.deepEqual(logic.homeViewSet(['o:focusview'], 'stage'), [])
+  assert.deepEqual(logic.homeViewSet(['o:focusview'], 'stage'), ['o:stage'])
 
   const tabs = [
     { ref: 'ctl', name: 'control', is_control: true, state: 'needs-you' },

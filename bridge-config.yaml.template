@@ -189,6 +189,7 @@ work:
 #   voice: false           # a tab that waits for you is also spoken (by the browser)
 #   triage_daily: false    # true: sort every task and inbox item once a day by itself (a small model call)
 #   snapshot_minutes: 60   # save the cmux layout (only on change) while the cockpit runs; 0 = only on Save
+#   idle_minutes: 10       # a waiting tab still this long that asks nothing counts as done, not waiting; 0 = off
 #   language: en           # de | en for the page's words; default language.conversation, else en
 #   chat_layout: classic   # classic | workspaces = the Chat tab as cmux shows it
 #   chat_keep_hours: 24    # an untouched quick chat leaves the list into the archive after this many hours; 0 = only the limit of 30

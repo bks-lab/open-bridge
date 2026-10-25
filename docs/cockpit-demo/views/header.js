@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, tabsButtonCount, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, morePages,
@@ -117,7 +117,8 @@ export const chatRunning = x => !!x.running && x.place !== 'suggest'
 export function Header({ s, c }) {
   const t = T()
   const themeIcon = s.ui.theme === 'dark' ? 'moon' : s.ui.theme === 'light' ? 'sun' : 'auto'
-  const waiting = attentionTabs(s.tabs?.tabs).length
+  // the Tabs button counts the tabs that want you; a finished (idle) one waits on nobody
+  const waiting = tabsButtonCount(s.tabs?.tabs)
   return html`<header class="hdr">
     <div class="hdr-id">
       <span class="eyebrow">${t.appName}</span>

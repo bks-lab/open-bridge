@@ -84,6 +84,7 @@ their defaults:
 | `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `files` (Files), see [The files view](#the-files-view); a view the tab does not offer opens Due. A click on the tab's switch still picks another for this browser, until the key changes |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
+| `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
@@ -195,9 +196,12 @@ stands only where that page has `jev:` and Jev is on. With such a page the Jev
 tab goes too: it is the By Jev view now, and an old link to it or to the work
 page opens the matching view. The day moves to Start as well: dates, status,
 what is clear or needs tidying and the workplace stand there as cards in a shelf
-"The day", above the project chips since those do not filter it, and the pages of
-`group: day` close the start page as shelves of their own. The middle of Due
-keeps only the headline and a button to Start.
+"The day", above the areas and the project chips since those do not filter it, and the pages of
+`group: day` close the start page as shelves of their own. Both show in the
+bridge and tiles views only; the overview has no shelves. The middle of Due
+shows the day in full in every case (headline, dates, status, what is clear or
+needs tidying, the workplace, the pages of `group: day`), under the same area
+filter as the rows beside it.
 
 Only one number in the bar carries colour: Today's count of what waits for
 you, the same count as the start page's station "waits for you" and the
@@ -349,14 +353,55 @@ instance with
 
 ### The start page
 
-"Start" is the way in, styled like the project website (DESIGN.md: a
+**The overview (the default).** Start is a slim control view with three
+parts and nothing else:
+
+1. One head line: the day, "N waiting on you (6 tabs, 3 entries)" (the
+   first number of the line All, so what has no area counts too; a click
+   leads where that number leads, without a filter), the findings of a status page
+   and a control session that is not listening as signals (each opens its
+   place). The page carries no settings link of its own: Settings sits in the page bar.
+2. The **Areas** as a table (below): the column heads once on top; on a
+   narrow screen each line wraps and every number carries its label (the
+   table keeps its table roles for screen readers). With the shelf switched
+   off a line says where it went.
+3. One line **Next up**: the next calendar row that has not begun and the
+   quota the defaults take (the first with a window of a day or more), each a
+   link to its detail.
+
+Between the table and Next up the overview can show four **parts**, each off
+until switched on under Settings, Start page, "Parts of the overview" (saved
+with the rest of the start page, `home_tiles` ids `d:waiting`, `d:guide`,
+`d:tabs`, `d:day`; a choice made before they existed does not get them):
+*Waiting on you* (the section of Work, with its actions and the star),
+*Decision guide* (the reading of the next tab that waits on you, the chat's
+own card with its guards, Next and Previous through the others), *Agent
+tabs* (the cards beside Work) and *The day* (the middle of Work). They stand
+in the order chosen there (arrows move one); on a wide screen the guide and
+the tabs stand side by side. Each follows the area filter as Work does, the
+bar over the page then names the filter, and a part with nothing in it
+stays away. With Waiting on you on, the row keys (`j` `k` `Enter` and the
+letters) act on its rows, only those it shows; `x` does not pick there.
+
+Everything else lives on its own page. The other views (bridge, tiles,
+list, focus) and every shelf stay a choice under Settings, Start page; a
+shelf chosen shows only in those views, and Settings says so beside it
+("not in the overview"). A choice saved before the overview existed has no view option
+set and so shows the overview; one that picked tiles, list or focus keeps
+it. The bridge is now the option `o:stage`, off by default, and the Pinned
+shelf is no longer among the defaults (Work filters by the star instead).
+
+**The other views.** "Start" in them is styled like the project website (DESIGN.md: a
 Playfair heading over an eyebrow, cards on hairlines). It greets by
 `cockpit.person_name`, repeats the briefing's headline, and carries a field
 that asks the chat directly. Findings of a status page and a control session
 that is not listening stand under it as signals; each opens its place.
 
-**The news ticker (off by default).** With `cockpit.ticker.enabled` the start
-page shows two kinds of items, each in its own place:
+**The news ticker (off by default).** With `cockpit.ticker.enabled` the
+cockpit shows two kinds of items, each in its own place. The news band is off
+the start page unless Settings, News ticker, "On the start page" is on (kept
+in this browser only); then it runs as one thin line under the head line,
+and under the greeting in the bridge and tiles views:
 
 - **What happens in the Bridge** stands still as a list in the live section of
   the side card "Today", above the live events: what runs (agent tabs at work, busy
@@ -407,8 +452,8 @@ anywhere:
   "new" mark and the head counts them. The visit is kept in the browser, and
   a reload is no new visit.
 
-The classic view shows the news band under the greeting and the status list
-under the band.
+The classic view shows the status list under the greeting, the news band
+above it when it is switched on for the start page.
 
 The band moves slowly and stops while the pointer or the keyboard focus is
 on it, and with its Pause button (the way for touch and keyboard, kept per
@@ -477,25 +522,26 @@ follow: what waits on you, the agent tabs that wait, and every page with a
 count, its largest sections underneath (a page with findings names where
 they are). A click opens the page.
 
-What stands on the start page is your choice. "Customise" beside the
-bridge opens a drawer that leaves the page in view, so every change shows at
-once: the view (bridge, tiles, list or focus, four pictures to pick from), the stations as
-one list in their order (a switch each, a grip to drag, arrows for the
-keyboard; the bridge has room for 13, Today takes the 14th place), the
-sections below, what a click on the core does, and the small details. Every
-row says in one line what it does. "All settings" leads to the same editors
-on the settings page. The choice lives on the server (`state.json`, key
+What stands on the start page is your choice, all of it in one place:
+Settings, Start page, reached through Settings in the page bar like every
+other setting. In this order: the view (overview, bridge, tiles, list or focus, five
+pictures to pick from), the parts of the overview, then the tiles and
+sections of the other views: the stations as one list in their order (a
+switch each, a grip to drag, arrows for the keyboard; the bridge has room for
+13, Today takes the 14th place), the sections below, what a click on the
+core does; last the options. Every row says in one line what it does. The choice lives on the server (`state.json`, key
 `home_tiles`, action `home_tiles`), so every browser shows the same. Until
-one is made the page shows the bridge with the first quota of a window of a
+one is made the page shows the overview; the other views then show the first quota of a window of a
 day or more, what waits on you, With the AI, the agent tabs, the background
-jobs, the next date, the page with the tasks, every shelf and every option.
+jobs, the next date, the page with the tasks, every shelf but Pinned and every option but the views.
 
-More it can show, each one switched in "Customise":
+More it can show, each one switched in Settings, Start page:
 
 - **Next up**: one step, large. A tab that asks you, else the first row
   waiting on you, else the first P0 or P1 task.
 - **Pinned**: rows you starred. The star sits on every card and every
-  Briefing row; a tab card stars its task. Kept on the server (`pins`).
+  Briefing row; a tab card stars its task. Kept on the server (`pins`). Off
+  by default: Work has the star filter "Only pinned" in its bar instead.
 - **Next date**: a countdown to the next calendar row that has not begun
   (rows carry their start as `at`). A click opens the event: its calendar,
   place and people, "Join" for a meeting link, its steps as buttons ("Prepare",
@@ -510,7 +556,7 @@ More it can show, each one switched in "Customise":
   the numbers.
 - **Order**: drag a station in the list, or move it one place up or down.
 
-**The bridge.** Unless the tiles, the list or the focus view is chosen, the start page draws the
+**The bridge.** With the bridge view chosen (`o:stage`), the start page draws the
 picture of the explainer films: the terminal line (it asks the chat), the
 core with its rings, the chosen tiles as stations on curved links, the card
 "Today" with the next step. A station's heart line beats by its state (red
@@ -606,7 +652,55 @@ the bars and the trend fill in over the following days.
 
 Below sit project chips, made from the workspaces of the agent tabs and the
 projects of the rows (area, else the mark), most frequent first. A chip
-filters every shelf, and the choice is kept in the browser. The shelves:
+filters every shelf, and the choice is kept in the browser.
+
+The **Areas** shelf (on by default, first among the shelves) stands above the
+chips: one line per area, in the order of the chips, with five numbers.
+*Waiting on you* counts the area's rows in "now" and its agent tabs that want
+you (needs you, or waits and is not finished; a row and the tab working on it
+count once); *running* its tabs at work; *to
+review* its tabs that went idle and the starts handed to an agent whose answer
+came (a start and its idle tab count once); *overdue* its rows past their due
+day; *tasks* its open task rows, each task once. The control tab and bare
+shells count for nothing. An area with every number at zero is left out; one
+with nothing but tasks stays, damped, so it can still be picked. A line is a
+button: it picks that area as the chips do, a second click (or the line "All")
+shows everything again. With the shelf on and a line for every chip, the lines
+replace the chips. In the overview a name opens Work for that area instead.
+What has no area stands last as **No area**; its name and numbers lead to the
+same pages without a filter. There is one area filter in the whole cockpit:
+the name, a chip or a jump set it, the start page views, Work, Chat and
+Sessions all show it, and a project chosen on the start page before carries
+over.
+
+**Every number is a jump** to the page that holds those things, with the area
+as its filter: *waiting on you* opens Chat and walks the area's tabs that want
+you one by one when only tabs wait (Chat shows tabs, not rows); rows, or rows
+and tabs, open Work on what is due, where "now" leads; *running* and *to review* open
+Sessions (the sessions and the starts handed to an agent); *overdue* opens
+Work on what is due; *tasks* opens Work in the view it was left in. A zero
+leads nowhere.
+
+**The area filter** (kept in the browser) acts on Work, Chat and Sessions: Work
+keeps the rows of the area (the folded ones and the hidden ones too), its
+page items and, in the tab column beside it, the area's tabs; the middle's
+headline counts what waits in the area (as its line on the overview does),
+while dates, status and tidying stay for all areas and say so; Chat the area's tabs (the control tab stays; `n` walks only
+them), Sessions the sessions whose tab, else whose folder, is in the area,
+and the starts of its rows. A section counts what it shows; rows still to
+load say "(area filtered)". The keys act only on rows the page shows: a new
+filter empties the picks and lets go of a focus or an open row it hides. A
+bar over these pages, and over the start page's other views, names it
+("Area: ACME ✕"); the ✕ shows every area again, and so does `Esc` once an
+open row or the picks are closed. The
+page tabs' badges and the header always count everything. On Work the same
+bar carries the star "Only pinned", which keeps the rows you pinned.
+
+A tab that went idle is finished, not waiting on you (its badge reads "done", and the header's Tabs button does not count it): the
+walk through the tabs skips it, and By status lists it under "Finished, to
+review". `g` then `a` jumps to the
+start page and puts the focus on the lines; `j` and `k` move there, `Enter`
+picks. The shelves:
 
 - **Continue**: the agent tabs as cards, the ones that need you first. The
   band names the project and shows the last lines of the screen. One click
@@ -1594,6 +1688,8 @@ the focus is not in a text field:
 | `r` | reload, fresh |
 | `/` | the command box |
 | `g` then `t` | the agent tabs |
+| `g` then `a` | the start page, the focus on its Areas; there `j` / `k` move and `Enter` picks |
+| `Esc` | also: on Work, Chat or Sessions with nothing open, show every area again |
 | `n` / `p` | the next / previous entry of the walk you are in: a detail opened from a list, the Today list, the Chat page's tabs, the focus on the start page, the Files view |
 | `Alt` + `1` to `9` | the page tabs |
 | `?` | help |

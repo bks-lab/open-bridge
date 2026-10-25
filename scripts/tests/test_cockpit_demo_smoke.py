@@ -130,8 +130,8 @@ def test_every_demo_page_opens_without_console_errors(base_url, browser, lang):
 
 @pytest.mark.parametrize("lang", ["en", "de"])
 def test_every_start_page_view_mounts_without_console_errors(base_url, browser, lang):
-    # the four views of the start page (bridge, tiles, list, focus) are separate components; a view only
-    # mounts once chosen in Settings, so the walk over the tabs above never reaches three of them
+    # the five views of the start page (overview, bridge, tiles, list, focus) are separate components; a view
+    # only mounts once chosen in Settings, so the walk over the tabs above never reaches four of them
     problems: list[str] = []
     where = ["load"]
     ctx = browser.new_context(viewport={"width": 1440, "height": 1000})
@@ -152,12 +152,12 @@ def test_every_start_page_view_mounts_without_console_errors(base_url, browser, 
         page.locator(".more-menu [role=menuitem]").filter(has_text=word).first.click()
 
     shown = []
-    for i in range(4):
+    for i in range(5):
         where[0] = f"view {i}"
         open_settings()
         opts = page.locator(".view-opt")
         opts.first.wait_for()
-        assert opts.count() == 4, opts.count()
+        assert opts.count() == 5, opts.count()
         opts.nth(i).click()
         page.wait_for_timeout(200)
         start.click()
@@ -209,7 +209,7 @@ def test_the_demo_opens_the_work_tab_on_the_files_view_the_config_names(base_url
     else:
         page.locator(".ptab-more > [role=tab]").click()
         page.locator(".more-menu [role=menuitem]").filter(has_text=word).first.click()
-    page.locator(".view-opt").nth(3).click()   # bridge, tiles, list, focus
+    page.locator(".view-opt").nth(4).click()   # areas, bridge, tiles, list, focus
     page.locator(".pagebar-tabs > [role=tab]").first.click()
     page.wait_for_selector("#main .fx .fx-work")
     onward = page.locator("#main .fx-work button").filter(has_text=re.compile("Continue with the files|Weiter mit den Akten"))

@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, the settings: one page with an area per subject (the start page, how it looks, the model an
-// agent tab starts with), and the drawer "Customise" opens beside the start page with the same editors.
+// agent tab starts with). Everything the start page can show is chosen here, in its area Start page.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, homeCatalog, homeChosen, homeView, homeViewSet,
+  DESK_PARTS, LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, homeCatalog, homeChosen, homeView, homeViewSet,
   jevModelValid, launchPatch, moveAmong,
 } from '../logic.js'
 import { T } from '../text.js'
 import { Segmented } from './detail.js'
 import { catalogLabel } from './home.js'
-import { Drawer } from './overlays.js'
 import { Btn, Chip, Empty, Icon, StateLine, useRoving } from './parts.js'
 import { GuideSettings } from './guide.js'
 import { TickerSettings } from './ticker.js'
@@ -68,9 +67,9 @@ function ViewCard({ home }) {
   const keys = useRoving()
   return html`<${Card} title=${w.viewTitle} intro=${w.viewIntro}>
     <div class="view-pick" role="radiogroup" aria-label=${w.viewTitle} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
-      ${['stage', 'tiles', 'list', 'focus'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
+      ${['areas', 'stage', 'tiles', 'list', 'focus'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
         class=${`view-opt${view === v ? ' is-on' : ''}`} onClick=${() => view !== v && home.pick(v)}>
-        <span class=${`view-thumb view-thumb-${v}`} aria-hidden="true">${v === 'stage'
+        <span class=${`view-thumb view-thumb-${v}`} aria-hidden="true">${v === 'areas' ? html`<u></u><i></i><i></i><i></i><u></u>` : v === 'stage'
           ? html`<b></b><i></i><i></i><i></i><i></i><i></i><i></i>`
           : v === 'tiles' ? html`<em></em><i></i><i></i><i></i><i></i>`
           : v === 'list' ? html`<em></em><u></u><i></i><i></i><i></i><i></i>` : html`<em></em><b></b><u></u><i></i><i></i><i></i>`}</span>
@@ -123,7 +122,7 @@ function StationsCard({ home }) {
     </li>`
   }
   const count = tiles ? null : html`<span class=${`set-count num${shown.length > room ? ' is-over' : ''}`}>${w.stationsCount(Math.min(shown.length, room), room)}</span>`
-  const title = { stage: w.stationsTitle, tiles: w.stationsTitleTiles, list: w.stationsTitleList }[home.view]
+  const title = { stage: w.stationsTitle, tiles: w.stationsTitleTiles, list: w.stationsTitleList }[home.view] ?? w.stationsTitleTiles
   return html`<${Card} title=${title} intro=${home.view === 'list' ? w.stationsIntroList : w.stationsIntro} head=${count}>
     <h4 class="label-caps st-group">${w.stationsShown}</h4>
     ${shown.length ? html`<ol class="st-list">${shown.map(row)}</ol>` : html`<${Empty}>${w.stationsNone}<//>`}
@@ -152,7 +151,9 @@ function SwitchRows({ home, ids, note }) {
 function ShelvesCard({ home }) {
   const w = T().settings
   const list = home.view === 'list'
-  const note = id => (id === 's:focus' && home.view === 'stage' ? w.onlyTiles : id === 's:starts' && list ? w.notList : null)
+  // the overview shows the areas and nothing else of the shelves
+  const note = id => (home.view === 'areas' ? (id === 's:areas' ? null : w.notDesk)
+    : id === 's:focus' && home.view === 'stage' ? w.onlyTiles : id === 's:starts' && list ? w.notList : null)
   return html`<${Card} title=${w.shelvesTitle} intro=${list ? w.shelvesIntroList : w.shelvesIntro}>
     <${SwitchRows} home=${home} ids=${home.catalog.filter(x => x.kind === 'shelf').map(x => x.id)} note=${note} />
   <//>`
@@ -167,14 +168,43 @@ function CoreCard({ home }) {
   <//>`
 }
 
+/** The parts the overview shows under its table: a switch each, off until chosen, saved with the rest of
+ *  the start page (home_tiles); the chosen ones in their order, with arrows to move one */
+function DeskCard({ home }) {
+  const w = T().settings
+  const h = T().home
+  const isPart = id => id.startsWith('d:')
+  const shown = home.chosen.filter(isPart)
+  const rest = DESK_PARTS.map(x => `d:${x}`).filter(id => !shown.includes(id))
+  const name = id => h.deskPart[id.slice(2)]
+  const row = (id, i, on) => html`<${Row} key=${id} label=${name(id)} explain=${w.explainOption[id]}>
+    ${on ? html`<span class="st-move">
+      <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${w.up(name(id))} title=${w.up(name(id))}
+        onClick=${() => home.save(moveAmong(home.chosen, isPart, id, -1))}><${Icon} name="chevronUp" size=${14} /></button>
+      <button type="button" class="icon-btn" disabled=${i === shown.length - 1} aria-label=${w.down(name(id))} title=${w.down(name(id))}
+        onClick=${() => home.save(moveAmong(home.chosen, isPart, id, 1))}><${Icon} name="chevronDown" size=${14} /></button>
+    </span>` : null}
+    <${Switch} on=${on} label=${name(id)} onChange=${v => home.flip(id, v)} />
+  <//>`
+  return html`<${Card} title=${w.deskTitle} intro=${home.view === 'areas' ? w.deskIntro : `${w.deskIntro} ${w.deskOnly}`}>
+    ${shown.map((id, i) => row(id, i, true))}${rest.map((id, i) => row(id, i, false))}
+  <//>`
+}
+
+/** The start page in one place: the view, the overview's parts, the tiles and shelves of the other views,
+ *  what a click on the bridge's core does, and the options that change how things show */
 function StartArea({ s, c }) {
+  const w = T().settings
   const home = useHome(s, c)
   // the focus view shows what needs you and nothing to choose: no stations, no sections
-  if (home.view === 'focus') return html`<${ViewCard} home=${home} />`
+  const others = home.view !== 'focus'
   return html`<${ViewCard} home=${home} />
-    <${StationsCard} home=${home} />
-    <${ShelvesCard} home=${home} />
-    <${CoreCard} home=${home} />`
+    <${DeskCard} home=${home} />
+    ${others ? html`<h3 class="label-caps set-group">${w.otherViews}</h3>
+      <${StationsCard} home=${home} />
+      <${ShelvesCard} home=${home} />
+      <${CoreCard} home=${home} />` : null}
+    <${DetailsCard} s=${s} c=${c} />`
 }
 
 // ---------------------------------------------------------------- how it looks
@@ -207,7 +237,7 @@ function DetailsCard({ s, c }) {
 }
 
 function LookArea({ s, c }) {
-  return html`<${ThemeCard} s=${s} c=${c} /><${KeysCard} s=${s} c=${c} /><${DetailsCard} s=${s} c=${c} /><${TourCard} s=${s} c=${c} />`
+  return html`<${ThemeCard} s=${s} c=${c} /><${KeysCard} s=${s} c=${c} /><${TourCard} s=${s} c=${c} />`
 }
 
 /** The first-run tour: start it now, and offer it again on the next visit once it ended */
@@ -397,7 +427,7 @@ function HaikuTable({ map, models, efforts, busy, save }) {
   </div>`
 }
 
-// ---------------------------------------------------------------- the page and the drawer
+// ---------------------------------------------------------------- the page
 
 /** What the server's check of the cockpit: block found (/api/bootstrap config_warnings): one line per key it
  *  does not know or could not use, each with the value used instead; nothing when the block is clean */
@@ -440,18 +470,3 @@ export function SettingsPage({ s, c }) {
   </div>`
 }
 
-/** "Customise" beside the start page: the same editors in a drawer that leaves the page in view, so every
- *  change shows on it at once */
-export function CustomizeDrawer({ s, c }) {
-  const w = T().settings
-  return html`<${Drawer} id="customize" title=${w.customizeTitle} onClose=${() => c.setDrawer(null)} cls="drawer-wide" clear>
-    <p class="muted small customize-lead">${w.customizeLead}</p>
-    <div class="customize-body">
-      <${StartArea} s=${s} c=${c} />
-      <${DetailsCard} s=${s} c=${c} />
-    </div>
-    <footer class="customize-foot">
-      <${Btn} variant="ghost" size="sm" onClick=${() => c.openSettings('start')}>${w.allSettings}<//>
-    </footer>
-  <//>`
-}

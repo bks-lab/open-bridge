@@ -486,7 +486,9 @@ class Guide:
 
     @staticmethod
     def wants(tab: dict) -> bool:
-        return tab.get("state") in m.ATTENTION and not tab.get("is_control") and bool(tab.get("live", True))
+        # an idle tab asks nothing (model.is_idle): reading it would spend the hour's readings on a finished tab
+        return (tab.get("state") in m.ATTENTION and not tab.get("is_control") and not tab.get("idle")
+                and bool(tab.get("live", True)))
 
     def on_tabs(self, tabs_state: dict) -> None:
         """After each tab poll: drop the readings of tabs that no longer wait, and with auto queue a reading

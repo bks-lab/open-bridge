@@ -295,6 +295,8 @@ export function TickerSettings({ s, c }) {
       ${row('per_feed', num('per_feed', [3, 5, 8, 12]))}
       ${row('refresh_minutes', num('refresh_minutes', [15, 30, 60, 180], w.minutes))}
     <//>
+    <${Card} title=${w.label.onStart} intro=${w.explain.onStart} off=${!on}
+      head=${html`<span class="set-head-switch"><${Switch} label=${w.label.onStart} on=${!!s.ui.tickerOnStart} disabled=${!on} onChange=${v => c.setTickerOnStart(v)} /></span>`} />
     <${Card} title=${w.label.feeds} intro=${w.explain.feeds} off=${!on}>
       <${FeedsTable} feeds=${st.feeds ?? []} status=${tk.feeds} busy=${busy || !on} save=${v => save('feeds', v)} />
     <//>

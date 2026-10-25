@@ -261,6 +261,28 @@ def test_tasks_name_the_aliases_of_their_area(repo):
     assert rows["payments-incident"]["area_aliases"] == ["BC", "Big"]
 
 
+def test_an_area_in_the_status_head_wins_over_slugs_and_contexts(repo):
+    task(repo, "platform-bigcorp-bridge", context="bigcorp", area="Misc")
+    rows = {t["slug"]: t for t in wp.task_rows(repo, CFG, TODAY)}
+    assert rows["platform-bigcorp-bridge"]["area"] == "Misc"
+
+
+def test_an_area_names_its_workspace_by_alias_and_whatever_its_case(repo):
+    cfg = {"workspaces": [{"name": "Bigcorp", "contexts": ["bigcorp"]},
+                          {"name": "Platform", "slugs": ["platform-*"], "aliases": ["PF"]}]}
+    task(repo, "bigcorp-by-alias", context="bigcorp", area="pf")
+    task(repo, "bigcorp-by-name", context="bigcorp", area="platform")
+    rows = {t["slug"]: t for t in wp.task_rows(repo, cfg, TODAY)}
+    assert rows["bigcorp-by-alias"]["area"] == "Platform"
+    assert rows["bigcorp-by-name"]["area"] == "Platform"
+
+
+def test_an_unknown_area_falls_back_to_the_rules(repo):
+    task(repo, "bigcorp-typo", context="bigcorp", area="Nowhere")
+    rows = {t["slug"]: t for t in wp.task_rows(repo, CFG, TODAY)}
+    assert rows["bigcorp-typo"]["area"] == "Bigcorp"
+
+
 def test_tasks_json_is_sorted_by_priority_then_score(repo, capsys):
     (repo / "bridge-config.yaml").write_text("workplace:\n  workspaces: []\n")
     assert wp.main(["--root", str(repo), "tasks", "--json"]) == 0
@@ -583,6 +605,17 @@ def test_launch_entries_name_the_workspace_of_their_area(lrepo):
     out = wp.build_launch(lrepo, CFG, ["payments-incident", "platform-upgrade", INBOX_ID,
                                        "20261006-1600-linked-thing-bbbb"], "report")
     assert [e["workspace"] for e in out] == ["Bigcorp", "Platform", "Misc", "Bigcorp"]
+
+
+def test_a_launch_follows_the_area_of_the_status_head_for_the_task_and_its_inbox_item(lrepo):
+    task(lrepo, "bigcorp-but-misc", context="bigcorp", area="misc")
+    linked = lrepo / "work" / "inbox" / "20261006-1700-linked-misc-cccc"
+    linked.mkdir(parents=True)
+    (linked / "item.yaml").write_text(
+        "schema_version: 1\nkind: question\nsummary: x\ngate: free\ntask: bigcorp-but-misc\n"
+        "created: '2026-10-06T17:00:00+02:00'\nfrom: test\n", encoding="utf-8")
+    out = wp.build_launch(lrepo, CFG, ["bigcorp-but-misc", "20261006-1700-linked-misc-cccc"], "report")
+    assert [e["workspace"] for e in out] == ["Misc", "Misc"]
 
 
 def test_an_unlinked_inbox_item_goes_to_the_default_workspace_whatever_its_summary(lrepo):

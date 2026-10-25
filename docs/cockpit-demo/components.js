@@ -7,7 +7,7 @@
 // views/, which imports what it uses from the others. app.js imports from here only.
 
 import { html, useEffect, useLayoutEffect, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { cardPlan, indexRows, railShown, triageKey, workKinds, workPageOf } from './logic.js'
+import { areaScope, cardPlan, indexRows, railShown, triageKey, workKinds, workPageOf } from './logic.js'
 import { T } from './text.js'
 import { TriageBar } from './triage.js'
 import { InnerRoom } from './inner.js'
@@ -20,7 +20,7 @@ import { DayColumn, WorkSwitch } from './views/day.js'
 import { DetailColumn } from './views/detail.js'
 import { DossierView } from './views/dossier.js'
 import { Header, PageBadge, PageBar } from './views/header.js'
-import { HomePage, jumpToTab, useHomeTitle } from './views/home.js'
+import { AreaBar, HomePage, jumpToTab, useHomeTitle } from './views/home.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, onPageOf, reviewHomeOf,
   workViewNow,
@@ -32,7 +32,7 @@ import {
 import { JevList, KindBar, OverviewBoard, PageCard, PageSection, WorkOrder } from './views/pages.js'
 import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
-import { CustomizeDrawer, SettingsPage } from './views/settings.js'
+import { SettingsPage } from './views/settings.js'
 import { TabView, TabsColumn } from './views/tabs.js'
 import { Tour } from './views/tour.js'
 import { HintsOverlay } from './views/hints.js'
@@ -147,6 +147,10 @@ export function App({ store, ctl }) {
   if (s.boot.status === 'unauthorized') return html`<${AuthPanel} />`
   if (s.boot.status !== 'ok') return html`<${BootPanel} s=${s} c=${ctl} />`
   const byKey = indexRows(s.model)
+  // what the page itself shows under the area filter and Work's star; the header, the page tabs with
+  // their badges and the detail of a picked row keep the whole state
+  const v = areaScope(s)
+  const shownKey = v === s ? byKey : indexRows(v.model)
   const onPage = onPageOf(s)
   const layout = s.layout
   const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
@@ -156,8 +160,8 @@ export function App({ store, ctl }) {
   const tabsDrawer = layout === 'medium' || (layout === 'wide' && !rail)
   const showTabsCol = rail || (layout === 'narrow' && pane === 'tabs')
   const main = onPage
-    ? html`<${PageView} s=${s} c=${ctl} />${peek ? html`<${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />` : null}`
-    : html`<${DayColumn} s=${s} c=${ctl} byKey=${byKey} /><${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />`
+    ? html`<${PageView} s=${v} c=${ctl} />${peek ? html`<${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />` : null}`
+    : html`<${DayColumn} s=${v} c=${ctl} byKey=${shownKey} /><${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />`
   // the page tabs keep their own row on every width: in the header of a wide screen they shared the room
   // with the tools, and the widest screen showed the fewest tabs
   return html`<div class="shell">
@@ -165,13 +169,13 @@ export function App({ store, ctl }) {
     <${Header} s=${s} c=${ctl} />
     <${PageBar} s=${s} c=${ctl} />
     ${layout === 'narrow' ? html`<${MobileSwitch} s=${s} c=${ctl} />` : null}
+    <${AreaBar} s=${s} c=${ctl} />
     <main id="main" class=${`main layout-${layout}${onPage ? ' on-page' : ''}${peek ? ' with-detail' : ''}${layout === 'wide' && !rail ? ' no-rail' : ''}${s.ui.selectedKey ? '' : ' no-pick'}`} data-pane=${pane}>
       ${main}
-      ${showTabsCol ? html`<${TabsColumn} s=${s} c=${ctl} byKey=${byKey} />` : null}
+      ${showTabsCol ? html`<${TabsColumn} s=${v} c=${ctl} byKey=${shownKey} />` : null}
     </main>
-    ${tabsDrawer && s.ui.drawer === 'tabs' ? html`<${TabsDrawer} s=${s} c=${ctl} byKey=${byKey} />` : null}
+    ${tabsDrawer && s.ui.drawer === 'tabs' ? html`<${TabsDrawer} s=${v} c=${ctl} byKey=${shownKey} />` : null}
     ${s.ui.drawer === 'notes' ? html`<${NotesDrawer} s=${s} c=${ctl} />` : null}
-    ${s.ui.drawer === 'customize' ? html`<${CustomizeDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'history' ? html`<${HistoryDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'help' ? html`<${HelpDialog} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'item' && s.ui.item ? html`<${ItemDrawer} s=${s} c=${ctl} byKey=${byKey} />` : null}

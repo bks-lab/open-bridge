@@ -7,7 +7,7 @@
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, homeCatalog, homeChosen, homeListParts, homeProjects, homeRowQueue, indexRows, inProject, previewText,
-  projectTone, short, stateToken, tickerStatusItems, untilText, upcomingEvents, greetingText, dayLabel, workPageId,
+  projectTone, short, stateToken, tabStateKey, tickerStatusItems, untilText, upcomingEvents, greetingText, dayLabel, workPageId,
   rowProject,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -42,7 +42,8 @@ function TabLine({ tab, s, c, lead = false, preview = true }) {
   const w = t.home.list
   const busy = !!s.ui.busy[tab.ref]
   // an idle tab rests; "waits" is kept for what waits on you
-  const word = tab.state === 'waiting' ? w.rest : t.state[tab.state] ?? tab.state
+  // a tab that waits says so, a finished one reads done (tabStateKey)
+  const word = t.state[tabStateKey(tab)] ?? tab.state
   const last = preview || lead ? previewText(tab.last) : ''
   return html`<li class=${`hl-line st-${tab.state}${lead ? ' is-lead' : ''}`}>
     <span class="hl-line-mark"><${Dot} token=${stateToken(tab.state)} pulse=${tab.state === 'needs-you'} /></span>
@@ -73,7 +74,7 @@ function RowLine({ row, tab, s, c, lead = false, walk = null }) {
   const n = s.model?.numbers?.[row.key] ?? row.number
   const project = rowProject(row)
   const why = (row.why ?? [])[0]
-  const tabWord = tab ? (tab.state === 'waiting' ? w.rest : t.state[tab.state] ?? tab.state) : ''
+  const tabWord = tab ? t.state[tabStateKey(tab)] ?? tab.state : ''
   return html`<li class=${`hl-line${lead ? ' is-lead' : ''}`}>
     <span class="hl-line-mark"><${Dot} token=${row.priority === 'P0' ? 'danger' : tab?.state === 'needs-you' ? 'warning' : 'info'} /></span>
     <button type="button" class="hl-line-main" onClick=${e => openWhole(c, row, e.currentTarget, walk?.())} title=${t.home.openRow(short(row.title, 60))}>
@@ -146,7 +147,7 @@ export function HomeList({ s, c }) {
   const tabsAll = (s.tabs?.tabs ?? []).filter(x => !x.is_control && x.state !== 'shell')
   const rowsOf = id => (s.model?.sections ?? []).find(x => x.id === id)?.rows ?? []
   const projects = homeProjects(tabsAll, [...rowsOf('now'), ...rowsOf('work').filter(r => r.task)])
-  const project = projects.find(p => p.toLowerCase() === String(s.ui.homeProject ?? '').toLowerCase()) ?? null
+  const project = projects.find(p => p.toLowerCase() === String(s.ui.area ?? '').trim().toLowerCase()) ?? null
   const catalog = homeCatalog(s.model, { workers: s.workers?.status !== 'none' })
   const chosen = homeChosen(s.model, s.home)
   const on = new Set(chosen)
@@ -192,7 +193,6 @@ export function HomeList({ s, c }) {
       </div>
       <div class="hl-strip">
         ${strip.length ? html`<div class="hl-kpis">${strip.map(x => html`<${Kpi} key=${x.id} x=${x} st=${stationOf(x, s, c, chosen, project)} />`)}</div>` : null}
-        <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${w.customize}<//>
       </div>
       ${alarms.length || relayDown ? html`<div class="home-signals">
         ${alarms.map(a => html`<button type="button" class="home-signal tk-danger" key=${a.page_id + a.section_title}
@@ -200,9 +200,9 @@ export function HomeList({ s, c }) {
         ${relayDown ? html`<button type="button" class="home-signal tk-warning" onClick=${c.openClaude}><${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
       </div>` : null}
       ${projects.length > 1 ? html`<div class="home-chips" role="toolbar" aria-label=${h.projectsLabel}>
-        <button type="button" class=${`home-chip${project ? '' : ' is-on'}`} aria-pressed=${String(!project)} onClick=${() => c.setHomeProject(null)}>${h.all}</button>
+        <button type="button" class=${`home-chip${project ? '' : ' is-on'}`} aria-pressed=${String(!project)} onClick=${() => c.setArea(null)}>${h.all}</button>
         ${projects.map(p => html`<button type="button" key=${p} class=${`home-chip${project === p ? ' is-on' : ''}`} aria-pressed=${String(project === p)}
-          onClick=${() => c.setHomeProject(project === p ? null : p)}><span class=${`home-chip-dot tk-${projectTone(p)}`} aria-hidden="true"></span>${p}</button>`)}
+          onClick=${() => c.setArea(project === p ? null : p)}><span class=${`home-chip-dot tk-${projectTone(p)}`} aria-hidden="true"></span>${p}</button>`)}
       </div>` : null}
     </header>
 

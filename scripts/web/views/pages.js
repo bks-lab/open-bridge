@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
-  sectionStamp, triageKey, triageShows, sectionTile, tokenText, usageToday,
+  sectionStamp, triageKey, triageShows, sectionTile, tokenText, usageToday, tabStateKey,
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
   cardPlan, moneyText, costBoard,
@@ -152,7 +152,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
         <${MarkChip} mark=${it.mark} /><${PrioChip} priority=${it.priority} />
         ${it.task ? html`<${VerdictChip} review=${byKey.get(`task:${it.task}`)?.review} />` : null}
         ${it.state ? html`<span class="chip">${t.taskState[it.state] ?? it.state}</span>` : null}
-        ${it.tab ? html`<${Chip} token=${stateToken(it.tab.state)}>${t.state[it.tab.state] ?? it.tab.state}<//>` : null}
+        ${it.tab ? html`<${Chip} token=${stateToken(tabStateKey(it.tab))}>${t.state[tabStateKey(it.tab)] ?? it.tab.state}<//>` : null}
         ${it.starting ? html`<${Chip} token="info">${t.startingTab}<//>` : null}
         <${ReturnChip} s=${s} rowKey=${[itemKey, it.task ? `task:${it.task}` : null]} />
       </div>
@@ -535,7 +535,7 @@ export function PageSection({ page, section, s, c }) {
     ${section.stale ? html`<p class="muted small"><${StateLine} token="warning" word=${section.stale} /></p>` : null}
     ${gh ? html`<${GitHubBoard} section=${section} filter=${ghFilter} setFilter=${setGhFilter} s=${s} c=${c} />` : null}
     ${gh && ghFilter && !items.length ? html`<${Empty}>${t.filterNone}<//>` : body}
-    ${left > 0 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${() => c.loadMore(page.id, section.id)}>${t.btnMore(left)}<//>` : null}
+    ${left > 0 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${() => c.loadMore(page.id, section.id)}>${section.scoped ? t.btnMoreScoped(left) : t.btnMore(left)}<//>` : null}
   </section>`
 }
 

@@ -877,7 +877,7 @@ def test_model_shape(world):
     assert set(model["approvable"]) == {f"inbox:{YES_ID}", f"inbox:{YES2_ID}"}
     assert secs["give"]["total"] == 3
     demo = world.row("task:demo-task")
-    assert demo["tab"] == {"ref": "surface:7", "state": "needs-you", "live": True, "waiting": True}
+    assert demo["tab"] == {"ref": "surface:7", "state": "needs-you", "live": True, "waiting": True, "idle": False}
     assert [a["id"] for a in demo["actions"]] == ["to_tab"] and demo["selectable"] is False
     assert demo["team"]["team_id"] == "build" and demo["team"]["started"] == 1     # inferred from the live tab
     other = world.row("task:other-task")

@@ -577,10 +577,29 @@ def filed_by(tab: dict, view: dict | None) -> dict | None:
     return None
 
 
-def is_waiting(tab: dict, view: dict | None) -> bool:
+def waits(tab: dict, view: dict | None) -> bool:
+    """What the terminal says: a dialog, or a stop with nothing filed. The tab poll reads the screens of these"""
     if tab.get("state") == "needs-you":
         return True
     return tab.get("state") == "waiting" and filed_by(tab, view) is None
+
+
+def is_waiting(tab: dict, view: dict | None) -> bool:
+    """Whether a tab waits on you: it waits, and it is not idle (a finished tab asks nothing, is_idle)"""
+    return waits(tab, view) and not tab.get("idle")
+
+
+def is_idle(tab: dict, ask: dict | None, since_ms: float, settled: str | None, now: float, after_ms: float) -> bool:
+    """A waiting tab that is done rather than asking: settled (its item or task is done), or still for
+    `after_ms` with last words that ask nothing (no question mark, no options, nothing typed in its prompt).
+    Nothing read means it may ask: it keeps waiting. `after_ms` 0 switches the quiet rule off"""
+    if tab.get("state") != "waiting":
+        return False
+    if settled:
+        return True
+    if after_ms <= 0 or now - since_ms < after_ms or not ask:
+        return False
+    return not ask.get("yes_no") and not ask.get("options") and not ask.get("draft")
 
 
 def is_live(tab: dict) -> bool:
@@ -602,7 +621,8 @@ def tab_for(row: dict, tabs: list[dict]) -> dict | None:
 def long_state(tab: dict, seen: dict, now: float) -> str | None:
     """logic.ts longText as a word: 'waiting' or 'running'; the frontend writes the sentence."""
     s = seen.get(tab.get("ref"))
-    if not s or s.get("state") != tab.get("state") or now - s.get("since_ms", now) < LONG_MS:
+    # an idle tab is done, so a long quiet is what it should be: no "waits for an hour"
+    if tab.get("idle") or not s or s.get("state") != tab.get("state") or now - s.get("since_ms", now) < LONG_MS:
         return None
     if tab.get("state") in ATTENTION:
         return "waiting"
@@ -711,6 +731,8 @@ def to_tab(t: dict) -> dict:
             "team": as_text_or_null(t.get("team")), "role": as_text_or_null(t.get("role")),
             # where the driver read the state (cmux: hook or glyph); a glyph is lost with a title of its own
             "state_source": t.get("state_source") if t.get("state_source") in ("hook", "glyph") else None,
+            # set by the tab poll (is_idle): the tab is done, not asking
+            "idle": t.get("idle") is True,
             # kept internally, never sent to the page
             "id": as_text_or_null(t.get("id")), "is_self": t.get("is_self") is True}
 
