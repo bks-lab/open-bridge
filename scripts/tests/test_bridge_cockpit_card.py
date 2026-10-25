@@ -453,3 +453,100 @@ def test_workplace_lists_the_placeholder_and_the_model_passes_it_on(tmp_path):
     rows = wp.task_rows(tmp_path, {}, wp.dt.date(2026, 10, 25))
     parsed = {t["slug"]: t for t in model.parse_tasks(json.dumps(rows))}
     assert parsed["fresh"]["placeholder"] is True and parsed["real"]["placeholder"] is False
+
+
+# ---------------------------------------------------------------- review fixes
+
+def test_the_card_leaves_the_facts_it_is_handed_as_they_were():
+    # ctx.inbox hands out the dict details.inbox_facts keeps in its cache; a card must not write into it
+    shared = {**INBOX_FACTS, "due": None, "created": None}
+    before = dict(shared)
+    c = cd.card_of(inbox_row(), ctx(inbox=lambda item_id: shared))
+    assert c["due"] == "2026-10-27"
+    assert shared == before
+
+
+def test_a_card_built_from_inbox_facts_leaves_the_cache_alone(tmp_path):
+    root = bridge(tmp_path)
+    facts = details.inbox_facts(root, "20261024-0800-resend")
+    before = dict(facts)
+    cd.card_of(inbox_row(due="2026-11-01"), ctx(inbox=lambda item_id: details.inbox_facts(root, item_id)))
+    assert details.inbox_facts(root, "20261024-0800-resend") == before
+
+
+def test_inbox_facts_sees_an_event_rewritten_in_place(tmp_path):
+    import os
+    root = bridge(tmp_path)
+    item = root / "work" / "inbox" / "20261024-0800-resend"
+    events = item / "events"
+    assert details.inbox_facts(root, "20261024-0800-resend")["brief"]["goal"] == "The customer knows what we resend"
+    folder_times = (events.stat().st_atime_ns, events.stat().st_mtime_ns)
+    newest = events / "20261024T090000Z-01-x-describe.yaml"
+    newest.write_text("verb: describe\nby: claude-haiku-5-5\nat: '2026-10-24T09:00'\nbrief:\n  goal: A corrected goal\n",
+                      encoding="utf-8")
+    os.utime(newest, ns=(folder_times[0], folder_times[1] + 5_000_000_000))
+    os.utime(events, ns=folder_times)                  # the folder itself did not change
+    assert details.inbox_facts(root, "20261024-0800-resend")["brief"]["goal"] == "A corrected goal"
+
+
+def test_a_task_owner_is_one_of_the_owner_words_and_a_person_stays_in_next():
+    c = cd.card_of(row(), ctx(tasks={"invoices": {**TASK, "next_who": "Michael"}}))
+    assert c["owner"] is None and c["next"]["who"] == "Michael"
+    c = cd.card_of(row(), ctx(tasks={"invoices": {**TASK, "next_who": "Michael"}},
+                              triage={"task:invoices": {"doer": "ai"}}))
+    assert c["owner"] == "bridge"
+    assert cd.card_of(row(), ctx(tasks={"invoices": {**TASK, "next_who": "bridge"}}))["owner"] == "bridge"
+    assert cd.card_of(row(), ctx())["owner"] == "me"
+
+
+def test_an_inbox_state_counts_from_its_last_state_change():
+    c = cd.card_of(inbox_row(inbox_state="approved"), inbox_ctx({"state_at": "2026-10-24T10:30"}))
+    assert c["state"]["since"] == "2026-10-24T10:30" and c["next"]["since"] == "2026-10-24T10:30"
+    c = cd.card_of(inbox_row(), inbox_ctx({"state_at": None}))
+    assert c["state"]["since"] == "2026-10-24T08:00"           # never changed: the time it was filed
+
+
+def test_inbox_facts_names_the_last_state_change_not_the_last_event(tmp_path):
+    root = bridge(tmp_path)
+    events = root / "work" / "inbox" / "20261024-0800-resend" / "events"
+    (events / "20261024T100000Z-02-x-defer.yaml").write_text(
+        "verb: defer\nby: michael\nat: '2026-10-24T10:00'\nuntil: '2026-10-30'\n", encoding="utf-8")
+    (events / "20261024T110000Z-03-x-note.yaml").write_text(
+        "verb: note\nby: michael\nat: '2026-10-24T11:00'\ntext: later\n", encoding="utf-8")
+    facts = details.inbox_facts(root, "20261024-0800-resend")
+    assert facts["state_at"] == "2026-10-24T10:00" and facts["updated"] == "2026-10-24T11:00"
+    d = details.inbox_detail(root, "20261024-0800-resend", [])
+    assert d["card"]["state"]["since"] == "2026-10-24T10:00"
+
+
+PROBE_SPECS = [
+    {"gh_pr": "a/b#1"}, {"gh_pr": "a/b#1", "state": "green"}, {"gh_pr": "a/b#1", "state": "closed"},
+    {"gh_pr": "a/b#1", "state": ""}, {"gh_issue": "a/b#2"}, {"gh_issue": "a/b#2", "state": "merged"},
+    {"gh_issue": "a/b#2", "state": "open"}, {"task_status": "demo"}, {"task_status": "demo", "status": ""},
+    {"path_exists": "out/x.pdf"}, {"after": "2026-10-30T09:00"}, {"after": "soon"},
+    {"unseen_for": {"hours": 24}}, {"unseen_for": {"hours": None}}, {"unseen_for": 3},
+    {"command": ["make", "check"]}, {"command": "make check"}, {"mystery": 1},
+    {"all": [{"gh_pr": "a/b#1"}, {"after": "2026-10-30"}]}, {"any": [{"path_exists": "x"}, "junk"]},
+]
+
+
+def test_probe_text_reads_every_probe_as_logic_js_does(tmp_path):
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    web = Path(__file__).resolve().parents[1] / "web"
+    script = tmp_path / "probe.mjs"
+    script.write_text(
+        f"import {{ probeText }} from {json.dumps((web / 'logic.js').as_uri())}\n"
+        f"import {{ TABLES }} from {json.dumps((web / 'text.js').as_uri())}\n"
+        f"const specs = {json.dumps(PROBE_SPECS)}\n"
+        "const out = {}\n"
+        "for (const lang of ['en', 'de']) out[lang] = specs.map(s => probeText(s, TABLES[lang]))\n"
+        "console.log(JSON.stringify(out))\n", encoding="utf-8")
+    result = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    js = json.loads(result.stdout)
+    for lang in ("en", "de"):
+        assert [cd.probe_text(s, T(lang)["card"]) for s in PROBE_SPECS] == js[lang], lang

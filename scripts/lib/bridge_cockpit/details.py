@@ -15,7 +15,7 @@ ends (`closer`, `closes_when` as plain data, nested at most four deep). Headings
 matched by language: the sections come back in the order they stand in the file.
 Both carry a `card` (card.py), built from what they read and the triage and describe entries the server
 hands in; `inbox_facts` is the same reading of one inbox item for the rows of the model, kept until the
-item or its events change.
+item file, its events folder or an event file changes.
 """
 from __future__ import annotations
 
@@ -32,6 +32,11 @@ import yaml
 from . import card as cd
 from . import origin as og
 from .card_fields import validate_brief
+
+try:
+    from ..inbox_verbs import TERMINAL
+except ImportError:                       # loaded with scripts/lib on the path, as returns.py is
+    from inbox_verbs import TERMINAL  # type: ignore[no-redef]
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
@@ -312,6 +317,7 @@ def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tup
                 why = _scalar(ev.get("why"))
                 entry["text"] = f"{_scalar(ev.get('value'))} ({why})" if why else _scalar(ev.get("value"))
             events.append(entry)
+    state_at = _state_at(events)
     events = events[-EVENTS_MAX:]
     state = None
     for entry in listing or []:
@@ -335,7 +341,7 @@ def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tup
         "origin": og.classify_row({"inbox_id": item_id, "inbox_key": _scalar(item.get("key")),
                                    "origin_raw": _scalar(item.get("from")) if isinstance(item.get("from"), str) else None,
                                    "sources": ["inbox"]}, og.known_from_root(root, origin_map))}
-    facts = _facts(item, briefs, events[-1]["at"] if events else None)
+    facts = _facts(item, briefs, events[-1]["at"] if events else None, state_at)
     result["card"] = cd.card_of({**result, "facts": facts}, _with_work(ctx, og.known_from_root(root, origin_map)))
     return result
 
@@ -346,14 +352,30 @@ def _with_work(ctx: cd.Ctx | None, known: og.Known) -> cd.Ctx:
     return replace(ctx, work={**known.work, **ctx.work})
 
 
-def _facts(item: dict, briefs: list, updated) -> dict:
-    """What card.inbox_card reads of an item: its detail and how it closes, and its brief (the latest
-    `describe` event, None when that one took the brief back), through the gate it was written through"""
+#: the verbs that change an inbox item's state (scripts/inbox.py Item.state and approval): the ends, a defer, a
+#: yes, a failed run that takes the yes back, a reopen. A note, a seen, an area or a describe leave it as it was.
+STATE_VERBS = frozenset(TERMINAL) | {"defer", "approve", "failed", "reopen"}
+
+
+def _state_at(events) -> str | None:
+    """When the item's state last changed: the time of its last state-changing event, None without one"""
+    at = None
+    for ev in events:
+        if isinstance(ev, dict) and ev.get("verb") in STATE_VERBS and ev.get("at"):
+            at = ev.get("at")
+    return _text(at)
+
+
+def _facts(item: dict, briefs: list, updated, state_at=None) -> dict:
+    """What card.inbox_card reads of an item: its detail and how it closes, its brief (the latest
+    `describe` event, None when that one took the brief back) through the gate it was written through, its
+    last event (`updated`) and its last change of state (`state_at`)"""
     brief = validate_brief(briefs[-1])[0] if briefs and isinstance(briefs[-1], dict) else None
     return {"detail": _text(item.get("detail")), "kind": _text(item.get("kind")), "gate": _text(item.get("gate")),
             "due": _text(item.get("due")), "created": _text(item.get("created")), "task": _text(item.get("task")),
             "area": _text(item.get("area")), "closes_when": _plain(item.get("closes_when")),
-            "closer": _text(item.get("closer")), "brief": brief, "updated": _text(updated)}
+            "closer": _text(item.get("closer")), "brief": brief, "updated": _text(updated),
+            "state_at": _text(state_at)}
 
 
 _FACTS: dict = {}
@@ -363,15 +385,19 @@ FACTS_CAP = 1000
 
 def inbox_facts(root: Path, item_id: str) -> dict | None:
     """card.inbox_card's facts of one item (see _facts), read from work/inbox/<id>/ and kept until the
-    item file or its events folder changes, so a rebuild of the model costs two stats per item"""
+    item file, the events folder or one of its event files changes (an event rewritten in place leaves the
+    folder's time alone), so a rebuild of the model costs a stat per file. The dict is shared: callers copy
+    it before they change it."""
     if not isinstance(item_id, str) or not INBOX_ID_RE.match(item_id):
         return None
     base = Path(root) / "work" / "inbox"
     folder = base / item_id
     item_path, events_dir = folder / "item.yaml", folder / "events"
     try:
+        files = sorted(events_dir.glob("*.yaml")) if events_dir.is_dir() else []
         stamp = (item_path.stat().st_mtime_ns,
-                 events_dir.stat().st_mtime_ns if events_dir.is_dir() else 0)
+                 events_dir.stat().st_mtime_ns if events_dir.is_dir() else 0,
+                 len(files), max((f.stat().st_mtime_ns for f in files), default=0))
     except OSError:
         return None
     key = (str(base), item_id)
@@ -386,18 +412,19 @@ def inbox_facts(root: Path, item_id: str) -> dict | None:
     except (OSError, yaml.YAMLError):
         item = None
     item = item if isinstance(item, dict) else {}
-    briefs, last = [], None
+    briefs, last, read = [], None, []
     if events_dir.is_dir() and _inside(events_dir, base):
-        for path in sorted(events_dir.glob("*.yaml")):
+        for path in files:
             try:
                 ev = yaml.safe_load(path.read_text(encoding="utf-8"))
             except (OSError, yaml.YAMLError):
                 continue
             if isinstance(ev, dict):
                 last = ev.get("at") or last
+                read.append(ev)
                 if ev.get("verb") == "describe":
                     briefs.append(ev.get("brief"))
-    facts = _facts(item, briefs, last)
+    facts = _facts(item, briefs, last, _state_at(read))
     with _FACTS_LOCK:
         if len(_FACTS) >= FACTS_CAP:
             _FACTS.clear()

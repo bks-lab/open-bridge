@@ -358,7 +358,11 @@ What goes where, per kind (`card.py` names the rest):
 | `summary` | story as one sentence, else `headline` (clipped to 140), else the triage gist | story, else the first sentence of `detail`, else the gist | note, else labels, else the gist | where and who; the detail; the question |
 | `goal`, `story`, `acceptance` | the STATUS.md `brief:` | the latest `describe` event | none | none |
 | `next` | the row's derived next, `who` and `due` from `next:` | from kind and gate ("decide", "your yes"), or "closes by itself when ..." for a `free` item with a `closes_when` | "review it" (`ask_review`), "make it a task" (`untasked`) | the tab's options |
-| `owner` | `next.who`, else the triage doer (`ai` bridge, `you` me, `either` bridge_then_me) | by gate (`only-you` me, `your-yes` bridge_then_me, `free` bridge) | `who`, else the first person | the person for a tab |
+| `owner` | `next.who` when it is `me` or `bridge` (a person's name stays in `next.who` only), else the triage doer (`ai` bridge, `you` me, `either` bridge_then_me) | by gate (`only-you` me, `your-yes` bridge_then_me, `free` bridge) | `who`, else the first person | the person for a tab |
+
+`owner` is always one of `me`, `bridge`, `bridge_then_me` or None. `state.since` (and an inbox item's
+`next.since`) is the time of the item's last change of state (a defer, a yes, a failed run, a close, a drop, a
+reopen), else the time it was filed; a task's `state.since` stays None.
 
 `source` is the `origin` the row already has (never classified again). `links` holds `{kind, href | path | key,
 label}`, and a task link carries `closed: true` when the task lives under `work/done/`. `written` says who wrote the
@@ -371,10 +375,12 @@ in `next:` or still open in the checklist, `workplace.py tasks` reports it as `p
 The inputs: `build_model(..., triage=, describe=)` gets the triage items (`Triage.state()["items"]`) and the brief
 proposals by key from `App.card_sources()`; `App.describe_items()` is the hook for the describe run and gives
 nothing yet. The detail endpoints build the same context with `App.card_ctx()`. An inbox row's detail, gate, probe
-and brief come from `details.inbox_facts`, read once per item and kept until `item.yaml` or its `events/` folder
-changes, so a rebuild costs two stats per item. The words a card says (the story sentence, the next steps, the
+and brief come from `details.inbox_facts`, read once per item and kept until `item.yaml`, its `events/` folder
+or one of its event files changes (an event rewritten in place leaves the folder's time alone), so a rebuild costs
+a stat per file. The cached dict is shared between threads: the card copies it before it completes it from the row. The words a card says (the story sentence, the next steps, the
 probe) live in `text.py` under `card`, English and German; `card.probe_text` says a `closes_when` the way
-`logic.js probeText` does.
+`logic.js probeText` does, word for word: a test runs both on the same probes in both languages (it skips without
+`node`), so a change to one side fails until the other follows.
 
 To add a kind: one adapter in `card.py` returning `_new(...)`, one branch in `card_of`, a case in
 `scripts/tests/test_bridge_cockpit_card.py`. The contract test asserts that every row and page item of a pass and

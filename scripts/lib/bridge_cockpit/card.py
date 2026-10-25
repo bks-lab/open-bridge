@@ -41,6 +41,8 @@ NO_CONTENT_CHARS = 60
 # the checklist lines the STATUS.md template and task.py start a task with
 PLACEHOLDER_STEPS = ("first step", "first action", "second action")
 DOER_OWNER = {"ai": "bridge", "you": "me", "either": "bridge_then_me"}
+#: what a card's `owner` can say; a task's next.who may be any person and reaches `owner` only as one of these
+OWNERS = ("me", "bridge", "bridge_then_me")
 GATE_OWNER = {"only-you": "me", "your-yes": "bridge_then_me", "free": "bridge"}
 TASK_KINDS = ("task", "stream", "done_task", "done_stream")
 FOLDER_KINDS = {"tasks": "task", "streams": "stream"}
@@ -53,7 +55,7 @@ EN = {"story": "As {as}, I want {want}, so that {so_that}.",
                 "gh_pr": "pull request {ref} is {state}", "gh_issue": "issue {ref} is {state}",
                 "task_status": "task {slug} reaches {status}", "path_exists": "{path} exists", "after": "after {when}",
                 "unseen_for": "its reporter has not seen it for {hours} hours", "command": "the command {cmd} succeeds",
-                "states": {"merged": "merged", "green": "green", "closed": "closed"}}}
+                "pr_states": {"merged": "merged", "green": "green"}, "issue_states": {"closed": "closed"}}}
 
 
 @dataclass(frozen=True)
@@ -223,39 +225,61 @@ def placeholder_steps(text: Any) -> bool:
 
 # ---------------------------------------------------------------- closes_when in words
 
+def _js(value: Any) -> str:
+    """A value as JavaScript's String() writes it, so a probe reads here as logic.js reads it"""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return ",".join("" if x is None else _js(x) for x in value)
+    return str(value)
+
+
+def _or(value: Any, default: str) -> str:
+    """`String(value ?? default)`: only a missing value takes the default, an empty one stays empty"""
+    return default if value is None else _js(value)
+
+
 def _probe_date(value: Any) -> str:
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}))?", str(value if value is not None else ""))
-    return f"{m.group(3)}.{m.group(2)}.{m.group(1)}{' ' + m.group(4) if m.group(4) else ''}" if m else str(value)
+    text = _or(value, "")
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}))?", text)
+    return f"{m.group(3)}.{m.group(2)}.{m.group(1)}{' ' + m.group(4) if m.group(4) else ''}" if m else text
 
 
 def probe_text(spec: Any, tx: Mapping | None = None, _depth: int = 0) -> str | None:
     """How an inbox item closes on its own (its closes_when probe) in words; None without a probe. The same
-    reading as logic.js probeText: `all` and `any` join their parts, an unknown probe says so."""
+    reading as logic.js probeText with text.js `probe` (test_bridge_cockpit_card runs both on the same probes):
+    `all` and `any` join their parts, an unknown probe says so, only a missing state takes the default, and
+    the German table names a pull request's merged and green and an issue's closed."""
     if not isinstance(spec, dict) or _depth > 4:
         return None
     p = {**EN["probe"], **_d((tx if isinstance(tx, Mapping) else EN).get("probe"))}
-    states = _d(p.get("states"))
-    word = lambda s: states.get(s, s)   # noqa: E731
+    pr_states, issue_states = _d(p.get("pr_states")), _d(p.get("issue_states"))
     for combine in ("all", "any"):
         if isinstance(spec.get(combine), list):
             joint = f" {p['and']} " if combine == "all" else f" {p['or']} "
             return joint.join(probe_text(x, tx, _depth + 1) or p["unknown"] for x in spec[combine])
     try:
         if "gh_pr" in spec:
-            return p["gh_pr"].format(ref=spec["gh_pr"], state=word(str(spec.get("state") or "merged")))
+            state = _or(spec.get("state"), "merged")
+            return p["gh_pr"].format(ref=_js(spec["gh_pr"]), state=pr_states.get(state, state))
         if "gh_issue" in spec:
-            return p["gh_issue"].format(ref=spec["gh_issue"], state=word(str(spec.get("state") or "closed")))
+            state = _or(spec.get("state"), "closed")
+            return p["gh_issue"].format(ref=_js(spec["gh_issue"]), state=issue_states.get(state, state))
         if "task_status" in spec:
-            return p["task_status"].format(slug=spec["task_status"], status=spec.get("status") or "done")
+            return p["task_status"].format(slug=_js(spec["task_status"]), status=_or(spec.get("status"), "done"))
         if "path_exists" in spec:
-            return p["path_exists"].format(path=spec["path_exists"])
+            return p["path_exists"].format(path=_js(spec["path_exists"]))
         if "after" in spec:
             return p["after"].format(when=_probe_date(spec["after"]))
         if "unseen_for" in spec:
-            return p["unseen_for"].format(hours=_d(spec["unseen_for"]).get("hours", "?"))
+            unseen = spec["unseen_for"]
+            return p["unseen_for"].format(hours=_or(unseen.get("hours") if isinstance(unseen, dict) else None, "?"))
         if "command" in spec:
             cmd = spec["command"]
-            return p["command"].format(cmd=" ".join(map(str, cmd)) if isinstance(cmd, list) else cmd)
+            return p["command"].format(cmd=" ".join("" if x is None else _js(x) for x in cmd)
+                                       if isinstance(cmd, list) else _js(cmd))
     except (KeyError, IndexError, ValueError):
         pass
     return p["unknown"]
@@ -292,7 +316,9 @@ def task_card(slug: str, title: Any, ctx: Ctx, *, kind: str | None = None, row: 
     else:
         nxt = _next(t.get("next"), t.get("next_who"), t.get("next_due"), "status", t.get("updated"))
     word = "done" if closed else _s(row.get("status")) or _s(t.get("status"))
-    owner = _s(t.get("next_who")) or DOER_OWNER.get(tri.get("doer"))
+    # the owner words only (me, bridge, bridge_then_me): a person named as next.who stays in next.who
+    who = _s(t.get("next_who"))
+    owner = who if who in OWNERS else DOER_OWNER.get(tri.get("doer"))
     links = [{**_task_link(slug, ctx, _s(title)), "closed": closed}]
     extra = _link(link, title)
     if extra:
@@ -319,7 +345,8 @@ def _inbox_next(kind: Any, gate: Any, facts: Mapping, ctx: Ctx) -> dict | None:
     who = "me" if owner in ("me", "bridge_then_me") else owner
     closes = probe_text(facts.get("closes_when"), _tx(ctx))
     if gate == "free" and closes:
-        return _next(words["closes"].format(probe=closes), who, facts.get("due"), "probe", facts.get("created"))
+        return _next(words["closes"].format(probe=closes), who, facts.get("due"), "probe",
+                     facts.get("state_at") or facts.get("created"))
     if kind == "decision":
         what = words["decide"]
     elif kind == "question":
@@ -330,14 +357,16 @@ def _inbox_next(kind: Any, gate: Any, facts: Mapping, ctx: Ctx) -> dict | None:
         what = words["check"]
     else:
         what = words["read"]
-    return _next(what, who, facts.get("due"), "item", facts.get("created"))
+    return _next(what, who, facts.get("due"), "item", facts.get("state_at") or facts.get("created"))
 
 
 def inbox_card(item_id: str, title: Any, ctx: Ctx, *, facts: Mapping | None = None, row: Mapping | None = None,
                origin: Any = None, state: Any = None) -> dict:
     """An inbox item: `facts` as details.inbox_facts reads them (else ctx.inbox), `row` the model row"""
     row = row or {}
-    f = dict(facts) if isinstance(facts, Mapping) else _d(ctx.inbox(item_id) if callable(ctx.inbox) else None)
+    # a copy: ctx.inbox hands out the dict details.inbox_facts keeps for every thread, which the lines below
+    # complete from the row
+    f = dict(facts) if isinstance(facts, Mapping) else dict(_d(ctx.inbox(item_id) if callable(ctx.inbox) else None))
     key = f"inbox:{item_id}"
     kind = _s(f.get("kind")) or _s(row.get("inbox_kind"))
     gate = _s(f.get("gate")) or _s(row.get("gate"))
@@ -367,7 +396,8 @@ def inbox_card(item_id: str, title: Any, ctx: Ctx, *, facts: Mapping | None = No
     return _new(kind="inbox", subkind=kind, title=_s(title), summary=summary, goal=(brief or {}).get("goal"),
                 story=(brief or {}).get("story"), acceptance=(brief or {}).get("acceptance"),
                 next=_inbox_next(kind, gate, f, ctx),
-                state=_state(_s(state) or _s(row.get("inbox_state")) or "open", None, f.get("created")),
+                state=_state(_s(state) or _s(row.get("inbox_state")) or "open", None,
+                             f.get("state_at") or f.get("created")),
                 owner=GATE_OWNER.get(gate), priority=_s(row.get("priority")), due=_s(f.get("due")),
                 area=_s(row.get("area")) or _s(f.get("area")), updated=_s(f.get("updated")) or _s(f.get("created")),
                 source=origin, links=links, written=written,

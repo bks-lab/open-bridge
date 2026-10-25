@@ -281,7 +281,8 @@ EN: dict = {
                        "task_status": "task {slug} reaches {status}", "path_exists": "{path} exists",
                        "after": "after {when}", "unseen_for": "its reporter has not seen it for {hours} hours",
                        "command": "the command {cmd} succeeds",
-                       "states": {"merged": "merged", "green": "green", "closed": "closed"}}},
+                       "pr_states": {"merged": "merged", "green": "green"},
+                       "issue_states": {"closed": "closed"}}},
 }
 
 DE: dict = {
@@ -552,7 +553,8 @@ DE: dict = {
                        "task_status": "Aufgabe {slug} steht auf {status}", "path_exists": "{path} existiert",
                        "after": "nach dem {when}", "unseen_for": "der Melder hat es {hours} Stunden nicht mehr gesehen",
                        "command": "der Befehl {cmd} gelingt",
-                       "states": {"merged": "gemergt", "green": "grün", "closed": "geschlossen"}}},
+                       "pr_states": {"merged": "gemergt", "green": "grün"},
+                       "issue_states": {"closed": "geschlossen"}}},
 }
 
 TABLES: dict = {"en": EN, "de": DE}
