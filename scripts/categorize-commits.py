@@ -652,6 +652,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/tabs.js",
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D
     "scripts/web/logic.js",
+    "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js
+    "scripts/web/files.js",                   # the files view: queue, drawers, search, ask a file
     "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",
@@ -677,6 +679,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_aria.test.mjs",
     "scripts/tests/bridge_cockpit_draft_cards.test.mjs",
     "scripts/tests/bridge_cockpit_costs.test.mjs",
+    "scripts/tests/bridge_cockpit_areas.test.mjs",
+    "scripts/tests/bridge_cockpit_files.test.mjs",
     # Registered with the scheduled archive. It runs DAILY and does only the
     # mechanical half; the judgement half is recorded as owed. lib/bridge-python.sh
     # is the one interpreter resolver the currency jobs share, so a fix lands once.
