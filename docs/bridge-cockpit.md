@@ -219,13 +219,21 @@ work page, beside Due and never in its place: Due stays, and stays the view the
 tab opens on, unless `cockpit.work_view: files` says otherwise (below). On a Bridge without a work page
 this is what makes the tab's view switch appear ("Due | Files"), since without
 it the view could not be reached. It shows one task at a time as
-a file: on top the cover (its slug, kind, priority, status and area, and the
-situation in one sentence: the `headline` of its STATUS.md, else what the
-triage made of it, always with where that comes from and its date), under it
-the next step large with the four verbs, then the file's drawers, folded:
-Result, Inbox, History, Files, References (the `related:` paths of STATUS.md)
-and Sections, each only when it holds something. Under them stands the bar every list walks
-with ("2 of 9", Next, keys `n` and `p`) and the next files, at most six.
+a file, on one framed surface centred at a reading width (it stays in the
+middle when the sidebar is hidden). Above it stand the view switch and a small
+search field. On the surface: an eyebrow (File, "2 of 16", status, kind and
+priority, the slug on the right), the task's title as the one heading, and the
+situation in one sentence (the `headline` of its STATUS.md, else what the
+triage made of it, always with where that comes from and its date). Under it
+the next step as the one strong block, with the four verbs as buttons, then the
+file's drawers as rows on hairlines, folded: Result, Inbox, History, Files,
+References (the `related:` paths of STATUS.md) and Sections, each only when it
+holds something, and a question to the file. At the foot of the surface walk
+**Previous file** and **Next file**, with the position between them ("2 of
+16"; a click on it shows the whole queue, a click on one opens it) and the
+title of the next file beside Next. A file taller than the screen keeps that
+foot in view. The view is made for the mouse and names no key; with the
+shortcuts switched on in the settings, `n` and `p` walk it too.
 The queue is the one the focus on the start page walks, in one function
 (`queueOf` in logic.js), only wider: a tab that asks about a task comes first,
 then a start whose result waits, then a task with an open inbox item, then
@@ -293,8 +301,10 @@ results come by file, best first: the files whose slug or title holds every
 word, then those with a hit in their STATUS.md, then the rest, open before
 closed; a log row counts for the file its context column or its text names.
 A click opens a file, a closed one too: one in the queue is walked to, any
-other opens beside the queue with its cover, its drawers and "Back to the
-queue", a closed one by its folder (`GET /api/task?slug=&path=`). The same
+other opens beside the queue on the same surface, with its drawers and "Back to
+the queue" at its foot, a closed one by its folder (`GET /api/task?slug=&path=`).
+While such a file is open the results fold to one line with the words searched
+("Show results" unfolds them, "Clear" drops them). The same
 search runs as a command, for a chat session as for a terminal: `python3 scripts/work-find.py gateway september` (`--json` for the
 whole answer). It uses `rg` when it is installed and plain Python when not,
 with the same answer either way (`GET /api/find?q=` runs that command).

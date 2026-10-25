@@ -1802,7 +1802,7 @@ test('github boards: without a GitHub section the settings say where boards come
 
 const filesOn = (over = {}) => cockpitState(NOW, { ...over, ui: { page: 'briefing', workView: 'dossier', ...(over.ui ?? {}) } })
 
-test('the files view shows one file large: its cover, its next step with the four verbs, where you stand, the next ones', async () => {
+test('the files view shows one file as one surface: its head, its next step with the four verbs, its walk at its foot', async () => {
   const { DossierView, dossierQueue } = views.dossier
   const s = filesOn()
   const queue = dossierQueue(s)
@@ -1816,11 +1816,28 @@ test('the files view shows one file large: its cover, its next step with the fou
   assert.match(cover.text(), new RegExp(queue[0].slug))
   assert.ok(cover.text().includes(en.taskState[queue[0].row.status]), 'the status in words')
   assert.ok(el.$('.fx-hero'), 'the next step in the hero of the start page focus')
-  assert.equal(el.$('.next-up-pos').text(), en.nextPos(1, queue.length))
-  el.$('.next-up').button(en.nextOpen).click()
+  // one surface: the head, the step, the drawers and the walk all stand in the file, nothing walks over it
+  const file = el.$('article.dz-file')
+  assert.ok(file.$('.dz-cover') && file.$('.fx-hero') && file.$('.dz-foot .dz-walk'), 'all inside the one surface')
+  assert.ok(file.$('.dz-eyebrow').text().includes(en.nextPos(1, queue.length)), 'where it stands, in the eyebrow')
+  assert.equal(el.$$('.dz-title').length, 1, 'one title')
+  assert.equal(el.$('.next-up'), null, 'not the floating bar of the lists')
+  assert.equal(el.$('.fx-after'), null, 'no strip of cards after it')
+  assert.doesNotMatch(file.$('.fx-hero').getAttribute('class'), /has-more/, 'no stacked edges under the step')
+  // Previous and Next as buttons with words; the first file has no previous one
+  const walk = el.$('.dz-walk')
+  assert.ok(walk.button(en.dossier.walk.prev).hasAttribute('disabled'))
+  walk.button(en.dossier.walk.next).click()
   assert.deepEqual(c.calls.filter(x => x[0] === 'dossierWalk'), [['dossierWalk', queue[1].id, 1]])
-  // the files after it: at most six
-  assert.ok(el.$$('.fx-after-list li').length <= 6 && el.$$('.fx-after-list li').length > 0)
+  // the position opens the whole queue, a click walks to one
+  assert.equal(el.$('.dz-queue'), null, 'folded until asked')
+  el.$('.dz-pos').click()
+  await tick()
+  const items = el.$$('.dz-queue-item')
+  assert.equal(items.length, queue.length)
+  assert.equal(items[0].getAttribute('aria-current'), 'true')
+  items[3].click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'dossierWalk').at(-1), ['dossierWalk', queue[3].id, 3])
   // the view switch stands on top, the files view on
   const on = el.$$('.work-switch button').find(b => b.getAttribute('aria-checked') === 'true')
   assert.equal(on.text(), en.workOrder.views.dossier)
@@ -1891,6 +1908,14 @@ test('with no file in the queue the files view rests calmly', () => {
   const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
   assert.ok(el.$('.fx-calm'))
   assert.equal(el.$('.fx-calm .fx-title').text(), en.dossier.empty)
+})
+
+test('the files view names no key, also with the shortcuts switched on: the mouse walks it', () => {
+  const { DossierView } = views.dossier
+  const el = mount(html`<${DossierView} s=${filesOn({ ui: { shortcuts: true } })} c=${recorder()} />`)
+  const said = [el.text(), ...el.$$('[title]').map(x => x.getAttribute('title')), ...el.$$('[aria-label]').map(x => x.getAttribute('aria-label'))].join(' ')
+  assert.doesNotMatch(said, /\((n|p)\)|\bkeys?\b/i)
+  assert.equal(el.$$('kbd').length, 0)
 })
 
 // ---------------------------------------------------------------- the files view: find, ask a file, next step (E2)
@@ -1979,7 +2004,7 @@ test('a file opened from the search shows its cover from the task detail and lea
   const c = answering()
   const s = filesOn({ details: { inbox: {}, task: { [slug]: { status: 'ok', data, ver: 0 } } }, ui: { dossierOpen: slug } })
   const el = mount(html`<${DossierView} s=${s} c=${c} />`)
-  assert.ok(el.$('.dz-opened').text().includes(en.dossier.opened))
+  assert.ok(el.$('.dz-eyebrow').text().includes(en.dossier.opened))
   assert.ok(el.$('.dz-cover').text().includes(slug) && el.$('.dz-cover').text().includes(en.dossier.find.kind.done))
   assert.equal(el.$('.fx-hero'), null, 'no verbs for a file outside the queue')
   // a closed file is asked about without naming its task: the chat would otherwise be archived at once
@@ -2069,6 +2094,21 @@ test('files: a found closed file opens by its folder, so a slug open and closed 
   assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [
     ['openFile', 'release-notes-2026-09', 'work/done/2026-09/release-notes-2026-09'],
     ['openFile', 'demo-task', FOUND.groups[0].path]])
+})
+
+test('files: with a file opened from the results they fold to their head and unfold on a click', async () => {
+  const { DossierView } = views.dossier
+  const slug = views.dossier.dossierQueue(filesOn()).find(x => x.reason === 'task').slug
+  const el = mount(html`<${DossierView} s=${filesOn({ find: { q: 'vendor export', status: 'ok', data: FOUND }, ui: { dossierOpen: slug } })} c=${recorder()} />`)
+  assert.ok(el.$('.dz-results-head').text().includes('vendor export'), 'the words stay named')
+  assert.equal(el.$$('.dz-found > li').length, 0, 'folded')
+  el.button(en.dossier.find.show).click()
+  await tick()
+  assert.equal(el.$$('.dz-found > li').length, 3)
+  // with no file open they stand unfolded, with nothing to fold
+  const plain = mount(html`<${DossierView} s=${filesOn({ find: { q: 'vendor export', status: 'ok', data: FOUND } })} c=${recorder()} />`)
+  assert.equal(plain.$$('.dz-found > li').length, 3)
+  assert.equal(plain.button(en.dossier.find.hide), null)
 })
 
 test('files: a closed copy opened by its folder reads that copy and borrows nothing from an open row of its slug', async () => {

@@ -1596,13 +1596,14 @@ const en = {
     empty: 'No file waits for you.', emptySub: 'Nothing is doing or in review. Backlog and resting tasks stay out of this queue.',
     after: 'Next', loading: 'Reading the file',
     find: {
-      label: 'Search the files', placeholder: 'Search every file, closed ones too', button: 'Search', clear: 'Clear',
+      label: 'Search the files, closed ones too', placeholder: 'Search the files', title: 'Search results', show: 'Show results', hide: 'Fold results', button: 'Search', clear: 'Clear',
       loading: 'Searching', none: q => `Nothing found for "${q}".`, failed: e => `The search failed: ${e}`,
       tooShort: 'Type at least two characters.', open: 'Open', hits: n => (n === 1 ? '1 hit' : `${n} hits`),
       shown: (n, total) => `${n} of ${total} files shown`,
       kind: { task: 'task', stream: 'stream', done: 'closed', log: 'log', archive: 'archive' },
     },
     back: 'Back to the queue', opened: 'Opened from the search', noFile: 'This file can no longer be read.',
+    walk: { label: 'Walk through the files', prev: 'Previous file', next: 'Next file', queue: 'Show the whole queue' },
     ask: {
       label: 'Ask this file', placeholder: 'Ask this file...', button: 'Ask',
       results: 'Ask about these results', resultsPlaceholder: 'Ask about what the search found...',
@@ -3197,13 +3198,14 @@ const de = {
     empty: 'Keine Akte wartet auf dich.', emptySub: 'Nichts ist in Arbeit oder im Review. Backlog und ruhende Aufgaben bleiben aus dieser Schlange.',
     after: 'Als Nächstes', loading: 'Akte wird gelesen',
     find: {
-      label: 'Akten durchsuchen', placeholder: 'Alle Akten durchsuchen, auch erledigte', button: 'Suchen', clear: 'Leeren',
+      label: 'Akten durchsuchen, auch erledigte', placeholder: 'Akten durchsuchen', title: 'Suchtreffer', show: 'Treffer zeigen', hide: 'Treffer einklappen', button: 'Suchen', clear: 'Leeren',
       loading: 'Suche läuft', none: q => `Nichts gefunden für „${q}“.`, failed: e => `Die Suche ging nicht: ${e}`,
       tooShort: 'Mindestens zwei Zeichen eingeben.', open: 'Öffnen', hits: n => (n === 1 ? '1 Treffer' : `${n} Treffer`),
       shown: (n, total) => `${n} von ${total} Akten gezeigt`,
       kind: { task: 'Aufgabe', stream: 'Stream', done: 'erledigt', log: 'Log', archive: 'Archiv' },
     },
     back: 'Zurück zur Schlange', opened: 'Aus der Suche geöffnet', noFile: 'Diese Akte lässt sich nicht mehr lesen.',
+    walk: { label: 'Durch die Akten gehen', prev: 'Vorherige Akte', next: 'Nächste Akte', queue: 'Die ganze Schlange zeigen' },
     ask: {
       label: 'Akte fragen', placeholder: 'Akte fragen ...', button: 'Fragen',
       results: 'Zu diesen Treffern fragen', resultsPlaceholder: 'Zu dem fragen, was die Suche gefunden hat ...',

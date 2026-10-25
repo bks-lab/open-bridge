@@ -193,6 +193,7 @@ const ICONS = {
   workflow: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 9v3a6 6 0 0 0 6 6h3',
   sort: 'M4 6h16M7 12h10M10 18h4',
   pencil: 'M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5zM15 5l4 4',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
 }
 
 export function Icon({ name, size = 16 }) {
