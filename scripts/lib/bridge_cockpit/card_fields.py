@@ -16,8 +16,9 @@ it). It has one shape in two places: the `brief:` block of a STATUS.md (work/tem
 
 `validate_brief(obj)` is the one gate every writer passes. It returns (clean, errors): `clean` is what may be
 stored or shown, `errors` says everything that was wrong. A text over its limit or holding a dash as
-punctuation (U+2012 to U+2015, em and en dash among them) is an error and left out of `clean`, never cut or
-rewritten, so a wrong text is never shown as if it were right; a list of more than five criteria keeps the
+punctuation (U+2012 to U+2015, em and en dash among them) or a control or format character (Unicode Cc or
+Cf, a line break included, and U+2028, U+2029: YAML reads some as a line break and refuses others, so the text
+would not read back as written) is an error and left out of `clean`, never cut or rewritten, so a wrong text is never shown as if it were right; a list of more than five criteria keeps the
 first five and says so. Without a usable goal there is no brief and `clean` is None.
 
 `brief_basis(text)` is the sha256 prefix (16 hex characters) of a STATUS.md with its `brief:` block taken out
@@ -35,6 +36,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import re
+import unicodedata
 from typing import Any
 
 CARD_FIELDS = ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "next", "state",
@@ -65,6 +67,10 @@ def _text(value: Any, name: str, limit: int, errors: list) -> str | None:
         return None
     if _DASH_RE.search(text):
         errors.append(f"{name}: a dash as punctuation, use a comma, colon or parentheses")
+        return None
+    if any(c in "\u2028\u2029" or unicodedata.category(c) in ("Cc", "Cf") for c in text):
+        # YAML reads some of them as a line break and refuses others: the brief would not read back as written
+        errors.append(f"{name}: a control or format character (a line break included), one plain line of text")
         return None
     return text
 

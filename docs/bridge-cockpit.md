@@ -1242,8 +1242,10 @@ the `brief:` block of its STATUS.md (`task.py brief`), an inbox item in its
 
 The small model writes it (service `cockpit-describe` in
 `workflow/ai-services/`, default `haiku` resolved to its full id; one call
-without tools, settings or session, a fixed JSON schema and `MAX_THINKING_TOKENS=0`
-in its env). The
+without tools, settings or session, a fixed JSON schema with the limits of a
+brief, and `MAX_THINKING_TOKENS=0` in its env). That switch is best effort: the
+CLI still reported thinking tokens with it, most of a call's output, about
+$0.001 a call, so 20 calls an hour cost near $0.03. The
 item goes in as data: a few frontmatter fields, its heading, the start of the
 body, its two last sections and its open inbox items, about 6000 characters.
 `by` names the model that answered as `modelUsage` reports it; another one than
@@ -1255,7 +1257,12 @@ it is or as the person changed it (`edited: true`), describe_discard drops it.
 A brief changed by hand in the file counts as a person's too: `.bridge/describe.json`
 keeps the hash of each brief as describe wrote it, and the next pass marks a
 changed one `edited: true` without a model call. A brief is stale when its
-`basis` is no longer the item's text.
+`basis` is no longer the item's text. That file is kept per machine, while
+STATUS.md travels through git: on another machine or in a fresh clone a brief
+describe wrote has no hash, so it counts as a person's (the model only
+proposes for it, and a hand edit of it is not marked). What the gate left out
+of a brief it still wrote (a text over its limit, fewer than two criteria for
+a task) is kept as the card's `warnings`.
 
 "Describe" on a card (`describe_run {key}`) asks for one item now. With
 

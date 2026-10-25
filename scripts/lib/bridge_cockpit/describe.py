@@ -13,6 +13,11 @@ describe last wrote it. When the stored brief no longer has that hash and still 
 changed it: the next pass sets edited: true (task.py brief --mark-edited, or a describe event for an inbox
 item), without a model call. A brief is stale when its basis is not the item's brief_basis now.
 
+describe.json is kept per machine, while STATUS.md travels through git. On another machine, in a fresh clone
+or after the file is lost, a brief describe wrote has no hash there, so it counts as a person's: the model
+only proposes for it from then on, and a hand edit of it is not marked. That is the safe side (nothing a
+person may have written is overwritten), at the price that state_for says `written: 'human'` for it.
+
 When it runs. On a click (describe_run: one item now, a proposal instead of a write when the brief is a
 person's), and, with `cockpit.describe.auto` (off by default), in a pass of the server every few minutes:
 `missing` takes the items without a brief, `stale` also the stale ones. The pass writes no brief a person
@@ -21,7 +26,8 @@ changes. The pass stays within `budget_per_hour` calls (clicks count too, a clic
 calls never run at once, a click and the pass included.
 
 One call, no tools, no session, no settings, a fixed JSON schema (argv / argv_ok, the only shape the runner
-lets through), with MAX_THINKING_TOKENS=0 for this call only. The model comes from ai.select (service
+lets through), with MAX_THINKING_TOKENS=0 for this call only. That is best effort: claude -p still reported
+thinking tokens with it (CLI 2.1.310, 2026-10-25), most of the output of a call, about $0.001 a call in all. The model comes from ai.select (service
 cockpit-describe, default haiku resolved to its full id), the model that answered from modelUsage: another
 one is flagged (model_mismatch) and stored as `by` all the same. The item goes in as data (a JSON block
 under a label that says so): frontmatter fields, the H1, the start of the body and its two last sections,
@@ -53,8 +59,9 @@ STATE = Path(".bridge") / "describe.json"
 KINDS = ("task", "stream", "inbox")
 AUTO = ("off", "missing", "stale")
 DEFAULT_BUDGET = 20
-#: what the call runs with, beside the runner's env: asks for no thinking, the largest cost of a small call
-#: (a smoke run on 2026-10-25, claude CLI 2.1.310, still reported thinking tokens: measure before relying on it)
+#: what the call runs with, beside the runner's env: asks for no thinking, the largest cost of a small call.
+#: Best effort: two smoke runs on 2026-10-25 (claude CLI 2.1.310) still reported 700 to 1000 thinking tokens
+#: of 1000 to 1500 output tokens, about $0.001 a call, so the default budget of 20 an hour is near $0.03.
 ENV = {"MAX_THINKING_TOKENS": "0"}
 HEAD_MAX = 1500          # the start of the body
 SECTION_MAX = 1500       # each of the two last `##` sections, before the cap shortens them
@@ -74,13 +81,18 @@ INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
 FRONT_KEYS = ("type", "status", "origin", "headline", "next", "blocked_by")
 
 _STORY = {"type": "object", "additionalProperties": False, "required": ["as", "want", "so_that"],
-          "properties": {k: {"type": "string"} for k in ("as", "want", "so_that")}}
-#: the answer's shape, passed as --json-schema; card_fields.validate_brief is the gate after it
+          "properties": {k: {"type": "string", "maxLength": BRIEF_LIMITS["story"]} for k in ("as", "want", "so_that")}}
+#: the answer's shape, passed as --json-schema, with the limits, so an answer over one is sent back to the model
+#: rather than left out after the call; card_fields.validate_brief is the gate after it
 SCHEMA = json.dumps({"type": "object", "additionalProperties": False, "required": ["goal", "story", "acceptance"],
-                     "properties": {"goal": {"type": "string"}, "story": {"anyOf": [_STORY, {"type": "null"}]},
-                                    "acceptance": {"type": "array", "items": {"type": "string"},
+                     "properties": {"goal": {"type": "string", "maxLength": BRIEF_LIMITS["goal"]},
+                                    "story": {"anyOf": [_STORY, {"type": "null"}]},
+                                    "acceptance": {"type": "array",
+                                                   "items": {"type": "string", "maxLength": BRIEF_LIMITS["acceptance_len"]},
                                                    "maxItems": BRIEF_LIMITS["acceptance_items"]}}},
                     separators=(",", ":"))
+#: the fewest criteria a task's brief should have; one with fewer is written all the same, with a warning
+MIN_CRITERIA = 2
 
 SYSTEM = """You write the brief of one item of a personal work tracker: what it is for and when it is done, never how to do it.
 Answer with JSON only: {{"goal": "...", "story": {{"as": "...", "want": "...", "so_that": "..."}} or null, "acceptance": [...]}}.
@@ -259,6 +271,8 @@ def parse(out: str, item: dict, requested: str, today: str) -> dict:
     title = " ".join(str(item.get("title") or "").split()).casefold()
     if clean and title and " ".join(clean["goal"].split()).casefold() == title:
         clean, errors = None, [*errors, "goal: repeats the title"]
+    if clean and item.get("kind") != "stream" and len(clean.get("acceptance") or []) < MIN_CRITERIA:
+        errors = [*errors, f"acceptance: {len(clean.get('acceptance') or [])} criteria, a task has at least {MIN_CRITERIA}"]
     res.update(brief=clean, errors=errors)
     return res
 
@@ -338,7 +352,7 @@ def task_item(root: Path, slug: str, scrub: Callable[[str], str] = lambda s: s, 
     front, body = split_front(text)
     heading = next((m.group(1).strip() for m in re.finditer(r"(?m)^# (.+)$", body)), None)
     title = front.get("title") if isinstance(front.get("title"), str) else None
-    title = title or heading or slug
+    title = _clean_tree(title or heading or slug, scrub)
     rest = re.sub(r"(?m)\A\s*# .+\n", "", body, count=1)
     data = {"kind": kind, "title": title, "front": {k: _plain(front[k]) for k in FRONT_KEYS if front.get(k) is not None},
             "heading": heading, "body_start": rest[:HEAD_MAX].strip("\n"),
@@ -356,7 +370,7 @@ def task_item(root: Path, slug: str, scrub: Callable[[str], str] = lambda s: s, 
 def inbox_item(item: Any, scrub: Callable[[str], str] = lambda s: s) -> dict:
     """The item of an open inbox item (inbox.py Item): what it says, never its events"""
     fields = item.data if isinstance(getattr(item, "data", None), dict) else {}
-    title = str(fields.get("summary") or item.id)
+    title = _clean_tree(str(fields.get("summary") or item.id), scrub)
     data = {"kind": "inbox", "title": title,
             "front": {k: _plain(fields[k]) for k in ("kind", "from", "due", "task", "closes_when") if fields.get(k) is not None},
             "heading": None, "body_start": str(fields.get("detail") or "")[:HEAD_MAX], "recent_sections": [],
@@ -367,6 +381,11 @@ def inbox_item(item: Any, scrub: Callable[[str], str] = lambda s: s) -> dict:
     return {"key": f"inbox:{item.id}", "kind": "inbox", "id": item.id, "title": title, "data": text,
             "basis": brief_basis(text), "path": None, "brief": brief, "writable": True,
             "edited": bool(brief and brief.get("edited")), "raw_brief": brief is not None}
+
+
+def _warnings(errors: list) -> list[str]:
+    """What the gate left out of a brief that was kept all the same, for the page (state_for)"""
+    return [str(e)[:200] for e in errors[:5]]
 
 
 def _module(name: str, file: str):
@@ -399,6 +418,7 @@ class Describer:
         self.running: str | None = None       # the key whose call runs now
         self._thread: threading.Thread | None = None
         self._cache: dict = {}                 # slug: ((folder, mtime_ns, size), item) for state_for and the pass
+        self.asked = 0                         # model calls made since the start, what the pass counts
 
     # ------------------------------------------------------------ the store
 
@@ -541,13 +561,16 @@ class Describer:
     # ------------------------------------------------------------ what the page reads
 
     def state_for(self, key: str) -> dict:
-        """{written: 'ai'|'human'|None, stale, proposal, running, last_error, model_mismatch} for a card"""
+        """{written: 'ai'|'human'|None, stale, proposal, running, last_error, warnings, model_mismatch} for a card;
+        `warnings` are what the gate left out of the brief last written or proposed (a text over its limit)"""
         entry = self.entry(key)
         item = self.item(key)
         with self.lock:
             running = self.running == key
         prop = entry.get("proposal") if isinstance(entry.get("proposal"), dict) else None
+        warnings = entry.get("warnings") if isinstance(entry.get("warnings"), list) else []
         out = {"written": None, "stale": False, "running": running, "last_error": entry.get("last_error"),
+               "warnings": [str(w) for w in warnings],
                "model_mismatch": bool(entry.get("model_mismatch")),
                "proposal": {k: prop.get(k) for k in ("id", "brief", "by", "at_ms")} if prop else None}
         if item is None or not item.get("raw_brief"):
@@ -564,7 +587,8 @@ class Describer:
             return call(name, subject, argv_, timeout, **kw)
         return self.app.run(argv_, timeout, **kw)
 
-    def write(self, item: dict, brief: dict, *, edited: bool, call: Callable | None = None) -> dict:
+    def write(self, item: dict, brief: dict, *, edited: bool, call: Callable | None = None,
+              warnings: list | None = None) -> dict:
         """The brief into the item (task.py brief / inbox.py describe); describe.json gets its hash"""
         actions = self.app.actions
         body = {k: v for k, v in brief.items() if k not in ("basis", "edited")}
@@ -591,7 +615,7 @@ class Describer:
             except (ValueError, AttributeError):
                 pass
         return self.update(item["key"], sha=brief_sha(written), basis=basis, proposal=None, last_error=None,
-                           failed_basis=None, at_ms=self.now_ms())
+                           failed_basis=None, at_ms=self.now_ms(), warnings=list(warnings or []))
 
     def mark_edited(self, item: dict, call: Callable | None = None) -> None:
         actions = self.app.actions
@@ -637,6 +661,7 @@ class Describer:
         if not argv_ok(argv_, app.runner.claude):
             raise _error(409, "describe_too_big", tx["too_big"])
         run = self._call(call, "claude.describe", item["key"], argv_, TIMEOUT, env_extra=dict(ENV))
+        self.asked += 1
         got = parse(run.out if run.ok else "", item, chosen.model, self.today())
         self.count_call(got["cost_usd"])
         self.audit("describe", item["key"], model=(got["used"] or "-").replace("claude-", ""), ok=got["brief"] is not None,
@@ -685,10 +710,11 @@ class Describer:
             if self.protected(now, entry):
                 prop = {"id": "d" + uuid.uuid4().hex[:10], "brief": got["brief"], "basis": now["basis"],
                         "by": got["used"], "at_ms": self.now_ms(), "cost_usd": got["cost_usd"]}
-                self.update(key, proposal=prop, proposed_basis=now["basis"], last_error=None, failed_basis=None)
+                self.update(key, proposal=prop, proposed_basis=now["basis"], last_error=None, failed_basis=None,
+                            warnings=_warnings(got["errors"]))
                 outcome = "proposal"
             else:
-                self.write(now, got["brief"], edited=False, call=call)
+                self.write(now, got["brief"], edited=False, call=call, warnings=_warnings(got["errors"]))
                 outcome = "written"
         self.changed(key)
         return {"outcome": outcome, "title": item["title"], "why": why}
@@ -741,7 +767,7 @@ class Describer:
             return 0
         lock = getattr(getattr(self.app, "actions", None), "write_lock", None)
         write_lock = (lambda: lock) if lock is not None else contextlib.nullcontext
-        made = 0
+        asked = self.asked
         for key in self.keys(cfg["kinds"]):
             if getattr(self.app, "stopping", False):
                 break
@@ -766,11 +792,12 @@ class Describer:
             try:
                 self.run_key(key, why="auto", write_lock=write_lock)
             except Exception as exc:  # noqa: BLE001 - one item never stops the pass
-                if getattr(exc, "code", None) == "describe_running":
+                # another call runs, or no model to ask: the next pass tries again
+                if getattr(exc, "code", None) in ("describe_running", "describe_unavailable"):
                     break
                 if not hasattr(exc, "code"):
                     self.app.log_error(f"describe: {exc!r}")
-            made += 1
+        made = self.asked - asked
         if made:
             try:
                 self.app.collector.request("delta", tasks=True)

@@ -379,6 +379,19 @@ def brief_block(brief: dict, nl: str = "\n") -> str:
     return nl.join(out) + nl
 
 
+def _replace_file(path: Path, text: str) -> None:
+    """The new text in a file beside `path`, which then takes its place: a reader never sees half of it"""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_bytes(text.encode("utf-8"))
+        with contextlib.suppress(OSError):
+            os.chmod(tmp, path.stat().st_mode & 0o7777)
+        os.replace(tmp, path)
+    finally:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+
+
 def _front_bounds(lines: list) -> tuple:
     start = 0
     while start < len(lines) and (not lines[start].strip() or lines[start].startswith("#")):
@@ -430,7 +443,7 @@ def write_brief(root: Path, slug: str, brief: dict, *, basis: str | None = None,
 
     clean["basis"] = brief_basis(render(clean))     # the basis leaves the block out, so it is the same after
     new = render(clean)
-    path.write_bytes(new.encode("utf-8"))
+    _replace_file(path, new)
     return {"slug": slug, "basis": clean["basis"], "brief": clean}
 
 
@@ -458,7 +471,7 @@ def mark_brief_edited(root: Path, slug: str) -> dict:
         if not isinstance(data, dict):
             raise ValueError(f"{slug}: the brief block is not a mapping")
         lines[first:past] = [brief_block({**data, "edited": True}, nl)]
-    path.write_bytes("".join(lines).encode("utf-8"))
+    _replace_file(path, "".join(lines))
     return {"slug": slug, "edited": True}
 
 

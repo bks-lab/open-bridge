@@ -568,3 +568,69 @@ def test_the_ai_services_template_lists_the_cockpit_services():
 def test_the_docs_name_the_describe_keys():
     text = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
     assert "`describe`" in text and "budget_per_hour" in text and "auto: missing" in text
+
+
+# ---------------------------------------------------------------- review fixes
+
+def test_the_schema_carries_the_limits_so_the_model_is_held_to_them():
+    schema = json.loads(dsc.SCHEMA)
+    props = schema["properties"]
+    assert props["goal"]["maxLength"] == dsc.BRIEF_LIMITS["goal"]
+    assert props["acceptance"]["items"]["maxLength"] == dsc.BRIEF_LIMITS["acceptance_len"]
+    story = props["story"]["anyOf"][0]["properties"]
+    assert {k: v["maxLength"] for k, v in story.items()} == {k: dsc.BRIEF_LIMITS["story"] for k in ("as", "want", "so_that")}
+
+
+def test_a_task_with_fewer_than_two_criteria_is_said():
+    got = dsc.parse(answer(acceptance=["The demo opens without an error"]).out, ITEM, HAIKU, "2026-10-25")
+    assert got["brief"]["acceptance"] == ["The demo opens without an error"]
+    assert any("at least 2" in e for e in got["errors"])
+    stream = dsc.parse(answer(acceptance=[]).out, {**ITEM, "kind": "stream"}, HAIKU, "2026-10-25")
+    assert not any("at least 2" in e for e in stream["errors"])
+
+
+def test_what_the_gate_left_out_of_a_written_brief_is_kept_as_a_warning(world):
+    story = {"as": "a colleague", "want": "w" * 90, "so_that": "I can give feedback"}
+    world.runner.handlers["claude.p"] = lambda argv: answer(story=story)
+    res = world.act("describe_run", key="task:demo-task")
+    assert res["ok"] and "story" not in brief_of(world)
+    state = world.app.describe.state_for("task:demo-task")
+    assert state["last_error"] is None and any("story.want" in w for w in state["warnings"])
+    world.runner.handlers["claude.p"] = lambda argv: answer()
+    path = status_path(world)
+    path.write_text(path.read_text(encoding="utf-8") + "\nmore\n", encoding="utf-8")
+    world.act("describe_run", key="task:demo-task")
+    assert world.app.describe.state_for("task:demo-task")["warnings"] == []
+
+
+def test_the_title_is_scrubbed_like_the_data(world):
+    path = status_path(world)
+    path.write_text(path.read_text(encoding="utf-8").replace("# Demo task", "# Demo SECRET-TOKEN"), encoding="utf-8")
+    world.app.scrub = lambda s: s.replace("SECRET-TOKEN", "[token]")
+    item = world.app.describe.item("task:demo-task", full=True)
+    assert item["title"] == "Demo [token]"
+    res = world.act("describe_run", key="task:demo-task")
+    assert "SECRET-TOKEN" not in json.dumps(res)
+
+
+def test_an_unavailable_model_stops_the_pass_and_counts_no_call(tmp_path):
+    w = make_world(tmp_path, auto="missing")
+    try:
+        add_task(w, "second")
+        folder = w.app.root / "workflow" / "ai-services"
+        folder.mkdir(parents=True)
+        (folder / "cockpit-describe.yaml").write_text("schema_version: 1\nscope: user\nid: cockpit-describe\n"
+                                                      "provider: openai\nmodels:\n  openai: gpt-5\n", encoding="utf-8")
+        asked = []
+        real_item = w.app.describe.item
+        w.app.describe.item = lambda key, full=False: (asked.append((key, full)), real_item(key, full))[1]
+        assert w.app.describe.pass_once() == 0 and model_calls(w) == []
+        assert len([k for k, full in asked if full]) == 1, "the pass stops at the first item it cannot describe"
+    finally:
+        w.close()
+
+
+def test_the_docs_say_what_the_thinking_switch_and_the_local_hashes_do_not_promise():
+    text = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
+    assert "best effort" in text and "per machine" in text
+    assert "best effort" in (dsc.__doc__ or "") and "per machine" in (dsc.__doc__ or "")

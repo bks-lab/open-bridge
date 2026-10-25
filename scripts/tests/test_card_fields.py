@@ -252,3 +252,12 @@ def test_the_template_example_passes_the_schema_and_the_gate():
                                                 format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER)
     assert list(validator.iter_errors(clean)) == []
     assert list(validator.iter_errors({**clean, "by": "haiku"})), "the schema refuses an alias too"
+
+
+@pytest.mark.parametrize("char", ["\x81", "\x85", "\x9f", " ", " ", "​", "﻿", "\x07", "\n"])
+def test_a_control_or_format_character_is_an_error_never_written(char):
+    # YAML takes them as a line break or refuses the file, so a brief with one would not read back as written
+    clean, errors = cf.validate_brief({**GOOD, "goal": f"Invoices reach{char} the customer"})
+    assert clean is None and any("control or format character" in e for e in errors)
+    clean, errors = cf.validate_brief({**GOOD, "acceptance": ["No invoice is delivered twice", f"a{char}b"]})
+    assert clean["acceptance"] == ["No invoice is delivered twice"] and errors

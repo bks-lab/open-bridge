@@ -200,3 +200,34 @@ def test_a_task_without_a_brief_has_no_acceptance_line(repo):
     (repo / "work" / "log.md").write_text("# Log\n", encoding="utf-8")
     [t] = task.gather(repo, ["alpha"], lambda argv, **kw: _Done())
     assert t["evidence"]["acceptance"] is None and "acceptance:" not in task._task_block(t)
+
+
+@pytest.mark.parametrize("char", ["\x81", "\x85", " "])
+def test_a_brief_with_a_control_character_is_refused_and_the_file_untouched(repo, char):
+    old = path(repo).read_bytes()
+    r = run(repo, "brief", "alpha", "--brief-json", json.dumps({**BRIEF, "goal": f"a{char}b goal"}))
+    assert r.returncode != 0 and "control or format character" in r.stderr
+    assert path(repo).read_bytes() == old
+
+
+def _task_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_task_brief_atomic", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_brief_write_and_the_edited_mark_replace_the_file_whole(repo, monkeypatch):
+    # a reader never sees half a STATUS.md: the new text goes to a file beside it, which then takes its place
+    task = _task_module()
+    replaced = []
+    real_replace = task.os.replace
+    monkeypatch.setattr(task.os, "replace", lambda a, b: (replaced.append((Path(a), Path(b))), real_replace(a, b)))
+    task.write_brief(repo, "alpha", dict(BRIEF), today="2026-10-25")
+    task.mark_brief_edited(repo, "alpha")
+    target = path(repo)
+    assert [b for _, b in replaced] == [target, target]
+    assert all(a.parent == target.parent and a != target and not a.exists() for a, _ in replaced)
+    assert front(target.read_text(encoding="utf-8").split("\n", 1)[1])["brief"]["edited"] is True
+    assert sorted(p.name for p in target.parent.iterdir()) == ["STATUS.md"]
