@@ -176,7 +176,15 @@ export function areaScope(s) {
     // wholeModel: what a search across every area looks its hits up in (the files view's search stays global)
     return { ...s, model, more, tabs: area ? { ...s.tabs, tabs: tabs.filter(keepTab) } : s.tabs, wholeModel: s.model, wholeTabs: s.tabs }
   }
-  if (page === '@chat') return { ...s, tabs: { ...s.tabs, tabs: tabs.filter(keepTab) } }
+  if (page === '@chat') {
+    const kept = tabs.filter(keepTab)
+    const listed = s.tabs?.workspaces
+    // and only the workspaces that hold one of those tabs or carry the area's name: the others showed up
+    // empty under the filter, a workspace nobody could enter (25.10.)
+    const holds = w => kept.some(t => (t.ws_ref && w.ref ? t.ws_ref === w.ref : t.workspace === w.title))
+    const workspaces = listed ? { workspaces: listed.filter(w => holds(w) || inProject({ workspace: w.title }, area)) } : {}
+    return { ...s, tabs: { ...s.tabs, tabs: kept, ...workspaces } }
+  }
   // the Sessions page
   const tabOf = new Map(tabs.map(t => [t.ref, t]))
   const keepSession = x => {

@@ -34,7 +34,9 @@ button: it picks that area as the chips do, a second click (or the line "All")
 shows everything again. With the shelf on and a line for every chip, the lines
 replace the chips. In the overview a name opens the area's files instead (Work,
 view Files, the filter set, for this visit: the view the work tab opens on stays).
-What has no area stands last as **No area**; its name and numbers lead to the
+Under an area, Chat lists only the workspaces that hold one of the area's tabs or carry
+its name, and an area without any agent tab says so in the bar ("No agent tab in X") with
+a button that shows every area again. What has no area stands last as **No area**; its name and numbers lead to the
 same pages without a filter. An inbox item counts under its task's area, else under
 the area it was given ([`inbox.md`](inbox.md): `--area`, or the router when it is
 filed); only one with neither is *No area*. There is one area filter in the whole cockpit:

@@ -574,6 +574,9 @@ export function AreaBar({ s, c }) {
   const work = page === 'briefing'
   const pins = s.home?.pins ?? []
   if (!s.ui.area && !(work && (pins.length || s.ui.pinnedOnly))) return null
+  // Chat under an area without an agent tab says so and offers every area, rather than an empty page
+  const noTabs = page === '@chat' && s.ui.area
+    && !(areaScope(s).tabs?.tabs ?? []).some(t => !t.is_control && t.state !== 'shell')
   return html`<div class="area-bar" role="region" aria-label=${h.areasTitle}>
     ${s.ui.area ? html`<span class="chip area-bar-chip"><span class=${`home-area-dot tk-${projectTone(s.ui.area)}`} aria-hidden="true"></span>
       <span>${h.areaFilter(s.ui.area)}</span>
@@ -581,6 +584,8 @@ export function AreaBar({ s, c }) {
     ${work ? html`<button type="button" class=${`home-chip${s.ui.pinnedOnly ? ' is-on' : ''}`} aria-pressed=${String(!!s.ui.pinnedOnly)}
       title=${h.pinnedOnlyTitle} onClick=${() => c.setPinnedOnly(!s.ui.pinnedOnly)}>★ ${h.pinnedOnly}</button>` : null}
     ${work && s.ui.pinnedOnly && !pins.length ? html`<span class="muted small">${h.pinnedNone}</span>` : null}
+    ${noTabs ? html`<span class="muted small area-bar-empty">${h.areaNoTabs(s.ui.area)}</span>
+      <${Btn} size="xs" cls="area-bar-all" onClick=${() => c.setArea(null)}>${h.areaClear}<//>` : null}
   </div>`
 }
 

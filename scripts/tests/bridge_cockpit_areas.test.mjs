@@ -209,6 +209,11 @@ test('the area filter: Work, Chat and Sessions show the area only, the other pag
   assert.deepEqual(work.more['work/tasks'].items.map(x => x.title), ['A', 'X'])
   // Chat: the tabs of the area, the control tab stays
   assert.deepEqual(at('@chat').tabs.tabs.map(t => t.ref), ['c', 'a'])
+  // and only the workspaces that hold one of them or carry the area's name: an empty one cannot be entered
+  const listed = [{ ref: 'w1', title: 'Bridge' }, { ref: 'w2', title: 'ORBIT' }, { ref: 'w3', title: 'acme' }, { ref: 'w4', title: 'Scratch' }]
+  const chat = logic.areaScope({ ...base, tabs: { tabs, workspaces: listed }, ui: { page: '@chat', area: 'ACME' } })
+  assert.deepEqual(chat.tabs.workspaces.map(w => w.title), ['Bridge', 'acme'])
+  assert.equal(logic.areaScope({ ...base, tabs: { tabs }, ui: { page: '@chat', area: 'ACME' } }).tabs.workspaces, undefined)
   // Sessions: by the session's tab, else its folder; the starts by their row
   const sess = at('@sessions')
   assert.deepEqual(sess.sessions.sessions.map(x => x.sid), ['1', '3'])
@@ -422,8 +427,20 @@ test('the area bar: over Work it names the area and offers the star filter; noth
   star.click()
   assert.deepEqual(c.calls, [['setArea', null], ['setPinnedOnly', true]])
   // Chat with an area: the area, no star
-  const chat = mount(html`<${AreaBar} s=${cockpitState(NOW, { ui: { page: '@chat', area: 'ACME' } })} c=${recorder()} />`)
+  const withTab = cockpitState(NOW, { ui: { page: '@chat', area: 'ACME' } })
+  withTab.tabs = { ...withTab.tabs, tabs: [{ ref: 'a', workspace: 'ACME', state: 'working' }] }
+  const chat = mount(html`<${AreaBar} s=${withTab} c=${recorder()} />`)
   assert.equal(chat.$$('button').length, 1)
+  assert.equal(chat.$('.area-bar-empty'), null)
+  // an area without an agent tab says so on Chat and offers every area, the control tab and shells count for nothing
+  const none = cockpitState(NOW, { ui: { page: '@chat', area: 'ACME' } })
+  none.tabs = { ...none.tabs, tabs: [{ ref: 'c', is_control: true, workspace: 'ACME', state: 'waiting' },
+    { ref: 's', workspace: 'ACME', state: 'shell' }, { ref: 'o', workspace: 'ORBIT', state: 'working' }] }
+  const cc = recorder()
+  const empty = mount(html`<${AreaBar} s=${none} c=${cc} />`)
+  assert.equal(empty.$('.area-bar-empty').text(), en.home.areaNoTabs('ACME'))
+  empty.$('.area-bar-all').click()
+  assert.deepEqual(cc.calls, [['setArea', null]])
   // the start page and a page without a filter: no bar
   assert.equal(mount(html`<${AreaBar} s=${cockpitState(NOW, { ui: { page: '@start', area: 'ACME' } })} c=${recorder()} />`).$('.area-bar'), null)
   assert.equal(mount(html`<${AreaBar} s=${cockpitState(NOW, { ui: { page: '@chat', area: null } })} c=${recorder()} />`).$('.area-bar'), null)
