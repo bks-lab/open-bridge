@@ -29,7 +29,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, dossierStep, duration, fileContext, fileFacts, fileQueue, fileResults, findContext, focusIndex, formatDay,
-  prioToken, short, stepAge, suggestedStep, tabOfTask,
+  indexRows, prioToken, projectTone, rowProject, short, stepAge, suggestedStep, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
@@ -80,10 +80,21 @@ function Situation({ x, s, data }) {
   return html`<p class="dz-lead">${pick.text} <span class="dz-src">${[pick.from, at].filter(Boolean).join(', ')}</span></p>`
 }
 
-/** The head of a file: an eyebrow (what it is, where it stands, its status, kind and priority, its slug on the
- *  right), its title as the one heading of the view, and the situation. `where` names its place in the eyebrow:
+/** A file's area as the areas table shows it (its dot, its name): a click shows that area only (ui.area),
+ *  pressed while it is the filter, and a click then lets go. A file without an area says so, quietly */
+function AreaChip({ name, s, c, cls = 'dz-area' }) {
+  const h = T().home
+  if (!name) return html`<span class=${`${cls === 'dz-area' ? 'dz-area-none' : 'dz-found-area-none'} muted`}>${h.noArea}</span>`
+  const on = String(s.ui?.area ?? '').trim().toLowerCase() === name.trim().toLowerCase()
+  return html`<button type="button" class=${`chip ${cls}`} aria-pressed=${String(on)} title=${on ? h.areaClear : h.areaFilter(name)}
+    onClick=${() => c.setArea(on ? null : name)}>
+    <span class=${`home-area-dot tk-${projectTone(name)}`} aria-hidden="true"></span>${name}</button>`
+}
+
+/** The head of a file: an eyebrow (what it is, where it stands, its status, kind and priority, its area and its
+ *  slug on the right), its title as the one heading of the view, and the situation. `where` names its place in the eyebrow:
  *  "2 of 16" in the queue, "Opened from the search" and "closed" for a file found beside it */
-function Cover({ x, s, data, where = [] }) {
+function Cover({ x, s, c, data, where = [] }) {
   const t = T()
   const r = x.row
   const kind = data?.front?.type ?? r.task_type
@@ -91,7 +102,7 @@ function Cover({ x, s, data, where = [] }) {
   return html`<header class="dz-cover">
     <p class="dz-eyebrow">
       <span class="dz-eyebrow-what"><${Dot} token=${prioToken(r.priority)} />${parts.map((w, k) => html`${k ? html`<span class="dz-sep" aria-hidden="true">·</span>` : null}<span key=${k}>${w}</span>`)}</span>
-      <span class="dz-slug mono">${x.slug}</span>
+      <span class="dz-eyebrow-end"><${AreaChip} name=${rowProject(r)} s=${s} c=${c} /><span class="dz-slug mono">${x.slug}</span></span>
     </p>
     <h2 id="dz-title" class="dz-title">${r.title}</h2>
     <${Situation} x=${x} s=${s} data=${data} />
@@ -247,6 +258,9 @@ function FindResults({ s, c, open }) {
   if (was.current !== open) { was.current = open; if (folded !== !!open) setFolded(!!open) }
   if (!found) return null
   const groups = found.status === 'ok' ? found.data?.groups ?? [] : []
+  // the search is across every area on purpose: a hit names its area, looked up in the whole model
+  const rows = indexRows(s.wholeModel ?? s.model)
+  const areaOf = slug => (slug ? rowProject(rows.get(`task:${slug}`)) || null : null)
   const note = found.status === 'loading' ? f.loading : found.status === 'error' ? f.failed(found.error ?? '')
     : found.status === 'tooShort' ? f.tooShort : !groups.length ? f.none(found.q) : found.data.truncated ? f.shown(groups.length, found.data.total) : null
   return html`<section class="dz-results" aria-label=${f.label}>
@@ -260,11 +274,13 @@ function FindResults({ s, c, open }) {
     </header>
     ${folded ? null : html`
     ${note ? html`<p class="dz-find-note muted small" role="status">${note}</p>` : null}
+    ${s.ui.area ? html`<p class="dz-find-note muted small">${f.allAreas}</p>` : null}
     ${groups.length ? html`<ol class="dz-found">${groups.map(g => html`<li key=${g.path} class="dz-found-item">
       <p class="dz-found-head">
         ${g.slug ? html`<button type="button" class="dz-found-open btn-link" onClick=${() => c.openFile(g.slug, g.path)}>${g.slug}</button>`
           : html`<span class="mono">${g.path}</span>`}
         <span class="dz-fact">${f.kind[g.kind] ?? g.kind}</span>
+        ${g.slug ? html`<${AreaChip} name=${areaOf(g.slug)} s=${s} c=${c} cls="dz-found-area" />` : null}
         ${g.slug ? html`<span class="dz-found-title">${g.title}</span>` : null}
         <span class="muted small">${f.hits(g.count)}</span>
       </p>
@@ -315,11 +331,14 @@ function OpenFile({ open, s, c }) {
   const ver = s.model?.collected_ms ?? 0
   useEffect(() => { if (detailNeedsLoad(entry, ver)) c.loadTask(open) }, [open, ver, entry?.stale])
   const data = entry?.data ?? null
+  // a found file can belong to any area: it reads the whole model and every tab, not the filtered ones
+  const whole = s.wholeModel ?? s.model
+  const tabs = (s.wholeTabs ?? s.tabs)?.tabs
   const row = open.includes('/') ? null
-    : (s.model?.sections ?? []).flatMap(x => x.rows ?? []).find(r => r.key === `task:${slug}` && !r.inbox_id) ?? null
+    : (whole?.sections ?? []).flatMap(x => x.rows ?? []).find(r => r.key === `task:${slug}` && !r.inbox_id) ?? null
   const facts = fileFacts(slug, data, row)
   const x = { id: `task:${slug}`, slug, row: { key: `task:${slug}`, title: facts.title, priority: facts.priority,
-    status: facts.status, task_type: facts.type, area: row?.area ?? null } }
+    status: facts.status, task_type: facts.type, area: row?.area ?? null, area_names: row?.area_names ?? [], mark: row?.mark ?? null } }
   const context = fileContext(facts, language())
   // the suggestion writes through the task's row (verb task_set_next): only an open task the model lists
   const suggest = row && facts.kind !== 'done' && !facts.next
@@ -330,11 +349,11 @@ function OpenFile({ open, s, c }) {
     <${Btn} variant="secondary" size="sm" icon="back" cls="dz-walk-btn" onClick=${() => c.closeFile()}>${d.back}<//></div></footer>`
   return html`<article ref=${top} class="dz-file dz-open" aria-labelledby="dz-title">
     ${entry?.status === 'error' ? html`<p class="muted" role="status">${d.noFile}</p>` : html`
-      <${Cover} x=${x} s=${s} data=${data} where=${[d.opened, facts.kind === 'task' ? null : d.find.kind[facts.kind]]} />
+      <${Cover} x=${x} s=${s} c=${c} data=${data} where=${[d.opened, facts.kind === 'task' ? null : d.find.kind[facts.kind]]} />
       ${facts.next ? html`<section class="dz-step"><p class="dz-step-kind">${d.next}</p><p class="dz-step-title">${facts.next}</p></section>` : null}
       ${suggest ? html`<${Suggest} x=${x} s=${s} c=${c} context=${context} />` : null}
       <${Drawers} data=${data} folder=${open.includes('/') ? open : null}
-        res=${open.includes('/') ? null : fileResults(slug, s.model, s.tabs?.tabs, s.now || Date.now(), s.sessions?.runs)} s=${s} c=${c} />
+        res=${open.includes('/') ? null : fileResults(slug, whole, tabs, s.now || Date.now(), s.sessions?.runs)} s=${s} c=${c} />
       <${AskBox} cls="dz-ask" label=${d.ask.label} placeholder=${d.ask.placeholder} context=${context}
         task=${facts.kind === 'done' ? null : slug} s=${s} c=${c} />`}
     ${back}
@@ -395,7 +414,7 @@ export function DossierView({ s, c }) {
       <header class="page-head dz-head"><${WorkSwitch} s=${s} c=${c} /><${FindField} s=${s} c=${c} /></header>
       <${FindResults} s=${s} c=${c} open=${open} />
       ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} />` : x ? html`<article class="dz-file" aria-labelledby="dz-title">
-        <${Cover} key=${`c${x.id}`} x=${x} s=${s} data=${data} where=${[d.label, t.nextPos(i + 1, queue.length)]} />
+        <${Cover} key=${`c${x.id}`} x=${x} s=${s} c=${c} data=${data} where=${[d.label, t.nextPos(i + 1, queue.length)]} />
         <${Hero} key=${x.id} x=${heroEntry(x)} n=${1} tabOf=${() => fileTab(x, s)} s=${s} c=${c}
           title=${stepTitle(step)} kindWord=${d.next} sub=${stepLine(step, nowMs)} />
         ${step ? null : html`<${Suggest} key=${`s${x.id}`} x=${x} s=${s} c=${c} context=${context} />`}
@@ -404,7 +423,11 @@ export function DossierView({ s, c }) {
           task=${x.slug} s=${s} c=${c} />
         <${Walk} queue=${queue} i=${i} c=${c} />
       </article>`
-      : html`<${Calm} s=${s} c=${c} title=${d.empty} sub=${d.emptySub} action=${false} />`}
+      : s.ui.pinnedOnly ? html`<${Calm} s=${s} c=${c} title=${s.ui.area ? d.emptyAreaPinned(s.ui.area) : d.emptyPinned} sub=${d.emptyPinnedSub} action=${false} />
+          <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setPinnedOnly(false)}>${d.allFiles}<//></div>`
+      : s.ui.area ? html`<${Calm} s=${s} c=${c} title=${d.emptyArea(s.ui.area)} sub=${d.emptyAreaSub} action=${false} />
+          <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setArea(null)}>${d.allAreas}<//></div>`
+        : html`<${Calm} s=${s} c=${c} title=${d.empty} sub=${d.emptySub} action=${false} />`}
     </div>
   </div>`
 }

@@ -439,7 +439,8 @@ function AreaRow({ area, name, on, desk, c, onPick }) {
   const h = T().home
   const quiet = !area.waiting && !area.running && !area.review && !area.overdue
   // "No area" has no filter to set: its name and numbers lead to the page as a whole
-  const pick = area.none ? () => c.goArea(null, areaJump('name', area)) : desk ? () => c.goArea(name, areaJump('name', area)) : onPick
+  const to = areaJump('name', area)
+  const pick = area.none ? () => c.goArea(null, to) : desk ? () => c.goArea(name, to) : onPick
   return html`<tr role="row" class=${`home-area${on ? ' is-on' : ''}${quiet ? ' is-quiet' : ''}${area.none ? ' is-none' : ''}`}>
     <th scope="row" role="rowheader"><button type="button" class="home-area-pick" aria-pressed=${desk || area.none ? undefined : String(on)} onClick=${pick}>
       ${name && !area.none ? html`<span class=${`home-area-dot tk-${area.tone}`} aria-hidden="true"></span>` : null}<span class="home-area-name">${area.none ? h.noArea : area.name}</span>
@@ -516,7 +517,7 @@ function DeskParts({ s, c, chosen }) {
     </section>` : null,
     'd:day': () => v.model ? html`<section class="home-shelf desk-part" id="desk-day" key="d" aria-labelledby="desk-day-title">
       <header class="home-shelf-head"><h2 class="home-shelf-title" id="desk-day-title">${h.deskPart.day}</h2></header>
-      <${DayView} s=${v} c=${c} />
+      <${DayView} s=${v} c=${c} pages=${false} />
     </section>` : null,
   }
   return html`<div class="desk-parts">${parts.map(id => part[id]?.())}</div>`

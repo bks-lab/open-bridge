@@ -2384,7 +2384,7 @@ test('areas in the control view: the name opens Work for that area instead of fi
   assert.equal(picks[1].getAttribute('aria-pressed'), null)
   picks[1].click()
   picks[0].click()
-  assert.deepEqual(c.calls, [['goArea', 'ACME', { page: 'briefing' }], ['goArea', null, { page: 'briefing' }]])
+  assert.deepEqual(c.calls, [['goArea', 'ACME', { page: 'briefing', view: 'dossier' }], ['goArea', null, { page: 'briefing', view: 'dossier' }]])
 })
 
 test('areas: with nothing in any area a short line says so', () => {
@@ -2436,7 +2436,7 @@ test('areas: what has no area stands last as "No area", its numbers jump without
   assert.match(lines.at(-1).text(), new RegExp(en.home.noArea))
   lines.at(-1).$('td button').click()
   lines.at(-1).$('button.home-area-pick').click()
-  assert.deepEqual(c.calls, [['goArea', null, { page: 'briefing', view: 'due' }], ['goArea', null, { page: 'briefing' }]])
+  assert.deepEqual(c.calls, [['goArea', null, { page: 'briefing', view: 'due' }], ['goArea', null, { page: 'briefing', view: 'dossier' }]])
   // a table also for screen readers when the narrow layout draws it as blocks
   assert.equal(el.$('table').getAttribute('role'), 'table')
   assert.equal(lines[0].getAttribute('role'), 'row')
@@ -2631,4 +2631,142 @@ test('no Customise and no settings link on the start page: the page bar has Sett
     assert.equal(el.$('.stage-tools') ?? el.$('.desk-tools'), null, view)
     assert.equal(c.calls.some(x => x[0] === 'setDrawer' && x[1] === 'customize'), false, view)
   }
+})
+
+// ---------------------------------------------------------------- files and areas
+
+test('files under an area filter: the queue, its count and its walk keep to the area', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const { logic } = loadedRooms
+  const s = filesOn({ ui: { area: 'Ops' } })
+  const all = dossierQueue(filesOn())
+  const v = logic.areaScope(s)
+  const queue = dossierQueue(v)
+  assert.ok(all.length > queue.length && queue.length > 0)
+  assert.ok(queue.every(x => logic.rowProject(x.row) === 'Ops'), queue.map(x => x.slug).join())
+  const el = mount(html`<${DossierView} s=${v} c=${recorder()} />`)
+  assert.ok(el.$('.dz-eyebrow').text().includes(en.nextPos(1, queue.length)))
+})
+
+test('files: a result and a workflow run of a task of another area put no file in the filtered queue', () => {
+  const { dossierQueue } = views.dossier
+  const { logic } = loadedRooms
+  const base = filesOn()
+  const docs = dossierQueue(base).find(x => logic.rowProject(x.row) === 'Docs')
+  const ret = { key: docs.row.key, item: docs.slug, mode: 'go', title: 'answered', at_ms: NOW - 60000, stage: 'result', tab: null }
+  const run = { id: 'run-1', name: 'check', task: docs.slug, status: 'completed', seen: false, ended_ms: NOW - 30000 }
+  const s = { ...base, model: { ...base.model, returns: [...(base.model.returns ?? []), ret] }, sessions: { ...base.sessions, runs: [run] } }
+  // without a filter they lift the Docs file up as a result that waits
+  const whole = dossierQueue(s)
+  assert.equal(whole.find(x => x.slug === docs.slug).reason, 'result')
+  // under Ops neither brings it in
+  const ops = dossierQueue(logic.areaScope({ ...s, ui: { ...s.ui, area: 'Ops' } }))
+  assert.equal(ops.some(x => x.slug === docs.slug), false)
+  assert.ok(ops.length > 0)
+})
+
+test('files: a file of another area opened from the search keeps its area chip, its results and its suggestion', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const { logic } = loadedRooms
+  const base = filesOn()
+  const docs = dossierQueue(base).find(x => logic.rowProject(x.row) === 'Docs')
+  const ret = { key: docs.row.key, item: docs.slug, mode: 'go', title: 'answered here', at_ms: NOW - 60000, stage: 'result', tab: null }
+  const s = { ...base, model: { ...base.model, returns: [...(base.model.returns ?? []), ret] },
+    details: { ...base.details, task: { [docs.slug]: { status: 'ok', ver: base.model?.collected_ms ?? 0, data: { slug: docs.slug, front: { title: docs.row.title, status: 'doing' }, path: `work/tasks/${docs.slug}/STATUS.md` } } } },
+    ui: { ...base.ui, area: 'Ops', dossierOpen: docs.slug } }
+  const row = (s.model.sections ?? []).flatMap(x => x.rows ?? []).find(r => r.key === docs.row.key)
+  const noNext = { ...s, model: { ...s.model, sections: s.model.sections.map(x => ({ ...x, rows: (x.rows ?? []).map(r => (r === row ? { ...r, next: null } : r)) })) } }
+  const el = mount(html`<${DossierView} s=${logic.areaScope(noNext)} c=${recorder()} />`)
+  const open = el.$('.dz-open')
+  assert.ok(open, 'the file opened beside the queue')
+  assert.match(open.$('.dz-area').text(), /Docs/)
+  assert.ok(open.$('.rcard'), 'its result')
+  assert.ok(open.button(en.dossier.suggest.button), 'the suggestion')
+})
+
+test('files: the area chip reads pressed while its area is the filter, a click lets go; no area reads so, quietly', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const { logic } = loadedRooms
+  const s = filesOn({ ui: { area: 'Ops' } })
+  const c = recorder()
+  const el = mount(html`<${DossierView} s=${logic.areaScope(s)} c=${c} />`)
+  const chip = el.$('.dz-area')
+  assert.equal(chip.getAttribute('aria-pressed'), 'true')
+  chip.click()
+  assert.deepEqual(c.calls.at(-1), ['setArea', null])
+  // a file without an area: a quiet word, no button
+  const base = filesOn()
+  const first = dossierQueue(base)[0]
+  const bare = { ...base, model: { ...base.model, sections: base.model.sections.map(x => ({ ...x, rows: (x.rows ?? []).map(r => (r.key === first.row.key ? { ...r, area: null, area_names: [], mark: null } : r)) })) } }
+  const el2 = mount(html`<${DossierView} s=${bare} c=${recorder()} />`)
+  assert.equal(el2.$('.dz-area'), null)
+  assert.match(el2.$('.dz-area-none').text(), new RegExp(en.home.noArea))
+  assert.equal(el2.$('.dz-area-none').tagName === 'BUTTON', false)
+})
+
+test('files: the star and an area with nothing pinned say both, the button lets the star go', () => {
+  const { DossierView } = views.dossier
+  const { logic } = loadedRooms
+  const c = recorder()
+  const s = filesOn({ ui: { area: 'Ops', pinnedOnly: true } })
+  const el = mount(html`<${DossierView} s=${logic.areaScope({ ...s, home: { ...s.home, pins: [] } })} c=${c} />`)
+  assert.match(el.text(), new RegExp(en.dossier.emptyAreaPinned('Ops')))
+  el.button(en.dossier.allFiles).click()
+  assert.deepEqual(c.calls.at(-1), ['setPinnedOnly', false])
+})
+
+test('a file names its area on its cover; a click sets the area filter', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const s = filesOn()
+  const first = dossierQueue(s)[0]
+  const c = recorder()
+  const el = mount(html`<${DossierView} s=${s} c=${c} />`)
+  const chip = el.$('.dz-area')
+  assert.ok(chip, 'the area on the cover')
+  assert.match(chip.text(), new RegExp(loadedRooms.logic.rowProject(first.row)))
+  assert.ok(chip.$('.home-area-dot'))
+  chip.click()
+  assert.deepEqual(c.calls.at(-1), ['setArea', loadedRooms.logic.rowProject(first.row)])
+})
+
+test('files: an area with nothing open says so and offers every area', () => {
+  const { DossierView } = views.dossier
+  const { logic } = loadedRooms
+  const c = recorder()
+  const v = logic.areaScope(filesOn({ ui: { area: 'Nowhere' } }))
+  const el = mount(html`<${DossierView} s=${v} c=${c} />`)
+  assert.match(el.text(), new RegExp(en.dossier.emptyArea('Nowhere')))
+  el.button(en.dossier.allAreas).click()
+  assert.deepEqual(c.calls.at(-1), ['setArea', null])
+  // without a filter the plain words, no button
+  const plain = mount(html`<${DossierView} s=${{ ...filesOn(), model: { ...filesOn().model, sections: [] }, tabs: { tabs: [] } }} c=${recorder()} />`)
+  assert.equal(plain.button(en.dossier.allAreas), null)
+})
+
+test('the search stays across all areas: each hit names its area, under a filter a line says so', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const { logic } = loadedRooms
+  const base = filesOn({ ui: { area: 'Ops' } })
+  const other = dossierQueue(filesOn()).find(x => logic.rowProject(x.row) !== 'Ops')
+  const find = { q: 'x', status: 'ok', data: { total: 1, truncated: false, groups: [
+    { slug: other.slug, path: `work/tasks/${other.slug}`, title: other.row.title, kind: 'task', count: 1, hits: [] }] } }
+  const el = mount(html`<${DossierView} s=${logic.areaScope({ ...base, find })} c=${recorder()} />`)
+  const hit = el.$('.dz-found-item')
+  assert.ok(hit, 'the hit of another area is found')
+  assert.match(hit.$('.dz-found-area').text(), new RegExp(logic.rowProject(other.row)))
+  assert.match(el.$('.dz-results').text(), new RegExp(en.dossier.find.allAreas))
+  const plain = mount(html`<${DossierView} s=${{ ...filesOn(), find }} c=${recorder()} />`)
+  assert.doesNotMatch(plain.$('.dz-results').text(), new RegExp(en.dossier.find.allAreas))
+  assert.ok(plain.$('.dz-found-area'))
+})
+
+test('the overview\'s day holds dates, status and tidying; commits and the log of today stay on Work', () => {
+  const day = { id: 'today', title: 'What happened today', group: 'day', sections: [{ id: 'log', title: 'Log', kind: 'list', items: [
+    { key: 'item:today/log/a', title: 'a long log line', detail: '', when: '', tone: 'ok' }] }] }
+  const base = deskState(['d:day'])
+  const s = { ...base, model: { ...base.model, pages: [...(base.model.pages ?? []), day] } }
+  const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  assert.ok(el.$('#desk-day .day-view'))
+  assert.equal(el.$('#desk-day .day-more'), null)
+  assert.doesNotMatch(el.$('#desk-day').text(), /a long log line/)
 })

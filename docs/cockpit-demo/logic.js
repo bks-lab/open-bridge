@@ -2088,11 +2088,13 @@ const NONE = '\u0000none'   // no area name can be this
 /** Where a number of the areas leads, the area as the filter there (ui.area): tabs alone that want you
  *  are answered in the chat, one after the other (its walk); rows, or rows and tabs, wait in Work, what is due first, as do
  *  overdue rows; what runs and what is to review are the sessions and the starts of the Sessions page;
- *  the tasks and the area's name open Work in the view it was left in */
+ *  the tasks open Work in the view it was left in, the area's name the files view */
 export function areaJump(kind, area) {
   if (kind === 'waiting') return area?.waitingTabs && !area.waitingRows ? { page: '@chat', walk: true } : { page: 'briefing', view: 'due' }
   if (kind === 'running' || kind === 'review') return { page: '@sessions' }
   if (kind === 'overdue') return { page: 'briefing', view: 'due' }
+  // the area's name opens its files (one task at a time; the files view stands on every Bridge)
+  if (kind === 'name') return { page: 'briefing', view: 'dossier' }
   return { page: 'briefing' }
 }
 
@@ -2115,7 +2117,12 @@ export function areaScope(s) {
   if (!area && !pins) return s
   const byKey = indexRows(s.model)
   const tabs = s.tabs?.tabs ?? []
-  const keepTab = t => t.is_control || inProject(t, area)
+  // a tab stays with the area by its workspace, or by the task or inbox item of a row of the area it works on
+  // (a tab of an area's task may run in a workspace named otherwise)
+  const areaRows = area ? (s.model?.sections ?? []).flatMap(sec => sec.rows ?? []).filter(r => inProject(r, area)) : []
+  const slugs = new Set(areaRows.map(r => r.task).filter(Boolean))
+  const items = new Set(areaRows.map(r => r.inbox_id).filter(Boolean))
+  const keepTab = t => t.is_control || inProject(t, area) || (!!t.slug && slugs.has(t.slug)) || (!!t.item && items.has(t.item))
   if (page === 'briefing') {
     const keepRow = r => !!r && inProject(r, area) && (!pins || pins.has(r.key))
     const keepItem = it => {
@@ -2139,7 +2146,8 @@ export function areaScope(s) {
     }
     const more = Object.fromEntries(Object.entries(s.more ?? {}).map(([k, v]) => [k, v?.items ? { ...v, items: v.items.filter(keepItem) } : v]))
     // the tab column beside Work shows and counts the area's tabs too
-    return { ...s, model, more, tabs: area ? { ...s.tabs, tabs: tabs.filter(keepTab) } : s.tabs }
+    // wholeModel: what a search across every area looks its hits up in (the files view's search stays global)
+    return { ...s, model, more, tabs: area ? { ...s.tabs, tabs: tabs.filter(keepTab) } : s.tabs, wholeModel: s.model, wholeTabs: s.tabs }
   }
   if (page === '@chat') return { ...s, tabs: { ...s.tabs, tabs: tabs.filter(keepTab) } }
   // the Sessions page
@@ -2184,7 +2192,28 @@ export function scopeRow(s, key) {
 export function scopeKeep(s) {
   const shown = indexRows(areaScope(s).model)
   const keep = k => (k && shown.has(k) ? k : null)
-  return { picked: (s.ui?.picked ?? []).filter(k => shown.has(k)), focusKey: keep(s.ui?.focusKey), selectedKey: keep(s.ui?.selectedKey) }
+  // the place in the files: kept where its file stands in the queue the filter leaves, else the walk starts over
+  const at = s.ui?.dossierAt
+  const files = at ? scopedFileQueue(s) : []
+  const i = at ? files.findIndex(x => x.id === at.id) : -1
+  return { picked: (s.ui?.picked ?? []).filter(k => shown.has(k)), focusKey: keep(s.ui?.focusKey), selectedKey: keep(s.ui?.selectedKey),
+    dossierAt: i >= 0 ? { id: at.id, i } : null }
+}
+
+/** The files the files view walks under the filters of Work (areaScope as on Work, whatever page is open):
+ *  what Next and Previous, n and p and a found file see */
+export function scopedFileQueue(s) {
+  const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing' } })
+  return fileQueue(v.tabs?.tabs ?? [], v.model, s.now || Date.now(), s.sessions?.runs)
+}
+
+/** Where a found file opens: at its place in the filtered queue, else beside the queue (a file of another area,
+ *  a backlog task); a closed one always beside it, by its folder, since a slug can be open and closed at once */
+export function fileOpen(s, slug, path) {
+  const closed = typeof path === 'string' && path.startsWith('work/done/')
+  const queue = closed ? [] : scopedFileQueue(s)
+  const i = queue.findIndex(x => x.slug === slug)
+  return i >= 0 ? { dossierAt: { id: queue[i].id, i }, dossierOpen: null } : { dossierOpen: closed ? path : slug }
 }
 
 /** What Escape does on a page the area filter acts on: a selection (an open row or picks) closes first,

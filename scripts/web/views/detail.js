@@ -42,8 +42,9 @@ function Overview({ s, c }) {
 
 /** The day: dates, status, what is clear, what needs tidying, the workplace and the pages of group day.
  *  In the middle of Today as one panel, or on Start where a work tab exists as one card per block,
- *  where the pages of group day stand as a shelf of their own (DayPages) */
-export function DayView({ s, c, cards = false }) {
+ *  where the pages of group day stand as a shelf of their own (DayPages); `pages` false leaves those out
+ *  (the overview's day: dates, status and tidying, the long log stays on Work) */
+export function DayView({ s, c, cards = false, pages = true }) {
   const t = T()
   const m = s.model
   if (!m) return html`<${Skeleton} lines=${6} />`
@@ -76,7 +77,7 @@ export function DayView({ s, c, cards = false }) {
       <div class="ov-block"><h3 class="label-caps">${status.title}</h3>${status.body}</div>
     </div>
     ${rest.map(b => html`<div key=${b.id} class="ov-block"><h3 class="label-caps">${b.title}</h3>${b.body}</div>`)}
-    <${DayPages} s=${s} c=${c} />
+    ${pages ? html`<${DayPages} s=${s} c=${c} />` : null}
   </div>`
 }
 

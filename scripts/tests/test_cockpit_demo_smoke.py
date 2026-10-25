@@ -223,3 +223,22 @@ def test_the_demo_opens_the_work_tab_on_the_files_view_the_config_names(base_url
     page.wait_for_timeout(250)
     ctx.close()
     assert not problems, "\n".join(problems)
+
+
+def test_area_name_opens_the_files_for_this_visit_only(base_url, browser):
+    """A click on an area's name in the overview opens its files with the filter set; the view the work tab
+    opens on (kept in the browser) stays as it was"""
+    problems: list[str] = []
+    where = ["overview"]
+    ctx = browser.new_context(viewport={"width": 1440, "height": 1000})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    page.goto(f"{base_url}?lang=en")
+    page.wait_for_selector(".desk .home-area-pick")
+    before = page.evaluate("() => localStorage.getItem('bridge-cockpit.workTab')")
+    page.locator("tbody .home-area-pick").nth(1).click()
+    page.wait_for_selector(".dz")
+    assert page.locator(".area-bar").count() == 1
+    assert page.evaluate("() => localStorage.getItem('bridge-cockpit.workTab')") == before
+    ctx.close()
+    assert not problems, "\n".join(problems)

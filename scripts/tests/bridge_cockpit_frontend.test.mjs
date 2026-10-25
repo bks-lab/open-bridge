@@ -1618,7 +1618,8 @@ test('a number of the areas jumps to the page that holds those things, the area 
   assert.deepEqual(logic.areaJump('review', a), { page: '@sessions' })
   assert.deepEqual(logic.areaJump('overdue', a), { page: 'briefing', view: 'due' })
   assert.deepEqual(logic.areaJump('tasks', a), { page: 'briefing' })
-  assert.deepEqual(logic.areaJump('name', a), { page: 'briefing' })
+  // the name of an area opens its files (the files view stands on every Bridge)
+  assert.deepEqual(logic.areaJump('name', a), { page: 'briefing', view: 'dossier' })
   // homeAreas says how many of the waiting are tabs
   const areas = logic.homeAreas([{ ref: 't', workspace: 'ACME', state: 'needs-you', waiting: true }],
     [{ id: 'now', rows: [{ key: 'inbox:1', area: 'ACME' }] }], [], 0)
@@ -1729,8 +1730,8 @@ test('under the area filter the compact rows, the hidden rows and the page count
   const p = logic.areaScope({ ...s, ui: { ...s.ui, area: null, pinnedOnly: true } })
   assert.deepEqual(p.model.sections[0].compact, ['inbox:2'])
   // what the filter hid leaves the picks, the focus and the selection; nothing can act on it unseen
-  assert.deepEqual(logic.scopeKeep(s), { picked: ['inbox:1'], focusKey: null, selectedKey: null })
-  assert.deepEqual(logic.scopeKeep({ ...s, ui: { ...s.ui, focusKey: 'inbox:1', selectedKey: null } }), { picked: ['inbox:1'], focusKey: 'inbox:1', selectedKey: null })
+  assert.deepEqual(logic.scopeKeep(s), { picked: ['inbox:1'], focusKey: null, selectedKey: null, dossierAt: null })
+  assert.deepEqual(logic.scopeKeep({ ...s, ui: { ...s.ui, focusKey: 'inbox:1', selectedKey: null } }), { picked: ['inbox:1'], focusKey: 'inbox:1', selectedKey: null, dossierAt: null })
   assert.equal(logic.scopeRow(s, 'inbox:2'), null)
   assert.equal(logic.scopeRow(s, 'inbox:1').key, 'inbox:1')
   // the walk in the chat goes through the area's tabs only
@@ -1772,6 +1773,28 @@ test('the overview parts: off by default, a choice made before them does not get
   assert.equal(logic.keyScope({ ...on, home: { ...on.home, tiles: ['d:waiting', 'o:classic'] } }), null)
   // Work: the rows its filters show
   assert.deepEqual(rows(logic.keyScope({ ...base, ui: { ...ui, page: 'briefing', area: 'ACME', dayHeight: 0 } })), ['inbox:1', 'task:a'])
+})
+
+test('files and the area filter: a found file opens where the filtered queue holds it, else beside it; the place survives a filter only when it fits', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const row = (task, area, extra = {}) => ({ key: `task:${task}`, task, status: 'doing', bucket: 'act', area, area_names: [area], title: task, ...extra })
+  const model = { sections: [{ id: 'now', rows: [] }, { id: 'work', rows: [row('a', 'ACME'), row('b', 'ORBIT'), row('c', 'ACME')] }] }
+  // a tab that asks about an ACME task from a workspace named otherwise stays with the area's files
+  const tabs = [{ ref: 't', workspace: 'scratch', state: 'needs-you', slug: 'c' }, { ref: 'u', workspace: 'ORBIT', state: 'needs-you', slug: 'b' }]
+  const s = { model, tabs: { tabs }, now: 0, more: {}, home: { pins: [] }, ui: { page: 'briefing', area: 'ACME', picked: [], dossierAt: null } }
+  assert.deepEqual(logic.areaScope(s).tabs.tabs.map(t => t.ref), ['t'])
+  assert.deepEqual(logic.areaScope({ ...s, ui: { ...s.ui, page: '@chat' } }).tabs.tabs.map(t => t.ref), ['t'])
+  const queue = logic.scopedFileQueue(s)
+  assert.deepEqual(queue.map(x => x.slug), ['c', 'a'])
+  // a hit of the area opens in the queue at its place there; one of another area beside the queue
+  assert.deepEqual(logic.fileOpen(s, 'a', 'work/tasks/a'), { dossierAt: { id: queue[1].id, i: 1 }, dossierOpen: null })
+  assert.deepEqual(logic.fileOpen(s, 'b', 'work/tasks/b'), { dossierOpen: 'b' })
+  assert.deepEqual(logic.fileOpen(s, 'x', 'work/done/2026-10/x'), { dossierOpen: 'work/done/2026-10/x' })
+  // a new filter keeps the place of a file that stands in it, else the walk starts at its first file
+  const at = { id: queue[1].id, i: 1 }
+  assert.deepEqual(logic.scopeKeep({ ...s, ui: { ...s.ui, dossierAt: at } }).dossierAt, at)
+  assert.equal(logic.scopeKeep({ ...s, ui: { ...s.ui, area: 'ORBIT', dossierAt: at } }).dossierAt, null)
+  assert.equal(logic.scopeKeep({ ...s, ui: { ...s.ui, dossierAt: null } }).dossierAt, null)
 })
 
 test('the start page reckons a quota per day and where it ends at the reset', async () => {
@@ -5258,7 +5281,7 @@ test('n and p walk the files view the way its bar does, the one files queue', ()
   const app = read('app.js')
   const body = app.match(/\/\/ n \/ p in the files view[\s\S]*?\n  \}/)[0]
   assert.match(body, /workViewOf\(s\.ui\.workView, workPageOf\(s\.model\?\.pages\), s\.jev\) === 'dossier'/)
-  assert.match(body, /fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\), s\.sessions\?\.runs\)/)
+  assert.match(body, /scopedFileQueue\(s\)/)
   assert.match(body, /focusIndex\(queue, s\.ui\.dossierAt\) \+ \(key === 'n' \? 1 : -1\)/)
   assert.match(body, /ctl\.dossierWalk\(queue\[to\]\.id, to\)/)
 })
@@ -5446,8 +5469,13 @@ test('the results of a file: the starts of its task and of its inbox items, and 
 })
 
 test('every walk of the files view reads the workflow runs of the sessions state', () => {
-  const app = read('app.js')
-  assert.equal((app.match(/fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\), s\.sessions\?\.runs\)/g) ?? []).length, 2)
+  // the walk of the keys and a found file read the queue the view shows (scopedFileQueue): a finished run
+  // not yet checked lifts its file up there as in the view
+  const row = task => ({ key: `task:${task}`, task, status: 'doing', bucket: 'act', title: task })
+  const st = { model: { sections: [{ id: 'work', rows: [row('a'), row('b')] }] }, tabs: { tabs: [] }, now: 0, ui: { page: 'briefing' } }
+  assert.deepEqual(logic.scopedFileQueue(st).map(x => x.slug), ['a', 'b'])
+  const runs = [{ id: 'r', name: 'check', task: 'b', status: 'completed', seen: false, ended_ms: 1 }]
+  assert.deepEqual(logic.scopedFileQueue({ ...st, sessions: { runs } }).map(x => x.slug), ['b', 'a'])
   assert.match(read('views/dossier.js'), /fileQueue\(s\.tabs\?\.tabs \?\? \[\], s\.model, s\.now \|\| Date\.now\(\), s\.sessions\?\.runs\)/)
   assert.match(read('api.js'), /file=\$\{encodeURIComponent\(file\)\}/)
 })

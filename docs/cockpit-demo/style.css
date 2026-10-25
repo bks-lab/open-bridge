@@ -3230,6 +3230,14 @@ details.hl-block:not([open]) > summary > svg { transform: rotate(-90deg); }
 .dz-eyebrow-what { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .dz-eyebrow-what .dot { margin-right: 2px; }
 .dz-sep { color: var(--on-surface-muted); opacity: 0.7; }
+.dz-eyebrow-end { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+/* the area of a file: dot and name as in the areas table, a click filters by it */
+.dz-area, .dz-found-area { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: inherit; font-size: var(--text-label);
+  font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--on-surface); }
+.dz-area:hover, .dz-found-area:hover { border-color: var(--border-strong); }
+.dz-area[aria-pressed="true"], .dz-found-area[aria-pressed="true"] { border-color: var(--on-surface); background: var(--surface-muted); }
+.dz-area-none, .dz-found-area-none { font-size: var(--text-label); font-weight: 400; letter-spacing: 0; text-transform: none; }
+.dz-empty-acts { justify-content: center; margin-top: 12px; }
 .dz-slug { font-size: var(--text-mono-label); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--on-surface-muted); overflow-wrap: anywhere; }
 .dz-title { margin: 0; font-family: var(--font-display); font-weight: 500; font-size: clamp(24px, 2.4vw, 31px); line-height: 1.18; color: var(--ink); overflow-wrap: anywhere; }
 .dz-lead { margin: 0; max-width: 68ch; color: var(--on-surface); font-size: var(--text-body); line-height: 1.5; overflow-wrap: anywhere; }

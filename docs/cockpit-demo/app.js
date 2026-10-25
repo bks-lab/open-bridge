@@ -15,8 +15,8 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  listedChats, tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
-  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, fileQueue, commandSearch, workViewWrites, focusStep,
+  listedChats, tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
+  focusIndex, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -936,12 +936,9 @@ const ctl = {
   clearFind: () => store.set(s => ({ ...s, find: null })),
   // a found file opens in the queue where it stands there, else beside it (a backlog task); a closed one always
   // beside it, by its folder, since a slug can be open and closed at once
+  // under the area filter: in the filtered queue, one of another area beside it (logic.js fileOpen)
   openFile(slug, path) {
-    const closed = typeof path === 'string' && path.startsWith('work/done/')
-    const s = store.get()
-    const queue = closed ? [] : fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now(), s.sessions?.runs)
-    const i = queue.findIndex(x => x.slug === slug)
-    setUi(i >= 0 ? { dossierAt: { id: queue[i].id, i }, dossierOpen: null } : { dossierOpen: closed ? path : slug })
+    setUi(fileOpen(store.get(), slug, path))
   },
   closeFile: () => setUi({ dossierOpen: null }),
   // one file of a task's folder (the Files drawer), read in place; `path` the folder of a closed copy, or null
@@ -1031,7 +1028,9 @@ const ctl = {
   // asked for; the tabs that want you are walked from the first, the area's only
   goArea: (area, to) => {
     ctl.setArea(area)
-    if (to?.view) ctl.setWorkView(to.view)
+    // the view for this visit only: the saved one stays the default (a click on the switch changes it); the
+    // page view is measured once, by setPage
+    if (to?.view) setUi({ workView: to.view, ...(to.view === 'dossier' ? { dossierOpen: null } : {}) })
     ctl.setPage(to?.page ?? 'briefing')
     if (to?.walk) {
       const refs = walkRefs((store.get().tabs?.tabs ?? []).filter(t => inProject(t, area)))
@@ -1458,7 +1457,7 @@ function onKey(e) {
   // n / p in the files view of the work tab: the same walk its bar takes (views/dossier.js)
   if ((key === 'n' || key === 'p') && s.ui.page === 'briefing' && !s.ui.drawer && !s.ui.pageDetail
     && workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'dossier') {
-    const queue = fileQueue(s.tabs?.tabs ?? [], s.model, s.now || Date.now(), s.sessions?.runs)
+    const queue = scopedFileQueue(s)   // the files the view shows under its filters
     const to = focusIndex(queue, s.ui.dossierAt) + (key === 'n' ? 1 : -1)
     e.preventDefault()
     return queue[to] ? ctl.dossierWalk(queue[to].id, to) : undefined

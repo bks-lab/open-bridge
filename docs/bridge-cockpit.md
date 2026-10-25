@@ -351,6 +351,23 @@ so how often each view is used can be counted before the default changes, for
 instance with
 `grep -c ' page_view briefing view=dossier' .bridge/cockpit/audit.log`.
 
+**Files and areas.** The files view keeps to the area filter like the rest of
+Work: the queue, its count ("2 of 5"), Previous and Next (and `n`/`p`), and with
+them the results, workflow runs and inbox items that put a file in the queue,
+hold the area's tasks only. A tab counts with the area by its workspace, or by
+the task or inbox item of an area row it works on. A new filter keeps the file
+in front where it stands in the new area, else the walk starts at the first
+one. An area with nothing open says so and offers **All areas**; with the star
+filter on as well it says that and offers to show unpinned files too. The
+cover of a file names its area as the areas table does (its dot and name, or
+a quiet "No area"); a click shows that area only, and while it is the filter
+the chip reads pressed and a click lets it go. The search stays across every
+area on purpose (a file hidden by the filter can still be found): each hit
+names its area, and under a filter a short line says "Searches in all areas".
+A hit of the area opens at its place in the queue; one of another area opens
+beside the queue with everything of its own (its area, its results, the
+suggestion). "Ask the file" concerns the open file only.
+
 ### The start page
 
 **The overview (the default).** Start is a slim control view with three
@@ -376,7 +393,8 @@ with the rest of the start page, `home_tiles` ids `d:waiting`, `d:guide`,
 *Waiting on you* (the section of Work, with its actions and the star),
 *Decision guide* (the reading of the next tab that waits on you, the chat's
 own card with its guards, Next and Previous through the others), *Agent
-tabs* (the cards beside Work) and *The day* (the middle of Work). They stand
+tabs* (the cards beside Work) and *The day* (dates, status and tidying up of
+the middle of Work; commits and the log of today stay there). They stand
 in the order chosen there (arrows move one); on a wide screen the guide and
 the tabs stand side by side. Each follows the area filter as Work does, the
 bar over the page then names the filter, and a part with nothing in it
@@ -666,7 +684,8 @@ shells count for nothing. An area with every number at zero is left out; one
 with nothing but tasks stays, damped, so it can still be picked. A line is a
 button: it picks that area as the chips do, a second click (or the line "All")
 shows everything again. With the shelf on and a line for every chip, the lines
-replace the chips. In the overview a name opens Work for that area instead.
+replace the chips. In the overview a name opens the area's files instead (Work,
+view Files, the filter set, for this visit: the view the work tab opens on stays).
 What has no area stands last as **No area**; its name and numbers lead to the
 same pages without a filter. There is one area filter in the whole cockpit:
 the name, a chip or a jump set it, the start page views, Work, Chat and
