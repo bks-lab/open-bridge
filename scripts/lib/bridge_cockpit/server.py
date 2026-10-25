@@ -514,9 +514,14 @@ class App:
         self.collector.on_connect()
 
     def describe_items(self) -> dict:
-        """The brief proposals a describe run keeps, by key (`task:<slug>`, `inbox:<id>`): none yet. A card shows
-        a proposal as written by `ai` until a person takes it into the STATUS.md or the inbox item."""
-        return {}
+        """The describe view of every item with something to say, by key (`task:<slug>`, `inbox:<id>`;
+        describe.py Describer.views): who wrote its brief, whether it is stale, a proposal waiting, a run going on.
+        A failure here never stops the page: the cards are built without it."""
+        try:
+            return self.describe.views()
+        except Exception as exc:  # noqa: BLE001 - a damaged describe store degrades to no describe view
+            self.log_error(f"describe items: {exc!r}")
+            return {}
 
     def card_sources(self) -> dict:
         """What every card is built with besides its item (card.py): the triage items and the brief proposals,

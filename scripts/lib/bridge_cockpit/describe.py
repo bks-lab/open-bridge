@@ -561,23 +561,44 @@ class Describer:
     # ------------------------------------------------------------ what the page reads
 
     def state_for(self, key: str) -> dict:
-        """{written: 'ai'|'human'|None, stale, proposal, running, last_error, warnings, model_mismatch} for a card;
-        `warnings` are what the gate left out of the brief last written or proposed (a text over its limit)"""
-        entry = self.entry(key)
-        item = self.item(key)
+        """{written: 'ai'|'human'|None, stale, proposal, running, last_error, warnings, model_mismatch, by, at} for a
+        card; `warnings` are what the gate left out of the brief last written or proposed (a text over its limit),
+        `by` and `at` the model and the day of the stored brief (what the page's AI mark names)"""
         with self.lock:
-            running = self.running == key
+            running = self.running
+        return self._state(key, self.entry(key), running)
+
+    def _state(self, key: str, entry: dict, running: str | None) -> dict:
+        item = self.item(key)
         prop = entry.get("proposal") if isinstance(entry.get("proposal"), dict) else None
         warnings = entry.get("warnings") if isinstance(entry.get("warnings"), list) else []
-        out = {"written": None, "stale": False, "running": running, "last_error": entry.get("last_error"),
+        out = {"written": None, "stale": False, "running": running == key, "last_error": entry.get("last_error"),
                "warnings": [str(w) for w in warnings],
                "model_mismatch": bool(entry.get("model_mismatch")),
-               "proposal": {k: prop.get(k) for k in ("id", "brief", "by", "at_ms")} if prop else None}
+               "proposal": {k: prop.get(k) for k in ("id", "brief", "by", "at_ms")} if prop else None,
+               "by": None, "at": None}
         if item is None or not item.get("raw_brief"):
             return out
         brief = item.get("brief") or {}
+        out["by"], out["at"] = brief.get("by"), brief.get("at")
         out["written"] = "human" if self.protected(item, entry) else "ai"
         out["stale"] = brief.get("basis") != item["basis"]
+        return out
+
+    def views(self) -> dict:
+        """state_for of every item the page draws a card of, by key, with describe.json read once: the tasks and
+        streams, and every inbox item describe.json holds an entry of. Only views that say something (a brief,
+        a proposal, a run, an error or a warning): an item describe never touched has none"""
+        with self.lock:
+            items = self.load()["items"]
+            running = self.running
+        keys = self.keys(["task", "stream"])
+        keys += [k for k in items if isinstance(k, str) and k.startswith("inbox:") and k not in keys]
+        out = {}
+        for key in keys:
+            view = self._state(key, items.get(key) if isinstance(items.get(key), dict) else {}, running)
+            if view["written"] or view["proposal"] or view["running"] or view["last_error"] or view["warnings"]:
+                out[key] = view
         return out
 
     # ------------------------------------------------------------ writing

@@ -205,6 +205,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         }
         # the one card of the row (card.py), from the row as it goes out (and when its item was filed)
         out["card"] = cd.card_of({**out, "created": row.get("created")}, card_ctx)
+        # beside it what the card cannot hold of the describe view: stale, a proposal, a run (card.describe_state)
+        out["describe"] = cd.describe_state(row["key"], card_ctx)
         index[row["key"]] = {"row": row, "section": section, "tab": tab, "out": out, "hidden": False}
         return out
 

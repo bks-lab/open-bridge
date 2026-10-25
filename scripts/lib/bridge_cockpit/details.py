@@ -273,6 +273,8 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
                         and e.get("state") in ACTIVE and isinstance(e.get("id"), str) and INBOX_ID_RE.match(e["id"])][:20]}
     # the one card of the task (card.py), read before any section is dropped for size
     result["card"] = cd.card_of({**result, "facts": facts}, _with_work(ctx, known))
+    # what the card cannot hold of the describe view: stale, a proposal, a run going on (card.describe_state)
+    result["describe"] = cd.describe_state(f"task:{slug}", ctx)
     # total response max 80 KB: drop sections from the end, marking the last kept one truncated
     while len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > TOTAL_MAX and result["sections"]:
         result["sections"].pop()
@@ -343,6 +345,7 @@ def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tup
                                    "sources": ["inbox"]}, og.known_from_root(root, origin_map))}
     facts = _facts(item, briefs, events[-1]["at"] if events else None, state_at)
     result["card"] = cd.card_of({**result, "facts": facts}, _with_work(ctx, og.known_from_root(root, origin_map)))
+    result["describe"] = cd.describe_state(f"inbox:{item_id}", ctx)
     return result
 
 

@@ -550,3 +550,35 @@ def test_probe_text_reads_every_probe_as_logic_js_does(tmp_path):
     js = json.loads(result.stdout)
     for lang in ("en", "de"):
         assert [cd.probe_text(s, T(lang)["card"]) for s in PROBE_SPECS] == js[lang], lang
+
+
+# ---------------------------------------------------------------- the describe view (describe.py state_for)
+
+VIEW = {"written": "human", "stale": True, "running": False, "last_error": None, "warnings": [],
+        "by": "claude-haiku-5-5", "at": "2026-10-25",
+        "model_mismatch": False, "proposal": {"id": "d0123456789", "brief": {**BRIEF, "goal": "A proposed goal"},
+                                              "by": "claude-haiku-5-5", "at_ms": 1}}
+
+
+def test_the_describe_view_says_who_wrote_a_stored_brief():
+    """describe.json knows a brief a person changed by hand (its hash), which the brief itself cannot say"""
+    c = cd.card_of(row(), ctx(tasks={"invoices": {**TASK, "brief": BRIEF}}, describe={"task:invoices": VIEW}))
+    assert c["goal"] == BRIEF["goal"] and c["written"] == "human"
+    ai = cd.card_of(row(), ctx(tasks={"invoices": {**TASK, "brief": BRIEF}}, describe={"task:invoices": {**VIEW, "written": "ai"}}))
+    assert ai["written"] == "ai"
+
+
+def test_a_proposal_in_the_view_never_replaces_the_stored_brief_and_fills_one_that_is_missing():
+    stored = cd.card_of(row(), ctx(tasks={"invoices": {**TASK, "brief": BRIEF}}, describe={"task:invoices": VIEW}))
+    assert stored["goal"] == BRIEF["goal"]
+    missing = cd.card_of(row(), ctx(describe={"task:invoices": {**VIEW, "written": None}}))
+    assert missing["goal"] == "A proposed goal" and missing["written"] == "ai"
+
+
+def test_describe_state_is_the_view_of_a_task_or_inbox_key_slimmed_for_the_page():
+    c = ctx(describe={"task:invoices": VIEW})
+    got = cd.describe_state("task:invoices", c)
+    assert got == {"written": "human", "stale": True, "running": False, "last_error": None, "warnings": [],
+                   "model_mismatch": False, "proposal": VIEW["proposal"], "by": "claude-haiku-5-5", "at": "2026-10-25"}
+    assert cd.describe_state("task:other", c) is None and cd.describe_state("ref:x", c) is None
+    assert cd.describe_state(None, c) is None

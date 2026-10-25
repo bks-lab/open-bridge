@@ -8,7 +8,7 @@ any of them to the one shape card_fields.CARD_FIELDS names, so a page draws ever
 - title: the item's own one line, the same in the list, the drawer and the files view (a task's H1);
 - summary: the brief's user story as one sentence, else the task's headline or the item's detail (clipped to
   SUMMARY_MAX), else the triage gist; goal, story and acceptance come from the brief only (a STATUS.md `brief:`,
-  an inbox item's latest `describe` event, else a proposal the describe hook holds);
+  an inbox item's latest `describe` event, else a proposal the describe view holds);
 - next {what, who, due, from, since}, state {word, blocked_by, since}, owner, priority, due, area, updated;
 - source: the origin.classify_row result the row already carries (never classified again here);
 - links: [{kind, href | path | key, label, closed?}], a task link `closed: true` when the task lives under
@@ -20,6 +20,10 @@ any of them to the one shape card_fields.CARD_FIELDS names, so a page draws ever
   goal), `no_next` (an open task or stream without a next step), `placeholder_next` (the template's "First step"
   still stands), `task_closed` (an item about a task that is closed), `no_content` (a detail that barely adds to
   the title).
+
+`ctx.describe` is the describe view per key (describe.py state_for, through server.describe_items): its `written`
+says who wrote a stored brief, as describe.json knows it. What the card cannot hold of it (stale, a proposal, a
+run going on, the last error) reaches the page beside the card: `describe_state(key, ctx)`.
 
 Every field may be None and the keys are always exactly CARD_FIELDS. `probe_text` says an inbox item's
 closes_when in words, the same words the page's logic.js probeText uses. `progress` and `placeholder_steps` read a
@@ -63,7 +67,7 @@ class Ctx:
     """What a card is built with besides the raw item; every part may be left out."""
     tx: Mapping | None = None                    # the `card` table of text.py; None: English
     triage: Mapping = field(default_factory=dict)      # key (task:<slug>, inbox:<id>) -> the triage item
-    describe: Mapping = field(default_factory=dict)    # key -> a brief proposal ({brief: ...} or the brief)
+    describe: Mapping = field(default_factory=dict)    # key -> the describe view (describe.py state_for)
     tasks: Mapping = field(default_factory=dict)       # slug -> the task as workplace.py tasks lists it
     work: Mapping = field(default_factory=dict)        # slug -> task | stream | done_task | done_stream
     inbox: Callable[[str], Any] | None = None          # inbox id -> details.inbox_facts, or None
@@ -144,19 +148,43 @@ def _story_sentence(story: Any, ctx: Ctx) -> str | None:
         return None
 
 
+def _view(key: str | None, ctx: Ctx) -> dict:
+    """The describe view of a key (describe.py state_for, through server.describe_items), {} without one"""
+    return _d(ctx.describe.get(key)) if key else {}
+
+
 def _brief(stored: Any, key: str | None, ctx: Ctx) -> tuple[dict | None, str | None]:
-    """(brief, written) from a stored brief through the gate, else a describe proposal; (None, None) without one"""
+    """(brief, written) from a stored brief through the gate, else a describe proposal; (None, None) without one.
+    Who wrote a stored brief is the describe view's word when it has one: describe.json knows a brief a person
+    changed by hand (its hash), which the brief itself, still saying edited: false, cannot."""
+    view = _view(key, ctx)
     clean = validate_brief(stored)[0] if isinstance(stored, dict) else None
     if clean:
+        if view.get("written") in ("ai", "human"):
+            return clean, view["written"]
         if clean.get("edited") is True:
             return clean, "human"
         return clean, "ai" if clean.get("by") else None
-    proposal = ctx.describe.get(key) if key else None
-    if isinstance(proposal, dict):
-        clean = validate_brief(proposal.get("brief") if isinstance(proposal.get("brief"), dict) else proposal)[0]
+    # a proposal: the view's ({proposal: {brief}}), or the brief itself as an older hook handed it ({brief} or the brief)
+    prop = _d(view.get("proposal")).get("brief") if isinstance(view.get("proposal"), dict) else None
+    proposal = prop if isinstance(prop, dict) else view.get("brief") if isinstance(view.get("brief"), dict) else view
+    if proposal:
+        clean = validate_brief(proposal)[0]
         if clean:
             return clean, "ai"
     return None, None
+
+
+#: what a row or detail carries of the describe view beside its card, for the page's AI mark and its proposal
+DESCRIBE_STATE = ("written", "stale", "running", "last_error", "warnings", "model_mismatch", "proposal", "by", "at")
+
+
+def describe_state(key: Any, ctx: Ctx | None) -> dict | None:
+    """The describe view of a task or inbox key as the page reads it (DESCRIBE_STATE), None without one"""
+    if not isinstance(ctx, Ctx) or not isinstance(key, str) or not key.startswith(("task:", "inbox:")):
+        return None
+    view = _view(key, ctx)
+    return {k: view.get(k) for k in DESCRIBE_STATE} if view else None
 
 
 def _triage(key: str | None, ctx: Ctx) -> dict:
