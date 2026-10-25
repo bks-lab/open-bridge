@@ -16,7 +16,7 @@ related:
 > `scripts/web/areas.js`, the area parts of `views/home.js`, `text-areas.js` and `areas.css`;
 > the tests are `scripts/tests/bridge_cockpit_areas.test.mjs`.
 
-Below sit project chips, made from the workspaces of the agent tabs and the
+On the start page sit project chips, made from the workspaces of the agent tabs and the
 projects of the rows (area, else the mark), most frequent first. A chip
 filters every shelf, and the choice is kept in the browser.
 

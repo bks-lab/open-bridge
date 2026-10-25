@@ -299,7 +299,8 @@ the real shape, and assert it in a model test.
 
 ### New page text
 
-`text.js`, both `en` and `de`, same key. The frontend test fails on a key
+`text.js`, both `en` and `de`, same key; a text of the start page (`home`) goes in `text-areas.js`,
+one of the files view (`dossier`) in `text-files.js`, both languages there too. The frontend test fails on a key
 missing in one language, an empty value, an em or en dash, or an emoji.
 
 ## 6. Tests

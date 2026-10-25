@@ -112,7 +112,7 @@ whole answer). It uses `rg` when it is installed and plain Python when not,
 with the same answer either way (`GET /api/find?q=` runs that command).
 
 Under the drawers a file takes a question ("Ask this file"): a quick chat of
-its own (section 5, read only) with the file's folder and cover sent along as
+its own ([section 5 of the cockpit page](bridge-cockpit.md#5-asking-claude-the-relay), read only) with the file's folder and cover sent along as
 data. An open task becomes what the chat is about, so the chat leaves its list
 once the task closes; a closed one is never named, or the chat would be taken
 into the archive at once. With no file open, a question about the results
@@ -124,7 +124,7 @@ any time. Nothing is written until you press Take over, which keeps the step
 in STATUS.md as `next: {what: ...}` with a dated note (`task.py next`, the
 verb `task_set_next`).
 
-**Switching the default.** Two keys of the `cockpit:` block (section 1) let
+**Switching the default.** Two keys of the `cockpit:` block ([section 1 of the cockpit page](bridge-cockpit.md#1-switch-it-on)) let
 the Files view take over step by step, each off by default, so a Bridge that
 sets neither sees the work tab as before:
 
@@ -144,7 +144,7 @@ Both take effect with the next start of the cockpit (`bridge-cockpit.py stop`,
 then `open`) and a reload of the page. The page says which view it opened: every opening of the work
 tab, its view switch, the search of the command box and the focus's way on
 leave one `page_view` line in the audit log with `view=` (`due`, `area`, `jev`
-or `dossier`, the page's ids for Due, By source, By Jev and Files; section 4),
+or `dossier`, the page's ids for Due, By source, By Jev and Files; [section 4 of the cockpit page](bridge-cockpit.md#4-safety-model)),
 so how often each view is used can be counted before the default changes, for
 instance with
 `grep -c ' page_view briefing view=dossier' .bridge/cockpit/audit.log`.

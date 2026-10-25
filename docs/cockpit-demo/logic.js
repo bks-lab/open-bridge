@@ -2595,8 +2595,6 @@ export function askContext(s, lang = 'de') {
   return out.length <= CONTEXT_MAX ? out : ''
 }
 
-// ---------------------------------------------------------------- the files view: find, ask a file, next step
-
 // ---------------------------------------------------------------- the chat's one input: where Enter goes
 
 /** Where a text typed into the chat goes: `quick` (a read-only answer here) or `tab` (an agent tab that may

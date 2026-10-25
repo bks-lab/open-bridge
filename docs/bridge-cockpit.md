@@ -234,7 +234,7 @@ parts and nothing else:
    leads where that number leads, without a filter), the findings of a status page
    and a control session that is not listening as signals (each opens its
    place). The page carries no settings link of its own: Settings sits in the page bar.
-2. The **Areas** as a table (below): the column heads once on top; on a
+2. The **Areas** as a table ([`cockpit-areas.md`](cockpit-areas.md)): the column heads once on top; on a
    narrow screen each line wraps and every number carries its label (the
    table keeps its table roles for screen readers). With the shelf switched
    off a line says where it went.
@@ -529,7 +529,7 @@ filter over Work, Chat and Sessions and why a tab gone idle counts as finished h
 own: [`cockpit-areas.md`](cockpit-areas.md).
 
 `g` then `a` jumps to the
-start page and puts the focus on the lines; `j` and `k` move there, `Enter`
+start page and puts the focus on the area lines; `j` and `k` move there, `Enter`
 picks. The shelves:
 
 - **Continue**: the agent tabs as cards, the ones that need you first. The
