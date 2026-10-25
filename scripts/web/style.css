@@ -2799,6 +2799,22 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .kind-stream .kind-mark { color: var(--secondary); }
 .kind-inbox .kind-mark { color: var(--warning); }
 .kind-issue .kind-mark { color: var(--info, var(--secondary)); }
+/* a closed task and an ended stream: the same outline, quieter; a stream's outline is dashed, a cue beside its word */
+.kind-done_task, .kind-done_stream { color: var(--on-surface-muted); }
+.kind.kind-stream, .kind.kind-done_stream { border-style: dashed; }
+.kind-about-what { font-weight: 600; color: var(--on-surface); }
+/* where a row comes from (views/day.js OriginTag): a word, a short detail, the dot only a cue beside them */
+.origin { gap: 4px; color: var(--on-surface); }
+.origin::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--tk, var(--border-strong)); }
+.origin-word { font-weight: 600; }
+.origin-detail { color: var(--on-surface-muted); font-family: var(--font-mono); font-size: 11px; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
+.origin-ref { color: var(--on-surface-muted); font-size: 11px; }
+.fx-card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.info-kinds { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.idrawer-kinds { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; text-transform: none; letter-spacing: 0; }
+.rcard-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; }
+.meta-from { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.meta-from-raw { font-family: var(--font-mono); font-size: 12px; user-select: text; overflow-wrap: anywhere; }
 .detail-kind { margin: 4px 0 0; }
 .stage-row-sub .kind { margin-right: 4px; }
 .help-list { display: grid; gap: 2px; margin: 0; }

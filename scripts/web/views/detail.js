@@ -6,11 +6,11 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabNextStep, areaScope, homeAreas,
-  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
-import { KindTag, RowBar, Skeleton } from './day.js'
+import { KindTag, OriginTag, RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
 import { PageSection } from './pages.js'
 import { Btn, SkipFix, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine, WalkBar } from './parts.js'
@@ -106,6 +106,19 @@ function StatusList({ rows, s, c }) {
     </details>` : null}`
 }
 
+/** Where the row comes from, in full: the word, the text as it was written (selectable, nothing cut), the ref,
+ *  what kind of report it is, and whether a click in the cockpit filed it; null when nothing is known */
+function FromFact({ row }) {
+  const t = T()
+  const o = originOf(row)
+  if (!o && !row.inbox_kind) return null
+  return html`<span class="meta-from">${o ? html`<${OriginTag} origin=${{ ...o, ref: null }} />` : null}
+    ${o?.raw ? html`<span class="meta-from-raw">${o.raw}</span>` : null}
+    ${o?.ref ? html`<span class="mono">${o.ref}</span>` : null}
+    ${row.inbox_kind ? html`<span class="muted">${t.item.kindName[row.inbox_kind] ?? row.inbox_kind}</span>` : null}
+    ${o?.via_cockpit ? html`<span class="muted">${t.originViaCockpit}</span>` : null}</span>`
+}
+
 function MetaList({ row, s }) {
   const t = T()
   // a source is a section id: its title on the dashboard's pages names it in words
@@ -122,6 +135,7 @@ function MetaList({ row, s }) {
     ['ref', row.ref],
     ['state', row.inbox_state ? (t.item.stateName[row.inbox_state] ?? row.inbox_state) : null],
     ['sources', (row.sources ?? []).map(x => titles.get(x) ?? x).join(', ') || null],
+    ['from', FromFact({ row })],
   ].filter(([, v]) => v)
   return html`<dl class="meta">${items.map(([k, v]) => html`<div class="meta-item" key=${k}><dt>${t.meta[k]}</dt><dd>${v}</dd></div>`)}</dl>`
 }
@@ -339,8 +353,10 @@ function TaskDetail({ slug, s, c, exclude }) {
       ${(d.data.log ?? []).length ? html`<div class="sub-block"><h4 class="sub-title">${t.taskLog}</h4>
         <ol class="log-rows">${d.data.log.map((l, i) => html`<li key=${i}><span class="mono muted">${l.at}</span><span>${l.text}</span></li>`)}</ol></div>` : null}`
   }
+  const kindRow = { key: `task:${slug}`, task: slug, work_kind: d?.data?.work_kind ?? byKey.get(`task:${slug}`)?.work_kind }
   return html`<div class="block task-detail">
     <h3 class="label-caps">${t.taskTitle}: <span class="mono">${slug}</span></h3>
+    <p class="detail-kind"><${KindTag} row=${kindRow} s=${s} /> <${OriginTag} row=${kindRow} origin=${d?.data?.origin ?? byKey.get(`task:${slug}`)?.origin ?? null} /></p>
     ${lines.length ? html`<${Lines} lines=${lines} />` : null}
     ${body}
     ${entries.length ? html`<div class="sub-block"><h4 class="sub-title">${t.taskEntries}</h4>
@@ -360,7 +376,7 @@ function RowDetail({ row, s, c }) {
       <span class="detail-eyebrow">${n ? html`<span class="sec-count mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span></span>` : null}
         <span class="eyebrow">${t.section[row.section] ?? row.section}</span></span>
       <h2 class="detail-title" id="detail-title" tabindex="-1">${row.title}</h2>
-      <p class="detail-kind"><${KindTag} row=${row} s=${s} c=${c} link /></p>
+      <p class="detail-kind"><${KindTag} row=${row} s=${s} c=${c} link /> <${OriginTag} row=${row} /></p>
       <div class="detail-chips">
         <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
         ${row.tab ? html`<${Chip} token=${stateToken(tabStateKey(row.tab))}>${t.state[tabStateKey(row.tab)] ?? row.tab.state}<//>` : null}
@@ -392,7 +408,8 @@ export function NextUp({ s, c, byKey, current, queue = s.ui.queue }) {
   const v = current ? queueView(queue, current, e => live.has(e.key)) : null
   if (!v || v.total < 2) return null
   const look = e => s.triage?.items?.[e.key]?.gist || (byKey.get(e.key)?.why ?? [])[0] || undefined
-  const entry = (e, max) => ({ key: e.key, title: short(e.title || byKey.get(e.key)?.title || e.key, max), look: look(e), onOpen: () => c.openNext(e) })
+  const entry = (e, max) => ({ key: e.key, title: short(e.title || byKey.get(e.key)?.title || e.key, max), look: look(e), onOpen: () => c.openNext(e),
+    sub: byKey.get(e.key) ? html`<${KindTag} row=${byKey.get(e.key)} s=${s} />` : null })
   const [next, ...later] = v.next
   return html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[v.pos, v.total]} onPrev=${v.prev ? () => c.openNext(v.prev) : null}
     next=${next ? entry(next, 90) : null} later=${later.map(e => entry(e, 80))} done=${t.nextDone} />`
@@ -416,7 +433,8 @@ export function DetailColumn({ s, c, byKey }) {
   else if (key.startsWith('task:')) {
     body = html`<article class="panel panel-pad detail">
       <${DetailBack} s=${s} c=${c} />
-      <header class="detail-head"><span class="eyebrow">${t.taskTitle}</span><h2 class="detail-title">${key.slice(5)}</h2></header>
+      <header class="detail-head"><span class="eyebrow">${t.taskTitle}</span><h2 class="detail-title">${key.slice(5)}</h2>
+        <p class="detail-kind"><${KindTag} row=${{ key, task: key.slice(5), work_kind: s.details?.task?.[key.slice(5)]?.data?.work_kind ?? workKindOf({ task: key.slice(5) }, s) }} s=${s} /></p></header>
       <${TaskDetail} slug=${key.slice(5)} s=${s} c=${c} /></article>`
   } else {
     body = html`<div class="panel panel-pad"><p class="muted">${t.rowGone}</p>

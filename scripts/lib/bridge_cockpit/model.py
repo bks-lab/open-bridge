@@ -167,7 +167,12 @@ def parse_info(i: dict) -> dict:
             "due_at": as_text_or_null(i.get("due_at")),
             "id": as_text_or_null(i.get("id")), "actionable": i.get("actionable") is True,
             "at": as_text_or_null(i.get("at")),
-            "account": parse_account(i.get("account"))}
+            "account": parse_account(i.get("account")),
+            # where the row comes from, raw: the collector classifies it (origin.py), the page gets the result
+            "origin_raw": as_text_or_null(i.get("origin_raw")), "origin_provider": as_text_or_null(i.get("origin_provider")),
+            "origin_section_kind": as_text_or_null(i.get("origin_section_kind")),
+            "about_task": as_text_or_null(i.get("about_task")),
+            "about_kind": i.get("about_kind") if i.get("about_kind") in ("task", "stream") else None}
 
 
 def parse_cal(value: Any) -> dict | None:
@@ -249,7 +254,11 @@ def _base_row(**extra) -> dict:
            "task_type": None, "has_action": False, "inbox_state": None, "inbox_key": None, "mark": None,
            "due": None, "is_new": False, "is_changed": False,
            # a task row's state (doing, review) and its next step, derived (task_next), never stored
-           "status": None, "next": None, "created": None}
+           "status": None, "next": None, "created": None,
+           # where the row comes from (origin.py classifies them): the inbox item's `from` or the task's origin, the
+           # inbox item's kind, the provider and kind of the section it came from, the task or stream it is about
+           "origin_raw": None, "inbox_kind": None, "origin_provider": None, "origin_section_kind": None,
+           "about_task": None, "about_kind": None}
     row.update(extra)
     return row
 
@@ -268,7 +277,7 @@ def task_row_for(slug: str, title: str, tasks: list[dict], tx: dict = EN) -> dic
         [tx["quiet_for"].format(days=as_text(t["age"]))] if t["stale"] else [])
     row = task_row(slug, title or t.get("title") or t["label"])
     row.update(why=why, sources=["tasks"], priority=t["priority"], area=t["area"], area_names=list(t["area_names"]),
-               task_type=t["type"])
+               task_type=t["type"], origin_raw=t.get("origin"))
     return row
 
 
@@ -393,6 +402,11 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 created=as_text_or_null(i.get("created")),
                 # an inbox item's own area; with_tasks replaces it by its task's, which wins
                 area=as_text_or_null(i.get("area")), area_names=[as_text(i.get("area"))] if i.get("area") else [],
+                origin_raw=as_text_or_null(i.get("origin_raw")), inbox_kind=as_text_or_null(i.get("inbox_kind")),
+                origin_provider=as_text_or_null(i.get("origin_provider")),
+                origin_section_kind=as_text_or_null(i.get("origin_section_kind")),
+                about_task=as_text_or_null(i.get("about_task")),
+                about_kind=i.get("about_kind") if i.get("about_kind") in ("task", "stream") else None,
             )
             # Same key twice (same number from two trackers): the second gets the block added.
             key = row_key(base)
@@ -427,6 +441,11 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         "full_ms": int(now) if is_full else 0,
         "skipped": [as_text(x.get("id")) for x in (_dict(s) for s in _list(data.get("sections")))
                     if x.get("status") == "skipped"],
+        # each section's kind, provider and title: where a row of it comes from (origin.py)
+        "section_info": {as_text(x.get("id")): {"kind": as_text_or_null(x.get("kind")),
+                                                  "provider": as_text_or_null(x.get("provider")),
+                                                  "title": as_text_or_null(x.get("title"))}
+                         for x in (_dict(s) for s in _list(data.get("sections"))) if as_text(x.get("id"))},
         "buckets": buckets,
         "agenda": agenda,
         "status": status,
@@ -456,6 +475,8 @@ def parse_tasks(out: Any) -> list[dict]:
             # doing or review, what STATUS.md names as next, and the day it last changed (workplace.py tasks)
             "status": as_text_or_null(t.get("status")), "next": as_text_or_null(t.get("next")),
             "updated": as_text_or_null(t.get("updated")),
+            # how the task began (STATUS.md origin, free text): origin.py names it
+            "origin": as_text_or_null(t.get("origin")),
         })
     return result
 
@@ -511,7 +532,8 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
                 seen.add(t["slug"])
             # An inbox entry shows the area of its task, but not its priority.
             priority = r["priority"] if r.get("inbox_id") else (r["priority"] if r["priority"] is not None else t["priority"])
-            mine = {} if r.get("inbox_id") else {"status": t.get("status"), "next": task_next(t, inbox_rows)}
+            mine = {} if r.get("inbox_id") else {"status": t.get("status"), "next": task_next(t, inbox_rows),
+                                                  "origin_raw": r.get("origin_raw") or t.get("origin")}
             rows.append({**r, "area": t["area"], "area_names": list(t["area_names"]), "priority": priority,
                          "task_type": t["type"], **mine})
         buckets.append({**b, "rows": rows})
@@ -523,7 +545,7 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
             why.append(tx["inbox_open"].format(n=inbox_count[t["slug"]]))
         base = _base_row(bucket=bucket, title=t.get("title") or t["label"], why=why, sources=["tasks"], task=t["slug"],
                          priority=t["priority"], area=t["area"], area_names=list(t["area_names"]), task_type=t["type"],
-                         status=t.get("status"), next=task_next(t, inbox_rows))
+                         status=t.get("status"), next=task_next(t, inbox_rows), origin_raw=t.get("origin"))
         base["key"] = row_key(base)
         return base
 
@@ -722,6 +744,8 @@ def merge_view(base: dict, fresh: dict) -> dict:
         "skipped": [s for s in fresh_skipped if s in base_skipped],
         "buckets": buckets,
         "pages": pages,
+        # a section a run left out still names its kind for the rows kept from the earlier run
+        "section_info": {**(base.get("section_info") or {}), **(fresh.get("section_info") or {})},
     }
 
 

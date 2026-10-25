@@ -197,3 +197,25 @@ test('no aria-label on an element without a role: a screen reader skips it on a 
   }
   assert.deepEqual(bad, [])
 })
+
+test('the origin chip speaks its word after "Source:", its dot and the kind marks are hidden, a stream differs by its word', async () => {
+  const day = await load('views/day.js')
+  const text = await load('text.js')
+  const en = text.TABLES.en
+  const o = { category: 'bot', word_key: null, detail: 'issue-radar', raw: 'homebox/issue-radar', ref: null, via_cockpit: false }
+  const el = mountOwn(html`<${day.OriginTag} origin=${o} />`)
+  const chip = el.$('.origin')
+  assert.equal(chip.$('.sr-only').text(), en.originSpoken)
+  assert.equal(chip.$('.origin-word').text(), en.origin.bot, 'a visible word, not colour alone')
+  assert.ok(!chip.getAttribute('aria-hidden'))
+  const s = cockpitState(NOW)
+  const task = mountOwn(html`<${day.KindTag} row=${{ key: 'task:a', task: 'a', work_kind: 'task' }} s=${s} />`)
+  const stream = mountOwn(html`<${day.KindTag} row=${{ key: 'task:b', task: 'b', work_kind: 'stream' }} s=${s} />`)
+  for (const k of [task, stream]) assert.equal(k.$('.kind-mark').getAttribute('aria-hidden'), 'true')
+  const spoken = k => k.$('.kind').childNodes.filter(n => n.getAttribute?.('aria-hidden') !== 'true').map(n => n.textContent).join('').trim()
+  assert.equal(spoken(task), en.kind.task)
+  assert.equal(spoken(stream), en.kind.stream)
+  const about = mountOwn(html`<${day.KindTag} row=${{ key: 'inbox:x', inbox_id: 'x', task: 'b', work_kind: 'stream' }} s=${s} />`)
+  assert.equal(about.$('.kind-about-what span').getAttribute('aria-hidden'), 'true', 'the about glyph is hidden too')
+  assert.match(about.$('.kind-about-what').text(), new RegExp(en.kind.stream))
+})

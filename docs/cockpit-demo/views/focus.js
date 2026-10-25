@@ -11,7 +11,7 @@ import {
   upcomingEvents, greetingText, dayLabel, workPageId, rowProject, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { RowBar } from './day.js'
+import { KindTag, OriginTag, RowBar } from './day.js'
 import { jumpToTab, openWhole, returnsOf, PinStar, ReturnChip } from './home.js'
 import { Btn, Dot, Icon, PrioChip, StateLine, WalkBar } from './parts.js'
 import { StagePrompt } from './stage.js'
@@ -59,6 +59,7 @@ export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = n
     </h2>
     ${sub ? html`<p class="fx-sub muted small">${sub}</p>` : null}
     <div class="fx-meta">
+      ${x.kind === 'tab' ? null : html`<${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} />`}
       ${project ? html`<span class=${`fx-proj tk-${projectTone(project)}`}>${project}</span>` : null}
       ${tab ? html`<${StateLine} token=${stateToken(tabStateKey(tab))} strong word=${x.kind === 'tab' ? t.state[tabStateKey(tab)] ?? tab.state : `${t.home.list.tab} ${tab.name}: ${t.state[tabStateKey(tab)] ?? tab.state}`} />
         <span class="mono muted">${duration(s.now - (tab.since_ms || s.now))}</span>` : null}
@@ -105,6 +106,7 @@ export function After({ queue, i, onPick, s, title = null, kindWord = null }) {
         <span class="fx-card-n mono">${k + 1}</span>
         <span class="fx-card-kind">${kindWord ? kindWord(x) : f.kind[kindOf(x, now)]}</span>
         <span class="fx-card-title">${short(x.kind === 'tab' ? x.tab.name : x.row.title, 70)}</span>
+        ${x.kind === 'tab' ? null : html`<span class="fx-card-tags"><${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} /></span>`}
         ${projectOf(x) ? html`<span class=${`fx-proj tk-${projectTone(projectOf(x))}`}>${projectOf(x)}</span>` : null}
       </button></li>`)}</ol>
   </section>`
@@ -160,7 +162,8 @@ export function FocusWalk({ queue, i, s, c, walk = null, done = null }) {
   const go = walk ?? c.focusWalk
   const entry = k => {
     const x = queue[k]
-    return { key: x.id, title: short(x.kind === 'tab' ? x.tab.name : x.row.title, 90), sub: x.kind === 'tab' ? x.tab.workspace : '',
+    return { key: x.id, title: short(x.kind === 'tab' ? x.tab.name : x.row.title, 90),
+      sub: x.kind === 'tab' ? x.tab.workspace : html`<${KindTag} row=${x.row} s=${s} />`,
       onOpen: () => go(x.id, k) }
   }
   const later = [i + 2, i + 3].filter(k => k < queue.length).map(entry)

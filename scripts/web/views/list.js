@@ -11,7 +11,7 @@ import {
   rowProject,
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { KindTag, RowBar } from './day.js'
+import { KindTag, OriginTag, RowBar } from './day.js'
 import { jumpToTab, openWhole, returnsOf, shownTiles, ReturnCard, ReturnChip, PinStar } from './home.js'
 import { Btn, Dot, Icon, PrioChip, StateLine } from './parts.js'
 import { FeedLine, StagePrompt, leadOf, stationOf } from './stage.js'
@@ -82,7 +82,7 @@ function RowLine({ row, tab, s, c, lead = false, walk = null }) {
       <span class="hl-line-sub">
         ${project ? html`<span class=${`hl-proj tk-${projectTone(project)}`}>${project}</span>` : null}
         ${n != null ? html`<span class="hl-num mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">#${n}</span></span>` : null}
-        <${KindTag} row=${row} s=${s} />
+        <${KindTag} row=${row} s=${s} /><${OriginTag} row=${row} />
         ${tab ? html`<${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${w.onTab(tab.name, tabWord)} />` : null}
         ${why ? html`<span class="muted">${short(why, 70)}</span>` : null}
         <${ReturnChip} s=${s} rowKey=${row.key} />

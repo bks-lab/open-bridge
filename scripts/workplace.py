@@ -268,6 +268,7 @@ def collect_tasks(root: Path) -> list:
                 "context": fm.get("context"), "area": fm.get("area"), "priority": fm.get("priority"), "type": fm.get("type"),
                 "blocked_by": fm.get("blocked_by"), "updated": _date(fm.get("last_updated")), "next": fm.get("next"),
                 "status_path": str(status.relative_to(root)), "heading": heading(text),
+                "origin": fm.get("origin") if isinstance(fm.get("origin"), str) else None,
             })
     return tasks
 
@@ -926,7 +927,9 @@ def task_rows(root: Path, cfg: dict, today: dt.date) -> list:
                      "updated": t["updated"].isoformat() if t.get("updated") else None,
                      "score": score, "age": age,
                      "blocked_by": t.get("blocked_by"), "stale": age > limits["stale_days"],
-                     "kind": t["kind"]})
+                     "kind": t["kind"],
+                     # how it began (STATUS.md origin, free text): the cockpit says where it comes from
+                     "origin": (t.get("origin") or "")[:300] or None})
     rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     return sorted(rows, key=lambda r: (rank.get(r["priority"] or "", 4), -r["score"], r["slug"]))
 

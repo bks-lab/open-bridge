@@ -17,6 +17,7 @@ import yaml
 
 from .. import model_route as mr
 from . import guide as gd
+from . import origin as og
 from . import ticker as tk
 
 DEFAULT_PORT = 8797
@@ -93,6 +94,9 @@ class WebConfig:
     work_view: str = "due"
     # the calm card of the start page's focus, and its last step, lead on into the files view (cockpit.focus_to_files)
     focus_to_files: bool = False
+    # how the work tab names a source the built-in rules cannot tell (cockpit.origin_map, origin.py): pairs of
+    # (pattern lower-cased, category) in file order, a tuple since the config is frozen and order matters
+    origin_map: tuple = ()
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
     config_warnings: tuple = ()
@@ -168,6 +172,7 @@ BLOCK = {
     "launch_model": ("launch_model",), "ticker": ("ticker",), "usage": ("usage",),
     "session_guide": ("session_guide",), "tour": ("bool", "tour"),
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
+    "origin_map": ("origin_map",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -267,6 +272,33 @@ def _check_usage(value: Any, where: str) -> list[str]:
     return out
 
 
+def origin_map_of(value: Any) -> tuple[tuple, list[str]]:
+    """cockpit.origin_map as ((pattern, category), ...) in file order, keys lower-cased, and a warning for each
+    entry left out: the value is not a mapping, a key is no text, a category is not one of origin.CATEGORIES, a key
+    repeats another but for case."""
+    where = "cockpit.origin_map"
+    if value is None:
+        return (), []
+    if not isinstance(value, dict):
+        return (), [f"{where}: must be a mapping, got {_show(value)}; using none"]
+    out, warnings, seen = [], [], set()
+    for key, cat in value.items():
+        at = f"{where}.{str(key)[:40]}"
+        if not isinstance(key, str) or not key.strip():
+            warnings.append(f"{at}: the name must be text, got {_show(key)}; ignored")
+            continue
+        if cat not in og.CATEGORIES:
+            warnings.append(f"{at}: must be one of {', '.join(og.CATEGORIES)}, got {_show(cat)}; ignored")
+            continue
+        low = key.strip().lower()
+        if low in seen:
+            warnings.append(f"{at}: duplicate, first one kept")
+            continue
+        seen.add(low)
+        out.append((low, cat))
+    return tuple(out), warnings
+
+
 def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict = BLOCK) -> tuple:
     """One warning per unknown key, wrong type or value the loader replaced, naming the key and the value
     `cfg` (the loaded config) uses instead. A None value counts as left out, as it does for the loader."""
@@ -295,6 +327,9 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
             continue
         if kind == "session_guide":
             out += gd.check(value, cfg.session_guide, at)
+            continue
+        if kind == "origin_map":
+            out += origin_map_of(value)[1]
             continue
         if kind == "block":
             if not isinstance(value, dict):
@@ -379,6 +414,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
                     work_view=w["work_view"] if w.get("work_view") in WORK_VIEWS else "due",
                     focus_to_files=w.get("focus_to_files") is True,
+                    origin_map=origin_map_of(w.get("origin_map"))[0],
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

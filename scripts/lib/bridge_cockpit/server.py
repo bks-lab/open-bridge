@@ -886,7 +886,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error_json("invalid_argument", "not a file of this task", "file")
                 return
             result = details.task_file(app.root, slug, rel, folder) if rel is not None \
-                else details.task_detail(app.root, slug, app.inbox_listing(), folder)
+                else details.task_detail(app.root, slug, app.inbox_listing(), folder, app.cfg.origin_map)
             if result is None:
                 self.send_error_json("not_found", "no such file" if rel is not None else "no such task")
             else:
@@ -914,7 +914,7 @@ class Handler(BaseHTTPRequestHandler):
             if not details.INBOX_ID_RE.match(item_id):
                 self.send_error_json("invalid_argument", "not an inbox id", "id")
                 return
-            result = details.inbox_detail(app.root, item_id, app.inbox_listing())
+            result = details.inbox_detail(app.root, item_id, app.inbox_listing(), app.cfg.origin_map)
             if result is None:
                 self.send_error_json("not_found", "no such inbox item")
             else:

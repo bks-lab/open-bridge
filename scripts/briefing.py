@@ -756,7 +756,7 @@ def sec_inbox(section: dict, ctx: Context) -> list:
         items.append({"id": item.id, "title": item.summary, "state": item.state, "urgency": item.urgency,
                       "kind": item.kind, "gate": item.gate, "task": item.task, "due": item.due,
                       "key": item.key, "changed_at": str(item.created or ""), "has_action": bool(item.action),
-                      "area": item.area})
+                      "area": item.area, "from": item.source})
     if runs_only:
         # "runs on" (inbox.py defer --on): every put-off item that names what it waits on, whatever its day
         for item in filter(wanted, box.items()):
@@ -766,7 +766,7 @@ def sec_inbox(section: dict, ctx: Context) -> list:
             items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(deferral["until"]),
                           "waiting_on": deferral["on"], "urgency": item.urgency, "kind": item.kind, "gate": item.gate,
                           "task": item.task, "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
-                          "has_action": bool(item.action), "area": item.area})
+                          "has_action": bool(item.action), "area": item.area, "from": item.source})
     elif ctx.lookahead is not None or section.get("deferred") == "all":
         # A view that looks ahead also shows what was put off and comes back within
         # its window: "decide tomorrow" must not vanish until tomorrow. `deferred: all`
@@ -784,7 +784,7 @@ def sec_inbox(section: dict, ctx: Context) -> list:
                 items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(until),
                               "urgency": item.urgency, "kind": item.kind, "gate": item.gate, "task": item.task,
                               "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
-                              "has_action": bool(item.action), "area": item.area})
+                              "has_action": bool(item.action), "area": item.area, "from": item.source})
     items.sort(key=lambda i: (order.get(i["urgency"], 3), i["id"]))
     return items
 
@@ -1438,8 +1438,11 @@ def link_local(items: list, ctx: Context) -> None:
             row = rows.get(rid)
             if row is None or (row.get("linked_task") and (not live or row["linked_task"].get("status") != "done")):
                 continue          # the first task that names it, unless a live one comes after a done one
-            row["linked_task"] = {"slug": t["slug"], "status": t.get("status"), "path": t.get("path"),
-                                  "stream": not str(t.get("path") or "").startswith("work/tasks/")}
+            stream = str(t.get("path") or "").startswith("work/streams/")
+            row["linked_task"] = {"slug": t["slug"], "status": t.get("status"), "path": t.get("path"), "stream": stream}
+            if live:
+                # the task or stream the row belongs to, for the page's "about" (a stream is never the row's task)
+                row["about_task"], row["about_kind"] = t["slug"], "stream" if stream else "task"
             if finite:
                 row["task"] = t["slug"]
     for row in rows.values():

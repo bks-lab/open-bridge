@@ -20,6 +20,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import { clamp, countTo, cursorOn, flash, flowAlpha, noise1, nowSec, o3, ramp, reducedMotion, ripples, spring, track, trackAt, tracking, typed, win } from './motion.js'
 import { CORE, H, W, X0, X1, Y0, Y1, costLine, launch, liveItems, orderPlan, pendingTitles, place, planOpen, rowJump, tokenText } from './logic.js'
 import { indexRows } from '../logic.js'
+import { KindTag, OriginTag } from '../views/day.js'
 import { T as dashText, language } from '../text.js'
 
 export { pendingTitles, place }
@@ -219,6 +220,13 @@ function Matrix({ items, first, spots, emph, onDot }) {
   </g>`
 }
 
+/** The row a plan entry stands for, for its kind and origin tags: the model's row, else one built from its key */
+function planRow(it, row) {
+  if (row) return row
+  const m = /^(inbox|task):(.+)$/.exec(it.key ?? '')
+  return m ? { key: it.key, [m[1] === 'inbox' ? 'inbox_id' : 'task']: m[2] } : { key: it.key }
+}
+
 function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, onOpen }) {
   const t = tx()
   const d = dashText()
@@ -237,6 +245,7 @@ function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, onOpen }
               onFocus=${() => setHover(it.key)} onBlur=${() => setHover(null)} onClick=${e => onOpen(it, e.currentTarget)}>${it.title}</button>`
             : html`<span class="jev-row-title">${it.title}</span>`}
           <span class="jev-row-meta">
+            <${KindTag} row=${planRow(it, row)} s=${s} /><${OriginTag} row=${planRow(it, row)} />
             <span class=${`jev-pill jev-${it.who}`}>${it.who === 'me' ? t.me : t.delegate}</span>
             <span class="jev-pill">${t.effort[Math.min(3, Math.round(it.effort * 3))]}</span>
             <span class="jev-pill">${t.quads[it.quadrant]}</span>

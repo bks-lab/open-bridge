@@ -1842,3 +1842,141 @@ test('the demo shows the work tab as the default config does, and ?work=files&fo
   assert.deepEqual(mock.buildState(NOW, { work: 'files', focusToFiles: true }).work, { view: 'files', focus_to_files: true })
   assert.deepEqual(mock.buildState(NOW, { work: 'tiles' }).work, { view: 'due', focus_to_files: false })
 })
+
+// ---------------------------------------------------------------- where a row comes from, task or stream
+
+const workRows = s => [...(s.model.sections ?? []).flatMap(x => x.rows), ...(s.model.hidden ?? []), ...(s.model.task_rows ?? [])]
+const workRow = (s, key) => workRows(s).find(r => r.key === key)
+const wordOf = (o, t) => (o.category === 'work' ? t.origin.work[o.word_key] : o.category === 'tracker' ? o.word_key : t.origin[o.category])
+
+test('origin: every row of the demo shows the kind first, then its source as a word, a detail and the raw text in the tooltip', () => {
+  const { RowMeta } = views.day
+  const s = cockpitState(NOW)
+  const seen = new Set()
+  for (const row of workRows(s)) {
+    const el = mount(html`<${RowMeta} row=${row} s=${s} />`)
+    const meta = el.$('.row-meta')
+    const first = meta.childNodes.find(n => n.localName)
+    assert.ok(first?.hasClass('kind'), `${row.key}: the kind stands first`)
+    // then the origin, with only the kind's own "about" part between them
+    const els = meta.childNodes.filter(n => n.localName)
+    const at = els.findIndex(n => n.hasClass('origin'))
+    if (at >= 0) assert.ok(els.slice(1, at).every(n => n.hasClass('kind-about')), `${row.key}: then the origin`)
+    const o = row.origin
+    if (!o || (o.category === 'other' && !o.detail)) { assert.equal(el.$('.origin'), null, row.key); continue }
+    seen.add(o.category)
+    const chip = el.$('.origin')
+    assert.ok(chip, `${row.key}: an origin chip`)
+    assert.equal(chip.$('.origin-word').text(), wordOf(o, en), row.key)
+    if (o.detail) assert.equal(chip.$('.origin-detail').text(), o.detail, row.key)
+    assert.ok(chip.getAttribute('title').startsWith(o.raw || en.originTitle[o.category]), `${row.key}: ${chip.getAttribute('title')}`)
+    assert.equal(chip.$('.sr-only').text(), en.originSpoken, 'a spoken prefix')
+  }
+  for (const c of ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'work', 'person', 'bridge', 'other']) {
+    assert.ok(seen.has(c), `the demo shows a ${c} row`)
+  }
+})
+
+test('origin: a stream says Stream, a report from its tab says about Stream, in both languages', () => {
+  const { RowMeta, KindTag } = views.day
+  const s = cockpitState(NOW)
+  const stream = mount(html`<${RowMeta} row=${workRow(s, 'task:team-onboarding')} s=${s} />`)
+  assert.ok(stream.$('.kind').hasClass('kind-stream'))
+  assert.equal(stream.$('.kind').text(), `↻${en.kind.stream}`)
+  const note = workRow(s, 'inbox:20261009-0930-onboarding-note-b1c2')
+  const el = mount(html`<${KindTag} row=${note} s=${s} />`)
+  assert.match(el.text(), new RegExp(`${en.kindAbout} ↻ ${en.kind.stream}: Onboard the new team members`))
+  text.setLanguage('de')
+  try {
+    const de = text.TABLES.de
+    const el2 = mount(html`<${RowMeta} row=${note} s=${s} />`)
+    assert.match(el2.text(), new RegExp(`zu ↻ Stream:`))
+    assert.equal(el2.$('.origin .sr-only').text(), 'Quelle:')
+    assert.equal(el2.$('.origin-word').text(), de.origin.session)
+  } finally {
+    text.setLanguage('en')
+  }
+})
+
+test('origin: a GitLab row names its board, a row the cockpit filed names the board row it came from', () => {
+  const { RowMeta } = views.day
+  const s = cockpitState(NOW)
+  const gl = mount(html`<${RowMeta} row=${workRow(s, 'item:grp/app#3')} s=${s} />`)
+  assert.equal(gl.$('.origin-word').text(), 'GitLab')
+  assert.doesNotMatch(gl.text(), /GitHub/)
+  const filed = mount(html`<${RowMeta} row=${workRow(s, 'inbox:20261009-0940-filed-board-c2d3')} s=${s} />`)
+  assert.equal(filed.$('.origin-word').text(), en.origin.github)
+  assert.match(filed.$('.origin').getAttribute('title'), new RegExp(en.originViaCockpit))
+  assert.equal(filed.$('.origin-ref').text(), 'example/repo#15', 'the board row it came from')
+})
+
+test('origin: no origin draws no chip and breaks nothing', () => {
+  const { OriginTag, KindTag, RowMeta } = views.day
+  assert.equal(mount(html`<${OriginTag} origin=${null} />`).text(), '')
+  assert.equal(mount(html`<${OriginTag} row=${{ origin: { category: 'other', detail: null } }} />`).text(), '')
+  assert.equal(mount(html`<${OriginTag} row=${{}} />`).text(), '')
+  const s = cockpitState(NOW)
+  assert.equal(mount(html`<${KindTag} row=${{}} s=${s} />`).$('.kind').text(), `•${en.kind.other}`)
+  assert.ok(mount(html`<${RowMeta} row=${{ key: 'x', title: 'x', origin: null }} s=${s} />`).$('.kind'))
+})
+
+test('origin: By source, the board list and the detail show both tags, the detail the raw text in full beside the sources', () => {
+  const { PageSection } = views.pages
+  const s = cockpitState(NOW)
+  const page = s.model.pages.find(p => p.id === 'trackers')
+  const tasks = page.sections.find(x => x.id === 'tasks')
+  const el = mount(html`<${PageSection} page=${page} section=${tasks} s=${s} c=${recorder()} />`)
+  const tags = el.$('.info-kinds')
+  assert.ok(tags, 'kind and origin on a By source row')
+  assert.match(tags.text(), new RegExp(en.kind.task))
+  assert.equal(tags.$('.origin-word').text(), en.origin.bridge)
+  const { GitHubList } = views.github
+  const mine = page.sections.find(x => x.id === 'mine')
+  const gh = mount(html`<${GitHubList} items=${mine.items} page=${page.id} section=${mine.id} s=${s} c=${recorder()} byKey=${new Map()} />`)
+  assert.ok(gh.$$('.origin').length >= 1)
+  assert.equal(gh.$('.origin-word').text(), en.origin.github)
+  // the detail: the kind and the origin in its head, the raw text in the facts, the sources row kept
+  const { DetailColumn } = views.detail
+  const { indexRows } = loadedRooms.logic
+  const key = 'inbox:20261009-0910-tidy-labels-c3d4'
+  const ds = cockpitState(NOW, { ui: { selectedKey: key, queue: null } })
+  const d = mount(html`<${DetailColumn} s=${ds} c=${recorder()} byKey=${indexRows(ds.model)} />`)
+  assert.ok(d.$('.detail-kind .kind') && d.$('.detail-kind .origin'))
+  assert.equal(d.$('.meta-from-raw').text(), 'homebox/issue-radar')
+  const dts = d.$$('dt').map(x => x.text())
+  assert.ok(dts.includes(en.meta.from) && dts.includes(en.meta.sources), dts.join(', '))
+})
+
+test('origin: the drawer opened by a stream key alone says Stream, the focus card and the return card show the tags', async () => {
+  const { ItemDrawer } = views.overlays
+  // the drawer moves the focus into itself after it mounts; this small DOM has no selector engine for that
+  const Element = Object.getPrototypeOf(document.body).constructor
+  const had = Object.getOwnPropertyDescriptor(Element.prototype, 'querySelector')
+  Element.prototype.querySelector = () => null
+  const { indexRows } = loadedRooms.logic
+  const s = cockpitState(NOW, { ui: { item: { key: 'task:pilot-plan', it: { title: 'Pilot plan' } } } })
+  s.details = { inbox: {}, task: { 'pilot-plan': { status: 'ok', ver: s.model.collected_ms, data: { ok: true, slug: 'pilot-plan', kind: 'stream', work_kind: 'stream',
+    origin: { category: 'bridge', word_key: null, detail: null, raw: null, ref: null, via_cockpit: false }, front: {}, sections: [], log: [], inbox: [], path: 'work/streams/pilot-plan/STATUS.md' } } } }
+  const d = mount(html`<${ItemDrawer} s=${s} c=${recorder()} byKey=${indexRows(s.model)} />`)
+  assert.equal(d.$('.idrawer-head .kind').text(), `↻${en.kind.stream}`)
+  await new Promise(r => setTimeout(r, 40))
+  if (had) Object.defineProperty(Element.prototype, 'querySelector', had)
+  else delete Element.prototype.querySelector
+  const { Hero, After } = views.focus
+  const fs = cockpitState(NOW)
+  const x = { kind: 'row', id: 'task:team-onboarding', row: workRow(fs, 'task:team-onboarding') }
+  const hero = mount(html`<${Hero} x=${x} n=${2} tabOf=${() => null} s=${fs} c=${recorder()} />`)
+  assert.ok(hero.$('.fx-meta .kind-stream') && hero.$('.fx-meta .origin'))
+  const after = mount(html`<${After} queue=${[x, { kind: 'row', id: 'ref:example/repo#12', row: workRow(fs, 'ref:example/repo#12') }]} i=${0} onPick=${() => {}} s=${fs} />`)
+  assert.equal(after.$('.fx-card .origin-word').text(), en.origin.github)
+  const { el } = renderReturn(start({ key: 'inbox:20261009-0915-update-docs-e5f6' }))
+  assert.equal(el.$('.rcard-tags .origin-word').text(), en.origin.session)
+})
+
+test('origin: the check table names task or stream, the week names a closed task and an ended stream', () => {
+  const { ReviewBody } = views.check
+  const s = cockpitState(NOW, { ui: { rvFilter: 'all', rvSort: null, rvPicked: [] } })
+  const el = mount(html`<${ReviewBody} s=${s} c=${recorder()} inline />`)
+  assert.ok(el.$$('.c-task .kind').length >= 1)
+  assert.deepEqual(s.model.week.items.map(x => x.work_kind), ['done_task', 'done_stream'])
+})

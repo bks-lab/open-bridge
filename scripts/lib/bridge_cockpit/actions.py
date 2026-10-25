@@ -244,7 +244,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             it = d["item"]
             row = m._base_row(title=it.get("summary") or iid, inbox_id=iid, gate=it.get("gate"), urgency=it.get("urgency"),
                               task=it.get("task") or None, has_action=bool(it.get("action_display")), inbox_state=state,
-                              inbox_key=it.get("key"), sources=["inbox"])
+                              inbox_key=it.get("key"), sources=["inbox"],
+                              origin_raw=it.get("from") or None, inbox_kind=it.get("kind") or None)
             row["key"] = key
             return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": False}, "hidden": False}
         if key.startswith("item:"):

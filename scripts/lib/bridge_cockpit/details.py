@@ -23,6 +23,8 @@ from pathlib import Path
 
 import yaml
 
+from . import origin as og
+
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
 LOG_ROW_RE = re.compile(r"^\| \d{4}-\d{2}-\d{2} \d{2}:\d{2} \|")
@@ -193,7 +195,8 @@ def task_file(root: Path, slug: str, rel: str, folder: str | None = None) -> dic
     return {"ok": True, "slug": slug, "file": rel, "text": text[:FILE_TEXT_MAX], "cut": len(text) > FILE_TEXT_MAX}
 
 
-def task_detail(root: Path, slug: str, listing: list | None = None, folder: str | None = None) -> dict | None:
+def task_detail(root: Path, slug: str, listing: list | None = None, folder: str | None = None,
+                origin_map: tuple = ()) -> dict | None:
     """The file of a slug, the open one first; `folder` (`work/done/<month>/<slug>`) picks one of its places,
     compared with the places as they are, so a folder that is none of them is never read."""
     if not isinstance(slug, str) or not SLUG_RE.match(slug):
@@ -212,14 +215,22 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
     if isinstance(nxt, dict):     # `next: {what, who}` reads as its words
         front = {**front, "next": nxt.get("what")}
     related = front.get("related") if isinstance(front.get("related"), list) else []
-    result = {"ok": True, "slug": slug, "kind": kind, "path": path.resolve().relative_to(root.resolve()).as_posix(),
+    known = og.known_from_root(root, origin_map)
+    # the four kinds the page names (origin.WORK_KINDS); `kind` keeps the folder words the files view reads
+    work_kind = kind if kind in ("task", "stream") else "done_stream" if front.get("was_stream") is True else "done_task"
+    origin = og.classify_row({"key": f"task:{slug}", "task": slug, "origin_raw": _scalar(front.get("origin"))
+                              if isinstance(front.get("origin"), str) else None}, known)
+    result = {"ok": True, "slug": slug, "kind": kind, "work_kind": work_kind, "origin": origin, "path": path.resolve().relative_to(root.resolve()).as_posix(),
               "front": {k: _scalar(front.get(k)) for k in FRONT_KEYS}, "sections": sections_of(body),
               # the paths STATUS.md names as related, as written: the files view lists them as references
               "related": [str(x)[:300] for x in related if isinstance(x, (str, int, float))][:RELATED_MAX],
               "log": log_rows(root, slug),
               "files": folder_files(path.parent),
               "inbox": [{"id": e.get("id"), "summary": _scalar(e.get("summary")), "state": e.get("state"),
-                         "urgency": _scalar(e.get("urgency")), "gate": _scalar(e.get("gate"))}
+                         "urgency": _scalar(e.get("urgency")), "gate": _scalar(e.get("gate")),
+                         "from": _scalar(e.get("from")), "kind": _scalar(e.get("kind")),
+                         "origin": og.classify_row({"inbox_id": e.get("id"), "inbox_key": _scalar(e.get("key")),
+                                                    "origin_raw": _scalar(e.get("from")), "sources": ["inbox"]}, known)}
                         for e in listing or [] if isinstance(e, dict) and e.get("task") == slug
                         and e.get("state") in ACTIVE and isinstance(e.get("id"), str) and INBOX_ID_RE.match(e["id"])][:20]}
     # total response max 80 KB: drop sections from the end, marking the last kept one truncated
@@ -230,7 +241,7 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
     return result
 
 
-def inbox_detail(root: Path, item_id: str, listing: list | None) -> dict | None:
+def inbox_detail(root: Path, item_id: str, listing: list | None, origin_map: tuple = ()) -> dict | None:
     if not isinstance(item_id, str) or not INBOX_ID_RE.match(item_id):
         return None
     base = Path(root) / "work" / "inbox"
@@ -280,4 +291,8 @@ def inbox_detail(root: Path, item_id: str, listing: list | None) -> dict | None:
         "task": _scalar(item.get("task")), "due": _scalar(item.get("due")), "key": _scalar(item.get("key")),
         "from": _scalar(item.get("from")), "created": _scalar(item.get("created")), "action_display": action_display,
         "has_closes_when": item.get("closes_when") is not None, "closes_when": _plain(item.get("closes_when")),
-        "closer": _scalar(item.get("closer"))}, "events": events}
+        "closer": _scalar(item.get("closer"))}, "events": events,
+        # who filed it, as the page names it (origin.py); the raw `from` stays in item.from
+        "origin": og.classify_row({"inbox_id": item_id, "inbox_key": _scalar(item.get("key")),
+                                   "origin_raw": _scalar(item.get("from")) if isinstance(item.get("from"), str) else None,
+                                   "sources": ["inbox"]}, og.known_from_root(root, origin_map))}

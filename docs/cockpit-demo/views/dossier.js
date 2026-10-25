@@ -29,10 +29,10 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, dossierStep, duration, fileContext, fileFacts, fileQueue, fileResults, findContext, focusIndex, formatDay,
-  indexRows, prioToken, projectTone, rowProject, short, stepAge, suggestedStep, tabOfTask,
+  indexRows, placeKind, prioToken, projectTone, rowProject, short, stepAge, suggestedStep, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { WorkSwitch } from './day.js'
+import { KindTag, OriginTag, WorkSwitch } from './day.js'
 import { Calm, Hero } from './focus.js'
 import { ReturnCard } from './home.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
@@ -101,7 +101,8 @@ function Cover({ x, s, c, data, where = [] }) {
   const parts = [...where, r.status ? t.taskState[r.status] ?? r.status : null, kind, r.priority].filter(Boolean)
   return html`<header class="dz-cover">
     <p class="dz-eyebrow">
-      <span class="dz-eyebrow-what"><${Dot} token=${prioToken(r.priority)} />${parts.map((w, k) => html`${k ? html`<span class="dz-sep" aria-hidden="true">·</span>` : null}<span key=${k}>${w}</span>`)}</span>
+      <span class="dz-eyebrow-what"><${Dot} token=${prioToken(r.priority)} /><${KindTag} row=${{ key: `task:${x.slug}`, task: x.slug, stream: r.stream, work_kind: data?.work_kind ?? r.work_kind }} s=${s} />
+        <${OriginTag} row=${r} origin=${data?.origin ?? r.origin ?? null} />${parts.map((w, k) => html`${k ? html`<span class="dz-sep" aria-hidden="true">·</span>` : null}<span key=${k}>${w}</span>`)}</span>
       <span class="dz-eyebrow-end"><${AreaChip} name=${rowProject(r)} s=${s} c=${c} /><span class="dz-slug mono">${x.slug}</span></span>
     </p>
     <h2 id="dz-title" class="dz-title">${r.title}</h2>
@@ -279,6 +280,7 @@ function FindResults({ s, c, open }) {
       <p class="dz-found-head">
         ${g.slug ? html`<button type="button" class="dz-found-open btn-link" onClick=${() => c.openFile(g.slug, g.path)}>${g.slug}</button>`
           : html`<span class="mono">${g.path}</span>`}
+        ${g.slug ? html`<${KindTag} row=${{ key: `task:${g.slug}`, task: g.slug, work_kind: placeKind(g.path) }} s=${s} />` : null}
         <span class="dz-fact">${f.kind[g.kind] ?? g.kind}</span>
         ${g.slug ? html`<${AreaChip} name=${areaOf(g.slug)} s=${s} c=${c} cls="dz-found-area" />` : null}
         ${g.slug ? html`<span class="dz-found-title">${g.title}</span>` : null}
@@ -380,6 +382,7 @@ function Walk({ queue, i, c }) {
     ${list ? html`<ol id="dz-queue" class="dz-queue">${queue.map((x, k) => html`<li key=${x.id}>
       <button type="button" class="dz-queue-item" aria-current=${k === i ? 'true' : undefined} onClick=${() => go(k)}>
         <span class="dz-queue-n mono">${k + 1}</span>
+        <${KindTag} row=${x.row} s=${null} />
         <span class="dz-queue-title">${short(x.row.title, 90)}</span>
         <span class="dz-queue-why">${reasonWord(x)}</span>
       </button></li>`)}</ol>` : null}

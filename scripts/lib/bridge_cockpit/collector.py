@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from . import model as m
+from . import origin as og
 from .daybook import week_done
 from .details import INBOX_ID_RE
 from .watch import task_snapshot
@@ -65,7 +66,7 @@ def make_link(url: str | None, root: Path) -> dict | None:
 
 
 def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | None, starting: set,
-             page_id: str = "", section_id: str = "") -> dict:
+             page_id: str = "", section_id: str = "", known: og.Known | None = None) -> dict:
     # a task row, or a row an agent was started on (its inbox item): either way the tab shows on the row
     tab = m.tab_for({"task": it.get("task"), "inbox_id": None if it.get("task") else it.get("inbox")}, tabs) \
         if it.get("task") or it.get("inbox") else None
@@ -76,7 +77,22 @@ def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | No
             "tags": it.get("tags"), "account": it.get("account"), "inbox": it.get("inbox"),
             "actions": it.get("actions"), "row_id": it.get("row_id"), "at": it.get("at"), "flags": it.get("flags"), "who": it.get("who"), "gh": it.get("gh"),
             "cal": it.get("cal"), "due_at": it.get("due_at"),
-            "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view)}
+            "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view),
+            **page_origin(it, section_id, known)}
+
+
+def page_origin(it: dict, section_id: str, known: og.Known | None) -> dict:
+    """Where a page item comes from and what it is (origin.py): an inbox item by its `from`, a task by its origin,
+    anything else by its section; the work kind of the task it is, or the task or stream it is about"""
+    known = known or og.Known()
+    inbox = it.get("inbox") if it.get("origin_section_kind") == "inbox" else None
+    row = {"key": f"item:{section_id}", "inbox_id": inbox, "inbox_key": None,
+           "task": it.get("task") if not inbox else None, "ref": it.get("row_id") or it.get("id"), "url": it.get("url"),
+           "sources": [section_id], "origin_raw": it.get("origin_raw"), "origin_provider": it.get("origin_provider"),
+           "origin_section_kind": it.get("origin_section_kind")}
+    slug = it.get("task") or it.get("about_task") or (it.get("gh") or {}).get("task")
+    return {"origin": og.classify_row(row, known), "work_kind": og.work_kind(slug, known),
+            "about_kind": it.get("about_kind") or ("stream" if (it.get("gh") or {}).get("stream") else None)}
 
 
 def tab_summary(tab: dict | None, view: dict | None) -> dict | None:
@@ -90,7 +106,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 dismissed: dict | None = None,
                 runs: dict, teams: list[dict], tasks: list[dict], settled: set, starting: set, now: float,
                 seq: int, stale: bool, profile: str | None, tx: dict,
-                review: dict | None = None) -> tuple[dict, dict]:
+                review: dict | None = None, origin_map: tuple = ()) -> tuple[dict, dict]:
     """The page model (contract section 3.3) and an index row_key -> internal row for the verbs."""
     today = m.iso_date(now)
     dismissed = dismissed or {}
@@ -101,6 +117,10 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     others = [t for t in tabs if t["ref"] != control_ref]
 
     kinds = {t["slug"]: t.get("kind") for t in tasks}
+    # the names this Bridge declares, once per pass (origin.py): its tasks and streams as listed win over the tree
+    known = og.known_from_root(root, origin_map, view.get("section_info") or {})
+    known = og.replace(known, work={**known.work, **{slug: "stream" if kind == "streams" else "task"
+                                                     for slug, kind in kinds.items() if kind in ("tasks", "streams")}})
 
     def closable(slug: Any) -> bool:
         """A finite task can close, a stream never; a task workplace.py does not list is looked up on disk."""
@@ -160,6 +180,12 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "review": verdicts.get(row.get("task")) if is_task_row else None,
             # the files view (logic.js queueOf): doing or review, and the next step with where it comes from
             "status": row.get("status") if is_task_row else None, "next": row.get("next") if is_task_row else None,
+            # who or what filed the row and what it is (origin.py, docs/bridge-cockpit.md "Where a row comes from"):
+            # the task or stream it is, or is about, by its folder; `stream` and `closable` keep their meaning
+            "origin": og.classify_row(row, known),
+            "work_kind": og.work_kind(row.get("task") or row.get("about_task"), known),
+            "about_kind": row.get("about_kind"),
+            "inbox_kind": row.get("inbox_kind"),
         }
         index[row["key"]] = {"row": row, "section": section, "tab": tab, "out": out, "hidden": False}
         return out
@@ -200,7 +226,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         secs = []
         for s in pg["sections"]:
             cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups") else ITEM_CAP    # drawn views filter every row
-            shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"]) for i, it in enumerate(s["items"][:cap])]
+            shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known) for i, it in enumerate(s["items"][:cap])]
             items = [i for i in shown if not (i["actionable"] and (i["key"] in settled or (hidden.get(i["key"]) or "") > today))]
             # a row put off or settled leaves the table, and its count and finding go with it, so the tab badge,
             # the section head and the alarm never count a row the page does not show
@@ -564,7 +590,8 @@ class Collector:
                 self.view, root=app.root, tabs=tabs, seen=app.tabs.seen_copy(), control_ref=app.tabs.control_ref(),
                 hidden=app.store.hidden(), dismissed=app.store.dismissed(), runs=app.store.team_runs(), teams=self.teams, tasks=self.tasks,
                 settled=set(self.settled), starting=self.starting_items(), now=app.clock(), seq=self.seq,
-                stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open))
+                stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
+                origin_map=getattr(app.cfg, "origin_map", ()))
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)

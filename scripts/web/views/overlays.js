@@ -5,11 +5,11 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
-  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, rowKind, hintsFor, nextInQueue,
+  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, hintsFor, nextInQueue, itemRow,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
-import { PageItemActions, RowBar } from './day.js'
+import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { DetailFailed, Lines, NextUp, Segmented } from './detail.js'
 import { AsOf, RelayBadge } from './header.js'
 import { ReturnPanel } from './home.js'
@@ -159,7 +159,7 @@ function InboxBody({ id, cur, s, c }) {
     <section class="idrawer-sec"><h3 class="label-caps">${t.item.facts}</h3>
       <dl class="meta idrawer-facts">
         ${it.created ? html`<${Fact} label=${t.item.created}>${stamp(it.created)}<//>` : null}
-        ${it.from ? html`<${Fact} label=${t.item.from}>${it.from}<//>` : null}
+        ${it.from ? html`<${Fact} label=${t.item.from}><${OriginTag} origin=${d.data.origin ?? null} /> <span class="meta-from-raw">${it.from}</span><//>` : null}
         ${it.kind ? html`<${Fact} label=${t.item.kind}>${t.item.kindName[it.kind] ?? it.kind}<//>` : null}
         ${it.state ? html`<${Fact} label=${t.item.state}>${t.item.stateName[it.state] ?? it.state}<//>` : null}
         ${it.urgency ? html`<${Fact} label=${t.item.urgency}>${t.urgency[it.urgency] ?? it.urgency}<//>` : null}
@@ -200,7 +200,8 @@ function TaskBody({ slug, cur, s, c }) {
     <section class="idrawer-sec"><h3 class="label-caps">${t.item.facts}</h3>
       <dl class="meta idrawer-facts">${facts.map(k => html`<${Fact} key=${k} label=${t.front[k]}>
         ${k === 'status' ? (t.taskState[f[k]] ?? f[k]) : String(f[k])}<//>`)}</dl>
-      ${f.origin ? html`<p class="small idrawer-origin"><span class="line-kind">${t.lineKind.origin}</span><${Linked} text=${String(f.origin)} /></p>` : null}
+      ${f.origin || d.data.origin ? html`<p class="small idrawer-origin"><span class="line-kind">${t.lineKind.origin}</span><${OriginTag} origin=${d.data.origin ?? null} />
+        ${f.origin ? html` <${Linked} text=${String(f.origin)} />` : null}</p>` : null}
     </section>
     <section class="idrawer-sec"><h3 class="label-caps">${t.item.related}</h3>
       ${related.length ? html`<ul class="entries">${related.map(r => html`<li key=${r.id} class="entry">
@@ -237,6 +238,11 @@ export function ItemDrawer({ s, c, byKey }) {
   // a row built here knows from the item whether its yes is given already, so its start button says so
   const row = own ?? (made && isInbox && data?.item?.state ? { ...made, inbox_state: data.item.state } : made)
   const title = (isInbox ? data?.item?.summary : data?.front?.headline) || it.title || id
+  // what it is and where it comes from: the model's row, else what the item's own detail says (a stream opened
+  // only by its key is a stream here too, not "Task")
+  const kindRow = { ...(row ?? { key, inbox_id: isInbox ? id : null, task: isInbox ? (data?.item?.task ?? it.task ?? null) : id }),
+    ...(row?.work_kind || isInbox ? {} : { work_kind: data?.work_kind ?? it.work_kind ?? null }),
+    ...(row?.origin ? {} : { origin: data?.origin ?? it.origin ?? null }) }
   const slug = isInbox ? (data?.item?.task ?? it.task) : id
   // a close from inside the drawer ends the item: the drawer goes with it, or on to the next of its list
   const next = nextInQueue(s.ui.queue, key, e => e.key !== key)
@@ -250,7 +256,7 @@ export function ItemDrawer({ s, c, byKey }) {
     <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="idrawer-title" ref=${ref}>
       <header class="idrawer-head">
         <div class="idrawer-head-main">
-          <span class="eyebrow">${t.kind[rowKind(row ?? { inbox_id: isInbox ? id : null, task: isInbox ? null : id }).kind]}</span>
+          <span class="eyebrow idrawer-kinds"><${KindTag} row=${kindRow} s=${s} /><${OriginTag} row=${kindRow} /></span>
           <h2 class="idrawer-title" id="idrawer-title">${title}</h2>
         </div>
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.item.close} onClick=${c.closeItem} />
@@ -304,6 +310,7 @@ export function InfoDrawer({ s, c }) {
       <header class="idrawer-head">
         <div class="idrawer-head-main">
           <span class="eyebrow">${[pg?.title, sec?.title].filter(Boolean).join(' · ')}</span>
+          <span class="idrawer-kinds"><${KindTag} row=${itemRow(cur)} s=${s} /><${OriginTag} row=${itemRow(cur)} /></span>
           <h2 class="idrawer-title" id="info-title">${cur.tone ? html`<${StateLine} token=${toneToken(cur.tone)} strong=${cur.tone === 'bad'} word=${cur.title} />` : cur.title}</h2>
         </div>
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.item.close} onClick=${close} />

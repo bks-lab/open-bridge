@@ -265,3 +265,38 @@ def test_the_areas_are_the_names_of_the_configured_workspaces(tmp_path):
     assert cfg.areas == ("Bridge", "Home")
     assert load_web_config(tmp_path, {}).areas == ()
 
+
+
+# ---------------------------------------------------------------- cockpit.origin_map
+
+def test_the_origin_map_is_empty_unless_the_config_names_one(tmp_path):
+    assert load_web_config(tmp_path, {}).origin_map == ()
+
+
+def test_a_valid_origin_map_loads_lower_cased_in_file_order(tmp_path):
+    cfg = load_web_config(tmp_path, {"cockpit": {"origin_map": {"Notes-Bot": "bot", "*-health": "bot", "alex": "person"}}})
+    assert cfg.origin_map == (("notes-bot", "bot"), ("*-health", "bot"), ("alex", "person"))
+    assert cfg.config_warnings == ()
+
+
+def test_a_wrong_origin_map_says_what_it_ignores(tmp_path):
+    out = warnings_of(tmp_path, {"origin_map": ["a"]})
+    assert len(out) == 1 and out[0].startswith("cockpit.origin_map: must be a mapping") and out[0].endswith("using none")
+    cfg = load_web_config(tmp_path, {"cockpit": {"origin_map": {"alex": "human", "bob": "person", 3: "bot",
+                                                                "Bob": "bot"}}})
+    assert cfg.origin_map == (("bob", "person"),)
+    bad = cfg.config_warnings
+    assert any(w.startswith("cockpit.origin_map.alex:") and "must be one of" in w and w.endswith("ignored") for w in bad), bad
+    assert any("cockpit.origin_map.3" in w and "ignored" in w for w in bad), bad
+    assert any("cockpit.origin_map.Bob" in w and "duplicate, first one kept" in w for w in bad), bad
+    assert not any("unknown key" in w for w in bad)
+
+
+def test_the_origin_map_never_reaches_the_page(tmp_path):
+    base = "cockpit:\n  enabled: true\n  language: en\n  origin_map:\n    alex: person\n"
+    w = World(tmp_path / "a", config=base, serve=False, prepare=False)
+    try:
+        assert "alex" not in json.dumps(w.app.state_payload())
+        assert w.app.cfg.origin_map == (("alex", "person"),)
+    finally:
+        w.close()

@@ -5,7 +5,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
-  pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups,
+  pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
   SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -19,27 +19,47 @@ import { Btn, Chip, Dot, Empty, MarkChip, PrioChip, StateLine, VerdictChip, useR
 
 // ---------------------------------------------------------------- left column: the day
 
-const KIND_MARK = { task: '▣', stream: '↻', inbox: '◆', issue: '#', other: '•' }
+export const KIND_MARK = { task: '▣', stream: '↻', done_task: '✓', done_stream: '↻✓', inbox: '◆', issue: '#', other: '•' }
 
 /** What a row is (rowKind), first on every row and in every head, in one shape that stands apart from the state
- *  chips: the state changes, the kind does not. A report about a task names it; `link` makes that name open the
- *  task (not inside a row's own button, where a second button cannot stand) */
+ *  chips: the state changes, the kind does not. A report or an issue about a task or stream names it, the word Task
+ *  or Stream written out (never colour alone); `link` makes that name open it (not inside a row's own button, where
+ *  a second button cannot stand) */
 export function KindTag({ row, s, c, link = false }) {
   const t = T()
-  const k = rowKind(row)
+  const k = rowKind(row, s)
   const title = k.task ? (indexRows(s?.model).get(`task:${k.task}`)?.title ?? k.task) : null
-  const about = k.kind === 'inbox' && k.task
-    ? html`<span class="kind-about"> · ${t.kindAbout} ${link && c
+  const about = (k.kind === 'inbox' || k.kind === 'issue') && k.task
+    ? html`<span class="kind-about"> · ${t.kindAbout} <span class=${`kind-about-what kind-${k.taskKind ?? 'task'}`}><span aria-hidden="true">${KIND_MARK[k.taskKind ?? 'task']}</span> ${t.kind[k.taskKind ?? 'task']}:</span> ${link && c
       ? html`<button type="button" class="btn-link" onClick=${() => c.select(`task:${k.task}`)}>${short(title, 48)}</button>`
       : short(title, 48)}</span>` : null
-  const detail = k.kind === 'issue' ? html` <span class="mono">${k.ref}</span>` : k.kind === 'other' && k.source ? html` · ${k.source}` : null
+  const detail = k.kind === 'issue' ? html` <span class="mono">${k.ref}</span>` : null
   return html`<span class=${`kind kind-${k.kind}`} title=${t.kindTitle[k.kind]}>
     <span class="kind-mark" aria-hidden="true">${KIND_MARK[k.kind]}</span><span>${t.kind[k.kind]}${detail}</span></span>${about}`
 }
 
+// the dot of an origin chip, from the existing tokens (no colour of its own): a cue beside the word, never instead
+const ORIGIN_TONE = { github: 'tk-info', tracker: 'tk-info', calendar: 'tk-accent', bot: 'tk-secondary', session: 'tk-accent',
+  skill: 'tk-secondary', work: 'tk-on-surface-muted', person: 'tk-muted', bridge: 'tk-muted', other: 'tk-muted' }
+
+/** Where a row comes from (originOf: the server classified it, origin.py): a word for the category and a short
+ *  detail, the text as written in the tooltip, a spoken "Source:" in front. Nothing for no origin, or for an
+ *  unknown source without a text. `origin` given wins over the row's own; a ref the kind tag shows already is not
+ *  repeated */
+export function OriginTag({ row = null, origin }) {
+  const t = T()
+  const o = origin !== undefined ? (origin && ORIGIN_CATEGORIES.includes(origin.category) ? origin : null) : originOf(row)
+  if (!o || (o.category === 'other' && !o.detail)) return null
+  const word = o.category === 'work' ? (t.origin.work[o.word_key] ?? t.origin.work.task)
+    : o.category === 'tracker' ? (o.word_key || t.origin.tracker) : t.origin[o.category]
+  const title = [o.raw || t.originTitle[o.category], o.via_cockpit ? t.originViaCockpit : null].filter(Boolean).join(' · ')
+  const ref = o.ref && o.ref !== row?.ref ? o.ref : null
+  return html`<span class=${`chip origin ${ORIGIN_TONE[o.category]}`} title=${title}><span class="sr-only">${t.originSpoken} </span><span class="origin-word">${word}</span>${o.detail ? html`<span class="origin-detail">${o.detail}</span>` : null}${ref ? html`<span class="mono origin-ref">${ref}</span>` : null}</span>`
+}
+
 export function RowMeta({ row, s }) {
   const t = T()
-  const parts = [html`<${KindTag} row=${row} s=${s} />`]
+  const parts = [html`<${KindTag} row=${row} s=${s} />`, html`<${OriginTag} row=${row} />`]
   if (row.tab) parts.push(html`<${Chip} token=${stateToken(tabStateKey(row.tab))}>${t.state[tabStateKey(row.tab)] ?? row.tab.state}<//>`)
   if (row.starting) parts.push(html`<${Chip} token="info">${t.startingTab}<//>`)
   const liveSessions = row.task && !row.inbox_id ? (s?.sessions?.sessions ?? []).filter(x => x.task === row.task).length : 0
@@ -191,7 +211,7 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
     </span>`
   }
   return html`${still}<span class="settle-menu row-panel" role="menu" ref=${me} style=${style}>
-    ${rows.length > 1 ? html`<ul class="settle-list">${rows.map(r => html`<li key=${r.key}>${r.title}</li>`)}</ul>` : null}
+    ${rows.length > 1 ? html`<ul class="settle-list">${rows.map(r => html`<li key=${r.key}><${KindTag} row=${r} s=${s} /> ${r.title}</li>`)}</ul>` : null}
     <label class="start-note">
       <span class="label-caps">${part === 'start' ? t.panelTextStart : t.panelTextSettle}</span>
       <textarea rows="2" ref=${field} value=${text} placeholder=${part !== 'start' ? t.panelSettleHint : needsWords ? t.startNeedsHint : t.panelStartHint}
@@ -406,6 +426,7 @@ function HiddenList({ s, c }) {
     <summary>${t.hiddenTitle(list.length)}</summary>
     <ul>
       ${list.map(r => html`<li key=${r.key} class="hidden-row">
+        <${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} />
         <button type="button" class="btn-link hidden-title" onClick=${() => c.select(r.key)}>${short(r.title, 70)}</button>
         <span class="muted">${r.settled_as ? t.settledAs[r.settled_as] : t.hiddenUntil(formatDay(r.hidden_until, language()))}</span>
         <${Btn} size="xs" variant="ghost" busy=${!!s.ui.busy[r.key]} onClick=${() => c.act('unhide', { key: r.key })}>${t.btnShowAgain}<//>

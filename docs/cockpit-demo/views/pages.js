@@ -9,12 +9,12 @@ import {
   sectionStamp, triageKey, triageShows, sectionTile, tokenText, usageToday, tabStateKey,
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
-  cardPlan, moneyText, costBoard,
+  cardPlan, moneyText, costBoard, itemRow,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
-import { PageItemActions, RowBar } from './day.js'
+import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { Lines } from './detail.js'
 import { ReturnChip } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
@@ -149,6 +149,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
             aria-haspopup="true" onClick=${e => c.peek(`task:${it.task}`, e.currentTarget, queue)}>
             ${tone ? html`<${StateLine} token=${toneToken(tone)} strong=${tone === 'bad'} word=${it.title} />` : it.title}</button>`
           : tone ? html`<${StateLine} token=${toneToken(tone)} strong=${tone === 'bad'} word=${it.title} />` : html`<span>${it.title}</span>`}
+        <span class="info-kinds"><${KindTag} row=${itemRow(it)} s=${s} /><${OriginTag} row=${itemRow(it)} /></span>
         <${MarkChip} mark=${it.mark} /><${PrioChip} priority=${it.priority} />
         ${it.task ? html`<${VerdictChip} review=${byKey.get(`task:${it.task}`)?.review} />` : null}
         ${it.state ? html`<span class="chip">${t.taskState[it.state] ?? it.state}</span>` : null}

@@ -11,7 +11,7 @@ import {
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
 import { ChatThread, Thinking, useQuickLive } from './chat.js'
-import { KindTag, RowBar } from './day.js'
+import { KindTag, OriginTag, RowBar } from './day.js'
 import {
   DayBars, PinStar, ReturnCard, ReturnChip, jumpToTab, openWhole, pageParts, pageTitleOf, pct, returnsOf, shownTiles,
 } from './home.js'
@@ -170,7 +170,7 @@ function StageCard({ s, c, tabs, onWeigh }) {
     <span class=${`stage-dot tk-${dot(r)}`} aria-hidden="true"></span>
     <button type="button" class="stage-row-main" onClick=${e => openWhole(c, r, e.currentTarget, queue)} title=${h.openRow(short(r.title, 60))}>
       <span class="stage-row-title">${fresh.has(r.key) ? html`<span class="new-tag">${h.isNew}</span>` : null}${r.priority ? html`<em class=${`tk-${dot(r)}`}>${r.priority} </em>` : null}${short(r.title, lead ? 120 : 80)}</span>
-      <span class="stage-row-sub"><${KindTag} row=${r} s=${s} />${sub(r) ? html` ${sub(r)}` : null}</span>
+      <span class="stage-row-sub"><${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} />${sub(r) ? html` ${sub(r)}` : null}</span>
       <${ReturnChip} s=${s} rowKey=${r.key} />
     </button>
     ${lead ? html`<span class="stage-pill">${h.focusTitle}</span>` : null}
@@ -252,7 +252,7 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
     const queue = homeRowQueue(rows.slice(0, 8))
     body = html`${head(h.waitingNow, String(rows.length))}
       ${rows.slice(0, 8).map((r, i) => html`<${InspectRow} key=${r.key} tone=${r.urgency === 'now' ? 'danger' : r.urgency === 'today' ? 'warning' : 'info'}
-        title=${short(r.title, i ? 90 : 140)} sub=${r.area || r.mark?.label || ''} onClick=${e => openWhole(c, r, e.currentTarget, queue)}>${i === 0 ? acts(r) : null}<//>`)}
+        title=${short(r.title, i ? 90 : 140)} sub=${html`<${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} />${r.area || r.mark?.label ? html` ${r.area || r.mark?.label}` : null}`} onClick=${e => openWhole(c, r, e.currentTarget, queue)}>${i === 0 ? acts(r) : null}<//>`)}
       ${!rows.length ? html`<p class="stage-row-sub">${h.focusEmpty}</p>` : null}
       ${foot(h.openPage(briefingTitle(s)), () => c.setPage('briefing'))}`
   } else if (x.id === 'c:returns') {
@@ -296,7 +296,8 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
   } else if (x.id === 'c:done') {
     const week = s.model?.week ?? { count: 0, items: [] }
     body = html`${head(h.doneTitle, String(week.count))}
-      ${week.items.map(i => html`<${InspectRow} key=${i.slug} tone="success" title=${i.title} sub=${i.slug}
+      ${week.items.map(i => html`<${InspectRow} key=${i.slug} tone="success" title=${i.title}
+        sub=${html`<${KindTag} row=${{ key: `task:${i.slug}`, task: i.slug, work_kind: i.work_kind ?? 'done_task' }} s=${s} /> ${i.slug}`}
         side=${i.closed.slice(5).split('-').reverse().join('.')} />`)}`
   } else if (x.page) {
     const p = x.page

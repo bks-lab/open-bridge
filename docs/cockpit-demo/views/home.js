@@ -10,7 +10,7 @@ import {
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope,
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { RowBar, RowMeta, Section } from './day.js'
+import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
 import { GuideCard, guideTabs } from './guide.js'
 import { TabCard } from './tabs.js'
 import { DayPages, DayView } from './detail.js'
@@ -78,6 +78,7 @@ export function ReturnCard({ r, s, c }) {
         onClick=${() => c.act('return_forget', { key: r.key })}><${Icon} name="close" size=${14} /></button>
     </header>
     <button type="button" class="rcard-title" onClick=${e => (row ? openWhole(c, row, e.currentTarget) : null)} disabled=${!row}>${r.title}</button>
+    ${row ? html`<p class="rcard-tags"><${KindTag} row=${row} s=${s} /><${OriginTag} row=${row} /></p>` : null}
     <${ReturnSteps} stage=${r.live} />
     ${r.result?.text ? html`<p class="rcard-answer"><span class="label-caps">${h.returnAnswer}</span> ${short(r.result.text, 280)}</p>`
       : r.tab?.last || tab?.last ? html`<p class="rcard-last mono">${short(previewText(tab?.last ?? r.tab.last), 160)}</p>` : null}
@@ -347,7 +348,7 @@ function DoneTile({ s }) {
   return html`<button type="button" class="ktile tk-success" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>
     <span class="ktile-big num">${week.count}</span>
     <span class="ktile-label">${h.doneTitle}</span>
-    <span class="ktile-parts ktile-list">${(open ? week.items : week.items.slice(0, 3)).map(x => html`<span key=${x.slug}>${short(x.title, 48)}</span>`)}</span>
+    <span class="ktile-parts ktile-list">${(open ? week.items : week.items.slice(0, 3)).map(x => html`<span key=${x.slug}><${KindTag} row=${{ key: `task:${x.slug}`, task: x.slug, work_kind: x.work_kind ?? 'done_task' }} s=${s} /> ${short(x.title, 48)}</span>`)}</span>
   </button>`
 }
 

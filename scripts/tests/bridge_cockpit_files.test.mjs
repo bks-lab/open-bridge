@@ -948,3 +948,32 @@ test('the search stays across all areas: each hit names its area, under a filter
   assert.doesNotMatch(plain.$('.dz-results').text(), new RegExp(en.dossier.find.allAreas))
   assert.ok(plain.$('.dz-found-area'))
 })
+
+// ---------------------------------------------------------------- what a file is and where it comes from
+
+test('the cover of a file names Task or Stream first, then where it comes from, and keeps its .dz parts', () => {
+  const { DossierView, dossierQueue } = views.dossier
+  const base = filesOn()
+  const queue = dossierQueue(base)
+  const stream = queue.find(x => x.slug === 'team-onboarding')
+  assert.ok(stream, 'the demo stream is in the queue')
+  for (const [x, word] of [[queue.find(y => y.slug !== 'team-onboarding'), en.kind.task], [stream, en.kind.stream]]) {
+    const s = filesOn({ ui: { dossierAt: { id: x.id, i: queue.indexOf(x) } } })
+    const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
+    const what = el.$('.dz-cover .dz-eyebrow-what')
+    assert.ok(what && el.$('.dz-cover .dz-eyebrow-end') && el.$('.dz-cover .dz-title'), 'the .dz parts stand')
+    assert.match(what.$('.kind').text(), new RegExp(`${word}$`))
+    assert.ok(what.$('.origin'), 'the origin beside it')
+  }
+  // a closed task and an ended stream, as the file's own detail says
+  for (const [kind, word] of [['done_task', en.kind.done_task], ['done_stream', en.kind.done_stream]]) {
+    const x = queue[0]
+    const s = filesOn()
+    s.details = { inbox: {}, task: { [x.slug]: { status: 'ok', ver: s.model.collected_ms, data: { ok: true, slug: x.slug, kind: 'done', work_kind: kind,
+      origin: { category: 'skill', word_key: null, detail: 'debrief', raw: 'debrief', ref: null, via_cockpit: false },
+      front: {}, sections: [], log: [], inbox: [], files: [], related: [], path: `work/done/2026-10/${x.slug}/STATUS.md` } } } }
+    const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
+    assert.match(el.$('.dz-eyebrow-what .kind').text(), new RegExp(`${word}$`))
+    assert.equal(el.$('.dz-eyebrow-what .origin-word').text(), en.origin.skill)
+  }
+})

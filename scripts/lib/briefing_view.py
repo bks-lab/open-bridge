@@ -862,7 +862,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             have["rank"] = min(have["rank"], row["rank"])
             have["why"] += [w for w in row["why"] if w not in have["why"]]
             for k in ("due", "nudge", "estimate", "inbox_id", "inbox_state", "inbox_key", "created", "gate", "urgency", "priority",
-                      "has_action", "mark", "area"):
+                      "has_action", "mark", "area", "origin_raw", "inbox_kind", "origin_provider", "about_task", "about_kind",
+                      "ref", "url"):
                 if row.get(k) and not have.get(k):
                     have[k] = row[k]
             if have.get("filed") and not row.get("filed"):
@@ -876,12 +877,17 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
         out["rows"][key] = row
         out["order"].append(key)
 
+    # the kind and provider of each section, so a row says where it came from (cockpit origin.py)
+    kinds_of = {s.get("id"): (s.get("kind"), s.get("provider")) for s in result.get("sections") or [] if isinstance(s, dict)}
+
     def row(sid, item, bucket, title, why=(), rank=5, **extra):
+        kind, provider = kinds_of.get(sid, (None, None))
         r = {"title": str(title or ""), "bucket": bucket, "forced": sid in forced_ids,
              "mark": mark_for(marks, title, item),
              "why": [w for w in why if w], "sources": [sid],
              "rank": rank, "url": item.get("url"), "task": item.get("task"), "new": bool(item.get("new")),
-             "changed": bool(item.get("changed"))}
+             "changed": bool(item.get("changed")),
+             "origin_section_kind": kind, "origin_provider": item.get("tracker") or provider}
         if _pos_int(item.get("estimate_min")):
             r["estimate"] = item["estimate_min"]
         return {**r, **extra}
@@ -984,6 +990,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                              inbox_state=item.get("state"), inbox_key=item.get("key"),
                              # the area it was given (inbox.py area, or the router on add); a task's area wins later
                              area=item.get("area") or None,
+                             # who filed it (inbox.py `from`) and what it is (decision, finding ...): the page names both
+                             origin_raw=item.get("from") or None, inbox_kind=item.get("kind") or None,
                              # an inbox item's changed_at is when it was filed (briefing.py sec_inbox: item.created)
                              created=item.get("changed_at") or None))
             elif kind == "advise":
@@ -1016,14 +1024,14 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                         why.append(labels["look_again"].format(when=_fmt_when(item["quiet_until"], now, labels)))
                         nudge = look.date() <= now.date()
                     add(f"task:{iid}", row(sid, item, forced or "waiting", item.get("title"), why, 3, nudge=nudge,
-                                           task=iid, priority=item.get("priority")))
+                                           task=iid, priority=item.get("priority"), origin_raw=item.get("origin")))
                 elif isinstance(nxt, dict) and nxt.get("what"):
                     who = str(nxt.get("who") or "me").lower()
                     due = _when(nxt.get("due"))
                     why = [labels["task"].format(slug=iid)]
                     if nxt.get("due"):
                         why.append(labels["due"].format(when=_fmt_when(nxt["due"], now, labels)))
-                    extra = {"task": iid, "due": nxt.get("due"), "priority": item.get("priority")}
+                    extra = {"task": iid, "due": nxt.get("due"), "priority": item.get("priority"), "origin_raw": item.get("origin")}
                     if _pos_int(nxt.get("estimate_min")):
                         extra["estimate"] = nxt["estimate_min"]
                     if who in WHO_BRIDGE:
@@ -1052,7 +1060,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 label = item.get("raw_state") or state
                 add(_item_key(sid, iid), row(sid, item, forced or bucket, item.get("title"),
                                              [iid, str(label) if label else ""], 2 if bucket == "do" else 4,
-                                             ref=iid))
+                                             ref=iid, about_task=item.get("about_task"), about_kind=item.get("about_kind")))
 
     # blocked / waiting / due advice repeats what a task or inbox row already says;
     # it stands on its own only when no such row is in the view.
@@ -1952,7 +1960,8 @@ def github_facts(item: dict, now: dt.datetime) -> dict:
             "labels": [_text(x)[:40] for x in item.get("labels") or [] if _text(x)][:4], "people": people,
             "prs": [{"n": int(str(p["id"]).rsplit("#", 1)[-1]), "draft": bool(p.get("draft"))}
                     for p in item.get("prs") or [] if isinstance(p, dict) and str(p.get("id", "")).rsplit("#", 1)[-1].isdigit()][:3],
-            "task": _text(linked.get("slug")) or None, "stream": bool(linked.get("stream")),
+            "task": _text(linked.get("slug")) or None,
+            "stream": bool(linked.get("stream")) and str(linked.get("path") or "work/streams/").startswith("work/streams/"),
             "untasked": item.get("untasked") is True,
             "changed": changed.isoformat(timespec="minutes") if changed else None,
             "quiet": quiet if quiet is not None and quiet >= QUIET_DAYS else None,
@@ -2025,6 +2034,13 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
     if kind == "commits":   # whoever committed today first
         items = sorted(items, key=_today_count, reverse=True)
     rows = [_page_row(kind, i, entry, now, labels, root, marks) for i in items]
+    for r, i in zip(rows, items):
+        # where the row comes from (cockpit origin.py): an inbox item's `from`, a task's origin, the section
+        r["origin_raw"] = _text(i.get("from") if kind == "inbox" else i.get("origin") if kind == "tasks" else None)[:300] or None
+        r["origin_section_kind"] = kind or None
+        r["origin_provider"] = _text(i.get("tracker") or section.get("provider")) or None
+        if kind == "tracker" and i.get("about_task"):
+            r["about_task"], r["about_kind"] = _text(i["about_task"]), _text(i.get("about_kind")) or None
     if kind == "calendar":
         mark_overlaps(rows)
     weight = sum(_today_count(i) for i in items) if kind == "commits" else \

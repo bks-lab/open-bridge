@@ -85,6 +85,7 @@ their defaults:
 | `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
 | `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `files` (Files), see [The files view](cockpit-files.md); a view the tab does not offer opens Due. A click on the tab's switch still picks another for this browser, until the key changes |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
+| `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
@@ -217,6 +218,41 @@ The buttons speak four verbs everywhere, also in the Telegram inbox watcher:
 reports, then waits), **Ask** (a short read-only answer in the chat) and
 **Close** (done, not doing, or more). "To tab", "Message" and "View" only stand
 where a tab already runs.
+
+### Where a row comes from
+
+Every work row carries two tags, in this order, as words and never as colour alone:
+
+- **What it is.** Task, Stream, Closed task or Ended stream; Report (an inbox item), always followed by
+  "about ▣ Task: X" or "about ↻ Stream: X" when it belongs to one; Issue, with the same "about" when a task
+  or stream syncs it; or Item. A stream's tag also has a dashed border, a second cue beside the word.
+- **Where it comes from.** One word and a short detail: GitHub (with the repository), the name of another
+  board (GitLab, Azure Boards), Calendar, Bot (a scheduled run, a notifier, a check, a bot, a machine),
+  Session (an agent session or tab: Claude, Codex and the like), Skill (a skill run such as a briefing or
+  meeting notes), From task or From stream (filed while working on it), By hand (a person), Bridge (started
+  here, no other source written down) or Other source. The text as it was written stands in the tooltip and
+  in full in the detail's "Source" row, so the word never hides anything.
+
+The source of an inbox item is who filed it, not what it is about: a radar job that files about an issue reads
+"Bot · radar job" and shows the issue number beside it. A row you sent to the inbox from the cockpit takes the
+source of the page row it came from (a GitHub row stays GitHub) and its detail says "filed from the cockpit".
+
+The rules, first match wins: your `cockpit.origin_map`; a `tab:` or `tab-` name (Session); an agent tool
+(`claude`, `codex`, `gemini`, `copilot`, `cursor`, `opencode`, also with `-session`); a `-session` suffix or a
+second part `session` or `chat` (`laptop/session`); a leading `bridge/` (the rest is read again, else Bot); a run
+this Bridge declares (`workflow/workloads/`, `infra/channels/`, `agents/`) or a machine of `infra/remotes/`, or the
+shape `<machine>/<job>` (Bot); a skill folder of this Bridge (Skill); a task or stream slug (From task, From stream);
+anything else is Other source with its text. A board row is named by its provider first (a GitLab row is never
+called GitHub), a GitHub link or `owner/repo#n` only when no provider is known. Map your own names when a word is
+wrong:
+
+```yaml
+cockpit:
+  origin_map:
+    notes-bot: bot
+    "*-health": bot        # globs need quotes
+    alex: person
+```
 
 ### The files view
 

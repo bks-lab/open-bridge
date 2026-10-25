@@ -472,12 +472,14 @@ READS = {
     "view": {"headline", "since", "buckets", "agenda", "status", "clear", "hygiene", "workplace"},
     "bucket": {"id", "title", "items"},
     "row": {"title", "why", "sources", "inbox_id", "gate", "task", "url", "urgency", "has_action", "inbox_state",
-            "inbox_key", "mark", "due", "new", "changed", "created", "area"},
+            "inbox_key", "mark", "due", "new", "changed", "created", "area",
+            # where the row comes from (origin.py): the inbox item's `from` and kind, the section it came from
+            "origin_raw", "inbox_kind", "origin_provider", "origin_section_kind"},
     "page": {"id", "title", "sections"},
     "page_section": {"id", "kind", "title", "status", "reason", "alarm", "empty", "items", "total", "weight", "bad",
                      "as_of"},
     "page_item": {"id", "title", "detail", "when", "tone", "url", "task", "ask", "actionable", "mark", "inbox",
-                  "priority", "state", "lines"},
+                  "priority", "state", "lines", "origin_raw"},
 }
 # keys the fixture uses that only other kinds of rows carry: a GitHub row (ref), a command section with its
 # own view (view), the rows of a command or accounts section (tags, account, row_id, actions)

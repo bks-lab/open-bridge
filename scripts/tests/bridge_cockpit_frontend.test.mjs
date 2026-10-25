@@ -3303,7 +3303,7 @@ test('the style files: every class selector is used by the page, or built from a
     'tl-': null, 'sr-': ['0', '1', '2', '3'], 'view-thumb-': null, 'vs-': null,
     'ticker-': ['slow', 'normal', 'fast'],
     'tri-': ['ai', 'either'],
-    'kind-': ['task', 'stream', 'inbox', 'issue', 'other'],
+    'kind-': ['task', 'stream', 'done_task', 'done_stream', 'inbox', 'issue', 'other'],
   }
   for (const p of Object.keys(DYNAMIC)) assert.ok(src.includes(`${p}\${`), `allowed prefix ${p} is built nowhere any more`)
   const built = c => Object.entries(DYNAMIC).some(([p, ok]) => c.startsWith(p) && (ok === null || ok.includes(c.slice(p.length))))
@@ -4233,11 +4233,42 @@ test('row panel: stands fixed in the window, so no column, card or table clips i
 test('rowKind: four kinds and a rest, read from the row alone', () => {
   assert.deepEqual(logic.rowKind({ key: 'task:a', task: 'a' }), { kind: 'task', task: 'a' })
   assert.deepEqual(logic.rowKind({ key: 'task:s', task: 's', stream: true }), { kind: 'stream', task: 's' })
-  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: null }), { kind: 'inbox', task: null })
-  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: 'a' }), { kind: 'inbox', task: 'a' })     // a report about a task
-  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#12', ref: 'o/r#12', sources: ['boards'] }), { kind: 'issue', ref: 'o/r#12' })
+  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: null }), { kind: 'inbox', task: null, taskKind: null })
+  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: 'a' }), { kind: 'inbox', task: 'a', taskKind: 'task' })     // a report about a task
+  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#12', ref: 'o/r#12', sources: ['boards'] }), { kind: 'issue', ref: 'o/r#12', task: null, taskKind: null })
   assert.deepEqual(logic.rowKind({ key: 'ref:2026-10/app', ref: '2026-10/app', sources: ['Bewerbungen'] }), { kind: 'other', source: 'Bewerbungen' })
   assert.deepEqual(logic.rowKind({ key: 'item:x' }), { kind: 'other', source: null })
+})
+
+test('rowKind: the work kind the server sends wins, a report and an issue name the stream they are about', () => {
+  // an inbox row about a stream: the server's work_kind, never the stream flag that only a task row carries
+  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: 's', work_kind: 'stream', stream: false }),
+    { kind: 'inbox', task: 's', taskKind: 'stream' })
+  assert.deepEqual(logic.rowKind({ key: 'task:s', task: 's', work_kind: 'stream' }), { kind: 'stream', task: 's' })
+  assert.deepEqual(logic.rowKind({ key: 'task:d', task: 'd', work_kind: 'done_task' }), { kind: 'done_task', task: 'd' })
+  assert.deepEqual(logic.rowKind({ key: 'task:e', task: 'e', work_kind: 'done_stream' }), { kind: 'done_stream', task: 'e' })
+  // an issue a stream syncs: an issue, about that stream (no longer called the task it belongs to)
+  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#3', ref: 'o/r#3', about_task: 's', about_kind: 'stream', work_kind: 'stream' }),
+    { kind: 'issue', ref: 'o/r#3', task: 's', taskKind: 'stream' })
+  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#4', ref: 'o/r#4', task: 'a', work_kind: 'task' }),
+    { kind: 'issue', ref: 'o/r#4', task: 'a', taskKind: 'task' })
+})
+
+test('originOf and workKindOf: what the server classified, the task list as the fallback', () => {
+  const o = { category: 'bot', word_key: null, detail: 'radar', raw: 'host/radar', ref: null, via_cockpit: false }
+  assert.equal(logic.originOf({ origin: o }), o)
+  assert.equal(logic.originOf({ origin: null }), null)
+  assert.equal(logic.originOf({}), null)
+  assert.equal(logic.originOf({ origin: { category: 'made-up' } }), null)
+  assert.deepEqual(logic.ORIGIN_CATEGORIES, ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'work', 'person', 'bridge', 'other'])
+  const s = { model: { sections: [], hidden: [], task_rows: [{ key: 'task:s', task: 's', work_kind: 'stream' }] } }
+  assert.equal(logic.workKindOf({ work_kind: 'done_task' }, s), 'done_task')
+  assert.equal(logic.workKindOf({ task: 's' }, s), 'stream')                     // through indexRows
+  assert.equal(logic.workKindOf({ about_task: 's' }, s), 'stream')
+  assert.equal(logic.workKindOf({ task: 'x', stream: true }, s), 'stream')       // an older server: the flag
+  assert.equal(logic.workKindOf({ task: 'x' }, s), 'task')
+  assert.equal(logic.workKindOf({ title: 'nothing' }, s), null)
+  assert.equal(logic.workKindOf(null, null), null)
 })
 
 test('the kind stands first on every row, in the detail head and in the drawer head', () => {
@@ -4250,8 +4281,18 @@ test('the kind stands first on every row, in the detail head and in the drawer h
   assert.match(tag, /t\.kindAbout/)                              // a report names the task it is about
   assert.match(tag, /c\.select\(`task:\$\{k\.task\}`\)/)
   assert.match(read('views/detail.js'), /<\$\{KindTag\} row=\$\{row\} s=\$\{s\} c=\$\{c\} link \/>/)
-  assert.match(read('views/overlays.js'), /t\.kind\[/)
+  // the drawer head draws the whole kind tag now (it named only the word before), the about part with it
+  assert.match(read('views/overlays.js'), /<\$\{KindTag\} row=\$\{kindRow\} s=\$\{s\} \/>/)
   assert.match(read('views/stage.js'), /<\$\{KindTag\}/)
+  // the origin stands right after the kind, and every renderer of a work row draws both
+  assert.match(meta, /<\$\{KindTag\} row=\$\{row\} s=\$\{s\} \/>`, html`<\$\{OriginTag\} row=\$\{row\} \/>`\]/, 'kind, then origin')
+  for (const f of ['views/day.js', 'views/pages.js', 'views/github.js', 'jev/page.js', 'views/dossier.js', 'views/focus.js',
+    'views/detail.js', 'views/overlays.js', 'views/list.js', 'views/stage.js', 'views/home.js']) {
+    assert.match(read(f), /<\$\{OriginTag\}/, `${f} draws the origin`)
+    // a board row keeps its own task or stream chip (ghl-chip-task), the rest draw the kind tag
+    if (f !== 'views/github.js') assert.match(read(f), /<\$\{KindTag\}/, `${f} draws the kind`)
+  }
+  assert.match(read('views/check.js'), /<\$\{KindTag\}/, 'the check table names task or stream')
   for (const lang of [text.TABLES.en, text.TABLES.de]) {
     for (const k of ['task', 'stream', 'inbox', 'issue', 'other']) assert.ok(lang.kind?.[k], `kind.${k}`)
     assert.ok(lang.kindAbout && lang.kindTitle?.stream && lang.streamHint, 'about, titles, the stream hint')
@@ -4259,6 +4300,21 @@ test('the kind stands first on every row, in the detail head and in the drawer h
   }
   assert.equal(text.TABLES.de.kind.inbox, 'Meldung')
   assert.equal(text.TABLES.de.kind.stream, 'Stream')
+  for (const lang of [text.TABLES.en, text.TABLES.de]) {
+    for (const k of ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'person', 'bridge', 'other']) {
+      assert.ok(typeof lang.origin?.[k] === 'string' && lang.origin[k], `origin.${k}`)
+    }
+    for (const k of ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'work', 'person', 'bridge', 'other']) {
+      assert.ok(lang.originTitle?.[k], `originTitle.${k}`)
+    }
+    for (const k of ['task', 'stream', 'done_task', 'done_stream']) assert.ok(lang.origin.work?.[k], `origin.work.${k}`)
+    assert.ok(lang.originHelp && lang.originSpoken && lang.originViaCockpit && lang.meta.from, 'help, spoken prefix, via cockpit, detail row')
+    for (const k of ['done_task', 'done_stream']) assert.ok(lang.kind[k] && lang.kindTitle[k], `kind.${k}`)
+    assert.ok(lang.helpTopics.rows.some(([k]) => k === lang.originHelp), 'the help names where a row comes from')
+  }
+  // task or stream reads the same everywhere: the board chip says Stream too
+  assert.match(text.TABLES.de.gh.streamChip('x'), /^Stream /)
+  assert.equal(text.TABLES.de.origin.other, 'Andere Quelle')
   const panel = day.slice(day.indexOf('function RowPanel'), day.indexOf('export function StartMenu'))
   assert.match(panel, /t\.streamHint/)
 })

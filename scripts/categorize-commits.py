@@ -585,6 +585,9 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/bridges.py",
     "scripts/lib/bridge_cockpit/organize.py",             # organize with AI: one proposal, ticked items applied
     "scripts/lib/bridge_cockpit/triage.py",
+    "scripts/lib/bridge_cockpit/origin.py",               # where a work row comes from, and task or stream
+    "scripts/tests/test_bridge_cockpit_origin.py",
+    "scripts/tests/test_bridge_cockpit_origin_flow.py",
     "scripts/triage.py",
     "scripts/tests/test_triage.py",
     "scripts/work-find.py",                               # the search over work/ (files view, chat sessions)

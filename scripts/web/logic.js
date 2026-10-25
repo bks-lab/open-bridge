@@ -81,15 +81,65 @@ export function parseShortcut(text) {
   return t.split(/\s+/).map(code => ({ n: Number(code.slice(0, -1)), letter: code.slice(-1) }))
 }
 
+/** Where a row comes from, as the server classified it (lib/bridge_cockpit/origin.py): the category, a word key
+ * (a board's name, the kind of a task or stream), a short detail, the raw text as written, a ref, and whether a click
+ * in the cockpit filed it. The page never parses a source itself */
+export const ORIGIN_CATEGORIES = ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'work', 'person', 'bridge', 'other']
+export const WORK_KINDS = ['task', 'stream', 'done_task', 'done_stream']
+
+export function originOf(row) {
+  const o = row?.origin ?? null
+  return o && ORIGIN_CATEGORIES.includes(o.category) ? o : null
+}
+
+/** Whether the task or stream a row is, or is about, is a task, a stream, a closed task or an ended stream: the
+ * server's work_kind, else the task row of that slug (indexRows), else the stream flag of an older server */
+export function workKindOf(row, s) {
+  if (WORK_KINDS.includes(row?.work_kind)) return row.work_kind
+  const slug = row?.task ?? row?.about_task ?? null
+  if (slug) {
+    const k = indexRows(s?.model).get(`task:${slug}`)?.work_kind
+    if (WORK_KINDS.includes(k)) return k
+  }
+  if (row?.task) return row.stream ? 'stream' : 'task'
+  if (row?.about_task) return row.about_kind === 'stream' ? 'stream' : 'task'
+  return null
+}
+
 /** What a row is, the second axis beside its section (which says what it needs from you): 'task' finite work
- * under work/tasks/, 'stream' long-running work under work/streams/, 'inbox' a report in the inbox (`task` the task
- * it is about, if any), 'issue' an issue on a board (owner/repo#n), 'other' an item of another briefing source
- * (an application, a deadline, a check), with that source's name. Shown first on every row (views/day.js KindTag) */
-export function rowKind(row) {
-  if (row?.inbox_id) return { kind: 'inbox', task: row.task ?? null }
-  if (row?.task) return { kind: row.stream ? 'stream' : 'task', task: row.task }
-  if (typeof row?.ref === 'string' && /^[\w.-]+\/[\w.-]+#\d+$/.test(row.ref)) return { kind: 'issue', ref: row.ref }
+ * under work/tasks/, 'stream' long-running work under work/streams/, 'done_task' and 'done_stream' the same once
+ * closed under work/done/, 'inbox' a report in the inbox, 'issue' an issue on a board (owner/repo#n), each of these
+ * two with `task` and `taskKind` for the task or stream it is about, 'other' an item of another briefing source
+ * (an application, a deadline, a check). Shown first on every row (views/day.js KindTag) */
+export function rowKind(row, s) {
+  if (row?.inbox_id) {
+    const task = row.task ?? row.about_task ?? null
+    return { kind: 'inbox', task, taskKind: task ? workKindOf(row, s) : null }
+  }
+  if (typeof row?.ref === 'string' && /^[\w.-]+\/[\w.-]+#\d+$/.test(row.ref)) {
+    const task = row.about_task ?? row.task ?? null
+    return { kind: 'issue', ref: row.ref, task, taskKind: task ? workKindOf(row, s) : null }
+  }
+  if (row?.task) return { kind: workKindOf(row, s) ?? 'task', task: row.task }
   return { kind: 'other', source: row?.sources?.[0] ?? null }
+}
+
+/** The work kind of a place under work/ (a search hit's path): a task, a stream, or closed under work/done/ */
+export function placeKind(path) {
+  const m = /^work\/(tasks|streams|done)\//.exec(String(path ?? ''))
+  return m ? { tasks: 'task', streams: 'stream', done: 'done_task' }[m[1]] : null
+}
+
+/** A page item (By source, the Jev list, a board row) in the shape KindTag and OriginTag read: an inbox item, an
+ * issue (its board facts or its row id), a task, else an item; with the task or stream a board row is about */
+export function itemRow(it) {
+  const gh = it?.gh ?? null
+  const id = typeof it?.row_id === 'string' && /^[\w.-]+\/[\w.-]+#\d+$/.test(it.row_id) ? it.row_id : null
+  const ref = gh?.repo && Number.isInteger(gh?.number) ? `${gh.repo}#${gh.number}` : id
+  const about = it?.task ? null : (gh?.task ?? null)
+  return { key: it?.key ?? null, inbox_id: it?.inbox && !ref ? it.inbox : null, task: it?.task ?? null, ref,
+    about_task: about, about_kind: it?.about_kind ?? (about ? (gh?.stream ? 'stream' : 'task') : null),
+    work_kind: it?.work_kind ?? null, origin: it?.origin ?? null, stream: false, sources: [] }
 }
 
 /** The rows of a section by the repo of their issue (owner/repo#n), in the order a repo first shows up; rows

@@ -7,8 +7,8 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
 import { Btn, Chip, Icon, PrioChip, Spinner, StateLine } from './parts.js'
-import { actionRow, ghSortRows, pageItemActs, rowActionKey } from '../logic.js'
-import { RowBar } from './day.js'
+import { actionRow, ghSortRows, itemRow, pageItemActs, rowActionKey } from '../logic.js'
+import { OriginTag, RowBar } from './day.js'
 import { RowSteps } from './pages.js'
 import { rowClickOpens } from './overlays.js'
 import { Card } from './settings.js'
@@ -272,6 +272,7 @@ function GhRow({ it, page, section, s, c, byKey }) {
     <div class="ghl-main">
       <p class="ghl-title">${g.title || it.title}</p>
       <p class="ghl-meta">
+        <${OriginTag} row=${itemRow(it)} origin=${it.origin ?? { category: 'github', word_key: null, detail: g.repo ?? null, raw: null, ref: null, via_cockpit: false }} />
         ${g.number ? html`<span class="mono muted" title=${g.repo ?? ''}>${repoName}#${g.number}</span>` : null}
         ${g.type === 'draft' ? html`<span class="ghl-chip ghl-chip-draft" title=${t.gh.draftCardTitle}>${t.gh.draftCard}</span>` : null}
         <${PrioChip} priority=${g.priority} />
