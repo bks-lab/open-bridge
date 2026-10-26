@@ -34,7 +34,7 @@ from .store import append_log
 from .actions_base import *  # noqa: F401,F403
 from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
-                           READ_ONLY_VERBS, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
+                           READ_ONLY_VERBS, REASON_MAX, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
                            STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
                            Ctx, bad_arg, check_date, check_key, check_text)
 from .actions_chats import ChatVerbs
@@ -149,6 +149,13 @@ def _line(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
     return check_text(value, name, STEP_MAX)
 
 
+def _reason(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # why a task is shelved: one line, its blanks collapsed, refused when it does not fit, never cut
+    if isinstance(value, str) and re.search(r"[\n\r\t]", value):
+        raise bad_arg(name, "one line, no tabs")
+    return " ".join(check_text(value, name, REASON_MAX).split())
+
+
 def _tab_name(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
     # compared with the tab's name as it is, so never stripped
     if not isinstance(value, str) or not 1 <= len(value) <= 120 or "\x00" in value or CONTROL_RE.search(value):
@@ -197,6 +204,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "index": _index,
     "title": _title,
     "line": _line,
+    "reason": _reason,
     "tab_name": _tab_name,
     "digit": _digit,
     "organize_items": _organize_items,

@@ -258,6 +258,27 @@ class WorkVerbs:
         self.settle(ctx, row, self.tx["dropped_muted" if muted else "dropped"])
         self.settle_soon(ctx)
 
+    def v_shelve(self, ctx: Ctx, key: str, reason: str, until: str | None = None) -> None:
+        """"Drop because" on a task (the Work through page): parked without being lost, in one step of task.py shelve,
+        an idea in the inbox deferred until a day and the task closed as declined, the reason on both. Only a finite
+        task: a stream never ends this way, an inbox item or any other row is dropped or settled instead. The reason
+        is one argv word, glued to its flag, so a reason that looks like a flag stays text. Taken back by reopening
+        the task, which closes the idea again (task.py reopen)."""
+        entry = self.entry(key)
+        row = entry["row"]
+        if not row.get("task") or row.get("inbox_id") or row.get("stream") or (entry["out"] or {}).get("stream"):
+            raise self.not_applicable("only a task is shelved; a stream runs on, an inbox item is dropped", "key")
+        slug = self.slug(row)
+        before = self.task_status(slug)     # read before the shelve moves the folder: the undo restores it
+        argv = self.task_cmd("shelve", slug, f"--reason={reason}", *(["--until", until] if until else []))
+        run = ctx.call("task.shelve", slug, argv, SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["shelve_failed"].format(title=m.short(row["title"], 40), err=m.short(run.err, 100)), bad=True)
+            return
+        ctx.history.append(history_item(row["key"], row["title"], "task", "shelved", slug, before, work_kind="task"))
+        self.settle(ctx, row, self.tx["task_shelved"])
+        self.settle_soon(ctx)
+
     def v_inbox_unmute(self, ctx: Ctx, id: str) -> None:  # noqa: A002 - the API name
         run = ctx.call("inbox.unmute", id, self.inbox("unmute", id), SHORT_TIMEOUT)
         if run.ok:

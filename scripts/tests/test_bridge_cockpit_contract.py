@@ -211,6 +211,12 @@ def s_waits(w: World) -> None:
     w.act("task_running", slug="demo-task")
 
 
+def s_shelve(w: World) -> None:
+    """The Work through page's "Drop because" on a task: a reason that looks like flags, and a day"""
+    w.act("shelve", key="task:other-task", reason="--until 2030-01-01; not needed")
+    w.act("shelve", key="task:demo-task", reason="after the release", until=TOMORROW)
+
+
 def s_to_task(w: World) -> None:
     w.runner.handlers["task.new"] = lambda argv: ok(json.dumps({"slug": "tidy-labels", "status": "backlog"}))
     w.act("to_task", key=f"inbox:{YES_ID}")
@@ -374,6 +380,7 @@ SCENARIOS = {
     "resume": Scenario(s_resume, {"workplace.launch"}),
     "filed": Scenario(s_filed, {"inbox.add", "workplace.launch"}),
     "waits": Scenario(s_waits, {"inbox.defer", "task.wait"}),
+    "shelve": Scenario(s_shelve, {"task.shelve"}),
     "to_task": Scenario(s_to_task, {"task.new"}),
     "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.area", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
     "task_edits": Scenario(s_task_edits, {"task.priority", "task.note", "task.next", "task.close"}),

@@ -249,12 +249,55 @@ def test_the_state_hands_the_work_view_and_the_focus_switch_to_the_page(tmp_path
     base = "cockpit:\n  enabled: true\n  language: en\n"
     w = World(tmp_path / "a", config=base, serve=False, prepare=False)
     try:
-        assert w.app.state_payload()["work"] == {"view": "due", "focus_to_files": False, "files_scope": "active"}
+        assert w.app.state_payload()["work"] == {"view": "due", "focus_to_files": False, "files_scope": "active",
+                                                 "flow": cf.flow_defaults()}
     finally:
         w.close()
     w = World(tmp_path / "b", config=base + "  work_view: files\n  focus_to_files: true\n", serve=False, prepare=False)
     try:
-        assert w.app.state_payload()["work"] == {"view": "files", "focus_to_files": True, "files_scope": "active"}
+        assert w.app.state_payload()["work"] == {"view": "files", "focus_to_files": True, "files_scope": "active",
+                                                 "flow": cf.flow_defaults()}
+    finally:
+        w.close()
+
+
+# ---------------------------------------------------------------- cockpit.flow (the Work through page)
+
+def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(tmp_path):
+    cfg = load_web_config(tmp_path, {})
+    assert cfg.flow == {"enabled": False, "drop_reasons": ["resolves_itself", "not_needed", "someone_else", "not_worth_it"],
+                        "return_after_s": 20}
+    assert cfg.flow == cf.flow_defaults() and cfg.config_warnings == ()
+
+
+def test_the_flow_block_takes_its_three_keys(tmp_path):
+    block = {"enabled": True, "drop_reasons": ["not_needed", "the vendor does it"], "return_after_s": 45}
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": block}})
+    assert cfg.flow == block and cfg.config_warnings == ()
+    # off again by a bare `off`, and a delay of 0 asks for the return card at once
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"enabled": False, "return_after_s": 0}}})
+    assert cfg.flow["enabled"] is False and cfg.flow["return_after_s"] == 0
+
+
+def test_a_wrong_flow_value_keeps_its_default_and_names_the_key(tmp_path):
+    block = {"enabled": "yes", "drop_reasons": "not_needed", "return_after_s": -5, "rerank": 3}
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": block}})
+    assert cfg.flow == cf.flow_defaults()
+    keys = sorted(w.split(":", 1)[0] for w in cfg.config_warnings)
+    assert keys == ["cockpit.flow.drop_reasons", "cockpit.flow.enabled", "cockpit.flow.rerank", "cockpit.flow.return_after_s"]
+    # a list with an empty or overlong reason keeps the good ones and says which were left out
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"drop_reasons": ["not_needed", "", "x" * 81, 7]}}})
+    assert cfg.flow["drop_reasons"] == ["not_needed"] and len(cfg.config_warnings) == 1
+    assert cfg.config_warnings[0].startswith("cockpit.flow.drop_reasons")
+    assert warnings_of(tmp_path, {"flow": "on"})[0].startswith("cockpit.flow:")
+
+
+def test_the_state_hands_the_flow_block_to_the_page(tmp_path):
+    base = "cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: true\n    return_after_s: 30\n"
+    w = World(tmp_path / "a", config=base, serve=False, prepare=False)
+    try:
+        flow = w.app.state_payload()["work"]["flow"]
+        assert flow == {**cf.flow_defaults(), "enabled": True, "return_after_s": 30}
     finally:
         w.close()
 

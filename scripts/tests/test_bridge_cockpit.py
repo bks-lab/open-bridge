@@ -1428,6 +1428,56 @@ def test_runs_on_puts_off_an_item_with_what_it_waits_on_and_quiets_a_task(world)
     assert writes(world)[0] == K(world, "wait", "demo-task", "--clear", "--json")
 
 
+def test_shelve_parks_a_task_with_its_reason_and_reopen_takes_it_back(world):
+    # "Drop because" of the Work through page on a task: task.py shelve, an idea in the inbox and the task declined
+    world.runner.calls.clear()
+    res = world.act("shelve", key="task:other-task", reason="not needed any more")
+    assert writes(world) == [K(world, "shelve", "other-task", "--reason=not needed any more")]
+    assert res["ok"] is True and res["settled"] == ["task:other-task"]
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    assert undo["verb"] == "task_reopen" and undo["args"]["slug"] == "other-task"
+    assert res["undo"][0]["undo"] == undo
+
+
+def test_shelve_names_the_day_the_idea_comes_back_when_one_is_given(world):
+    world.runner.calls.clear()
+    world.act("shelve", key="task:other-task", reason="after the release", until=TOMORROW)
+    assert writes(world) == [K(world, "shelve", "other-task", "--reason=after the release", "--until", TOMORROW)]
+
+
+def test_shelve_is_for_a_task_only_and_needs_its_reason(world):
+    world.runner.calls.clear()
+    refused(world, "not_applicable", "shelve", key="task:quiet-task", reason="a stream never ends this way")
+    refused(world, "not_applicable", "shelve", key=f"inbox:{YES_ID}", reason="an inbox item is dropped")
+    refused(world, "invalid_argument", "shelve", key="task:other-task")
+    refused(world, "invalid_argument", "shelve", key="task:other-task", reason="   ")
+    refused(world, "invalid_argument", "shelve", key="task:other-task", reason="x" * 201)
+    refused(world, "invalid_argument", "shelve", key="task:other-task", reason="ok", until=TODAY)
+    assert writes(world) == []
+
+
+def test_a_shelve_reason_that_looks_like_flags_stays_one_word(world):
+    world.runner.calls.clear()
+    world.act("shelve", key="task:other-task", reason="--until 2030-01-01 --json; rm -rf /")
+    argv = writes(world)[0]
+    assert argv == K(world, "shelve", "other-task", "--reason=--until 2030-01-01 --json; rm -rf /")
+    assert "--until" not in argv and "--json" not in argv
+
+
+def test_a_failed_shelve_leaves_the_task_and_says_so(world):
+    world.runner.handlers["task.shelve"] = lambda argv: fail("task: no task 'other-task'")
+    res = world.act("shelve", key="task:other-task", reason="not needed")
+    assert res["ok"] is False and res["settled"] == [] and "other-task" not in json.dumps(world.app.history.state())
+
+
+def test_do_it_with_a_sentence_never_approves_a_yes_item(world):
+    # the Work through page starts every agent with a sentence, so a your-yes item is never released unseen (F3)
+    world.runner.calls.clear()
+    res = world.act("do_it", keys=[f"inbox:{YES_ID}"], note="Tidy them. At the end, write a note \"Result: ...\" on the item.")
+    assert world.runner.of("inbox.approve") == [] and res["settled"] == []
+    assert world.runner.of("workplace.launch")
+
+
 def test_an_inbox_item_becomes_a_task_and_leaves_the_list(world):
     world.runner.handlers["task.new"] = lambda argv: ok(json.dumps({"slug": "tidy-labels", "status": "backlog"}))
     world.runner.calls.clear()
@@ -2851,6 +2901,11 @@ def test_a_tab_screen_the_driver_cannot_read_says_so(world):
     ("chat_tab", {"text": "x" * 4001}),
     ("chat_tab", {"text": "a\x1bb"}),
     ("chat_tab", {}),
+    ("shelve", {"key": "task:other-task"}),
+    ("shelve", {"key": "task:other-task", "reason": "a\x1bb"}),
+    ("shelve", {"key": "task:other-task", "reason": "x" * 201}),
+    ("shelve", {"key": "task:other-task", "reason": "ok", "until": "2026-13-01"}),
+    ("shelve", {"key": "task:--all", "reason": "ok"}),
 ])
 def test_argument_injection_is_rejected_before_any_call(world, verb, args):
     world.runner.calls.clear()

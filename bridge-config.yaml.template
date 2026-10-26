@@ -212,6 +212,10 @@ work:
 #     budget_per_hour: 20  # the most model calls of an hour; a click on a card counts but is never refused
 #     kinds: [task, stream, inbox]
 #     effort: medium       # low | medium | high: how long the model may think before it answers
+#   flow:                  # the Work through page: every open item as one card at a time, five verbs on each
+#     enabled: false       # true: the tab Work through stands right after Today
+#     drop_reasons: [resolves_itself, not_needed, someone_else, not_worth_it]   # what "Drop because" offers; own words too
+#     return_after_s: 20   # after "To tab", the page asks how it went once it is in view again this many seconds later
 #   launch:
 #     target: area         # area = the workspace of the item's area (workplace.workspaces) | tab = here | workspace = one each
 #                          # | auto = a small model picks the area or a workspace of its own (workplace.router)

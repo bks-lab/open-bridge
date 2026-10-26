@@ -47,6 +47,8 @@ CONTEXT_MAX = 6000
 QUICK_PLACES = ("core", "suggest")
 # a task's next step as STATUS.md keeps it (task.py next): one line
 STEP_MAX = 300
+# why a task is shelved (the Work through page's "Drop because"): one short line
+REASON_MAX = 200
 # how the chat's route chip came to its choice (logic.js routeOf, views/chat.js)
 ROUTE_BY = ("prefix", "words", "default", "flipped", "forced")
 
@@ -69,6 +71,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # text: the person's sentence, kept where the row lives (WorkVerbs.write_note)
     "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
+    # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
+    # until: the day the idea may surface again, else task.py's own default
+    "shelve": {"key": ("key", True), "reason": ("reason", True), "until": ("date", False)},
     "unhide": {"key": ("key", True)},
     "drop": {"key": ("key", True), "reason": ("drop_reason", False)},
     "inbox_unmute": {"id": ("inbox_id", True)},

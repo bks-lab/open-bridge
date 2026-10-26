@@ -47,7 +47,7 @@ from .returns import Launches
 from .launch import LaunchError, LaunchModel
 from .ticker import Ticker
 from .graph import Graph
-from .config import WebConfig, load_web_config
+from .config import WebConfig, flow_defaults, load_web_config
 from .relay import Relay, default_key_dir, load_key
 from .agents import Agents
 from .bridges import Bridges
@@ -419,9 +419,11 @@ class App:
 
     def work_state(self) -> dict:
         """The work tab as the config sets it: the view it opens on (cockpit.work_view) and whether the start
-        page's focus leads on into the files view (cockpit.focus_to_files) and which tasks are files (cockpit.files_scope)"""
+        page's focus leads on into the files view (cockpit.focus_to_files), which tasks are files (cockpit.files_scope)
+        and the Work through page (cockpit.flow: on or off, its reasons to drop, its return delay)"""
         return {"view": getattr(self.cfg, "work_view", "due"), "focus_to_files": bool(getattr(self.cfg, "focus_to_files", False)),
-                "files_scope": getattr(self.cfg, "files_scope", "active")}
+                "files_scope": getattr(self.cfg, "files_scope", "active"),
+                "flow": dict(getattr(self.cfg, "flow", None) or flow_defaults())}
 
     def tour_state(self) -> dict:
         """The first-run tour: whether a first visit offers it (cockpit.tour) and how it ended, if it did"""

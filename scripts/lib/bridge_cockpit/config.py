@@ -29,6 +29,14 @@ CHAT_LAYOUTS = ("classic", "workspaces")   # workspaces: the chat as cmux shows 
 WORK_VIEWS = ("due", "source", "jev", "files")
 # which tasks the files view holds (cockpit.files_scope): the doing and review ones, or every task and stream
 FILES_SCOPES = ("active", "all")
+# the Work through page (cockpit.flow, page @flow): off unless switched on. drop_reasons are what "Drop because"
+# offers to click, keys the page words (text-flow.js) or a reason of the instance's own, shown as written;
+# return_after_s is how long after a jump to a tab the page asks how it went, once it is in view again
+FLOW_DROP_REASONS = ("resolves_itself", "not_needed", "someone_else", "not_worth_it")
+FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s")
+FLOW_REASON_MAX = 80
+FLOW_REASONS_MAX = 12
+FLOW_RETURN_MAX = 3600
 
 
 JEV_MODEL_RE = re.compile(r"^jev-[0-9]+(\.[0-9]+){1,2}\Z")
@@ -106,6 +114,8 @@ class WebConfig:
     # each item's brief written and kept by a small model (cockpit.describe, describe.py): {auto, budget_per_hour,
     # kinds, effort}; auto off unless switched on, the button on a card works either way
     describe: dict = field(default_factory=dsc.defaults)
+    # the Work through page (cockpit.flow, flow_of): {enabled, drop_reasons, return_after_s}; off by default
+    flow: dict = field(default_factory=lambda: flow_defaults())
     # further sources of A2A peers beside infra/a2a-peers/ (cockpit.a2a_sources, agents.py): ({name, script}, ...),
     # each script a skill's own that lists its peers, reads their cards and asks them in a fixed JSON contract
     a2a_sources: tuple = ()
@@ -138,6 +148,66 @@ def jev_criteria_of(value: Any) -> dict | None:
                 and all(isinstance(x, str) and 0 < len(x.strip()) <= 200 for x in levels)):
             out[scale] = [x.strip() for x in levels]
     return out or None
+
+
+def flow_defaults() -> dict:
+    return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20}
+
+
+def _flow_reasons(value: Any) -> tuple[list[str], list[str]]:
+    """The reasons of a drop_reasons list that fit (text of 1 to FLOW_REASON_MAX characters, at most
+    FLOW_REASONS_MAX, each once), and the ones left out"""
+    good, bad = [], []
+    for x in value:
+        text = " ".join(x.split()) if isinstance(x, str) else ""
+        if text and len(text) <= FLOW_REASON_MAX and text not in good and len(good) < FLOW_REASONS_MAX:
+            good.append(text)
+        else:
+            bad.append(x)
+    return good, bad
+
+
+def flow_of(value: Any) -> dict:
+    """cockpit.flow on top of the defaults, key by key: a bad value keeps the default of its key, a list of reasons
+    keeps the ones that fit (the defaults when none does)"""
+    out = flow_defaults()
+    if not isinstance(value, dict):
+        return out
+    if isinstance(value.get("enabled"), bool):
+        out["enabled"] = value["enabled"]
+    if isinstance(value.get("drop_reasons"), list):
+        out["drop_reasons"] = _flow_reasons(value["drop_reasons"])[0] or out["drop_reasons"]
+    after = value.get("return_after_s")
+    if _is_int(after) and 0 <= after <= FLOW_RETURN_MAX:
+        out["return_after_s"] = after
+    return out
+
+
+def _check_flow(value: Any, used: dict, where: str) -> list[str]:
+    """One warning per unknown key or value flow_of replaced, naming what is used instead"""
+    if not isinstance(value, dict):
+        return [f"{where}: must be a mapping, got {_show(value)}; using enabled false"]
+    out = []
+    for key, v in value.items():
+        at = f"{where}.{str(key)[:40]}"
+        if v is None:
+            continue
+        if key == "enabled" and not isinstance(v, bool):
+            out.append(f"{at}: must be true or false, got {_show(v)}; using {_show(used['enabled'])}")
+        elif key == "drop_reasons":
+            if not isinstance(v, list):
+                out.append(f"{at}: must be a list of reasons, got {_show(v)}; using the default reasons")
+            else:
+                bad = _flow_reasons(v)[1]
+                if bad:
+                    out.append(f"{at}: {', '.join(_show(x) for x in bad[:3])} is no reason of 1 to {FLOW_REASON_MAX} "
+                               f"characters, or one too many; ignored")
+        elif key == "return_after_s" and (not _is_int(v) or not 0 <= v <= FLOW_RETURN_MAX):
+            out.append(f"{at}: must be a whole number of seconds from 0 to {FLOW_RETURN_MAX}, got {_show(v)}; "
+                       f"using {used['return_after_s']}")
+        elif key not in FLOW_KEYS:
+            out.append(f"{at}: unknown key, ignored")
+    return out
 
 
 def language_of(value: Any) -> str:
@@ -186,6 +256,7 @@ BLOCK = {
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
     "files_scope": ("choice", "files_scope", FILES_SCOPES),
     "origin_map": ("origin_map",), "describe": ("describe",), "a2a_sources": ("a2a_sources",),
+    "flow": ("flow",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -385,6 +456,9 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
         if kind == "describe":
             out += dsc.check(value, cfg.describe, at)
             continue
+        if kind == "flow":
+            out += _check_flow(value, cfg.flow, at)
+            continue
         if kind == "a2a_sources":
             out += a2a_sources_of(value, cfg.root)[1]
             continue
@@ -474,6 +548,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     files_scope=w["files_scope"] if w.get("files_scope") in FILES_SCOPES else "active",
                     origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),
                     a2a_sources=a2a_sources_of(w.get("a2a_sources"), root)[0],
+                    flow=flow_of(w.get("flow")),
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)
