@@ -84,6 +84,16 @@ note that `work/streams/` long-runners are **excluded from the WIP cap**
 **Threshold rule:** ≥70% confidence → silent extend. 30-70% → ask
 "fits `<existing-slug>` or new?". <30% → propose new.
 
+## Closing, declining, shelving
+
+A task ends in one of three ways, each one command: `task.py close <slug>` (done),
+`task.py close <slug> --declined --reason ...` (decided against, `outcome: declined`), and
+`task.py shelve <slug> [--until DAY] [--reason ...]` (nobody works on it, but it may matter later).
+Shelve is a decline that keeps a way back: it files an idea (key `shelve:<slug>`) in the inbox,
+deferred for 90 days by default, and closes the task as declined. `task.py reopen <slug>` brings the
+task back and closes that idea. Use shelve instead of the manual add, close, defer sequence; streams
+are never shelved. Detail: [`docs/work-system.md`](../docs/work-system.md) § 3-step close.
+
 ## Deliverables Location — never /tmp
 
 Any artifact a user or customer is meant to see, edit, or send — HTML

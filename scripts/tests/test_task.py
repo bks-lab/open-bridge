@@ -484,3 +484,134 @@ def test_close_names_the_files_that_still_link_to_the_old_place(repo):
     out = _json.loads(r.stdout)
     assert out["stale_links"] == ["work/tasks/beta/STATUS.md"]
     assert any("check-edges.py --fix" in w for w in out["warnings"])
+
+
+# ---------------------------------------------------------------- shelve: park a finite task as an idea
+
+def _inbox(repo):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("inbox_mod_shelve", ROOT / "scripts" / "inbox.py")
+    ib = importlib.util.module_from_spec(spec)
+    sys.modules["inbox_mod_shelve"] = ib
+    spec.loader.exec_module(ib)
+    return ib.Inbox(repo / "work" / "inbox", actor="test")
+
+
+def _headlined(repo):
+    p = repo / "work/tasks/alpha/STATUS.md"
+    p.write_text(p.read_text(encoding="utf-8").replace("status: doing\n", 'status: doing\nheadline: "Sort the shelf"\n', 1),
+                 encoding="utf-8")
+
+
+def test_shelve_files_an_idea_defers_it_and_closes_the_task_as_declined(repo):
+    import datetime
+    import json as _json
+    _log_with_today(repo)
+    _headlined(repo)
+    r = run(repo, "shelve", "alpha", "--reason", "no time this quarter", "--json")
+    assert r.returncode == 0, r.stderr
+    out = _json.loads(r.stdout)
+    today = datetime.date.today()
+    month = f"{today:%Y-%m}"
+    assert out["moved_to"] == f"work/done/{month}/alpha" and out["until"] == (today + datetime.timedelta(days=90)).isoformat()
+    assert not (repo / "work/tasks/alpha").exists()
+    text = (repo / f"work/done/{month}/alpha/STATUS.md").read_text(encoding="utf-8")
+    assert "outcome: declined" in text and "shelved: no time this quarter" in text
+    item = _inbox(repo).get(out["inbox"])
+    assert item.key == "shelve:alpha" and item.kind == "idea" and item.gate == "only-you" and item.urgency == "later"
+    assert item.summary == "Sort the shelf"
+    assert f"work/done/{month}/alpha/STATUS.md" in item.detail and "task.py reopen alpha" in item.detail
+    assert item.state == "deferred" and item.deferral["until"] == out["until"]
+    assert (repo / "work" / "inbox.md").is_file()
+
+
+def test_shelve_until_and_without_headline_or_reason(repo):
+    import json as _json
+    r = run(repo, "shelve", "alpha", "--until", "2099-03-01", "--json")
+    assert r.returncode == 0, r.stderr
+    out = _json.loads(r.stdout)
+    item = _inbox(repo).get(out["inbox"])
+    assert out["until"] == "2099-03-01" and item.deferral["until"] == "2099-03-01"
+    assert item.summary == "Quoted: title"               # no headline: the title, then the first heading
+    month_dirs = list((repo / "work" / "done").glob("*/alpha/STATUS.md"))
+    assert "Declined: shelved" in month_dirs[0].read_text(encoding="utf-8")
+
+
+def test_shelve_refuses_a_stream_a_bad_day_and_an_unknown_or_closed_task_without_filing_anything(repo):
+    assert run(repo, "shelve", "river").returncode == 1
+    assert "stream" in run(repo, "shelve", "river").stderr
+    assert run(repo, "shelve", "alpha", "--until", "someday").returncode == 1
+    assert run(repo, "shelve", "ghost").returncode == 1
+    assert _inbox(repo).items() == []
+    assert (repo / "work/tasks/alpha/STATUS.md").is_file() and (repo / "work/streams/river/STATUS.md").is_file()
+    assert run(repo, "shelve", "alpha").returncode == 0
+    assert run(repo, "shelve", "alpha").returncode == 1           # already closed
+    assert len(_inbox(repo).items()) == 1
+
+
+def test_a_failed_close_leaves_no_half_state_the_idea_closes_again(repo, monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("task_shelve_fail", ROOT / "scripts" / "task.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(m, "close_task", boom)
+    with pytest.raises(OSError):
+        m.shelve_task(repo, "alpha")
+    assert (repo / "work/tasks/alpha/STATUS.md").is_file()
+    items = _inbox(repo).items()
+    assert len(items) == 1 and items[0].state == "done"          # task still open, no live idea about it
+
+
+def test_reopen_closes_the_shelve_idea_open_or_deferred(repo):
+    import json as _json
+    out = _json.loads(run(repo, "shelve", "alpha", "--json").stdout)
+    box = _inbox(repo)
+    assert box.get(out["inbox"]).state == "deferred"
+    r = run(repo, "reopen", "alpha", "--json")
+    assert r.returncode == 0, r.stderr
+    item = _inbox(repo).get(out["inbox"])
+    assert item.state == "done" and any("reopened" in (e.data.get("text") or "") for e in item.events)
+    assert (repo / "work/tasks/alpha/STATUS.md").is_file()
+    # shelving again files a fresh idea (a closed key may come back)
+    again = _json.loads(run(repo, "shelve", "alpha", "--json").stdout)
+    assert again["inbox"] != out["inbox"]
+    # an idea whose deferral ran out is open, and reopen closes it as well
+    box = _inbox(repo)
+    box.event(again["inbox"], "defer", until="2000-01-01")
+    assert _inbox(repo).get(again["inbox"]).state == "open"
+    assert run(repo, "reopen", "alpha").returncode == 0
+    assert _inbox(repo).get(again["inbox"]).state == "done"
+
+
+def test_reopen_without_a_shelve_idea_or_inbox_is_unchanged(repo):
+    assert run(repo, "close", "alpha").returncode == 0
+    r = run(repo, "reopen", "alpha")
+    assert r.returncode == 0, r.stderr
+    assert not (repo / "work" / "inbox").exists()
+
+
+@pytest.mark.parametrize("verb", ["drop", "reject"])
+def test_shelving_again_after_a_person_ended_the_idea_brings_the_idea_back(repo, verb):
+    import json as _json
+    first = _json.loads(run(repo, "shelve", "alpha", "--json").stdout)
+    getattr(_inbox(repo), verb)(first["inbox"], note="not now")
+    assert run(repo, "reopen", "alpha").returncode == 0
+    r = run(repo, "shelve", "alpha", "--until", "2099-03-01", "--json")
+    assert r.returncode == 0, r.stderr
+    item = _inbox(repo).get(_json.loads(r.stdout)["inbox"])
+    assert item.state == "deferred" and item.deferral["until"] == "2099-03-01"   # never shelved without a live idea
+
+
+def test_a_mute_rule_on_shelve_ideas_is_kept_and_said(repo):
+    import json as _json
+    first = _json.loads(run(repo, "shelve", "alpha", "--json").stdout)
+    _inbox(repo).drop(first["inbox"], note="never tell me", reason="family")
+    assert run(repo, "reopen", "alpha").returncode == 0
+    r = run(repo, "shelve", "alpha", "--json")
+    assert r.returncode == 0, r.stderr
+    out = _json.loads(r.stdout)
+    assert _inbox(repo).get(out["inbox"]).state == "dropped"
+    assert any("mute" in w for w in out["warnings"])
