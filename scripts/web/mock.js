@@ -24,6 +24,7 @@ const WORDS = {
     'Sweep old log files in the scratch folder': 'Alte Logdateien im Scratch-Ordner wegräumen',
     'Write the onboarding guide for the demo project': 'Die Einstiegsanleitung für das Demo-Projekt schreiben',
     'Tidy the old setup notes': 'Die alten Einrichtungsnotizen aufräumen',
+    'Result: the vendor takes the current format, nothing to change': 'Ergebnis: Der Anbieter nimmt das jetzige Format, nichts zu ändern',
     'Settle the invoice format with the vendor': 'Das Rechnungsformat mit dem Anbieter klären',
     'Fix the flaky test in example/repo#12': 'Den wackligen Test in example/repo#12 reparieren',
     'Refresh the docs index': 'Den Doku-Index auffrischen',
@@ -827,6 +828,16 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
       // what the server sends: the asks of Now, the same number as counts.now
       briefing_badge: forYou,
+      // the return channel (returns.py): a start whose tab went still without a question (idle: its agent ended,
+      // the shell is left), and one whose task got its result line ("Result: ...", a note on the task since the start)
+      returns: empty ? [] : [
+        { key: 'task:quiet-docs', item: 'quiet-docs', title: 'Tidy the old setup notes', mode: 'go', at_ms: now - 150 * MIN,
+          stage: 'idle', in_briefing: true, result: null,
+          tab: { ref: 'surface:11', state: 'shell', since_ms: now - 140 * MIN, last: '' } },
+        { key: 'task:vendor-reply', item: 'vendor-reply', title: 'Settle the invoice format with the vendor', mode: 'go', at_ms: now - 90 * MIN,
+          stage: 'result', in_briefing: true, tab: null,
+          result: { kind: 'note', text: 'Result: the vendor takes the current format, nothing to change', key: null, at_ms: null } },
+      ],
     },
     // the terminal's workspace list (the chat as cmux); two workspaces share a title and are told apart by ref
     tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs, workspaces: empty ? [] : [
