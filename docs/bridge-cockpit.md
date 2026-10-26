@@ -217,6 +217,7 @@ block). It counts the rows of Now that ask you: every row that is no inbox
 item, and of the inbox only the asks (decision, question, draft). An idea or a
 report filed for today still stands in Now, it is just not counted, so the
 section's own head can show the larger number ([inbox.md § Arts](inbox.md#arts)).
+The start page's lists named "waiting on you" show the same asks.
 A finding is red wherever it is; every other count is grey. A page
 badge that adds up several sections names them in its tooltip. A finding on a
 status page also shows as a banner on the Today tab.

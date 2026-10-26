@@ -654,7 +654,8 @@ function HomeBoard({ s, c }) {
   const project = [...projects, ...named.map(a => a.name)]
     .find(p => p.toLowerCase() === String(s.ui.area ?? '').trim().toLowerCase()) ?? null
   const cont = homeContinue(tabs, project)
-  const waiting = waitingAll.filter(r => inProject(r, project))
+  // the shelf is named waiting on you: the asks of Now, as the tile beside it counts them (an idea asks nothing)
+  const waiting = waitingAll.filter(r => asksYou(r) && inProject(r, project))
   const tasks = tasksAll.filter(r => inProject(r, project))
   const now = new Date(s.now || Date.now())
   const day = dayLabel(now, lang)

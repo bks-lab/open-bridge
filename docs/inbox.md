@@ -341,7 +341,9 @@ unchanged. What an existing instance notices:
 2. **The count.** "N for you today" in the briefing headline and the cockpit's
    "waits for you" (the coloured Today number, the station, the area lines) count
    only the asks of the inbox. Ideas and reports still show in Do and Now, so the
-   number can be smaller than the rows there. A profile that wants an idea or a
+   number can be smaller than the rows there. The two lists on the cockpit's start
+   page that carry the label "waiting on you" (the station's panel and the shelf)
+   list the asks only, so their count matches the tile beside them. A profile that wants an idea or a
    report counted files it as a `question` or `decision`.
 3. **New filter.** `list --art ask|report|idea` and an `art` field in every
    `list --json` row. A consumer that reads `list --json` with a fixed set of

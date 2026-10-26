@@ -248,8 +248,8 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
       ${pace ? html`<${InspectRow} tone=${pace.over ? 'warning' : 'info'} title=${h.projected(pct(pace.projected, lang))} sub=${x.it.when ? h.reset(x.it.when) : ''} />` : null}
       ${foot(h.details, () => c.openInfo(x.it, x.page, x.section))}`
   } else if (x.id === 'c:waiting') {
-    const rows = (s.model?.sections ?? []).find(r => r.id === 'now')?.rows ?? []
-    // the morning round from the start page: the first row carries its buttons, and once it is settled
+    const rows = (s.model?.sections ?? []).find(r => r.id === 'now')?.rows?.filter(asksYou) ?? []
+    // the asks of Now, as the station counts them; the morning round from the start page: the first row carries its buttons, and once it is settled
     // the next one moves up and carries them; a row whose task already has a tab leads to that tab
     const acts = r => html`<${RowBar} row=${r} s=${s} c=${c} tab=${tabOfTask(tabs, r.task)} />`
     const queue = homeRowQueue(rows.slice(0, 8))
