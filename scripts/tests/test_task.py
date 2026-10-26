@@ -591,3 +591,27 @@ def test_reopen_without_a_shelve_idea_or_inbox_is_unchanged(repo):
     r = run(repo, "reopen", "alpha")
     assert r.returncode == 0, r.stderr
     assert not (repo / "work" / "inbox").exists()
+
+
+@pytest.mark.parametrize("verb", ["drop", "reject"])
+def test_shelving_again_after_a_person_ended_the_idea_brings_the_idea_back(repo, verb):
+    import json as _json
+    first = _json.loads(run(repo, "shelve", "alpha", "--json").stdout)
+    getattr(_inbox(repo), verb)(first["inbox"], note="not now")
+    assert run(repo, "reopen", "alpha").returncode == 0
+    r = run(repo, "shelve", "alpha", "--until", "2099-03-01", "--json")
+    assert r.returncode == 0, r.stderr
+    item = _inbox(repo).get(_json.loads(r.stdout)["inbox"])
+    assert item.state == "deferred" and item.deferral["until"] == "2099-03-01"   # never shelved without a live idea
+
+
+def test_a_mute_rule_on_shelve_ideas_is_kept_and_said(repo):
+    import json as _json
+    first = _json.loads(run(repo, "shelve", "alpha", "--json").stdout)
+    _inbox(repo).drop(first["inbox"], note="never tell me", reason="family")
+    assert run(repo, "reopen", "alpha").returncode == 0
+    r = run(repo, "shelve", "alpha", "--json")
+    assert r.returncode == 0, r.stderr
+    out = _json.loads(r.stdout)
+    assert _inbox(repo).get(out["inbox"]).state == "dropped"
+    assert any("mute" in w for w in out["warnings"])

@@ -678,6 +678,14 @@ def shelve_task(root: Path, slug: str, *, until: str | None = None, reason: str 
     item_id = box.add(source="task", kind="idea", summary=headline, gate="only-you", urgency="later", detail=detail,
                       key=f"shelve:{slug}")
     created = box.last_new == item_id
+    muted = None
+    if box.get(item_id).state not in ("open", "deferred"):
+        # add() hands back the last idea under this key when a person dropped or rejected it. A new shelve is a
+        # new decision, so that idea comes back; only a mute rule the person wrote keeps it dropped.
+        muted = box.muted_by("task", "idea", f"shelve:{slug}")
+        if muted is None:
+            box.event(item_id, "reopen", text=f"{slug} shelved again")
+            created = True
     try:
         box.event(item_id, "defer", until=until)
         out = close_task(root, slug, reason=f"shelved: {reason}" if reason else "shelved", declined=True, now=now)
@@ -692,6 +700,9 @@ def shelve_task(root: Path, slug: str, *, until: str | None = None, reason: str 
         (work / "inbox.md").write_text(box.render(), encoding="utf-8")
     except Exception as exc:  # noqa: BLE001 - the task is shelved; a stale view is a warning
         out["warnings"].append(f"work/inbox.md not rendered: {exc}")
+    if muted is not None:
+        out["warnings"].append(f"the idea {item_id} stays dropped: mute rule {muted.get('id')} holds for it "
+                               f"(inbox.py unmute takes the rule back)")
     out.update({"inbox": item_id, "until": until, "headline": headline})
     return out
 
