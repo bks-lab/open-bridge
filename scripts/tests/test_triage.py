@@ -331,7 +331,6 @@ def test_skip_sections_leaves_a_sections_rows_out_and_defaults_to_none(repo):
 
 
 def test_skip_sections_accepts_a_single_name_and_ignores_junk():
-    from importlib import util
     t = triage._task()
     assert t._review_cfg({"work": {"review": {"skip_sections": "applications"}}})["skip_sections"] == ["applications"]
     assert t._review_cfg({"work": {"review": {"skip_sections": 5}}})["skip_sections"] == []
