@@ -106,6 +106,9 @@ class WebConfig:
     # each item's brief written and kept by a small model (cockpit.describe, describe.py): {auto, budget_per_hour,
     # kinds, effort}; auto off unless switched on, the button on a card works either way
     describe: dict = field(default_factory=dsc.defaults)
+    # further sources of A2A peers beside infra/a2a-peers/ (cockpit.a2a_sources, agents.py): ({name, script}, ...),
+    # each script a skill's own that lists its peers, reads their cards and asks them in a fixed JSON contract
+    a2a_sources: tuple = ()
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
     config_warnings: tuple = ()
@@ -182,7 +185,7 @@ BLOCK = {
     "session_guide": ("session_guide",), "tour": ("bool", "tour"),
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
     "files_scope": ("choice", "files_scope", FILES_SCOPES),
-    "origin_map": ("origin_map",), "describe": ("describe",),
+    "origin_map": ("origin_map",), "describe": ("describe",), "a2a_sources": ("a2a_sources",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -309,6 +312,44 @@ def origin_map_of(value: Any) -> tuple[tuple, list[str]]:
     return tuple(out), warnings
 
 
+A2A_SOURCE_NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
+A2A_SOURCE_SCRIPT_RE = re.compile(r"skills/[a-z0-9][a-z0-9-]{0,63}/scripts/[a-z0-9_][a-z0-9_-]{0,63}\.py")
+MAX_A2A_SOURCES = 4
+
+
+def a2a_sources_of(value: Any, root: Path | None) -> tuple[tuple, list[str]]:
+    """cockpit.a2a_sources as ({name, script}, ...) in file order, and a warning for each entry left out: not a
+    mapping, a name that is no slug or repeats, a script that is not skills/<skill>/scripts/<name>.py or does
+    not exist under `root`, more than MAX_A2A_SOURCES."""
+    where = "cockpit.a2a_sources"
+    if value is None:
+        return (), []
+    if not isinstance(value, list):
+        return (), [f"{where}: must be a list, got {_show(value)}; using none"]
+    out, warnings, seen = [], [], set()
+    for i, entry in enumerate(value):
+        at = f"{where}[{i}]"
+        if not isinstance(entry, dict):
+            warnings.append(f"{at}: must be a mapping with name and script, got {_show(entry)}; ignored")
+            continue
+        name, script = entry.get("name"), entry.get("script")
+        if not isinstance(name, str) or not A2A_SOURCE_NAME_RE.fullmatch(name) or name in seen:
+            warnings.append(f"{at}.name: {_show(name)} is no short lower-case name or repeats; ignored")
+            continue
+        if not isinstance(script, str) or not A2A_SOURCE_SCRIPT_RE.fullmatch(script):
+            warnings.append(f"{at}.script: {_show(script)} is not skills/<skill>/scripts/<name>.py; ignored")
+            continue
+        if root is not None and not (Path(root) / script).is_file():
+            warnings.append(f"{at}.script: {_show(script)} does not exist; ignored")
+            continue
+        if len(out) >= MAX_A2A_SOURCES:
+            warnings.append(f"{at}: more than {MAX_A2A_SOURCES} sources; ignored")
+            continue
+        seen.add(name)
+        out.append({"name": name, "script": script})
+    return tuple(out), warnings
+
+
 def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict = BLOCK) -> tuple:
     """One warning per unknown key, wrong type or value the loader replaced, naming the key and the value
     `cfg` (the loaded config) uses instead. A None value counts as left out, as it does for the loader."""
@@ -343,6 +384,9 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
             continue
         if kind == "describe":
             out += dsc.check(value, cfg.describe, at)
+            continue
+        if kind == "a2a_sources":
+            out += a2a_sources_of(value, cfg.root)[1]
             continue
         if kind == "block":
             if not isinstance(value, dict):
@@ -429,6 +473,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     focus_to_files=w.get("focus_to_files") is True,
                     files_scope=w["files_scope"] if w.get("files_scope") in FILES_SCOPES else "active",
                     origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),
+                    a2a_sources=a2a_sources_of(w.get("a2a_sources"), root)[0],
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

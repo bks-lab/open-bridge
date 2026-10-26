@@ -73,11 +73,17 @@ class Runner:
         self.claude = resolve_claude() if claude == "auto" else claude
         self.codex = resolve("codex") if codex == "auto" else codex
         self.scripts = frozenset(str(self.code / p) for p in SCRIPT_PATHS)
+        # the scripts of cockpit.a2a_sources (absolute), let through in agents.argv_ok's shapes; set by the app
+        self.a2a_sources: frozenset = frozenset()
         self._live: dict[int, tuple[subprocess.Popen, bool]] = {}    # pid: (process, ends with the cockpit)
         self._live_lock = threading.Lock()
 
     def script(self, rel: str) -> str:
         return str(self.code / rel)
+
+    def source_script(self, rel: str) -> str:
+        """A script of cockpit.a2a_sources: a skill of this Bridge, so under root, not the code checkout."""
+        return str(self.root / rel)
 
     def check(self, argv: list[str]) -> None:
         if not isinstance(argv, list) or len(argv) < 2 or not all(isinstance(a, str) for a in argv):
@@ -87,8 +93,9 @@ class Runner:
         if argv[0] == self.python and argv[1] in self.scripts:
             return
         # a quick question: claude -p with a known model and the three read tools only (quick.py)
-        # a message to an A2A agent: a2a.py ask or get in exactly their shapes (agents.py)
-        if agents.argv_ok(argv, self.python, self.script(agents.SCRIPT)):
+        # a message to an A2A agent: a2a.py ask or get in exactly their shapes, a source script also
+        # peers and card (agents.py)
+        if agents.argv_ok(argv, self.python, self.script(agents.SCRIPT), self.a2a_sources):
             return
         if self.claude and argv[0] == self.claude:
             chat_model = select(self.root, "briefing-chat", provider="claude").model

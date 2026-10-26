@@ -101,7 +101,7 @@ function AgentProfile({ p, onExample, c, s }) {
     [t.agentFact.version, card.version], [t.agentFact.protocol, [card.binding, card.protocol && `A2A ${card.protocol}`].filter(Boolean).join(' · ')],
     [t.agentFact.provider, card.provider?.name], [t.agentFact.endpoint, card.endpoint],
     [t.agentFact.card, p.card ? null : p.card_url],
-    [t.agentFact.access, [p.needs_token ? t.agentToken : t.agentOpen, p.network ? t.agentNet[p.network] ?? p.network : null].filter(Boolean).join(' · ')],
+    [t.agentFact.access, [p.needs_token ? t.agentToken : t.agentOpen, p.network ? t.agentNet[p.network] ?? p.network : null, p.via ? t.agentVia(p.via) : null].filter(Boolean).join(' · ')],
     [t.agentFact.modes, card.input?.length ? `${card.input.join(', ')} → ${(card.output ?? []).join(', ')}` : null],
     [t.agentFact.gate, p.usage?.human_gate], [t.agentFact.allowed, p.usage?.allowed?.length ? p.usage.allowed.map(x => t.agentModes[x] ?? x).join(', ') : null],
     [t.agentFact.owner, p.owner],

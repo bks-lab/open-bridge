@@ -208,6 +208,7 @@ class App:
         self.sessions = Sessions(self)
         self.usage = Usage(root=self.root)
         self.quick = Quick(self, claude=self.runner.claude)
+        self.runner.a2a_sources = frozenset(self.runner.source_script(s["script"]) for s in cfg.a2a_sources)
         self.agents = Agents(self)
         self.bridges = Bridges(self.root)
         self.triage = Triage(self)

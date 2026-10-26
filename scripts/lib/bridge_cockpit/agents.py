@@ -11,6 +11,17 @@ state that is not final; the turn then shows as waiting and `get` reads it again
 sending anything new. Each message runs on a thread of its own; the page gets the state as the
 `agents` event. Conversations are kept in the state dir (agents.json); one untouched for
 cockpit.chat_keep_hours goes to the archive like a quick chat, unless it is sending or a held task waits.
+
+Further peers come from cockpit.a2a_sources: a skill's script that reaches agents another way (behind an
+access proxy, through a broker) and keeps its own credentials. The cockpit calls it only in these shapes and
+reads the last JSON line of its output:
+
+    peers --json                      {"peers": [{"id", "summary"?, "owner"?}, ...]}
+    card --json <peer>                {"card": {<agent card>}}
+    ask --json --wait 90 [--context <id>] <peer> -- <text>   the same answer as a2a.py ask
+    get --json <peer> <task>          the same answer as a2a.py get
+
+A peer file of the same name wins over a source's peer.
 """
 from __future__ import annotations
 
@@ -48,11 +59,19 @@ TASK_FRAME = {
 }
 
 
-def argv_ok(argv: list[str], python: str, script: str) -> bool:
-    """The two shapes the runner lets through for a2a.py: ask (optionally in a context) and get."""
-    if len(argv) < 5 or argv[0] != python or argv[1] != script:
+def argv_ok(argv: list[str], python: str, script: str, sources: frozenset | tuple = ()) -> bool:
+    """The two shapes the runner lets through for a2a.py: ask (optionally in a context) and get; for a
+    script of cockpit.a2a_sources also `peers --json` and `card --json <peer>`."""
+    if len(argv) < 4 or argv[0] != python:
         return False
     rest = argv[2:]
+    if argv[1] in sources:
+        if rest == ["peers", "--json"]:
+            return True
+        if rest[:2] == ["card", "--json"]:
+            return len(rest) == 3 and bool(PEER_RE.match(rest[2]))
+    elif argv[1] != script:
+        return False
     if rest[:1] == ["get"]:
         return len(rest) == 4 and rest[1] == "--json" and bool(PEER_RE.match(rest[2])) and bool(TASK_RE.match(rest[3]))
     if rest[:4] != ["ask", "--json", "--wait", WAIT]:
@@ -110,6 +129,16 @@ CARD_FETCH = {"schemes": ("https",), "accept": "application/json", "user_agent":
               "max_bytes": CARD_MAX_BYTES, "timeout": CARD_TIMEOUT}
 
 
+def last_json(text: str | None) -> Any:
+    """The last line of a script's output that is JSON, or None."""
+    for line in reversed((text or "").strip().splitlines()):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+    return None
+
+
 def fetch_card(url: str) -> dict:
     """GET one agent card through net.fetch; a refusal there (size, deadline, redirect) is the card's error."""
     return json.loads(net.fetch(url, **CARD_FETCH).decode("utf-8"))
@@ -121,6 +150,8 @@ class Agents:
         self.fetch = fetch
         self.lock = threading.Lock()
         self.cards: dict[str, dict] = {}
+        self.source_peers: dict[str, dict] = {}     # id: {source, script, summary, owner}, from cockpit.a2a_sources
+        self.sources_at = 0.0
         self.refreshing = False
         self.convs: dict[str, dict] = {}
         self.expire_failed_ms = 0
@@ -147,7 +178,50 @@ class Agents:
             if not isinstance(url, str) or not url.startswith("https://"):
                 continue
             out[path.stem] = data
+        with self.lock:
+            sourced = dict(self.source_peers)
+        for pid, peer in sourced.items():
+            out.setdefault(pid, peer)       # a peer file of the same name wins
         return out
+
+    def sources(self) -> tuple:
+        return tuple(getattr(getattr(self.app, "cfg", None), "a2a_sources", ()) or ())
+
+    def refresh_sources(self, force: bool = False) -> None:
+        """Ask each source script for its peers, once per CARD_TTL; a source that fails keeps its last list."""
+        if not self.sources() or (not force and time.time() - self.sources_at < CARD_TTL):
+            return
+        found: dict[str, dict] = {}
+        for src in self.sources():
+            with self.lock:
+                old = {k: v for k, v in self.source_peers.items() if v["source"] == src["name"]}
+            try:
+                run = self.app.run([self.app.runner.python, self.app.runner.source_script(src["script"]), "peers", "--json"],
+                                   CARD_TIMEOUT * 2)
+                data = last_json(run.out)
+                listed = data.get("peers") if isinstance(data, dict) else None
+                if not isinstance(listed, list):
+                    raise ValueError("no peer list")
+            except Exception as exc:  # noqa: BLE001 - a source that is down keeps what it listed before
+                self.app.log_error(f"agents: source {src['name']}: {str(exc)[:160]}")
+                found.update({k: v for k, v in old.items() if k not in found})
+                continue
+            for p in listed:
+                pid = p.get("id") if isinstance(p, dict) else None
+                if isinstance(pid, str) and PEER_RE.match(pid) and pid not in found:
+                    found[pid] = {"source": src["name"], "script": src["script"],
+                                  "summary": str(p.get("summary") or "")[:300], "owner": str(p.get("owner") or "")[:80]}
+        with self.lock:
+            self.source_peers, self.sources_at = found, time.time()
+
+    def source_card(self, pid: str, peer: dict) -> dict:
+        """A source peer's card through its script; the script's last error line is the card's error."""
+        run = self.app.run(self.argv_for(peer, "card", "--json", pid), CARD_TIMEOUT * 2)
+        data = last_json(run.out)
+        if not isinstance(data, dict) or not isinstance(data.get("card"), dict):
+            err = (run.err or run.out or "no card").strip().splitlines()[-1:] or ["no card"]
+            raise RuntimeError(self.app.scrub(err[0])[:160])
+        return data["card"]
 
     def refresh_cards(self, block: bool = False, force: bool = False) -> None:
         """Fetch the cards that are older than CARD_TTL, on a thread unless `block`; `force` (the page's
@@ -159,6 +233,7 @@ class Agents:
 
         def work() -> None:
             try:
+                self.refresh_sources(force)
                 now = time.time()
                 for pid, peer in self.peers().items():
                     with self.lock:
@@ -166,7 +241,8 @@ class Agents:
                     if old and not force and now - old["at"] < CARD_TTL:
                         continue
                     try:
-                        card, err = summarize_card(self.fetch(peer["card_url"])), None
+                        raw = self.source_card(pid, peer) if peer.get("script") else self.fetch(peer["card_url"])
+                        card, err = summarize_card(raw), None
                     except Exception as exc:  # noqa: BLE001 - an unreachable card is a state, not a crash
                         card, err = (old or {}).get("card") or {}, str(exc)[:160]
                     with self.lock:
@@ -194,7 +270,9 @@ class Agents:
         return {"reach": reach, "last_error": failed,
                 "id": pid, "summary": str(peer.get("summary") or ""), "owner": str(peer.get("owner") or "") or None,
                 "network": peer.get("network") if peer.get("network") in ("tailnet", "public") else None,
-                "needs_token": peer.get("auth") == "bearer",
+                "needs_token": peer.get("auth") == "bearer" or bool(peer.get("script")),
+                # the source a peer comes from (cockpit.a2a_sources), None for a peer file
+                "via": peer.get("source") if peer.get("script") else None,
                 "usage": {"allowed": [str(x) for x in usage.get("allowed") or []][:6],
                           "human_gate": str(usage.get("human_gate") or "") or None},
                 "card": cached.get("card") or None, "card_error": cached.get("error"),
@@ -266,14 +344,18 @@ class Agents:
         lang = str(getattr(self.app.cfg, "language", "de"))[:2]
         return lang if lang in TASK_FRAME else "en"
 
-    def argv(self, *rest: str) -> list[str]:
+    def argv_for(self, peer: dict | None, *rest: str) -> list[str]:
+        """a2a.py for a peer file, the source's script for a source peer."""
+        if isinstance(peer, dict) and peer.get("script"):
+            return [self.app.runner.python, self.app.runner.source_script(peer["script"]), *rest]
         return [self.app.runner.python, self.app.runner.script(SCRIPT), *rest]
 
     def start(self, peer: str, text: str, mode: str = "question", conv: str | None = None) -> str:
         """Send in a new conversation, or go on in `conv`; returns the conversation id at once."""
         if mode not in MODES:
             raise ValueError("unknown mode")
-        if peer not in self.peers():
+        peers = self.peers()
+        if peer not in peers:
             raise KeyError("no such peer")
         now = int(self.app.clock())
         with self.lock:
@@ -303,7 +385,7 @@ class Agents:
             context = c["context_id"]
             self.save()
         ctx = ["--context", context] if context and CONTEXT_RE.match(context) else []
-        self._spawn(conv, self.argv("ask", "--json", "--wait", WAIT, *ctx, peer, "--", sent))
+        self._spawn(conv, self.argv_for(peers[peer], "ask", "--json", "--wait", WAIT, *ctx, peer, "--", sent))
         return conv
 
     def poll(self, conv: str) -> None:
@@ -317,7 +399,8 @@ class Agents:
                 raise RuntimeError("nothing is waiting in this conversation")
             c["running"] = True
             self.save()
-        self._spawn(conv, self.argv("get", "--json", c["peer"], last["task_id"]), polling=True)
+        self._spawn(conv, self.argv_for(self.peers().get(c["peer"]), "get", "--json", c["peer"], last["task_id"]),
+                    polling=True)
 
     def forget(self, conv: str) -> None:
         """Take a conversation off the list into the archive; nothing goes to the agent."""
@@ -353,15 +436,8 @@ class Agents:
         app = self.app
         try:
             run = app.run(argv, ASK_TIMEOUT)
-            answer = None
-            for line in reversed((run.out or "").strip().splitlines()):
-                try:
-                    data = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(data, dict) and "state" in data:
-                    answer = data
-                    break
+            data = last_json(run.out)
+            answer = data if isinstance(data, dict) and "state" in data else None
             with self.lock:
                 c = self.convs.get(conv)
                 if c is None:

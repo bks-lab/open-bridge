@@ -88,6 +88,7 @@ their defaults:
 | `files_scope` | `active` | which tasks are files in the Files view: `active` the `doing` and `review` ones, as before; `all` every task and stream but the closed ones, the queue on top and the rest behind it on the chips Active, Waiting, Resting, Backlog and All, see [Every task as a file](cockpit-files.md#every-task-as-a-file). Any other value keeps `active` and is named in `status` |
 | `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
 | `describe` | `auto: off` | each item's brief (goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
+| `a2a_sources` | none | further sources of A2A peers beside `infra/a2a-peers/`: a list of `{name, script}`, `script` a skill's own `skills/<skill>/scripts/<name>.py` that reaches agents another way (an access proxy, a broker) and keeps its own credentials. At most four; a bad entry is ignored and named in `status`. Contract under [Peers from a script](#5-asking-claude-the-relay) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
@@ -2010,6 +2011,26 @@ either: the same page stands in the Chat as its A2A area (see [The chat as
 cmux](#the-chat-as-cmux)). The quick chat's system text names
 `infra/a2a-peers/` too, so it can suggest asking an agent; it sends nothing
 itself.
+
+**Peers from a script** (`cockpit.a2a_sources`). Some agents are not reached by
+a public card and a bearer: they sit behind an access proxy or a broker, and
+`skills/a2a` cannot speak to them. A skill that can names its script in
+`cockpit.a2a_sources`, and its peers join the list beside the peer files, with
+"through <name>" under access. The cockpit calls that script only in four
+shapes and reads the last JSON line it prints:
+
+| Call | Answer |
+|---|---|
+| `peers --json` | `{"peers": [{"id", "summary"?, "owner"?}, ...]}` |
+| `card --json <peer>` | `{"card": {<agent card>}}` |
+| `ask --json --wait 90 [--context <id>] <peer> -- <text>` | as `a2a.py ask --json` |
+| `get --json <peer> <task>` | as `a2a.py get --json` |
+
+The script is a skill of the Bridge, so it is found under `--root`, also for a
+cockpit run from another checkout. It keeps its credentials to itself; nothing it is given or prints
+carries one, and the card summary keeps only scheme names. The list of peers is
+read again every five minutes or on "check again", and a source that fails
+keeps its last list. A peer file of the same name wins over a source's peer.
 
 **The agent bar.** Above the conversation stands the chosen agent: its name,
 the dot of its last check, and what failed (card not readable, last message not

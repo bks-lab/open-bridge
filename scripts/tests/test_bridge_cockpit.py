@@ -4135,6 +4135,87 @@ def test_the_runner_lets_through_only_the_a2a_ask_and_get_shapes(world):
             r.check(bad)
 
 
+SOURCE_SCRIPT = "skills/relay-peers/scripts/relay.py"
+
+
+def a2a_source(world, name="relay", peers=({"id": "beta", "summary": "Agent beta", "owner": "Team B"},)):
+    """A second source of peers: a script that lists them, reads their cards and asks them (agents.py)."""
+    script = world.app.root / SOURCE_SCRIPT
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("# test double\n")
+    world.app.cfg = dataclasses.replace(world.app.cfg, a2a_sources=({"name": name, "script": SOURCE_SCRIPT},))
+    world.app.runner.a2a_sources = frozenset({world.app.runner.source_script(SOURCE_SCRIPT)})
+    world.runner.handlers["relay.peers"] = lambda argv: ok({"peers": list(peers)})
+    world.runner.handlers["relay.card"] = lambda argv: ok({"card": {
+        "name": "Beta Agent", "description": "answers through the relay",
+        "supportedInterfaces": [{"url": "https://relay.example/agents/beta/", "protocolVersion": "1.0"}],
+        "securitySchemes": {"bearer": {"bearerFormat": "secret-hint"}}}})
+
+
+def test_a2a_sources_are_read_from_the_cockpit_block_and_a_bad_one_is_named(tmp_path):
+    (tmp_path / SOURCE_SCRIPT).parent.mkdir(parents=True)
+    (tmp_path / SOURCE_SCRIPT).write_text("")
+    cfg = load_web_config(tmp_path, {"cockpit": {"a2a_sources": [
+        {"name": "relay", "script": SOURCE_SCRIPT}, {"name": "x", "script": "../evil.py"},
+        {"name": "Bad Name", "script": SOURCE_SCRIPT}, {"name": "gone", "script": "skills/nope/scripts/nope.py"}]}})
+    assert cfg.a2a_sources == ({"name": "relay", "script": SOURCE_SCRIPT},)
+    warned = " ".join(cfg.config_warnings)
+    assert "cockpit.a2a_sources" in warned and "../evil.py" in warned and "nope.py" in warned
+    assert load_web_config(tmp_path, {}).a2a_sources == ()
+
+
+def test_peers_from_a_source_are_listed_with_their_card_and_never_a_secret(world):
+    a2a_source(world)
+    world.app.agents.refresh_cards(block=True)
+    peer = world.app.agents.state()["peers"][0]
+    assert (peer["id"], peer["via"], peer["owner"], peer["summary"]) == ("beta", "relay", "Team B", "Agent beta")
+    assert peer["card"]["name"] == "Beta Agent" and peer["card"]["endpoint"] == "https://relay.example/agents/beta/"
+    assert peer["reach"] == "ok" and peer["card_url"] is None and "secret-hint" not in json.dumps(peer)
+    assert world.runner.of("relay.card")[0][2:] == ["card", "--json", "beta"]
+
+
+def test_asking_a_source_peer_runs_its_script_in_the_a2a_shapes(world):
+    a2a_source(world)
+    world.app.agents.refresh_cards(block=True)
+    world.runner.handlers["relay.ask"] = lambda argv: a2a_answer(state="working", text="", task="t-9")
+    world.runner.calls.clear()
+    res = world.act("a2a_ask", peer="beta", text="hallo?")
+    turn = wait_agents(world)[0]["turns"][0]
+    argv = world.runner.of("relay.ask")[0]
+    assert argv[1] == world.app.runner.source_script(SOURCE_SCRIPT)
+    assert argv[2:6] == ["ask", "--json", "--wait", "90"] and argv[-3:] == ["beta", "--", "hallo?"]
+    assert turn["waiting"] is True and world.runner.of("a2a.ask") == []
+    world.runner.handlers["relay.get"] = lambda argv: a2a_answer(text="Ja.")
+    world.act("a2a_poll", conv=res["conv"])
+    turn = wait_agents(world)[0]["turns"][0]
+    assert world.runner.of("relay.get")[0][2:] == ["get", "--json", "beta", "t-9"] and turn["a"] == "Ja."
+
+
+def test_a_peer_file_wins_over_a_source_peer_of_the_same_name(world):
+    a2a_peers(world, "beta")
+    a2a_source(world)
+    world.app.agents.fetch = lambda url: {"name": "File Beta"}
+    world.app.agents.refresh_cards(block=True)
+    peers = world.app.agents.state()["peers"]
+    assert len(peers) == 1 and peers[0]["via"] is None and peers[0]["card"]["name"] == "File Beta"
+
+
+def test_the_runner_lets_a_source_script_through_only_in_its_shapes(world):
+    a2a_source(world)
+    r = world.app.runner
+    script = r.source_script(SOURCE_SCRIPT)
+    for good in ([r.python, script, "peers", "--json"], [r.python, script, "card", "--json", "beta"],
+                 [r.python, script, "ask", "--json", "--wait", "90", "beta", "--", "x"],
+                 [r.python, script, "get", "--json", "beta", "t-1"]):
+        r.check(good)
+    other = r.script("skills/other/scripts/other.py")
+    for bad in ([r.python, script, "config"], [r.python, script, "card", "--json", "../x"],
+                [r.python, script, "peers"], [r.python, other, "peers", "--json"],
+                [r.python, r.script("skills/a2a/scripts/a2a.py"), "peers", "--json"]):
+        with pytest.raises(RunnerRefused):
+            r.check(bad)
+
+
 def test_a_card_summary_keeps_what_a_reader_needs_and_nothing_secret():
     from lib.bridge_cockpit.agents import summarize_card
     card = {"name": "Alpha", "description": "d" * 900, "version": "1.2.0",

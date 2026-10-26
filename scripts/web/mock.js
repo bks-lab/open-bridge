@@ -1244,6 +1244,12 @@ function agentsState(now) {
         card: null, card_url: 'https://example.org/partner/.well-known/agent-card.json',
         card_error: 'unreachable: [Errno 8] nodename nor servname provided, or not known', card_at_ms: now - 4 * MIN,
         last_error: 'peer refused the call (403): token missing, wrong, or bound to another identity', last_ms: now - 30 * MIN },
+      // a peer from cockpit.a2a_sources: a skill's script reaches it through a broker and keeps the credentials
+      { id: 'relay-bridge', reach: 'ok', last_error: null, summary: 'A colleague\'s Bridge, reached through a broker', owner: 'colleague',
+        network: null, needs_token: true, via: 'broker', usage: { allowed: [], human_gate: null },
+        card: card('Relay Bridge', 'Answers team and IT questions after its owner releases each answer.', [
+          { id: 'ask', name: 'Questions', description: 'Team and IT questions, answered after release.', tags: ['peer'], examples: [] }]),
+        card_url: null, card_error: null, card_at_ms: now - 3 * MIN, last_ms: null },
     ],
     keep_hours: 24,
     convs: [
