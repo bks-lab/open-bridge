@@ -74,6 +74,10 @@ assert_contains "state_mismatch #13" "state_mismatch | #13"
 assert_contains "orphan_local #99"   "orphan_local | #99"
 assert_contains "orphan_remote #14"  "orphan_remote | #14"
 assert_absent   "bridge_only hidden" "task-bridgeonly"
+# task-insync starts with the "# yaml-language-server:" line the shipped
+# template carries. A parser that reads frontmatter only from a leading "---"
+# drops the task, and #10 surfaces as orphan_remote instead of in_sync.
+assert_absent   "schema comment line parsed" "orphan_remote | #10"
 # Cross-repo collision regression: #10 exists in demo-org/demo (in_progress)
 # AND other-org/other (done). They must NOT cross-match on bare number —
 # task-insync(doing) stays in_sync with the in_progress one, task-otherrepo
