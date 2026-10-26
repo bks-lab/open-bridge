@@ -46,15 +46,26 @@ GH_URL_RE = re.compile(r"https?://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+
 GH_REF_RE = re.compile(r"(?<![\w/.@-])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(\d+)\b")
 BOARD_RE = re.compile(r"(?i)\b(?:board|project|projekt)\s+#(\d+)\b")
 BARE_RE = re.compile(r"(?<![\w/#&])#(\d+)\b")
-SECTION_RE = re.compile(r"§\s?\d+(?:\.\d+)*")
+# a colour is no issue: "#a1b2c3" never matches BARE_RE, "colour #123" is skipped by the word before it
+COLOUR_RE = re.compile(r"(?i)(?:farbe|colou?r|hex)\s*\Z")
+SECTION_RE = re.compile(r"(?<!§)§\s?\d+[a-z]?(?:\.\d+)*")
+# what follows a section of a law: "§ 14 UStG", "§ 3 Abs. 2", "§25a Nr. 1" (a law names itself with two capitals)
+LAW_RE = re.compile(r"\s*(?:(?:Abs|Nr|S|Satz|Art)\.?\s|Absatz\b|Satz\b|[A-ZÄÖÜ][A-Za-zÄÖÜäöü]*[A-ZÄÖÜ][A-Za-zÄÖÜäöü]*\b)")
 PATH_RE = re.compile(r"(?<![\w/.:@-])(?:\.{1,2}/)*[\w.-]+(?:/[\w.-]+)+/?")
-FILE_RE = re.compile(r"(?<![\w/.-])[\w-]+(?:\.[\w-]+)*\.(?:md|markdown|ya?ml|json|csv|txt|pdf|html?|py|js|mjs|ts|sh|"
+# a file name without a folder: documents and data only, so "Node.js" or "Vue.js" stay names of tools
+FILE_RE = re.compile(r"(?<![\w/.-])[\w-]+(?:\.[\w-]+)*\.(?:md|markdown|ya?ml|json|csv|txt|pdf|html?|"
                      r"xlsx|docx|pptx|png|jpe?g|eml|xml)\b", re.IGNORECASE)
 MDLINK_RE = re.compile(r"\]\(([^)\s]+)\)")
-TICK_RE = re.compile(r"`([a-z0-9][a-z0-9-]{1,79})`")
+# in backticks a hyphenated word is a slug; a plain word (`done`, `main`) only when it is a known one (WORD_TICK_RE)
+TICK_RE = re.compile(r"`([a-z0-9]+(?:-[a-z0-9]+)+)`")
+WORD_TICK_RE = re.compile(r"`([a-z0-9]+)`")
 SLUG_RE = re.compile(r"(?<![\w/.-])[a-z0-9]+(?:-[a-z0-9]+)+(?![\w/.-])")
 REPO_RE = re.compile(r"(?<![\w/.-])[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?![\w/#-])")
-EXT_RE = re.compile(r"\.[A-Za-z0-9]{1,5}\Z")
+EXT_RE = re.compile(r"\.(?=[A-Za-z0-9]{0,4}[A-Za-z])[A-Za-z0-9]{1,5}\Z")
+#: the first folders of a Bridge a path without an extension may start with
+TOP_DIRS = ("work", "docs", "scripts", "skills", "workflow", "identity", "infra", "rules", "protocols", "trackers",
+            "themes", "mods", "agents", "examples")
+BOARD_ORG_RE = re.compile(r"[A-Za-z0-9_.-]+\Z")
 REPO_NAME_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 
 
@@ -80,10 +91,12 @@ def _url_end(text: str, m: re.Match) -> int:
 # ---------------------------------------------------------------- finding references in a text
 
 def _pathish(token: str) -> bool:
-    """A path a brief points at: a file extension, a trailing slash or two slashes; never a date or and/or"""
+    """A path a brief points at: a file extension, a trailing slash, a leading ./ or ../, or a first folder of a
+    Bridge (TOP_DIRS); never a date, and/or or Soll/Ist/Delta"""
     if "://" in token or all(part.isdigit() for part in token.strip("/").split("/") if part):
         return False
-    return bool(EXT_RE.search(token.rstrip("/"))) or token.endswith("/") or token.count("/") >= 2
+    return (bool(EXT_RE.search(token.rstrip("/"))) or token.endswith("/") or token.startswith(("./", "../"))
+            or token.split("/", 1)[0] in TOP_DIRS)
 
 
 def find(text: Any, known: Iterable[str] = ()) -> list[Found]:
@@ -108,9 +121,11 @@ def find(text: Any, known: Iterable[str] = ()) -> list[Found]:
     for m in BOARD_RE.finditer(text):
         take(m.start(), m.end(), "board", m.group(0))
     for m in BARE_RE.finditer(text):
-        take(m.start(), m.end(), "bare", m.group(0))
+        if not COLOUR_RE.search(text[max(0, m.start() - 12):m.start()]):
+            take(m.start(), m.end(), "bare", m.group(0))
     for m in SECTION_RE.finditer(text):
-        take(m.start(), m.end(), "section", m.group(0))
+        if not LAW_RE.match(text, m.end()) and not re.match(r"\s*,\s*\d", text[m.end():]):
+            take(m.start(), m.end(), "section", m.group(0))
     for m in PATH_RE.finditer(text):
         token = m.group(0).rstrip(".")
         if _pathish(token):
@@ -119,6 +134,9 @@ def find(text: Any, known: Iterable[str] = ()) -> list[Found]:
         take(m.start(), m.end(), "file", m.group(0))
     for m in TICK_RE.finditer(text):
         take(m.start(), m.end(), "slug", m.group(1))
+    for m in WORD_TICK_RE.finditer(text):
+        if m.group(1) in known:
+            take(m.start(), m.end(), "token", m.group(1))
     for regex in (SLUG_RE, REPO_RE):
         for m in regex.finditer(text):
             if m.group(0).casefold() in known:
@@ -168,7 +186,7 @@ def _inside(path: str) -> str | None:
     if not path or path.startswith(("/", "~")) or "://" in path or "\\" in path:
         return None
     norm = posixpath.normpath(path.split("#", 1)[0])
-    if norm in (".", "") or norm.startswith(("..", ".")):
+    if norm in (".", "") or any(part.startswith(".") for part in norm.split("/")):
         return None
     return norm
 
@@ -186,17 +204,18 @@ def reachable(text: Any, front: Any = None, *, own: str | None = None, context: 
     r = _Reach(own)
     gh = _d(_d(front.get("sync")).get("github"))
     repos = bound_repos(front, context)
+    own_repo = gh.get("repo").strip() if isinstance(gh.get("repo"), str) and REPO_NAME_RE.fullmatch(gh["repo"].strip()) else None
     project = _d(gh.get("project"))
-    board = (project if isinstance(project.get("org"), str) and isinstance(project.get("number"), int)
-             and not isinstance(project.get("number"), bool) else None)
+    board = (project if isinstance(project.get("org"), str) and BOARD_ORG_RE.fullmatch(project["org"])
+             and isinstance(project.get("number"), int) and not isinstance(project.get("number"), bool) else None)
     own_slug = own.rstrip("/").rsplit("/", 1)[-1] if own else front.get("slug")
     for repo in repos:
         r.add("repo", repo, {"kind": "web", "href": f"https://github.com/{repo}"})
-    if isinstance(gh.get("repo"), str) and repos:
+    if own_repo:      # the issues of the sync block are the item's own repository's, never a context's
         for key, kind in (("issues", "issues"), ("pull_requests", "pull")):
             for n in gh.get(key) or []:
                 if isinstance(n, int) and not isinstance(n, bool) and n > 0:
-                    r.github(repos[0], n, kind=kind)
+                    r.github(own_repo, n, kind=kind)
     if board:
         url = f"https://github.com/orgs/{board['org']}/projects/{board['number']}"
         r.add("url", url, {"kind": "web", "href": url})
@@ -243,12 +262,9 @@ def reachable(text: Any, front: Any = None, *, own: str | None = None, context: 
             continue
         seen.add(candidate)
         path(candidate, relative)
-    for p in files:
-        if isinstance(p, str) and _inside(p):
-            r.add("path", p, {"kind": "file", "path": p}, f"path:{p}")
     slugs: list[str] = []
-    for m in [*TICK_RE.finditer(text), *SLUG_RE.finditer(text)]:
-        slug = m.group(1) if m.re is TICK_RE else m.group(0)
+    for m in [*TICK_RE.finditer(text), *WORD_TICK_RE.finditer(text), *SLUG_RE.finditer(text)]:
+        slug = m.group(1) if m.re is not SLUG_RE else m.group(0)
         # a slug holds a letter: a date such as 2026-07-13 is none
         if slug != own_slug and slug not in slugs and len(slugs) < CANDIDATES_MAX and re.search("[a-z]", slug):
             slugs.append(slug)
@@ -276,6 +292,10 @@ def reachable(text: Any, front: Any = None, *, own: str | None = None, context: 
         if folder:
             done = folder if folder.startswith("work/done/") else None
             r.add("task", slug, {"kind": "task", "key": slug, "folder": done}, f"task:{slug}")
+    # the files of the folder last: what the text names comes first when the list is full
+    for p in files:
+        if isinstance(p, str) and _inside(p):
+            r.add("path", p, {"kind": "file", "path": p}, f"path:{p}")
     return {"repos": repos, "project": board, "own": own, "refs": r.refs}
 
 

@@ -457,7 +457,7 @@ function mockCard(r, m = {}, now = Date.now()) {
     written: b ? (m.written === 'human' ? 'human' : 'ai') : m.summary ? 'item' : 'title', gaps,
   }
   const describe = b || m.proposal ? { written: m.written ?? null, stale: !!m.stale, stale_why: m.stale ? 'basis' : null,
-    running: false, last_error: null, warnings: (m.extraGaps ?? []).includes('unresolved_ref') ? ['unresolved reference: §3'] : [],
+    running: false, last_error: null, warnings: (m.extraGaps ?? []).includes('unresolved_ref') ? ['Unresolved reference: §3'] : [],
     model_mismatch: false, proposal: m.proposal ? { ...m.proposal, at_ms: now - 40 * MIN } : null, by: b?.by ?? null, at: b?.at ?? null } : null
   return { card, describe }
 }

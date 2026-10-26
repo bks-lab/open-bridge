@@ -842,3 +842,51 @@ def test_an_ai_brief_from_an_older_prompt_is_stale_and_rewritten_an_edited_one_n
         assert w.app.describe.state_for("task:demo-task")["proposal"] is None
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- review fixes
+
+SECTION_ANSWER = ["All gaps of epic #95 are closed", "The open points of the report (Bericht §6) are answered"]
+
+
+def test_a_brief_with_an_unresolved_reference_is_stale_only_where_the_pass_writes_stale_briefs(tmp_path):
+    w = make_world(tmp_path, auto="missing")
+    try:
+        add_epic(w)
+        w.runner.handlers["claude.p"] = lambda argv: answer(acceptance=SECTION_ANSWER)
+        w.act("describe_run", key="task:epic-work")
+        state = w.app.describe.state_for("task:epic-work")
+        assert state["stale"] is False and state["stale_why"] is None, "no pass would try again: nothing to wait for"
+        assert any("§6" in x for x in state["warnings"])
+    finally:
+        w.close()
+
+
+def test_the_unresolved_warning_speaks_the_cockpit_language(tmp_path):
+    w = World(tmp_path, config=CONFIG.format(auto="off", budget=20).replace("language: en", "language: de"))
+    try:
+        w.runner.handlers.update({"task.brief": real, "inbox.describe": real,
+                                  "claude.p": lambda argv: answer(acceptance=SECTION_ANSWER)})
+        add_epic(w)
+        w.act("describe_run", key="task:epic-work")
+        [warning] = w.app.describe.state_for("task:epic-work")["warnings"]
+        assert warning == dsc.TEXT["de"]["unresolved"].format(ref="§6") and "unresolved" not in warning
+    finally:
+        w.close()
+
+
+def test_a_file_made_later_in_the_task_folder_is_reachable_without_touching_status_md(world):
+    add_task(world, "epic-work", body=EPIC, extra=BOUND)
+    assert "work/tasks/epic-work/gaps.md" not in world.app.describe.item("task:epic-work")["reach"]["refs"].__repr__()
+    folder = status_path(world, "epic-work").parent
+    (folder / "gaps.md").write_text("# Gaps\n", encoding="utf-8")
+    import os
+    later = folder.stat().st_mtime_ns + 5_000_000_000
+    os.utime(folder, ns=(later, later))
+    texts = [x["text"] for x in world.app.describe.item("task:epic-work")["reach"]["refs"]]
+    assert "work/tasks/epic-work/gaps.md" in texts
+
+
+def test_the_prompt_asks_to_cite_a_listed_reference_a_criterion_is_about():
+    system, _ = dsc.prompt({"kind": "task", "data": "{}"}, "English")
+    assert "so the card can link it" in system and len(system) <= dsc.SYSTEM_MAX

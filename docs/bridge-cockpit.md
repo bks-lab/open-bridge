@@ -1297,15 +1297,21 @@ other tasks that exist; for an inbox item its detail, its `closes_when` probe an
 its task. At most 24, scrubbed like the rest; one the scrub changes is left out.
 The rules say: cite only from that list, exactly as written; never a bare `#n`,
 never "the list" or "the report §6" without saying what and where; when the text
-names something only vaguely, describe it in words. After the answer every
+names something only vaguely, describe it in words; and when a criterion is
+about a listed reference (the epic the task is bound to), cite it exactly, so
+the card can link it. After the answer every
 reference the brief names is checked against the list. One that does not resolve
 (a bare `#n` with no or two repositories, a section such as §6 without a place
 beside it, a path that does not exist, an issue number the text never names)
 does not stop the write, since a brief with a goal beats none: it is kept in
-`warnings` ("unresolved reference: §6"), the card shows the gap "points at
-something that cannot be found", and the brief counts as stale for one more try
-of the pass on this text, never more. What is reachable is read with the item,
-so a file made later counts once the item's own file changed.
+`warnings` ("Unresolved reference: §6", in the cockpit's language), the card
+shows the gap "points at something that cannot be found", and with
+`auto: stale` the brief counts as stale for one more try of the pass on this
+text, never more. A section of a law ("§ 14 UStG", "§ 3 Abs. 2"), words such as
+"Soll/Ist/Delta", tool names such as "Node.js", a plain word in backticks and a
+colour such as "#a1b2c3" are no references. What is reachable is read with the
+item, again once its STATUS.md, its folder or a folder right inside it changed,
+so a file made later in the folder is found.
 
 **Prompt version.** describe.json stores the version of the rules
 (`PROMPT_VERSION` in `describe.py`) with every brief describe writes. A brief

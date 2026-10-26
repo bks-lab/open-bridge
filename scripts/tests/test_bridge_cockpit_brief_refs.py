@@ -181,3 +181,57 @@ def test_unresolved_names_every_reference_a_reader_cannot_reach():
     goal, crit = "Bericht §6 is answered", "Epic #95 and #90 are closed"
     refs = br.resolutions([goal, crit], r)
     assert br.unresolved([goal, crit], refs) == ["§6", "#90"]
+
+
+# ---------------------------------------------------------------- review fixes: no false positives
+
+def test_a_law_section_is_no_reference():
+    for text in ("Die Rechnung nennt § 14 UStG korrekt.", "Nach §§ 7, 8 EStG abgeschrieben.",
+                 "Gemäß § 3 Abs. 2 geprüft.", "Wie §25a Nr. 1 verlangt."):
+        assert not missing(parts_of(text) or []), text
+    assert missing(parts_of("Der Bericht §6 ist beantwortet.")) == ["§6"]
+
+
+def test_words_with_slashes_and_framework_names_are_no_paths_or_files():
+    for text in ("Soll/Ist/Delta stimmen überein.", "TCP/IP/UDP sind offen.", "Node.js und Vue.js laufen.",
+                 "Peppol/UBL/EN16931 passt."):
+        assert parts_of(text) is None, text
+    assert missing(parts_of("Unknown/Folder/ is empty.")) == ["Unknown/Folder/"]
+    assert missing(parts_of("./notes/plan is done.")) == ["./notes/plan"]
+    assert missing(parts_of("work/tasks/other/plan is done.")) == ["work/tasks/other/plan"]
+
+
+def test_a_plain_word_in_backticks_is_no_slug_unless_known():
+    for text in ("The `done` state is set.", "Merged into `main`.", "The `inbox` is empty."):
+        assert parts_of(text) is None, text
+    known = br.reachable("see `inbox`", {}, folder_of={"inbox": "work/tasks/inbox"}.get)
+    assert links(parts_of("The `inbox` task is closed.", known))[0][1]["key"] == "inbox"
+
+
+def test_a_hex_colour_is_no_issue_number():
+    for text in ("The colour #a1b2c3 is used.", "Badge #123abc shows.", "Farbe #123 bleibt."):
+        assert not missing(parts_of(text) or []), text
+
+
+def test_issues_of_the_sync_block_need_the_items_own_repository():
+    front = {"context": "acme", "sync": {"github": {"repo": "not a repo", "issues": [95], "project": {"org": "bad org!", "number": 3}}}}
+    r = br.reachable("x", front, context={"repos": [{"github": "acme/one"}]})
+    assert r["repos"] == ["acme/one"]
+    assert not any(x.endswith("#95") for x in texts(r)), "never against the context's repository"
+    assert r["project"] is None and not any("projects" in x for x in texts(r))
+
+
+def test_a_hidden_component_anywhere_in_a_path_is_never_reachable():
+    every = lambda _p: True  # noqa: E731
+    r = br.reachable("See a/.git/config, foo/.env and docs/ok.md.", {}, exists=every)
+    assert texts(r) == ["docs/ok.md"]
+
+
+def test_slugs_the_text_names_come_before_the_files_of_the_folder_when_the_list_is_full():
+    urls = " ".join(f"https://example.org/p/{n}" for n in range(br.REFS_MAX - 4))
+    folder = {f"task-{n}": f"work/tasks/task-{n}" for n in range(3)}
+    files = [f"work/tasks/ubl-fix/f{n}.md" for n in range(12)]
+    r = br.reachable(f"{urls} task-0 task-1 task-2", {}, own="work/tasks/ubl-fix", folder_of=folder.get, files=files)
+    got = texts(r)
+    assert len(got) == br.REFS_MAX and {"task-0", "task-1", "task-2"} <= set(got)
+    assert got[-1] == "work/tasks/ubl-fix/f0.md"
