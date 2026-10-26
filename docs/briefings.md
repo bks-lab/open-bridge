@@ -367,7 +367,8 @@ open instead of closing and coming back as new. Such a row offers Analyse, Make
 it a task, and Implement when no pull request closes it, a dashboard marks it
 with a **no task** chip, and the text briefing says how many there are
 (`2 assigned issues without a task`, the `untasked` label in the bucketed
-styles). A rule `{when: {untasked: true}}` files them; a profile
+styles). That count is information, never an order to create tasks: an assigned
+issue is itself the task, and the tracker is where it stays. A rule `{when: {untasked: true}}` files them; a profile
 whose rows a radar already files needs no such rule, since both items would
 attach to the one row.
 

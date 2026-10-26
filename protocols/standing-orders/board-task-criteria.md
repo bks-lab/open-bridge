@@ -51,39 +51,44 @@ Every work unit falls into exactly one class:
                             └──────────────────┘
 ```
 
-## Decision tree — three questions
+## Decision tree: the task threshold
 
-**Q1: Does the work need to survive across sessions?**
-- If the session ends now and resumes in 3 days: do you need pickup
-  notes (risks, stakeholders, open points)?
-- **YES → A (Board task)**
+Work that changed state still gets its log row; the threshold saves
+tasks, never log rows. Read-only routine commands (`/briefing`,
+`/archive`, `git status`, `gh issue list` …) are **C**: silent, no log, and
+they skip the questions. For everything else ask in order, stop at the first
+yes:
 
-**Q2: External recipient or external system involved?**
-- A counterparty receives a message? An external board (GitHub
-  Projects, ADO, Jira) gets updated? A customer wiki page is written?
-  A contract or invoice goes out?
-- **YES → A (Board task)** — even if it could be finished in one session
+**Q1: Finished in this session?** A log row only (B). No task just to tick it
+off; only an explicit ask for one makes it a task.
 
-**Q3: Pure read-only routine command?**
-- `/briefing`, `/bridge`, `/archive`, `/calendar list`, `git status`,
-  `gh issue list` …
-- **YES → C (silent, no log)**
+**Q2: Mentioned, nothing started?** An inbox item of kind `idea`
+(`scripts/inbox.py add --from <source> --kind idea --summary "<one line>"`),
+no task.
 
-**Otherwise → B (log-only)**.
+**Q3: Does it earn a task (A)?** Only if the person explicitly asks for one,
+OR something already exists (branch, draft, file, a sent request awaiting an
+answer) AND it continues in a later session, OR the person committed to
+someone with a date.
+
+**Tracker issues stay in the tracker.** An assigned issue is the task; a
+copy in `work/tasks/` adds nothing. The briefing's
+"assigned without a task" count is information, never an order to create one.
 
 ## Application table
 
 | Work-unit class | Class | Reason |
 |---|---|---|
-| Customer escalation, months-long | A | cross-session + external recipient |
-| Incident response, multi-week | A | cross-session + external system |
-| Feature build, multi-session | A | cross-session pickup |
-| Infra setup, days–weeks | A | cross-session pickup |
-| Bridge-meta task, paused with pickup plan | A | cross-session resumption |
-| Bridge-meta task, one-shot drift-fix | **B** | session-bounded, no external party |
+| Customer escalation, months-long | A | work exists and continues |
+| Incident response, multi-week | A | work exists and continues |
+| Feature build, multi-session | A | branch exists, continues |
+| Infra setup, days to weeks | A | work exists, continues |
+| Bridge-meta task, paused with pickup plan | A | work exists, resumes |
+| Bridge-meta task, one-shot drift-fix | **B** | finished in the session |
 | Sequential-thinking session | B (auto-logged) | analysis support, not work itself |
 | Application with pipeline | A (sub-tree `work/streams/applications/`) | own lifecycle |
-| Cold idea, sitting in backlog | **`work/backlog.md`** | no pickup plan, no body |
+| Mentioned, nothing started | inbox `idea` | no work exists yet |
+| Cold idea, already listed in backlog | **`work/backlog.md`** | no pickup plan, no body |
 | Scratch / utility folder | exempt | `work/tasks/_meetings/` etc. |
 
 ## Cold ideas — the third lane
@@ -92,14 +97,10 @@ Items shown as "Backlog row without STATUS.md" on the board are neither
 A nor B — they are **cold ideas**. They have no pickup plan, no risks,
 no body, just a title and "maybe someday".
 
-**Rule:** Cold ideas live in `work/backlog.md` (compact 1-line list),
-not in `work/board.md`. Only on pickup does a cold idea become an
-A-class Board task (STATUS.md gets created).
-
-`work/backlog.md` is created **lazily** — as long as cold ideas stay
-under ~10 rows and remain scrollable in board.md's Backlog section,
-no separation is needed. Trigger for split: Backlog grows past 15 items
-or cold-share exceeds 50 % of Backlog rows.
+**Rule:** A new mention goes to the inbox as kind `idea` (Q2 above).
+Cold ideas already in `work/backlog.md` (1-line list) stay there; neither
+lane is `work/board.md`. Only on pickup does a cold idea become an A-class
+Board task (STATUS.md gets created).
 
 ## Sub-items of existing tasks
 
@@ -122,11 +123,11 @@ the general Review table. The sub-tree's `<id>/STATUS.md` is the SoT.
 
 ## The rule in one sentence
 
-- **A (Board task):** cross-session pickup **or** external recipient.
-- **B (Log-only):** otherwise, when state changed.
+- **A (Board task):** asked for, **or** (work exists **and** continues later), **or** a dated commitment to someone.
+- **B (Log-only):** otherwise, when state changed. Mentioned only: inbox `idea`.
 - **C (Silent):** read-only routine commands.
 - **Sub-items:** no own task, check off in parent STATUS.
-- **Cold ideas:** `work/backlog.md`, no Board row.
+- **Cold ideas:** inbox `idea` for new ones, an existing `work/backlog.md` stays; no Board row.
 
 ## Violations
 
@@ -135,6 +136,8 @@ the general Review table. The sub-tree's `<id>/STATUS.md` is the SoT.
 - A folder in `work/tasks/<slug>/` with no Board row.
 - A cold idea sitting as a board Backlog row when it will never become
   active.
+- A task made for work finished in the session, a copy of an assigned tracker
+  issue, or an idea nobody started.
 - A sub-item gets its own task instead of being checked off in the
   parent STATUS.
 - An application sits in the general Review table instead of the

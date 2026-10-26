@@ -321,11 +321,11 @@ Automatic at the start of every session when Task Management is enabled:
 
 Three-class rule from [`protocols/standing-orders/board-task-criteria.md`](../protocols/standing-orders/board-task-criteria.md):
 
-- **A — Board task** (STATUS.md + board row): cross-session pickup needed **or** external recipient (mandant / external tracker / customer wiki).
-- **B — Log-only**: state changed, but session-bounded and no external party.
-- **C — Silent**: read-only routine commands (`/briefing`, `/bridge-status`, `/archive`).
+- **A: Board task** (STATUS.md + board row): only when asked for, **or** work already exists (branch, draft, file, a sent request awaiting an answer) **and** continues in a later session, **or** a dated commitment to someone. An external recipient alone no longer qualifies; an assigned tracker issue stays in the tracker.
+- **B: Log-only**, state changed and finished in the session. A mention with nothing started goes to the inbox as kind `idea`.
+- **C: Silent**, read-only routine commands (`/briefing`, `/bridge-status`, `/archive`).
 
-Sub-items of an existing task are checked off in the parent STATUS.md — no own task. Cold ideas without pickup plan live in `work/backlog.md` (lazily created, split threshold >15 backlog rows).
+Sub-items of an existing task are checked off in the parent STATUS.md, no own task. Cold ideas already collected in `work/backlog.md` stay there; new mentions go to the inbox as kind `idea`.
 
 ## Configuration
 

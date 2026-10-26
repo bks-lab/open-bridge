@@ -134,15 +134,21 @@ User decides. No auto-action.
 
 ## Class A / B / C
 
-The three-class model (A = Board task, B = Log-only, C = Silent) and its
-decision tree live in
+The three-class model (A = Board task, B = Log-only, C = Silent) and the
+task threshold (three questions in order: finished this session means a log row
+only; mentioned but not started means an inbox item of kind `idea`; a task only
+when asked for, or work exists and continues later, or a dated commitment to
+someone) live in
 [`board-task-criteria.md`](../protocols/standing-orders/board-task-criteria.md) —
-that file is the source of truth, not restated here. Worked examples:
+that file is the source of truth. Every state change keeps its log row; the
+threshold saves tasks, never log rows. Tracker issues stay in the tracker (an assigned
+issue is the task). Worked examples:
 
 | Class | Example |
 |---|---|
-| A | `core-skill-refactor` (multi-session), `schema-migration` (multi-file), `contribute-upstream` (multi-phase) |
-| B | drift fix completed in one session, skill tweak after user feedback, bridge-meta edit without cross-session risk |
+| A | `core-skill-refactor` (branch open, continues), `schema-migration` (draft exists, resumes), `contribute-upstream` (PR sent, awaiting an answer) |
+| B | drift fix completed in one session, skill tweak after user feedback, a reply sent and done |
+| idea (inbox, no task) | "we could also add X", nothing started |
 | C | `/briefing`, `/bridge-status`, `/archive`, `git status`, `gh issue list` |
 
 ## Repair Recipes (drift cases)
@@ -175,7 +181,20 @@ log-only is fine, no task.
 
 - [`board-task-criteria.md`](../protocols/standing-orders/board-task-criteria.md) — A/B/C classification source
 - [`task-sync.md`](../protocols/standing-orders/task-sync.md) — phase 1-4 resolver for external sync
-- [`document-work.md`](../protocols/standing-orders/document-work.md) — log.md format + 30-min rule
+- [`document-work.md`](../protocols/standing-orders/document-work.md): log.md format + task threshold
 - [`work-board-reconciliation.md`](../protocols/standing-orders/work-board-reconciliation.md) — folder ↔ board invariants
 - `work/templates/STATUS.md` + `_schema.status.yaml` — STATUS frontmatter
 - `workflow/contexts/<slug>.yaml` — doc routing defaults
+
+## Upgrading
+
+The task threshold replaces the old test "cross-session pickup OR an external
+recipient". Behavioural only, nothing to migrate: existing tasks, STATUS.md
+files and boards stay as they are. New work is sorted by the three questions,
+so fewer tasks appear (finished work and bare mentions no longer become one, an
+assigned tracker issue is not copied). New mentions go to the inbox as kind
+`idea`; an existing `work/backlog.md` keeps working and needs no move. An
+instance that wants the old behaviour writes a user standing order under
+`protocols/standing-orders/user/` that says it replaces this threshold (for
+example "also create a task for every external recipient"). Both orders load
+every session, so the user order has to name the rule it overrides.
