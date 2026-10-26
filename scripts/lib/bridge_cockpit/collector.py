@@ -663,8 +663,8 @@ class Collector:
                 model["days"], model["week"] = {"quota": {}, "counts": {}}, {"count": 0, "since": None, "items": []}
             # the return channel: where each start handed to a tab stands (returns.py)
             try:
-                seen = app.tabs.seen_copy()
-                rich = [{**t, "filed_by": (m.filed_by(t, self.view) or {}).get("key"),
+                seen, asks = app.tabs.seen_copy(), app.tabs.asks_now()
+                rich = [{**t, "filed_by": (m.filed_by(t, self.view) or {}).get("key"), "ask": asks.get(t["ref"]),
                          "since_ms": int(seen.get(t["ref"], {}).get("since_ms", 0)),
                          "is_control": t["ref"] == app.tabs.control_ref()} for t in tabs]
                 rows = {k: (v.get("out") or v) for k, v in index.items() if isinstance(v, dict)}

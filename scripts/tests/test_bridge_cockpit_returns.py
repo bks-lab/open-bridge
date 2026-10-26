@@ -225,3 +225,76 @@ def test_ended_at_is_public_and_none_for_an_unreadable_time(tmp_path):
     assert returns.ended_at(tmp_path, ITEM) is None
     assert returns.inbox_settled(tmp_path, ITEM) is True
     assert returns.ended_at(tmp_path, "../escape") is None
+
+
+# ---------------------------------------------------------------- a quiet tab, and a task's result line
+
+def asking(text="Delete the old page or redirect it?", **extra):
+    return {"text": text, "options": [], "hash": "h1", "yes_no": text.endswith("?"), "draft": False, **extra}
+
+
+def test_a_still_tab_without_a_question_is_idle_and_with_one_asks(tmp_path):
+    """A tab that stopped working asks only when its screen holds a question (asks.py): a tab that went still
+    with last words that ask nothing is idle, not asking (review F1)."""
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    stage = lambda tabs: {x["key"]: x for x in returns.build(b.all(), tabs, {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]["stage"]
+    assert stage([tab("waiting", slug="alpha", ask=asking("All tests pass, the branch is pushed."))]) == "idle"
+    assert stage([tab("waiting", slug="alpha", ask=None)]) == "idle"           # nothing readable on its screen
+    assert stage([tab("waiting", slug="alpha", ask=asking())]) == "asks"       # a question mark
+    assert stage([tab("waiting", slug="alpha", ask=asking("Pick one", options=[{"n": 1, "label": "Delete"}]))]) == "asks"
+    assert stage([tab("needs-you", slug="alpha", ask=None)]) == "asks"         # a dialog the terminal reports
+    assert stage([tab("working", slug="alpha", ask=None)]) == "working"
+
+
+def task_note(root, slug, day, text, kind="tasks"):
+    d = root / "work" / kind / slug
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / "STATUS.md"
+    body = p.read_text(encoding="utf-8") if p.is_file() else f"---\nstatus: doing\n---\n# {slug}\n\n## Notes\n\n"
+    p.write_text(body + f"- {day}: {text}\n", encoding="utf-8")
+
+
+def test_a_result_note_on_the_task_since_the_start_is_its_result(tmp_path):
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    start = dt.datetime.fromtimestamp(T0 / 1000).date()
+    before = (start - dt.timedelta(days=1)).isoformat()
+    tabs = [tab("waiting", slug="alpha", ask=None)]
+    task_note(tmp_path, "alpha", before, "Result: an old answer from an earlier run")
+    task_note(tmp_path, "alpha", start.isoformat(), returns.start_line("go", "en"))     # the cockpit's own line
+    task_note(tmp_path, "alpha", start.isoformat(), "Results look promising, more later")  # not the head
+    r = {x["key"]: x for x in returns.build(b.all(), tabs, {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]
+    assert r["stage"] == "idle" and r["result"] is None
+    task_note(tmp_path, "alpha", start.isoformat(), "Ergebnis: Treiber installiert, Neustart offen")
+    r = {x["key"]: x for x in returns.build(b.all(), tabs, {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]
+    assert r["stage"] == "result"
+    assert r["result"] == {"kind": "note", "text": "Ergebnis: Treiber installiert, Neustart offen", "key": None, "at_ms": None}
+    # the agent wrote it itself: nothing more goes to the task's notes
+    assert returns.log_line(r, "en") is None
+    # the newest result line wins, in either language
+    task_note(tmp_path, "alpha", start.isoformat(), "Result: driver installed and rebooted")
+    r = {x["key"]: x for x in returns.build(b.all(), tabs, {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]
+    assert r["result"]["text"] == "Result: driver installed and rebooted"
+
+
+def test_done_still_comes_before_a_result_line(tmp_path):
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    day = dt.datetime.fromtimestamp(T0 / 1000).date().isoformat()
+    task_note(tmp_path, "alpha", day, "Result: shipped", kind="done/2026-10")
+    r = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]
+    assert r["stage"] == "done" and r["result"]["text"] == "Result: shipped"
+
+
+def test_a_result_line_is_read_from_a_stream_too_and_never_outside_work(tmp_path):
+    clock = Clock(T0)
+    b = returns.Launches(tmp_path / "state", clock)
+    b.record([{"key": "task:beta", "item": "beta", "title": "Beta", "mode": "go"},
+              {"key": "task:x", "item": "../x", "title": "X", "mode": "go"}])
+    day = dt.datetime.fromtimestamp(T0 / 1000).date().isoformat()
+    task_note(tmp_path, "beta", day, "Result: the stream has its answer", kind="streams")
+    out = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 5 * MIN)}
+    assert out["task:beta"]["stage"] == "result"
+    assert out["task:x"]["result"] is None
+    assert returns.task_result(tmp_path, "../x", T0) is None

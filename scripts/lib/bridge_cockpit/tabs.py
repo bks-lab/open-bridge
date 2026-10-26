@@ -115,6 +115,17 @@ class TabPoller:
                 self.workspaces_ms = self.app.clock()
         return [dict(w) for w in rows] if rows is not None else None
 
+    def _ask_of(self, t: dict) -> dict | None:
+        """The question read off a tab's screen, only while the tab still is in the state it was read in;
+        called with self.lock held"""
+        held = self.asks.get(t["ref"])
+        return held[1] if held and held[0][0] == t["state"] and t["state"] in m.ATTENTION else None
+
+    def asks_now(self) -> dict:
+        """{ref: question} of the tabs that ask one now (the return channel tells a question from a still tab)"""
+        with self.lock:
+            return {t["ref"]: self._ask_of(t) for t in self.tabs if self._ask_of(t)}
+
     def find(self, ref: str) -> dict | None:
         with self.lock:
             return next((dict(t) for t in self.tabs if t["ref"] == ref), None)
@@ -129,9 +140,7 @@ class TabPoller:
                 is_control = t["ref"] == self.control
                 filed = m.filed_by(t, view)
                 seen = self.seen.get(t["ref"], {})
-                held = self.asks.get(t["ref"])
-                # a question only while the tab still is in the state it was read in
-                ask = held[1] if held and held[0][0] == t["state"] and t["state"] in m.ATTENTION else None
+                ask = self._ask_of(t)
                 tabs.append({
                     "ref": t["ref"], "ws_ref": t["ws_ref"], "name": t["name"], "workspace": t["workspace"],
                     "state": t["state"], "last": t["last"], "slug": t["slug"], "item": t["item"], "team": t["team"],

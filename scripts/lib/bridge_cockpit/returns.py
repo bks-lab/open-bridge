@@ -8,9 +8,12 @@ Where a start stands is read from what the Bridge already has, nothing is asked 
 
 - started   no tab for it yet, within the first minutes
 - working   its tab works
-- asks      its tab waits for you, asks, or stopped at the prompt
-- result    it left an answer: a filed inbox item (the tab's `filed_by`), or a note on its inbox item
-            written after the start (work/inbox/<id>/events/<UTC stamp>-...-note.yaml)
+- asks      its tab waits for you: a dialog the terminal reports (needs-you), or a question on its screen
+            (asks.py: a question mark, numbered options, or words typed in its prompt)
+- idle      its tab stopped working and its screen asks nothing: still, most likely through
+- result    it left an answer: a filed inbox item (the tab's `filed_by`), a note on its inbox item
+            written after the start (work/inbox/<id>/events/<UTC stamp>-...-note.yaml), or a note on its
+            task since the day of the start that begins with the result head ("Result:", "Ergebnis:")
 - done      its inbox item was ended after the start (closed, executed, dropped, rejected), or its task
             moved to work/done/
 - lost      no tab, no answer, and the start is a while ago
@@ -137,6 +140,43 @@ def inbox_answers(root: Path, item: str, since_ms: float) -> list:
     return out
 
 
+NOTE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}): (.+)$")
+
+
+def _task_files(root: Path, slug: str) -> list:
+    work = Path(root) / "work"
+    return [work / "tasks" / slug / "STATUS.md", work / "streams" / slug / "STATUS.md",
+            *sorted(work.glob(f"done/*/{slug}/STATUS.md"))]
+
+
+def task_result(root: Path, slug: str, since_ms: float) -> dict | None:
+    """The newest result line on a task's notes (task.py note: `- YYYY-MM-DD: <text>`) dated on or after the
+    day of the start, as {kind: note, text}; a task note carries a day only, so at_ms stays None"""
+    if not SLUG_RE.match(slug):
+        return None
+    since = dt.date.fromtimestamp(since_ms / 1000).isoformat()
+    for path in _task_files(root, slug):
+        try:
+            body = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        found = re.search(r"^## Notes\s*$(.*?)(?=^## |\Z)", body, flags=re.M | re.S)
+        lines = [NOTE_RE.match(ln.strip()) for ln in (found.group(1).splitlines() if found else [])]
+        hits = [m.group(2).strip() for m in lines if m and m.group(1) >= since and m.group(2).strip().startswith(RESULT_HEADS)]
+        if hits:
+            return {"kind": "note", "text": hits[-1][:600], "key": None, "at_ms": None}
+    return None
+
+
+def _asks(tab: dict) -> bool:
+    """Whether a tab that stopped working asks something: a dialog the terminal reports, or a question read off
+    its screen (asks.py); last words that ask nothing, or nothing readable, leave it idle"""
+    if tab.get("state") == "needs-you":
+        return True
+    ask = tab.get("ask") or {}
+    return bool(ask.get("yes_no") or ask.get("options") or ask.get("draft"))
+
+
 def task_done(root: Path, slug: str) -> bool:
     if not SLUG_RE.match(slug):
         return False
@@ -211,8 +251,10 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
             for ev in inbox_answers(root, item, at):
                 if ev["text"] or not result:
                     result = {"kind": ev["verb"], "text": ev["text"], "key": None, "at_ms": ev["at_ms"]}
-        elif task_done(root, item):
-            done = True
+        else:
+            done = task_done(root, item)
+            if not result:
+                result = task_result(root, item, at)
         if done:
             stage = "done"
         elif result:
@@ -220,7 +262,7 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
         elif tab and tab.get("state") == "working":
             stage = "working"
         elif tab:
-            stage = "asks"
+            stage = "asks" if _asks(tab) else "idle"
         elif now - at < GRACE_MS:
             stage = "started"
         else:
@@ -235,6 +277,7 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
 
 LINES = {code: TABLES[code]["returns"] for code in TABLES}   # the words live in text.py
 OWN_HEADS = tuple(f"{w['head']}:" for w in LINES.values())
+RESULT_HEADS = tuple(f"{w['result']}:" for w in LINES.values())
 
 
 def _words(lang: str) -> dict:
