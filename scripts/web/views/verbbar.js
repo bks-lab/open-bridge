@@ -2,15 +2,18 @@
 // The cockpit, the five verbs of the Work through page as one part (views/flow.js): Let AI do it, Advise, Done,
 // Later until, Drop because. The suggested verb is the primary button (logic.js suggestedVerb). Let AI do it opens
 // the start sentence, filled with the row's title and the request for a result line, and starts only with text in
-// it; Later until offers the days of the close door (tomorrow, Monday, next week, a date); Drop because offers the
+// it, the model and its effort under it (views/launch.js LaunchPick: with Auto, the router's recommendation for this
+// row, fetched once and kept for the page's life), and asks first once cockpit.flow.max_running agents run (logic.js
+// flowRunning); Later until offers the days of the close door (tomorrow, Monday, next week, a date); Drop because offers the
 // configured reasons and a field, and sends nothing without a reason. Advise asks a read-only quick question and
 // shows the answer in the card, with a way to start from it. What each verb sends is logic.js flowAction.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { dropReasonWord, flowAction, flowSettings, isoDate, parseDate, short, startNote, suggestedVerb, verbsFor } from '../logic.js'
+import { dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, parseDate, short, startNote, suggestedVerb, verbsFor } from '../logic.js'
 import { T, language } from '../text.js'
+import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
 import { Prose } from './prose.js'
 
@@ -56,6 +59,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, words = {}, o
   const [day, setDay] = useState('')
   const [dayErr, setDayErr] = useState('')
   const [manual, setManual] = useState(null)
+  const [crowd, setCrowd] = useState(0)    // how many ran when Start asked first; 0: not asked
   const busy = !!s.ui?.busy?.[row.key]
   const finish = r => {
     if (r?.ok) c.flowDecided()
@@ -70,7 +74,16 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, words = {}, o
     finish(r)
   }
   const later = async fn => { setOpen(null); finish(await fn()) }
-  const toggle = v => { setOpen(open === v ? null : v); setManual(null) }
+  const toggle = v => { setOpen(open === v ? null : v); setManual(null); setCrowd(0) }
+  // Start: at once below the cap of what runs, else after Start anyway (the count read at the click, no timer)
+  const start = force => {
+    const a = flowAction('do', row, note)
+    if (!a) return
+    const running = force ? 0 : flowRunning(s)
+    if (running >= flowSettings(s).max_running) { setCrowd(running); return }
+    setCrowd(0)
+    send(a)
+  }
   const click = v => (PANELS.has(v) ? toggle(v) : v === 'advise' ? c.flowAdvise(row.key) : send(flowAction(v, row)))
   const word = v => words[v] ?? f.verbs[v]
   const yes = row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved'
@@ -94,10 +107,13 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, words = {}, o
       <label class="label-caps" for=${`vb-note-${row.key}`}>${f.start.label}</label>
       <textarea id=${`vb-note-${row.key}`} class="input textarea" rows="3" maxlength="2000" value=${note}
         onInput=${e => setNote(e.currentTarget.value)}></textarea>
+      <${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: row.title }]} />
       <div class="verbbar-acts">
-        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!note.trim()} onClick=${() => send(flowAction('do', row, note))}>${f.start.button}<//>
+        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!note.trim()} onClick=${() => start(false)}>${f.start.button}<//>
         ${note.trim() ? null : html`<span class="muted small">${f.start.empty}</span>`}
       </div>
+      ${crowd ? html`<div class="verbbar-acts" role="alert"><span class="small">${f.start.busy(crowd)}</span>
+        <${Btn} size="sm" variant="secondary" busy=${busy} onClick=${() => start(true)}>${f.start.anyway}<//></div>` : null}
       ${manual ? html`<div class="verbbar-manual"><p class="small">${f.start.manual}</p><pre class="mono small">${manual.join('\n')}</pre>
         <${Btn} size="xs" variant="secondary" icon="copy" onClick=${() => c.copy(manual.join('\n'))}>${f.start.copy}<//></div>` : null}
     </div>` : null}

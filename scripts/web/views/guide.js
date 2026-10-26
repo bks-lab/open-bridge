@@ -40,12 +40,12 @@ function About({ entry }) {
 }
 
 /** The ways into the session beside a reading: the terminal jumps to the tab, the tab's live screen opens
- *  here, and what Haiku read unfolds below */
-function Ways({ tab, s, c, entry, open, setOpen }) {
+ *  here, and what Haiku read unfolds below. `bare`: the host shows its own ways to the tab, only what was read */
+function Ways({ tab, s, c, entry, open, setOpen, bare = false }) {
   const g = T().guide
   return html`<span class="guide-ways">
-    ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" icon="external" onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${g.toTab}<//>` : null}
-    <${Btn} size="xs" variant="ghost" icon="tabs" onClick=${() => c.openTabView(tab.ref)}>${g.watch}<//>
+    ${!bare && canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" icon="external" onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${g.toTab}<//>` : null}
+    ${bare ? null : html`<${Btn} size="xs" variant="ghost" icon="tabs" onClick=${() => c.openTabView(tab.ref)}>${g.watch}<//>`}
     ${entry?.read ? html`<${Btn} size="xs" variant="ghost" pressed=${open} onClick=${() => setOpen(!open)}>${open ? g.hideRead : g.showRead}<//>` : null}
   </span>`
 }
@@ -66,8 +66,9 @@ function ReadBlock({ read }) {
 }
 
 /** The reading of one waiting tab as a tree; nothing while the guide is off or the tab does not wait.
- *  `compact` (a narrow column) leaves out the words a step would send */
-export function GuideTree({ tab, s, c, compact = false }) {
+ *  `compact` (a narrow column) leaves out the words a step would send; `bare` (a card of the Work through
+ *  page, whose own To tab remembers the jump) leaves To tab and Watch to its host */
+export function GuideTree({ tab, s, c, compact = false, bare = false }) {
   const t = T()
   const g = t.guide
   const { status, entry } = guideOf(s, tab)
@@ -87,7 +88,7 @@ export function GuideTree({ tab, s, c, compact = false }) {
   const busy = !!s.ui?.busy?.[tab.ref]
   const read = html`<${Btn} size="xs" variant="ghost" icon="reload" busy=${busy} onClick=${() => c.guideRead(tab.ref)}>
     ${status === 'none' ? g.read : g.again}<//>`
-  const ways = html`<${Ways} tab=${tab} s=${s} c=${c} entry=${entry} open=${open} setOpen=${setOpen} />`
+  const ways = html`<${Ways} tab=${tab} s=${s} c=${c} entry=${entry} open=${open} setOpen=${setOpen} bare=${bare} />`
   const readOut = open ? html`<${ReadBlock} read=${entry?.read} />` : null
   if (status === 'none') {
     return html`<div class="guide is-empty" role="group" aria-label=${g.title}>

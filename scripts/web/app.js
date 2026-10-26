@@ -17,7 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings,
+  canTab, flowArm, flowSettings, prepOnce,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -656,6 +656,9 @@ async function freshLaunch(r) {
 // before the clear is dropped instead of bringing back a recommendation made under the old settings
 let routeGen = 0
 
+// the keys whose brief the Work through page prepared on this page load (logic.js prepOnce): each goes out once
+const prepped = new Set()
+
 /** The ticker block an answer carries, into the store unless a newer one is already there (the event of
  *  the same change can arrive first); the answer itself goes back to the caller */
 function tickerAnswer(r) {
@@ -971,6 +974,16 @@ const ctl = {
     return false
   }),
   flowAdviseClose: () => setUi({ flowAdvice: null }),
+  // the briefs of the next cards, written ahead while one stands in front: one at a time (describe runs one at a
+  // time), quietly, within the hour's budget (describe_run ahead). A refusal (the budget spent, a brief being
+  // written) ends the round; its keys are not asked again on this page load. No timer: only a card coming up asks
+  async flowPrep(keys) {
+    for (const key of prepOnce(keys, prepped)) {
+      const res = await api.action('describe_run', { key, ahead: true })
+      if (!res.ok) return
+      if (res.data?.describe) store.set(s => ({ ...s, describe: { ...s.describe, [key]: { key, ...res.data.describe } } }))
+    }
+  },
   // a chip behind the queue lists its files (views/dossier.js Shelves); null folds the list. `reveal`: picked from
   // the line of what the queue leaves out, far above, so the shelves scroll into view and the chip takes the focus
   setFileShelf: (k, reveal = false) => setUi({ fileShelf: k ?? null, fileShelfReveal: Boolean(reveal && k) }),

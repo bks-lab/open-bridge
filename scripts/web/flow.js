@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Pure helpers of the cockpit's Work through page (views/flow.js): the one queue in its fixed groups, what it
-// leaves out and why, the cards of the calm card, the return card after a jump to a tab, and the five verbs (which a
-// row offers, which one is suggested, what each sends). No DOM, no network, no state. logic.js passes every name on,
+// leaves out and why, the cards of the calm card, the return card after a jump to a tab, the five verbs (which a
+// row offers, which one is suggested, what each sends), the briefs to prepare for the cards that come next and how
+// many agents run. No DOM, no network, no state. logic.js passes every name on,
 // so a view may import it from either; the flow test imports it under node.
 //
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { asksYou, canTab, liveStage } from './logic.js'
+import { asksYou, canTab, isAnswered, liveStage } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -30,8 +31,8 @@ export const FLOW_VERBS = ['do', 'advise', 'done', 'later', 'drop']
 export const FLOW_RETURN_MAX_MS = 4 * 3600000
 
 // the group a start of the return channel stands in by where it stands now: started and working run in the lane, a
-// done one is settled. `idle` (a quiet tab with no question, a newer server) counts as finished; a stage the page
-// does not know falls to the tabs that ask, since its tab no longer works
+// done one is settled. `idle` (a quiet tab with no question, returns.py) counts as finished; a stage the page does
+// not know falls to the tabs that ask, since its tab no longer works
 const STAGE_GROUP = { started: 'lane', working: 'lane', asks: 'asks', idle: 'result', result: 'result', lost: 'lost', done: null }
 
 const SECTIONS = ['now', 'give', 'work', 'track', 'later']
@@ -44,19 +45,19 @@ export const flowOn = s => s?.work?.flow?.enabled === true
 /** The page's settings as the server sends them (cockpit.flow), with the defaults of config.py for what is missing */
 export function flowSettings(s) {
   const f = s?.work?.flow ?? {}
+  const int = (k, d, low) => (Number.isInteger(f[k]) && f[k] >= low ? f[k] : d)
   return { enabled: f.enabled === true, drop_reasons: Array.isArray(f.drop_reasons) ? f.drop_reasons : [],
-    return_after_s: Number.isFinite(f.return_after_s) ? f.return_after_s : 20 }
+    return_after_s: Number.isFinite(f.return_after_s) ? f.return_after_s : 20, prep_ahead: int('prep_ahead', 2, 0),
+    max_running: int('max_running', 4, 1) }
 }
 
 /** Whether a terminal driver starts tabs here: without one nothing runs from the page, so the lane, the cards of
  *  the agents and every way to a tab stay out (a driver not read yet counts as there, as everywhere) */
 export const flowDriver = s => canTab(s, 'launch')
 
-/** Where a start stands now, with the quiet stage of a newer server kept: liveStage reads a quiet tab as asking */
-export function flowStage(r, tabs, nowMs) {
-  const live = liveStage(r, tabs, nowMs)
-  return r?.stage === 'idle' && live === 'asks' ? 'idle' : live
-}
+/** Where a start stands now: the server's stage read against the tabs as they are (liveStage), a quiet one (idle)
+ *  kept until its tab asks you */
+export const flowStage = (r, tabs, nowMs) => liveStage(r, tabs, nowMs)
 
 /** A jump to a tab after the page came back into view: armed once return_after_s went by since the jump, gone
  *  after FLOW_RETURN_MAX_MS, waiting before. Without a jump nothing: being shown alone never asks */
@@ -72,14 +73,16 @@ export function flowArm(jump, nowMs, afterS) {
 // day it names, else last
 const ageOf = r => String(r.inbox_id ?? r.created ?? r.next?.since ?? '~')
 
-/** The Jev rank of a row: the server's next_rank, else the order of a Jev view of a work page (s.jevOrder) */
+/** The Jev rank of a row: the triage's next_rank (Jev's fresh rank, triage.py, within cockpit.flow.rank_max_age_days),
+ *  else the order of a Jev view of a work page this page fetched (s.jevOrder) */
 function rankMap(s) {
   const out = new Map()
+  for (const [key, it] of Object.entries(s?.triage?.items ?? {})) if (Number.isFinite(it?.next_rank)) out.set(key, it.next_rank)
   for (const v of Object.values(s?.jevOrder ?? {})) for (const it of v?.order?.items ?? []) if (!out.has(it.key)) out.set(it.key, it.rank)
   return out
 }
 
-const rankOf = (r, ranks) => (Number.isFinite(r.next_rank) ? r.next_rank : ranks.get(r.key) ?? null)
+const rankOf = (r, ranks) => ranks.get(r.key) ?? null
 const byRank = ranks => (a, b) => {
   const x = rankOf(a, ranks)
   const y = rankOf(b, ranks)
@@ -93,13 +96,19 @@ const byDue = (a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -
 
 /** The parts of the page from the state it sees (areaScope): the cards of each group, the starts that run (the
  *  lane), what the queue leaves out and why. Every row stands once: a start, a tab that asks or a question about a
- *  task takes that task out of the tasks, a running start keeps its row out until it asks, finishes or is lost.
- *  A card is {group, id, kind, row?, start?, tab?, task?, rows?, stage?}, kind back, start, tab, row or reports */
+ *  task takes that task out of the tasks, a running start keeps its row out until it asks, finishes or is lost, and
+ *  so does a tab of a session linked to a task while it works (one typed by hand). A tab answered from the page
+ *  (ui.answered) asks no more until it asks anew. A card is {group, id, kind, row?, start?, tab?, task?, rows?,
+ *  stage?}, kind back, start, tab, row or reports; an entry of the lane {id, kind start or session, title, at, ...} */
 export function flowParts(s) {
   const nowMs = s?.now || Date.now()
   const model = s?.model ?? {}
   const driver = flowDriver(s)
-  const tabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control && t.state !== 'shell')
+  // every tab tells where a start stands (a quiet one is back at its shell), a shell asks nothing
+  const allTabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control)
+  const tabs = allTabs.filter(t => t.state !== 'shell')
+  const answered = s?.ui?.answered ?? {}
+  const asking = t => !isAnswered(answered[t.ref], t)
   const byKey = new Map()
   for (const id of SECTIONS) for (const r of (model.sections ?? []).find(x => x.id === id)?.rows ?? []) if (!byKey.has(r.key)) byKey.set(r.key, r)
   const rowOfTask = slug => byKey.get(`task:${slug}`) ?? null
@@ -112,7 +121,7 @@ export function flowParts(s) {
     if (row.task && !row.inbox_id) usedTasks.add(row.task)
   }
   const out = { back: null, asks: [], result: [], lost: [], question: [], task: [], reports: [], lane: [] }
-  const tabOf = ref => tabs.find(t => t.ref === ref) ?? null
+  const tabOf = ref => allTabs.find(t => t.ref === ref) ?? null
   if (driver) {
     // 1 the return card, only once the jump is armed (flowArm); its row and its tab stand nowhere else
     const jump = s?.ui?.flowJump
@@ -124,18 +133,31 @@ export function flowParts(s) {
     }
     // 2 to 4 and the lane: the starts of the return channel by where they stand now
     for (const r of model.returns ?? []) {
-      const stage = flowStage(r, tabs, nowMs)
+      const mine = allTabs.filter(t => t.ref === r.tab?.ref || (r.item && (t.slug === r.item || t.item === r.item)))
+      let stage = flowStage(r, allTabs, nowMs)
+      // answered from here: it works again, as far as the page knows, until the next read of its tab
+      if (stage === 'asks' && mine.length && !mine.some(asking)) stage = 'working'
       const group = Object.hasOwn(STAGE_GROUP, stage) ? STAGE_GROUP[stage] : 'asks'
       const row = byKey.get(r.key) ?? null
       if (!group || used.has(r.key)) continue
-      const mine = tabs.filter(t => t.ref === r.tab?.ref || (r.item && (t.slug === r.item || t.item === r.item)))
-      const card = { group, id: `start:${r.key}`, kind: 'start', start: r, row, stage, tab: tabOf(r.tab?.ref) ?? mine[0] ?? null }
+      const card = { group, id: `start:${r.key}`, kind: 'start', start: r, row, stage, tab: tabOf(r.tab?.ref) ?? mine[0] ?? null,
+        title: r.title, at: r.at_ms }
       take(row ?? { key: r.key, task: String(r.key).startsWith('task:') ? r.key.slice(5) : null })
       for (const t of mine) usedTabs.add(t.ref)
       out[group].push(card)
     }
+    // the lane, too: a tab of a session linked to an open task (typed by hand, session_links) while it works
+    for (const x of s?.sessions?.sessions ?? []) {
+      const tab = x.task && x.tab?.ref && !usedTabs.has(x.tab.ref) ? tabOf(x.tab.ref) : null
+      if (!tab || tab.state !== 'working') continue
+      const row = rowOfTask(x.task)
+      out.lane.push({ group: 'lane', id: `session:${tab.ref}`, kind: 'session', session: x, row, tab, stage: 'working',
+        title: row?.title ?? tab.name, at: x.started_ms ?? tab.since_ms ?? nowMs })
+      take(row ?? { key: `task:${x.task}`, task: x.task })
+      usedTabs.add(tab.ref)
+    }
     // 2 the tabs that ask you, with or without a task, the oldest question first
-    for (const t of tabs.filter(x => x.state === 'needs-you' && !usedTabs.has(x.ref)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
+    for (const t of tabs.filter(x => x.state === 'needs-you' && !usedTabs.has(x.ref) && asking(x)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
       const row = (t.slug ? rowOfTask(t.slug) : null) ?? (t.item ? byKey.get(`inbox:${t.item}`) ?? null : null)
       if (row && used.has(row.key)) continue
       out.asks.push({ group: 'asks', id: `tab:${t.ref}`, kind: 'tab', tab: t, row })
@@ -180,10 +202,38 @@ export function flowParts(s) {
     .map(r => ({ group: 'task', id: r.key, kind: 'row', row: r }))
   for (const r of reports) used.add(r.key)
   out.reports = reports.length ? [{ group: 'reports', id: 'reports', kind: 'reports', rows: reports }] : []
-  // the lane: the starts that run, newest first, as the server sends them
-  out.lane = (out.lane ?? []).sort((a, b) => (b.start.at_ms ?? 0) - (a.start.at_ms ?? 0))
+  // the lane: what runs, the newest first
+  out.lane = (out.lane ?? []).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
   const groups = FLOW_LEFT_OUT.filter(k => left[k].length).map(reason => ({ reason, rows: left[reason] }))
   out.leftOut = { total: groups.reduce((n, g) => n + g.rows.length, 0), groups }
+  return out
+}
+
+/** How many agents run now: the entries of the lane (starts at work, linked session tabs at work). Let AI do it asks
+ *  first once cockpit.flow.max_running of them run */
+export const flowRunning = s => flowParts(s).lane.length
+
+// the kinds of row describe writes a brief for (describe.py KINDS): a task or stream, an inbox item
+const describable = row => !!row && (!!row.inbox_id || (!!row.task && String(row.key).startsWith('task:')))
+
+/** Whether a row's brief is there and current, or on its way: the live describe view (an event, an answer) before
+ *  the row's own. Written and not stale, a proposal waiting, or a run now: nothing to prepare */
+function briefReady(s, row) {
+  const d = s?.describe?.[row.key] ?? row.describe ?? null
+  return !!d && (d.running || !!d.proposal || (!!d.written && !d.stale))
+}
+
+/** The keys of the n cards after the one at `at` whose brief is missing or stale (cockpit.flow.prep_ahead): the
+ *  page has them written before they stand in front. A card without an item (a tab alone, the reports) has none */
+export function prepTargets(queue, at, n, s) {
+  return (queue ?? []).slice(Math.max(0, at) + 1, Math.max(0, at) + 1 + Math.max(0, n))
+    .map(x => x.row).filter(row => describable(row) && !briefReady(s, row)).map(row => row.key)
+}
+
+/** The keys of `keys` not prepared yet on this page view, each marked in `sent`: a key goes out once */
+export function prepOnce(keys, sent) {
+  const out = (keys ?? []).filter(k => !sent.has(k))
+  for (const k of out) sent.add(k)
   return out
 }
 

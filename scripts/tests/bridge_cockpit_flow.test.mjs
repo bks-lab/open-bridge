@@ -381,3 +381,219 @@ test('the texts of the page: both languages alike, mouse first, no keyboard shor
   assert.equal(text.TABLES.de.flowTab, 'Abarbeiten')
   assert.equal(de.chips.running, 'Läuft')
 })
+
+// ---------------------------------------------------------------- the agents: quiet tabs, the order, the briefs ahead
+
+const startOf = (slug, stage, over = {}) => ({ key: `task:${slug}`, item: slug, title: `Task ${slug}`, mode: 'go', at_ms: NOW - 30 * MIN,
+  stage, in_briefing: true, tab: null, result: null, ...over })
+
+test('flowParts: a quiet start (idle) is finished, on a shell tab too; once its tab asks it asks again', () => {
+  const shell = { ref: 'surface:11', name: 'zsh', state: 'shell', since_ms: NOW - 20 * MIN }
+  let parts = logic.flowParts(state({ work: [task('quiet')], tabs: [shell], returns: [startOf('quiet', 'idle', { tab: { ref: 'surface:11' } })] }))
+  assert.deepEqual(parts.result.map(x => [x.start.key, x.stage]), [['task:quiet', 'idle']])
+  assert.deepEqual(parts.lost, [])
+  // the tab asks a question now: needs-you outweighs what the server last called quiet
+  const asking = { ref: 'surface:11', name: 'quiet', slug: 'quiet', state: 'needs-you', since_ms: NOW - MIN }
+  parts = logic.flowParts(state({ work: [task('quiet')], tabs: [asking], returns: [startOf('quiet', 'idle', { tab: { ref: 'surface:11' } })] }))
+  assert.deepEqual(parts.asks.map(x => x.start.key), ['task:quiet'])
+  assert.deepEqual(parts.result, [])
+})
+
+test('flowQueue: the tasks follow the triage rank (next_rank), before a Jev view of a page and before the priority', () => {
+  const s = state({
+    work: [task('high', { priority: 'P0' }), task('first', { priority: 'P3' }), task('second', { priority: 'P2' })],
+    triage: { items: { 'task:first': { next_rank: 1 }, 'task:second': { next_rank: 2 } } },
+    jevOrder: { work: { order: { items: [{ key: 'task:second', rank: 1 }, { key: 'task:first', rank: 2 }] } } },
+  })
+  assert.deepEqual(queueOf(s).map(x => x.row.task), ['first', 'second', 'high'])
+})
+
+test('the lane: a tab of a session linked to a task, typed by hand, runs there and keeps its task out of the band', () => {
+  const tabs = [{ ref: 'surface:12', name: 'mine', state: 'working', since_ms: NOW - 9 * MIN, last: 'Reading the tests' }]
+  const sessions = { sessions: [{ id: 'aa11', task: 'mine', status: 'busy', started_ms: NOW - 12 * MIN, tab: { ref: 'surface:12', name: 'mine' } },
+    { id: 'bb22', task: null, status: 'busy', tab: { ref: 'surface:13', name: 'free' } }] }
+  const s = state({ work: [task('mine'), task('other')], tabs, sessions })
+  const parts = logic.flowParts(s)
+  assert.deepEqual(parts.lane.map(x => [x.kind, x.tab.ref, x.row?.key]), [['session', 'surface:12', 'task:mine']])
+  assert.deepEqual(queueOf(s).map(x => x.id), ['task:other'])
+  // the lane draws it with the task's title
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, s)} c=${recorder()} />`)
+  assert.match(el.$('.flow-lane').text(), /Task mine/)
+  // a session tab that stopped working is no longer in the lane, and its task is back in the band
+  const quiet = state({ work: [task('mine')], tabs: [{ ...tabs[0], state: 'waiting' }], sessions })
+  assert.deepEqual(logic.flowParts(quiet).lane, [])
+})
+
+test('prepTargets: the next cards whose brief is missing or stale, at most n, never one the page prepared already', () => {
+  const fresh = { written: 'ai', stale: false }
+  const s = state({ work: [task('a', { priority: 'P0' }), task('b', { priority: 'P1', describe: fresh }), task('c', { priority: 'P2' }),
+    task('d', { priority: 'P3', describe: { written: 'human', stale: true } })], describe: {} })
+  const q = queueOf(s)
+  // the cards right after the one in front: b has its brief, so only c is left of the two
+  assert.deepEqual(logic.prepTargets(q, 0, 2, s), ['task:c'])
+  assert.deepEqual(logic.prepTargets(q, 1, 2, s), ['task:c', 'task:d'])
+  assert.deepEqual(logic.prepTargets(q, 0, 0, s), [])
+  // a live describe view outweighs the row's: a brief written meanwhile, or one being written now
+  assert.deepEqual(logic.prepTargets(q, 1, 2, { ...s, describe: { 'task:c': { key: 'task:c', ...fresh } } }), ['task:d'])
+  assert.deepEqual(logic.prepTargets(q, 1, 2, { ...s, describe: { 'task:c': { key: 'task:c', running: true } } }), ['task:d'])
+  // once per key: what went out once never goes again on this page view
+  const sent = new Set()
+  assert.deepEqual(logic.prepOnce(['task:c', 'task:d'], sent), ['task:c', 'task:d'])
+  assert.deepEqual(logic.prepOnce(['task:c', 'task:d', 'task:e'], sent), ['task:e'])
+  assert.deepEqual(logic.prepOnce(['task:c'], sent), [])
+  // the reports card and a tab without an item have no brief to prepare
+  const r = state({ now: [report('20261009-0901-a-r')], tabs: [{ ref: 'surface:5', name: 'x', state: 'needs-you' }], work: [task('z')] })
+  assert.deepEqual(logic.prepTargets(queueOf(r), 0, 2, r), ['task:z'])
+})
+
+test('the page prepares the next briefs on its own when a card comes to the front, none with prep_ahead 0', async () => {
+  const s = state({ work: [task('a', { priority: 'P0' }), task('b', { priority: 'P1' }), task('c', { priority: 'P2' }), task('d', { priority: 'P3' })] })
+  const c = recorder()
+  mount(html`<${FlowPage} s=${cockpitState(NOW, s)} c=${c} />`)
+  await tick()
+  const preps = c.calls.filter(x => x[0] === 'flowPrep')
+  assert.deepEqual(preps, [['flowPrep', ['task:b', 'task:c']]])
+  assert.equal(c.calls.filter(x => x[0] === 'act').length, 0)
+  const off = recorder()
+  mount(html`<${FlowPage} s=${cockpitState(NOW, { ...s, work: { flow: { ...s.work.flow, prep_ahead: 0 } } })} c=${off} />`)
+  await tick()
+  assert.equal(off.calls.filter(x => x[0] === 'flowPrep').length, 0)
+  assert.equal(logic.flowSettings({ work: { flow: { enabled: true } } }).prep_ahead, 2)
+  assert.equal(logic.flowSettings({ work: { flow: { enabled: true } } }).max_running, 4)
+})
+
+// ---------------------------------------------------------------- a tab asks: its answers on the card
+
+const dialog = (over = {}) => ({ ref: 'surface:7', name: 'docs-merge', state: 'needs-you', since_ms: NOW - 12 * MIN,
+  ask: { text: 'Delete the old page or redirect it?', hash: 'h1', options: [{ n: 1, label: 'Delete' }, { n: 2, label: 'Redirect' }] }, ...over })
+
+test('a tab that asks: its options as buttons, a click answers the tab with the question it read, no jump', async () => {
+  const c = recorder()
+  const s = cockpitState(NOW, state({ tabs: [dialog()] }))
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  assert.match(el.$('.flow-card').text(), /Delete the old page or redirect it\?/)
+  el.button('Redirect').click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'reply'), ['reply', 'tab_option', { tab_ref: 'surface:7', n: 2, seen: 'h1', name: 'docs-merge' }])
+  // the card's own To tab remembers the jump; the bare jump of the answers is not there twice
+  assert.equal(el.$$('button').filter(b => b.text() === en.reply.openTab).length, 0)
+  el.button(en.flow.toTab).click()
+  assert.equal(c.calls.at(-1)[0], 'flowJump')
+})
+
+test('a tab that was answered leaves the queue at once, the next card moves up', () => {
+  const tab = dialog()
+  const s = state({ tabs: [tab], work: [task('next')] })
+  assert.deepEqual(queueOf(s).map(x => x.group), ['asks', 'task'])
+  const answered = { [tab.ref]: logic.answerMark(tab, 'Redirect', NOW) }
+  assert.deepEqual(queueOf({ ...s, ui: { ...s.ui, answered } }).map(x => x.id), ['task:next'])
+  // asked anew (another question), it is back
+  const again = { ...tab, ask: { ...tab.ask, hash: 'h2' } }
+  assert.deepEqual(queueOf({ ...s, tabs: { tabs: [again] }, ui: { ...s.ui, answered } }).map(x => x.group), ['asks', 'task'])
+})
+
+test('a tab that asks: the decision guide on the card, a branch pressed through tab_option with the hash, To tab remembered', async () => {
+  const tab = dialog()
+  const guide = { enabled: true, entries: { [tab.ref]: { key: 'h1', state: 'needs-you', about: 'Merging the docs', where: 'Two pages say the same',
+    options: [{ n: 2, label: 'Redirect it', why: 'Links stay alive' }], pick: 0, source: 'haiku', at_ms: NOW - MIN } } }
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ tabs: [tab] }), guide })} c=${c} />`)
+  assert.match(el.$('.flow-card').text(), /Two pages say the same/)
+  el.$$('.guide-opt').find(b => b.text().includes('Redirect it')).click()
+  await tick()
+  el.button(text.TABLES.en.guide.press).click()
+  await tick()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'reply').at(-1), ['reply', 'tab_option', { tab_ref: 'surface:7', n: 2, seen: 'h1', name: 'docs-merge' }])
+  // one To tab on the card, the page's own that remembers the jump, so the return card asks after it
+  const jumps = el.$$('button').filter(b => b.text() === en.flow.toTab || b.text() === text.TABLES.en.guide.toTab)
+  assert.equal(jumps.length, 1)
+  jumps[0].click()
+  assert.equal(c.calls.at(-1)[0], 'flowJump')
+  assert.equal(c.calls.filter(x => x[0] === 'act' && x[1] === 'tab_jump').length, 0)
+})
+
+// ---------------------------------------------------------------- finished or quiet: the result, the criteria, improve
+
+test('a finished start: its result line and the criteria of its brief as a plain list, nothing ticked', () => {
+  const row = task('fin', { card: { acceptance: ['The machine boots Linux', 'The backup runs'] } })
+  const s = cockpitState(NOW, state({ work: [row], tabs: [{ ref: 'surface:10', name: 'fin', slug: 'fin', state: 'waiting', since_ms: NOW - 25 * MIN }],
+    returns: [startOf('fin', 'result', { tab: { ref: 'surface:10' }, result: { kind: 'note', text: 'Result: driver installed, a restart is open', key: null, at_ms: null } })] }))
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  const card = el.$('.flow-card')
+  assert.match(card.text(), new RegExp(`${en.flow.result}.*driver installed`))
+  const items = card.$$('.flow-criteria li').map(li => li.text())
+  assert.deepEqual(items, ['The machine boots Linux', 'The backup runs'])
+  assert.doesNotMatch(card.$('.flow-criteria').text(), /[✓✔☑]/)
+  assert.equal(card.$$('input').filter(i => i.getAttribute('type') === 'checkbox').length, 0)
+  assert.ok(el.button(en.flow.doneClose) && el.button(en.flow.runsOn) && el.button(`${en.flow.improve.button} ▾`))
+})
+
+test('Improve: words to the tab while it lives (tab_send through the reply guard), else a new start with them', async () => {
+  const row = task('fin')
+  const live = { ref: 'surface:10', name: 'fin', slug: 'fin', state: 'waiting', since_ms: NOW - 25 * MIN }
+  const base = { work: [row], returns: [startOf('fin', 'idle', { tab: { ref: 'surface:10' } })] }
+  let c = recorder()
+  let el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ ...base, tabs: [live] }))} c=${c} />`)
+  el.button(`${en.flow.improve.button} ▾`).click()
+  await tick()
+  let box = el.$('.flow-improve textarea')
+  assert.ok(el.button(en.flow.improve.send).hasAttribute('disabled'))
+  box.value = 'Add the test for the empty list'
+  box.dispatch('input')
+  await tick()
+  el.button(en.flow.improve.send).click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'reply'), ['reply', 'tab_send', { tab_ref: 'surface:10', text: 'Add the test for the empty list', expect: 'waiting', name: 'fin' }])
+  // the tab is gone: Improve starts anew with the words, as every start, with a sentence
+  c = recorder()
+  el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ ...base, returns: [startOf('fin', 'result', { result: { kind: 'note', text: 'Result: half done' } })] }))} c=${c} />`)
+  el.button(`${en.flow.improve.button} ▾`).click()
+  await tick()
+  box = el.$('.flow-improve textarea')
+  box.value = 'Finish the other half'
+  box.dispatch('input')
+  await tick()
+  el.button(en.flow.improve.restart).click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: ['task:fin'], note: 'Finish the other half' }])
+})
+
+// ---------------------------------------------------------------- Let AI do it: the model and the cap on what runs
+
+test('Let AI do it: the model picker under it fetches the recommendation of this card once', async () => {
+  const launch = { enabled: true, auto: true, manual: true, effort: false, models: ['haiku', 'sonnet', 'opus'], default_model: 'sonnet' }
+  const c = recorder()
+  const s = cockpitState(NOW, { ...state(), launch, launchRoutes: {} })
+  const el = mount(html`<${VerbBar} row=${task('a')} s=${s} c=${c} />`)
+  assert.equal(el.$('.launch-pick'), null)
+  el.button(`${en.flow.verbs.do} ▾`).click()
+  await tick()
+  assert.ok(el.$('.verbbar-panel .launch-pick'), 'model and target under the start sentence')
+  assert.deepEqual(c.calls.filter(x => x[0] === 'launchRoute'), [['launchRoute', [{ key: 'task:a', title: 'Task a' }]]])
+})
+
+test('Let AI do it: with max_running starts at work it asks first, Start anyway starts', async () => {
+  const running = ['r1', 'r2'].map(slug => startOf(slug, 'working', { tab: { ref: `surface:${slug}` } }))
+  const tabs = ['r1', 'r2'].map(slug => ({ ref: `surface:${slug}`, name: slug, slug, state: 'working', since_ms: NOW - 5 * MIN }))
+  const flow = n => ({ enabled: true, drop_reasons: [], return_after_s: 20, prep_ahead: 2, max_running: n })
+  const c = recorder()
+  const s = cockpitState(NOW, { ...state({ work: [task('a'), task('r1'), task('r2')], tabs, returns: running }), work: { flow: flow(2) } })
+  const el = mount(html`<${VerbBar} row=${task('a')} s=${s} c=${c} />`)
+  el.button(`${en.flow.verbs.do} ▾`).click()
+  await tick()
+  el.button(en.flow.start.button).click()
+  await tick()
+  assert.equal(c.calls.filter(x => x[0] === 'act').length, 0)
+  assert.match(el.$('.verbbar-panel').text(), new RegExp(en.flow.start.busy(2).replace(/[.?]/g, '\\$&')))
+  el.button(en.flow.start.anyway).click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: ['task:a'], note: en.flow.start.note('Task a') }])
+  // below the cap it starts at once
+  const one = recorder()
+  const free = mount(html`<${VerbBar} row=${task('a')} s=${cockpitState(NOW, { ...s, work: { flow: flow(3) } })} c=${one} />`)
+  free.button(`${en.flow.verbs.do} ▾`).click()
+  await tick()
+  free.button(en.flow.start.button).click()
+  await tick()
+  assert.equal(one.calls.filter(x => x[0] === 'act' && x[1] === 'do_it').length, 1)
+})

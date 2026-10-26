@@ -39,6 +39,10 @@
 .flow-reports details { padding: 6px 0; border-top: 1px solid var(--border); }
 .flow-reports summary { cursor: pointer; color: var(--on-surface); }
 .flow-reports details[open] { display: flex; flex-direction: column; gap: 6px; }
+/* a tab that asks: its answers and the guide's steps; a finished card's criteria, a plain list to read */
+.flow-askblock { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-criteria h3 { margin: 0 0 4px; color: var(--on-surface-muted); }
+.flow-criteria ul { margin: 0; padding-left: 18px; color: var(--on-surface); font-size: var(--text-sm); }
 
 /* what the queue leaves out, and the calm card's ideas */
 .flow-left { display: flex; flex-direction: column; gap: 8px; }

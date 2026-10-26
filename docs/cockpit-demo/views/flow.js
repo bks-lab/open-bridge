@@ -9,17 +9,26 @@
 // once the page is in view again return_after_s later, the return card asks how it went (app.js). What the queue
 // leaves out (put off, waiting on someone, resting, streams, ideas) stands in a drawer with why; with nothing open the
 // calm card offers up to three ideas or backlog tasks to start. Without a terminal driver the lane, the cards of the
-// agents and every way to a tab stay out. For the mouse: the page names no key.
+// agents and every way to a tab stay out.
+// The agents' cards: a tab that asks carries the answers to its question (views/reply.js) and the decision guide
+// (views/guide.js), each through the reply verbs that guard the tab; a finished or quiet start its result line and
+// the criteria of its brief as a plain list to check yourself (no tick, nothing judges them), with Done and close
+// the tab, Improve (words to the tab while it lives, else a new start) and Runs on. The lane shows the tabs of
+// sessions linked to a task too. When a card comes to the front, the briefs of the next cards that miss one are
+// written ahead (cockpit.flow.prep_ahead, c.flowPrep, once per key). For the mouse: the page names no key.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, FLOW_CHIPS, flowCounts, flowDriver, flowParts, flowQueue, focusIndex, formatDay, isoDate, previewText, restSuggestions,
-  short, stageTone, tabOfTask, DAY,
+  canTab, duration, errorText, FLOW_CHIPS, flowAction, flowCounts, flowDriver, flowParts, flowQueue, flowSettings, focusIndex, formatDay,
+  isoDate, prepTargets, previewText, replySend, restSuggestions, short, stageTone, tabOfTask, DAY,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Calm, Hero } from './focus.js'
+import { GuideTree } from './guide.js'
+import { TAB_MSG_MAX } from './nav.js'
 import { Btn, Dot, WalkBar } from './parts.js'
+import { AskLine, TabReply } from './reply.js'
 import { VerbBar } from './verbbar.js'
 
 /** The last lines of a tab's screen, the way they stood */
@@ -40,6 +49,17 @@ const ASKING_VERBS = ['advise', 'done', 'later', 'drop']
 
 /** A card's kind in a word: its group, a quiet start by its stage */
 const cardKind = x => T().flow.kind[x.stage === 'idle' ? 'idle' : x.group]
+
+/** What a tab asks, answered on the card: the answers to its question as buttons (a dialog's options, yes and no,
+ *  go on, a field) and the decision guide's steps. The card carries its own way to the tab (TabWays, which
+ *  remembers the jump), so neither repeats it */
+function AskBlock({ tab, s, c }) {
+  if (!tab) return null
+  return html`<div class="flow-askblock">
+    <${TabReply} tab=${tab} s=${s} c=${c} compact noJump />
+    <${GuideTree} tab=${tab} s=${s} c=${c} bare />
+  </div>`
+}
 
 /** To tab and View for a tab of a card: the jump is remembered for the return card (c.flowJump) */
 function TabWays({ tab, row, title, s, c }) {
@@ -66,6 +86,42 @@ function BackCard({ x, s, c }) {
   </article>`
 }
 
+/** Improve on a finished card: what is still to do, as words to the tab while its agent waits there (tab_send
+ *  through the reply guard), else as the sentence of a new start (do_it, never without one) */
+function Improve({ row, tab, s, c, onDone }) {
+  const t = T()
+  const f = t.flow.improve
+  const [text, setText] = useState('')
+  const [note, setNote] = useState(null)
+  const busy = !!s.ui?.busy?.[tab ? tab.ref : row.key]
+  const v = text.trim()
+  const go = async () => {
+    if (!v) return
+    setNote(null)
+    if (tab) {
+      const { verb, args } = replySend(tab, v)
+      const r = await c.reply(verb, args)
+      if (r?.refused) { setNote(errorText(r.error, t)); return }
+      if (!r?.ok) { if (r?.note) setNote(r.note); return }
+    } else {
+      const a = flowAction('do', row, v)
+      if (!a || !(await c.act(a.verb, a.args))?.ok) return
+      c.flowDecided()
+    }
+    setText('')
+    onDone?.()
+  }
+  const id = `flow-improve-${row.key}`
+  return html`<div class="flow-improve verbbar-panel">
+    <label class="label-caps" for=${id}>${tab ? f.toTab : f.anew}</label>
+    <textarea id=${id} class="input textarea" rows="2" maxlength=${TAB_MSG_MAX} value=${text} onInput=${e => setText(e.currentTarget.value)}></textarea>
+    <div class="verbbar-acts">
+      <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!v} onClick=${go}>${tab ? f.send : f.restart}<//>
+      ${note ? html`<span class="small verbbar-err" role="status">${note}</span>` : null}
+    </div>
+  </div>`
+}
+
 /** A start of the return channel that wants you: its tab asks, it finished (or went quiet), or it got lost */
 function StartCard({ x, s, c }) {
   const t = T()
@@ -77,6 +133,10 @@ function StartCard({ x, s, c }) {
   const lines = r.result?.text ? [] : tailLines(tab?.last ?? r.tab?.last)
   const tomorrow = isoDate((s.now || Date.now()) + DAY)
   const finished = x.group === 'result'
+  const [fix, setFix] = useState(false)
+  // words to the tab while its agent waits there, else a new start with them (a quiet tab is back at its shell)
+  const live = !!tab && tab.state === 'waiting' && canTab(s, 'send')
+  const criteria = finished ? (row?.card?.acceptance ?? []).filter(Boolean) : []
   const doneClose = async () => {
     const res = await c.act('settle', { keys: [row.key], outcome: 'done' })
     if (res?.ok && tab) await c.act('tab_close', { tab_ref: tab.ref })
@@ -87,9 +147,12 @@ function StartCard({ x, s, c }) {
       : html`<div class="fx-do">${forget}</div>`)
     : html`${finished && row ? html`<div class="fx-do">
         ${tab ? html`<${Btn} size="sm" variant="primary" onClick=${doneClose}>${f.doneClose}<//>` : null}
+        <${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>
         <${Btn} size="sm" variant="secondary" onClick=${() => c.act('runs_on', { keys: [row.key], until: tomorrow })}>${f.runsOn}<//>
         ${r.result?.key ? html`<${Btn} size="sm" variant="ghost" onClick=${() => c.openItem(r.result.key, null)}>${t.home.returnOpenAnswer}<//>` : null}
-      </div>` : null}
+      </div>
+      ${fix ? html`<${Improve} row=${row} tab=${live ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}` : null}
+      ${x.group === 'asks' ? html`<${AskBlock} tab=${tab} s=${s} c=${c} />` : null}
       ${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${finished ? (tab ? ['later', 'drop'] : ['done', 'later', 'drop']) : ASKING_VERBS}
         extra=${html`<${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} />`} />`
         : html`<div class="fx-do"><${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} /></div>`}`
@@ -97,9 +160,15 @@ function StartCard({ x, s, c }) {
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${stageTone(x.stage === 'idle' ? 'result' : x.stage)} />${cardKind(x)}</span>
       <span class="mono muted small">${f.started(ago)}</span></header>
     <h2 id="flow-title" class="fx-title">${r.title}</h2>
-    ${r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${t.home.returnAnswer}</span> ${short(r.result.text, 400)}</p>` : null}
+    ${r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${r.result.kind === 'note' ? f.result : t.home.returnAnswer}</span> ${short(r.result.text, 400)}</p>` : null}
+    ${x.stage === 'idle' && !r.result?.text ? html`<p class="muted">${f.idleSub}</p>` : null}
     ${x.group === 'lost' ? html`<p class="muted">${f.lostSub}</p>` : null}
-    ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
+    ${x.group === 'asks' ? html`<${AskLine} tab=${tab} />` : null}
+    ${lines.length && x.group !== 'asks' ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
+    ${criteria.length ? html`<section class="flow-criteria" aria-labelledby="flow-criteria">
+      <h3 id="flow-criteria" class="label-caps">${f.criteria}</h3>
+      <ul>${criteria.map((line, k) => html`<li key=${k}>${line}</li>`)}</ul>
+    </section>` : null}
     <footer class="fx-acts">${acts}</footer>
   </article>`
 }
@@ -131,7 +200,8 @@ function Card({ x, n, s, c }) {
   if (x.kind === 'start') return html`<${StartCard} x=${x} s=${s} c=${c} />`
   if (x.kind === 'reports') return html`<${ReportsCard} x=${x} s=${s} c=${c} />`
   if (x.kind === 'tab') {
-    const acts = html`<div class="fx-do"><${TabWays} tab=${x.tab} row=${x.row} s=${s} c=${c} /></div>
+    const acts = html`<${AskBlock} tab=${x.tab} s=${s} c=${c} />
+      <div class="fx-do"><${TabWays} tab=${x.tab} row=${x.row} s=${s} c=${c} /></div>
       ${x.row ? html`<${VerbBar} row=${x.row} s=${s} c=${c} verbs=${ASKING_VERBS} />` : null}`
     return html`<${Hero} x=${{ kind: 'tab', id: x.tab.ref, tab: x.tab }} n=${n} tabOf=${() => null} s=${s} c=${c} kindWord=${f.kind.asks}
       sub=${x.tab.ask?.text ? short(x.tab.ask.text.split('\n').find(Boolean), 200) : null} acts=${acts} />`
@@ -162,17 +232,17 @@ function Lane({ lane, s, c }) {
     <h2 id="flow-lane" class="label-caps">${f.lane.label}</h2>
     <ul class="flow-lane-list">${lane.map(x => {
       const open = peek === x.id
-      const lines = tailLines(x.tab?.last ?? x.start.tab?.last)
+      const lines = tailLines(x.tab?.last ?? x.start?.tab?.last)
       return html`<li key=${x.id} class=${open ? 'is-open' : ''}>
         <button type="button" class="flow-lane-item" aria-expanded=${String(open)} title=${open ? f.lane.hide : f.lane.show}
           onClick=${() => setPeek(open ? null : x.id)}>
           <${Dot} token=${stageTone(x.stage)} pulse=${x.stage === 'working'} />
-          <span class="flow-lane-title">${short(x.start.title, 48)}</span>
-          <span class="muted small">${f.lane.stage[x.stage] ?? x.stage} · ${f.lane.since(Math.max(0, Math.round((nowMs - x.start.at_ms) / 60000)))}</span>
+          <span class="flow-lane-title">${short(x.title, 48)}</span>
+          <span class="muted small">${x.kind === 'session' ? f.lane.session : f.lane.stage[x.stage] ?? x.stage} · ${f.lane.since(Math.max(0, Math.round((nowMs - x.at) / 60000)))}</span>
         </button>
         ${open ? html`<div class="flow-lane-peek">
           ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : html`<p class="muted small">${f.lane.noScreen}</p>`}
-          <div class="fx-do"><${TabWays} tab=${x.tab} row=${x.row} title=${x.start.title} s=${s} c=${c} /></div>
+          <div class="fx-do"><${TabWays} tab=${x.tab} row=${x.row} title=${x.title} s=${s} c=${c} /></div>
         </div>` : null}
       </li>`
     })}</ul>
@@ -219,6 +289,12 @@ export function FlowPage({ s, c }) {
   const go = k => c.flowGo(queue[k].id, k)
   const entry = k => ({ key: queue[k].id, title: short(cardTitle(queue[k]), 90), sub: cardKind(queue[k]), onOpen: () => go(k) })
   const decided = s.ui.flowDecided ?? 0
+  // the card in front changed: the briefs of the next cards are written ahead, where one is missing or stale
+  const ahead = flowSettings(s).prep_ahead
+  useEffect(() => {
+    const keys = prepTargets(queue, i, ahead, s)
+    if (keys.length) c.flowPrep(keys)
+  }, [x?.id, ahead])
   return html`<div class="col col-page flow">
     <header class="flow-head">
       <h2 class="detail-title">${f.title}</h2>

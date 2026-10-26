@@ -22,9 +22,10 @@ export function AskLine({ tab }) {
 
 /** The answers the page offers `tab` (logic.js replyOptions). `compact` (the sidebar) keeps the text field
  *  behind a button; `bare` (the tab's own view, which has its message box and its way to the tab) leaves
- *  out the field and the open-tab button. An answer that went out is kept in ui.answered; a refusal
+ *  out the field and the open-tab button; `noJump` (a card of the Work through page, whose own To tab
+ *  remembers the jump) only the open-tab button. An answer that went out is kept in ui.answered; a refusal
  *  (the tab moved on, a draft in it) shows its note here and keeps what was typed */
-export function TabReply({ tab, s, c, compact = false, bare = false }) {
+export function TabReply({ tab, s, c, compact = false, bare = false, noJump = false }) {
   const t = T()
   const [open, setOpen] = useState(!compact)
   const [text, setText] = useState('')
@@ -36,7 +37,7 @@ export function TabReply({ tab, s, c, compact = false, bare = false }) {
   })
   if (!tab) return null
   const { buttons, textBox } = replyOptions(tab, s, t)
-  const shown = bare ? buttons.filter(b => b.verb !== 'tab_jump') : buttons
+  const shown = bare || noJump ? buttons.filter(b => b.verb !== 'tab_jump') : buttons
   const withText = textBox && !bare
   if (!shown.length && !withText) return null
   const busy = !!s.ui?.busy?.[tab.ref]

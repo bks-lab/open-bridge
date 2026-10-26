@@ -1296,13 +1296,15 @@ function agentsState(now) {
 
 // the triage (triage.py state()): one line per task and inbox row of the demo, the last run 20 minutes ago
 function triageState(now, running = null) {
-  // effort is for the AI only: a row the person does carries none (triage.py)
+  // effort is for the AI only: a row the person does carries none (triage.py). next_rank is Jev's fresh rank of
+  // the row (the order of the Work through page's tasks), rank_at when it was given
   const x = (kind, title, gist, verdict, doer, effort, extra = {}) => ({ kind, title, gist, verdict, reason: null, doer, effort, why: null,
-    verdict_from: 'haiku', model: 'haiku-5-5', level: effort === 'small' ? 1 : 2, jev: null, ...extra })
+    verdict_from: 'haiku', model: 'haiku-5-5', level: effort === 'small' ? 1 : 2, jev: null, next_rank: null, rank_at: null, ...extra })
   const items = {
     'task:demo-task': x('task', 'Write the onboarding guide for the demo project', 'A setup guide for new team members', 'continue', 'either', 'medium',
       { topic: 'docs' }),
-    'task:docs-refresh': x('task', 'Refresh the docs index', 'Rebuild the index after the folder change', 'continue', 'ai', 'small', { topic: 'docs' }),
+    'task:docs-refresh': x('task', 'Refresh the docs index', 'Rebuild the index after the folder change', 'continue', 'ai', 'small',
+      { topic: 'docs', next_rank: 1, rank_at: now - 3 * 3600000 }),
     'inbox:20261009-0915-update-docs-e5f6': x('inbox', 'Update the setup docs after the config change', 'Update the setup docs after the config change',
       'keep', 'ai', 'small', { topic: 'docs' }),
     'task:alpha-release': x('task', 'Prepare the alpha release notes', 'Release notes from the merged changes', 'continue', 'you', null,
