@@ -36,6 +36,7 @@ properties:
     description: "Who filed it: a machine/job, an agent or a tab"
   kind:
     enum: [decision, question, finding, draft, result, idea]
+    description: "What it is. Its art is derived, never stored: decision, question, draft are an ask; finding, result a report; idea an idea (docs/inbox.md § Arts)"
   summary:
     type: string
     minLength: 1
@@ -80,7 +81,7 @@ properties:
   closer:
     type: string
     enum: [probe, reporter, person, bot]
-    description: "Who ends the item when it has no probe: the reporter (closes by key once the condition is gone), a person, or a watcher bot. An item with neither closes_when nor closer has no way out; `add` warns."
+    description: "Who ends the item when it has no probe: the reporter (closes by key once the condition is gone), a person, or a watcher bot. `add` files an item with neither closes_when, closer nor action as `person`, so none is left without a way out."
 
 $defs:
   brief:

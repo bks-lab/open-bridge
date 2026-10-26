@@ -1,7 +1,7 @@
 ---
 summary: "The inbox: one place per Bridge where everything that needs a person waits until it is done. Item and event layout, derived states, gates, closing probes, who writes and reads, CLI reference."
 type: guide
-last_updated: 2026-10-17
+last_updated: 2026-10-26
 related:
   - scripts/inbox.py
   - scripts/tests/test_inbox.py
@@ -103,6 +103,24 @@ A close by mistake is taken back with `reopen`, one more event: the item is `ope
 again and every yes before it is void, so an executed action does not run a second
 time without a new yes. A later close closes it again.
 
+## Arts
+
+A person sees an item as one of three arts, derived from its `kind` and never
+stored (`scripts/lib/inbox_verbs.py` `ART_OF_KIND`):
+
+| Art | Kinds | Means |
+|---|---|---|
+| `ask` | `decision`, `question`, `draft` | needs a person's yes, word or click |
+| `report` | `finding`, `result` | how something stands; a probe or its reporter ends it |
+| `idea` | `idea` | mentioned, nothing came of it yet |
+
+A kind the table does not know is an `ask`, so a person sees it rather than
+missing it. `list --json` carries the `art` of every row and `list --art <art>`
+shows one art only. The briefing's "N for you today" and the cockpit's "waits
+for you" count the asks: a row that is no inbox item (a task, a board item)
+counts as before, and of the inbox only an `ask` does. An idea or a report filed
+for today still shows in Do (Now in the cockpit), it is just not counted.
+
 ## Gates
 
 - `free`: the Bridge may act alone. `run` executes the action without a yes. A
@@ -137,9 +155,11 @@ A probe that cannot be evaluated (no network, a typo, a missing task) is
 An item without a probe stays open until somebody remembers it. `closer` says who
 ends it instead: `reporter` (the job that filed it closes it by key once the
 condition is gone: `inbox.py close --key <key>`), `person`, or `bot` (a watcher
-that acts on it). `add` warns about a `finding` or `question` with neither
-`closes_when` nor `closer`. It warns rather than refuses, because filers run
-unattended and a refusal would lose the finding.
+that acts on it). `add` files an item with neither `closes_when`, `closer` nor an
+`action` as `closer: person`, written into `item.yaml`: nothing else would end
+it. It does not refuse, because filers run unattended and a refusal would lose
+the item. An item with an action keeps no closer, since the run that executes it
+closes it.
 
 `bot` is also a routing promise: the item goes to a watcher that **looks first**.
 It investigates before a person hears about it and ends in one of three ways:
@@ -199,11 +219,11 @@ python3 scripts/inbox.py add --from homebox/issue-radar --kind decision \
     --summary "PR #70 is green and waits for a merge" --task portal-relaunch \
     --action-json '{"argv": ["gh", "pr", "merge", "70", "-R", "contoso/portal"]}' \
     --closes-when-json '{"gh_pr": "contoso/portal#70", "state": "merged"}'
-python3 scripts/inbox.py list [--all] [--json] [--short]   # open items, most urgent first
+python3 scripts/inbox.py list [--all] [--json] [--short] [--art ask|report|idea]   # open items, most urgent first
 python3 scripts/inbox.py show <id>                         # item plus its events; an unambiguous id prefix works
 python3 scripts/inbox.py approve <id> [--when-json '{...}'] [--text "edited draft"]
 python3 scripts/inbox.py reject|close|drop <id> [--note "why"]
-python3 scripts/inbox.py drop <id> --reason once|duplicate|family|source   # family and source leave a mute rule
+python3 scripts/inbox.py drop <id> --reason once|duplicate|stale|family|source   # family and source leave a mute rule
 python3 scripts/inbox.py mute list [--json]                 # the mute rules in force
 python3 scripts/inbox.py unmute <rule-id>                   # lift one
 python3 scripts/inbox.py stats [--days 30] [--json]         # per source: filed, dropped by a person, muted
@@ -235,6 +255,7 @@ part of the `drop` event:
 |---|---|---|
 | `once` | not worth it this time | nothing; the key stays dropped as before |
 | `duplicate` | already known elsewhere | nothing |
+| `stale` | it went old without anybody acting on it (what a cleanup proposes) | nothing |
 | `family` | never this kind again | a rule: the source plus the key up to its last colon (`health:crash:1a20` mutes `health:crash:`), or the source plus the kind when the key has no family (such a rule leaves keys with a family alone) |
 | `source` | this source is too loud | a rule: everything of the source for 30 days (`MUTE_SOURCE_DAYS`) |
 
@@ -246,6 +267,11 @@ event: nothing is lost, it counts in `stats`, and `reopen` brings it back. An
 item filed with `--urgency now` is never muted, so a muted source cannot
 swallow an outage, and a muted key that comes back as `now`, or after its rule is gone, is reopened. A source mute ends by itself, a family mute stays until
 `unmute` lifts it.
+
+Sources that differ only in case (`Host-A/notify`, `host-a/notify`) are one
+source to the rules and to `stats`. Only the comparison folds the case: items and
+rules keep their source as written, and a `stats` row is named as the source was
+first written.
 
 `stats` counts, per source, the items filed in the last N days: how many a
 person dropped (with the reasons, `unknown` for a drop without one), how many
@@ -299,3 +325,33 @@ held answer as an inbox item (kind `draft`, gate `only-you`) so it shows up wher
 everything else waits, and the person's `approve --text` releases an edited
 version. That bridge is the script `scripts/inbox-approve.py`, written separately
 from this model.
+
+## Upgrading
+
+From the release that brought the arts (2026-10). Nothing to migrate: no item,
+event or mute rule is rewritten, and every call that worked before works
+unchanged. What an existing instance notices:
+
+1. **Default closer.** A new item filed with neither `closes_when`, `closer` nor
+   an `action` is stored with `closer: person`, and the old warning
+   `no way to close` is gone. Items filed before keep what they had. A filer that
+   relied on the warning to spot missing ways out reads the stored `closer`
+   instead; one that means another closer passes `--closer reporter` or `bot` as
+   before.
+2. **The count.** "N for you today" in the briefing headline and the cockpit's
+   "waits for you" (the coloured Today number, the station, the area lines) count
+   only the asks of the inbox. Ideas and reports still show in Do and Now, so the
+   number can be smaller than the rows there. A profile that wants an idea or a
+   report counted files it as a `question` or `decision`.
+3. **New filter.** `list --art ask|report|idea` and an `art` field in every
+   `list --json` row. A consumer that reads `list --json` with a fixed set of
+   keys ignores the new one; nothing was renamed.
+4. **Case of a source.** `stats` merges sources that differ only in case, and a
+   mute rule holds for every spelling of its source. To see the spellings apart,
+   read `from` in `list --all --json`.
+5. **`stale`.** A new `drop --reason`. It leaves no rule; the cockpit's drop
+   dialog does not offer it.
+
+To check an instance after the update: `python3 scripts/inbox.py validate` is
+still clean, and `python3 scripts/inbox.py list --art ask --short` shows what now
+makes up the count.
