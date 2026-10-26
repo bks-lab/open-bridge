@@ -281,6 +281,71 @@ cockpit:
 step, its drawers, a search across every task and a question to the file. It has a page of its own:
 [`cockpit-files.md`](cockpit-files.md).
 
+### Work through (`@flow`)
+
+**Work through** is one tab right after Today, there only with
+`cockpit.flow.enabled: true`. Everything open comes as one row of cards: one
+card large in front, five verbs on it, **Next** under it, and after a decision
+the next card moves up into its place. Its badge is the number Today carries
+(what waits for you), no counter of its own.
+
+The cards come in groups whose order is fixed in the code; nothing moves a card
+across a group, a Jev rank only orders inside one:
+
+| # | Group | What | Order inside |
+|---|---|---|---|
+| 1 | Back from a tab | the return card after **To tab** (below) | one |
+| 2 | A tab asks | a start whose tab stopped working, and every tab that asks you, with or without a task | the oldest question first |
+| 3 | Finished | a start of the return channel with its answer | the oldest first |
+| 4 | Tab gone | a start without a tab and without a word | the newest first |
+| 5 | A question for you | an inbox item that asks (art `ask`), with or without a task | a due day first, then the oldest |
+| 6 | Tasks | the tasks doing or in review, every priority | Jev rank, then priority, then age |
+| 7 | Reports | the reports (art `report`), all on one card | the oldest first |
+
+Every row stands once: a start, a tab or a question about a task takes that
+task out of the tasks, and a start that runs stays in the lane **Running** on
+top until it asks, finishes or is lost. A click on an entry of the lane shows
+the last lines of its tab without leaving the cards. The chips over the queue
+show one kind at a time (asks you, running, tasks, reports). **Left out (n)**
+lists what the queue leaves out and why: put off until a day, waiting on
+someone else, resting or blocked, streams (they come through their inbox
+items), ideas and backlog. Ideas and backlog tasks come back only when the
+queue is empty: the calm card offers up to three to start.
+
+The five verbs, the suggested one as the primary button (the triage's verdict,
+else Advise on a question and Let AI do it on a task the AI may do):
+
+| Verb | Sends |
+|---|---|
+| Let AI do it | `do_it` with a sentence, always: the field is filled with the title and the request to end with a note "Result: ...", and Start stays grey while it is empty. A start with a sentence never approves an item's own action; an item that needs your yes keeps **Give your yes** beside the verbs |
+| Advise | a read-only quick question about the row; the answer shows in the card, with **Start from it** |
+| Done | `settle` done |
+| Later until | `later`: tomorrow, Monday, next week or a date |
+| Drop because | a reason from `cockpit.flow.drop_reasons` or typed, never without one: a task is shelved (`shelve`, an idea in the inbox and the task declined, taken back by reopening it), anything else settled as not doing with the reason. A stream offers neither Drop nor Done |
+
+A card whose tab asks offers no start (the tab takes no sentence while it
+asks), only **To tab** and **View** beside the other verbs. A finished start
+offers **Done and close the tab** and **Runs on**; a lost one **Start again**.
+
+**The return card.** **To tab** on a card remembers the jump, in the page's
+memory only (a reload forgets it). When the page is in view again at least
+`cockpit.flow.return_after_s` seconds later (and within four hours), the card
+**Back from the tab ...: How did it go?** stands in front, with Done, Runs on,
+Later until, Drop because and Not yet; any answer forgets the jump. Switching
+to another app and back without To tab never brings it.
+
+**Without a terminal driver** the lane, the cards of groups 1 to 4 and every
+way to a tab stay out, and the band holds the questions, the tasks and the
+reports. A start then hands out the commands to start it by hand.
+
+**Upgrading.** Opt-in, nothing changes until the key is set: without
+`cockpit.flow.enabled: true` the tab and the page do not exist, and a page
+stored as `@flow` opens Today. The page adds one verb, `shelve`; every other
+page, view, verb and endpoint stays as it was. The state sends the block under
+`work.flow` beside the work tab's keys; a page that does not read it is not
+affected. To try it in the demo, open it as it is (the demo has it on);
+`?flow=0` shows the demo without it.
+
 ### The start page
 
 **The overview (the default).** Start is a slim control view with three

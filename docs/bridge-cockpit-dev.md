@@ -115,11 +115,13 @@ layout now").
 | `scripts/web/logic.js` | pure helpers, tested under node (the ticker's status rules are `tickerStatus` and `tickerItems`); it passes on every name of `areas.js` and `files.js`, so a view imports from either |
 | `scripts/web/areas.js` | the areas ([`cockpit-areas.md`](cockpit-areas.md)): the area lines `homeAreas`, where a number leads `areaJump`, the one area filter `areaScope` and what the keys see under it `keyScope`, `scopeRow`, `scopeKeep` |
 | `scripts/web/files.js` | the files view ([`cockpit-files.md`](cockpit-files.md)): its queue `fileQueue` and `scopedFileQueue`, the parts `dossierParts`, a file's results and next step, the search and the context a question carries |
+| `scripts/web/flow.js` | the Work through page ([Work through](bridge-cockpit.md#work-through-flow)): `flowParts` (the cards of each group from the rows of `/api/state`, each row once, the lane, `leftOut` with why), `flowQueue` and `flowCounts` (the groups in the fixed order `FLOW_GROUPS`, under a chip of `FLOW_CHIPS`), `flowArm` (when a remembered jump to a tab asks how it went), `verbsFor`, `suggestedVerb` and `flowAction` (what each of the five verbs sends), `restSuggestions`; pure, re-exported by `logic.js` |
+| `scripts/web/views/flow.js`, `views/verbbar.js` | `FlowPage` (head, chips, the lane of what runs, the card in front in the start page focus's `Hero` or a card of its own for a start, the return card and the reports, `WalkBar`, what the queue leaves out, the calm card) and `VerbBar` (the five verbs as one part: the suggested one primary, the start sentence, the days, the reasons to drop, the answer of Advise) |
 | `scripts/web/motion.js` | springs, hits and rail points from the explainer films (`skills/explainer-video/assets/motion.js`), tested under node |
 | `scripts/web/api.js` | fetch and EventSource wrappers |
-| `scripts/web/text.js` | page texts, de and en with identical keys; it takes in `text-areas.js` (`home`, the start page), `text-card.js` (`card`, the item card) and `text-files.js` (`dossier`), each with both languages side by side |
+| `scripts/web/text.js` | page texts, de and en with identical keys; it takes in `text-areas.js` (`home`, the start page), `text-card.js` (`card`, the item card) `text-files.js` (`dossier`) and `text-flow.js` (`flow`, the Work through page), each with both languages side by side |
 | `scripts/web/tokens.css`, `style.css` | design tokens from `DESIGN.md`, layout |
-| `scripts/web/areas.css`, `files.css` | the rules of the areas and of the files view, loaded right after `style.css` so the cascade stands as it did inside it |
+| `scripts/web/areas.css`, `files.css`, `flow.css` | the rules of the areas, of the files view and of the Work through page, loaded right after `style.css` so the cascade stands as it did inside it |
 | `scripts/web/mock.js` | invented example data for `?mock=1` |
 | `scripts/web/vendor/` | pinned Preact + htm bundle, checked by hash |
 | `mods/cockpit-relay/hooks/relay.ts` | pure relay functions of the mod, HMAC included, and its word tables (`TABLES`) |
@@ -219,6 +221,14 @@ python3 scripts/bridge-cockpit.py status --json
    `confirmYes`).
 6. `text.js`: button text in both languages.
 7. `bridge-cockpit.md` section 4: the verb list.
+
+Verb `shelve` is a recent example of all seven: its `SPEC` entry with the
+argument kind `reason` (one line, at most 200 characters, `SPECIAL_KINDS`), the
+handler in `actions_work.py` (a task only, the reason glued to its flag as
+`--reason=<r>` so it stays one argv word), its notes in `text.py`, the tests in
+`test_bridge_cockpit.py` and a scenario in `test_bridge_cockpit_contract.py`,
+the Drop because of `views/verbbar.js`, its words in `text-flow.js`, the verb
+list of section 4, and the settle list of `mock.js`.
 
 Verb `task_close` is a complete small example of all seven, including the
 refusal for streams (`closable` on the row) and the mock: a verb that settles a
@@ -422,7 +432,7 @@ both detail payloads carry a card of exactly `CARD_FIELDS`. Jev gets none of it 
 ### New page text
 
 `text.js`, both `en` and `de`, same key; a text of the start page (`home`) goes in `text-areas.js`,
-one of the files view (`dossier`) in `text-files.js`, one of the item card (`card`) in `text-card.js`, both languages there too. The frontend test fails on a key
+one of the files view (`dossier`) in `text-files.js`, one of the Work through page (`flow`) in `text-flow.js`, one of the item card (`card`) in `text-card.js`, both languages there too. The frontend test fails on a key
 missing in one language, an empty value, an em or en dash, or an emoji.
 
 ## 6. Tests
