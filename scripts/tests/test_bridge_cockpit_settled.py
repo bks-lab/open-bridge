@@ -115,6 +115,18 @@ def test_a_broken_or_foreign_file_is_skipped(tmp_path):
     assert KEY in store.dismissed()
 
 
+def test_a_file_read_while_it_was_still_arriving_counts_once_it_is_complete(tmp_path):
+    # git checks a file out by writing it in place, so a read can meet it empty or cut short
+    folder = tmp_path / "settled"
+    folder.mkdir()
+    arriving = folder / "20261010T070000Z-000-aaaa-dismiss.yaml"
+    arriving.write_text("", encoding="utf-8")
+    store = SettledStore(folder, Clock())
+    assert store.dismissed() == {}
+    arriving.write_text(f"key: '{KEY}'\nact: dismiss\noutcome: done\ntitle: t\n", encoding="utf-8")
+    assert KEY in store.dismissed()
+
+
 def test_same_second_decisions_keep_their_order(tmp_path):
     clock = Clock()
     store = SettledStore(tmp_path / "settled", clock)

@@ -16,7 +16,8 @@ seq orders one machine's decisions within a second, rand keeps two machines' nam
 migrated from state.json are `legacy-<hash>-<act>.yaml`: the name is the hash of the entry, so two
 machines migrating the same entry write the same file, and they sort before every dated decision.
 Reading lists the folder on each call and parses only names not seen before, so a file a pull
-brought counts without a restart; a file that is not a decision is skipped.
+brought counts without a restart; a file that is not a decision is skipped and read again next time,
+since git writes a file in place and a read can meet it empty or cut short.
 """
 from __future__ import annotations
 
@@ -64,7 +65,7 @@ class SettledStore:
         self.folder = Path(folder)
         self.clock = clock                   # epoch ms, like the rest of the cockpit
         self.lock = threading.Lock()
-        self._read: dict[str, dict | None] = {}     # file name -> its decision, None when it is none
+        self._read: dict[str, dict] = {}     # file name -> its decision; a file that holds none is not kept
 
     # ------------------------------------------------------------ reading
 
@@ -83,7 +84,9 @@ class SettledStore:
                         data = yaml.safe_load((self.folder / name).read_text(encoding="utf-8"))
                     except (OSError, UnicodeDecodeError, yaml.YAMLError):
                         continue                 # half arrived or unreadable: try again on the next read
-                    self._read[name] = _valid(data)
+                    decision = _valid(data)
+                    if decision is not None:     # an empty or cut-short file (git writes in place): read again
+                        self._read[name] = decision
             latest: dict[str, dict] = {}
             for name in sorted(names, key=_order):
                 data = self._read.get(name)
