@@ -198,7 +198,8 @@ class App:
         self.port = 0
         self.hub = SSEHub()
         self.notes: collections.deque = collections.deque(maxlen=20)
-        self.store = WebStore(self.state_dir, clock)
+        # hidden and settled rows also go to work/cockpit/settled/, tracked, so every machine keeps them (settled.py)
+        self.store = WebStore(self.state_dir, clock, settled_dir=self.root / "work" / "cockpit" / "settled")
         self.daybook = DayBook(self.state_dir, clock)     # the start page's day by day (daybook.py)
         self.launches = Launches(self.state_dir, clock)   # every start handed to a tab, for the return channel (returns.py)
         self.graph = Graph(self.root)                       # the inner room's knowledge graph (graph.py)

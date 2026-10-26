@@ -2,9 +2,9 @@
 """Watcher of the cockpit: stat-only scans of the work tree and the relay directory.
 
 Every 2 s the mtimes of work/inbox (the dir, each item.yaml, each events dir),
-work/tasks and work/streams (the dirs and each STATUS.md) and work/log.md are compared
-with the previous scan; a change schedules a `delta` pass, debounced 3 s and held for as
-long as the collector asks (after a pass at least as long as that pass took). At local
+work/tasks and work/streams (the dirs and each STATUS.md), work/log.md and the folder
+work/cockpit/settled (settled.py) are compared with the previous scan; a change schedules a
+`delta` pass, debounced 3 s and held for as long as the collector asks (after a pass at least as long as that pass took). At local
 midnight one `full` pass runs (deferred inbox items reopen without an event). The same
 thread scans the relay every 1 s, cleans it every 10 min and writes the server stats
 into server.json every 10 s. Nothing here reads file contents of the work tree.
@@ -76,6 +76,7 @@ def snapshot(root: Path) -> dict[str, int]:
         pass
     out.update(task_snapshot(root))
     put(str(root / "work" / "log.md"))
+    put(str(root / "work" / "cockpit" / "settled"))     # a pull that brought a row settled on another machine
     return out
 
 

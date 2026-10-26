@@ -94,7 +94,7 @@ class ChatVerbs:
         title = m.short(text, 60)
         if until:
             key = f"inbox:{new_id}"
-            self.app.store.hide(key, until)
+            self.app.store.hide(key, until, text)
             ctx.history.append(history_item(key, text, "other", f"hidden until {until}"))
             ctx.note(self.tx["remind_until"].format(until=until, title=title))
         else:

@@ -567,6 +567,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/relay.py",
     "scripts/lib/bridge_cockpit/watch.py",
     "scripts/lib/bridge_cockpit/store.py",
+    "scripts/lib/bridge_cockpit/settled.py",              # settled and hidden rows, shared through git
+    "scripts/tests/test_bridge_cockpit_settled.py",
     "scripts/lib/bridge_cockpit/details.py",
     "scripts/lib/bridge_cockpit/jev.py",          # optional integration, off unless integrations.typesafe.enabled
     "scripts/lib/bridge_cockpit/launch.py",       # the model an agent starts with, off unless cockpit.launch_model.enabled

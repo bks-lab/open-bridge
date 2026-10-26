@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .model import SETTLE_OUTCOMES, iso_date
+from .settled import SettledStore
 
 LOG_MAX_BYTES = 1024 * 1024
 RUNS_SEEN_MAX = 300         # the newest workflow runs marked as checked; an older run has long left the files view
@@ -88,9 +89,15 @@ def append_log(path: Path, line: str, max_bytes: int = LOG_MAX_BYTES) -> None:
 class WebStore:
     """state.json: {"v": 1, "hidden": {row_key: "YYYY-MM-DD"}, "dismissed": {row_key: {outcome, at, title}},
     "team_runs": {slug: {team, roles, at}}}. A dismissed row (done or not doing, from a source the web
-    cannot close, like a GitHub issue) stays out of the briefing until "show again"; no date brings it back."""
+    cannot close, like a GitHub issue) stays out of the briefing until "show again"; no date brings it back.
 
-    def __init__(self, state_dir: Path, clock: Callable[[], float]):
+    With `settled_dir` (the server passes work/cockpit/settled/, settled.py), hidden and dismissed rows are
+    shared through git: every hide, dismiss and "show again" is also one new file there, reading merges
+    that record with the legacy keys here (the record decides every key it knows), and the legacy entries
+    are copied in once at start. The legacy keys are still written, so an older version reads them after a
+    downgrade. Without it (tests, a caller of its own) the store is what it was: state.json only."""
+
+    def __init__(self, state_dir: Path, clock: Callable[[], float], settled_dir: Path | None = None):
         self.state_dir = Path(state_dir)
         self.path = self.state_dir / "state.json"
         self.view_path = self.state_dir / "view.json"
@@ -128,6 +135,12 @@ class WebStore:
         seen_runs = data.get("runs_seen") if isinstance(data.get("runs_seen"), dict) else {}
         self._runs_seen = {k: v for k, v in seen_runs.items() if isinstance(k, str) and isinstance(v, (int, float))}
         self.prune()
+        self.settled = SettledStore(settled_dir, clock) if settled_dir is not None else None
+        if self.settled is not None:
+            try:
+                self.settled.migrate(self._hidden, self._dismissed)
+            except OSError:
+                pass        # read only or no room: the legacy keys still count, the next start tries again
 
     def today(self) -> str:
         return iso_date(self.clock())
@@ -186,19 +199,42 @@ class WebStore:
                 return
             self._save()
 
+    def _merged(self) -> tuple[dict, dict]:
+        """(hidden, dismissed): the shared record for every key it knows, the legacy keys for the rest."""
+        hidden, dismissed = dict(self._hidden), json.loads(json.dumps(self._dismissed))
+        if self.settled is None:
+            return hidden, dismissed
+        known, shared_hidden, shared_dismissed = self.settled.state(self.today())
+        hidden = {k: v for k, v in hidden.items() if k not in known} | shared_hidden
+        dismissed = {k: v for k, v in dismissed.items() if k not in known} | shared_dismissed
+        return hidden, dismissed
+
+    def _share(self, write: Callable[[SettledStore], None]) -> None:
+        """A hide or dismiss into the shared record. A failed write is not fatal: the legacy key holds the
+        decision on this machine, and the next start copies it in (the record does not know the key)."""
+        if self.settled is not None:
+            try:
+                write(self.settled)
+            except OSError:
+                pass
+
     def hidden(self) -> dict:
         with self.lock:
-            return dict(self._hidden)
+            return self._merged()[0]
 
-    def hide(self, key: str, until: str) -> None:
+    def hide(self, key: str, until: str, title: str = "") -> None:
         with self.lock:
             self._hidden[key] = until
             self._save()
+            self._share(lambda s: s.hide(key, until, title))
 
     def unhide(self, key: str) -> bool:
         with self.lock:
-            if key not in self._hidden and key not in self._dismissed:
+            hidden, dismissed = self._merged()
+            if key not in hidden and key not in dismissed:
                 return False
+            if self.settled is not None and self.settled.knows(key):
+                self.settled.unsettle(key)      # a record, not a deletion: merge-safe (settled.py)
             self._hidden.pop(key, None)
             self._dismissed.pop(key, None)
             self._save()
@@ -206,13 +242,15 @@ class WebStore:
 
     def dismissed(self) -> dict:
         with self.lock:
-            return json.loads(json.dumps(self._dismissed))
+            return self._merged()[1]
 
     def dismiss(self, key: str, outcome: str, title: str) -> None:
         with self.lock:
             self._dismissed[key] = {"outcome": outcome, "at": iso_date(self.clock()), "title": title[:200]}
             self._hidden.pop(key, None)
             self._save()
+            if outcome in SETTLE_OUTCOMES:      # another outcome never outlived a restart here; it is not shared
+                self._share(lambda s: s.dismiss(key, outcome, title))
 
     def team_runs(self) -> dict:
         with self.lock:
