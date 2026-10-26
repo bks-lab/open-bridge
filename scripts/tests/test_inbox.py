@@ -843,3 +843,39 @@ def test_cli_add_without_the_flag_still_opens_a_new_item(tmp_path, capsys):
     inbox.main(["--root", str(tmp_path), "add", "--from", "m/bridge-notify", "--kind", "finding",
                 "--summary", "orbit (m)", "--key", "notify:k1", "--detail", DETAIL, "--closer", "bot"])
     assert capsys.readouterr().out.strip().splitlines()[-1] != item_id
+
+
+# ---------------------------------------------------------------- arts: what a person sees an item as
+
+def test_every_kind_has_an_art_and_the_arts_are_three():
+    assert {k: inbox.art_of_kind(k) for k in inbox.KINDS} == {
+        "decision": "ask", "question": "ask", "draft": "ask",
+        "finding": "report", "result": "report", "idea": "idea"}
+    assert inbox.ARTS == ("ask", "report", "idea")
+
+
+def test_an_unknown_kind_is_an_ask_so_a_person_sees_it():
+    assert inbox.art_of_kind("verdict") == "ask"
+    assert inbox.art_of_kind(None) == "ask"
+
+
+def test_art_of_reads_the_item_and_stores_nothing(box):
+    item_id = add(box, kind="idea", summary="maybe one day")
+    assert inbox.art_of(box.get(item_id)) == "idea"
+    assert inbox.art_of(box.get(item_id).as_dict()) == "idea"
+    stored = yaml.safe_load((box.root / item_id / "item.yaml").read_text(encoding="utf-8"))
+    assert "art" not in stored
+
+
+def test_list_json_carries_the_art_and_list_art_filters(tmp_path):
+    for kind, summary in (("decision", "merge it"), ("finding", "disk 91 %"), ("idea", "a dark mode")):
+        r = run_cli(tmp_path, "add", "--from", "cli", "--kind", kind, "--summary", summary, "--closer", "person")
+        assert r.returncode == 0, r.stderr
+    rows = json.loads(run_cli(tmp_path, "list", "--json").stdout)
+    assert {r["summary"]: r["art"] for r in rows} == {"merge it": "ask", "disk 91 %": "report", "a dark mode": "idea"}
+    asks = json.loads(run_cli(tmp_path, "list", "--json", "--art", "ask").stdout)
+    assert [r["summary"] for r in asks] == ["merge it"]
+    short = run_cli(tmp_path, "list", "--short", "--art", "idea").stdout
+    assert "a dark mode" in short and "merge it" not in short
+    assert run_cli(tmp_path, "list", "--art", "task").returncode != 0      # only the three arts
+

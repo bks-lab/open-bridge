@@ -14,6 +14,7 @@ things as open that had been solved hours earlier, because the sentence saying
         --action-json '{"argv": ["gh", "pr", "merge", "70", "-R", "org/repo"]}' \\
         --closes-when-json '{"gh_pr": "org/repo#70", "state": "merged"}'
     python3 scripts/inbox.py list            # open items, most urgent first
+    python3 scripts/inbox.py list --art ask  # only what needs a person (ask · report · idea)
     python3 scripts/inbox.py approve <id> [--when-json '{"gh_pr": "org/repo#70", "state": "green"}']
     python3 scripts/inbox.py check           # close what the live source says is done
     python3 scripts/inbox.py run             # execute what a person released
@@ -31,6 +32,10 @@ CLOSING. ``closes_when`` names a probe against the live source (a PR merged, an
 issue closed, a file present, a command exiting 0, a time passed). ``check``
 runs the probes and closes what holds. A probe that cannot be evaluated is
 UNKNOWN, never true: an item stays open rather than vanishing on a network error.
+
+ARTS. Three ways a person sees an item, derived from its kind and never stored: ``ask``
+(decision, question, draft: needs a yes, a word or a click), ``report`` (finding, result: how
+something stands) and ``idea`` (mentioned, nothing came of it yet). An unknown kind is an ask.
 
 GATES. ``free`` the Bridge may act alone · ``your-yes`` acts after a person said
 yes, also a conditional yes ("merge once green") that ``run`` executes when the
@@ -71,7 +76,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 from lib.bridge_cockpit.card_fields import validate_brief  # noqa: E402  (the one shape of a brief)
-from lib.inbox_verbs import TERMINAL  # noqa: E402  (shared with the cockpit's return channel)
+from lib.inbox_verbs import ARTS, TERMINAL, art_of_kind  # noqa: E402  (shared with the cockpit and the briefing)
 
 SCHEMA_VERSION = 1
 
@@ -362,9 +367,16 @@ class Item:
         deferral = self.deferral or {}
         return {"id": self.id, "state": self.state, **{k: v for k, v in self.data.items()
                                                       if k != "schema_version"}, "urgency": self.urgency, "area": self.area,
+                "art": art_of_kind(self.kind),
                 "brief": self.brief,
                 **({"deferred_until": deferral["until"]} if deferral.get("until") else {}),
                 **({"waiting_on": deferral["on"]} if deferral.get("on") else {})}
+
+
+def art_of(item) -> str:
+    """What a person sees an item as: `ask`, `report` or `idea` (lib/inbox_verbs.py ART_OF_KIND). Derived from
+    the kind of an Item or of its as_dict(), never stored, so every item filed before the arts has one."""
+    return art_of_kind(item.get("kind") if isinstance(item, dict) else item.kind)
 
 
 def _warn(text: str) -> None:
@@ -951,6 +963,7 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--all", action="store_true")
     ls.add_argument("--json", action="store_true")
     ls.add_argument("--short", action="store_true", help="one line per item, for a phone or an e-ink screen")
+    ls.add_argument("--art", choices=ARTS, help="only one art: ask (needs you), report (how something stands), idea")
 
     sub.add_parser("show").add_argument("id")
     ap = sub.add_parser("approve", help="say yes; with --when-json it runs once the condition holds")
@@ -1146,6 +1159,8 @@ def main(argv=None) -> int:
                 _place_later(args.root, box.last_new)
         elif args.cmd == "list":
             items = box.items() if args.all else box.open_items()
+            if args.art:
+                items = [i for i in items if art_of(i) == args.art]
             if args.json:
                 print(json.dumps([i.as_dict() for i in items], ensure_ascii=False, indent=1))
             elif args.short:
