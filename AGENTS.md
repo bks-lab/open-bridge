@@ -468,8 +468,11 @@ gate. Never ride an opening "just have a look" into real changes.
 2. **Mode check** — PLAN (research, sketch, draft, explore, evaluate) → answer in
    chat. BUILD (implement, create, deploy, merge, commit, fix, close, open a PR)
    → allowed after steps 1 and 3. Ambivalent → ask.
-3. **Class check** — cross-session pickup OR an external recipient → **Class A**
-   (STATUS.md + board row + task-sync). Otherwise Class B (log only) or C.
+3. **Class check** — the task threshold, in order: finished this session → log
+   row only (the log is always written); mentioned, nothing started → inbox
+   `idea`; a task (**Class A**: STATUS.md + board row + task-sync) only when
+   asked for, or work exists and continues later, or a dated commitment to
+   someone. Tracker issues stay in the tracker. Otherwise Class B or C.
 4. **When in doubt: ONE question.** `[a] fits <slug>` / `[b] new as <proposal>` /
    `[c] chat only` / `[d] just do it`. Do not guess.
 

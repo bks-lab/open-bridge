@@ -32,11 +32,9 @@ reconstruct what happened, what was learned, and what's blocked.
 
 `| YYYY-MM-DD HH:MM | glyph | context | what |`
 
-This is the **single, frozen** log row format. Every row carries a **full-ISO
-date+time** so it self-dates — a stale or unarchived log is never ambiguous. The
-day-block header stays `## {Weekday} DD.MM` (a display anchor for the parsers; do
-NOT add a year there). The legacy time-only variant `| HH:MM | ... |` is
-**retired** — do not author it.
+The **single, frozen** row format, with a **full-ISO date+time** so a row
+self-dates. The day-block header stays `## {Weekday} DD.MM` (a parser anchor; no
+year there). The legacy `| HH:MM | ... |` variant is **retired**.
 
 - Timestamp from `date '+%Y-%m-%d %H:%M'` — NEVER xx:xx or placeholders
 - glyph: emoji from activity_types in bridge-config.yaml
@@ -47,16 +45,18 @@ NOT add a year there). The legacy time-only variant `| HH:MM | ... |` is
 
 - STATUS.md is the SoT; `board.md` is **regenerated** from the task dirs
   (`scripts/gen-board.py`) — never hand-edited on a task switch.
-- **Proactively suggest task creation.** At the end of any turn where work
-  landed, when that work continues past this session OR an external recipient
-  is involved, and no directory in `work/tasks/` or `work/streams/` already
-  covers it, offer exactly ONE line: ``Task `<slug>`? [y/n]``. Never create it
-  unasked, and drop it for the rest of the session once declined. Every input
-  here is observable in the turn itself (did work land, does a task exist,
-  does it cross a session or a party boundary), which the retired ">30 min on
-  a topic" wording was not: the executing agent has no clock on the
-  conversation, so that rule could never fire. Criteria:
-  `protocols/standing-orders/board-task-criteria.md`.
+- **Task threshold.** The log is always written; the threshold saves tasks,
+  never log rows. Three questions, in order, for any work item:
+  1. Finished in this session: a log row only. Never a task, not even to tick it off.
+  2. Mentioned, nothing started: an inbox item of kind `idea`, no task.
+  3. A task only if the person asks for one, OR something already exists
+     (branch, draft, file, a sent request awaiting an answer) AND it continues
+     in a later session, OR the person committed to someone with a date.
+  Then offer ONE line, ``Task `<slug>`? [y/n]``, only if no directory in
+  `work/tasks/` or `work/streams/` covers it. Never create it unasked; drop it
+  once declined. Tracker issues stay in the tracker: an assigned issue is the
+  task, and the briefing's "assigned without a task" count is information, never
+  an order. Criteria: `protocols/standing-orders/board-task-criteria.md`.
 
 ## Violations
 
@@ -64,5 +64,4 @@ NOT add a year there). The legacy time-only variant `| HH:MM | ... |` is
 - Using placeholder timestamps (xx:xx) or the retired time-only row format
   `| HH:MM | ... |` (rows must carry the full `YYYY-MM-DD HH:MM`)
 - Hand-editing `board.md` instead of updating STATUS.md and regenerating
-- Work landed that meets the Class A test (cross-session pickup or external
-  recipient) and no task was offered
+- A task created for work that fails the threshold (finished, or only mentioned)
