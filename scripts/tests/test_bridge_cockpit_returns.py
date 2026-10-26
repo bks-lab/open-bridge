@@ -240,7 +240,11 @@ def test_a_still_tab_without_a_question_is_idle_and_with_one_asks(tmp_path):
     b = book(tmp_path, clock)
     stage = lambda tabs: {x["key"]: x for x in returns.build(b.all(), tabs, {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]["stage"]
     assert stage([tab("waiting", slug="alpha", ask=asking("All tests pass, the branch is pushed."))]) == "idle"
-    assert stage([tab("waiting", slug="alpha", ask=None)]) == "idle"           # nothing readable on its screen
+    # nothing read off its screen (no screens, the questions off, not read yet): it may ask, as model.is_idle says
+    assert stage([tab("waiting", slug="alpha", ask=None)]) == "asks"
+    assert stage([tab("waiting", slug="alpha")]) == "asks"
+    # its agent ended and left the shell: nothing can ask there
+    assert stage([tab("shell", slug="alpha", ask=None)]) == "idle"
     assert stage([tab("waiting", slug="alpha", ask=asking())]) == "asks"       # a question mark
     assert stage([tab("waiting", slug="alpha", ask=asking("Pick one", options=[{"n": 1, "label": "Delete"}]))]) == "asks"
     assert stage([tab("needs-you", slug="alpha", ask=None)]) == "asks"         # a dialog the terminal reports
@@ -260,7 +264,7 @@ def test_a_result_note_on_the_task_since_the_start_is_its_result(tmp_path):
     b = book(tmp_path, clock)
     start = dt.datetime.fromtimestamp(T0 / 1000).date()
     before = (start - dt.timedelta(days=1)).isoformat()
-    tabs = [tab("waiting", slug="alpha", ask=None)]
+    tabs = [tab("waiting", slug="alpha", ask=asking("All done."))]
     task_note(tmp_path, "alpha", before, "Result: an old answer from an earlier run")
     task_note(tmp_path, "alpha", start.isoformat(), returns.start_line("go", "en"))     # the cockpit's own line
     task_note(tmp_path, "alpha", start.isoformat(), "Results look promising, more later")  # not the head
@@ -298,3 +302,20 @@ def test_a_result_line_is_read_from_a_stream_too_and_never_outside_work(tmp_path
     assert out["task:beta"]["stage"] == "result"
     assert out["task:x"]["result"] is None
     assert returns.task_result(tmp_path, "../x", T0) is None
+
+
+def test_a_result_line_of_an_earlier_start_the_same_day_is_not_this_starts(tmp_path):
+    """A task note carries a day only: a result line from a run earlier that day stands before the cockpit's
+    own start line of this start and is not its answer."""
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    day = dt.datetime.fromtimestamp(T0 / 1000).date().isoformat()
+    task_note(tmp_path, "alpha", day, returns.start_line("go", "en"))
+    task_note(tmp_path, "alpha", day, "Result: the first run's answer")
+    task_note(tmp_path, "alpha", day, returns.start_line("report", "de"))      # this start, in either language
+    tabs = [tab("waiting", slug="alpha", ask=asking("Done."))]
+    r = {x["key"]: x for x in returns.build(b.all(), tabs, {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]
+    assert r["stage"] == "idle" and r["result"] is None
+    task_note(tmp_path, "alpha", day, "Result: this run's answer")
+    r = {x["key"]: x for x in returns.build(b.all(), tabs, {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]
+    assert r["stage"] == "result" and r["result"]["text"] == "Result: this run's answer"

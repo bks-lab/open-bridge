@@ -10,10 +10,12 @@ Where a start stands is read from what the Bridge already has, nothing is asked 
 - working   its tab works
 - asks      its tab waits for you: a dialog the terminal reports (needs-you), or a question on its screen
             (asks.py: a question mark, numbered options, or words typed in its prompt)
-- idle      its tab stopped working and its screen asks nothing: still, most likely through
+- idle      its tab stopped working and the words read off its screen ask nothing, or it is back at its
+            shell: still, most likely through (a screen not read keeps it at asks)
 - result    it left an answer: a filed inbox item (the tab's `filed_by`), a note on its inbox item
             written after the start (work/inbox/<id>/events/<UTC stamp>-...-note.yaml), or a note on its
-            task since the day of the start that begins with the result head ("Result:", "Ergebnis:")
+            task since the day of the start, after the cockpit's own start line of that day, that begins
+            with the result head ("Result:", "Ergebnis:")
 - done      its inbox item was ended after the start (closed, executed, dropped, rejected), or its task
             moved to work/done/
 - lost      no tab, no answer, and the start is a while ago
@@ -151,7 +153,8 @@ def _task_files(root: Path, slug: str) -> list:
 
 def task_result(root: Path, slug: str, since_ms: float) -> dict | None:
     """The newest result line on a task's notes (task.py note: `- YYYY-MM-DD: <text>`) dated on or after the
-    day of the start, as {kind: note, text}; a task note carries a day only, so at_ms stays None"""
+    day of the start and after the cockpit's own start line of that day, if it wrote one (a note carries a day
+    only: a result line of an earlier start that day stands before it), as {kind: note, text}; at_ms stays None"""
     if not SLUG_RE.match(slug):
         return None
     since = dt.date.fromtimestamp(since_ms / 1000).isoformat()
@@ -162,7 +165,9 @@ def task_result(root: Path, slug: str, since_ms: float) -> dict | None:
             continue
         found = re.search(r"^## Notes\s*$(.*?)(?=^## |\Z)", body, flags=re.M | re.S)
         lines = [NOTE_RE.match(ln.strip()) for ln in (found.group(1).splitlines() if found else [])]
-        hits = [m.group(2).strip() for m in lines if m and m.group(1) >= since and m.group(2).strip().startswith(RESULT_HEADS)]
+        notes = [m.group(2).strip() for m in lines if m and m.group(1) >= since]
+        starts = [i for i, text in enumerate(notes) if text in START_LINES]
+        hits = [text for text in notes[starts[-1] + 1 if starts else 0:] if text.startswith(RESULT_HEADS)]
         if hits:
             return {"kind": "note", "text": hits[-1][:600], "key": None, "at_ms": None}
     return None
@@ -170,10 +175,13 @@ def task_result(root: Path, slug: str, since_ms: float) -> dict | None:
 
 def _asks(tab: dict) -> bool:
     """Whether a tab that stopped working asks something: a dialog the terminal reports, or a question read off
-    its screen (asks.py); last words that ask nothing, or nothing readable, leave it idle"""
-    if tab.get("state") == "needs-you":
+    its screen (asks.py). Only last words read that ask nothing, or a shell its agent left, make it idle:
+    nothing read (no screens, the questions off, not read yet) may ask, as model.is_idle has it"""
+    if tab.get("state") == "shell":
+        return False
+    ask = tab.get("ask")
+    if tab.get("state") == "needs-you" or not ask:
         return True
-    ask = tab.get("ask") or {}
     return bool(ask.get("yes_no") or ask.get("options") or ask.get("draft"))
 
 
@@ -278,6 +286,8 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
 LINES = {code: TABLES[code]["returns"] for code in TABLES}   # the words live in text.py
 OWN_HEADS = tuple(f"{w['head']}:" for w in LINES.values())
 RESULT_HEADS = tuple(f"{w['result']}:" for w in LINES.values())
+START_LINES = frozenset(f"{w['head']}: {w['start'].format(mode=w['mode'].get(mode, mode))}"
+                         for w in LINES.values() for mode in MODES)
 
 
 def _words(lang: str) -> dict:

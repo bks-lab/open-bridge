@@ -560,10 +560,12 @@ Esc surfaces. The graph is built once a minute at most.
 Its stage is read from what the Bridge has, nothing is asked of the tab:
 started, working, asks you (a dialog the terminal reports, or a question read
 off the tab's screen: a question mark, numbered options, words typed in its
-prompt), quiet (`idle`: the tab stopped working and its screen asks nothing,
-most likely through), answer (a filed inbox item, a note on its inbox item
+prompt), quiet (`idle`: the tab stopped working and the words read off its
+screen ask nothing, or its agent left the shell; most likely through; a tab
+whose screen was not read keeps asking), answer (a filed inbox item, a note on its inbox item
 written after the start, or a note on its task since the day of the start that
-begins with `Result:`, in German `Ergebnis:`), done (its inbox item closed, or
+begins with `Result:`, in German `Ergebnis:`, and stands after the cockpit's
+own start line of that day), done (its inbox item closed, or
 its task moved to `work/done/`), and "no word" when the tab is gone without an
 answer. An agent tells its result in one line with
 `task.py note <slug> -- "Result: ..."`; the cockpit writes no line of its own
@@ -2216,14 +2218,17 @@ The return channel used to call every start whose tab stopped working
 `asks`, also a tab that was long through. Nothing has to be done by hand:
 
 1. **A new stage `idle`.** `model.returns[].stage` is `asks` only when the
-   tab shows a dialog (needs-you) or a question on its screen; a still tab
-   whose screen asks nothing is `idle`. A page of this version shows it as
+   tab shows a dialog (needs-you) or a question on its screen, or when its
+   screen was not read (no driver that serves screens, the questions off, not
+   read yet); a still tab whose words read ask nothing, or a tab back at its
+   shell, is `idle`. A page of this version shows it as
    "quiet" and files it under "Done, please check". A client that does not
    know `idle` treats a still tab as asking, as before, because it reads the
    tab's state live.
-2. **A task's result line.** A note on the task, since the day of the start,
-   that begins with `Result:` (or `Ergebnis:`) turns its start into `result`
-   with `{kind: note}`. Older notes and notes with another head change nothing.
+2. **A task's result line.** A note on the task, since the day of the start
+   and after the cockpit's own start line of that day, that begins with
+   `Result:` (or `Ergebnis:`) turns its start into `result` with `{kind: note}`.
+   Older notes and notes with another head change nothing.
 3. **Triage rows carry `next_rank` and `rank_at`.** Jev's rank of the row from
    the newest order of a work page, `null` without one or when it is older than
    `cockpit.flow.rank_max_age_days`. Readers that do not know the fields skip
