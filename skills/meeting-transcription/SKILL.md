@@ -119,7 +119,17 @@ launchd transcribe-worker.sh   deliver ~/Transcripts/<ctx>/<ts>.md
                                        │
                                        ▼   NO summary on the worker
                           in-session /debrief → context-aware summary + tasks
+
+second way in, no capture machine:
+audio in imports/ or a recordings source ──► /debrief ──► debrief_sync.sh push
+                                                 ──► worker:~/transcribe-inbox/<ctx>/
 ```
+
+**Two ways in.** The capture machine with its bundler is optional. The second
+way needs neither a second machine nor a recorder app: drop any audio file where
+`/debrief` scans, and it hands the file to the worker with `debrief_sync.sh push`
+(see the sync-script commands below). It is the lowest barrier into the pipeline,
+so start there.
 
 **Key idea — identity comes from voice, not text.** Speakers are matched by
 pyannote voice-embedding (cosine ≥ 0.60) against a per-context library, so
