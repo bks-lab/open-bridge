@@ -76,6 +76,17 @@ def _watch(page, problems: list[str], where: list[str]):
     page.on("response", lambda r: r.status >= 400 and problems.append(f"{at()}: HTTP {r.status}: {r.url}"))
 
 
+def _steady(page):
+    """Wait until the page bar holds still: its tabs come with the state and fold behind More only after a
+    measure, so a tab read or clicked before that may be gone a moment later (two reads 200 ms apart agree)."""
+    page.wait_for_function(
+        "() => { const sig = [...document.querySelectorAll('.pagebar-tabs > [role=tab]')].map(t => t.textContent).join('|');"
+        " const same = sig !== '' && window.__barSig === sig; window.__barSig = sig;"
+        " return same && document.fonts.status === 'loaded' }",
+        polling=200,
+    )
+
+
 def _open(page, tab, label: str):
     tab.click()
     page.wait_for_function(
@@ -97,6 +108,7 @@ def test_every_demo_page_opens_without_console_errors(base_url, browser, lang):
     _watch(page, problems, where)
     page.goto(f"{base_url}?lang={lang}")
     page.wait_for_selector(".pagebar-tabs [role=tab]")
+    _steady(page)
 
     tabs = page.locator(".pagebar-tabs > [role=tab]")
     labels = [tabs.nth(i).locator("span").first.inner_text().strip() for i in range(tabs.count())]
@@ -144,6 +156,7 @@ def test_every_start_page_view_mounts_without_console_errors(base_url, browser, 
     word = re.compile("Settings|Einstellungen")
 
     def open_settings():
+        _steady(page)
         bar = page.locator(".pagebar-tabs > [role=tab]").filter(has_text=word)
         if bar.count():
             bar.first.click()
