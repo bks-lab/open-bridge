@@ -622,8 +622,97 @@ def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | Non
         append_log_row(root, now, slug, "reopened" + (f": {note}" if note else ""))
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"work/log.md row not written: {exc}")
+    ideas = _close_shelve_ideas(root, slug, warnings)
     return {"slug": slug, "moved_from": str(src.relative_to(root)), "moved_to": str(dest.relative_to(root)),
-            "status": status, "note": note or None, "warnings": warnings}
+            "status": status, "note": note or None, "closed_ideas": ideas, "warnings": warnings}
+
+
+SHELVE_DAYS = 90            # how long a shelved idea stays quiet when --until is not given
+
+
+def _headline_of(text: str, slug: str) -> str:
+    """The task's one-line name: headline:, then title:, then the first heading of the body, then the slug."""
+    m = re.match(r"(?:[^\S\n]*#[^\n]*\n|\s*\n)*---[^\S\n]*\n(.*?)\n---[^\S\n]*(?:\n|$)(.*)", text.lstrip("\ufeff"), re.S)
+    front, body = (m.group(1), m.group(2)) if m else ("", text)
+    try:
+        fm = yaml_load(front) if front else None
+    except Exception:  # noqa: BLE001 - a broken frontmatter must not stop a shelve; fall through to the heading
+        fm = None
+    for key in ("headline", "title"):
+        value = " ".join(str(fm.get(key) or "").split()) if isinstance(fm, dict) else ""
+        if value:
+            return value
+    heading = re.search(r"^#\s+(.+?)\s*$", body, re.M)
+    return " ".join(heading.group(1).split()) if heading else slug
+
+
+def shelve_task(root: Path, slug: str, *, until: str | None = None, reason: str | None = None,
+                now: dt.datetime | None = None) -> dict:
+    """Park a finite task nobody works on without losing it, in one command instead of three: an idea in the
+    inbox (key shelve:<slug>, deferred until a day so nothing announces it), then the task closes as declined.
+    The order leaves no half state: every check runs before anything is written, the idea comes first, and when
+    the close still fails the idea closes again, so a task is never gone without its idea. reopen_task closes
+    the idea when the task comes back."""
+    now = now or dt.datetime.now()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
+        raise ValueError(f"not a task slug: {slug!r}")
+    work = root / "work"
+    path = work / "tasks" / slug / "STATUS.md"
+    if not path.is_file():
+        if (work / "streams" / slug / "STATUS.md").is_file():
+            raise ValueError(f"{slug} is a stream: streams are not finite and are not shelved")
+        if any((work / "done").glob(f"*/{slug}/STATUS.md")):
+            raise ValueError(f"{slug} is already closed (work/done/)")
+        raise ValueError(f"no task {slug!r} under {work / 'tasks'}")
+    until = until or (now.date() + dt.timedelta(days=SHELVE_DAYS)).isoformat()
+    dt.date.fromisoformat(until)
+    month = f"{now:%Y-%m}"
+    if (work / "done" / month / slug).exists():
+        raise ValueError(f"work/done/{month}/{slug} exists already")
+    headline = _headline_of(path.read_bytes().decode("utf-8"), slug)
+    reason = " ".join((reason or "").split())
+    where = f"work/done/{month}/{slug}/STATUS.md"
+    detail = (f"Shelved on {now.date().isoformat()}" + (f" ({reason})" if reason else "") + f". The task lives in {where}. "
+              f"To bring it back: python3 scripts/task.py reopen {slug}")
+    box = _module("inbox", ROOT / "scripts" / "inbox.py").Inbox(work / "inbox", actor="task")
+    item_id = box.add(source="task", kind="idea", summary=headline, gate="only-you", urgency="later", detail=detail,
+                      key=f"shelve:{slug}")
+    created = box.last_new == item_id
+    try:
+        box.event(item_id, "defer", until=until)
+        out = close_task(root, slug, reason=f"shelved: {reason}" if reason else "shelved", declined=True, now=now)
+    except Exception:
+        if created:                                  # the idea alone would announce a task that is still open
+            try:
+                box.close(item_id, note=f"shelve of {slug} failed; the task stays open")
+            except Exception:  # noqa: BLE001 - the original failure is the one to report
+                pass
+        raise
+    try:
+        (work / "inbox.md").write_text(box.render(), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001 - the task is shelved; a stale view is a warning
+        out["warnings"].append(f"work/inbox.md not rendered: {exc}")
+    out.update({"inbox": item_id, "until": until, "headline": headline})
+    return out
+
+
+def _close_shelve_ideas(root: Path, slug: str, warnings: list) -> list:
+    """The open or deferred idea a shelve filed for this task is done once the task is back."""
+    inbox_dir = root / "work" / "inbox"
+    if not inbox_dir.is_dir():
+        return []
+    closed = []
+    try:
+        box = _module("inbox", ROOT / "scripts" / "inbox.py").Inbox(inbox_dir, actor="task")
+        for item in box.items():
+            if item.key == f"shelve:{slug}" and item.state in ("open", "deferred"):
+                box.close(item.id, note=f"the task {slug} was reopened")
+                closed.append(item.id)
+        if closed:
+            (root / "work" / "inbox.md").write_text(box.render(), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001 - the task is open again; a lingering idea is a warning
+        warnings.append(f"shelve idea for {slug} not closed: {exc}")
+    return closed
 
 
 # ---------------------------------------------------------------- review
@@ -1227,6 +1316,12 @@ def main(argv=None) -> int:
     ro.add_argument("--as", dest="as_status", choices=REOPEN_STATUSES, default="doing")
     ro.add_argument("--note", default="")
     ro.add_argument("--json", action="store_true")
+    sh = sub.add_parser("shelve", help="park a finite task nobody works on: an idea in the inbox, deferred, "
+                                       "and the task closed as declined")
+    sh.add_argument("slug")
+    sh.add_argument("--until", help=f"YYYY-MM-DD, the day the idea may surface again (default: today + {SHELVE_DAYS} days)")
+    sh.add_argument("--reason", default="")
+    sh.add_argument("--json", action="store_true")
     wt = sub.add_parser("wait", help="runs on: waits on a person or a run until a day, nobody asks before")
     wt.add_argument("slug")
     wt.add_argument("--until", help="YYYY-MM-DD, the day to look again")
@@ -1281,6 +1376,13 @@ def main(argv=None) -> int:
         if args.cmd == "reopen":
             out = reopen_task(root, args.slug, status=args.as_status, note=args.note)
             print(json.dumps(out, ensure_ascii=False) if args.json else f"reopened {out['slug']} <- {out['moved_from']}")
+            for warning in out["warnings"]:
+                print(f"task: warning: {warning}", file=sys.stderr)
+            return 0
+        if args.cmd == "shelve":
+            out = shelve_task(root, args.slug, until=args.until, reason=args.reason)
+            print(json.dumps(out, ensure_ascii=False) if args.json else
+                  f"shelved {out['slug']} -> {out['moved_to']} (idea {out['inbox']}, until {out['until']})")
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)
             return 0
