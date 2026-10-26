@@ -102,6 +102,8 @@ def load_order(path: Path) -> dict:
         "load": str(front.get("load") or DEFAULT_LOAD),
         "triggers": [str(t) for t in triggers],
         "summary": str(front.get("summary") or ""),
+        # Kept raw when it is not a boolean, so the check can name the typo.
+        "fires_unprompted": front.get("fires_unprompted", False),
     }
 
 
@@ -132,6 +134,19 @@ def check_orders(orders: list[dict], unreadable=()) -> list[str]:
     ]
     for order in orders:
         where = order["path"]
+        unprompted = order.get("fires_unprompted", False)
+        if not isinstance(unprompted, bool):
+            violations.append(
+                f"{where}: fires_unprompted is {unprompted!r}, expected true or false"
+            )
+        elif unprompted and order["load"] == "on-trigger":
+            violations.append(
+                f"{where}: fires_unprompted: true with load: on-trigger. The order "
+                f"has to act while nobody says its vocabulary, and a trigger only "
+                f"fetches it once somebody does, so it would load in none of the "
+                f"sessions it exists for. Keep it eager."
+            )
+            continue
         if order["load"] not in VALID_LOAD:
             violations.append(
                 f"{where}: unknown load value {order['load']!r} "

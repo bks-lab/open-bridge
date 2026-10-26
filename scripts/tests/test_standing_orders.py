@@ -319,3 +319,59 @@ def test_the_check_reports_an_unreadable_order(tmp_path):
 
 def test_the_check_is_silent_when_nothing_is_unreadable():
     assert so.check_orders([], []) == []
+
+
+# ------------------------------------------------------ fires_unprompted --
+#
+# The reason an order stays eager used to live in a comment beside `load:`.
+# One order lost it: it moved to on-trigger behind phrases that are only
+# spoken once the question it answers has already been asked, and it loaded
+# in none of the sessions it existed for, for two weeks, with every guard
+# green. The trigger check passed, because the triggers were there. The
+# field makes the reason checkable.
+
+def test_fires_unprompted_is_read_and_defaults_to_false(tree):
+    _order(tree, "duty.md", fires_unprompted="true")
+    duty = so.load_order(tree / "protocols/standing-orders/duty.md")
+    plain = so.load_order(tree / "protocols/standing-orders/always-on.md")
+    assert duty["fires_unprompted"] is True
+    assert plain["fires_unprompted"] is False
+
+
+def test_an_order_that_fires_unprompted_may_not_wait_for_a_trigger(tree):
+    _order(
+        tree,
+        "duty.md",
+        fires_unprompted="true",
+        load="on-trigger",
+        triggers=["new task", "create a task"],
+        summary="Decides whether work is a task.",
+    )
+    violations = so.check_orders(so.collect_orders(tree))
+    assert any("duty.md" in v and "fires_unprompted" in v for v in violations)
+
+
+def test_an_eager_order_that_fires_unprompted_is_fine(tree):
+    _order(tree, "duty.md", fires_unprompted="true", load="eager")
+    assert so.check_orders(so.collect_orders(tree)) == []
+
+
+def test_a_non_boolean_fires_unprompted_is_a_violation(tree):
+    _order(tree, "duty.md", fires_unprompted="sometimes")
+    assert any("duty.md" in v for v in so.check_orders(so.collect_orders(tree)))
+
+
+SHIPPED_UNPROMPTED = (
+    "board-task-criteria.md",
+    "document-work.md",
+    "inbox.md",
+    "security-baseline.md",
+)
+
+
+@pytest.mark.parametrize("name", SHIPPED_UNPROMPTED)
+def test_the_shipped_orders_that_fire_unprompted_say_so(name):
+    """Each of these carried the reason as a comment; the flag keeps it."""
+    order = so.load_order(REPO_ROOT / "protocols" / "standing-orders" / name)
+    assert order["fires_unprompted"] is True
+    assert order["load"] == "eager"

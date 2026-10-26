@@ -4,6 +4,7 @@ scope: always
 enforcement: advisory
 applies_to: []
 load: eager   # answers "is this a task?" when nobody has said the word. Its own vocabulary ("new task", "create a task") is only spoken once the question has already been asked, so deferring it means it never loads in the case it exists for.
+fires_unprompted: true   # --check refuses on-trigger for this order
 ---
 # Board-Task Criteria — When does work become a Board task?
 

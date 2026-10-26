@@ -4,6 +4,7 @@ scope: always
 enforcement: advisory
 applies_to: [builder, guard]
 load: eager   # a security floor that waits to be asked for is not a floor
+fires_unprompted: true   # --check refuses on-trigger for this order
 ---
 # Security Baseline
 
