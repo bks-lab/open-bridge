@@ -45,9 +45,9 @@ year there). The legacy `| HH:MM | ... |` variant is **retired**.
 
 - STATUS.md is the SoT; `board.md` is **regenerated** from the task dirs
   (`scripts/gen-board.py`) — never hand-edited on a task switch.
-- **Task threshold.** The log is always written; the threshold saves tasks,
-  never log rows. Three questions, in order, for any work item:
-  1. Finished in this session: a log row only. Never a task, not even to tick it off.
+- **Task threshold.** Every state change still gets its log row; the threshold
+  saves tasks, never log rows. Three questions, in order, for any work item:
+  1. Finished in this session: a log row only, no task unless asked for.
   2. Mentioned, nothing started: an inbox item of kind `idea`, no task.
   3. A task only if the person asks for one, OR something already exists
      (branch, draft, file, a sent request awaiting an answer) AND it continues

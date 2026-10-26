@@ -53,26 +53,27 @@ Every work unit falls into exactly one class:
 
 ## Decision tree: the task threshold
 
-The log is always written; the threshold saves tasks, never log rows.
-Ask in order, stop at the first yes:
+Work that changed state still gets its log row; the threshold saves
+tasks, never log rows. Read-only routine commands (`/briefing`,
+`/archive`, `git status`, `gh issue list` …) are **C**: silent, no log, and
+they skip the questions. For everything else ask in order, stop at the first
+yes:
 
-**Q1: Finished in this session?** A log row only (B). Never a task, not even
-to tick it off.
+**Q1: Finished in this session?** A log row only (B). No task just to tick it
+off; only an explicit ask for one makes it a task.
 
 **Q2: Mentioned, nothing started?** An inbox item of kind `idea`
-(`scripts/inbox.py add --kind idea`), no task.
+(`scripts/inbox.py add --from <source> --kind idea --summary "<one line>"`),
+no task.
 
 **Q3: Does it earn a task (A)?** Only if the person explicitly asks for one,
 OR something already exists (branch, draft, file, a sent request awaiting an
 answer) AND it continues in a later session, OR the person committed to
-someone with a date. An external recipient alone no longer qualifies.
+someone with a date.
 
-**Tracker issues stay in the tracker.** An issue assigned to the person is
-the task; mirroring it into `work/tasks/` only copies it. The briefing's
+**Tracker issues stay in the tracker.** An assigned issue is the task; a
+copy in `work/tasks/` adds nothing. The briefing's
 "assigned without a task" count is information, never an order to create one.
-
-**Read-only routine commands** (`/briefing`, `/archive`, `git status`,
-`gh issue list` …) are **C**: silent, no log.
 
 ## Application table
 
@@ -86,7 +87,8 @@ the task; mirroring it into `work/tasks/` only copies it. The briefing's
 | Bridge-meta task, one-shot drift-fix | **B** | finished in the session |
 | Sequential-thinking session | B (auto-logged) | analysis support, not work itself |
 | Application with pipeline | A (sub-tree `work/streams/applications/`) | own lifecycle |
-| Cold idea, sitting in backlog | **`work/backlog.md`** | no pickup plan, no body |
+| Mentioned, nothing started | inbox `idea` | no work exists yet |
+| Cold idea, already listed in backlog | **`work/backlog.md`** | no pickup plan, no body |
 | Scratch / utility folder | exempt | `work/tasks/_meetings/` etc. |
 
 ## Cold ideas — the third lane
@@ -95,14 +97,10 @@ Items shown as "Backlog row without STATUS.md" on the board are neither
 A nor B — they are **cold ideas**. They have no pickup plan, no risks,
 no body, just a title and "maybe someday".
 
-**Rule:** Cold ideas live in `work/backlog.md` (compact 1-line list),
-not in `work/board.md`. Only on pickup does a cold idea become an
-A-class Board task (STATUS.md gets created).
-
-`work/backlog.md` is created **lazily** — as long as cold ideas stay
-under ~10 rows and remain scrollable in board.md's Backlog section,
-no separation is needed. Trigger for split: Backlog grows past 15 items
-or cold-share exceeds 50 % of Backlog rows.
+**Rule:** A new mention goes to the inbox as kind `idea` (Q2 above).
+Cold ideas already in `work/backlog.md` (1-line list) stay there; neither
+lane is `work/board.md`. Only on pickup does a cold idea become an A-class
+Board task (STATUS.md gets created).
 
 ## Sub-items of existing tasks
 
@@ -129,7 +127,7 @@ the general Review table. The sub-tree's `<id>/STATUS.md` is the SoT.
 - **B (Log-only):** otherwise, when state changed. Mentioned only: inbox `idea`.
 - **C (Silent):** read-only routine commands.
 - **Sub-items:** no own task, check off in parent STATUS.
-- **Cold ideas:** `work/backlog.md`, no Board row.
+- **Cold ideas:** inbox `idea` for new ones, an existing `work/backlog.md` stays; no Board row.
 
 ## Violations
 
