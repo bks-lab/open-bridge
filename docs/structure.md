@@ -154,7 +154,7 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | Path | Layer | Purpose |
 |------|-------|---------|
 | `protocols/` | CORE · `standing-orders/user/` USER | `standing-orders/*.md` = shipped always-on rules (CORE) · `standing-orders/user/*.md` = an instance's own orders (USER, never promoted) |
-| `work/` | USER | Tasks + logs: `tasks/` (finite) · `streams/` (long-running) · `done/YYYY-MM/` · `inbox/` (items that need a person, [`docs/inbox.md`](inbox.md)) · `templates/` (CORE seeds) · `_learning/` · `archive/` · `imports/` |
+| `work/` | USER | Tasks + logs: `tasks/` (finite) · `streams/` (long-running) · `done/YYYY-MM/` · `inbox/` (items that need a person, [`docs/inbox.md`](inbox.md)) · `cockpit/settled/` (rows settled in the cockpit, shared through git, [`docs/bridge-cockpit.md`](bridge-cockpit.md)) · `templates/` (CORE seeds) · `_learning/` · `archive/` · `imports/` |
 | `docs/` | CORE | Human-readable documentation, onboarding guides |
 | `rules/` | **Tiered by folder** | Always-on rules. `rules/*.md` = core (ship to all) · `rules/org/**` = org (ship to org overlay) · `rules/user/**` = user (local only). The folder *is* the promote tier. `validate-bridge.py` checks each rule declares a valid `scope:` (presence + allowed value) and fails a rule whose `scope:` disagrees with its folder (a hard gate in CI). Each bridge layers its own under `rules/org/`+`rules/user/`. See [`rules/knowledge-growth.md`](../rules/knowledge-growth.md). |
 | `themes/` | CORE (shipped) · any other theme USER unless it declares `meta.scope` | Vocabulary themes (`professional`, `professional-de`, `professional-fr`) |
