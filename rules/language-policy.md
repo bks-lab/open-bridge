@@ -77,7 +77,7 @@ Everything in the `core` tier:
     `scripts/check-site-basics.py` holds the two tags.
 - **Per-language UI string tables** inside a CORE program that has its own
   user-facing words (today: the cockpit, `scripts/web/text.js` with the parts it
-  takes in, `text-areas.js`, `text-card.js` and `text-files.js`,
+  takes in, `text-areas.js`, `text-card.js`, `text-files.js` and `text-flow.js`,
   `scripts/web/jev/page.js` and `scripts/lib/bridge_cockpit/text.py`, the
   `WORDS` table of the cockpit's invented demo data in `scripts/web/mock.js`, plus
   their generated copy in `docs/cockpit-demo/` (the website demo); the

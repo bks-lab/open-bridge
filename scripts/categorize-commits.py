@@ -647,6 +647,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/day.js",
     "scripts/web/views/detail.js",
     "scripts/web/views/dossier.js",
+    "scripts/web/views/flow.js",
+    "scripts/web/views/verbbar.js",
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",
@@ -673,12 +675,14 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/logic.js",
     "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js
     "scripts/web/files.js",                   # the files view: queue, drawers, search, ask a file
+    "scripts/web/flow.js",                    # the Work through page: its queue, the return card, the five verbs
     "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",
     "scripts/web/text.js",
     "scripts/web/text-areas.js",              # the start page's texts, taken in by text.js
     "scripts/web/text-files.js",              # the files view's texts, taken in by text.js
+    "scripts/web/text-flow.js",               # the Work through page's texts, taken in by text.js
     "scripts/web/text-chat.js",               # the chat's area switch texts, taken in by text.js
     "scripts/web/text-card.js",               # the item card's texts, taken in by text.js
     "scripts/web/mock.js",
@@ -686,6 +690,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/style.css",
     "scripts/web/areas.css",                  # the areas' rules, loaded right after style.css
     "scripts/web/files.css",                  # the files view's rules, loaded right after style.css
+    "scripts/web/flow.css",                   # the Work through page's rules, loaded right after files.css
     "scripts/web/favicon.ico",                # the cockpit's icon, for tabs, bookmarks and favourites
     "scripts/web/apple-touch-icon.png",
     "scripts/web/icon-192.png",
@@ -706,6 +711,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_costs.test.mjs",
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
+    "scripts/tests/bridge_cockpit_flow.test.mjs",
     "scripts/tests/bridge_cockpit_settle.test.mjs",
     "scripts/tests/bridge_cockpit_card.test.mjs",
     "scripts/tests/bridge_cockpit_files_count.test.mjs",

@@ -1,0 +1,256 @@
+// SPDX-License-Identifier: MIT
+// Pure helpers of the cockpit's Work through page (views/flow.js): the one queue in its fixed groups, what it
+// leaves out and why, the cards of the calm card, the return card after a jump to a tab, and the five verbs (which a
+// row offers, which one is suggested, what each sends). No DOM, no network, no state. logic.js passes every name on,
+// so a view may import it from either; the flow test imports it under node.
+//
+// The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
+// and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
+import { TABLES } from './text.js'
+import { asksYou, canTab, liveStage } from './logic.js'
+
+// the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
+export const FLOW_PAGE = '@flow'
+
+// the groups of the queue, in the order the page walks them: the return card after a jump, a tab that asks, what an
+// agent finished, a start that got lost, a question for you, the tasks of every priority, the reports as one card
+export const FLOW_GROUPS = ['back', 'asks', 'result', 'lost', 'question', 'task', 'reports']
+
+// the chips over the queue and the groups each shows; `all` shows every group
+export const FLOW_CHIPS = { all: FLOW_GROUPS, you: ['asks', 'question'], running: ['back', 'result', 'lost'], tasks: ['task'],
+  reports: ['reports'] }
+
+// why an open row stands outside the queue, in the order the drawer names them
+export const FLOW_LEFT_OUT = ['later', 'waiting', 'resting', 'stream', 'idea']
+
+// the five verbs, in the order the verb bar shows them
+export const FLOW_VERBS = ['do', 'advise', 'done', 'later', 'drop']
+
+// a jump to a tab older than this asks nothing any more when the page comes back into view
+export const FLOW_RETURN_MAX_MS = 4 * 3600000
+
+// the group a start of the return channel stands in by where it stands now: started and working run in the lane, a
+// done one is settled. `idle` (a quiet tab with no question, a newer server) counts as finished; a stage the page
+// does not know falls to the tabs that ask, since its tab no longer works
+const STAGE_GROUP = { started: 'lane', working: 'lane', asks: 'asks', idle: 'result', result: 'result', lost: 'lost', done: null }
+
+const SECTIONS = ['now', 'give', 'work', 'track', 'later']
+const TASK_STATES = ['doing', 'review']
+const PRIO_RANK = { P0: 0, P1: 1, P2: 2, P3: 3 }
+
+/** Whether the page and its tab exist: cockpit.flow.enabled, off on an older server */
+export const flowOn = s => s?.work?.flow?.enabled === true
+
+/** The page's settings as the server sends them (cockpit.flow), with the defaults of config.py for what is missing */
+export function flowSettings(s) {
+  const f = s?.work?.flow ?? {}
+  return { enabled: f.enabled === true, drop_reasons: Array.isArray(f.drop_reasons) ? f.drop_reasons : [],
+    return_after_s: Number.isFinite(f.return_after_s) ? f.return_after_s : 20 }
+}
+
+/** Whether a terminal driver starts tabs here: without one nothing runs from the page, so the lane, the cards of
+ *  the agents and every way to a tab stay out (a driver not read yet counts as there, as everywhere) */
+export const flowDriver = s => canTab(s, 'launch')
+
+/** Where a start stands now, with the quiet stage of a newer server kept: liveStage reads a quiet tab as asking */
+export function flowStage(r, tabs, nowMs) {
+  const live = liveStage(r, tabs, nowMs)
+  return r?.stage === 'idle' && live === 'asks' ? 'idle' : live
+}
+
+/** A jump to a tab after the page came back into view: armed once return_after_s went by since the jump, gone
+ *  after FLOW_RETURN_MAX_MS, waiting before. Without a jump nothing: being shown alone never asks */
+export function flowArm(jump, nowMs, afterS) {
+  if (!jump) return null
+  const gone = nowMs - jump.at
+  if (gone > FLOW_RETURN_MAX_MS) return null
+  if (jump.armed || gone < Math.max(0, afterS) * 1000) return jump
+  return { ...jump, armed: true }
+}
+
+// how a row's age reads: an inbox id starts with its day and time, so the oldest sorts first; anything else by the
+// day it names, else last
+const ageOf = r => String(r.inbox_id ?? r.created ?? r.next?.since ?? '~')
+
+/** The Jev rank of a row: the server's next_rank, else the order of a Jev view of a work page (s.jevOrder) */
+function rankMap(s) {
+  const out = new Map()
+  for (const v of Object.values(s?.jevOrder ?? {})) for (const it of v?.order?.items ?? []) if (!out.has(it.key)) out.set(it.key, it.rank)
+  return out
+}
+
+const rankOf = (r, ranks) => (Number.isFinite(r.next_rank) ? r.next_rank : ranks.get(r.key) ?? null)
+const byRank = ranks => (a, b) => {
+  const x = rankOf(a, ranks)
+  const y = rankOf(b, ranks)
+  if (x != null || y != null) return x == null ? 1 : y == null ? -1 : x - y
+  return 0
+}
+const byPrio = (a, b) => (PRIO_RANK[a.priority] ?? 4) - (PRIO_RANK[b.priority] ?? 4)
+const byAge = (a, b) => ageOf(a).localeCompare(ageOf(b))
+// a due day first, the soonest first; then the oldest
+const byDue = (a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0) || byAge(a, b)
+
+/** The parts of the page from the state it sees (areaScope): the cards of each group, the starts that run (the
+ *  lane), what the queue leaves out and why. Every row stands once: a start, a tab that asks or a question about a
+ *  task takes that task out of the tasks, a running start keeps its row out until it asks, finishes or is lost.
+ *  A card is {group, id, kind, row?, start?, tab?, task?, rows?, stage?}, kind back, start, tab, row or reports */
+export function flowParts(s) {
+  const nowMs = s?.now || Date.now()
+  const model = s?.model ?? {}
+  const driver = flowDriver(s)
+  const tabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control && t.state !== 'shell')
+  const byKey = new Map()
+  for (const id of SECTIONS) for (const r of (model.sections ?? []).find(x => x.id === id)?.rows ?? []) if (!byKey.has(r.key)) byKey.set(r.key, r)
+  const rowOfTask = slug => byKey.get(`task:${slug}`) ?? null
+  const used = new Set()      // row keys a card already stands for
+  const usedTasks = new Set() // task slugs a card already stands for
+  const usedTabs = new Set()
+  const take = row => {
+    if (!row) return
+    used.add(row.key)
+    if (row.task && !row.inbox_id) usedTasks.add(row.task)
+  }
+  const out = { back: null, asks: [], result: [], lost: [], question: [], task: [], reports: [], lane: [] }
+  const tabOf = ref => tabs.find(t => t.ref === ref) ?? null
+  if (driver) {
+    // 1 the return card, only once the jump is armed (flowArm); its row and its tab stand nowhere else
+    const jump = s?.ui?.flowJump
+    if (jump?.armed) {
+      const row = byKey.get(jump.key) ?? null
+      out.back = { group: 'back', id: 'back', kind: 'back', jump, row, tab: tabOf(jump.ref) }
+      take(row)
+      usedTabs.add(jump.ref)
+    }
+    // 2 to 4 and the lane: the starts of the return channel by where they stand now
+    for (const r of model.returns ?? []) {
+      const stage = flowStage(r, tabs, nowMs)
+      const group = Object.hasOwn(STAGE_GROUP, stage) ? STAGE_GROUP[stage] : 'asks'
+      const row = byKey.get(r.key) ?? null
+      if (!group || used.has(r.key)) continue
+      const mine = tabs.filter(t => t.ref === r.tab?.ref || (r.item && (t.slug === r.item || t.item === r.item)))
+      const card = { group, id: `start:${r.key}`, kind: 'start', start: r, row, stage, tab: tabOf(r.tab?.ref) ?? mine[0] ?? null }
+      take(row ?? { key: r.key, task: String(r.key).startsWith('task:') ? r.key.slice(5) : null })
+      for (const t of mine) usedTabs.add(t.ref)
+      out[group].push(card)
+    }
+    // 2 the tabs that ask you, with or without a task, the oldest question first
+    for (const t of tabs.filter(x => x.state === 'needs-you' && !usedTabs.has(x.ref)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
+      const row = (t.slug ? rowOfTask(t.slug) : null) ?? (t.item ? byKey.get(`inbox:${t.item}`) ?? null : null)
+      if (row && used.has(row.key)) continue
+      out.asks.push({ group: 'asks', id: `tab:${t.ref}`, kind: 'tab', tab: t, row })
+      take(row)
+      usedTabs.add(t.ref)
+    }
+    out.asks.sort((a, b) => (a.tab?.since_ms ?? a.start?.at_ms ?? 0) - (b.tab?.since_ms ?? b.start?.at_ms ?? 0))
+    out.result.sort((a, b) => (a.start.at_ms ?? 0) - (b.start.at_ms ?? 0))
+    out.lost.sort((a, b) => (b.start.at_ms ?? 0) - (a.start.at_ms ?? 0))
+  }
+  const left = Object.fromEntries(FLOW_LEFT_OUT.map(k => [k, []]))
+  const leave = (why, row, until = null) => { if (!used.has(row.key)) { left[why].push({ row, until }); used.add(row.key) } }
+  // what is put off (hidden until a day, an inbox item deferred) waits for its day
+  for (const r of model.hidden ?? []) leave('later', r, r.hidden_until ?? null)
+  const rows = [...byKey.values()]
+  for (const r of rows.filter(x => x.inbox_state === 'deferred')) leave('later', r, r.until ?? null)
+  const ranks = rankMap(s)
+  // 5 the questions for you, with or without a task: a question about a task takes the task out of the tasks
+  for (const r of rows.filter(x => x.inbox_id && asksYou(x) && !used.has(x.key) && x.inbox_state !== 'approved').sort(byDue)) {
+    if (r.bucket === 'waiting') { leave('waiting', r); continue }
+    if (r.bucket === 'resting') { leave('resting', r); continue }
+    const task = r.task ? rowOfTask(r.task) : null
+    out.question.push({ group: 'question', id: r.key, kind: 'row', row: r, task })
+    used.add(r.key)
+    if (r.task) usedTasks.add(r.task)
+  }
+  // 7 the reports, one card; ideas wait on the calm card
+  const reports = rows.filter(x => x.inbox_id && x.art === 'report' && !used.has(x.key) && x.inbox_state !== 'approved').sort(byAge)
+  for (const r of rows.filter(x => x.inbox_id && x.art === 'idea')) leave('idea', r)
+  // 6 the tasks doing or in review, every priority: by rank, else priority, then age
+  const tasks = []
+  for (const r of rows.filter(x => x.task && !x.inbox_id && !used.has(x.key))) {
+    if (usedTasks.has(r.task)) continue
+    if (r.stream || r.work_kind === 'stream') leave('stream', r)
+    else if (r.status === 'backlog') leave('idea', r)
+    else if (!TASK_STATES.includes(r.status)) { if (r.bucket === 'resting' || r.blocked_by) leave('resting', r) }
+    else if (r.bucket === 'waiting') leave('waiting', r)
+    else if (r.bucket === 'resting' || r.bucket === 'drop' || r.blocked_by) leave('resting', r)
+    else tasks.push(r)
+  }
+  out.task = tasks.sort((a, b) => byRank(ranks)(a, b) || byPrio(a, b) || byAge(a, b))
+    .map(r => ({ group: 'task', id: r.key, kind: 'row', row: r }))
+  for (const r of reports) used.add(r.key)
+  out.reports = reports.length ? [{ group: 'reports', id: 'reports', kind: 'reports', rows: reports }] : []
+  // the lane: the starts that run, newest first, as the server sends them
+  out.lane = (out.lane ?? []).sort((a, b) => (b.start.at_ms ?? 0) - (a.start.at_ms ?? 0))
+  const groups = FLOW_LEFT_OUT.filter(k => left[k].length).map(reason => ({ reason, rows: left[reason] }))
+  out.leftOut = { total: groups.reduce((n, g) => n + g.rows.length, 0), groups }
+  return out
+}
+
+/** The cards in the page's order, under a chip (FLOW_CHIPS): the return card first, the reports last */
+export function flowQueue(parts, chip = 'all') {
+  const groups = FLOW_CHIPS[chip] ?? FLOW_CHIPS.all
+  return FLOW_GROUPS.filter(g => groups.includes(g)).flatMap(g => (g === 'back' ? (parts?.back ? [parts.back] : []) : parts?.[g] ?? []))
+}
+
+/** What each chip counts: its cards, the reports by their rows */
+export function flowCounts(parts) {
+  const n = g => (g === 'reports' ? (parts?.reports?.[0]?.rows.length ?? 0) : g === 'back' ? (parts?.back ? 1 : 0) : parts?.[g]?.length ?? 0)
+  return Object.fromEntries(Object.entries(FLOW_CHIPS).map(([k, gs]) => [k, gs.reduce((sum, g) => sum + n(g), 0)]))
+}
+
+/** The ideas and backlog tasks the calm card offers to start, at most n: by Jev rank, then priority, then age */
+export function restSuggestions(s, n = 3) {
+  const parts = flowParts(s)
+  const ranks = rankMap(s)
+  const ideas = (parts.leftOut.groups.find(g => g.reason === 'idea')?.rows ?? []).map(x => x.row)
+  return ideas.sort((a, b) => byRank(ranks)(a, b) || byPrio(a, b) || byAge(a, b)).slice(0, n)
+}
+
+const isStream = row => !!(row?.stream || row?.work_kind === 'stream')
+
+/** The verbs a row offers, in FLOW_VERBS order: a start but on an item whose yes is given (it runs on its own),
+ *  Done where the row can be settled, Drop on anything but a stream (a stream runs on, it never ends this way) */
+export function verbsFor(row) {
+  const stream = isStream(row)
+  return FLOW_VERBS.filter(v => (v === 'do' ? row?.inbox_state !== 'approved'
+    : v === 'done' ? !stream && (row?.settle ?? []).includes('done') : v === 'drop' ? !stream : true))
+}
+
+/** The verb the primary button carries: the triage's verdict (close, stale, waiting), else Advise on a question and
+ *  Let AI do it on a task the AI may do (doer ai or either), else Advise; always one the row offers */
+export function suggestedVerb(row, triage = null) {
+  const offered = verbsFor(row)
+  const byVerdict = { close: 'done', stale: 'drop', waiting: 'later' }[triage?.verdict]
+  const pick = byVerdict ?? (row?.inbox_id ? 'advise' : row?.task && ['ai', 'either'].includes(triage?.doer) ? 'do' : 'advise')
+  return offered.includes(pick) ? pick : 'advise'
+}
+
+/** What a verb sends for a row: {verb, args}, or null when it may not go (a start without a sentence, a drop
+ *  without a reason or of a stream). Let AI do it always carries a sentence, so it starts an agent and never
+ *  approves an item's own action unseen (actions_work.py do_it); Drop shelves a task (an idea in the inbox, the
+ *  task declined) and settles anything else as not doing, the reason with it. Advise is a question (c.flowAdvise) */
+export function flowAction(verb, row, value = '') {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  const key = row?.key
+  if (!key) return null
+  if (verb === 'do') return text ? { verb: 'do_it', args: { keys: [key], note: text } } : null
+  if (verb === 'done') return { verb: 'settle', args: { keys: [key], outcome: 'done' } }
+  if (verb === 'later') return /^\d{4}-\d{2}-\d{2}$/.test(text) ? { verb: 'later', args: { key, until: text } } : null
+  if (verb === 'drop') {
+    if (!text || isStream(row)) return null
+    return row.task && !row.inbox_id ? { verb: 'shelve', args: { key, reason: text.slice(0, 200) } }
+      : { verb: 'settle', args: { keys: [key], outcome: 'not_doing', text } }
+  }
+  return null
+}
+
+/** The start sentence a start opens with: the row's title and the request for a result line (text-flow.js) */
+export function startNote(row, lang = 'en') {
+  return (TABLES[lang] ?? TABLES.en).flow.start.note(String(row?.title ?? row?.key ?? '').trim())
+}
+
+/** The words of a reason to drop: a key of the defaults in the page's language, a reason of the instance as written */
+export function dropReasonWord(reason, lang = 'en') {
+  return (TABLES[lang] ?? TABLES.en).flow.drop.reason[reason] ?? String(reason)
+}

@@ -39,8 +39,9 @@ function screenLines(text, n = 4) {
 
 /** The one next step, large: its kind, its title, where it belongs, what it is about, and the way to act.
  *  The files view (dossier.js) shows its next step in it: `title` in place of the entry's own, `kindWord` in
- *  place of its kind, `sub` a line under the title (where the step comes from and since when) */
-export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null }) {
+ *  place of its kind, `sub` a line under the title (where the step comes from and since when). The Work through
+ *  page (flow.js) puts its own verbs in its foot (`acts`, in place of the row's buttons or the tab's ways) */
+export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null, acts = null }) {
   const t = T()
   const f = t.home.focus
   const kind = kindOf(x, nowKeys(s))
@@ -68,11 +69,11 @@ export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = n
     ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
     ${why.length ? html`<ul class="fx-why">${why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
     <footer class="fx-acts">
-      <div class="fx-do">
+      ${acts ?? html`<div class="fx-do">
         ${x.kind === 'tab' ? html`<${Btn} variant="primary" onClick=${() => jumpToTab(s, c, x.tab.ref)}>${t.home.toTab}<//>
           <${Btn} variant="secondary" onClick=${() => c.openTabView(x.tab.ref)}>${t.home.view}<//>`
           : html`<${RowBar} row=${x.row} s=${s} c=${c} tab=${tab} pin=${false} size="sm" /><${PinStar} rowKey=${x.row.key} s=${s} c=${c} />`}
-      </div>
+      </div>`}
     </footer>
   </article>`
 }

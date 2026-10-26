@@ -3,10 +3,10 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, tabsButtonCount, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, flowOn, tabsButtonCount, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
-  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
+  AGENTS_PAGE, FLOW_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
   morePages, pageOrder, reviewHomeOf,
 } from './nav.js'
 import { AgentMark, agentBadge } from './agents.js'
@@ -240,6 +240,7 @@ export function PageBar({ s, c }) {
   const button = id => { const x = made.get(id); return html`<button key=${id} type="button" role="tab" class=${`ptab${s.ui.page === id ? ' is-active' : ''}`}
     aria-selected=${String(s.ui.page === id)} onClick=${() => c.setPage(id)} title=${x.keyHint}>
     <span>${x.label}</span>${x.badge}</button>` }
+  // what waits for you: Today and Work through carry the same number, no counter of their own
   const n = s.model?.briefing_badge ?? 0
   const aiLeft = aiWaiting(s.model?.returns, s.tabs?.tabs, s.now || Date.now())   // what the AI left for you (sessions page)
   const toClose = s.model?.review?.last?.to_close ?? 0
@@ -251,6 +252,7 @@ export function PageBar({ s, c }) {
       ${box ? html`<${TabMarker} box=${box} />` : null}
       ${tab(START_PAGE, t.startTab, null)}
       ${tab('briefing', briefingTitle(s), n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}
+      ${flowOn(s) ? tab(FLOW_PAGE, t.flowTab, n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null) : null}
       ${tab(SESSIONS_PAGE, t.sessionsTab, aiLeft > 0
         ? html`<span class="pbadge is-quiet" title=${t.aiWaitingTitle(aiLeft)}><span>${t.aiBadge}</span> <span class="mono">${aiLeft}</span></span>`
         : sess.sessions > 0

@@ -2,7 +2,7 @@
 // The cockpit, the pages: which tab stands where, and the fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { listedChats, reviewHome, walkRefs, workPageOf, workViewOf } from '../logic.js'
+import { FLOW_PAGE, flowOn, listedChats, reviewHome, walkRefs, workPageOf, workViewOf } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -16,6 +16,8 @@ export const CHAT_PAGE = '@chat'
 export const AGENTS_PAGE = '@agents'
 export const START_PAGE = '@start'     // the start screen: greeting, projects, cards that lead into the work
 export const SETTINGS_PAGE = '@settings'   // the cockpit's own settings, always there, always behind More
+// the Work through page (flow.js), right after Today while cockpit.flow.enabled is on
+export { FLOW_PAGE }
 
 /** Whether the Chat is laid out as cmux (cockpit.chat_layout: workspaces): the agents then live in it, not on a page */
 export const chatAsWorkspaces = s => s?.rooms?.layout === 'workspaces'
@@ -94,12 +96,13 @@ export function reviewHomeOf(s) {
 /** Every page with whether it stands behind More: the fixed pages, then the profile's. The system
  *  views (Workers, Agents, Check, Jev) and profile pages with `group: more` go behind More */
 function pageList(s) {
-  // In front the few tabs of every day: Start, Today, Chat and the profile's main pages (Work, Operations).
+  // In front the few tabs of every day: Start, Today, Work through (cockpit.flow.enabled), Chat and the profile's
+  // main pages (Work, Operations).
   // Everything else stands behind them and folds behind More only when the bar has no room for it.
   // The Workers tab only where a worker view exists, Agents only where this Bridge knows an A2A peer and the
   // Chat is the classic one (as cmux the agents are a tab inside the Chat, chatAreaOf);
   // a page of group `day` has no tab, its sections stand under the day list of Today (DayColumn); Settings is the last of all
-  return [{ id: START_PAGE }, { id: 'briefing' }, { id: CHAT_PAGE }, { id: SESSIONS_PAGE, more: true },
+  return [{ id: START_PAGE }, { id: 'briefing' }, ...(flowOn(s) ? [{ id: FLOW_PAGE }] : []), { id: CHAT_PAGE }, { id: SESSIONS_PAGE, more: true },
     ...(s.workers?.status === 'none' ? [] : [{ id: WORKERS_PAGE, more: true }]),
     ...((s.agents?.peers ?? []).length && !chatAsWorkspaces(s) ? [{ id: AGENTS_PAGE, more: true }] : []), ...(reviewHomeOf(s) ? [] : [{ id: CHECK_PAGE, more: true }]),
     ...(s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? [{ id: JEV_PAGE, more: true }] : []),

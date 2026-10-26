@@ -792,6 +792,20 @@ export function buildState(now = Date.now(), opts = {}) {
       team: null, role: null, live: false, waiting: false, is_control: false, filed_by: null, since_ms: now - 140 * MIN, long: null },
   ].map(t => ({ ...t, ask: asks[t.ref] ?? null, state_source: GLYPH_TABS.has(t.ref) ? 'glyph' : 'hook' }))
 
+  // the return channel (returns.py build): a start at work, one whose tab asks, one that left its answer, one lost;
+  // the Work through page draws the first in its lane and the others as cards. Inbox items without a task, but the
+  // one that asks, so the files of the tasks keep the results the files suite counts
+  const start = (r, mode, mins, stage, extra = {}) => ({ key: r.key, item: r.inbox_id ?? r.task, title: r.title, mode, at_ms: now - mins * MIN,
+    stage, in_briefing: true, tab: null, result: null, ...extra })
+  const tabRef = ref => { const t = tabs.find(x => x.ref === ref); return t ? { ref, state: t.state, since_ms: t.since_ms, last: t.last } : null }
+  const returns = empty ? [] : [
+    start(rows.docs, 'go', 6, 'working', { tab: tabRef('surface:9') }),
+    start(rows.release, 'go', 40, 'asks', { tab: tabRef('surface:7') }),
+    start(rows.labels, 'go', 80, 'result', { tab: tabRef('surface:10'),
+      result: { kind: 'filed', text: 'Draft written to the inbox as a result. Anything else?', key: rows.labels.key, at_ms: null } }),
+    start(rows.filed, 'go', 130, 'lost'),
+  ]
+
   const relayOnline = !opts.offline
   return localize({
     ok: true,
@@ -827,6 +841,7 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
       // what the server sends: the asks of Now, the same number as counts.now
       briefing_badge: forYou,
+      returns,
     },
     // the terminal's workspace list (the chat as cmux); two workspaces share a title and are told apart by ref
     tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs, workspaces: empty ? [] : [
@@ -849,7 +864,9 @@ export function buildState(now = Date.now(), opts = {}) {
     // the work tab as the config sets it (cockpit.work_view, cockpit.focus_to_files): ?work=files and ?focus_to_files=1
     // and which tasks are files (cockpit.files_scope): the queue alone as the default config, ?files_scope=all for every one
     work: { view: ['due', 'source', 'jev', 'files'].includes(opts.work) ? opts.work : 'due', focus_to_files: opts.focusToFiles === true,
-      files_scope: opts.filesScope === 'all' ? 'all' : 'active' },
+      files_scope: opts.filesScope === 'all' ? 'all' : 'active',
+      // the Work through page (cockpit.flow): on in the demo, ?flow=0 shows the cockpit without it
+      flow: { enabled: opts.flow !== false, drop_reasons: ['resolves_itself', 'not_needed', 'someone_else', 'not_worth_it'], return_after_s: 20 } },
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
       { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
@@ -1638,10 +1655,19 @@ export function createMockTransport(opts = {}) {
           Object.assign(result, { applied: picked.map(i => i.id), skipped: [], failed: [] })
           result.note = `Mock: ${picked.length} applied`
         }
-        if (['drop', 'done', 'later', 'hide', 'task_close', 'settle'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
+        if (['drop', 'done', 'later', 'hide', 'task_close', 'settle', 'shelve'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
           result.settled = keys
           remember(verb, keys)
           removeRows(keys, verb)
+        }
+        if (verb === 'do_it' && args.note) {
+          // a start with a sentence (the Work through page): it runs in the return channel at once, as the server records it
+          const rows = state.model.sections.flatMap(x => x.rows)
+          const started = keys.map(k => rows.find(r => r.key === k)).filter(Boolean)
+            .map(r => ({ key: r.key, item: r.inbox_id ?? r.task, title: r.title, mode: 'go', at_ms: now(), stage: 'started', in_briefing: true, tab: null, result: null }))
+          seq += 1
+          state.model = { ...state.model, seq, returns: [...started, ...(state.model.returns ?? []).filter(x => !keys.includes(x.key))] }
+          wait(() => emit('view', state.model), 200)
         }
         if (['task_reopen', 'inbox_reopen', 'unhide'].includes(verb)) {
           // the undo of the history drawer: the newest item that hands out exactly this undo is taken back

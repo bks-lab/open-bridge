@@ -8,9 +8,10 @@
 import { TABLES } from './text.js'
 import { inProject } from './areas.js'
 
-// the areas and the files view live in files of their own; every name passes on from here
+// the areas, the files view and the Work through page live in files of their own; every name passes on from here
 export * from './areas.js'
 export * from './files.js'
+export * from './flow.js'
 
 /** The words of one language (text.js, rules/language-policy.md section 3); English for any other */
 const tableOf = lang => (TABLES[lang] ?? TABLES.en).logic
@@ -3419,6 +3420,8 @@ const HINTS = {
     ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
+  '@flow': [['flowChips', '.flow-chips'], ['flowLane', '.flow-lane'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
+    ['flowWalk', '.flow-work > .next-up']],
 }
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained
 const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],

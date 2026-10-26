@@ -1,0 +1,74 @@
+/* SPDX-License-Identifier: MIT */
+/*
+ * The cockpit's Work through page (views/flow.js) and its five verbs (views/verbbar.js). Loaded right after
+ * files.css; the card in front is the hero of the start page focus (style.css .fx-hero), the chips are the start
+ * page's (.home-chip). Colors only through the DESIGN.md tokens (var(--token)), the same rules as style.css.
+ */
+
+/* the page: one column at a reading width, the card in the middle */
+.flow { display: flex; flex-direction: column; gap: var(--space-md); width: 100%; max-width: 880px; margin: 0 auto; min-width: 0; padding-bottom: var(--space-2xl); }
+.flow-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; }
+.flow-head .detail-title, .flow-head p { margin: 0; }
+.flow-chips { position: static; margin: 0; padding: 0; }
+.flow-chips .mono { color: var(--on-surface-muted); font-size: var(--text-label); }
+.flow-chips .is-on .mono { color: inherit; }
+.flow-nodriver { margin: 0; }
+
+/* what runs: one quiet line of chips on top, a click folds the tab's last lines open under it */
+.flow-lane { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-lane > h2 { margin: 7px 0 0; flex: none; color: var(--on-surface-muted); }
+.flow-lane-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.flow-lane-list > li { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.flow-lane-list > li.is-open { flex-basis: 100%; }
+.flow-lane-item {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 11px; border: 1px solid var(--border);
+  border-radius: var(--radius-full); background: var(--surface-raised); color: var(--on-surface); font: inherit; font-size: var(--text-sm);
+  cursor: pointer; transition: border-color var(--motion);
+}
+.flow-lane-item:hover { border-color: var(--border-strong); }
+.flow-lane-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.flow-lane-peek { display: flex; flex-direction: column; gap: 6px; padding: 0 2px 4px; }
+
+/* the card in front and the walk under it */
+.flow-work { display: flex; flex-direction: column; gap: 10px; min-width: 0; isolation: isolate; }
+.flow-work > .next-up { margin-top: 20px; position: static; }
+.flow-card .fx-acts { flex-direction: column; align-items: stretch; }
+.flow-ask { margin: 0; font-size: var(--text-h4); color: var(--ink); }
+.flow-answer { margin: 0; color: var(--on-surface); }
+.flow-reports { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.flow-reports details { padding: 6px 0; border-top: 1px solid var(--border); }
+.flow-reports summary { cursor: pointer; color: var(--on-surface); }
+.flow-reports details[open] { display: flex; flex-direction: column; gap: 6px; }
+
+/* what the queue leaves out, and the calm card's ideas */
+.flow-left { display: flex; flex-direction: column; gap: 8px; }
+.flow-left > .btn-link { align-self: flex-start; }
+.flow-left-list { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-left-group p { margin: 0 0 4px; color: var(--on-surface-muted); }
+.flow-left-group ul { margin: 0; padding-left: 18px; color: var(--on-surface); font-size: var(--text-sm); }
+.flow-rest { display: flex; flex-direction: column; gap: 8px; }
+.flow-rest > h2 { margin: 0; color: var(--on-surface-muted); }
+.flow-rest ul { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.flow-rest li { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised); }
+.flow-rest-title { font-weight: 600; color: var(--on-surface); }
+
+/* the five verbs: one row of buttons, the suggested one primary, a small panel under it for a start, a day, a reason */
+.verbbar { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.verbbar-row, .verbbar-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.verbbar-panel {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); background: var(--surface);
+}
+.verbbar-panel .field-row { margin-top: 0; }
+.verbbar-advice { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface); }
+.verbbar-advice p { margin: 0; }
+.verbbar-answer { color: var(--on-surface); font-size: var(--text-sm); }
+.verbbar-manual { display: flex; flex-direction: column; gap: 6px; }
+.verbbar-manual p, .verbbar-manual pre { margin: 0; }
+.verbbar-manual pre { padding: 10px 12px; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-muted); }
+.verbbar-err { color: var(--danger); }
+
+@media (max-width: 640px) {
+  .flow-lane { flex-direction: column; }
+  .flow-lane > h2 { margin: 0; }
+}

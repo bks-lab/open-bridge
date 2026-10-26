@@ -10,6 +10,7 @@
 import { HOME } from './text-areas.js'
 import { CARD } from './text-card.js'
 import { FILES } from './text-files.js'
+import { FLOW } from './text-flow.js'
 import { CHAT } from './text-chat.js'
 
 /** The CLI an error names ("the claude CLI is not available"), or null */
@@ -265,6 +266,7 @@ const en = {
   btnStartControlShort: 'Start',
   startControlTitle: 'Opens a new Claude tab in the {ws} workspace (created when missing); the page asks it from then on',
   sessionsTab: 'Sessions',
+  flowTab: 'Work through',
   sessionsTitle: 'Claude sessions',
   sessionsIntro: 'Every Claude Code session running on this machine, with its subagents. Click a card to jump to its tab.',
   sessionsEmpty: 'No Claude session runs right now.',
@@ -853,6 +855,11 @@ const en = {
       settingsNav: { title: 'Areas', body: 'Pick what to set: start page, look, model choice, news, guide.' },
       settingsBody: { title: 'The settings', body: 'A change applies at once. Reset goes back to bridge-config.yaml.' },
       setCard: { title: 'A card', body: 'Each card sets one thing: its title says what, the line below what it changes.' },
+      flowChips: { title: 'One kind at a time', body: 'A chip shows only what asks you, what the agents left, the tasks or the reports. All shows everything.' },
+      flowLane: { title: 'What runs', body: 'The agents started from here. A click shows the last lines of the tab without leaving the cards.' },
+      flowCard: { title: 'The card in front', body: 'One open thing at a time, in a fixed order: tabs that ask, results, questions, tasks, reports.' },
+      flowVerbs: { title: 'Five verbs', body: 'The suggested one is the strong button. Each sends one decision, and the next card moves up.' },
+      flowWalk: { title: 'Walk on', body: 'Next skips a card, Previous brings one back, a line below opens that card directly.' },
       pageBadge: { title: 'What waits here', body: 'The count beside the title adds up what on this page needs you. A red dot means a finding.' },
       oboard: { title: 'Overview tiles', body: 'One figure per part of this page, coloured by how it stands. A click goes to the part behind it.' },
       kinds: { title: 'Kinds', body: 'Shows only one kind of row, such as tasks or reports, or all of them.' },
@@ -1490,6 +1497,7 @@ const en = {
     },
   },
   dossier: FILES.en,
+  flow: FLOW.en,
   chatArea: CHAT.en,
   card: CARD.en,
   logic: {
@@ -1744,6 +1752,7 @@ const de = {
   btnStartControlShort: 'Starten',
   startControlTitle: 'Öffnet einen neuen Claude-Tab im Workspace {ws} (legt ihn an, wenn er fehlt); die Seite fragt ab dann dort',
   sessionsTab: 'Sitzungen',
+  flowTab: 'Abarbeiten',
   sessionsTitle: 'Claude-Sitzungen',
   sessionsIntro: 'Jede Claude-Code-Sitzung, die auf diesem Rechner läuft, mit ihren Subagenten. Ein Klick auf die Karte springt in ihren Tab.',
   sessionsEmpty: 'Gerade läuft keine Claude-Sitzung.',
@@ -2326,6 +2335,11 @@ const de = {
       settingsNav: { title: 'Bereiche', body: 'Wähle, was du einstellst: Startseite, Aussehen, Modellwahl, Nachrichten, Entscheidungshilfe.' },
       settingsBody: { title: 'Die Einstellungen', body: 'Eine Änderung gilt sofort. Zurücksetzen holt die Werte aus bridge-config.yaml.' },
       setCard: { title: 'Eine Karte', body: 'Jede Karte stellt eine Sache ein: der Titel sagt was, die Zeile darunter, was sich ändert.' },
+      flowChips: { title: 'Eine Art auf einmal', body: 'Ein Chip zeigt nur, was dich fragt, was die Agenten hinterlassen, die Aufgaben oder die Meldungen.' },
+      flowLane: { title: 'Was läuft', body: 'Die von hier gestarteten Agenten. Ein Klick zeigt die letzten Zeilen des Tabs, ohne die Karten zu verlassen.' },
+      flowCard: { title: 'Die Karte vorn', body: 'Immer eine offene Sache, in fester Reihenfolge: fragende Tabs, Ergebnisse, Fragen, Aufgaben, Meldungen.' },
+      flowVerbs: { title: 'Fünf Verben', body: 'Das vorgeschlagene ist der kräftige Knopf. Jedes sendet eine Entscheidung, dann rückt die nächste Karte nach.' },
+      flowWalk: { title: 'Weitergehen', body: 'Weiter überspringt eine Karte, Zurück holt eine zurück, eine Zeile darunter öffnet diese Karte direkt.' },
       pageBadge: { title: 'Was hier wartet', body: 'Die Zahl neben dem Titel zählt zusammen, was auf dieser Seite dich braucht. Ein roter Punkt heißt Befund.' },
       oboard: { title: 'Kacheln im Überblick', body: 'Eine Zahl je Teil dieser Seite, gefärbt danach, wie es steht. Ein Klick führt zum Teil dahinter.' },
       kinds: { title: 'Arten', body: 'Zeigt nur eine Art von Zeilen, etwa Aufgaben oder Meldungen, oder alle.' },
@@ -2956,6 +2970,7 @@ const de = {
     },
   },
   dossier: FILES.de,
+  flow: FLOW.de,
   chatArea: CHAT.de,
   card: CARD.de,
   logic: {

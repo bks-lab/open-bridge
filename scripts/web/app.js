@@ -17,6 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
+  canTab, flowArm, flowSettings,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -152,6 +153,10 @@ const store = createStore({
     // the shelf of every file behind the queue that lists its files (cockpit.files_scope all), null: none picked;
     // fileShelfReveal: picked from the line of what the queue leaves out, so the shelves come into view once
     fileShelf: null, fileShelfReveal: false,
+    // the Work through page (views/flow.js): where it stands in its queue (held by the card's id), the chip that
+    // filters it, the jump to a tab the return card asks about ({key, ref, title, at, armed}, kept in memory only, so
+    // a reload brings no old card back), the row Advise answered ({key, conv}) and how many it decided since load
+    flowAt: null, flowChip: 'all', flowJump: null, flowAdvice: null, flowDecided: 0,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
@@ -941,6 +946,31 @@ const ctl = {
     ctl.setPage('briefing')   // measures the page view, the files view already set
   },
   dossierWalk: (id, i) => setUi({ dossierAt: { id, i }, dossierOpen: null }),
+  // the Work through page: a card brought to the front by its id, a chip (its queue starts over), one more decision
+  flowGo: (id, i) => setUi({ flowAt: { id, i } }),
+  flowChip: chip => setUi({ flowChip: chip, flowAt: null }),
+  flowDecided: () => setUi(ui => ({ flowDecided: (ui.flowDecided ?? 0) + 1 })),
+  // To tab on a card: the jump goes out and is remembered for the return card; a driver that cannot jump shows the
+  // tab's screen instead, and that asks nothing on the way back
+  flowJump(card) {
+    if (!card?.ref) return null
+    if (!canTab(store.get(), 'focus')) return ctl.openTabView(card.ref)
+    setUi({ flowJump: { key: card.key ?? null, ref: card.ref, title: card.title ?? card.ref, at: Date.now(), armed: false } })
+    return act('tab_jump', { tab_ref: card.ref })
+  },
+  // every answer on the return card forgets the jump, Not yet too
+  flowBack: () => setUi({ flowJump: null }),
+  // Advise on a card: one read-only quick question about the row, its answer shown in the card (views/verbbar.js)
+  flowAdvise: key => withBusy('ask:row', 'row', async () => {
+    const res = await api.ask('row', { key }, { via: 'quick', model: store.get().ui.quickModel })
+    if (res.ok && res.data?.conv) {
+      setUi({ flowAdvice: { key, conv: res.data.conv } })
+      return true
+    }
+    failNote(res)
+    return false
+  }),
+  flowAdviseClose: () => setUi({ flowAdvice: null }),
   // a chip behind the queue lists its files (views/dossier.js Shelves); null folds the list. `reveal`: picked from
   // the line of what the queue leaves out, far above, so the shelves scroll into view and the chip takes the focus
   setFileShelf: (k, reveal = false) => setUi({ fileShelf: k ?? null, fileShelfReveal: Boolean(reveal && k) }),
@@ -1545,6 +1575,7 @@ async function boot() {
       lang: params.get('lang') || 'en', offline: params.get('offline') === '1', empty: params.get('empty') === '1',
       auth: params.get('auth') === '0' ? false : undefined, tour: params.get('tour') === '1',
       work: params.get('work'), focusToFiles: params.get('focus_to_files') === '1', filesScope: params.get('files_scope'),
+      flow: params.get('flow') !== '0',
     })
   }
   api = createApi(transport)
@@ -1576,6 +1607,15 @@ async function boot() {
   const tick = whenShown(document, () => store.set(s => ({ ...s, now: Date.now() })))
   setInterval(tick, 15000)
   document.addEventListener('visibilitychange', tick)
+  // the return card of the Work through page: only a jump to a tab asks how it went, once the page is in view
+  // again return_after_s after it (logic.js flowArm); being shown alone, an app switch, never does. Armed, the
+  // return card stands in front
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    const s = store.get()
+    const armed = flowArm(s.ui.flowJump, Date.now(), flowSettings(s).return_after_s)
+    if (armed !== s.ui.flowJump) setUi(armed?.armed ? { flowJump: armed, flowAt: null } : { flowJump: armed })
+  })
   ctl.loadWorkers()   // for the Workers tab's badge; the tab reads it again when opened
   setInterval(whenShown(document, () => { const g = store.get(); if (g.loading?.pass || g.model?.review?.running) tick() }), 1000)
 }

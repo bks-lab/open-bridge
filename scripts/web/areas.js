@@ -125,8 +125,9 @@ export function areaJump(kind, area) {
   return { page: 'briefing' }
 }
 
-// the pages the area filter (ui.area) acts on
-export const AREA_PAGES = new Set(['briefing', '@chat', '@sessions'])
+// the pages the area filter (ui.area) acts on; '@flow' is the Work through page (flow.js FLOW_PAGE), named here as
+// a literal since this file is evaluated before flow.js when logic.js loads
+export const AREA_PAGES = new Set(['briefing', '@chat', '@sessions', '@flow'])
 
 /** The row behind a page item: by its key, its task or its inbox item */
 function itemRow(it, byKey) {
@@ -135,7 +136,8 @@ function itemRow(it, byKey) {
 
 /** The state a page sees under the area filter (ui.area) and Work's star (ui.pinnedOnly): Work keeps the
  *  rows and page items of the area (or pinned) and the area's tabs beside them, Chat the tabs of the area, Sessions its sessions (by
- *  their tab, else their folder) and its starts. Every other page, and the header with its badges, gets
+ *  their tab, else their folder) and its starts. Work through sees what Work sees under the area, and the starts of
+ *  the area beside it (the star stays Work's). Every other page, and the header with its badges, gets
  *  the state as it is; so does a page without a filter (the same object back) */
 export function areaScope(s) {
   const page = s?.ui?.page
@@ -150,6 +152,12 @@ export function areaScope(s) {
   const slugs = new Set(areaRows.map(r => r.task).filter(Boolean))
   const items = new Set(areaRows.map(r => r.inbox_id).filter(Boolean))
   const keepTab = t => t.is_control || inProject(t, area) || (!!t.slug && slugs.has(t.slug)) || (!!t.item && items.has(t.item))
+  const tabOf = new Map(tabs.map(t => [t.ref, t]))
+  const keepReturn = r => inProject(byKey.get(r.key) ?? {}, area) || (!!r.tab?.ref && !!tabOf.get(r.tab.ref) && inProject(tabOf.get(r.tab.ref), area))
+  if (page === '@flow') {
+    const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', pinnedOnly: false } })
+    return { ...v, ui: s.ui, model: v.model && { ...v.model, returns: (s.model?.returns ?? []).filter(keepReturn) } }
+  }
   if (page === 'briefing') {
     const keepRow = r => !!r && inProject(r, area) && (!pins || pins.has(r.key))
     const keepItem = it => {
@@ -188,12 +196,10 @@ export function areaScope(s) {
     return { ...s, tabs: { ...s.tabs, tabs: kept, ...workspaces } }
   }
   // the Sessions page
-  const tabOf = new Map(tabs.map(t => [t.ref, t]))
   const keepSession = x => {
     const tab = x.tab?.ref ? tabOf.get(x.tab.ref) : null
     return tab ? inProject(tab, area) : inProject({ workspace: x.project }, area)
   }
-  const keepReturn = r => inProject(byKey.get(r.key) ?? {}, area) || (!!r.tab?.ref && !!tabOf.get(r.tab.ref) && inProject(tabOf.get(r.tab.ref), area))
   return {
     ...s,
     tabs: { ...s.tabs, tabs: tabs.filter(keepTab) },

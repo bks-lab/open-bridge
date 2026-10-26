@@ -1860,9 +1860,13 @@ test('with cockpit.focus_to_files a focus of one step still offers the files vie
 
 test('the demo shows the work tab as the default config does, and ?work=files&focus_to_files=1&files_scope=all as the switches do', () => {
   const { mock } = loadedRooms
-  assert.deepEqual(mock.buildState(NOW).work, { view: 'due', focus_to_files: false, files_scope: 'active' })
-  assert.deepEqual(mock.buildState(NOW, { work: 'files', focusToFiles: true, filesScope: 'all' }).work, { view: 'files', focus_to_files: true, files_scope: 'all' })
-  assert.deepEqual(mock.buildState(NOW, { work: 'tiles', filesScope: 'some' }).work, { view: 'due', focus_to_files: false, files_scope: 'active' })
+  const work = st => { const { flow, ...rest } = st.work; return rest }
+  assert.deepEqual(work(mock.buildState(NOW)), { view: 'due', focus_to_files: false, files_scope: 'active' })
+  assert.deepEqual(work(mock.buildState(NOW, { work: 'files', focusToFiles: true, filesScope: 'all' })), { view: 'files', focus_to_files: true, files_scope: 'all' })
+  assert.deepEqual(work(mock.buildState(NOW, { work: 'tiles', filesScope: 'some' })), { view: 'due', focus_to_files: false, files_scope: 'active' })
+  // the Work through page is on in the demo, ?flow=0 shows the cockpit without it
+  assert.equal(mock.buildState(NOW).work.flow.enabled, true)
+  assert.equal(mock.buildState(NOW, { flow: false }).work.flow.enabled, false)
   // the demo lists every file, the backlog too, so ?files_scope=all has something to show
   assert.ok(mock.buildState(NOW).model.files.some(f => f.status === 'backlog'))
 })
