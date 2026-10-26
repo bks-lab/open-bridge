@@ -2,8 +2,8 @@
 // Pure helpers of the cockpit's Work through page (views/flow.js): the one queue in its fixed groups, what it
 // leaves out and why, the cards of the calm card, the return card after a jump to a tab, the five verbs (which a
 // row offers, which one is suggested, what each sends), the briefs to prepare for the cards that come next and how
-// many agents run. No DOM, no network, no state. logic.js passes every name on,
-// so a view may import it from either; the flow test imports it under node.
+// many agents run. No DOM, no network, no state of its own (prepRunner holds the line app.js keeps). logic.js
+// passes every name on, so a view may import it from either; the flow test imports it under node.
 //
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
@@ -230,11 +230,31 @@ export function prepTargets(queue, at, n, s) {
     .map(x => x.row).filter(row => describable(row) && !briefReady(s, row)).map(row => row.key)
 }
 
-/** The keys of `keys` not prepared yet on this page view, each marked in `sent`: a key goes out once */
-export function prepOnce(keys, sent) {
-  const out = (keys ?? []).filter(k => !sent.has(k))
-  for (const k of out) sent.add(k)
-  return out
+/** The one runner of the briefs written ahead (app.js keeps one per page load): `send(key)` asks for one brief and
+ *  resolves true when it was written. The keys wait in line and go one at a time (describe writes one at a time), so
+ *  a card that comes up while a brief is written only adds its keys; a key goes out once. A refusal (the hour's budget
+ *  spent, a brief being written already) or a failure ends the round: the keys not sent stay for a later card */
+export function prepRunner(send) {
+  const sent = new Set()
+  let line = []
+  let running = false
+  return async function ask(keys) {
+    line = [...line, ...(keys ?? []).filter(k => !sent.has(k) && !line.includes(k))]
+    if (running) return
+    running = true
+    try {
+      while (line.length) {
+        const key = line.shift()
+        if (sent.has(key)) continue
+        sent.add(key)
+        let ok = false
+        try { ok = await send(key) } catch { ok = false }
+        if (!ok) { line = []; break }
+      }
+    } finally {
+      running = false
+    }
+  }
 }
 
 /** The cards in the page's order, under a chip (FLOW_CHIPS): the return card first, the reports last */

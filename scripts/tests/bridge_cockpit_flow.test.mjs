@@ -436,14 +436,51 @@ test('prepTargets: the next cards whose brief is missing or stale, at most n, ne
   // a live describe view outweighs the row's: a brief written meanwhile, or one being written now
   assert.deepEqual(logic.prepTargets(q, 1, 2, { ...s, describe: { 'task:c': { key: 'task:c', ...fresh } } }), ['task:d'])
   assert.deepEqual(logic.prepTargets(q, 1, 2, { ...s, describe: { 'task:c': { key: 'task:c', running: true } } }), ['task:d'])
-  // once per key: what went out once never goes again on this page view
-  const sent = new Set()
-  assert.deepEqual(logic.prepOnce(['task:c', 'task:d'], sent), ['task:c', 'task:d'])
-  assert.deepEqual(logic.prepOnce(['task:c', 'task:d', 'task:e'], sent), ['task:e'])
-  assert.deepEqual(logic.prepOnce(['task:c'], sent), [])
   // the reports card and a tab without an item have no brief to prepare
   const r = state({ now: [report('20261009-0901-a-r')], tabs: [{ ref: 'surface:5', name: 'x', state: 'needs-you' }], work: [task('z')] })
   assert.deepEqual(logic.prepTargets(queueOf(r), 0, 2, r), ['task:z'])
+})
+
+test('prepRunner: one brief at a time, each key once, a refusal ends the round and keeps the keys not sent for later', async () => {
+  const sent = []
+  const answers = []
+  const ask = logic.prepRunner(key => new Promise(resolve => { sent.push(key); answers.push(resolve) }))
+  ask(['task:b', 'task:c'])
+  // the next card came up while b is written: its keys wait their turn, c only once
+  ask(['task:c', 'task:d'])
+  await tick()
+  assert.deepEqual(sent, ['task:b'])
+  answers.shift()(true)
+  await tick()
+  assert.deepEqual(sent, ['task:b', 'task:c'])
+  answers.shift()(true)
+  await tick()
+  answers.shift()(true)
+  await tick()
+  assert.deepEqual(sent, ['task:b', 'task:c', 'task:d'])
+  // once per key: what went out once never goes again on this page view
+  ask(['task:b', 'task:d'])
+  await tick()
+  assert.equal(sent.length, 3)
+  // a refusal (the hour's budget spent, a brief written meanwhile) ends the round: f is not sent now
+  ask(['task:e', 'task:f'])
+  await tick()
+  answers.shift()(false)
+  await tick()
+  assert.deepEqual(sent.slice(3), ['task:e'])
+  // a later card asks again: e went out once and stays out, f was never sent and goes now
+  ask(['task:e', 'task:f'])
+  await tick()
+  assert.deepEqual(sent.slice(3), ['task:e', 'task:f'])
+  answers.shift()(true)
+  // a send that throws counts as a refusal and leaves the runner ready
+  const thrown = []
+  const loud = logic.prepRunner(async key => { thrown.push(key); throw new Error('offline') })
+  loud(['task:g', 'task:h'])
+  await tick()
+  loud(['task:h'])
+  await tick()
+  assert.deepEqual(thrown, ['task:g', 'task:h'])
 })
 
 test('the page prepares the next briefs on its own when a card comes to the front, none with prep_ahead 0', async () => {
@@ -526,6 +563,19 @@ test('a finished start: its result line and the criteria of its brief as a plain
   assert.doesNotMatch(card.$('.flow-criteria').text(), /[✓✔☑]/)
   assert.equal(card.$$('input').filter(i => i.getAttribute('type') === 'checkbox').length, 0)
   assert.ok(el.button(en.flow.doneClose) && el.button(en.flow.runsOn) && el.button(`${en.flow.improve.button} ▾`))
+})
+
+test('a finished or quiet start whose item is not in the list (put off, resting) still offers a way off the queue', () => {
+  const home = text.TABLES.en.home
+  for (const [stage, tabs] of [['result', []], ['idle', [{ ref: 'surface:11', name: 'zsh', state: 'shell', since_ms: NOW - 20 * MIN }]]]) {
+    const c = recorder()
+    const s = cockpitState(NOW, state({ tabs, returns: [startOf('gone', stage, { tab: tabs.length ? { ref: 'surface:11' } : null,
+      result: stage === 'result' ? { kind: 'note', text: 'Result: nothing to change', key: null, at_ms: null } : null })] }))
+    const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+    assert.match(el.$('.flow-card').text(), new RegExp(stage === 'result' ? 'nothing to change' : en.flow.idleSub))
+    el.button(home.returnForget).click()
+    assert.deepEqual(c.calls.at(-1), ['act', 'return_forget', { key: 'task:gone' }])
+  }
 })
 
 test('Improve: words to the tab while it lives (tab_send through the reply guard), else a new start with them', async () => {

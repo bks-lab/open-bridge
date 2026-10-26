@@ -356,8 +356,10 @@ and **Drop because**. A lost start offers **Start again**.
 **Briefs ahead.** When a card comes to the front, the next
 `cockpit.flow.prep_ahead` cards whose brief is missing or stale get it written
 (`describe_run` with `ahead: true`), one at a time, each key once per page
-load, never on a timer. These runs keep within `describe.budget_per_hour`; a
-click on a card's Describe button still always runs.
+load, never on a timer. A refusal (the hour's budget spent, a brief being
+written already) ends the round; the cards not asked for yet are asked for
+when a later card comes up. These runs keep within `describe.budget_per_hour`;
+a click on a card's Describe button still always runs.
 
 **The return card.** **To tab** on a card remembers the jump, in the page's
 memory only (a reload forgets it). When the page is in view again at least

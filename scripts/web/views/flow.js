@@ -15,7 +15,7 @@
 // the criteria of its brief as a plain list to check yourself (no tick, nothing judges them), with Done and close
 // the tab, Improve (words to the tab while it lives, else a new start) and Runs on. The lane shows the tabs of
 // sessions linked to a task too. When a card comes to the front, the briefs of the next cards that miss one are
-// written ahead (cockpit.flow.prep_ahead, c.flowPrep, once per key). For the mouse: the page names no key.
+// written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time, once per key). For the mouse: the page names no key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
@@ -122,7 +122,8 @@ function Improve({ row, tab, s, c, onDone }) {
   </div>`
 }
 
-/** A start of the return channel that wants you: its tab asks, it finished (or went quiet), or it got lost */
+/** A start of the return channel that wants you: its tab asks, it finished (or went quiet), or it got lost. One whose
+ *  item is not in the list (put off, resting) has no verbs; finished or lost, it can still be taken off the list */
 function StartCard({ x, s, c }) {
   const t = T()
   const f = t.flow
@@ -155,7 +156,7 @@ function StartCard({ x, s, c }) {
       ${x.group === 'asks' ? html`<${AskBlock} tab=${tab} s=${s} c=${c} />` : null}
       ${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${finished ? (tab ? ['later', 'drop'] : ['done', 'later', 'drop']) : ASKING_VERBS}
         extra=${html`<${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} />`} />`
-        : html`<div class="fx-do"><${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} /></div>`}`
+        : html`<div class="fx-do"><${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} />${finished ? forget : null}</div>`}`
   return html`<article class=${`fx-hero tk-${stageTone(x.stage === 'idle' ? 'result' : x.stage)}`} aria-labelledby="flow-title">
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${stageTone(x.stage === 'idle' ? 'result' : x.stage)} />${cardKind(x)}</span>
       <span class="mono muted small">${f.started(ago)}</span></header>
