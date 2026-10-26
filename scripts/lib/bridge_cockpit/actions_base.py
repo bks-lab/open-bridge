@@ -113,8 +113,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "organize_propose": {},
     "organize_apply": {"proposal": ("organize_id", True), "items": ("organize_items", True)},
     # describe (describe.py): one item's brief now (a proposal when a person wrote it), a proposal taken over as it
-    # is or as the person changed it (edited: true), a proposal dropped
-    "describe_run": {"key": ("key", True)},
+    # is or as the person changed it (edited: true), a proposal dropped. `ahead`: the Work through page prepares a
+    # card before it stands in front, so the run keeps within describe.budget_per_hour as the pass does
+    "describe_run": {"key": ("key", True), "ahead": ("bool", False)},
     "describe_apply": {"key": ("key", True), "proposal": ("describe_id", True), "brief": ("brief", False)},
     "describe_discard": {"key": ("key", True), "proposal": ("describe_id", True)},
     "snapshot": {},

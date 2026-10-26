@@ -361,6 +361,23 @@ def test_two_runs_never_go_at_once(world):
     assert seen["first"]["ok"]
 
 
+def test_a_brief_prepared_ahead_keeps_within_the_budget_a_click_never_waits(tmp_path):
+    """The Work through page prepares the briefs of the next cards (describe_run ahead: true): within
+    budget_per_hour, refused once it is spent, without a model call; a click still always runs"""
+    w = make_world(tmp_path, budget=1)
+    try:
+        assert w.act("describe_run", key="task:demo-task", ahead=True)["ok"]
+        n = len(model_calls(w))
+        with pytest.raises(ActionError) as spent:
+            w.act("describe_run", key=f"inbox:{YES_ID}", ahead=True)
+        assert spent.value.code == "describe_budget" and spent.value.status == 429
+        assert len(model_calls(w)) == n
+        assert w.act("describe_run", key=f"inbox:{YES_ID}")["ok"]
+        assert len(model_calls(w)) == n + 1
+    finally:
+        w.close()
+
+
 # ---------------------------------------------------------------- a hand edit outside the cockpit
 
 def test_a_hand_edit_is_found_and_marked_without_a_model_call(tmp_path):
