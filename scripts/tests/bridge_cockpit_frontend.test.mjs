@@ -1861,7 +1861,7 @@ test('the Workers tab marks findings like a page with findings, never as a bare 
   assert.match(src, /tab\(WORKERS_PAGE[^\n]*\n[^\n]*workersFindings/)
 })
 
-test('demo: the coloured Today number, the waits-for-you count and the Now section agree', async () => {
+test('demo: the coloured Today number and the waits-for-you count agree, and count the asks of Now', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-count-'))
   try {
     fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
@@ -1870,7 +1870,9 @@ test('demo: the coloured Today number, the waits-for-you count and the Now secti
     const m = mock.buildState().model
     const now = m.sections.find(x => x.id === 'now')
     assert.equal(m.briefing_badge, m.counts.now)
-    assert.equal(m.counts.now, now.total)
+    // every inbox row carries its art, and the count is the rows of Now that ask (an idea or a report does not)
+    for (const r of m.sections.flatMap(x => x.rows)) if (r.inbox_id) assert.ok(['ask', 'report', 'idea'].includes(r.art), r.key)
+    assert.equal(m.counts.now, now.rows.filter(r => !r.inbox_id || r.art === 'ask').length)
     for (const id of ['give', 'work', 'later']) assert.equal(m.counts[id], m.sections.find(x => x.id === id).total, id)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })

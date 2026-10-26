@@ -18,9 +18,9 @@ from typing import Any
 from .text import EN
 
 try:
-    from ..briefing_view import meter_of
+    from ..briefing_view import art_of_kind, asks_you, meter_of
 except ImportError:      # bridge_cockpit loaded as a top-level package, scripts/lib itself on the path
-    from briefing_view import meter_of  # type: ignore[no-redef]
+    from briefing_view import art_of_kind, asks_you, meter_of  # type: ignore[no-redef]
 
 ATTENTION = frozenset({"needs-you", "waiting"})
 # the two ways a row leaves the briefing in two clicks: done, or not doing it

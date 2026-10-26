@@ -213,7 +213,11 @@ filter as the rows beside it.
 Only one number in the bar carries colour: Today's count of what waits for
 you, the same count as the start page's station "waits for you" and the
 headline in the middle (the approvals stand in its tooltip and in their own
-block). A finding is red wherever it is; every other count is grey. A page
+block). It counts the rows of Now that ask you: every row that is no inbox
+item, and of the inbox only the asks (decision, question, draft). An idea or a
+report filed for today still stands in Now, it is just not counted, so the
+section's own head can show the larger number ([inbox.md § Arts](inbox.md#arts)).
+A finding is red wherever it is; every other count is grey. A page
 badge that adds up several sections names them in its tooltip. A finding on a
 status page also shows as a banner on the Today tab.
 

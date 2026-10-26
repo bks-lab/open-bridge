@@ -202,6 +202,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "work_kind": og.work_kind(row.get("task") or row.get("about_task"), known),
             "about_kind": row.get("about_kind"),
             "inbox_kind": row.get("inbox_kind"),
+            # what a person sees an inbox row as (ask, report, idea); "waits for you" counts the asks
+            "art": m.art_of_kind(row.get("inbox_kind")) if row.get("inbox_id") else None,
         }
         # the one card of the row (card.py), from the row as it goes out (and when its item was filed)
         out["card"] = cd.card_of({**out, "created": row.get("created")}, card_ctx)
@@ -274,6 +276,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     long_tabs = [t for t in others if m.long_state(t, seen, now)]
     attention = {t["ref"] for t in waiting_tabs} | {t["ref"] for t in long_tabs}
     totals = {s["id"]: s["total"] for s in sections}
+    # what waits for you: the rows of Now that ask (briefing_view.asks_you). An idea or a report filed for today
+    # still stands in Now, so the section's own total can be the larger number
+    asks = sum(1 for r in next((x["all"] for x in lay["sections"] if x["id"] == "now"), []) if m.asks_you(r))
     model = {
         "seq": seq, "stale": stale,
         "profile": view.get("profile") or profile or "", "title": view.get("title") or "",
@@ -285,7 +290,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         "extras": view.get("extras") or {"clear": [], "hygiene": [], "workplace": None},
         "counts": {"waiting_tabs": len(waiting_tabs), "long_tabs": len(long_tabs),
                    "working_tabs": len([t for t in others if t["state"] == "working"]),
-                   "now": totals["now"], "give": totals["give"], "work": totals["work"],
+                   "now": asks, "give": totals["give"], "work": totals["work"],
                    "track": totals["track"], "later": totals["later"],
                    "hidden": len(hidden_out)},
         "sections": sections, "numbers": numbers, "hidden": hidden_out, "approvable": approvable,
@@ -297,7 +302,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                    "roles": [{"id": r["id"], "name": r["name"], "mode": r["mode"]} for r in t["roles"]]} for t in teams],
         # the one coloured number of the page bar (14.10.): what waits for you, the same count as the station
         # "waits for you" and the lead line of the start page; the approvals stand in their own section
-        "briefing_badge": totals["now"],
+        "briefing_badge": asks,
         # every task and stream as a file (cockpit.files_scope all), None while the files view walks the active ones
         "files": None if files is None else files_of(files, index),
     }

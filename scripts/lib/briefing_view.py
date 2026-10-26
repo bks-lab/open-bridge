@@ -27,6 +27,16 @@ import textwrap
 import urllib.parse
 from pathlib import Path
 
+try:
+    from lib.inbox_verbs import art_of_kind
+except ImportError:  # loaded by path (briefing.py, the tests) with scripts/ not on the path
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location("inbox_verbs", Path(__file__).resolve().parent / "inbox_verbs.py")
+    assert _spec is not None and _spec.loader is not None
+    _verbs = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_verbs)
+    art_of_kind = _verbs.art_of_kind
+
 STYLES = ("sources", "triage", "brevity", "plan", "report")
 BUCKETS = ("do", "plan", "delegate", "waiting", "drop")
 VIEW_KEYS = {"style", "headline", "dayline", "agenda", "overview", "report", "since_last", "lookahead_days", "max_items", "answer_keys", "hygiene", "color",
@@ -996,6 +1006,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                              area=item.get("area") or None,
                              # who filed it (inbox.py `from`) and what it is (decision, finding ...): the page names both
                              origin_raw=item.get("from") or None, inbox_kind=item.get("kind") or None,
+                             # what a person sees it as (ask, report, idea): only an ask counts as "for you"
+                             art=art_of_kind(item.get("kind")),
                              # an inbox item's changed_at is when it was filed (briefing.py sec_inbox: item.created)
                              created=item.get("changed_at") or None))
             elif kind == "advise":
@@ -1219,8 +1231,15 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     return out
 
 
+def asks_you(row: dict) -> bool:
+    """Whether a row counts as waiting for you: every row that is no inbox item (a task, a board item), and of
+    the inbox only the asks. An idea or a report due today still stands in Do, it just asks nothing of you. Read
+    from the kind, so the cockpit (bridge_cockpit/model.py) counts its rows by the same rule."""
+    return not row.get("inbox_id") or art_of_kind(row.get("inbox_kind")) == "ask"
+
+
 def _headline(rows: list, events: list, now: dt.datetime, labels: dict, day_end: str) -> str:
-    parts = [labels["yours_today"].format(n=sum(1 for r in rows if r["bucket"] == "do"))]
+    parts = [labels["yours_today"].format(n=sum(1 for r in rows if r["bucket"] == "do" and asks_you(r)))]
     current = next((e for e in events if e[0] <= now < e[1]), None)
     upcoming = next((e for e in events if e[0] > now and e[0].date() == now.date()), None)
     if current:

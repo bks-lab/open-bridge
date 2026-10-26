@@ -428,6 +428,8 @@ const MOCK_BRIEFS = {
 }
 
 const GATE_OWNER = { 'only-you': 'me', 'your-yes': 'bridge_then_me', free: 'bridge' }
+// what a person sees an inbox row as (lib/inbox_verbs.py ART_OF_KIND); an unknown kind is an ask
+const ART_OF_KIND = { decision: 'ask', question: 'ask', draft: 'ask', finding: 'report', result: 'report', idea: 'idea' }
 
 /** A row's card and describe view, in the shape card.py and describe.py send them: invented from the row and its brief */
 function mockCard(r, m = {}, now = Date.now()) {
@@ -610,6 +612,9 @@ export function buildState(now = Date.now(), opts = {}) {
   // every row carries its card (card.py) and, where describe has something to say, its describe view (describe.py
   // state_for): one brief written by AI, one a person edited with a proposal waiting, one outdated, one with gaps
   for (const r of Object.values(rows)) Object.assign(r, mockCard(r, MOCK_BRIEFS[r.key], now))
+  for (const r of Object.values(rows)) r.art = r.inbox_id ? ART_OF_KIND[r.inbox_kind] ?? 'ask' : null
+  // what waits for you, as the server counts it (collector.py): the rows of Now that ask
+  const forYou = sections[0].rows.filter(r => !r.inbox_id || r.art === 'ask').length
   const hidden = empty ? [] : [row({
     key: 'title:Renew the test certificate', bucket: 'plan', section: 'later', title: 'Renew the test certificate', sources: ['calendar'],
     origin: O('calendar', 'Calendar'), work_kind: null,
@@ -799,7 +804,7 @@ export function buildState(now = Date.now(), opts = {}) {
       agenda: empty ? [] : [{ when: hhmm(now + 70 * MIN), title: 'Team call' }, { when: hhmm(now + 250 * MIN), title: 'Review of the demo project' }],
       status: [{ title: 'Systems', count: empty ? 0 : 1, probe: true, state: 'ok' }, { title: 'Inbox', count: empty ? 0 : 6, probe: false, state: 'ok' }],
       extras: { clear: ['Services: all running'], hygiene: empty ? [] : ['2 tasks without a log row for 7 days'], workplace: empty ? null : 'Tabs: 3 suggested' },
-      counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: sections[0].total, give: sections[1].total, work: sections[2].total, track: sections[3].total, later: sections[4].total, hidden: hidden.length },
+      counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: forYou, give: sections[1].total, work: sections[2].total, track: sections[3].total, later: sections[4].total, hidden: hidden.length },
       sections, numbers, hidden,
       approvable: empty ? [] : [rows.labels.key, rows.docs.key],
       task_rows: empty ? [] : [rows.quiet, rows.waits],
@@ -820,8 +825,8 @@ export function buildState(now = Date.now(), opts = {}) {
         { id: 'build', label: 'Build', for_types: ['feature'], roles: [{ id: 'implement', name: 'Implement', mode: 'go' }, { id: 'review', name: 'Review', mode: 'report' }] },
         { id: 'research', label: 'Research', for_types: ['research'], roles: [{ id: 'evidence', name: 'Evidence', mode: 'report' }, { id: 'counter', name: 'Counter', mode: 'report' }, { id: 'summary', name: 'Summary', mode: 'report' }] },
       ],
-      // what the server sends: the Now section's total, the same number as counts.now
-      briefing_badge: sections[0].total,
+      // what the server sends: the asks of Now, the same number as counts.now
+      briefing_badge: forYou,
     },
     // the terminal's workspace list (the chat as cmux); two workspaces share a title and are told apart by ref
     tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs, workspaces: empty ? [] : [
