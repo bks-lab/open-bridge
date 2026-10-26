@@ -95,7 +95,7 @@ MD_LINK = re.compile(r"\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 # with that copy's own relative links. A dead link there is history. A MOVED
 # one is still reported, because `--fix` repairs it without a judgement call.
 MD_HISTORY_PREFIXES = ("work/done/", "work/archive/")
-CODE_SPAN = re.compile(r"`[^`]*`")
+BACKTICKS = re.compile(r"`+")
 FENCE = re.compile(r"^\s*(```|~~~)")
 
 # Where a work item can live. The KIND model in AGENTS.md: a finite task, a
@@ -193,6 +193,8 @@ def _md_path(raw: str):
     if "<" in raw or "{" in raw or "…" in raw:
         return None
     path = raw.split("#", 1)[0]
+    if path and "/" not in path and "." not in path:
+        return None                        # `[Text](URL)`: a placeholder, not a file
     return unquote(path) if path else None
 
 
@@ -200,14 +202,48 @@ def _prose_lines(text: str):
     """(line number, line) outside fenced code, with code spans blanked.
 
     An example inside backticks shows a path; it does not claim one exists.
+    Spans pair up per paragraph, as Markdown pairs them: one may open on a line
+    and close on the next, it closes on a run of the same length (so a
+    double-backtick span can hold a single one), and a run nothing closes is a
+    literal backtick that hides nothing.
     """
+    paragraph: list[tuple[int, str]] = []
     fenced = False
     for number, line in enumerate(text.split("\n"), start=1):
         if FENCE.match(line):
-            fenced = not fenced
+            yield from _blank_spans(paragraph)
+            paragraph, fenced = [], not fenced
             continue
-        if not fenced:
-            yield number, CODE_SPAN.sub(lambda m: " " * len(m.group()), line)
+        if fenced:
+            continue
+        if not line.strip():
+            yield from _blank_spans(paragraph)
+            paragraph = []
+            continue
+        paragraph.append((number, line))
+    yield from _blank_spans(paragraph)
+
+
+def _blank_spans(paragraph: list[tuple[int, str]]):
+    if not paragraph:
+        return
+    joined = "\n".join(line for _, line in paragraph)
+    chars = list(joined)
+    runs = list(BACKTICKS.finditer(joined))
+    i = 0
+    while i < len(runs):
+        opener = runs[i]
+        closer = next((j for j in range(i + 1, len(runs))
+                       if len(runs[j].group()) == len(opener.group())), None)
+        if closer is None:
+            i += 1                         # nothing closes it: a literal backtick
+            continue
+        for k in range(opener.start(), runs[closer].end()):
+            if chars[k] != "\n":
+                chars[k] = " "
+        i = closer + 1
+    for (number, _), line in zip(paragraph, "".join(chars).split("\n")):
+        yield number, line
 
 
 def _md_links_in(rel: str, line: str):

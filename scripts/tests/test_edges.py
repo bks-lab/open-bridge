@@ -793,3 +793,57 @@ def test_a_moved_link_in_closed_work_is_still_reported(tmp_path):
     joined = "\n".join(edges.check(tmp_path))
 
     assert f"work/done/{MONTH}/river/STATUS.md" in joined
+
+
+# The first live run of the prose check, on one instance, flagged three
+# "dead" links that were no links at all: a style rule saying "write every
+# reference as [Text](URL)" twice, and a format example inside a code span
+# that opened on the line above. Deleting them as dead would have damaged
+# the rule text.
+
+def test_a_bare_word_target_is_a_placeholder_not_a_link(tmp_path):
+    _tree(tmp_path, {
+        "work/memory/style.md": (
+            "Write every reference as [Text](URL), never a bare id.\n"
+            "links: markdown   # as [label](path)\n"
+        ),
+    })
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_a_target_with_a_slash_is_still_a_link_without_an_extension(tmp_path):
+    _tree(tmp_path, {"work/tasks/alpha/STATUS.md": "[dir](../beta)\n"})
+    assert [t for _, _, t in edges.iter_md_links(tmp_path)] == ["work/tasks/beta"]
+
+
+def test_a_code_span_that_opens_on_the_line_above_hides_its_example(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": (
+            "1. Write the `Gold\n"
+            "   Summary` (every claim with `[ref +mm:ss](transcript.md#c-NNN)`)\n"
+        ),
+    })
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_a_blank_line_ends_an_unclosed_code_span(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": "a stray `tick\n\n[gone](../ghost/STATUS.md)\n",
+    })
+    assert [t for _, _, t in edges.iter_md_links(tmp_path)] == [
+        "work/tasks/ghost/STATUS.md"]
+
+
+def test_a_double_backtick_span_may_hold_a_single_backtick(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": "`` a ` b [x](../ghost/STATUS.md) ``\n",
+    })
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_an_unmatched_backtick_is_literal_and_hides_nothing(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": "a stray `tick\nthen [gone](../ghost/STATUS.md)\n",
+    })
+    assert [t for _, _, t in edges.iter_md_links(tmp_path)] == [
+        "work/tasks/ghost/STATUS.md"]
