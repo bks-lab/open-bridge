@@ -128,6 +128,7 @@ work:
   #   command: "claude -p --model {model} ..."   # any agent: prompt on stdin, JSON array on stdout
   #   max_age_days: 7        # a cached verdict with unchanged evidence is reused this long
   #   stale_days: 21         # no activity this long and no blocker: the model may say stale
+  #   skip_sections: []      # briefing section ids whose tracker rows the triage leaves out (tasks and inbox items stay), e.g. [applications]
   # The models come from `models:` below: mechanical/routine first, directed/analysis for the unclear ones.
 
 # ─── Inbox ────────────────────────────────────────────────────────────

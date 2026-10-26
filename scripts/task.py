@@ -816,9 +816,13 @@ def _review_cfg(cfg: dict) -> dict:
             return int(rv.get(key, default))
         except (TypeError, ValueError):
             return default
+    skip = rv.get("skip_sections")
+    skip = [skip] if isinstance(skip, str) else skip if isinstance(skip, list) else []
     return {"command": rv.get("command") or DEFAULT_REVIEW_COMMAND,
             "max_age_days": number("max_age_days", DEFAULT_MAX_AGE_DAYS),
-            "stale_days": number("stale_days", DEFAULT_STALE_DAYS)}
+            "stale_days": number("stale_days", DEFAULT_STALE_DAYS),
+            # briefing section ids whose rows the triage leaves out (triage.py); empty = every row is judged
+            "skip_sections": [str(x) for x in skip if x]}
 
 
 def _plain(value):

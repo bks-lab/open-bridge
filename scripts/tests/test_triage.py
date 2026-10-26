@@ -300,3 +300,38 @@ def test_a_missing_or_broken_view_is_no_tracker_row_and_no_failure(repo):
     bad = repo / "bad.json"
     bad.write_text("{", encoding="utf-8")
     assert triage.triage(repo, run=Fake(answers={HAIKU: answers(ROWS)}), now=NOW, view=bad)["items"]
+
+
+def sectioned_view(root):
+    rows = [
+        {"key": "ref:org/infra#17", "title": "Requirements for time tracking", "ref": "org/infra#17",
+         "sources": ["boards"], "why": [], "task": None, "inbox_id": None},
+        {"key": "ref:2026-10/acme-sdet", "title": "ACME: SDET", "ref": "2026-10/acme-sdet",
+         "sources": ["applications"], "why": [], "task": None, "inbox_id": None},
+        {"key": "ref:both", "title": "On two lists", "ref": "org/infra#18",
+         "sources": ["applications", "boards"], "why": [], "task": None, "inbox_id": None},
+    ]
+    path = root / "view.json"
+    path.write_text(json.dumps({"view": {"buckets": [{"id": "plan", "rows": rows}]}}), encoding="utf-8")
+    return path
+
+
+def test_skip_sections_leaves_a_sections_rows_out_and_defaults_to_none(repo):
+    setup(repo)
+    view = sectioned_view(repo)
+    keys = lambda out: {x["key"] for x in out["items"] if x["kind"] == "track"}
+    assert keys(triage.triage(repo, run=Fake(answers={HAIKU: answers(ROWS)}), now=NOW, view=view, save=False)) == \
+        {"ref:org/infra#17", "ref:2026-10/acme-sdet", "ref:both"}
+    cfg = repo / "bridge-config.yaml"
+    cfg.write_text("work:\n  review:\n    skip_sections: [applications]\n", encoding="utf-8")
+    fake = Fake(answers={HAIKU: answers(ROWS)})
+    out = triage.triage(repo, run=fake, now=NOW, view=view, save=False)
+    assert keys(out) == {"ref:org/infra#17", "ref:both"}      # a row on two lists stays while one is not skipped
+    assert "acme-sdet" not in "\n".join(p for _, p in fake.model_calls())
+
+
+def test_skip_sections_accepts_a_single_name_and_ignores_junk():
+    t = triage._task()
+    assert t._review_cfg({"work": {"review": {"skip_sections": "applications"}}})["skip_sections"] == ["applications"]
+    assert t._review_cfg({"work": {"review": {"skip_sections": 5}}})["skip_sections"] == []
+    assert t._review_cfg({})["skip_sections"] == []
