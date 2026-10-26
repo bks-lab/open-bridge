@@ -266,14 +266,15 @@ def test_the_state_hands_the_work_view_and_the_focus_switch_to_the_page(tmp_path
 def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(tmp_path):
     cfg = load_web_config(tmp_path, {})
     assert cfg.flow == {"enabled": False, "drop_reasons": ["resolves_itself", "not_needed", "someone_else", "not_worth_it"],
-                        "return_after_s": 20}
+                        "return_after_s": 20, "prep_ahead": 2, "max_running": 4, "rank_max_age_days": 7,
+                        "rerank_per_day": 3}
     assert cfg.flow == cf.flow_defaults() and cfg.config_warnings == ()
 
 
 def test_the_flow_block_takes_its_three_keys(tmp_path):
     block = {"enabled": True, "drop_reasons": ["not_needed", "the vendor does it"], "return_after_s": 45}
     cfg = load_web_config(tmp_path, {"cockpit": {"flow": block}})
-    assert cfg.flow == block and cfg.config_warnings == ()
+    assert cfg.flow == {**cf.flow_defaults(), **block} and cfg.config_warnings == ()
     # off again by a bare `off`, and a delay of 0 asks for the return card at once
     cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"enabled": False, "return_after_s": 0}}})
     assert cfg.flow["enabled"] is False and cfg.flow["return_after_s"] == 0
@@ -343,3 +344,36 @@ def test_the_origin_map_never_reaches_the_page(tmp_path):
         assert w.app.cfg.origin_map == (("alex", "person"),)
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- cockpit.flow: the Work through area
+
+def test_the_flow_block_defaults_and_its_keys(tmp_path):
+    cfg = load_web_config(tmp_path, {})
+    assert cfg.flow == cf.flow_defaults()
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"enabled": True, "prep_ahead": 0, "max_running": 2,
+                                                          "rank_max_age_days": 3, "rerank_per_day": 0}}})
+    assert cfg.flow == {**cf.flow_defaults(), "enabled": True, "prep_ahead": 0, "max_running": 2,
+                        "rank_max_age_days": 3, "rerank_per_day": 0}
+    assert cfg.config_warnings == ()
+
+
+@pytest.mark.parametrize("flow, key, used", [
+    ({"enabled": "yes"}, "cockpit.flow.enabled", "false"),
+    ({"prep_ahead": -1}, "cockpit.flow.prep_ahead", "2"),
+    ({"max_running": 0}, "cockpit.flow.max_running", "4"),
+    ({"rank_max_age_days": 1.5}, "cockpit.flow.rank_max_age_days", "7"),
+    ({"rerank_per_day": "3"}, "cockpit.flow.rerank_per_day", "3"),
+])
+def test_a_bad_flow_value_keeps_its_default_and_says_so(tmp_path, flow, key, used):
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": flow}})
+    assert cfg.flow[key.rsplit(".", 1)[1]] == json.loads(used)
+    out = cfg.config_warnings
+    assert len(out) == 1 and out[0].startswith(key + ":") and out[0].endswith("using " + used), out
+
+
+def test_every_flow_key_has_a_doc_row():
+    doc = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
+    for key in ("enabled", "prep_ahead", "max_running", "rank_max_age_days", "rerank_per_day"):
+        assert re.search(rf"^\| `flow\.{key}` \|", doc, re.M), f"flow.{key} has no row in docs/bridge-cockpit.md"
+    assert "flow" in template_block()

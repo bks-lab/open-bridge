@@ -31,9 +31,13 @@ WORK_VIEWS = ("due", "source", "jev", "files")
 FILES_SCOPES = ("active", "all")
 # the Work through page (cockpit.flow, page @flow): off unless switched on. drop_reasons are what "Drop because"
 # offers to click, keys the page words (text-flow.js) or a reason of the instance's own, shown as written;
-# return_after_s is how long after a jump to a tab the page asks how it went, once it is in view again
+# return_after_s is how long after a jump to a tab the page asks how it went, once it is in view again.
+# FLOW_INTS: how many cards ahead get their brief prepared (0: none), how many starts may run before Let AI do it
+# asks first, how old a Jev rank may be and still order the tasks, how often a day a click may order them anew;
+# each with its default and minimum (a value below it keeps the default)
 FLOW_DROP_REASONS = ("resolves_itself", "not_needed", "someone_else", "not_worth_it")
-FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s")
+FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 7, 1), ("rerank_per_day", 3, 0))
+FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS))
 FLOW_REASON_MAX = 80
 FLOW_REASONS_MAX = 12
 FLOW_RETURN_MAX = 3600
@@ -114,7 +118,8 @@ class WebConfig:
     # each item's brief written and kept by a small model (cockpit.describe, describe.py): {auto, budget_per_hour,
     # kinds, effort}; auto off unless switched on, the button on a card works either way
     describe: dict = field(default_factory=dsc.defaults)
-    # the Work through page (cockpit.flow, flow_of): {enabled, drop_reasons, return_after_s}; off by default
+    # the Work through page (cockpit.flow, flow_of): {enabled, drop_reasons, return_after_s, prep_ahead,
+    # max_running, rank_max_age_days, rerank_per_day}; off by default
     flow: dict = field(default_factory=lambda: flow_defaults())
     # further sources of A2A peers beside infra/a2a-peers/ (cockpit.a2a_sources, agents.py): ({name, script}, ...),
     # each script a skill's own that lists its peers, reads their cards and asks them in a fixed JSON contract
@@ -151,7 +156,8 @@ def jev_criteria_of(value: Any) -> dict | None:
 
 
 def flow_defaults() -> dict:
-    return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20}
+    return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20,
+            **{key: default for key, default, _low in FLOW_INTS}}
 
 
 def _flow_reasons(value: Any) -> tuple[list[str], list[str]]:
@@ -180,6 +186,9 @@ def flow_of(value: Any) -> dict:
     after = value.get("return_after_s")
     if _is_int(after) and 0 <= after <= FLOW_RETURN_MAX:
         out["return_after_s"] = after
+    for key, _default, low in FLOW_INTS:
+        if _is_int(value.get(key)) and value[key] >= low:
+            out[key] = value[key]
     return out
 
 
@@ -187,6 +196,7 @@ def _check_flow(value: Any, used: dict, where: str) -> list[str]:
     """One warning per unknown key or value flow_of replaced, naming what is used instead"""
     if not isinstance(value, dict):
         return [f"{where}: must be a mapping, got {_show(value)}; using enabled false"]
+    lows = {key: low for key, _default, low in FLOW_INTS}
     out = []
     for key, v in value.items():
         at = f"{where}.{str(key)[:40]}"
@@ -205,6 +215,11 @@ def _check_flow(value: Any, used: dict, where: str) -> list[str]:
         elif key == "return_after_s" and (not _is_int(v) or not 0 <= v <= FLOW_RETURN_MAX):
             out.append(f"{at}: must be a whole number of seconds from 0 to {FLOW_RETURN_MAX}, got {_show(v)}; "
                        f"using {used['return_after_s']}")
+        elif key in lows:
+            if not _is_int(v):
+                out.append(f"{at}: must be a whole number, got {_show(v)}; using {used[key]}")
+            elif v < lows[key]:
+                out.append(f"{at}: {_show(v)} is below the minimum {lows[key]}; using {used[key]}")
         elif key not in FLOW_KEYS:
             out.append(f"{at}: unknown key, ignored")
     return out

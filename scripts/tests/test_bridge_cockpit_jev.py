@@ -566,3 +566,27 @@ def test_an_audit_line_only_when_something_left_the_machine(tmp_path, monkeypatc
     assert lines == [], "the last order, read from the store: nothing went out"
     jev.handle_post(handler, app, "/api/jev/rank", {"page": "arbeit", "force": True})
     assert lines == [("jev_rank", 1)]
+
+
+def test_no_audit_line_at_calls_0_also_when_the_order_fails_before_anything_left(tmp_path, monkeypatch):
+    """The Work through area asks for the day's order on every visit: a request that sends nothing, answered
+    from the store or refused before a call (no key), leaves no jev_rank line; one that called Jev does,
+    even when Jev failed."""
+    app = work_app(tmp_path)
+    app.cfg = types.SimpleNamespace(jev_enabled=True, jev_model=None, jev_key_ref=None)
+    lines = []
+    app.actions = types.SimpleNamespace(audit_line=lambda verb, subject, **kw: lines.append((verb, kw["calls"])))
+    handler = types.SimpleNamespace(send_json=lambda status, body: None, send_error_json=lambda *a: None)
+
+    def no_key(ref=None):
+        raise jev.JevError(503, "jev_no_key", "no key")
+    monkeypatch.setattr(jev, "resolve_key", no_key)
+    jev.handle_post(handler, app, "/api/jev/rank", {"page": "arbeit", "force": True})
+    assert lines == []
+    monkeypatch.setattr(jev, "resolve_key", lambda ref=None: "k")
+
+    def down(payload, key):
+        raise jev.JevError(502, "jev_failed", "down")
+    monkeypatch.setattr(jev, "call_api", down)
+    jev.handle_post(handler, app, "/api/jev/rank", {"page": "arbeit", "force": True})
+    assert lines == [("jev_rank", 1)]

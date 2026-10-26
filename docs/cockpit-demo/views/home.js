@@ -50,13 +50,15 @@ export function returnsOf(s) {
   return (s.model?.returns ?? []).map(r => ({ ...r, live: liveStage(r, tabs, now) }))
 }
 
-/** The steps of a start, the one it stands on lit; a lost start shows where it broke off */
+/** The steps of a start, the one it stands on lit; a lost start shows where it broke off; a quiet tab (idle)
+ *  stands on the step of a question, named quiet */
 function ReturnSteps({ stage }) {
   const h = T().home
-  const at = RETURN_STAGES.indexOf(stage)
+  const step = x => (x === 'asks' && stage === 'idle' ? 'idle' : x)
+  const at = RETURN_STAGES.indexOf(stage === 'idle' ? 'asks' : stage)
   return html`<ol class=${`rsteps${stage === 'lost' ? ' is-lost' : ''}`} aria-label=${h.returnStage[stage] ?? stage}>
-    ${RETURN_STAGES.map((x, i) => html`<li key=${x} class=${i < at ? 'is-past' : i === at ? `is-now tk-${stageTone(x)}` : ''}>
-      <span class="rstep-dot" aria-hidden="true"></span><span class="rstep-label">${h.returnStage[x]}</span></li>`)}
+    ${RETURN_STAGES.map((x, i) => html`<li key=${x} class=${i < at ? 'is-past' : i === at ? `is-now tk-${stageTone(step(x))}` : ''}>
+      <span class="rstep-dot" aria-hidden="true"></span><span class="rstep-label">${h.returnStage[step(x)]}</span></li>`)}
   </ol>`
 }
 

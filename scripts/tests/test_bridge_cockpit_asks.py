@@ -537,3 +537,15 @@ def test_a_press_on_a_tab_that_stopped_asking_is_not_ok(world):
         [dict(t, state="working") if t["ref"] == "surface:7" else t for t in STATUS])
     res = world.act("tab_yes", tab_ref="surface:7")
     assert writes(world) == [] and not res["ok"]
+
+
+def test_the_return_channel_gets_the_same_questions_the_page_shows(world):
+    """asks_now hands returns.build the questions of the tabs (a quiet tab is idle, an asking one asks)."""
+    read = screens(world, {"surface:7": PERMISSION, "surface:13": WAITING})
+    world.app.asks_enabled = True
+    world.app.tabs.poll()
+    assert read
+    now = world.app.tabs.asks_now()
+    assert sorted(now) == ["surface:13", "surface:7"]
+    for ref, ask in now.items():
+        assert ask == ask_of(world, ref)

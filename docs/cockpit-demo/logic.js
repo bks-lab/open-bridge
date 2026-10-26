@@ -2436,22 +2436,23 @@ export function speechError(code) {
 export const RETURN_STAGES = ['started', 'working', 'asks', 'result', 'done']
 
 /** Where a start stands now: the server knows the answer and the close; the tab's state the page sees itself,
- *  so a tab that just began to wait shows at once, not with the next collection */
+ *  so a tab that just began to wait shows at once, not with the next collection. A still tab asks unless the
+ *  server read its screen and found no question (`idle`); a dialog (needs-you) always asks */
 export function liveStage(r, tabs, nowMs) {
   if (r.stage === 'result' || r.stage === 'done') return r.stage
   const mine = (tabs ?? []).filter(t => !t.is_control && (t.ref === r.tab?.ref || t.slug === r.item || t.item === r.item))
-  if (mine.some(t => t.state !== 'working')) return 'asks'
+  if (mine.some(t => t.state !== 'working')) return r.stage === 'idle' && !mine.some(t => t.state === 'needs-you') ? 'idle' : 'asks'
   if (mine.length) return 'working'
   return nowMs - r.at_ms < 180000 ? 'started' : 'lost'
 }
 
-/** The starts handed to the AI by what they want of you: done or answered and to check, a question, at
- *  work, or gone without a word. Newest first within a group, as the server sends them */
+/** The starts handed to the AI by what they want of you: done, answered or gone quiet and to check, a
+ *  question, at work, or gone without a word. Newest first within a group, as the server sends them */
 export function aiGroups(returns, tabs, nowMs) {
   const g = { check: [], asks: [], working: [], lost: [] }
   for (const r of returns ?? []) {
     const live = liveStage(r, tabs, nowMs)
-    const to = live === 'done' || live === 'result' ? 'check' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
+    const to = live === 'done' || live === 'result' || live === 'idle' ? 'check' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
     g[to].push({ ...r, live })
   }
   return g
@@ -2474,7 +2475,7 @@ export function aiWaiting(returns, tabs, nowMs) {
 
 /** The tone of a stage: an answer is good news, a question waits on you, work runs, a lost start is red */
 export function stageTone(stage) {
-  return { started: 'info', working: 'info', asks: 'warning', result: 'success', done: 'success', lost: 'danger' }[stage] ?? 'muted'
+  return { started: 'info', working: 'info', asks: 'warning', idle: 'muted', result: 'success', done: 'success', lost: 'danger' }[stage] ?? 'muted'
 }
 
 /** What happened between two states of the page, for the live feed: rows that came and went, a row turned

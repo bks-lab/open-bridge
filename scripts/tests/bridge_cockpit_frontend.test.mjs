@@ -1620,6 +1620,26 @@ test('the return channel takes the tab state live and keeps what the server know
   assert.equal(logic.stageTone('lost'), 'danger')
 })
 
+test('a quiet tab the server calls idle shows as quiet, never as asking', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const r = { key: 'task:a', item: 'a', at_ms: 1000, stage: 'idle', tab: { ref: 'surface:1' } }
+  assert.equal(logic.liveStage(r, [{ ref: 'surface:1', state: 'waiting' }], 2000), 'idle')
+  // the tab turned to a dialog since: it asks, whatever the server said a moment ago
+  assert.equal(logic.liveStage(r, [{ ref: 'surface:1', state: 'needs-you' }], 2000), 'asks')
+  assert.equal(logic.liveStage(r, [{ ref: 'surface:1', state: 'working' }], 2000), 'working')
+  // an older server without idle: a still tab asks, as before
+  assert.equal(logic.liveStage({ ...r, stage: 'working' }, [{ ref: 'surface:1', state: 'waiting' }], 2000), 'asks')
+  assert.equal(logic.stageTone('idle'), 'muted')
+  // a quiet start is one to check, not a question
+  const g = logic.aiGroups([r], [{ ref: 'surface:1', state: 'waiting' }], 2000)
+  assert.deepEqual([g.check.length, g.asks.length], [1, 0])
+  const { HOME } = await import(pathToFileURL(path.join(WEB, 'text-areas.js')).href)
+  assert.deepEqual([HOME.en.returnStage.idle, HOME.de.returnStage.idle], ['quiet', 'still'])
+  // the steps of a start light the asks step for idle and name it quiet there
+  const home = fs.readFileSync(path.join(WEB, 'views', 'home.js'), 'utf8')
+  assert.match(home.match(/function ReturnSteps\([\s\S]*?\n\}/)[0], /'idle'/)
+})
+
 test('the live feed reads what happened between two states of the page', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const row = (key, title, extra = {}) => ({ key, title, ...extra })

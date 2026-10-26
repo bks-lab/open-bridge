@@ -24,6 +24,7 @@ const WORDS = {
     'Sweep old log files in the scratch folder': 'Alte Logdateien im Scratch-Ordner wegräumen',
     'Write the onboarding guide for the demo project': 'Die Einstiegsanleitung für das Demo-Projekt schreiben',
     'Tidy the old setup notes': 'Die alten Einrichtungsnotizen aufräumen',
+    'Result: the vendor takes the current format, nothing to change': 'Ergebnis: Der Anbieter nimmt das jetzige Format, nichts zu ändern',
     'Settle the invoice format with the vendor': 'Das Rechnungsformat mit dem Anbieter klären',
     'Fix the flaky test in example/repo#12': 'Den wackligen Test in example/repo#12 reparieren',
     'Refresh the docs index': 'Den Doku-Index auffrischen',
@@ -804,6 +805,13 @@ export function buildState(now = Date.now(), opts = {}) {
     start(rows.labels, 'go', 80, 'result', { tab: tabRef('surface:10'),
       result: { kind: 'filed', text: 'Draft written to the inbox as a result. Anything else?', key: rows.labels.key, at_ms: null } }),
     start(rows.filed, 'go', 130, 'lost'),
+    // a start whose tab went still without a question (idle: its agent ended, the shell is left), and one whose
+    // task got its result line ("Result: ...", a note on the task since the start)
+    { key: 'task:quiet-docs', item: 'quiet-docs', title: 'Tidy the old setup notes', mode: 'go', at_ms: now - 150 * MIN,
+      stage: 'idle', in_briefing: true, result: null, tab: tabRef('surface:11') },
+    { key: 'task:vendor-reply', item: 'vendor-reply', title: 'Settle the invoice format with the vendor', mode: 'go', at_ms: now - 90 * MIN,
+      stage: 'result', in_briefing: true, tab: null,
+      result: { kind: 'note', text: 'Result: the vendor takes the current format, nothing to change', key: null, at_ms: null } },
   ]
 
   const relayOnline = !opts.offline

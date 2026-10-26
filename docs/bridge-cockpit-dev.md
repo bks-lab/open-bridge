@@ -94,8 +94,8 @@ layout now").
 | `scripts/lib/bridge_cockpit/history.py` | `history.json`: every close, drop, settle or hide with its items and the inverse that takes it back |
 | `scripts/lib/bridge_cockpit/jev.py` | Jev (TypeSafe): the rows sent for a rating or a page's order, the cache, the day's token total, the audit line only when a request left the machine |
 | `scripts/lib/bridge_cockpit/launch.py` | the model and effort an agent tab starts with: `cockpit.launch_model` plus `launch.json`, the choice per start and the route |
-| `scripts/lib/bridge_cockpit/returns.py` | the return channel: each start in `launches.json`, where it stands now (working, result, lost, done) and the one line written to its item when it ends |
-| `scripts/lib/bridge_cockpit/triage.py` | the triage: `scripts/triage.py run` on its own thread and its last run for the page |
+| `scripts/lib/bridge_cockpit/returns.py` | the return channel: each start in `launches.json`, where it stands now (started, working, asks, idle, result, lost, done: `idle` a still tab whose screen, read, holds no question, or a tab back at its shell, `result` also a task note since the start that begins with the result head of `text.py` `returns.result`) and the one line written to its item when it ends |
+| `scripts/lib/bridge_cockpit/triage.py` | the triage: `scripts/triage.py run` on its own thread and its last run for the page, each row with `next_rank` and `rank_at` from Jev's newest order of a work page while it is younger than `cockpit.flow.rank_max_age_days` |
 | `scripts/lib/bridge_cockpit/usage.py` | the tokens Claude Code used, per Bridge and per machine, over 7, 30 or 90 days, read from the session transcripts |
 | `scripts/web/index.html`, `theme.js` | page shell, light or dark before first paint |
 | `scripts/web/app.js` | store, controller (`ctl`), event stream, keyboard |

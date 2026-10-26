@@ -72,3 +72,37 @@ def test_a_run_once_a_day(world):
     import datetime as dt
     at = dt.datetime.fromisoformat("2026-10-10T20:00:00").timestamp()
     assert not world.app.triage.due(at + 3600) and world.app.triage.due(at + 25 * 3600)
+
+
+def test_next_rank_takes_a_fresh_jev_rank_and_leaves_out_an_old_one(world):
+    """The Work through area orders tasks by `next_rank`: the rank of Jev's last order of a page, only while
+    it is younger than cockpit.flow.rank_max_age_days (7), so old and new judgments never mix (review F6)."""
+    from lib.bridge_cockpit import jev
+    write_last(world)
+    now = world.app.clock()
+    day = 24 * 3600 * 1000
+    jev._pages_state(world.app).orders = {
+        "arbeit": {"at_ms": now - day, "items": [{"key": "task:demo-task", "rank": 2}, {"key": "task:nobody", "rank": 1}]},
+        "alt": {"at_ms": now - 8 * day, "items": [{"key": "inbox:x-1", "rank": 1}]},
+    }
+    items = world.app.triage.state()["items"]
+    assert (items["task:demo-task"]["next_rank"], items["task:demo-task"]["rank_at"]) == (2, now - day)
+    assert (items["inbox:x-1"]["next_rank"], items["inbox:x-1"]["rank_at"]) == (None, None)
+    assert "task:nobody" not in items                      # a rank alone makes no triage row
+    # a newer order of another page wins for the same row
+    jev._pages_state(world.app).orders["neu"] = {"at_ms": now - 1000, "items": [{"key": "task:demo-task", "rank": 5}]}
+    assert world.app.triage.state()["items"]["task:demo-task"]["next_rank"] == 5
+    # a shorter limit drops the day-old rank too
+    import dataclasses
+    world.app.cfg = dataclasses.replace(world.app.cfg, flow={**world.app.cfg.flow, "rank_max_age_days": 1})
+    del jev._pages_state(world.app).orders["neu"]
+    world.clock.advance(3600)
+    assert world.app.triage.state()["items"]["task:demo-task"]["next_rank"] is None
+
+
+def test_a_damaged_jev_order_never_breaks_the_triage(world):
+    from lib.bridge_cockpit import jev
+    write_last(world)
+    jev._pages_state(world.app).orders = {"x": "nope", "y": {"at_ms": "soon", "items": [{"key": "task:demo-task", "rank": 1}]},
+                                          "z": {"at_ms": world.app.clock(), "items": ["bad", {"key": "task:demo-task", "rank": True}]}}
+    assert world.app.triage.state()["items"]["task:demo-task"]["next_rank"] is None
