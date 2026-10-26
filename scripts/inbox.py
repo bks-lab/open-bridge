@@ -86,7 +86,8 @@ URGENCIES = ("now", "today", "later")
 #: Who ends an item when it has no probe. `reporter`: the job that filed it closes it when the
 #: condition is gone (by key). `person`: only a person can say it is done. `bot`: a watcher acts
 #: on it and closes it. An item with neither a probe nor a closer is the one that stays open for
-#: ever, which is what the inbox exists to prevent (2026-10-07: 51 of 62 items had no way out).
+#: ever, which is what the inbox exists to prevent (2026-10-07: 51 of 62 items had no way out), so
+#: `add` files one without a probe, a closer or an action as `person`.
 CLOSERS = ("probe", "reporter", "person", "bot")
 VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "executed", "failed", "urgency", "reopen",
          "area", "describe")
@@ -573,16 +574,15 @@ class Inbox:
             item_id = f"{stem}-{secrets.token_hex(2)}"
         data = {"schema_version": SCHEMA_VERSION, "created": now.isoformat(timespec="minutes"),
                 "from": source, "kind": kind, "summary": summary.strip(), "urgency": urgency, "gate": gate}
+        if not closes_when and not closer and not action:
+            # Nothing would end it: a person does. Filers run unattended and swallow errors, so a refusal would
+            # lose the item; until 2026-10 this only warned, and a quarter of the items never closed.
+            closer = "person"
         for name, value in (("task", task), ("due", due), ("detail", detail), ("key", key),
                             ("action", action), ("closes_when", closes_when), ("closer", closer),
                             ("area", str(area).strip() if area else None)):
             if value:
                 data[name] = value
-        if kind in ("finding", "question") and not closes_when and not closer:
-            # A warning, not a refusal: filers run unattended and swallow errors, so a refusal
-            # would lose the finding. Pass --closes-when-json or --closer to say how it ends.
-            _warn(f"{summary.strip()[:60]!r}: no way to close (neither closes_when nor closer); "
-                  f"it stays open until a person closes it")
         _dump(self.root / item_id / "item.yaml", data)
         (self.root / item_id / "events").mkdir(exist_ok=True)
         rule = self.muted_by(source, kind, key) if urgency != "now" else None
@@ -954,7 +954,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--action-json")
     a.add_argument("--closes-when-json")
     a.add_argument("--closer", choices=CLOSERS,
-                   help="who ends it when there is no probe: reporter, person or bot")
+                   help="who ends it when there is no probe: reporter, person or bot "
+                        "(default person when there is neither a probe nor an action)")
     a.add_argument("--quiet-after-close-h", type=float, default=None,
                    help="if a reader closed this key within N hours and the detail is unchanged, "
                         "record `seen` there, file nothing and print `quiet <id> <by> <at>`")
