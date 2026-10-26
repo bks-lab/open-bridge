@@ -1594,6 +1594,53 @@ assert_grep "28e: an entry without a card keeps the @import" "$CON/CLAUDE.md" "@
 
 # ───────────────────────────────────────────────────────────────────
 echo
+echo "── 29. a mirrored file keeps its mode ──────────────────────────"
+# atomic_write_bytes wrote through mkstemp, which creates 0600: every mirrored
+# file landed owner-only and a script lost its exec bit, so a shipped skill
+# script failed with "permission denied" in the consumer.
+mode_of() { python3 -c 'import os,stat,sys; print(oct(stat.S_IMODE(os.stat(sys.argv[1]).st_mode)))' "$1"; }
+CON="$(mkcon)"
+OV="$(mktemp -d "$TMP/ovmode.XXXXXX")"
+mkdir -p "$OV/tree/skills/mode-skill/scripts"
+cat > "$OV/overlay.manifest.yaml" <<'YAML'
+schema_version: 1
+overlay:
+  name: md
+  org: md
+defaults:
+  scope: org
+  source_root: "tree/"
+  on_conflict: prompt
+selection:
+  include: ["**"]
+  exclude: ["**/_*.yaml", "**/README.md"]
+YAML
+cat > "$OV/tree/skills/mode-skill/SKILL.md" <<'MD'
+---
+name: mode-skill
+description: A skill whose script must stay executable.
+metadata:
+  scope: org
+---
+# Mode
+MD
+printf '#!/bin/sh\necho ok\n' > "$OV/tree/skills/mode-skill/scripts/run.sh"
+chmod 755 "$OV/tree/skills/mode-skill/scripts/run.sh"
+git_overlay "$OV" md-init
+OLD_UMASK="$(umask)"; umask 022
+run_overlay "$CON" add "file://$OV" --name md
+umask "$OLD_UMASK"
+assert_rc "add the mode overlay succeeds" 0
+assert_eq "29a: an executable source stays executable" "$(mode_of "$CON/skills/mode-skill/scripts/run.sh")" "0o755"
+assert_eq "29b: a plain file follows the umask, not 0600" "$(mode_of "$CON/skills/mode-skill/SKILL.md")" "0o644"
+# A script mirrored before the fix sits at 0600 with unchanged bytes, so the
+# write is skipped; the sync still has to give it its exec bit back.
+chmod 600 "$CON/skills/mode-skill/scripts/run.sh"
+run_overlay "$CON" sync md --yes
+assert_eq "29c: a sync heals an already mirrored script" "$(mode_of "$CON/skills/mode-skill/scripts/run.sh")" "0o700"
+
+# ───────────────────────────────────────────────────────────────────
+echo
 echo "════════════════════════════════════════════════════════════════"
 echo "RESULT: $PASS passed, $FAIL failed"
 echo "════════════════════════════════════════════════════════════════"

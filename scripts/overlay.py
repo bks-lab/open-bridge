@@ -60,6 +60,7 @@ import importlib.util
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -280,14 +281,46 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def atomic_write_bytes(dest: str, data: bytes) -> None:
-    """Write `data` to `dest` atomically (temp + os.replace). COPY, never link."""
+def _umask() -> int:
+    current = os.umask(0)
+    os.umask(current)
+    return current
+
+
+def _with_exec(mode: int) -> int:
+    """Add x wherever r is set, as `chmod +x` would under the umask."""
+    return mode | (((mode & 0o444) >> 2) & ~_umask())
+
+
+def heal_exec_bit(dest: str, executable: bool) -> None:
+    """Give an unchanged mirrored script its exec bit back without rewriting
+    it: copies made before writes kept the mode sit at 0600 with the right
+    bytes, so no write ever comes along to fix them."""
+    if executable and os.path.exists(dest) and not os.access(dest, os.X_OK):
+        os.chmod(dest, _with_exec(stat.S_IMODE(os.stat(dest).st_mode)))
+
+
+def atomic_write_bytes(dest: str, data: bytes, executable: bool = False) -> None:
+    """Write `data` to `dest` atomically (temp + os.replace). COPY, never link.
+
+    mkstemp creates the temp file 0600, and os.replace carries that mode over,
+    so every write used to land owner-only and a mirrored script lost its exec
+    bit. The result now gets the mode a plain write would: an existing file
+    keeps its own, a new one follows the umask, and `executable` adds x
+    wherever the file is readable."""
     parent = os.path.dirname(os.path.abspath(dest))
     os.makedirs(parent, exist_ok=True)
+    if os.path.exists(dest):
+        mode = stat.S_IMODE(os.stat(dest).st_mode)
+    else:
+        mode = 0o666 & ~_umask()
+    if executable:
+        mode = _with_exec(mode)
     fd, tmp = tempfile.mkstemp(dir=parent, prefix=".overlay-", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
+        os.chmod(tmp, mode)
         os.replace(tmp, dest)
     finally:
         if os.path.exists(tmp):
@@ -1183,7 +1216,8 @@ FRAGMENT_KIND = "ecosystem-fragment"
 class PlanItem:
     __slots__ = ("src", "dest", "kind", "prompt_fields", "on_conflict",
                  "source_bytes", "source_sha", "state", "reason",
-                 "staged_bytes", "materialized_sha", "prompted_fields")
+                 "staged_bytes", "materialized_sha", "prompted_fields",
+                 "source_executable")
 
     def __init__(self, src, dest, kind, prompt_fields, on_conflict):
         self.src = src
@@ -1198,6 +1232,7 @@ class PlanItem:
         self.staged_bytes = b""
         self.materialized_sha = ""
         self.prompted_fields: list[str] = []
+        self.source_executable = False
 
 
 def gate_unit(dest: str) -> str:
@@ -1366,6 +1401,7 @@ def build_plan(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
         try:
             with open(abs_src, "rb") as fh:
                 it.source_bytes = fh.read()
+            it.source_executable = os.access(abs_src, os.X_OK)
         except OSError as exc:
             it.state = "error"
             it.reason = f"cannot read source: {exc}"
@@ -1664,6 +1700,9 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
 
         if it.state == "skip":
             counts["skipped"] += 1
+            if not dry:
+                heal_exec_bit(os.path.join(consumer.root, it.dest),
+                              it.source_executable)
             prev = prev_files.get(it.dest, {})
             file_locks.append({
                 "src": it.src, "dest": it.dest,
@@ -1746,7 +1785,9 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
         dest_abs = os.path.join(consumer.root, it.dest)
         if not dry and not (os.path.exists(dest_abs)
                             and sha256_file(dest_abs) == sha256_bytes(write_bytes)):
-            atomic_write_bytes(dest_abs, write_bytes)
+            atomic_write_bytes(dest_abs, write_bytes, it.source_executable)
+        elif not dry:
+            heal_exec_bit(dest_abs, it.source_executable)
         file_locks.append({
             "src": it.src, "dest": it.dest,
             "source_sha256": it.source_sha,
