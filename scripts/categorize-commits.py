@@ -587,6 +587,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/triage.py",
     "scripts/lib/bridge_cockpit/origin.py",               # where a work row comes from, and task or stream
     "scripts/lib/bridge_cockpit/card_fields.py",          # the wire shape of a card and of a brief
+    "scripts/lib/bridge_cockpit/brief_refs.py",           # what a brief may point at, and the links of a card
+    "scripts/tests/test_bridge_cockpit_brief_refs.py",
     "scripts/lib/bridge_cockpit/describe.py",             # each item's brief written and kept by a small model
     "scripts/tests/test_bridge_cockpit_describe.py",
     "scripts/tests/test_task_brief.py",

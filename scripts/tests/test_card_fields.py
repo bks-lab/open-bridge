@@ -31,7 +31,7 @@ GOOD = {"goal": "Invoices reach the customer without a manual resend",
 # ---------------------------------------------------------------- the wire shape
 
 def test_card_fields_name_the_whole_wire_shape_in_order():
-    assert cf.CARD_FIELDS == ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "next", "state",
+    assert cf.CARD_FIELDS == ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "brief_refs", "next", "state",
                               "owner", "priority", "due", "area", "updated", "source", "links", "progress",
                               "written", "gaps")
     assert cf.NEXT_FIELDS == ("what", "who", "due", "from", "since")

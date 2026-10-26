@@ -733,3 +733,108 @@ def test_the_model_build_reads_an_inbox_item_again_only_once_it_changed(world, m
     (events / "9999-seen.yaml").write_text("verb: seen\nby: web\nat: '2026-10-25T10:00:00'\n", encoding="utf-8")
     world.app.describe.views()
     assert reads == [YES_ID]
+
+
+# ---------------------------------------------------------------- references a reader can reach (brief_refs.py)
+
+BOUND = "sync:\n  bridge_only: false\n  github:\n    repo: acme/app\n    issues: [95]\n"
+EPIC = "All gaps are tracked in epic #95 and listed in work/tasks/epic-work/gaps.md.\n"
+EPIC_TITLE = "Epic-Work"
+
+
+def add_epic(world):
+    add_task(world, "epic-work", body=EPIC, extra=BOUND)
+    (status_path(world, "epic-work").parent / "gaps.md").write_text("# Gaps\n", encoding="utf-8")
+
+
+def test_the_prompt_carries_the_references_a_reader_can_reach_as_data(world):
+    add_epic(world)
+    item = world.app.describe.item("task:epic-work", full=True)
+    data = json.loads(item["data"])
+    assert "acme/app#95" in data["references"] and "work/tasks/epic-work/gaps.md" in data["references"]
+    assert "#95" not in [x for x in data["references"] if not x.startswith("acme/")]
+    system, text = dsc.prompt(item, "English")
+    assert '"references":' in text.split("\n", 1)[1], "the list goes in as data, inside the JSON block"
+    assert "bare #" in system and "references" in system and "on its own" in system
+    assert len(system) <= dsc.SYSTEM_MAX
+
+
+def test_a_reference_the_scrub_changes_is_never_offered(world):
+    add_task(world, "secret-link", body="See https://example.org/x?token=SECRET-TOKEN and https://example.org/ok.\n")
+    world.app.scrub = lambda s: s.replace("SECRET-TOKEN", "[token]")
+    data = json.loads(world.app.describe.item("task:secret-link", full=True)["data"])
+    assert data["references"] == ["https://example.org/ok"]
+
+
+def test_a_brief_with_an_unresolved_reference_is_written_with_a_warning_and_retried_once(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        add_epic(w)
+        w.runner.handlers["claude.p"] = lambda argv: answer(
+            acceptance=["All gaps of epic #95 are closed", "The open points of the report (Bericht §6) are answered"])
+        w.act("describe_run", key="task:epic-work")
+        assert brief_of(w, "epic-work")["acceptance"][1].endswith("(Bericht §6) are answered"), "it is written all the same"
+        state = w.app.describe.state_for("task:epic-work")
+        assert any("§6" in x for x in state["warnings"]) and not any("#95" in x for x in state["warnings"])
+        assert state["stale"] is True and state["stale_why"] == "refs"
+        n = len(calls_for(w, EPIC_TITLE))
+        w.app.describe.pass_once()
+        assert len(calls_for(w, EPIC_TITLE)) == n + 1, "the pass tries once more for this text"
+        w.app.describe.pass_once()
+        assert len(calls_for(w, EPIC_TITLE)) == n + 1, "and then leaves it: no loop"
+        state = w.app.describe.state_for("task:epic-work")
+        assert state["stale"] is False and any("§6" in x for x in state["warnings"])
+    finally:
+        w.close()
+
+
+def test_a_resolved_reference_reaches_the_card_as_a_link_and_an_unresolved_one_as_a_gap(world):
+    add_epic(world)
+    world.runner.handlers["claude.p"] = lambda argv: answer(
+        goal="Every gap of work/tasks/epic-work/gaps.md is closed",
+        acceptance=["All gaps of epic #95 are closed", "Bericht §6 is answered"])
+    world.act("describe_run", key="task:epic-work")
+    card = rebuilt_row(world, "task:epic-work")["card"]
+    refs = card["brief_refs"]
+    assert {"text": "work/tasks/epic-work/gaps.md", "ref": {"kind": "file", "path": "work/tasks/epic-work/gaps.md"}} in refs["goal"]
+    assert {"text": "acme/app#95", "ref": {"kind": "web", "href": "https://github.com/acme/app/issues/95"}} in refs["acceptance"][0]
+    assert {"text": "§6", "unresolved": True} in refs["acceptance"][1]
+    assert "unresolved_ref" in card["gaps"]
+
+
+def store_items(world):
+    path = world.app.root / ".bridge" / "describe.json"
+    return path, json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_an_ai_brief_from_an_older_prompt_is_stale_and_rewritten_an_edited_one_never(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        w.act("describe_run", key="task:demo-task")
+        path, data = store_items(w)
+        assert data["items"]["task:demo-task"]["prompt_version"] == dsc.PROMPT_VERSION
+        assert w.app.describe.state_for("task:demo-task")["stale"] is False
+        # written before prompts had a version: an older prompt
+        del data["items"]["task:demo-task"]["prompt_version"]
+        path.write_text(json.dumps(data), encoding="utf-8")
+        state = w.app.describe.state_for("task:demo-task")
+        assert state["stale"] is True and state["stale_why"] == "prompt"
+        w.runner.handlers["claude.p"] = lambda argv: answer(goal="The demo is shipped and tried")
+        n = len(calls_for(w))
+        w.app.describe.pass_once()
+        assert len(calls_for(w)) == n + 1 and brief_of(w)["goal"] == "The demo is shipped and tried"
+        assert w.app.describe.state_for("task:demo-task")["stale"] is False
+        # a person's brief from an older prompt stays as it is: not stale, no call, no proposal
+        status = status_path(w)
+        status.write_text(status.read_text(encoding="utf-8").replace("edited: false", "edited: true"), encoding="utf-8")
+        mine = status.read_text(encoding="utf-8")
+        path, data = store_items(w)
+        data["items"]["task:demo-task"]["prompt_version"] = dsc.PROMPT_VERSION - 1
+        path.write_text(json.dumps(data), encoding="utf-8")
+        assert w.app.describe.state_for("task:demo-task")["stale"] is False
+        n = len(calls_for(w))
+        w.app.describe.pass_once()
+        assert len(calls_for(w)) == n and status.read_text(encoding="utf-8") == mine
+        assert w.app.describe.state_for("task:demo-task")["proposal"] is None
+    finally:
+        w.close()

@@ -404,8 +404,12 @@ const MOCK_BRIEFS = {
   'task:demo-task': { brief: { goal: 'A new team member sets up the demo project in under an hour',
     story: { as: 'a new team member', want: 'a written guide for the demo setup', so_that: 'I am ready to work on the first day' },
     acceptance: ['Every setup step is written down with its command', 'Two colleagues followed the guide without asking',
-      'The guide is linked from the README'], by: 'claude-haiku-5-5', at: '2026-10-08', edited: false },
-  written: 'ai', stale: false, progress: { done: 2, total: 5 } },
+      'Issue example-org/demo-project#12 links the finished guide'], by: 'claude-haiku-5-5', at: '2026-10-08', edited: false },
+  written: 'ai', stale: false, progress: { done: 2, total: 5 },
+  // the parts card.py sends where a criterion names a reference (brief_refs.py): here an issue, as a link
+  refs: { goal: null, story: null, acceptance: [null, null, [{ text: 'Issue ' },
+    { text: 'example-org/demo-project#12', ref: { kind: 'web', href: 'https://example.org/demo-project/issues/12' } },
+    { text: ' links the finished guide' }]] } },
   'task:docs-refresh': { brief: { goal: 'Readers find every docs page from one index',
     acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken'], by: 'claude-haiku-5-5', at: '2026-10-02', edited: true },
   written: 'human', stale: false, progress: { done: 1, total: 3 },
@@ -413,8 +417,11 @@ const MOCK_BRIEFS = {
     story: { as: 'a reader of the docs', want: 'one index of every page', so_that: 'I never search the folder' },
     acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken', 'The index groups the pages by topic'] } } },
   'task:alpha-release': { brief: { goal: 'The alpha release notes name every change since the last tag',
-    acceptance: ['Each change links its pull request', 'The notes are reviewed before the tag is pushed'], by: 'claude-haiku-5-5', at: '2026-09-28', edited: false },
-  written: 'ai', stale: true, progress: { done: 3, total: 4 } },
+    acceptance: ['Each change links its pull request', 'The open points of the review (§3) are answered'], by: 'claude-haiku-5-5', at: '2026-09-28', edited: false },
+  written: 'ai', stale: true, progress: { done: 3, total: 4 },
+  // a reference nobody can reach from the card: which review? The card says so, and the brief is tried once more
+  refs: { goal: null, story: null, acceptance: [null, [{ text: 'The open points of the review (' }, { text: '§3', unresolved: true },
+    { text: ') are answered' }]] }, extraGaps: ['unresolved_ref'] },
   'task:old-cleanup': { next: 'First step', progress: { done: 0, total: 2 } },
   'inbox:20261009-0940-filed-board-c2d3': { gaps: ['no_goal', 'task_closed', 'no_content'], closedTask: 'release-notes-2026-09' },
   'inbox:20261009-0900-review-demo-a1b2': { summary: 'The report of the demo check is ready to read.' },
@@ -433,7 +440,8 @@ function mockCard(r, m = {}, now = Date.now()) {
   const next = task ? (what ? { what, who: r.next?.from === 'status' || m.next ? 'me' : null, due: null, from: r.next?.from ?? 'status', since: r.next?.since ?? null } : null)
     : inbox ? { what: r.inbox_kind === 'decision' ? 'decide' : r.gate === 'your-yes' ? 'give your yes' : r.inbox_kind === 'result' ? 'check the result' : 'read',
       who: r.gate === 'free' ? 'bridge' : 'me', due: r.due ?? null, from: 'item', since: null } : null
-  const gaps = m.gaps ?? (task ? [!b?.goal && 'no_goal', !next && 'no_next', m.next === 'First step' && 'placeholder_next'].filter(Boolean)
+  const gaps = m.gaps ?? (task ? [!b?.goal && 'no_goal', !next && 'no_next', m.next === 'First step' && 'placeholder_next',
+    ...(m.extraGaps ?? [])].filter(Boolean)
     : inbox ? ['no_goal'] : [])
   const closed = m.closedTask ?? null
   const links = task ? [{ kind: 'task', key: r.task, label: r.title, closed: false }]
@@ -441,13 +449,15 @@ function mockCard(r, m = {}, now = Date.now()) {
       : r.link?.kind === 'web' ? [{ kind: 'web', href: r.link.href, label: r.ref ?? r.title }] : []
   const card = {
     kind, subkind: inbox ? r.inbox_kind ?? null : kind === 'info' && r.ref ? 'tracker' : null, title: r.title,
-    summary: m.summary ?? null, goal: b?.goal ?? null, story: b?.story ?? null, acceptance: b?.acceptance ?? null, next,
+    summary: m.summary ?? null, goal: b?.goal ?? null, story: b?.story ?? null, acceptance: b?.acceptance ?? null,
+    brief_refs: m.refs ?? null, next,
     state: { word: inbox ? r.inbox_state ?? 'open' : task ? r.status ?? 'doing' : r.status ?? null, blocked_by: null, since: null },
     owner: inbox ? GATE_OWNER[r.gate] ?? null : null, priority: r.priority ?? null, due: r.due ?? null, area: r.area ?? null,
     updated: null, source: r.origin ?? null, links, progress: m.progress ?? null,
     written: b ? (m.written === 'human' ? 'human' : 'ai') : m.summary ? 'item' : 'title', gaps,
   }
-  const describe = b || m.proposal ? { written: m.written ?? null, stale: !!m.stale, running: false, last_error: null, warnings: [],
+  const describe = b || m.proposal ? { written: m.written ?? null, stale: !!m.stale, stale_why: m.stale ? 'basis' : null,
+    running: false, last_error: null, warnings: (m.extraGaps ?? []).includes('unresolved_ref') ? ['unresolved reference: §3'] : [],
     model_mismatch: false, proposal: m.proposal ? { ...m.proposal, at_ms: now - 40 * MIN } : null, by: b?.by ?? null, at: b?.at ?? null } : null
   return { card, describe }
 }
@@ -1644,9 +1654,10 @@ export function createMockTransport(opts = {}) {
           if (verb !== 'describe_run' && (!prop || prop.id !== args.proposal)) return fail(409, 'stale_proposal', 'This proposal is no longer current.', { describe: view })
           const day = isoIn(0, now())
           const setBrief = (brief, written) => {
-            const card = { ...r.card, goal: brief.goal ?? null, story: brief.story ?? null, acceptance: brief.acceptance ?? null, written,
-              gaps: (r.card?.gaps ?? []).filter(g => g !== 'no_goal') }
-            return { card, describe: { ...view, written, stale: false, proposal: null, by: brief.by ?? 'claude-haiku-5-5', at: day } }
+            const card = { ...r.card, goal: brief.goal ?? null, story: brief.story ?? null, acceptance: brief.acceptance ?? null,
+              brief_refs: null, written, gaps: (r.card?.gaps ?? []).filter(g => g !== 'no_goal' && g !== 'unresolved_ref') }
+            return { card, describe: { ...view, written, stale: false, stale_why: null, warnings: [], proposal: null,
+              by: brief.by ?? 'claude-haiku-5-5', at: day } }
           }
           let next
           if (verb === 'describe_run') {

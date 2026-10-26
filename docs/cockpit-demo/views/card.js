@@ -9,7 +9,11 @@
 // (state, owner, priority, due, area, source), the progress of the steps and the gaps as quiet hints. A brief a
 // model wrote and nobody edited carries a small "AI" with its model and day on hover, and "outdated" once the
 // item changed past it (the describe view, describe.py state_for, the row's `describe` or the live `describe`
-// event). "Describe with AI" (verb describe_run) asks for a brief of a task, stream or inbox item; when a person
+// event), with why on hover (stale_why: the text moved on, an older prompt, a reference to try once more). Where the
+// brief names a reference (card.py brief_refs), the goal and each criterion are drawn in parts: an issue or URL as a
+// link that opens in a new tab, a task slug through the files view (c.openFile), a file of a task folder read in
+// place (c.taskFile, as the files view reads it), any other path as code with a copy button, and a reference nobody
+// can reach as text with a quiet "not found". "Describe with AI" (verb describe_run) asks for a brief of a task, stream or inbox item; when a person
 // wrote the brief, the model only proposes, and the proposal waits in the card with Apply, Edit and Discard
 // (describe_apply, with the person's own text after Edit, and describe_discard). An error reaches the error toast
 // like any other action. All of it for the mouse; no key is named.
@@ -20,6 +24,7 @@ import { formatDay, indexRows } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
 import { Btn, Chip } from './parts.js'
+import { Prose } from './prose.js'
 
 /** The kinds of card describe takes (describe.py KINDS) */
 export const DESCRIBABLE = new Set(['task', 'stream', 'inbox'])
@@ -100,7 +105,7 @@ function WrittenMarks({ card, d }) {
   // the view's word on a stored brief; without one (no brief stored, a proposal fills the card) the card's own
   const ai = d?.written ? d.written === 'ai' : card.written === 'ai' && !!card.goal
   return html`${ai ? html`<${AiMark} by=${d?.by} day=${dayOf(d?.at)} />` : null}
-    ${d?.stale ? html`<span class="card-stale" title=${w.staleHint}>${w.stale}</span>` : null}`
+    ${d?.stale ? html`<span class="card-stale" title=${w.staleWhy[d.stale_why] ?? w.staleHint}>${w.stale}</span>` : null}`
 }
 
 function stateWord(card, t) {
@@ -153,20 +158,88 @@ function Gaps({ card, dkey, s, c }) {
       onClick=${() => c.act('settle', { keys: [dkey], outcome: 'done' })}>${w.closeEntry}<//>` : null}</p>`
 }
 
-/** The brief: goal, story and criteria, with who wrote it */
-function Brief({ card, d, has }) {
+const TASK_FILE_RE = /^(work\/(?:tasks|streams)\/([a-z0-9][a-z0-9-]*)|work\/done\/[^/]+\/([a-z0-9][a-z0-9-]*))\/(.+)$/
+
+/** A file reference as the files view opens it: {slug, file, folder} inside a task folder (folder: a closed copy's,
+ *  else null), null for any other path */
+function taskFileOf(path) {
+  const m = TASK_FILE_RE.exec(path ?? '')
+  if (!m) return null
+  return { slug: m[2] ?? m[3], file: m[4], folder: m[3] ? m[1] : null }
+}
+
+/** One reference of a brief: a link, a button that opens it in the cockpit, or text with a quiet "not found" */
+function RefPart({ p, c, shown, onFile }) {
   const w = T().card
+  const ref = p.ref
+  if (p.unresolved) {
+    return html`<span class="card-ref-missing" title=${w.refMissing}>${p.text}<span class="sr-only"> (${w.refMissing})</span></span>`
+  }
+  if (!ref) return p.text
+  if (ref.kind === 'web' && /^https?:\/\//.test(ref.href ?? '')) {
+    return html`<a class="card-ref" href=${ref.href} target="_blank" rel="noopener noreferrer">${p.text}</a>`
+  }
+  if (ref.kind === 'task' && ref.key && c) {
+    return html`<button type="button" class="btn-link card-ref" onClick=${() => c.openFile(ref.key, ref.folder ?? null)}>${p.text}</button>`
+  }
+  if (ref.kind === 'file' && ref.path) {
+    const f = taskFileOf(ref.path)
+    if (f && f.file === 'STATUS.md' && c) {
+      return html`<button type="button" class="btn-link card-ref mono" onClick=${() => c.openFile(f.slug, f.folder)}>${p.text}</button>`
+    }
+    if (f && c) {
+      return html`<button type="button" class="btn-link card-ref mono" aria-expanded=${shown === ref.path}
+        onClick=${() => onFile(ref.path, f)}>${p.text}</button>`
+    }
+    return html`<span class="card-ref-path"><code>${p.text}</code>${c ? html`<${Btn} variant="ghost" size="xs" icon="copy"
+      label=${T().copyPath} title=${T().copyPath} onClick=${() => c.copy(ref.path)} />` : null}</span>`
+  }
+  return p.text
+}
+
+/** A text of the brief: in parts with its references when card.py found any (brief_refs), else as it is */
+function RefText({ text, parts, c, shown, onFile }) {
+  if (!Array.isArray(parts) || !parts.length) return text
+  return parts.map((p, i) => html`<${RefPart} key=${i} p=${p} c=${c} shown=${shown} onFile=${onFile} />`)
+}
+
+/** A file of a task folder a reference of the brief opened, read in place as the files view reads it */
+function RefFile({ shown, onClose }) {
+  const w = T().card
+  return html`<section class="card-ref-file" aria-live="polite">
+    <p class="muted small"><code>${shown.path}</code> <${Btn} variant="ghost" size="xs" onClick=${onClose}>${w.refClose}<//></p>
+    ${shown.status === 'loading' ? html`<p class="muted small" role="status">${w.refFileLoading}</p>`
+      : shown.status === 'error' ? html`<p class="muted small" role="status">${w.refFileFailed}</p>`
+      : /\.md$/i.test(shown.path) ? html`<${Prose} cls="card-ref-text" text=${shown.text ?? ''} />`
+      : html`<pre class="pre card-ref-text">${shown.text ?? ''}</pre>`}
+    ${shown.cut ? html`<p class="muted small">${w.refFileCut}</p>` : null}
+  </section>`
+}
+
+/** The brief: goal, story and criteria, with who wrote it; its references as links (RefText) */
+function Brief({ card, d, has, c }) {
+  const w = T().card
+  const [shown, setShown] = useState(null)
   const story = has('story') ? storyText(card.story) : null
-  const criteria = has('acceptance') ? (card.acceptance ?? []).filter(Boolean) : []
+  const all = has('acceptance') ? card.acceptance ?? [] : []
+  const criteria = all.map((x, i) => [x, card.brief_refs?.acceptance?.[i] ?? null]).filter(([x]) => x)
   const goal = has('goal') ? card.goal : null
   if (!goal && !story && !criteria.length) return null
+  const onFile = async (path, f) => {
+    if (shown?.path === path) return setShown(null)
+    setShown({ path, status: 'loading' })
+    const res = await c.taskFile(f.slug, f.file, f.folder)
+    setShown(cur => (cur?.path !== path ? cur : res?.ok ? { path, status: 'ok', ...res.data } : { path, status: 'error' }))
+  }
+  const ref = { c, shown: shown?.path ?? null, onFile }
   return html`<div class="card-brief">
     ${goal ? html`<p class="card-goal"><span class="label-caps">${w.goal}</span> <${WrittenMarks} card=${card} d=${d} />
-      <span class="card-goal-text">${goal}</span></p>` : null}
+      <span class="card-goal-text"><${RefText} text=${goal} parts=${card.brief_refs?.goal} ...${ref} /></span></p>` : null}
     ${story ? html`<p class="card-story-line"><span class="label-caps">${w.story}</span> ${goal ? null : html`<${WrittenMarks} card=${card} d=${d} />`}
       <span class="card-story">${story}</span></p>` : null}
     ${criteria.length ? html`<div class="card-criteria-box"><span class="label-caps">${w.criteria}</span>
-      <ul class="card-criteria">${criteria.map((x, i) => html`<li key=${i}>${x}</li>`)}</ul></div>` : null}
+      <ul class="card-criteria">${criteria.map(([x, parts], i) => html`<li key=${i}><${RefText} text=${x} parts=${parts} ...${ref} /></li>`)}</ul></div>` : null}
+    ${shown ? html`<${RefFile} shown=${shown} onClose=${() => setShown(null)} />` : null}
   </div>`
 }
 
@@ -273,7 +346,7 @@ export function ItemCard({ card, d = null, dkey = null, s, c, title = false, ski
   return html`<section class=${`card card-${card.kind ?? 'item'} ${cls}`}>
     ${title && card.title ? html`<p class="card-title">${card.title}</p>` : null}
     ${summary ? html`<p class="card-summary">${summary}</p>` : null}
-    <${Brief} card=${card} d=${d} has=${has} />
+    <${Brief} card=${card} d=${d} has=${has} c=${c} />
     ${has('next') ? html`<${NextLine} next=${card.next} />` : null}
     <${Chips} card=${card} has=${has} />
     ${has('progress') ? html`<${Progress} p=${card.progress} />` : null}

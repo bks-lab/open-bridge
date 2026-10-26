@@ -19,7 +19,10 @@ any of them to the one shape card_fields.CARD_FIELDS names, so a page draws ever
 - gaps: what the card misses, for the page to offer a fix: `no_goal` (a task, stream or inbox item without a
   goal), `no_next` (an open task or stream without a next step), `placeholder_next` (the template's "First step"
   still stands), `task_closed` (an item about a task that is closed), `no_content` (a detail that barely adds to
-  the title).
+  the title), `unresolved_ref` (the brief names something a reader of the card cannot reach, as the describe
+  view's `refs` say);
+- brief_refs: the brief's texts in parts where they name a reference, a link where the reader can follow it (the
+  describe view's `refs`, brief_refs.parts); None without a describe view or without any reference.
 
 `ctx.describe` is the describe view per key (describe.py state_for, through server.describe_items): its `written`
 says who wrote a stored brief, as describe.json knows it. What the card cannot hold of it (stale, a proposal, a
@@ -37,6 +40,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
+from . import brief_refs as br
 from .card_fields import CARD_FIELDS, NEXT_FIELDS, STATE_FIELDS, validate_brief
 
 SUMMARY_MAX = 140
@@ -176,7 +180,32 @@ def _brief(stored: Any, key: str | None, ctx: Ctx) -> tuple[dict | None, str | N
 
 
 #: what a row or detail carries of the describe view beside its card, for the page's AI mark and its proposal
-DESCRIBE_STATE = ("written", "stale", "running", "last_error", "warnings", "model_mismatch", "proposal", "by", "at")
+DESCRIBE_STATE = ("written", "stale", "stale_why", "running", "last_error", "warnings", "model_mismatch", "proposal",
+                  "by", "at")
+
+
+def _brief_refs(brief: Any, key: str | None, ctx: Ctx) -> tuple[dict | None, bool]:
+    """(brief_refs, unresolved): the brief's texts in parts by the describe view's `refs`, and whether any part
+    is a reference a reader cannot reach; (None, False) without a view's refs or without any reference"""
+    refs = _view(key, ctx).get("refs")
+    brief = _d(brief)
+    if not isinstance(refs, dict) or not brief:
+        return None, False
+
+    def cut(text: Any) -> list | None:
+        got = br.parts(text, refs)
+        return got if got and any("ref" in p or p.get("unresolved") for p in got) else None
+
+    story = _d(brief.get("story"))
+    out = {"goal": cut(brief.get("goal")),
+           "story": {k: cut(story.get(k)) for k in ("as", "want", "so_that")} if story else None,
+           "acceptance": [cut(x) for x in brief.get("acceptance") or []]}
+    if out["story"] and not any(out["story"].values()):
+        out["story"] = None
+    every = [out["goal"], *(out["story"] or {}).values(), *out["acceptance"]]
+    if not any(every):
+        return None, False
+    return out, any(p.get("unresolved") for x in every if x for p in x)
 
 
 def describe_state(key: Any, ctx: Ctx | None) -> dict | None:
@@ -348,6 +377,7 @@ def task_card(slug: str, title: Any, ctx: Ctx, *, kind: str | None = None, row: 
     who = _s(t.get("next_who"))
     owner = who if who in OWNERS else DOER_OWNER.get(tri.get("doer"))
     links = [{**_task_link(slug, ctx, _s(title)), "closed": closed}]
+    parts, unresolved = _brief_refs(brief, key, ctx)
     extra = _link(link, title)
     if extra:
         links.append(extra)
@@ -355,10 +385,11 @@ def task_card(slug: str, title: Any, ctx: Ctx, *, kind: str | None = None, row: 
         ("no_goal", not (brief or {}).get("goal")),
         ("no_next", nxt is None),
         ("placeholder_next", (nxt is not None and _placeholder(nxt["what"])) or t.get("placeholder") is True),
-        ("no_content", no_content and not summary))
+        ("no_content", no_content and not summary),
+        ("unresolved_ref", unresolved))
     return _new(kind=kind, title=_s(title) or _s(t.get("title")) or slug, summary=summary,
                 goal=(brief or {}).get("goal"), story=(brief or {}).get("story"),
-                acceptance=(brief or {}).get("acceptance"), next=nxt,
+                acceptance=(brief or {}).get("acceptance"), brief_refs=parts, next=nxt,
                 state=_state(word, t.get("blocked_by")), owner=owner,
                 priority=_s(row.get("priority")) or _s(t.get("priority")),
                 due=_s(row.get("due")) or _s(t.get("next_due")), area=_s(row.get("area")) or _s(t.get("area")),
@@ -421,8 +452,9 @@ def inbox_card(item_id: str, title: Any, ctx: Ctx, *, facts: Mapping | None = No
     if extra:
         links.append(extra)
     closed_task = any(x.get("closed") for x in links if x["kind"] == "task")
+    parts, unresolved = _brief_refs(brief, key, ctx)
     return _new(kind="inbox", subkind=kind, title=_s(title), summary=summary, goal=(brief or {}).get("goal"),
-                story=(brief or {}).get("story"), acceptance=(brief or {}).get("acceptance"),
+                story=(brief or {}).get("story"), acceptance=(brief or {}).get("acceptance"), brief_refs=parts,
                 next=_inbox_next(kind, gate, f, ctx),
                 state=_state(_s(state) or _s(row.get("inbox_state")) or "open", None,
                              f.get("state_at") or f.get("created")),
@@ -430,7 +462,7 @@ def inbox_card(item_id: str, title: Any, ctx: Ctx, *, facts: Mapping | None = No
                 area=_s(row.get("area")) or _s(f.get("area")), updated=_s(f.get("updated")) or _s(f.get("created")),
                 source=origin, links=links, written=written,
                 gaps=_gaps(("no_goal", not (brief or {}).get("goal")), ("task_closed", closed_task),
-                           ("no_content", empty and not brief)))
+                           ("no_content", empty and not brief), ("unresolved_ref", unresolved)))
 
 
 def github_card(it: Mapping, ctx: Ctx) -> dict:

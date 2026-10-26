@@ -14,6 +14,11 @@ it). It has one shape in two places: the `brief:` block of a STATUS.md (work/tem
 `$defs/Brief`) and the `describe` event of an inbox item (work/templates/_schema.inbox-item.yaml,
 `$defs/brief`, the same definition). `BRIEF_LIMITS` are the limits both schemas declare.
 
+A card's `brief_refs` holds the brief's texts in parts where they name a reference (brief_refs.py parts):
+{goal, story: {as, want, so_that}, acceptance: [...]}, each a list of {text}, {text, ref} (a link: {kind: web,
+href}, {kind: file, path} or {kind: task, key, folder}) and {text, unresolved: true}, or None for a text that names
+none; the whole field is None when no text does.
+
 `validate_brief(obj)` is the one gate every writer passes. It returns (clean, errors): `clean` is what may be
 stored or shown, `errors` says everything that was wrong. A text over its limit or holding a dash as
 punctuation (U+2012 to U+2015, em and en dash among them) or a control or format character (Unicode Cc or
@@ -39,8 +44,10 @@ import re
 import unicodedata
 from typing import Any
 
-CARD_FIELDS = ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "next", "state",
+CARD_FIELDS = ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "brief_refs", "next", "state",
                "owner", "priority", "due", "area", "updated", "source", "links", "progress", "written", "gaps")
+#: what a card's `gaps` can name (card.py): what the card misses, for the page to offer a fix
+GAPS = ("no_goal", "no_next", "placeholder_next", "task_closed", "no_content", "unresolved_ref")
 NEXT_FIELDS = ("what", "who", "due", "from", "since")
 STATE_FIELDS = ("word", "blocked_by", "since")
 PROGRESS_FIELDS = ("done", "total")

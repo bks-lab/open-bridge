@@ -423,3 +423,86 @@ test('card: a detail head leaves out the chips the facts below it already say', 
   assert.ok(!dchips.includes(en.taskState.doing) && !dchips.includes('P1'))
   assert.ok(drawer.$('.idrawer-facts').text().includes(en.taskState.doing))
 })
+
+// ---------------------------------------------------------------- references in the brief (brief_refs.py, card.py brief_refs)
+
+const GH = 'https://github.com/acme/app/issues/95'
+const REFS_TASK = {
+  ...TASK, goal: 'Every gap of work/tasks/demo-task/gaps.md is closed',
+  acceptance: ['All gaps of acme/app#95 are closed', 'Bericht §6 is answered', 'spec-gap stays closed', 'Nothing to point at'],
+  brief_refs: {
+    goal: [{ text: 'Every gap of ' }, { text: 'work/tasks/demo-task/gaps.md', ref: { kind: 'file', path: 'work/tasks/demo-task/gaps.md' } },
+      { text: ' is closed' }],
+    story: null,
+    acceptance: [
+      [{ text: 'All gaps of ' }, { text: 'acme/app#95', ref: { kind: 'web', href: GH } }, { text: ' are closed' }],
+      [{ text: 'Bericht ' }, { text: '§6', unresolved: true }, { text: ' is answered' }],
+      [{ text: 'spec-gap', ref: { kind: 'task', key: 'spec-gap', folder: null } }, { text: ' stays closed' }],
+      null,
+    ],
+  },
+  gaps: ['unresolved_ref'],
+}
+
+test('card: a reference on GitHub is a link that opens in a new tab, never a link back into the page', () => {
+  const el = mount(html`<${ItemCard} card=${REFS_TASK} d=${AI} dkey="task:demo-task" s=${s0()} c=${recorder()} />`)
+  const [first] = el.$$('.card-criteria li')
+  assert.equal(first.text(), 'All gaps of acme/app#95 are closed')
+  const a = first.$('a')
+  assert.equal(a.getAttribute('href'), GH)
+  assert.equal(a.getAttribute('target'), '_blank')
+  assert.ok(a.getAttribute('rel').split(' ').includes('noopener'))
+  assert.equal(el.$$('.card-criteria li')[3].text(), 'Nothing to point at', 'a criterion without a reference stays text')
+})
+
+test('card: a reference a reader cannot reach stands as text with a quiet hint, and the gap says so', () => {
+  const el = mount(html`<${ItemCard} card=${REFS_TASK} d=${AI} dkey="task:demo-task" s=${s0()} c=${recorder()} />`)
+  const item = el.$$('.card-criteria li')[1]
+  const missing = item.$('.card-ref-missing')
+  assert.ok(missing.text().startsWith('§6'))
+  assert.equal(missing.getAttribute('title'), en.card.refMissing)
+  assert.ok(item.text().includes(en.card.refMissing), 'said to a screen reader too')
+  assert.equal(item.$$('a').length + item.$$('button').length, 0)
+  assert.ok(el.$('.card-gaps').text().includes(en.card.gap.unresolved_ref))
+})
+
+test('card: a task slug opens the task and a file of a task folder is read in place, through the files view openers', async () => {
+  const c = answering({ ok: true, data: { text: '# Gaps\n\nNone left.', cut: false } })
+  const el = mount(html`<${ItemCard} card=${REFS_TASK} d=${AI} dkey="task:demo-task" s=${s0()} c=${c} />`)
+  el.$$('.card-criteria li')[2].$('button').click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'openFile'), ['openFile', 'spec-gap', null])
+  el.$('.card-goal-text').$('button').click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'taskFile'), ['taskFile', 'demo-task', 'gaps.md', null])
+  await tick()
+  assert.ok(el.$('.card-ref-file').text().includes('None left.'))
+  el.$('.card-goal-text').$('button').click()
+  await tick()
+  assert.equal(el.$('.card-ref-file'), null, 'a second click closes it')
+})
+
+test('card: a path outside a task folder is shown with a copy button; German hints come from the text module', () => {
+  const card = { ...REFS_TASK, brief_refs: { goal: [{ text: 'docs/mapping.md', ref: { kind: 'file', path: 'docs/mapping.md' } },
+    { text: ' lists every field' }], story: null, acceptance: [] } }
+  const c = recorder()
+  const el = mount(html`<${ItemCard} card=${card} d=${AI} dkey="task:demo-task" s=${s0()} c=${c} />`)
+  assert.equal(el.$('.card-goal-text code').text(), 'docs/mapping.md')
+  el.$('.card-goal-text').button(en.copyPath).click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'copy'), ['copy', 'docs/mapping.md'])
+  assert.equal(de.card.refMissing, 'nicht auffindbar')
+  assert.ok(de.card.gap.unresolved_ref.length > 0 && Object.keys(de.card.staleWhy).join() === Object.keys(en.card.staleWhy).join())
+})
+
+test('card: "outdated" says why: the text moved on, an older prompt, a reference to try again', () => {
+  for (const why of ['basis', 'prompt', 'refs']) {
+    const el = mount(html`<${ItemCard} card=${TASK} d=${{ ...AI, stale: true, stale_why: why }} dkey="task:demo-task" s=${s0()} c=${recorder()} />`)
+    assert.equal(el.$('.card-stale').getAttribute('title'), en.card.staleWhy[why])
+  }
+})
+
+test('card: the demo has a criterion with a link and one with a reference nobody can reach', () => {
+  const rows = [...logic.indexRows(s0().model).values()]
+  const parts = rows.flatMap(r => r.card?.brief_refs?.acceptance ?? []).filter(Boolean).flat()
+  assert.ok(parts.some(p => p.ref?.kind === 'web'), 'a linked criterion')
+  assert.ok(parts.some(p => p.unresolved), 'an unresolved one')
+  assert.ok(rows.some(r => (r.card?.gaps ?? []).includes('unresolved_ref')))
+})

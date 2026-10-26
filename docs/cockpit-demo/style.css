@@ -529,6 +529,11 @@ kbd {
 .card-story { color: var(--on-surface); }
 .card-criteria { margin: 4px 0 0; padding-left: 18px; font-size: var(--text-sm); color: var(--on-surface); }
 .card-criteria li { margin: 1px 0; }
+.card-ref { font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.card-ref-missing { text-decoration: underline dotted; text-decoration-color: var(--on-surface-muted); text-underline-offset: 2px; cursor: help; }
+.card-ref-path { display: inline-flex; align-items: center; gap: 2px; }
+.card-ref-file { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
+.card-ref-text { max-height: 320px; overflow: auto; font-size: var(--text-sm); }
 .card-next-what { font-weight: 600; }
 .card-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .card-progress { display: flex; align-items: center; gap: 8px; }

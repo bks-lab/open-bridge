@@ -578,7 +578,28 @@ def test_a_proposal_in_the_view_never_replaces_the_stored_brief_and_fills_one_th
 def test_describe_state_is_the_view_of_a_task_or_inbox_key_slimmed_for_the_page():
     c = ctx(describe={"task:invoices": VIEW})
     got = cd.describe_state("task:invoices", c)
-    assert got == {"written": "human", "stale": True, "running": False, "last_error": None, "warnings": [],
+    assert got == {"written": "human", "stale": True, "stale_why": None, "running": False, "last_error": None, "warnings": [],
                    "model_mismatch": False, "proposal": VIEW["proposal"], "by": "claude-haiku-5-5", "at": "2026-10-25"}
     assert cd.describe_state("task:other", c) is None and cd.describe_state("ref:x", c) is None
     assert cd.describe_state(None, c) is None
+
+
+# ---------------------------------------------------------------- references in the brief (brief_refs.py)
+
+def test_the_references_of_a_brief_become_links_and_an_unresolved_one_a_gap():
+    from lib.bridge_cockpit import brief_refs as br
+    brief = {**BRIEF, "goal": "Every gap of epic #95 is closed", "acceptance": ["Bericht §6 is answered", "Nothing else"]}
+    texts = [brief["goal"], *brief["acceptance"]]
+    refs = br.resolutions(texts, br.reachable("Epic #95", {"sync": {"github": {"repo": "acme/app"}}}))
+    tasks = {"invoices": {**TASK, "brief": brief}}
+    c = cd.card_of(row(), ctx(tasks=tasks, describe={"task:invoices": {"written": "ai", "refs": refs}}))
+    assert_shape(c)
+    assert c["brief_refs"]["goal"] == [{"text": "Every gap of epic "},
+                                       {"text": "acme/app#95", "ref": {"kind": "web", "href": "https://github.com/acme/app/issues/95"}},
+                                       {"text": " is closed"}]
+    assert c["brief_refs"]["acceptance"][0] == [{"text": "Bericht "}, {"text": "§6", "unresolved": True}, {"text": " is answered"}]
+    assert c["brief_refs"]["acceptance"][1] is None
+    assert "unresolved_ref" in c["gaps"]
+    # without a describe view nothing says what the text points at: plain text, no gap
+    plain = cd.card_of(row(), ctx(tasks=tasks))
+    assert plain["brief_refs"] is None and "unresolved_ref" not in plain["gaps"]
