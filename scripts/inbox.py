@@ -14,6 +14,7 @@ things as open that had been solved hours earlier, because the sentence saying
         --action-json '{"argv": ["gh", "pr", "merge", "70", "-R", "org/repo"]}' \\
         --closes-when-json '{"gh_pr": "org/repo#70", "state": "merged"}'
     python3 scripts/inbox.py list            # open items, most urgent first
+    python3 scripts/inbox.py list --art ask  # only what needs a person (ask · report · idea)
     python3 scripts/inbox.py approve <id> [--when-json '{"gh_pr": "org/repo#70", "state": "green"}']
     python3 scripts/inbox.py check           # close what the live source says is done
     python3 scripts/inbox.py run             # execute what a person released
@@ -32,17 +33,22 @@ issue closed, a file present, a command exiting 0, a time passed). ``check``
 runs the probes and closes what holds. A probe that cannot be evaluated is
 UNKNOWN, never true: an item stays open rather than vanishing on a network error.
 
+ARTS. Three ways a person sees an item, derived from its kind and never stored: ``ask``
+(decision, question, draft: needs a yes, a word or a click), ``report`` (finding, result: how
+something stands) and ``idea`` (mentioned, nothing came of it yet). An unknown kind is an ask.
+
 GATES. ``free`` the Bridge may act alone · ``your-yes`` acts after a person said
 yes, also a conditional yes ("merge once green") that ``run`` executes when the
 condition holds · ``only-you`` (send, publish, pay) is never executed by this
 script, whatever was recorded.
 
-MUTE. A drop may say why: ``once`` (this one, no rule), ``duplicate``, ``family`` (never
-this kind again: the source plus the key up to its last colon, or the kind when the key has no
-family) or ``source`` (the whole source, for ``MUTE_SOURCE_DAYS``). The last two leave a rule,
+MUTE. A drop may say why: ``once`` (this one, no rule), ``duplicate``, ``stale`` (it went old,
+no rule), ``family`` (never this kind again: the source plus the key up to its last colon, or the
+kind when the key has no family) or ``source`` (the whole source, for ``MUTE_SOURCE_DAYS``). The last two leave a rule,
 one file of its own under ``work/inbox/_mutes/``. A finding that matches a rule is still filed
 and dropped at once by ``mute``: it counts in ``stats`` and a reopen brings it back. An item
-filed as ``now`` is never muted. ``stats`` shows per source how much a person dropped.
+filed as ``now`` is never muted. ``stats`` shows per source how much a person dropped. Sources that
+differ only in case are one source to the rules and to ``stats``.
 
 REOPEN. A close by mistake is undone with a ``reopen`` event, never by deleting the
 close: the item is open again, every yes before it is void (an executed action does
@@ -71,7 +77,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 from lib.bridge_cockpit.card_fields import validate_brief  # noqa: E402  (the one shape of a brief)
-from lib.inbox_verbs import TERMINAL  # noqa: E402  (shared with the cockpit's return channel)
+from lib.inbox_verbs import ARTS, TERMINAL, art_of_kind  # noqa: E402  (shared with the cockpit and the briefing)
 
 SCHEMA_VERSION = 1
 
@@ -81,13 +87,15 @@ URGENCIES = ("now", "today", "later")
 #: Who ends an item when it has no probe. `reporter`: the job that filed it closes it when the
 #: condition is gone (by key). `person`: only a person can say it is done. `bot`: a watcher acts
 #: on it and closes it. An item with neither a probe nor a closer is the one that stays open for
-#: ever, which is what the inbox exists to prevent (2026-10-07: 51 of 62 items had no way out).
+#: ever, which is what the inbox exists to prevent (2026-10-07: 51 of 62 items had no way out), so
+#: `add` files one without a probe, a closer or an action as `person`.
 CLOSERS = ("probe", "reporter", "person", "bot")
 VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "executed", "failed", "urgency", "reopen",
          "area", "describe")
 ACTIVE_STATES = ("open", "approved", "waiting")
 #: Why a person dropped an item. `family` and `source` leave a mute rule behind.
-DROP_REASONS = ("once", "duplicate", "family", "source")
+#: `stale`: it went old without anybody acting on it (a cleanup proposes these), no rule.
+DROP_REASONS = ("once", "duplicate", "family", "source", "stale")
 MUTE_REASONS = ("family", "source")
 #: A source mute ends by itself: a source that was too loud for a month may have been fixed since.
 MUTE_SOURCE_DAYS = 30
@@ -362,9 +370,22 @@ class Item:
         deferral = self.deferral or {}
         return {"id": self.id, "state": self.state, **{k: v for k, v in self.data.items()
                                                       if k != "schema_version"}, "urgency": self.urgency, "area": self.area,
+                "art": art_of_kind(self.kind),
                 "brief": self.brief,
                 **({"deferred_until": deferral["until"]} if deferral.get("until") else {}),
                 **({"waiting_on": deferral["on"]} if deferral.get("on") else {})}
+
+
+def art_of(item) -> str:
+    """What a person sees an item as: `ask`, `report` or `idea` (lib/inbox_verbs.py ART_OF_KIND). Derived from
+    the kind of an Item or of its as_dict(), never stored, so every item filed before the arts has one."""
+    return art_of_kind(item.get("kind") if isinstance(item, dict) else item.kind)
+
+
+def source_key(source) -> str:
+    """What two sources are compared by: "Host-A/notify" and "host-a/notify" are one source to `stats` and the
+    mute rules. Only the comparison folds the case; every item and rule keeps its source as it was written."""
+    return str(source or "").strip().casefold()
 
 
 def _warn(text: str) -> None:
@@ -561,16 +582,15 @@ class Inbox:
             item_id = f"{stem}-{secrets.token_hex(2)}"
         data = {"schema_version": SCHEMA_VERSION, "created": now.isoformat(timespec="minutes"),
                 "from": source, "kind": kind, "summary": summary.strip(), "urgency": urgency, "gate": gate}
+        if not closes_when and not closer and not action:
+            # Nothing would end it: a person does. Filers run unattended and swallow errors, so a refusal would
+            # lose the item; until 2026-10 this only warned, and a quarter of the items never closed.
+            closer = "person"
         for name, value in (("task", task), ("due", due), ("detail", detail), ("key", key),
                             ("action", action), ("closes_when", closes_when), ("closer", closer),
                             ("area", str(area).strip() if area else None)):
             if value:
                 data[name] = value
-        if kind in ("finding", "question") and not closes_when and not closer:
-            # A warning, not a refusal: filers run unattended and swallow errors, so a refusal
-            # would lose the finding. Pass --closes-when-json or --closer to say how it ends.
-            _warn(f"{summary.strip()[:60]!r}: no way to close (neither closes_when nor closer); "
-                  f"it stays open until a person closes it")
         _dump(self.root / item_id / "item.yaml", data)
         (self.root / item_id / "events").mkdir(exist_ok=True)
         rule = self.muted_by(source, kind, key) if urgency != "now" else None
@@ -710,7 +730,7 @@ class Inbox:
 
     def muted_by(self, source: str, kind: str, key: str | None) -> dict | None:
         for rule in self.mutes():
-            if rule["source"] != source:
+            if source_key(rule["source"]) != source_key(source):
                 continue
             if rule.get("key_prefix") and not str(key or "").startswith(rule["key_prefix"]):
                 continue
@@ -739,7 +759,8 @@ class Inbox:
                     continue
             except ValueError:
                 continue
-            row = rows.setdefault(item.source, {"source": item.source, "filed": 0, "dropped": 0, "muted": 0,
+            # one row per source whatever its case, named as it was first written
+            row = rows.setdefault(source_key(item.source), {"source": item.source, "filed": 0, "dropped": 0, "muted": 0,
                                                 "done": 0, "open": 0, "reasons": {}})
             row["filed"] += 1
             state = item.state
@@ -942,7 +963,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--action-json")
     a.add_argument("--closes-when-json")
     a.add_argument("--closer", choices=CLOSERS,
-                   help="who ends it when there is no probe: reporter, person or bot")
+                   help="who ends it when there is no probe: reporter, person or bot "
+                        "(default person when there is neither a probe nor an action)")
     a.add_argument("--quiet-after-close-h", type=float, default=None,
                    help="if a reader closed this key within N hours and the detail is unchanged, "
                         "record `seen` there, file nothing and print `quiet <id> <by> <at>`")
@@ -951,6 +973,7 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--all", action="store_true")
     ls.add_argument("--json", action="store_true")
     ls.add_argument("--short", action="store_true", help="one line per item, for a phone or an e-ink screen")
+    ls.add_argument("--art", choices=ARTS, help="only one art: ask (needs you), report (how something stands), idea")
 
     sub.add_parser("show").add_argument("id")
     ap = sub.add_parser("approve", help="say yes; with --when-json it runs once the condition holds")
@@ -965,7 +988,7 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--key", help="close every live item filed under this key instead of one id")
         if name == "drop":
             sp.add_argument("--reason", choices=DROP_REASONS,
-                            help="why: once, duplicate, family (mute this kind of the source), "
+                            help="why: once, duplicate, stale, family (mute this kind of the source), "
                                  f"source (mute the source for {MUTE_SOURCE_DAYS} days)")
     ro = sub.add_parser("reopen", help="undo a close, drop, reject, defer or a yes not run yet: the item is open again")
     ro.add_argument("id")
@@ -1146,6 +1169,8 @@ def main(argv=None) -> int:
                 _place_later(args.root, box.last_new)
         elif args.cmd == "list":
             items = box.items() if args.all else box.open_items()
+            if args.art:
+                items = [i for i in items if art_of(i) == args.art]
             if args.json:
                 print(json.dumps([i.as_dict() for i in items], ensure_ascii=False, indent=1))
             elif args.short:

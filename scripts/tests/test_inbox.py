@@ -654,17 +654,6 @@ def test_closer_is_stored_and_validated(box):
         box.add(source="m", kind="finding", summary="s2", closer="somebody")
 
 
-def test_a_finding_without_a_way_to_close_warns(box, capsys):
-    box.add(source="m", kind="finding", summary="nobody will ever close me")
-    assert "no way to close" in capsys.readouterr().err
-
-
-def test_a_finding_with_a_probe_or_a_closer_does_not_warn(box, capsys):
-    box.add(source="m", kind="finding", summary="a", closes_when={"after": "2026-10-09"})
-    box.add(source="m", kind="finding", summary="b", closer="reporter")
-    assert "no way to close" not in capsys.readouterr().err
-
-
 # ---------------------------------------------------------------- reopen: a close by mistake
 
 def test_reopen_brings_a_closed_or_dropped_item_back_as_a_new_event(box):
@@ -843,3 +832,68 @@ def test_cli_add_without_the_flag_still_opens_a_new_item(tmp_path, capsys):
     inbox.main(["--root", str(tmp_path), "add", "--from", "m/bridge-notify", "--kind", "finding",
                 "--summary", "orbit (m)", "--key", "notify:k1", "--detail", DETAIL, "--closer", "bot"])
     assert capsys.readouterr().out.strip().splitlines()[-1] != item_id
+
+
+# ---------------------------------------------------------------- arts: what a person sees an item as
+
+def test_every_kind_has_an_art_and_the_arts_are_three():
+    assert {k: inbox.art_of_kind(k) for k in inbox.KINDS} == {
+        "decision": "ask", "question": "ask", "draft": "ask",
+        "finding": "report", "result": "report", "idea": "idea"}
+    assert inbox.ARTS == ("ask", "report", "idea")
+
+
+def test_an_unknown_kind_is_an_ask_so_a_person_sees_it():
+    assert inbox.art_of_kind("verdict") == "ask"
+    assert inbox.art_of_kind(None) == "ask"
+
+
+def test_art_of_reads_the_item_and_stores_nothing(box):
+    item_id = add(box, kind="idea", summary="maybe one day")
+    assert inbox.art_of(box.get(item_id)) == "idea"
+    assert inbox.art_of(box.get(item_id).as_dict()) == "idea"
+    stored = yaml.safe_load((box.root / item_id / "item.yaml").read_text(encoding="utf-8"))
+    assert "art" not in stored
+
+
+def test_list_json_carries_the_art_and_list_art_filters(tmp_path):
+    for kind, summary in (("decision", "merge it"), ("finding", "disk 91 %"), ("idea", "a dark mode")):
+        r = run_cli(tmp_path, "add", "--from", "cli", "--kind", kind, "--summary", summary, "--closer", "person")
+        assert r.returncode == 0, r.stderr
+    rows = json.loads(run_cli(tmp_path, "list", "--json").stdout)
+    assert {r["summary"]: r["art"] for r in rows} == {"merge it": "ask", "disk 91 %": "report", "a dark mode": "idea"}
+    asks = json.loads(run_cli(tmp_path, "list", "--json", "--art", "ask").stdout)
+    assert [r["summary"] for r in asks] == ["merge it"]
+    short = run_cli(tmp_path, "list", "--short", "--art", "idea").stdout
+    assert "a dark mode" in short and "merge it" not in short
+    assert run_cli(tmp_path, "list", "--art", "task").returncode != 0      # only the three arts
+
+
+# ---------------------------------------------------------------- no item without a way out
+
+def test_an_item_with_neither_probe_nor_closer_gets_closer_person(box, capsys):
+    for kind in ("finding", "question", "idea", "decision"):
+        item_id = box.add(source="m", kind=kind, summary=f"no way out {kind}")
+        assert box.get(item_id).closer == "person"
+        stored = yaml.safe_load((box.root / item_id / "item.yaml").read_text(encoding="utf-8"))
+        assert stored["closer"] == "person"            # written, so every reader sees the same
+    assert "no way to close" not in capsys.readouterr().err
+
+
+def test_a_probe_a_closer_or_an_action_keeps_its_own_way_out(box):
+    probed = box.add(source="m", kind="finding", summary="a", closes_when={"after": "2026-10-09"})
+    own = box.add(source="m", kind="finding", summary="b", closer="reporter")
+    acting = box.add(source="m", kind="decision", summary="c", action={"argv": ["true"]})
+    assert box.get(probed).closer is None
+    assert box.get(own).closer == "reporter"
+    assert box.get(acting).closer is None              # the run that executes it closes it
+
+
+def test_an_item_stored_without_closer_stays_without_one(box):
+    item_id = box.add(source="m", kind="finding", summary="old", closer="reporter")
+    path = box.root / item_id / "item.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del data["closer"]
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    assert box.get(item_id).closer is None             # nothing rewrites what was filed before
+    assert box.validate() == []

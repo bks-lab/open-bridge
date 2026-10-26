@@ -232,6 +232,19 @@ def test_headline_says_what_is_yours_how_long_you_are_free_and_the_next_hard_dat
     assert "Post the launch note" in h or "06.10" in h            # the next hard date
 
 
+def test_the_headline_counts_only_what_asks_you():
+    # an idea or a finding due today still stands in Do, but "for you today" counts the asks and the work
+    r = result(sec("inbox", "inbox", [
+        inbox_item("i1", "Merge the release", kind="decision"),
+        inbox_item("i2", "A dark mode one day", kind="idea", gate="only-you"),
+        inbox_item("i3", "Disk at 91 %", kind="finding"),
+        inbox_item("i4", "Which date suits?", kind="question", gate="only-you")]))
+    view = bv.build(r, profile(view={"style": "triage"}))
+    assert len(buckets(view)["do"]) == 4
+    assert view["headline"].startswith("2 for you today")
+    assert {i["title"]: i["art"] for i in view["buckets"][0]["items"]}["A dark mode one day"] == "idea"
+
+
 def test_since_last_names_what_changed_since_the_previous_run():
     r = sample()
     r["previous_at"] = "2026-10-05T07:18"

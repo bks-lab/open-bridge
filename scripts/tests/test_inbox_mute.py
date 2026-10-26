@@ -307,3 +307,43 @@ def test_cli_drop_without_reason_still_works(tmp_path):
     assert run(tmp_path, "drop", item_id, "--note", "old way").returncode == 0
     data = yaml.safe_load(next((tmp_path / "work" / "inbox" / item_id / "events").glob("*.yaml")).read_text())
     assert data["verb"] == "drop" and "reason" not in data
+
+
+# ---------------------------------------------------------------- one source, whatever its case
+
+def test_stats_count_sources_that_differ_only_in_case_as_one(box):
+    box.drop(finding(box, source="Host-A/notify", summary="a"), reason="once")
+    finding(box, source="host-a/notify", summary="b")
+    finding(box, source="HOST-A/NOTIFY", summary="c")
+    rows = box.stats(days=30)
+    assert len(rows) == 1
+    [row] = rows
+    assert (row["filed"], row["dropped"], row["open"]) == (3, 1, 2)
+    assert row["source"] == "Host-A/notify"       # shown as it was first written
+
+
+def test_a_mute_rule_holds_for_the_same_source_in_another_case(box):
+    box.drop(finding(box, source="Host-A/notify", key="disk:full:a"), reason="family")
+    again = finding(box, source="host-a/notify", key="disk:full:b", summary="disk full again")
+    assert box.get(again).state == "dropped"
+    other = finding(box, source="host-b/notify", key="disk:full:c", summary="another host")
+    assert box.get(other).state == "open"
+
+
+def test_case_folding_rewrites_nothing_stored(box):
+    item_id = finding(box, source="Host-A/notify")
+    box.drop(item_id, reason="source")
+    assert box.get(item_id).source == "Host-A/notify"
+    [rule] = box.mutes()
+    assert rule["source"] == "Host-A/notify"
+
+
+# ---------------------------------------------------------------- stale: dropped because it went old
+
+def test_stale_is_a_drop_reason_that_leaves_no_rule(box):
+    item_id = finding(box, summary="nobody looked for months")
+    assert "stale" in inbox.DROP_REASONS and "stale" not in inbox.MUTE_REASONS
+    assert box.drop(item_id, reason="stale") is None
+    assert box.mutes() == []
+    assert box.get(item_id).events[-1].data["reason"] == "stale"
+    assert box.stats(days=30)[0]["reasons"] == {"stale": 1}

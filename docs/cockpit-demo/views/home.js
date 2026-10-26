@@ -5,7 +5,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
-  homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
+  homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage,
 } from '../logic.js'
@@ -402,7 +402,7 @@ function tileMaker(s, c, chosen, project, hud = false) {
     if (x.id === 'c:next') return html`<${NextTile} key=${x.id} s=${s} c=${c} />`
     if (x.id === 'c:done') return html`<${DoneTile} key=${x.id} s=${s} />`
     if (x.id === 'c:waiting') {
-      const n = scope ? countInProject(nowRows, scope) : counts.now ?? 0
+      const n = scope ? countInProject(nowRows.filter(asksYou), scope) : counts.now ?? 0
       return html`<${CountTile} key=${x.id} n=${n} label=${h.waitingNow} tone=${n ? 'warning' : null} scope=${scope}
         before=${scope ? null : before[x.id]} title=${h.openPage(briefingTitle(s))} onClick=${() => c.setPage('briefing')} />`
     }
@@ -654,7 +654,8 @@ function HomeBoard({ s, c }) {
   const project = [...projects, ...named.map(a => a.name)]
     .find(p => p.toLowerCase() === String(s.ui.area ?? '').trim().toLowerCase()) ?? null
   const cont = homeContinue(tabs, project)
-  const waiting = waitingAll.filter(r => inProject(r, project))
+  // the shelf is named waiting on you: the asks of Now, as the tile beside it counts them (an idea asks nothing)
+  const waiting = waitingAll.filter(r => asksYou(r) && inProject(r, project))
   const tasks = tasksAll.filter(r => inProject(r, project))
   const now = new Date(s.now || Date.now())
   const day = dayLabel(now, lang)

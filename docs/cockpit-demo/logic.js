@@ -2370,6 +2370,13 @@ export function untilText(ms) {
   return h ? `${h} h ${min % 60} min` : `${min} min`
 }
 
+/** Whether a row counts as waiting for you (briefing_view.asks_you): every row that is no inbox item, and of the
+ *  inbox only the asks. An idea or a report filed for today stands in Now, it just asks nothing of you; an inbox
+ *  row without its art (an older server) is an ask */
+export function asksYou(row) {
+  return !row?.inbox_id || (row.art ?? 'ask') === 'ask'
+}
+
 /** How many of a page's items belong to a project (by mark or area) */
 export function countInProject(items, project) {
   return (items ?? []).filter(it => inProject(it, project)).length

@@ -6,6 +6,7 @@
 // The area lines of the start page and their numbers, where a number leads, the one area filter (ui.area)
 // and what Work, Chat and Sessions show under it, tabs gone idle, the parts of the overview. The pure helpers
 // are imported as the frontend suite imports them, the views are mounted as the render suite mounts them.
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
@@ -698,4 +699,37 @@ test('area: an inbox item without a task picks one of the configured areas in it
   s.boot = { ...s.boot, config: {} }
   s.ui = { ...s.ui, selectedKey: item.key }
   assert.equal(mount(html`<${DetailColumn} s=${s} c=${c} byKey=${new Map([[item.key, item]])} />`).$('select.area-pick'), null)
+})
+
+// ---------------------------------------------------------------- waits for you: only the asks of the inbox
+
+test('an idea or a report in Now asks nothing of you: the areas and the waits-for-you count leave it out', () => {
+  const ask = { key: 'inbox:a', inbox_id: 'a', art: 'ask', area: 'Acme' }
+  const idea = { key: 'inbox:i', inbox_id: 'i', art: 'idea', area: 'Acme' }
+  const report = { key: 'inbox:r', inbox_id: 'r', art: 'report', area: 'Acme' }
+  const task = { key: 'task:t', task: 't', area: 'Acme' }
+  // a row that is no inbox item counts as before, and an inbox row from a server without arts is an ask
+  assert.deepEqual([ask, idea, report, task, { key: 'inbox:o', inbox_id: 'o' }].map(logic.asksYou),
+    [true, false, false, true, true])
+  const tabs = [{ ref: 'x', workspace: 'Acme', state: 'needs-you', waiting: true, item: 'i' }]
+  const [acme] = logic.homeAreas(tabs, [{ id: 'now', rows: [ask, idea, report, task] }], [], NOW)
+  // the ask and the task wait; the idea's tab still wants you on its own, since no counted row stands for it
+  assert.deepEqual([acme.waitingRows, acme.waitingTabs, acme.waiting], [2, 1, 3])
+})
+
+test('the scoped waits-for-you tiles count the asks of Now, as the server counts counts.now', () => {
+  for (const name of ['stage.js', 'home.js']) {
+    const src = fs.readFileSync(path.join(WEB, 'views', name), 'utf8')
+    assert.match(src, /countInProject\(nowRows\.filter\(asksYou\), scope\)/, name)
+    assert.doesNotMatch(src, /countInProject\(nowRows, scope\)/, name)
+  }
+})
+
+test('every list named waiting on you shows the asks, so its count is the count of the tile beside it', () => {
+  // the station's panel and the start page's shelf carry the label "waiting on you" and a count: an idea or a
+  // report of Now there would make them disagree with the number on the tile
+  const stage = fs.readFileSync(path.join(WEB, 'views', 'stage.js'), 'utf8')
+  assert.match(stage, /x\.id === 'c:waiting'\) \{\n\s*const rows = \(s\.model\?\.sections \?\? \[\]\)\.find\(r => r\.id === 'now'\)\?\.rows\?\.filter\(asksYou\) \?\? \[\]/)
+  const home = fs.readFileSync(path.join(WEB, 'views', 'home.js'), 'utf8')
+  assert.match(home, /const waiting = waitingAll\.filter\(r => asksYou\(r\) && inProject\(r, project\)\)/)
 })

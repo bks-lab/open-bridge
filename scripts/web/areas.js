@@ -2,7 +2,7 @@
 // Pure helpers of the cockpit's areas: the start page's area lines, where a number of them leads, the one
 // area filter (ui.area) and the state a page sees under it. No DOM, no network, no state. logic.js passes
 // every name on, so a view may import it from either; the frontend test imports this file under node.
-import { dueWhen, homeChosen, homeView, indexRows, wantsYou } from './logic.js'
+import { asksYou, dueWhen, homeChosen, homeView, indexRows, wantsYou } from './logic.js'
 import { scopedFileQueue } from './files.js'
 
 /** The project a row belongs to: its area, else its first area name, else the label of its mark */
@@ -73,9 +73,9 @@ export function homeAreas(tabs, sections, returns, nowMs) {
     x[what] += 1
     counts.set(key, x)
   }
-  // a row of "now" stands for the tab that waits on its work
+  // a row of "now" that asks you stands for the tab that waits on its work; an idea or a report there asks nothing
   const paired = new Set()
-  for (const r of section('now')) {
+  for (const r of section('now').filter(asksYou)) {
     bump(rowProject(r), 'waiting')
     bump(rowProject(r), 'waitingRows')
     for (const t of live) if ((r.task && t.slug === r.task) || (r.inbox_id && t.item === r.inbox_id)) paired.add(t.ref)

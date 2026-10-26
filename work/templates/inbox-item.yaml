@@ -6,7 +6,7 @@
 schema_version: 1
 created: "2026-10-04T09:30"          # set by the script
 from: homebox/issue-radar            # who filed it: machine/job or agent
-kind: decision                       # decision | question | finding | draft | result
+kind: decision                       # decision | question | draft (ask) · finding | result (report) · idea
 summary: "PR #70 in contoso/portal is green and waits for a merge"
 urgency: today                       # now | today | later
 gate: your-yes                       # free | your-yes | only-you

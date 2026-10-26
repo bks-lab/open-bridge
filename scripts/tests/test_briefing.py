@@ -1745,8 +1745,8 @@ def test_event_steps_are_checked():
 
 def test_to_inbox_items_name_the_briefing_as_their_closer(tmp_path):
     # The briefing closes these items itself when the row is gone, so it is their closer. Without
-    # one an item filed by a run looks hand-made: `add` warns it has no way out, and a watcher that
-    # investigates reporter findings before announcing them passes it on raw.
+    # one an item filed by a run looks hand-made: `add` would file it as `closer: person`, and a
+    # watcher that investigates reporter findings before announcing them passes it on raw.
     root = bridge(tmp_path)
     section = {"kind": "tracker", "id": "gh", "provider": "github",
                "query": {"assignee": "@me", "kinds": ["issues"]},
