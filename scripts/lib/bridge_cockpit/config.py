@@ -109,6 +109,14 @@ class WebConfig:
     # further sources of A2A peers beside infra/a2a-peers/ (cockpit.a2a_sources, agents.py): ({name, script}, ...),
     # each script a skill's own that lists its peers, reads their cards and asks them in a fixed JSON contract
     a2a_sources: tuple = ()
+    # the Work through area (cockpit.flow, page @flow): off unless switched on. How many cards ahead get their
+    # brief prepared (0: none), how many starts may run before Let AI do it asks first, how old a Jev rank may be
+    # and still order the tasks, how often a day a click may order them anew
+    flow_enabled: bool = False
+    flow_prep_ahead: int = 2
+    flow_max_running: int = 4
+    flow_rank_max_age_days: int = 7
+    flow_rerank_per_day: int = 3
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
     config_warnings: tuple = ()
@@ -167,6 +175,28 @@ def launch_model_of(value: Any, jev_model: str | None = None) -> dict:
     return out
 
 
+# cockpit.flow: key, the WebConfig field it sets, its minimum (the loader keeps the default below it)
+FLOW_INTS = (("prep_ahead", "flow_prep_ahead", 0), ("max_running", "flow_max_running", 1),
+             ("rank_max_age_days", "flow_rank_max_age_days", 1), ("rerank_per_day", "flow_rerank_per_day", 0))
+FLOW = {"enabled": ("bool", "flow_enabled"), **{key: ("int", name, low) for key, name, low in FLOW_INTS}}
+
+
+def flow_settings_of(value: Any) -> dict:
+    """cockpit.flow as WebConfig fields: a value of the wrong type or below its minimum keeps the default"""
+    w = _dict(value)
+    out = {"flow_enabled": w.get("enabled") is True}
+    for key, name, low in FLOW_INTS:
+        v = w.get(key)
+        if _is_int(v) and v >= low:
+            out[name] = v
+    return out
+
+
+def flow_of(cfg: "WebConfig") -> dict:
+    """The cockpit.flow block as the page reads it"""
+    return {"enabled": cfg.flow_enabled, **{key: getattr(cfg, name) for key, name, _low in FLOW_INTS}}
+
+
 # The keys of the cockpit: block and what each takes. The loader below keeps its fallbacks; check_block only
 # says when one applied, so a typo shows in `status` and on the settings page instead of nowhere.
 # (kind, detail): bool, text, choice (the allowed values), int and number (the minimum the loader clamps to),
@@ -186,6 +216,7 @@ BLOCK = {
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
     "files_scope": ("choice", "files_scope", FILES_SCOPES),
     "origin_map": ("origin_map",), "describe": ("describe",), "a2a_sources": ("a2a_sources",),
+    "flow": ("block", FLOW),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -473,7 +504,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     focus_to_files=w.get("focus_to_files") is True,
                     files_scope=w["files_scope"] if w.get("files_scope") in FILES_SCOPES else "active",
                     origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),
-                    a2a_sources=a2a_sources_of(w.get("a2a_sources"), root)[0],
+                    a2a_sources=a2a_sources_of(w.get("a2a_sources"), root)[0], **flow_settings_of(w.get("flow")),
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

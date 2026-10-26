@@ -198,6 +198,12 @@ work:
 #   chat_keep_hours: 24    # an untouched quick chat leaves the list into the archive after this many hours; 0 = only the limit of 30
 #   a2a_sources: []       # further A2A peers from a skill's script (broker, access proxy), docs/bridge-cockpit.md
 #   #   - {name: broker, script: skills/<skill>/scripts/<name>.py}
+#   flow:                  # the Work through area (page @flow), one card at a time; off by default
+#     enabled: false
+#     prep_ahead: 2        # the next cards whose brief is prepared ahead, within describe.budget_per_hour; 0 = none
+#     max_running: 4       # started agents running before Let AI do it asks first
+#     rank_max_age_days: 7 # a Jev rank older than this does not order the tasks
+#     rerank_per_day: 3    # how often a day a click on "order again" may ask Jev anew
 #   work_view: due         # the view the work tab opens on: due | source | jev | files (a click on its switch still picks another)
 #   focus_to_files: false  # true: when the start page's focus runs out, it leads on into the files view of the work tab
 #   files_scope: active    # active | all = every task and stream is a file, the backlog behind the queue on chips
