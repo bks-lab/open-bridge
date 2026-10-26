@@ -275,6 +275,21 @@ def test_nested_id_is_not_a_root_id(tmp_path):
     assert problems(root) == []
 
 
+def test_closed_task_copies_are_not_scanned(tmp_path):
+    # work/done/ keeps frozen copies of files as they were when a task closed.
+    # An old $id or a second copy of a live schema there is history, not drift.
+    root = build(tmp_path, **{
+        "work/done/2026-10/t/over/_schema.yaml": f'$id: "{SITE}schemas/thing.yaml"\n',
+        "work/done/2026-09/u/infra/things/_schema.yaml": '$id: "urn:open-bridge:schema:thing"\n',
+    })
+    assert problems(root) == []
+
+
+def test_live_work_templates_are_still_scanned(tmp_path):
+    root = build(tmp_path, **{"work/templates/_schema.status.yaml": f'$id: "{SITE}schemas/status.yaml"\n'})
+    assert any("work/templates/_schema.status.yaml" in p for p in problems(root))
+
+
 # ---- review follow-ups ------------------------------------------------------
 
 def test_later_root_override_of_a_site_token_is_reported(tmp_path):

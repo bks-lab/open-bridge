@@ -61,6 +61,9 @@ FONT_FACE = re.compile(r'@font-face\s*\{[^}]*font-family\s*:\s*"([^"]+)"')
 FONT_DISPLAY = re.compile(r'--font-display\s*:\s*"([^"]+)"')
 ROOT_ID = re.compile(r"""^\$id\s*:\s*["']?([^"'\s#]+)["']?\s*(?:#.*)?$""", re.M)
 SKIP_DIRS = {"node_modules", "__pycache__", "venv", ".venv"}
+# Paths under the root that hold frozen copies, not live files: a closed task keeps
+# files as they were, so an old $id there is history rather than drift.
+SKIP_PATHS = {Path("work/done")}
 
 
 def site_path() -> str:
@@ -241,7 +244,9 @@ def check_design(root: Path) -> list[str]:
 
 def schema_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS]
+        here = Path(dirpath).relative_to(root)
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith(".") and d not in SKIP_DIRS and here / d not in SKIP_PATHS]
         for f in filenames:
             if f.endswith((".yaml", ".yml")):
                 yield Path(dirpath) / f
