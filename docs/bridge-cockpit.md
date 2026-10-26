@@ -558,10 +558,16 @@ Esc surfaces. The graph is built once a minute at most.
 **With AI.** Every start handed to a tab ("Let AI do it", "Advise",
 "Collect context") is kept in `launches.json` (`returns.py`), a week long.
 Its stage is read from what the Bridge has, nothing is asked of the tab:
-started, working, asks you (the tab waits), answer (a filed inbox item, or a
-note on its inbox item written after the start), done (its inbox item
-closed, or its task moved to `work/done/`), and "no word" when the tab is
-gone without an answer. The page follows tab states live and shows the stage
+started, working, asks you (a dialog the terminal reports, or a question read
+off the tab's screen: a question mark, numbered options, words typed in its
+prompt), quiet (`idle`: the tab stopped working and its screen asks nothing,
+most likely through), answer (a filed inbox item, a note on its inbox item
+written after the start, or a note on its task since the day of the start that
+begins with `Result:`, in German `Ergebnis:`), done (its inbox item closed, or
+its task moved to `work/done/`), and "no word" when the tab is gone without an
+answer. An agent tells its result in one line with
+`task.py note <slug> -- "Result: ..."`; the cockpit writes no line of its own
+for it. The page follows tab states live and shows the stage
 wherever the item appears: a chip on its card, its Briefing row and its row on
 every page (Work included), and the whole return panel (steps, the tab's last
 line or the answer, the ways on) at the top of its drawer and its detail. A
@@ -673,7 +679,7 @@ the screen and shows the next title on its own line.
 
 **With AI on the Sessions tab.** The Sessions tab leads with what the AI was
 handed, in four groups: **Done, please check** (a start whose item closed or
-whose task moved to `work/done/`, or that left an answer, plus every waiting tab
+whose task moved to `work/done/`, that left an answer or whose tab went quiet, plus every waiting tab
 whose own item or task is settled without a start of the cockpit naming it),
 **Needs you**, **Working** and **No word**. A settled tab says why ("Done: its
 item is closed. The tab can go.") and offers **Close tab** as its one next step,
@@ -2203,6 +2209,27 @@ it must reach every machine:
 | File | What | Inbox or chat text |
 |---|---|---|
 | `work/cockpit/settled/` | every hide ("not now until <day>"), every row marked done or not doing, every "show again", one YAML file each (`<UTC stamp>-<seq>-<rand>-<act>.yaml`, or `legacy-<hash>-<act>.yaml` for an entry migrated from `state.json`), written once, never changed; the newest file for a row decides | yes: the row titles |
+
+### Upgrading: quiet tabs and the result line
+
+The return channel used to call every start whose tab stopped working
+`asks`, also a tab that was long through. Nothing has to be done by hand:
+
+1. **A new stage `idle`.** `model.returns[].stage` is `asks` only when the
+   tab shows a dialog (needs-you) or a question on its screen; a still tab
+   whose screen asks nothing is `idle`. A page of this version shows it as
+   "quiet" and files it under "Done, please check". A client that does not
+   know `idle` treats a still tab as asking, as before, because it reads the
+   tab's state live.
+2. **A task's result line.** A note on the task, since the day of the start,
+   that begins with `Result:` (or `Ergebnis:`) turns its start into `result`
+   with `{kind: note}`. Older notes and notes with another head change nothing.
+3. **Triage rows carry `next_rank` and `rank_at`.** Jev's rank of the row from
+   the newest order of a work page, `null` without one or when it is older than
+   `cockpit.flow.rank_max_age_days`. Readers that do not know the fields skip
+   them.
+4. **`cockpit.flow`.** New keys, all with defaults, read only by the Work
+   through area, which stays off until `cockpit.flow.enabled: true`.
 
 ### Upgrading: settled rows in git
 
