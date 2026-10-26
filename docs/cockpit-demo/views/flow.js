@@ -62,7 +62,7 @@ function BackCard({ x, s, c }) {
     <p class="flow-ask">${f.backAsk}</p>
     <footer class="fx-acts">${x.row
       ? html`<${VerbBar} row=${x.row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary="done" onDone=${back} extra=${rest} />`
-      : html`<p class="muted small">${f.backGone}</p><div class="fx-do">${rest}</div>`}</footer>
+      : html`${x.jump.key ? html`<p class="muted small">${f.backGone}</p>` : null}<div class="fx-do">${rest}</div>`}</footer>
   </article>`
 }
 

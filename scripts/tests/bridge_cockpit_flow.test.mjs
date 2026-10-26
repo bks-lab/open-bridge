@@ -206,6 +206,24 @@ test('verbsFor: a stream gets neither Done nor Drop, an approved item no start',
   assert.deepEqual(logic.verbsFor(task('n', { settle: [] })), ['do', 'advise', 'later', 'drop'])
 })
 
+test('verbsFor: an inbox item about a stream is the way a stream comes in, so it keeps Done and Drop', () => {
+  const q = ask('20261009-0900-a-onb', { work_kind: 'stream', about_task: 'onb', about_kind: 'stream' })
+  assert.deepEqual(logic.verbsFor(q), ['do', 'advise', 'done', 'later', 'drop'])
+  assert.deepEqual(logic.flowAction('drop', q, 'Resolves itself'),
+    { verb: 'settle', args: { keys: [q.key], outcome: 'not_doing', text: 'Resolves itself' } })
+  // the stream's own row stays without them, and out of the queue
+  assert.deepEqual(logic.verbsFor(task('onb', { stream: true, work_kind: 'stream' })), ['do', 'advise', 'later'])
+})
+
+test('the return card after a jump from a tab without an item claims nothing was settled', () => {
+  const jump = { key: null, ref: 'surface:5', title: 'other', at: NOW - 30 * MIN, armed: true }
+  const s = cockpitState(NOW, { ...state({ tabs: [{ ref: 'surface:5', name: 'other', state: 'waiting' }] }), ui: { ...state().ui, flowJump: jump } })
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  assert.match(el.$('.flow-card').text(), new RegExp(en.flow.backAsk))
+  assert.doesNotMatch(el.$('.flow-card').text(), new RegExp(en.flow.backGone))
+  assert.ok(el.button(en.flow.notYet))
+})
+
 test('suggestedVerb: the triage verdict, else Advise on a question and Let AI do it on a task the AI may do', () => {
   const tri = verdict => ({ verdict, doer: 'ai' })
   assert.equal(logic.suggestedVerb(task('a'), tri('close')), 'done')

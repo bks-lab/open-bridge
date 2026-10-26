@@ -321,7 +321,7 @@ else Advise on a question and Let AI do it on a task the AI may do):
 | Advise | a read-only quick question about the row; the answer shows in the card, with **Start from it** |
 | Done | `settle` done |
 | Later until | `later`: tomorrow, Monday, next week or a date |
-| Drop because | a reason from `cockpit.flow.drop_reasons` or typed, never without one: a task is shelved (`shelve`, an idea in the inbox and the task declined, taken back by reopening it), anything else settled as not doing with the reason. A stream offers neither Drop nor Done |
+| Drop because | a reason from `cockpit.flow.drop_reasons` or typed, never without one: a task is shelved (`shelve`, an idea in the inbox and the task declined, taken back by reopening it), anything else settled as not doing with the reason. A stream's own row offers neither Drop nor Done; an inbox item about a stream is decided like any other item |
 
 A card whose tab asks offers no start (the tab takes no sentence while it
 asks), only **To tab** and **View** beside the other verbs. A finished start

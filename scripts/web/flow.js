@@ -207,7 +207,9 @@ export function restSuggestions(s, n = 3) {
   return ideas.sort((a, b) => byRank(ranks)(a, b) || byPrio(a, b) || byAge(a, b)).slice(0, n)
 }
 
-const isStream = row => !!(row?.stream || row?.work_kind === 'stream')
+// a stream's own row; an inbox item about a stream (work_kind stream too) is the way a stream comes in and is
+// decided like any other item
+const isStream = row => !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream')
 
 /** The verbs a row offers, in FLOW_VERBS order: a start but on an item whose yes is given (it runs on its own),
  *  Done where the row can be settled, Drop on anything but a stream (a stream runs on, it never ends this way) */
