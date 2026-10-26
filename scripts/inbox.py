@@ -42,12 +42,13 @@ yes, also a conditional yes ("merge once green") that ``run`` executes when the
 condition holds · ``only-you`` (send, publish, pay) is never executed by this
 script, whatever was recorded.
 
-MUTE. A drop may say why: ``once`` (this one, no rule), ``duplicate``, ``family`` (never
-this kind again: the source plus the key up to its last colon, or the kind when the key has no
-family) or ``source`` (the whole source, for ``MUTE_SOURCE_DAYS``). The last two leave a rule,
+MUTE. A drop may say why: ``once`` (this one, no rule), ``duplicate``, ``stale`` (it went old,
+no rule), ``family`` (never this kind again: the source plus the key up to its last colon, or the
+kind when the key has no family) or ``source`` (the whole source, for ``MUTE_SOURCE_DAYS``). The last two leave a rule,
 one file of its own under ``work/inbox/_mutes/``. A finding that matches a rule is still filed
 and dropped at once by ``mute``: it counts in ``stats`` and a reopen brings it back. An item
-filed as ``now`` is never muted. ``stats`` shows per source how much a person dropped.
+filed as ``now`` is never muted. ``stats`` shows per source how much a person dropped. Sources that
+differ only in case are one source to the rules and to ``stats``.
 
 REOPEN. A close by mistake is undone with a ``reopen`` event, never by deleting the
 close: the item is open again, every yes before it is void (an executed action does
@@ -93,7 +94,8 @@ VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "execute
          "area", "describe")
 ACTIVE_STATES = ("open", "approved", "waiting")
 #: Why a person dropped an item. `family` and `source` leave a mute rule behind.
-DROP_REASONS = ("once", "duplicate", "family", "source")
+#: `stale`: it went old without anybody acting on it (a cleanup proposes these), no rule.
+DROP_REASONS = ("once", "duplicate", "family", "source", "stale")
 MUTE_REASONS = ("family", "source")
 #: A source mute ends by itself: a source that was too loud for a month may have been fixed since.
 MUTE_SOURCE_DAYS = 30
@@ -378,6 +380,12 @@ def art_of(item) -> str:
     """What a person sees an item as: `ask`, `report` or `idea` (lib/inbox_verbs.py ART_OF_KIND). Derived from
     the kind of an Item or of its as_dict(), never stored, so every item filed before the arts has one."""
     return art_of_kind(item.get("kind") if isinstance(item, dict) else item.kind)
+
+
+def source_key(source) -> str:
+    """What two sources are compared by: "Host-A/notify" and "host-a/notify" are one source to `stats` and the
+    mute rules. Only the comparison folds the case; every item and rule keeps its source as it was written."""
+    return str(source or "").strip().casefold()
 
 
 def _warn(text: str) -> None:
@@ -722,7 +730,7 @@ class Inbox:
 
     def muted_by(self, source: str, kind: str, key: str | None) -> dict | None:
         for rule in self.mutes():
-            if rule["source"] != source:
+            if source_key(rule["source"]) != source_key(source):
                 continue
             if rule.get("key_prefix") and not str(key or "").startswith(rule["key_prefix"]):
                 continue
@@ -751,7 +759,8 @@ class Inbox:
                     continue
             except ValueError:
                 continue
-            row = rows.setdefault(item.source, {"source": item.source, "filed": 0, "dropped": 0, "muted": 0,
+            # one row per source whatever its case, named as it was first written
+            row = rows.setdefault(source_key(item.source), {"source": item.source, "filed": 0, "dropped": 0, "muted": 0,
                                                 "done": 0, "open": 0, "reasons": {}})
             row["filed"] += 1
             state = item.state
@@ -979,7 +988,7 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--key", help="close every live item filed under this key instead of one id")
         if name == "drop":
             sp.add_argument("--reason", choices=DROP_REASONS,
-                            help="why: once, duplicate, family (mute this kind of the source), "
+                            help="why: once, duplicate, stale, family (mute this kind of the source), "
                                  f"source (mute the source for {MUTE_SOURCE_DAYS} days)")
     ro = sub.add_parser("reopen", help="undo a close, drop, reject, defer or a yes not run yet: the item is open again")
     ro.add_argument("id")
