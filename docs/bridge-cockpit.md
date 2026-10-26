@@ -87,7 +87,7 @@ their defaults:
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
 | `files_scope` | `active` | which tasks are files in the Files view: `active` the `doing` and `review` ones, as before; `all` every task and stream but the closed ones, the queue on top and the rest behind it on the chips Active, Waiting, Resting, Backlog and All, see [Every task as a file](cockpit-files.md#every-task-as-a-file). Any other value keeps `active` and is named in `status` |
 | `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
-| `describe` | `auto: off` | each item's brief (goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes. The button on a card works with `auto: off` too |
+| `describe` | `auto: off` | each item's brief (goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
 | `person_name` | none | how Claude and Jev name you; without it they say "the user" |
@@ -1262,9 +1262,11 @@ the `brief:` block of its STATUS.md (`task.py brief`), an inbox item in its
 The small model writes it (service `cockpit-describe` in
 `workflow/ai-services/`, default `haiku` resolved to its full id; one call
 without tools, settings or session, a fixed JSON schema with the limits of a
-brief, and `MAX_THINKING_TOKENS=0` in its env). That switch is best effort: the
-CLI still reported thinking tokens with it, most of a call's output, about
-$0.001 a call, so 20 calls an hour cost near $0.03. The
+brief). The model may think before it answers, at the effort
+`cockpit.describe.effort` names (`--effort`, `low`, `medium` or `high`,
+default `medium`). One call at `medium` on 2026-10-26 thought for about 2500 of
+its 2900 output tokens and cost about $0.002, so 20 calls an hour cost near
+$0.04. The
 item goes in as data: a few frontmatter fields, its heading, the start of the
 body, its two last sections and its open inbox items, about 6000 characters.
 `by` names the model that answered as `modelUsage` reports it; another one than
@@ -1319,6 +1321,7 @@ cockpit:
   describe:
     auto: missing        # or stale
     budget_per_hour: 20
+    effort: medium       # low, medium or high
 ```
 
 a pass of the server every ten minutes takes the items without a brief (and,

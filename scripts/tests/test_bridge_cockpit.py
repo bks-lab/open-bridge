@@ -184,7 +184,6 @@ class FakeRunner(Runner):
     def __init__(self, root: Path, cmux: str | None = "/fake/bin/cmux"):
         super().__init__(root, cmux=cmux, claude="/fake/bin/claude", codex="/fake/bin/codex")
         self.calls: list[list[str]] = []
-        self.envs: list[dict | None] = []
         self.root_path = Path(root)
         self.handlers = {
             "briefing.collect": lambda argv: ok(collect_fixture(self.root_path)),
@@ -218,9 +217,8 @@ class FakeRunner(Runner):
             i += 1
         return f"{name}.{rest[0]}" if rest else name
 
-    def _spawn(self, argv: list[str], timeout_s: float, env_extra: dict | None = None) -> RunResult:
+    def _spawn(self, argv: list[str], timeout_s: float) -> RunResult:
         self.calls.append(list(argv))
-        self.envs.append(env_extra)      # what a call added to the env (only describe may, runner.py)
         handler = self.handlers.get(self.key(argv))
         return handler(argv) if handler else ok("")
 

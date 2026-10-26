@@ -293,9 +293,9 @@ class Ctx:
         finally:
             self.actions.write_lock.acquire()
 
-    def call(self, name: str, subject: str, argv: list[str], timeout: float, env_extra: dict | None = None):
+    def call(self, name: str, subject: str, argv: list[str], timeout: float):
         app = self.actions.app
-        run = app.run(argv, timeout) if env_extra is None else app.run(argv, timeout, env_extra=env_extra)
+        run = app.run(argv, timeout)
         self.steps.append({"call": name, "subject": subject, "ok": run.ok, "exit": run.code, "took_ms": run.took_ms,
                            "err": self.actions.app.scrub(run.err or "")[-300:]})
         return run

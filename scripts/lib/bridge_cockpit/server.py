@@ -228,9 +228,7 @@ class App:
 
     # ------------------------------------------------------------ plumbing
 
-    def run(self, argv: list[str], timeout: float, on_line=None, env_extra: dict | None = None):
-        if env_extra is not None:
-            return self.runner.run(argv, timeout, env_extra=env_extra)
+    def run(self, argv: list[str], timeout: float, on_line=None):
         return self.runner.run(argv, timeout, on_line) if on_line else self.runner.run(argv, timeout)
 
     def workplace(self, *args: str) -> list[str]:

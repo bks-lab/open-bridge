@@ -26,8 +26,8 @@ changes. The pass stays within `budget_per_hour` calls (clicks count too, a clic
 calls never run at once, a click and the pass included.
 
 One call, no tools, no session, no settings, a fixed JSON schema (argv / argv_ok, the only shape the runner
-lets through), with MAX_THINKING_TOKENS=0 for this call only. That is best effort: claude -p still reported
-thinking tokens with it (CLI 2.1.310, 2026-10-25), most of the output of a call, about $0.001 a call in all. The model comes from ai.select (service
+lets through). The model may think: the call names an effort (`--effort`, cockpit.describe.effort: low, medium
+or high, default medium) and adds nothing to the env. The model comes from ai.select (service
 cockpit-describe, default haiku resolved to its full id), the model that answered from modelUsage: another
 one is flagged (model_mismatch) and stored as `by` all the same. The item goes in as data (a JSON block
 under a label that says so): frontmatter fields, the H1, the start of the body and its two last sections,
@@ -75,10 +75,9 @@ STATE = Path(".bridge") / "describe.json"
 KINDS = ("task", "stream", "inbox")
 AUTO = ("off", "missing", "stale")
 DEFAULT_BUDGET = 20
-#: what the call runs with, beside the runner's env: asks for no thinking, the largest cost of a small call.
-#: Best effort: two smoke runs on 2026-10-25 (claude CLI 2.1.310) still reported 700 to 1000 thinking tokens
-#: of 1000 to 1500 output tokens, about $0.001 a call, so the default budget of 20 an hour is near $0.03.
-ENV = {"MAX_THINKING_TOKENS": "0"}
+#: how hard the model thinks (claude --effort): the levels describe takes, and the one it uses by default
+EFFORTS = ("low", "medium", "high")
+DEFAULT_EFFORT = "medium"
 HEAD_MAX = 1500          # the start of the body
 SECTION_MAX = 1500       # each of the two last `##` sections, before the cap shortens them
 INBOX_MAX = 5
@@ -160,7 +159,7 @@ def _error(status: int, code: str, message: str, field: str | None = "key"):
 # ---------------------------------------------------------------- config (cockpit.describe)
 
 def defaults() -> dict:
-    return {"auto": "off", "budget_per_hour": DEFAULT_BUDGET, "kinds": list(KINDS)}
+    return {"auto": "off", "budget_per_hour": DEFAULT_BUDGET, "kinds": list(KINDS), "effort": DEFAULT_EFFORT}
 
 
 def _auto(value: Any) -> Any:
@@ -182,6 +181,8 @@ def describe_of(value: Any) -> dict:
     kinds = value.get("kinds")
     if isinstance(kinds, list):
         out["kinds"] = [k for k in KINDS if k in kinds]
+    if value.get("effort") in EFFORTS:
+        out["effort"] = value["effort"]
     return out
 
 
@@ -205,25 +206,29 @@ def check(value: Any, used: dict, where: str) -> list[str]:
                 bad = [x for x in v if x not in KINDS]
                 if bad:
                     out.append(f"{at}: {', '.join(str(x)[:20] for x in bad[:3])} is not one of {', '.join(KINDS)}; ignored")
-        elif key not in ("auto", "budget_per_hour", "kinds"):
+        elif key == "effort" and v not in EFFORTS:
+            out.append(f"{at}: {v!r:.40} is not one of {', '.join(EFFORTS)}; using {used['effort']}")
+        elif key not in ("auto", "budget_per_hour", "kinds", "effort"):
             out.append(f"{at}: unknown key, ignored")
     return out
 
 
 # ---------------------------------------------------------------- the call
 
-def argv(claude: str, model: str, system: str, text: str) -> list[str]:
-    return [claude, "-p", "--model", model, "--output-format", "json", "--no-session-persistence",
+def argv(claude: str, model: str, system: str, text: str, effort: str = DEFAULT_EFFORT) -> list[str]:
+    return [claude, "-p", "--model", model, "--effort", effort, "--output-format", "json", "--no-session-persistence",
             "--setting-sources", "", "--tools", "", "--json-schema", SCHEMA, "--append-system-prompt", system, "--", text]
 
 
 def argv_ok(argv_: list[str], claude: str | None) -> bool:
-    """The one shape a describe call has: a full model id, no tools, no settings, no session, this schema"""
-    if not claude or not isinstance(argv_, list) or len(argv_) != 17:
+    """The one shape a describe call has: a full model id, one of EFFORTS, no tools, no settings, no session,
+    this schema"""
+    if not claude or not isinstance(argv_, list) or len(argv_) != 19:
         return False
-    return (argv_ == argv(claude, argv_[3], argv_[14], argv_[16]) and argv_[3] in MODELS.values()
-            and isinstance(argv_[14], str) and 0 < len(argv_[14]) <= SYSTEM_MAX
-            and isinstance(argv_[16], str) and 0 < len(argv_[16]) <= PROMPT_MAX)
+    return (argv_[5] in EFFORTS and argv_ == argv(claude, argv_[3], argv_[16], argv_[18], argv_[5])
+            and argv_[3] in MODELS.values()
+            and isinstance(argv_[16], str) and 0 < len(argv_[16]) <= SYSTEM_MAX
+            and isinstance(argv_[18], str) and 0 < len(argv_[18]) <= PROMPT_MAX)
 
 
 def prompt(item: dict, language: str) -> tuple[str, str]:
@@ -810,10 +815,10 @@ class Describer:
 
     # ------------------------------------------------------------ writing
 
-    def _call(self, call: Callable | None, name: str, subject: str, argv_: list[str], timeout: float, **kw: Any):
+    def _call(self, call: Callable | None, name: str, subject: str, argv_: list[str], timeout: float):
         if call is not None:
-            return call(name, subject, argv_, timeout, **kw)
-        return self.app.run(argv_, timeout, **kw)
+            return call(name, subject, argv_, timeout)
+        return self.app.run(argv_, timeout)
 
     def write(self, item: dict, brief: dict, *, edited: bool, call: Callable | None = None,
               warnings: list | None = None, unresolved: list | None = None) -> dict:
@@ -894,10 +899,10 @@ class Describer:
         if chosen.provider != "claude" or chosen.model not in MODELS.values() or not app.runner.claude:
             raise _error(503, "describe_unavailable", tx["unavailable"])
         system, text = prompt(item, language(app.root))
-        argv_ = argv(app.runner.claude, chosen.model, system, text)
+        argv_ = argv(app.runner.claude, chosen.model, system, text, self.cfg().get("effort", DEFAULT_EFFORT))
         if not argv_ok(argv_, app.runner.claude):
             raise _error(409, "describe_too_big", tx["too_big"])
-        run = self._call(call, "claude.describe", item["key"], argv_, TIMEOUT, env_extra=dict(ENV))
+        run = self._call(call, "claude.describe", item["key"], argv_, TIMEOUT)
         self.asked += 1
         got = parse(run.out if run.ok else "", item, chosen.model, self.today())
         self.count_call(got["cost_usd"])

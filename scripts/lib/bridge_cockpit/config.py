@@ -104,7 +104,7 @@ class WebConfig:
     # (pattern lower-cased, category) in file order, a tuple since the config is frozen and order matters
     origin_map: tuple = ()
     # each item's brief written and kept by a small model (cockpit.describe, describe.py): {auto, budget_per_hour,
-    # kinds}; auto off unless switched on, the button on a card works either way
+    # kinds, effort}; auto off unless switched on, the button on a card works either way
     describe: dict = field(default_factory=dsc.defaults)
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal

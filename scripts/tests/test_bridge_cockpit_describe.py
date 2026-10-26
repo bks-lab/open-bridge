@@ -89,32 +89,37 @@ def model_calls(world):
 
 def calls_for(world, title="Demo task"):
     """the model calls about one item: its title is in the data the call carries"""
-    return [c for c in model_calls(world) if title in c[16]]
+    return [c for c in model_calls(world) if title in c[-1]]
 
 
 # ---------------------------------------------------------------- the one argv shape
 
-def describe_argv(claude="/fake/bin/claude", model=HAIKU, system="Write a brief.", text="data"):
-    return dsc.argv(claude, model, system, text)
+def describe_argv(claude="/fake/bin/claude", model=HAIKU, system="Write a brief.", text="data", effort="medium"):
+    return dsc.argv(claude, model, system, text, effort)
 
 
 def test_the_describe_argv_is_one_exact_shape_the_runner_lets_through(tmp_path):
     runner = Runner(tmp_path, cmux=None, claude="/fake/bin/claude", codex=None)
     argv = describe_argv()
-    assert argv[:12] == ["/fake/bin/claude", "-p", "--model", HAIKU, "--output-format", "json",
+    assert argv[:14] == ["/fake/bin/claude", "-p", "--model", HAIKU, "--effort", "medium", "--output-format", "json",
                          "--no-session-persistence", "--setting-sources", "", "--tools", "", "--json-schema"]
-    assert argv[12] == dsc.SCHEMA and argv[13] == "--append-system-prompt" and argv[15] == "--"
+    assert argv[14] == dsc.SCHEMA and argv[15] == "--append-system-prompt" and argv[17] == "--" and argv[18] == "data"
     runner.check(argv)
+    for effort in dsc.EFFORTS:
+        runner.check(describe_argv(effort=effort))
 
 
 @pytest.mark.parametrize("change", [
     lambda a: a.__setitem__(3, "haiku"),                       # an alias, never a full id
-    lambda a: a.__setitem__(10, "Read"),                        # a tool
-    lambda a: a.__setitem__(12, '{"type": "object"}'),          # another schema
-    lambda a: a.__setitem__(8, "user"),                         # settings
-    lambda a: a.insert(6, "--verbose"),                         # anything more
-    lambda a: a.__setitem__(16, "x" * (dsc.PROMPT_MAX + 1)),    # past the prompt limit
-    lambda a: a.__setitem__(14, ""),                            # no instruction
+    lambda a: a.__setitem__(5, "max"),                          # an effort describe does not take
+    lambda a: a.__setitem__(5, "xhigh"),
+    lambda a: a[4:6].__len__() and a.__delitem__(slice(4, 6)),  # no effort at all
+    lambda a: a.__setitem__(12, "Read"),                        # a tool
+    lambda a: a.__setitem__(14, '{"type": "object"}'),          # another schema
+    lambda a: a.__setitem__(10, "user"),                        # settings
+    lambda a: a.insert(8, "--verbose"),                         # anything more
+    lambda a: a.__setitem__(18, "x" * (dsc.PROMPT_MAX + 1)),    # past the prompt limit
+    lambda a: a.__setitem__(16, ""),                            # no instruction
     lambda a: a.__setitem__(0, "/other/claude"),                # another program
 ])
 def test_any_other_describe_argv_is_refused(tmp_path, change):
@@ -125,29 +130,14 @@ def test_any_other_describe_argv_is_refused(tmp_path, change):
         runner.check(argv)
 
 
-def test_env_extra_takes_only_max_thinking_tokens_zero_and_only_for_describe(tmp_path):
-    seen = []
-
-    class Spy(Runner):
-        def _spawn(self, argv, timeout_s, env_extra=None):
-            seen.append(env_extra)
-            return RunResult(True, 0, "", "", 1)
-
-    runner = Spy(tmp_path, cmux=None, claude="/fake/bin/claude", codex=None)
-    runner.run(describe_argv(), 5, env_extra={"MAX_THINKING_TOKENS": "0"})
-    assert seen == [{"MAX_THINKING_TOKENS": "0"}]
-    assert runner.run(describe_argv(), 5).ok and seen[-1] is None
-    for bad in ({"MAX_THINKING_TOKENS": "1000"}, {"PATH": "/tmp"}, {"MAX_THINKING_TOKENS": "0", "HOME": "/"}):
-        with pytest.raises(RunnerRefused):
-            runner.run(describe_argv(), 5, env_extra=bad)
-    with pytest.raises(RunnerRefused):      # another call never gets it
-        runner.run([runner.python, runner.script("scripts/task.py"), "review"], 5, env_extra={"MAX_THINKING_TOKENS": "0"})
-
-
-def test_the_env_extra_reaches_the_process(tmp_path):
+def test_no_call_adds_to_the_env_any_more_the_model_may_think(tmp_path):
+    """describe asked for no thinking through MAX_THINKING_TOKENS=0 once; now the model may think, at the effort
+    cockpit.describe.effort names, and no call of the runner adds anything to its clean env"""
+    import inspect
+    assert "env_extra" not in inspect.signature(Runner.run).parameters
+    assert not hasattr(dsc, "ENV")
     runner = Runner(tmp_path, cmux=None, claude="/fake/bin/claude", codex=None)
-    assert runner.env_with({"MAX_THINKING_TOKENS": "0"})["MAX_THINKING_TOKENS"] == "0"
-    assert runner.env_with(None) == runner.env()
+    assert "MAX_THINKING_TOKENS" not in runner.env()
 
 
 # ---------------------------------------------------------------- reading the answer
@@ -238,7 +228,7 @@ def test_describe_run_writes_the_brief_into_status_md(world):
     after = status_path(world).read_text(encoding="utf-8")
     assert b["basis"] == brief_basis(after) == brief_basis(before)
     [argv] = model_calls(world)
-    assert argv[3] == HAIKU and world.runner.envs[world.runner.calls.index(argv)] == {"MAX_THINKING_TOKENS": "0"}
+    assert argv[3] == HAIKU and argv[4:6] == ["--effort", "medium"]
     state = json.loads((world.app.root / ".bridge" / "describe.json").read_text(encoding="utf-8"))
     entry = state["items"]["task:demo-task"]
     assert entry["sha"] == dsc.brief_sha(b) and entry["cost_usd"] == 0.0021 and entry["by"] == HAIKU
@@ -540,19 +530,21 @@ def test_the_pass_starts_only_when_auto_is_on(world, tmp_path):
 
 def test_describe_config_defaults_to_off(tmp_path):
     cfg = load_web_config(tmp_path, {"cockpit": {}})
-    assert cfg.describe == {"auto": "off", "budget_per_hour": 20, "kinds": ["task", "stream", "inbox"]}
+    assert cfg.describe == {"auto": "off", "budget_per_hour": 20, "kinds": ["task", "stream", "inbox"], "effort": "medium"}
     assert cfg.config_warnings == ()
 
 
 def test_describe_config_takes_its_keys_and_warns_on_bad_values(tmp_path):
-    cfg = load_web_config(tmp_path, {"cockpit": {"describe": {"auto": "stale", "budget_per_hour": 5, "kinds": ["task"]}}})
-    assert cfg.describe == {"auto": "stale", "budget_per_hour": 5, "kinds": ["task"]} and cfg.config_warnings == ()
+    cfg = load_web_config(tmp_path, {"cockpit": {"describe": {"auto": "stale", "budget_per_hour": 5, "kinds": ["task"],
+                                                              "effort": "high"}}})
+    assert cfg.describe == {"auto": "stale", "budget_per_hour": 5, "kinds": ["task"], "effort": "high"}
+    assert cfg.config_warnings == ()
     bad = load_web_config(tmp_path, {"cockpit": {"describe": {"auto": "always", "budget_per_hour": -1,
-                                                              "kinds": ["task", "github"], "speed": 1}}})
-    assert bad.describe == {"auto": "off", "budget_per_hour": 20, "kinds": ["task"]}
+                                                              "kinds": ["task", "github"], "speed": 1, "effort": "max"}}})
+    assert bad.describe == {"auto": "off", "budget_per_hour": 20, "kinds": ["task"], "effort": "medium"}
     text = " | ".join(bad.config_warnings)
     for part in ("cockpit.describe.auto", "cockpit.describe.budget_per_hour", "cockpit.describe.kinds",
-                 "cockpit.describe.speed: unknown key"):
+                 "cockpit.describe.speed: unknown key", "cockpit.describe.effort"):
         assert part in text
     assert load_web_config(tmp_path, {"cockpit": {"describe": "on"}}).config_warnings
     # a bare `auto: off` in YAML is false: still off, without a warning
@@ -567,7 +559,19 @@ def test_the_ai_services_template_lists_the_cockpit_services():
 
 def test_the_docs_name_the_describe_keys():
     text = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
-    assert "`describe`" in text and "budget_per_hour" in text and "auto: missing" in text
+    assert "`describe`" in text and "budget_per_hour" in text and "auto: missing" in text and "effort" in text
+
+
+def test_the_configured_effort_reaches_the_call(tmp_path):
+    w = World(tmp_path, config=("cockpit:\n  enabled: true\n  language: en\n  describe:\n    effort: low\n"
+                                "workplace:\n  control:\n    name: Control\n"))
+    try:
+        w.runner.handlers.update({"task.brief": real, "inbox.describe": real, "claude.p": lambda argv: answer()})
+        w.act("describe_run", key="task:demo-task")
+        [argv] = model_calls(w)
+        assert argv[4:6] == ["--effort", "low"]
+    finally:
+        w.close()
 
 
 # ---------------------------------------------------------------- review fixes
@@ -630,10 +634,10 @@ def test_an_unavailable_model_stops_the_pass_and_counts_no_call(tmp_path):
         w.close()
 
 
-def test_the_docs_say_what_the_thinking_switch_and_the_local_hashes_do_not_promise():
+def test_the_docs_say_what_the_local_hashes_do_not_promise_and_no_longer_switch_thinking_off():
     text = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
-    assert "best effort" in text and "per machine" in text
-    assert "best effort" in (dsc.__doc__ or "") and "per machine" in (dsc.__doc__ or "")
+    assert "per machine" in text and "per machine" in (dsc.__doc__ or "")
+    assert "MAX_THINKING_TOKENS" not in text and "MAX_THINKING_TOKENS" not in (dsc.__doc__ or "")
 
 
 # ---------------------------------------------------------------- what reaches the page (server.describe_items)

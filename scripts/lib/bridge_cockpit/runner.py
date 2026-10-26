@@ -4,8 +4,8 @@
 Every script call of the server goes through `Runner.run`. Before a process starts,
 `check` refuses any argv that is not one of the eight Bridge scripts of SCRIPT_PATHS (run
 with this interpreter) or one of the exact shapes below it lets through: an A2A ask, a quick
-question, codex read-only, the Haiku judge, organize, describe, and ps for one pid. Only a describe call
-may add to the env, and only MAX_THINKING_TOKENS=0 (ENV_EXTRA_OK). The cmux CLI is
+question, codex read-only, the Haiku judge, organize, describe, and ps for one pid. No call adds to the
+clean env. The cmux CLI is
 never called directly; tabs go through workplace.py and its terminal driver. Tests inject a
 fake runner that overrides `_spawn` and so still passes through the same check.
 """
@@ -30,8 +30,6 @@ from .quick import argv_ok, resolve_claude
 from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
 
 CMUX_APP = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-# what a call may add to the env (Runner.run env_extra): no thinking for a describe call, nothing else
-ENV_EXTRA_OK = {"MAX_THINKING_TOKENS": "0"}
 SCRIPT_PATHS = ("scripts/briefing.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
                 "scripts/bridge-resources.py", "scripts/triage.py", "scripts/work-find.py",
                 "skills/cmux/scripts/cmux_layout.py")
@@ -119,21 +117,10 @@ class Runner:
         env["BRIDGE_ACTOR"] = "web"
         return env
 
-    def env_with(self, extra: dict | None) -> dict:
-        env = self.env()
-        env.update(extra or {})
-        return env
-
-    def run(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None] | None = None,
-            env_extra: dict | None = None) -> RunResult:
+    def run(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None] | None = None) -> RunResult:
         """With `on_line`, every line of stdout goes to it as it comes (a streamed answer); `out` still
-        holds all of it at the end. `env_extra` adds to the env: only ENV_EXTRA_OK, only for a describe call."""
+        holds all of it at the end."""
         self.check(argv)
-        if env_extra is not None:
-            if (not isinstance(env_extra, dict) or on_line is not None or not describe.argv_ok(argv, self.claude)
-                    or any(ENV_EXTRA_OK.get(k) != v for k, v in env_extra.items())):
-                raise RunnerRefused("env_extra is only MAX_THINKING_TOKENS=0 for a describe call")
-            return self._spawn(list(argv), timeout_s, env_extra=dict(env_extra))
         if on_line is not None:
             return self._spawn_lines(list(argv), timeout_s, on_line)
         return self._spawn(list(argv), timeout_s)
@@ -216,11 +203,11 @@ class Runner:
         text_err = b"".join(err_parts).decode("utf-8", errors="replace")
         return RunResult(proc.returncode == 0, proc.returncode, "".join(out_lines), text_err, took)
 
-    def _spawn(self, argv: list[str], timeout_s: float, env_extra: dict | None = None) -> RunResult:
+    def _spawn(self, argv: list[str], timeout_s: float) -> RunResult:
         start = time.monotonic()
         try:
             proc = subprocess.Popen(argv, cwd=str(self.root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, env=self.env_with(env_extra), start_new_session=True,
+                                    stderr=subprocess.PIPE, env=self.env(), start_new_session=True,
                                     shell=False)
         except OSError as error:
             return RunResult(False, -1, "", str(error), int((time.monotonic() - start) * 1000))
