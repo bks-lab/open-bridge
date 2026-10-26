@@ -1723,6 +1723,22 @@ def test_settle_takes_a_foreign_row_out_for_good_and_show_again_brings_it_back(w
     assert "ref:example/repo#12" not in world.app.store.dismissed()
 
 
+def test_a_settled_row_stays_settled_on_another_machine_and_show_again_reaches_it(world, tmp_path):
+    # state.json is per machine (.bridge/ is ignored); the decision also lands in work/cockpit/settled/, tracked
+    from lib.bridge_cockpit.store import WebStore
+    world.act("settle", keys=["ref:example/repo#12"], outcome="done")
+    world.act("hide", key="task:other-task", until=TOMORROW)
+    shared = world.root / "work" / "cockpit" / "settled"
+    assert len(list(shared.glob("*.yaml"))) == 2
+    world.app.store = WebStore(tmp_path / "another-machine", world.clock, settled_dir=shared)   # empty state.json
+    world.app.collector.rebuild()
+    hidden = {r["key"]: r for r in world.app.collector.model["hidden"]}
+    assert hidden["ref:example/repo#12"]["settled_as"] == "done" and hidden["task:other-task"]["hidden_until"] == TOMORROW
+    world.act("unhide", key="ref:example/repo#12")
+    assert "ref:example/repo#12" not in WebStore(tmp_path / "third", world.clock, settled_dir=shared).dismissed()
+    assert sum("unsettle" in p.name for p in shared.glob("*.yaml")) == 1
+
+
 def test_every_close_lands_in_the_history_with_its_undo(world):
     res = world.act("settle", keys=["task:other-task"], outcome="done")
     assert res["undo"] == [{"title": res["undo"][0]["title"], "kind": "task",

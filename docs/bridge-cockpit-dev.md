@@ -83,6 +83,7 @@ layout now").
 | `scripts/lib/bridge_cockpit/watch.py` | stat-only watcher of `work/` and the relay folder |
 | `scripts/lib/bridge_cockpit/relay.py` | relay records, HMAC signing, heartbeat reading |
 | `scripts/lib/bridge_cockpit/store.py` | `state.json` (hidden rows, team runs) and `view.json` (last view) |
+| `scripts/lib/bridge_cockpit/settled.py` | `work/cockpit/settled/`: every hide, settle and "show again" as one new file, tracked by git, so a settled row stays settled on every machine; the legacy keys of `state.json` migrate in once |
 | `scripts/lib/bridge_cockpit/server.py` | HTTP: routes, auth, static files, SSE |
 | `scripts/lib/bridge_cockpit/text.py` | server texts (notes, prompts to Claude), de and en |
 | `scripts/lib/bridge_cockpit/agents.py` | A2A agents: the peers of `infra/a2a-peers/`, their public cards fetched through `net.py`, a conversation with each kept in `agents.json`, and the `a2a.py ask` and `get` shapes the runner lets through |
