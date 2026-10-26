@@ -1254,9 +1254,12 @@ triage.
 
 A section that only adds noise or cost can be left out of the triage:
 `work.review.skip_sections` lists briefing section ids (the `sources` of a row),
-for example `[applications]`. Its rows are not sent to a model and are not in
-`.bridge/triage.json`, so they keep the bucket the briefing gave them. A row
-that two sections carry is skipped only when both are listed.
+for example `[applications]`. Its tracker rows (a board card, an issue, an
+application, a date: a `ref` with no task and no inbox item) are not sent to a
+model and are not in `.bridge/triage.json`, so they keep the bucket the
+briefing gave them and carry no triage mark. A row that two sections carry is
+skipped only when both are listed. Open tasks and inbox items are judged from
+their own lists whatever section shows them, so the key does not leave those out.
 
 **Upgrading.** Opt-in, nothing changes until the key is set: an instance that
 does not have `work.review.skip_sections` judges every row as before. To leave
