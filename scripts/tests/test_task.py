@@ -472,3 +472,15 @@ def test_next_sets_the_next_step_as_a_mapping_with_a_dated_note_and_clear_takes_
     for bad in (("next", "alpha", "--", "   "), ("next", "alpha", "--", "a\nb"), ("next", "missing", "--", "x"),
                 ("next", "alpha")):
         assert run(repo, *bad).returncode == 1, bad
+
+
+def test_close_names_the_files_that_still_link_to_the_old_place(repo):
+    other = repo / "work" / "tasks" / "beta"
+    other.mkdir(parents=True)
+    (other / "STATUS.md").write_text(
+        STATUS.replace("alpha", "beta") + "\nSee [alpha](../alpha/STATUS.md).\n", encoding="utf-8")
+    r = run(repo, "close", "alpha", "--json")
+    assert r.returncode == 0, r.stderr
+    out = _json.loads(r.stdout)
+    assert out["stale_links"] == ["work/tasks/beta/STATUS.md"]
+    assert any("check-edges.py --fix" in w for w in out["warnings"])

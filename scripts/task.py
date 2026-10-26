@@ -180,6 +180,18 @@ def regenerate_board(root: Path) -> None:
     mod.main([])
 
 
+def stale_links(root: Path, old: str) -> list[str]:
+    """Files under work/ whose Markdown links still point at `old`. Reported, never rewritten here."""
+    try:
+        spec = importlib.util.spec_from_file_location("check_edges", ROOT / "scripts" / "check-edges.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.dont_write_bytecode = True
+        spec.loader.exec_module(mod)
+        return mod.links_into(root, old)
+    except Exception:  # noqa: BLE001 - a missing hint must never fail a close
+        return []
+
+
 def remove_fields(text: str, keys) -> str:
     """Drop `key:` lines of the frontmatter, with their indented continuation lines."""
     lines = text.splitlines(keepends=True)
@@ -294,9 +306,14 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
         append_log_row(root, now, slug, f"{word.lower()}" + (f": {reason}" if reason else ""))
     except Exception as exc:  # noqa: BLE001 - the task is closed; a missing row is a warning
         warnings.append(f"work/log.md row not written: {exc}")
+    old = src.relative_to(root).as_posix()
+    stale = stale_links(root, old)
+    if stale:
+        warnings.append(f"{len(stale)} file(s) still link to {old}: {', '.join(stale)}; "
+                        f"python3 scripts/check-edges.py --fix rewrites them")
     return {"slug": slug, "moved_to": f"work/done/{now:%Y-%m}/{slug}", "closed": today,
             "outcome": "declined" if declined else None, "reason": reason or None, "stream": was_stream,
-            "warnings": warnings}
+            "stale_links": stale, "warnings": warnings}
 
 
 # ---------------------------------------------------------------- runs on

@@ -673,3 +673,123 @@ def test_fix_stays_idempotent_with_an_exception_present(tmp_path):
     edges.fix_moved(tmp_path)
     changed, _ = edges.fix_moved(tmp_path)
     assert changed == 0
+
+
+# ------------------------------------------------------- markdown links --
+#
+# The YAML fields are a third of the graph at most. The rest is prose: a
+# STATUS.md linking a deliverable, a memory file linking the task it came
+# from. Closing one stream moved it from `work/streams/` to
+# `work/done/YYYY-MM/` and left about 14 such links dead, fixed by hand. The
+# links are RELATIVE to the file they sit in, so a move breaks them twice: the
+# links pointing INTO the moved folder, and the moved files' own links pointing
+# OUT, because their depth changed.
+
+MONTH = "2026-10"
+
+
+def _moved_stream(tmp_path):
+    return _tree(tmp_path, {
+        f"work/done/{MONTH}/river/STATUS.md": (
+            "# River\n\nSee [the task](../../tasks/alpha/STATUS.md).\n"
+        ),
+        f"work/done/{MONTH}/river/notes.md": "notes\n",
+        "work/tasks/alpha/STATUS.md": (
+            "# Alpha\n\nFrom [river](../../streams/river/STATUS.md#history).\n"
+        ),
+        "work/memory/fact.md": "Source: [notes](../streams/river/notes.md)\n",
+    })
+
+
+def test_a_relative_markdown_link_in_work_is_an_edge(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": "[b](../beta/STATUS.md)\n",
+        "work/tasks/beta/STATUS.md": "# Beta\n",
+    })
+    found = edges.iter_md_links(tmp_path)
+
+    assert [(f, t) for f, _, t in found] == [
+        ("work/tasks/alpha/STATUS.md", "work/tasks/beta/STATUS.md")]
+    assert edges.check(tmp_path) == []
+
+
+def test_links_into_a_moved_stream_are_reported_as_moved(tmp_path):
+    _moved_stream(tmp_path)
+    findings = edges.check(tmp_path)
+
+    joined = "\n".join(findings)
+    assert "work/tasks/alpha/STATUS.md" in joined
+    assert "work/memory/fact.md" in joined
+    assert all("moved" in f for f in findings)
+
+
+def test_the_moved_files_own_outward_link_is_reported_too(tmp_path):
+    _moved_stream(tmp_path)
+    joined = "\n".join(edges.check(tmp_path))
+
+    assert f"work/done/{MONTH}/river/STATUS.md" in joined
+
+
+def test_fix_rewrites_every_moved_link_relative_to_its_own_file(tmp_path):
+    _moved_stream(tmp_path)
+    edges.fix_moved(tmp_path)
+
+    alpha = (tmp_path / "work/tasks/alpha/STATUS.md").read_text(encoding="utf-8")
+    fact = (tmp_path / "work/memory/fact.md").read_text(encoding="utf-8")
+    river = (tmp_path / f"work/done/{MONTH}/river/STATUS.md").read_text(encoding="utf-8")
+    assert f"(../../done/{MONTH}/river/STATUS.md#history)" in alpha
+    assert f"(../done/{MONTH}/river/notes.md)" in fact
+    assert "(../../../tasks/alpha/STATUS.md)" in river
+    assert edges.check(tmp_path) == []
+
+
+def test_urls_anchors_mail_and_code_are_not_links_to_check(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": (
+            "[web](https://example.org/x.md) [top](#status) "
+            "[mail](mailto:a@example.org) [abs](/etc/hosts)\n"
+            "```\n[in code](../nowhere/STATUS.md)\n```\n"
+            "`[inline](../nowhere/x.md)`\n"
+        ),
+    })
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_a_dead_markdown_link_is_reported_and_left_alone_by_fix(tmp_path):
+    _tree(tmp_path, {"work/tasks/alpha/STATUS.md": "[gone](../ghost/STATUS.md)\n"})
+    findings = edges.check(tmp_path)
+
+    assert len(findings) == 1 and "dead" in findings[0]
+    edges.fix_moved(tmp_path)
+    assert "(../ghost/STATUS.md)" in (
+        tmp_path / "work/tasks/alpha/STATUS.md").read_text(encoding="utf-8")
+
+
+def test_templates_are_not_checked(tmp_path):
+    _tree(tmp_path, {"work/templates/STATUS.md": "[x](../tasks/<slug>/STATUS.md)\n"})
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_links_to_a_path_name_lists_the_files_that_still_point_there(tmp_path):
+    _moved_stream(tmp_path)
+    stale = edges.links_into(tmp_path, "work/streams/river")
+
+    assert stale == ["work/memory/fact.md", "work/tasks/alpha/STATUS.md"]
+
+
+def test_a_dead_link_in_closed_or_archived_work_is_history_not_a_finding(tmp_path):
+    # A closed task often holds a snapshot of docs it worked on, with the
+    # snapshot's own relative links. Measured on one instance: 238 of 369 dead
+    # prose links sat in such copies. Reporting them buries the ones that matter.
+    _tree(tmp_path, {
+        f"work/done/{MONTH}/old/copy/README.md": "[gone](docs/never.md)\n",
+        "work/archive/weeks/w1.md": "[gone](../nowhere.md)\n",
+    })
+    assert edges.check(tmp_path) == []
+
+
+def test_a_moved_link_in_closed_work_is_still_reported(tmp_path):
+    _moved_stream(tmp_path)
+    joined = "\n".join(edges.check(tmp_path))
+
+    assert f"work/done/{MONTH}/river/STATUS.md" in joined

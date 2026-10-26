@@ -34,6 +34,14 @@ about what to do with them, so this one separates:
               path belongs to a neighbour checkout and is not ours to judge
     dead      nothing anywhere
 
+PROSE LINKS ARE EDGES TOO. A STATUS.md linking a deliverable, a memory file
+linking the task it came from: relative Markdown links under `work/`. Ending
+one stream moved it to `work/done/YYYY-MM/` and left about 14 of them dead,
+fixed by hand, because nothing here read prose. They are relative to the FILE,
+not the repo, so a move breaks them from both sides: links into the moved
+folder, and the moved files' own links out of it, whose depth changed. Both
+resolve to a repo path first and then go through the same classification.
+
 TEMPLATES ARE NOT EDGES. `_template.yaml` describes a file nobody has written
 and `*.example.yaml` describes the tree a future instance will have. Their
 paths are correct as written and reporting them would be three false alarms in
@@ -45,10 +53,14 @@ Contract: `scripts/tests/test_edges.py`.
 from __future__ import annotations
 
 import argparse
+import functools
+import os
+import posixpath
 import re
 import sys
 from collections import Counter
 from pathlib import Path
+from urllib.parse import unquote
 
 try:
     import yaml
@@ -70,6 +82,21 @@ SCAN_GLOBS = (
     "workflow/*/*.yaml",
     "trackers/*.yaml",
 )
+
+# Prose that links work items to each other. Templates link to `<slug>`
+# placeholders, which are correct as written.
+MD_SCAN_GLOBS = ("work/**/*.md",)
+MD_SKIP_PREFIXES = ("work/templates/",)
+
+# An inline Markdown link. The target ends at whitespace or `)`, so an optional
+# title is not part of it.
+MD_LINK = re.compile(r"\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+# Closed and archived work keeps snapshots: a copy of docs a task worked on,
+# with that copy's own relative links. A dead link there is history. A MOVED
+# one is still reported, because `--fix` repairs it without a judgement call.
+MD_HISTORY_PREFIXES = ("work/done/", "work/archive/")
+CODE_SPAN = re.compile(r"`[^`]*`")
+FENCE = re.compile(r"^\s*(```|~~~)")
 
 # Where a work item can live. The KIND model in AGENTS.md: a finite task, a
 # long-runner, or closed under a month.
@@ -159,6 +186,84 @@ def iter_edges(repo_root) -> list[tuple[str, str, str]]:
     return found
 
 
+def _md_path(raw: str):
+    """The path part of a link target, or None when it is not repo-relative."""
+    if raw.startswith(("#", "/", "~", "mailto:")) or "://" in raw:
+        return None
+    if "<" in raw or "{" in raw or "…" in raw:
+        return None
+    path = raw.split("#", 1)[0]
+    return unquote(path) if path else None
+
+
+def _prose_lines(text: str):
+    """(line number, line) outside fenced code, with code spans blanked.
+
+    An example inside backticks shows a path; it does not claim one exists.
+    """
+    fenced = False
+    for number, line in enumerate(text.split("\n"), start=1):
+        if FENCE.match(line):
+            fenced = not fenced
+            continue
+        if not fenced:
+            yield number, CODE_SPAN.sub(lambda m: " " * len(m.group()), line)
+
+
+def _md_links_in(rel: str, line: str):
+    """(raw, repo path) for every repo-relative link on one line of `rel`."""
+    base = posixpath.dirname(rel)
+    for match in MD_LINK.finditer(line):
+        raw = match.group(1)
+        path = _md_path(raw)
+        if path is None:
+            continue
+        target = posixpath.normpath(posixpath.join(base, path))
+        if target == ".." or target.startswith("../"):
+            continue                       # leaves the repo: a neighbour's tree
+        yield raw, target
+
+
+def iter_md_links(repo_root) -> list[tuple[str, str, str]]:
+    """Every relative Markdown link under `work/`, as (file, `#L<line>`, target).
+
+    The key is a line number, which no YAML key path can look like, so a
+    caller can tell a prose edge from a declared one.
+    """
+    root = Path(repo_root)
+    found: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for pattern in MD_SCAN_GLOBS:
+        for path in sorted(root.glob(pattern)):
+            rel = path.relative_to(root).as_posix()
+            if rel in seen or rel.startswith(MD_SKIP_PREFIXES) or not path.is_file():
+                continue
+            seen.add(rel)
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            for number, line in _prose_lines(text):
+                for _raw, target in _md_links_in(rel, line):
+                    found.append((rel, f"#L{number}", target))
+    return found
+
+
+def all_edges(repo_root) -> list[tuple[str, str, str]]:
+    _files_by_name.cache_clear()           # one walk per run, never a stale one
+    return iter_edges(repo_root) + iter_md_links(repo_root)
+
+
+def links_into(repo_root, old: str) -> list[str]:
+    """Files whose Markdown links still point at `old` or below it.
+
+    For the moment right after a move: `old` is where the folder used to be.
+    """
+    old = old.rstrip("/")
+    return sorted({rel for rel, _key, target in iter_md_links(repo_root)
+                   if target == old or target.startswith(old + "/")})
+
+
 def _work_slug(target: str):
     """(slug, tail) for a `work/...` path, or None when it is not one."""
     parts = target.split("/")
@@ -193,18 +298,31 @@ def _tail_match(root: Path, target: str):
     fourteen is a coin toss.
     """
     name = target.rsplit("/", 1)[-1]
-    for path in root.rglob(name):
-        # `.bridge/workspaces/` holds CLONES of other repositories. A hit there
-        # resolves in somebody else's tree, which is the one thing this module
-        # refuses to judge — and calling it a move would rewrite a reference
-        # that is correct as written into a path that exists only while that
-        # workspace happens to be checked out.
-        if not path.is_file() or {".git", ".bridge"} & set(path.parts):
-            continue
-        rel = path.relative_to(root).as_posix()
+    for rel in _files_by_name(str(root)).get(name, ()):
         if rel != target and rel.endswith("/" + target):
             return rel
     return None
+
+
+@functools.lru_cache(maxsize=8)
+def _files_by_name(root: str) -> dict[str, list[str]]:
+    """Every file of the tree, by basename, walked once.
+
+    Prose links made a tree walk per unresolved target cost a minute on a live
+    instance. `.bridge/workspaces/` holds CLONES of other repositories: a hit
+    there resolves in somebody else's tree, which is the one thing this module
+    refuses to judge, and calling it a move would rewrite a reference that is
+    correct as written into a path that exists only while that workspace
+    happens to be checked out.
+    """
+    index: dict[str, list[str]] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in (".git", ".bridge"))
+        rel_dir = os.path.relpath(dirpath, root)
+        for name in sorted(filenames):
+            rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+            index.setdefault(name, []).append(rel.replace(os.sep, "/"))
+    return index
 
 
 def classify(repo_root, target: str) -> tuple[str, str | None]:
@@ -248,7 +366,7 @@ def check(repo_root) -> list[str]:
     exceptions = load_exceptions(repo_root)
     used = set()
     findings = []
-    for rel, key, target in iter_edges(repo_root):
+    for rel, key, target in all_edges(repo_root):
         state, live = classify(repo_root, target)
         excuse = _excused(exceptions, rel, key)
         if excuse is not None and state in ("dead", "moved"):
@@ -265,6 +383,8 @@ def check(repo_root) -> list[str]:
                 f"{rel} :: {key} -> {target} moved; it now lives at {live} "
                 f"(`--fix` rewrites this one)"
             )
+        elif state == "dead" and key.startswith("#L") and rel.startswith(MD_HISTORY_PREFIXES):
+            continue
         elif state == "dead":
             findings.append(f"{rel} :: {key} -> {target} is dead, nothing at that path")
 
@@ -281,10 +401,12 @@ def check(repo_root) -> list[str]:
 def stats(repo_root) -> Counter:
     exceptions = load_exceptions(repo_root)
     counter: Counter = Counter()
-    for rel, key, target in iter_edges(repo_root):
+    for rel, key, target in all_edges(repo_root):
         state = classify(repo_root, target)[0]
         if state in ("dead", "moved") and _excused(exceptions, rel, key):
             state = "declared"
+        elif state == "dead" and key.startswith("#L") and rel.startswith(MD_HISTORY_PREFIXES):
+            state = "history"
         counter[state] += 1
     return counter
 
@@ -296,7 +418,7 @@ def neighbours(repo_root, node: str):
     the half that answers "what breaks if I move this".
     """
     outgoing, incoming = [], []
-    for rel, key, target in iter_edges(repo_root):
+    for rel, key, target in all_edges(repo_root):
         if rel == node:
             outgoing.append((key, target, classify(repo_root, target)[0]))
         if target == node:
@@ -333,6 +455,26 @@ def _scalar_line(text: str, dotted: str):
     return node.start_mark.line if isinstance(node, yaml.ScalarNode) else None
 
 
+def _fix_md_link(root: Path, rel: str, key: str, target: str, live: str) -> bool:
+    """Rewrite the one link on line `key` that resolves to `target`."""
+    path = root / rel
+    lines = path.read_text(encoding="utf-8").split("\n")
+    index = int(key[2:]) - 1
+    if index >= len(lines):
+        return False
+    line = lines[index]
+    for raw, resolved in _md_links_in(rel, line):
+        if resolved != target:
+            continue
+        new = posixpath.relpath(live, posixpath.dirname(rel) or ".")
+        if "#" in raw:
+            new += "#" + raw.split("#", 1)[1]
+        lines[index] = line.replace(f"]({raw}", f"]({new}", 1)
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return True
+    return False
+
+
 def fix_moved(repo_root):
     """Rewrite references whose target moved bucket. Returns (changed, skipped).
 
@@ -360,7 +502,7 @@ def fix_moved(repo_root):
     root = Path(repo_root)
     exceptions = load_exceptions(repo_root)
     changed, skipped = 0, []
-    for rel, key, target in iter_edges(repo_root):
+    for rel, key, target in all_edges(repo_root):
         state, live = classify(repo_root, target)
         if state != "moved" or not live:
             continue
@@ -370,6 +512,9 @@ def fix_moved(repo_root):
                 f"{rel} :: {key} -> {target} left alone: excepted in "
                 f"{EXCEPTION_FILE} ({str(excuse.get('reason') or '').strip().splitlines()[0]})"
             )
+            continue
+        if key.startswith("#L"):
+            changed += _fix_md_link(root, rel, key, target, live)
             continue
         # ONE occurrence, at the key that was actually classified. The gate above
         # decided per EDGE; a whole-file replace then acted per FILE, so an
@@ -407,7 +552,7 @@ def main(argv=None) -> int:
         counter = stats(root)
         total = sum(counter.values())
         print(f"check-edges: {total} declared edge(s)")
-        for state in ("ok", "moved", "dead", "external", "declared"):
+        for state in ("ok", "moved", "dead", "external", "declared", "history"):
             if counter[state]:
                 print(f"  {counter[state]:>4}  {state}")
         return 0
@@ -441,7 +586,7 @@ def main(argv=None) -> int:
     if findings:
         print(f"check-edges: {len(findings)} finding(s)", file=sys.stderr)
         return 1
-    print(f"check-edges: {len(iter_edges(root))} declared edge(s), all resolve")
+    print(f"check-edges: {len(all_edges(root))} declared edge(s), all resolve")
     return 0
 
 
