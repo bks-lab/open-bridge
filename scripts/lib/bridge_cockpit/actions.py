@@ -21,6 +21,7 @@ from typing import Any, Callable
 
 from .. import model_route as mr
 from . import model as m
+from . import activity as act
 from . import describe as dsc
 from . import organize as og
 from . import themes as thm
@@ -192,6 +193,19 @@ def _theme_name(actions: "Actions", value: Any, name: str, today: dt.date) -> st
     return text
 
 
+def _attach_name(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # the name a document is kept under: made safe (activity.safe_name), refused when nothing is left of it
+    made = act.safe_name(value)
+    if not made:
+        raise bad_arg(name, "must be a file name")
+    return made
+
+
+def _attach_data(actions: "Actions", value: Any, name: str, today: dt.date) -> bytes:
+    # the document itself: strict base64 of 1 byte up to cockpit.flow.attach.max_mb (activity.decode_data)
+    return act.decode_data(value, act.block(actions.app, "attach")["max_mb"], name)
+
+
 def _brief(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
     # what a person wrote for a brief: refused whole when the gate finds anything wrong, never cut
     if not isinstance(value, dict):
@@ -224,8 +238,12 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "organize_items": _organize_items,
     "brief": _brief,
     "theme_name": _theme_name,
+    "attach_name": _attach_name,
+    "attach_data": _attach_data,
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
+# the verbs after which the Activity tab's kept feeds stand: they change nothing a feed reads
+KEEPS_FEEDS = READ_ONLY_VERBS
 
 
 class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
@@ -400,18 +418,36 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         handler = getattr(self, f"v_{verb}")
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         ctx.by = clean.pop("by", None)
-        if verb in READ_ONLY_VERBS:
-            handler(ctx, **clean)
-        elif verb in LOCAL_VERBS:
-            self.recorded(ctx, handler, clean)
-        elif verb in LAYOUT_VERBS:
-            with self.layout_lock:
+        touched = self.touched(clean)
+        try:
+            if verb in READ_ONLY_VERBS:
+                handler(ctx, **clean)
+            elif verb in LOCAL_VERBS:
                 self.recorded(ctx, handler, clean)
-        else:
-            with self.write_lock:
-                ctx.locked = True
-                self.recorded(ctx, handler, clean)
+            elif verb in LAYOUT_VERBS:
+                with self.layout_lock:
+                    self.recorded(ctx, handler, clean)
+            else:
+                with self.write_lock:
+                    ctx.locked = True
+                    self.recorded(ctx, handler, clean)
+        finally:
+            # what a verb names is read anew by the Activity tab (activity.py keeps a feed CACHE_MS)
+            if verb not in KEEPS_FEEDS and touched and getattr(self.app, "activity", None) is not None:
+                self.app.activity.drop(touched)
         return self.finish(ctx)
+
+    @staticmethod
+    def touched(clean: dict) -> list[str]:
+        """The row keys a verb names: its keys and key, a task by its slug, an inbox item by its id"""
+        out = [k for k in clean.get("keys") or [] if isinstance(k, str)]
+        if isinstance(clean.get("key"), str):
+            out.append(clean["key"])
+        if isinstance(clean.get("slug"), str):
+            out.append(f"task:{clean['slug']}")
+        if isinstance(clean.get("id"), str) and INBOX_ID_RE.match(clean["id"]):
+            out.append(f"inbox:{clean['id']}")
+        return out
 
     def refused_after(self, ctx: Ctx, error: ActionError) -> None:
         """A refusal that follows a step that wrote: the page still gets what to take back, and the model

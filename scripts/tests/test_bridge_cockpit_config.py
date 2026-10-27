@@ -268,7 +268,10 @@ def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(t
     assert cfg.flow == {"enabled": False, "drop_reasons": ["resolves_itself", "not_needed", "someone_else", "not_worth_it"],
                         "return_after_s": 20, "prep_ahead": 2, "max_running": 4, "rank_max_age_days": 7,
                         "rerank_per_day": 3,
-                        "themes": {"enabled": False, "max_themes": 8, "budget_per_day": 6, "model": None}}
+                        "themes": {"enabled": False, "max_themes": 8, "budget_per_day": 6, "model": None},
+                        "summary": {"enabled": False, "budget_per_day": 10, "model": None},
+                        "instruct": {"enabled": False, "budget_per_day": 30, "model": None},
+                        "attach": {"enabled": False, "max_mb": 10}}
     assert cfg.flow == cf.flow_defaults() and cfg.config_warnings == ()
 
 

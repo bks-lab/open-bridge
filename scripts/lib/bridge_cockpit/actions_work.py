@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 
+from . import activity as act
 from . import model as m
 from .details import split_front
 from .history import item as history_item
@@ -275,7 +277,8 @@ class WorkVerbs:
         if not run.ok:
             ctx.note(self.tx["shelve_failed"].format(title=m.short(row["title"], 40), err=m.short(run.err, 100)), bad=True)
             return
-        ctx.history.append(history_item(row["key"], row["title"], "task", "shelved", slug, before, work_kind="task"))
+        ctx.history.append({**history_item(row["key"], row["title"], "task", "shelved", slug, before, work_kind="task"),
+                            "reason": reason})
         self.settle(ctx, row, self.tx["task_shelved"])
         self.settle_soon(ctx)
 
@@ -404,9 +407,10 @@ class WorkVerbs:
                                                              err=m.short(run.err, 100)), bad=True)
                 continue
             done += 1
-            ctx.history.append(history_item(row["key"], row["title"], "task",
-                                            "declined" if why in DECLINED_REASONS else "done", slug, before,
-                                            work_kind="stream" if out.get("stream") or row.get("stream") else "task"))
+            ctx.history.append({**history_item(row["key"], row["title"], "task",
+                                               "declined" if why in DECLINED_REASONS else "done", slug, before,
+                                               work_kind="stream" if out.get("stream") or row.get("stream") else "task"),
+                                **({"reason": text} if text else {})})
             if len(rows) == 1:
                 self.settle(ctx, row, self.tx["task_declined" if why in DECLINED_REASONS else "task_closed"])
             else:
@@ -448,7 +452,8 @@ class WorkVerbs:
                 if not run.ok:
                     ctx.note(self.tx["done_failed" if outcome == "done" else "drop_failed"].format(err=m.short(run.err, 100)), bad=True)
                     continue
-                ctx.history.append(history_item(key, row["title"], "inbox", "done" if outcome == "done" else "dropped", item))
+                ctx.history.append({**history_item(key, row["title"], "inbox", "done" if outcome == "done" else "dropped", item),
+                                    **({"reason": text} if text else {})})
                 self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped"])
                 self.settle_soon(ctx)
             elif kind == "other":
@@ -456,7 +461,7 @@ class WorkVerbs:
                 # dismissed it shows under the hidden rows with "show again"
                 self.app.store.dismiss(key, outcome, row["title"])
                 self.write_note(ctx, row, self.tx["close_reason"][outcome] + extra)
-                ctx.history.append(history_item(key, row["title"], "other", outcome))
+                ctx.history.append({**history_item(key, row["title"], "other", outcome), **({"reason": text} if text else {})})
                 ctx.settled.append(key)
                 ctx.note(f"{self.tx['dismissed_' + outcome]}: {m.short(row['title'], 60)}")
                 ctx.delta()
@@ -630,6 +635,80 @@ class WorkVerbs:
         made = self.app.themes.rename(theme, name)
         ctx.note(self.app.themes.tx()["renamed"].format(name=made))
         ctx.extra["themes"] = self.app.themes.state()
+
+    # ------------------------------------------------------------ the Activity tab
+
+    def v_flow_activity_summary(self, ctx: Ctx, key: str) -> None:
+        """The summary of a point's activity (activity.py): the kept one while the rows are the same, else one model
+        call outside the write lock. Quiet: the page shows it in place, no note goes to every page"""
+        app = self.app
+        summary = app.activity.summarize(key, call=self.describe_ctx(ctx))
+        ctx.extra["summary"] = summary
+        ctx.extra["flow_ai"] = app.activity.flow_ai()
+        ctx.audit_extra["cached"] = summary["cached"]
+
+    def v_flow_attach(self, ctx: Ctx, key: str, name: str, data: bytes) -> None:
+        """A document into the open task's deliverables/, flat, under its safe name (a taken one numbered -2 to -99),
+        never through a link, never over a file; then a note on the task (text.py activity.attached) that the feed
+        folds into the document's row. An inbox row attaches to the task it names. The audit line counts the bytes,
+        never the name"""
+        app = self.app
+        tx = act.TEXT[act._lang(app)]
+        if not act.flow_on(app):
+            raise ActionError(409, "flow_off", tx["off"])
+        if not act.block(app, "attach").get("enabled"):
+            raise ActionError(409, "attach_off", tx["attach_off"])
+        entry = self.entry(key)
+        row = {**entry["row"], **(entry.get("out") or {})}
+        task = act.open_task(app.root, row)
+        if task is None:
+            raise ActionError(409, "attach_no_task", tx["attach_no_task"], "key")
+        slug, folder = task
+        deliv = folder / "deliverables"
+        try:
+            inside = folder.resolve().is_relative_to((app.root / "work").resolve())
+            if folder.is_symlink() or not inside or deliv.is_symlink() or (deliv.exists() and not deliv.is_dir()):
+                raise self.not_applicable(tx["attach_folder"])
+            if not deliv.exists():
+                deliv.mkdir(mode=0o755)
+                os.chmod(deliv, 0o755)
+        except OSError as exc:
+            raise self.not_applicable(tx["attach_failed"].format(err=m.short(str(exc), 100))) from None
+        final = act.free_name(deliv, name)
+        if final is None:
+            raise ActionError(409, "attach_exists", tx["attach_exists"], "name")
+        path = deliv / final
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        except FileExistsError:
+            raise ActionError(409, "attach_exists", tx["attach_exists"], "name") from None
+        except OSError as exc:
+            raise self.not_applicable(tx["attach_failed"].format(err=m.short(str(exc), 100))) from None
+        try:
+            os.fchmod(fd, 0o644)
+            view = memoryview(data)
+            while view:
+                view = view[os.write(fd, view):]
+        except OSError as exc:
+            os.close(fd)
+            path.unlink(missing_ok=True)
+            raise self.not_applicable(tx["attach_failed"].format(err=m.short(str(exc), 100))) from None
+        os.close(fd)
+        ctx.audit_extra["bytes"] = len(data)
+        line = tx["attached"].format(name=final)
+        run = ctx.call("task.note", slug, self.task_cmd("note", slug, "--", line), SHORT_TIMEOUT)
+        if run.ok:
+            ctx.note(line, go=row_go(row))
+        else:
+            ctx.note(self.tx["note_failed"].format(err=m.short(run.err, 100)), bad=True)
+        app.activity.drop([key, f"task:{slug}"])
+        rel = f"deliverables/{final}"
+        found = app.activity.doc_row(key, entry, rel)
+        if found:
+            found["doc"]["attached"] = True
+            found["by"] = {"kind": "you", "name": None}
+        ctx.extra["attach"] = {"path": rel, "name": final, "bytes": len(data), "row": found}
+        ctx.delta()
 
     def v_describe_apply(self, ctx: Ctx, key: str, proposal: str, brief: dict | None = None) -> None:
         app = self.app

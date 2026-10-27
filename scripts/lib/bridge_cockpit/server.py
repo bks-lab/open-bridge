@@ -25,6 +25,7 @@ import queue
 import re
 import secrets
 import shutil
+import stat
 import sys
 import threading
 import time
@@ -35,6 +36,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import VERSION
+from . import activity as act
 from . import card as cd
 from . import details
 from .. import work_find
@@ -54,6 +56,7 @@ from .bridges import Bridges
 from .triage import Triage
 from .describe import Describer
 from .themes import Themes
+from .activity import Activity
 from .history import History
 from .quick import Quick
 from .review import Review
@@ -216,6 +219,7 @@ class App:
         self.triage = Triage(self)
         self.describe = Describer(self)                # each item's brief, written and kept (describe.py)
         self.themes = Themes(self)                     # the themes of the Work through page (themes.py)
+        self.activity = Activity(self)                 # a point's Activity tab: feed, documents, summary (activity.py)
         self.history = History(self.state_dir, self.clock)
         self.collector = Collector(self)
         self.relay = Relay(self.state_dir, cfg, clock, self.tx, key=load_key(key_dir or default_key_dir()))
@@ -416,6 +420,8 @@ class App:
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "quick_live": self.quick.live_state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
                 "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(),
+                # the model calls of the Activity tab: the runs left today (activity.py)
+                "flow_ai": self.activity.flow_ai(),
                 "rooms": {"layout": self.cfg.chat_layout, "root": str(self.root), "control": self.cfg.control,
                           "bridges": self.bridges.state()}}
 
@@ -997,6 +1003,15 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/graph":
             # the knowledge graph of the config entries, tasks and the files they name (graph.py), read only
             self.send_json(200, {"ok": True, **app.scrub_tree(app.graph.view())})
+        elif path == "/api/flow/activity":
+            # the Activity tab of one point (activity.py), read only, kept 20 s unless fresh=1
+            try:
+                self.send_json(200, app.activity.view(one("key"), fresh=one("fresh") == "1"))
+            except ActionError as error:
+                self.send_error_json(error.code, error.message, error.field, status=error.status)
+        elif path == "/api/flow/doc":
+            # one document of a task's deliverables/, its bytes with a policy for its type (activity.doc_headers)
+            self.get_flow_doc(one("slug"), one("path"))
         elif path == "/api/graph/node":
             found = app.graph.node(one("id"))
             if found is None:
@@ -1005,6 +1020,48 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"ok": True, **app.scrub_tree(found)})
         else:
             self.send_error_json("not_found", "unknown endpoint")
+
+    def get_flow_doc(self, slug: str, rel: str) -> None:
+        """A document opened from the Activity tab in a tab of its own: streamed, never through a link, and only a
+        regular file as it is when opened (a file swapped after the check is refused, a pipe never waited on)"""
+        app = self.app
+        if not act.flow_on(app):
+            self.send_error_json("flow_off", act.TEXT[act._lang(app)]["off"], status=409)
+            return
+        try:
+            target = act.doc_path(app.root, slug, rel)
+        except ActionError as error:
+            self.send_error_json(error.code, error.message, error.field, status=error.status)
+            return
+        fh = None
+        if target is not None:
+            try:
+                fh = os.fdopen(os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb")
+            except OSError:
+                fh = None
+        if fh is None:
+            self.send_error_json("not_found", "no such document")
+            return
+        with fh:
+            st = os.fstat(fh.fileno())
+            if not stat.S_ISREG(st.st_mode):
+                self.send_error_json("not_found", "no such document")
+                return
+            headers = act.doc_headers(target.name)
+            self.send_response(200)
+            self.send_header("Content-Type", headers.pop("Content-Type"))
+            self.send_header("Content-Length", str(st.st_size))
+            self.security_headers()
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.end_headers()
+            left = st.st_size
+            while left > 0:
+                chunk = fh.read(min(64 * 1024, left))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                left -= len(chunk)
 
     def get_static(self, path: str) -> None:
         if path == "/":
@@ -1118,8 +1175,20 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or "0")
         except ValueError:
             length = -1
-        if length > MAX_BODY:
-            self.send_error_json("payload_too_large", "the body is larger than 64 KB")
+        cap = MAX_BODY
+        if path == "/api/flow/attach":
+            # the one path with a larger body (a document as base64), answered before any of it is read when off
+            words = act.TEXT[act._lang(self.app)]
+            if not act.flow_on(self.app):
+                self.send_error_json("flow_off", words["off"], status=409)
+                return
+            attach = act.block(self.app, "attach")
+            if not attach.get("enabled"):
+                self.send_error_json("attach_off", words["attach_off"], status=409)
+                return
+            cap = act.attach_body_cap(attach["max_mb"])
+        if length > cap:
+            self.send_error_json("payload_too_large", f"the body is larger than {cap // 1024} KB")
             self.close_connection = True
             return
         if length < 0:
@@ -1185,6 +1254,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise ActionError(400, "invalid_argument", "view must be a view id", "view")
                 app.actions.audit_line("page_view", page, view=view or "-")
                 self.send_json(200, {"ok": True})
+            elif path == "/api/flow/attach":
+                # a document attached to a point's task (verb flow_attach, under the write lock)
+                self.send_json(200, app.actions.execute("flow_attach", body))
             elif path == "/api/triage/run":
                 app.triage.handle_post(self, body)
             elif path.startswith("/api/jev/") and jev is None:

@@ -182,7 +182,7 @@ class FakeRunner(Runner):
     """Records argv, answers from handlers, still enforces the allowlist of the real runner."""
 
     def __init__(self, root: Path, cmux: str | None = "/fake/bin/cmux"):
-        super().__init__(root, cmux=cmux, claude="/fake/bin/claude", codex="/fake/bin/codex")
+        super().__init__(root, cmux=cmux, claude="/fake/bin/claude", codex="/fake/bin/codex", git="/fake/bin/git")
         self.calls: list[list[str]] = []
         self.root_path = Path(root)
         self.handlers = {
@@ -205,6 +205,8 @@ class FakeRunner(Runner):
     def key(self, argv: list[str]) -> str:
         if argv[0] == self.claude:
             return "claude.p"
+        if argv[0] == self.git:
+            return "git.log"
         if argv[0] == self.codex:
             return "codex.exec"
         name = Path(argv[1]).stem
@@ -2261,7 +2263,8 @@ def test_audit_line_without_texts(world):
 
 
 AUDIT_CFG = ("cockpit:\n  enabled: true\n  language: en\n  relay: true\n  launch_model:\n    enabled: true\n"
-             "    auto: true\n    router: haiku\nworkplace:\n  control:\n    name: Control\n"
+             "    auto: true\n    router: haiku\n  flow:\n    enabled: true\n    attach:\n      enabled: true\n"
+             "workplace:\n  control:\n    name: Control\n"
              "integrations:\n  typesafe:\n    enabled: true\n")
 
 
@@ -2291,6 +2294,8 @@ def test_every_post_path_but_reload_leaves_exactly_one_audit_line_without_texts(
             ("/api/jev/rank", {"page": "work", "force": True}, "jev_rank"),
             ("/api/triage/run", {"fresh": True}, "triage"),
             ("/api/seen", {"page": "briefing", "view": "dossier"}, "page_view"),
+            # a document attached to a task: the bytes counted, never its name
+            ("/api/flow/attach", {"key": "task:demo-task", "name": f"{marker}.txt", "data": "aGk="}, "flow_attach"),
         ]
         # every POST path the server knows is in the list above, so a new endpoint cannot skip its line;
         # reload and presence change no record and send nothing on, and presence fires on every tab switch
