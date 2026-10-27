@@ -34,7 +34,8 @@ from typing import Any
 
 from .. import model_route as mr
 from . import model as m
-from .sessions import claude_dir, project_slug
+# one reader of a session's transcript for the guide and the task a session works on (sessions.infer)
+from .sessions import NOISE_RE, TAG_RE, claude_dir, read_tail, transcript_path  # noqa: F401
 from .store import atomic_write_json, read_json
 
 FILE = "guide.json"
@@ -62,9 +63,6 @@ LABEL_MAX = 48
 SEND_MAX = 300
 WHY_MAX = 90
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
-NOISE_RE = re.compile(r"<(system-reminder|local-command-stdout|local-command-stderr|local-command-caveat|"
-                      r"command-message|command-args)>.*?</\1>", re.S)
-TAG_RE = re.compile(r"</?[A-Za-z][\w-]*>")
 # what reaches beyond the session or cannot be taken back: such an option needs a second click on the page,
 # whatever Haiku said about it; read in the words a step sends (a dialog's label), never negated (risky_words)
 RISKY_RE = re.compile(
@@ -131,21 +129,6 @@ def check(value: Any, cfg_value: dict, where: str) -> list[str]:
 
 
 # ------------------------------------------------------------------ reading a session
-
-def read_tail(path: Path, max_bytes: int) -> list[str]:
-    """The lines of the last `max_bytes` of a file, without the first one when the read began inside it."""
-    try:
-        with open(path, "rb") as fh:
-            fh.seek(0, 2)
-            size = fh.tell()
-            start = max(0, size - max_bytes)
-            fh.seek(start)
-            data = fh.read()
-    except OSError:
-        return []
-    lines = data.decode("utf-8", errors="replace").splitlines()
-    return lines[1:] if start > 0 and lines else lines
-
 
 def clean(text: Any, cap: int | None = None, keep: str = "start") -> str:
     """Words without control characters and runs of blanks; cut to `cap` at a word, keeping the start or the end."""
@@ -266,10 +249,6 @@ def task_headline(root: Path, slug: str | None) -> str | None:
             return clean(found.group(1).strip().strip('"\''), TASK_TITLE_MAX) or None
         return None
     return None
-
-
-def transcript_path(base: Path, cwd: str, sid: str) -> Path:
-    return base / "projects" / project_slug(cwd) / f"{sid}.jsonl"
 
 
 def key_of(tab: dict) -> str:

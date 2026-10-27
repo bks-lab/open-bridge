@@ -369,16 +369,27 @@ def _state_at(events) -> str | None:
     return _text(at)
 
 
-def _facts(item: dict, briefs: list, updated, state_at=None) -> dict:
+def _until(events) -> str | None:
+    """The day the newest defer names (YYYY-MM-DD, a time on it does not count): when a deferred item comes back"""
+    until = None
+    for ev in events:
+        if isinstance(ev, dict) and ev.get("verb") == "defer":
+            until = ev.get("until")
+    day = str(until)[:10] if until is not None else ""
+    return day if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) else None
+
+
+def _facts(item: dict, briefs: list, updated, state_at=None, until=None) -> dict:
     """What card.inbox_card reads of an item: its detail and how it closes, its brief (the latest
     `describe` event, None when that one took the brief back) through the gate it was written through, its
-    last event (`updated`) and its last change of state (`state_at`)"""
+    last event (`updated`), its last change of state (`state_at`) and the day its newest defer names (`until`,
+    the model's row field of a deferred item)"""
     brief = validate_brief(briefs[-1])[0] if briefs and isinstance(briefs[-1], dict) else None
     return {"detail": _text(item.get("detail")), "kind": _text(item.get("kind")), "gate": _text(item.get("gate")),
             "due": _text(item.get("due")), "created": _text(item.get("created")), "task": _text(item.get("task")),
             "area": _text(item.get("area")), "closes_when": _plain(item.get("closes_when")),
             "closer": _text(item.get("closer")), "brief": brief, "updated": _text(updated),
-            "state_at": _text(state_at)}
+            "state_at": _text(state_at), "until": until}
 
 
 _FACTS: dict = {}
@@ -427,7 +438,7 @@ def inbox_facts(root: Path, item_id: str) -> dict | None:
                 read.append(ev)
                 if ev.get("verb") == "describe":
                     briefs.append(ev.get("brief"))
-    facts = _facts(item, briefs, last, _state_at(read))
+    facts = _facts(item, briefs, last, _state_at(read), _until(read))
     with _FACTS_LOCK:
         if len(_FACTS) >= FACTS_CAP:
             _FACTS.clear()

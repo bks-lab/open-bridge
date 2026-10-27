@@ -25,7 +25,7 @@ from .store import atomic_write_json, read_json
 
 MAX_ENTRIES = 500
 KINDS = ("task", "inbox", "other")
-UNDO_VERBS = ("task_reopen", "inbox_reopen", "unhide", "to_task_undo")
+UNDO_VERBS = ("task_reopen", "inbox_reopen", "unhide", "to_task_undo", "task_unmerge")
 REOPEN_AS = ("doing", "backlog", "review")     # task.py REOPEN_STATUSES: what a closed task can come back as
 AUDIT_RE = re.compile(r"^(\S+) (settle|task_close|done|drop) (\S+) exits=\S+ ok=true$")
 
@@ -101,6 +101,18 @@ class History:
             it["undone_ms"] = int(self.clock())
             self._save()
 
+    def mark_where(self, match: dict) -> dict | None:
+        """The newest item not yet taken back whose fields are `match`; returns it, marked (an item without an
+        undo of its own that goes with one that has it: the kept task's side of a merge)"""
+        with self.lock:
+            for entry in reversed(self.entries):
+                for it in entry["items"]:
+                    if not it.get("undone_ms") and all(it.get(k) == v for k, v in match.items()):
+                        it["undone_ms"] = int(self.clock())
+                        self._save()
+                        return it
+        return None
+
     def mark_undone(self, verb: str, ident: str) -> dict | None:
         """The newest item not yet taken back whose undo is `verb` on `ident`; returns it, marked."""
         with self.lock:
@@ -160,7 +172,7 @@ def _closed_item(root: Path, key: str) -> dict | None:
             fm = yaml.safe_load(text.split("---", 2)[1]) if text.lstrip().startswith(("---", "#")) and "---" in text else {}
             heading = re.search(r"^# (.+)$", text.split("---", 2)[2] if text.count("---") >= 2 else "", re.M)
             title = str((fm or {}).get("title") or (heading.group(1).strip() if heading else "") or ident)
-            outcome = "declined" if (fm or {}).get("outcome") == "declined" else "done"
+            outcome = {"declined": "declined", "merged": "merged"}.get((fm or {}).get("outcome"), "done")
         except (OSError, yaml.YAMLError, IndexError):
             pass
         stream = (live.parent.parent.name == "streams") if live else (fm or {}).get("was_stream") is True \

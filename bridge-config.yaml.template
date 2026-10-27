@@ -199,6 +199,7 @@ work:
 #   a2a_sources: []       # further A2A peers from a skill's script (broker, access proxy), docs/bridge-cockpit.md
 #   #   - {name: broker, script: skills/<skill>/scripts/<name>.py}
 #   work_view: due         # the view the work tab opens on: due | source | jev | files (a click on its switch still picks another)
+#   work_views: [due, source, jev, files, flow]   # the views the work tab's switch offers; files is always kept
 #   focus_to_files: false  # true: when the start page's focus runs out, it leads on into the files view of the work tab
 #   files_scope: active    # active | all = every task and stream is a file, the backlog behind the queue on chips
 #   origin_map:            # how the work tab names a source the built-in rules cannot tell: name or glob -> github | tracker
@@ -220,6 +221,8 @@ work:
 #     max_running: 4       # started agents running before Let AI do it asks first
 #     rank_max_age_days: 7 # a Jev rank older than this does not order the tasks
 #     rerank_per_day: 3    # how often a day a click on "order again" may ask Jev anew
+#     ahead_days: 2        # a point due further ahead waits under Not now, Later, until this many days before
+#     infer_sessions: true # a live session that names one open task in its transcript runs under Running now
 #     summary: {enabled: false, budget_per_day: 10}    # Activity: a small model sums up the last week on a click
 #     instruct: {enabled: false, budget_per_day: 30}   # the instruction line: a sentence becomes steps, run on a click
 #     attach: {enabled: false, max_mb: 10}             # Activity: attach a document to the task's deliverables/

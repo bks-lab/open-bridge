@@ -114,10 +114,19 @@ properties:
       estimate_min: {type: integer, minimum: 1}
 
   outcome:
-    enum: [declined]
+    enum: [declined, merged]
     description: |
       Set only with status: done. 'declined' = task closed without completion.
+      'merged' = closed into another task (`task.py merge`), merged_into names it.
       Absent = normal completion.
+
+  merged_into:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9-]{0,79}$"
+    description: |
+      Set only with status: done and outcome: merged: the slug of the task this one
+      went into. Its notes, open steps and the paths of its documents stand there in a
+      section between `<!-- merged-from: <slug> -->` markers. `task.py reopen` drops it.
 
   was_stream:
     type: boolean

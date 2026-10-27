@@ -839,16 +839,22 @@ class _Feed:
                 until = UNTIL_RE.search(did)
                 new = ("later" if verb in ("later", "runs_on") else "hidden" if verb == "hide" else
                        "shelved" if verb == "shelve" or did == "shelved" else
-                       {"done": "done", "declined": "not_doing", "not_doing": "not_doing", "dropped": "dropped"}.get(did)
+                       {"done": "done", "declined": "not_doing", "not_doing": "not_doing", "dropped": "dropped",
+                        "merged": "merged", "merged_in": "merged_in"}.get(did)
                        or ("later" if did.startswith(("later until", "runs on until")) else
                            "hidden" if did.startswith("hidden until") else None))
                 if new is None:
                     continue
+                # a merge names the other task: the one it went into, the one that came in
+                other = {"merged": it.get("into"), "merged_in": it.get("from")}.get(new)
+                other = other if isinstance(other, str) and details.SLUG_RE.match(other) else None
                 words = self.tx["decision"][new] + (" " + self.tx["until"].format(day=until.group(1))
-                                                    if until and new in ("later", "hidden") else "")
+                                                    if until and new in ("later", "hidden") else "") \
+                    + (f" {other}" if other else "")
                 row = self.add("decision", words, at_ms=entry.get("at_ms"),
                                change=change("decision", None, new, until=until.group(1) if until else None,
-                                             reason=_line(it.get("reason"), 200) or None),
+                                             reason=_line(it.get("reason"), 200) or None,
+                                             **({"into": other} if new == "merged" else {"from": other} if new == "merged_in" else {})),
                                by=_by(entry.get("by") if entry.get("by") in BY_KINDS else "you"),
                                undone_ms=it.get("undone_ms"))
                 if row:

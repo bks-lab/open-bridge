@@ -36,15 +36,19 @@ FILES_SCOPES = ("active", "all")
 # offers to click, keys the page words (text-flow.js) or a reason of the instance's own, shown as written;
 # return_after_s is how long after a jump to a tab the page asks how it went, once it is in view again.
 # FLOW_INTS: how many cards ahead get their brief prepared (0: none), how many starts may run before Let AI do it
-# asks first, how old a Jev rank may be and still order the tasks, how often a day a click may order them anew;
+# asks first, how old a Jev rank may be and still order the tasks, how often a day a click may order them anew,
+# how many days before its due day a point stands in front (later ones wait under Not now, Later);
 # each with its default and minimum (a value below it keeps the default)
 FLOW_DROP_REASONS = ("resolves_itself", "not_needed", "someone_else", "not_worth_it")
-FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 7, 1), ("rerank_per_day", 3, 0))
+FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 7, 1), ("rerank_per_day", 3, 0),
+             ("ahead_days", 2, 0))
+# infer_sessions: a live session in a tab that names one open task in the end of its own transcript runs under
+# Running now as work on that task (sessions.py infer), without a link by hand; only while the page is on
 # themes: the nested block of the themes the page groups its points by (themes.py, cockpit.flow.themes); summary,
 # instruct and attach the nested blocks of the Activity tab and the instruction line (activity.py, instruct.py), each
 # off by default, the two that call a model within a budget a day
-FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "themes",
-             "summary", "instruct", "attach")
+FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "infer_sessions",
+             "themes", "summary", "instruct", "attach")
 FLOW_REASON_MAX = 80
 FLOW_REASONS_MAX = 12
 FLOW_RETURN_MAX = 3600
@@ -126,8 +130,11 @@ class WebConfig:
     # kinds, effort}; auto off unless switched on, the button on a card works either way
     describe: dict = field(default_factory=dsc.defaults)
     # the Work through page (cockpit.flow, flow_of): {enabled, drop_reasons, return_after_s, prep_ahead,
-    # max_running, rank_max_age_days, rerank_per_day}; off by default
+    # max_running, rank_max_age_days, rerank_per_day, ahead_days, infer_sessions, ...}; off by default
     flow: dict = field(default_factory=lambda: flow_defaults())
+    # the views the work tab's switch offers (cockpit.work_views, work_views_of): all of them unless the config
+    # names fewer; files is always among them, every "open the file" link leads there
+    work_views: tuple = WORK_VIEWS
     # further sources of A2A peers beside infra/a2a-peers/ (cockpit.a2a_sources, agents.py): ({name, script}, ...),
     # each script a skill's own that lists its peers, reads their cards and asks them in a fixed JSON contract
     a2a_sources: tuple = ()
@@ -164,7 +171,7 @@ def jev_criteria_of(value: Any) -> dict | None:
 
 def flow_defaults() -> dict:
     return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20,
-            **{key: default for key, default, _low in FLOW_INTS}, "themes": thm.defaults(),
+            **{key: default for key, default, _low in FLOW_INTS}, "infer_sessions": True, "themes": thm.defaults(),
             "summary": act.ai_defaults(act.SUMMARY_BUDGET), "instruct": act.ai_defaults(act.INSTRUCT_BUDGET),
             "attach": act.attach_defaults()}
 
@@ -190,6 +197,8 @@ def flow_of(value: Any) -> dict:
         return out
     if isinstance(value.get("enabled"), bool):
         out["enabled"] = value["enabled"]
+    if isinstance(value.get("infer_sessions"), bool):
+        out["infer_sessions"] = value["infer_sessions"]
     if isinstance(value.get("drop_reasons"), list):
         out["drop_reasons"] = _flow_reasons(value["drop_reasons"])[0] or out["drop_reasons"]
     after = value.get("return_after_s")
@@ -215,8 +224,8 @@ def _check_flow(value: Any, used: dict, where: str) -> list[str]:
         at = f"{where}.{str(key)[:40]}"
         if v is None:
             continue
-        if key == "enabled" and not isinstance(v, bool):
-            out.append(f"{at}: must be true or false, got {_show(v)}; using {_show(used['enabled'])}")
+        if key in ("enabled", "infer_sessions") and not isinstance(v, bool):
+            out.append(f"{at}: must be true or false, got {_show(v)}; using {_show(used[key])}")
         elif key == "drop_reasons":
             if not isinstance(v, list):
                 out.append(f"{at}: must be a list of reasons, got {_show(v)}; using the default reasons")
@@ -290,7 +299,7 @@ BLOCK = {
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
     "files_scope": ("choice", "files_scope", FILES_SCOPES),
     "origin_map": ("origin_map",), "describe": ("describe",), "a2a_sources": ("a2a_sources",),
-    "flow": ("flow",),
+    "flow": ("flow",), "work_views": ("work_views",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -455,6 +464,25 @@ def a2a_sources_of(value: Any, root: Path | None) -> tuple[tuple, list[str]]:
     return tuple(out), warnings
 
 
+def work_views_of(value: Any) -> tuple[tuple, list[str]]:
+    """cockpit.work_views as the views kept, in WORK_VIEWS order, and a warning for each word left out or added:
+    an unknown word is dropped, files is always kept (added when missing), not a list or nothing left gives all"""
+    where = "cockpit.work_views"
+    every = ", ".join(WORK_VIEWS)
+    if value is None:
+        return WORK_VIEWS, []
+    if not isinstance(value, list):
+        return WORK_VIEWS, [f"{where}: must be a list of {every}, got {_show(value)}; using all of them"]
+    warnings = [f"{where}: {_show(x)} is no view of the work tab ({every}); ignored"
+                for x in value if x not in WORK_VIEWS]
+    known = [x for x in value if x in WORK_VIEWS]
+    if not known:
+        return WORK_VIEWS, warnings + [f"{where}: nothing left of the list; using all of them"]
+    if "files" not in known:
+        warnings.append(f"{where}: files is always kept, every link that opens a task's file leads there; added")
+    return tuple(v for v in WORK_VIEWS if v in known or v == "files"), warnings
+
+
 def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict = BLOCK) -> tuple:
     """One warning per unknown key, wrong type or value the loader replaced, naming the key and the value
     `cfg` (the loaded config) uses instead. A None value counts as left out, as it does for the loader."""
@@ -496,6 +524,9 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
         if kind == "a2a_sources":
             out += a2a_sources_of(value, cfg.root)[1]
             continue
+        if kind == "work_views":
+            out += work_views_of(value)[1]
+            continue
         if kind == "block":
             if not isinstance(value, dict):
                 used = ", ".join(f"{name} {_show(getattr(cfg, r[1]))}" for name, r in rule[1].items())
@@ -510,6 +541,8 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
             out.append(f"{at}: must be text, got {_show(value)}; {used}")
         elif kind == "choice" and value not in rule[2]:
             out.append(f"{at}: {_show(value)} is not one of {', '.join(rule[2])}; {used}")
+        elif key == "work_view" and where == "cockpit" and value not in cfg.work_views:
+            out.append(f"{at}: {_show(value)} is not among cockpit.work_views ({', '.join(cfg.work_views)}); {used}")
         elif kind in ("int", "number"):
             if not (_is_int(value) if kind == "int" else _is_number(value)):
                 what = "a whole number" if kind == "int" else "a number"
@@ -569,6 +602,9 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     def text_or_none(v: Any, cap: int) -> str | None:
         return v.strip()[:cap] if isinstance(v, str) and v.strip() else None
 
+    work_views = work_views_of(w.get("work_views"))[0]
+    work_view = w["work_view"] if w.get("work_view") in WORK_VIEWS else "due"
+
     cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
                     voice=voice, target=target, control=control, areas=areas, jev_enabled=ts.get("enabled") is True,
@@ -577,7 +613,8 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
                     session_guide=gd.guide_of(w.get("session_guide")),
                     tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
-                    work_view=w["work_view"] if w.get("work_view") in WORK_VIEWS else "due",
+                    # a view the list leaves out opens the first one kept
+                    work_view=work_view if work_view in work_views else work_views[0], work_views=work_views,
                     focus_to_files=w.get("focus_to_files") is True,
                     files_scope=w["files_scope"] if w.get("files_scope") in FILES_SCOPES else "active",
                     origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),

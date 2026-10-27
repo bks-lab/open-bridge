@@ -20,10 +20,21 @@ this Bridge only where the folder it ran in (from the session's own file) is the
 its git worktrees, or a folder that is no Bridge at all; a run of another Bridge on the machine, or of a session
 whose folder is unknown, is never read (rules/multi-instance-isolation.md). Only what the page shows leaves the
 server: never the script.
+
+The task a live session works on is recognised from the end of its own transcript (infer, only while Work through
+is on and cockpit.flow.infer_sessions): of a session in a tab whose folder is this Bridge's by the same rule, the
+last TAIL_BYTES (grown in TAIL_STEPS while nothing decides) and at most INFER_EVENTS events are read, of each event
+only an assistant's text and the input of its tool calls and a person's plain text without the harness's
+reminders, never a tool result or thinking. The
+newest event that names exactly one open task (`task:<slug>`, `work/tasks|streams/<slug>`, `task.py <verb> <slug>`)
+decides; one naming none or two is passed over. Only the slug and since when leave this module, never the text,
+and nothing is written: a link by hand or a tab's link wins over it (server.py session_tasks).
 Everything here only reads; a file that does not parse is skipped.
 """
 from __future__ import annotations
 
+import datetime as dt
+import functools
 import json
 import os
 import re
@@ -44,6 +55,17 @@ RUN_KEEP_MS = 7 * 24 * 3600 * 1000   # a workflow run older than a week is no lo
 RUNS_MAX = 40                        # the newest bound runs the page gets
 RUN_SCAN_MS = 30_000                 # the runs are read again at most this often (and when the open tasks change)
 ANSWER_MAX = 600
+# a live session's task from its transcript (infer): the end of the file read, grown step by step while no event
+# decides (a session that waits on its agents fills its end with the harness's attachments), the newest events
+# weighed, the sessions read in one scan
+TAIL_BYTES = 256 * 1024
+TAIL_STEPS = (TAIL_BYTES, 1024 * 1024, 4 * 1024 * 1024)
+INFER_EVENTS = 400
+INFER_SESSIONS_MAX = 12
+# what the harness puts into a person's turn (reminders, a command's output): never the person's own words
+NOISE_RE = re.compile(r"<(system-reminder|local-command-stdout|local-command-stderr|local-command-caveat|"
+                      r"command-message|command-args)>.*?</\1>", re.S)
+TAG_RE = re.compile(r"</?[A-Za-z][\w-]*>")
 
 
 def claude_dir() -> Path:
@@ -130,6 +152,162 @@ def _mention_re(slug: str, roots: tuple = ()) -> re.Pattern:
     under = "".join(f"|{re.escape(r.rstrip('/'))}/" for r in roots if r)
     return re.compile(rf"(?<![A-Za-z0-9_-])task:{re.escape(slug)}{tail}"
                       rf"|(?:(?<![A-Za-z0-9_./~-]){under})work/(?:tasks|streams)/{re.escape(slug)}{tail}")
+
+
+@functools.lru_cache(maxsize=512)
+def task_cmd_re(slug: str) -> re.Pattern:
+    """`task.py <verb>`, then flags (`-x`, `--name`) and an optional `--`, then the slug as the first argument,
+    quoted or not (a quote escaped as in JSON too), followed by nothing that would make it a longer name"""
+    return re.compile(rf"(?<![A-Za-z0-9_.-])task\.py\s+[a-z][a-z-]*(?:\s+--?[A-Za-z][\w-]*)*(?:\s+--)?\s+\\?[\"']?"
+                      rf"{re.escape(slug)}(?![A-Za-z0-9_.-])")
+
+
+@functools.lru_cache(maxsize=512)
+def _mention(slug: str, roots: tuple) -> re.Pattern:
+    return _mention_re(slug, roots)
+
+
+def read_tail(path: Path, max_bytes: int) -> list[str]:
+    """The lines of the last `max_bytes` of a file, without the first one when the read began inside it."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            start = max(0, size - max_bytes)
+            fh.seek(start)
+            data = fh.read()
+    except OSError:
+        return []
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    return lines[1:] if start > 0 and lines else lines
+
+
+def transcript_path(base: Path, cwd: str, sid: str) -> Path:
+    return base / "projects" / project_slug(cwd) / f"{sid}.jsonl"
+
+
+def _strings(value: Any) -> list[str]:
+    """Every text in a tool call's input, nested ones too, never a key"""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def event_texts(entry: Any) -> list[str] | None:
+    """What of a transcript event can name a task: an assistant's text blocks and the input of its tool calls, a
+    person's plain text without the harness's reminders. None for every other event (a tool result, meta lines,
+    a subagent's, an attachment)"""
+    if not isinstance(entry, dict) or entry.get("type") not in ("user", "assistant"):
+        return None
+    if entry.get("isSidechain") or entry.get("isMeta"):
+        return None
+    message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+    content = message.get("content")
+    blocks = content if isinstance(content, list) else []
+    if entry["type"] == "user":
+        texts = [content] if isinstance(content, str) else [
+            b["text"] for b in blocks if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
+        return [NOISE_RE.sub(" ", x) for x in texts]
+    out = []
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "text" and isinstance(b.get("text"), str):
+            out.append(b["text"])
+        elif b.get("type") == "tool_use":
+            out.extend(_strings(b.get("input")))
+    return out
+
+
+def event_ms(entry: dict) -> int | None:
+    """The time of a transcript event in epoch ms, None without a readable one"""
+    stamp = entry.get("timestamp")
+    if not isinstance(stamp, str):
+        return None
+    try:
+        when = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return int(when.timestamp() * 1000)
+
+
+def _events(lines: list[str]) -> list[tuple[list[str], dict]]:
+    """(texts, event) of the lines that are a person's or the assistant's event, the newest INFER_EVENTS; a line
+    that names neither kind is not parsed at all (the harness's attachments are the largest lines)"""
+    events = []
+    for raw in lines:
+        if '"user"' not in raw and '"assistant"' not in raw:
+            continue
+        try:
+            entry = json.loads(raw)
+        except ValueError:
+            continue
+        texts = event_texts(entry)
+        if texts:
+            events.append((texts, entry))
+    return events[-INFER_EVENTS:]
+
+
+def infer_file(path: Path, slugs: set, roots: tuple = ()) -> tuple[str | None, int | None]:
+    """infer_task over the end of a transcript, read in TAIL_STEPS: the next, larger end only while no event
+    decided, fewer than INFER_EVENTS events were found and the file goes back further"""
+    found: tuple[str | None, int | None] = (None, None)
+    for size in TAIL_STEPS:
+        try:
+            whole = path.stat().st_size <= size
+        except OSError:
+            return None, None
+        events = _events(read_tail(path, size))
+        found = _decide(events, slugs, roots)
+        if found[0] or whole or len(events) >= INFER_EVENTS:
+            break
+    return found
+
+
+def infer_task(lines: list[str], slugs: set, roots: tuple = ()) -> tuple[str | None, int | None]:
+    """(slug, since_ms) of the open task the end of a transcript works on: the newest event that names exactly one
+    of `slugs` decides, one naming none or two is passed over; since is the oldest event of the unbroken run that
+    names it (an event naming another task ends the run). (None, None) when no event names exactly one."""
+    return _decide(_events(lines), slugs, roots)
+
+
+def _decide(events: list[tuple[list[str], dict]], slugs: set, roots: tuple) -> tuple[str | None, int | None]:
+    if not slugs:
+        return None, None
+    roots = tuple(r for r in roots if r)
+    any_slug = re.compile("|".join(re.escape(s) for s in sorted(slugs, key=len, reverse=True)))
+    found, since = None, None
+    for texts, entry in reversed(events):
+        text = "\n".join(texts)
+        if not any_slug.search(text):          # most events name no task at all: one pass over the text
+            continue
+        named = {s for s in slugs if s in text and (_mention(s, roots).search(text) or task_cmd_re(s).search(text))}
+        if len(named) != 1:
+            continue
+        slug = next(iter(named))
+        if found is None:
+            found = slug
+        elif slug != found:
+            break
+        when = event_ms(entry)
+        if when is not None:
+            since = when
+    return found, since
+
+
+def place_of(folder: Path, own: list[Path]) -> tuple[bool, str]:
+    """(this Bridge's, folder name) of a folder a session ran in: the Bridge's root, a folder in it, one of its
+    worktrees, or a folder that is no Bridge at all; never another Bridge's"""
+    for mine in own:
+        if folder == mine or folder.is_relative_to(mine):
+            return True, ("" if folder == own[0] else folder.name)
+    if any(is_bridge(p) for p in (folder, *folder.parents)):
+        return False, ""
+    return True, folder.name
 
 
 def run_task(text: str, name: str, sid: str, slugs: set, links: dict, root: str | tuple = "",
@@ -252,6 +430,10 @@ class Sessions:
         self.runs_key: tuple = ()
         self.runs_at = None
         self.cwd_cache: dict[str, str | None] = {}   # <project>/<session id> -> the folder it ran in
+        # infer: the task each live session is seen working on, {sid: {task, since_ms}}, and per transcript the
+        # result of its last read ((mtime_ns, size), (slugs, roots), (slug, since_ms)): never its text
+        self.seen: dict[str, dict] = {}
+        self.infer_cache: dict[str, tuple] = {}
 
     def env_of(self, pid: int) -> tuple[str | None, str | None]:
         """(terminal tab: cmux surface or tmux pane, task slug of the tab) from the process environment;
@@ -331,12 +513,64 @@ class Sessions:
             folder = Path(cwd).resolve()
         except OSError:
             return False, ""
-        for mine in own:
-            if folder == mine or folder.is_relative_to(mine):
-                return True, ("" if folder == own[0] else folder.name)
-        if any(is_bridge(p) for p in (folder, *folder.parents)):
-            return False, ""
-        return True, folder.name
+        return place_of(folder, own)
+
+    def infer(self, slugs: set, refused: dict, links: dict, home: Path) -> bool:
+        """The task each live session of this Bridge in a tab is seen working on (infer_task), for the sessions
+        no link names yet, at most INFER_SESSIONS_MAX; a refused slug of a session is none of its candidates.
+        A transcript unchanged since its last read is not read again. True when what is seen changed."""
+        base = self.base or claude_dir()
+        own = own_folders(Path(home))
+        roots = tuple(dict.fromkeys(str(x) for x in (home, own[0])))
+        found, read, n = {}, set(), 0
+        for x in self.state():
+            sid, cwd = x.get("sid"), x.get("cwd")
+            if not x.get("tab") or not isinstance(sid, str) or not isinstance(cwd, str) or sid in links:
+                continue
+            try:
+                folder = Path(cwd).resolve()
+            except OSError:
+                continue
+            if not place_of(folder, own)[0]:
+                continue
+            if n >= INFER_SESSIONS_MAX:
+                break
+            n += 1
+            path = transcript_path(base, cwd, sid)
+            read.add(str(path))
+            slug, since = self.infer_one(path, frozenset(set(slugs) - set(refused.get(sid) or ())), roots)
+            if slug:
+                found[sid] = {"task": slug, "since_ms": since}
+        self.infer_cache = {k: v for k, v in self.infer_cache.items() if k in read}
+        with self.lock:
+            changed = found != self.seen
+            self.seen = found
+        return changed
+
+    def infer_one(self, path: Path, slugs: frozenset, roots: tuple) -> tuple[str | None, int | None]:
+        try:
+            st = path.stat()
+        except OSError:
+            return None, None
+        stamp, key = (st.st_mtime_ns, st.st_size), (tuple(sorted(slugs)), roots)
+        cached = self.infer_cache.get(str(path))
+        if cached and cached[0] == stamp and cached[1] == key:
+            return cached[2]
+        result = infer_file(path, set(slugs), roots)
+        self.infer_cache[str(path)] = (stamp, key, result)
+        return result
+
+    def clear_seen(self) -> bool:
+        """Work through is off: nothing is seen; True when something was"""
+        with self.lock:
+            changed = bool(self.seen)
+            self.seen = {}
+        self.infer_cache = {}
+        return changed
+
+    def seen_state(self) -> dict:
+        with self.lock:
+            return {k: dict(v) for k, v in self.seen.items()}
 
     def scan_runs(self, now_ms: float, slugs: set, links: dict, home: Path | None = None) -> list[dict]:
         """The workflow runs of the last week that belong to one of these open tasks, newest first"""
