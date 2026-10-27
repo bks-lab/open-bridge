@@ -115,6 +115,9 @@ export const FLOW = {
       from: day => `from ${day}`, until: day => `until ${day}`, due: when => `due ${when}`, otherRepo: 'Other sources', back: 'Back on',
       hint: 'Ticked rows take the buttons of the bar. A title opens the row where it lives.', empty: 'Nothing here.',
       cols: { when: 'When' },
+      // the watched rows a GitHub list holds: one line that leads to that list (views/flowleft.js)
+      onPage: (n, page) => `${n} on ${page}`,
+      onPageTitle: page => `Issues and pull requests of your boards: they stand on ${page}, a click shows them there`,
     },
     merge: {
       button: 'Merge', run: 'Merge', only: 'Only open tasks can be merged: no streams, no inbox items.', title: 'Which task stays?',
@@ -297,6 +300,8 @@ export const FLOW = {
       from: day => `ab ${day}`, until: day => `bis ${day}`, due: when => `fällig ${when}`, otherRepo: 'Andere Quellen', back: 'Wieder dran',
       hint: 'Angehakte Zeilen nehmen die Knöpfe der Leiste. Ein Titel öffnet die Zeile dort, wo sie lebt.', empty: 'Hier ist nichts.',
       cols: { when: 'Wann' },
+      onPage: (n, page) => `${n} auf ${page}`,
+      onPageTitle: page => `Issues und Pull Requests deiner Boards: sie stehen auf ${page}, ein Klick zeigt sie dort`,
     },
     merge: {
       button: 'Zusammenführen', run: 'Zusammenführen', only: 'Nur offene Aufgaben lassen sich zusammenführen, keine Streams und keine Posteingangspunkte.',

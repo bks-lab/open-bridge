@@ -891,6 +891,11 @@ const ctl = {
     ctl.setWorkKind(home.label)
     ctl.setWorkView('area')
   },
+  // a page at one of its sections, its head brought into view once drawn (Not now's line of the GitHub rows)
+  openSection(page, section) {
+    ctl.setPage(page)
+    requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(`ps-${page}-${section}`)?.scrollIntoView({ block: 'start' })))
+  },
   // the Workers tab with a filter set (the machine whose workers a tile or a drawer asked for)
   openWorkers(filter) {
     ctl.setPage(WORKERS_PAGE)

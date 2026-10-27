@@ -2,9 +2,11 @@
 // The cockpit, Not now of Work through (views/flow.js, round 4): every open row that is no point now stands in one of
 // its groups (logic.js flowParts leftOut, FLOW_LEFT_OUT): Later (put off, hidden until a day, or due later than the
 // lead time), Waits on others, Resting, Ideas and backlog, Streams, Watching (the issues and pull requests, by
-// repository). NotNowBlock is its part at the foot of the left column, on every side and in every mode: one button per
-// group with its count, the one open marked; on a narrow screen NotNowNarrow folds it under the select. A click shows
-// the group as a list in the middle (LeftList, view `left`): Back to overview, its name, count and what it holds, the
+// repository), and the watched rows a GitHub list holds (`github`, round 6). NotNowBlock is its part at the foot of the
+// left column, on every side and in every mode: one button per group with its count, the one open marked, the GitHub
+// rows as one quiet line "n on GitHub" that opens that page at its list (c.openSection), since they stand there; on a
+// narrow screen NotNowNarrow folds it under the select. A click on a group shows it as a list in the middle (LeftList,
+// view `left`): Back to overview, its name, count and what it holds, the
 // batch bar with the group's verbs (logic.js LEFT_VERBS and leftPlan: Back on, Later, Done, Drop or Let AI do it, Merge
 // where two or more ticked rows are open tasks), then a table: a box, the title (it opens the row where it lives: an
 // issue or a pull request on the web, a task in the files view, an inbox item in its drawer), its kind, when, its area.
@@ -19,10 +21,13 @@ import { KindTag } from './day.js'
 import { ageDays, BatchBar } from './flowlist.js'
 import { Btn } from './parts.js'
 
-/** The buttons of the groups of Not now, each with its count, the one open marked */
+/** The buttons of the groups of Not now, each with its count, the one open marked; the rows a GitHub list holds as
+ *  one line that leads to that list (the group's `at`) */
 function GroupButtons({ left, open, c }) {
   const f = T().flow.notnow
-  return html`<ul class="flow-side-list">${left.groups.map(g => html`<li key=${g.reason}>
+  return html`<ul class="flow-side-list">${left.groups.map(g => g.at ? html`<li key=${g.reason}>
+    <button type="button" class="flow-notnow-line" title=${f.onPageTitle(g.at.title)}
+      onClick=${() => c.openSection(g.at.page, g.at.section)}>${f.onPage(g.rows.length, g.at.title)}</button></li>` : html`<li key=${g.reason}>
     <button type="button" class=${`flow-notnow-item${open === g.reason ? ' is-on' : ''}`} aria-current=${open === g.reason ? 'true' : undefined}
       onClick=${() => c.flowLeft(g.reason)}>
       <span class="flow-side-name"><span class="flow-side-label">${f.group[g.reason]}</span></span>

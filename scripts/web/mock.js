@@ -263,6 +263,8 @@ function row(over) {
     status: null, next: null,
     // round 4: when a task last moved (STATUS.md last_updated), the day an item put off comes back
     updated: null, until: null,
+    // round 6: the GitHub list the row also stands in (collector.py on_board)
+    on_board: null,
     ...over,
   }
 }
@@ -624,7 +626,7 @@ export function buildState(now = Date.now(), opts = {}) {
       origin: O('github', 'example/repo', null, { ref: 'example/repo#12' }), work_kind: null,
       why: ['assigned to you', 'quiet for 3 days'], sources: ['github'], ref: 'example/repo#12', priority: 'P2',
       url: 'https://example.org/repo/issues/12', link: { kind: 'web', href: 'https://example.org/repo/issues/12' },
-      mark: { label: 'Demo', color: 'blue' }, actions: [A('ask')],
+      mark: { label: 'Demo', color: 'blue' }, actions: [A('ask')], on_board: { page: 'trackers', section: 'mine' },
     }),
     index: row({
       key: 'task:docs-refresh', bucket: 'tasks', section: 'work', title: 'Refresh the docs index', sources: ['tasks'],
@@ -711,6 +713,7 @@ export function buildState(now = Date.now(), opts = {}) {
       key: 'ref:example/tools#4', bucket: 'plan', section: 'track', title: 'Release checklist', sources: ['github'],
       origin: O('github', 'example/tools', null, { ref: 'example/tools#4' }), ref: 'example/tools#4',
       url: 'https://example.org/tools/pull/4', link: { kind: 'web', href: 'https://example.org/tools/pull/4' }, actions: [A('ask')],
+      on_board: { page: 'trackers', section: 'mine' },
     }),
     switchDocs: row({
       key: 'ref:example/repo#18', bucket: 'plan', section: 'track', title: 'Document the new config switch', sources: ['github'],
